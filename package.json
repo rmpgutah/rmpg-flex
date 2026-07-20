@@ -17,7 +17,8 @@
     "test:worker": "vitest run -c vitest.workers.config.mts",
     "migrate:local": "wrangler d1 execute rmpg-flex --local --file migrations/baseline/schema.sql && wrangler d1 migrations apply rmpg-flex --local",
     "migrate:prod": "wrangler d1 migrations apply rmpg-flex --remote",
-    "baseline:build": "node scripts/build-baseline.mjs"
+    "baseline:build": "node scripts/build-baseline.mjs",
+    "prepare": "husky"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7",
@@ -41,6 +42,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^26.1.1",
     "@types/uuid": "^10.0.0",
+    "husky": "^9.1.7",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10",
     "wrangler": "^4.110.0"

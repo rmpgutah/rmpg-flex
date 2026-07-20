@@ -97,9 +97,11 @@ import { useMapMatchTrace } from '../../hooks/useMapMatchTrace';
 import { useMapboxDraw } from '../../hooks/useMapboxDraw';
 import { initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay, createMapboxIncidentLayer, createMapboxUnitLayer, createMapboxArcLayer } from '../../integrations/deckMapboxLayers';
 import type { IncidentPoint, UnitPosition } from '../../integrations/deckMapboxLayers';
-import MapOverlaysPanel from './components/MapOverlaysPanel';
-import type { OverlayToggle } from './components/MapOverlaysPanel';
-import ToolbarDropdownGroup from './components/ToolbarDropdownGroup';
+import MapRosterDock, { type MapRosterDockProps, type RosterUnit, type RosterCall } from './components/MapRosterDock';
+import MapLeftDock, { type MapLeftDockSection } from './components/MapLeftDock';
+import MapRightDock, { type MapRightDockSection } from './components/MapRightDock';
+import MapTopToolbar from './components/MapTopToolbar';
+import MapBottomTray from './components/MapBottomTray';
 import SafetyAlertTicker from './components/SafetyAlertTicker';
 import RulerTool from './components/RulerTool';
 import BufferRingTool from './components/BufferRingTool';
@@ -116,7 +118,6 @@ import {
   TACTICAL_SURFACE_BASE, TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
   TACTICAL_TEXT_PRIMARY,
 } from './utils/tacticalPalette';
-interface LayerGroup { id: string; label: string; layers: OverlayToggle[]; }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const SLC_CENTER: [number, number] = [-111.891, 40.7608];
@@ -149,16 +150,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [mapStyle, setMapStyleId]       = usePersistedState<MapStyleId>('rmpg_mapbox_style', 'dark');
   const [beatsVisible, setBeatsVisible] = usePersistedState('rmpg_mapbox_beats', true);
   // searchQuery/searchResults state removed — MapboxGeocoder handles this internally
-  const [showStyleMenu, setShowStyleMenu] = useState(false);
   const [selfPosVisible, setSelfPosVisible] = usePersistedState('rmpg_mapbox_self_pos', true);
   const [terrainEnabled, setTerrainEnabled] = usePersistedState('rmpg_mapbox_terrain', false);
   const [isochroneEnabled, setIsochroneEnabled] = useState(false);
   const [nearestUnitInfo, setNearestUnitInfo] = useState<string | null>(null);
-  const [showAdvancedToolbar, setShowAdvancedToolbar] = useState(false);
+  // showMeasureMenu / showDrawMenu drive the distance/area and polygon/polyline/circle
+  // dropdown bodies — their launcher buttons now live in the Right Dock's Analysis
+  // section (see mapRightDockSections), but the dropdown JSX still mounts at the map
+  // canvas root, gated on these flags exactly as before.
   const [showDrawMenu, setShowDrawMenu] = useState(false);
   const [showMeasureMenu, setShowMeasureMenu] = useState(false);
-  const [showOverlaysGroup, setShowOverlaysGroup] = useState(false);
-  const [showAnalysisGroup, setShowAnalysisGroup] = useState(false);
   const geocoderRef = useRef<MapboxGeocoder | null>(null);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
@@ -329,6 +330,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
   const isMobile    = useIsMobile();
+  // Separate, wider breakpoint (1024px) that decides docks-vs-tray for the new
+  // docked-panes layout. Distinct from `isMobile` (768px) above, which other
+  // parts of the page use for its own purposes and must NOT be reused here.
+  const isDockNarrow = useIsMobile(1024);
   const { addToast } = useToast();
   const { isConnected, subscribe } = useWebSocket();
 
@@ -575,7 +580,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [showGeoLayersMenu, setShowGeoLayersMenu] = useState(false);
   const [autoPanEnabled, setAutoPanEnabled] = usePersistedState('rmpg_mapbox_autopan_p1', true);
   const [p1AudioEnabled, setP1AudioEnabled] = usePersistedState('rmpg_mapbox_p1_audio', true);
-  const [layersPanelOpen, setLayersPanelOpen] = useState(false);
 
   // Auto-pan to new P1 calls
   useAutoPanToP1(mapRef.current, calls, { enabled: autoPanEnabled });
@@ -896,7 +900,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const handleStyleChange = useCallback((styleId: MapStyleId) => {
     changeStyle(styleId);
     setMapStyleId(styleId);
-    setShowStyleMenu(false);
   }, [changeStyle, setMapStyleId]);
 
   // ── Mapbox GL Geocoder Control (replaces custom address search) ─────────────
@@ -1021,51 +1024,48 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     }
   }, [mapLoaded, isochroneEnabled, gps.longitude, gps.latitude, addToast]);
 
-  // ── Layers Panel Groups ────────────────────────────────────────────────────
+  // ── Dock Section Data (Layers left dock + Info & Tools right dock) ──────────
+  // Re-bucketed from the former flat `layerGroups`/Advanced Toolbar into the new
+  // docked-panes structure (Task 7 of the 2026-07 map-UI redesign). Every toggle
+  // object below is copied verbatim from the old `layerGroups` array — same
+  // id/label/active/onToggle/color/description/loading expressions, only
+  // re-grouped. `scale`/`fullscreen`/`minimap`/`snapshot` moved out entirely to
+  // `mapTopToolbarProps` (viewport chrome, not layers).
 
-  const layerGroups = useMemo<LayerGroup[]>(() => [
+  const mapLeftDockSections = useMemo<MapLeftDockSection[]>(() => [
     {
-      id: 'live',
-      label: 'Live Data',
-      layers: [
-        { id: 'heatmap', label: `Crime Heatmap (${heatmapMode === 'live' ? 'Live' : 'Historical'})`, active: heatmap.enabled, onToggle: () => { void populateAndToggleHeatmap(); }, color: '#ef4444', description: 'Incident density (H) — click label to switch Live/Historical' },
+      title: 'Live Conditions',
+      items: [
         { id: 'traffic', label: 'Live Traffic', active: traffic.enabled, onToggle: traffic.toggle, color: '#22c55e', description: 'Real-time congestion' },
+        { id: 'weather', label: 'Weather Radar', active: weatherRadar.enabled, onToggle: weatherRadar.toggle, color: '#3b82f6', description: 'Precipitation overlay' },
+        { id: 'p1audio', label: 'P1 Audio Alert', active: p1AudioEnabled, onToggle: () => setP1AudioEnabled((v: boolean) => !v), color: '#ef4444', description: 'Chirp on new P1 calls' },
+        { id: 'autopan', label: 'Auto-Pan P1', active: autoPanEnabled, onToggle: () => setAutoPanEnabled((v: boolean) => !v), color: '#ef4444', description: 'Pan to new Priority 1 calls' },
+        { id: 'geofences', label: 'Geofence Zones', active: geofenceAlerts.enabled, onToggle: geofenceAlerts.toggle, color: '#ef4444', description: 'Premise alerts on click' },
+      ],
+    },
+    {
+      title: 'Units & Calls',
+      items: [
         { id: 'breadcrumbs', label: 'Unit Trails', active: breadcrumbs.enabled, onToggle: breadcrumbs.toggle, color: '#3b82f6', description: 'GPS history (B)' },
         { id: 'clustering', label: 'Call Clusters', active: clustering.enabled, onToggle: clustering.toggle, color: '#d4a017', description: 'Group markers (C)' },
-        { id: 'daylight', label: 'Day/Night', active: daylight.enabled, onToggle: daylight.toggle, color: '#f59e0b', description: 'Solar terminator (D)' },
-        { id: 'geofences', label: 'Geofence Zones', active: geofenceAlerts.enabled, onToggle: geofenceAlerts.toggle, color: '#ef4444', description: 'Premise alerts on click' },
-        { id: 'mapmatch', label: 'Map Match Trace', active: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting(), color: '#fb923c', description: 'Snap GPS to roads' },
         { id: 'incidents', label: 'Incidents', active: incidentsEnabled, onToggle: () => setIncidentsEnabled((v) => !v), color: '#ef4444', description: 'RMS incident clusters', loading: incidentsLayer.loading },
-        { id: 'safety-zones', label: 'Safety Zones', active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), color: '#c81e1e', description: 'Risk-weighted call clusters', loading: safetyZones.loading },
-        { id: 'call-history', label: 'Call History', active: historyCallsEnabled, onToggle: () => setHistoryCallsEnabled((v) => !v), color: '#64d264', description: 'Past 30 days of calls', loading: historyCalls.loading },
         { id: 'repeat-addresses', label: 'Repeat Addresses', active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), color: '#64d264', description: 'Locations with 3+ calls', loading: repeatAddresses.loading },
+        { id: 'selfpos', label: 'My Position', active: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v), color: '#3b82f6' },
+      ],
+    },
+    {
+      title: 'Historical Analysis',
+      items: [
+        { id: 'heatmap', label: `Crime Heatmap (${heatmapMode === 'live' ? 'Live' : 'Historical'})`, active: heatmap.enabled, onToggle: () => { void populateAndToggleHeatmap(); }, color: '#ef4444', description: 'Incident density (H) — click label to switch Live/Historical' },
+        { id: 'call-history', label: 'Call History', active: historyCallsEnabled, onToggle: () => setHistoryCallsEnabled((v) => !v), color: '#64d264', description: 'Past 30 days of calls', loading: historyCalls.loading },
         { id: 'speed-heatmap', label: 'Speed Heatmap', active: speedHeatmapEnabled, onToggle: () => setSpeedHeatmapEnabled((v) => !v), color: '#f97316', description: 'GPS speed density', loading: speedHeatmap.loading },
         { id: 'speed-violations', label: 'Speed Violations', active: speedViolationsEnabled, onToggle: () => setSpeedViolationsEnabled((v) => !v), color: '#ef4444', description: 'Recent high-speed events — click a marker for the speed graph', loading: speedViolationsLayer.loading },
         { id: 'pursuit-segments', label: 'Pursuit Tracks', active: pursuitSegmentsEnabled, onToggle: () => setPursuitSegmentsEnabled((v) => !v), color: '#dc2626', description: 'Recent vehicle/foot pursuit paths', loading: pursuitSegmentsLayer.loading },
-        { id: 'gps-replay', label: 'GPS Replay', active: activeFloatingTool === 'gps-replay', onToggle: () => setActiveFloatingTool((v) => v === 'gps-replay' ? null : 'gps-replay'), color: '#22c55e', description: 'Scrub a unit\'s GPS history on a timeline' },
-        { id: 'nav-overlay', label: 'Point-to-Point Route', active: activeFloatingTool === 'nav-overlay', onToggle: () => setActiveFloatingTool((v) => v === 'nav-overlay' ? null : 'nav-overlay'), color: '#3b82f6', description: 'Draw a route between two typed coordinates' },
       ],
     },
     {
-      id: 'analysis',
-      label: 'Analysis',
-      layers: [
-        { id: 'isochrone', label: 'Response Zones', active: isochroneEnabled, onToggle: toggleIsochrone, color: '#22c55e', description: '5/10/15 min driving' },
-        { id: 'inspect', label: 'Feature Inspector', active: featureInspect.enabled, onToggle: featureInspect.toggle, color: '#8b5cf6', description: 'Click features for details' },
-        { id: 'coverage-gaps', label: 'Coverage Gaps', active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), color: '#f08228', description: 'Response-time gap grid', loading: coverageGaps.loading },
-        { id: 'response-time', label: 'Response Time by Beat', active: responseTimeEnabled, onToggle: () => setResponseTimeEnabled((v) => !v), color: '#4caf50', description: '30-day avg response time (historical)', loading: responseTime.loading },
-        { id: 'speed-analytics', label: 'Speed Analytics Panel', active: speedAnalyticsPanelOpen, onToggle: () => setSpeedAnalyticsPanelOpen((v) => !v), color: '#f97316', description: 'Per-beat speed stats + coverage timeline', loading: speedZoneStats.loading },
-        { id: 'identify', label: 'Identify', active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), color: '#eab308', description: 'Click the map for place/district info', loading: tilequery.loading },
-        { id: 'ruler', label: 'Ruler', active: activeFloatingTool === 'ruler', onToggle: () => setActiveFloatingTool((v) => v === 'ruler' ? null : 'ruler'), color: '#d4a017', description: 'Multi-point distance measurement' },
-        { id: 'buffer-ring', label: 'Buffer Ring', active: activeFloatingTool === 'buffer-ring', onToggle: () => setActiveFloatingTool((v) => v === 'buffer-ring' ? null : 'buffer-ring'), color: '#f08228', description: 'Radius rings around a point' },
-        { id: 'annotation', label: 'Annotations', active: activeFloatingTool === 'annotation', onToggle: () => setActiveFloatingTool((v) => v === 'annotation' ? null : 'annotation'), color: '#3b82f6', description: 'Pin notes on the map' },
-        { id: 'draw-geofence', label: 'Draw Geofence', active: activeFloatingTool === 'draw-geofence', onToggle: () => setActiveFloatingTool((v) => v === 'draw-geofence' ? null : 'draw-geofence'), color: '#a855f7', description: 'Draw a custom alert/exclusion zone' },
-      ],
-    },
-    {
-      id: 'base',
-      label: 'Map & 3D',
-      layers: [
+      title: 'Boundaries',
+      items: [
         { id: 'beats', label: 'Beat Boundaries', active: beatsVisible, onToggle: () => setBeatsVisible((v: boolean) => !v), color: '#d4a017' },
         ...districtHierarchy.hierarchyConfigs.map(cfg => ({
           id: `district-${cfg.id}`,
@@ -1075,17 +1075,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           color: '#d4a017',
           description: cfg.description,
         })),
-        { id: 'terrain', label: '3D Terrain', active: terrainEnabled, onToggle: () => setTerrainEnabled((v: boolean) => !v), color: '#a855f7' },
-        { id: 'buildings', label: '3D Buildings', active: buildings3dEnabled, onToggle: () => setBuildings3dEnabled((v: boolean) => !v), color: '#666666', description: 'Extruded building footprints' },
-        { id: 'selfpos', label: 'My Position', active: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v), color: '#3b82f6' },
-        { id: 'projection', label: `Projection: ${projection.projection}`, active: projection.projection !== 'mercator', onToggle: projection.cycle, color: '#14b8a6', description: 'Globe / Mercator / Equal Earth' },
-        { id: 'atmosphere', label: `Atmosphere: ${atmosphere.preset}`, active: atmosphere.enabled, onToggle: atmosphere.cycle, color: '#a855f7', description: 'Fog, sky & star effects' },
-        { id: 'weather', label: 'Weather Radar', active: weatherRadar.enabled, onToggle: weatherRadar.toggle, color: '#3b82f6', description: 'Precipitation overlay' },
-        { id: 'grid', label: 'Coordinate Grid', active: coordGrid.enabled, onToggle: coordGrid.toggle, color: '#d4a017', description: 'Lat/Lng graticule (G)' },
-        { id: 'deck', label: 'GPU Overlay', active: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: 'Deck.gl accelerated' },
-        { id: 'scale', label: 'Scale Bar', active: scaleEnabled, onToggle: () => setScaleEnabled((v) => !v), color: '#14b8a6', description: 'Show ground-distance scale' },
-        { id: 'fullscreen', label: 'Fullscreen', active: fullscreenEnabled, onToggle: () => setFullscreenEnabled((v) => !v), color: '#14b8a6', description: 'Expand map to fullscreen' },
-        { id: 'minimap', label: 'Minimap', active: minimapOpen, onToggle: () => setMinimapOpen((v) => !v), color: '#64d264', description: 'Small overview map, bottom-right' },
         ...geoJsonLayers.configs.map(cfg => ({
           id: `geo-${cfg.id}`,
           label: cfg.label,
@@ -1094,23 +1083,68 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           color: cfg.style.strokeColor || cfg.style.fillColor,
           description: cfg.file.replace('.geojson', ''),
         })),
+        { id: 'coverage-gaps', label: 'Coverage Gaps', active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), color: '#f08228', description: 'Response-time gap grid', loading: coverageGaps.loading },
+        { id: 'response-time', label: 'Response Time by Beat', active: responseTimeEnabled, onToggle: () => setResponseTimeEnabled((v) => !v), color: '#4caf50', description: '30-day avg response time (historical)', loading: responseTime.loading },
+        { id: 'safety-zones', label: 'Safety Zones', active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), color: '#c81e1e', description: 'Risk-weighted call clusters', loading: safetyZones.loading },
+        { id: 'isochrone', label: 'Response Zones', active: isochroneEnabled, onToggle: toggleIsochrone, color: '#22c55e', description: '5/10/15 min driving' },
       ],
     },
     {
-      id: 'dispatch-tools',
-      label: 'Dispatch Tools',
-      layers: [
-        { id: 'autopan', label: 'Auto-Pan P1', active: autoPanEnabled, onToggle: () => setAutoPanEnabled((v: boolean) => !v), color: '#ef4444', description: 'Pan to new Priority 1 calls' },
-        { id: 'p1audio', label: 'P1 Audio Alert', active: p1AudioEnabled, onToggle: () => setP1AudioEnabled((v: boolean) => !v), color: '#ef4444', description: 'Chirp on new P1 calls' },
+      title: 'Terrain & 3D',
+      items: [
+        { id: 'terrain', label: '3D Terrain', active: terrainEnabled, onToggle: () => setTerrainEnabled((v: boolean) => !v), color: '#a855f7' },
+        { id: 'buildings', label: '3D Buildings', active: buildings3dEnabled, onToggle: () => setBuildings3dEnabled((v: boolean) => !v), color: '#666666', description: 'Extruded building footprints' },
+        { id: 'daylight', label: 'Day/Night', active: daylight.enabled, onToggle: daylight.toggle, color: '#f59e0b', description: 'Solar terminator (D)' },
+        { id: 'projection', label: `Projection: ${projection.projection}`, active: projection.projection !== 'mercator', onToggle: projection.cycle, color: '#14b8a6', description: 'Globe / Mercator / Equal Earth' },
+        { id: 'atmosphere', label: `Atmosphere: ${atmosphere.preset}`, active: atmosphere.enabled, onToggle: atmosphere.cycle, color: '#a855f7', description: 'Fog, sky & star effects' },
+        { id: 'grid', label: 'Coordinate Grid', active: coordGrid.enabled, onToggle: coordGrid.toggle, color: '#d4a017', description: 'Lat/Lng graticule (G)' },
+        { id: 'deck', label: 'GPU Overlay', active: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: 'Deck.gl accelerated' },
         { id: 'orbit', label: 'Orbit Animation', active: cameraAnimation.animating, onToggle: () => cameraAnimation.animating ? cameraAnimation.stop() : cameraAnimation.orbit(), color: '#f59e0b', description: 'Cinematic map rotation' },
-        { id: 'snapshot', label: 'Capture Snapshot', active: snapshot.snapshots.length > 0, onToggle: () => { const c = mapRef.current?.getCenter(); if (c) snapshot.captureSnapshot({ lng: c.lng, lat: c.lat, zoom: mapRef.current?.getZoom() ?? 14 }); }, color: '#06b6d4', description: 'Save map viewport as image' },
-        { id: 'places', label: 'Places Search', active: placesSearch.results.length > 0, onToggle: () => placesSearch.results.length > 0 ? placesSearch.clearResults() : placesSearch.searchCategory('restaurant'), color: '#10b981', description: 'Nearby POI search' },
+      ],
+    },
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, districtHierarchy, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, repeatAddressesEnabled, repeatAddresses.loading, speedHeatmapEnabled, speedHeatmap.loading, speedViolationsEnabled, speedViolationsLayer.loading, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading]);
+
+  const mapRightDockSections = useMemo<MapRightDockSection[]>(() => [
+    {
+      title: 'Dispatch Tools',
+      items: [
         { id: 'directions', label: 'Directions', active: directionsPanel.result !== null, onToggle: () => directionsPanel.result ? directionsPanel.clearDirections() : directionsPanel.setPickMode('origin'), color: '#3b82f6', description: 'Point-to-point routing' },
+        { id: 'places', label: 'Places Search', active: placesSearch.results.length > 0, onToggle: () => placesSearch.results.length > 0 ? placesSearch.clearResults() : placesSearch.searchCategory('restaurant'), color: '#10b981', description: 'Nearby POI search' },
         { id: 'bookmarks', label: 'Bookmarks', active: mapBookmarks.bookmarks.length > 0, onToggle: () => mapBookmarks.dropMode ? mapBookmarks.setDropMode(false) : mapBookmarks.setDropMode(true), color: '#eab308', description: 'Save map locations' },
         { id: 'optimize', label: 'Route Optimizer', active: multiStopPanelOpen, onToggle: () => setMultiStopPanelOpen((v) => !v), color: '#8b5cf6', description: 'Queue calls, pick a unit, optimize the visiting order' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, districtHierarchy, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, multiStopPanelOpen, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, activeFloatingTool, scaleEnabled, fullscreenEnabled, minimapOpen, speedHeatmapEnabled, speedHeatmap.loading, speedViolationsEnabled, speedViolationsLayer.loading, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading, speedAnalyticsPanelOpen, speedZoneStats.loading]);
+    {
+      title: 'Analysis',
+      items: [
+        { id: 'speed-analytics', label: 'Speed Analytics Panel', active: speedAnalyticsPanelOpen, onToggle: () => setSpeedAnalyticsPanelOpen((v) => !v), color: '#f97316', description: 'Per-beat speed stats + coverage timeline', loading: speedZoneStats.loading },
+        { id: 'gps-replay', label: 'GPS Replay', active: activeFloatingTool === 'gps-replay', onToggle: () => setActiveFloatingTool((v) => v === 'gps-replay' ? null : 'gps-replay'), color: '#22c55e', description: 'Scrub a unit\'s GPS history on a timeline' },
+        { id: 'ruler', label: 'Ruler', active: activeFloatingTool === 'ruler', onToggle: () => setActiveFloatingTool((v) => v === 'ruler' ? null : 'ruler'), color: '#d4a017', description: 'Multi-point distance measurement' },
+        { id: 'buffer-ring', label: 'Buffer Ring', active: activeFloatingTool === 'buffer-ring', onToggle: () => setActiveFloatingTool((v) => v === 'buffer-ring' ? null : 'buffer-ring'), color: '#f08228', description: 'Radius rings around a point' },
+        { id: 'annotation', label: 'Annotations', active: activeFloatingTool === 'annotation', onToggle: () => setActiveFloatingTool((v) => v === 'annotation' ? null : 'annotation'), color: '#3b82f6', description: 'Pin notes on the map' },
+        { id: 'draw-geofence', label: 'Draw Geofence', active: activeFloatingTool === 'draw-geofence', onToggle: () => setActiveFloatingTool((v) => v === 'draw-geofence' ? null : 'draw-geofence'), color: '#a855f7', description: 'Draw a custom alert/exclusion zone' },
+        // Three wrappers over the Advanced Toolbar's former measure/draw/GL-Draw
+        // launcher state — their dropdown/drawing bodies still mount at the map
+        // canvas root, gated on showMeasureMenu/showDrawMenu (see the return block).
+        { id: 'measure', label: 'Measure', active: measure.mode !== 'none', onToggle: () => setShowMeasureMenu(v => !v), color: '#3b82f6', description: 'Distance / area measurement' },
+        { id: 'draw', label: 'Draw Shapes', active: drawing.mode !== 'none', onToggle: () => setShowDrawMenu(v => !v), color: '#d4a017', description: 'Polygon / polyline / circle' },
+        { id: 'gl-draw', label: 'GL Draw', active: glDraw.enabled, onToggle: () => glDraw.toggle(), color: '#d4a017', description: 'Vertex-editing draw tools' },
+        // `nav-overlay` ("Point-to-Point Route") — a floating-tool toggle mechanically
+        // identical to gps-replay/ruler/buffer-ring/annotation/draw-geofence above; the
+        // re-bucketing tables (Tasks 3/4) did not list it, so it is placed here in
+        // Analysis alongside its siblings (see task-7 report, judgment call).
+        { id: 'nav-overlay', label: 'Point-to-Point Route', active: activeFloatingTool === 'nav-overlay', onToggle: () => setActiveFloatingTool((v) => v === 'nav-overlay' ? null : 'nav-overlay'), color: '#3b82f6', description: 'Draw a route between two typed coordinates' },
+      ],
+    },
+    {
+      title: 'Diagnostics',
+      items: [
+        { id: 'identify', label: 'Identify', active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), color: '#eab308', description: 'Click the map for place/district info', loading: tilequery.loading },
+        { id: 'inspect', label: 'Feature Inspector', active: featureInspect.enabled, onToggle: featureInspect.toggle, color: '#8b5cf6', description: 'Click features for details' },
+        { id: 'mapmatch', label: 'Map Match Trace', active: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting(), color: '#fb923c', description: 'Snap GPS to roads' },
+      ],
+    },
+  ], [directionsPanel, placesSearch, mapBookmarks, multiStopPanelOpen, speedAnalyticsPanelOpen, speedZoneStats.loading, activeFloatingTool, measure.mode, drawing.mode, glDraw, identifyEnabled, tilequery.loading, featureInspect, mapMatchTrace]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1149,6 +1183,52 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       addToast('Failed to calculate nearest unit', 'error');
     }
   }, [units, addToast]);
+
+  // ── Docked-panes composition props ─────────────────────────────────────────
+
+  // Props for the extracted Roster dock (Units/Calls). NOTE: MapRosterDock (Task 2)
+  // declared its RosterUnit/RosterCall prop types with numeric id/priority, but the
+  // live map data (MapUnit/ActiveCall) uses string id/priority. The component only
+  // reads fields both shapes share and never does arithmetic on id/priority, so the
+  // data is runtime-compatible; the casts below bridge the nominal type gap without
+  // touching Task 2's committed component or its test. (Follow-up: align MapRosterDock's
+  // prop types to the domain MapUnit/ActiveCall types to drop these casts.)
+  const mapRosterDockProps: MapRosterDockProps = {
+    open: sidebarOpen,
+    onOpenChange: setSidebarOpen,
+    units: units as unknown as RosterUnit[],
+    calls: calls as unknown as RosterCall[],
+    activeTab,
+    onTabChange: setActiveTab,
+    isMobile,
+    onFlyToUnit: flyToUnit as unknown as (u: RosterUnit) => void,
+    onFlyToCall: flyToCall as unknown as (c: RosterCall) => void,
+    onShowNearestUnit: showNearestUnit as unknown as (c: RosterCall) => void,
+    onRefresh: silentRefresh,
+    onFlyToSelf: flyToSelf,
+  };
+
+  // Props for the slim top toolbar (map chrome + bookmarks + snapshot export).
+  const mapTopToolbarProps = {
+    scaleEnabled, onToggleScale: () => setScaleEnabled((v) => !v),
+    fullscreenEnabled, onToggleFullscreen: () => setFullscreenEnabled((v) => !v),
+    minimapOpen, onToggleMinimap: () => setMinimapOpen((v) => !v),
+    mapStyle, onStyleChange: handleStyleChange,
+    showBookmarksPanel, onToggleBookmarks: () => setShowBookmarksPanel((v) => !v),
+    onSnapshot: () => {
+      const c = mapRef.current?.getCenter();
+      if (c) snapshot.captureSnapshot({ lng: c.lng, lat: c.lat, zoom: mapRef.current?.getZoom() ?? 14 });
+    },
+  };
+
+  // Mapbox GL does not auto-detect a container resize that isn't driven by a window
+  // resize event. In the new docked-panes layout the map canvas is a flex sibling of
+  // the docks, so crossing the 1024px breakpoint (docks ⇄ bottom tray) or toggling the
+  // Roster dock open/closed changes the canvas width WITHOUT the window resizing — the
+  // canvas would render stale-sized until something calls resize(). Re-measure on both.
+  useEffect(() => {
+    mapRef.current?.resize();
+  }, [isDockNarrow, sidebarOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Computed Counts ────────────────────────────────────────────────────────
 
@@ -1203,7 +1283,17 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="tactical-dark relative w-full overflow-hidden bg-surface-base" style={{ height: '100%', minHeight: '100%' }}>
+    <div className="tactical-dark relative w-full overflow-hidden bg-surface-base flex flex-col" style={{ height: '100%', minHeight: '100%' }}>
+      {/* ── Region 1: Top toolbar (desktop/tablet only) ── */}
+      {!isDockNarrow && <MapTopToolbar {...mapTopToolbarProps} />}
+
+      {/* ── Middle row: Roster dock · Layers dock · Map canvas · Info & Tools dock ── */}
+      <div className="relative flex-1 flex overflow-hidden">
+        {!isDockNarrow && <MapRosterDock {...mapRosterDockProps} />}
+        {!isDockNarrow && <MapLeftDock sections={mapLeftDockSections} />}
+
+        {/* ── Region: Map canvas + all map-anchored overlays ── */}
+        <div className="relative flex-1">
       {/* Loading Overlay */}
       {loading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
@@ -1264,514 +1354,78 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         }
       `}</style>
 
-      {/* Sidebar Toggle (when closed) */}
-      {!sidebarOpen && (
-        <IconButton
-          aria-label="Open sidebar"
-          onClick={() => setSidebarOpen(true)}
-          className="absolute top-3 left-3 z-30 bg-surface-raised/95 border border-border-default p-2 text-rmpg-300 hover:text-brand-gold-500 backdrop-blur-sm"
-          style={{ borderRadius: 2 }}
-        >
-          <PanelLeftOpen className="w-4 h-4" />
-        </IconButton>
-      )}
-
-      {/* Sidebar */}
-      {sidebarOpen && (
-        <div
-          className={`absolute top-0 left-0 z-20 h-full bg-surface-raised/95 border-r border-border-default backdrop-blur-sm flex flex-col ${isMobile ? 'w-full' : 'w-[280px]'}`}
-        >
-          {/* Sidebar Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
-            <div className="flex items-center gap-2">
-              <RmpgLogo height={20} iconOnly />
-              <span className="text-brand-gold-500 text-xs font-semibold tracking-wider">FLEX MAP</span>
-            </div>
-            <IconButton
-              aria-label="Close sidebar"
-              onClick={() => setSidebarOpen(false)}
-              className="text-rmpg-400 hover:text-rmpg-200 p-1"
-            >
-              <PanelLeftClose className="w-4 h-4" />
-            </IconButton>
-          </div>
-
-          {/* Tabs */}
-          <div className="flex border-b border-border-default">
+      {/* Measure / Draw dropdown bodies — their launcher buttons now live in the
+          Right Dock's Analysis section (measure / draw items). The bodies mount here
+          at the map canvas root, gated on showMeasureMenu / showDrawMenu exactly as
+          before, just no longer nested inside the removed Advanced Toolbar. */}
+      {showMeasureMenu && (
+        <div className="absolute top-16 right-3 z-30 bg-surface-raised border border-border-default w-36 overflow-hidden" style={{ borderRadius: 2 }}>
+          <button
+            onClick={() => { measure.setMode('distance'); setShowMeasureMenu(false); }}
+            className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+              measure.mode === 'distance' ? 'text-[#3b82f6] bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
+            }`}
+          >
+            📏 Distance
+          </button>
+          <button
+            onClick={() => { measure.setMode('area'); setShowMeasureMenu(false); }}
+            className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+              measure.mode === 'area' ? 'text-[#3b82f6] bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
+            }`}
+          >
+            📐 Area
+          </button>
+          {measure.mode !== 'none' && (
             <button
-              onClick={() => setActiveTab('units')}
-              className={`flex-1 py-2 text-xs font-semibold tracking-wider transition-colors ${
-                activeTab === 'units'
-                  ? 'text-brand-gold-500 border-b-2 border-brand-gold-500'
-                  : 'text-rmpg-400 hover:text-rmpg-300'
-              }`}
+              onClick={() => { measure.clear(); setShowMeasureMenu(false); }}
+              className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-surface-overlay"
             >
-              <Shield className="w-3 h-3 inline mr-1" />
-              UNITS ({units.length})
+              ✕ Clear
             </button>
-            <button
-              onClick={() => setActiveTab('calls')}
-              className={`flex-1 py-2 text-xs font-semibold tracking-wider transition-colors ${
-                activeTab === 'calls'
-                  ? 'text-brand-gold-500 border-b-2 border-brand-gold-500'
-                  : 'text-rmpg-400 hover:text-rmpg-300'
-              }`}
-            >
-              <AlertTriangle className="w-3 h-3 inline mr-1" />
-              CALLS ({calls.length})
-            </button>
-          </div>
-
-          {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto">
-            {activeTab === 'units' && (
-              <div className="divide-y divide-border-subtle">
-                {units.length === 0 && (
-                  <div className="px-3 py-6 text-center text-rmpg-500 text-xs">No units available</div>
-                )}
-                {units.map(unit => {
-                  const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
-                  const hasGps = unit.latitude != null && unit.longitude != null;
-                  return (
-                    <button
-                      key={unit.id}
-                      onClick={() => flyToUnit(unit)}
-                      disabled={!hasGps}
-                      className={`w-full text-left px-3 py-1.5 transition-colors ${
-                        hasGps ? 'hover:bg-surface-overlay cursor-pointer' : 'opacity-50 cursor-default'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="w-2 h-2 shrink-0"
-                          style={{ borderRadius: '50%', background: color, boxShadow: `0 0 4px ${color}80` }}
-                        />
-                        <span className="text-rmpg-200 text-[11px] font-mono font-semibold">{unit.call_sign}</span>
-                        <span className="text-rmpg-400 text-[10px] truncate flex-1">{unit.officer_name}</span>
-                        {!hasGps && <span className="text-rmpg-500 text-[9px]">NO GPS</span>}
-                      </div>
-                      {unit.current_call_type && (
-                        <div className="ml-4 text-[10px] text-rmpg-500 truncate">
-                          {unit.call_number} — {formatIncidentType(unit.current_call_type)}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {activeTab === 'calls' && (
-              <div className="divide-y divide-border-subtle">
-                {calls.length === 0 && (
-                  <div className="px-3 py-6 text-center text-rmpg-500 text-xs">No active calls</div>
-                )}
-                {calls.map(call => {
-                  const color = PRIORITY_COLORS[call.priority] || '#888888';
-                  const hasGps = call.latitude != null && call.longitude != null;
-                  const hasFlags = HAZARD_FLAGS.some(f => (call as any)[f.key]);
-                  return (
-                    <button
-                      key={call.id}
-                      onClick={() => flyToCall(call)}
-                      disabled={!hasGps}
-                      className={`w-full text-left px-3 py-1.5 transition-colors ${
-                        hasGps ? 'hover:bg-surface-overlay cursor-pointer' : 'opacity-50 cursor-default'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="shrink-0 text-[8px] font-bold px-1 py-px"
-                          style={{ background: `${color}22`, color, borderRadius: 2 }}
-                        >
-                          P{call.priority}
-                        </span>
-                        <span className="text-rmpg-200 text-[11px] font-mono font-semibold">{call.call_number}</span>
-                        <span className="text-rmpg-400 text-[10px] truncate flex-1">
-                          {formatIncidentType(call.incident_type)}
-                        </span>
-                      </div>
-                      <div className="ml-4 text-[10px] text-rmpg-500 truncate">{call.location_address}</div>
-                      {hasFlags && (
-                        <div className="ml-4 mt-0.5 flex flex-wrap gap-0.5">
-                          {HAZARD_FLAGS.filter(f => (call as any)[f.key]).map(f => (
-                            <span
-                              key={f.key}
-                              className="text-[7px] font-bold px-1 py-px"
-                              style={{ background: `${f.color}22`, color: f.color, borderRadius: 2 }}
-                            >
-                              {f.label}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {hasGps && (
-                        <div className="ml-4 mt-0.5">
-                          <span
-                            className="text-[8px] text-rmpg-400 hover:text-brand-gold-500 cursor-pointer inline-flex items-center gap-0.5"
-                            onClick={(e) => { e.stopPropagation(); showNearestUnit(call); }}
-                          >
-                            <Locate className="w-2.5 h-2.5" /> NEAREST UNIT
-                          </span>
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Sidebar Footer — quick actions */}
-          <div className="border-t border-border-default px-3 py-2">
-            <div className="flex items-center gap-1 flex-wrap">
-              <IconButton
-                aria-label="Refresh data"
-                onClick={silentRefresh}
-                className="text-rmpg-400 hover:text-brand-gold-500 p-1.5"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label="Fly to my position"
-                onClick={flyToSelf}
-                className="text-rmpg-400 hover:text-brand-gold-500 p-1.5"
-              >
-                <Crosshair className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label="Layers panel"
-                onClick={() => setLayersPanelOpen(v => !v)}
-                className={`p-1.5 ${layersPanelOpen ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-              >
-                <Layers className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={geofenceAlerts.enabled ? 'Disable premise alerts' : 'Enable premise alerts'}
-                onClick={() => geofenceAlerts.toggle()}
-                className={`p-1.5 ${geofenceAlerts.enabled ? 'text-[#ef4444]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Premise / Geofence Alerts"
-              >
-                <MapPinned className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={autoPanEnabled ? 'Disable auto-pan P1' : 'Enable auto-pan P1'}
-                onClick={() => setAutoPanEnabled(v => !v)}
-                className={`p-1.5 ${autoPanEnabled ? 'text-[#ef4444]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Auto-Pan to P1 Calls"
-              >
-                <Radio className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={p1AudioEnabled ? 'Disable P1 audio alert' : 'Enable P1 audio alert'}
-                onClick={() => setP1AudioEnabled(v => !v)}
-                className={`p-1.5 ${p1AudioEnabled ? 'text-[#ef4444]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="P1 Audio Alert Chirp"
-              >
-                <Volume2 className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label="Bookmarks"
-                onClick={() => setShowBookmarksPanel(v => !v)}
-                className={`p-1.5 ${showBookmarksPanel ? 'text-[#f59e0b]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Saved Bookmarks"
-              >
-                <Star className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label="Export map image"
-                onClick={() => printExport.exportImage()}
-                className="p-1.5 text-rmpg-400 hover:text-rmpg-200"
-                title="Export Map as Image"
-              >
-                <Download className="w-3.5 h-3.5" />
-              </IconButton>
-            </div>
-          </div>
+          )}
         </div>
       )}
 
-      {/* Advanced Map Tools Toolbar */}
-      {mapLoaded && !mapLibreFallback && (
-        <div className="absolute top-3 right-3 z-20 flex flex-col gap-1">
-          {/* Toggle advanced toolbar */}
-          <IconButton
-            aria-label="Advanced map tools"
-            onClick={() => setShowAdvancedToolbar(v => !v)}
-            className={`${TOOLBAR_ITEM_CLASS} ${
-              showAdvancedToolbar ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
+      {showDrawMenu && (
+        <div className="absolute top-16 right-3 z-30 bg-surface-raised border border-border-default w-40 overflow-hidden" style={{ borderRadius: 2 }}>
+          <button
+            onClick={() => { drawing.setMode('polygon'); setShowDrawMenu(false); }}
+            className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+              drawing.mode === 'polygon' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
             }`}
           >
-            <Grid3X3 className="w-4 h-4" />
-          </IconButton>
-
-          <ToolbarDropdownGroup
-            icon={Layers3}
-            label="Overlays"
-            open={showOverlaysGroup}
-            onToggle={() => setShowOverlaysGroup(v => !v)}
+            ▬ Polygon (geofence)
+          </button>
+          <button
+            onClick={() => { drawing.setMode('polyline'); setShowDrawMenu(false); }}
+            className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+              drawing.mode === 'polyline' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
+            }`}
           >
-            <IconButton
-              aria-label={beatsVisible ? 'Hide beat boundaries' : 'Show beat boundaries'}
-              onClick={() => setBeatsVisible(v => !v)}
-              className={`${TOOLBAR_ITEM_CLASS} ${beatsVisible ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
-            >
-              {beatsVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-            </IconButton>
-            <IconButton
-              aria-label={terrainEnabled ? 'Disable 3D terrain' : 'Enable 3D terrain'}
-              onClick={() => setTerrainEnabled(v => !v)}
-              className={`${TOOLBAR_ITEM_CLASS} ${terrainEnabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
-            >
-              <Mountain className="w-4 h-4" />
-            </IconButton>
-            <IconButton
-              aria-label={isochroneEnabled ? 'Hide response zones' : 'Show response time zones'}
-              onClick={toggleIsochrone}
-              className={`${TOOLBAR_ITEM_CLASS} ${isochroneEnabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
-            >
-              <Clock className="w-4 h-4" />
-            </IconButton>
-            <IconButton
-              aria-label={selfPosVisible ? 'Hide my position' : 'Show my position'}
-              onClick={() => setSelfPosVisible(v => !v)}
-              className={`${TOOLBAR_ITEM_CLASS} ${selfPosVisible ? 'text-blue-400' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
-            >
-              <Navigation2 className="w-4 h-4" />
-            </IconButton>
-            <IconButton
-              aria-label={breadcrumbs.enabled ? 'Hide unit trails' : 'Show unit trails'}
-              onClick={() => breadcrumbs.toggle()}
-              className={`${TOOLBAR_ITEM_CLASS} ${breadcrumbs.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
-              title="GPS Breadcrumb Trails (B)"
-            >
-              <Footprints className="w-4 h-4" />
-            </IconButton>
-            <IconButton
-              aria-label={daylight.enabled ? 'Hide day/night overlay' : 'Show day/night overlay'}
-              onClick={() => daylight.toggle()}
-              className={`${TOOLBAR_ITEM_CLASS} ${daylight.enabled ? 'text-[#f59e0b]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
-              title="Day/Night Terminator (D)"
-            >
-              <Sun className="w-4 h-4" />
-            </IconButton>
-            <IconButton
-              aria-label={coordGrid.enabled ? 'Hide coordinate grid' : 'Show coordinate grid'}
-              onClick={() => coordGrid.toggle()}
-              className={`${TOOLBAR_ITEM_CLASS} ${coordGrid.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
-              title="Coordinate Grid (G)"
-            >
-              <Hash className="w-4 h-4" />
-            </IconButton>
-            <IconButton
-              aria-label={weatherRadar.enabled ? 'Hide weather radar' : 'Show weather radar'}
-              onClick={() => weatherRadar.toggle()}
-              className={`${TOOLBAR_ITEM_CLASS} ${weatherRadar.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
-              title="Weather Radar"
-            >
-              <CloudRain className="w-4 h-4" />
-            </IconButton>
-            <IconButton
-              aria-label={deckEnabled ? 'Disable GPU overlay' : 'Enable GPU overlay'}
-              onClick={() => setDeckEnabled(v => !v)}
-              className={`${TOOLBAR_ITEM_CLASS} ${deckEnabled ? 'text-[#a855f7]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
-              title="Deck.gl GPU Overlay"
-            >
-              <Zap className="w-4 h-4" />
-            </IconButton>
-          </ToolbarDropdownGroup>
-
-          <ToolbarDropdownGroup
-            icon={BarChart3}
-            label="Analysis"
-            open={showAnalysisGroup}
-            onToggle={() => setShowAnalysisGroup(v => !v)}
+            ╱ Polyline (route)
+          </button>
+          <button
+            onClick={() => { drawing.setMode('circle'); setShowDrawMenu(false); }}
+            className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+              drawing.mode === 'circle' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
+            }`}
           >
-            {/* Heatmap */}
-            <IconButton
-              aria-label={heatmap.enabled ? 'Hide heatmap' : 'Show heatmap'}
-              onClick={() => { void populateAndToggleHeatmap(); }}
-              className={`${TOOLBAR_ITEM_CLASS} ${
-                heatmap.enabled ? 'text-[#ef4444]' : 'text-rmpg-300 hover:text-brand-gold-500'
-              }`}
-              style={{ borderRadius: 2 }}
-              title="Crime Heatmap"
-            >
-              <Flame className="w-4 h-4" />
-            </IconButton>
-
-            {/* Heatmap Live/Historical mode switch */}
-            <button
-              type="button"
-              className="text-[9px] px-1 py-0.5 rounded-sm"
-              style={{ background: heatmapMode === 'historical' ? 'rgba(239,68,68,0.2)' : 'transparent', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' }}
-              onClick={() => {
-                const next = heatmapMode === 'live' ? 'historical' : 'live';
-                setHeatmapMode(next);
-                if (heatmap.enabled) refreshHeatmapPoints(next);
-              }}
-              title="Switch between live (currently active calls) and historical (30-day) heatmap data"
-            >
-              {heatmapMode === 'live' ? 'LIVE' : '30D'}
-            </button>
-
-            {/* Traffic */}
-            <IconButton
-              aria-label={traffic.enabled ? 'Hide traffic' : 'Show traffic'}
-              onClick={() => traffic.toggle()}
-              className={`${TOOLBAR_ITEM_CLASS} ${
-                traffic.enabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-brand-gold-500'
-              }`}
-              style={{ borderRadius: 2 }}
-              title="Live Traffic"
-            >
-              <Car className="w-4 h-4" />
-            </IconButton>
-
-            {/* Clustering */}
-            <IconButton
-              aria-label={clustering.enabled ? 'Disable clustering' : 'Enable clustering'}
-              onClick={() => {
-                if (!clustering.enabled) {
-                  const clPts = calls
-                    .filter(c => c.latitude != null && c.longitude != null)
-                    .map(c => ({
-                      id: c.id,
-                      longitude: c.longitude!,
-                      latitude: c.latitude!,
-                      priority: c.priority,
-                      label: c.call_number,
-                      color: PRIORITY_COLORS[c.priority] || '#888',
-                    }));
-                  clustering.updatePoints(clPts);
-                }
-                clustering.toggle();
-              }}
-              className={`${TOOLBAR_ITEM_CLASS} ${
-                clustering.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
-              }`}
-              style={{ borderRadius: 2 }}
-              title="Cluster Markers"
-            >
-              <Hexagon className="w-4 h-4" />
-            </IconButton>
-          </ToolbarDropdownGroup>
-
-          {showAdvancedToolbar && (
-            <>
-              {/* Measure — dropdown for distance vs area */}
-              <div className="relative">
-                <IconButton
-                  aria-label="Measure tool"
-                  onClick={() => setShowMeasureMenu(v => !v)}
-                  className={`${TOOLBAR_ITEM_CLASS} ${
-                    measure.mode !== 'none' ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'
-                  }`}
-                  style={{ borderRadius: 2 }}
-                  title="Measure Distance / Area"
-                >
-                  <Ruler className="w-4 h-4" />
-                </IconButton>
-                {showMeasureMenu && (
-                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-border-default w-36 overflow-hidden" style={{ borderRadius: 2 }}>
-                    <button
-                      onClick={() => { measure.setMode('distance'); setShowMeasureMenu(false); }}
-                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        measure.mode === 'distance' ? 'text-[#3b82f6] bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
-                      }`}
-                    >
-                      📏 Distance
-                    </button>
-                    <button
-                      onClick={() => { measure.setMode('area'); setShowMeasureMenu(false); }}
-                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        measure.mode === 'area' ? 'text-[#3b82f6] bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
-                      }`}
-                    >
-                      📐 Area
-                    </button>
-                    {measure.mode !== 'none' && (
-                      <button
-                        onClick={() => { measure.clear(); setShowMeasureMenu(false); }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-surface-overlay"
-                      >
-                        ✕ Clear
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Drawing — dropdown for polygon/polyline/circle */}
-              <div className="relative">
-                <IconButton
-                  aria-label="Drawing tools"
-                  onClick={() => setShowDrawMenu(v => !v)}
-                  className={`${TOOLBAR_ITEM_CLASS} ${
-                    drawing.mode !== 'none' ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
-                  }`}
-                  style={{ borderRadius: 2 }}
-                  title="Draw Shapes"
-                >
-                  <PenTool className="w-4 h-4" />
-                </IconButton>
-                {showDrawMenu && (
-                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-border-default w-40 overflow-hidden" style={{ borderRadius: 2 }}>
-                    <button
-                      onClick={() => { drawing.setMode('polygon'); setShowDrawMenu(false); }}
-                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        drawing.mode === 'polygon' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
-                      }`}
-                    >
-                      ▬ Polygon (geofence)
-                    </button>
-                    <button
-                      onClick={() => { drawing.setMode('polyline'); setShowDrawMenu(false); }}
-                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        drawing.mode === 'polyline' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
-                      }`}
-                    >
-                      ╱ Polyline (route)
-                    </button>
-                    <button
-                      onClick={() => { drawing.setMode('circle'); setShowDrawMenu(false); }}
-                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        drawing.mode === 'circle' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
-                      }`}
-                    >
-                      ◯ Circle (perimeter)
-                    </button>
-                    <div className="border-t border-border-default" />
-                    <button
-                      onClick={() => { drawing.undo(); }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-surface-overlay"
-                    >
-                      ↩ Undo last shape
-                    </button>
-                    <button
-                      onClick={() => { drawing.clearAll(); drawing.setMode('none'); setShowDrawMenu(false); }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-surface-overlay"
-                    >
-                      ✕ Clear all shapes
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* GL Draw — Official Mapbox drawing with vertex editing */}
-              <IconButton
-                aria-label={glDraw.enabled ? 'Disable GL Draw tools' : 'Enable GL Draw tools'}
-                onClick={() => glDraw.toggle()}
-                className={`${TOOLBAR_ITEM_CLASS} ${
-                  glDraw.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
-                }`}
-                style={{ borderRadius: 2 }}
-                title="GL Draw (vertex editing)"
-              >
-                <Grid3X3 className="w-4 h-4" />
-              </IconButton>
-            </>
-          )}
+            ◯ Circle (perimeter)
+          </button>
+          <div className="border-t border-border-default" />
+          <button
+            onClick={() => { drawing.undo(); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-surface-overlay"
+          >
+            ↩ Undo last shape
+          </button>
+          <button
+            onClick={() => { drawing.clearAll(); drawing.setMode('none'); setShowDrawMenu(false); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-surface-overlay"
+          >
+            ✕ Clear all shapes
+          </button>
         </div>
       )}
 
@@ -1918,53 +1572,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         <MinimapControl parentMap={mapRef.current} onClose={() => setMinimapOpen(false)} />
       )}
 
-      {/* Layers Panel */}
-      {layersPanelOpen && (
-        <div className="absolute top-16 right-3 z-30 w-[320px] max-h-[70vh]">
-          <MapOverlaysPanel
-            open={layersPanelOpen}
-            onClose={() => setLayersPanelOpen(false)}
-            groups={layerGroups}
-          />
-        </div>
-      )}
-
-      {/* Map Style Selector */}
-      <div className="absolute bottom-14 left-3 z-20">
-        <div className="relative">
-          <IconButton
-            aria-label="Map style"
-            onClick={() => setShowStyleMenu(v => !v)}
-            className="bg-surface-raised/95 border border-border-default p-2 text-rmpg-300 hover:text-brand-gold-500 backdrop-blur-sm"
-            style={{ borderRadius: 2 }}
-          >
-            <Layers className="w-4 h-4" />
-          </IconButton>
-
-          {showStyleMenu && (
-            <div
-              className="absolute bottom-full left-0 mb-1 bg-surface-raised border border-border-default w-48 overflow-hidden"
-              style={{ borderRadius: 2 }}
-            >
-              {(Object.keys(MAP_STYLE_LABELS) as MapStyleId[]).map(id => (
-                <button
-                  key={id}
-                  onClick={() => handleStyleChange(id)}
-                  className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between ${
-                    mapStyle === id
-                      ? 'bg-surface-overlay text-brand-gold-500'
-                      : 'text-rmpg-300 hover:bg-surface-overlay hover:text-rmpg-200'
-                  }`}
-                >
-                  <span>{MAP_STYLE_LABELS[id]}</span>
-                  {mapStyle === id && <span className="text-[8px]">●</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* Status Bar */}
       <div
         className="absolute bottom-0 left-0 right-0 z-20 bg-surface-raised/95 border-t border-border-default backdrop-blur-sm"
@@ -2013,6 +1620,22 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           </div>
         </div>
       </div>
+        </div>
+        {/* /Map canvas */}
+
+        {/* ── Region: Info & Tools right dock (desktop/tablet only) ── */}
+        {!isDockNarrow && <MapRightDock sections={mapRightDockSections} />}
+      </div>
+      {/* /Middle row */}
+
+      {/* ── Region 6: Bottom tabbed tray (collapses the docks below 1024px) ── */}
+      {isDockNarrow && (
+        <MapBottomTray
+          rosterProps={mapRosterDockProps}
+          leftSections={mapLeftDockSections}
+          rightSections={mapRightDockSections}
+        />
+      )}
     </div>
   );
 }
