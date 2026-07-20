@@ -15,7 +15,7 @@ const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validat
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
-const { buildSecondaryWindowUrl } = require('./windowManager');
+const { buildSecondaryWindowUrl, coerceBadgeCount } = require('./windowManager');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -943,6 +943,15 @@ guardedHandle('window:open-secondary', (event, routePath, opts) => {
 guardedHandle('window:close-secondary', (event, id) => {
   const win = secondaryWindows.get(id);
   if (win && !win.isDestroyed()) win.close();
+});
+
+// Sets the dock/taskbar badge count (unread alerts, active calls, etc).
+// app.setBadgeCount only exists on Linux/macOS — guard its presence and
+// no-op on unsupported platforms (same "gracefully degrade" pattern as
+// getBatteryStatus returning null on non-macOS).
+guardedHandle('notify:dock-badge', (event, count) => {
+  const n = coerceBadgeCount(count);
+  if (app.setBadgeCount) app.setBadgeCount(n);
 });
 
 guardedHandle('app:version', () => app.getVersion());

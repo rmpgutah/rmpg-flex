@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildSecondaryWindowUrl } = require('../windowManager');
+const { buildSecondaryWindowUrl, coerceBadgeCount } = require('../windowManager');
 
 const BASE_URL = 'https://rmpgutah.us';
 
@@ -62,4 +62,34 @@ test('buildSecondaryWindowUrl: non-string routePath is rejected', () => {
 test('buildSecondaryWindowUrl: empty string routePath is rejected', () => {
   const result = buildSecondaryWindowUrl(BASE_URL, '');
   assert.equal(result.ok, false);
+});
+
+// ─── coerceBadgeCount ───────────────────────────────────────
+
+test('coerceBadgeCount: negative number is clamped to 0', () => {
+  assert.equal(coerceBadgeCount(-5), 0);
+});
+
+test('coerceBadgeCount: non-numeric string coerces to 0', () => {
+  assert.equal(coerceBadgeCount('abc'), 0);
+});
+
+test('coerceBadgeCount: null coerces to 0', () => {
+  assert.equal(coerceBadgeCount(null), 0);
+});
+
+test('coerceBadgeCount: undefined coerces to 0', () => {
+  assert.equal(coerceBadgeCount(undefined), 0);
+});
+
+test('coerceBadgeCount: float is floored', () => {
+  assert.equal(coerceBadgeCount(3.7), 3);
+});
+
+test('coerceBadgeCount: value above the cap is clamped to 9999', () => {
+  assert.equal(coerceBadgeCount(50000), 9999);
+});
+
+test('coerceBadgeCount: normal valid integer is unchanged', () => {
+  assert.equal(coerceBadgeCount(5), 5);
 });

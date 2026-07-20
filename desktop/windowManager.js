@@ -54,4 +54,23 @@ function buildSecondaryWindowUrl(baseUrl, routePath) {
   return `${baseUrl}${routePath}`;
 }
 
-module.exports = { buildSecondaryWindowUrl };
+/**
+ * Coerces a renderer-supplied badge count (from 'notify:dock-badge') into a
+ * safe, bounded non-negative integer suitable for app.setBadgeCount().
+ *
+ * - `Number(count) || 0` turns non-numeric input into 0: `Number('abc')` is
+ *   `NaN` and `NaN || 0` is `0`. `Number(null)` is `0` already (not NaN), so
+ *   it passes through the same fallback to `0` either way. `Number(undefined)`
+ *   is `NaN`, also falling back to `0`.
+ * - `Math.floor(...)` truncates floats down (e.g. 3.7 -> 3).
+ * - `Math.max(0, ...)` clamps negative numbers up to 0.
+ * - `Math.min(..., 9999)` caps the upper bound at 9999 — a dock/taskbar
+ *   badge is a glanceable count, not a precise metric; 9999 is a generous
+ *   ceiling that avoids unbounded/absurd values (e.g. a runaway counter)
+ *   while still comfortably covering any realistic queue/alert count.
+ */
+function coerceBadgeCount(count) {
+  return Math.min(Math.max(0, Math.floor(Number(count) || 0)), 9999);
+}
+
+module.exports = { buildSecondaryWindowUrl, coerceBadgeCount };

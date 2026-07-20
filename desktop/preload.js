@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld('electron', {
   openSecondaryWindow: (path, opts) => ipcRenderer.invoke('window:open-secondary', path, opts),
   closeSecondaryWindow: (id) => ipcRenderer.invoke('window:close-secondary', id),
 
+  // Sets the dock/taskbar badge count. No-ops on platforms without
+  // app.setBadgeCount (see main.js's 'notify:dock-badge' handler).
+  setDockBadge: (count) => ipcRenderer.invoke('notify:dock-badge', count),
+
   // App version
   getVersion: () => ipcRenderer.invoke('app:version'),
 
