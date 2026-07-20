@@ -1,0 +1,59 @@
+# PR Guards — consolidates the small diff-based static checks that used to
+# be five separate workflows (array-guard-check, column-cap-check,
+# new-date-check, theme-hex-guard, tofixed-guard-check). None of these are
+# in branch-protection's required checks (only Worker typecheck / Client
+# typecheck / Client build are), so splitting them across five workflow runs
+# only added runner spin-up + checkout + npm-install overhead per PR without
+# gating anything. One job, one checkout, one Node setup — same checks, same
+# pass/fail signal per script, fewer total Actions runs per PR.
+name: PR Guards
+
+on:
+  pull_request:
+    paths:
+      - 'client/src/**'
+      - 'migrations/**/*.sql'
+      - 'scripts/check-array-guards.js'
+      - 'scripts/check-column-cap.js'
+      - 'scripts/check-new-date.js'
+      - 'scripts/theme-hex-audit.mjs'
+      - 'scripts/check-tofixed-guards.js'
+      - 'docs/theme-cleaned-files.txt'
+      - '.github/workflows/pr-guards.yml'
+
+# Least-privilege GITHUB_TOKEN (CWE-275). Every check here only reads the
+# repo and diffs against the PR base — no comments, no writes.
+permissions:
+  contents: read
+
+jobs:
+  guards:
+    name: Static guard checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Several checks diff added lines/files against the PR base branch.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Array guard check (admin console unguarded apiFetch)
+        run: node scripts/check-array-guards.js
+
+      - name: D1 column cap check
+        run: node scripts/check-column-cap.js
+
+      - name: new Date() timezone check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/check-new-date.js
+
+      - name: Theme hex ratchet
+        run: node scripts/theme-hex-audit.mjs --check
+
+      - name: toFixed false-guard check
+        run: node scripts/check-tofixed-guards.js
