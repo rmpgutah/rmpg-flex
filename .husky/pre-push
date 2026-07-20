@@ -58,9 +58,33 @@ echo "  [3/4] Client vitest..."
 }
 
 echo "  [4/4] Desktop tests..."
+# desktop/'s postinstall (electron-rebuild) normally leaves better-sqlite3
+# compiled for Electron's ABI, not Node's — the DB-backed tests in
+# desktop/__tests__/ run under plain `node --test` and need the Node ABI, so
+# a fresh/rebuilt checkout fails here with a NODE_MODULE_VERSION mismatch
+# even though nothing is actually broken. Rebuild for Node ABI only when
+# needed, and restore the Electron ABI via an EXIT trap (not npm
+# pretest/posttest — posttest doesn't reliably run when the test script
+# itself exits non-zero, which would leave `desktop && npm start` broken).
+restore_desktop_abi() {
+  echo "  (restoring better-sqlite3 to Electron ABI)"
+  (cd "$ROOT/desktop" && npm run rebuild --silent) >/dev/null 2>&1 || \
+    echo "⚠ pre-push: failed to restore better-sqlite3 to Electron ABI — run 'cd desktop && npm run rebuild' manually before 'npm start'"
+}
+
+if ! (cd "$ROOT/desktop" && node -e "require('better-sqlite3')") >/dev/null 2>&1; then
+  echo "  (better-sqlite3 is built for Electron's ABI — rebuilding for Node to run desktop tests)"
+  (cd "$ROOT/desktop" && npm rebuild better-sqlite3 --silent) || {
+    echo "✗ pre-push: failed to rebuild better-sqlite3 for Node ABI"
+    exit 1
+  }
+  trap restore_desktop_abi EXIT
+fi
+
 (cd "$ROOT/desktop" && npm test --silent) || {
   echo "✗ pre-push: desktop tests failed — run 'cd desktop && npm test' to see failures"
-  echo "           (use 'git push --no-verify' to bypass in an emergency; CI will still gate the PR)"
+  echo "           (no CI job runs desktop/ tests today — this hook is the only gate;"
+  echo "           'git push --no-verify' bypasses it with nothing else to catch a regression)"
   exit 1
 }
 
