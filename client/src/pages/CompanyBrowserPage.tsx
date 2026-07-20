@@ -18,6 +18,7 @@ interface BrowserTab {
   canGoBack: boolean;
   canGoForward: boolean;
   loading: boolean;
+  error: string | null;
 }
 
 interface Bookmark {
@@ -58,6 +59,21 @@ const NEW_TAB_URL = 'about:blank';
 const MAX_HISTORY_ENTRIES = 200;
 const BOOKMARKS_SAVE_DEBOUNCE_MS = 800;
 
+// Mirrors desktop/main.js's FATAL_NET_ERRORS (search that name there for the
+// per-code rationale). Duplicated rather than imported: main.js is a
+// CommonJS Electron-main module and this file is an ES module bundled by
+// Vite for the renderer — there's no clean shared-import path across that
+// boundary, so the pragmatic choice is one small client-local constant with
+// this comment as the tether, instead of forcing a cross-process module.
+// Keep the two lists in sync if either changes.
+const FATAL_NET_ERRORS = new Set([
+  -2, -100, -101, -102, -103, -105, -106, -109, -118, -130, -137,
+  -201, -202, -203, -207, -208,
+]);
+function isFatalNavFailure(errorCode: number, isMainFrame: boolean): boolean {
+  return isMainFrame === true && FATAL_NET_ERRORS.has(errorCode);
+}
+
 function makeTabId(): string {
   return `tab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -81,7 +97,7 @@ function parseJsonArray<T>(raw: string | null | undefined): T[] {
 
 export default function CompanyBrowserPage() {
   const [tabs, setTabs] = useState<BrowserTab[]>(() => [{
-    id: makeTabId(), url: NEW_TAB_URL, title: '', canGoBack: false, canGoForward: false, loading: false,
+    id: makeTabId(), url: NEW_TAB_URL, title: '', canGoBack: false, canGoForward: false, loading: false, error: null,
   }]);
   const [activeTabId, setActiveTabId] = useState(() => tabs[0].id);
   const [addressInput, setAddressInput] = useState('');
@@ -133,7 +149,7 @@ export default function CompanyBrowserPage() {
 
   const navigateActiveTab = useCallback((rawUrl: string) => {
     const url = normalizeAddressInput(rawUrl);
-    updateTab(activeTab.id, { url, loading: true });
+    updateTab(activeTab.id, { url, loading: true, error: null });
   }, [activeTab.id, updateTab]);
 
   const handleAddressSubmit = useCallback((e: React.FormEvent) => {
@@ -142,7 +158,7 @@ export default function CompanyBrowserPage() {
   }, [addressInput, navigateActiveTab]);
 
   const openNewTab = useCallback(() => {
-    const tab: BrowserTab = { id: makeTabId(), url: NEW_TAB_URL, title: '', canGoBack: false, canGoForward: false, loading: false };
+    const tab: BrowserTab = { id: makeTabId(), url: NEW_TAB_URL, title: '', canGoBack: false, canGoForward: false, loading: false, error: null };
     setTabs(prev => [...prev, tab]);
     setActiveTabId(tab.id);
   }, []);
@@ -179,7 +195,7 @@ export default function CompanyBrowserPage() {
     const onDidNavigate = () => {
       const url = el.getURL();
       updateTab(activeTab.id, {
-        url, loading: false, canGoBack: el.canGoBack(), canGoForward: el.canGoForward(),
+        url, loading: false, error: null, canGoBack: el.canGoBack(), canGoForward: el.canGoForward(),
       });
     };
     const onTitleUpdated = (e: Event) => {
@@ -191,18 +207,33 @@ export default function CompanyBrowserPage() {
     const onStopLoading = () => updateTab(activeTab.id, {
       loading: false, canGoBack: el.canGoBack(), canGoForward: el.canGoForward(),
     });
+    // Per the design's Error Handling section: DNS/connection/cert failures
+    // are shown inline in the tab, filtered through the same fatal/non-fatal
+    // split main.js's own did-fail-load handler uses (FATAL_NET_ERRORS
+    // above) so a transient ABORTED/NETWORK_CHANGED blip doesn't flash a
+    // false error.
+    const onDidFailLoad = (e: Event) => {
+      const fe = e as Event & { errorCode?: number; errorDescription?: string; isMainFrame?: boolean };
+      if (!isFatalNavFailure(fe.errorCode ?? 0, fe.isMainFrame ?? true)) return;
+      updateTab(activeTab.id, {
+        loading: false,
+        error: fe.errorDescription || 'This page could not be loaded.',
+      });
+    };
 
     el.addEventListener('did-navigate', onDidNavigate);
     el.addEventListener('did-navigate-in-page', onDidNavigate);
     el.addEventListener('page-title-updated', onTitleUpdated);
     el.addEventListener('did-start-loading', onStartLoading);
     el.addEventListener('did-stop-loading', onStopLoading);
+    el.addEventListener('did-fail-load', onDidFailLoad);
     return () => {
       el.removeEventListener('did-navigate', onDidNavigate);
       el.removeEventListener('did-navigate-in-page', onDidNavigate);
       el.removeEventListener('page-title-updated', onTitleUpdated);
       el.removeEventListener('did-start-loading', onStartLoading);
       el.removeEventListener('did-stop-loading', onStopLoading);
+      el.removeEventListener('did-fail-load', onDidFailLoad);
     };
   }, [activeTab.id, updateTab, recordHistory]);
 
@@ -294,6 +325,18 @@ export default function CompanyBrowserPage() {
             partition={`persist:company-browser-${tab.id}`}
           />
         ))}
+
+        {activeTab.error && (
+          <div
+            role="alert"
+            style={{
+              position: 'absolute', top: 0, left: 0, right: 0, padding: '8px 12px',
+              background: 'var(--sev-critical)', color: 'var(--text-primary)', fontSize: 11, zIndex: 1,
+            }}
+          >
+            {activeTab.error}
+          </div>
+        )}
 
         {historyOpen && (
           <div

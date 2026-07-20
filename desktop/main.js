@@ -1092,6 +1092,24 @@ guardedHandle('window:open-company-browser', () => {
       event.preventDefault();
     }
   });
+  // will-attach-webview only gates the INITIAL src — it fires once, before
+  // the guest even attaches. Later navigation (address-bar entry, an
+  // in-page redirect to file:/javascript:/chrome:, etc.) is a completely
+  // separate event and is never gated by the block above. did-attach-webview
+  // hands us the actual guest webContents once attached, which does emit
+  // its own cancelable 'will-navigate' for every subsequent navigation —
+  // unlike the <webview> DOM element's own 'will-navigate' event (wired up
+  // client-side in CompanyBrowserPage.tsx for its OBSERVATIONAL events
+  // only), which cannot preventDefault(). This is the only place capable of
+  // actually blocking a later non-http(s) navigation.
+  companyBrowserWindow.webContents.on('did-attach-webview', (event, guestWebContents) => {
+    guestWebContents.on('will-navigate', (navEvent, url) => {
+      if (!shouldAllowGuestNavigation(url)) {
+        console.warn('[SECURITY] Blocked Company Browser guest navigation to disallowed scheme:', url);
+        navEvent.preventDefault();
+      }
+    });
+  });
   companyBrowserWindow.on('closed', () => { companyBrowserWindow = null; });
   companyBrowserWindow.loadURL(built).catch((err) => {
     console.warn('[APP] Company Browser loadURL failed:', err && err.message);

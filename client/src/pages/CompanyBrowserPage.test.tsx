@@ -49,4 +49,30 @@ describe('CompanyBrowserPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /remove bookmark/i }));
     expect(screen.queryByRole('link', { name: /example\.com/i })).not.toBeInTheDocument();
   });
+
+  it('shows an inline error on a fatal did-fail-load (e.g. DNS failure)', () => {
+    render(<CompanyBrowserPage />);
+    const webview = document.querySelector('webview')!;
+    const event = new Event('did-fail-load') as Event & {
+      errorCode?: number; errorDescription?: string; isMainFrame?: boolean;
+    };
+    event.errorCode = -105; // NAME_NOT_RESOLVED — fatal
+    event.errorDescription = 'ERR_NAME_NOT_RESOLVED';
+    event.isMainFrame = true;
+    fireEvent(webview, event);
+    expect(screen.getByRole('alert')).toHaveTextContent('ERR_NAME_NOT_RESOLVED');
+  });
+
+  it('shows no inline error on a non-fatal did-fail-load (e.g. ABORTED)', () => {
+    render(<CompanyBrowserPage />);
+    const webview = document.querySelector('webview')!;
+    const event = new Event('did-fail-load') as Event & {
+      errorCode?: number; errorDescription?: string; isMainFrame?: boolean;
+    };
+    event.errorCode = -3; // ABORTED — non-fatal, deliberately excluded
+    event.errorDescription = 'ERR_ABORTED';
+    event.isMainFrame = true;
+    fireEvent(webview, event);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });

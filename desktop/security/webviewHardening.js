@@ -33,6 +33,14 @@ function hardenGuestWebPreferences(webPreferences) {
   };
 }
 
+// The app's own new-tab placeholder (see CompanyBrowserPage.tsx's
+// NEW_TAB_URL). Every brand-new tab's <webview> starts on this literal
+// value before the user has typed anything, so it has to be let through
+// on the initial attach — but this is NOT a blanket allowance for the
+// `about:` scheme (about:config, about:preferences, etc. must still be
+// denied). Only this exact literal string is special-cased.
+const NEW_TAB_SENTINEL_URL = 'about:blank';
+
 /**
  * Gate for guest <webview> navigation (both the initial load and any
  * later navigation within it). Only http(s) is ever allowed — a guest
@@ -41,9 +49,13 @@ function hardenGuestWebPreferences(webPreferences) {
  * tab. Mirrors shouldAllowNavigation's http(s)-only scheme check in
  * security/sessionHardening.js, but WITHOUT that function's same-host
  * restriction — the whole point of this feature is browsing to
- * arbitrary external hosts.
+ * arbitrary external hosts. The single exception is the app's own
+ * `about:blank` new-tab sentinel (see NEW_TAB_SENTINEL_URL above) —
+ * without this, will-attach-webview's preventDefault() on every brand
+ * new tab destroys the guest before the user ever gets to navigate it.
  */
 function shouldAllowGuestNavigation(targetUrl) {
+  if (targetUrl === NEW_TAB_SENTINEL_URL) return true;
   let parsed;
   try {
     parsed = new URL(targetUrl);
@@ -56,4 +68,5 @@ function shouldAllowGuestNavigation(targetUrl) {
 module.exports = {
   hardenGuestWebPreferences,
   shouldAllowGuestNavigation,
+  NEW_TAB_SENTINEL_URL,
 };

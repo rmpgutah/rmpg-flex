@@ -37,6 +37,30 @@ test('shouldAllowGuestNavigation denies non-http(s) schemes', () => {
   assert.equal(shouldAllowGuestNavigation('chrome://settings'), false);
 });
 
+test('shouldAllowGuestNavigation allows the about:blank new-tab sentinel only', () => {
+  assert.equal(shouldAllowGuestNavigation('about:blank'), true);
+});
+
+test('shouldAllowGuestNavigation denies other about: URLs (not a blanket scheme allowance)', () => {
+  assert.equal(shouldAllowGuestNavigation('about:config'), false);
+  assert.equal(shouldAllowGuestNavigation('about:preferences'), false);
+  assert.equal(shouldAllowGuestNavigation('about:blank/'), false); // not the exact literal
+});
+
+// desktop/main.js's 'did-attach-webview' handler wires this same function up
+// to the guest webContents' own (cancelable) 'will-navigate' event to gate
+// every navigation AFTER the initial attach too (see main.js, next to the
+// 'will-attach-webview' handler) — not just the one-time initial src. These
+// two cases stand in for that later-navigation check, since main.js itself
+// can't be unit-tested without booting Electron.
+test('shouldAllowGuestNavigation (later-navigation check): rejects file:// mid-session', () => {
+  assert.equal(shouldAllowGuestNavigation('file:///etc/passwd'), false);
+});
+
+test('shouldAllowGuestNavigation (later-navigation check): allows https:// mid-session', () => {
+  assert.equal(shouldAllowGuestNavigation('https://example.com/redirected'), true);
+});
+
 test('shouldAllowGuestNavigation denies unparseable input', () => {
   assert.equal(shouldAllowGuestNavigation('not a url'), false);
   assert.equal(shouldAllowGuestNavigation(''), false);
