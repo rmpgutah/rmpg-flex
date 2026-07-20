@@ -184,6 +184,7 @@ async function pushAll() {
           }
         }
       } catch (err) {
+        setConfig('last_sync_error', JSON.stringify({ message: err.message, at: new Date().toISOString() }));
         console.error('[SYNC] Batch push failed:', err.message);
         for (const item of batch) {
           markQueueItem(item.id, 'pending', null, err.message);
@@ -236,6 +237,7 @@ async function pullTable(table) {
 
     console.log(`[SYNC] Pulled ${response.rows.length} rows for ${table}`);
   } catch (err) {
+    setConfig('last_sync_error', JSON.stringify({ message: err.message, at: new Date().toISOString() }));
     // Silently fail — will retry on next interval
     console.warn(`[SYNC] Pull ${table} failed:`, err.message);
   }

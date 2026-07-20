@@ -438,6 +438,23 @@ function setConfig(key, value) {
   `).run(key, value, new Date().toISOString());
 }
 
+/**
+ * Reads the most recent sync error (written by syncManager.js's pullTable/
+ * pushAll catch blocks) for the diagnostics UI. Returns null if no sync
+ * error has ever been recorded, or if the stored value is somehow malformed
+ * JSON (defensive — this plan controls the only writer, but a corrupted
+ * local_config row shouldn't throw and crash the diagnostics UI).
+ */
+function getLastSyncError() {
+  const raw = getConfig('last_sync_error');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 // ─── Sync Queue ──────────────────────────────────────────────
 
 function enqueue(method, endpoint, body, localId, tableName) {
@@ -531,6 +548,7 @@ module.exports = {
   updateSyncMeta,
   getConfig,
   setConfig,
+  getLastSyncError,
   enqueue,
   getPendingQueue,
   markQueueItem,

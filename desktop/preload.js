@@ -189,6 +189,9 @@ contextBridge.exposeInMainWorld('electron', {
   // Bulk-clear every failed sync queue item
   clearFailedSyncItems: () => ipcRenderer.invoke('sync:clear-failed'),
 
+  // Most recent sync error, for diagnostics UI
+  getLastSyncError: () => ipcRenderer.invoke('sync:last-error'),
+
   // Get locally cached user for offline auth
   getCachedUser: (username) =>
     ipcRenderer.invoke('offline:get-cached-user', { username }),

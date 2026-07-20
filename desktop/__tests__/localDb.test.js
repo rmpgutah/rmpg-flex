@@ -40,7 +40,7 @@ require.cache[electronPath] = {
   },
 };
 
-const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems } = require('../localDb');
+const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, setConfig, getLastSyncError } = require('../localDb');
 
 test.before(() => {
   initLocalDb();
@@ -246,4 +246,30 @@ test('clearFailedSyncItems: deletes only failed rows and returns {cleared: N}', 
 
   const remaining = db.prepare('SELECT status FROM sync_queue ORDER BY status').all();
   assert.deepEqual(remaining.map((r) => r.status).sort(), ['pending', 'synced']);
+});
+
+test('getLastSyncError: returns null when the config key is unset', () => {
+  const db = getLocalDb();
+  db.exec(`DELETE FROM local_config WHERE key = 'last_sync_error'`);
+
+  assert.equal(getLastSyncError(), null);
+});
+
+test('getLastSyncError: returns the parsed object for a well-formed stored value', () => {
+  const db = getLocalDb();
+  db.exec(`DELETE FROM local_config WHERE key = 'last_sync_error'`);
+
+  setConfig('last_sync_error', JSON.stringify({ message: 'x', at: '2026-01-01T00:00:00Z' }));
+
+  assert.deepEqual(getLastSyncError(), { message: 'x', at: '2026-01-01T00:00:00Z' });
+});
+
+test('getLastSyncError: returns null (not a throw) for malformed JSON in the stored value', () => {
+  const db = getLocalDb();
+  db.exec(`DELETE FROM local_config WHERE key = 'last_sync_error'`);
+
+  setConfig('last_sync_error', 'not valid json{');
+
+  assert.doesNotThrow(() => getLastSyncError());
+  assert.equal(getLastSyncError(), null);
 });
