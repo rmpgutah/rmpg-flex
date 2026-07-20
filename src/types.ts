@@ -92,6 +92,7 @@ export type Bindings = {
   FIRECRAWL_API_URL?: string;
   ALPR_EDGE_SECRET?: string;
   CPG_ENC_KEY?: string;
+  TRACCAR_ENC_KEY?: string;
   ROBOFLOW_API_KEY?: string;
   ROBOFLOW_API_URL?: string;
   IPED_API_KEY?: string;
