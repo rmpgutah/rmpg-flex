@@ -1,0 +1,43 @@
+# Desktop Tests — runs the Electron desktop app's local `node --test` suite
+# (desktop/__tests__ + desktop/security/__tests__) on every PR/push touching
+# desktop/. Mirrors the "Desktop tests" step of .husky/pre-push — until now
+# that hook was the ONLY place these tests ran; desktop-release.yml only
+# builds/publishes the Windows installer on version tags and never calls
+# `npm test`, so a contributor bypassing pre-push (--no-verify) shipped with
+# zero CI coverage for desktop/.
+#
+# Scoped to desktop/** via path filters (unlike pr-tests.yml's jobs, which
+# always run) since this suite only exercises code under desktop/.
+name: Desktop Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+
+concurrency:
+  group: desktop-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-tests:
+    name: Desktop tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: cd desktop && npm ci
+      - run: cd desktop && npm test
