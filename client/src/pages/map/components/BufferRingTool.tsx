@@ -2,7 +2,10 @@
 import { useEffect, useRef, useState } from 'react';
 import turfCircle from '@turf/circle';
 import type mapboxgl from 'mapbox-gl';
+import { X } from 'lucide-react';
 import { safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
+import PanelTitleBar from '../../../components/PanelTitleBar';
+import IconButton from '../../../components/IconButton';
 
 interface Ring { id: string; lat: number; lng: number; radiusM: number; color: string; }
 interface Props { map: mapboxgl.Map; onClose: () => void; }
@@ -63,16 +66,21 @@ export default function BufferRingTool({ map, onClose }: Props) {
   };
 
   return (
-    <div className="tactical-dark border border-surface-raised rounded p-3 w-52 text-xs space-y-2 shadow-lg">
-      <div className="text-brand-400 font-bold uppercase tracking-wider text-[10px]">Buffer Ring</div>
+    <div className="bg-surface-raised/95 border border-border-default backdrop-blur-sm w-52 text-xs space-y-2 p-2" style={{ borderRadius: 2 }}>
+      <PanelTitleBar title="Buffer Ring">
+        <IconButton aria-label="Close" onClick={onClose} className="text-rmpg-400 hover:text-rmpg-200 p-0.5">
+          <X className="w-3 h-3" />
+        </IconButton>
+      </PanelTitleBar>
       <div className="text-rmpg-400 text-[10px]">Click map to place ring</div>
       <div className="flex gap-1 items-center">
         <input value={radius} onChange={e => setRadius(e.target.value)} placeholder="Radius…"
           type="number" min="1"
-          className="flex-1 bg-surface-base border border-surface-raised text-rmpg-200 rounded px-2 py-1 text-[10px]" />
+          className="flex-1 bg-surface-base border border-surface-raised text-rmpg-200 px-2 py-1 text-[10px]" style={{ borderRadius: 2 }} />
         {(['ft', 'mi'] as const).map(u => (
           <button key={u} onClick={() => setUnit(u)}
-            className={`px-2 py-1 rounded text-[10px] ${unit === u ? 'bg-brand-500 text-black font-bold' : 'bg-surface-raised text-rmpg-300'}`}>
+            className={`px-2 py-1 text-[10px] ${unit === u ? 'bg-brand-500 text-black font-bold' : 'bg-surface-raised text-rmpg-300'}`}
+            style={{ borderRadius: 2 }}>
             {u}
           </button>
         ))}
@@ -80,8 +88,8 @@ export default function BufferRingTool({ map, onClose }: Props) {
       <div className="flex gap-1">
         {COLORS.map(c => (
           <button key={c} aria-label={`Color ${c}`} onClick={() => setColor(c)}
-            className={`w-5 h-5 rounded border-2 ${color === c ? 'border-white' : 'border-transparent'}`}
-            style={{ backgroundColor: c }} />
+            className={`w-5 h-5 border-2 ${color === c ? 'border-white' : 'border-transparent'}`}
+            style={{ backgroundColor: c, borderRadius: 2 }} />
         ))}
       </div>
       <div className="flex items-center gap-2">
@@ -99,16 +107,10 @@ export default function BufferRingTool({ map, onClose }: Props) {
           ))}
         </div>
       )}
-      <div className="flex gap-2">
-        <button onClick={clearAll}
-          className="flex-1 bg-surface-raised text-rmpg-300 py-1 rounded text-[10px]">
-          Clear All
-        </button>
-        <button onClick={onClose}
-          className="flex-1 bg-surface-raised text-rmpg-300 py-1 rounded text-[10px]">
-          Done
-        </button>
-      </div>
+      <button onClick={clearAll}
+        className="w-full bg-surface-raised text-rmpg-300 py-1 text-[10px]" style={{ borderRadius: 2 }}>
+        Clear All
+      </button>
     </div>
   );
 }

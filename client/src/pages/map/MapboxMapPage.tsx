@@ -103,7 +103,6 @@ import MapRightDock, { type MapRightDockSection } from './components/MapRightDoc
 import MapTopToolbar from './components/MapTopToolbar';
 import MapBottomTray from './components/MapBottomTray';
 import SafetyAlertTicker from './components/SafetyAlertTicker';
-import RulerTool from './components/RulerTool';
 import BufferRingTool from './components/BufferRingTool';
 import AnnotationTool from './components/AnnotationTool';
 import DrawGeofenceTool from './components/DrawGeofenceTool';
@@ -388,9 +387,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const tilequery = useMapboxTilequery(mapLoaded ? mapRef.current : null);
   const [identifyEnabled, setIdentifyEnabled] = useState(false);
   const identifyPopupRef = useRef<mapboxgl.Popup | null>(null);
-  // Ruler + Buffer Ring — built, tested (RulerTool.test.tsx / BufferRingTool.test.tsx)
-  // but never mounted anywhere in the app until now (2026-07 dead-code sweep).
-  const [activeFloatingTool, setActiveFloatingTool] = useState<'ruler' | 'buffer-ring' | 'annotation' | 'draw-geofence' | 'gps-replay' | 'nav-overlay' | null>(null);
+  // Buffer Ring — built, tested (BufferRingTool.test.tsx).
+  const [activeFloatingTool, setActiveFloatingTool] = useState<'buffer-ring' | 'annotation' | 'draw-geofence' | 'gps-replay' | 'nav-overlay' | null>(null);
   const [multiStopQueue, setMultiStopQueue] = useState<QueuedStop[]>([]);
   const [multiStopUnit, setMultiStopUnit] = useState<string | null>(null);
   const [multiStopPanelOpen, setMultiStopPanelOpen] = useState(false);
@@ -1035,12 +1033,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const mapLeftDockSections = useMemo<MapLeftDockSection[]>(() => [
     {
       title: 'Live Conditions',
+      collapsible: false,
       items: [
         { id: 'traffic', label: 'Live Traffic', active: traffic.enabled, onToggle: traffic.toggle, color: '#22c55e', description: 'Real-time congestion' },
         { id: 'weather', label: 'Weather Radar', active: weatherRadar.enabled, onToggle: weatherRadar.toggle, color: '#3b82f6', description: 'Precipitation overlay' },
-        { id: 'p1audio', label: 'P1 Audio Alert', active: p1AudioEnabled, onToggle: () => setP1AudioEnabled((v: boolean) => !v), color: '#ef4444', description: 'Chirp on new P1 calls' },
-        { id: 'autopan', label: 'Auto-Pan P1', active: autoPanEnabled, onToggle: () => setAutoPanEnabled((v: boolean) => !v), color: '#ef4444', description: 'Pan to new Priority 1 calls' },
-        { id: 'geofences', label: 'Geofence Zones', active: geofenceAlerts.enabled, onToggle: geofenceAlerts.toggle, color: '#ef4444', description: 'Premise alerts on click' },
+        { id: 'p1audio', label: 'P1 Audio Alert', active: p1AudioEnabled, onToggle: () => setP1AudioEnabled((v: boolean) => !v), color: '#ef4444', description: 'Chirp on new P1 calls', pinned: true },
+        { id: 'autopan', label: 'Auto-Pan P1', active: autoPanEnabled, onToggle: () => setAutoPanEnabled((v: boolean) => !v), color: '#ef4444', description: 'Pan to new Priority 1 calls', pinned: true },
+        { id: 'geofences', label: 'Geofence Zones', active: geofenceAlerts.enabled, onToggle: geofenceAlerts.toggle, color: '#ef4444', description: 'Premise alerts on click', pinned: true },
       ],
     },
     {
@@ -1061,10 +1060,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'speed-heatmap', label: 'Speed Heatmap', active: speedHeatmapEnabled, onToggle: () => setSpeedHeatmapEnabled((v) => !v), color: '#f97316', description: 'GPS speed density', loading: speedHeatmap.loading },
         { id: 'speed-violations', label: 'Speed Violations', active: speedViolationsEnabled, onToggle: () => setSpeedViolationsEnabled((v) => !v), color: '#ef4444', description: 'Recent high-speed events — click a marker for the speed graph', loading: speedViolationsLayer.loading },
         { id: 'pursuit-segments', label: 'Pursuit Tracks', active: pursuitSegmentsEnabled, onToggle: () => setPursuitSegmentsEnabled((v) => !v), color: '#dc2626', description: 'Recent vehicle/foot pursuit paths', loading: pursuitSegmentsLayer.loading },
+        { id: 'response-time', label: 'Response Time by Beat', active: responseTimeEnabled, onToggle: () => setResponseTimeEnabled((v) => !v), color: '#4caf50', description: '30-day avg response time (historical)', loading: responseTime.loading },
       ],
     },
     {
-      title: 'Boundaries',
+      title: 'Administrative Boundaries',
       items: [
         { id: 'beats', label: 'Beat Boundaries', active: beatsVisible, onToggle: () => setBeatsVisible((v: boolean) => !v), color: '#d4a017' },
         ...districtHierarchy.hierarchyConfigs.map(cfg => ({
@@ -1083,8 +1083,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           color: cfg.style.strokeColor || cfg.style.fillColor,
           description: cfg.file.replace('.geojson', ''),
         })),
+      ],
+    },
+    {
+      title: 'Risk & Coverage',
+      items: [
         { id: 'coverage-gaps', label: 'Coverage Gaps', active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), color: '#f08228', description: 'Response-time gap grid', loading: coverageGaps.loading },
-        { id: 'response-time', label: 'Response Time by Beat', active: responseTimeEnabled, onToggle: () => setResponseTimeEnabled((v) => !v), color: '#4caf50', description: '30-day avg response time (historical)', loading: responseTime.loading },
         { id: 'safety-zones', label: 'Safety Zones', active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), color: '#c81e1e', description: 'Risk-weighted call clusters', loading: safetyZones.loading },
         { id: 'isochrone', label: 'Response Zones', active: isochroneEnabled, onToggle: toggleIsochrone, color: '#22c55e', description: '5/10/15 min driving' },
       ],
@@ -1098,53 +1102,50 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'projection', label: `Projection: ${projection.projection}`, active: projection.projection !== 'mercator', onToggle: projection.cycle, color: '#14b8a6', description: 'Globe / Mercator / Equal Earth' },
         { id: 'atmosphere', label: `Atmosphere: ${atmosphere.preset}`, active: atmosphere.enabled, onToggle: atmosphere.cycle, color: '#a855f7', description: 'Fog, sky & star effects' },
         { id: 'grid', label: 'Coordinate Grid', active: coordGrid.enabled, onToggle: coordGrid.toggle, color: '#d4a017', description: 'Lat/Lng graticule (G)' },
-        { id: 'deck', label: 'GPU Overlay', active: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: 'Deck.gl accelerated' },
         { id: 'orbit', label: 'Orbit Animation', active: cameraAnimation.animating, onToggle: () => cameraAnimation.animating ? cameraAnimation.stop() : cameraAnimation.orbit(), color: '#f59e0b', description: 'Cinematic map rotation' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, districtHierarchy, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, repeatAddressesEnabled, repeatAddresses.loading, speedHeatmapEnabled, speedHeatmap.loading, speedViolationsEnabled, speedViolationsLayer.loading, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, districtHierarchy, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, repeatAddressesEnabled, repeatAddresses.loading, speedHeatmapEnabled, speedHeatmap.loading, speedViolationsEnabled, speedViolationsLayer.loading, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading]);
 
   const mapRightDockSections = useMemo<MapRightDockSection[]>(() => [
     {
       title: 'Dispatch Tools',
       items: [
-        { id: 'directions', label: 'Directions', active: directionsPanel.result !== null, onToggle: () => directionsPanel.result ? directionsPanel.clearDirections() : directionsPanel.setPickMode('origin'), color: '#3b82f6', description: 'Point-to-point routing' },
+        { id: 'directions', label: 'Live Directions', active: directionsPanel.result !== null, onToggle: () => directionsPanel.result ? directionsPanel.clearDirections() : directionsPanel.setPickMode('origin'), color: '#3b82f6', description: 'Point-to-point routing engine' },
+        { id: 'nav-overlay', label: 'Manual Route', active: activeFloatingTool === 'nav-overlay', onToggle: () => setActiveFloatingTool((v) => v === 'nav-overlay' ? null : 'nav-overlay'), color: '#3b82f6', description: 'Draw a route between two typed coordinates' },
+        { id: 'identify', label: 'Identify', active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), color: '#eab308', description: 'Click the map for place/district info', loading: tilequery.loading },
         { id: 'places', label: 'Places Search', active: placesSearch.results.length > 0, onToggle: () => placesSearch.results.length > 0 ? placesSearch.clearResults() : placesSearch.searchCategory('restaurant'), color: '#10b981', description: 'Nearby POI search' },
         { id: 'bookmarks', label: 'Bookmarks', active: mapBookmarks.bookmarks.length > 0, onToggle: () => mapBookmarks.dropMode ? mapBookmarks.setDropMode(false) : mapBookmarks.setDropMode(true), color: '#eab308', description: 'Save map locations' },
         { id: 'optimize', label: 'Route Optimizer', active: multiStopPanelOpen, onToggle: () => setMultiStopPanelOpen((v) => !v), color: '#8b5cf6', description: 'Queue calls, pick a unit, optimize the visiting order' },
       ],
     },
     {
-      title: 'Analysis',
+      title: 'Measurement & Marking',
       items: [
-        { id: 'speed-analytics', label: 'Speed Analytics Panel', active: speedAnalyticsPanelOpen, onToggle: () => setSpeedAnalyticsPanelOpen((v) => !v), color: '#f97316', description: 'Per-beat speed stats + coverage timeline', loading: speedZoneStats.loading },
-        { id: 'gps-replay', label: 'GPS Replay', active: activeFloatingTool === 'gps-replay', onToggle: () => setActiveFloatingTool((v) => v === 'gps-replay' ? null : 'gps-replay'), color: '#22c55e', description: 'Scrub a unit\'s GPS history on a timeline' },
-        { id: 'ruler', label: 'Ruler', active: activeFloatingTool === 'ruler', onToggle: () => setActiveFloatingTool((v) => v === 'ruler' ? null : 'ruler'), color: '#d4a017', description: 'Multi-point distance measurement' },
+        { id: 'measure', label: 'Measure', active: measure.mode !== 'none', onToggle: () => setShowMeasureMenu(v => !v), color: '#3b82f6', description: 'Distance / area measurement' },
         { id: 'buffer-ring', label: 'Buffer Ring', active: activeFloatingTool === 'buffer-ring', onToggle: () => setActiveFloatingTool((v) => v === 'buffer-ring' ? null : 'buffer-ring'), color: '#f08228', description: 'Radius rings around a point' },
         { id: 'annotation', label: 'Annotations', active: activeFloatingTool === 'annotation', onToggle: () => setActiveFloatingTool((v) => v === 'annotation' ? null : 'annotation'), color: '#3b82f6', description: 'Pin notes on the map' },
-        { id: 'draw-geofence', label: 'Draw Geofence', active: activeFloatingTool === 'draw-geofence', onToggle: () => setActiveFloatingTool((v) => v === 'draw-geofence' ? null : 'draw-geofence'), color: '#a855f7', description: 'Draw a custom alert/exclusion zone' },
-        // Three wrappers over the Advanced Toolbar's former measure/draw/GL-Draw
-        // launcher state — their dropdown/drawing bodies still mount at the map
-        // canvas root, gated on showMeasureMenu/showDrawMenu (see the return block).
-        { id: 'measure', label: 'Measure', active: measure.mode !== 'none', onToggle: () => setShowMeasureMenu(v => !v), color: '#3b82f6', description: 'Distance / area measurement' },
-        { id: 'draw', label: 'Draw Shapes', active: drawing.mode !== 'none', onToggle: () => setShowDrawMenu(v => !v), color: '#d4a017', description: 'Polygon / polyline / circle' },
-        { id: 'gl-draw', label: 'GL Draw', active: glDraw.enabled, onToggle: () => glDraw.toggle(), color: '#d4a017', description: 'Vertex-editing draw tools' },
-        // `nav-overlay` ("Point-to-Point Route") — a floating-tool toggle mechanically
-        // identical to gps-replay/ruler/buffer-ring/annotation/draw-geofence above; the
-        // re-bucketing tables (Tasks 3/4) did not list it, so it is placed here in
-        // Analysis alongside its siblings (see task-7 report, judgment call).
-        { id: 'nav-overlay', label: 'Point-to-Point Route', active: activeFloatingTool === 'nav-overlay', onToggle: () => setActiveFloatingTool((v) => v === 'nav-overlay' ? null : 'nav-overlay'), color: '#3b82f6', description: 'Draw a route between two typed coordinates' },
+      ],
+    },
+    {
+      title: 'Drawing & Tracking',
+      items: [
+        { id: 'draw', label: 'Quick Draw', active: drawing.mode !== 'none', onToggle: () => setShowDrawMenu(v => !v), color: '#d4a017', description: 'Polygon / polyline / circle — session-only, not saved' },
+        { id: 'gl-draw', label: 'Draw & Edit', active: glDraw.enabled, onToggle: () => glDraw.toggle(), color: '#d4a017', description: 'Vertex editing — select and reshape existing shapes' },
+        { id: 'draw-geofence', label: 'Create Geofence Zone', active: activeFloatingTool === 'draw-geofence', onToggle: () => setActiveFloatingTool((v) => v === 'draw-geofence' ? null : 'draw-geofence'), color: '#a855f7', description: 'Saves a named alert/exclusion zone' },
+        { id: 'gps-replay', label: 'GPS Replay', active: activeFloatingTool === 'gps-replay', onToggle: () => setActiveFloatingTool((v) => v === 'gps-replay' ? null : 'gps-replay'), color: '#22c55e', description: 'Scrub a unit\'s GPS history on a timeline' },
+        { id: 'speed-analytics', label: 'Speed Analytics Panel', active: speedAnalyticsPanelOpen, onToggle: () => setSpeedAnalyticsPanelOpen((v) => !v), color: '#f97316', description: 'Per-beat speed stats + coverage timeline', loading: speedZoneStats.loading },
       ],
     },
     {
       title: 'Diagnostics',
       items: [
-        { id: 'identify', label: 'Identify', active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), color: '#eab308', description: 'Click the map for place/district info', loading: tilequery.loading },
         { id: 'inspect', label: 'Feature Inspector', active: featureInspect.enabled, onToggle: featureInspect.toggle, color: '#8b5cf6', description: 'Click features for details' },
         { id: 'mapmatch', label: 'Map Match Trace', active: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting(), color: '#fb923c', description: 'Snap GPS to roads' },
+        { id: 'deck', label: 'GPU Overlay', active: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: 'Deck.gl accelerated rendering' },
       ],
     },
-  ], [directionsPanel, placesSearch, mapBookmarks, multiStopPanelOpen, speedAnalyticsPanelOpen, speedZoneStats.loading, activeFloatingTool, measure.mode, drawing.mode, glDraw, identifyEnabled, tilequery.loading, featureInspect, mapMatchTrace]);
+  ], [directionsPanel, placesSearch, mapBookmarks, multiStopPanelOpen, speedAnalyticsPanelOpen, speedZoneStats.loading, activeFloatingTool, measure.mode, drawing.mode, glDraw, identifyEnabled, tilequery.loading, featureInspect, mapMatchTrace, deckEnabled, setDeckEnabled]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1363,7 +1364,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           <button
             onClick={() => { measure.setMode('distance'); setShowMeasureMenu(false); }}
             className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-              measure.mode === 'distance' ? 'text-[#3b82f6] bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
+              measure.mode === 'distance' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
             }`}
           >
             📏 Distance
@@ -1371,7 +1372,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           <button
             onClick={() => { measure.setMode('area'); setShowMeasureMenu(false); }}
             className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-              measure.mode === 'area' ? 'text-[#3b82f6] bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
+              measure.mode === 'area' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
             }`}
           >
             📐 Area
@@ -1479,7 +1480,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             <span className="text-rmpg-200 font-semibold">{routing.activeRoute.callNumber}</span>
           </div>
           <div className="flex items-center gap-2 text-[10px]">
-            <span className="text-[#22c55e] font-semibold">{routing.activeRoute.eta}</span>
+            <span className="text-brand-gold-500 font-semibold">{routing.activeRoute.eta}</span>
             <span className="text-rmpg-500">·</span>
             <span className="text-rmpg-300">{routing.activeRoute.distance}</span>
           </div>
@@ -1494,12 +1495,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         loading={safetyAlertFeed.loading}
       />
 
-      {/* Measurement & Analysis Tools — Ruler / Buffer Ring */}
-      {activeFloatingTool === 'ruler' && mapRef.current && (
-        <div className="absolute top-16 right-3 z-30">
-          <RulerTool map={mapRef.current} onClose={() => setActiveFloatingTool(null)} />
-        </div>
-      )}
+      {/* Measurement & Analysis Tools — Buffer Ring */}
       {activeFloatingTool === 'buffer-ring' && mapRef.current && (
         <div className="absolute top-16 right-3 z-30">
           <BufferRingTool map={mapRef.current} onClose={() => setActiveFloatingTool(null)} />

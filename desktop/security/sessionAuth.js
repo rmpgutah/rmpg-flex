@@ -59,6 +59,36 @@ function isJwtExpiredLocally(token, nowMs) {
 }
 
 /**
+ * Derives the local_config identity fields (current_user_id,
+ * current_user_role) from a JWT, without verifying its signature — same
+ * decode-locally approach as isJwtExpiredLocally and the Task 10
+ * identity-mismatch guard in syncManager.js. Used by main.js's
+ * `auth:store-session` IPC handler, the renderer's login bridge, to seed
+ * these keys the moment a session is established (login, 2FA completion,
+ * or token refresh) instead of leaving them write-never.
+ *
+ * `user_id` is preferred over `userId` when both are present, matching the
+ * server's own token shape (src/routes/auth.ts signs both spellings, with
+ * `user_id` as the canonical one — see auth middleware's claim handling).
+ *
+ * @param {string} token
+ * @returns {{ userId: string, role: string|null }|null} null when the
+ *   token is undecodable or carries no usable user id claim.
+ */
+function extractSessionIdentity(token) {
+  const payload = decodeJwtPayloadLocally(token);
+  if (!payload) return null;
+
+  const rawUserId = payload.user_id ?? payload.userId;
+  if (rawUserId === undefined || rawUserId === null) return null;
+
+  return {
+    userId: String(rawUserId),
+    role: typeof payload.role === 'string' ? payload.role : null,
+  };
+}
+
+/**
  * Reads (or lazily creates) a stable per-installation device identifier,
  * used to bind offline PIN sessions to the device they were created on.
  * DI-testable: takes `getConfig`/`setConfig`-shaped functions and a
@@ -149,7 +179,7 @@ function pruneOldPinAttempts(db, maxRowsPerUser = 500) {
  * 0`), forcing every offline PIN session to be re-authenticated. Shared by
  * multiple independent triggers that all mean "we can no longer trust the
  * current PIN session state":
- *   - clock-skew detection at startup (see `detectClockSkew` above) — an
+ *   - clock-skew detection at startup (see `detectClockSkew` below) — an
  *     attacker rolling the system clock backward to replay an expired
  *     session window.
  *   - `powerMonitor`'s `'suspend'` event — the machine went to sleep, a
@@ -428,9 +458,38 @@ function verifyDownloadedUpdateHash(filePath, expectedSha512, fsModule, cryptoMo
   });
 }
 
+/**
+ * Pure check: does a freshly-observed user/org identity (e.g. decoded from
+ * a just-issued JWT payload) disagree with this device's cached identity
+ * (e.g. `getConfig('current_user_id')`)? Used by syncManager.js to detect
+ * "this device's cached identity no longer matches what the server now
+ * says" — for example a second officer authenticating on a desktop shell
+ * whose local mirror cache still holds the previous officer's data.
+ *
+ * Type-coercion safe: ids are compared via `String(...)` so a numeric id
+ * cached as `42` and a JWT claim that decodes as the string `'42'` are
+ * correctly treated as the SAME identity, not a mismatch.
+ *
+ * Returns `false` (never a "mismatch") whenever EITHER side is
+ * null/undefined — there's nothing to compare against yet (e.g. no cached
+ * user on a fresh install, or a token payload with no identity claim).
+ * A false positive here would wipe an innocent user's local cache, so this
+ * deliberately only flags a mismatch when BOTH ids are genuinely present.
+ *
+ * @param {string|number|null|undefined} cachedUserId
+ * @param {string|number|null|undefined} freshUserId
+ * @returns {boolean}
+ */
+function hasUserOrOrgMismatch(cachedUserId, freshUserId) {
+  if (cachedUserId === null || cachedUserId === undefined) return false;
+  if (freshUserId === null || freshUserId === undefined) return false;
+  return String(cachedUserId) !== String(freshUserId);
+}
+
 module.exports = {
   decodeJwtPayloadLocally,
   isJwtExpiredLocally,
+  extractSessionIdentity,
   getOrCreateDeviceId,
   isPinSessionBoundToDevice,
   pruneOldPinAttempts,
@@ -440,4 +499,5 @@ module.exports = {
   looksLikeSecretValue,
   assertWebPreferencesNotWeaker,
   verifyDownloadedUpdateHash,
+  hasUserOrOrgMismatch,
 };

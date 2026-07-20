@@ -3796,7 +3796,19 @@ export default function DispatchPage() {
                     isSelected={selectedCall?.id === call.id}
                     onClick={setSelectedCall}
                     onUnitDrop={handleDragAssignUnit}
-                    onStatusChange={(callId, newStatus) => handleStatusChange(callId, newStatus as CallStatus)}
+                    onStatusChange={(callId, newStatus) => {
+                      // 'closed'/'cleared' require a disposition server-side
+                      // (calls.ts POST /:id/status) — route the card's quick
+                      // Close button through the same select+prompt flow as
+                      // every other clear action instead of calling the
+                      // status endpoint bare, which now 400s.
+                      if (newStatus === 'closed' || newStatus === 'cleared') {
+                        setSelectedCall(call);
+                        handleClearWithDisposition(callId);
+                        return;
+                      }
+                      handleStatusChange(callId, newStatus as CallStatus);
+                    }}
                     onContextMenu={(e, c) => setContextMenu({ x: e.clientX, y: e.clientY, call: c })}
                     stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
                     onQuickNote={handleQuickNote}
