@@ -167,11 +167,14 @@ nothing ever reads that array — capture works, viewing doesn't exist. Add a sm
 thumbnail-strip popover anchored to the "Capture Snapshot" button, listing
 `snapshot.snapshots` with the already-exposed `removeSnapshot`/`clearSnapshots`.
 
-**B5. useMapOptimization** — wraps the Mapbox Optimization API (TSP solver over
-waypoints). Instantiated in `MapCore.ts` but silently dropped from
-`MapboxMapPage`'s destructure of `useMapCore()`. Add an "Optimize Order" button
-inside the existing Route Optimizer (`MultiStopRoutePanel`), using the hook's
-already-implemented stop/geometry rendering.
+**B5. ~~useMapOptimization~~ — moved to Delete.** During plan-writing, traced
+`MultiStopRoutePanel`'s existing "Optimize & Route" button (already live) and
+confirmed it already calls a complete, working Mapbox Optimization API solve via
+`useMapRouting`'s `showMultiStopRoute` — real TSP solving through
+`/mapbox/optimization`, rendered route line + numbered stop markers, ETA/distance
+totals. `useMapOptimization` is a second, redundant implementation of the same
+capability, not a missing one — it belongs in the Delete list below, alongside the
+other confirmed dead/duplicate items, not wired in.
 
 **B6. useMapPrintExport** — client-side watermarked canvas screenshot/download +
 clipboard-copy, fully self-contained. Instantiated but its `.exportImage()`/
@@ -210,6 +213,10 @@ detail precisely against the live code.
   utility module (geometry helpers, paint-style helpers, a `MapboxOverlayManager`
   class, popup/marker factory functions). Verified: every exported symbol has zero
   importers anywhere outside its own file/test.
+- **`client/src/hooks/useMapOptimization.ts`** — see B5 above; fully superseded by
+  `useMapRouting`'s already-wired `showMultiStopRoute`. Delete the hook, remove
+  `optimization` from `MapCore.ts`'s `UseMapCoreOptions`/`UseMapCoreResult`
+  interfaces and its call/return, and stop invoking it in `MapCore.ts`.
 
 ### Hygiene
 
