@@ -22,7 +22,7 @@ export default function SpeedAnalyticsPanel({ zoneStats, coverage, loading, onCl
         <div className="flex items-center gap-1.5">
           <Gauge size={12} className="text-brand-gold-400" />
           <span className="text-[10px] font-semibold text-brand-gold-400">Speed Analytics</span>
-          {loading && <span className="text-[8px] text-rmpg-500">loading…</span>}
+          {loading && <span className="text-[10px] text-rmpg-500">loading…</span>}
         </div>
         <button onClick={onClose} className="p-0.5" aria-label="Close speed analytics panel">
           <X size={12} className="text-rmpg-500" />
