@@ -15,6 +15,34 @@ contextBridge.exposeInMainWorld('electron', {
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
   close: () => ipcRenderer.send('window:close'),
+  toggleFullScreen: () => ipcRenderer.invoke('window:toggle-fullscreen'),
+
+  // Open/close a secondary in-app window (e.g. a detached panel). `path`
+  // must be an in-app route ('/dispatch-board') — it is resolved against
+  // the same trusted server the main window loads, never treated as an
+  // arbitrary URL. Returns { id } on success or { ok:false, error } on
+  // an invalid route.
+  openSecondaryWindow: (path, opts) => ipcRenderer.invoke('window:open-secondary', path, opts),
+  closeSecondaryWindow: (id) => ipcRenderer.invoke('window:close-secondary', id),
+
+  // Sets the dock/taskbar badge count. No-ops on platforms without
+  // app.setBadgeCount (see main.js's 'notify:dock-badge' handler).
+  setDockBadge: (count) => ipcRenderer.invoke('notify:dock-badge', count),
+
+  // Flash the window frame to grab the user's attention (e.g., for alerts).
+  // Auto-clears when the window receives focus.
+  flashFrame: () => ipcRenderer.invoke('notify:flash-frame'),
+
+  // Reflects shift state in the tray tooltip. state must be one of
+  // 'on-shift' | 'off-shift' | 'alert' — anything else is silently
+  // ignored by the main-process handler (see main.js's
+  // 'notify:tray-status' handler).
+  setTrayStatus: (state) => ipcRenderer.invoke('notify:tray-status', state),
+
+  // Clipboard read/write. Plain wrappers with no secret-value enforcement —
+  // see main.js's 'clipboard:get'/'clipboard:set' handlers.
+  getClipboardText: () => ipcRenderer.invoke('clipboard:get'),
+  setClipboardText: (text) => ipcRenderer.invoke('clipboard:set', text),
 
   // App version
   getVersion: () => ipcRenderer.invoke('app:version'),
