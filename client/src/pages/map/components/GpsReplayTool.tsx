@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type mapboxgl from 'mapbox-gl';
+import { X } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { asArray } from '../../../utils/asArray';
 import { getSourceSafe, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
+import PanelTitleBar from '../../../components/PanelTitleBar';
+import IconButton from '../../../components/IconButton';
 
 interface GpsPosition { lat: number; lng: number; timestamp: string; speed?: number; heading?: number; }
 interface UnitOption { unit_id: number; call_sign: string; officer_name?: string; badge_number?: string; }
@@ -140,8 +143,12 @@ export default function GpsReplayTool({ map, onClose }: Props) {
   };
 
   return (
-    <div className="tactical-dark border border-surface-raised rounded p-3 w-56 text-xs space-y-2 shadow-lg">
-      <div className="text-brand-400 font-bold uppercase tracking-wider text-[10px]">GPS Replay</div>
+    <div className="bg-surface-raised/95 border border-border-default backdrop-blur-sm w-56 text-xs space-y-2 p-2" style={{ borderRadius: 2 }}>
+      <PanelTitleBar title="GPS Replay">
+        <IconButton aria-label="Close" onClick={onClose} className="text-rmpg-400 hover:text-rmpg-200 p-0.5">
+          <X className="w-3 h-3" />
+        </IconButton>
+      </PanelTitleBar>
       <select value={selectedUnit ?? ''} onChange={e => {
         const id = Number(e.target.value);
         setSelectedUnit(id);
@@ -191,16 +198,12 @@ export default function GpsReplayTool({ map, onClose }: Props) {
       </label>
       <div className="flex gap-2">
         <button onClick={playing ? stop : play} disabled={!positions.length}
-          className="flex-1 bg-brand-500 text-black font-bold py-1 rounded text-[10px] disabled:opacity-50">
+          className="flex-1 bg-brand-500 text-black font-bold py-1 text-[10px] disabled:opacity-50" style={{ borderRadius: 2 }}>
           {playing ? 'Pause' : 'Play'}
         </button>
         <button onClick={stop}
-          className="flex-1 bg-surface-raised text-rmpg-300 py-1 rounded text-[10px]">
+          className="flex-1 bg-surface-raised text-rmpg-300 py-1 text-[10px]" style={{ borderRadius: 2 }}>
           Stop
-        </button>
-        <button onClick={onClose}
-          className="flex-1 bg-surface-raised text-rmpg-300 py-1 rounded text-[10px]">
-          Done
         </button>
       </div>
     </div>
