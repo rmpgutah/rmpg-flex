@@ -22,6 +22,7 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute, ensureJurisdictionAndPhotoColumns } from '../../utils/db';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
+import { putEncrypted, getDecrypted, deleteEncryptionKey } from '../../utils/encryptedR2';
 const businessPhotos = new Hono<Env>();
 
 const VALID_CATEGORIES = ['storefront', 'interior', 'exterior', 'parking', 'other'] as const;
@@ -51,16 +52,30 @@ businessPhotos.get('/file/:key{.+}', async (c) => {
     if (!key.startsWith('business-photos/')) {
       return c.json({ error: 'Invalid key', code: 'INVALID_KEY' }, 400);
     }
-    const obj = await c.env.UPLOADS.get(key);
-    if (!obj) return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404);
+    const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
+    if (decrypted) {
+      return new Response(decrypted.bytes, {
+        headers: {
+          'Content-Type': decrypted.httpMetadata?.contentType || 'application/octet-stream',
+          'Cache-Control': 'private, max-age=300',
+        },
+      });
+    }
 
-    // arrayBuffer + c.body sidesteps the @cloudflare/workers-types vs
-    // lib.dom ReadableStream/Headers type collision. Photos cap at
-    // 10 MB so buffering is fine.
-    const data = await obj.arrayBuffer();
-    c.header('Content-Type', obj.httpMetadata?.contentType || 'application/octet-stream');
+    // getDecrypted() returns a clean null both for "object never existed"
+    // and for "object exists but has no file_encryption_keys row" — the
+    // latter is what every business photo uploaded before this feature
+    // shipped looks like. Fall back to the raw R2 bytes; 404 only if
+    // neither the decrypted path nor the raw object produced anything. A
+    // genuine decrypt failure (bad KEK, tampered ciphertext) THROWS instead
+    // of returning null, so it propagates to the outer catch below rather
+    // than silently masquerading as "legacy."
+    const legacy = await c.env.UPLOADS.get(key);
+    if (!legacy) return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404);
+
+    const data = await legacy.arrayBuffer();
+    c.header('Content-Type', legacy.httpMetadata?.contentType || 'application/octet-stream');
     c.header('Cache-Control', 'private, max-age=300');
-    c.header('etag', obj.httpEtag);
     return c.body(data);
   } catch (err) {
     return dbErrorResponse(c, err, 'Failed to fetch photo', 'FETCH_PHOTO_ERROR');
@@ -154,7 +169,7 @@ businessPhotos.post('/', async (c) => {
     // no traversal risk, no collisions on rapid uploads.
     const r2Key = `business-photos/${crypto.randomUUID()}${extFor(photo)}`;
     const buffer = await photo.arrayBuffer();
-    await c.env.UPLOADS.put(r2Key, buffer, {
+    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, buffer, {
       httpMetadata: { contentType: photo.type || 'application/octet-stream' },
     });
 
@@ -197,6 +212,7 @@ businessPhotos.delete('/:photoId', async (c) => {
     }
     if (r2Key && r2Key.startsWith('business-photos/')) {
       try { await c.env.UPLOADS.delete(r2Key); } catch { /* non-fatal */ }
+      try { await deleteEncryptionKey(db, r2Key); } catch { /* non-fatal */ }
     }
 
     await execute(db, 'DELETE FROM business_photos WHERE id = ?', id);

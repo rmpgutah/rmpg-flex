@@ -42,6 +42,7 @@ import { requireRole } from '../middleware/auth';
 import { emitFleetioEvent } from '../utils/fleetio/events';
 import { log } from '../utils/logger';
 import { dbErrorResponse } from '../utils/dbErrors';
+import { putEncrypted } from '../utils/encryptedR2';
 import {
   isValidStatus,
   validateTransition,
@@ -618,9 +619,8 @@ wo.post('/:id{[0-9]+}/attachments', requireRole(...WRITE_ROLES), async (c) => {
 
     const buf = await file.arrayBuffer();
     const r2Key = `work-order-attachments/${id}/${Date.now()}_${filename}`;
-    await uploads.put(r2Key, buf, {
+    await putEncrypted(uploads, db, c.env.FILE_ENCRYPTION_KEK, r2Key, buf, {
       httpMetadata: { contentType: mime },
-      customMetadata: { workOrderId: String(id), uploadedBy: String(userId) },
     });
 
     const result = await execute(db,

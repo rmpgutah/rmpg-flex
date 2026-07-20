@@ -10,11 +10,19 @@ import { chimeForApiSuccess, nackForApiFailure } from '../utils/actionChimes';
 // Callers can override per-request via apiFetch(url, { timeoutMs }).
 export const DEFAULT_FETCH_TIMEOUT_MS = 60_000;
 
-// Files at or below this size go through the existing Worker-proxied
-// multipart upload (POST /api/uploads); files above it go straight to R2
-// via a presigned PUT, bypassing the Worker's memory ceiling. Matches the
-// design spec's threshold — see docs/superpowers/specs/2026-07-18-r2-presigned-direct-upload-design.md.
-const DIRECT_UPLOAD_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20 MB
+// Disabled (Infinity) as of the file-encryption-at-rest merge: the
+// Worker-proxied multipart route (POST /api/uploads) now encrypts every
+// attachment via putEncrypted() before writing to R2, but a presigned
+// direct-to-R2 PUT bypasses the Worker entirely — the Worker never sees
+// those bytes, so they'd land unencrypted. Until the direct-upload path
+// is taught to participate in encryption-at-rest (or is scoped to a
+// bucket outside that requirement), every attachment goes through the
+// multipart route regardless of size, same as before this threshold
+// existed. apiUploadFileDirect() and the /api/uploads/presign* routes
+// are still live — the admin Map Data Files feature uses the same
+// underlying presign mechanism against system-essentials, which was
+// never in the encryption-at-rest scope.
+const DIRECT_UPLOAD_THRESHOLD_BYTES = Infinity;
 
 /**
  * Thrown by `fetchWithTimeout` (and `apiFetch` / `apiFetchBlob` /

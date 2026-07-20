@@ -31,6 +31,7 @@
 import type { D1Database, R2Bucket } from '@cloudflare/workers-types';
 import type { Bindings } from '../../types';
 import { execute } from '../db';
+import { putEncrypted } from '../encryptedR2';
 
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_BYTES = 8 * 1024 * 1024;          // 8 MB ceiling per photo
@@ -150,13 +151,8 @@ export async function downloadAndStorePhoto(
 
   // Best-effort R2 PUT.
   try {
-    await uploads.put(key, bytes, {
+    await putEncrypted(uploads, db, (env as { FILE_ENCRYPTION_KEK?: string }).FILE_ENCRYPTION_KEK, key, bytes, {
       httpMetadata: { contentType: contentType || 'image/jpeg' },
-      customMetadata: {
-        nsopw_offender_id: offenderExtId,
-        jurisdiction,
-        offender_row: String(offenderRowId),
-      },
     });
   } catch (err) {
     return {

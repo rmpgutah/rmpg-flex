@@ -48,6 +48,11 @@ const ALLOWED_CONNECT = [
   // ffmpeg.wasm core (in-browser dashcam redaction MP4 encode) — fetched via
   // toBlobURL(), which is a connect-src request.
   'https://unpkg.com',
+  // R2 presigned direct-upload (attachments >20MB fallback path + admin Map
+  // Data Files tab): the browser PUTs straight to this host using a
+  // presigned URL, bypassing the Worker entirely — without this entry the
+  // fetch/XHR is blocked by CSP before it ever reaches the network.
+  'https://5caa95c5789f4fc4ed3934b2a2c29ed4.r2.cloudflarestorage.com',
 ].join(' ');
 
 const FULL_CSP = [
