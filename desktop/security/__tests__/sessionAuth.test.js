@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
 const { EventEmitter } = require('node:events');
 const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker, verifyDownloadedUpdateHash } = require('../sessionAuth');
+const { hardenWebPreferencesDefaults } = require('../sessionHardening');
 
 // Base64url-encode helper matching the encoding sessionAuth.js decodes
 // (standard base64 with '+'->'-', '/'->'_', trailing '=' stripped —
@@ -609,6 +610,22 @@ test('assertWebPreferencesNotWeaker: reports the FIRST violated key when multipl
   assert.equal(result.ok, false);
   assert.match(result.error, /weaker webPreferences: contextIsolation/);
   assert.doesNotMatch(result.error, /nodeIntegration/);
+});
+
+test('assertWebPreferencesNotWeaker: enforced keys equal hardenWebPreferencesDefaults()\'s actual key set, not a hand-copied list', () => {
+  // Guards against the two files drifting apart: this check derives its key
+  // list by calling hardenWebPreferencesDefaults() itself, so if that
+  // function ever gains/loses a security-relevant key, this test (and the
+  // enforcement below) moves with it automatically.
+  const liveDefaults = hardenWebPreferencesDefaults();
+  assert.deepEqual(SECURE_REFERENCE_PREFS, liveDefaults);
+
+  for (const key of Object.keys(liveDefaults)) {
+    const candidate = { ...liveDefaults, [key]: !liveDefaults[key] };
+    const result = assertWebPreferencesNotWeaker(candidate, liveDefaults);
+    assert.equal(result.ok, false, `expected ${key} to be enforced`);
+    assert.match(result.error, new RegExp(key));
+  }
 });
 
 // ─── verifyDownloadedUpdateHash ─────────────────────────────

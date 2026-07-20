@@ -11,6 +11,8 @@
 
 'use strict';
 
+const { hardenWebPreferencesDefaults } = require('./sessionHardening');
+
 /**
  * Decodes the payload segment of a JWT without verifying its signature.
  * Never throws — malformed/missing input (e.g. no cached token yet) is
@@ -316,33 +318,22 @@ function looksLikeSecretValue(text, knownSecrets) {
   return knownSecrets.some((secret) => typeof secret === 'string' && secret.length > 0 && secret === text);
 }
 
-// The webPreferences keys whose "secure direction" is unambiguous, and the
-// value each must equal to be considered secure. Mirrors the keys actually
-// set by hardenWebPreferencesDefaults() in sessionHardening.js — keep in
-// sync with that function if it ever changes.
-const SECURE_WEBPREFERENCES_DIRECTION = {
-  contextIsolation: true,
-  nodeIntegration: false,
-  webSecurity: true,
-  webviewTag: false,
-  experimentalFeatures: false,
-  allowRunningInsecureContent: false,
-  enableWebSQL: false,
-};
-
 /**
  * Self-check guarding against a future regression where a BrowserWindow's
  * webPreferences end up weaker (less secure) than the app's own hardened
  * defaults — e.g. an override accidentally flips contextIsolation off.
- * Only checks the fixed set of security-relevant keys above; any other
- * key present in `candidatePrefs` (e.g. `preload`, `partition` — legitimate
- * per-window customizations) is ignored and never flagged.
+ * Only checks the keys `hardenWebPreferencesDefaults()` (sessionHardening.js)
+ * itself sets — derived by calling that function fresh rather than
+ * hand-copying its key list here, so a future key added to that function's
+ * defaults is picked up automatically instead of silently going unchecked.
+ * Any other key present in `candidatePrefs` (e.g. `preload`, `partition` —
+ * legitimate per-window customizations) is ignored and never flagged.
  *
  * @param {object} candidatePrefs webPreferences about to be used for a new window
  * @param {object} referencePrefs the known-secure baseline to compare against
  *   (e.g. a fresh hardenWebPreferencesDefaults() call with no overrides)
  * @returns {{ok:true}|{ok:false,error:string}} error names the first
- *   violated key found, in the fixed key order above
+ *   violated key found, in `hardenWebPreferencesDefaults()`'s key order
  *
  * NOTE: a key is only enforced when `referencePrefs` itself already holds
  * the secure value for that key. This does NOT flag a caller who passes an
@@ -356,9 +347,10 @@ const SECURE_WEBPREFERENCES_DIRECTION = {
 function assertWebPreferencesNotWeaker(candidatePrefs, referencePrefs) {
   const candidate = candidatePrefs || {};
   const reference = referencePrefs || {};
+  const secureDefaults = hardenWebPreferencesDefaults();
 
-  for (const key of Object.keys(SECURE_WEBPREFERENCES_DIRECTION)) {
-    const secureValue = SECURE_WEBPREFERENCES_DIRECTION[key];
+  for (const key of Object.keys(secureDefaults)) {
+    const secureValue = secureDefaults[key];
     const referenceIsSecure = reference[key] === secureValue;
     if (!referenceIsSecure) continue; // reference itself isn't secure on this key; nothing to enforce
 
