@@ -5,8 +5,8 @@
 // ============================================================
 
 const { net } = require('electron');
-const { getLocalDb, replaceTable, deltaSync, getSyncMeta, getConfig, setConfig,
-        getPendingQueue, markQueueItem, getQueueDepth } = require('./localDb');
+const { getLocalDb, replaceTable, replaceUsersTable, deltaSync, getSyncMeta, getConfig, setConfig,
+        getPendingQueue, markQueueItem, getQueueDepth, wipeMirroredCacheTables } = require('./localDb');
 
 let serverUrl = '';
 let mainWindow = null;
@@ -14,9 +14,15 @@ let pullTimers = {};
 let isSyncing = false;
 let syncStartedAt = null;  // timestamp when sync started — for stale lock detection
 let lastPushAt = null;
+let isPaused = false;
 const SYNC_LOCK_TIMEOUT = 60_000; // 60s — if sync is still locked after this, force-release
 
 // ─── Pull Sync Intervals (ms) ───────────────────────────────
+// This object's keys are also the single source of truth for which tables
+// count as "mirrored/reference cache" — forceFullResync() below passes
+// Object.keys(PULL_INTERVALS) to localDb.js's wipeMirroredCacheTables()
+// rather than that function owning its own duplicate table list, since
+// localDb.js has no import of syncManager.js (avoiding a circular require).
 const PULL_INTERVALS = {
   users:              300_000,  // 5 min (reference)
   clients:            300_000,  // 5 min (reference)
@@ -85,7 +91,18 @@ function releaseSyncLock() {
   syncStartedAt = null;
 }
 
+function pauseSync() {
+  isPaused = true;
+  console.log('[SYNC] Paused');
+}
+
+function resumeSync() {
+  isPaused = false;
+  console.log('[SYNC] Resumed');
+}
+
 async function pullAll() {
+  if (isPaused) return;
   if (!acquireSyncLock()) return;
 
   try {
@@ -105,7 +122,44 @@ async function pullAll() {
   }
 }
 
+/**
+ * Destructively wipes the local mirrored/reference cache tables (exactly
+ * PULL_INTERVALS's keys — never sync_queue or gps_breadcrumbs, which hold
+ * local unsynced writes) and their sync_metadata bookkeeping, then does a
+ * full pullAll() to repopulate from the server. Used when the local cache
+ * is suspected corrupt/stale beyond what incremental pulls can repair.
+ *
+ * pullAll() already handles the sync-lock/progress-emit cycle and swallows
+ * its own per-table pull failures, so it doesn't normally throw — the
+ * try/catch here is defensive in case it (or the wipe) ever does.
+ *
+ * Bails out FIRST (before the wipe ever runs) if sync is currently paused.
+ * pullAll()'s own `if (isPaused) return;` guard only protects the repopulate
+ * half of this sequence — without a matching check here, a paused call would
+ * still genuinely wipe every mirrored/reference table (including `users`,
+ * which backs offline PIN auth), then have pullAll() no-op immediately, and
+ * still report {ok:true} — leaving the offline read cache empty while
+ * claiming success. Checking (and bailing) before the wipe respects the
+ * operator's explicit intent to pause (e.g. on a metered connection) instead
+ * of silently emptying the cache or burning bandwidth against their wishes.
+ */
+async function forceFullResync() {
+  if (isPaused) {
+    return { ok: false, error: 'cannot force a full resync while sync is paused — resume sync first' };
+  }
+
+  try {
+    wipeMirroredCacheTables(Object.keys(PULL_INTERVALS));
+    await pullAll();
+    return { ok: true };
+  } catch (err) {
+    console.error('[SYNC] Force full resync failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
 async function pushAll() {
+  if (isPaused) return;
   if (!acquireSyncLock()) return;
 
   try {
@@ -171,6 +225,7 @@ async function pushAll() {
           }
         }
       } catch (err) {
+        setConfig('last_sync_error', JSON.stringify({ message: err.message, at: new Date().toISOString() }));
         console.error('[SYNC] Batch push failed:', err.message);
         for (const item of batch) {
           markQueueItem(item.id, 'pending', null, err.message);
@@ -194,7 +249,42 @@ async function pushAll() {
 
 // ─── Internal Helpers ────────────────────────────────────────
 
+/**
+ * Applies a batch of pulled rows to the local mirror for `table`, choosing
+ * the correct write strategy. Extracted from pullTable() below so the
+ * dispatch logic (which table takes which local-write path) is testable in
+ * isolation, without a live network call — pullTable() itself is otherwise
+ * all network/timer plumbing.
+ *
+ * 'users' gets its own full-replace path (replaceUsersTable) instead of the
+ * generic replaceTable(), so the cached password_hash is encrypted via
+ * safeStorage before it touches disk (see localDb.js's
+ * upsertUserWithEncryptedHash — built by Group H, wired in here by Group C
+ * Task 10).
+ *
+ * Note: 'users' is a REFERENCE_TABLE, and pullTable() always sends
+ * `since: null` for reference tables. The server's /api/offline/sync/pull
+ * handler (src/routes/offline.ts) returns `fullReplace: since === null` —
+ * so a reference-table pull is *structurally* guaranteed to always report
+ * fullReplace === true. That means 'users' can only ever reach the
+ * `fullReplace` branch here, never the `deltaSync` branch below — deltaSync
+ * intentionally has no 'users'-specific handling, since that path can't be
+ * reached for it.
+ */
+function applyPulledRows(table, rows, fullReplace) {
+  if (fullReplace) {
+    if (table === 'users') {
+      replaceUsersTable(rows);
+    } else {
+      replaceTable(table, rows);
+    }
+  } else {
+    deltaSync(table, rows);
+  }
+}
+
 async function pullTable(table) {
+  if (isPaused) return;
   const meta = getSyncMeta(table);
   const isReference = REFERENCE_TABLES.includes(table);
 
@@ -214,20 +304,18 @@ async function pullTable(table) {
 
     if (response.rows.length === 0) return;
 
-    if (response.fullReplace) {
-      replaceTable(table, response.rows);
-    } else {
-      deltaSync(table, response.rows);
-    }
+    applyPulledRows(table, response.rows, response.fullReplace);
 
     console.log(`[SYNC] Pulled ${response.rows.length} rows for ${table}`);
   } catch (err) {
+    setConfig('last_sync_error', JSON.stringify({ message: err.message, at: new Date().toISOString() }));
     // Silently fail — will retry on next interval
     console.warn(`[SYNC] Pull ${table} failed:`, err.message);
   }
 }
 
 async function pullSecrets() {
+  if (isPaused) return;
   try {
     const db = getLocalDb();
     const cachedRole = getConfig('current_user_role');
@@ -418,6 +506,12 @@ module.exports = {
   stopPullSchedule,
   pullAll,
   pushAll,
+  forceFullResync,
+  pauseSync,
+  resumeSync,
+  applyPulledRows,
+  pullSecrets,
   get isSyncing() { return isSyncing; },
   get lastPushAt() { return lastPushAt; },
+  get isPaused() { return isPaused; },
 };

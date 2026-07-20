@@ -372,6 +372,27 @@ function replaceTable(tableName, rows) {
   tx();
 }
 
+// ─── Helper: Full-replace the users table (encrypted password_hash) ─
+// Same transactional shape as replaceTable() above, but for the 'users'
+// table specifically: each row goes through upsertUserWithEncryptedHash()
+// instead of the generic upsertRow(), so the cached password_hash is
+// encrypted via safeStorage before it ever touches disk. syncManager.js's
+// pullTable() calls this instead of replaceTable('users', rows) — see its
+// applyPulledRows() helper for the dispatch (Group C Task 10; closes a gap
+// left by Group H, which built upsertUserWithEncryptedHash() but never
+// wired it into the sync pull path).
+
+function replaceUsersTable(rows) {
+  const tx = db.transaction(() => {
+    db.prepare(`DELETE FROM users`).run();
+    for (const row of rows) {
+      upsertUserWithEncryptedHash(row);
+    }
+    updateSyncMeta('users', rows.length);
+  });
+  tx();
+}
+
 // ─── Helper: Delta-upsert operational data ───────────────────
 // Only updates rows that are NOT dirty locally (local writes take precedence)
 
@@ -438,6 +459,23 @@ function setConfig(key, value) {
   `).run(key, value, new Date().toISOString());
 }
 
+/**
+ * Reads the most recent sync error (written by syncManager.js's pullTable/
+ * pushAll catch blocks) for the diagnostics UI. Returns null if no sync
+ * error has ever been recorded, or if the stored value is somehow malformed
+ * JSON (defensive — this plan controls the only writer, but a corrupted
+ * local_config row shouldn't throw and crash the diagnostics UI).
+ */
+function getLastSyncError() {
+  const raw = getConfig('last_sync_error');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 // ─── Sync Queue ──────────────────────────────────────────────
 
 function enqueue(method, endpoint, body, localId, tableName) {
@@ -465,6 +503,214 @@ function getQueueDepth() {
   return db.prepare(`SELECT COUNT(*) as c FROM sync_queue WHERE status = 'pending'`).get().c;
 }
 
+/**
+ * Returns per-item detail for the sync queue's pending + failed rows (for
+ * diagnostics UI), ordered so the most-retried (most likely stuck) items
+ * surface first. Unlike getPendingQueue() (pending only, replay payload),
+ * this also surfaces 'failed' rows and only the fields relevant to a
+ * human-readable status display.
+ */
+function getSyncQueueDetail(limit = 100) {
+  const rows = db.prepare(
+    `SELECT id, table_name, method, attempts, error FROM sync_queue WHERE status IN ('pending', 'failed') ORDER BY attempts DESC, created_at ASC LIMIT ?`
+  ).all(limit);
+  return rows.map((row) => ({
+    id: row.id,
+    table: row.table_name,
+    action: row.method,
+    failCount: row.attempts,
+    lastError: row.error,
+  }));
+}
+
+/**
+ * Resets a single sync_queue row back to a fresh 'pending' state so it will
+ * be replayed on the next sync cycle. Performs its own existence check —
+ * ipcGuard's validateSyncQueueIdInput() only validates shape (positive
+ * integer), per its own doc comment ("no existence check — that's deferred
+ * to the handler itself"); this function is that handler-side check.
+ * Resets attempts/error too (not just status) so a fresh retry doesn't
+ * immediately look like it already failed several times.
+ */
+function retrySyncQueueItem(id) {
+  const existing = db.prepare('SELECT id FROM sync_queue WHERE id = ?').get(id);
+  if (!existing) {
+    return { ok: false, error: 'no sync queue item with that id' };
+  }
+  db.prepare(`
+    UPDATE sync_queue
+    SET status = 'pending', attempts = 0, error = NULL
+    WHERE id = ?
+  `).run(id);
+  return { ok: true };
+}
+
+/**
+ * Bulk-clears every 'failed' sync_queue row (e.g. after an operator has
+ * reviewed and given up on retrying them via the diagnostics UI). Returns
+ * the actual number of rows removed via better-sqlite3's `.run().changes`,
+ * not a re-query — cheaper and immune to a race with a concurrent insert.
+ */
+function clearFailedSyncItems() {
+  const result = db.prepare(`DELETE FROM sync_queue WHERE status = 'failed'`).run();
+  return { cleared: result.changes };
+}
+
+// ─── Force Full Resync (destructive mirrored-cache wipe) ─────
+
+/**
+ * Deletes every row from each given mirrored/reference cache table (the
+ * tables pullTable()/replaceTable() in syncManager.js populate FROM the
+ * server) plus that table's sync_metadata bookkeeping row, so the next
+ * pull has no last_pull_at to diff against and is treated as a full pull.
+ *
+ * The table list is intentionally a caller-supplied parameter rather than
+ * a constant duplicated/owned here: syncManager.js's PULL_INTERVALS object
+ * is the single source of truth for which tables count as "mirrored cache"
+ * (see its keys), and syncManager.js already requires FROM localDb.js —
+ * localDb.js importing back from syncManager.js would create a circular
+ * require. The caller (syncManager.js's forceFullResync()) passes
+ * Object.keys(PULL_INTERVALS).
+ *
+ * Table names are NEVER accepted from renderer/IPC input here — this only
+ * runs against the trusted, code-defined PULL_INTERVALS key list, so the
+ * `DELETE FROM ${table}` string interpolation is safe (not the same risk
+ * class as a renderer-supplied table name).
+ *
+ * Deliberately does NOT touch sync_queue (locally-created writes not yet
+ * pushed to the server) or gps_breadcrumbs (same reasoning) — those hold
+ * real officer work that hasn't synced yet, and wiping them would silently
+ * destroy it. This function only ever gets a mirrored-cache table list.
+ */
+function wipeMirroredCacheTables(tableNames) {
+  const tx = db.transaction(() => {
+    for (const table of tableNames) {
+      db.exec(`DELETE FROM ${table}`);
+      db.prepare('DELETE FROM sync_metadata WHERE table_name = ?').run(table);
+    }
+  });
+  tx();
+}
+
+// ─── Local Cache Stats (read-only reporting) ──────────────────
+
+/**
+ * The mirrored/reference cache table list, duplicated here from
+ * syncManager.js's PULL_INTERVALS keys rather than imported from it.
+ *
+ * Design note (Task 7): getLocalCacheStats() below is called from a
+ * guardedHandle('sync:cache-stats', ...) IPC handler in main.js that's
+ * meant to work for an offline-status panel — i.e. it must return something
+ * useful even when the app has never come online this session. main.js's
+ * `syncManager` module reference is lazily assigned (`let syncManager =
+ * null`, only `require('./syncManager')`'d after connectivity resolves —
+ * see main.js's "Initialize offline modules" block), so a handler that
+ * needs to work while offline cannot read PULL_INTERVALS off of that
+ * lazy reference.
+ *
+ * Requiring './syncManager' unconditionally at the top of main.js (bypassing
+ * the lazy `let syncManager` variable) was considered and rejected:
+ * syncManager.js itself does `require('./localDb')` at its own top level
+ * (unconditionally), and localDb.js does `require('better-sqlite3')`
+ * unconditionally at ITS top level — which is exactly the native-module
+ * load failure main.js's existing `let initLocalDb, ... ; try { ... } catch`
+ * block around `require('./localDb')` exists to survive gracefully (see
+ * that comment further up in main.js). Requiring syncManager.js from a new
+ * unconditional top-level require in main.js would reintroduce that same
+ * crash-before-splash risk (or require duplicating the try/catch and its
+ * stub-fallback plumbing) for the sole purpose of reading one constant.
+ *
+ * So: this constant is localDb.js's own copy, matching PULL_INTERVALS'
+ * keys as of this writing (users, clients, properties, units,
+ * calls_for_service, incidents, time_entries, persons, vehicles_records).
+ * localDb.js cannot import FROM syncManager.js either way — syncManager.js
+ * already imports FROM localDb.js, so the reverse would be a circular
+ * require (the same constraint wipeMirroredCacheTables() above documents).
+ *
+ * ⚠️ Keep in sync with syncManager.js's PULL_INTERVALS by hand — there is
+ * no automated check tying these two lists together. If a mirrored table
+ * is added/removed there, update this list too.
+ */
+const MIRRORED_CACHE_TABLE_NAMES = [
+  'users',
+  'clients',
+  'properties',
+  'units',
+  'calls_for_service',
+  'incidents',
+  'time_entries',
+  'persons',
+  'vehicles_records',
+];
+
+/**
+ * Read-only per-table row-count + on-disk-byte-size report for the local
+ * SQLite cache, intended for an offline-status/diagnostics panel.
+ *
+ * Unlike wipeMirroredCacheTables() (mirrored cache tables only, by design —
+ * see its doc comment), this ALSO reports 'sync_queue' and
+ * 'gps_breadcrumbs': those hold real not-yet-pushed officer work rather
+ * than mirrored server data, but an operator looking at "how much local
+ * data do I have / how much is pending" reasonably wants to see queue size
+ * too. This is purely additive to the report — it does not change what
+ * wipeMirroredCacheTables() wipes, and this function never deletes anything.
+ *
+ * `bytes` comes from SQLite's `dbstat` virtual table, a compile-time option
+ * that may not be present in every better-sqlite3 build. If that query
+ * throws, `bytes` is reported as null for that table rather than a
+ * fabricated estimate.
+ *
+ * Table names here are always from the trusted, code-defined lists above
+ * (never renderer/IPC input), so the `FROM ${table}` string interpolation
+ * is safe — same reasoning as wipeMirroredCacheTables().
+ */
+function getLocalCacheStats() {
+  const tables = [...MIRRORED_CACHE_TABLE_NAMES, 'sync_queue', 'gps_breadcrumbs'];
+  return tables.map((table) => {
+    const rows = db.prepare(`SELECT COUNT(*) as c FROM ${table}`).get().c;
+    let bytes;
+    try {
+      bytes = db.prepare('SELECT SUM(pgsize) as b FROM dbstat WHERE name = ?').get(table)?.b ?? null;
+    } catch {
+      bytes = null;
+    }
+    return { table, rows, bytes };
+  });
+}
+
+/**
+ * Clear a single mirrored cache table, by name, on demand from a
+ * renderer/IPC-originated diagnostics action (e.g. "clear cache for just
+ * this table" in an offline-status panel), as opposed to
+ * wipeMirroredCacheTables() above (code-driven, always the full trusted
+ * list — see forceFullResync() in syncManager.js).
+ *
+ * ⚠️ SECURITY: unlike every other `${table}`-interpolating function in this
+ * file, `table` here originates directly from renderer/IPC input (see
+ * main.js's `guardedHandle('sync:clear-cache', (event, table) =>
+ * clearLocalCache(table))`), not from a trusted, code-defined list. It MUST
+ * be validated against MIRRORED_CACHE_TABLE_NAMES BEFORE it ever reaches a
+ * SQL string — a crafted table name (e.g. 'sqlite_master', or
+ * "users; DROP TABLE users;--") must be rejected outright rather than
+ * interpolated. This is the same SQL-injection-via-identifier discipline
+ * syncManager.js's ALLOWED_SYNC_TABLES check already applies before its
+ * `UPDATE ${item.table_name}` call.
+ *
+ * better-sqlite3 has no parameterized-identifier support (bind params only
+ * work for values, never table/column names), so an allowlist check is the
+ * only defense here — there is no query-builder escaping to fall back on.
+ */
+function clearLocalCache(table) {
+  if (!MIRRORED_CACHE_TABLE_NAMES.includes(table)) {
+    return { ok: false, error: 'unknown or non-clearable table' };
+  }
+  db.transaction(() => {
+    db.exec(`DELETE FROM ${table}`);
+    db.prepare('DELETE FROM sync_metadata WHERE table_name = ?').run(table);
+  })();
+  return { ok: true };
+}
+
 module.exports = {
   initLocalDb,
   getLocalDb,
@@ -472,14 +718,23 @@ module.exports = {
   closeLocalDb,
   upsertRow,
   replaceTable,
+  replaceUsersTable,
   deltaSync,
   upsertUserWithEncryptedHash,
   getSyncMeta,
   updateSyncMeta,
   getConfig,
   setConfig,
+  getLastSyncError,
   enqueue,
   getPendingQueue,
   markQueueItem,
   getQueueDepth,
+  getSyncQueueDetail,
+  retrySyncQueueItem,
+  clearFailedSyncItems,
+  wipeMirroredCacheTables,
+  getLocalCacheStats,
+  clearLocalCache,
+  MIRRORED_CACHE_TABLE_NAMES,
 };

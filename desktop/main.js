@@ -24,9 +24,9 @@ const fs = require('fs');
 // eagerly requiring it crashes the entire app before the splash even
 // shows. Load lazily so the app can start with offline support
 // gracefully disabled.
-let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta;
+let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, getLastSyncError, getLocalCacheStats, clearLocalCache;
 try {
-  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb'));
+  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, getLastSyncError, getLocalCacheStats, clearLocalCache } = require('./localDb'));
 } catch (err) {
   console.error('[APP] Failed to load localDb (better-sqlite3 native module):', err.message);
   console.error('[APP] Offline support will be disabled this session.');
@@ -39,6 +39,12 @@ try {
   setConfig = () => {};
   getQueueDepth = () => 0;
   getSyncMeta = () => null;
+  getSyncQueueDetail = () => [];
+  retrySyncQueueItem = () => ({ ok: false, error: 'local DB unavailable' });
+  clearFailedSyncItems = () => ({ cleared: 0 });
+  getLastSyncError = () => null;
+  getLocalCacheStats = () => [];
+  clearLocalCache = () => ({ ok: false, error: 'local DB unavailable' });
 }
 
 const { ConnectivityMonitor } = require('./connectivityMonitor');
@@ -2875,6 +2881,70 @@ guardedHandle('offline:trigger-sync', async () => {
     console.error('[OFFLINE:TRIGGER-SYNC] Error:', err.message);
     return { success: false, error: err.message };
   }
+});
+
+// Pause background sync (pull timers + pullAll/pushAll become no-ops)
+guardedHandle('sync:pause', () => {
+  if (syncManager) syncManager.pauseSync();
+});
+
+// Resume background sync
+guardedHandle('sync:resume', () => {
+  if (syncManager) syncManager.resumeSync();
+});
+
+// Per-item sync queue detail (pending + failed rows) for diagnostics UI
+guardedHandle('sync:queue-detail', () => getSyncQueueDetail());
+
+// Get current write queue size
+guardedHandle('sync:write-queue-size', () => getQueueDepth());
+
+// Reset a single sync_queue item back to pending so it replays on the next sync cycle
+guardedHandle('sync:retry-item', (event, id) => {
+  const idCheck = validateSyncQueueIdInput(id);
+  if (!idCheck.ok) return { ok: false, error: idCheck.error };
+  return retrySyncQueueItem(id);
+});
+
+// Bulk-clear every 'failed' sync_queue row (diagnostics UI "clear failed" action)
+guardedHandle('sync:clear-failed', () => clearFailedSyncItems());
+
+// Most recent sync error (pullTable/pushAll failure), for diagnostics UI
+guardedHandle('sync:last-error', () => getLastSyncError());
+
+// Read-only per-table row-count + on-disk-size report for the local SQLite
+// cache (offline-status panel). Works even when syncManager is still null
+// (not yet online this session) — see getLocalCacheStats()'s doc comment
+// in localDb.js for why it doesn't depend on syncManager's PULL_INTERVALS.
+guardedHandle('sync:cache-stats', () => getLocalCacheStats());
+
+// Destructive (single table): clears one mirrored cache table + its
+// sync_metadata row, from the diagnostics UI. `table` comes directly from
+// renderer/IPC input, so the allowlist check against
+// MIRRORED_CACHE_TABLE_NAMES happens inside clearLocalCache() itself,
+// before any SQL string is built — see that function's doc comment in
+// localDb.js for the SQL-injection-via-identifier reasoning.
+guardedHandle('sync:clear-cache', (event, table) => clearLocalCache(table));
+
+// Destructive: wipes the mirrored/reference cache tables (never sync_queue
+// or gps_breadcrumbs) and does a full re-pull from the server. Diagnostics
+// UI "force full resync" action.
+//
+// Requires live connectivity, checked here (not inside syncManager, which
+// has no connectivityMonitor dependency). syncManager.forceFullResync()
+// already refuses while paused, but pullAll()'s per-table pullTable() calls
+// only console.warn on fetch failure — they never throw — so pullAll()
+// resolves cleanly even when every pull silently failed. Offline, that
+// would let forceFullResync() wipe the cache (including `users`, which
+// backs offline PIN auth) and report {ok:true} with nothing repopulated.
+// Checking connectivity before ever calling into syncManager keeps the
+// wipe from running at all in that case.
+guardedHandle('sync:force-full', async () => {
+  if (!syncManager) return { ok: false, error: 'sync not initialized' };
+  if (!connectivityMonitor?.isOnline) {
+    return { ok: false, error: 'cannot force a full resync while offline' };
+  }
+  return syncManager.forceFullResync();
 });
 
 // Get locally cached user for offline authentication

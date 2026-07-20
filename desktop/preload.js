@@ -198,6 +198,38 @@ contextBridge.exposeInMainWorld('electron', {
   // Force an immediate sync cycle
   triggerSync: () => ipcRenderer.invoke('offline:trigger-sync'),
 
+  // ─── Sync Pause/Resume ──────────────────────────────────
+  pauseSync: () => ipcRenderer.invoke('sync:pause'),
+  resumeSync: () => ipcRenderer.invoke('sync:resume'),
+
+  // Per-item sync queue detail (pending + failed rows) for diagnostics UI
+  getSyncQueueDetail: () => ipcRenderer.invoke('sync:queue-detail'),
+
+  // Get current write queue size
+  getOfflineWriteQueueSize: () => ipcRenderer.invoke('sync:write-queue-size'),
+
+  // Reset a single failed/stuck sync queue item back to pending
+  retryFailedSyncItem: (id) => ipcRenderer.invoke('sync:retry-item', id),
+
+  // Bulk-clear every failed sync queue item
+  clearFailedSyncItems: () => ipcRenderer.invoke('sync:clear-failed'),
+
+  // Most recent sync error, for diagnostics UI
+  getLastSyncError: () => ipcRenderer.invoke('sync:last-error'),
+
+  // Read-only per-table local cache stats ({table, rows, bytes}[]), for
+  // an offline-status/diagnostics panel
+  getLocalCacheStats: () => ipcRenderer.invoke('sync:cache-stats'),
+
+  // Destructive (single table): clear one mirrored cache table + its
+  // sync_metadata row. `table` is validated against the server-side
+  // allowlist in clearLocalCache() before any SQL runs.
+  clearLocalCache: (table) => ipcRenderer.invoke('sync:clear-cache', table),
+
+  // Destructive: wipe the mirrored/reference cache tables and re-pull
+  // everything fresh from the server (never touches sync_queue/gps_breadcrumbs)
+  forceFullResync: () => ipcRenderer.invoke('sync:force-full'),
+
   // Get locally cached user for offline auth
   getCachedUser: (username) =>
     ipcRenderer.invoke('offline:get-cached-user', { username }),
