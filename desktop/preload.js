@@ -206,6 +206,15 @@ contextBridge.exposeInMainWorld('electron', {
   // Force clear all caches and reload (for update propagation)
   forceRefresh: () => ipcRenderer.invoke('app:force-refresh'),
 
+  // ─── Auth Session Bridge ────────────────────────────────
+  // Called by AuthContext.tsx right after login/2FA/token-refresh so the
+  // main process can cache the session (auth_token, refresh_token,
+  // current_user_id, current_user_role) for offline mode and PIN sessions.
+  // See main.js's 'auth:store-session' handler for what gets derived from
+  // the token and why this is the only place these keys are ever written.
+  storeAuthSession: (token, refreshToken) =>
+    ipcRenderer.invoke('auth:store-session', { token, refreshToken }),
+
   // ─── Offline Mode API ──────────────────────────────────
   // Route an API request through the local SQLite database
   localApi: (method, path, body) =>
