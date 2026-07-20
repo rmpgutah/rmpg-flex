@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { LayoutDashboard, Map as MapIcon, Package } from 'lucide-react';
+import { LayoutDashboard, Map as MapIcon, Package, Radio } from 'lucide-react';
 import DesktopIconGrid from './DesktopIconGrid';
 import { DesktopWindowManagerProvider, useDesktopWindows, type DesktopWindowState } from './DesktopWindowManager';
 import type { NavFunction } from '../../data/navCatalog';
+import { isAppPinned } from '../../utils/taskbarPreferences';
 
 // `vi.mock` factories are hoisted above all other module-level code, including
 // `const` declarations further down this file. A spy referenced by the factory
@@ -183,5 +184,29 @@ describe('DesktopIconGrid — icon size + list view', () => {
     );
     const button = screen.getByText('Dispatch').closest('button')!;
     expect(button).not.toHaveStyle({ position: 'absolute' });
+  });
+});
+
+describe('DesktopIconGrid — Pin to Taskbar', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('right-clicking an icon offers "Pin to Taskbar" when unpinned, and pinning toggles it to "Unpin from Taskbar"', () => {
+    render(
+      <MemoryRouter><DesktopWindowManagerProvider>
+        <DesktopIconGrid
+          icons={[{ path: '/dispatch', label: 'Dispatch', icon: Radio, description: 'd' }]}
+          positions={{}} onReposition={() => {}} onUnpin={() => {}}
+          groups={[]} onCreateGroup={() => {}} onUngroup={() => {}}
+          iconSize="medium" viewMode="grid"
+        />
+      </DesktopWindowManagerProvider></MemoryRouter>
+    );
+    fireEvent.contextMenu(screen.getByText('Dispatch'));
+    expect(screen.getByText('Pin to Taskbar')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Pin to Taskbar'));
+    expect(isAppPinned('/dispatch')).toBe(true);
+
+    fireEvent.contextMenu(screen.getByText('Dispatch'));
+    expect(screen.getByText('Unpin from Taskbar')).toBeInTheDocument();
   });
 });
