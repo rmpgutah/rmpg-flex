@@ -181,6 +181,7 @@ const AccreditationPage = lazyRetry(() => import('./pages/AccreditationPage'));
 const RecruitmentPage = lazyRetry(() => import('./pages/RecruitmentPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
+const CompanyBrowserPage = lazyRetry(() => import('./pages/CompanyBrowserPage'));
 const CourtRecordsPage = lazyRetry(() => import('./pages/CourtRecordsPage'));
 const DashCamDetailPage = lazyRetry(() => import('./pages/DashCamDetailPage'));
 const FlexCamPage = lazyRetry(() => import('./pages/FlexCamPage'));
@@ -506,6 +507,7 @@ function AppRoutes() {
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
           <Route path="/detached/record/:type/:id" element={<ProtectedRoute><RouteErrorBoundary><RecordDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
+          <Route path="/desktop-company-browser" element={<ProtectedRoute><RouteErrorBoundary><CompanyBrowserPage /></RouteErrorBoundary></ProtectedRoute>} />
 
           {/* Authenticated app shell. The pathless parent route hosts ONE
               app-wide NavTripProvider so vehicle trip detection + live movement
