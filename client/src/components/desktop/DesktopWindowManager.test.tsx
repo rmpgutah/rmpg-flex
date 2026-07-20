@@ -53,10 +53,10 @@ describe('DesktopWindowManager', () => {
     });
   });
 
-  it('opens a window at the requested size, defaulting to 900x640 when no size is given', () => {
+  it('opens a window at the requested size, defaulting to 1050x800 when no size is given', () => {
     render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
     act(() => screen.getByText('open-dispatch').click());
-    expect(screen.getByText(/^Dispatch-.*-900x640$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Dispatch-.*-1050x800$/)).toBeInTheDocument();
     act(() => screen.getByText('open-records-sized').click());
     expect(screen.getByText(/^Records-.*-1100x850$/)).toBeInTheDocument();
   });

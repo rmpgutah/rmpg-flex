@@ -121,7 +121,7 @@ describe('DesktopIconGrid — v1 launcher behavior (restored coverage)', () => {
     navigateSpy.mockClear();
   });
 
-  it('clicking a POPOUT_PAGES-eligible icon opens an in-page window, not SPA navigation', () => {
+  it('clicking a windowable icon opens an in-page window, not SPA navigation', () => {
     const { getWindows } = renderRestoredGrid();
     fireEvent.click(screen.getByText('Dispatch Console'));
     expect(getWindows().length).toBe(1);

@@ -100,7 +100,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
           <iframe
             title={win.title}
             src={win.path}
-            allow="microphone; fullscreen"
+            allow="microphone; camera; fullscreen"
             style={{ width: '100%', height: `calc(100% - ${TITLE_BAR_HEIGHT}px)`, border: 'none' }}
           />
           {!win.maximized && (

@@ -84,7 +84,7 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
       id: `win_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       path, title,
       x: 80 + offset, y: 60 + offset,
-      width: size?.width ?? 900, height: size?.height ?? 640,
+      width: size?.width ?? 1050, height: size?.height ?? 800,
       zIndex: nextZIndex, minimized: false, maximized: false,
     };
     commit([...prev, win]);
