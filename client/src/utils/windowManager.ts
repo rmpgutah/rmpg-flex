@@ -4,6 +4,7 @@
 // ============================================================
 
 import { NAV_CATEGORIES, type NavFunction } from '../data/navCatalog';
+import { getSecondaryScreenBounds } from './multiMonitor';
 
 const ALL_NAV_FUNCTIONS: NavFunction[] = NAV_CATEGORIES.flatMap(cat => cat.functions);
 const NAV_FUNCTION_BY_PATH: Record<string, NavFunction> = Object.fromEntries(
@@ -36,6 +37,10 @@ export function isWindowablePath(path: string): boolean {
   return getWindowConfigByPath(path) !== null;
 }
 
+export function getWindowIconByPath(path: string): NavFunction['icon'] | undefined {
+  return NAV_FUNCTION_BY_PATH[path]?.icon;
+}
+
 /** Shared activation logic for desktop icon clicks and taskbar search results: open a
  *  floating window for windowable pages, otherwise fall back to a normal SPA navigate(). */
 export function activateNavFunction(
@@ -54,8 +59,13 @@ export function activateNavFunction(
 }
 
 function openDetachedWindow(path: string, title: string, width = 1100, height = 850) {
-  const left = Math.round((window.screen.width - width) / 2);
-  const top = Math.round((window.screen.height - height) / 2);
+  const secondary = getSecondaryScreenBounds();
+  const left = secondary
+    ? Math.round(secondary.left + (secondary.width - width) / 2)
+    : Math.round((window.screen.width - width) / 2);
+  const top = secondary
+    ? Math.round(secondary.top + (secondary.height - height) / 2)
+    : Math.round((window.screen.height - height) / 2);
 
   const features = [
     `width=${width}`,

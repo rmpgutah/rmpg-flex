@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { getSavedPosition, saveWindowPosition } from '../../utils/desktopWindowPositions';
 
 export interface DesktopWindowState {
   id: string;
@@ -11,6 +12,8 @@ export interface DesktopWindowState {
   zIndex: number;
   minimized: boolean;
   maximized: boolean;
+  alwaysOnTop: boolean;
+  opacity: number;
 }
 
 interface DesktopWindowManagerContextValue {
@@ -21,13 +24,24 @@ interface DesktopWindowManagerContextValue {
   focusWindow: (id: string) => void;
   minimizeWindow: (id: string) => void;
   toggleMaximize: (id: string) => void;
-  moveResize: (id: string, patch: Partial<Pick<DesktopWindowState, 'x' | 'y' | 'width' | 'height'>>) => void;
+  moveResize: (id: string, patch: Partial<Pick<DesktopWindowState, 'x' | 'y' | 'width' | 'height'>>, options?: { persist?: boolean }) => void;
   /** Updates a window's display title only — never its path/iframe src. See FloatingWindow.tsx's title-sync effect for why those must stay decoupled. */
   updateWindowTitle: (id: string, title: string) => void;
+  /** Minimizes every currently non-minimized window and returns the ids it touched, so a caller can later restore exactly those and leave anything the user had already minimized alone. */
+  minimizeAll: () => string[];
+  restoreAll: (ids: string[]) => void;
+  toggleAlwaysOnTop: (id: string) => void;
+  setWindowOpacity: (id: string, opacity: number) => void;
 }
 
 const SESSION_KEY = 'rmpg_desktop_windows';
 const MAX_OPEN_WINDOWS = 10;
+const MIN_WINDOW_OPACITY = 0.3;
+const MAX_WINDOW_OPACITY = 1;
+
+function clampOpacity(value: number): number {
+  return Math.max(MIN_WINDOW_OPACITY, Math.min(MAX_WINDOW_OPACITY, Math.round(value * 10) / 10));
+}
 
 const DesktopWindowManagerContext = createContext<DesktopWindowManagerContextValue | null>(null);
 
@@ -82,12 +96,14 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     if (prev.length >= MAX_OPEN_WINDOWS) return false;
     nextZIndex += 1;
     const offset = prev.length * 24;
+    const saved = getSavedPosition(path);
     const win: DesktopWindowState = {
       id: `win_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       path, title,
-      x: 80 + offset, y: 60 + offset,
-      width: size?.width ?? 1050, height: size?.height ?? 800,
+      x: saved?.x ?? (80 + offset), y: saved?.y ?? (60 + offset),
+      width: saved?.width ?? size?.width ?? 1050, height: saved?.height ?? size?.height ?? 800,
       zIndex: nextZIndex, minimized: false, maximized: false,
+      alwaysOnTop: false, opacity: 1,
     };
     commit([...prev, win]);
     return true;
@@ -111,17 +127,45 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     commit(windowsRef.current.map(w => w.id === id ? { ...w, maximized: !w.maximized } : w));
   }, [commit]);
 
-  const moveResize = useCallback((id: string, patch: Partial<Pick<DesktopWindowState, 'x' | 'y' | 'width' | 'height'>>) => {
-    commit(windowsRef.current.map(w => w.id === id ? { ...w, ...patch } : w));
+  const moveResize = useCallback((id: string, patch: Partial<Pick<DesktopWindowState, 'x' | 'y' | 'width' | 'height'>>, options?: { persist?: boolean }) => {
+    const next = windowsRef.current.map(w => w.id === id ? { ...w, ...patch } : w);
+    commit(next);
+    const updated = next.find(w => w.id === id);
+    const persist = options?.persist ?? true;
+    if (updated && persist) {
+      saveWindowPosition(updated.path, { x: updated.x, y: updated.y, width: updated.width, height: updated.height });
+    }
   }, [commit]);
 
   const updateWindowTitle = useCallback((id: string, title: string) => {
     commit(windowsRef.current.map(w => w.id === id ? { ...w, title } : w));
   }, [commit]);
 
+  const minimizeAll = useCallback(() => {
+    const prev = windowsRef.current;
+    const toMinimize = prev.filter(w => !w.minimized).map(w => w.id);
+    if (toMinimize.length === 0) return [];
+    commit(prev.map(w => toMinimize.includes(w.id) ? { ...w, minimized: true } : w));
+    return toMinimize;
+  }, [commit]);
+
+  const restoreAll = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    commit(windowsRef.current.map(w => ids.includes(w.id) ? { ...w, minimized: false } : w));
+  }, [commit]);
+
+  const toggleAlwaysOnTop = useCallback((id: string) => {
+    commit(windowsRef.current.map(w => w.id === id ? { ...w, alwaysOnTop: !w.alwaysOnTop } : w));
+  }, [commit]);
+
+  const setWindowOpacity = useCallback((id: string, opacity: number) => {
+    const clamped = clampOpacity(opacity);
+    commit(windowsRef.current.map(w => w.id === id ? { ...w, opacity: clamped } : w));
+  }, [commit]);
+
   return (
     <DesktopWindowManagerContext.Provider
-      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle }}
+      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity }}
     >
       {children}
     </DesktopWindowManagerContext.Provider>

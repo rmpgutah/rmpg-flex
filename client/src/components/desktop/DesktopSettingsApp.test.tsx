@@ -89,12 +89,25 @@ describe('DesktopSettingsApp', () => {
     expect(props.onResetToDefault).toHaveBeenCalled();
   });
 
-  it('Window Management category shows a placeholder and calls no callbacks', () => {
+  it('Window Management category shows cycling info, a snap toggle, and multi-monitor status, calling no personalization callbacks', () => {
     const props = renderApp();
     fireEvent.click(screen.getByText('Window Management'));
-    expect(screen.getByText(/coming in a future phase/i)).toBeInTheDocument();
+    expect(screen.getByText(/cycle through open windows/i)).toBeInTheDocument();
+    expect(screen.getByText(/Drag a window to a screen edge/i)).toBeInTheDocument();
+    expect(screen.getByText(/not supported in this browser/i)).toBeInTheDocument();
     expect(props.onIconSizeChange).not.toHaveBeenCalled();
     expect(props.onWallpaperChange).not.toHaveBeenCalled();
+  });
+
+  it('toggling snap-to-edge persists to localStorage', () => {
+    renderApp();
+    fireEvent.click(screen.getByText('Window Management'));
+    const checkbox = screen.getByLabelText(/Drag a window to a screen edge/i) as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+    fireEvent.click(checkbox);
+    expect(checkbox.checked).toBe(false);
+    expect(localStorage.getItem('rmpg_desktop_snap_enabled')).toBe('0');
+    fireEvent.click(checkbox);
   });
 
   it('Layout & Templates category shows a placeholder', () => {

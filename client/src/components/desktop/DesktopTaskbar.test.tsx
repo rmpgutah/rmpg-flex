@@ -91,3 +91,16 @@ describe('DesktopTaskbar', () => {
     expect(addToastMock).toHaveBeenCalledWith('Close a window to open another', 'error');
   });
 });
+
+describe('DesktopTaskbar — Show Desktop', () => {
+  beforeEach(() => { sessionStorage.clear(); });
+
+  it('clicking Show Desktop minimizes every open window; clicking again restores them', () => {
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByText('simulate-open'));
+    fireEvent.click(screen.getByLabelText('Show desktop'));
+    expect(screen.getByLabelText('Show windows')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Show windows'));
+    expect(screen.getByLabelText('Show desktop')).toBeInTheDocument();
+  });
+});
