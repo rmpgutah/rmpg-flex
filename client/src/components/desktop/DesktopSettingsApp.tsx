@@ -12,6 +12,7 @@ import {
   getTaskbarPosition, setTaskbarPosition, type TaskbarPosition,
   getTaskbarSize, setTaskbarSize, type TaskbarSize,
 } from '../../utils/taskbarPreferences';
+import { exportSettings, importSettings } from '../../utils/settingsExportImport';
 
 const ALL_WIDGETS: { id: string; label: string }[] = [
   { id: 'clock', label: 'Clock & Shift' },
@@ -77,6 +78,8 @@ export default function DesktopSettingsApp({
   const [autoHide, setAutoHideState] = useState(() => isTaskbarAutoHideEnabled());
   const [taskbarPosition, setTaskbarPositionState] = useState<TaskbarPosition>(() => getTaskbarPosition());
   const [taskbarSize, setTaskbarSizeState] = useState<TaskbarSize>(() => getTaskbarSize());
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [pos, setPos] = useState(() => ({
     x: Math.max(0, (window.innerWidth - DEFAULT_WIDTH) / 2),
     y: Math.max(0, (window.innerHeight - DEFAULT_HEIGHT) / 2),
@@ -106,6 +109,25 @@ export default function DesktopSettingsApp({
     window.addEventListener('pointerup', onUp);
   }, [size.width, size.height]);
 
+  const handleExport = useCallback(() => {
+    const blob = new Blob([exportSettings()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'rmpg-desktop-settings.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const result = importSettings(text);
+    setImportMessage(result.ok ? 'Settings imported.' : (result.error ?? 'Import failed.'));
+    e.target.value = '';
+  }, []);
+
   const enabledIds = new Set(widgets.filter(w => w.on).map(w => w.id));
 
   const searchMatches = useMemo(() => {
@@ -134,6 +156,17 @@ export default function DesktopSettingsApp({
         <button type="button" aria-label="Close Settings" onClick={onClose} className="p-1 hover:bg-surface-hover">
           <X className="w-3 h-3" style={{ color: 'var(--sev-critical, var(--rmpg-400))' }} />
         </button>
+      </div>
+
+      <div className="flex items-center gap-2 px-2 py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+        <button type="button" onClick={handleExport} className="text-[10px] px-2 py-0.5" style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}>
+          Export Settings
+        </button>
+        <label className="text-[10px] px-2 py-0.5 cursor-pointer" style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}>
+          Import Settings
+          <input ref={importInputRef} type="file" accept="application/json" aria-label="Import Settings" onChange={handleImportFile} className="hidden" />
+        </label>
+        {importMessage && <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{importMessage}</span>}
       </div>
 
       <div className="flex flex-1 overflow-hidden">

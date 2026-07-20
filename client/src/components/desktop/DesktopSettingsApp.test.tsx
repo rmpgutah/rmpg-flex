@@ -184,3 +184,34 @@ describe('DesktopSettingsApp — search', () => {
     expect(screen.getByText('Taskbar')).toBeInTheDocument();
   });
 });
+
+describe('DesktopSettingsApp — export/import', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('clicking Export Settings triggers a download of the current exportSettings() output', () => {
+    localStorage.setItem('rmpg_desktop_taskbar_position', 'top');
+    const createElementSpy = vi.spyOn(document, 'createElement');
+    renderApp();
+    fireEvent.click(screen.getByText('Export Settings'));
+    const anchorCall = createElementSpy.mock.results.find(r => (r.value as HTMLElement)?.tagName === 'A');
+    expect(anchorCall).toBeTruthy();
+    createElementSpy.mockRestore();
+  });
+
+  it('importing a valid settings file writes the values back and shows a success message', async () => {
+    renderApp();
+    const file = new File([JSON.stringify({ rmpg_desktop_taskbar_position: 'top' })], 'settings.json', { type: 'application/json' });
+    const input = screen.getByLabelText('Import Settings') as HTMLInputElement;
+    await fireEvent.change(input, { target: { files: [file] } });
+    await screen.findByText(/settings imported/i);
+    expect(localStorage.getItem('rmpg_desktop_taskbar_position')).toBe('top');
+  });
+
+  it('importing a malformed file shows an error message and does not throw', async () => {
+    renderApp();
+    const file = new File(['not json'], 'bad.json', { type: 'application/json' });
+    const input = screen.getByLabelText('Import Settings') as HTMLInputElement;
+    await fireEvent.change(input, { target: { files: [file] } });
+    await screen.findByText(/not valid json/i);
+  });
+});
