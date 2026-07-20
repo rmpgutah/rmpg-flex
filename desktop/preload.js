@@ -4,6 +4,7 @@
 // ============================================================
 
 const { contextBridge, ipcRenderer } = require('electron');
+const { groupMediaDevicesByKind, filterVideoInputDevices } = require('./deviceInfo');
 
 contextBridge.exposeInMainWorld('electron', {
   // Platform info
@@ -41,6 +42,27 @@ contextBridge.exposeInMainWorld('electron', {
   printSilently: (printerName) => ipcRenderer.invoke('fs:print-silent', printerName),
   exportLocalDbBackup: () => ipcRenderer.invoke('fs:export-db-backup'),
   importLocalDbBackup: (path) => ipcRenderer.invoke('fs:import-db-backup', path),
+
+  // ─── Device & Hardware ───────────────────────────────
+  // listAudioDevices/listVideoDevices call navigator.mediaDevices directly
+  // — no IPC round-trip, no main.js handler. See Group D plan, Scope
+  // Decision #1: Electron's main process has no API for this; it's a Web
+  // Platform API only available in the renderer/preload context.
+  listSerialPorts: () => ipcRenderer.invoke('device:serial-ports'),
+  listAudioDevices: async () => groupMediaDevicesByKind(await navigator.mediaDevices.enumerateDevices()),
+  listVideoDevices: async () => filterVideoInputDevices(await navigator.mediaDevices.enumerateDevices()),
+  getBluetoothDevices: () => ipcRenderer.invoke('device:bluetooth'),
+  checkGpsHardwarePresent: () => ipcRenderer.invoke('device:gps-present'),
+  setAutoLaunch: (enabled) => ipcRenderer.invoke('device:set-auto-launch', enabled),
+  getAutoLaunchState: () => ipcRenderer.invoke('device:auto-launch-state'),
+  registerGlobalShortcut: (accelerator, actionId) => ipcRenderer.invoke('device:register-shortcut', accelerator, actionId),
+  unregisterGlobalShortcut: (accelerator) => ipcRenderer.invoke('device:unregister-shortcut', accelerator),
+  onShortcutTriggered: (callback) => {
+    const handler = (_e, actionId) => callback(actionId);
+    ipcRenderer.on('device:shortcut-triggered', handler);
+    return () => ipcRenderer.removeListener('device:shortcut-triggered', handler);
+  },
+  getDisplays: () => ipcRenderer.invoke('device:displays'),
 
   // Crash-safe printing — renders the page to PDF in Chromium and opens
   // it in macOS Preview. Replaces window.print(), whose native NSPrintPanel
