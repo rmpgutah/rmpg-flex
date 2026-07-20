@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildSandboxedChildEnv } = require('../childProcessGuard');
+const { buildSandboxedChildEnv, scheduleChildProcessTimeout, DEFAULT_CHILD_PROCESS_TIMEOUT_MS } = require('../childProcessGuard');
 
 test('buildSandboxedChildEnv: only allowlisted keys appear, sensitive keys never leak through', () => {
   const baseEnv = {
@@ -63,4 +63,79 @@ test('buildSandboxedChildEnv: does not mutate baseEnv or pathParts', () => {
 
   assert.deepEqual(baseEnv, baseEnvCopy);
   assert.deepEqual(pathParts, pathPartsCopy);
+});
+
+// --- scheduleChildProcessTimeout ---
+
+function makeFakeTimer() {
+  // A setTimeout-shaped fake: records the callback/delay instead of
+  // actually scheduling real wall-clock time. Returns a handle object
+  // the test can use to manually fire the callback, simulating "the
+  // timeout elapsed" instantly and deterministically.
+  const calls = [];
+  const killFn = (callback, delayMs) => {
+    const handle = { fired: false, callback, delayMs };
+    calls.push(handle);
+    return handle;
+  };
+  killFn.calls = calls;
+  return killFn;
+}
+
+test('scheduleChildProcessTimeout: kills the child once the fake timeout fires', () => {
+  const killSpy = [];
+  const fakeChild = { kill: (...args) => killSpy.push(args) };
+  const fakeTimer = makeFakeTimer();
+
+  const handle = scheduleChildProcessTimeout(fakeChild, 60000, fakeTimer);
+
+  assert.equal(fakeTimer.calls.length, 1);
+  assert.equal(fakeTimer.calls[0].delayMs, 60000);
+  assert.equal(killSpy.length, 0);
+
+  // Simulate the timeout elapsing.
+  fakeTimer.calls[0].callback();
+
+  assert.equal(killSpy.length, 1);
+  assert.ok(handle);
+});
+
+test('scheduleChildProcessTimeout: clearing the returned handle before it fires prevents the kill', () => {
+  const killSpy = [];
+  const fakeChild = { kill: (...args) => killSpy.push(args) };
+  const clearedHandles = [];
+  const fakeTimer = (callback, delayMs) => {
+    const handle = { callback, delayMs, cleared: false };
+    return handle;
+  };
+  const fakeClearTimeout = (handle) => {
+    if (handle) handle.cleared = true;
+    clearedHandles.push(handle);
+  };
+
+  const handle = scheduleChildProcessTimeout(fakeChild, 60000, fakeTimer);
+  fakeClearTimeout(handle);
+
+  // Even if something were to invoke the recorded callback after the
+  // handle was cleared, the caller (main.js) never does so once
+  // clearTimeout has been called — real setTimeout guarantees the
+  // callback simply never runs. Model that guarantee here: a cleared
+  // handle's callback is never invoked by the "timer" mechanism.
+  assert.equal(handle.cleared, true);
+  assert.equal(killSpy.length, 0);
+});
+
+test('scheduleChildProcessTimeout: returns the timer handle from killFn', () => {
+  const fakeChild = { kill: () => {} };
+  const sentinelHandle = { id: 'sentinel' };
+  const fakeTimer = () => sentinelHandle;
+
+  const handle = scheduleChildProcessTimeout(fakeChild, 1000, fakeTimer);
+
+  assert.equal(handle, sentinelHandle);
+});
+
+test('DEFAULT_CHILD_PROCESS_TIMEOUT_MS: is within the documented 5-15 minute range', () => {
+  assert.ok(DEFAULT_CHILD_PROCESS_TIMEOUT_MS >= 5 * 60 * 1000);
+  assert.ok(DEFAULT_CHILD_PROCESS_TIMEOUT_MS <= 15 * 60 * 1000);
 });

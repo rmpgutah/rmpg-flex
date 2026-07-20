@@ -62,6 +62,50 @@ function buildSandboxedChildEnv(baseEnv, pathParts) {
   return env;
 }
 
+/**
+ * Default hard-kill timeout for a spawned recon tool child process, in
+ * milliseconds. `recon:tool-spawn` streams a third-party CLI tool's
+ * stdout/stderr back to the renderer for the lifetime of the process —
+ * with no cap, a hung or misbehaving tool (bad flags causing an
+ * interactive prompt, a network scan against an unreachable target that
+ * never times out on its own, etc.) keeps its child process — and the
+ * renderer-visible session — alive indefinitely.
+ *
+ * Set to 10 minutes: long enough that a real nmap/sqlmap/subfinder-style
+ * scan against a normal target range has ample time to finish (these
+ * tools' own internal timeouts and typical scan scopes in this recon
+ * toolset complete in well under that), but short enough that a hung or
+ * runaway process doesn't sit around consuming resources / holding a
+ * `toolSessions` slot indefinitely. Sits in the middle of the brief's
+ * suggested 5-15 minute range rather than either edge.
+ */
+const DEFAULT_CHILD_PROCESS_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * Schedules a hard kill of `child` after `timeoutMs` if it is still
+ * running at that point. `killFn` is a `setTimeout`-shaped dependency
+ * (`killFn(callback, delayMs) -> handle`) — the real call site passes
+ * the global `setTimeout`; tests pass a fake that records the callback
+ * instead of waiting on real wall-clock time.
+ *
+ * Returns the handle `killFn` produced, so the caller can `clearTimeout`
+ * it (with the matching real `clearTimeout`) from the child's own
+ * `exit` handler — a child that exits naturally before the timeout
+ * elapses must not leave a dangling timer.
+ *
+ * @param {{kill: Function}} child - live child-process-shaped handle
+ * @param {number} timeoutMs - milliseconds to wait before killing
+ * @param {Function} killFn - setTimeout-shaped scheduler (DI)
+ * @returns {*} the timer handle returned by killFn
+ */
+function scheduleChildProcessTimeout(child, timeoutMs, killFn) {
+  return killFn(() => {
+    child.kill();
+  }, timeoutMs);
+}
+
 module.exports = {
   buildSandboxedChildEnv,
+  DEFAULT_CHILD_PROCESS_TIMEOUT_MS,
+  scheduleChildProcessTimeout,
 };

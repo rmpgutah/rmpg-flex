@@ -13,7 +13,7 @@ const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserId
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
-const { buildSandboxedChildEnv } = require('./security/childProcessGuard');
+const { buildSandboxedChildEnv, scheduleChildProcessTimeout, DEFAULT_CHILD_PROCESS_TIMEOUT_MS } = require('./security/childProcessGuard');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -2327,12 +2327,14 @@ guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
     });
     const sessionId = crypto.randomUUID();
     toolSessions.set(sessionId, child);
+    const timeoutHandle = scheduleChildProcessTimeout(child, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, setTimeout);
     const send = (kind, data) => {
       if (!event.sender.isDestroyed()) event.sender.send('recon:tool-data', { sessionId, kind, data });
     };
     child.stdout.on('data', (b) => send('stdout', b.toString('utf8')));
     child.stderr.on('data', (b) => send('stderr', b.toString('utf8')));
     child.on('exit', (code) => {
+      clearTimeout(timeoutHandle);
       toolSessions.delete(sessionId);
       if (!event.sender.isDestroyed()) event.sender.send('recon:tool-exit', { sessionId, code });
     });
