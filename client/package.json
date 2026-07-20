@@ -25,7 +25,7 @@
     "@deck.gl/core": "^9.3.6",
     "@deck.gl/layers": "^9.3.6",
     "@deck.gl/mapbox": "^9.3.6",
-    "@fullcalendar/core": "^6.1.21",
+    "@fullcalendar/core": "^7.0.1",
     "@fullcalendar/daygrid": "^6.1.21",
     "@fullcalendar/interaction": "^6.1.21",
     "@fullcalendar/react": "^6.1.21",
