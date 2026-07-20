@@ -4,6 +4,8 @@ import type { DesktopWidgetState } from '../../utils/normalizeDesktopWidgets';
 import { DESKTOP_WALLPAPERS } from '../../data/desktopWallpapers';
 import { DESKTOP_ACCENTS } from '../../data/desktopAccents';
 import { useDraggablePosition } from '../../hooks/useDraggablePosition';
+import { isSnapEnabled, setSnapEnabled } from '../../utils/snapPreference';
+import { isMultiMonitorSupported, isMultiMonitorEnabled, requestMultiMonitorAccess } from '../../utils/multiMonitor';
 
 const ALL_WIDGETS: { id: string; label: string }[] = [
   { id: 'clock', label: 'Clock & Shift' },
@@ -61,6 +63,9 @@ export default function DesktopSettingsApp({
   wallpaperId, onWallpaperChange, accentId, onAccentChange, onResetToDefault, onClose,
 }: DesktopSettingsAppProps) {
   const [activeCategory, setActiveCategory] = useState<CategoryId>('personalization');
+  const [snapEnabled, setSnapEnabledState] = useState(() => isSnapEnabled());
+  const [multiMonitorEnabled, setMultiMonitorEnabledState] = useState(() => isMultiMonitorEnabled());
+  const multiMonitorSupported = isMultiMonitorSupported();
   const [pos, setPos] = useState(() => ({
     x: Math.max(0, (window.innerWidth - DEFAULT_WIDTH) / 2),
     y: Math.max(0, (window.innerHeight - DEFAULT_HEIGHT) / 2),
@@ -218,8 +223,38 @@ export default function DesktopSettingsApp({
           )}
 
           {activeCategory === 'window-management' && (
-            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              Window cycling and multi-monitor placement are coming in a future phase.
+            <div>
+              <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>Window Cycling</div>
+              <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                Hold Ctrl and press ` to cycle through open windows; Ctrl+Shift+` cycles in reverse.
+              </p>
+
+              <div className="text-[10px] font-semibold uppercase mt-3 mb-1" style={sectionLabelStyle()}>Snap to Edge</div>
+              <label className="flex items-center gap-2 text-[11px] py-1" style={{ color: 'var(--text-primary)' }}>
+                <input
+                  type="checkbox"
+                  checked={snapEnabled}
+                  onChange={(e) => { setSnapEnabled(e.target.checked); setSnapEnabledState(e.target.checked); }}
+                />
+                Drag a window to a screen edge to snap it to half the desktop
+              </label>
+
+              <div className="text-[10px] font-semibold uppercase mt-3 mb-1" style={sectionLabelStyle()}>Multi-Monitor</div>
+              {multiMonitorSupported ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const granted = await requestMultiMonitorAccess();
+                    setMultiMonitorEnabledState(granted || isMultiMonitorEnabled());
+                  }}
+                  className="text-[10px] px-2 py-1"
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
+                >
+                  {multiMonitorEnabled ? 'Secondary-monitor pop-outs enabled' : 'Enable secondary-monitor pop-outs'}
+                </button>
+              ) : (
+                <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Not supported in this browser.</p>
+              )}
             </div>
           )}
 

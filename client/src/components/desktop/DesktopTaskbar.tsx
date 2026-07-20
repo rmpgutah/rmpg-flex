@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning } from 'lucide-react';
+import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDesktopWindows } from './DesktopWindowManager';
 import { activateNavFunction } from '../../utils/windowManager';
@@ -15,7 +15,18 @@ export interface DesktopTaskbarProps {
 }
 
 export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) {
-  const { windows, focusWindow, openWindow } = useDesktopWindows();
+  const { windows, focusWindow, openWindow, minimizeAll, restoreAll } = useDesktopWindows();
+  const [autoMinimizedIds, setAutoMinimizedIds] = useState<string[]>([]);
+
+  const handleShowDesktop = useCallback(() => {
+    if (autoMinimizedIds.length > 0) {
+      restoreAll(autoMinimizedIds);
+      setAutoMinimizedIds([]);
+    } else {
+      setAutoMinimizedIds(minimizeAll());
+    }
+  }, [autoMinimizedIds, minimizeAll, restoreAll]);
+
   const { time } = useClock();
   const navigate = useNavigate();
   const [launcherOpen, setLauncherOpen] = useState(false);
@@ -173,6 +184,15 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
       </div>
 
       <div className="flex items-center gap-3">
+        <button
+          type="button"
+          aria-label={autoMinimizedIds.length > 0 ? 'Show windows' : 'Show desktop'}
+          onClick={handleShowDesktop}
+          className="p-1.5 hover:bg-surface-hover"
+          style={{ border: '1px solid var(--border-subtle)' }}
+        >
+          <Monitor className="w-3.5 h-3.5" style={{ color: 'var(--rmpg-400)' }} />
+        </button>
         <div className="relative">
           <Bell className="w-4 h-4" style={{ color: 'var(--rmpg-400)' }} />
           {unreadCount > 0 && (

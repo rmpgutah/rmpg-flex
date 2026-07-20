@@ -65,8 +65,8 @@ function toFixPoints(points: TripPoint[] | undefined): FixPoint[] {
 }
 
 const HARSH_META = [
-  { key: 'A', icon: TrendingUp, color: '#f59e0b', title: 'Hard accel' },
-  { key: 'B', icon: TrendingDown, color: '#ef4444', title: 'Hard brake' },
+  { key: 'A', icon: TrendingUp, color: 'var(--sev-warn)', title: 'Hard accel' },
+  { key: 'B', icon: TrendingDown, color: 'var(--sev-critical)', title: 'Hard brake' },
   { key: 'C', icon: CornerUpRight, color: '#8b5cf6', title: 'Hard corner' },
 ] as const;
 
@@ -75,7 +75,7 @@ const HARSH_META = [
 // (no unit assigned) view so each trip says which unit ran it.
 function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; active: boolean; showUnit?: boolean; onOpen: () => void; onDelete?: (trip: Trip) => void }) {
   const isResponse = trip.trip_type === 'call_response';
-  const accent = isResponse ? '#d4a017' : '#888888';
+  const accent = isResponse ? 'var(--brand-gold)' : '#888888';
   const mi = tripMiles(trip);
   const durMin = tripDurationMin(trip);
   const mph = tripMaxMph(trip);
@@ -99,7 +99,7 @@ function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; act
       <div className="flex items-center gap-1.5">
         <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: accent }} />
         {showUnit && trip.unit_id != null && (
-          <span className="text-[8px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: '#d4a017', background: 'rgba(212,160,23,0.12)' }}>
+          <span className="text-[8px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: 'var(--brand-gold)', background: 'rgba(212,160,23,0.12)' }}>
             U{trip.unit_id}
           </span>
         )}
@@ -109,7 +109,7 @@ function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; act
         {active && (
           <span
             className="flex items-center gap-0.5 text-[7px] font-bold uppercase tracking-widest px-1 py-0.5 shrink-0 animate-pulse"
-            style={{ borderRadius: 2, color: '#22c55e', background: 'rgba(34,197,94,0.15)' }}
+            style={{ borderRadius: 2, color: 'var(--sev-ok)', background: 'rgba(34,197,94,0.15)' }}
           >
             <Radio className="w-2 h-2" /> Active
           </span>
@@ -123,7 +123,10 @@ function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; act
         {!active && onDelete && (
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(trip); }}
-            className="shrink-0 text-rmpg-700 hover:text-red-500 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+            // opacity-0-until-hover was unreachable on touch (:hover never
+            // fires on the in-vehicle tablets this runs on) — stay faintly
+            // visible always, brighten on hover/focus for mouse/keyboard.
+            className="shrink-0 text-rmpg-700 opacity-60 hover:text-red-500 group-hover:opacity-100 focus:opacity-100 transition-opacity"
             aria-label="Delete false trip record"
             title="Delete false trip record"
           >
@@ -138,7 +141,7 @@ function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; act
         <Clock className="w-2.5 h-2.5 text-brand-500 shrink-0" />
         <span>{fmtClock(trip.start_time)}</span>
         <span className="text-rmpg-700">→</span>
-        <span style={{ color: active ? '#22c55e' : undefined }}>{active && !trip.end_time ? 'now' : fmtClock(trip.end_time)}</span>
+        <span style={{ color: active ? 'var(--sev-ok)' : undefined }}>{active && !trip.end_time ? 'now' : fmtClock(trip.end_time)}</span>
       </div>
 
       {/* metrics row */}
@@ -258,11 +261,16 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
             </div>
           </div>
         )}
-        {/* BACK to trip list */}
+        {/* BACK to trip list — `right` tracks the panel's own responsive width
+            (`width: 360, maxWidth: calc(100vw - 16px)` above) instead of a
+            fixed 376px offset. That fixed offset assumed the panel was always
+            its full 360px width; below ~392px viewports (common phone sizes)
+            the panel shrinks via maxWidth but this button didn't, pushing it
+            off the left edge of the screen and making it unreachable. */}
         <button
           onClick={() => setSelectedTripId(null)}
           className="absolute z-40 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2 py-1 border border-rmpg-700 bg-surface-deep/95 text-brand-300 hover:border-brand-500 hover:text-rmpg-100"
-          style={{ borderRadius: 2, top: 50, right: 376 }}
+          style={{ borderRadius: 2, top: 50, right: 'calc(8px + min(360px, 100vw - 16px))' }}
           aria-label="Back to trips list"
           title="Back to trips list"
         >

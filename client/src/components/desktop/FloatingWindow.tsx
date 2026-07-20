@@ -1,20 +1,48 @@
-import React, { useCallback, useEffect, useRef } from 'react';
-import { X, Minus, Square } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { X, Minus, Square, Pin, PinOff } from 'lucide-react';
 import { useDesktopWindows, type DesktopWindowState } from './DesktopWindowManager';
 import { getWindowConfigByPath } from '../../utils/windowManager';
+import { isSnapEnabled } from '../../utils/snapPreference';
+import ContextMenu from '../ContextMenu';
 
 const TITLE_BAR_HEIGHT = 30;
 const TITLE_SYNC_POLL_MS = 500;
+const SNAP_EDGE_THRESHOLD = 24;
+const TASKBAR_HEIGHT = 48;
+const MIN_SNAP_HALF_WIDTH = 360;
+// Any pinned (always-on-top) window renders at win.zIndex + ALWAYS_ON_TOP_ZINDEX_OFFSET
+// (see effectiveZIndex below). Window zIndex values are small incrementing integers from
+// a focus counter (never anywhere near 1000), so overlays that must always render above
+// every window — pinned or not — need a zIndex comfortably clear of the pinned band's
+// ceiling. Exported so other overlay components (e.g. DesktopWindowSwitcher) can share
+// the same invariant instead of hardcoding a number that could silently drift out of sync.
+export const ALWAYS_ON_TOP_ZINDEX_OFFSET = 10000;
+const SNAP_PREVIEW_ZINDEX = ALWAYS_ON_TOP_ZINDEX_OFFSET + 1000;
 
 interface FloatingWindowProps {
   win: DesktopWindowState;
 }
 
 export default function FloatingWindow({ win }: FloatingWindowProps) {
-  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle } = useDesktopWindows();
+  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity } = useDesktopWindows();
   const dragState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const resizeState = useRef<{ startX: number; startY: number; originW: number; originH: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [snapPreview, setSnapPreview] = useState<'left' | 'right' | null>(null);
+  // Tracks which edge the cursor is near during the drag — used in onUp to
+  // determine if a snap should be applied. We need a ref here because the state
+  // update from setSnapPreview is not visible in the onUp closure.
+  const snapEdgeRef = useRef<'left' | 'right' | null>(null);
+  // Captured the instant a snap is applied — lets a subsequent drag "pull the
+  // window away" from the edge to restore its pre-snap bounds, matching the
+  // real OS un-snap feel. Not persisted: a transient drag-interaction detail.
+  const preSnapBounds = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const snappedSide = useRef<'left' | 'right' | null>(null);
+  // Tracks the window's live position during a title-bar drag (title-bar
+  // drags never change width/height, only x/y) — needed because win.x/win.y
+  // in this closure are stale (captured at pointerdown), but preSnapBounds
+  // must reflect wherever the window actually is at the moment of release.
+  const liveDragPos = useRef({ x: win.x, y: win.y });
   // These track the iframe's OWN internal navigation, independent of win.path (which
   // stays fixed at the URL the window was opened with — see the effect below for why
   // the two must never be conflated). Seeded once from the initial render, then only
@@ -54,22 +82,74 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     if ((e.target as HTMLElement).closest('button')) return;
     focusWindow(win.id);
     dragState.current = { startX: e.clientX, startY: e.clientY, originX: win.x, originY: win.y };
+    liveDragPos.current = { x: win.x, y: win.y };
     const onMove = (ev: PointerEvent) => {
       if (!dragState.current) return;
       const dx = ev.clientX - dragState.current.startX;
       const dy = ev.clientY - dragState.current.startY;
-      const nextX = Math.max(0, dragState.current.originX + dx);
+      let nextX = Math.max(0, dragState.current.originX + dx);
       const nextY = Math.max(0, dragState.current.originY + dy);
+
+      if (isSnapEnabled()) {
+        if (ev.clientX <= SNAP_EDGE_THRESHOLD) {
+          snapEdgeRef.current = 'left';
+          setSnapPreview('left');
+        } else if (ev.clientX >= window.innerWidth - SNAP_EDGE_THRESHOLD) {
+          snapEdgeRef.current = 'right';
+          setSnapPreview('right');
+        } else {
+          snapEdgeRef.current = null;
+          setSnapPreview(null);
+        }
+
+        // Un-snap: dragging a currently-snapped window away from the edge
+        // restores its pre-snap size before continuing the drag normally.
+        if (snappedSide.current && Math.abs(dx) > SNAP_EDGE_THRESHOLD) {
+          const restore = preSnapBounds.current;
+          snappedSide.current = null;
+          preSnapBounds.current = null;
+          if (restore) {
+            nextX = restore.x;
+            // Intermediate drag state, not yet final — the position isn't "real" until
+            // pointerup on the normal drag path below persists it. Don't let this
+            // mid-drag un-snap restore clobber the remembered position.
+            moveResize(win.id, { x: nextX, y: nextY, width: restore.width, height: restore.height }, { persist: false });
+            liveDragPos.current = { x: nextX, y: nextY };
+            return;
+          }
+        }
+      }
+
       moveResize(win.id, { x: nextX, y: nextY });
+      liveDragPos.current = { x: nextX, y: nextY };
     };
     const onUp = () => {
+      if (snapEdgeRef.current) {
+        const desktopHeight = window.innerHeight - TASKBAR_HEIGHT;
+        const halfWidth = window.innerWidth / 2;
+        if (halfWidth >= MIN_SNAP_HALF_WIDTH) {
+          preSnapBounds.current = { x: liveDragPos.current.x, y: liveDragPos.current.y, width: win.width, height: win.height };
+          snappedSide.current = snapEdgeRef.current;
+          // The snapped half-screen bounds are a transient drag-interaction outcome, not
+          // the user's chosen size — don't let it overwrite the remembered position for
+          // this path (see preSnapBounds, which is what un-snapping restores).
+          moveResize(win.id, {
+            x: snapEdgeRef.current === 'left' ? 0 : halfWidth,
+            y: 0,
+            width: halfWidth,
+            height: desktopHeight,
+          }, { persist: false });
+        }
+        setSnapPreview(null);
+        snapEdgeRef.current = null;
+      }
       dragState.current = null;
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, [win.id, win.x, win.y, focusWindow, moveResize]);
+  }, [win.id, win.x, win.y, win.width, win.height, focusWindow, moveResize, snapPreview]);
 
   const onResizeHandlePointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
@@ -93,15 +173,33 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     window.addEventListener('pointerup', onUp);
   }, [win.id, win.width, win.height, focusWindow, moveResize]);
 
+  // Pinned windows always render above unpinned ones, regardless of normal
+  // focus-based zIndex — a flat offset large enough to clear any realistic
+  // focus-order zIndex value keeps focus order working correctly *within*
+  // each of the two bands (pinned vs. unpinned) while pinned always wins
+  // across them.
+  const effectiveZIndex = win.zIndex + (win.alwaysOnTop ? ALWAYS_ON_TOP_ZINDEX_OFFSET : 0);
   const style: React.CSSProperties = win.maximized
-    ? { position: 'fixed', left: 0, top: 0, right: 0, bottom: 48, zIndex: win.zIndex }
+    ? { position: 'fixed', left: 0, top: 0, right: 0, bottom: 48, zIndex: effectiveZIndex, opacity: win.opacity ?? 1 }
     : {
         position: 'fixed', left: win.x, top: win.y,
         width: win.width, height: win.minimized ? TITLE_BAR_HEIGHT : win.height,
-        zIndex: win.zIndex,
+        zIndex: effectiveZIndex, opacity: win.opacity ?? 1,
       };
 
   return (
+    <>
+    {snapPreview && (
+      <div
+        data-testid={`snap-preview-${snapPreview}`}
+        style={{
+          position: 'fixed', top: 0, left: snapPreview === 'left' ? 0 : '50%',
+          width: '50%', height: `calc(100vh - ${TASKBAR_HEIGHT}px)`,
+          background: 'rgba(var(--rmpg-500-rgb),0.15)', border: '2px solid var(--brand-400)',
+          zIndex: SNAP_PREVIEW_ZINDEX, pointerEvents: 'none',
+        }}
+      />
+    )}
     <div
       style={{ ...style, background: 'var(--surface-raised)', border: '1px solid var(--border-strong)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
       onPointerDown={(e) => {
@@ -113,6 +211,12 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         focusWindow(win.id);
       }}
     >
+      <ContextMenu
+        items={[
+          { label: 'Increase opacity', onClick: () => setWindowOpacity(win.id, (win.opacity ?? 1) + 0.1) },
+          { label: 'Decrease opacity', onClick: () => setWindowOpacity(win.id, (win.opacity ?? 1) - 0.1) },
+        ]}
+      >
       <div
         onPointerDown={onTitleBarPointerDown}
         className="flex items-center justify-between px-2 select-none cursor-move"
@@ -120,6 +224,14 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
       >
         <span className="text-[11px] font-medium truncate" style={{ color: 'var(--text-primary)' }}>{win.title}</span>
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label={win.alwaysOnTop ? `Unpin ${win.title}` : `Pin ${win.title} on top`}
+            onClick={() => toggleAlwaysOnTop(win.id)}
+            className="p-1 hover:bg-surface-hover"
+          >
+            {win.alwaysOnTop ? <Pin className="w-3 h-3" style={{ color: 'var(--brand-400)' }} /> : <PinOff className="w-3 h-3" style={{ color: 'var(--rmpg-400)' }} />}
+          </button>
           <button type="button" aria-label={`Minimize ${win.title}`} onClick={() => minimizeWindow(win.id)} className="p-1 hover:bg-surface-hover">
             <Minus className="w-3 h-3" style={{ color: 'var(--rmpg-400)' }} />
           </button>
@@ -131,6 +243,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
           </button>
         </div>
       </div>
+      </ContextMenu>
 
       {!win.minimized && (
         <>
@@ -150,5 +263,6 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         </>
       )}
     </div>
+    </>
   );
 }
