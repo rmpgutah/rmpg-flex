@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { useEffect } from 'react';
-import { isAppPinned, pinApp } from '../../utils/taskbarPreferences';
+import { isAppPinned, pinApp, setTaskbarPosition, setTaskbarSize, setTaskbarAutoHide } from '../../utils/taskbarPreferences';
 
 const apiFetchMock = vi.fn().mockResolvedValue({ count: 0 });
 vi.mock('../../hooks/useApi', () => ({ apiFetch: (...args: unknown[]) => apiFetchMock(...args) }));
@@ -189,5 +189,33 @@ describe('DesktopTaskbar — window button context menu', () => {
     expect(screen.getByText('Close all')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Close all'));
     expect(screen.queryByRole('button', { name: /Dispatch/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('DesktopTaskbar — position and size', () => {
+  beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
+
+  it('renders at the top when position is set to top', () => {
+    setTaskbarPosition('top');
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    const bar = screen.getByLabelText('Open app launcher').closest('div')!.parentElement as HTMLElement;
+    expect(bar.style.top).toBe('0px');
+    expect(bar.style.bottom).toBe('');
+  });
+
+  it('renders at 56px height when size is set to large', () => {
+    setTaskbarSize('large');
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    const bar = screen.getByLabelText('Open app launcher').closest('div')!.parentElement as HTMLElement;
+    expect(bar.style.height).toBe('56px');
+  });
+
+  it('auto-hide translates the bar off-screen until the hover strip is entered', () => {
+    setTaskbarAutoHide(true);
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    expect(screen.getByTestId('taskbar-hover-strip')).toBeInTheDocument();
+    fireEvent.mouseEnter(screen.getByTestId('taskbar-hover-strip'));
+    const bar = screen.getByLabelText('Open app launcher').closest('div')!.parentElement as HTMLElement;
+    expect(bar.style.transform).toBe('translateY(0px)');
   });
 });

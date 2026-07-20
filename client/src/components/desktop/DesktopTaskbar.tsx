@@ -9,7 +9,9 @@ import type { NavFunction } from '../../data/navCatalog';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import ContextMenu from '../ContextMenu';
-import { isAppPinned, pinApp, unpinApp, getPinnedApps } from '../../utils/taskbarPreferences';
+import { isAppPinned, pinApp, unpinApp, getPinnedApps, getTaskbarPosition, getTaskbarSize, isTaskbarAutoHideEnabled, type TaskbarSize } from '../../utils/taskbarPreferences';
+
+export const TASKBAR_HEIGHT_PX: Record<TaskbarSize, number> = { small: 48, large: 56 };
 
 export interface DesktopTaskbarProps {
   icons: NavFunction[];
@@ -131,6 +133,12 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
 
   const cycleIndexRef = useRef<Record<string, number>>({});
 
+  const [position] = useState(() => getTaskbarPosition());
+  const [size] = useState(() => getTaskbarSize());
+  const [autoHideEnabled] = useState(() => isTaskbarAutoHideEnabled());
+  const [hidden, setHidden] = useState(autoHideEnabled);
+  const barHeight = TASKBAR_HEIGHT_PX[size];
+
   const windowGroups = useMemo(() => {
     const byPath = new Map<string, typeof windows>();
     for (const w of windows) {
@@ -142,9 +150,21 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
   }, [windows]);
 
   return (
+    <>
     <div
       className="flex items-center justify-between px-2 gap-2"
-      style={{ position: 'fixed', left: 0, right: 0, bottom: 0, height: 48, background: 'var(--surface-overlay)', borderTop: '1px solid var(--desktop-shell-accent, var(--border-default))', zIndex: 1000 }}
+      style={{
+        position: 'fixed', left: 0, right: 0,
+        ...(position === 'top' ? { top: 0 } : { bottom: 0 }),
+        height: barHeight,
+        background: 'var(--surface-overlay)',
+        borderTop: position === 'bottom' ? '1px solid var(--desktop-shell-accent, var(--border-default))' : undefined,
+        borderBottom: position === 'top' ? '1px solid var(--desktop-shell-accent, var(--border-default))' : undefined,
+        zIndex: 1000,
+        transform: autoHideEnabled && hidden ? `translateY(${position === 'top' ? '-100%' : '100%'})` : 'translateY(0px)',
+        transition: 'transform 150ms ease',
+      }}
+      onMouseLeave={autoHideEnabled ? () => setHidden(true) : undefined}
     >
       <div className="flex items-center gap-2">
         <button type="button" aria-label="Open app launcher" onClick={() => setLauncherOpen(v => !v)} className="p-2 hover:bg-surface-hover">
@@ -291,5 +311,13 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
         <span className="text-[11px] font-mono" style={{ color: 'var(--text-primary)' }}>{time}</span>
       </div>
     </div>
+    {autoHideEnabled && (
+      <div
+        data-testid="taskbar-hover-strip"
+        onMouseEnter={() => setHidden(false)}
+        style={{ position: 'fixed', left: 0, right: 0, height: 4, zIndex: 999, ...(position === 'top' ? { top: 0 } : { bottom: 0 }) }}
+      />
+    )}
+    </>
   );
 }

@@ -4,6 +4,7 @@ import FloatingWindow, { ALWAYS_ON_TOP_ZINDEX_OFFSET } from './FloatingWindow';
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
 import { setSnapEnabled } from '../../utils/snapPreference';
 import { getSavedPosition } from '../../utils/desktopWindowPositions';
+import { setTaskbarSize } from '../../utils/taskbarPreferences';
 
 function Harness() {
   const { windows, openWindow } = useDesktopWindows();
@@ -240,5 +241,17 @@ describe('FloatingWindow — opacity', () => {
     fireEvent.click(screen.getByText('Decrease opacity'));
     const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
     expect(windowEl.style.opacity).toBe('0.9');
+  });
+});
+
+describe('FloatingWindow — respects taskbar size setting for maximize/snap math', () => {
+  it('maximized style leaves room for a large (56px) taskbar', () => {
+    setTaskbarSize('large');
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    fireEvent.click(screen.getByLabelText('Maximize Dispatch'));
+    const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
+    expect(windowEl.style.bottom).toBe('56px');
+    setTaskbarSize('small');
   });
 });
