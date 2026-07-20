@@ -13,7 +13,7 @@ const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserId
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
-const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost } = require('./security/childProcessGuard');
+const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse } = require('./security/childProcessGuard');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -2999,19 +2999,20 @@ guardedHandle('geo:ip-locate', async () => {
       request.on('response', (response) => {
         response.on('data', (chunk) => { body += chunk.toString(); });
         response.on('end', () => {
-          try {
-            const data = JSON.parse(body);
-            if (data.location) {
-              resolve({
-                latitude: data.location.lat,
-                longitude: data.location.lng,
-                accuracy: data.accuracy || 5000,
-              });
-            } else {
-              reject(new Error(data.error?.message || 'No location in response'));
-            }
-          } catch (e) {
-            reject(e);
+          // Task 6: shape-validate the response body via parseIpLocateResponse
+          // (childProcessGuard.js) instead of trusting JSON.parse + direct
+          // data.location.lat/.lng access — fails closed on malformed JSON
+          // or non-finite/missing coordinates so a bad response can never
+          // hand the renderer a NaN/string coordinate.
+          const parsed = parseIpLocateResponse(body);
+          if (parsed.ok) {
+            resolve({
+              latitude: parsed.latitude,
+              longitude: parsed.longitude,
+              accuracy: parsed.accuracy,
+            });
+          } else {
+            reject(new Error(parsed.error));
           }
         });
       });

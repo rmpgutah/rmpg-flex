@@ -312,6 +312,70 @@ function isAllowedApiHost(url, allowedHosts) {
   return false;
 }
 
+/**
+ * Parses and validates the body of a `geo:ip-locate` response (the Google
+ * Geolocation API's `POST /geolocation/v1/geolocate` payload) — pure, no
+ * I/O. Used by the `geo:ip-locate` IPC handler in `main.js` in place of an
+ * inline `JSON.parse(body)` + direct `data.location.lat`/`.lng` access,
+ * so a malformed or unexpected response body can never propagate a
+ * non-numeric/NaN coordinate into the renderer's map/location UI.
+ *
+ * Fails closed in two ways:
+ *  1. Invalid JSON — `JSON.parse` throwing is caught, never propagated.
+ *  2. Valid JSON but the wrong shape — `location` missing, not an object,
+ *     or `location.lat`/`location.lng` not finite numbers (a string like
+ *     `"37.7"`, `null`, `NaN`, `Infinity`, or simply absent all fail via
+ *     `Number.isFinite`, which is the one existence+type+finiteness check
+ *     that also correctly *accepts* a legitimate `0` coordinate — a naive
+ *     `data.location.lat || ...` fallback would incorrectly treat `0` as
+ *     missing).
+ *
+ * Both cases return `{ok:false, error:'malformed geolocation response'}`
+ * rather than throwing, so the caller can branch on `.ok` without its own
+ * try/catch. This intentionally does not attempt to distinguish "the API
+ * returned a structured error" (e.g. `{error:{message:'...'}}`) from
+ * "the API returned garbage" — both are shape violations from this
+ * function's point of view; the caller's own error path already covers
+ * surfacing an API-provided message where one exists.
+ *
+ * On success, extra/unexpected fields alongside a valid `location` are
+ * ignored rather than rejected — this validates the response is *usable*,
+ * not an exact-schema match. `accuracy` is read from the top-level
+ * `data.accuracy` field (matching the pre-existing handler's own
+ * `data.accuracy || 5000` fallback, which is itself matching the actual
+ * Google Geolocation API response shape — `accuracy` is a sibling of
+ * `location`, not nested under it) and defaults to `5000` meters when
+ * absent or falsy.
+ *
+ * @param {string} rawBody - the raw HTTP response body text
+ * @returns {{ok:true, latitude:number, longitude:number, accuracy:number}|{ok:false, error:string}}
+ */
+function parseIpLocateResponse(rawBody) {
+  let data;
+  try {
+    data = JSON.parse(rawBody);
+  } catch {
+    return { ok: false, error: 'malformed geolocation response' };
+  }
+
+  const location = data && typeof data === 'object' ? data.location : undefined;
+  if (
+    !location ||
+    typeof location !== 'object' ||
+    !Number.isFinite(location.lat) ||
+    !Number.isFinite(location.lng)
+  ) {
+    return { ok: false, error: 'malformed geolocation response' };
+  }
+
+  return {
+    ok: true,
+    latitude: location.lat,
+    longitude: location.lng,
+    accuracy: data.accuracy || 5000,
+  };
+}
+
 module.exports = {
   buildSandboxedChildEnv,
   DEFAULT_CHILD_PROCESS_TIMEOUT_MS,
@@ -321,4 +385,5 @@ module.exports = {
   isAtConcurrencyLimit,
   isAllowedBinaryName,
   isAllowedApiHost,
+  parseIpLocateResponse,
 };

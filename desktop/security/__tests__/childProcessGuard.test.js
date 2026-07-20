@@ -11,6 +11,7 @@ const {
   MAX_CONCURRENT_TOOLS,
   isAllowedBinaryName,
   isAllowedApiHost,
+  parseIpLocateResponse,
 } = require('../childProcessGuard');
 
 test('buildSandboxedChildEnv: only allowlisted keys appear, sensitive keys never leak through', () => {
@@ -312,4 +313,80 @@ test('isAllowedApiHost: a missing or empty allowedHosts list is rejected without
   assert.equal(isAllowedApiHost('https://www.googleapis.com/foo', undefined), false);
   assert.equal(isAllowedApiHost('https://www.googleapis.com/foo', null), false);
   assert.equal(isAllowedApiHost('https://www.googleapis.com/foo', []), false);
+});
+
+// --- parseIpLocateResponse ---
+
+test('parseIpLocateResponse: a well-formed response parses correctly', () => {
+  const body = JSON.stringify({ location: { lat: 37.7, lng: -122.4 }, accuracy: 150 });
+  assert.deepEqual(parseIpLocateResponse(body), {
+    ok: true,
+    latitude: 37.7,
+    longitude: -122.4,
+    accuracy: 150,
+  });
+});
+
+test('parseIpLocateResponse: missing accuracy falls back to the existing handler default (5000)', () => {
+  const body = JSON.stringify({ location: { lat: 37.7, lng: -122.4 } });
+  const result = parseIpLocateResponse(body);
+  assert.equal(result.ok, true);
+  assert.equal(result.accuracy, 5000);
+});
+
+test('parseIpLocateResponse: missing location entirely fails closed', () => {
+  const body = JSON.stringify({ error: { message: 'no location' } });
+  assert.deepEqual(parseIpLocateResponse(body), {
+    ok: false,
+    error: 'malformed geolocation response',
+  });
+});
+
+test('parseIpLocateResponse: lat/lng present but as strings fails closed', () => {
+  const body = JSON.stringify({ location: { lat: '37.7', lng: '-122.4' } });
+  assert.equal(parseIpLocateResponse(body).ok, false);
+});
+
+test('parseIpLocateResponse: lat/lng present but null fails closed', () => {
+  const body = JSON.stringify({ location: { lat: null, lng: null } });
+  assert.equal(parseIpLocateResponse(body).ok, false);
+});
+
+test('parseIpLocateResponse: extra unexpected fields alongside a valid location still parse correctly', () => {
+  const body = JSON.stringify({
+    location: { lat: 40.1, lng: -111.8 },
+    accuracy: 25,
+    extra: 'unused',
+    someObj: { nested: true },
+  });
+  assert.deepEqual(parseIpLocateResponse(body), {
+    ok: true,
+    latitude: 40.1,
+    longitude: -111.8,
+    accuracy: 25,
+  });
+});
+
+test('parseIpLocateResponse: malformed JSON fails closed without throwing', () => {
+  assert.doesNotThrow(() => {
+    const result = parseIpLocateResponse('not json{{{');
+    assert.deepEqual(result, { ok: false, error: 'malformed geolocation response' });
+  });
+});
+
+test('parseIpLocateResponse: lat/lng of exactly 0 (equator/prime meridian) is a valid coordinate, not rejected', () => {
+  const body = JSON.stringify({ location: { lat: 0, lng: 0 }, accuracy: 10 });
+  assert.deepEqual(parseIpLocateResponse(body), {
+    ok: true,
+    latitude: 0,
+    longitude: 0,
+    accuracy: 10,
+  });
+});
+
+test('parseIpLocateResponse: non-object top-level JSON (e.g. array/string/number) fails closed', () => {
+  assert.equal(parseIpLocateResponse('null').ok, false);
+  assert.equal(parseIpLocateResponse('42').ok, false);
+  assert.equal(parseIpLocateResponse('"just a string"').ok, false);
+  assert.equal(parseIpLocateResponse('[]').ok, false);
 });
