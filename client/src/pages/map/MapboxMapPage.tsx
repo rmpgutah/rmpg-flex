@@ -109,6 +109,7 @@ import GpsReplayTool from './components/GpsReplayTool';
 import NavOverlayTool from './components/NavOverlayTool';
 import MultiStopRoutePanel from './components/MultiStopRoutePanel';
 import type { QueuedStop } from './components/MultiStopRoutePanel';
+import GpsHud from './components/GpsHud';
 import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
 import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
@@ -128,6 +129,21 @@ if (typeof document !== 'undefined' && !document.getElementById('rmpg-pulse-css'
   css.id = 'rmpg-pulse-css';
   css.textContent = `@keyframes rmpg-pulse{0%,100%{box-shadow:0 0 12px #3b82f680,0 0 24px #3b82f640}50%{box-shadow:0 0 20px #3b82f6b0,0 0 40px #3b82f670}}`;
   document.head.appendChild(css);
+}
+
+/** Trigger a browser download of `content` as `filename` (GPS HUD track export). */
+function downloadGpsHudTrack(filename: string, mime: string, content: string): void {
+  try {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch { /* ignore */ } }, 1000);
+  } catch { /* download blocked — best-effort */ }
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -477,7 +493,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // authenticated route. Without `upload: false` here, this page ran a SECOND
   // independent tracker with its own queue/interval, double-POSTing breadcrumbs
   // to /dispatch/gps (same defect NavTripContext.tsx already guards against).
-  const gps = useGpsTracking({ upload: false });
+  // `capture: true` opts this read-only tracker into recording an exportable
+  // session track (CSV/GeoJSON) for the GPS HUD's export/clear footer — off by
+  // default on useGpsTracking so the always-on Layout tracker doesn't accumulate.
+  const gps = useGpsTracking({ upload: false, capture: true });
   const safetyAlertFeed = useSafetyAlertFeed();
 
   // ── Google Maps Parity Hooks ──────────────────────────────────────────────
@@ -508,6 +527,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [showDirectionsPanel, setShowDirectionsPanel] = useState(false);
   const [showWeatherMenu, setShowWeatherMenu] = useState(false);
   const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
+  const [gpsHudOpen, setGpsHudOpen] = useState(false);
   const [showGeoLayersMenu, setShowGeoLayersMenu] = useState(false);
   const [autoPanEnabled, setAutoPanEnabled] = usePersistedState('rmpg_mapbox_autopan_p1', true);
   const [p1AudioEnabled, setP1AudioEnabled] = usePersistedState('rmpg_mapbox_p1_audio', true);
@@ -1038,6 +1058,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'identify', label: 'Identify', active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), color: '#eab308', description: 'Click the map for place/district info', loading: tilequery.loading },
         { id: 'places', label: 'Places Search', active: placesSearch.results.length > 0, onToggle: () => placesSearch.results.length > 0 ? placesSearch.clearResults() : placesSearch.searchCategory('restaurant'), color: '#10b981', description: 'Nearby POI search' },
         { id: 'bookmarks', label: 'Drop Bookmark', active: mapBookmarks.dropMode, onToggle: () => mapBookmarks.dropMode ? mapBookmarks.setDropMode(false) : mapBookmarks.setDropMode(true), color: '#eab308', description: 'Click the map to save a location' },
+        { id: 'gps-hud', label: 'GPS HUD', active: gpsHudOpen, onToggle: () => setGpsHudOpen((v) => !v), color: '#22c55e', description: 'Heading, speed, route progress' },
         { id: 'optimize', label: 'Route Optimizer', active: multiStopPanelOpen, onToggle: () => setMultiStopPanelOpen((v) => !v), color: '#8b5cf6', description: 'Queue calls, pick a unit, optimize the visiting order' },
       ],
     },
@@ -1067,7 +1088,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'deck', label: 'GPU Overlay', active: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: 'Deck.gl accelerated rendering' },
       ],
     },
-  ], [directionsPanel, placesSearch, mapBookmarks, multiStopPanelOpen, speedAnalyticsPanelOpen, speedZoneStats.loading, activeFloatingTool, measure.mode, drawing.mode, glDraw, identifyEnabled, tilequery.loading, featureInspect, mapMatchTrace, deckEnabled, setDeckEnabled]);
+  ], [directionsPanel, placesSearch, mapBookmarks, multiStopPanelOpen, speedAnalyticsPanelOpen, speedZoneStats.loading, activeFloatingTool, measure.mode, drawing.mode, glDraw, identifyEnabled, tilequery.loading, featureInspect, mapMatchTrace, deckEnabled, setDeckEnabled, gpsHudOpen, setGpsHudOpen]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1480,6 +1501,21 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           hours={4}
           onClose={() => setSpeedGraphUnit(null)}
         />
+      )}
+
+      {gpsHudOpen && (
+        <div className="absolute top-16 right-3 z-30">
+          <GpsHud
+            gps={gps}
+            nav={{ activeRoute: routing.activeRoute, routeProgress: routing.routeProgress, offRoute: routing.offRoute }}
+            onExport={(format) => {
+              const { filename, mime, content } = gps.exportTrack(format);
+              downloadGpsHudTrack(filename, mime, content);
+            }}
+            onClear={() => gps.clearCapturedTrack()}
+            onClose={() => setGpsHudOpen(false)}
+          />
+        </div>
       )}
 
       {streetViewTarget && (
