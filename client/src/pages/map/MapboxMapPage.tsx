@@ -1453,7 +1453,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             selectedUnit={multiStopUnit}
             result={routing.multiStopRoute}
             loading={routing.multiStopLoading}
-            isMobile={isMobile}
+            isMobile={isDockNarrow}
             onSelectUnit={setMultiStopUnit}
             onRemoveStop={(callNumber) => setMultiStopQueue((q) => q.filter((s) => s.callNumber !== callNumber))}
             onClear={() => { setMultiStopQueue([]); routing.clearMultiStop(); }}
