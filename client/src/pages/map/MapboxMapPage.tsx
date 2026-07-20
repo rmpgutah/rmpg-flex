@@ -449,6 +449,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     const handler = async (e: mapboxgl.MapMouseEvent) => {
       const info = await tilequery.queryFromMapClick(e);
       if (identifyPopupRef.current) { identifyPopupRef.current.remove(); identifyPopupRef.current = null; }
+      infoPanel.showLocationInfo(e.lngLat.lng, e.lngLat.lat);
       if (!info) return;
       const { lng, lat } = e.lngLat;
       const label = info.sectorName || info.city || info.county || info.state || undefined;
@@ -1598,6 +1599,42 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   </button>
                 </div>
               ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {infoPanel.panel && (
+        <div
+          className="absolute bottom-14 left-1/2 -translate-x-1/2 z-40 bg-surface-raised/95 border border-border-default backdrop-blur-sm font-mono text-[11px] text-rmpg-200"
+          style={{ borderRadius: 2, width: 280, boxShadow: '0 8px 28px rgba(0,0,0,0.55)' }}
+        >
+          <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border-subtle">
+            <div>
+              <div className="text-brand-gold-500 font-bold text-[11px]">{infoPanel.panel.title}</div>
+              {infoPanel.panel.subtitle && <div className="text-rmpg-500 text-[9px]">{infoPanel.panel.subtitle}</div>}
+            </div>
+            <button onClick={infoPanel.closePanel} aria-label="Close location info" className="text-rmpg-500 hover:text-rmpg-300">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="px-2.5 py-2 space-y-1.5">
+            {infoPanel.loading && <div className="text-rmpg-500 text-[10px]">Loading nearby info…</div>}
+            {infoPanel.panel.weather && (
+              <div className="text-[10px]">
+                {infoPanel.panel.weather.condition}, {infoPanel.panel.weather.temp} · Wind {infoPanel.panel.weather.wind}
+              </div>
+            )}
+            {infoPanel.panel.nearby && infoPanel.panel.nearby.length > 0 && (
+              <div className="space-y-0.5">
+                <div className="text-[8px] text-rmpg-500 uppercase tracking-wider">Nearby</div>
+                {infoPanel.panel.nearby.slice(0, 5).map((n) => (
+                  <div key={`${n.type}-${n.id}`} className="flex justify-between text-[10px]">
+                    <span style={{ color: n.color || undefined }}>{n.label}</span>
+                    <span className="text-rmpg-500">{n.distance}</span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
