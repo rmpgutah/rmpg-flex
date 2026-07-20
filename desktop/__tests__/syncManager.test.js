@@ -48,6 +48,38 @@ test('pullAll: while paused, its own guard fires before acquireSyncLock() ever r
   return pending.finally(() => syncManager.resumeSync());
 });
 
+test('pullSecrets: while paused, its own guard fires before any local-DB access', async (t) => {
+  // pullSecrets() has always caught its own errors (`try { ... } catch (err)
+  // { console.warn(...) }`) and never rethrows — so unlike pushAll, "resolves
+  // without rejecting" is true whether the isPaused guard fires OR the guard
+  // is missing and getLocalDb() throws synchronously (uninitialized `db` in
+  // this harness, same as pushAll's test above) and gets swallowed by
+  // pullSecrets' own catch. Resolution status alone can't distinguish them
+  // here, so this uses the same "read synchronous state in the same tick"
+  // trick as the pullAll test above, but on console.warn instead of
+  // isSyncing (pullSecrets doesn't touch the sync lock at all):
+  //   - guard present (correct behavior): `if (isPaused) return;` is the
+  //     very first line, so pullSecrets returns before ever reaching the
+  //     try block — console.warn is never called.
+  //   - guard removed (regression): execution falls into the try block,
+  //     calls getLocalDb() synchronously (still before any `await`), which
+  //     throws on the null `db` handle; the catch block's console.warn(...)
+  //     runs synchronously in that same tick, before pullSecrets' promise
+  //     has had any chance to settle.
+  // Verified empirically: with the isPaused guard temporarily removed,
+  // console.warn fires synchronously and this assertion flips to a failure.
+  const warnMock = t.mock.method(console, 'warn', () => {});
+  syncManager.resumeSync();
+  syncManager.pauseSync();
+  try {
+    const pending = syncManager.pullSecrets();
+    assert.equal(warnMock.mock.callCount(), 0, 'guard should return before any local-DB access that would trigger a caught warning');
+    await assert.doesNotReject(() => pending);
+  } finally {
+    syncManager.resumeSync();
+  }
+});
+
 test('pushAll: while paused, its own guard fires before any local-DB access', async () => {
   // Same underlying problem as pullAll's old test: `isSyncing === false`
   // after the fact doesn't distinguish "guard returned immediately" from

@@ -132,8 +132,22 @@ async function pullAll() {
  * pullAll() already handles the sync-lock/progress-emit cycle and swallows
  * its own per-table pull failures, so it doesn't normally throw — the
  * try/catch here is defensive in case it (or the wipe) ever does.
+ *
+ * Bails out FIRST (before the wipe ever runs) if sync is currently paused.
+ * pullAll()'s own `if (isPaused) return;` guard only protects the repopulate
+ * half of this sequence — without a matching check here, a paused call would
+ * still genuinely wipe every mirrored/reference table (including `users`,
+ * which backs offline PIN auth), then have pullAll() no-op immediately, and
+ * still report {ok:true} — leaving the offline read cache empty while
+ * claiming success. Checking (and bailing) before the wipe respects the
+ * operator's explicit intent to pause (e.g. on a metered connection) instead
+ * of silently emptying the cache or burning bandwidth against their wishes.
  */
 async function forceFullResync() {
+  if (isPaused) {
+    return { ok: false, error: 'cannot force a full resync while sync is paused — resume sync first' };
+  }
+
   try {
     wipeMirroredCacheTables(Object.keys(PULL_INTERVALS));
     await pullAll();
@@ -301,6 +315,7 @@ async function pullTable(table) {
 }
 
 async function pullSecrets() {
+  if (isPaused) return;
   try {
     const db = getLocalDb();
     const cachedRole = getConfig('current_user_role');
@@ -495,6 +510,7 @@ module.exports = {
   pauseSync,
   resumeSync,
   applyPulledRows,
+  pullSecrets,
   get isSyncing() { return isSyncing; },
   get lastPushAt() { return lastPushAt; },
   get isPaused() { return isPaused; },

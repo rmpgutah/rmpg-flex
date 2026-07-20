@@ -8,6 +8,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron . --dev",
+    "// test": "better-sqlite3 must be built for Node's ABI (not Electron's) for the DB-backed tests to load — postinstall/`npm run rebuild` build it for ELECTRON's ABI instead, so a fresh `npm install && npm test` fails most tests with a NODE_MODULE_VERSION mismatch. Before running tests: `npm rebuild better-sqlite3`. After running tests (whether they pass or fail): `npm run rebuild` to restore the Electron-ABI build, or `npm start`/the packaged app will crash on native module load. This is NOT automated via pretest/posttest — npm does not run posttest when the test script exits non-zero, so an automated posttest would silently skip the Electron-ABI restore on a failing test run and leave the app broken with no obvious signal. Do the rebuild dance by hand.",
     "test": "node --test '__tests__/**/*.js' 'security/__tests__/**/*.js'",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
