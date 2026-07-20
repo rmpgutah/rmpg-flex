@@ -5,7 +5,7 @@ import { render, screen, act, waitFor } from '@testing-library/react';
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
 
 function Harness() {
-  const { windows, openWindow, closeWindow, focusWindow, minimizeWindow, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity } = useDesktopWindows();
+  const { windows, openWindow, closeWindow, focusWindow, minimizeWindow, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, moveResize } = useDesktopWindows();
   const capResults = useRef<boolean[]>([]);
   const lastMinimizedIds = useRef<string[]>([]);
   return (
@@ -25,10 +25,12 @@ function Harness() {
       <button onClick={() => windows[0] && setWindowOpacity(windows[0].id, 0)}>set-opacity-too-low</button>
       <button onClick={() => windows[0] && setWindowOpacity(windows[0].id, 0.6)}>set-opacity-valid</button>
       <button onClick={() => windows[0] && setWindowOpacity(windows[0].id, 0.1 + 0.2)}>set-opacity-drift</button>
+      <button onClick={() => windows[0] && moveResize(windows[0].id, { x: 999, y: 888, width: 777, height: 666 })}>moveresize-first</button>
       <span data-testid="cap-results">{capResults.current.join(',')}</span>
       <span data-testid="first-path">{windows[0]?.path ?? ''}</span>
       <span data-testid="first-pinned">{windows[0]?.alwaysOnTop ? 'pinned' : 'unpinned'}</span>
       <span data-testid="first-opacity">{windows[0]?.opacity ?? ''}</span>
+      <span data-testid="first-bounds">{windows[0] ? `${windows[0].x},${windows[0].y},${windows[0].width}x${windows[0].height}` : ''}</span>
       <ul>{windows.map(w => <li key={w.id}>{w.title}-{w.zIndex}-{w.minimized ? 'min' : 'open'}-{w.width}x{w.height}</li>)}</ul>
     </div>
   );
@@ -136,5 +138,26 @@ describe('DesktopWindowManager', () => {
     expect(screen.getByTestId('first-opacity').textContent).toBe('0.6');
     act(() => screen.getByText('set-opacity-drift').click());
     expect(screen.getByTestId('first-opacity').textContent).toBe('0.3');
+  });
+
+  it('opening a path with a remembered position uses it instead of the cascade default', () => {
+    sessionStorage.setItem('rmpg_desktop_window_positions', JSON.stringify({ '/dispatch': { x: 300, y: 200, width: 900, height: 700 } }));
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    act(() => screen.getByText('open-dispatch').click());
+    expect(screen.getByTestId('first-bounds').textContent).toBe('300,200,900x700');
+  });
+
+  it('opening a path with no remembered position falls back to the cascade default', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    act(() => screen.getByText('open-dispatch').click());
+    expect(screen.getByTestId('first-bounds').textContent).toBe('80,60,1050x800');
+  });
+
+  it('moveResize persists the new bounds to sessionStorage for its path', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    act(() => screen.getByText('open-dispatch').click());
+    act(() => screen.getByText('moveresize-first').click());
+    const raw = sessionStorage.getItem('rmpg_desktop_window_positions');
+    expect(JSON.parse(raw!)['/dispatch']).toEqual({ x: 999, y: 888, width: 777, height: 666 });
   });
 });

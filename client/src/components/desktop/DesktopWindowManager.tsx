@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { getSavedPosition, saveWindowPosition } from '../../utils/desktopWindowPositions';
 
 export interface DesktopWindowState {
   id: string;
@@ -95,11 +96,12 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     if (prev.length >= MAX_OPEN_WINDOWS) return false;
     nextZIndex += 1;
     const offset = prev.length * 24;
+    const saved = getSavedPosition(path);
     const win: DesktopWindowState = {
       id: `win_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       path, title,
-      x: 80 + offset, y: 60 + offset,
-      width: size?.width ?? 1050, height: size?.height ?? 800,
+      x: saved?.x ?? (80 + offset), y: saved?.y ?? (60 + offset),
+      width: saved?.width ?? size?.width ?? 1050, height: saved?.height ?? size?.height ?? 800,
       zIndex: nextZIndex, minimized: false, maximized: false,
       alwaysOnTop: false, opacity: 1,
     };
@@ -126,7 +128,12 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
   }, [commit]);
 
   const moveResize = useCallback((id: string, patch: Partial<Pick<DesktopWindowState, 'x' | 'y' | 'width' | 'height'>>) => {
-    commit(windowsRef.current.map(w => w.id === id ? { ...w, ...patch } : w));
+    const next = windowsRef.current.map(w => w.id === id ? { ...w, ...patch } : w);
+    commit(next);
+    const updated = next.find(w => w.id === id);
+    if (updated) {
+      saveWindowPosition(updated.path, { x: updated.x, y: updated.y, width: updated.width, height: updated.height });
+    }
   }, [commit]);
 
   const updateWindowTitle = useCallback((id: string, title: string) => {
