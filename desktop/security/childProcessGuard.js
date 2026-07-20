@@ -538,6 +538,50 @@ function appendSecurityAuditLog(line, fsModule, logFilePath) {
   fsModule.appendFileSync(logFilePath, `${line}\n`);
 }
 
+/**
+ * Group J Task 9: composes Group F's `assertSecureElectronDefaults(app)`
+ * result (unchanged — see sessionHardening.js) with Task 8's audit-log
+ * plumbing (`formatSecurityAuditLine`/`appendSecurityAuditLog`) to decide
+ * whether a detected violation deserves more than the existing plain
+ * `console.error` at the main.js call site.
+ *
+ * Investigation finding (see task-9-report.md for the full writeup): the
+ * existing check already runs unconditionally at startup regardless of
+ * `app.isPackaged` — and that's *correct* to leave unconditional, since
+ * the detection itself is a cheap, always-useful diagnostic. What was
+ * genuinely missing was any distinction in the CONSEQUENCE: a violation
+ * during local development (where `--remote-debugging-port` or similar
+ * may be deliberately passed by a dev/test harness) is expected noise,
+ * but the exact same violation in a PACKAGED build handed to a real
+ * officer is a serious, actionable signal that `console.error` alone
+ * will almost certainly go unseen for (packaged apps don't run with an
+ * attached terminal). This function is the pure decision point for that
+ * distinction — it does no I/O itself; the caller uses its output to
+ * decide whether to call `appendSecurityAuditLog`/`formatSecurityAuditLine`.
+ *
+ * Only escalates when BOTH `isPackaged` is true AND `secureDefaultsResult`
+ * actually reports a violation — a dev-build violation, or a clean
+ * packaged-build result, both correctly produce `shouldEscalate: false`.
+ *
+ * @param {{ok:boolean, violations?:string[]}} secureDefaultsResult - the return value of `assertSecureElectronDefaults(app)`
+ * @param {boolean} isPackaged - `app.isPackaged`
+ * @returns {{shouldEscalate:boolean, auditEvent:{channel:string,outcome:string,detail:object}|null}}
+ */
+function evaluateInsecureElectronFlagsEscalation(secureDefaultsResult, isPackaged) {
+  const hasViolation = !!secureDefaultsResult && secureDefaultsResult.ok === false;
+  if (!isPackaged || !hasViolation) {
+    return { shouldEscalate: false, auditEvent: null };
+  }
+  return {
+    shouldEscalate: true,
+    auditEvent: {
+      channel: 'security:insecure-electron-flags',
+      outcome: 'violation',
+      detail: { violations: secureDefaultsResult.violations },
+    },
+  };
+}
+
 module.exports = {
   buildSandboxedChildEnv,
   DEFAULT_CHILD_PROCESS_TIMEOUT_MS,
@@ -553,4 +597,5 @@ module.exports = {
   withRequestTimeout,
   formatSecurityAuditLine,
   appendSecurityAuditLog,
+  evaluateInsecureElectronFlagsEscalation,
 };

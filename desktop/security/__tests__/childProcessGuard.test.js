@@ -17,6 +17,7 @@ const {
   OFFLINE_TRIGGER_SYNC_TIMEOUT_MS,
   formatSecurityAuditLine,
   appendSecurityAuditLog,
+  evaluateInsecureElectronFlagsEscalation,
 } = require('../childProcessGuard');
 
 test('buildSandboxedChildEnv: only allowlisted keys appear, sensitive keys never leak through', () => {
@@ -581,4 +582,34 @@ test('appendSecurityAuditLog: sequential appends do not overwrite prior lines', 
   const lines = contents.trim().split('\n');
   assert.equal(lines.length, 3);
   assert.deepEqual(lines.map((l) => JSON.parse(l).n), [1, 2, 3]);
+});
+
+// Group J Task 9: evaluateInsecureElectronFlagsEscalation composes Group
+// F's assertSecureElectronDefaults() result with Task 8's audit-log
+// plumbing to decide when a violation deserves more than a plain
+// console.error.
+test('evaluateInsecureElectronFlagsEscalation: escalates a violation in a packaged build', () => {
+  const result = evaluateInsecureElectronFlagsEscalation({ ok: false, violations: ['no-sandbox'] }, true);
+  assert.equal(result.shouldEscalate, true);
+  assert.equal(result.auditEvent.channel, 'security:insecure-electron-flags');
+  assert.equal(result.auditEvent.outcome, 'violation');
+  assert.deepEqual(result.auditEvent.detail, { violations: ['no-sandbox'] });
+});
+
+test('evaluateInsecureElectronFlagsEscalation: does NOT escalate a violation in a dev (unpackaged) build', () => {
+  const result = evaluateInsecureElectronFlagsEscalation({ ok: false, violations: ['remote-debugging-port'] }, false);
+  assert.equal(result.shouldEscalate, false);
+  assert.equal(result.auditEvent, null);
+});
+
+test('evaluateInsecureElectronFlagsEscalation: does NOT escalate a clean packaged-build result', () => {
+  const result = evaluateInsecureElectronFlagsEscalation({ ok: true }, true);
+  assert.equal(result.shouldEscalate, false);
+  assert.equal(result.auditEvent, null);
+});
+
+test('evaluateInsecureElectronFlagsEscalation: does NOT escalate a clean dev-build result', () => {
+  const result = evaluateInsecureElectronFlagsEscalation({ ok: true }, false);
+  assert.equal(result.shouldEscalate, false);
+  assert.equal(result.auditEvent, null);
 });

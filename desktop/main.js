@@ -13,7 +13,7 @@ const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserId
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
-const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog } = require('./security/childProcessGuard');
+const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation } = require('./security/childProcessGuard');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -3627,6 +3627,14 @@ app.whenReady().then(async () => {
     const secureDefaultsResult = assertSecureElectronDefaults(app);
     if (!secureDefaultsResult.ok) {
       console.error('[SECURITY] Insecure Electron command-line switches active:', secureDefaultsResult.violations);
+      // Group J Task 9: console.error alone is invisible on a packaged
+      // build (no attached terminal) — escalate into the Task 8 security
+      // audit log specifically when this is happening in production, so
+      // there's a durable, inspectable record of it.
+      const escalation = evaluateInsecureElectronFlagsEscalation(secureDefaultsResult, app.isPackaged);
+      if (escalation.shouldEscalate) {
+        logSecurityAuditEvent(escalation.auditEvent.channel, escalation.auditEvent.outcome, escalation.auditEvent.detail);
+      }
     }
 
     createMenu();
