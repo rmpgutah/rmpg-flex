@@ -2,7 +2,7 @@ import React, { useRef, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { NavFunction } from '../../data/navCatalog';
 import type { DesktopGroup } from '../../utils/normalizeDesktopLayout';
-import { POPOUT_PAGES } from '../../utils/windowManager';
+import { getWindowConfig, activateNavFunction } from '../../utils/windowManager';
 import { useDesktopWindows } from './DesktopWindowManager';
 import ContextMenu from '../ContextMenu';
 
@@ -30,11 +30,7 @@ export default function DesktopIconGrid({
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const handleActivate = useCallback((fn: NavFunction) => {
-    if (POPOUT_PAGES[fn.path]) {
-      openWindow(fn.path, fn.label);
-    } else {
-      navigate(fn.path);
-    }
+    activateNavFunction(fn, { openWindow, navigate });
   }, [navigate, openWindow]);
 
   const handleIconClick = useCallback((fn: NavFunction, e: React.MouseEvent) => {
@@ -102,7 +98,7 @@ export default function DesktopIconGrid({
       {icons.map((fn) => {
         const pos = positions[fn.path] ?? { x: 20, y: 20 };
         const Icon = fn.icon;
-        const eligible = !!POPOUT_PAGES[fn.path];
+        const eligible = !!getWindowConfig(fn);
         const isSelected = selected.has(fn.path);
         const multiSelected = selected.size > 1 && isSelected;
         return (
@@ -125,7 +121,8 @@ export default function DesktopIconGrid({
                 try {
                   const payload = JSON.parse(e.dataTransfer.getData('application/json'));
                   if (payload?.type === 'person' && payload.id) {
-                    openWindow(`/records?personId=${encodeURIComponent(payload.id)}`, 'Records');
+                    const config = getWindowConfig(fn);
+                    openWindow(`/records?personId=${encodeURIComponent(payload.id)}`, 'Records', config ? { width: config.width, height: config.height } : undefined);
                   }
                 } catch { /* ignore malformed drag payloads */ }
               } : undefined}
