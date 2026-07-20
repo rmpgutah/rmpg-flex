@@ -25,6 +25,14 @@ contextBridge.exposeInMainWorld('electron', {
   openSecondaryWindow: (path, opts) => ipcRenderer.invoke('window:open-secondary', path, opts),
   closeSecondaryWindow: (id) => ipcRenderer.invoke('window:close-secondary', id),
 
+  // Opens the Company Browser — a dedicated window for general external
+  // web browsing (vendor portals, county sites, etc.) via <webview>.
+  // Electron-only; the web SPA build has no window.electron at all, so
+  // callers must feature-detect (window.electron?.isElectron) before
+  // calling this. See client/src/utils/windowManager.ts's
+  // activateNavFunction for that gate.
+  openCompanyBrowser: () => ipcRenderer.invoke('window:open-company-browser'),
+
   // Sets the dock/taskbar badge count. No-ops on platforms without
   // app.setBadgeCount (see main.js's 'notify:dock-badge' handler).
   setDockBadge: (count) => ipcRenderer.invoke('notify:dock-badge', count),
