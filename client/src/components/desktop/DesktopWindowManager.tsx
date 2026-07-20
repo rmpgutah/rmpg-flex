@@ -15,7 +15,8 @@ export interface DesktopWindowState {
 
 interface DesktopWindowManagerContextValue {
   windows: DesktopWindowState[];
-  openWindow: (path: string, title: string) => void;
+  /** Returns true if the window was opened/focused, false if the cap was hit and the call was a no-op. */
+  openWindow: (path: string, title: string, size?: { width: number; height: number }) => boolean;
   closeWindow: (id: string) => void;
   focusWindow: (id: string) => void;
   minimizeWindow: (id: string) => void;
@@ -24,7 +25,7 @@ interface DesktopWindowManagerContextValue {
 }
 
 const SESSION_KEY = 'rmpg_desktop_windows';
-const MAX_OPEN_WINDOWS = 6;
+const MAX_OPEN_WINDOWS = 10;
 
 const DesktopWindowManagerContext = createContext<DesktopWindowManagerContextValue | null>(null);
 
@@ -55,24 +56,30 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [windows]);
 
-  const openWindow = useCallback((path: string, title: string) => {
+  const openWindow = useCallback((path: string, title: string, size?: { width: number; height: number }) => {
+    let opened = true;
     setWindows(prev => {
       const existing = prev.find(w => w.path === path);
       if (existing) {
         nextZIndex += 1;
         return prev.map(w => w.id === existing.id ? { ...w, minimized: false, zIndex: nextZIndex } : w);
       }
-      if (prev.length >= MAX_OPEN_WINDOWS) return prev;
+      if (prev.length >= MAX_OPEN_WINDOWS) {
+        opened = false;
+        return prev;
+      }
       nextZIndex += 1;
       const offset = prev.length * 24;
       const win: DesktopWindowState = {
         id: `win_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         path, title,
-        x: 80 + offset, y: 60 + offset, width: 900, height: 640,
+        x: 80 + offset, y: 60 + offset,
+        width: size?.width ?? 900, height: size?.height ?? 640,
         zIndex: nextZIndex, minimized: false, maximized: false,
       };
       return [...prev, win];
     });
+    return opened;
   }, []);
 
   const closeWindow = useCallback((id: string) => {
