@@ -14,7 +14,7 @@
 - Encrypted key derivation must be domain-separated from `emailCrypto.ts`'s own fallback (which hashes bare `JWT_SECRET`) — this feature's fallback hashes `JWT_SECRET + '|company-browser-data-v1'`, never the bare secret.
 - `decryptBrowserData` must return `null` (not throw) on any failure — a corrupted row or post-rotation mismatch degrades to "no bookmarks/history," never a 500.
 - `decryptBrowserData` must pass through legacy plaintext (non-`"v1:"`-prefixed) values unchanged — real rows already exist in D1 from the pre-encryption version of this feature.
-- Role restriction: block `/desktop-company-browser` for `client_viewer` and `contract_manager` only — every other authenticated role keeps access.
+- Role restriction: block `/desktop-company-browser` for `client_viewer` and `contract_manager` only — every other authenticated role keeps access. This must be enforced at three layers: the nav-catalog launcher (Task 1), the React route itself (Task 4 — so direct URL/bookmark access redirects away), and the Electron IPC handler (Task 4 — so the launch call itself rejects a blocked role even when triggered outside the UI, e.g. via DevTools). This is client/renderer-verified role checking (same trust tier as the existing `AdminRoute`/`DispatchRoleGuard`), not a cryptographically-enforced boundary — Electron's main process has no server-verified session of its own, and building one is explicitly out of scope.
 - Ownership notice: footer line reads exactly `"© 2026 Rocky Mountain Protective Group, LLC — Internal Use Only, Authorized Personnel Only"`. First-launch modal is per-user (`localStorage` key namespaced by `user?.id`, falling back to a role-only key when `id` is absent — matching the exact fallback style already used by `client/src/components/JailFormModal.tsx:48` for its own per-user draft key), shown once, single "I Understand" dismiss button.
 - No new D1 migration — the columns already exist; encryption only changes what bytes are stored in them.
 - No new required secret — `COMPANY_BROWSER_DATA_KEY` is optional (same pattern as `EMAIL_CRED_KEY`).
@@ -630,7 +630,432 @@ git commit -m "feat(desktop): add RMPG ownership footer + first-launch proprieta
 
 ---
 
-### Task 4: Manual verification (Electron)
+### Task 4: Real gating for blocked roles (route guard + Electron IPC rejection)
+
+**Why this task exists:** Task 1 hides the Company Browser icon from `client_viewer`/`contract_manager` in the two nav launchers, but does nothing to stop a blocked-role user who already knows the URL (old bookmark, typed address) from reaching `/desktop-company-browser` directly, or from opening the DevTools console and calling `window.electron.openCompanyBrowser()` directly, bypassing the UI entirely. This task closes both paths, using the same trust model this app already uses everywhere else (client-verified role, same tier as the existing `AdminRoute`/`DispatchRoleGuard` — NOT a JWT-signature-verified boundary; Electron's main process has no server-verified session of its own, and adding one is out of scope).
+
+**Files:**
+- Create: `client/src/utils/companyBrowserAccess.ts`
+- Create: `client/src/utils/__tests__/companyBrowserAccess.test.ts`
+- Modify: `client/src/App.tsx` (new `CompanyBrowserRoleGuard` component + route wrapping)
+- Modify: `client/src/utils/windowManager.ts` (`activateNavFunction`)
+- Modify: `client/src/utils/windowManager.test.ts`
+- Modify: `client/src/components/desktop/DesktopIconGrid.tsx`
+- Modify: `client/src/components/desktop/DesktopTaskbar.tsx`
+- Modify: `desktop/preload.js`
+- Modify: `desktop/security/webviewHardening.js`
+- Modify: `desktop/security/__tests__/webviewHardening.test.js`
+- Modify: `desktop/main.js`
+
+**Interfaces:**
+- Consumes: nothing from Tasks 1-3 directly (independent of their code, though it operates on the same feature).
+- Produces: `isCompanyBrowserBlockedRole(role: string | undefined): boolean` (client), `isCompanyBrowserRoleAllowed(role)` (Electron main, pure function in `webviewHardening.js`) — both consumed only within this task.
+
+- [ ] **Step 1: Write the failing test for the client-side pure access-check function**
+
+```ts
+// client/src/utils/__tests__/companyBrowserAccess.test.ts
+import { describe, it, expect } from 'vitest';
+import { isCompanyBrowserBlockedRole } from '../companyBrowserAccess';
+
+describe('isCompanyBrowserBlockedRole', () => {
+  it('blocks client_viewer and contract_manager', () => {
+    expect(isCompanyBrowserBlockedRole('client_viewer')).toBe(true);
+    expect(isCompanyBrowserBlockedRole('contract_manager')).toBe(true);
+  });
+
+  it('allows every other role', () => {
+    expect(isCompanyBrowserBlockedRole('officer')).toBe(false);
+    expect(isCompanyBrowserBlockedRole('admin')).toBe(false);
+    expect(isCompanyBrowserBlockedRole('manager')).toBe(false);
+    expect(isCompanyBrowserBlockedRole('dispatcher')).toBe(false);
+    expect(isCompanyBrowserBlockedRole('supervisor')).toBe(false);
+    expect(isCompanyBrowserBlockedRole('human_resources')).toBe(false);
+  });
+
+  it('allows undefined/empty role (fails open to "not blocked" — ProtectedRoute already requires authentication first)', () => {
+    expect(isCompanyBrowserBlockedRole(undefined)).toBe(false);
+    expect(isCompanyBrowserBlockedRole('')).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd client && npx vitest run src/utils/__tests__/companyBrowserAccess.test.ts`
+Expected: FAIL — `Cannot find module '../companyBrowserAccess'`
+
+- [ ] **Step 3: Implement the pure function**
+
+```ts
+// client/src/utils/companyBrowserAccess.ts
+// Pure role-check for Company Browser access, extracted so it's unit-testable
+// in isolation — same pattern as client/src/pages/dispatch/dispatchAccess.ts's
+// resolveDispatchAccess(). Consumed by CompanyBrowserRoleGuard in App.tsx (the
+// route-level gate) and by the nav-catalog launch path (windowManager.ts),
+// so a blocked role can't reach the page by direct URL/bookmark OR by
+// triggering the Electron launch call directly.
+export function isCompanyBrowserBlockedRole(role: string | undefined): boolean {
+  return role === 'client_viewer' || role === 'contract_manager';
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd client && npx vitest run src/utils/__tests__/companyBrowserAccess.test.ts`
+Expected: PASS (3 tests)
+
+- [ ] **Step 5: Add the route guard in `App.tsx`**
+
+Find the existing `DispatchRoleGuard` component in `client/src/App.tsx` (it wraps `/dispatch`) — model the new guard on it exactly, including its `isLoading` handling. Add this component near `DispatchRoleGuard`:
+
+```tsx
+import { isCompanyBrowserBlockedRole } from './utils/companyBrowserAccess';
+```
+
+(add this import near the other same-directory utility imports at the top of `App.tsx`)
+
+```tsx
+/** Role-based guard for /desktop-company-browser — client_viewer/contract_manager
+ *  redirect to the dashboard. Closes the direct-URL/bookmark gap the nav-catalog
+ *  exclusion (CLIENT_VIEWER_BLOCKED/CONTRACT_MANAGER_BLOCKED in navCatalog.ts)
+ *  doesn't cover on its own — that only hides the launcher icon. See
+ *  docs/superpowers/specs/2026-07-20-company-browser-hardening-design.md. */
+function CompanyBrowserRoleGuard({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingSplash message="Loading RMPG Flex" />;
+  }
+
+  if (isCompanyBrowserBlockedRole(user?.role)) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
+```
+
+Then find the existing route registration:
+
+```tsx
+          <Route path="/desktop-company-browser" element={<ProtectedRoute><RouteErrorBoundary><CompanyBrowserPage /></RouteErrorBoundary></ProtectedRoute>} />
+```
+
+and change it to:
+
+```tsx
+          <Route path="/desktop-company-browser" element={<ProtectedRoute><CompanyBrowserRoleGuard><RouteErrorBoundary><CompanyBrowserPage /></RouteErrorBoundary></CompanyBrowserRoleGuard></ProtectedRoute>} />
+```
+
+(If the exact current route line in `App.tsx` differs from what's shown above — e.g. different surrounding whitespace or a slightly different wrapper order — locate it by searching for `desktop-company-browser` and apply the same `CompanyBrowserRoleGuard` wrapping in whichever exact form it's currently in, keeping `ProtectedRoute` as the outermost wrapper and `RouteErrorBoundary` innermost, matching every other guarded route's wrapper order in this file.)
+
+- [ ] **Step 6: Wire the role into the Electron launch path — `windowManager.ts`**
+
+In `client/src/utils/windowManager.ts`, change the `activateNavFunction` handlers type and the `company-browser` branch from:
+
+```ts
+export function activateNavFunction(
+  fn: NavFunction,
+  handlers: {
+    openWindow: (path: string, title: string, size?: { width: number; height: number }) => void;
+    navigate: (path: string) => void;
+    /** Called instead of navigate() when fn.electronOnly is set and window.electron is unavailable/fails. */
+    onElectronOnlyUnavailable?: (fn: NavFunction) => void;
+  },
+): void {
+  if (fn.electronOnly === 'company-browser') {
+    const electron = (window as any).electron;
+    if (electron?.isElectron && typeof electron.openCompanyBrowser === 'function') {
+      Promise.resolve(electron.openCompanyBrowser()).catch(() => handlers.onElectronOnlyUnavailable?.(fn));
+    } else {
+      handlers.onElectronOnlyUnavailable?.(fn);
+    }
+    return;
+  }
+```
+
+to:
+
+```ts
+export function activateNavFunction(
+  fn: NavFunction,
+  handlers: {
+    openWindow: (path: string, title: string, size?: { width: number; height: number }) => void;
+    navigate: (path: string) => void;
+    /** Called instead of navigate() when fn.electronOnly is set and window.electron is unavailable/fails. */
+    onElectronOnlyUnavailable?: (fn: NavFunction) => void;
+    /** Current user's role — passed through to window.electron.openCompanyBrowser() so
+     *  desktop/main.js's IPC handler can reject a blocked role even if it's invoked
+     *  directly (e.g. via DevTools console), not just through this UI path. */
+    currentUserRole?: string;
+  },
+): void {
+  if (fn.electronOnly === 'company-browser') {
+    const electron = (window as any).electron;
+    if (electron?.isElectron && typeof electron.openCompanyBrowser === 'function') {
+      Promise.resolve(electron.openCompanyBrowser(handlers.currentUserRole)).catch(() => handlers.onElectronOnlyUnavailable?.(fn));
+    } else {
+      handlers.onElectronOnlyUnavailable?.(fn);
+    }
+    return;
+  }
+```
+
+- [ ] **Step 7: Write the failing test for the `currentUserRole` threading**
+
+Add to `client/src/utils/windowManager.test.ts` (find its existing `describe('activateNavFunction — electronOnly', ...)` block and add these cases alongside the existing ones there):
+
+```ts
+  it('passes currentUserRole through to window.electron.openCompanyBrowser', () => {
+    const openCompanyBrowser = vi.fn().mockResolvedValue({ ok: true });
+    (window as any).electron = { isElectron: true, openCompanyBrowser };
+    activateNavFunction(COMPANY_BROWSER_FN, { openWindow: vi.fn(), navigate: vi.fn(), currentUserRole: 'officer' });
+    expect(openCompanyBrowser).toHaveBeenCalledWith('officer');
+  });
+
+  it('passes undefined currentUserRole through when not provided', () => {
+    const openCompanyBrowser = vi.fn().mockResolvedValue({ ok: true });
+    (window as any).electron = { isElectron: true, openCompanyBrowser };
+    activateNavFunction(COMPANY_BROWSER_FN, { openWindow: vi.fn(), navigate: vi.fn() });
+    expect(openCompanyBrowser).toHaveBeenCalledWith(undefined);
+  });
+```
+
+(`COMPANY_BROWSER_FN` should already be defined earlier in this test file from the original Company Browser feature's tests — reuse it; if its exact name differs, use whatever the existing `electronOnly: 'company-browser'` test fixture in this file is actually called.)
+
+- [ ] **Step 8: Run test to verify it fails**
+
+Run: `cd client && npx vitest run src/utils/windowManager.test.ts`
+Expected: FAIL — `openCompanyBrowser` is called with no arguments (`undefined` in both cases by coincidence for the second test, but the first test expecting `'officer'` fails since the call currently passes nothing).
+
+- [ ] **Step 9: Run test to verify it passes**
+
+Run: `cd client && npx vitest run src/utils/windowManager.test.ts`
+Expected: PASS (all tests, including pre-existing ones)
+
+- [ ] **Step 10: Wire `currentUserRole` at all three `activateNavFunction` call sites**
+
+In `client/src/components/desktop/DesktopIconGrid.tsx`, this file does not currently import `useAuth`. Add it:
+
+```ts
+import { useAuth } from '../../context/AuthContext';
+```
+
+Inside the component function, add (near the other hooks at the top):
+
+```ts
+  const { user } = useAuth();
+```
+
+Then change `handleActivate`:
+
+```ts
+  const handleActivate = useCallback((fn: NavFunction) => {
+    activateNavFunction(fn, {
+      openWindow,
+      navigate,
+      onElectronOnlyUnavailable: () => addToast('Company Browser is available in the RMPG Flex desktop app', 'error'),
+    });
+  }, [navigate, openWindow, addToast]);
+```
+
+to:
+
+```ts
+  const handleActivate = useCallback((fn: NavFunction) => {
+    activateNavFunction(fn, {
+      openWindow,
+      navigate,
+      onElectronOnlyUnavailable: () => addToast('Company Browser is available in the RMPG Flex desktop app', 'error'),
+      currentUserRole: user?.role,
+    });
+  }, [navigate, openWindow, addToast, user?.role]);
+```
+
+In `client/src/components/desktop/DesktopTaskbar.tsx` (which already has `const { user } = useAuth();` in scope), change `handleSelectResult`:
+
+```ts
+  const handleSelectResult = useCallback((fn: NavFunction) => {
+    let capHit = false;
+    activateNavFunction(fn, {
+      navigate,
+      openWindow: (path, title, size) => {
+        if (!openWindow(path, title, size)) capHit = true;
+      },
+      onElectronOnlyUnavailable: () => addToast('Company Browser is available in the RMPG Flex desktop app', 'error'),
+    });
+    if (capHit) addToast('Close a window to open another', 'error');
+    setLauncherOpen(false);
+    setQuery('');
+  }, [navigate, openWindow, addToast]);
+```
+
+to:
+
+```ts
+  const handleSelectResult = useCallback((fn: NavFunction) => {
+    let capHit = false;
+    activateNavFunction(fn, {
+      navigate,
+      openWindow: (path, title, size) => {
+        if (!openWindow(path, title, size)) capHit = true;
+      },
+      onElectronOnlyUnavailable: () => addToast('Company Browser is available in the RMPG Flex desktop app', 'error'),
+      currentUserRole: user?.role,
+    });
+    if (capHit) addToast('Close a window to open another', 'error');
+    setLauncherOpen(false);
+    setQuery('');
+  }, [navigate, openWindow, addToast, user?.role]);
+```
+
+Also in `DesktopTaskbar.tsx`, find the pinned-taskbar-button inline call:
+
+```tsx
+            onClick={() => activateNavFunction(fn, { navigate, openWindow })}
+```
+
+and change it to:
+
+```tsx
+            onClick={() => activateNavFunction(fn, { navigate, openWindow, currentUserRole: user?.role })}
+```
+
+(This third call site currently has no `onElectronOnlyUnavailable` either — leave that as-is; adding it is out of scope for this task, which is only about closing the role-bypass gap, not about fixing that pre-existing unrelated silent-no-op behavior.)
+
+- [ ] **Step 11: Run the full touched-file client test suite**
+
+Run: `cd client && npx vitest run src/utils/companyBrowserAccess.test.ts src/utils/windowManager.test.ts src/components/desktop/DesktopIconGrid.test.tsx src/components/desktop/DesktopTaskbar.test.tsx src/components/desktop/DesktopTaskbar.commandBar.test.tsx`
+Expected: all PASS
+
+- [ ] **Step 12: Write the failing test for the Electron-side pure role check**
+
+Add to `desktop/security/__tests__/webviewHardening.test.js` (this file already exists from the original feature — add these cases alongside its existing `test(...)` blocks):
+
+```js
+const { isCompanyBrowserRoleAllowed } = require('../webviewHardening');
+
+test('isCompanyBrowserRoleAllowed denies client_viewer and contract_manager', () => {
+  assert.equal(isCompanyBrowserRoleAllowed('client_viewer'), false);
+  assert.equal(isCompanyBrowserRoleAllowed('contract_manager'), false);
+});
+
+test('isCompanyBrowserRoleAllowed allows every other role, including undefined', () => {
+  assert.equal(isCompanyBrowserRoleAllowed('officer'), true);
+  assert.equal(isCompanyBrowserRoleAllowed('admin'), true);
+  assert.equal(isCompanyBrowserRoleAllowed(undefined), true);
+  assert.equal(isCompanyBrowserRoleAllowed(''), true);
+});
+```
+
+(Add the `require` line either at the top of the file alongside the existing `hardenGuestWebPreferences`/`shouldAllowGuestNavigation` require, or inline before first use — match whatever this file's existing require style already is.)
+
+- [ ] **Step 13: Run test to verify it fails**
+
+Run: `node --test 'desktop/security/__tests__/webviewHardening.test.js'`
+Expected: FAIL — `isCompanyBrowserRoleAllowed is not a function` (not yet exported)
+
+- [ ] **Step 14: Implement the pure function in `webviewHardening.js`**
+
+Add to `desktop/security/webviewHardening.js`, above the `module.exports` block:
+
+```js
+/**
+ * Gate for the 'window:open-company-browser' IPC handler: rejects
+ * client_viewer/contract_manager roles even if the IPC channel is invoked
+ * directly (e.g. via DevTools console), not just through the UI's own
+ * nav-catalog filtering (which only hides the launcher icon and can be
+ * bypassed by a renderer script calling window.electron.openCompanyBrowser()
+ * directly). role is renderer-supplied and NOT cryptographically verified —
+ * this is the same trust tier this app's client-side role guards (e.g.
+ * client/src/App.tsx's AdminRoute/DispatchRoleGuard/CompanyBrowserRoleGuard)
+ * already use, not a new, weaker one. A determined, already-authenticated
+ * insider with DevTools access could still forge a different role string in
+ * the IPC call; closing that fully would require a server-verified session
+ * in the Electron main process, which this app doesn't have today and is
+ * out of scope here.
+ */
+function isCompanyBrowserRoleAllowed(role) {
+  return role !== 'client_viewer' && role !== 'contract_manager';
+}
+```
+
+Update `module.exports` to include it:
+
+```js
+module.exports = {
+  hardenGuestWebPreferences,
+  shouldAllowGuestNavigation,
+  NEW_TAB_SENTINEL_URL,
+  isCompanyBrowserRoleAllowed,
+};
+```
+
+- [ ] **Step 15: Run test to verify it passes**
+
+Run: `node --test 'desktop/security/__tests__/webviewHardening.test.js'`
+Expected: PASS (all tests, including pre-existing ones)
+
+- [ ] **Step 16: Wire the role check into `main.js`'s IPC handler and `preload.js`**
+
+In `desktop/preload.js`, change:
+
+```js
+  openCompanyBrowser: () => ipcRenderer.invoke('window:open-company-browser'),
+```
+
+to:
+
+```js
+  openCompanyBrowser: (role) => ipcRenderer.invoke('window:open-company-browser', role),
+```
+
+In `desktop/main.js`, add `isCompanyBrowserRoleAllowed` to the existing `require('./security/webviewHardening')` line (find `const { hardenGuestWebPreferences, shouldAllowGuestNavigation } = require('./security/webviewHardening');` and add the new name to that destructure). Then change the handler from:
+
+```js
+guardedHandle('window:open-company-browser', () => {
+  if (companyBrowserWindow && !companyBrowserWindow.isDestroyed()) {
+    companyBrowserWindow.focus();
+    return { ok: true };
+  }
+```
+
+to:
+
+```js
+guardedHandle('window:open-company-browser', (event, role) => {
+  if (!isCompanyBrowserRoleAllowed(role)) {
+    return { ok: false, error: 'forbidden' };
+  }
+  if (companyBrowserWindow && !companyBrowserWindow.isDestroyed()) {
+    companyBrowserWindow.focus();
+    return { ok: true };
+  }
+```
+
+(Leave everything else in this handler — window creation, `will-attach-webview` wiring, etc. — unchanged below this point.)
+
+- [ ] **Step 17: Sanity-check `main.js` still loads**
+
+Run: `cd desktop && node -e "require('./main.js')" 2>&1 | head -20`
+Expected: only the expected `Cannot find module 'electron'` (or similar Electron-runtime-only error) — no `SyntaxError`, no `ReferenceError` about `isCompanyBrowserRoleAllowed`.
+
+- [ ] **Step 18: Run client typecheck**
+
+Run: `cd client && npx tsc --noEmit`
+Expected: 0 new errors
+
+- [ ] **Step 19: Commit**
+
+```bash
+git add client/src/utils/companyBrowserAccess.ts client/src/utils/__tests__/companyBrowserAccess.test.ts client/src/App.tsx client/src/utils/windowManager.ts client/src/utils/windowManager.test.ts client/src/components/desktop/DesktopIconGrid.tsx client/src/components/desktop/DesktopTaskbar.tsx desktop/preload.js desktop/security/webviewHardening.js desktop/security/__tests__/webviewHardening.test.js desktop/main.js
+git commit -m "feat(desktop): gate Company Browser route + IPC launch against blocked roles"
+```
+
+---
+
+### Task 5: Manual verification (Electron)
 
 Encryption and role-restriction are both fully covered by automated tests; the ownership notice's rendering is covered too. The one thing that can't be verified outside a real Electron session is that the encrypted round-trip actually works against LIVE D1 (not just the mocked test harness), and that the notice/footer render correctly inside the real dedicated `BrowserWindow`.
 
@@ -646,7 +1071,7 @@ Open Company Browser (as an `officer`/`admin`/etc. role — not `client_viewer`/
 
 - [ ] **Step 3: Verify role restriction**
 
-Log in as a `client_viewer` or `contract_manager` user. Confirm "Company Browser" does not appear in Module Directory, cannot be pinned to the Desktop tab, and does not appear in taskbar launcher search results.
+Log in as a `client_viewer` or `contract_manager` user. Confirm "Company Browser" does not appear in Module Directory, cannot be pinned to the Desktop tab, and does not appear in taskbar launcher search results. Then, still logged in as that user, manually navigate the app to `/desktop-company-browser` by typing it into the address bar (web SPA) — confirm you're redirected to the dashboard, not shown the browser page. Finally, open DevTools in the Electron app (if available in this build) and run `window.electron.openCompanyBrowser('client_viewer')` directly in the console — confirm it returns `{ ok: false, error: 'forbidden' }` and no Company Browser window opens.
 
 - [ ] **Step 4: Verify bookmarks/history persist correctly against live encryption**
 
