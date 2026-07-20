@@ -1,12 +1,19 @@
-# PR Tests — runs on every pull request and push to main
+# PR Tests — runs on every pull request against main.
 # Mirrors .husky/pre-push but in CI so the gate is enforced even when
 # a contributor bypasses the pre-push hook with --no-verify.
+#
+# Intentionally NOT on push:main: these are the same tsc/vitest/vite checks
+# that already ran (and were required to pass) on the PR before merge, so
+# re-running them post-merge just duplicates CI minutes and slows down every
+# push to main. main-typecheck-guardrail.yml still re-validates worker+client
+# typecheck post-merge (with auto-issue-filing) to catch the narrow case of
+# concurrent merges dropping an import; deploy.yml re-typechecks + rebuilds
+# the client for real as part of the deploy itself. Nothing here was uniquely
+# covering a gap those two don't already close.
 name: PR Tests
 
 on:
   pull_request:
-    branches: [main]
-  push:
     branches: [main]
 
 concurrency:
