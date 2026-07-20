@@ -37,6 +37,7 @@ vi.mock('../components/ToastProvider', () => ({
 }));
 
 import { saveFavorites } from '../utils/navFavorites';
+import { isAutoArrangeEnabled, areIconsHidden } from '../utils/desktopIconPreferences';
 import DesktopPage from './DesktopPage';
 
 describe('DesktopPage', () => {
@@ -174,5 +175,33 @@ describe('DesktopPage — empty-desktop right-click shortcuts', () => {
     // Re-open to check View next (ContextMenu closes itself after a click).
     fireEvent.contextMenu(desktopSurface);
     fireEvent.click(screen.getByText('View: List'));
+  });
+});
+
+describe('DesktopPage — auto-arrange and show/hide icons toggles', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('toggles the Auto-arrange menu label and persists via setAutoArrangeEnabled', async () => {
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByLabelText('Open app launcher')).toBeInTheDocument());
+    const desktopSurface = screen.getByTestId('desktop-surface');
+    fireEvent.contextMenu(desktopSurface);
+    expect(screen.getByText('Auto-arrange: Off')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Auto-arrange: Off'));
+    expect(isAutoArrangeEnabled()).toBe(true);
+    fireEvent.contextMenu(desktopSurface);
+    expect(screen.getByText('Auto-arrange: On')).toBeInTheDocument();
+  });
+
+  it('toggles the Hide/Show icons menu label and persists via setIconsHidden', async () => {
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByLabelText('Open app launcher')).toBeInTheDocument());
+    const desktopSurface = screen.getByTestId('desktop-surface');
+    fireEvent.contextMenu(desktopSurface);
+    expect(screen.getByText('Hide icons')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Hide icons'));
+    expect(areIconsHidden()).toBe(true);
+    fireEvent.contextMenu(desktopSurface);
+    expect(screen.getByText('Show icons')).toBeInTheDocument();
   });
 });

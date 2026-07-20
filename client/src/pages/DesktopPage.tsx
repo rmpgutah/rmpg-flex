@@ -11,6 +11,7 @@ import { DEFAULT_ACCENT_ID, getAccent } from '../data/desktopAccents';
 import { normalizeDesktopLayout, serializeDesktopLayout, type DesktopGroup } from '../utils/normalizeDesktopLayout';
 import { normalizeDesktopWidgets, serializeDesktopWidgets } from '../utils/normalizeDesktopWidgets';
 import { sortIconPositions, snapToGrid } from '../utils/desktopLayoutOps';
+import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden, setIconsHidden } from '../utils/desktopIconPreferences';
 import DesktopWallpaper from '../components/desktop/DesktopWallpaper';
 import { DesktopWindowManagerProvider, useDesktopWindows } from '../components/desktop/DesktopWindowManager';
 import FloatingWindow from '../components/desktop/FloatingWindow';
@@ -72,6 +73,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
     });
   }, [isAdmin, isClientViewer, isContractManager]);
 
+  const [, forceRerender] = useState(0);
   const [favorites, setFavorites] = useState<Set<string>>(loadFavorites);
   const pinnedIcons: NavFunction[] = useMemo(
     () => allFunctions.filter(fn => favorites.has(fn.path)),
@@ -214,6 +216,8 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             { label: 'Icon size: Small', onClick: () => handleIconSizeChange('small') },
             { label: 'Icon size: Medium', onClick: () => handleIconSizeChange('medium') },
             { label: 'Icon size: Large', onClick: () => handleIconSizeChange('large') },
+            { label: isAutoArrangeEnabled() ? 'Auto-arrange: On' : 'Auto-arrange: Off', onClick: () => { setAutoArrangeEnabled(!isAutoArrangeEnabled()); forceRerender(n => n + 1); } },
+            { label: areIconsHidden() ? 'Show icons' : 'Hide icons', onClick: () => { setIconsHidden(!areIconsHidden()); forceRerender(n => n + 1); } },
             { label: '', onClick: () => {}, divider: true },
             { label: 'Settings', onClick: () => setWidgetSettingsOpen(true) },
             { label: 'New sticky note', onClick: () => addNote(60, 60) },
