@@ -7,6 +7,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { NAV_CATEGORIES, CLIENT_VIEWER_BLOCKED, CONTRACT_MANAGER_BLOCKED, type NavFunction } from '../data/navCatalog';
 import { loadFavorites, saveFavorites, loadRecent, pushRecent } from '../utils/navFavorites';
 import { useNavBadges, type NavBadges } from '../hooks/useNavBadges';
+import { isAppPinned, pinApp, unpinApp } from '../utils/taskbarPreferences';
+import ContextMenu from '../components/ContextMenu';
 
 
 export default function ModuleDirectoryPage() {
@@ -44,6 +46,7 @@ export default function ModuleDirectoryPage() {
     setBulkMode(false);
   }, [bulkSelected]);
   const [recent, setRecent] = useState<string[]>(loadRecent);
+  const [, forceRerender] = useState(0);
   const { badges, isLoading: badgesLoading } = useNavBadges();
 
   const showFavorites = favorites.size > 0 && !searchQuery.trim();
@@ -445,8 +448,14 @@ export default function ModuleDirectoryPage() {
     const badgeValue = fn.badgeKey ? badges[fn.badgeKey as keyof NavBadges] : undefined;
 
     return (
-      <div
+      <ContextMenu
         key={fn.path}
+        items={[{
+          label: isAppPinned(fn.path) ? 'Unpin from Taskbar' : 'Pin to Taskbar',
+          onClick: () => { if (isAppPinned(fn.path)) unpinApp(fn.path); else pinApp(fn.path); forceRerender(n => n + 1); },
+        }]}
+      >
+      <div
         className="group relative transition-all duration-150 hover:bg-surface-raised active:scale-[0.98]"
         style={{
           background: 'var(--surface-sunken)',
@@ -546,6 +555,7 @@ export default function ModuleDirectoryPage() {
           </button>
         </div>
       </div>
+      </ContextMenu>
     );
   }
 }

@@ -6,6 +6,7 @@ import { getWindowConfig, activateNavFunction } from '../../utils/windowManager'
 import { useDesktopWindows } from './DesktopWindowManager';
 import ContextMenu from '../ContextMenu';
 import { useToast } from '../ToastProvider';
+import { isAppPinned, pinApp, unpinApp } from '../../utils/taskbarPreferences';
 
 export interface DesktopIconGridProps {
   icons: NavFunction[];
@@ -30,6 +31,7 @@ export default function DesktopIconGrid({
   const { addToast } = useToast();
   const dragRef = useRef<{ path: string; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [, forceRerender] = useState(0);
 
   const handleActivate = useCallback((fn: NavFunction) => {
     activateNavFunction(fn, {
@@ -114,6 +116,13 @@ export default function DesktopIconGrid({
               { label: 'Open', onClick: () => handleActivate(fn) },
               ...(eligible ? [{ label: 'Open in new browser tab', onClick: () => window.open(fn.path, '_blank', 'noopener,noreferrer') }] : []),
               ...(multiSelected ? [{ label: 'Group as...', onClick: handleGroupAs }] : []),
+              {
+                label: isAppPinned(fn.path) ? 'Unpin from Taskbar' : 'Pin to Taskbar',
+                onClick: () => {
+                  if (isAppPinned(fn.path)) unpinApp(fn.path); else pinApp(fn.path);
+                  forceRerender(n => n + 1);
+                },
+              },
               { label: 'Unpin', onClick: () => onUnpin(fn.path) },
             ]}
           >
