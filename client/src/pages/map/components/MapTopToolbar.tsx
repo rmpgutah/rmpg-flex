@@ -7,7 +7,7 @@
 // ============================================================
 
 import IconButton from '../../../components/IconButton';
-import { Ruler, Maximize, Map as MapIcon, Star, Download, ListTree } from 'lucide-react';
+import { Ruler, Maximize, Map as MapIcon, Star, Download, ListTree, ImageDown } from 'lucide-react';
 import { MAP_STYLE_LABELS, type MapStyleId } from '../utils/mapConstants';
 
 export interface MapTopToolbarProps {
@@ -24,6 +24,7 @@ export interface MapTopToolbarProps {
   legendOpen: boolean;
   onToggleLegend: () => void;
   onSnapshot: () => void;
+  onExportImage: () => void;
 }
 
 const ITEM_CLASS = 'p-1.5 transition-colors';
@@ -32,6 +33,7 @@ export default function MapTopToolbar({
   scaleEnabled, onToggleScale, fullscreenEnabled, onToggleFullscreen,
   minimapOpen, onToggleMinimap, mapStyle, onStyleChange,
   showBookmarksPanel, onToggleBookmarks, legendOpen, onToggleLegend, onSnapshot,
+  onExportImage,
 }: MapTopToolbarProps) {
   return (
     <div className="relative z-20 flex items-center gap-1 px-2 h-9 w-full bg-surface-raised/95 border-b border-border-default backdrop-blur-sm">
@@ -88,6 +90,13 @@ export default function MapTopToolbar({
         className={`${ITEM_CLASS} text-rmpg-300 hover:text-brand-gold-500`}
       >
         <Download className="w-4 h-4" />
+      </IconButton>
+      <IconButton
+        aria-label="Export map image"
+        onClick={onExportImage}
+        className={`${ITEM_CLASS} text-rmpg-300 hover:text-brand-gold-500`}
+      >
+        <ImageDown className="w-4 h-4" />
       </IconButton>
     </div>
   );

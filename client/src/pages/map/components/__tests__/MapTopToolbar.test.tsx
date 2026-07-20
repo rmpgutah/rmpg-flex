@@ -10,6 +10,7 @@ const baseProps = {
   showBookmarksPanel: false, onToggleBookmarks: vi.fn(),
   legendOpen: false, onToggleLegend: vi.fn(),
   onSnapshot: vi.fn(),
+  onExportImage: vi.fn(),
 };
 
 describe('MapTopToolbar', () => {

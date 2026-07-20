@@ -1180,6 +1180,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       if (c) snapshot.captureSnapshot({ lng: c.lng, lat: c.lat, zoom: mapRef.current?.getZoom() ?? 14 });
       setSnapshotGalleryOpen(true);
     },
+    onExportImage: () => { void printExport.exportImage(); },
   };
 
   // Mapbox GL does not auto-detect a container resize that isn't driven by a window
