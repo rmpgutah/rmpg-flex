@@ -40,7 +40,7 @@ require.cache[electronPath] = {
   },
 };
 
-const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail, retrySyncQueueItem } = require('../localDb');
+const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems } = require('../localDb');
 
 test.before(() => {
   initLocalDb();
@@ -206,4 +206,44 @@ test('retrySyncQueueItem: non-existent id returns {ok:false, error} without touc
 
   const unchanged = db.prepare('SELECT id, status, attempts, error FROM sync_queue WHERE id = ?').get(unrelated.id);
   assert.deepEqual(unchanged, unrelated, 'unrelated row must be untouched');
+});
+
+test('clearFailedSyncItems: deletes only failed rows and returns {cleared: N}', () => {
+  const db = getLocalDb();
+  db.exec('DELETE FROM sync_queue');
+
+  seedQueueRow(db, {
+    method: 'POST',
+    table_name: 'calls_for_service',
+    attempts: 3,
+    status: 'failed',
+    error: 'boom',
+  });
+  seedQueueRow(db, {
+    method: 'PUT',
+    table_name: 'units',
+    attempts: 4,
+    status: 'failed',
+    error: 'also boom',
+  });
+  seedQueueRow(db, {
+    method: 'POST',
+    table_name: 'persons',
+    attempts: 0,
+    status: 'pending',
+    error: null,
+  });
+  seedQueueRow(db, {
+    method: 'POST',
+    table_name: 'warrants',
+    attempts: 1,
+    status: 'synced',
+    error: null,
+  });
+
+  const result = clearFailedSyncItems();
+  assert.deepEqual(result, { cleared: 2 });
+
+  const remaining = db.prepare('SELECT status FROM sync_queue ORDER BY status').all();
+  assert.deepEqual(remaining.map((r) => r.status).sort(), ['pending', 'synced']);
 });

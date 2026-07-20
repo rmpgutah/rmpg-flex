@@ -186,6 +186,9 @@ contextBridge.exposeInMainWorld('electron', {
   // Reset a single failed/stuck sync queue item back to pending
   retryFailedSyncItem: (id) => ipcRenderer.invoke('sync:retry-item', id),
 
+  // Bulk-clear every failed sync queue item
+  clearFailedSyncItems: () => ipcRenderer.invoke('sync:clear-failed'),
+
   // Get locally cached user for offline auth
   getCachedUser: (username) =>
     ipcRenderer.invoke('offline:get-cached-user', { username }),

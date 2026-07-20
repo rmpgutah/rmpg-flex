@@ -23,9 +23,9 @@ const fs = require('fs');
 // eagerly requiring it crashes the entire app before the splash even
 // shows. Load lazily so the app can start with offline support
 // gracefully disabled.
-let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem;
+let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems;
 try {
-  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem } = require('./localDb'));
+  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems } = require('./localDb'));
 } catch (err) {
   console.error('[APP] Failed to load localDb (better-sqlite3 native module):', err.message);
   console.error('[APP] Offline support will be disabled this session.');
@@ -40,6 +40,7 @@ try {
   getSyncMeta = () => null;
   getSyncQueueDetail = () => [];
   retrySyncQueueItem = () => ({ ok: false, error: 'local DB unavailable' });
+  clearFailedSyncItems = () => ({ cleared: 0 });
 }
 
 const { ConnectivityMonitor } = require('./connectivityMonitor');
@@ -2853,6 +2854,9 @@ guardedHandle('sync:retry-item', (event, id) => {
   if (!idCheck.ok) return { ok: false, error: idCheck.error };
   return retrySyncQueueItem(id);
 });
+
+// Bulk-clear every 'failed' sync_queue row (diagnostics UI "clear failed" action)
+guardedHandle('sync:clear-failed', () => clearFailedSyncItems());
 
 // Get locally cached user for offline authentication
 guardedHandle('offline:get-cached-user', (_event, { username }) => {

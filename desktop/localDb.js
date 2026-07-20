@@ -507,6 +507,17 @@ function retrySyncQueueItem(id) {
   return { ok: true };
 }
 
+/**
+ * Bulk-clears every 'failed' sync_queue row (e.g. after an operator has
+ * reviewed and given up on retrying them via the diagnostics UI). Returns
+ * the actual number of rows removed via better-sqlite3's `.run().changes`,
+ * not a re-query — cheaper and immune to a race with a concurrent insert.
+ */
+function clearFailedSyncItems() {
+  const result = db.prepare(`DELETE FROM sync_queue WHERE status = 'failed'`).run();
+  return { cleared: result.changes };
+}
+
 module.exports = {
   initLocalDb,
   getLocalDb,
@@ -526,4 +537,5 @@ module.exports = {
   getQueueDepth,
   getSyncQueueDetail,
   retrySyncQueueItem,
+  clearFailedSyncItems,
 };
