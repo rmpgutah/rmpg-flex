@@ -41,3 +41,14 @@ export function snapToGrid(positions: Record<string, { x: number; y: number }>):
   }
   return snapped;
 }
+
+export function nextAutoArrangeSlot(
+  occupied: Record<string, { x: number; y: number }>,
+): { x: number; y: number } {
+  const taken = new Set(Object.values(occupied).map(pos => `${pos.x},${pos.y}`));
+  for (let i = 0; ; i++) {
+    const x = (i % GRID_COLS) * CELL_W + 20;
+    const y = Math.floor(i / GRID_COLS) * CELL_H + 20;
+    if (!taken.has(`${x},${y}`)) return { x, y };
+  }
+}
