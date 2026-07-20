@@ -12,7 +12,7 @@ const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
-const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue } = require('./security/sessionAuth');
+const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -970,13 +970,22 @@ guardedHandle('window:open-secondary', (event, routePath, opts) => {
   if (typeof built !== 'string') {
     return { ok: false, error: built && built.error ? built.error : 'invalid routePath' };
   }
+  const candidateWebPreferences = hardenWebPreferencesDefaults({
+    preload: resolveTrustedPreloadPath(path.join(__dirname, 'preload.js'), path.join(__dirname, 'preload.js')),
+  });
+  // Self-check: guard against a future regression weakening this window's
+  // webPreferences relative to the app's own hardened defaults. Should
+  // always pass today since candidateWebPreferences is itself built from
+  // hardenWebPreferencesDefaults() — this exists to catch drift later.
+  const secureCheck = assertWebPreferencesNotWeaker(candidateWebPreferences, hardenWebPreferencesDefaults());
+  if (!secureCheck.ok) {
+    return { ok: false, error: secureCheck.error };
+  }
   const win = new BrowserWindow({
     width: (opts && opts.width) || 1024,
     height: (opts && opts.height) || 768,
     title: APP_TITLE,
-    webPreferences: hardenWebPreferencesDefaults({
-      preload: resolveTrustedPreloadPath(path.join(__dirname, 'preload.js'), path.join(__dirname, 'preload.js')),
-    }),
+    webPreferences: candidateWebPreferences,
   });
   const { randomUUID } = require('crypto');
   const id = randomUUID();

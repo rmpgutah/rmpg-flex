@@ -316,6 +316,51 @@ function looksLikeSecretValue(text, knownSecrets) {
   return knownSecrets.some((secret) => typeof secret === 'string' && secret.length > 0 && secret === text);
 }
 
+// The webPreferences keys whose "secure direction" is unambiguous, and the
+// value each must equal to be considered secure. Mirrors the keys actually
+// set by hardenWebPreferencesDefaults() in sessionHardening.js — keep in
+// sync with that function if it ever changes.
+const SECURE_WEBPREFERENCES_DIRECTION = {
+  contextIsolation: true,
+  nodeIntegration: false,
+  webSecurity: true,
+  webviewTag: false,
+  experimentalFeatures: false,
+  allowRunningInsecureContent: false,
+  enableWebSQL: false,
+};
+
+/**
+ * Self-check guarding against a future regression where a BrowserWindow's
+ * webPreferences end up weaker (less secure) than the app's own hardened
+ * defaults — e.g. an override accidentally flips contextIsolation off.
+ * Only checks the fixed set of security-relevant keys above; any other
+ * key present in `candidatePrefs` (e.g. `preload`, `partition` — legitimate
+ * per-window customizations) is ignored and never flagged.
+ *
+ * @param {object} candidatePrefs webPreferences about to be used for a new window
+ * @param {object} referencePrefs the known-secure baseline to compare against
+ *   (e.g. a fresh hardenWebPreferencesDefaults() call with no overrides)
+ * @returns {{ok:true}|{ok:false,error:string}} error names the first
+ *   violated key found, in the fixed key order above
+ */
+function assertWebPreferencesNotWeaker(candidatePrefs, referencePrefs) {
+  const candidate = candidatePrefs || {};
+  const reference = referencePrefs || {};
+
+  for (const key of Object.keys(SECURE_WEBPREFERENCES_DIRECTION)) {
+    const secureValue = SECURE_WEBPREFERENCES_DIRECTION[key];
+    const referenceIsSecure = reference[key] === secureValue;
+    if (!referenceIsSecure) continue; // reference itself isn't secure on this key; nothing to enforce
+
+    if (candidate[key] !== secureValue) {
+      return { ok: false, error: `weaker webPreferences: ${key}` };
+    }
+  }
+
+  return { ok: true };
+}
+
 module.exports = {
   decodeJwtPayloadLocally,
   isJwtExpiredLocally,
@@ -326,4 +371,5 @@ module.exports = {
   isReconLaunchAuthorized,
   detectClockSkew,
   looksLikeSecretValue,
+  assertWebPreferencesNotWeaker,
 };

@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
-const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue } = require('../sessionAuth');
+const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('../sessionAuth');
 
 // Base64url-encode helper matching the encoding sessionAuth.js decodes
 // (standard base64 with '+'->'-', '/'->'_', trailing '=' stripped —
@@ -551,4 +551,60 @@ test('looksLikeSecretValue: a known secret is a substring of the copied text -> 
 test('looksLikeSecretValue: non-array knownSecrets -> false, does not throw', () => {
   assert.equal(looksLikeSecretValue('abc123offlineSecret', null), false);
   assert.equal(looksLikeSecretValue('abc123offlineSecret', undefined), false);
+});
+
+// assertWebPreferencesNotWeaker -----------------------------------------
+// Self-check used by main.js's window:open-secondary handler to make sure
+// a secondary window's webPreferences are never weaker (less secure) than
+// the app's own hardened defaults. Reference secure values, mirrored from
+// hardenWebPreferencesDefaults() in sessionHardening.js:
+//   contextIsolation: true, nodeIntegration: false, webSecurity: true,
+//   webviewTag: false, experimentalFeatures: false,
+//   allowRunningInsecureContent: false, enableWebSQL: false
+
+const SECURE_REFERENCE_PREFS = {
+  contextIsolation: true,
+  nodeIntegration: false,
+  webSecurity: true,
+  webviewTag: false,
+  experimentalFeatures: false,
+  allowRunningInsecureContent: false,
+  enableWebSQL: false,
+};
+
+test('assertWebPreferencesNotWeaker: identical prefs -> ok:true', () => {
+  assert.deepEqual(assertWebPreferencesNotWeaker({ ...SECURE_REFERENCE_PREFS }, SECURE_REFERENCE_PREFS), { ok: true });
+});
+
+test('assertWebPreferencesNotWeaker: candidate contextIsolation:false vs reference true -> ok:false naming contextIsolation', () => {
+  const candidate = { ...SECURE_REFERENCE_PREFS, contextIsolation: false };
+  const result = assertWebPreferencesNotWeaker(candidate, SECURE_REFERENCE_PREFS);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /contextIsolation/);
+});
+
+test('assertWebPreferencesNotWeaker: candidate nodeIntegration:true vs reference false -> ok:false naming nodeIntegration', () => {
+  const candidate = { ...SECURE_REFERENCE_PREFS, nodeIntegration: true };
+  const result = assertWebPreferencesNotWeaker(candidate, SECURE_REFERENCE_PREFS);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /nodeIntegration/);
+});
+
+test('assertWebPreferencesNotWeaker: candidate at least as secure with extra benign keys (preload, partition) -> ok:true, no false positive', () => {
+  const candidate = { ...SECURE_REFERENCE_PREFS, preload: '/some/path/preload.js', partition: 'persist:secondary' };
+  assert.deepEqual(assertWebPreferencesNotWeaker(candidate, SECURE_REFERENCE_PREFS), { ok: true });
+});
+
+test('assertWebPreferencesNotWeaker: candidate MORE secure than reference on every key -> ok:true', () => {
+  // Reference deliberately weaker on webSecurity/webviewTag to prove the
+  // check only fails when candidate is weaker, never when it's stronger.
+  const weakerReference = { ...SECURE_REFERENCE_PREFS, webSecurity: false, webviewTag: true };
+  assert.deepEqual(assertWebPreferencesNotWeaker(SECURE_REFERENCE_PREFS, weakerReference), { ok: true });
+});
+
+test('assertWebPreferencesNotWeaker: reports the FIRST violated key when multiple keys are weaker', () => {
+  const candidate = { ...SECURE_REFERENCE_PREFS, contextIsolation: false, nodeIntegration: true };
+  const result = assertWebPreferencesNotWeaker(candidate, SECURE_REFERENCE_PREFS);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /weaker webPreferences:/);
 });
