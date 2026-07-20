@@ -74,6 +74,7 @@ export function useMapKeyboardShortcuts(
           case 'd': return handlers.toggleDaylight;
           case 'i': return handlers.toggleIncidentReports;
           case 'e': return handlers.toggleEnforcementClusters;
+          case 'g': return handlers.toggleGrid;
           case '?': return showHelp;
           default: return null;
         }
@@ -88,18 +89,21 @@ export function useMapKeyboardShortcuts(
   }, [enabled, handlers, showHelp]);
 }
 
-/** Pretty list of the shortcut bindings — for the help overlay.
- *  KEEP IN SYNC with the inline keydown handler in MapPage.tsx — the modal
- *  reads from this constant and operators trust the list to match what
- *  actually happens. (Previous drift: this listed P/F/D/I/E for never-wired
- *  Phase-2 overlays; the inline handler actually binds L/H/B/C/+/-/Esc.) */
+/** Pretty list of this hook's own shortcut bindings. NOT currently read by any
+ *  help overlay (grep confirms zero importers of this constant) — it previously
+ *  described a DIFFERENT legacy keydown handler's bindings (L/+/-/Esc, none of
+ *  which this hook's switch above actually implements), which was itself
+ *  inaccurate. Kept accurate to THIS hook's real switch statement so a future
+ *  help overlay can safely read from it. */
 export const MAP_SHORTCUT_BINDINGS: ReadonlyArray<{ key: string; label: string }> = [
-  { key: 'L', label: 'Toggle layers panel' },
   { key: 'H', label: 'Toggle heatmap' },
   { key: 'B', label: 'Toggle breadcrumb trails' },
-  { key: 'C', label: 'Center on all units' },
-  { key: '+ / =', label: 'Zoom in' },
-  { key: '−', label: 'Zoom out' },
-  { key: 'Esc', label: 'Close all panels' },
+  { key: 'C', label: 'Toggle call clustering' },
+  { key: 'P', label: 'Toggle patrol checkpoints' },
+  { key: 'F', label: 'Toggle field interviews' },
+  { key: 'D', label: 'Toggle daylight overlay' },
+  { key: 'I', label: 'Toggle incident reports' },
+  { key: 'E', label: 'Toggle enforcement clusters' },
+  { key: 'G', label: 'Toggle coordinate grid' },
   { key: '?', label: 'Show this help' },
 ];
