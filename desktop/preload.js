@@ -176,6 +176,10 @@ contextBridge.exposeInMainWorld('electron', {
   // Force an immediate sync cycle
   triggerSync: () => ipcRenderer.invoke('offline:trigger-sync'),
 
+  // ─── Sync Pause/Resume ──────────────────────────────────
+  pauseSync: () => ipcRenderer.invoke('sync:pause'),
+  resumeSync: () => ipcRenderer.invoke('sync:resume'),
+
   // Get locally cached user for offline auth
   getCachedUser: (username) =>
     ipcRenderer.invoke('offline:get-cached-user', { username }),

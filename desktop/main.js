@@ -2832,6 +2832,16 @@ guardedHandle('offline:trigger-sync', async () => {
   }
 });
 
+// Pause background sync (pull timers + pullAll/pushAll become no-ops)
+guardedHandle('sync:pause', () => {
+  if (syncManager) syncManager.pauseSync();
+});
+
+// Resume background sync
+guardedHandle('sync:resume', () => {
+  if (syncManager) syncManager.resumeSync();
+});
+
 // Get locally cached user for offline authentication
 guardedHandle('offline:get-cached-user', (_event, { username }) => {
   try {

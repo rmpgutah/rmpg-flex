@@ -14,6 +14,7 @@ let pullTimers = {};
 let isSyncing = false;
 let syncStartedAt = null;  // timestamp when sync started — for stale lock detection
 let lastPushAt = null;
+let isPaused = false;
 const SYNC_LOCK_TIMEOUT = 60_000; // 60s — if sync is still locked after this, force-release
 
 // ─── Pull Sync Intervals (ms) ───────────────────────────────
@@ -85,7 +86,18 @@ function releaseSyncLock() {
   syncStartedAt = null;
 }
 
+function pauseSync() {
+  isPaused = true;
+  console.log('[SYNC] Paused');
+}
+
+function resumeSync() {
+  isPaused = false;
+  console.log('[SYNC] Resumed');
+}
+
 async function pullAll() {
+  if (isPaused) return;
   if (!acquireSyncLock()) return;
 
   try {
@@ -106,6 +118,7 @@ async function pullAll() {
 }
 
 async function pushAll() {
+  if (isPaused) return;
   if (!acquireSyncLock()) return;
 
   try {
@@ -195,6 +208,7 @@ async function pushAll() {
 // ─── Internal Helpers ────────────────────────────────────────
 
 async function pullTable(table) {
+  if (isPaused) return;
   const meta = getSyncMeta(table);
   const isReference = REFERENCE_TABLES.includes(table);
 
@@ -418,6 +432,9 @@ module.exports = {
   stopPullSchedule,
   pullAll,
   pushAll,
+  pauseSync,
+  resumeSync,
   get isSyncing() { return isSyncing; },
   get lastPushAt() { return lastPushAt; },
+  get isPaused() { return isPaused; },
 };
