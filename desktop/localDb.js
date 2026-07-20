@@ -571,6 +571,92 @@ function wipeMirroredCacheTables(tableNames) {
   tx();
 }
 
+// ─── Local Cache Stats (read-only reporting) ──────────────────
+
+/**
+ * The mirrored/reference cache table list, duplicated here from
+ * syncManager.js's PULL_INTERVALS keys rather than imported from it.
+ *
+ * Design note (Task 7): getLocalCacheStats() below is called from a
+ * guardedHandle('sync:cache-stats', ...) IPC handler in main.js that's
+ * meant to work for an offline-status panel — i.e. it must return something
+ * useful even when the app has never come online this session. main.js's
+ * `syncManager` module reference is lazily assigned (`let syncManager =
+ * null`, only `require('./syncManager')`'d after connectivity resolves —
+ * see main.js's "Initialize offline modules" block), so a handler that
+ * needs to work while offline cannot read PULL_INTERVALS off of that
+ * lazy reference.
+ *
+ * Requiring './syncManager' unconditionally at the top of main.js (bypassing
+ * the lazy `let syncManager` variable) was considered and rejected:
+ * syncManager.js itself does `require('./localDb')` at its own top level
+ * (unconditionally), and localDb.js does `require('better-sqlite3')`
+ * unconditionally at ITS top level — which is exactly the native-module
+ * load failure main.js's existing `let initLocalDb, ... ; try { ... } catch`
+ * block around `require('./localDb')` exists to survive gracefully (see
+ * that comment further up in main.js). Requiring syncManager.js from a new
+ * unconditional top-level require in main.js would reintroduce that same
+ * crash-before-splash risk (or require duplicating the try/catch and its
+ * stub-fallback plumbing) for the sole purpose of reading one constant.
+ *
+ * So: this constant is localDb.js's own copy, matching PULL_INTERVALS'
+ * keys as of this writing (users, clients, properties, units,
+ * calls_for_service, incidents, time_entries, persons, vehicles_records).
+ * localDb.js cannot import FROM syncManager.js either way — syncManager.js
+ * already imports FROM localDb.js, so the reverse would be a circular
+ * require (the same constraint wipeMirroredCacheTables() above documents).
+ *
+ * ⚠️ Keep in sync with syncManager.js's PULL_INTERVALS by hand — there is
+ * no automated check tying these two lists together. If a mirrored table
+ * is added/removed there, update this list too.
+ */
+const MIRRORED_CACHE_TABLE_NAMES = [
+  'users',
+  'clients',
+  'properties',
+  'units',
+  'calls_for_service',
+  'incidents',
+  'time_entries',
+  'persons',
+  'vehicles_records',
+];
+
+/**
+ * Read-only per-table row-count + on-disk-byte-size report for the local
+ * SQLite cache, intended for an offline-status/diagnostics panel.
+ *
+ * Unlike wipeMirroredCacheTables() (mirrored cache tables only, by design —
+ * see its doc comment), this ALSO reports 'sync_queue' and
+ * 'gps_breadcrumbs': those hold real not-yet-pushed officer work rather
+ * than mirrored server data, but an operator looking at "how much local
+ * data do I have / how much is pending" reasonably wants to see queue size
+ * too. This is purely additive to the report — it does not change what
+ * wipeMirroredCacheTables() wipes, and this function never deletes anything.
+ *
+ * `bytes` comes from SQLite's `dbstat` virtual table, a compile-time option
+ * that may not be present in every better-sqlite3 build. If that query
+ * throws, `bytes` is reported as null for that table rather than a
+ * fabricated estimate.
+ *
+ * Table names here are always from the trusted, code-defined lists above
+ * (never renderer/IPC input), so the `FROM ${table}` string interpolation
+ * is safe — same reasoning as wipeMirroredCacheTables().
+ */
+function getLocalCacheStats() {
+  const tables = [...MIRRORED_CACHE_TABLE_NAMES, 'sync_queue', 'gps_breadcrumbs'];
+  return tables.map((table) => {
+    const rows = db.prepare(`SELECT COUNT(*) as c FROM ${table}`).get().c;
+    let bytes;
+    try {
+      bytes = db.prepare('SELECT SUM(pgsize) as b FROM dbstat WHERE name = ?').get(table)?.b ?? null;
+    } catch {
+      bytes = null;
+    }
+    return { table, rows, bytes };
+  });
+}
+
 module.exports = {
   initLocalDb,
   getLocalDb,
@@ -593,4 +679,6 @@ module.exports = {
   retrySyncQueueItem,
   clearFailedSyncItems,
   wipeMirroredCacheTables,
+  getLocalCacheStats,
+  MIRRORED_CACHE_TABLE_NAMES,
 };

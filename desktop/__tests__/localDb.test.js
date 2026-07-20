@@ -40,7 +40,7 @@ require.cache[electronPath] = {
   },
 };
 
-const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, setConfig, getLastSyncError, wipeMirroredCacheTables } = require('../localDb');
+const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, setConfig, getLastSyncError, wipeMirroredCacheTables, getLocalCacheStats, MIRRORED_CACHE_TABLE_NAMES } = require('../localDb');
 
 test.before(() => {
   initLocalDb();
@@ -322,4 +322,59 @@ test('wipeMirroredCacheTables: empties the given mirror tables + their sync_meta
 
   const queueAfter = db.prepare('SELECT * FROM sync_queue').all();
   assert.deepEqual(queueAfter, queueBefore, 'sync_queue must be completely untouched by the wipe');
+});
+
+test('getLocalCacheStats: reports {table, rows, bytes} for every mirrored table plus sync_queue/gps_breadcrumbs, with correct row counts including empty tables', () => {
+  const db = getLocalDb();
+
+  // Clear every table this function reports on, so counts are deterministic.
+  for (const table of [...MIRRORED_CACHE_TABLE_NAMES, 'sync_queue', 'gps_breadcrumbs']) {
+    db.exec(`DELETE FROM ${table}`);
+  }
+
+  // Seed a couple of rows in two mirrored tables — reusing the seed pattern
+  // from the wipeMirroredCacheTables test above (users/units) — and one
+  // sync_queue row, to prove non-mirrored tables are counted too.
+  db.prepare(`
+    INSERT INTO users (id, username, password_hash, full_name, role)
+    VALUES (1, 'jdoe', 'hash', 'Jane Doe', 'officer')
+  `).run();
+  db.prepare(`
+    INSERT INTO units (id, call_sign, status)
+    VALUES (1, 'U-1', 'on_duty'), (2, 'U-2', 'off_duty')
+  `).run();
+  seedQueueRow(db, {
+    method: 'POST',
+    table_name: 'calls_for_service',
+    local_id: 'unsynced-2',
+    attempts: 0,
+    status: 'pending',
+    error: null,
+  });
+
+  const stats = getLocalCacheStats();
+
+  const expectedTables = [...MIRRORED_CACHE_TABLE_NAMES, 'sync_queue', 'gps_breadcrumbs'];
+  assert.deepEqual(
+    stats.map((s) => s.table).sort(),
+    [...expectedTables].sort(),
+    'every mirrored table plus sync_queue/gps_breadcrumbs must be reported, and nothing else'
+  );
+
+  const byTable = Object.fromEntries(stats.map((s) => [s.table, s]));
+
+  assert.equal(byTable.users.rows, 1);
+  assert.equal(byTable.units.rows, 2);
+  assert.equal(byTable.sync_queue.rows, 1);
+  assert.equal(byTable.gps_breadcrumbs.rows, 0, 'unseeded table must report rows: 0, not be omitted');
+  assert.equal(byTable.clients.rows, 0, 'unseeded mirrored table must report rows: 0');
+
+  // dbstat availability is environment-dependent — assert the shape, not a
+  // specific value.
+  for (const entry of stats) {
+    assert.ok(
+      typeof entry.bytes === 'number' || entry.bytes === null,
+      `bytes for ${entry.table} must be a number or null, got ${typeof entry.bytes}`
+    );
+  }
 });

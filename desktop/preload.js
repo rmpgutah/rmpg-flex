@@ -192,6 +192,10 @@ contextBridge.exposeInMainWorld('electron', {
   // Most recent sync error, for diagnostics UI
   getLastSyncError: () => ipcRenderer.invoke('sync:last-error'),
 
+  // Read-only per-table local cache stats ({table, rows, bytes}[]), for
+  // an offline-status/diagnostics panel
+  getLocalCacheStats: () => ipcRenderer.invoke('sync:cache-stats'),
+
   // Destructive: wipe the mirrored/reference cache tables and re-pull
   // everything fresh from the server (never touches sync_queue/gps_breadcrumbs)
   forceFullResync: () => ipcRenderer.invoke('sync:force-full'),

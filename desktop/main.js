@@ -23,9 +23,9 @@ const fs = require('fs');
 // eagerly requiring it crashes the entire app before the splash even
 // shows. Load lazily so the app can start with offline support
 // gracefully disabled.
-let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, getLastSyncError;
+let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, getLastSyncError, getLocalCacheStats;
 try {
-  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, getLastSyncError } = require('./localDb'));
+  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, getLastSyncError, getLocalCacheStats } = require('./localDb'));
 } catch (err) {
   console.error('[APP] Failed to load localDb (better-sqlite3 native module):', err.message);
   console.error('[APP] Offline support will be disabled this session.');
@@ -42,6 +42,7 @@ try {
   retrySyncQueueItem = () => ({ ok: false, error: 'local DB unavailable' });
   clearFailedSyncItems = () => ({ cleared: 0 });
   getLastSyncError = () => null;
+  getLocalCacheStats = () => [];
 }
 
 const { ConnectivityMonitor } = require('./connectivityMonitor');
@@ -2861,6 +2862,12 @@ guardedHandle('sync:clear-failed', () => clearFailedSyncItems());
 
 // Most recent sync error (pullTable/pushAll failure), for diagnostics UI
 guardedHandle('sync:last-error', () => getLastSyncError());
+
+// Read-only per-table row-count + on-disk-size report for the local SQLite
+// cache (offline-status panel). Works even when syncManager is still null
+// (not yet online this session) — see getLocalCacheStats()'s doc comment
+// in localDb.js for why it doesn't depend on syncManager's PULL_INTERVALS.
+guardedHandle('sync:cache-stats', () => getLocalCacheStats());
 
 // Destructive: wipes the mirrored/reference cache tables (never sync_queue
 // or gps_breadcrumbs) and does a full re-pull from the server. Diagnostics
