@@ -38,8 +38,8 @@ export default function MinimapControl({ parentMap, onClose }: Props) {
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-40 tactical-dark border border-surface-raised rounded shadow-lg overflow-hidden"
-      style={{ width: 180, height: 140 }}
+      className="absolute bottom-4 right-4 z-40 tactical-dark border border-surface-raised shadow-lg overflow-hidden"
+      style={{ width: 180, height: 140, borderRadius: 2 }}
     >
       <div ref={containerRef} className="w-full h-full" />
       <button
