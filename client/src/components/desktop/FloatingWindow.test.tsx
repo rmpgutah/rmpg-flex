@@ -192,3 +192,21 @@ describe('FloatingWindow — always-on-top', () => {
     expect(parseInt(dispatchWindowEl.style.zIndex, 10)).toBeGreaterThan(parseInt(mapWindowEl.style.zIndex, 10));
   });
 });
+
+describe('FloatingWindow — opacity', () => {
+  it('applies win.opacity to the window\'s rendered style, defaulting to 1', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
+    expect(windowEl.style.opacity).toBe('1');
+  });
+
+  it('right-clicking the title bar offers Increase/Decrease opacity, which call setWindowOpacity', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    fireEvent.contextMenu(screen.getByText('Dispatch'));
+    fireEvent.click(screen.getByText('Decrease opacity'));
+    const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
+    expect(windowEl.style.opacity).toBe('0.9');
+  });
+});

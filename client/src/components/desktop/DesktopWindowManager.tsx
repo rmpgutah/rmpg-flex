@@ -30,10 +30,17 @@ interface DesktopWindowManagerContextValue {
   minimizeAll: () => string[];
   restoreAll: (ids: string[]) => void;
   toggleAlwaysOnTop: (id: string) => void;
+  setWindowOpacity: (id: string, opacity: number) => void;
 }
 
 const SESSION_KEY = 'rmpg_desktop_windows';
 const MAX_OPEN_WINDOWS = 10;
+const MIN_WINDOW_OPACITY = 0.3;
+const MAX_WINDOW_OPACITY = 1;
+
+function clampOpacity(value: number): number {
+  return Math.min(MAX_WINDOW_OPACITY, Math.max(MIN_WINDOW_OPACITY, value));
+}
 
 const DesktopWindowManagerContext = createContext<DesktopWindowManagerContextValue | null>(null);
 
@@ -143,9 +150,14 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     commit(windowsRef.current.map(w => w.id === id ? { ...w, alwaysOnTop: !w.alwaysOnTop } : w));
   }, [commit]);
 
+  const setWindowOpacity = useCallback((id: string, opacity: number) => {
+    const clamped = clampOpacity(opacity);
+    commit(windowsRef.current.map(w => w.id === id ? { ...w, opacity: clamped } : w));
+  }, [commit]);
+
   return (
     <DesktopWindowManagerContext.Provider
-      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop }}
+      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity }}
     >
       {children}
     </DesktopWindowManagerContext.Provider>

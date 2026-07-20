@@ -3,6 +3,7 @@ import { X, Minus, Square, Pin, PinOff } from 'lucide-react';
 import { useDesktopWindows, type DesktopWindowState } from './DesktopWindowManager';
 import { getWindowConfigByPath } from '../../utils/windowManager';
 import { isSnapEnabled } from '../../utils/snapPreference';
+import ContextMenu from '../ContextMenu';
 
 const TITLE_BAR_HEIGHT = 30;
 const TITLE_SYNC_POLL_MS = 500;
@@ -15,7 +16,7 @@ interface FloatingWindowProps {
 }
 
 export default function FloatingWindow({ win }: FloatingWindowProps) {
-  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop } = useDesktopWindows();
+  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity } = useDesktopWindows();
   const dragState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const resizeState = useRef<{ startX: number; startY: number; originW: number; originH: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -165,11 +166,11 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   // across them.
   const effectiveZIndex = win.zIndex + (win.alwaysOnTop ? 10000 : 0);
   const style: React.CSSProperties = win.maximized
-    ? { position: 'fixed', left: 0, top: 0, right: 0, bottom: 48, zIndex: effectiveZIndex }
+    ? { position: 'fixed', left: 0, top: 0, right: 0, bottom: 48, zIndex: effectiveZIndex, opacity: win.opacity ?? 1 }
     : {
         position: 'fixed', left: win.x, top: win.y,
         width: win.width, height: win.minimized ? TITLE_BAR_HEIGHT : win.height,
-        zIndex: effectiveZIndex,
+        zIndex: effectiveZIndex, opacity: win.opacity ?? 1,
       };
 
   return (
@@ -196,6 +197,12 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         focusWindow(win.id);
       }}
     >
+      <ContextMenu
+        items={[
+          { label: 'Increase opacity', onClick: () => setWindowOpacity(win.id, (win.opacity ?? 1) + 0.1) },
+          { label: 'Decrease opacity', onClick: () => setWindowOpacity(win.id, (win.opacity ?? 1) - 0.1) },
+        ]}
+      >
       <div
         onPointerDown={onTitleBarPointerDown}
         className="flex items-center justify-between px-2 select-none cursor-move"
@@ -222,6 +229,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
           </button>
         </div>
       </div>
+      </ContextMenu>
 
       {!win.minimized && (
         <>

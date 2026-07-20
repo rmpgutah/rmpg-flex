@@ -5,7 +5,7 @@ import { render, screen, act, waitFor } from '@testing-library/react';
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
 
 function Harness() {
-  const { windows, openWindow, closeWindow, focusWindow, minimizeWindow, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop } = useDesktopWindows();
+  const { windows, openWindow, closeWindow, focusWindow, minimizeWindow, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity } = useDesktopWindows();
   const capResults = useRef<boolean[]>([]);
   const lastMinimizedIds = useRef<string[]>([]);
   return (
@@ -21,9 +21,13 @@ function Harness() {
       <button onClick={() => { const ids = minimizeAll(); lastMinimizedIds.current = ids; }}>minimize-all</button>
       <button onClick={() => restoreAll(lastMinimizedIds.current)}>restore-all</button>
       <button onClick={() => windows[0] && toggleAlwaysOnTop(windows[0].id)}>toggle-pin-first</button>
+      <button onClick={() => windows[0] && setWindowOpacity(windows[0].id, 2)}>set-opacity-too-high</button>
+      <button onClick={() => windows[0] && setWindowOpacity(windows[0].id, 0)}>set-opacity-too-low</button>
+      <button onClick={() => windows[0] && setWindowOpacity(windows[0].id, 0.6)}>set-opacity-valid</button>
       <span data-testid="cap-results">{capResults.current.join(',')}</span>
       <span data-testid="first-path">{windows[0]?.path ?? ''}</span>
       <span data-testid="first-pinned">{windows[0]?.alwaysOnTop ? 'pinned' : 'unpinned'}</span>
+      <span data-testid="first-opacity">{windows[0]?.opacity ?? ''}</span>
       <ul>{windows.map(w => <li key={w.id}>{w.title}-{w.zIndex}-{w.minimized ? 'min' : 'open'}-{w.width}x{w.height}</li>)}</ul>
     </div>
   );
@@ -117,5 +121,17 @@ describe('DesktopWindowManager', () => {
     expect(screen.getByTestId('first-pinned').textContent).toBe('pinned');
     act(() => screen.getByText('toggle-pin-first').click());
     expect(screen.getByTestId('first-pinned').textContent).toBe('unpinned');
+  });
+
+  it('setWindowOpacity clamps to the 0.3–1 range', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    act(() => screen.getByText('open-dispatch').click());
+    expect(screen.getByTestId('first-opacity').textContent).toBe('1');
+    act(() => screen.getByText('set-opacity-too-high').click());
+    expect(screen.getByTestId('first-opacity').textContent).toBe('1');
+    act(() => screen.getByText('set-opacity-too-low').click());
+    expect(screen.getByTestId('first-opacity').textContent).toBe('0.3');
+    act(() => screen.getByText('set-opacity-valid').click());
+    expect(screen.getByTestId('first-opacity').textContent).toBe('0.6');
   });
 });
