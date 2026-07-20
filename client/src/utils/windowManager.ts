@@ -53,29 +53,6 @@ export function activateNavFunction(
   }
 }
 
-/** Pages that can be popped out into separate windows */
-export const POPOUT_PAGES: Record<string, { title: string; width: number; height: number }> = {
-  '/dispatch':       { title: 'Dispatch',           width: 1200, height: 900 },
-  '/map':            { title: 'Live Map',            width: 1200, height: 900 },
-  '/incidents':      { title: 'Incidents',           width: 1100, height: 850 },
-  '/records':        { title: 'Records',             width: 1100, height: 850 },
-  '/personnel':      { title: 'Personnel',           width: 1100, height: 850 },
-  '/communications': { title: 'Communications',      width: 1000, height: 800 },
-
-  '/patrol':         { title: 'Patrol',              width: 1100, height: 850 },
-  '/fleet':          { title: 'Fleet',               width: 1100, height: 850 },
-  '/reports':        { title: 'Reports',             width: 1100, height: 850 },
-  '/mdt':            { title: 'MDT',                 width: 1000, height: 800 },
-  '/warrants':       { title: 'Warrant Search',      width: 1140, height: 840 },
-  '/national-warrants': { title: 'National Warrant Search', width: 1180, height: 860 },
-  '/citations':      { title: 'Citations',           width: 1000, height: 800 },
-  '/law-book':       { title: 'Law Book',            width: 1100, height: 820 },
-  '/body-cameras':   { title: 'Body Cameras',        width: 1000, height: 800 },
-  '/cases':          { title: 'Case Management',     width: 1100, height: 850 },
-  '/evidence':       { title: 'Evidence & Property', width: 1100, height: 850 },
-  '/dar':            { title: 'Daily Activity',      width: 1100, height: 850 },
-};
-
 function openDetachedWindow(path: string, title: string, width = 1100, height = 850) {
   const left = Math.round((window.screen.width - width) / 2);
   const top = Math.round((window.screen.height - height) / 2);
