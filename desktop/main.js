@@ -2491,7 +2491,7 @@ guardedHandle('recon:check-binary', async (_event, { binary } = {}) => {
   ].filter(Boolean);
   const r = spawnSync('command', ['-v', binary], {
     shell: 'bash',
-    env: { ...process.env, PATH: pathParts.join(':') },
+    env: buildSandboxedChildEnv(process.env, pathParts),
   });
   const stdout = (r.stdout || '').toString().trim();
   if (r.status === 0 && stdout) return { installed: true, path: stdout };
