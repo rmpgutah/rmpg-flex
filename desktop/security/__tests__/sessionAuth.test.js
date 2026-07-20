@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
-const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, isReconLaunchAuthorized } = require('../sessionAuth');
+const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, isReconLaunchAuthorized, detectClockSkew } = require('../sessionAuth');
 
 // Base64url-encode helper matching the encoding sessionAuth.js decodes
 // (standard base64 with '+'->'-', '/'->'_', trailing '=' stripped —
@@ -280,4 +280,133 @@ test('pruneOldPinAttempts: empty pin_attempts table — no-op, returns {prunedRo
   const db = makeTestDb();
   const result = pruneOldPinAttempts(db, 500);
   assert.deepEqual(result, { prunedRows: 0 });
+});
+
+// ─── detectClockSkew ───────────────────────────────────────────
+
+// A genuine round-tripping fake config store — NOT a fixed-return stub.
+// setConfigFn actually persists into `store`, and getConfigFn actually
+// reads back from it, so BigInt<->string round-tripping is really
+// exercised rather than trivially passing.
+function makeConfigFake() {
+  const store = new Map();
+  return {
+    store,
+    getConfigFn: (key) => (store.has(key) ? store.get(key) : null),
+    setConfigFn: (key, value) => {
+      store.set(key, value);
+    },
+  };
+}
+
+test('detectClockSkew: first-ever check (no stored baseline) returns skewDetected:false and stores the baseline', () => {
+  const { store, getConfigFn, setConfigFn } = makeConfigFake();
+
+  const nowMs = 1_700_000_000_000;
+  const monotonicNs = 123_456_789_000n;
+
+  const result = detectClockSkew(getConfigFn, setConfigFn, nowMs, monotonicNs);
+
+  assert.deepEqual(result, { skewDetected: false });
+
+  // setConfigFn must actually have been called to persist the baseline —
+  // not just a correct return value.
+  assert.equal(store.get('clock_skew_check_wall_ms'), String(nowMs));
+  assert.equal(store.get('clock_skew_check_monotonic_ns'), monotonicNs.toString());
+});
+
+test('detectClockSkew: first-ever check with only ONE of the two keys present is still treated as "no baseline"', () => {
+  const { store, getConfigFn, setConfigFn } = makeConfigFake();
+  // Simulate a partially-written prior state (e.g. crash mid-write) —
+  // only the wall clock half of the baseline exists.
+  store.set('clock_skew_check_wall_ms', '1000');
+
+  const result = detectClockSkew(getConfigFn, setConfigFn, 2000, 5_000_000n);
+
+  assert.deepEqual(result, { skewDetected: false });
+  assert.equal(store.get('clock_skew_check_wall_ms'), '2000');
+  assert.equal(store.get('clock_skew_check_monotonic_ns'), '5000000');
+});
+
+test('detectClockSkew: wall-clock and monotonic deltas roughly agree (~5000ms) -> skewDetected:false', () => {
+  const { getConfigFn, setConfigFn } = makeConfigFake();
+
+  const baselineWallMs = 1_700_000_000_000;
+  const baselineMonotonicNs = 10_000_000_000n; // 10s in ns
+
+  // Seed the baseline via a real first check.
+  detectClockSkew(getConfigFn, setConfigFn, baselineWallMs, baselineMonotonicNs);
+
+  // 5000ms later on both clocks.
+  const nowMs = baselineWallMs + 5000;
+  const monotonicNs = baselineMonotonicNs + 5_000_000_000n; // +5000ms in ns
+
+  const result = detectClockSkew(getConfigFn, setConfigFn, nowMs, monotonicNs);
+
+  assert.deepEqual(result, { skewDetected: false });
+});
+
+test('detectClockSkew: wall clock jumped FAR AHEAD of monotonic clock (e.g. +10yr wall vs +5s monotonic) -> skewDetected:true', () => {
+  const { getConfigFn, setConfigFn } = makeConfigFake();
+
+  const baselineWallMs = 1_700_000_000_000;
+  const baselineMonotonicNs = 10_000_000_000n;
+
+  detectClockSkew(getConfigFn, setConfigFn, baselineWallMs, baselineMonotonicNs);
+
+  const tenYearsMs = 10 * 365 * 24 * 60 * 60 * 1000;
+  const nowMs = baselineWallMs + tenYearsMs;
+  const monotonicNs = baselineMonotonicNs + 5_000_000_000n; // +5000ms in ns
+
+  const result = detectClockSkew(getConfigFn, setConfigFn, nowMs, monotonicNs);
+
+  assert.deepEqual(result, { skewDetected: true });
+});
+
+test('detectClockSkew: wall clock rolled BACKWARD while monotonic clock kept advancing -> skewDetected:true (the attack scenario: replaying an expired offline PIN window by rolling back the system clock)', () => {
+  const { getConfigFn, setConfigFn } = makeConfigFake();
+
+  const baselineWallMs = 1_700_000_000_000;
+  const baselineMonotonicNs = 10_000_000_000n;
+
+  detectClockSkew(getConfigFn, setConfigFn, baselineWallMs, baselineMonotonicNs);
+
+  // Attacker rolls the wall clock back by 1 hour while real elapsed
+  // (monotonic) time only advances by 5000ms — negative wall delta,
+  // positive monotonic delta.
+  const nowMs = baselineWallMs - (60 * 60 * 1000);
+  const monotonicNs = baselineMonotonicNs + 5_000_000_000n;
+
+  const result = detectClockSkew(getConfigFn, setConfigFn, nowMs, monotonicNs);
+
+  assert.deepEqual(result, { skewDetected: true });
+});
+
+test('detectClockSkew: updates the stored baseline to the CURRENT check values after each call, so a third check compares against the second (not the first)', () => {
+  const { store, getConfigFn, setConfigFn } = makeConfigFake();
+
+  const t0Wall = 1_700_000_000_000;
+  const t0Mono = 0n;
+  detectClockSkew(getConfigFn, setConfigFn, t0Wall, t0Mono);
+  assert.equal(store.get('clock_skew_check_wall_ms'), String(t0Wall));
+
+  // Second check, 5000ms later on both clocks — baseline rolls forward.
+  const t1Wall = t0Wall + 5000;
+  const t1Mono = t0Mono + 5_000_000_000n;
+  const secondResult = detectClockSkew(getConfigFn, setConfigFn, t1Wall, t1Mono);
+  assert.deepEqual(secondResult, { skewDetected: false });
+  assert.equal(store.get('clock_skew_check_wall_ms'), String(t1Wall));
+  assert.equal(store.get('clock_skew_check_monotonic_ns'), t1Mono.toString());
+
+  // Third check, another 5000ms later relative to the SECOND check (not
+  // the first) — if the baseline hadn't rolled forward, comparing against
+  // t0 (10000ms/10s ago) would look like agreement too, so this asserts
+  // the rolling-baseline behavior more precisely: only 3000ms elapse this
+  // time, which is still within tolerance either way, so instead assert
+  // exact stored values to prove the baseline moved.
+  const t2Wall = t1Wall + 3000;
+  const t2Mono = t1Mono + 3_000_000_000n;
+  detectClockSkew(getConfigFn, setConfigFn, t2Wall, t2Mono);
+  assert.equal(store.get('clock_skew_check_wall_ms'), String(t2Wall));
+  assert.equal(store.get('clock_skew_check_monotonic_ns'), t2Mono.toString());
 });

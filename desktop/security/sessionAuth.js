@@ -180,6 +180,75 @@ function isReconLaunchAuthorized(cachedRole, activeSession, currentDeviceId, now
   return true;
 }
 
+/**
+ * Detects system clock skew between successive app launches (or periodic
+ * checks) by comparing how much the wall clock (`Date.now()`) moved against
+ * how much the monotonic clock (`process.hrtime.bigint()`) moved over the
+ * same interval. The monotonic clock is immune to wall-clock manipulation
+ * (NTP corrections, DST, or a user/attacker manually rolling the system
+ * clock forward or backward) — a large disagreement between the two deltas
+ * means the wall clock was tampered with or jumped unexpectedly.
+ *
+ * This defends specifically against an attacker rolling the system clock
+ * BACKWARD to replay an expired offline PIN session window (an `expires_at`
+ * check using `Date.now()` would otherwise see a "past" expiry as still in
+ * the future). A backward wall-clock jump produces a large negative
+ * `wallDeltaMs` against a small positive `monotonicDeltaMs`, which this
+ * function flags exactly like a forward jump — skew is detected on
+ * magnitude of disagreement, not direction.
+ *
+ * DI-testable: takes `getConfigFn`/`setConfigFn`-shaped functions plus the
+ * current `Date.now()`/`process.hrtime.bigint()` values as parameters
+ * rather than calling them internally.
+ *
+ * Storage: both baseline values are persisted as strings (`'clock_skew_check_wall_ms'`,
+ * `'clock_skew_check_monotonic_ns'`) since config storage is string-only;
+ * the monotonic value round-trips through BigInt <-> string explicitly.
+ *
+ * Baseline update ordering: the stored baseline is updated to the CURRENT
+ * check's values only AFTER computing `skewDetected` against the PREVIOUS
+ * baseline (not before). This makes every check's rolling baseline "the
+ * latest successful check", which is more defensible than updating first:
+ * if this function were ever called back-to-back in a tight loop, updating
+ * before computing skew would silently make every call compare against
+ * itself (always `{skewDetected:false}`), permanently defeating the check.
+ * Computing first, then updating, guarantees each check is always compared
+ * against a genuinely prior point in time.
+ *
+ * @param {(key: string) => string|null} getConfigFn
+ * @param {(key: string, value: string) => void} setConfigFn
+ * @param {number} nowMs - current wall-clock time in ms (e.g. `Date.now()`)
+ * @param {bigint} monotonicNs - current monotonic time in ns (e.g. `process.hrtime.bigint()`)
+ * @param {number} [toleranceMs] - allowed disagreement between the two deltas, in ms
+ * @returns {{ skewDetected: boolean }}
+ */
+function detectClockSkew(getConfigFn, setConfigFn, nowMs, monotonicNs, toleranceMs = 60000) {
+  const previousWallRaw = getConfigFn('clock_skew_check_wall_ms');
+  const previousMonotonicRaw = getConfigFn('clock_skew_check_monotonic_ns');
+
+  const hasBaseline = previousWallRaw !== null && previousWallRaw !== undefined
+    && previousMonotonicRaw !== null && previousMonotonicRaw !== undefined;
+
+  let skewDetected = false;
+
+  if (hasBaseline) {
+    const previousWallMs = Number(previousWallRaw);
+    const previousMonotonicNs = BigInt(previousMonotonicRaw);
+
+    const wallDeltaMs = nowMs - previousWallMs;
+    const monotonicDeltaMs = Number(monotonicNs - previousMonotonicNs) / 1e6;
+
+    skewDetected = Math.abs(wallDeltaMs - monotonicDeltaMs) > toleranceMs;
+  }
+
+  // Update the baseline to THIS check's values (see ordering rationale above)
+  // — always runs, whether this was the first-ever check or a subsequent one.
+  setConfigFn('clock_skew_check_wall_ms', String(nowMs));
+  setConfigFn('clock_skew_check_monotonic_ns', monotonicNs.toString());
+
+  return { skewDetected };
+}
+
 module.exports = {
   decodeJwtPayloadLocally,
   isJwtExpiredLocally,
@@ -187,4 +256,5 @@ module.exports = {
   isPinSessionBoundToDevice,
   pruneOldPinAttempts,
   isReconLaunchAuthorized,
+  detectClockSkew,
 };

@@ -12,7 +12,7 @@ const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
-const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, isReconLaunchAuthorized } = require('./security/sessionAuth');
+const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, isReconLaunchAuthorized, detectClockSkew } = require('./security/sessionAuth');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -3186,6 +3186,17 @@ app.whenReady().then(async () => {
         const { prunedRows } = pruneOldPinAttempts(db, 500);
         if (prunedRows > 0) {
           console.log(`[APP] Pruned ${prunedRows} stale pin_attempts row(s) on startup`);
+        }
+
+        // Clock-skew detection: defends against an attacker rolling the
+        // system clock backward to replay an expired offline PIN session
+        // window. If the wall clock and monotonic clock disagree by more
+        // than the tolerance since the last check, invalidate every active
+        // PIN session so the user must re-enter their PIN.
+        const { skewDetected } = detectClockSkew(getConfig, setConfig, Date.now(), process.hrtime.bigint());
+        if (skewDetected) {
+          const { changes } = db.prepare('UPDATE pin_sessions SET is_active = 0 WHERE is_active = 1').run();
+          console.warn(`[APP] System clock skew detected — invalidated ${changes} active PIN session(s) on startup`);
         }
       }
     } catch (dbErr) {
