@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
 const { EventEmitter } = require('node:events');
-const { decodeJwtPayloadLocally, isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker, verifyDownloadedUpdateHash } = require('../sessionAuth');
+const { decodeJwtPayloadLocally, isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker, verifyDownloadedUpdateHash, hasUserOrOrgMismatch } = require('../sessionAuth');
 const { hardenWebPreferencesDefaults } = require('../sessionHardening');
 
 // Base64url-encode helper matching the encoding sessionAuth.js decodes
@@ -732,4 +732,41 @@ test('verifyDownloadedUpdateHash: fail-closed on a read stream error -> {ok:fals
   const fakeCrypto = makeFakeCrypto('irrelevant');
   const result = await verifyDownloadedUpdateHash('/fake/path/installer.exe', 'anyExpectedHash', fakeFs, fakeCrypto);
   assert.deepEqual(result, { ok: false, error: 'update package hash mismatch' });
+});
+
+// ─── hasUserOrOrgMismatch ────────────────────────────────────
+// Pure equality check (with type-coercion safety) used by syncManager.js's
+// refreshAndRetry to detect "the identity embedded in a freshly-issued JWT
+// no longer matches this device's cached current_user_id" — e.g. a second
+// officer logging into the same installed desktop shell without the prior
+// user's cache ever being wiped.
+
+test('hasUserOrOrgMismatch: identical ids, same type -> false', () => {
+  assert.equal(hasUserOrOrgMismatch(42, 42), false);
+  assert.equal(hasUserOrOrgMismatch('abc-123', 'abc-123'), false);
+});
+
+test('hasUserOrOrgMismatch: identical ids, cross type (number vs string) -> false (coercion-safe)', () => {
+  assert.equal(hasUserOrOrgMismatch(123, '123'), false);
+  assert.equal(hasUserOrOrgMismatch('123', 123), false);
+});
+
+test('hasUserOrOrgMismatch: genuinely differing ids -> true', () => {
+  assert.equal(hasUserOrOrgMismatch(42, 43), true);
+  assert.equal(hasUserOrOrgMismatch('user-1', 'user-2'), true);
+});
+
+test('hasUserOrOrgMismatch: cached side null/undefined -> false (nothing to compare against)', () => {
+  assert.equal(hasUserOrOrgMismatch(null, 99), false);
+  assert.equal(hasUserOrOrgMismatch(undefined, 99), false);
+});
+
+test('hasUserOrOrgMismatch: fresh side null/undefined -> false (nothing to compare against)', () => {
+  assert.equal(hasUserOrOrgMismatch(99, null), false);
+  assert.equal(hasUserOrOrgMismatch(99, undefined), false);
+});
+
+test('hasUserOrOrgMismatch: both sides null/undefined -> false', () => {
+  assert.equal(hasUserOrOrgMismatch(null, null), false);
+  assert.equal(hasUserOrOrgMismatch(undefined, undefined), false);
 });
