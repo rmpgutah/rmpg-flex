@@ -8,6 +8,8 @@ import { useAuth } from '../../context/AuthContext';
 import type { NavFunction } from '../../data/navCatalog';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
+import ContextMenu from '../ContextMenu';
+import { isAppPinned, pinApp, unpinApp } from '../../utils/taskbarPreferences';
 
 export interface DesktopTaskbarProps {
   icons: NavFunction[];
@@ -17,6 +19,7 @@ export interface DesktopTaskbarProps {
 export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) {
   const { windows, focusWindow, openWindow, minimizeAll, restoreAll } = useDesktopWindows();
   const [autoMinimizedIds, setAutoMinimizedIds] = useState<string[]>([]);
+  const [, forceRerender] = useState(0);
 
   const handleShowDesktop = useCallback(() => {
     if (autoMinimizedIds.length > 0) {
@@ -153,16 +156,23 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
               </div>
             )}
             {searchResults.slice(0, 20).map(fn => (
-              <button
+              <ContextMenu
                 key={fn.path}
-                type="button"
-                onClick={() => handleSelectResult(fn)}
-                className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-surface-hover"
-                style={{ color: 'var(--text-primary)' }}
+                items={[{
+                  label: isAppPinned(fn.path) ? 'Unpin from Taskbar' : 'Pin to Taskbar',
+                  onClick: () => { if (isAppPinned(fn.path)) unpinApp(fn.path); else pinApp(fn.path); forceRerender(n => n + 1); },
+                }]}
               >
-                <fn.icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--rmpg-400)' }} />
-                {fn.label}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectResult(fn)}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-surface-hover"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  <fn.icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--rmpg-400)' }} />
+                  {fn.label}
+                </button>
+              </ContextMenu>
             ))}
           </div>
         )}

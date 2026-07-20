@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { useEffect } from 'react';
+import { isAppPinned } from '../../utils/taskbarPreferences';
 
 const apiFetchMock = vi.fn().mockResolvedValue({ count: 0 });
 vi.mock('../../hooks/useApi', () => ({ apiFetch: (...args: unknown[]) => apiFetchMock(...args) }));
@@ -102,5 +103,17 @@ describe('DesktopTaskbar — Show Desktop', () => {
     expect(screen.getByLabelText('Show windows')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Show windows'));
     expect(screen.getByLabelText('Show desktop')).toBeInTheDocument();
+  });
+});
+
+describe('DesktopTaskbar — Pin to Taskbar (launcher search)', () => {
+  beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
+
+  it('right-clicking a launcher search result offers "Pin to Taskbar"', () => {
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByLabelText('Open app launcher'));
+    fireEvent.change(screen.getByPlaceholderText(/search modules/i), { target: { value: 'Dispatch' } });
+    fireEvent.contextMenu(screen.getByText('Dispatch Console'));
+    expect(screen.getByText('Pin to Taskbar')).toBeInTheDocument();
   });
 });
