@@ -5,8 +5,9 @@ import { render, screen, act, waitFor } from '@testing-library/react';
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
 
 function Harness() {
-  const { windows, openWindow, closeWindow, focusWindow, minimizeWindow, updateWindowTitle } = useDesktopWindows();
+  const { windows, openWindow, closeWindow, focusWindow, minimizeWindow, updateWindowTitle, minimizeAll, restoreAll } = useDesktopWindows();
   const capResults = useRef<boolean[]>([]);
+  const lastMinimizedIds = useRef<string[]>([]);
   return (
     <div>
       <button onClick={() => openWindow('/dispatch', 'Dispatch')}>open-dispatch</button>
@@ -17,6 +18,8 @@ function Harness() {
       <button onClick={() => windows[0] && focusWindow(windows[0].id)}>focus-first</button>
       <button onClick={() => windows[0] && minimizeWindow(windows[0].id)}>minimize-first</button>
       <button onClick={() => windows[0] && updateWindowTitle(windows[0].id, 'Retitled')}>retitle-first</button>
+      <button onClick={() => { const ids = minimizeAll(); lastMinimizedIds.current = ids; }}>minimize-all</button>
+      <button onClick={() => restoreAll(lastMinimizedIds.current)}>restore-all</button>
       <span data-testid="cap-results">{capResults.current.join(',')}</span>
       <span data-testid="first-path">{windows[0]?.path ?? ''}</span>
       <ul>{windows.map(w => <li key={w.id}>{w.title}-{w.zIndex}-{w.minimized ? 'min' : 'open'}-{w.width}x{w.height}</li>)}</ul>
@@ -80,5 +83,27 @@ describe('DesktopWindowManager', () => {
     expect(screen.getByText(/^Retitled-/)).toBeInTheDocument();
     expect(screen.queryByText(/^Dispatch-/)).not.toBeInTheDocument();
     expect(screen.getByTestId('first-path').textContent).toBe('/dispatch');
+  });
+
+  it('minimizeAll minimizes only non-minimized windows and returns their ids; restoreAll un-minimizes exactly those', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    act(() => screen.getByText('open-dispatch').click());
+    act(() => screen.getByText('open-map').click());
+    act(() => screen.getByText('minimize-first').click()); // manually minimize Dispatch first
+    act(() => screen.getByText('minimize-all').click());
+    // Both should now be minimized (Dispatch was already, Live Map just got minimized)
+    expect(screen.getAllByText(/-min-/).length).toBe(2);
+    act(() => screen.getByText('restore-all').click());
+    // restoreAll should only un-minimize what minimizeAll actually touched (Live Map) —
+    // Dispatch, which the user had manually minimized beforehand, stays minimized.
+    const items = screen.getAllByRole('listitem').map(li => li.textContent!);
+    expect(items.find(t => t.startsWith('Dispatch-'))).toMatch(/-min-/);
+    expect(items.find(t => t.startsWith('Live Map-'))).not.toMatch(/-min-/);
+  });
+
+  it('minimizeAll with zero open windows returns an empty array and is a no-op', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    act(() => screen.getByText('minimize-all').click());
+    expect(screen.queryAllByRole('listitem').length).toBe(0);
   });
 });
