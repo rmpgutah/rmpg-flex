@@ -12,7 +12,7 @@ const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
-const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts } = require('./security/sessionAuth');
+const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, isReconLaunchAuthorized } = require('./security/sessionAuth');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -1196,6 +1196,32 @@ guardedHandle('print:to-pdf', async (event) => {
 // privilege delegation. Returns { ok, error? } so the renderer can show
 // a copy-command fallback if the binary isn't installed.
 guardedHandle('recon:launch', async () => {
+  // First check, before any platform-detection/spawn logic: recon tools are
+  // a local-system escape hatch, so launching one requires the same
+  // admin-always-allowed / active-PIN-session-required rule offline:state
+  // enforces for local data access — this handler had NO auth check at all
+  // before this guard.
+  try {
+    const db = getLocalDb();
+    const cachedUserId = getConfig('current_user_id');
+    const cachedRole = getConfig('current_user_role');
+    let activeSession = null;
+    if (db && cachedRole !== 'admin' && cachedUserId) {
+      activeSession = db.prepare(
+        `SELECT expires_at, device_id FROM pin_sessions
+         WHERE user_id = ? AND is_active = 1 AND expires_at > ?
+         ORDER BY expires_at DESC LIMIT 1`
+      ).get(cachedUserId, new Date().toISOString()) || null;
+    }
+    const currentDeviceId = getOrCreateDeviceId(getConfig, setConfig, require('crypto').randomUUID);
+    if (!isReconLaunchAuthorized(cachedRole, activeSession, currentDeviceId, Date.now())) {
+      return { ok: false, error: 'recon connect requires an active authenticated session' };
+    }
+  } catch (err) {
+    console.error('[RECON:LAUNCH] Auth check failed:', err.message);
+    return { ok: false, error: 'recon connect requires an active authenticated session' };
+  }
+
   const os = require('os');
   const { spawn } = require('child_process');
   const fs = require('fs');

@@ -142,10 +142,49 @@ function pruneOldPinAttempts(db, maxRowsPerUser = 500) {
   return { prunedRows };
 }
 
+/**
+ * Pure check: is a Recon Connect tool launch authorized for the current
+ * cached role + active PIN session? Mirrors `offline:state`'s
+ * admin-always-allowed / active-PIN-session-required rule exactly (see
+ * that handler in main.js) — this function exists so `recon:launch` can
+ * reuse the SAME rule instead of re-deriving a subtly different one.
+ *
+ * `cachedRole === 'admin'` is always authorized, regardless of session
+ * state. Otherwise `activeSession` must be a non-null object representing
+ * a currently-valid (non-expired) session; device binding is delegated to
+ * `isPinSessionBoundToDevice` (composed, not duplicated) whenever
+ * `activeSession` carries a `device_id` field.
+ *
+ * @param {string|null|undefined} cachedRole
+ * @param {{ expires_at?: string, device_id?: string|null } | null} activeSession
+ * @param {string} currentDeviceId - this installation's device id, used only
+ *   for the device-binding check when `activeSession.device_id` is present
+ * @param {number} nowMs - current time in milliseconds (DI-testable, mirrors
+ *   isJwtExpiredLocally's style)
+ * @returns {boolean}
+ */
+function isReconLaunchAuthorized(cachedRole, activeSession, currentDeviceId, nowMs) {
+  if (cachedRole === 'admin') return true;
+
+  if (!activeSession || typeof activeSession !== 'object') return false;
+
+  if (typeof activeSession.expires_at === 'string') {
+    const expiresAtMs = Date.parse(activeSession.expires_at);
+    if (Number.isNaN(expiresAtMs) || expiresAtMs <= nowMs) return false;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(activeSession, 'device_id')) {
+    return isPinSessionBoundToDevice(activeSession, currentDeviceId);
+  }
+
+  return true;
+}
+
 module.exports = {
   decodeJwtPayloadLocally,
   isJwtExpiredLocally,
   getOrCreateDeviceId,
   isPinSessionBoundToDevice,
   pruneOldPinAttempts,
+  isReconLaunchAuthorized,
 };

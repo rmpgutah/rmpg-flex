@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
-const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts } = require('../sessionAuth');
+const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, isReconLaunchAuthorized } = require('../sessionAuth');
 
 // Base64url-encode helper matching the encoding sessionAuth.js decodes
 // (standard base64 with '+'->'-', '/'->'_', trailing '=' stripped —
@@ -137,6 +137,57 @@ test('isPinSessionBoundToDevice: transitional backward-compat — null device_id
 test('isPinSessionBoundToDevice: transitional backward-compat — undefined device_id (pre-migration row) is treated as valid', () => {
   const session = { device_id: undefined };
   assert.equal(isPinSessionBoundToDevice(session, 'device-a'), true);
+});
+
+// ─── isReconLaunchAuthorized ────────────────────────────────────
+//
+// Mirrors offline:state's admin-always-allowed / active-PIN-session-required
+// rule exactly (see main.js's `offline:state` handler): admin bypasses
+// entirely; everyone else needs a non-null, non-expired, device-bound
+// session. `nowMs` mirrors isJwtExpiredLocally's DI-testable style so
+// expiry checks don't depend on real wall-clock time in tests.
+
+const RECON_NOW_MS = Date.parse('2026-07-20T12:00:00.000Z');
+const RECON_FUTURE_EXPIRY = '2026-07-20T13:00:00.000Z'; // 1h after RECON_NOW_MS
+const RECON_PAST_EXPIRY = '2026-07-20T11:00:00.000Z'; // 1h before RECON_NOW_MS
+
+test('isReconLaunchAuthorized: admin role is always authorized, even with no session', () => {
+  assert.equal(isReconLaunchAuthorized('admin', null, 'device-a', RECON_NOW_MS), true);
+});
+
+test('isReconLaunchAuthorized: admin role is always authorized, even with an expired session', () => {
+  const session = { expires_at: RECON_PAST_EXPIRY, device_id: 'device-a' };
+  assert.equal(isReconLaunchAuthorized('admin', session, 'device-b', RECON_NOW_MS), true);
+});
+
+test('isReconLaunchAuthorized: non-admin with a valid, device-bound active session is authorized', () => {
+  const session = { expires_at: RECON_FUTURE_EXPIRY, device_id: 'device-a' };
+  assert.equal(isReconLaunchAuthorized('officer', session, 'device-a', RECON_NOW_MS), true);
+});
+
+test('isReconLaunchAuthorized: non-admin with no session (null) is unauthorized', () => {
+  assert.equal(isReconLaunchAuthorized('officer', null, 'device-a', RECON_NOW_MS), false);
+});
+
+test('isReconLaunchAuthorized: non-admin with an expired session is unauthorized', () => {
+  const session = { expires_at: RECON_PAST_EXPIRY, device_id: 'device-a' };
+  assert.equal(isReconLaunchAuthorized('officer', session, 'device-a', RECON_NOW_MS), false);
+});
+
+test('isReconLaunchAuthorized: non-admin with a valid session bound to a different device is unauthorized (composes isPinSessionBoundToDevice)', () => {
+  const session = { expires_at: RECON_FUTURE_EXPIRY, device_id: 'device-a' };
+  assert.equal(isReconLaunchAuthorized('officer', session, 'device-b', RECON_NOW_MS), false);
+});
+
+test('isReconLaunchAuthorized: non-admin with a valid session and no device_id field (pre-migration row) is authorized', () => {
+  const session = { expires_at: RECON_FUTURE_EXPIRY };
+  assert.equal(isReconLaunchAuthorized('officer', session, 'device-a', RECON_NOW_MS), true);
+});
+
+test('isReconLaunchAuthorized: undefined/missing role is treated as non-admin', () => {
+  const session = { expires_at: RECON_FUTURE_EXPIRY, device_id: 'device-a' };
+  assert.equal(isReconLaunchAuthorized(undefined, session, 'device-a', RECON_NOW_MS), true);
+  assert.equal(isReconLaunchAuthorized(undefined, null, 'device-a', RECON_NOW_MS), false);
 });
 
 // ─── pruneOldPinAttempts ───────────────────────────────────────
