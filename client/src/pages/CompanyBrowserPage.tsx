@@ -10,6 +10,7 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { ArrowLeft, ArrowRight, RotateCw, X, Plus, Star, Trash2, Clock } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 
 interface BrowserTab {
   id: string;
@@ -114,7 +115,30 @@ function parseJsonArray<T>(raw: string | null | undefined): T[] {
   }
 }
 
+function ownershipAckKey(userId: string | number | undefined): string {
+  return userId != null ? `rmpg_company_browser_ack_${userId}` : 'rmpg_company_browser_ack';
+}
+
+function hasAcknowledgedOwnership(userId: string | number | undefined): boolean {
+  try {
+    return localStorage.getItem(ownershipAckKey(userId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function acknowledgeOwnership(userId: string | number | undefined): void {
+  try {
+    localStorage.setItem(ownershipAckKey(userId), '1');
+  } catch {
+    // Private-browsing/quota failure — degrades to "show the modal every
+    // launch" rather than crashing the page, matching this codebase's
+    // existing localStorage-failure convention (see navFavorites.ts).
+  }
+}
+
 export default function CompanyBrowserPage() {
+  const { user } = useAuth();
   const [tabs, setTabs] = useState<BrowserTab[]>(() => [{
     id: makeTabId(), url: NEW_TAB_URL, title: '', canGoBack: false, canGoForward: false, loading: false, error: null,
   }]);
@@ -123,6 +147,7 @@ export default function CompanyBrowserPage() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [showOwnershipNotice, setShowOwnershipNotice] = useState(() => !hasAcknowledgedOwnership(user?.id));
   const webviewRefs = useRef<Record<string, HTMLWebViewElement | null>>({});
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstLoad = useRef(true);
@@ -195,6 +220,11 @@ export default function CompanyBrowserPage() {
       return next;
     });
   }, [activeTabId]);
+
+  const dismissOwnershipNotice = useCallback(() => {
+    acknowledgeOwnership(user?.id);
+    setShowOwnershipNotice(false);
+  }, [user?.id]);
 
   const goBack = useCallback(() => webviewRefs.current[activeTab.id]?.goBack(), [activeTab.id]);
   const goForward = useCallback(() => webviewRefs.current[activeTab.id]?.goForward(), [activeTab.id]);
@@ -387,6 +417,46 @@ export default function CompanyBrowserPage() {
           </div>
         )}
       </div>
+
+      <div
+        className="px-2 py-1 text-[10px] text-center"
+        style={{ background: 'var(--surface-overlay)', borderTop: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}
+      >
+        © 2026 Rocky Mountain Protective Group, LLC — Internal Use Only, Authorized Personnel Only
+      </div>
+
+      {showOwnershipNotice && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Company Browser ownership notice"
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10,
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--surface-raised)', border: '1px solid var(--border-strong)',
+              padding: 20, maxWidth: 420, textAlign: 'center',
+            }}
+          >
+            <p className="text-[12px]" style={{ color: 'var(--text-primary)' }}>
+              Company Browser is proprietary software owned by Rocky Mountain Protective Group, LLC.
+              It is provided for internal use only, restricted to authorized RMPG personnel.
+              Unauthorized access, copying, or distribution is prohibited.
+            </p>
+            <button
+              type="button"
+              onClick={dismissOwnershipNotice}
+              className="mt-3 px-3 py-1 text-[11px]"
+              style={{ background: 'var(--rmpg-700)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }}
+            >
+              I Understand
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

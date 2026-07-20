@@ -6,8 +6,12 @@ vi.mock('../hooks/useApi', () => ({
   apiFetch: vi.fn().mockResolvedValue({ browser_bookmarks_json: null, browser_history_json: null }),
 }));
 
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: '1', role: 'officer' } }),
+}));
+
 describe('CompanyBrowserPage', () => {
-  beforeEach(() => { vi.clearAllMocks(); });
+  beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
 
   it('starts with one tab on the new-tab page', () => {
     render(<CompanyBrowserPage />);
@@ -87,5 +91,44 @@ describe('CompanyBrowserPage', () => {
     event.isMainFrame = true;
     fireEvent(webview, event);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('renders the ownership footer line', () => {
+    render(<CompanyBrowserPage />);
+    expect(screen.getByText(/© 2026 Rocky Mountain Protective Group, LLC/i)).toBeInTheDocument();
+    expect(screen.getByText(/Internal Use Only, Authorized Personnel Only/i)).toBeInTheDocument();
+  });
+
+  it('shows the first-launch proprietary notice modal when no ack is stored for this user', () => {
+    render(<CompanyBrowserPage />);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(/proprietary/i)).toBeInTheDocument();
+  });
+
+  it('dismisses the modal on "I Understand" and does not show it again after remount', () => {
+    const { unmount } = render(<CompanyBrowserPage />);
+    fireEvent.click(screen.getByRole('button', { name: /i understand/i }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    unmount();
+
+    render(<CompanyBrowserPage />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('shows the modal again for a different user id (per-user, not global)', async () => {
+    const { unmount } = render(<CompanyBrowserPage />);
+    fireEvent.click(screen.getByRole('button', { name: /i understand/i }));
+    unmount();
+
+    vi.resetModules();
+    vi.doMock('../context/AuthContext', () => ({
+      useAuth: () => ({ user: { id: '2', role: 'officer' } }),
+    }));
+    vi.doMock('../hooks/useApi', () => ({
+      apiFetch: vi.fn().mockResolvedValue({ browser_bookmarks_json: null, browser_history_json: null }),
+    }));
+    const { default: CompanyBrowserPageReloaded } = await import('./CompanyBrowserPage');
+    render(<CompanyBrowserPageReloaded />);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });
