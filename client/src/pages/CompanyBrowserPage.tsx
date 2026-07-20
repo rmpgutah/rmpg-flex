@@ -81,7 +81,7 @@ function parseJsonArray<T>(raw: string | null | undefined): T[] {
 
 export default function CompanyBrowserPage() {
   const [tabs, setTabs] = useState<BrowserTab[]>(() => [{
-    id: makeTabId(), url: NEW_TAB_URL, title: 'New Tab', canGoBack: false, canGoForward: false, loading: false,
+    id: makeTabId(), url: NEW_TAB_URL, title: '', canGoBack: false, canGoForward: false, loading: false,
   }]);
   const [activeTabId, setActiveTabId] = useState(() => tabs[0].id);
   const [addressInput, setAddressInput] = useState('');
@@ -142,7 +142,7 @@ export default function CompanyBrowserPage() {
   }, [addressInput, navigateActiveTab]);
 
   const openNewTab = useCallback(() => {
-    const tab: BrowserTab = { id: makeTabId(), url: NEW_TAB_URL, title: 'New Tab', canGoBack: false, canGoForward: false, loading: false };
+    const tab: BrowserTab = { id: makeTabId(), url: NEW_TAB_URL, title: '', canGoBack: false, canGoForward: false, loading: false };
     setTabs(prev => [...prev, tab]);
     setActiveTabId(tab.id);
   }, []);
@@ -222,7 +222,7 @@ export default function CompanyBrowserPage() {
               color: 'var(--text-primary)',
             }}
           >
-            <span className="truncate">{tab.title}</span>
+            <span className="truncate">{tab.title || 'New Tab'}</span>
             <button
               type="button"
               aria-label="Close tab"
@@ -278,7 +278,7 @@ export default function CompanyBrowserPage() {
               className="text-[11px] truncate"
               style={{ color: 'var(--text-primary)', maxWidth: 160 }}
             >
-              {b.url}
+              {b.title || b.url}
             </a>
           ))}
         </div>
