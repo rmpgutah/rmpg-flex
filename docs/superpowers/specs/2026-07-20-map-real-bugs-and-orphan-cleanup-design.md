@@ -200,11 +200,16 @@ detail precisely against the live code.
   with zero callers.
 - **`client/src/hooks/useMultiUnitRouting.ts`** — 17 lines, `addRoute`/`removeRoute`
   are no-op function bodies; fully superseded by `useMapRouting`'s real multi-stop
-  implementation (already wired via `MultiStopRoutePanel`).
+  implementation (already wired via `MultiStopRoutePanel`). It IS instantiated in
+  `MapboxMapPage.tsx` (`import` + `const multiRouting = useMultiUnitRouting(...)`,
+  confirmed no further usage of `multiRouting` anywhere after that line) — deleting
+  the file also requires removing those 2 lines from `MapboxMapPage.tsx`.
 - **`client/src/pages/map/components/BuildingsLayer.tsx`** — a second, unused
   3D-buildings extrusion implementation; the live one is
   `addMapbox3DBuildings`/`removeMapbox3DBuildings` in `client/src/utils/mapboxLoader.ts`,
-  already wired to the "3D Buildings" dock toggle.
+  already wired to the "3D Buildings" dock toggle. Has its own test file
+  (`client/src/pages/map/components/__tests__/BuildingsLayer.test.tsx`) that must be
+  deleted in the same commit or the suite breaks on a missing import.
 - **`client/src/pages/map/hooks/useMapboxInit.ts`** — a full parallel map-init hook
   (create/destroy/style-switch/retry), unused; the live init path is
   `client/src/pages/map/modules/MapCore.ts`, which reimplements equivalent logic
@@ -220,30 +225,34 @@ detail precisely against the live code.
 
 ### Hygiene
 
-**B8. districtGeoData.ts helpers** — `isUnincorporatedBeat`/`unincorporatedZoneName`
-(and `AREA_PALETTE`/`getAreaColor`) are exported and used internally within the same
-file's `getTaggedBeats()`, but no other file imports them directly — instead, e.g.
-the district-hierarchy click popup builds its own zone/sector/area label HTML
-inline, risking drift from the canonical labeling logic. Point that popup's
-label-building code at `unincorporatedZoneName`/`isUnincorporatedBeat` instead of
-re-deriving the same logic.
+**~~B8. districtGeoData.ts helpers~~ — dropped, false positive.** Traced further
+during plan-writing: the district-hierarchy click popup only reads
+already-tagged feature properties (`p._zoneName`, `p._sectorName`, etc.), and those
+values are already computed by calling `unincorporatedZoneName`/`isUnincorporatedBeat`
+one layer upstream, in `getTaggedBeats()` (same file). The canonical helpers are
+already in use — there's no drift risk and nothing to fix. No plan task for this.
 
 ## `_ORPHANS.md` maintenance
 
-As part of this work, update `client/src/pages/map/_ORPHANS.md`:
-- Remove `GpsHud`, `UnifiedMapLegend` from the orphan panel list (now wired by this
-  spec).
-- Correct the stale `SpeedGraphOverlay` entry — it's already wired (shipped in the
-  recent dock-reorg work, predates this spec) and should not be listed as orphaned.
+Verified against the doc's actual current content (not assumed from names) before
+finalizing this section: `_ORPHANS.md`'s "Orphan panels" table has **no row at all**
+for `GpsHud`, `UnifiedMapLegend`, or `MapDiagnosticsOverlay` — only two unrelated
+*mentions* of `UnifiedMapLegend` as "superseded by" text on the `HeatmapLegend` and
+`MapLegend` rows. The only one of those names with an actual row is
+`SpeedGraphOverlay`, and that row is stale (the component is already wired,
+predating this spec). As part of this work, update
+`client/src/pages/map/_ORPHANS.md`:
+- Remove the stale `SpeedGraphOverlay` row from the "Orphan panels" table.
+- Do **not** add rows for `GpsHud`/`UnifiedMapLegend`/`MapDiagnosticsOverlay` since
+  none currently exist to remove or correct — they were simply never tracked in
+  this doc; this spec wires them in without ever having listed them as orphaned.
 - Do **not** touch `_ORPHANS.md`'s existing hook-list entries that merely have
   similar names to files this spec changes (e.g. `useMapClosestUnit` in that doc's
   list is a distinct, separate file from this spec's `useClosestUnit` under
   `pages/map/hooks/` — they must not be conflated or merged in the doc).
 - Add newly-discovered orphans this audit found that the doc didn't previously
   track: `MapboxDispatchConnections` and `ToolbarDropdownGroup` (both stay orphaned
-  per Non-goals, so they get added as new entries, not removed).
-- `MapDiagnosticsOverlay` and `mapboxOverlays.ts` are not currently listed in
-  `_ORPHANS.md` at all (they predate/postdate its last audit) — no removal needed
-  for them; just don't add them, since this spec wires the former and deletes the
-  latter.
+  per Non-goals, so they get added as new entries).
+- `mapboxOverlays.ts` is not currently listed in `_ORPHANS.md` at all — no removal
+  needed; just don't add it, since this spec deletes it outright.
 - Leave every other existing entry untouched.
