@@ -79,7 +79,6 @@ export default function DesktopSettingsApp({
   const [taskbarPosition, setTaskbarPositionState] = useState<TaskbarPosition>(() => getTaskbarPosition());
   const [taskbarSize, setTaskbarSizeState] = useState<TaskbarSize>(() => getTaskbarSize());
   const [importMessage, setImportMessage] = useState<string | null>(null);
-  const importInputRef = useRef<HTMLInputElement>(null);
   const [pos, setPos] = useState(() => ({
     x: Math.max(0, (window.innerWidth - DEFAULT_WIDTH) / 2),
     y: Math.max(0, (window.innerHeight - DEFAULT_HEIGHT) / 2),
@@ -164,7 +163,7 @@ export default function DesktopSettingsApp({
         </button>
         <label className="text-[10px] px-2 py-0.5 cursor-pointer" style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}>
           Import Settings
-          <input ref={importInputRef} type="file" accept="application/json" aria-label="Import Settings" onChange={handleImportFile} className="hidden" />
+          <input type="file" accept="application/json" aria-label="Import Settings" onChange={handleImportFile} className="hidden" />
         </label>
         {importMessage && <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{importMessage}</span>}
       </div>
@@ -175,6 +174,7 @@ export default function DesktopSettingsApp({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search settings…"
+            aria-label="Search settings"
             className="w-full px-2 py-1.5 text-[11px] bg-surface-sunken border-b border-rmpg-700 text-rmpg-100 focus:outline-none"
           />
           {(searchMatches ?? CATEGORIES).map(cat => (
