@@ -2020,12 +2020,14 @@ admin.get('/config-history', async (c) => {
   } catch { return c.json({ data: [] }); }
 });
 
-// ── Settings reset ─────────────────────────────────────────
-admin.post('/settings/reset', async (c) => {
-  const user = c.get('user') as { role: string } | undefined;
-  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
-  return c.json({ success: true, message: 'Settings reset to defaults', note: 'No-op — org settings require manual review before reset' });
-});
+// NOTE: '/settings/reset' used to be a no-op stub here. Removed 2026-07-20 —
+// it resolved to the exact same final path as adminSettings.ts's real,
+// working POST /reset (mounted at /api/admin/settings, so /reset there ==
+// /api/admin/settings/reset here). Hono dispatches app.route() mounts in
+// registration order (see src/index.ts), and this router is registered
+// before adminSettings.ts in ROUTE_REGISTRY, so this fake-success stub was
+// silently shadowing the real reset handler — the Console Settings "Reset"
+// button returned a success toast but never actually reset anything.
 
 // ── Shift plans (admin view) ──────────────────────────────
 admin.get('/shift-plans', async (c) => {
