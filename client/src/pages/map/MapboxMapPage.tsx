@@ -1215,7 +1215,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     minimapOpen, onToggleMinimap: () => setMinimapOpen((v) => !v),
     mapStyle, onStyleChange: handleStyleChange,
     showBookmarksPanel, onToggleBookmarks: () => setShowBookmarksPanel((v) => !v),
-    onSnapshot: () => printExport.exportImage(),
+    onSnapshot: () => {
+      const c = mapRef.current?.getCenter();
+      if (c) snapshot.captureSnapshot({ lng: c.lng, lat: c.lat, zoom: mapRef.current?.getZoom() ?? 14 });
+    },
   };
 
   // Mapbox GL does not auto-detect a container resize that isn't driven by a window
