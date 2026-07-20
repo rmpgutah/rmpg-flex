@@ -2,10 +2,15 @@
 // Fetches heatmap with mode=risk and renders as colored zone polygons.
 // Clusters nearby risk points into convex hull zones for tactical awareness.
 import { useCallback, useState, useRef, useEffect } from 'react';
-import type mapboxgl from 'mapbox-gl';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { buildDetailPopupHtml } from '../pages/map/utils/mapMarkers';
+
+const RISK_LEVEL_LABELS: Record<string, string> = {
+  critical: 'Critical', high: 'High', moderate: 'Moderate', low: 'Low',
+};
 
 interface RiskPoint {
   latitude: number;
@@ -95,11 +100,13 @@ export function useMapboxSafetyZones(map: mapboxgl.Map | null) {
   const [zones, setZones] = useState<SafetyZone[]>([]);
   const [loading, setLoading] = useState(false);
   const visibleRef = useRef(false);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   useEffect(() => {
     return () => {
       if (!map) return;
       try {
+        popupRef.current?.remove();
         [CIRCLE_LAYER_ID, LABEL_LAYER_ID].forEach((id) => { safeRemoveLayer(map, id); });
         safeRemoveSource(map, CIRCLE_SOURCE_ID);
       } catch { /* ignore */ }
@@ -109,6 +116,8 @@ export function useMapboxSafetyZones(map: mapboxgl.Map | null) {
   const clearFromMap = useCallback(() => {
     if (!map) return;
     visibleRef.current = false;
+    popupRef.current?.remove();
+    popupRef.current = null;
     safeRemoveLayer(map, LABEL_LAYER_ID);
     safeRemoveLayer(map, CIRCLE_LAYER_ID);
   }, [map]);
@@ -166,6 +175,25 @@ export function useMapboxSafetyZones(map: mapboxgl.Map | null) {
         'circle-stroke-opacity': 0.8,
       },
     });
+
+    m.on('click', CIRCLE_LAYER_ID, (e) => {
+      const f = e.features?.[0];
+      if (!f || f.geometry.type !== 'Point') return;
+      const p = f.properties || {};
+      popupRef.current?.remove();
+      popupRef.current = new mapboxgl.Popup({ offset: 10, closeButton: true, className: 'mapbox-popup-dark' })
+        .setLngLat(f.geometry.coordinates as [number, number])
+        .setHTML(buildDetailPopupHtml('Safety Zone', [
+          ['Risk Level', RISK_LEVEL_LABELS[p.risk_level] || p.risk_level],
+          ['Risk Weight', p.risk_weight],
+          ['Weapons', p.weapons ? 'Yes' : null],
+          ['Domestic Violence', p.dv ? 'Yes' : null],
+          ['Injuries', p.injuries ? 'Yes' : null],
+        ]))
+        .addTo(m);
+    });
+    m.on('mouseenter', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = 'pointer'; });
+    m.on('mouseleave', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = ''; });
 
     // Risk level labels (only critical and high at zoom 12+)
     m.addLayer({

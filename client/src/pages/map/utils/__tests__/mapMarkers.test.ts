@@ -59,15 +59,15 @@ describe('mapMarkers', () => {
 
   it('applyUnitMarkerState updates an existing marker element without destroying its children', () => {
     const el = buildUnitMarkerEl(unit);
-    const photoFrameBefore = el.querySelector('[data-role="photo-frame"]');
+    const badgeBefore = el.querySelector('[data-role="badge"]');
     const labelBefore = el.querySelector('[data-role="label"]');
-    expect(photoFrameBefore).not.toBeNull();
+    expect(badgeBefore).not.toBeNull();
     expect(labelBefore).not.toBeNull();
 
     applyUnitMarkerState(el, { ...unit, call_sign: 'B99', status: 'dispatched' } as MapUnit);
 
     // Same DOM node identity — this is the whole point of the fix.
-    expect(el.querySelector('[data-role="photo-frame"]')).toBe(photoFrameBefore);
+    expect(el.querySelector('[data-role="badge"]')).toBe(badgeBefore);
     expect(el.querySelector('[data-role="label"]')).toBe(labelBefore);
     expect(el.querySelector('[data-role="label"]')?.textContent).toBe('B99');
   });
