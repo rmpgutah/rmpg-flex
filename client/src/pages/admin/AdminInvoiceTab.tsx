@@ -114,23 +114,35 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch<{ data: Invoice[]; pagination: any }>(`/invoices?client_id=${clientId}&limit=100`);
-      setInvoices(asArray<Invoice>(res?.data));
+      const res = await apiFetch<{ data: Invoice[]; pagination: any }>(`/billing/invoices?client_id=${clientId}&limit=100`);
+      const rows = asArray<Invoice>(res?.data);
+      setInvoices(rows);
+      // billing.ts has no per-client stats endpoint — derive the tile
+      // values from the scoped invoice list instead of the global,
+      // unscoped /invoices/stats (which ignores client_id entirely).
+      const outstanding = rows.filter(i => !['paid', 'void', 'cancelled'].includes((i as any).status));
+      setStats({
+        total_invoices: rows.length,
+        total_outstanding: outstanding.reduce((sum, i) => sum + (Number((i as any).total ?? 0) - Number((i as any).paid_amount ?? 0)), 0),
+        total_collected: rows.reduce((sum, i) => sum + Number((i as any).paid_amount ?? 0), 0),
+        overdue_count: rows.filter(i => (i as any).status === 'overdue').length,
+        draft_count: rows.filter(i => (i as any).status === 'draft').length,
+        by_status: rows.reduce((acc: Record<string, number>, i) => {
+          const s = (i as any).status || 'draft';
+          acc[s] = (acc[s] || 0) + 1;
+          return acc;
+        }, {}),
+      } as InvoiceStats);
     } catch { setError('Failed to load invoices'); }
     setLoading(false);
   }, [clientId]);
 
-  const fetchStats = useCallback(async () => {
-    try {
-      const res = await apiFetch<{ data: InvoiceStats }>(`/invoices/stats?client_id=${clientId}`);
-      setStats(res.data);
-    } catch (e) { console.error('Failed to load invoice stats:', e); }
-  }, [clientId]);
+  const fetchStats = useCallback(async () => { /* derived inline in fetchInvoices — no scoped stats endpoint exists */ }, []);
 
   const fetchInvoiceDetail = useCallback(async (id: string) => {
     setLoading(true);
     try {
-      const res = await apiFetch<{ data: InvoiceDetail }>(`/invoices/${id}`);
+      const res = await apiFetch<{ data: InvoiceDetail }>(`/billing/invoices/${id}`);
       setSelectedInvoice(res.data);
     } catch { setError('Failed to load invoice detail'); }
     setLoading(false);
@@ -160,32 +172,36 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
   // ─── Actions ──────────────────────────────────────
   const handleCreate = async () => {
-    if (!createForm.period_start || !createForm.period_end) {
-      setError('Period start and end dates are required');
-      return;
-    }
     setSaving(true);
     setError(null);
     try {
-      const res = await apiFetch<{ data: Invoice }>('/invoices', {
+      // POST /billing/invoices/:id/generate only auto-fills line items for a
+      // flat-rate contract linked to the invoice — find this client's active
+      // contract first so the invoice is created already linked to it.
+      const contractsRes = await apiFetch<{ data: Array<{ id: number; status: string }> }>(`/billing/contracts?client_id=${clientId}&status=active`);
+      const contract = asArray<{ id: number; status: string }>(contractsRes?.data)[0];
+      const res = await apiFetch<{ data: Invoice }>('/billing/invoices', {
         method: 'POST',
         body: JSON.stringify({
           client_id: clientId,
-          period_start: createForm.period_start,
-          period_end: createForm.period_end,
+          contract_id: contract?.id ?? null,
           issue_date: createForm.issue_date,
           notes: createForm.notes,
         }),
       });
-      // Auto-generate line items
       const invoiceId = res?.data?.id;
       if (!invoiceId) throw new Error('Invoice creation returned no ID');
-      const genRes = await apiFetch<{ data: InvoiceDetail }>(`/invoices/${invoiceId}/generate`, { method: 'POST' });
-      if (!genRes?.data) throw new Error('Invoice generation returned no data');
-      setSelectedInvoice(genRes.data);
+      // Auto-generate flat-rate line items only when a contract was linked —
+      // otherwise leave it as a blank draft the user adds line items to.
+      if (contract?.id) {
+        const genRes = await apiFetch<{ data: InvoiceDetail }>(`/billing/invoices/${invoiceId}/generate`, { method: 'POST' });
+        if (genRes?.data) setSelectedInvoice(genRes.data as InvoiceDetail);
+        else await fetchInvoiceDetail(String(invoiceId));
+      } else {
+        await fetchInvoiceDetail(String(invoiceId));
+      }
       setView('detail');
       fetchInvoices();
-      fetchStats();
     } catch (e: any) {
       setError(e.message || 'Failed to create invoice');
     }
@@ -457,7 +473,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           <button type="button" onClick={() => setView('list')} className="toolbar-btn text-rmpg-400">Cancel</button>
           <button type="button"
             onClick={handleCreate}
-            disabled={saving || !createForm.period_start || !createForm.period_end}
+            disabled={saving}
             className="toolbar-btn text-brand-400 hover:text-brand-300 disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3.5 h-3.5" />}
