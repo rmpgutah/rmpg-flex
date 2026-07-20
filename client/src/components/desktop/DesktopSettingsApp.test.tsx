@@ -3,6 +3,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import DesktopSettingsApp from './DesktopSettingsApp';
 import { normalizeDesktopWidgets } from '../../utils/normalizeDesktopWidgets';
 import { isTaskbarAutoHideEnabled, getTaskbarPosition, getTaskbarSize } from '../../utils/taskbarPreferences';
+import { getClockFormat } from '../../utils/clockPreference';
+import { isDesktopSoundEnabled } from '../../utils/desktopSoundPreference';
+import { getDefaultWindowOpacity } from '../../utils/windowOpacityPreference';
 
 function renderApp(overrides: Partial<React.ComponentProps<typeof DesktopSettingsApp>> = {}) {
   const props = {
@@ -213,6 +216,32 @@ describe('DesktopSettingsApp — export/import', () => {
     const input = screen.getByLabelText('Import Settings') as HTMLInputElement;
     await fireEvent.change(input, { target: { files: [file] } });
     await screen.findByText(/not valid json/i);
+  });
+});
+
+describe('DesktopSettingsApp — Personalization: clock format, sounds, transparency', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('clicking 12-hour/24-hour sets the clock format', () => {
+    renderApp();
+    fireEvent.click(screen.getByText('12-hour'));
+    expect(getClockFormat()).toBe('12h');
+    fireEvent.click(screen.getByText('24-hour'));
+    expect(getClockFormat()).toBe('24h');
+  });
+
+  it('toggling Desktop Sounds persists the preference', () => {
+    renderApp();
+    fireEvent.click(screen.getByLabelText('Desktop sounds'));
+    expect(isDesktopSoundEnabled()).toBe(false);
+  });
+
+  it('Increase/Decrease transparency buttons adjust and clamp the default window opacity', () => {
+    renderApp();
+    fireEvent.click(screen.getByText('Decrease'));
+    expect(getDefaultWindowOpacity()).toBe(0.9);
+    fireEvent.click(screen.getByText('Increase'));
+    expect(getDefaultWindowOpacity()).toBe(1);
   });
 });
 

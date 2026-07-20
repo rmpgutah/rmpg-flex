@@ -6,6 +6,7 @@ import { isSnapEnabled } from '../../utils/snapPreference';
 import { TASKBAR_HEIGHT_PX } from './DesktopTaskbar';
 import { getTaskbarSize } from '../../utils/taskbarPreferences';
 import ContextMenu from '../ContextMenu';
+import { playDesktopSound } from '../../utils/desktopSounds';
 
 const TITLE_BAR_HEIGHT = 30;
 const TITLE_SYNC_POLL_MS = 500;
@@ -141,6 +142,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
             width: halfWidth,
             height: desktopHeight,
           }, { persist: false });
+          playDesktopSound();
         }
         setSnapPreview(null);
         snapEdgeRef.current = null;

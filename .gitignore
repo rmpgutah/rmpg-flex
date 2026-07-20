@@ -76,3 +76,4 @@ tmp/
 # Generated audit / analysis
 .audit-rms-result.json
 .worktrees/
+.serena/

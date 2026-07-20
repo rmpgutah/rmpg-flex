@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getClockFormat } from '../utils/clockPreference';
 
 const TIME_ZONE = 'America/Denver';
 
@@ -7,6 +8,7 @@ function format(): { time: string; date: string } {
   return {
     time: new Intl.DateTimeFormat('en-US', {
       timeZone: TIME_ZONE, hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: getClockFormat() === '12h',
     }).format(now),
     date: new Intl.DateTimeFormat('en-US', {
       timeZone: TIME_ZONE, weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
