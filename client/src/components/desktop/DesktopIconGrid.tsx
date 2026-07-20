@@ -6,6 +6,7 @@ import { getWindowConfig, activateNavFunction } from '../../utils/windowManager'
 import { useDesktopWindows } from './DesktopWindowManager';
 import ContextMenu from '../ContextMenu';
 import { useToast } from '../ToastProvider';
+import { isAppPinned, pinApp, unpinApp } from '../../utils/taskbarPreferences';
 
 export interface DesktopIconGridProps {
   icons: NavFunction[];
