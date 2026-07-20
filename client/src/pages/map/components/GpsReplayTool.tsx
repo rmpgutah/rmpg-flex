@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type mapboxgl from 'mapbox-gl';
+import { X } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { asArray } from '../../../utils/asArray';
 import { getSourceSafe, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
+import PanelTitleBar from '../../../components/PanelTitleBar';
+import IconButton from '../../../components/IconButton';
 
 interface GpsPosition { lat: number; lng: number; timestamp: string; speed?: number; heading?: number; }
 interface UnitOption { unit_id: number; call_sign: string; officer_name?: string; badge_number?: string; }
@@ -140,13 +143,17 @@ export default function GpsReplayTool({ map, onClose }: Props) {
   };
 
   return (
-    <div className="tactical-dark border border-surface-raised rounded p-3 w-56 text-xs space-y-2 shadow-lg">
-      <div className="text-brand-400 font-bold uppercase tracking-wider text-[10px]">GPS Replay</div>
+    <div className="bg-surface-raised/95 border border-border-default backdrop-blur-sm w-56 text-xs space-y-2 p-2" style={{ borderRadius: 2 }}>
+      <PanelTitleBar title="GPS Replay">
+        <IconButton aria-label="Close" onClick={onClose} className="text-rmpg-400 hover:text-rmpg-200 p-0.5">
+          <X className="w-3 h-3" />
+        </IconButton>
+      </PanelTitleBar>
       <select value={selectedUnit ?? ''} onChange={e => {
         const id = Number(e.target.value);
         setSelectedUnit(id);
         if (id) loadPositions(id, hoursBack);
-      }} className="w-full bg-surface-base border border-surface-raised text-rmpg-200 rounded px-1 py-0.5 text-[10px]">
+      }} className="w-full bg-surface-base border border-surface-raised text-rmpg-200 px-1 py-0.5 text-[10px]" style={{ borderRadius: 2 }}>
         <option value="">Select unit…</option>
         {units.map(u => (
           <option key={u.unit_id} value={u.unit_id}>
@@ -160,11 +167,11 @@ export default function GpsReplayTool({ map, onClose }: Props) {
           const h = Number(e.target.value);
           setHoursBack(h);
           if (selectedUnit) loadPositions(selectedUnit, h);
-        }} className="bg-surface-base border border-surface-raised text-rmpg-200 rounded px-1 py-0.5 text-[10px]">
+        }} className="bg-surface-base border border-surface-raised text-rmpg-200 px-1 py-0.5 text-[10px]" style={{ borderRadius: 2 }}>
           {HOURS_OPTIONS.map(h => <option key={h} value={h}>{h}h</option>)}
         </select>
         <select value={speed} onChange={e => setSpeed(Number(e.target.value))}
-          className="ml-auto bg-surface-base border border-surface-raised text-rmpg-200 rounded px-1 py-0.5 text-[10px]">
+          className="ml-auto bg-surface-base border border-surface-raised text-rmpg-200 px-1 py-0.5 text-[10px]" style={{ borderRadius: 2 }}>
           {SPEEDS.map(s => <option key={s} value={s}>{s}×</option>)}
         </select>
       </div>
@@ -191,16 +198,12 @@ export default function GpsReplayTool({ map, onClose }: Props) {
       </label>
       <div className="flex gap-2">
         <button onClick={playing ? stop : play} disabled={!positions.length}
-          className="flex-1 bg-brand-500 text-black font-bold py-1 rounded text-[10px] disabled:opacity-50">
+          className="flex-1 bg-brand-500 text-black font-bold py-1 text-[10px] disabled:opacity-50" style={{ borderRadius: 2 }}>
           {playing ? 'Pause' : 'Play'}
         </button>
         <button onClick={stop}
-          className="flex-1 bg-surface-raised text-rmpg-300 py-1 rounded text-[10px]">
+          className="flex-1 bg-surface-raised text-rmpg-300 py-1 text-[10px]" style={{ borderRadius: 2 }}>
           Stop
-        </button>
-        <button onClick={onClose}
-          className="flex-1 bg-surface-raised text-rmpg-300 py-1 rounded text-[10px]">
-          Done
         </button>
       </div>
     </div>

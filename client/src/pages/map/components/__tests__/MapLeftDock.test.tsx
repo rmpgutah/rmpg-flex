@@ -27,4 +27,11 @@ describe('MapLeftDock', () => {
     render(<MapLeftDock sections={[]} />);
     expect(screen.getByText('LAYERS')).toBeInTheDocument();
   });
+
+  it('forwards collapsible=false to a non-collapsible section', () => {
+    const sections = [{ title: 'Live Conditions', collapsible: false, items: [{ id: 'p1audio', label: 'P1 Audio Alert', active: true, onToggle: vi.fn() }] }];
+    render(<MapLeftDock sections={sections} />);
+    fireEvent.click(screen.getByText('Live Conditions'));
+    expect(screen.getByText('P1 Audio Alert')).toBeInTheDocument();
+  });
 });
