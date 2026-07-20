@@ -129,9 +129,9 @@ export async function notifyServeCompletion(
 
   await execute(db,
     `INSERT INTO serve_nudges (serve_queue_id, condition, last_notified_at)
-     VALUES (?, ?, datetime('now','localtime'))
+     VALUES (?, ?, datetime('now'))
      ON CONFLICT(serve_queue_id, condition)
-     DO UPDATE SET last_notified_at = datetime('now','localtime')`,
+     DO UPDATE SET last_notified_at = datetime('now')`,
     serveQueueId, nudgeCondition,
   ).catch(() => {});
 }

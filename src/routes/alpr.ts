@@ -168,8 +168,8 @@ async function ensureAlprSchema(db: ReturnType<typeof getDb>): Promise<boolean> 
     latitude REAL,
     longitude REAL,
     notes TEXT,
-    taken_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    taken_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
   try { await execute(db, `ALTER TABLE field_photos ADD COLUMN incident_id INTEGER`); } catch { /* column exists */ }
 

@@ -192,7 +192,7 @@ pt.post('/checkpoints/:id/archive', async (c) => {
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   await execute(
     getDb(c.env),
-    `UPDATE patrol_checkpoints SET is_active = 0, archived_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE patrol_checkpoints SET is_active = 0, archived_at = datetime('now') WHERE id = ?`,
     id,
   );
   return c.json({ success: true });
@@ -237,14 +237,14 @@ pt.post('/scan', async (c) => {
   );
   let status = 'on_time';
   if (last?.scanned_at) {
-    // patrol_scans.scanned_at is written via datetime('now','localtime') →
-    // America/Denver wall-clock. Workers run in UTC, so parsing as JS Date
-    // treats the stored time as UTC and skews ~6–7h, false-marking many
-    // scans as "late". Compute minutes-since in SQL where both sides are
-    // localtime — no timezone juggling needed.
+    // patrol_scans.scanned_at is written via datetime('now') → UTC. Parsing
+    // it as a JS Date in a non-UTC browser/runtime would skew the delta by
+    // hours. Compute minutes-since in SQL instead, where both sides
+    // (julianday('now') and the stored value) are UTC — no timezone
+    // juggling needed.
     const sinceRow = await queryFirst<{ mins: number }>(
       db,
-      `SELECT (julianday('now','localtime') - julianday(?)) * 1440 AS mins`,
+      `SELECT (julianday('now') - julianday(?)) * 1440 AS mins`,
       last.scanned_at,
     );
     const minutesSince = Number(sinceRow?.mins ?? 0);
@@ -357,7 +357,7 @@ pt.get('/compliance', async (c) => {
        FROM patrol_checkpoints cp
        LEFT JOIN patrol_scans s
          ON s.checkpoint_id = cp.id
-        AND s.scanned_at >= datetime('now','localtime','-' || ? || ' days')
+        AND s.scanned_at >= datetime('now','-' || ? || ' days')
        WHERE cp.is_active = 1 ${where}
        GROUP BY cp.id, cp.name, cp.property_id
        ORDER BY cp.property_id, cp.sequence_order`,
@@ -382,7 +382,7 @@ pt.get('/exceptions', async (c) => {
        LEFT JOIN patrol_checkpoints cp ON cp.id = s.checkpoint_id
        LEFT JOIN users u ON u.id = s.officer_id
        WHERE s.status IN ('late','missed')
-         AND s.scanned_at >= datetime('now','localtime','-' || ? || ' days')
+         AND s.scanned_at >= datetime('now','-' || ? || ' days')
        ORDER BY s.scanned_at DESC LIMIT 200`,
     days,
   );
@@ -450,7 +450,7 @@ pt.post('/breaks/start', async (c) => {
   const r = await execute(
     getDb(c.env),
     `INSERT INTO patrol_breaks (officer_id, shift_date, break_start, break_type)
-     VALUES (?,?, datetime('now','localtime'), ?)`,
+     VALUES (?,?, datetime('now'), ?)`,
     user.id, body.shift_date ?? today, breakType,
   );
   return c.json({ success: true, id: r.meta.last_row_id }, 201);
@@ -473,8 +473,8 @@ pt.post('/breaks/end', async (c) => {
   await execute(
     db,
     `UPDATE patrol_breaks
-       SET break_end = datetime('now','localtime'),
-           duration_minutes = (julianday(datetime('now','localtime')) - julianday(break_start)) * 1440
+       SET break_end = datetime('now'),
+           duration_minutes = (julianday(datetime('now')) - julianday(break_start)) * 1440
      WHERE id = ?`,
     open.id,
   );
@@ -522,7 +522,7 @@ pt.post('/verify-tour', async (c) => {
     db,
     `INSERT INTO patrol_tour_verifications
        (officer_id, tour_date, verified_by, verified_at, status, notes, total_scans, on_time_scans)
-     VALUES (?,?,?, datetime('now','localtime'), ?, ?, ?, ?)
+     VALUES (?,?,?, datetime('now'), ?, ?, ?, ?)
      ON CONFLICT(officer_id, tour_date) DO UPDATE SET
        verified_by = excluded.verified_by,
        verified_at = excluded.verified_at,
@@ -530,7 +530,7 @@ pt.post('/verify-tour', async (c) => {
        notes = excluded.notes,
        total_scans = excluded.total_scans,
        on_time_scans = excluded.on_time_scans,
-       updated_at = datetime('now','localtime')`,
+       updated_at = datetime('now')`,
     body.officer_id, body.tour_date, user?.id ?? null, status, body.notes ?? null,
     totals?.total ?? 0, totals?.on_time ?? 0,
   );

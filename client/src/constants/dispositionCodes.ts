@@ -104,6 +104,34 @@ export const DISPOSITION_GROUPS: DispositionGroup[] = [
       { code: 'DOC', description: 'Documentation Only',           color: C_NEUTRAL },
     ],
   },
+  {
+    label: 'Medical / Welfare',
+    codes: [
+      { code: 'AMB', description: 'Ambulance / EMS Requested',    color: C_ENF },
+      { code: 'MED', description: 'Medical Attention Rendered',   color: C_OK },
+      { code: 'WEL', description: 'Welfare Check Completed — OK', color: C_OK },
+      { code: 'MHH', description: 'Mental Health Hold Initiated', color: C_ENF },
+      { code: 'DOA', description: 'Deceased on Arrival',          color: C_NEG },
+    ],
+  },
+  {
+    label: 'Investigative',
+    codes: [
+      { code: 'INV', description: 'Investigation Initiated',      color: C_NEUTRAL },
+      { code: 'EVD', description: 'Evidence Collected',           color: C_OK },
+      { code: 'WIT', description: 'Witness Statement Taken',      color: C_NEUTRAL },
+      { code: 'SUR', description: 'Surveillance Conducted',       color: C_NEUTRAL },
+    ],
+  },
+  {
+    label: 'Escort / Standby',
+    codes: [
+      { code: 'ESC', description: 'Escort Provided',              color: C_OK },
+      { code: 'MDE', description: 'Medical Escort Provided',      color: C_OK },
+      { code: 'EVT', description: 'Event / Special Detail Complete', color: C_OK },
+      { code: 'ALM', description: 'Alarm Response Complete',      color: C_OK },
+    ],
+  },
 ];
 
 // ── PSO-specific groups (10 categories × N sub-codes) ──────────────

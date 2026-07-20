@@ -846,7 +846,7 @@ fleet.put('/dashcam-videos/:id{[0-9]+}', async (c) => {
       if (col in body) { sets.push(`${col} = ?`); binds.push(num(body[col])); }
     }
     if (!sets.length) return c.json({ error: 'No updatable fields provided' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`);
+    sets.push(`updated_at = datetime('now')`);
     binds.push(id);
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM dashcam_videos WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
@@ -926,7 +926,7 @@ fleet.post('/dashcam-videos/:id{[0-9]+}/burn', async (c) => {
     if (existing.burn_status === 'pending' || existing.burn_status === 'processing') {
       return c.json({ success: true, burn_status: existing.burn_status, already_queued: true });
     }
-    await execute(db, `UPDATE dashcam_videos SET burn_status = 'pending', updated_at = datetime('now','localtime') WHERE id = ?`, id);
+    await execute(db, `UPDATE dashcam_videos SET burn_status = 'pending', updated_at = datetime('now') WHERE id = ?`, id);
     return c.json({ success: true, burn_status: 'pending' });
   } catch (err) {
     console.error('POST /fleet/dashcam-videos/:id/burn failed:', err);

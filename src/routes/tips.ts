@@ -121,7 +121,7 @@ tips.put('/:id/status', async (c) => {
     const isReview = status === 'reviewed';
     const u = c.get('user') as { id: number } | undefined;
     await execute(db,
-      `UPDATE investigative_tips SET status = ?, updated_at = datetime('now','localtime')${isReview ? ", reviewed_at = datetime('now','localtime'), reviewed_by = ?" : ''} WHERE id = ?`,
+      `UPDATE investigative_tips SET status = ?, updated_at = datetime('now')${isReview ? ", reviewed_at = datetime('now'), reviewed_by = ?" : ''} WHERE id = ?`,
       ...(isReview ? [status, u?.id ?? null, id] : [status, id]),
     );
     return c.json({ success: true });
@@ -139,7 +139,7 @@ tips.put('/:id/assign', async (c) => {
     const id = parseInt(c.req.param('id'), 10);
     const { assigned_to } = await c.req.json<{ assigned_to?: string | number }>();
     await execute(db,
-      `UPDATE investigative_tips SET assigned_to = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE investigative_tips SET assigned_to = ?, updated_at = datetime('now') WHERE id = ?`,
       assigned_to ?? null, id);
     return c.json({ success: true });
   } catch (err) {
@@ -159,7 +159,7 @@ tips.put('/:id/link-case', async (c) => {
     const caseRow = await queryFirst<{ id: number }>(db, 'SELECT id FROM cases WHERE case_number = ?', case_number);
     if (!caseRow) return c.json({ error: 'Case not found' }, 404);
     await execute(db,
-      `UPDATE investigative_tips SET linked_case_id = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE investigative_tips SET linked_case_id = ?, updated_at = datetime('now') WHERE id = ?`,
       caseRow.id, id);
     return c.json({ success: true });
   } catch (err) {

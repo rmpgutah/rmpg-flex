@@ -60,7 +60,7 @@ gangIntel.put('/:id', async (c) => {
   const v = checkEnums(body);
   if (!v.ok) return c.json(enumError(v.field), 400);
   await execute(db,
-    'UPDATE gang_intel_members SET name=?, moniker=?, gang_name=?, status=?, threat_level=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
+    'UPDATE gang_intel_members SET name=?, moniker=?, gang_name=?, status=?, threat_level=?, notes=?, updated_at=datetime(\'now\') WHERE id=?',
     (body.name || (() => { throw new Error("name required"); })()), body.moniker || null, body.gang_name || null, body.status || 'active', body.threat_level || 'low', body.notes || null, id
   );
   return c.json({ success: true });
@@ -112,7 +112,7 @@ gangIntel.put('/gangs/:id', async (c) => {
     return c.json(enumError('threat_level'), 400);
   }
   await execute(db,
-    'UPDATE gang_intel_gangs SET name=?, colors=?, member_count=?, threat_level=?, territory=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
+    'UPDATE gang_intel_gangs SET name=?, colors=?, member_count=?, threat_level=?, territory=?, notes=?, updated_at=datetime(\'now\') WHERE id=?',
     (body.name || (() => { throw new Error("name required"); })()), body.colors || null, body.member_count || 0, body.threat_level || 'low', body.territory || null, body.notes || null, id
   );
   return c.json({ success: true });

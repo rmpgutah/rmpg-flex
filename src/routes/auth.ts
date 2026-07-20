@@ -551,7 +551,7 @@ auth.post('/refresh', async (c) => {
 
     await execute(
       db,
-      `UPDATE sessions SET refresh_token_hash = ?, last_used_at = datetime('now', 'localtime') WHERE id = ?`,
+      `UPDATE sessions SET refresh_token_hash = ?, last_used_at = datetime('now') WHERE id = ?`,
       newRefreshHash, session.id,
     );
 
@@ -1741,7 +1741,7 @@ auth.post('/webauthn/register-verify', authMiddleware, async (c) => {
     const result = await execute(db, `
       INSERT INTO webauthn_credentials
         (user_id, credential_id, public_key, counter, device_type, backed_up, transports, name, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `,
       userId,
       credential.id, // Base64URLString already
@@ -1889,7 +1889,7 @@ auth.post('/webauthn/authenticate-verify', async (c) => {
       return c.json({ error: 'Security key verification failed', code: 'SECURITY_KEY_VERIFICATION_FAILED' }, 401);
     }
     await execute(db,
-      `UPDATE webauthn_credentials SET counter = ?, last_used_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE webauthn_credentials SET counter = ?, last_used_at = datetime('now') WHERE id = ?`,
       verification.authenticationInfo.newCounter, cred.id).catch(() => undefined);
     await trustDeviceIfRequested(c, db, user.id, body.deviceFingerprint, body.trustDevice);
 

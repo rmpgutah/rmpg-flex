@@ -82,7 +82,7 @@ assets.put('/inventory/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (ASSET_UPDATABLE.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE asset_inventory SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM asset_inventory WHERE id = ?', id);
     return c.json({ data: updated });
@@ -163,7 +163,7 @@ assets.put('/checkouts/:id/return', async (c) => {
     const id = parseInt(c.req.param('id'), 10);
     const b = await c.req.json<Record<string, unknown>>();
     await execute(db,
-      `UPDATE asset_checkouts SET actual_return = datetime('now','localtime'), condition_in = ? WHERE id = ?`,
+      `UPDATE asset_checkouts SET actual_return = datetime('now'), condition_in = ? WHERE id = ?`,
       b.condition_in ?? null, id,
     );
     const co = await queryFirst<{ asset_id: number }>(db, 'SELECT asset_id FROM asset_checkouts WHERE id = ?', id);

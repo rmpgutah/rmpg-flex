@@ -100,7 +100,7 @@ impounds.put('/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (!sets.length) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE impounds SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM impounds WHERE id = ?', id);
     if (!updated) return c.json({ error: 'Not found' }, 404);
@@ -124,9 +124,9 @@ impounds.put('/:id/release', async (c) => {
     const days = daysSince(row.impound_date);
     const totalFees = (days * (row.daily_fee || 0)) + (row.tow_fee || 0);
     await execute(db,
-      `UPDATE impounds SET status = 'released', release_date = datetime('now','localtime'),
+      `UPDATE impounds SET status = 'released', release_date = datetime('now'),
         days_stored = ?, total_fees = ?, released_to = ?, release_notes = ?,
-        updated_at = datetime('now','localtime') WHERE id = ?`,
+        updated_at = datetime('now') WHERE id = ?`,
       days, totalFees, b.released_to ?? null, b.release_notes ?? null, id,
     );
     return c.json({ days, total_fees: totalFees });

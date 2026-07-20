@@ -46,8 +46,8 @@ async function ensureTable(db: ReturnType<typeof getDb>) {
     latitude REAL,
     longitude REAL,
     notes TEXT,
-    taken_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    taken_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
   // D1 has no IF NOT EXISTS on ADD COLUMN — swallow the re-apply error so the
   // column self-heals on tables created before incident linkage existed.
