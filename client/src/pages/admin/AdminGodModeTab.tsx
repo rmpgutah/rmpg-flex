@@ -144,6 +144,10 @@ export default function AdminGodModeTab() {
   const handleIntegrity = async () => {
     try {
       const result = await apiFetch<any>('/admin/database/integrity-check', { method: 'POST' });
+      if (result.code === 'not_supported') {
+        showResult('success', result.message || 'D1 does not support a user-facing integrity check.');
+        return;
+      }
       const issues = Array.isArray(result.result) ? result.result.join(', ') : String(result.result ?? 'unknown');
       showResult(result.healthy ? 'success' : 'error', result.healthy ? 'Database integrity: OK' : `Issues found: ${issues}`);
     } catch (err: any) { showResult('error', err.message); }

@@ -1547,13 +1547,26 @@ admin.post('/database/analyze', async (c) => {
   } catch (err) { return c.json({ error: 'ANALYZE failed' }, 500); }
 });
 
+// D1 rejects PRAGMA integrity_check outright (SQLITE_AUTH: "not authorized") —
+// confirmed live via a direct d1_database_query probe, not just a Workers-runtime
+// restriction. There's no substitute query that verifies page-level integrity,
+// so this honestly reports the platform limitation (200, not_supported) instead
+// of masking it as a fake "ok" (the pre-2026-07-20 stub) or a bare 500.
 admin.on(['GET', 'POST'], '/database/integrity-check', async (c) => {
   try {
     const db = getDb(c.env);
     const row = await queryFirst<{ integrity_check: string }>(db, "PRAGMA integrity_check");
     const healthy = row?.integrity_check === 'ok';
     return c.json({ result: row?.integrity_check ?? 'unknown', ok: healthy, healthy });
-  } catch (err) { return c.json({ error: 'Integrity check failed' }, 500); }
+  } catch (err) {
+    return c.json({
+      result: 'not_supported',
+      ok: false,
+      healthy: false,
+      code: 'not_supported',
+      message: 'D1 does not authorize PRAGMA integrity_check — Cloudflare manages storage integrity internally with no user-facing equivalent.',
+    });
+  }
 });
 
 admin.post('/database/vacuum', async (c) => {
