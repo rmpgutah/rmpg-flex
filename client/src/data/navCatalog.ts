@@ -23,6 +23,8 @@ export interface NavFunction {
   windowSize?: { width: number; height: number };
   /** Non-empty reason this page must NOT open in a floating desktop window (falls back to navigate()). */
   notWindowable?: string;
+  /** This function launches an Electron-only feature via window.electron rather than an in-app route. Currently only 'company-browser'. */
+  electronOnly?: 'company-browser';
 }
 
 export interface NavCategory {
@@ -54,6 +56,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
       { path: '/mdt', label: 'Mobile Data Terminal', icon: Monitor, shortcut: 'F4', description: 'In-vehicle mobile data terminal for field officers', windowSize: { width: 1000, height: 800 } },
       { path: '/ncic', label: 'NCIC Terminal', icon: Terminal, shortcut: 'F5', description: 'NCIC-style query terminal for warrants, persons, vehicles, and firearms' },
       { path: '/geography', label: 'Dispatch Geography', icon: Map, description: 'Sector, zone, and beat boundary management for dispatch geography' },
+      { path: '/desktop-company-browser', label: 'Company Browser', icon: Globe, description: 'General-purpose web browser for vendor portals, county sites, and research — desktop app only', notWindowable: 'Launches a dedicated Electron BrowserWindow via window.electron.openCompanyBrowser() instead of an in-app floating window or route navigation.', electronOnly: 'company-browser' },
     ],
   },
   {
