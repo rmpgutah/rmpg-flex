@@ -147,7 +147,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [sidebarOpen, setSidebarOpen]   = usePersistedState('rmpg_mapbox_sidebar_open', true);
   const [activeTab, setActiveTab]       = usePersistedTab('rmpg_mapbox_sidebar', 'units', ['units', 'calls'] as const);
   const [mapStyle, setMapStyleId]       = usePersistedState<MapStyleId>('rmpg_mapbox_style', 'dark');
-  const [beatsVisible, setBeatsVisible] = usePersistedState('rmpg_mapbox_beats', true);
   // searchQuery/searchResults state removed — MapboxGeocoder handles this internally
   const [selfPosVisible, setSelfPosVisible] = usePersistedState('rmpg_mapbox_self_pos', true);
   const [terrainEnabled, setTerrainEnabled] = usePersistedState('rmpg_mapbox_terrain', false);
@@ -169,69 +168,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const refreshTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   // searchTimeoutRef removed — geocoder plugin handles debounce internally
 
-  // ── Beat GeoJSON Overlay ───────────────────────────────────────────────────
-  // Defined before useMapCore() below because it's passed in as loadBeatOverlay
-  // and must be a stable (useCallback) reference — see MapCore.ts's JSDoc.
-
-  const loadBeatOverlay = useCallback(async (map: mapboxgl.Map) => {
-    try {
-      const resp = await fetch('/beats.geojson');
-      if (!resp.ok) { devWarn('[MapboxMap] beats.geojson not found'); return; }
-      const geojson = await resp.json();
-
-      // Remove existing beat layers/source if present (e.g. after style change)
-      ['beats-label', 'beats-border', 'beats-fill'].forEach(id => {
-        safeRemoveLayer(map, id);
-      });
-      safeRemoveSource(map, 'beats');
-
-      upsertGeoJsonSource(map, 'beats', geojson);
-
-      map.addLayer({
-        id: 'beats-fill',
-        type: 'fill',
-        source: 'beats',
-        paint: {
-          'fill-color': '#d4a017',
-          'fill-opacity': 0.04,
-        },
-      });
-
-      map.addLayer({
-        id: 'beats-border',
-        type: 'line',
-        source: 'beats',
-        paint: {
-          'line-color': '#d4a017',
-          'line-opacity': 0.35,
-          'line-width': 1,
-        },
-      });
-
-      map.addLayer({
-        id: 'beats-label',
-        type: 'symbol',
-        source: 'beats',
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-size': 10,
-          'text-allow-overlap': false,
-        },
-        paint: {
-          'text-color': '#d4a017',
-          'text-opacity': 0.5,
-          'text-halo-color': '#000',
-          'text-halo-width': 1,
-        },
-        minzoom: 13,
-      });
-
-      devLog('[MapboxMap] beat overlay added');
-    } catch (err) {
-      devWarn('[MapboxMap] beat overlay failed', err);
-    }
-  }, []);
-
   // ── Map Core (init, token fetch, MapLibre fallback, style switching) ──────
 
   const onStyleFallback = useCallback((style: MapStyleId) => {
@@ -251,7 +187,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     retryNonce,
     onStyleFallback,
     onRetryNonceRequest,
-    loadBeatOverlay,
     terrainEnabled,
   });
 
@@ -677,16 +612,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   useLiveSync('dispatch', silentRefresh);
 
-  // Toggle beat visibility
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapLoaded) return;
-    const vis = beatsVisible ? 'visible' : 'none';
-    ['beats-fill', 'beats-border', 'beats-label'].forEach(id => {
-      if (hasLayer(map, id)) map.setLayoutProperty(id, 'visibility', vis);
-    });
-  }, [beatsVisible, mapLoaded]);
-
   // Toggle 3D buildings
   useEffect(() => {
     const map = mapRef.current;
@@ -1066,7 +991,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     {
       title: 'Administrative Boundaries',
       items: [
-        { id: 'beats', label: 'Beat Boundaries', active: beatsVisible, onToggle: () => setBeatsVisible((v: boolean) => !v), color: '#d4a017' },
         ...districtHierarchy.hierarchyConfigs.map(cfg => ({
           id: `district-${cfg.id}`,
           label: cfg.label,
@@ -1105,7 +1029,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'orbit', label: 'Orbit Animation', active: cameraAnimation.animating, onToggle: () => cameraAnimation.animating ? cameraAnimation.stop() : cameraAnimation.orbit(), color: '#f59e0b', description: 'Cinematic map rotation' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, districtHierarchy, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, repeatAddressesEnabled, repeatAddresses.loading, speedHeatmapEnabled, speedHeatmap.loading, speedViolationsEnabled, speedViolationsLayer.loading, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, districtHierarchy, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, repeatAddressesEnabled, repeatAddresses.loading, speedHeatmapEnabled, speedHeatmap.loading, speedViolationsEnabled, speedViolationsLayer.loading, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading]);
 
   const mapRightDockSections = useMemo<MapRightDockSection[]>(() => [
     {

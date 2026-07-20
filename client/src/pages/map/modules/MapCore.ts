@@ -29,16 +29,15 @@ export interface UseMapCoreOptions {
   mapStyle: MapStyleId;
   retryNonce: number;
   /**
-   * `onStyleFallback`, `onRetryNonceRequest`, and `loadBeatOverlay` must be stable
-   * references across renders (e.g. wrapped in `useCallback`) — the internal init
-   * effect closes over them without listing them as dependencies, so a new inline
-   * function on every render will be captured as a stale closure.
+   * `onStyleFallback` and `onRetryNonceRequest` must be stable references across
+   * renders (e.g. wrapped in `useCallback`) — the internal init effect closes over
+   * them without listing them as dependencies, so a new inline function on every
+   * render will be captured as a stale closure.
    */
   /** Called to switch the persisted map style (used on style-not-found retry). */
   onStyleFallback: (style: MapStyleId) => void;
   /** Called to bump the caller-owned retryNonce (used on style-not-found retry). */
   onRetryNonceRequest: () => void;
-  loadBeatOverlay: (map: mapboxgl.Map) => void | Promise<void>;
   /** Whether 3D terrain is currently enabled — replicated onto the map after a style switch. */
   terrainEnabled: boolean;
 }
@@ -52,10 +51,10 @@ export interface UseMapCoreResult {
   mapLibreFallback: boolean;
   /**
    * Switches the live map instance to a new style and re-applies dark-style 3D
-   * buildings, the beat overlay, and terrain (if enabled) once the new style loads.
-   * Callers must also update their own persisted `mapStyle` state after calling
-   * this (e.g. `setMapStyleId(styleId)`) — `changeStyle` only mutates the live map
-   * instance, it does not update the `mapStyle` option this hook was called with.
+   * buildings and terrain (if enabled) once the new style loads. Callers must
+   * also update their own persisted `mapStyle` state after calling this (e.g.
+   * `setMapStyleId(styleId)`) — `changeStyle` only mutates the live map instance,
+   * it does not update the `mapStyle` option this hook was called with.
    */
   changeStyle: (styleId: MapStyleId) => void;
   /** The server-fetched runtime Mapbox token (not the build-time `mapboxgl.accessToken` global). */
@@ -69,7 +68,7 @@ export interface UseMapCoreResult {
 }
 
 export function useMapCore({
-  preferredEngine, mapStyle, retryNonce, onStyleFallback, onRetryNonceRequest, loadBeatOverlay,
+  preferredEngine, mapStyle, retryNonce, onStyleFallback, onRetryNonceRequest,
   terrainEnabled,
 }: UseMapCoreOptions): UseMapCoreResult {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -183,7 +182,6 @@ export function useMapCore({
           // NavigationControl, ScaleControl, GeolocateControl, and AttributionControl
           // are already added by createMapboxMap() — don't duplicate them here.
           if (DARK_STYLES.includes(mapStyle)) addMapbox3DBuildings(map);
-          loadBeatOverlay(map);
           setMapLoaded(true);
           setLoading(false);
           devLog('[MapCore] map loaded');
@@ -318,10 +316,9 @@ export function useMapCore({
     setMapboxStyle(map, styleId);
     map.once('style.load', () => {
       if (DARK_STYLES.includes(styleId)) addMapbox3DBuildings(map);
-      loadBeatOverlay(map);
       if (terrainEnabled) addMapboxTerrain(map);
     });
-  }, [loadBeatOverlay, terrainEnabled]);
+  }, [terrainEnabled]);
 
   const daylight = useMapDaylight(mapRef.current, mapLoaded);
   const projection = useMapProjection(mapRef.current, mapLoaded);

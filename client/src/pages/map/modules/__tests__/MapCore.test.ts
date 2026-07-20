@@ -16,7 +16,6 @@ describe('useMapCore', () => {
         retryNonce: 0,
         onStyleFallback: () => {},
         onRetryNonceRequest: () => {},
-        loadBeatOverlay: async () => {},
         terrainEnabled: false,
       })
     );
@@ -36,7 +35,6 @@ describe('useMapCore', () => {
         retryNonce: 0,
         onStyleFallback: () => {},
         onRetryNonceRequest: () => {},
-        loadBeatOverlay: async () => {},
         terrainEnabled: false,
       })
     );
@@ -59,7 +57,6 @@ describe('useMapCore', () => {
         retryNonce: 0,
         onStyleFallback: () => {},
         onRetryNonceRequest: () => {},
-        loadBeatOverlay: () => {},
         terrainEnabled: false,
       })
     );
