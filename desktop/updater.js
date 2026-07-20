@@ -184,6 +184,17 @@ class AppUpdater {
       this.isUpdateInProgress = false;
       lastUpdateVerified = false;
 
+      // Also block electron-updater's OWN quit-time auto-install path while
+      // verification is pending/failed. autoInstallOnAppQuit is the app's
+      // primary/normal install flow (see the comment below) — it installs
+      // silently on next natural app quit, entirely independent of the
+      // updater:install IPC handler this file also gates on
+      // lastUpdateVerified. Without this, a package that fails re-verification
+      // would still be silently installed the next time the user quits,
+      // defeating the point of the re-check. Restored to true only once
+      // verification succeeds, below.
+      autoUpdater.autoInstallOnAppQuit = false;
+
       // Explicit app-level re-verification of the downloaded package's
       // SHA512, on top of electron-updater's own internal checking.
       // `info.downloadedFile` is the LOCAL path electron-updater just wrote
@@ -204,6 +215,7 @@ class AppUpdater {
           }
 
           lastUpdateVerified = true;
+          autoUpdater.autoInstallOnAppQuit = true;
           this._sendToRenderer('update-status', {
             status: 'ready',
             version: info.version,
