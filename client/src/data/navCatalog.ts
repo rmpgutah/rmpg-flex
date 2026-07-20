@@ -19,6 +19,10 @@ export interface NavFunction {
   description: string;
   adminOnly?: boolean;
   badgeKey?: string;
+  /** In-desktop floating window size. Omit for the default 1050x800. */
+  windowSize?: { width: number; height: number };
+  /** Non-empty reason this page must NOT open in a floating desktop window (falls back to navigate()). */
+  notWindowable?: string;
 }
 
 export interface NavCategory {
@@ -45,9 +49,9 @@ export const NAV_CATEGORIES: NavCategory[] = [
     icon: Radio,
     functions: [
       { path: '/', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'F1', description: 'Central operations overview with live statistics, active calls, and unit status' },
-      { path: '/dispatch', label: 'Dispatch Console', icon: Radio, shortcut: 'F2', badgeKey: 'activeCalls', description: 'Full CAD dispatch console for call management, unit assignments, and real-time ops' },
-      { path: '/map', label: 'Tactical Map', icon: Map, shortcut: 'F3', description: 'Real-time tactical map with live GPS, call markers, beat overlays, and offline tiles' },
-      { path: '/mdt', label: 'Mobile Data Terminal', icon: Monitor, shortcut: 'F4', description: 'In-vehicle mobile data terminal for field officers' },
+      { path: '/dispatch', label: 'Dispatch Console', icon: Radio, shortcut: 'F2', badgeKey: 'activeCalls', description: 'Full CAD dispatch console for call management, unit assignments, and real-time ops', windowSize: { width: 1200, height: 900 } },
+      { path: '/map', label: 'Tactical Map', icon: Map, shortcut: 'F3', description: 'Real-time tactical map with live GPS, call markers, beat overlays, and offline tiles', windowSize: { width: 1200, height: 900 } },
+      { path: '/mdt', label: 'Mobile Data Terminal', icon: Monitor, shortcut: 'F4', description: 'In-vehicle mobile data terminal for field officers', windowSize: { width: 1000, height: 800 } },
       { path: '/ncic', label: 'NCIC Terminal', icon: Terminal, shortcut: 'F5', description: 'NCIC-style query terminal for warrants, persons, vehicles, and firearms' },
       { path: '/geography', label: 'Dispatch Geography', icon: Map, description: 'Sector, zone, and beat boundary management for dispatch geography' },
     ],
@@ -57,16 +61,16 @@ export const NAV_CATEGORIES: NavCategory[] = [
     label: 'Records',
     icon: Database,
     functions: [
-      { path: '/incidents', label: 'Incidents', icon: FileText, description: 'Incident report management with UCR/NIBRS classification and multi-officer tracking' },
-      { path: '/records', label: 'Records (RMS)', icon: Database, description: 'Master records for persons, vehicles, addresses, and property with compound search' },
+      { path: '/incidents', label: 'Incidents', icon: FileText, description: 'Incident report management with UCR/NIBRS classification and multi-officer tracking', windowSize: { width: 1100, height: 850 } },
+      { path: '/records', label: 'Records (RMS)', icon: Database, description: 'Master records for persons, vehicles, addresses, and property with compound search', windowSize: { width: 1100, height: 850 } },
       { path: '/field-interviews', label: 'Field Interviews', icon: ClipboardList, description: 'Field interview cards (FI/contact cards) with person and vehicle associations' },
       { path: '/criminal-history', label: 'Criminal History', icon: Search, description: 'Criminal history records and background check results' },
       { path: '/dl-search', label: 'DL Search', icon: CreditCard, description: "Driver's license lookup and verification across multiple states" },
       { path: '/microbilt', label: 'MicroBilt', icon: Search, description: 'MicroBilt skip tracing and background data services' },
-      { path: '/evidence', label: 'Evidence / Property', icon: Package, description: 'Evidence and property management with chain-of-custody tracking' },
+      { path: '/evidence', label: 'Evidence / Property', icon: Package, description: 'Evidence and property management with chain-of-custody tracking', windowSize: { width: 1100, height: 850 } },
       { path: '/forensic-lab', label: 'Forensic Lab', icon: Microscope, description: 'Forensic analysis tracking, exhibit management, and lab workflow' },
       { path: '/connections', label: 'Connections Analysis', icon: Network, description: 'Link analysis and connection mapping between persons, vehicles, and incidents' },
-      { path: '/cases', label: 'Case Management', icon: Briefcase, badgeKey: 'openCases', description: 'Full case management with evidence, suspect/witness tracking, and cross-referencing' },
+      { path: '/cases', label: 'Case Management', icon: Briefcase, badgeKey: 'openCases', description: 'Full case management with evidence, suspect/witness tracking, and cross-referencing', windowSize: { width: 1100, height: 850 } },
       { path: '/arrest-records', label: 'Arrest Records', icon: UserX, description: 'Arrest record management and processing' },
       { path: '/court-records', label: 'Court Records', icon: Gavel, description: 'Court records and case disposition tracking' },
       { path: '/documents', label: 'Documents', icon: FileText, description: 'Document management and filing system' },
@@ -78,15 +82,16 @@ export const NAV_CATEGORIES: NavCategory[] = [
     label: 'Enforcement',
     icon: AlertTriangle,
     functions: [
-      { path: '/warrants', label: 'Warrants', icon: AlertTriangle, badgeKey: 'activeWarrants', description: 'Active warrant tracking with person associations, status management, and national search' },
-      { path: '/national-warrant-search', label: 'National Warrant Search', icon: Globe, description: 'Federated warrant search across multiple state and national databases' },
-      { path: '/citations', label: 'Citations', icon: FileWarning, description: 'Traffic and non-traffic citation management with violation tracking' },
+      { path: '/warrants', label: 'Warrants', icon: AlertTriangle, badgeKey: 'activeWarrants', description: 'Active warrant tracking with person associations, status management, and national search', windowSize: { width: 1140, height: 840 } },
+      { path: '/national-warrant-search', label: 'National Warrant Search', icon: Globe, description: 'Federated warrant search across multiple state and national databases', windowSize: { width: 1180, height: 860 } },
+      { path: '/citations', label: 'Citations', icon: FileWarning, description: 'Traffic and non-traffic citation management with violation tracking', windowSize: { width: 1000, height: 800 } },
+      { path: '/law-book', label: 'Law Book', icon: BookOpen, description: 'Statute and code reference library for charge lookup and legal research', windowSize: { width: 1100, height: 820 } },
       { path: '/trespass-orders', label: 'Trespass Orders', icon: ShieldBan, description: 'Trespass order management and enforcement tracking' },
       { path: '/code-enforcement', label: 'Code Enforcement', icon: Construction, description: 'Municipal and property code enforcement case management' },
       { path: '/court', label: 'Court Tracker', icon: Gavel, description: 'Court date and event tracking for officers and cases' },
       { path: '/offender-registry', label: 'Offender Registry', icon: UserX, description: 'Registered offender tracking and compliance management' },
       { path: '/sex-offender-registry', label: 'Sex Offender Registry', icon: Fingerprint, description: 'Sex offender registration and verification' },
-      { path: '/serve', label: 'Process Server', icon: Briefcase, badgeKey: 'pendingServe', description: 'Serve queue with GPS tracking, route optimization, and attempt logging' },
+      { path: '/serve', label: 'Process Server', icon: Briefcase, badgeKey: 'pendingServe', description: 'Serve queue with GPS tracking, route optimization, and attempt logging', notWindowable: 'The "edit before print" action does a full-page window.location.href navigation to /pdf-editor (ServePage.tsx:318), which would replace the window\'s content while the title bar stays stale.' },
       { path: '/serve-intake', label: 'Service Intake', icon: ClipboardPen, description: 'Process service intake and document receipt' },
     ],
   },
@@ -95,10 +100,10 @@ export const NAV_CATEGORIES: NavCategory[] = [
     label: 'Personnel',
     icon: Users,
     functions: [
-      { path: '/personnel', label: 'Personnel', icon: Users, description: 'Officer and staff profiles, certifications, assignments, and contact info' },
+      { path: '/personnel', label: 'Personnel', icon: Users, description: 'Officer and staff profiles, certifications, assignments, and contact info', windowSize: { width: 1100, height: 850 } },
       { path: '/hr', label: 'HR Console', icon: ClipboardCheck, description: 'HR management with leave, payroll, performance reviews, and disciplinary records' },
-      { path: '/fleet', label: 'Fleet Management', icon: Car, description: 'Vehicle fleet management with maintenance, fuel logs, and inspections' },
-      { path: '/body-cameras', label: 'Body Cameras', icon: Video, description: 'Body-worn camera management, video review, and evidence tagging' },
+      { path: '/fleet', label: 'Fleet Management', icon: Car, description: 'Vehicle fleet management with maintenance, fuel logs, and inspections', windowSize: { width: 1100, height: 850 } },
+      { path: '/body-cameras', label: 'Body Cameras', icon: Video, description: 'Body-worn camera management, video review, and evidence tagging', windowSize: { width: 1000, height: 800 } },
       { path: '/dash-cameras', label: 'Dash Cameras', icon: Camera, description: 'Dashboard camera management and video evidence system' },
       { path: '/dashcams', label: 'Dashcam System', icon: Camera, description: 'Dashcam system configuration, live view, and playback' },
       { path: '/dashcam-ai', label: 'Dashcam AI', icon: Sparkles, description: 'AI-powered dashcam analytics: plate recognition, behavior detection' },
@@ -112,10 +117,10 @@ export const NAV_CATEGORIES: NavCategory[] = [
     label: 'Communications',
     icon: MessageSquare,
     functions: [
-      { path: '/communications', label: 'Communications', icon: MessageSquare, badgeKey: 'activeBOLOs', description: 'Secure messaging between dispatchers and units with channel-based comms' },
+      { path: '/communications', label: 'Communications', icon: MessageSquare, badgeKey: 'activeBOLOs', description: 'Secure messaging between dispatchers and units with channel-based comms', windowSize: { width: 1000, height: 800 } },
       { path: '/radio', label: 'Radio Console', icon: Radio, description: 'Integrated radio console with channel management and PTT controls' },
       { path: '/email', label: 'Email', icon: Mail, badgeKey: 'unreadEmail', description: 'Integrated email client for agency communications' },
-      { path: '/patrol', label: 'Patrol Operations', icon: QrCode, description: 'Patrol operations and QR-based reporting' },
+      { path: '/patrol', label: 'Patrol Operations', icon: QrCode, description: 'Patrol operations and QR-based reporting', windowSize: { width: 1100, height: 850 } },
     ],
   },
   {
@@ -123,12 +128,12 @@ export const NAV_CATEGORIES: NavCategory[] = [
     label: 'Analysis & Reports',
     icon: BarChart3,
     functions: [
-      { path: '/reports', label: 'Reports', icon: BarChart3, description: 'Comprehensive reporting with charts, analytics, and PDF export' },
+      { path: '/reports', label: 'Reports', icon: BarChart3, description: 'Comprehensive reporting with charts, analytics, and PDF export', windowSize: { width: 1100, height: 850 } },
       { path: '/shift-plans', label: 'Shift Plans', icon: Calendar, description: 'Shift scheduling and patrol plan management' },
       { path: '/statute-analytics', label: 'Statute Analytics', icon: TrendingUp, description: 'Statute usage analytics and enforcement trend analysis' },
       { path: '/reports/custom', label: 'Report Builder', icon: Database, description: 'Custom report builder with drag-and-drop field selection' },
       { path: '/crime-analysis', label: 'Crime Analysis', icon: TrendingUp, description: 'Crime pattern analysis, hot spot mapping, and trend reporting' },
-      { path: '/dar', label: 'Daily Activity Reports', icon: ClipboardCheck, description: 'Daily activity report generation and officer log review' },
+      { path: '/dar', label: 'Daily Activity Reports', icon: ClipboardCheck, description: 'Daily activity report generation and officer log review', windowSize: { width: 1100, height: 850 } },
     ],
   },
   {
@@ -195,7 +200,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
       { path: '/settings', label: 'Settings', icon: Settings, description: 'User preferences, notification config, and account settings' },
       { path: '/notifications', label: 'Notifications', icon: Megaphone, description: 'Notification history and preference management' },
       { path: '/help', label: 'Help & About', icon: HelpCircle, description: 'System documentation, keyboard shortcuts, FAQ, and version info' },
-      { path: '/navigation', label: 'Navigation / Drive', icon: Navigation, description: 'In-vehicle GPS turn-by-turn navigation and drive instruments' },
+      { path: '/navigation', label: 'Navigation / Drive', icon: Navigation, description: 'In-vehicle GPS turn-by-turn navigation and drive instruments', notWindowable: 'Full-screen in-vehicle drive HUD rendered outside <Layout> (kiosk mode, uses the native Fullscreen API) — not meant to run inside a small floating window.' },
       { path: '/geo-data-viewer', label: 'Geo Data Viewer', icon: Map, description: 'Geospatial data viewer and layer management' },
     ],
   },

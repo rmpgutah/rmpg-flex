@@ -119,7 +119,7 @@ import MobileBottomNav from './mobile/MobileBottomNav';
 import MobileContextBar from './mobile/MobileContextBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { toDisplayLabel } from '../utils/formatters';
-import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
+import { openPageWindow, isWindowablePath } from '../utils/windowManager';
 import LocationGate from './LocationGate';
 import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
@@ -1088,7 +1088,7 @@ export default function Layout() {
                 {pageTitle.toUpperCase()}
               </span>
               {/* Pop-out button — opens current page in a new window */}
-              {POPOUT_PAGES[location.pathname] && (
+              {isWindowablePath(location.pathname) && (
                 <button type="button"
                   onClick={() => openPageWindow(location.pathname)}
                   className="toolbar-btn ml-1 transition-colors duration-150 hover:text-brand-400 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none active:scale-[0.97]"

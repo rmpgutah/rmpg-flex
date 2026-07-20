@@ -61,4 +61,11 @@ describe('FloatingWindow', () => {
     fireEvent.click(minimizeButton);
     expect(screen.getByTitle('Dispatch')).toBeInTheDocument();
   });
+
+  it('grants microphone, camera, and fullscreen permissions to the iframe (needed by Radio push-to-talk, DL Search live camera scan, and Command Center fullscreen)', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    const iframe = screen.getByTitle('Dispatch') as HTMLIFrameElement;
+    expect(iframe.getAttribute('allow')).toBe('microphone; camera; fullscreen');
+  });
 });

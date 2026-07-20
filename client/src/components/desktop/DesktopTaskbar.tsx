@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDesktopWindows } from './DesktopWindowManager';
+import { activateNavFunction } from '../../utils/windowManager';
 import { useClock } from '../../hooks/useClock';
 import { useAuth } from '../../context/AuthContext';
 import type { NavFunction } from '../../data/navCatalog';
@@ -14,7 +15,7 @@ export interface DesktopTaskbarProps {
 }
 
 export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) {
-  const { windows, focusWindow } = useDesktopWindows();
+  const { windows, focusWindow, openWindow } = useDesktopWindows();
   const { time } = useClock();
   const navigate = useNavigate();
   const [launcherOpen, setLauncherOpen] = useState(false);
@@ -80,6 +81,19 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
     }
   }, [onDuty, clockBusy, user, addToast]);
 
+  const handleSelectResult = useCallback((fn: NavFunction) => {
+    let capHit = false;
+    activateNavFunction(fn, {
+      navigate,
+      openWindow: (path, title, size) => {
+        if (!openWindow(path, title, size)) capHit = true;
+      },
+    });
+    if (capHit) addToast('Close a window to open another', 'error');
+    setLauncherOpen(false);
+    setQuery('');
+  }, [navigate, openWindow, addToast]);
+
   const quickActions = useMemo(() => ([
     { key: 'clock', label: onDuty ? 'Clock Out' : 'Clock In', icon: ClockIcon, onClick: handleClockToggle },
     { key: 'new-call', label: 'New Call', icon: Radio, onClick: () => { navigate('/dispatch?newCall=1'); setLauncherOpen(false); } },
@@ -131,7 +145,7 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
               <button
                 key={fn.path}
                 type="button"
-                onClick={() => { navigate(fn.path); setLauncherOpen(false); setQuery(''); }}
+                onClick={() => handleSelectResult(fn)}
                 className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-surface-hover"
                 style={{ color: 'var(--text-primary)' }}
               >

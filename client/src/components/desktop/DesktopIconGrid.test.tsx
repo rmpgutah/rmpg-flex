@@ -78,16 +78,13 @@ describe('DesktopIconGrid — multi-select + grouping', () => {
 });
 
 // Restored from the pre-Task-4 v1 desktop launcher suite (originally added in
-// commit 4fcb48999b). Task 4's rewrite replaced this whole file with the
-// multi-select/grouping suite above and dropped these 3 tests, even though the
-// underlying behavior they cover (POPOUT-eligible click opens a window,
-// non-eligible click falls back to navigate(), right-click "Unpin") is still
-// present in the rewritten component. Adapted for the current
-// `DesktopIconGridProps` signature (now requires `groups`/`onCreateGroup`/
-// `onUngroup`) and the hoisted `navigateSpy` mock introduced by Task 4.
+// commit 4fcb48999b). Adapted again for the windowable-apps-expansion pass:
+// windowability is now default-on via getWindowConfig/NavFunction.notWindowable
+// (see windowManager.ts) instead of a separate POPOUT_PAGES allowlist, so the
+// "non-eligible" fixture must explicitly opt out via notWindowable.
 const RESTORED_ICONS: NavFunction[] = [
-  { path: '/dispatch', label: 'Dispatch Console', icon: LayoutDashboard, description: 'd' }, // in POPOUT_PAGES
-  { path: '/impound', label: 'Impound', icon: Package, description: 'imp' }, // NOT in POPOUT_PAGES
+  { path: '/dispatch', label: 'Dispatch Console', icon: LayoutDashboard, description: 'd', windowSize: { width: 1200, height: 900 } }, // windowable
+  { path: '/impound', label: 'Impound', icon: Package, description: 'imp', notWindowable: 'test fixture: explicitly excluded' }, // NOT windowable
 ];
 
 function renderRestoredGrid(overrides: Partial<React.ComponentProps<typeof DesktopIconGrid>> = {}) {
@@ -124,7 +121,7 @@ describe('DesktopIconGrid — v1 launcher behavior (restored coverage)', () => {
     navigateSpy.mockClear();
   });
 
-  it('clicking a POPOUT_PAGES-eligible icon opens an in-page window, not SPA navigation', () => {
+  it('clicking a windowable icon opens an in-page window, not SPA navigation', () => {
     const { getWindows } = renderRestoredGrid();
     fireEvent.click(screen.getByText('Dispatch Console'));
     expect(getWindows().length).toBe(1);

@@ -97,7 +97,12 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
 
       {!win.minimized && (
         <>
-          <iframe title={win.title} src={win.path} style={{ width: '100%', height: `calc(100% - ${TITLE_BAR_HEIGHT}px)`, border: 'none' }} />
+          <iframe
+            title={win.title}
+            src={win.path}
+            allow="microphone; camera; fullscreen"
+            style={{ width: '100%', height: `calc(100% - ${TITLE_BAR_HEIGHT}px)`, border: 'none' }}
+          />
           {!win.maximized && (
             <div
               onPointerDown={onResizeHandlePointerDown}
