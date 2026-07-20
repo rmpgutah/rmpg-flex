@@ -334,10 +334,23 @@ stubs.get('/messages/priority-stats', async (c) => {
   }
 });
 
-// ── Stats dashboard (mounted at /api/stats) — used by ModuleDirectoryPage badges ──
-stubs.get('/dashboard', (c) => c.json({
-  open_cases: 0, pending_serve: 0, active_warrants: 0,
-}));
+// ── Stats dashboard (mounted at /api/stats) — used by ModuleDirectoryPage +
+// useNavBadges (Nav Index toolbar badges). Was a hardcoded-zero stub, which
+// made those badges permanently show nothing regardless of real counts.
+stubs.get('/dashboard', async (c) => {
+  try {
+    const row = await c.env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM cases WHERE status = 'open') AS open_cases,
+         (SELECT COUNT(*) FROM serve_queue WHERE status IN ('pending','assigned')) AS pending_serve,
+         (SELECT COUNT(*) FROM warrants WHERE status = 'active') AS active_warrants`
+    ).first();
+    return c.json(row ?? { open_cases: 0, pending_serve: 0, active_warrants: 0 });
+  } catch (err) {
+    console.error('GET /stats/dashboard failed:', err);
+    return c.json({ open_cases: 0, pending_serve: 0, active_warrants: 0 });
+  }
+});
 
 // ── Weather (mounted at /api/weather) — uses /current to avoid GET / collision ──
 stubs.get('/current', (c) => c.json({ temperature: 72, conditions: 'Clear', icon: 'clear-day' }));
@@ -347,11 +360,40 @@ stubs.get('/current', (c) => c.json({ temperature: 72, conditions: 'Clear', icon
 // ── Integrations (mounted at /api/integrations) ──
 stubs.get('/google-maps/client-key', (c) => c.json({}));
 
-// ── Dispatch stubs (mounted at /api/dispatch/stats) ──
+// ── Dispatch stats (mounted at /api/dispatch/stats) ──
 // `stubs` is mounted at the EXACT prefix '/api/dispatch/stats', so '/' here
 // matches /api/dispatch/stats (the bare mount point). Using '/stats' would
 // have mapped to /api/dispatch/stats/stats — bug fixed 2026-06-06.
-stubs.get('/', (c) => c.json({ total_calls: 0, active_calls: 0, units_online: 0 }));
+//
+// Was a hardcoded-zero stub returning {total_calls, active_calls,
+// units_online} — fields neither of its actual consumers reads.
+// Layout.tsx's header badge reads `stats.activeCalls` (camelCase) and
+// `stats.callsByPriority`; useNavBadges (Nav Index toolbar + the desktop
+// Live Ops widget) reads `active_warrants`. Real query returns all three.
+stubs.get('/', async (c) => {
+  try {
+    const [activeRow, warrantsRow, priorityRows, unitsRow] = await Promise.all([
+      c.env.DB.prepare(
+        `SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled','archived')`
+      ).first<{ n: number }>(),
+      c.env.DB.prepare(`SELECT COUNT(*) AS n FROM warrants WHERE status = 'active'`).first<{ n: number }>(),
+      c.env.DB.prepare(
+        `SELECT priority, COUNT(*) AS count FROM calls_for_service
+         WHERE status NOT IN ('cleared','closed','cancelled','archived') GROUP BY priority`
+      ).all<{ priority: string; count: number }>(),
+      c.env.DB.prepare(`SELECT COUNT(*) AS n FROM units WHERE status != 'off_duty'`).first<{ n: number }>(),
+    ]);
+    return c.json({
+      activeCalls: activeRow?.n ?? 0,
+      active_warrants: warrantsRow?.n ?? 0,
+      callsByPriority: priorityRows?.results ?? [],
+      units_online: unitsRow?.n ?? 0,
+    });
+  } catch (err) {
+    console.error('GET /dispatch/stats failed:', err);
+    return c.json({ activeCalls: 0, active_warrants: 0, callsByPriority: [], units_online: 0 });
+  }
+});
 
 // ── Integration stubs (Admin integrations tab) ──────────────
 stubs.get('/status', (c) => c.json({ configured: false }));

@@ -41,7 +41,7 @@ import {
   HudDeviceHealthBadge, HudOverSpeedBanner, HudZoneAlertBanner, HudWeatherBadge,
 } from './navigation/hud/HudInstruments';
 import { useSpeedLimit, shouldFireOverSpeedAlert } from './navigation/hud/useSpeedLimit';
-import { loadNavPrefs, NAV_PREFS_CHANGED_EVENT, getEffectiveBrightness, type NavPrefs } from './navigation/NavSettingsPanel';
+import { loadNavPrefs, saveNavPrefs, NAV_PREFS_CHANGED_EVENT, getEffectiveBrightness, type NavPrefs } from './navigation/NavSettingsPanel';
 import { gpxExport, navCsvExport } from './navigation/hud/trackExport';
 import { playNavTone } from './navigation/hud/navTone';
 import { nextAnnouncement } from './navigation/hud/voiceGuidance';
@@ -654,6 +654,35 @@ export default function NavigationPage() {
     };
   }, []);
 
+  // Units/theme/clock/orientation — same live-reactive load/event pattern as
+  // brightnessPrefs/hudTiles above. These are set from NavPage.tsx's Settings
+  // panel (the two pages share the rmpg_nav_prefs blob) but were previously
+  // never read here, so changing them there had no visible effect on this
+  // page's live drive HUD.
+  const [displayPrefs, setDisplayPrefs] = useState(() => {
+    const p = loadNavPrefs();
+    return { units: p.units, theme: p.theme, clock: p.clock, orientation: p.orientation };
+  });
+  useEffect(() => {
+    const onPrefsChanged = (e: Event) => {
+      const detail = (e as CustomEvent<NavPrefs>).detail;
+      const p = detail ?? loadNavPrefs();
+      setDisplayPrefs({ units: p.units, theme: p.theme, clock: p.clock, orientation: p.orientation });
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === 'rmpg_nav_prefs') {
+        const p = loadNavPrefs();
+        setDisplayPrefs({ units: p.units, theme: p.theme, clock: p.clock, orientation: p.orientation });
+      }
+    };
+    window.addEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
   const [showDistricts, setShowDistricts] = useState(false);     // #8 district/beat overlay toggle
   // #12 higher-level kill switch: settings-level hudTiles.districtOverlay gates
   // whether the per-session showDistricts toggle can take effect at all — it
@@ -964,15 +993,38 @@ export default function NavigationPage() {
   const [, force] = useState(0);
 
   // ── Drive-Mode HUD state (drive lane) ──
+  // Speed unit has its own dedicated in-HUD toggle (quick access while
+  // driving) persisted to its own storage key, but Settings (NavPage.tsx)
+  // also exposes a "Units" control writing prefs.units to the shared
+  // rmpg_nav_prefs blob — previously that never reached this page at all.
+  // Keep both writable, but seed from + stay reactive to whichever changed
+  // most recently: the in-HUD toggle also persists to prefs.units so the
+  // two controls can never silently disagree.
   const [speedUnit, setSpeedUnit] = useState<SpeedUnit>(() => loadSpeedUnit());
-  const cycleSpeedUnit = () => setSpeedUnit((u) => { const next: SpeedUnit = u === 'mph' ? 'kmh' : 'mph'; saveSpeedUnit(next); return next; });
+  const cycleSpeedUnit = () => setSpeedUnit((u) => {
+    const next: SpeedUnit = u === 'mph' ? 'kmh' : 'mph';
+    saveSpeedUnit(next);
+    saveNavPrefs({ ...loadNavPrefs(), units: next === 'kmh' ? 'metric' : 'imperial' });
+    return next;
+  });
+  // Reflect a Units change made from Settings (NavPage.tsx) back onto this
+  // page's speedUnit — the reverse direction of the write in cycleSpeedUnit
+  // above, so neither control can go stale relative to the other.
+  useEffect(() => {
+    const next: SpeedUnit = displayPrefs.units === 'metric' ? 'kmh' : 'mph';
+    setSpeedUnit((prev) => (prev === next ? prev : next));
+    saveSpeedUnit(next);
+  }, [displayPrefs.units]);
   const [footerCollapsed, setFooterCollapsed] = useState(false); // #45
   const [hudMuted, setHudMuted] = useState(false);               // #46 transient mute
   const [followActive, setFollowActive] = useState(true);        // #47 follow-me camera
   const followActiveRef = useRef(true);
   useEffect(() => { followActiveRef.current = followActive; }, [followActive]);
   const [pitched, setPitched] = useState(true);                  // #63 2D/3D
-  const [mapOrientation] = useState<'north-up' | 'heading-up'>('heading-up'); // #34 (map rotates to heading)
+  // #34 — map/compass orientation, driven by Settings (was a dead useState
+  // with no setter, permanently hardcoded to 'heading-up' regardless of the
+  // Settings panel's Map Orientation control).
+  const mapOrientation = displayPrefs.orientation;
   // #32/#53 — hard-event counters + transient G-ball flash.
   const hardBrakesRef = useRef(0);
   const hardAccelsRef = useRef(0);
@@ -1917,7 +1969,7 @@ export default function NavigationPage() {
   const sessionMs = startRef.current ? Date.now() - startRef.current : 0;
   const distanceMi = distanceRef.current / 1609.34;
   const avgMph = sessionMs > 60000 ? distanceMi / (sessionMs / 3600000) : 0;
-  const clock = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  const clock = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: displayPrefs.clock === '12h' });
   const spark = speedHistRef.current;
   const sparkMax = Math.max(60, maxMph, ...spark);
   const course = gps.course ?? null;
@@ -2333,10 +2385,17 @@ export default function NavigationPage() {
   const etaMins = etaToMinutes(routeProgress?.remainingEta ?? activeRoute?.eta ?? '');
   const etaArrival = arrivalClockFrom(etaMins);
   const etaCountdown = etaMins > 0 ? formatCountdown(etaMins) : null;
-  // #55/#56 — resolved day/night theme + brightness (drive lane reads prefs.brightness
-  // via the alert/brightness model; here we derive night from the local hour as a
-  // self-contained fallback so the footer dims without depending on other lanes).
-  const nightTheme = useMemo(() => { const h = new Date().getHours(); return h >= 19 || h < 6; }, []);
+  // #55/#56 — resolved day/night theme + brightness. Respects the Settings
+  // Theme control (displayPrefs.theme) when explicitly set to 'day'/'night';
+  // 'auto' (the default) falls back to the local-hour derivation this always
+  // used before the setting was wired up, so an untouched install's behavior
+  // is unchanged.
+  const nightTheme = useMemo(() => {
+    if (displayPrefs.theme === 'day') return false;
+    if (displayPrefs.theme === 'night') return true;
+    const h = new Date().getHours();
+    return h >= 19 || h < 6;
+  }, [displayPrefs.theme]);
   // #103 — effective brightness resolved via the SHARED getEffectiveBrightness
   // helper (also used by NavPage.tsx's overlay) so both pages that read the
   // same rmpg_nav_prefs blob can never silently diverge on Auto-mode behavior.
@@ -2389,9 +2448,9 @@ export default function NavigationPage() {
     if (hM) mins += parseInt(hM[1], 10) * 60;
     if (mM) mins += parseInt(mM[1], 10);
     if (!hM && !mM) { const cM = etaStr.match(/^(\d+):(\d{2})$/); if (cM) mins = parseInt(cM[1], 10) + (parseInt(cM[2], 10) >= 30 ? 1 : 0); }
-    const arrivalClock = mins > 0 ? new Date(Date.now() + mins * 60000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null;
+    const arrivalClock = mins > 0 ? new Date(Date.now() + mins * 60000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: displayPrefs.clock === '12h' }) : null;
     return { upcomingSteps: upcoming, arrivalClock };
-  }, [activeRoute, routeProgress]);
+  }, [activeRoute, routeProgress, displayPrefs.clock]);
 
   return viewMode === 'modules' ? (
     <div className="tactical-dark fixed inset-0 bg-surface-deep overflow-hidden" style={{ zIndex: 40 }}>
