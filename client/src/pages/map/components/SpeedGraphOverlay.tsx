@@ -70,7 +70,24 @@ export default function SpeedGraphOverlay({ unitId, callSign, hours, onClose }: 
     };
   }, [unitId, hours]);
 
-  if (points.length < 2) return null;
+  if (points.length < 2) {
+    return (
+      <div className="absolute bottom-14 right-2 z-40 w-[260px] bg-surface-raised/95 border border-rmpg-700 font-mono text-[11px] text-rmpg-200 select-none" style={{ borderRadius: 2 }}>
+        <div className="flex items-center justify-between px-2 py-1.5 border-b border-rmpg-700">
+          <div className="flex items-center gap-1.5">
+            <Gauge size={14} className="text-brand-gold-400" />
+            <span className="text-brand-gold-400 font-semibold text-[11px]">{callSign}</span>
+          </div>
+          <button onClick={onClose} className="p-0.5 flex items-center" aria-label="Close speed graph">
+            <X size={14} className="text-rmpg-500" />
+          </button>
+        </div>
+        <div className="px-2.5 py-3 text-[10px] text-rmpg-500">
+          No speed data for this unit in the last {hours}h.
+        </div>
+      </div>
+    );
+  }
 
   const speeds = points.map((p) => p.mph);
   const maxSpeed = Math.max(...speeds, 1);
