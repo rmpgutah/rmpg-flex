@@ -668,13 +668,56 @@ admin.get('/retention/preview', (c) => c.json([]));
 // red error toasts on mount. Real implementations need a metrics
 // pipeline (api_call_log, system_health_pings tables) that doesn't
 // exist on live D1 yet.
-admin.get('/api-stats', (c) => c.json({
-  data: [], total_requests: 0, error_count: 0, avg_response_ms: 0,
-  by_endpoint: [], by_day: [],
-}));
-admin.get('/user-activity-heatmap', (c) => c.json({
-  data: [], cells: [], peak_hour: null, peak_day: null,
-}));
+// GET /admin/api-stats — top actions + top users over the window (AdminHealthTab's
+// ApiUsageStats panel reads stats.byAction/stats.byUser, NOT raw HTTP request
+// metrics — no request-log table exists, so this is action-volume from audit_log,
+// which is exactly what the panel already renders).
+admin.get('/api-stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = Math.min(Number(c.req.query('days') || 7), 90);
+    const byAction = await query<{ action: string; count: number }>(db, `
+      SELECT action, COUNT(*) AS count FROM audit_log
+      WHERE created_at > datetime('now', ?) AND action IS NOT NULL
+      GROUP BY action ORDER BY count DESC LIMIT 8
+    `, `-${days} days`);
+    const byUser = await query<{ full_name: string | null; count: number }>(db, `
+      SELECT u.full_name AS full_name, COUNT(*) AS count
+      FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+      WHERE a.created_at > datetime('now', ?)
+      GROUP BY a.user_id ORDER BY count DESC LIMIT 8
+    `, `-${days} days`);
+    return c.json({ data: { byAction: byAction || [], byUser: byUser || [] } });
+  } catch (err) {
+    console.error('[Admin] GET api-stats failed:', err);
+    return c.json({ data: { byAction: [], byUser: [] } });
+  }
+});
+
+// GET /admin/user-activity-heatmap — hour-of-day × day-of-week action volume
+// from audit_log over the window (AdminHealthTab's UserActivityHeatmap panel).
+admin.get('/user-activity-heatmap', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = Math.min(Number(c.req.query('days') || 30), 90);
+    // Bucket in Mountain Time (denverOffsetHours), not raw UTC — matches the
+    // app-wide "MT MUST BE MT" display rule; a UTC-bucketed heatmap would show
+    // shift patterns shifted by 6-7 hours from what dispatchers actually see.
+    const offset = denverOffsetHours();
+    const rows = await query<{ day_of_week: number; hour: number; count: number }>(db, `
+      SELECT CAST(strftime('%w', created_at, '${offset} hours') AS INTEGER) AS day_of_week,
+             CAST(strftime('%H', created_at, '${offset} hours') AS INTEGER) AS hour,
+             COUNT(*) AS count
+      FROM audit_log
+      WHERE created_at > datetime('now', ?)
+      GROUP BY day_of_week, hour
+    `, `-${days} days`);
+    return c.json({ data: rows || [] });
+  } catch (err) {
+    console.error('[Admin] GET user-activity-heatmap failed:', err);
+    return c.json({ data: [] });
+  }
+});
 admin.get('/backup-status', (c) => c.json({
   data: { last_backup_at: null, status: 'unknown', size_bytes: 0, location: null },
 }));
@@ -1465,6 +1508,121 @@ admin.get('/system-overview', async (c) => {
   } catch (err) {
     console.error('[Admin] GET system-overview failed:', err);
     return c.json({ status: 'degraded', active_users_24h: 0, record_counts: {} });
+  }
+});
+
+// GET /admin/gps-health — per-unit GPS freshness dashboard (AdminGpsHealthTab).
+//
+// "Authoritative" position = units.latitude/longitude/gps_source/gps_updated_at,
+// the canonical row every other surface (map, dispatch, CAD board) reads from.
+// "Live" = the most recent gps_breadcrumbs row for that unit, regardless of
+// source — breadcrumbs land more often than the authoritative row updates in
+// some flows (e.g. a lower-priority browser source pinging while a
+// higher-priority source is momentarily stale), which is exactly the
+// "fallback" case this dashboard exists to surface. No new schema — reuses
+// units.gps_source/gps_updated_at and gps_breadcrumbs.gps_source/recorded_at.
+const OFF_DUTY_STATUSES = new Set(['off_duty', 'out_of_service', 'OFD']);
+admin.get('/gps-health', async (c) => {
+  try {
+    const db = getDb(c.env);
+    // gps_breadcrumbs grows unbounded (229k+ rows live and climbing) and this
+    // tab polls every 5s — an unbounded ROW_NUMBER() window over the whole
+    // table read 1.1M+ rows for 10 units in testing (live D1 EXPLAIN QUERY
+    // PLAN confirmed a full table SCAN: the bare recorded_at index migration
+    // 0001 defines never actually landed on live D1's dirty prod schema —
+    // fixed by migration 0196). Bounding to a 2-day window (nothing older
+    // matters — that's already "silent" via auth_age_seconds off the units
+    // row) plus the MATERIALIZED hint (recent_bc is referenced by both
+    // latest_bc and bc_24h_counts below; without it SQLite re-inlines and
+    // re-scans the base table for each reference) brought live reads from
+    // 1.1M down to ~36k for the same result set — verified via
+    // d1_database_query against 785de7ae before/after.
+    const rows = await query<{
+      id: number; call_sign: string; status: string; gps_source: string | null; gps_updated_at: string | null;
+      latitude: number | null; longitude: number | null; officer_name: string | null; badge_number: string | null;
+      live_source: string | null; live_at: string | null;
+      auth_age_seconds: number | null; live_age_seconds: number | null;
+      total_points_24h: number; authoritative_points_24h: number;
+    }>(db, `
+      WITH recent_bc AS MATERIALIZED (
+        SELECT unit_id, gps_source, recorded_at
+        FROM gps_breadcrumbs
+        WHERE recorded_at > datetime('now', '-2 days')
+      ),
+      latest_bc AS (
+        SELECT unit_id, gps_source, recorded_at,
+               ROW_NUMBER() OVER (PARTITION BY unit_id ORDER BY recorded_at DESC) AS rn
+        FROM recent_bc
+      ),
+      bc_24h_counts AS (
+        SELECT unit_id,
+               COUNT(*) AS total_points_24h,
+               SUM(CASE WHEN gps_source = (SELECT gps_source FROM units WHERE id = recent_bc.unit_id) THEN 1 ELSE 0 END) AS authoritative_points_24h
+        FROM recent_bc
+        WHERE recorded_at > datetime('now', '-1 day')
+        GROUP BY unit_id
+      )
+      SELECT
+        u.id, u.call_sign, u.status, u.gps_source, u.gps_updated_at, u.latitude, u.longitude,
+        usr.full_name AS officer_name, usr.badge_number,
+        lb.gps_source AS live_source, lb.recorded_at AS live_at,
+        CASE WHEN u.gps_updated_at IS NULL THEN NULL
+             ELSE CAST((julianday('now') - julianday(u.gps_updated_at)) * 86400 AS INTEGER) END AS auth_age_seconds,
+        CASE WHEN lb.recorded_at IS NULL THEN NULL
+             ELSE CAST((julianday('now') - julianday(lb.recorded_at)) * 86400 AS INTEGER) END AS live_age_seconds,
+        COALESCE(cnt.total_points_24h, 0) AS total_points_24h,
+        COALESCE(cnt.authoritative_points_24h, 0) AS authoritative_points_24h
+      FROM units u
+      LEFT JOIN users usr ON usr.id = u.officer_id
+      LEFT JOIN latest_bc lb ON lb.unit_id = u.id AND lb.rn = 1
+      LEFT JOIN bc_24h_counts cnt ON cnt.unit_id = u.id
+      ORDER BY u.call_sign
+    `);
+
+    const units = (rows || []).map((r) => {
+      let classification: 'healthy' | 'warning' | 'critical' | 'silent' | 'fallback' | 'off_duty';
+      if (OFF_DUTY_STATUSES.has(r.status)) {
+        classification = 'off_duty';
+      } else if (r.auth_age_seconds == null || r.auth_age_seconds >= 86400) {
+        classification = 'silent';
+      } else if (r.auth_age_seconds >= 900) {
+        classification = 'critical';
+      } else if (r.auth_age_seconds >= 300) {
+        classification = 'warning';
+      } else if (
+        r.live_source != null && r.live_source !== r.gps_source &&
+        r.live_age_seconds != null && (r.auth_age_seconds == null || r.live_age_seconds < r.auth_age_seconds)
+      ) {
+        // Authoritative source is healthy, but a different source is
+        // currently writing fresher breadcrumbs than the authoritative row.
+        classification = 'fallback';
+      } else {
+        classification = 'healthy';
+      }
+      return {
+        id: r.id,
+        call_sign: r.call_sign,
+        status: r.status,
+        gps_source: r.gps_source,
+        gps_updated_at: r.gps_updated_at,
+        last_authoritative_gps_at: r.gps_updated_at,
+        last_authoritative_gps_source: r.gps_source,
+        latitude: r.latitude,
+        longitude: r.longitude,
+        officer_name: r.officer_name,
+        badge_number: r.badge_number,
+        authoritative_points_24h: r.authoritative_points_24h ?? 0,
+        total_points_24h: r.total_points_24h ?? 0,
+        auth_age_seconds: r.auth_age_seconds,
+        live_age_seconds: r.live_age_seconds,
+        classification,
+      };
+    });
+
+    return c.json({ units, generated_at: new Date().toISOString() });
+  } catch (err) {
+    console.error('[Admin] GET gps-health failed:', err);
+    return c.json({ units: [], generated_at: new Date().toISOString() });
   }
 });
 
