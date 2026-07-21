@@ -110,7 +110,12 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
-    timeout-minutes: 30
+    # Notarization (via notarytool, invoked internally by electron-builder
+    # once signing finishes) can legitimately run well past 30 minutes —
+    # Apple's queue time is outside our control, and 30m killed a run that
+    # was still notarizing normally (not stuck) mid-2026-07-21. 90m gives
+    # real headroom without masking an actual hang forever.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
 
