@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #0c1a2b; color: #eef2f7; padding: 20px; }
+    h2 { font-size: 15px; margin: 0 0 12px; }
+    input { width: 100%; padding: 8px; margin-bottom: 10px; box-sizing: border-box; background: #16283d; border: 1px solid #3a4d63; color: #eef2f7; border-radius: 2px; }
+    button { padding: 8px 16px; background: #b7c2cf; color: #0c1a2b; border: none; border-radius: 2px; cursor: pointer; font-weight: 600; }
+    #error { color: #f87171; font-size: 12px; min-height: 16px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <h2>Enter an admin or manager password to exit Kiosk Mode</h2>
+  <input id="username" placeholder="Username" autocomplete="username" />
+  <input id="password" type="password" placeholder="Password" autocomplete="current-password" />
+  <div id="error"></div>
+  <button id="submit">Exit Kiosk Mode</button>
+  <script>
+    document.getElementById('submit').addEventListener('click', async () => {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const errorEl = document.getElementById('error');
+      errorEl.textContent = '';
+      const result = await window.kioskEscape.attempt(username, password);
+      if (!result.ok) errorEl.textContent = result.error;
+    });
+  </script>
+</body>
+</html>
