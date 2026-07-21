@@ -33,6 +33,7 @@ function toGeoJSON(cells: HeatmapCell[]): GeoJSON.FeatureCollection {
 export function useMapboxSpeedHeatmap(map: mapboxgl.Map | null) {
   const [loading, setLoading] = useState(false);
   const [cells, setCells] = useState<HeatmapCell[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const clear = useCallback(() => {
     if (!map) return;
@@ -69,17 +70,19 @@ export function useMapboxSpeedHeatmap(map: mapboxgl.Map | null) {
   const fetchHeatmap = useCallback(async (hours = 8) => {
     if (!map) return;
     setLoading(true);
+    setError(null);
     try {
       const data = await apiFetch<HeatmapCell[]>(`/dispatch/gps/speed-heatmap?hours=${hours}`);
       const list = Array.isArray(data) ? data : [];
       setCells(list);
       renderOnMap(list, map);
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[useMapboxSpeedHeatmap] fetch failed:', err);
+      setError(err?.message || 'Failed to load speed heatmap');
     } finally {
       setLoading(false);
     }
   }, [map, renderOnMap]);
 
-  return { cells, loading, fetchHeatmap, clear };
+  return { cells, loading, error, fetchHeatmap, clear };
 }
