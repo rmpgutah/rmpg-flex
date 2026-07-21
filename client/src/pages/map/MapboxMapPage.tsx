@@ -872,6 +872,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   }, [gps.latitude, gps.longitude, selfPosVisible, mapLoaded]);
 
   // ── Dispatch Connections Matrix Ranking (only while the diagnostics panel is open) ──
+  // Depend on `findClosestUnit` itself, not the whole `routing` object -- useMapRouting
+  // returns a plain object literal (not memoized), so `routing` is a new reference on
+  // every render of this frequently-re-rendering CAD map. Depending on `routing` made
+  // this effect (and its billed /mapbox/matrix call) re-fire on nearly every render
+  // while the panel was open, instead of only when the bound call/units actually
+  // change. findClosestUnit is a stable useCallback([], ...) reference.
+  const findClosestUnit = routing.findClosestUnit;
   useEffect(() => {
     if (!dispatchConnectionsOpen || !dispatchConnCall || dispatchConnCall.latitude == null || dispatchConnCall.longitude == null) {
       setDispatchConnResults([]);
@@ -885,7 +892,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       setDispatchConnResults([]);
       return;
     }
-    routing.findClosestUnit(unitsForMatrix, { lat: dispatchConnCall.latitude, lng: dispatchConnCall.longitude })
+    findClosestUnit(unitsForMatrix, { lat: dispatchConnCall.latitude, lng: dispatchConnCall.longitude })
       .then((ranked) => {
         if (cancelled) return;
         const adapted: ClosestUnitResult[] = ranked
@@ -902,7 +909,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         setDispatchConnResults(adapted);
       });
     return () => { cancelled = true; };
-  }, [dispatchConnectionsOpen, dispatchConnCall, units, routing]);
+  }, [dispatchConnectionsOpen, dispatchConnCall, units, findClosestUnit]);
 
   // ── Map Style Switch ───────────────────────────────────────────────────────
 
