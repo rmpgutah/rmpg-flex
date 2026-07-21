@@ -113,6 +113,7 @@ import MultiStopRoutePanel from './components/MultiStopRoutePanel';
 import type { QueuedStop } from './components/MultiStopRoutePanel';
 import GpsHud from './components/GpsHud';
 import MapDiagnosticsOverlay from './components/MapDiagnosticsOverlay';
+import MapboxDispatchConnections from './components/MapboxDispatchConnections';
 import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
 import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
@@ -515,6 +516,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const geofenceAlerts = useMapGeofenceAlerts(mapRef.current, mapLoaded);
   const infoPanel = useMapInfoPanel(mapRef.current, mapLoaded, units, calls);
   const routing = useMapRouting({ map: mapRef.current });
+  const dispatchConnCall = useMemo(
+    () => (multiStopQueue.length > 0 ? calls.find((c) => c.call_number === multiStopQueue[0].callNumber) : undefined),
+    [multiStopQueue, calls],
+  );
   const placesSearch = useMapPlacesSearch(mapRef.current, mapLoaded);
   const directionsPanel = useMapDirectionsPanel(mapRef.current, mapLoaded);
   const coordGrid = useMapCoordinateGrid(mapRef.current, mapLoaded);
@@ -543,6 +548,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [legendOpen, setLegendOpen] = useState(false);
   const [gpsHudOpen, setGpsHudOpen] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  interface ClosestUnitResult {
+    unit: { id: string; call_sign: string; latitude: number | null; longitude: number | null; status: string };
+    distance: number;
+    duration: number;
+  }
+  const [dispatchConnectionsOpen, setDispatchConnectionsOpen] = useState(false);
+  const [dispatchConnResults, setDispatchConnResults] = useState<ClosestUnitResult[]>([]);
   const [showGeoLayersMenu, setShowGeoLayersMenu] = useState(false);
   const [autoPanEnabled, setAutoPanEnabled] = usePersistedState('rmpg_mapbox_autopan_p1', true);
   const [p1AudioEnabled, setP1AudioEnabled] = usePersistedState('rmpg_mapbox_p1_audio', true);
@@ -859,6 +871,39 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     }
   }, [gps.latitude, gps.longitude, selfPosVisible, mapLoaded]);
 
+  // ── Dispatch Connections Matrix Ranking (only while the diagnostics panel is open) ──
+  useEffect(() => {
+    if (!dispatchConnectionsOpen || !dispatchConnCall || dispatchConnCall.latitude == null || dispatchConnCall.longitude == null) {
+      setDispatchConnResults([]);
+      return;
+    }
+    let cancelled = false;
+    const unitsForMatrix = units
+      .filter((u) => u.latitude != null && u.longitude != null)
+      .map((u) => ({ callSign: u.call_sign, lat: u.latitude!, lng: u.longitude! }));
+    if (!unitsForMatrix.length) {
+      setDispatchConnResults([]);
+      return;
+    }
+    routing.findClosestUnit(unitsForMatrix, { lat: dispatchConnCall.latitude, lng: dispatchConnCall.longitude })
+      .then((ranked) => {
+        if (cancelled) return;
+        const adapted: ClosestUnitResult[] = ranked
+          .map((r): ClosestUnitResult | null => {
+            const unit = units.find((u) => u.call_sign === r.callSign);
+            if (!unit) return null;
+            return {
+              unit: { id: unit.id, call_sign: unit.call_sign, latitude: unit.latitude, longitude: unit.longitude, status: unit.status },
+              distance: r.distanceMeters,
+              duration: r.etaSec,
+            };
+          })
+          .filter((r): r is ClosestUnitResult => r !== null);
+        setDispatchConnResults(adapted);
+      });
+    return () => { cancelled = true; };
+  }, [dispatchConnectionsOpen, dispatchConnCall, units, routing]);
+
   // ── Map Style Switch ───────────────────────────────────────────────────────
 
   const handleStyleChange = useCallback((styleId: MapStyleId) => {
@@ -1110,9 +1155,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'mapmatch', label: 'Map Match Trace', active: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting(), color: '#fb923c', description: 'Snap GPS to roads' },
         { id: 'deck', label: 'GPU Overlay', active: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: deckSupportsProjection ? 'Deck.gl accelerated rendering' : 'Deck.gl accelerated rendering (requires Mercator or Globe projection)' },
         { id: 'perf-hud', label: 'Performance HUD', active: diagnosticsOpen, onToggle: () => setDiagnosticsOpen((v) => !v), color: '#fb923c', description: 'FPS, layer count, render timing' },
+        { id: 'mapbox-status', label: 'Mapbox API Status', active: dispatchConnectionsOpen, onToggle: () => setDispatchConnectionsOpen((v) => !v), color: '#60a5fa', description: 'Directions/Matrix/Geocoding diagnostics for the queued call' },
       ],
     },
-  ], [directionsPanel, placesSearch, mapBookmarks, multiStopPanelOpen, speedAnalyticsPanelOpen, speedZoneStats.loading, activeFloatingTool, measure.mode, drawing.mode, glDraw, identifyEnabled, tilequery.loading, featureInspect, mapMatchTrace, deckEnabled, deckSupportsProjection, setDeckEnabled, gpsHudOpen, setGpsHudOpen, diagnosticsOpen, setDiagnosticsOpen]);
+  ], [directionsPanel, placesSearch, mapBookmarks, multiStopPanelOpen, speedAnalyticsPanelOpen, speedZoneStats.loading, activeFloatingTool, measure.mode, drawing.mode, glDraw, identifyEnabled, tilequery.loading, featureInspect, mapMatchTrace, deckEnabled, deckSupportsProjection, setDeckEnabled, gpsHudOpen, setGpsHudOpen, diagnosticsOpen, setDiagnosticsOpen, dispatchConnectionsOpen, setDispatchConnectionsOpen]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1547,6 +1593,15 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {diagnosticsOpen && mapRef.current && (
         <MapDiagnosticsOverlay map={mapRef.current} />
+      )}
+
+      {dispatchConnectionsOpen && (
+        <MapboxDispatchConnections
+          call={dispatchConnCall}
+          results={dispatchConnResults}
+          matrixActive={dispatchConnResults.length > 0}
+          directionsActive={directionsPanel.result !== null}
+        />
       )}
 
       {streetViewTarget && (
