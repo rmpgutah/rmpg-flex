@@ -1520,10 +1520,34 @@ function runElevatedRegistryWrite(shellValue) {
   return new Promise((resolve) => {
     const { spawn } = require('child_process');
     const regKeyPath = 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';
-    // Escape the shell value's own double quotes for embedding inside the
-    // PowerShell -ArgumentList string.
-    const escapedValue = shellValue.replace(/"/g, '\\"');
-    const psCommand = `Start-Process reg.exe -ArgumentList 'add "${regKeyPath}" /v Shell /t REG_SZ /d "${escapedValue}" /f' -Verb RunAs -Wait`;
+    // SECURITY: shellValue is derived from process.execPath (the install path
+    // of this app) and is attacker-influenced if the app is ever installed to
+    // a path containing shell metacharacters (e.g. an install dir literally
+    // named C:\Users\O'Brien\...). It used to be interpolated into a single
+    // *string* -ArgumentList wrapped in PowerShell single-quotes, escaping
+    // only embedded double quotes — a literal `'` in shellValue would close
+    // that quoted string early and let the remainder be re-parsed as
+    // additional PowerShell tokens inside a UAC-elevated process (command
+    // injection). Fixed by building -ArgumentList as a PowerShell *array*
+    // literal (`@(...)`) with each reg.exe argument as its own PS
+    // single-quoted string literal. Start-Process passes each array element
+    // through as one literal process argument (no further shell re-parsing),
+    // so no argument — including the reg key path or shellValue — needs
+    // internal double-quote wrapping to survive embedded spaces. The only
+    // escaping required is for the PS single-quoted literal itself: a
+    // literal `'` inside a PS single-quoted string is escaped by doubling it
+    // (`'` -> `''`), per PowerShell's quoting rules. That is applied here to
+    // every value embedded in the command (the key path and shellValue),
+    // which neutralizes single quotes, double quotes, backticks, `$`,
+    // semicolons, pipes, etc. — none of those are special inside a PS
+    // single-quoted literal. [WINDOWS-UNVERIFIED]: this exact escaping has
+    // not been exercised against a live UAC prompt; verify manually on
+    // Windows (including an install path containing a literal `'`) before
+    // shipping.
+    const psSingleQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
+    const regArgs = ['add', regKeyPath, '/v', 'Shell', '/t', 'REG_SZ', '/d', shellValue, '/f'];
+    const argumentListLiteral = `@(${regArgs.map(psSingleQuote).join(',')})`;
+    const psCommand = `Start-Process reg.exe -ArgumentList ${argumentListLiteral} -Verb RunAs -Wait`;
     const child = spawn('powershell.exe', ['-NoProfile', '-Command', psCommand], { windowsHide: false });
     let stderr = '';
     child.stderr?.on('data', (d) => { stderr += d.toString(); });
