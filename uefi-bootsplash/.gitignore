@@ -4,3 +4,4 @@ test/scratch-esp.cdr
 test/scratch-esp.dmg
 test/boot.log
 test/esp-root/
+src/main.o
