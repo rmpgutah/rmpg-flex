@@ -40,6 +40,11 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
       lastSeenRef.current = Date.now();
 
       const message = event.data;
+      // flushSync: this fires from a native `message` listener, outside React's
+      // event system, so React 18+ automatic batching would otherwise defer the
+      // DOM update to a later microtask. Callers (and tests) that dispatch a
+      // message and immediately assert on the panel's state need it applied
+      // synchronously.
       flushSync(() => {
         setConnected(true);
         if (message.type === 'call_status' && message.status === 'ringing') {
@@ -67,6 +72,9 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
     const interval = setInterval(() => {
       if (lastSeenRef.current === 0) return;
       if (Date.now() - lastSeenRef.current >= HEARTBEAT_TIMEOUT_MS) {
+        // Same flushSync rationale as handleMessage above — this runs on a
+        // plain setInterval tick, outside React's batching, and tests advance
+        // fake timers then assert immediately.
         flushSync(() => setConnected(false));
       }
     }, HEARTBEAT_CHECK_INTERVAL_MS);
