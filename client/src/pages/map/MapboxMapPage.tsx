@@ -1065,8 +1065,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       items: [
         { id: 'breadcrumbs', label: 'Unit Trails', active: breadcrumbs.enabled, onToggle: breadcrumbs.toggle, color: '#3b82f6', description: 'GPS history (B)' },
         { id: 'clustering', label: 'Call Clusters', active: clustering.enabled, onToggle: clustering.toggle, color: '#d4a017', description: 'Group markers (C)' },
-        { id: 'incidents', label: 'Incidents', active: incidentsEnabled, onToggle: () => setIncidentsEnabled((v) => !v), color: '#ef4444', description: 'RMS incident clusters', loading: incidentsLayer.loading },
-        { id: 'repeat-addresses', label: 'Repeat Addresses', active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), color: '#64d264', description: 'Locations with 3+ calls', loading: repeatAddresses.loading },
+        { id: 'incidents', label: 'Incidents', active: incidentsEnabled, onToggle: () => setIncidentsEnabled((v) => !v), color: '#ef4444', description: 'RMS incident clusters', loading: incidentsLayer.loading, error: incidentsLayer.error },
+        { id: 'repeat-addresses', label: 'Repeat Addresses', active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), color: '#64d264', description: 'Locations with 3+ calls', loading: repeatAddresses.loading, error: repeatAddresses.error },
         { id: 'selfpos', label: 'My Position', active: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v), color: '#3b82f6' },
       ],
     },
@@ -1074,11 +1074,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       title: 'Historical Analysis',
       items: [
         { id: 'heatmap', label: `Crime Heatmap (${heatmapMode === 'live' ? 'Live' : 'Historical'})`, active: heatmap.enabled, onToggle: () => { void populateAndToggleHeatmap(); }, color: '#ef4444', description: 'Incident density (H) — click label to switch Live/Historical' },
-        { id: 'call-history', label: 'Call History', active: historyCallsEnabled, onToggle: () => setHistoryCallsEnabled((v) => !v), color: '#64d264', description: 'Past 30 days of calls', loading: historyCalls.loading },
-        { id: 'speed-heatmap', label: 'Speed Heatmap', active: speedHeatmapEnabled, onToggle: () => setSpeedHeatmapEnabled((v) => !v), color: '#f97316', description: 'GPS speed density', loading: speedHeatmap.loading },
-        { id: 'speed-violations', label: 'Speed Violations', active: speedViolationsEnabled, onToggle: () => setSpeedViolationsEnabled((v) => !v), color: '#ef4444', description: 'Recent high-speed events — click a marker for the speed graph', loading: speedViolationsLayer.loading },
-        { id: 'pursuit-segments', label: 'Pursuit Tracks', active: pursuitSegmentsEnabled, onToggle: () => setPursuitSegmentsEnabled((v) => !v), color: '#dc2626', description: 'Recent vehicle/foot pursuit paths', loading: pursuitSegmentsLayer.loading },
-        { id: 'response-time', label: 'Response Time by Beat', active: responseTimeEnabled, onToggle: () => setResponseTimeEnabled((v) => !v), color: '#4caf50', description: '30-day avg response time (historical)', loading: responseTime.loading },
+        { id: 'call-history', label: 'Call History', active: historyCallsEnabled, onToggle: () => setHistoryCallsEnabled((v) => !v), color: '#64d264', description: 'Past 30 days of calls', loading: historyCalls.loading, error: historyCalls.error },
+        { id: 'speed-heatmap', label: 'Speed Heatmap', active: speedHeatmapEnabled, onToggle: () => setSpeedHeatmapEnabled((v) => !v), color: '#f97316', description: 'GPS speed density', loading: speedHeatmap.loading, error: speedHeatmap.error },
+        { id: 'speed-violations', label: 'Speed Violations', active: speedViolationsEnabled, onToggle: () => setSpeedViolationsEnabled((v) => !v), color: '#ef4444', description: 'Recent high-speed events — click a marker for the speed graph', loading: speedViolationsLayer.loading, error: speedViolationsLayer.error },
+        { id: 'pursuit-segments', label: 'Pursuit Tracks', active: pursuitSegmentsEnabled, onToggle: () => setPursuitSegmentsEnabled((v) => !v), color: '#dc2626', description: 'Recent vehicle/foot pursuit paths', loading: pursuitSegmentsLayer.loading, error: pursuitSegmentsLayer.error },
+        { id: 'response-time', label: 'Response Time by Beat', active: responseTimeEnabled, onToggle: () => setResponseTimeEnabled((v) => !v), color: '#4caf50', description: '30-day avg response time (historical)', loading: responseTime.loading, error: responseTime.error },
       ],
     },
     {
@@ -1105,8 +1105,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     {
       title: 'Risk & Coverage',
       items: [
-        { id: 'coverage-gaps', label: 'Coverage Gaps', active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), color: '#f08228', description: 'Response-time gap grid', loading: coverageGaps.loading },
-        { id: 'safety-zones', label: 'Safety Zones', active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), color: '#c81e1e', description: 'Risk-weighted call clusters', loading: safetyZones.loading },
+        { id: 'coverage-gaps', label: 'Coverage Gaps', active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), color: '#f08228', description: 'Response-time gap grid', loading: coverageGaps.loading, error: coverageGaps.error },
+        { id: 'safety-zones', label: 'Safety Zones', active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), color: '#c81e1e', description: 'Risk-weighted call clusters', loading: safetyZones.loading, error: safetyZones.error },
         { id: 'isochrone', label: 'Response Zones', active: isochroneEnabled, onToggle: toggleIsochrone, color: '#22c55e', description: '5/10/15 min driving' },
       ],
     },
@@ -1122,7 +1122,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'orbit', label: 'Orbit Animation', active: cameraAnimation.animating, onToggle: () => cameraAnimation.animating ? cameraAnimation.stop() : cameraAnimation.orbit(), color: '#f59e0b', description: 'Cinematic map rotation' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, districtHierarchy, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, repeatAddressesEnabled, repeatAddresses.loading, speedHeatmapEnabled, speedHeatmap.loading, speedViolationsEnabled, speedViolationsLayer.loading, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, districtHierarchy, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, incidentsEnabled, incidentsLayer.loading, incidentsLayer.error, coverageGapsEnabled, coverageGaps.loading, coverageGaps.error, responseTimeEnabled, responseTime.loading, responseTime.error, safetyZonesEnabled, safetyZones.loading, safetyZones.error, historyCallsEnabled, historyCalls.loading, historyCalls.error, heatmapMode, populateAndToggleHeatmap, repeatAddressesEnabled, repeatAddresses.loading, repeatAddresses.error, speedHeatmapEnabled, speedHeatmap.loading, speedHeatmap.error, speedViolationsEnabled, speedViolationsLayer.loading, speedViolationsLayer.error, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading, pursuitSegmentsLayer.error]);
 
   const mapRightDockSections = useMemo<MapRightDockSection[]>(() => [
     {
