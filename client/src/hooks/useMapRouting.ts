@@ -291,11 +291,6 @@ function parseDuration(seconds: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-function parseDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)} m`;
-  return `${(meters / 1000).toFixed(1)} km`;
-}
-
 const SOURCE_ID = 'route-source';
 const LAYER_ID = 'route-line';
 
