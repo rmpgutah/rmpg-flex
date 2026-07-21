@@ -58,6 +58,7 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
   const [gaps, setGaps] = useState<GapCell[]>([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({ good: 0, fair: 0, poor: 0, gap: 0, total: 0 });
+  const [error, setError] = useState<string | null>(null);
   const visibleRef = useRef(false);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
 
@@ -87,6 +88,7 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
   ) => {
     if (!map) return;
     setLoading(true);
+    setError(null);
     try {
       // Fetch active unit positions
       const units = await apiFetch<Unit[]>('/dispatch/units');
@@ -193,12 +195,13 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
       map.on('mouseenter', FILL_LAYER_ID, () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', FILL_LAYER_ID, () => { map.getCanvas().style.cursor = ''; });
       });
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[useMapboxCoverageGaps] compute failed:', err);
+      setError(err?.message || 'Failed to compute coverage gaps');
     } finally {
       setLoading(false);
     }
   }, [map, clearFromMap]);
 
-  return { gaps, stats, loading, computeCoverage, clear: clearFromMap };
+  return { gaps, stats, loading, error, computeCoverage, clear: clearFromMap };
 }
