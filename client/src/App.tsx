@@ -4,8 +4,9 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
 import { NavTripProvider } from './context/NavTripContext';
-import { ToastProvider } from './components/ToastProvider';
+import { ToastProvider, useToast } from './components/ToastProvider';
 import MDTBridge from './components/MDTBridge';
+import DialerPanel from './components/DialerPanel';
 import { ContextMenuProvider } from './context/ContextMenuContext';
 import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import { GlobalSearch } from './components/GlobalSearch';
@@ -709,6 +710,18 @@ function AppRoutes() {
   );
 }
 
+function DialerPanelMount() {
+  const { isAuthenticated } = useAuth();
+  const { addToast } = useToast();
+  if (!isAuthenticated) return null;
+  return (
+    <DialerPanel
+      onRinging={(message) => addToast(message, 'warning')}
+      onDuress={(message) => addToast(message, 'error')}
+    />
+  );
+}
+
 export default function App() {
   // TWO nested boundaries by design (defense in depth):
   //  • OUTER — sits above every context provider. A render/effect throw inside
@@ -735,6 +748,7 @@ export default function App() {
                     <MDTBridge />
                     <AndroidUpdateChecker />
                     <ButtonHealthOverlay />
+                    <DialerPanelMount />
                     <AppRoutes />
                   </ErrorBoundary>
                 </ContextMenuProvider>
