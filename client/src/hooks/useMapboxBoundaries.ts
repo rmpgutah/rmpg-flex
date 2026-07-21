@@ -37,7 +37,7 @@ export function useMapboxBoundaries() {
     } catch (err) {
       console.warn('[useMapboxBoundaries] lookup failed:', err);
       setResult(null);
-      return null;
+      throw err;
     } finally {
       setLoading(false);
     }
