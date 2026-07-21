@@ -374,12 +374,12 @@ async function lookupPerson(db: D1Database, raw: string): Promise<LookupResult> 
   // Outstanding warrants for this person (by id or by name).
   const warrants = await query<{ warrant_number: string | null; offense: string | null; status: string | null }>(
     db,
-    `SELECT warrant_number, COALESCE(offense, offense_description, charge_description, description) AS offense, status
+    `SELECT warrant_number, charge_description AS offense, status
      FROM warrants
-     WHERE (person_id = ? OR subject_person_id = ? OR TRIM(COALESCE(subject_first_name,'') || ' ' || COALESCE(subject_last_name,'')) LIKE ? OR subject_name LIKE ?)
+     WHERE (subject_person_id = ? OR TRIM(COALESCE(subject_first_name,'') || ' ' || COALESCE(subject_last_name,'')) LIKE ? OR subject_name LIKE ?)
        AND archived_at IS NULL AND COALESCE(status,'') NOT IN ('served','cleared','recalled','closed','quashed')
      LIMIT 3`,
-    p.id, p.id, `%${name}%`, `%${name}%`,
+    p.id, `%${name}%`, `%${name}%`,
   ).catch(() => []);
   // Sentinel guard (isFlagSet): live D1 stores "None"/"N/A"/"0" not NULL, so a
   // raw truthiness check would speak a FALSE "gang affiliation noted: None" /
@@ -406,8 +406,8 @@ async function lookupWarrant(db: D1Database, raw: string): Promise<LookupResult>
   }>(
     db,
     `SELECT warrant_number, subject_name, subject_first_name, subject_last_name,
-            COALESCE(offense, offense_description, charge_description, description) AS offense,
-            COALESCE(bond_amount, bail_amount) AS bond_amount, status, issuing_agency
+            charge_description AS offense,
+            bail_amount AS bond_amount, status, issuing_agency
      FROM warrants
      WHERE (subject_name LIKE ? OR TRIM(COALESCE(subject_first_name,'') || ' ' || COALESCE(subject_last_name,'')) LIKE ? OR warrant_number LIKE ?)
        AND archived_at IS NULL

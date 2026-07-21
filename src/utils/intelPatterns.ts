@@ -166,7 +166,7 @@ export async function personActivityEvents(db: D1Database, personId: number): Pr
   await pull('field_interview', `SELECT created_at AS d FROM field_interviews WHERE person_id = ? AND created_at > datetime('now','-120 days')`, personId);
   await pull('citation', `SELECT created_at AS d FROM citations WHERE person_id = ? AND created_at > datetime('now','-120 days')`, personId);
   await pull('trespass_order', `SELECT effective_date AS d FROM trespass_orders WHERE person_id = ? AND effective_date > datetime('now','-120 days')`, personId);
-  await pull('warrant', `SELECT issued_date AS d FROM warrants WHERE (subject_person_id = ? OR person_id = ?) AND issued_date > datetime('now','-120 days')`, personId, personId);
+  await pull('warrant', `SELECT issued_date AS d FROM warrants WHERE subject_person_id = ? AND issued_date > datetime('now','-120 days')`, personId);
   return events;
 }
 

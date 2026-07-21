@@ -44,13 +44,13 @@ export async function serveIntakeWarrantCheck(
     ).catch(() => null);
     if (already?.intake_screened_at) return { ...result, skipped: true };
 
-    // Warrant check: prefer person_id FK; fall back to name JOIN.
+    // Warrant check: prefer subject_person_id FK; fall back to name JOIN.
     let warrants: { id: number; warrant_number: string | null; charge: string | null }[] = [];
     if (personId) {
       warrants = await query<{ id: number; warrant_number: string | null; charge: string | null }>(
         db,
         `SELECT id, warrant_number, charge FROM warrants
-          WHERE person_id = ? AND status NOT IN ('served','recalled','expired','cancelled')
+          WHERE subject_person_id = ? AND status NOT IN ('served','recalled','expired','cancelled')
           LIMIT 5`,
         personId,
       ).catch(() => []);
@@ -61,7 +61,7 @@ export async function serveIntakeWarrantCheck(
         db,
         `SELECT w.id, w.warrant_number, w.charge
            FROM warrants w
-           JOIN persons p ON p.id = w.person_id
+           JOIN persons p ON p.id = w.subject_person_id
           WHERE (LOWER(p.last_name) LIKE LOWER(?) OR LOWER(p.full_name) LIKE LOWER(?))
             AND w.status NOT IN ('served','recalled','expired','cancelled')
           LIMIT 5`,

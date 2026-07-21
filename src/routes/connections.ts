@@ -132,7 +132,7 @@ async function loadNode(
         return { label: i ? `${i.incident_number || ''} ${i.incident_type}`.trim() : `Incident #${id}`, metadata: i || {} };
       }
       case 'warrant': {
-        const w = await queryFirst<any>(db, 'SELECT warrant_number, status, type, offense_level, subject_person_id, person_id, charge_description FROM warrants WHERE id = ?', id);
+        const w = await queryFirst<any>(db, 'SELECT warrant_number, status, type, offense_level, subject_person_id, charge_description FROM warrants WHERE id = ?', id);
         return { label: w ? `${w.warrant_number || `W-${id}`} (${w.status || '?'})` : `Warrant #${id}`, metadata: w || {} };
       }
       case 'citation': {
@@ -282,7 +282,7 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('case', r.case_id, 'linked', 'case_person_links');
         for (const r of await query<any>(db, 'SELECT cp.relationship, p.id AS property_id FROM client_persons cp JOIN properties p ON p.client_id = cp.client_id WHERE cp.person_id = ? LIMIT 1000', id))
           add('property', r.property_id, r.relationship || 'client', 'client_persons');
-        for (const r of await query<any>(db, 'SELECT id, status FROM warrants WHERE subject_person_id = ? OR person_id = ?', id, id))
+        for (const r of await query<any>(db, 'SELECT id, status FROM warrants WHERE subject_person_id = ?', id))
           add('warrant', r.id, `warrant_${(r.status || '').toLowerCase()}`, 'warrants');
         for (const r of await query<any>(db, 'SELECT id, status FROM citations WHERE person_id = ?', id))
           add('citation', r.id, `citation_${(r.status || '').toLowerCase()}`, 'citations');
@@ -484,8 +484,8 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
       }
 
       case 'warrant': {
-        const w = await queryFirst<any>(db, 'SELECT subject_person_id, person_id FROM warrants WHERE id = ?', id);
-        const pid = w?.subject_person_id ?? w?.person_id;
+        const w = await queryFirst<any>(db, 'SELECT subject_person_id FROM warrants WHERE id = ?', id);
+        const pid = w?.subject_person_id;
         if (pid) add('person', pid, 'subject', 'warrants');
         break;
       }

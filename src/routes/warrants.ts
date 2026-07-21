@@ -15,7 +15,7 @@ import { screenPersonAllSources } from '../utils/screening/screenPerson';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
 import { requireRole } from '../middleware/auth';
-import { isValidStatus, isValidTransition, TERMINAL_STATUSES, WARRANT_STATUSES, type WarrantStatus } from '../utils/warrantStatus';
+import { isValidStatus, isValidTransition, TERMINAL_STATUSES, WARRANT_STATUSES, type WarrantStatus, applyLazyWarrantExpiry } from '../utils/warrantStatus';
 
 const warrants = new Hono<Env>();
 
@@ -66,6 +66,10 @@ warrants.get('/', async (c) => {
     const rows = await query<Record<string, unknown>>(db,
       `SELECT * FROM warrants ${whereClause} ORDER BY ${sortCol} ${order} LIMIT ? OFFSET ?`,
       ...params, perPage, offset);
+
+    // Lazy auto-expiry: flip any overdue-active row on this page to
+    // 'expired' before responding, so the list never shows a stale status.
+    await applyLazyWarrantExpiry(db, rows);
 
     return c.json({
       data: rows,
@@ -954,6 +958,9 @@ warrants.get('/:id', async (c) => {
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
     if (!row) return c.json({ error: 'Warrant not found' }, 404);
+    // Lazy auto-expiry: flip an overdue-active warrant to 'expired' before
+    // responding, so a direct GET never shows a stale status.
+    await applyLazyWarrantExpiry(db, [row]);
     return c.json(row);
   } catch (err) {
     console.error('[warrants] get by id error', err);

@@ -90,7 +90,7 @@ export async function checkNcicAtAttempt(
   // ── 1a. Search local warrants ──
   try {
     const warrantQuery = firstName
-      ? `SELECT id, warrant_number, type, status, subject_name, offense,
+      ? `SELECT id, warrant_number, type, status, subject_name,
                 charge_description, issuing_agency, severity, description
            FROM warrants
           WHERE status = 'active'
@@ -102,7 +102,7 @@ export async function checkNcicAtAttempt(
             CASE WHEN LOWER(subject_first_name) = ? THEN 0 ELSE 1 END,
             issued_date DESC
           LIMIT 20`
-      : `SELECT id, warrant_number, type, status, subject_name, offense,
+      : `SELECT id, warrant_number, type, status, subject_name,
                 charge_description, issuing_agency, severity, description
            FROM warrants
           WHERE status = 'active'
@@ -123,7 +123,6 @@ export async function checkNcicAtAttempt(
       type: string;
       status: string;
       subject_name: string | null;
-      offense: string | null;
       charge_description: string | null;
       issuing_agency: string | null;
       severity: string | null;
@@ -134,7 +133,7 @@ export async function checkNcicAtAttempt(
       hits.push({
         type: 'warrant',
         agency: w.issuing_agency || 'Unknown',
-        description: w.charge_description || w.offense || w.warrant_number || `Warrant #${w.id}`,
+        description: w.charge_description || w.warrant_number || `Warrant #${w.id}`,
         severity: mapWarrantSeverity(w.severity),
         details: [
           w.warrant_number ? `#${w.warrant_number}` : null,

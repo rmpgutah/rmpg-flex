@@ -22,7 +22,7 @@ beforeAll(async () => {
     id INTEGER PRIMARY KEY AUTOINCREMENT, warrant_number TEXT, type TEXT DEFAULT 'arrest',
     status TEXT NOT NULL DEFAULT 'active', subject_person_id INTEGER, subject_name TEXT,
     subject_first_name TEXT, subject_last_name TEXT, charge_description TEXT, bail_amount REAL,
-    bond_amount REAL, offense TEXT, offense_level TEXT, issuing_court TEXT, court TEXT,
+    offense_level TEXT, issuing_court TEXT,
     source TEXT, archived_at TEXT, expires_at TEXT, created_at TEXT DEFAULT (datetime('now'))
   )`);
   await execute(db, `CREATE TABLE IF NOT EXISTS scraped_warrants (id INTEGER PRIMARY KEY AUTOINCREMENT)`);

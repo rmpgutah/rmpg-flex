@@ -146,3 +146,52 @@ describe('POST /api/warrants/:id/reopen', () => {
     expect(body.error).toBe('not_terminal');
   });
 });
+
+describe('GET /api/warrants/:id — lazy auto-expiry', () => {
+  it('flips an overdue active warrant to expired on read, and persists the write', async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const id = await seedWarrant(db, 'active');
+    // Backdate expires_at into the past.
+    await execute(db, `UPDATE warrants SET expires_at = datetime('now', '-1 day') WHERE id = ?`, id);
+
+    const app = buildApp('officer');
+    const res = await app.request(`/api/warrants/${id}`, {}, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { status: string };
+    expect(body.status).toBe('expired');
+
+    // Confirm the row was actually updated in D1, not just faked in the response.
+    const row = await queryFirst<{ status: string }>(db, 'SELECT status FROM warrants WHERE id = ?', id);
+    expect(row?.status).toBe('expired');
+  });
+
+  it('leaves a still-current active warrant alone', async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const id = await seedWarrant(db, 'active');
+    await execute(db, `UPDATE warrants SET expires_at = datetime('now', '+30 days') WHERE id = ?`, id);
+
+    const app = buildApp('officer');
+    const res = await app.request(`/api/warrants/${id}`, {}, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { status: string };
+    expect(body.status).toBe('active');
+  });
+});
+
+describe('GET /api/warrants — lazy auto-expiry (list)', () => {
+  it('flips overdue active warrants in the returned page', async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const id = await seedWarrant(db, 'active');
+    await execute(db, `UPDATE warrants SET expires_at = datetime('now', '-1 day') WHERE id = ?`, id);
+
+    const app = buildApp('officer');
+    const res = await app.request(`/api/warrants?per_page=50`, {}, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { data: Array<{ id: number; status: string }> };
+    const row = body.data.find((w) => w.id === id);
+    expect(row?.status).toBe('expired');
+
+    const dbRow = await queryFirst<{ status: string }>(db, 'SELECT status FROM warrants WHERE id = ?', id);
+    expect(dbRow?.status).toBe('expired');
+  });
+});

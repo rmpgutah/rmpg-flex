@@ -84,7 +84,7 @@ sb.get('/generate', async (c) => {
       ORDER BY priority, id DESC LIMIT 10`),
     query<Record<string, any>>(db, `
       SELECT warrant_number, COALESCE(subject_name, subject_first_name || ' ' || subject_last_name) AS subject,
-             COALESCE(offense_description, offense, '') AS charges
+             COALESCE(charge_description, '') AS charges
       FROM warrants WHERE status = 'active' AND COALESCE(priority,'') IN ('high','urgent','critical')
       ORDER BY id DESC LIMIT 10`),
     query<Record<string, any>>(db, `

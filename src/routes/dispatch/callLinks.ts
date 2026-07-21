@@ -115,11 +115,10 @@ links.post('/calls/:id/persons', requireRole('dispatcher', 'supervisor', 'manage
   // This channel had NO producer, so the warrant-hit banner/voice never fired.
   // Best-effort: a warrants-query failure must not break the link.
   try {
-    // Live warrants store the subject on subject_person_id (person_id is NULL on
-    // every current row); query BOTH so the officer-safety alert is robust to
-    // that column drift instead of silently matching nothing.
+    // migration 0200 dropped warrants.person_id entirely — subject_person_id
+    // is now the sole canonical column, so query it alone.
     const wc = await queryFirst<{ n: number }>(
-      db, "SELECT COUNT(*) AS n FROM warrants WHERE (subject_person_id = ? OR person_id = ?) AND status = 'active'", body.person_id, body.person_id,
+      db, "SELECT COUNT(*) AS n FROM warrants WHERE subject_person_id = ? AND status = 'active'", body.person_id,
     );
     if ((wc?.n ?? 0) > 0) {
       const subjectName = `${person.first_name ?? ''} ${person.last_name ?? ''}`.trim() || 'Unknown subject';
@@ -793,7 +792,7 @@ links.get('/persons/:id/risk-score', async (c) => {
     let score = 0;
     const flags: string[] = [];
     const warrantCount = await queryFirst<{ n: number }>(
-      db, "SELECT COUNT(*) AS n FROM warrants WHERE person_id = ? AND status = 'active'", personId,
+      db, "SELECT COUNT(*) AS n FROM warrants WHERE subject_person_id = ? AND status = 'active'", personId,
     );
     if (warrantCount?.n) { score += Math.min(warrantCount.n * 20, 60); flags.push(`${warrantCount.n} active warrant(s)`); }
     const cautionCount = await queryFirst<{ n: number }>(

@@ -25,7 +25,7 @@ async function resetTables() {
   )`);
   await execute(db, `CREATE TABLE warrants (
     id INTEGER PRIMARY KEY AUTOINCREMENT, warrant_number TEXT, status TEXT NOT NULL DEFAULT 'active',
-    subject_person_id INTEGER, subject_name TEXT, expires_at TEXT, expiry_date TEXT
+    subject_person_id INTEGER, subject_name TEXT, expires_at TEXT
   )`);
   await execute(db, `CREATE TABLE notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, priority TEXT, title TEXT, message TEXT,

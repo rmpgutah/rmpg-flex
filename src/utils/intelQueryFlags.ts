@@ -12,8 +12,8 @@ export async function personFlagsForIds(db: D1Database, ids: number[]): Promise<
   const ph = ids.map(() => '?').join(',');
   try {
     for (const w of await query<any>(db,
-      `SELECT COALESCE(subject_person_id, person_id) AS pid FROM warrants
-        WHERE LOWER(COALESCE(status,'')) IN ('active','outstanding') AND COALESCE(subject_person_id, person_id) IN (${ph})`, ...ids))
+      `SELECT subject_person_id AS pid FROM warrants
+        WHERE LOWER(COALESCE(status,'')) IN ('active','outstanding') AND subject_person_id IN (${ph})`, ...ids))
       flags.set(w.pid, [...(flags.get(w.pid) || []), 'ACTIVE WARRANT']);
   } catch (e: any) { log.error('[intel-query-flags] warrants', { error: e?.message }); }
   try {

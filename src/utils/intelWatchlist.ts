@@ -93,7 +93,6 @@ interface WarrantRow {
   subject_person_id: number | null;
   subject_name: string | null;
   expires_at: string | null;
-  expiry_date: string | null;
 }
 
 // Runs the three warrant-specific checks for one watch, inserting 0-3
@@ -102,7 +101,7 @@ interface WarrantRow {
 // number of alerts fired, so the caller's total count stays accurate.
 async function processWarrantWatch(db: D1Database, w: WatchRow): Promise<number> {
   const warrant = await queryFirst<WarrantRow>(db,
-    'SELECT status, warrant_number, subject_person_id, subject_name, expires_at, expiry_date FROM warrants WHERE id = ?',
+    'SELECT status, warrant_number, subject_person_id, subject_name, expires_at FROM warrants WHERE id = ?',
     w.entity_id);
   if (!warrant) return 0; // warrant was deleted since the watch was created
   const label = warrant.warrant_number || String(w.entity_id);
@@ -123,7 +122,7 @@ async function processWarrantWatch(db: D1Database, w: WatchRow): Promise<number>
   }
 
   // 2. Expiring soon (one-time)
-  const expiresAt = warrant.expires_at ?? warrant.expiry_date;
+  const expiresAt = warrant.expires_at;
   if (warrant.status === 'active' && expiresAt && !w.expiry_alerted_at) {
     const expiresAtMs = Date.parse(expiresAt);
     if (!Number.isNaN(expiresAtMs)) {
