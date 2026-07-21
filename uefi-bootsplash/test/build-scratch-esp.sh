@@ -26,18 +26,13 @@ if [[ "$MODE" == "success" && ! -f "$ROOT_DIR/test/dummy-bootmgr/build/BOOTX64.E
   exit 1
 fi
 
-# NOTE: QEMU's OVMF_VARS.fd is a read/write pflash drive — every run-qemu.sh
-# invocation persists NVRAM boot-variable state into it (confirmed in Task 3),
-# and a dirty vars file can corrupt the *next* run's boot order (BDS drops to
-# the UEFI Shell instead of trying Boot0001, producing a false "not found").
-# Reset it here, since this script runs before every run-qemu.sh invocation in
-# the standard test sequence, so the reset happens reliably regardless of
-# which scenario is run or in what order.
-if git -C "$ROOT_DIR" ls-files --error-unmatch test/ovmf/OVMF_VARS.fd >/dev/null 2>&1; then
-  git -C "$ROOT_DIR" checkout -- test/ovmf/OVMF_VARS.fd
-else
-  echo "warning: test/ovmf/OVMF_VARS.fd is not tracked by git — cannot reset NVRAM state; a prior run's leftover boot-order state may corrupt this run" >&2
-fi
+# NOTE: run-qemu.sh copies the committed test/ovmf/OVMF_VARS.fd template to a
+# gitignored scratch path (test/ovmf-vars-scratch.fd) and points QEMU's
+# writable pflash drive at the COPY, so the committed template is never
+# mutated by NVRAM boot-variable state in the first place — no reset needed
+# here anymore (previously this step did `git checkout -- test/ovmf/OVMF_VARS.fd`
+# before every run, which only helped when this script was used and still left
+# the working tree dirty after a standalone run-qemu.sh invocation).
 
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT

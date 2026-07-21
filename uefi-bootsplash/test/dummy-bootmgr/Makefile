@@ -2,7 +2,7 @@
 #
 # Builds the test-only dummy stand-in for bootmgfw.efi, used to prove the
 # SUCCESS path of src/chainload.c under QEMU (see uefi-bootsplash/Makefile's
-# header comment and ../../.superpowers/sdd/task-3-brief.md Step 6). Shares
+# header comment and uefi-bootsplash/README.md's "Testing" section). Shares
 # the toolchain settings with the main app's Makefile via ../../common.mk
 # rather than duplicating CFLAGS/LDFLAGS/paths.
 include ../../common.mk

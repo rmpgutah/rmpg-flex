@@ -91,16 +91,23 @@ ESP image at the requested path, so run `make` (and, for `success` mode,
 build `test/dummy-bootmgr`) beforehand — `build-scratch-esp.sh` preflight-checks
 for both build artifacts and fails with a clear message if either is missing.
 
-This verifies the splash renders (GOP or text fallback) and that the
-chainload mechanism correctly finds and executes a target file at the
-well-known Windows Boot Manager path — it does **not** verify chainloading a
-genuine Windows install, or how the splash actually looks on real GOP-capable
-firmware. Both of those need real hardware (see the checklist below).
+This verifies that the chainload mechanism correctly finds and executes (or
+correctly fails to find) a target file at the well-known Windows Boot Manager
+path, based on the chainload success/not-found markers asserted in the serial
+log — it does **not** verify chainloading a genuine Windows install, and it
+does **not** verify that the splash actually renders. Splash rendering (GOP
+fill + wordmark placeholder) was verified once via the manual QEMU-screenshot
+recipe during development, which is not a re-runnable automated assertion —
+it doesn't run as part of this test pipeline and needs to be repeated by hand
+if the splash-drawing code changes. Real GOP-capable hardware is unverified
+either way (see the checklist below).
 
-Note: QEMU writes live NVRAM state into `test/ovmf/OVMF_VARS.fd` during every
-run. `build-scratch-esp.sh` resets it via `git checkout --` before each build,
-so this happens automatically as part of the normal test sequence above — no
-manual cleanup needed.
+Note: QEMU writes live NVRAM state into whatever OVMF_VARS.fd it's given as a
+writable pflash drive. `run-qemu.sh` copies the committed
+`test/ovmf/OVMF_VARS.fd` template to a gitignored scratch file
+(`test/ovmf-vars-scratch.fd`) before every run and points QEMU at the copy, so
+the committed template is never mutated — no manual cleanup needed, and the
+working tree stays clean after every test run.
 
 ## Manual installation on a real machine
 

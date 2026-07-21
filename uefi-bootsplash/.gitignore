@@ -10,3 +10,4 @@ test/scratch-notfound.img
 test/scratch-success.img
 test/boot-notfound.log
 test/boot-success.log
+test/ovmf-vars-scratch.fd

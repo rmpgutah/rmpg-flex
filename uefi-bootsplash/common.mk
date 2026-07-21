@@ -20,3 +20,17 @@ CFLAGS      = -target $(TARGET) $(EFIINCS) -ffreestanding -fshort-wchar \
               -mno-red-zone -DGNU_EFI_USE_MS_ABI -Wall -Wextra -Wno-unused-parameter
 LDFLAGS     = -target $(TARGET) -fuse-ld=lld -nostdlib \
               -Wl,-entry:efi_main -Wl,-subsystem:efi_application -Wl,/dll
+
+# Preflight: a fresh clone that runs `make` before ./build-gnuefi-pe.sh gets a
+# raw lld "cannot open .../libefi.a" linker error with no hint of the fix.
+# Both Makefiles that include this file link against $(EFILIB), so check for
+# it once here rather than duplicating the check in each. Skip the check for
+# `make clean`, which never touches EFILIB.
+ifeq ($(filter clean,$(MAKECMDGOALS)),)
+ifeq ($(wildcard $(EFILIB)),)
+$(error GNUEFI_DIR/libefi.a not found at $(EFILIB) — build it first with \
+  ./build-gnuefi-pe.sh (from the uefi-bootsplash/ directory; see README.md's \
+  "Building" section), or pass GNUEFI_DIR=/path/to/gnu-efi-pe if it lives \
+  somewhere other than the default $(HOME)/.local/gnu-efi-pe)
+endif
+endif

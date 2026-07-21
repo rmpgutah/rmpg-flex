@@ -61,7 +61,11 @@ ShowBootSplash(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 
   Status = SystemTable->BootServices->LocateProtocol(&GopGuid, NULL, (VOID **)&Gop);
 
-  if (EFI_ERROR(Status) || Gop == NULL) {
+  // Text-mode fallback covers both "GOP unavailable" (LocateProtocol failed)
+  // and "GOP present but its Mode/Info isn't populated yet" — some firmware
+  // returns a GOP handle before its mode info is fully set up. Either way
+  // ShowBootSplash must never fail, so both cases fall through to Print().
+  if (EFI_ERROR(Status) || Gop == NULL || Gop->Mode == NULL || Gop->Mode->Info == NULL) {
     // Text-mode fallback — GOP unavailable. Never treat this as a failure.
     Print(L"RMPG Flex\r\n");
   } else {
