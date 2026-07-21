@@ -1,0 +1,13 @@
+build/
+test/scratch-esp.img
+test/scratch-esp.cdr
+test/scratch-esp.dmg
+test/boot.log
+test/esp-root/
+src/main.o
+*.o
+test/scratch-notfound.img
+test/scratch-success.img
+test/boot-notfound.log
+test/boot-success.log
+test/ovmf-vars-scratch.fd
