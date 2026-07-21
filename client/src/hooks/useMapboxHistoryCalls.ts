@@ -50,6 +50,7 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
   const [calls, setCalls] = useState<HistoryCall[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const visibleRef = useRef(false);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
 
@@ -142,6 +143,7 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
     if (!map) return;
     const { days = 30, status, types, priority, limit = 5000 } = options;
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({ days: String(days), limit: String(limit) });
       if (status?.length) params.set('status', status.join(','));
@@ -156,8 +158,9 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
       whenStyleReady(map, () => {
         renderOnMap(calls, map);
       });
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[useMapboxHistoryCalls] fetch failed:', err);
+      setError(err?.message || 'Failed to load call history');
     } finally {
       setLoading(false);
     }
@@ -167,7 +170,8 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
     clearFromMap();
     setCalls([]);
     setTotal(0);
+    setError(null);
   }, [clearFromMap]);
 
-  return { calls, total, loading, fetchHistory, clear };
+  return { calls, total, loading, error, fetchHistory, clear };
 }
