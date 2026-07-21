@@ -29,6 +29,7 @@ const LAYER_ID = 'rmpg-pursuit-segments-layer';
 export function useMapboxPursuitSegments(map: mapboxgl.Map | null) {
   const [segments, setSegments] = useState<PursuitSegment[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   const clear = useCallback(() => {
@@ -60,8 +61,9 @@ export function useMapboxPursuitSegments(map: mapboxgl.Map | null) {
             geometry: { type: 'LineString', coordinates: coords },
           });
         }
-      } catch {
+      } catch (err) {
         // one segment's history failing shouldn't drop the rest
+        console.warn(`[useMapboxPursuitSegments] segment ${seg.call_id} history fetch failed:`, err);
       }
     }
 
@@ -99,17 +101,19 @@ export function useMapboxPursuitSegments(map: mapboxgl.Map | null) {
   const fetchSegments = useCallback(async (hours = 4) => {
     if (!map) return;
     setLoading(true);
+    setError(null);
     try {
       const data = await apiFetch<PursuitSegment[]>(`/dispatch/gps/pursuit-segments?hours=${hours}`);
       const list = Array.isArray(data) ? data : [];
       setSegments(list);
       await renderOnMap(list, map);
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[useMapboxPursuitSegments] fetch failed:', err);
+      setError(err?.message || 'Failed to load pursuit tracks');
     } finally {
       setLoading(false);
     }
   }, [map, renderOnMap]);
 
-  return { segments, loading, fetchSegments, clear };
+  return { segments, loading, error, fetchSegments, clear };
 }
