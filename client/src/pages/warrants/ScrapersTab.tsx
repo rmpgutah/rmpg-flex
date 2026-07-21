@@ -80,26 +80,10 @@ interface LiveFeedEntry {
 }
 
 /**
- * Format a single live feed event into its display shape.
- *
- * TODO(user-contribution): Define how each ScraperWsEvent type is rendered
- * in the live feed. This function is the single source of truth for the
- * visual language of the feed — return { color, icon, label, detail } for
- * each event variant. See the dispatch feed pattern or dispatch console
- * logs for inspiration.
- *
- * Events you need to handle (see ScraperWsEvent discriminated union):
- *   - run_started      (neutral / informational)
- *   - run_completed    (success — but `unchanged: true` means cache hit)
- *   - run_failed       (error)
- *   - circuit_broken   (critical alert)
- *   - circuit_restored (recovery)
- *
- * Constraints:
- *   - `color` must be a Tailwind text class ('text-green-400', etc.)
- *   - `icon` is a single character (●, ◐, ○, ✕, ↻) or short glyph
- *   - `label` should be ≤ 12 chars, uppercase, terminal-feel
- *   - `detail` is the human-readable right-side text
+ * Format a single live feed event into its display shape. Single source of
+ * truth for the feed's visual language — `unchanged: true` on run_completed
+ * gets its own muted "CACHED" treatment (cache hit, not a fresh scrape) so
+ * it doesn't read as a false "OK" alongside real successful runs.
  */
 interface LiveFeedDisplay {
   color: string;
