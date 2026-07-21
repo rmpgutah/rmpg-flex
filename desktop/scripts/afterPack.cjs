@@ -17,6 +17,17 @@ module.exports = async function afterPack(context) {
   // Only codesign on macOS
   if (electronPlatformName !== 'darwin') return;
 
+  // electron-builder already applied a real Developer ID signature when a
+  // signing certificate was supplied (CI's macOS release job, via CSC_LINK/
+  // CSC_KEY_PASSWORD) — re-signing here with an ad-hoc identity would
+  // overwrite that real signature and break notarization. Only ad-hoc sign
+  // for local/dev builds, which pass -c.mac.identity=null and have neither
+  // env var set.
+  if (process.env.CSC_LINK || process.env.CSC_KEY_PASSWORD) {
+    console.log('  ℹ  Real signing identity detected (CSC_LINK/CSC_KEY_PASSWORD) — skipping ad-hoc sign');
+    return;
+  }
+
   const appName = context.packager.appInfo.productFilename;
   const appPath = path.join(appOutDir, `${appName}.app`);
 

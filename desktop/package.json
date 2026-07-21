@@ -11,7 +11,7 @@
     "// test": "better-sqlite3 must be built for Node's ABI (not Electron's) for the DB-backed tests to load — postinstall/`npm run rebuild` build it for ELECTRON's ABI instead, so a fresh `npm install && npm test` fails most tests with a NODE_MODULE_VERSION mismatch. Before running tests: `npm rebuild better-sqlite3`. After running tests (whether they pass or fail): `npm run rebuild` to restore the Electron-ABI build, or `npm start`/the packaged app will crash on native module load. This is NOT automated via pretest/posttest — npm does not run posttest when the test script exits non-zero, so an automated posttest would silently skip the Electron-ABI restore on a failing test run and leave the app broken with no obvious signal. Do the rebuild dance by hand.",
     "test": "node --test '__tests__/**/*.js' 'security/__tests__/**/*.js'",
     "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
+    "build:mac": "electron-builder --mac -c.mac.identity=null",
     "build:all": "electron-builder --mac --win",
     "postinstall": "electron-rebuild -f -w serialport,better-sqlite3 || echo '[postinstall] electron-rebuild skipped (likely CI or first install before electron); run npm run rebuild manually if dev start fails with NODE_MODULE_VERSION'",
     "rebuild": "electron-rebuild -f -w serialport,better-sqlite3"
@@ -67,9 +67,9 @@
       ],
       "icon": "../client/public/rmpg-seal.icns",
       "darkModeSupport": true,
-      "hardenedRuntime": false,
-      "gatekeeperAssess": false,
-      "identity": null
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
       "backgroundColor": "#000000",
