@@ -56,7 +56,8 @@ All 33 existing endpoint paths/methods are preserved — the frontend already ca
 
 ## Frontend Rewiring
 
-- `WarrantsPage.tsx` and extracted tabs (`WarrantsListTab.tsx`, `ScrapersTab.tsx`, inline Dashboard/Search-All/modals) updated to read/write canonical column names.
+- Because the corrected canonical choices (`type`, `subject_person_id`, plus the four pairs that already matched) are exactly what `WarrantsPage.tsx`'s `Warrant` interface already keys off, no column-renaming is needed in the frontend for the local-warrants-table shape. (`warrant_type` still appears elsewhere — `nationalWarrantPdf.ts`, `NationalWarrantSearchPage.tsx`, etc. — but those types describe rows from `scraped_warrants`/`national_warrant_sources`, which keep their own genuine `warrant_type` column; out of scope here.)
+- `WarrantsPage.tsx` and extracted tabs (`WarrantsListTab.tsx`, `ScrapersTab.tsx`, inline Dashboard/Search-All/modals) updated only where the backend adds new behavior (reopen action) or where a route's response shape changes.
 - Add a "Reopen" action (visible on terminal-status warrants, gated to admin/supervisor/manager roles client-side to match server RBAC) calling the new `POST /:id/reopen`.
 - Finish the open `TODO(user-contribution)` in `ScrapersTab.tsx:85` for live-feed event rendering, since it's warrant-adjacent and already flagged incomplete — folded into this rebuild rather than left as a separate loose end.
 - No IA/visual changes beyond this — the 2026-07-14 warrants-page-rebuild-design.md structural/visual rebuild is a separate, already-approved effort; this work only touches data plumbing.
