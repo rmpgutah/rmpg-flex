@@ -480,6 +480,9 @@ export default function WarrantsPage() {
   const listTabRef = useRef<WarrantsListTabHandle>(null);
 
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
+  // Reopen: mirrors requireRole('admin', 'supervisor', 'manager') on the server route.
+  const isAdminSupervisorOrManager =
+    user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'manager';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
   // Serve / archive / recall: mirrors ROLES_CRUD_WRITE on the server
   // (admin | manager | supervisor | dispatcher).
@@ -1513,6 +1516,7 @@ export default function WarrantsPage() {
         isVisible={activeTab === 'warrants'}
         user={user}
         isAdminOrManager={isAdminOrManager}
+        isAdminSupervisorOrManager={isAdminSupervisorOrManager}
         isGodMode={isGodMode}
         canManageWarrants={canManageWarrants}
         isMobile={isMobile}
