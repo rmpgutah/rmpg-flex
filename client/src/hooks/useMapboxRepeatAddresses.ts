@@ -33,6 +33,7 @@ export interface RepeatOptions {
 export function useMapboxRepeatAddresses(map: mapboxgl.Map | null) {
   const [addresses, setAddresses] = useState<RepeatAddress[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const visibleRef = useRef(false);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
 
@@ -123,6 +124,7 @@ export function useMapboxRepeatAddresses(map: mapboxgl.Map | null) {
     if (!map) return;
     const { days = 30, minCount = 3, limit = 200 } = options;
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({
         days: String(days), min_count: String(minCount), limit: String(limit),
@@ -133,12 +135,13 @@ export function useMapboxRepeatAddresses(map: mapboxgl.Map | null) {
       const addrs = data?.addresses || [];
       setAddresses(addrs);
       whenStyleReady(map, () => { renderOnMap(addrs, map); });
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[useMapboxRepeatAddresses] fetch failed:', err);
+      setError(err?.message || 'Failed to load repeat addresses');
     } finally {
       setLoading(false);
     }
   }, [map, renderOnMap]);
 
-  return { addresses, loading, fetchRepeats, clear: clearFromMap };
+  return { addresses, loading, error, fetchRepeats, clear: clearFromMap };
 }
