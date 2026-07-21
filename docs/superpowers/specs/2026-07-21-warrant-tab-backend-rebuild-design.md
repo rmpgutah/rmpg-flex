@@ -25,7 +25,7 @@ New migration (next free prefix after `0199`, i.e. `0200_warrants_schema_dedup.s
 | `bail_amount` | `bond_amount` | |
 | `expires_at` | `expiry_date` | |
 | `served_at` | `service_date` | |
-| `person_id` | `subject_person_id` | all routes/screening callers switch to `person_id` |
+| `subject_person_id` | `person_id` | correction from initial draft: deeper research during plan-writing found `person_id` is written/read nowhere against the `warrants` table (grep across `src/`), while `subject_person_id` is referenced in 23 files (routes + `screenPerson.ts` + `utahWarrantPoller.ts`). `person_id` is dead; `subject_person_id` is canonical. |
 
 `subject_first_name`/`subject_last_name`/`subject_name` are NOT deduped — they're legitimately distinct (structured vs display name) and both are read by the frontend.
 
