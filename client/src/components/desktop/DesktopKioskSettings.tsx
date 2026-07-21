@@ -43,6 +43,11 @@ export default function DesktopKioskSettings({ onClose }: { onClose: () => void 
         return;
       }
       await refresh();
+      // Close the whole Settings app after a successful change — a restart
+      // prompt (enable) or restart instruction (disable) is about to be
+      // shown by the main process, so leaving Settings open behind it serves
+      // no purpose.
+      onClose();
     } catch (err) {
       setError(`Could not change Kiosk Mode — ${err instanceof Error ? err.message : String(err)}`);
     } finally {

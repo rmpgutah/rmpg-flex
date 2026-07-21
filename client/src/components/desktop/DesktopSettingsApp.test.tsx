@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import DesktopSettingsApp from './DesktopSettingsApp';
 import { normalizeDesktopWidgets } from '../../utils/normalizeDesktopWidgets';
@@ -128,14 +128,28 @@ describe('DesktopSettingsApp', () => {
   });
 });
 
-describe('DesktopSettingsApp — Kiosk Mode admin gating', () => {
-  it('shows the Kiosk Mode category for admins', () => {
+describe('DesktopSettingsApp — Kiosk Mode admin+Windows gating', () => {
+  const originalElectron = window.electron;
+
+  afterEach(() => {
+    window.electron = originalElectron;
+  });
+
+  it('shows the Kiosk Mode category for admins on Windows', () => {
+    window.electron = { ...(window.electron ?? {}), isElectron: true, platform: 'win32' } as typeof window.electron;
     renderApp({ isAdmin: true });
     expect(screen.getByText('Kiosk Mode')).toBeInTheDocument();
   });
 
   it('hides the Kiosk Mode category for non-admins', () => {
+    window.electron = { ...(window.electron ?? {}), isElectron: true, platform: 'win32' } as typeof window.electron;
     renderApp({ isAdmin: false });
+    expect(screen.queryByText('Kiosk Mode')).not.toBeInTheDocument();
+  });
+
+  it('hides the Kiosk Mode category for admins on non-Windows platforms', () => {
+    window.electron = { ...(window.electron ?? {}), isElectron: true, platform: 'darwin' } as typeof window.electron;
+    renderApp({ isAdmin: true });
     expect(screen.queryByText('Kiosk Mode')).not.toBeInTheDocument();
   });
 });

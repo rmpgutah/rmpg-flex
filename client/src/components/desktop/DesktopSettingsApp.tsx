@@ -138,9 +138,15 @@ export default function DesktopSettingsApp({
 
   const enabledIds = new Set(widgets.filter(w => w.on).map(w => w.id));
 
+  // Kiosk Mode is admin/manager-and-Windows-only per the design spec.
+  // window.electron.platform is a synchronous property set at preload time
+  // (unlike getKioskShellState, which is an async IPC round-trip), so it's
+  // safe to read directly in this filter alongside the existing synchronous
+  // isAdmin check without introducing async state just for this gate.
+  const isWindows = window.electron?.platform === 'win32';
   const visibleCategories = useMemo(
-    () => CATEGORIES.filter(c => c.id !== 'kiosk-mode' || isAdmin),
-    [isAdmin],
+    () => CATEGORIES.filter(c => c.id !== 'kiosk-mode' || (isAdmin && isWindows)),
+    [isAdmin, isWindows],
   );
 
   const searchMatches = useMemo(() => {

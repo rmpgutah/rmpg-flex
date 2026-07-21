@@ -93,6 +93,20 @@ const KIOSK_ESCAPE_API_BASE = DEV_MODE
   ? 'http://localhost:8787'
   : 'https://api.rmpgutah.us';
 
+// Regression guard (see isAllowedApiHost's doc comment in childProcessGuard.js
+// and GEO_IP_LOCATE_ALLOWED_HOSTS further down for the same rationale) for the
+// escape hatch's outbound login request — KIOSK_ESCAPE_API_BASE is a
+// hardcoded/env-derived constant today, not renderer-influenced, so this
+// doesn't close an active vulnerability; it's a tripwire against a future
+// accidental change to the request URL. Computed once at module load, fails
+// closed to `null` (which isAllowedApiHost never matches) if unparseable.
+let KIOSK_ESCAPE_API_HOSTNAME;
+try {
+  KIOSK_ESCAPE_API_HOSTNAME = new URL(KIOSK_ESCAPE_API_BASE).hostname;
+} catch {
+  KIOSK_ESCAPE_API_HOSTNAME = null;
+}
+
 // ─── Trusted host (shared by window-open filtering and IPC sender validation) ───
 let TRUSTED_HOST;
 try {
@@ -160,6 +174,25 @@ let splashWindow = null;
 let tray = null;
 let isQuitting = false;
 let appReady = false;
+
+// ─── Kiosk-shell auto-relaunch bookkeeping ────────────────────
+// See docs/superpowers/specs/2026-07-21-desktop-kiosk-shell-mode-design.md,
+// Component 3: on a graceful quit while this instance is running AS the
+// Windows shell (isKioskShell/useKioskChrome in createMainWindow), the app
+// must relaunch itself rather than actually exit — a normal shell
+// (explorer.exe) is always expected to be present, and exiting for good
+// would leave the machine on a black screen with the escape hotkey
+// unregistered and no way back in.
+// isRunningAsKioskShell is set once per createMainWindow() call (i.e. once
+// per boot/relaunch), so it composes correctly with the self-revert boot
+// counter in createMainWindow — it never bypasses or races that counter.
+let isRunningAsKioskShell = false;
+// kioskDeliberatelyReverting is set just before the registry is reverted to
+// explorer.exe via an intentional admin action (disabling Kiosk Mode from
+// Settings, or the Ctrl+Alt+Shift+F12 escape hatch) so that a subsequent
+// window-all-closed during that deliberate revert-and-restart doesn't loop
+// back into relaunching as the kiosk shell.
+let kioskDeliberatelyReverting = false;
 
 // Debounce timer for the main window's 'resize'/'move' listeners below —
 // those events fire continuously (every pixel) during a drag/resize
@@ -837,6 +870,12 @@ async function createMainWindow() {
     }
   }
   const useKioskChrome = isKioskShell && !shouldSelfRevert(kioskBootState);
+  // Module-level flag consulted by the 'window-all-closed' handler below —
+  // deliberately reflects useKioskChrome (post self-revert), not the raw
+  // isKioskShell/getConfig read, so a session that just self-reverted due to
+  // repeated boot failures is correctly treated as NOT running as the shell
+  // and won't relaunch itself back into the broken state.
+  isRunningAsKioskShell = useKioskChrome;
 
   mainWindow = new BrowserWindow({
     ...(useKioskChrome
@@ -1581,6 +1620,10 @@ guardedHandle('device:set-kiosk-shell', async (event, enabled) => {
     const shellValue = enabled
       ? buildShellRegistryValue(process.execPath)
       : '"explorer.exe"';
+    // Deliberate revert-and-restart: mark this BEFORE the registry write so
+    // window-all-closed (should the settings window close during this) never
+    // mistakes it for an unexpected exit and relaunches back into kiosk mode.
+    if (!enabled) kioskDeliberatelyReverting = true;
     // The main process does not run elevated; the actual registry write
     // happens in a UAC-elevated helper (runElevatedRegistryWrite above),
     // which spawns `reg.exe` via PowerShell's Start-Process -Verb RunAs so
@@ -1595,6 +1638,31 @@ guardedHandle('device:set-kiosk-shell', async (event, enabled) => {
       setConfig('kiosk_boot_attempts', resetBootAttemptState());
     }
     logSecurityAuditEvent('device:set-kiosk-shell', 'success', { enabled });
+    if (enabled) {
+      // Fix #2: the confirmation dialog in DesktopKioskSettings.tsx promises
+      // a restart — make that real by offering one here, mirroring the
+      // restart dialog already shown by the kiosk:attempt-escape handler
+      // below. Fire-and-forget (waitUntil not needed — Electron's dialog
+      // module handles its own lifecycle); the IPC response to the renderer
+      // isn't blocked on the operator's choice.
+      dialog
+        .showMessageBox({
+          type: 'info',
+          title: 'Kiosk Mode Enabled',
+          message: 'This machine will now boot directly into RMPG Flex on restart.',
+          detail: 'Restart now to apply, or restart later yourself.',
+          buttons: ['Restart Now', 'Later'],
+          defaultId: 1,
+          cancelId: 1,
+        })
+        .then(({ response }) => {
+          if (response === 0) {
+            app.relaunch();
+            app.exit(0);
+          }
+        })
+        .catch((err) => console.warn('[KIOSK] restart prompt failed:', err && err.message));
+    }
     return { ok: true };
   } catch (err) {
     logSecurityAuditEvent('device:set-kiosk-shell', 'error', { enabled, error: err.message });
@@ -1643,12 +1711,17 @@ guardedHandle('kiosk:attempt-escape', async (event, username, password) => {
   if (!shapeCheck.ok) return shapeCheck;
 
   try {
+    const loginUrl = `${KIOSK_ESCAPE_API_BASE}/api/auth/login`;
+    if (!isAllowedApiHost(loginUrl, [KIOSK_ESCAPE_API_HOSTNAME])) {
+      logSecurityAuditEvent('kiosk:attempt-escape', 'error', { reason: 'host_not_allowlisted' });
+      return { ok: false, error: 'Could not reach the server — check network connectivity and try again.' };
+    }
     // Always a live call to the API — never a cached/offline credential
     // check — since the whole point of the escape hatch is to prove the
     // operator has current admin/manager credentials right now.
     const result = await withRequestTimeout(
       new Promise((resolve, reject) => {
-        const request = net.request({ method: 'POST', url: `${KIOSK_ESCAPE_API_BASE}/api/auth/login` });
+        const request = net.request({ method: 'POST', url: loginUrl });
         request.setHeader('Content-Type', 'application/json');
         let body = '';
         request.on('response', (response) => {
@@ -1666,6 +1739,10 @@ guardedHandle('kiosk:attempt-escape', async (event, username, password) => {
     logSecurityAuditEvent('kiosk:attempt-escape', validation.ok ? 'success' : 'denied', { username });
     if (!validation.ok) return validation;
 
+    // Deliberate revert-and-restart — see kioskDeliberatelyReverting's
+    // definition near the top of this file. Set before the registry write
+    // so window-all-closed never mistakes this for an unexpected exit.
+    kioskDeliberatelyReverting = true;
     await runElevatedRegistryWrite('"explorer.exe"');
     setConfig('kiosk_shell_enabled', false);
     setConfig('kiosk_boot_attempts', resetBootAttemptState());
@@ -4124,6 +4201,28 @@ app.on('before-quit', () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    // Fix: on a real Windows kiosk, if all windows close while this instance
+    // is running as the shell — and it isn't a deliberate, admin-initiated
+    // revert-and-restart (Settings disable, or the Ctrl+Alt+Shift+F12 escape
+    // hatch, both of which set kioskDeliberatelyReverting before touching the
+    // registry) — relaunch instead of exiting. Otherwise the machine is left
+    // with no shell running at all: a black screen, no taskbar, and the
+    // escape hotkey unregistered (before-quit above unregisters all global
+    // shortcuts), with no way back in. A normal Windows shell (explorer.exe)
+    // is always expected to be present, so this app must behave the same way
+    // while it's standing in for one.
+    //
+    // This can't loop forever into a broken boot: relaunching calls
+    // createMainWindow() again exactly like any other launch, so the
+    // self-revert boot-failure counter in createMainWindow (shouldSelfRevert/
+    // MAX_BOOT_FAILURES) still increments and will flip kiosk_shell_enabled
+    // off and fall back to explorer.exe after enough consecutive failures.
+    if (isRunningAsKioskShell && !kioskDeliberatelyReverting) {
+      isQuitting = true;
+      app.relaunch();
+      app.exit(0);
+      return;
+    }
     isQuitting = true;
     app.quit();
   }

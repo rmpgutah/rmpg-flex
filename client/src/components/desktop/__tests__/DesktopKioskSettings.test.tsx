@@ -32,6 +32,24 @@ describe('DesktopKioskSettings', () => {
     await waitFor(() => expect((window as any).electron.setKioskShell).toHaveBeenCalledWith(true));
   });
 
+  it('calls onClose after a successful toggle, since a restart prompt/instruction follows', async () => {
+    const onClose = vi.fn();
+    render(<DesktopKioskSettings onClose={onClose} />);
+    fireEvent.click(await screen.findByRole('button', { name: /enable kiosk mode/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /yes, i understand/i }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('does not call onClose when setKioskShell fails', async () => {
+    (window as any).electron.setKioskShell = vi.fn().mockResolvedValue({ ok: false, error: 'UAC prompt was cancelled' });
+    const onClose = vi.fn();
+    render(<DesktopKioskSettings onClose={onClose} />);
+    fireEvent.click(await screen.findByRole('button', { name: /enable kiosk mode/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /yes, i understand/i }));
+    await screen.findByText(/uac prompt was cancelled/i);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('shows an inline error when setKioskShell fails', async () => {
     (window as any).electron.setKioskShell = vi.fn().mockResolvedValue({ ok: false, error: 'UAC prompt was cancelled' });
     render(<DesktopKioskSettings onClose={() => {}} />);
