@@ -39,4 +39,24 @@ describe('DesktopKioskSettings', () => {
     fireEvent.click(await screen.findByRole('button', { name: /yes, i understand/i }));
     expect(await screen.findByText(/uac prompt was cancelled/i)).toBeInTheDocument();
   });
+
+  it('recovers to the unsupported panel instead of hanging blank when getKioskShellState rejects', async () => {
+    (window as any).electron.getKioskShellState = vi.fn().mockRejectedValue(new Error('IPC channel closed'));
+    render(<DesktopKioskSettings onClose={() => {}} />);
+    expect(await screen.findByText(/only available on windows/i)).toBeInTheDocument();
+  });
+
+  it('clears busy state and shows an error when setKioskShell rejects, leaving the dialog usable', async () => {
+    (window as any).electron.setKioskShell = vi.fn().mockRejectedValue(new Error('UAC prompt was cancelled'));
+    render(<DesktopKioskSettings onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: /enable kiosk mode/i }));
+    const confirmBtn = await screen.findByRole('button', { name: /yes, i understand/i });
+    fireEvent.click(confirmBtn);
+
+    expect(await screen.findByText(/could not change kiosk mode.*uac prompt was cancelled/i)).toBeInTheDocument();
+
+    // busy/confirming should be cleared (not stuck), leaving a usable, re-enabled toggle button.
+    const retryBtn = await screen.findByRole('button', { name: /enable kiosk mode/i });
+    expect(retryBtn).not.toBeDisabled();
+  });
 });

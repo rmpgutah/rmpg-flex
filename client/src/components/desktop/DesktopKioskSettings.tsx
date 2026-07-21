@@ -12,8 +12,13 @@ export default function DesktopKioskSettings({ onClose }: { onClose: () => void 
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
-    const result = await window.electron?.getKioskShellState?.();
-    setState(result ?? { supported: false, enabled: false });
+    try {
+      const result = await window.electron?.getKioskShellState?.();
+      setState(result ?? { supported: false, enabled: false });
+    } catch (err) {
+      setState({ supported: false, enabled: false });
+      setError(err instanceof Error ? err.message : 'Could not read Kiosk Mode state');
+    }
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -31,14 +36,19 @@ export default function DesktopKioskSettings({ onClose }: { onClose: () => void 
   const applyToggle = async (enable: boolean) => {
     setBusy(true);
     setError(null);
-    const result = await window.electron?.setKioskShell?.(enable);
-    setBusy(false);
-    setConfirming(null);
-    if (!result?.ok) {
-      setError(result?.error ?? 'Failed to change Kiosk Mode');
-      return;
+    try {
+      const result = await window.electron?.setKioskShell?.(enable);
+      if (!result?.ok) {
+        setError(result?.error ?? 'Failed to change Kiosk Mode');
+        return;
+      }
+      await refresh();
+    } catch (err) {
+      setError(`Could not change Kiosk Mode — ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+      setConfirming(null);
     }
-    await refresh();
   };
 
   return (
