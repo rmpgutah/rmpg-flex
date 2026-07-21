@@ -14,6 +14,8 @@ import { runUtahWarrantScan, runUtahWarrantCheckForPerson, fetchWarrantsForPerso
 import { screenPersonAllSources } from '../utils/screening/screenPerson';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
+import { requireRole } from '../middleware/auth';
+import { isValidStatus, isValidTransition, TERMINAL_STATUSES, WARRANT_STATUSES, type WarrantStatus } from '../utils/warrantStatus';
 
 const warrants = new Hono<Env>();
 
@@ -1038,11 +1040,29 @@ warrants.put('/:id', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
-    const existing = await queryFirst<{ id: number; subject_person_id: number | null }>(
-      db, 'SELECT id, subject_person_id FROM warrants WHERE id = ?', id);
+    const existing = await queryFirst<{ id: number; subject_person_id: number | null; status: string }>(
+      db, 'SELECT id, subject_person_id, status FROM warrants WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Warrant not found' }, 404);
 
     const body = await c.req.json<Record<string, unknown>>();
+
+    if ('status' in body) {
+      if (!isValidStatus(body.status)) {
+        return c.json({ error: 'invalid_status', message: `status must be one of: ${WARRANT_STATUSES.join(', ')}` }, 400);
+      }
+      const fromStatus = existing.status as WarrantStatus;
+      if (isValidStatus(fromStatus) && !isValidTransition(fromStatus, body.status)) {
+        return c.json({
+          error: 'invalid_status_transition',
+          from: fromStatus,
+          to: body.status,
+          message: TERMINAL_STATUSES.has(fromStatus)
+            ? `Warrant is ${fromStatus} (terminal) — use POST /:id/reopen before changing status`
+            : `Cannot transition from ${fromStatus} to ${body.status}`,
+        }, 400);
+      }
+    }
+
     const sets: string[] = [];
     const params: unknown[] = [];
     for (const col of ALLOWED_WARRANT_COLUMNS) {
@@ -1080,15 +1100,19 @@ warrants.put('/:id/serve', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
-    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
+    const existing = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM warrants WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+    const fromStatus = existing.status as WarrantStatus;
+    if (isValidStatus(fromStatus) && !isValidTransition(fromStatus, 'served')) {
+      return c.json({ error: 'invalid_status_transition', from: fromStatus, to: 'served' }, 400);
+    }
 
     const body = await c.req.json<{ served_location?: string | null }>().catch(() => ({} as { served_location?: string | null }));
     const user = c.get('user') as { id?: number } | undefined;
 
     await execute(
       db,
-      `UPDATE warrants SET status = 'served', served_at = datetime('now'), service_date = datetime('now'),
+      `UPDATE warrants SET status = 'served', served_at = datetime('now'),
          served_location = ?, served_by = ?, updated_at = datetime('now') WHERE id = ?`,
       body.served_location ?? null, user?.id ?? null, id,
     );
@@ -1097,6 +1121,42 @@ warrants.put('/:id/serve', async (c) => {
   } catch (err) {
     console.error('[warrants] serve error', err);
     return c.json({ error: 'Failed to mark warrant served' }, 500);
+  }
+});
+
+// POST /warrants/:id/reopen — the only way a terminal-status warrant
+// (served/recalled/expired/quashed) can return to 'active'. Gated to
+// admin/supervisor/manager (same tier as sensitive warrant-record actions
+// elsewhere in this file) and audit-logged, since silently flipping a
+// closed warrant back open is a meaningful record-keeping event.
+warrants.post('/:id/reopen', requireRole('admin', 'supervisor', 'manager'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') ?? '0', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const existing = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+    const fromStatus = existing.status as WarrantStatus;
+    if (isValidStatus(fromStatus) && !TERMINAL_STATUSES.has(fromStatus)) {
+      return c.json({ error: 'not_terminal', message: `Warrant is already ${fromStatus}` }, 400);
+    }
+
+    const user = c.get('user') as { id?: number } | undefined;
+    await execute(
+      db,
+      `UPDATE warrants SET status = 'active', updated_at = datetime('now') WHERE id = ?`,
+      id,
+    );
+    await execute(
+      db,
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'warrant_reopen', 'warrant', ?, ?)`,
+      user?.id ?? null, String(id), JSON.stringify({ from_status: fromStatus }),
+    );
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('[warrants] reopen error', err);
+    return c.json({ error: 'Failed to reopen warrant' }, 500);
   }
 });
 

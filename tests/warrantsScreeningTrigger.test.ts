@@ -74,8 +74,8 @@ describe('warrant create/update screening trigger', () => {
   it('PUT /:id fires screening when subject_person_id changes', async () => {
     screenPersonAllSourcesMock.mockClear();
     const request = buildApp(makeFakeDb([
-      { match: /SELECT id, subject_person_id FROM warrants WHERE id/, rows: [{ id: 5, subject_person_id: 10 }] },
-      { match: /SELECT \* FROM warrants WHERE id/, rows: [{ id: 5, subject_person_id: 99 }] },
+      { match: /SELECT id, subject_person_id, status FROM warrants WHERE id/, rows: [{ id: 5, subject_person_id: 10, status: 'active' }] },
+      { match: /SELECT \* FROM warrants WHERE id/, rows: [{ id: 5, subject_person_id: 99, status: 'active' }] },
     ]));
 
     const res = await request('/api/warrants/5', putJson({ subject_person_id: 99 }));
@@ -90,8 +90,8 @@ describe('warrant create/update screening trigger', () => {
   it('PUT /:id does not fire screening when subject_person_id is unchanged', async () => {
     screenPersonAllSourcesMock.mockClear();
     const request = buildApp(makeFakeDb([
-      { match: /SELECT id, subject_person_id FROM warrants WHERE id/, rows: [{ id: 5, subject_person_id: 10 }] },
-      { match: /SELECT \* FROM warrants WHERE id/, rows: [{ id: 5, subject_person_id: 10 }] },
+      { match: /SELECT id, subject_person_id, status FROM warrants WHERE id/, rows: [{ id: 5, subject_person_id: 10, status: 'active' }] },
+      { match: /SELECT \* FROM warrants WHERE id/, rows: [{ id: 5, subject_person_id: 10, status: 'served' }] },
     ]));
 
     const res = await request('/api/warrants/5', putJson({ status: 'served' }));
