@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 
 export interface DockSectionProps {
   title: string;
@@ -57,6 +57,9 @@ export interface DockToggleItem {
   color?: string;
   description?: string;
   loading?: boolean;
+  /** Set when the layer's most recent data fetch failed — renders a red
+   *  alert icon in place of the loading spinner and replaces the tooltip. */
+  error?: string | null;
   /** Renders a colored left-border accent so this toggle's state stays
    *  glanceable even among other rows — for safety-critical items. */
   pinned?: boolean;
@@ -69,7 +72,7 @@ export function DockToggleRow({ item }: { item: DockToggleItem }) {
     <button
       type="button"
       onClick={item.onToggle}
-      title={item.description}
+      title={item.error || item.description}
       className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] transition-colors"
       style={{
         background: item.active ? 'var(--surface-raised)' : 'transparent',
@@ -86,7 +89,11 @@ export function DockToggleRow({ item }: { item: DockToggleItem }) {
         }}
       />
       <span className="flex-1 min-w-0 truncate text-left">{item.label}</span>
-      {item.loading && <Loader2 className="w-3 h-3 shrink-0 animate-spin" style={{ color: 'var(--brand-gold)' }} />}
+      {item.error ? (
+        <AlertCircle className="w-3 h-3 shrink-0" style={{ color: 'var(--sev-critical, #ef4444)' }} />
+      ) : (
+        item.loading && <Loader2 className="w-3 h-3 shrink-0 animate-spin" style={{ color: 'var(--brand-gold)' }} />
+      )}
     </button>
   );
 }

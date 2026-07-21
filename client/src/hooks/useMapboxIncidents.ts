@@ -45,6 +45,7 @@ const INCIDENT_COLORS: Record<string, string> = {
 export function useMapboxIncidents(map: mapboxgl.Map | null) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const visibleRef = useRef(false);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
 
@@ -181,17 +182,19 @@ export function useMapboxIncidents(map: mapboxgl.Map | null) {
   const fetchIncidents = useCallback(async (limit = 2000) => {
     if (!map) return;
     setLoading(true);
+    setError(null);
     try {
       const data = await apiFetch<{ data: Incident[]; pagination: unknown }>(`/incidents?limit=${limit}`);
       const incs = Array.isArray(data?.data) ? data.data : [];
       setIncidents(incs);
       whenStyleReady(map, () => { renderOnMap(incs, map); });
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[useMapboxIncidents] fetch failed:', err);
+      setError(err?.message || 'Failed to load incidents');
     } finally {
       setLoading(false);
     }
   }, [map, renderOnMap]);
 
-  return { incidents, loading, fetchIncidents, clear: clearFromMap };
+  return { incidents, loading, error, fetchIncidents, clear: clearFromMap };
 }

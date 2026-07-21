@@ -99,6 +99,7 @@ function clusterRiskPoints(points: RiskPoint[], clusterRadius = 0.005): SafetyZo
 export function useMapboxSafetyZones(map: mapboxgl.Map | null) {
   const [zones, setZones] = useState<SafetyZone[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const visibleRef = useRef(false);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
 
@@ -219,18 +220,20 @@ export function useMapboxSafetyZones(map: mapboxgl.Map | null) {
   const fetchSafetyZones = useCallback(async (days = 30) => {
     if (!map) return;
     setLoading(true);
+    setError(null);
     try {
       const data = await apiFetch<RiskPoint[]>(`/dispatch/heatmap?days=${days}&mode=risk`);
       const points = Array.isArray(data) ? data : [];
       const clustered = clusterRiskPoints(points);
       setZones(clustered);
       whenStyleReady(map, () => { renderOnMap(clustered, map); });
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[useMapboxSafetyZones] fetch failed:', err);
+      setError(err?.message || 'Failed to load safety zones');
     } finally {
       setLoading(false);
     }
   }, [map, renderOnMap]);
 
-  return { zones, loading, fetchSafetyZones, clear: clearFromMap };
+  return { zones, loading, error, fetchSafetyZones, clear: clearFromMap };
 }

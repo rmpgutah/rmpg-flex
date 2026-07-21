@@ -113,6 +113,7 @@ import MultiStopRoutePanel from './components/MultiStopRoutePanel';
 import type { QueuedStop } from './components/MultiStopRoutePanel';
 import GpsHud from './components/GpsHud';
 import MapDiagnosticsOverlay from './components/MapDiagnosticsOverlay';
+import MapboxDispatchConnections from './components/MapboxDispatchConnections';
 import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
 import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
@@ -515,6 +516,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const geofenceAlerts = useMapGeofenceAlerts(mapRef.current, mapLoaded);
   const infoPanel = useMapInfoPanel(mapRef.current, mapLoaded, units, calls);
   const routing = useMapRouting({ map: mapRef.current });
+  const dispatchConnCall = useMemo(
+    () => (multiStopQueue.length > 0 ? calls.find((c) => c.call_number === multiStopQueue[0].callNumber) : undefined),
+    [multiStopQueue, calls],
+  );
   const placesSearch = useMapPlacesSearch(mapRef.current, mapLoaded);
   const directionsPanel = useMapDirectionsPanel(mapRef.current, mapLoaded);
   const coordGrid = useMapCoordinateGrid(mapRef.current, mapLoaded);
@@ -543,6 +548,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [legendOpen, setLegendOpen] = useState(false);
   const [gpsHudOpen, setGpsHudOpen] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  interface ClosestUnitResult {
+    unit: { id: string; call_sign: string; latitude: number | null; longitude: number | null; status: string };
+    distance: number;
+    duration: number;
+  }
+  const [dispatchConnectionsOpen, setDispatchConnectionsOpen] = useState(false);
+  const [dispatchConnResults, setDispatchConnResults] = useState<ClosestUnitResult[]>([]);
   const [showGeoLayersMenu, setShowGeoLayersMenu] = useState(false);
   const [autoPanEnabled, setAutoPanEnabled] = usePersistedState('rmpg_mapbox_autopan_p1', true);
   const [p1AudioEnabled, setP1AudioEnabled] = usePersistedState('rmpg_mapbox_p1_audio', true);
@@ -859,6 +871,46 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     }
   }, [gps.latitude, gps.longitude, selfPosVisible, mapLoaded]);
 
+  // ── Dispatch Connections Matrix Ranking (only while the diagnostics panel is open) ──
+  // Depend on `findClosestUnit` itself, not the whole `routing` object -- useMapRouting
+  // returns a plain object literal (not memoized), so `routing` is a new reference on
+  // every render of this frequently-re-rendering CAD map. Depending on `routing` made
+  // this effect (and its billed /mapbox/matrix call) re-fire on nearly every render
+  // while the panel was open, instead of only when the bound call/units actually
+  // change. findClosestUnit is a stable useCallback([], ...) reference.
+  const findClosestUnit = routing.findClosestUnit;
+  useEffect(() => {
+    if (!dispatchConnectionsOpen || !dispatchConnCall || dispatchConnCall.latitude == null || dispatchConnCall.longitude == null) {
+      setDispatchConnResults([]);
+      return;
+    }
+    let cancelled = false;
+    const unitsForMatrix = units
+      .filter((u) => u.latitude != null && u.longitude != null)
+      .map((u) => ({ callSign: u.call_sign, lat: u.latitude!, lng: u.longitude! }));
+    if (!unitsForMatrix.length) {
+      setDispatchConnResults([]);
+      return;
+    }
+    findClosestUnit(unitsForMatrix, { lat: dispatchConnCall.latitude, lng: dispatchConnCall.longitude })
+      .then((ranked) => {
+        if (cancelled) return;
+        const adapted: ClosestUnitResult[] = ranked
+          .map((r): ClosestUnitResult | null => {
+            const unit = units.find((u) => u.call_sign === r.callSign);
+            if (!unit) return null;
+            return {
+              unit: { id: unit.id, call_sign: unit.call_sign, latitude: unit.latitude, longitude: unit.longitude, status: unit.status },
+              distance: r.distanceMeters,
+              duration: r.etaSec,
+            };
+          })
+          .filter((r): r is ClosestUnitResult => r !== null);
+        setDispatchConnResults(adapted);
+      });
+    return () => { cancelled = true; };
+  }, [dispatchConnectionsOpen, dispatchConnCall, units, findClosestUnit]);
+
   // ── Map Style Switch ───────────────────────────────────────────────────────
 
   const handleStyleChange = useCallback((styleId: MapStyleId) => {
@@ -1013,8 +1065,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       items: [
         { id: 'breadcrumbs', label: 'Unit Trails', active: breadcrumbs.enabled, onToggle: breadcrumbs.toggle, color: '#3b82f6', description: 'GPS history (B)' },
         { id: 'clustering', label: 'Call Clusters', active: clustering.enabled, onToggle: clustering.toggle, color: '#d4a017', description: 'Group markers (C)' },
-        { id: 'incidents', label: 'Incidents', active: incidentsEnabled, onToggle: () => setIncidentsEnabled((v) => !v), color: '#ef4444', description: 'RMS incident clusters', loading: incidentsLayer.loading },
-        { id: 'repeat-addresses', label: 'Repeat Addresses', active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), color: '#64d264', description: 'Locations with 3+ calls', loading: repeatAddresses.loading },
+        { id: 'incidents', label: 'Incidents', active: incidentsEnabled, onToggle: () => setIncidentsEnabled((v) => !v), color: '#ef4444', description: 'RMS incident clusters', loading: incidentsLayer.loading, error: incidentsLayer.error },
+        { id: 'repeat-addresses', label: 'Repeat Addresses', active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), color: '#64d264', description: 'Locations with 3+ calls', loading: repeatAddresses.loading, error: repeatAddresses.error },
         { id: 'selfpos', label: 'My Position', active: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v), color: '#3b82f6' },
       ],
     },
@@ -1022,11 +1074,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       title: 'Historical Analysis',
       items: [
         { id: 'heatmap', label: `Crime Heatmap (${heatmapMode === 'live' ? 'Live' : 'Historical'})`, active: heatmap.enabled, onToggle: () => { void populateAndToggleHeatmap(); }, color: '#ef4444', description: 'Incident density (H) — click label to switch Live/Historical' },
-        { id: 'call-history', label: 'Call History', active: historyCallsEnabled, onToggle: () => setHistoryCallsEnabled((v) => !v), color: '#64d264', description: 'Past 30 days of calls', loading: historyCalls.loading },
-        { id: 'speed-heatmap', label: 'Speed Heatmap', active: speedHeatmapEnabled, onToggle: () => setSpeedHeatmapEnabled((v) => !v), color: '#f97316', description: 'GPS speed density', loading: speedHeatmap.loading },
-        { id: 'speed-violations', label: 'Speed Violations', active: speedViolationsEnabled, onToggle: () => setSpeedViolationsEnabled((v) => !v), color: '#ef4444', description: 'Recent high-speed events — click a marker for the speed graph', loading: speedViolationsLayer.loading },
-        { id: 'pursuit-segments', label: 'Pursuit Tracks', active: pursuitSegmentsEnabled, onToggle: () => setPursuitSegmentsEnabled((v) => !v), color: '#dc2626', description: 'Recent vehicle/foot pursuit paths', loading: pursuitSegmentsLayer.loading },
-        { id: 'response-time', label: 'Response Time by Beat', active: responseTimeEnabled, onToggle: () => setResponseTimeEnabled((v) => !v), color: '#4caf50', description: '30-day avg response time (historical)', loading: responseTime.loading },
+        { id: 'call-history', label: 'Call History', active: historyCallsEnabled, onToggle: () => setHistoryCallsEnabled((v) => !v), color: '#64d264', description: 'Past 30 days of calls', loading: historyCalls.loading, error: historyCalls.error },
+        { id: 'speed-heatmap', label: 'Speed Heatmap', active: speedHeatmapEnabled, onToggle: () => setSpeedHeatmapEnabled((v) => !v), color: '#f97316', description: 'GPS speed density', loading: speedHeatmap.loading, error: speedHeatmap.error },
+        { id: 'speed-violations', label: 'Speed Violations', active: speedViolationsEnabled, onToggle: () => setSpeedViolationsEnabled((v) => !v), color: '#ef4444', description: 'Recent high-speed events — click a marker for the speed graph', loading: speedViolationsLayer.loading, error: speedViolationsLayer.error },
+        { id: 'pursuit-segments', label: 'Pursuit Tracks', active: pursuitSegmentsEnabled, onToggle: () => setPursuitSegmentsEnabled((v) => !v), color: '#dc2626', description: 'Recent vehicle/foot pursuit paths', loading: pursuitSegmentsLayer.loading, error: pursuitSegmentsLayer.error },
+        { id: 'response-time', label: 'Response Time by Beat', active: responseTimeEnabled, onToggle: () => setResponseTimeEnabled((v) => !v), color: '#4caf50', description: '30-day avg response time (historical)', loading: responseTime.loading, error: responseTime.error },
       ],
     },
     {
@@ -1053,8 +1105,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     {
       title: 'Risk & Coverage',
       items: [
-        { id: 'coverage-gaps', label: 'Coverage Gaps', active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), color: '#f08228', description: 'Response-time gap grid', loading: coverageGaps.loading },
-        { id: 'safety-zones', label: 'Safety Zones', active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), color: '#c81e1e', description: 'Risk-weighted call clusters', loading: safetyZones.loading },
+        { id: 'coverage-gaps', label: 'Coverage Gaps', active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), color: '#f08228', description: 'Response-time gap grid', loading: coverageGaps.loading, error: coverageGaps.error },
+        { id: 'safety-zones', label: 'Safety Zones', active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), color: '#c81e1e', description: 'Risk-weighted call clusters', loading: safetyZones.loading, error: safetyZones.error },
         { id: 'isochrone', label: 'Response Zones', active: isochroneEnabled, onToggle: toggleIsochrone, color: '#22c55e', description: '5/10/15 min driving' },
       ],
     },
@@ -1070,7 +1122,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'orbit', label: 'Orbit Animation', active: cameraAnimation.animating, onToggle: () => cameraAnimation.animating ? cameraAnimation.stop() : cameraAnimation.orbit(), color: '#f59e0b', description: 'Cinematic map rotation' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, districtHierarchy, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, repeatAddressesEnabled, repeatAddresses.loading, speedHeatmapEnabled, speedHeatmap.loading, speedViolationsEnabled, speedViolationsLayer.loading, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, districtHierarchy, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, incidentsEnabled, incidentsLayer.loading, incidentsLayer.error, coverageGapsEnabled, coverageGaps.loading, coverageGaps.error, responseTimeEnabled, responseTime.loading, responseTime.error, safetyZonesEnabled, safetyZones.loading, safetyZones.error, historyCallsEnabled, historyCalls.loading, historyCalls.error, heatmapMode, populateAndToggleHeatmap, repeatAddressesEnabled, repeatAddresses.loading, repeatAddresses.error, speedHeatmapEnabled, speedHeatmap.loading, speedHeatmap.error, speedViolationsEnabled, speedViolationsLayer.loading, speedViolationsLayer.error, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading, pursuitSegmentsLayer.error]);
 
   const mapRightDockSections = useMemo<MapRightDockSection[]>(() => [
     {
@@ -1110,9 +1162,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'mapmatch', label: 'Map Match Trace', active: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting(), color: '#fb923c', description: 'Snap GPS to roads' },
         { id: 'deck', label: 'GPU Overlay', active: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: deckSupportsProjection ? 'Deck.gl accelerated rendering' : 'Deck.gl accelerated rendering (requires Mercator or Globe projection)' },
         { id: 'perf-hud', label: 'Performance HUD', active: diagnosticsOpen, onToggle: () => setDiagnosticsOpen((v) => !v), color: '#fb923c', description: 'FPS, layer count, render timing' },
+        { id: 'mapbox-status', label: 'Mapbox API Status', active: dispatchConnectionsOpen, onToggle: () => setDispatchConnectionsOpen((v) => !v), color: '#60a5fa', description: 'Directions/Matrix/Geocoding diagnostics for the queued call' },
       ],
     },
-  ], [directionsPanel, placesSearch, mapBookmarks, multiStopPanelOpen, speedAnalyticsPanelOpen, speedZoneStats.loading, activeFloatingTool, measure.mode, drawing.mode, glDraw, identifyEnabled, tilequery.loading, featureInspect, mapMatchTrace, deckEnabled, deckSupportsProjection, setDeckEnabled, gpsHudOpen, setGpsHudOpen, diagnosticsOpen, setDiagnosticsOpen]);
+  ], [directionsPanel, placesSearch, mapBookmarks, multiStopPanelOpen, speedAnalyticsPanelOpen, speedZoneStats.loading, activeFloatingTool, measure.mode, drawing.mode, glDraw, identifyEnabled, tilequery.loading, featureInspect, mapMatchTrace, deckEnabled, deckSupportsProjection, setDeckEnabled, gpsHudOpen, setGpsHudOpen, diagnosticsOpen, setDiagnosticsOpen, dispatchConnectionsOpen, setDispatchConnectionsOpen]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1547,6 +1600,15 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {diagnosticsOpen && mapRef.current && (
         <MapDiagnosticsOverlay map={mapRef.current} />
+      )}
+
+      {dispatchConnectionsOpen && (
+        <MapboxDispatchConnections
+          call={dispatchConnCall}
+          results={dispatchConnResults}
+          matrixActive={dispatchConnResults.length > 0}
+          directionsActive={directionsPanel.result !== null}
+        />
       )}
 
       {streetViewTarget && (

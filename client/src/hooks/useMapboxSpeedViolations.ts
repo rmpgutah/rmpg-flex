@@ -33,6 +33,7 @@ function speedColor(mph: number): string {
 export function useMapboxSpeedViolations(map: mapboxgl.Map | null) {
   const [violations, setViolations] = useState<SpeedViolation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const onSelectRef = useRef<((unitId: number, callSign: string) => void) | null>(null);
 
   const clear = useCallback(() => {
@@ -83,13 +84,15 @@ export function useMapboxSpeedViolations(map: mapboxgl.Map | null) {
   const fetchViolations = useCallback(async (hours = 4) => {
     if (!map) return;
     setLoading(true);
+    setError(null);
     try {
       const data = await apiFetch<SpeedViolation[]>(`/dispatch/gps/speed-violations?hours=${hours}`);
       const list = Array.isArray(data) ? data : [];
       setViolations(list);
       renderOnMap(list, map);
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[useMapboxSpeedViolations] fetch failed:', err);
+      setError(err?.message || 'Failed to load speed violations');
     } finally {
       setLoading(false);
     }
@@ -99,5 +102,5 @@ export function useMapboxSpeedViolations(map: mapboxgl.Map | null) {
     onSelectRef.current = fn;
   }, []);
 
-  return { violations, loading, fetchViolations, clear, setOnSelectUnit, hasLayer: () => !!map && hasLayer(map, LAYER_ID) };
+  return { violations, loading, error, fetchViolations, clear, setOnSelectUnit, hasLayer: () => !!map && hasLayer(map, LAYER_ID) };
 }
