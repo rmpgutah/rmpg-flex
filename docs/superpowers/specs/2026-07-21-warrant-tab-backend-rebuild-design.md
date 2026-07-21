@@ -18,7 +18,7 @@ New migration (next free prefix after `0199`, i.e. `0200_warrants_schema_dedup.s
 
 | Keep (canonical) | Drop | Notes |
 |---|---|---|
-| `warrant_type` | `type` | |
+| `type` | `warrant_type` | correction from initial draft: `type`/`warrant_type` are always dual-written together (POST / create, `utahWarrantPoller.ts`) so no data loss either way, but the frontend `Warrant` TS interface (`WarrantsPage.tsx:56`) keys off `type` directly via `SELECT *` responses — keeping `type` means zero frontend renaming for this field, vs. renaming ~8 call sites if `warrant_type` were kept. |
 | `charge_description` | `offense`, `offense_description` | coalesce in that priority order |
 | `issuing_court` | `court` | |
 | `issuing_judge` | `judge` | |
