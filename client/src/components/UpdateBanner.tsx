@@ -20,6 +20,9 @@ interface ElectronAPI {
   onUpdateStatus: (callback: (data: UpdateStatus) => void) => () => void;
   checkForUpdates: () => void;
   installUpdate: () => void;
+  // Desktop Kiosk Shell Mode (Windows-only) — see DesktopKioskSettings.tsx
+  getKioskShellState?: () => Promise<{ supported: boolean; enabled: boolean }>;
+  setKioskShell?: (enabled: boolean) => Promise<{ ok: boolean; error?: string }>;
 }
 
 declare global {
