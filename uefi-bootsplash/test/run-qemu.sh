@@ -12,8 +12,8 @@ OVMF_CODE="$SCRIPT_DIR/ovmf/OVMF_CODE.fd"
 OVMF_VARS="$SCRIPT_DIR/ovmf/OVMF_VARS.fd"
 
 [ -f "$ESP_IMAGE" ] || { echo "ESP image not found: $ESP_IMAGE (run build-scratch-esp.sh first)" >&2; exit 1; }
-[ -f "$OVMF_CODE" ] || { echo "OVMF_CODE.fd not found at $OVMF_CODE (see test/ovmf/README.md for how to source it)" >&2; exit 1; }
-[ -f "$OVMF_VARS" ] || { echo "OVMF_VARS.fd not found at $OVMF_VARS (see test/ovmf/README.md for how to source it)" >&2; exit 1; }
+[ -f "$OVMF_CODE" ] || { echo "OVMF_CODE.fd not found at $OVMF_CODE (these OVMF_*.fd files are committed at uefi-bootsplash/test/ovmf/, copied from Homebrew's bundled qemu edk2 firmware — see uefi-bootsplash/Makefile's header comment and build-gnuefi-pe.sh for the toolchain writeup)" >&2; exit 1; }
+[ -f "$OVMF_VARS" ] || { echo "OVMF_VARS.fd not found at $OVMF_VARS (these OVMF_*.fd files are committed at uefi-bootsplash/test/ovmf/, copied from Homebrew's bundled qemu edk2 firmware — see uefi-bootsplash/Makefile's header comment and build-gnuefi-pe.sh for the toolchain writeup)" >&2; exit 1; }
 
 rm -f "$LOG_FILE"
 

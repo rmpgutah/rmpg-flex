@@ -2,8 +2,10 @@
 #
 # Builds a freestanding x86_64 UEFI application against gnu-efi headers.
 #
-# Toolchain (see README.md in this directory for the full writeup and the exact
-# recipe used to produce GNUEFI_DIR below):
+# Toolchain (see build-gnuefi-pe.sh in this directory for the full writeup and
+# the exact recipe used to produce GNUEFI_DIR below — it's a runnable script,
+# not just documentation: `./build-gnuefi-pe.sh` reproduces GNUEFI_DIR from a
+# fresh checkout with no prior local state):
 #   - This targets Apple clang (ships with Xcode CLT) in its `x86_64-unknown-windows`
 #     COFF/PE mode, linked with LLVM's `lld` (`brew install lld`), producing a
 #     native PE32+ image directly.
@@ -32,6 +34,9 @@
 #     `x86_64-unknown-windows` target — override on the command line if yours
 #     lives elsewhere:
 #       make GNUEFI_DIR=/path/to/gnu-efi-pe
+#     Don't have a GNUEFI_DIR yet (e.g. fresh checkout)? Build one:
+#       ./build-gnuefi-pe.sh              # produces $HOME/.local/gnu-efi-pe
+#       ./build-gnuefi-pe.sh /path/to/dir # or a custom location
 ARCH        = x86_64
 TARGET      = x86_64-unknown-windows
 CC          = clang
