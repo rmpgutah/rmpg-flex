@@ -1,17 +1,20 @@
 // uefi-bootsplash/src/main.c
 //
-// Task 1 (toolchain scaffold): minimal gnu-efi entry point used only to prove
-// the build + QEMU/OVMF harness work end-to-end. Replaced/extended in Task 3
-// with the real splash/chainload logic.
+// Task 1 built the toolchain scaffold here (a bare Print-and-stall, just to
+// prove the build + QEMU/OVMF harness worked end-to-end). Task 2 wires in the
+// real GOP-based splash (src/splash.c); Task 3 will extend this further with
+// the chainload step that runs immediately after ShowBootSplash returns.
 #include <efi.h>
 #include <efilib.h>
+#include "splash.h"
 
 EFI_STATUS
 EFIAPI
 efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
   InitializeLib(ImageHandle, SystemTable);
-  Print(L"RMPG Flex boot splash - toolchain check OK\r\n");
-  BS->Stall(3 * 1000 * 1000); // 3 seconds, microseconds
+
+  ShowBootSplash(ImageHandle, SystemTable);
+
   return EFI_SUCCESS;
 }

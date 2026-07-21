@@ -52,7 +52,7 @@ CFLAGS      = -target $(TARGET) $(EFIINCS) -ffreestanding -fshort-wchar \
 LDFLAGS     = -target $(TARGET) -fuse-ld=lld -nostdlib \
               -Wl,-entry:efi_main -Wl,-subsystem:efi_application -Wl,/dll
 
-SRCS        = src/main.c
+SRCS        = src/main.c src/splash.c
 OBJS        = $(SRCS:.c=.o)
 
 BUILD_DIR   = build
