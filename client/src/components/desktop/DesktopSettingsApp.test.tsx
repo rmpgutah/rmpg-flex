@@ -24,6 +24,7 @@ function renderApp(overrides: Partial<React.ComponentProps<typeof DesktopSetting
     onAccentChange: vi.fn(),
     onResetToDefault: vi.fn(),
     onClose: vi.fn(),
+    isAdmin: true,
     ...overrides,
   };
   render(<DesktopSettingsApp {...props} />);
@@ -124,6 +125,18 @@ describe('DesktopSettingsApp', () => {
     const props = renderApp();
     fireEvent.click(screen.getByLabelText('Close Settings'));
     expect(props.onClose).toHaveBeenCalled();
+  });
+});
+
+describe('DesktopSettingsApp — Kiosk Mode admin gating', () => {
+  it('shows the Kiosk Mode category for admins', () => {
+    renderApp({ isAdmin: true });
+    expect(screen.getByText('Kiosk Mode')).toBeInTheDocument();
+  });
+
+  it('hides the Kiosk Mode category for non-admins', () => {
+    renderApp({ isAdmin: false });
+    expect(screen.queryByText('Kiosk Mode')).not.toBeInTheDocument();
   });
 });
 
