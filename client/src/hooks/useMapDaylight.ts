@@ -12,6 +12,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { devLog } from '../utils/devLog';
 import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -112,36 +113,41 @@ export function useMapDaylight(map: mapboxgl.Map | null, mapLoaded: boolean): Us
 
     const feature = generateTerminatorPolygon(new Date());
 
-    if (!hasSource(map, DAYLIGHT_SOURCE)) {
-      map.addSource(DAYLIGHT_SOURCE, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [feature] },
-      });
+    // whenStyleReady guards against "Style is not done loading" -- a basemap
+    // switch (changeStyle) doesn't reset mapLoaded, so this effect can
+    // re-fire (enabled toggled) while the new style is still mid-load.
+    whenStyleReady(map, () => {
+      if (!hasSource(map, DAYLIGHT_SOURCE)) {
+        map.addSource(DAYLIGHT_SOURCE, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [feature] },
+        });
 
-      map.addLayer({
-        id: DAYLIGHT_FILL,
-        type: 'fill',
-        source: DAYLIGHT_SOURCE,
-        paint: {
-          'fill-color': '#000000',
-          'fill-opacity': 0.3,
-        },
-      });
+        map.addLayer({
+          id: DAYLIGHT_FILL,
+          type: 'fill',
+          source: DAYLIGHT_SOURCE,
+          paint: {
+            'fill-color': '#000000',
+            'fill-opacity': 0.3,
+          },
+        });
 
-      map.addLayer({
-        id: DAYLIGHT_LINE,
-        type: 'line',
-        source: DAYLIGHT_SOURCE,
-        paint: {
-          'line-color': '#f59e0b',
-          'line-width': 1.5,
-          'line-opacity': 0.6,
-          'line-dasharray': [4, 2],
-        },
-      });
+        map.addLayer({
+          id: DAYLIGHT_LINE,
+          type: 'line',
+          source: DAYLIGHT_SOURCE,
+          paint: {
+            'line-color': '#f59e0b',
+            'line-width': 1.5,
+            'line-opacity': 0.6,
+            'line-dasharray': [4, 2],
+          },
+        });
 
-      devLog('[Daylight] Terminator overlay added');
-    }
+        devLog('[Daylight] Terminator overlay added');
+      }
+    });
 
     // Update every minute
     timerRef.current = setInterval(updateTerminator, UPDATE_INTERVAL_MS);
