@@ -615,7 +615,7 @@ export async function getShiftHandoffData(
   // Pending warrants
   const pendingWarrants = await query(
     db,
-    `SELECT id, warrant_number, subject_name, charge, issuing_agency, status, created_at
+    `SELECT id, warrant_number, subject_name, charge_description AS charge, issuing_agency, status, created_at
        FROM warrants
        WHERE status = 'active'
        ORDER BY created_at DESC

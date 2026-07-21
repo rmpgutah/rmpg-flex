@@ -694,7 +694,6 @@ records.delete('/persons/:id', async (c) => {
     // and its citations are real records that must not vanish with the person,
     // but they also must not dangle at a deleted id (ghost nodes in Connections).
     try { await execute(db, 'UPDATE warrants SET subject_person_id = NULL WHERE subject_person_id = ?', id); } catch { /* optional */ }
-    try { await execute(db, 'UPDATE warrants SET person_id = NULL WHERE person_id = ?', id); } catch { /* optional */ }
     try { await execute(db, 'UPDATE citations SET person_id = NULL WHERE person_id = ?', id); } catch { /* optional */ }
     await tryRepairAndRetry(db,
       () => execute(db, 'DELETE FROM persons WHERE id = ?', id),
@@ -766,7 +765,7 @@ records.get('/persons/:id/system-history', async (c) => {
     const db = getDb(c.env);
     const id = c.req.param('id');
     const [warrants, incidents, calls, citations] = await Promise.all([
-      query<Record<string, unknown>>(db, `SELECT id, warrant_number, type, charge_description AS description, status, bond_amount, bail_amount, issuing_agency, issuing_court, issued_date, expires_at FROM warrants WHERE (person_id = ? OR subject_person_id = ?) ORDER BY created_at DESC LIMIT 50`, id, id),
+      query<Record<string, unknown>>(db, `SELECT id, warrant_number, type, charge_description AS description, status, bail_amount, issuing_agency, issuing_court, issued_date, expires_at FROM warrants WHERE subject_person_id = ? ORDER BY created_at DESC LIMIT 50`, id),
       query<Record<string, unknown>>(db, 'SELECT i.id, i.incident_number, i.incident_type, i.status, i.created_at, i.location_address, ip.role FROM incidents i JOIN incident_persons ip ON i.id = ip.incident_id WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 50', id),
       query<Record<string, unknown>>(db, 'SELECT c.id, c.call_number, c.incident_type, c.status, c.created_at, c.location_address FROM calls_for_service c JOIN call_persons cp ON c.id = cp.call_id WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 50', id),
       query<Record<string, unknown>>(db, 'SELECT id, citation_number, type, violation_description, status, fine_amount, violation_date, court_date FROM citations WHERE person_id = ? ORDER BY created_at DESC LIMIT 50', id),
@@ -1880,11 +1879,9 @@ records.post('/evidence/:id/unarchive', async (c) => {
 // Powers the NCIC/NLETS terminal (QH/QV/QW/QT/QA + the QX cross-reference
 // fan-out). Ported from the legacy VPS handler with the fixes that were
 // causing live "PERSON QUERY FAILED" / "WARRANT QUERY FAILED" errors:
-//   1. warrants link the subject via subject_person_id on live (person_id is
-//      NULL on every current row). Both columns exist; query (person_id OR
-//      subject_person_id) so the link resolves regardless of which is set —
-//      keying on person_id alone silently returned ZERO warrants for a wanted
-//      subject (a false "no warrants" officer-safety failure).
+//   1. warrants link the subject via subject_person_id — migration 0200
+//      dropped the old redundant person_id column entirely, so
+//      subject_person_id is now the sole (and only valid) FK to query.
 //   2. each optional sub-query (criminal_history, warrants) is wrapped so a
 //      missing/drifted table degrades to an empty list instead of 500ing the
 //      whole request (live D1 schema drifts from /migrations/).
@@ -1907,12 +1904,13 @@ records.get('/ncic-query', async (c) => {
   // Warrant projection aliased to the field names the client formatter reads
   // (charge_description, bail_amount). offense_level isn't on the live table —
   // the formatter tolerates its absence.
-  // Real live columns: charge_description / bail_amount|bond_amount / issuing_court /
+  // Real live columns: charge_description / bail_amount / issuing_court /
   // issued_date / expires_at. Alias to the names the formatter reads (jurisdiction,
   // issued_at) so none resolve undefined; `charge`/`jurisdiction`/`issued_at` do NOT
-  // exist on the live warrants table (the old names 500'd this query).
+  // exist on the live warrants table (the old names 500'd this query). Migration
+  // 0200 dropped the now-redundant bond_amount column — bail_amount is canonical.
   const WARRANT_COLS = `id, warrant_number, type, charge_description, status,
-    COALESCE(bail_amount, bond_amount) AS bail_amount, issuing_court AS jurisdiction,
+    bail_amount, issuing_court AS jurisdiction,
     issuing_agency, issued_date AS issued_at, expires_at`;
 
   try {
@@ -1945,8 +1943,8 @@ records.get('/ncic-query', async (c) => {
             p.id));
           const warrants = await soft(() => query<Record<string, any>>(db,
             `SELECT ${WARRANT_COLS} FROM warrants
-             WHERE (person_id = ? OR subject_person_id = ?) AND status = 'active' ORDER BY created_at DESC LIMIT 50`,
-            p.id, p.id));
+             WHERE subject_person_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 50`,
+            p.id));
           results.push({ person: p, criminalHistory, warrants });
         }
         return c.json({ type, results, query: q });
@@ -1956,7 +1954,7 @@ records.get('/ncic-query', async (c) => {
           SELECT ${WARRANT_COLS.split(',').map(s => 'w.' + s.trim()).join(', ')},
                  p.first_name AS subject_first_name, p.last_name AS subject_last_name
           FROM warrants w
-          LEFT JOIN persons p ON p.id = COALESCE(w.person_id, w.subject_person_id)
+          LEFT JOIN persons p ON p.id = w.subject_person_id
           WHERE w.status = 'active'
             AND (w.warrant_number LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ?
                  OR (p.last_name || ', ' || p.first_name) LIKE ?)
@@ -2454,7 +2452,7 @@ records.get('/links', async (c) => {
           db, 'SELECT dob FROM persons WHERE id = ?', linkedId,
         );
         const wRow = await queryFirst<{ cnt: number }>(
-          db, "SELECT COUNT(*) AS cnt FROM warrants WHERE person_id = ? AND LOWER(status) = 'active'", linkedId,
+          db, "SELECT COUNT(*) AS cnt FROM warrants WHERE subject_person_id = ? AND LOWER(status) = 'active'", linkedId,
         );
         if (per || (wRow && wRow.cnt > 0)) {
           linked_meta = {

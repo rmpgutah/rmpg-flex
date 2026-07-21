@@ -24,7 +24,7 @@ beforeAll(async () => {
   )`);
   await execute(db, `CREATE TABLE IF NOT EXISTS warrants (
     id INTEGER PRIMARY KEY AUTOINCREMENT, warrant_number TEXT, status TEXT NOT NULL DEFAULT 'active',
-    subject_person_id INTEGER, subject_name TEXT, expires_at TEXT, expiry_date TEXT
+    subject_person_id INTEGER, subject_name TEXT, expires_at TEXT
   )`);
   await execute(db, `INSERT INTO warrants (id, warrant_number, status, subject_person_id, subject_name)
     VALUES (42, 'W-2026-042', 'active', 900, 'John Doe')`);

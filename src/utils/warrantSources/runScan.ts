@@ -107,13 +107,13 @@ async function promoteCanonicalWarrant(
       `UPDATE warrants SET
          status='active', archived_at=NULL,
          subject_person_id=?, subject_name=?, subject_first_name=?, subject_last_name=?,
-         charge_description=?, offense=?, offense_level=?, issuing_court=?, court=?, issued_date=?,
+         charge_description=?, offense_level=?, issuing_court=?, issued_date=?,
          scraped_source=?, scraped_raw=?, confirmed=1, auto_created=1,
          last_checked_at=datetime('now'), last_check_result='active',
          updated_at=datetime('now')
        WHERE id=?`,
       localPersonId, subjectName, hit.first_name ?? null, hit.last_name ?? null,
-      chargeText, chargeText, offenseLevel, courtName, courtName, issuedDate,
+      chargeText, offenseLevel, courtName, issuedDate,
       sourceKey, JSON.stringify(hit), existing.id,
     );
     return false;
@@ -124,18 +124,18 @@ async function promoteCanonicalWarrant(
     await execute(
       db,
       `INSERT INTO warrants (
-         warrant_number, type, warrant_type, status,
+         warrant_number, type, status,
          subject_person_id, subject_name, subject_first_name, subject_last_name,
-         charge_description, offense, offense_level, issuing_court, court, issued_date,
+         charge_description, offense_level, issuing_court, issued_date,
          source, external_warrant_id, external_source_key, scraped_source, scraped_raw,
          auto_created, confirmed, last_checked_at, last_check_result, created_at, updated_at
-       ) VALUES (?, 'arrest', 'arrest', 'active',
-         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+       ) VALUES (?, 'arrest', 'active',
+         ?, ?, ?, ?, ?, ?, ?, ?,
          ?, ?, ?, ?, ?,
          1, 1, datetime('now'), 'active', datetime('now'), datetime('now'))`,
       `${sourceKey}-${hit.warrant_id}`,
       localPersonId, subjectName, hit.first_name ?? null, hit.last_name ?? null,
-      chargeText, chargeText, offenseLevel, courtName, courtName, issuedDate,
+      chargeText, offenseLevel, courtName, issuedDate,
       sourceKey, hit.warrant_id, sourceKey, sourceKey, JSON.stringify(hit),
     );
     return true;

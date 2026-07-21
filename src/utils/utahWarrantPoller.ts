@@ -361,13 +361,13 @@ async function syncLocalWarrantRecord(
       `UPDATE warrants SET
          status='active', archived_at=NULL,
          subject_person_id=?, subject_name=?, subject_first_name=?, subject_last_name=?,
-         charge_description=?, offense=?, issuing_court=?, court=?, issued_date=?,
+         charge_description=?, issuing_court=?, issued_date=?,
          scraped_source=?, scraped_raw=?, confirmed=1, auto_created=1,
          last_checked_at=datetime('now'), last_check_result='active',
          updated_at=datetime('now')
        WHERE id=?`,
       localPersonId, subjectName, w.first_name, w.last_name,
-      chargeText, chargeText, w.court_name, w.court_name, w.issue_date,
+      chargeText, w.court_name, w.issue_date,
       SOURCE_KEY, JSON.stringify(w), existing.id,
     );
     return;
@@ -377,18 +377,18 @@ async function syncLocalWarrantRecord(
     await execute(
       db,
       `INSERT INTO warrants (
-         warrant_number, type, warrant_type, status,
+         warrant_number, type, status,
          subject_person_id, subject_name, subject_first_name, subject_last_name,
-         charge_description, offense, issuing_court, court, issued_date,
+         charge_description, issuing_court, issued_date,
          source, external_warrant_id, external_source_key, scraped_source, scraped_raw,
          auto_created, confirmed, last_checked_at, last_check_result, created_at, updated_at
-       ) VALUES (?, 'arrest', 'arrest', 'active',
-         ?, ?, ?, ?, ?, ?, ?, ?, ?,
+       ) VALUES (?, 'arrest', 'active',
+         ?, ?, ?, ?, ?, ?, ?,
          ?, ?, ?, ?, ?,
          1, 1, datetime('now'), 'active', datetime('now'), datetime('now'))`,
       `UTW-${w.utah_warrant_id}`,
       localPersonId, subjectName, w.first_name, w.last_name,
-      chargeText, chargeText, w.court_name, w.court_name, w.issue_date,
+      chargeText, w.court_name, w.issue_date,
       SOURCE_KEY, w.utah_warrant_id, SOURCE_KEY, SOURCE_KEY, JSON.stringify(w),
     );
   } catch (err) {

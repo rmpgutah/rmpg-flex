@@ -46,6 +46,7 @@ const baseProps = {
   isVisible: true,
   user: testUser,
   isAdminOrManager: true,
+  isAdminSupervisorOrManager: true,
   isGodMode: true,
   canManageWarrants: true,
   isMobile: false,

@@ -49,8 +49,8 @@ async function personFlags(db: D1Database, ids: number[]): Promise<Map<number, s
   const ph = ids.map(() => '?').join(',');
   try {
     for (const w of await query<any>(db,
-      `SELECT COALESCE(subject_person_id, person_id) AS pid FROM warrants
-       WHERE status IN ('active','outstanding') AND COALESCE(subject_person_id, person_id) IN (${ph})`, ...ids))
+      `SELECT subject_person_id AS pid FROM warrants
+       WHERE status IN ('active','outstanding') AND subject_person_id IN (${ph})`, ...ids))
       out.set(w.pid, [...(out.get(w.pid) || []), 'ACTIVE WARRANT']);
   } catch (err: any) { console.error('[intel] warrant flags failed:', err?.message); }
   try {
@@ -288,7 +288,7 @@ intel.get('/geo', operational, async (c) => {
 
   await addrLayer('warrants',
     `SELECT w.id, w.warrant_number, p.address, p.city FROM warrants w
-       LEFT JOIN persons p ON p.id = w.person_id
+       LEFT JOIN persons p ON p.id = w.subject_person_id
       WHERE w.status = 'active' LIMIT ?`,
     (r) => [r.address, r.city].filter(Boolean).join(', '),
     (r, lat, lng) => geoFeature('warrant', r.id, lat, lng, r.warrant_number || `WAR-${r.id}`, { geocoded: true }));
@@ -922,9 +922,9 @@ intel.get('/dossier/person/:id', operational, async (c) => {
   await section('warrants', async () =>
     (await query<any>(db,
       `SELECT id, warrant_number, charge_description, status, issued_date,
-              COALESCE(subject_person_id, person_id) AS spid
-       FROM warrants WHERE subject_person_id IN (${ph}) OR person_id IN (${ph})
-       ORDER BY issued_date DESC LIMIT 100`, ...ids, ...ids))
+              subject_person_id AS spid
+       FROM warrants WHERE subject_person_id IN (${ph})
+       ORDER BY issued_date DESC LIMIT 100`, ...ids))
       .map((r) => ({ kind: 'warrant', id: r.id, date: r.issued_date, title: r.warrant_number || `W-${r.id}`,
         subtitle: isRealValue(r.charge_description) ? String(r.charge_description) : '', status: r.status || '', source_person_id: r.spid })));
   // arrest_records has NO person FK — best-effort name+DOB match.

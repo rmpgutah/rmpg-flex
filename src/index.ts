@@ -225,6 +225,16 @@ export default {
           ),
         ).catch(() => {}),
       );
+      // Warrant auto-expiry sweep — flips any 'active' warrant past its
+      // expires_at to 'expired'. Backstops the lazy GET-time check in
+      // src/routes/warrants.ts for warrants nobody has read since expiring.
+      ctx.waitUntil(
+        import('./utils/warrantStatus').then((m) =>
+          m.expireOverdueWarrants(env.DB)
+            .then((n) => console.log(`[warrant-expiry] flipped ${n} overdue warrant(s) to expired`))
+            .catch((err) => console.error('Warrant auto-expiry sweep failed:', err)),
+        ).catch(() => {}),
+      );
     }
 
     // ── Every 30 minutes ──

@@ -553,7 +553,7 @@ calls.get('/hits', async (c) => {
         )
         OR EXISTS (
           SELECT 1 FROM call_persons cp JOIN warrants wa
-            ON (wa.subject_person_id = cp.person_id OR wa.person_id = cp.person_id) AND wa.status IN ('active', 'outstanding')
+            ON wa.subject_person_id = cp.person_id AND wa.status IN ('active', 'outstanding')
           WHERE cp.call_id = c.id
         )
         OR EXISTS (

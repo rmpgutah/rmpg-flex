@@ -107,7 +107,7 @@ premise.get('/address-occupants', async (c) => {
       db,
       `SELECT p.id, p.first_name, p.last_name, p.dob, p.address, p.flags, p.gang_affiliation,
               (SELECT COUNT(*) FROM warrants w
-                 WHERE (w.subject_person_id = p.id OR w.person_id = p.id)
+                 WHERE w.subject_person_id = p.id
                    AND LOWER(COALESCE(w.status, '')) IN ('active', 'outstanding', 'confirmed')) AS active_warrants
        FROM persons p
        WHERE UPPER(p.address) LIKE ?

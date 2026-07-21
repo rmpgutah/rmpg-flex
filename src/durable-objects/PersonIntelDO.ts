@@ -120,7 +120,7 @@ export class PersonIntelDO {
 
     // Check warrants and NSO → additional risk flags
     if (linkedPersonId) {
-      const warrant = await this.env.DB.prepare(`SELECT id FROM warrants WHERE person_id=? AND status='active' LIMIT 1`).bind(linkedPersonId).first<{ id: number }>();
+      const warrant = await this.env.DB.prepare(`SELECT id FROM warrants WHERE subject_person_id=? AND status='active' LIMIT 1`).bind(linkedPersonId).first<{ id: number }>();
       if (warrant) allRiskFlags.push('warrant');
       const sor = await this.env.DB.prepare(`SELECT id FROM national_sex_offenders WHERE person_id=? LIMIT 1`).bind(linkedPersonId).first<{ id: number }>();
       if (sor) allRiskFlags.push('nsopw');

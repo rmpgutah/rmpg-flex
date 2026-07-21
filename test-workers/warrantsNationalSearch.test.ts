@@ -29,8 +29,8 @@ beforeAll(async () => {
   await execute(db, `CREATE TABLE IF NOT EXISTS warrants (
     id INTEGER PRIMARY KEY AUTOINCREMENT, warrant_number TEXT, type TEXT, status TEXT DEFAULT 'active',
     subject_name TEXT, subject_first_name TEXT, subject_last_name TEXT, subject_dob TEXT,
-    offense TEXT, offense_description TEXT, charge_description TEXT, issuing_court TEXT,
-    bond_amount REAL, bail_amount REAL, issued_date TEXT, offense_level TEXT, warrant_type TEXT
+    charge_description TEXT, issuing_court TEXT,
+    bail_amount REAL, issued_date TEXT, offense_level TEXT
   )`);
 
   // Exact DOB match — should be included when dob is queried.

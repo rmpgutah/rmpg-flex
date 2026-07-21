@@ -25,8 +25,8 @@ export async function screenPerson(db: D1Database, personId: number): Promise<Sc
   try {
     for (const w of await query<any>(db,
       `SELECT warrant_number, charge_description FROM warrants
-       WHERE (subject_person_id = ? OR person_id = ?) AND status IN ('active','outstanding') LIMIT 5`,
-      personId, personId))
+       WHERE subject_person_id = ? AND status IN ('active','outstanding') LIMIT 5`,
+      personId))
       hits.push({ kind: 'active_warrant', severity: 'critical',
         detail: `Active warrant ${w.warrant_number || ''}${isRealValue(w.charge_description) ? ` — ${w.charge_description}` : ''}`.trim() });
   } catch (err: any) { log.error('[intel-screen] warrants failed', { error: err?.message }); }

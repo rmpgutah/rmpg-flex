@@ -14,6 +14,8 @@ import { runUtahWarrantScan, runUtahWarrantCheckForPerson, fetchWarrantsForPerso
 import { screenPersonAllSources } from '../utils/screening/screenPerson';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
+import { requireRole } from '../middleware/auth';
+import { isValidStatus, isValidTransition, TERMINAL_STATUSES, WARRANT_STATUSES, type WarrantStatus, applyLazyWarrantExpiry } from '../utils/warrantStatus';
 
 const warrants = new Hono<Env>();
 
@@ -64,6 +66,10 @@ warrants.get('/', async (c) => {
     const rows = await query<Record<string, unknown>>(db,
       `SELECT * FROM warrants ${whereClause} ORDER BY ${sortCol} ${order} LIMIT ? OFFSET ?`,
       ...params, perPage, offset);
+
+    // Lazy auto-expiry: flip any overdue-active row on this page to
+    // 'expired' before responding, so the list never shows a stale status.
+    await applyLazyWarrantExpiry(db, rows);
 
     return c.json({
       data: rows,
@@ -339,8 +345,8 @@ warrants.post('/search-all', async (c) => {
     if (body.lastName) { localConditions.push('subject_name LIKE ?'); localParams.push(`%${body.lastName}%`); }
     if (body.firstName) { localConditions.push('subject_name LIKE ?'); localParams.push(`%${body.firstName}%`); }
     if (body.dob) { localConditions.push('subject_dob = ?'); localParams.push(body.dob); }
-    if (body.courtName) { localConditions.push('court LIKE ?'); localParams.push(`%${body.courtName}%`); }
-    if (body.charge) { localConditions.push('offense LIKE ?'); localParams.push(`%${body.charge}%`); }
+    if (body.courtName) { localConditions.push('issuing_court LIKE ?'); localParams.push(`%${body.courtName}%`); }
+    if (body.charge) { localConditions.push('charge_description LIKE ?'); localParams.push(`%${body.charge}%`); }
     if (body.status) { localConditions.push('status = ?'); localParams.push(body.status); }
     if (body.type) { localConditions.push('type = ?'); localParams.push(body.type); }
     if (body.offenseLevel) { localConditions.push('offense_level = ?'); localParams.push(body.offenseLevel); }
@@ -578,8 +584,8 @@ warrants.post('/national-search', async (c) => {
   if (body.first_name) { localWhere.push('subject_first_name LIKE ?'); localParams.push(`%${body.first_name}%`); }
   if (body.last_name) { localWhere.push('subject_last_name LIKE ?'); localParams.push(`%${body.last_name}%`); }
   if (body.offense_level) { localWhere.push('UPPER(offense_level) = ?'); localParams.push(body.offense_level.toUpperCase()); }
-  if (body.warrant_type) { localWhere.push("UPPER(COALESCE(warrant_type, type)) = ?"); localParams.push(body.warrant_type.toUpperCase()); }
-  if (body.charge_keyword) { localWhere.push('COALESCE(charge_description, offense_description, offense) LIKE ?'); localParams.push(`%${body.charge_keyword}%`); }
+  if (body.warrant_type) { localWhere.push('UPPER(type) = ?'); localParams.push(body.warrant_type.toUpperCase()); }
+  if (body.charge_keyword) { localWhere.push('charge_description LIKE ?'); localParams.push(`%${body.charge_keyword}%`); }
 
   // Local `warrants` has no state/jurisdiction column to filter on. A
   // state-only search (the coverage-map "click a state" flow — the 400
@@ -629,10 +635,10 @@ function computePriorityScore(row: Record<string, any>): number {
     : offenseLevel === 'INFRACTION' ? 10
     : offenseLevel === 'CIVIL' ? 5
     : 20;
-  const bail = Number(row.bail_amount ?? row.bond_amount) || 0;
+  const bail = Number(row.bail_amount) || 0;
   const attempts = Number(row.service_attempt_count) || 0;
   let urgency = 0;
-  const expiresAt = row.expires_at ?? row.expiry_date;
+  const expiresAt = row.expires_at;
   if (expiresAt) {
     const days = (new Date(expiresAt).getTime() - Date.now()) / 86_400_000;
     if (Number.isFinite(days) && days >= 0 && days <= 7) urgency = 15;
@@ -767,11 +773,11 @@ warrants.get('/expiring', async (c) => {
     const db = getDb(c.env);
     const days = Math.min(Math.max(parseInt(c.req.query('days') || '30', 10) || 30, 1), 365);
     const rows = await query<Record<string, any>>(
-      db, `SELECT expires_at, expiry_date FROM warrants WHERE status = 'active'`,
+      db, `SELECT expires_at FROM warrants WHERE status = 'active'`,
     );
     const now = Date.now();
     const count = rows.filter((row) => {
-      const exp = row.expires_at ?? row.expiry_date;
+      const exp = row.expires_at;
       if (!exp) return false;
       const t = new Date(exp).getTime();
       if (!Number.isFinite(t)) return false;
@@ -831,9 +837,6 @@ warrants.get('/unified', async (c) => {
     let merged: Record<string, any>[] = localRows.map((row) => ({
       ...row,
       source: row.source ?? 'local',
-      charge_description: row.charge_description ?? row.offense ?? null,
-      bail_amount: row.bail_amount ?? row.bond_amount ?? null,
-      issuing_court: row.issuing_court ?? row.court ?? null,
       source_state: null,
     }));
 
@@ -955,6 +958,9 @@ warrants.get('/:id', async (c) => {
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
     if (!row) return c.json({ error: 'Warrant not found' }, 404);
+    // Lazy auto-expiry: flip an overdue-active warrant to 'expired' before
+    // responding, so a direct GET never shows a stale status.
+    await applyLazyWarrantExpiry(db, [row]);
     return c.json(row);
   } catch (err) {
     console.error('[warrants] get by id error', err);
@@ -988,24 +994,23 @@ warrants.post('/', async (c) => {
     const result = await execute(
       db,
       `INSERT INTO warrants (
-         warrant_number, type, warrant_type, status,
+         warrant_number, type, status,
          subject_person_id, subject_name,
-         charge_description, offense, issuing_court, court, issuing_judge, judge,
-         bail_amount, bond_amount, offense_level, expires_at, expiry_date, notes,
+         charge_description, issuing_court, issuing_judge,
+         bail_amount, offense_level, expires_at, notes,
          statute_id, statute_citation, source, entered_by, created_by,
          created_at, updated_at
-       ) VALUES (?, ?, ?, 'active',
+       ) VALUES (?, ?, 'active',
          ?, ?,
-         ?, ?, ?, ?, ?, ?,
-         ?, ?, ?, ?, ?, ?,
+         ?, ?, ?,
+         ?, ?, ?, ?,
          ?, ?, 'manual', ?, ?,
          datetime('now'), datetime('now'))`,
-      warrantNumber, body.type, body.type,
+      warrantNumber, body.type,
       body.subject_person_id ?? null, subjectName,
-      body.charge_description, body.charge_description, body.issuing_court ?? null, body.issuing_court ?? null,
-      body.issuing_judge ?? null, body.issuing_judge ?? null,
-      body.bail_amount ?? null, body.bail_amount ?? null, body.offense_level ?? null,
-      body.expires_at ?? null, body.expires_at ?? null, body.notes ?? null,
+      body.charge_description, body.issuing_court ?? null, body.issuing_judge ?? null,
+      body.bail_amount ?? null, body.offense_level ?? null,
+      body.expires_at ?? null, body.notes ?? null,
       body.statute_id ?? null, body.statute_citation ?? null,
       user?.id ?? null, user?.id ?? null,
     );
@@ -1038,11 +1043,29 @@ warrants.put('/:id', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
-    const existing = await queryFirst<{ id: number; subject_person_id: number | null }>(
-      db, 'SELECT id, subject_person_id FROM warrants WHERE id = ?', id);
+    const existing = await queryFirst<{ id: number; subject_person_id: number | null; status: string }>(
+      db, 'SELECT id, subject_person_id, status FROM warrants WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Warrant not found' }, 404);
 
     const body = await c.req.json<Record<string, unknown>>();
+
+    if ('status' in body) {
+      if (!isValidStatus(body.status)) {
+        return c.json({ error: 'invalid_status', message: `status must be one of: ${WARRANT_STATUSES.join(', ')}` }, 400);
+      }
+      const fromStatus = existing.status as WarrantStatus;
+      if (isValidStatus(fromStatus) && !isValidTransition(fromStatus, body.status)) {
+        return c.json({
+          error: 'invalid_status_transition',
+          from: fromStatus,
+          to: body.status,
+          message: TERMINAL_STATUSES.has(fromStatus)
+            ? `Warrant is ${fromStatus} (terminal) — use POST /:id/reopen before changing status`
+            : `Cannot transition from ${fromStatus} to ${body.status}`,
+        }, 400);
+      }
+    }
+
     const sets: string[] = [];
     const params: unknown[] = [];
     for (const col of ALLOWED_WARRANT_COLUMNS) {
@@ -1080,15 +1103,19 @@ warrants.put('/:id/serve', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
-    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
+    const existing = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM warrants WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+    const fromStatus = existing.status as WarrantStatus;
+    if (isValidStatus(fromStatus) && !isValidTransition(fromStatus, 'served')) {
+      return c.json({ error: 'invalid_status_transition', from: fromStatus, to: 'served' }, 400);
+    }
 
     const body = await c.req.json<{ served_location?: string | null }>().catch(() => ({} as { served_location?: string | null }));
     const user = c.get('user') as { id?: number } | undefined;
 
     await execute(
       db,
-      `UPDATE warrants SET status = 'served', served_at = datetime('now'), service_date = datetime('now'),
+      `UPDATE warrants SET status = 'served', served_at = datetime('now'),
          served_location = ?, served_by = ?, updated_at = datetime('now') WHERE id = ?`,
       body.served_location ?? null, user?.id ?? null, id,
     );
@@ -1097,6 +1124,42 @@ warrants.put('/:id/serve', async (c) => {
   } catch (err) {
     console.error('[warrants] serve error', err);
     return c.json({ error: 'Failed to mark warrant served' }, 500);
+  }
+});
+
+// POST /warrants/:id/reopen — the only way a terminal-status warrant
+// (served/recalled/expired/quashed) can return to 'active'. Gated to
+// admin/supervisor/manager (same tier as sensitive warrant-record actions
+// elsewhere in this file) and audit-logged, since silently flipping a
+// closed warrant back open is a meaningful record-keeping event.
+warrants.post('/:id/reopen', requireRole('admin', 'supervisor', 'manager'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') ?? '0', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const existing = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+    const fromStatus = existing.status as WarrantStatus;
+    if (isValidStatus(fromStatus) && !TERMINAL_STATUSES.has(fromStatus)) {
+      return c.json({ error: 'not_terminal', message: `Warrant is already ${fromStatus}` }, 400);
+    }
+
+    const user = c.get('user') as { id?: number } | undefined;
+    await execute(
+      db,
+      `UPDATE warrants SET status = 'active', updated_at = datetime('now') WHERE id = ?`,
+      id,
+    );
+    await execute(
+      db,
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'warrant_reopen', 'warrant', ?, ?)`,
+      user?.id ?? null, String(id), JSON.stringify({ from_status: fromStatus }),
+    );
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('[warrants] reopen error', err);
+    return c.json({ error: 'Failed to reopen warrant' }, 500);
   }
 });
 
@@ -1264,7 +1327,7 @@ warrants.post('/ingest-utah', async (c) => {
       if (existing) continue; // already ingested — idempotent no-op
       await execute(
         db,
-        `INSERT INTO warrants (warrant_number, type, status, subject_name, offense, court, bond_amount, issued_date)
+        `INSERT INTO warrants (warrant_number, type, status, subject_name, charge_description, issuing_court, bail_amount, issued_date)
          VALUES (?, 'arrest', 'active', ?, ?, ?, ?, ?)`,
         warrantNumber, subjectName,
         Array.isArray(w.charges) ? w.charges.filter(Boolean).join('; ') : (w.charges || null),
@@ -1315,15 +1378,15 @@ warrants.get('/summary-report', async (c) => {
     if (to) { where.push(`${dateCol} <= ?`); params.push(to); }
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const topCourtsWhere = where.length
-      ? `WHERE ${where.join(' AND ')} AND court IS NOT NULL`
-      : 'WHERE court IS NOT NULL';
+      ? `WHERE ${where.join(' AND ')} AND issuing_court IS NOT NULL`
+      : 'WHERE issuing_court IS NOT NULL';
 
     const [byStatusRows, byTypeRows, topCourtsRows, newCountRow, clearedCountRow, latestRun] = await Promise.all([
       query<{ status: string; n: number }>(db, `SELECT status, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY status`, ...params),
       query<{ type: string; n: number }>(db, `SELECT type, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY type`, ...params),
       query<{ issuing_court: string; count: number }>(
         db,
-        `SELECT court AS issuing_court, COUNT(*) AS count FROM warrants ${topCourtsWhere} GROUP BY court ORDER BY count DESC LIMIT 10`,
+        `SELECT issuing_court, COUNT(*) AS count FROM warrants ${topCourtsWhere} GROUP BY issuing_court ORDER BY count DESC LIMIT 10`,
         ...params,
       ).catch(() => []),
       queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM warrants ${whereClause}`, ...params),

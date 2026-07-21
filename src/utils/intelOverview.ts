@@ -64,12 +64,12 @@ export async function buildOverview(db: D1Database): Promise<IntelOverview> {
   // Active alerts: active warrants joined to subject persons.
   try {
     ov.alerts = (await query<any>(db,
-      `SELECT COALESCE(w.subject_person_id, w.person_id) AS pid,
+      `SELECT w.subject_person_id AS pid,
               COALESCE(p.first_name || ' ' || p.last_name, w.subject_name, 'Unknown') AS label,
               COALESCE(w.charge_description, 'Warrant') AS detail,
               w.issued_date AS when_ts
          FROM warrants w
-         LEFT JOIN persons p ON p.id = COALESCE(w.subject_person_id, w.person_id)
+         LEFT JOIN persons p ON p.id = w.subject_person_id
         WHERE LOWER(COALESCE(w.status,'')) IN ('active','outstanding')
         ORDER BY w.issued_date DESC LIMIT 8`)).map((r) => ({
       kind: 'warrant', person_id: r.pid ? n(r.pid) : null,

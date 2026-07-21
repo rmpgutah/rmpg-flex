@@ -77,6 +77,8 @@ export interface WarrantsListTabProps {
   isVisible: boolean;
   user: UserType | null;
   isAdminOrManager: boolean;
+  /** admin | supervisor | manager — mirrors the server's requireRole for /warrants/:id/reopen. */
+  isAdminSupervisorOrManager: boolean;
   isGodMode: boolean;
   canManageWarrants: boolean;
   isMobile: boolean;
@@ -654,6 +656,16 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
     }
   };
 
+  const handleReopenWarrant = async (id: number) => {
+    try {
+      const updated = await apiFetch<Warrant>(`/warrants/${id}/reopen`, { method: 'POST' });
+      setWarrants((prev) => prev.map((w) => w.id === id ? { ...w, ...updated } : w));
+      if (selectedWarrant?.id === id) fetchWarrantDetail(id);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to reopen warrant');
+    }
+  };
+
   // ── Right-click context menu (shared by list + table rows) ──
   const handleToggleWatch = useCallback(async (w: Warrant) => {
     const isWatched = watchedIds.has(w.id);
@@ -1132,14 +1144,23 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                     </button>
                   </>
                 )}
-                {selectedWarrant.status !== 'active' && props.isAdminOrManager && (
+                {selectedWarrant.status !== 'active' && (
                   <>
-                    <button type="button" onClick={() => { setArchiveTargetId(selectedWarrant.id); setArchiveConfirmOpen(true); }} className="toolbar-btn text-[9px]" title="Archive this warrant" style={props.isMobile ? { minHeight: 48 } : undefined}>
-                      <Archive className="w-3 h-3" /> Archive
-                    </button>
-                    <button type="button" onClick={() => setDeletingWarrant(selectedWarrant)} className="toolbar-btn text-[9px] text-red-400" title="Permanently delete" style={props.isMobile ? { minHeight: 48 } : undefined}>
-                      <Trash2 className="w-3 h-3" /> Delete
-                    </button>
+                    {props.isAdminSupervisorOrManager && (
+                      <button type="button" onClick={() => handleReopenWarrant(selectedWarrant.id)} className="toolbar-btn text-[9px] text-green-400" title="Reopen this warrant" style={props.isMobile ? { minHeight: 48 } : undefined}>
+                        <RotateCcw className="w-3 h-3" /> Reopen
+                      </button>
+                    )}
+                    {props.isAdminOrManager && (
+                      <>
+                        <button type="button" onClick={() => { setArchiveTargetId(selectedWarrant.id); setArchiveConfirmOpen(true); }} className="toolbar-btn text-[9px]" title="Archive this warrant" style={props.isMobile ? { minHeight: 48 } : undefined}>
+                          <Archive className="w-3 h-3" /> Archive
+                        </button>
+                        <button type="button" onClick={() => setDeletingWarrant(selectedWarrant)} className="toolbar-btn text-[9px] text-red-400" title="Permanently delete" style={props.isMobile ? { minHeight: 48 } : undefined}>
+                          <Trash2 className="w-3 h-3" /> Delete
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
               </>
