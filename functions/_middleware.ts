@@ -32,6 +32,10 @@ const ALLOWED_CONNECT = [
   'https://js.arcgis.com',
   'https://*.arcgisonline.com',
   'https://api.open-meteo.com',
+  // RainViewer live weather radar overlay (Map tab) — frame index JSON only;
+  // tiles themselves load via tilecache.rainviewer.com as an <img>/raster
+  // source, already covered by the permissive img-src directive below.
+  'https://api.rainviewer.com',
   'https://basemaps.cartocdn.com',
   'https://*.basemaps.cartocdn.com',
   'https://*.cartocdn.com',

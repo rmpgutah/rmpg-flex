@@ -1,6 +1,11 @@
 # Map Module — Orphan Inventory
 
-**Last audited: 2026-06-22.**
+**Last audited: 2026-06-22. Partial re-audit 2026-07-20** (see
+`docs/superpowers/specs/2026-07-20-map-real-bugs-and-orphan-cleanup-design.md`) —
+`GpsHud`, `UnifiedMapLegend`, and `MapDiagnosticsOverlay` were wired in (they had
+no rows in this doc to begin with); `SpeedGraphOverlay`'s stale row was removed;
+`MapboxDispatchConnections` and `ToolbarDropdownGroup` were added as
+newly-discovered orphans. The other ~26 panels/hooks below were not touched.
 
 The following components and hooks in `client/src/pages/map/` are **fully built,
 fully tokenized, and exported — but never imported anywhere in the live app**.
@@ -37,6 +42,7 @@ own file. Verified 2026-06-22 via `grep -rn "import.*<name>" client/src/`.
 | `HeatmapLegend`          | — | Standalone heatmap legend (superseded by `UnifiedMapLegend`) |
 | `HeatmapPresets`         | — | Saved heatmap configurations |
 | `IncidentReportsPanel`   | — | List of incident reports as map sidebar |
+| `MapboxDispatchConnections` | — | Mapbox-API diagnostics/demo panel (Directions/Matrix/Geocoding/Isochrone/Map-Matching status) |
 | `MapLayersPanel`         | — | Layer toggle dialog (separate from inline layer chips) |
 | `MapLegend`              | — | Older legend; superseded by `UnifiedMapLegend` |
 | `MapMobileSheet`         | — | Cohesive mobile bottom sheet (today's mobile UX is inline `!isMobile` branches) |
@@ -49,9 +55,9 @@ own file. Verified 2026-06-22 via `grep -rn "import.*<name>" client/src/`.
 | `SafetyAlertModal`       | — | Modal for officer-down / safety alerts |
 | `SafetyDashboardPanel`   | — | Officer-safety dashboard widget |
 | `SafetyZonesPanel`       | — | Safety-zone definition UI |
-| `SpeedGraphOverlay`      | — | Per-unit speed graph over time |
 | `TacticalSummaryPanel`   | — | Tactical-situation summary card |
 | `ThreatAssessmentPanel`  | — | Threat-level scoring for a location |
+| `ToolbarDropdownGroup`   | — | Generic reusable collapsible toolbar-section wrapper |
 | `WeatherPanel`           | — | Full weather sidebar (vs the inline weather strip) |
 | `WeatherWidget`          | — | Compact weather widget (the dashboard has its own) |
 

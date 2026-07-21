@@ -11,6 +11,7 @@ import { useEffect, useCallback, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { devLog } from '../utils/devLog';
 import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -67,73 +68,6 @@ export function useMapClustering(map: mapboxgl.Map | null, mapLoaded: boolean): 
       return;
     }
 
-    // Add cluster source + layers
-    if (!hasSource(map, CLUSTER_SOURCE)) {
-      map.addSource(CLUSTER_SOURCE, {
-        type: 'geojson',
-        data: pointsToGeoJSON(points),
-        cluster: true,
-        clusterMaxZoom: 14,
-        clusterRadius: 50,
-      });
-
-      // Cluster circles with size based on point_count
-      map.addLayer({
-        id: CLUSTER_CIRCLE,
-        type: 'circle',
-        source: CLUSTER_SOURCE,
-        filter: ['has', 'point_count'],
-        paint: {
-          'circle-color': [
-            'step', ['get', 'point_count'],
-            '#d4a017', 10,   // gold for < 10
-            '#f59e0b', 30,   // amber for < 30
-            '#ef4444',       // red for >= 30
-          ],
-          'circle-radius': [
-            'step', ['get', 'point_count'],
-            18, 10,
-            24, 30,
-            32,
-          ],
-          'circle-opacity': 0.85,
-          'circle-stroke-color': '#0a0a0a',
-          'circle-stroke-width': 2,
-        },
-      });
-
-      // Cluster count labels
-      map.addLayer({
-        id: CLUSTER_COUNT,
-        type: 'symbol',
-        source: CLUSTER_SOURCE,
-        filter: ['has', 'point_count'],
-        layout: {
-          'text-field': '{point_count_abbreviated}',
-          'text-size': 11,
-          'text-font': ['DIN Pro Medium', 'Arial Unicode MS Bold'],
-          'text-allow-overlap': true,
-        },
-        paint: { 'text-color': '#ffffff' },
-      });
-
-      // Unclustered individual points
-      map.addLayer({
-        id: CLUSTER_UNCLUSTERED,
-        type: 'circle',
-        source: CLUSTER_SOURCE,
-        filter: ['!', ['has', 'point_count']],
-        paint: {
-          'circle-color': ['get', 'color'],
-          'circle-radius': 6,
-          'circle-stroke-color': '#0a0a0a',
-          'circle-stroke-width': 1.5,
-        },
-      });
-
-      devLog('[Clustering] Cluster layers added');
-    }
-
     // Click to expand cluster
     const onClusterClick = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.GeoJSONFeature[] }) => {
       const features = map.queryRenderedFeatures(e.point, { layers: [CLUSTER_CIRCLE] });
@@ -152,9 +86,81 @@ export function useMapClustering(map: mapboxgl.Map | null, mapLoaded: boolean): 
     const onMouseEnter = () => { map.getCanvas().style.cursor = 'pointer'; };
     const onMouseLeave = () => { map.getCanvas().style.cursor = ''; };
 
-    map.on('click', CLUSTER_CIRCLE, onClusterClick);
-    map.on('mouseenter', CLUSTER_CIRCLE, onMouseEnter);
-    map.on('mouseleave', CLUSTER_CIRCLE, onMouseLeave);
+    // whenStyleReady guards against "Style is not done loading" -- a basemap
+    // switch (changeStyle) doesn't reset mapLoaded, so this effect can
+    // re-fire (enabled/points changed) while the new style is still mid-load.
+    whenStyleReady(map, () => {
+      // Add cluster source + layers
+      if (!hasSource(map, CLUSTER_SOURCE)) {
+        map.addSource(CLUSTER_SOURCE, {
+          type: 'geojson',
+          data: pointsToGeoJSON(points),
+          cluster: true,
+          clusterMaxZoom: 14,
+          clusterRadius: 50,
+        });
+
+        // Cluster circles with size based on point_count
+        map.addLayer({
+          id: CLUSTER_CIRCLE,
+          type: 'circle',
+          source: CLUSTER_SOURCE,
+          filter: ['has', 'point_count'],
+          paint: {
+            'circle-color': [
+              'step', ['get', 'point_count'],
+              '#d4a017', 10,   // gold for < 10
+              '#f59e0b', 30,   // amber for < 30
+              '#ef4444',       // red for >= 30
+            ],
+            'circle-radius': [
+              'step', ['get', 'point_count'],
+              18, 10,
+              24, 30,
+              32,
+            ],
+            'circle-opacity': 0.85,
+            'circle-stroke-color': '#0a0a0a',
+            'circle-stroke-width': 2,
+          },
+        });
+
+        // Cluster count labels
+        map.addLayer({
+          id: CLUSTER_COUNT,
+          type: 'symbol',
+          source: CLUSTER_SOURCE,
+          filter: ['has', 'point_count'],
+          layout: {
+            'text-field': '{point_count_abbreviated}',
+            'text-size': 11,
+            'text-font': ['DIN Pro Medium', 'Arial Unicode MS Bold'],
+            'text-allow-overlap': true,
+          },
+          paint: { 'text-color': '#ffffff' },
+        });
+
+        // Unclustered individual points
+        map.addLayer({
+          id: CLUSTER_UNCLUSTERED,
+          type: 'circle',
+          source: CLUSTER_SOURCE,
+          filter: ['!', ['has', 'point_count']],
+          paint: {
+            'circle-color': ['get', 'color'],
+            'circle-radius': 6,
+            'circle-stroke-color': '#0a0a0a',
+            'circle-stroke-width': 1.5,
+          },
+        });
+
+        devLog('[Clustering] Cluster layers added');
+      }
+
+      map.on('click', CLUSTER_CIRCLE, onClusterClick);
+      map.on('mouseenter', CLUSTER_CIRCLE, onMouseEnter);
+      map.on('mouseleave', CLUSTER_CIRCLE, onMouseLeave);
+    });
 
     return () => {
       map.off('click', CLUSTER_CIRCLE, onClusterClick);
