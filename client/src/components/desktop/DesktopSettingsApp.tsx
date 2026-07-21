@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
-import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, X } from 'lucide-react';
+import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, Monitor, X } from 'lucide-react';
 import type { DesktopWidgetState } from '../../utils/normalizeDesktopWidgets';
 import { DESKTOP_WALLPAPERS, DEFAULT_WALLPAPER_ID } from '../../data/desktopWallpapers';
 import { DESKTOP_ACCENTS, DEFAULT_ACCENT_ID } from '../../data/desktopAccents';
@@ -16,6 +16,7 @@ import { exportSettings, importSettings } from '../../utils/settingsExportImport
 import { getClockFormat, setClockFormat, type ClockFormat } from '../../utils/clockPreference';
 import { isDesktopSoundEnabled, setDesktopSoundEnabled } from '../../utils/desktopSoundPreference';
 import { getDefaultWindowOpacity, setDefaultWindowOpacity } from '../../utils/windowOpacityPreference';
+import DesktopKioskSettings from './DesktopKioskSettings';
 
 const ALL_WIDGETS: { id: string; label: string }[] = [
   { id: 'clock', label: 'Clock & Shift' },
@@ -38,6 +39,7 @@ const CATEGORIES = [
   { id: 'window-management', label: 'Window Management', icon: AppWindow },
   { id: 'taskbar', label: 'Taskbar', icon: PanelBottom },
   { id: 'layout-templates', label: 'Layout & Templates', icon: FolderKanban },
+  { id: 'kiosk-mode', label: 'Kiosk Mode', icon: Monitor },
 ] as const;
 
 export type CategoryId = typeof CATEGORIES[number]['id'];
@@ -58,6 +60,7 @@ export interface DesktopSettingsAppProps {
   onAccentChange: (id: string) => void;
   onResetToDefault: () => void;
   onClose: () => void;
+  isAdmin: boolean;
 }
 
 const DEFAULT_WIDTH = 640;
@@ -71,7 +74,7 @@ function sectionLabelStyle(): React.CSSProperties {
 
 export default function DesktopSettingsApp({
   widgets, onToggleWidget, iconSize, onIconSizeChange, viewMode, onViewModeChange, sortMode, onSortModeChange, onSnapToGrid,
-  wallpaperId, onWallpaperChange, accentId, onAccentChange, onResetToDefault, onClose,
+  wallpaperId, onWallpaperChange, accentId, onAccentChange, onResetToDefault, onClose, isAdmin,
 }: DesktopSettingsAppProps) {
   const [activeCategory, setActiveCategory] = useState<CategoryId>('personalization');
   const [searchQuery, setSearchQuery] = useState('');
@@ -135,14 +138,25 @@ export default function DesktopSettingsApp({
 
   const enabledIds = new Set(widgets.filter(w => w.on).map(w => w.id));
 
+  // Kiosk Mode is admin/manager-and-Windows-only per the design spec.
+  // window.electron.platform is a synchronous property set at preload time
+  // (unlike getKioskShellState, which is an async IPC round-trip), so it's
+  // safe to read directly in this filter alongside the existing synchronous
+  // isAdmin check without introducing async state just for this gate.
+  const isWindows = window.electron?.platform === 'win32';
+  const visibleCategories = useMemo(
+    () => CATEGORIES.filter(c => c.id !== 'kiosk-mode' || (isAdmin && isWindows)),
+    [isAdmin, isWindows],
+  );
+
   const searchMatches = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return null;
     const matchedIds = new Set(
       SETTINGS_SEARCH_INDEX.filter(entry => entry.keywords.some(k => k.toLowerCase().includes(q))).map(e => e.categoryId),
     );
-    return CATEGORIES.filter(cat => matchedIds.has(cat.id));
-  }, [searchQuery]);
+    return visibleCategories.filter(cat => matchedIds.has(cat.id));
+  }, [searchQuery, visibleCategories]);
 
   return (
     <div
@@ -183,7 +197,7 @@ export default function DesktopSettingsApp({
             aria-label="Search settings"
             className="w-full px-2 py-1.5 text-[11px] bg-surface-sunken border-b border-rmpg-700 text-rmpg-100 focus:outline-none"
           />
-          {(searchMatches ?? CATEGORIES).map(cat => (
+          {(searchMatches ?? visibleCategories).map(cat => (
             <button
               key={cat.id}
               type="button"
@@ -462,6 +476,10 @@ export default function DesktopSettingsApp({
             <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
               Layout export/import and per-role templates are coming in a future phase.
             </div>
+          )}
+
+          {activeCategory === 'kiosk-mode' && isAdmin && (
+            <DesktopKioskSettings onClose={onClose} />
           )}
         </div>
       </div>

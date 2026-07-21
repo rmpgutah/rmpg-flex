@@ -295,6 +295,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             accentId={accentId} onAccentChange={setAccentId}
             onResetToDefault={handleResetToDefault}
             onClose={() => setWidgetSettingsOpen(false)}
+            isAdmin={isAdmin}
           />
         )}
       </DesktopWindowManagerProvider>

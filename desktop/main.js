@@ -9,7 +9,7 @@
 const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage, powerMonitor, screen, globalShortcut, clipboard } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
-const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
+const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry, validateKioskEscapeCredentials } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { hardenGuestWebPreferences, shouldAllowGuestNavigation, isCompanyBrowserRoleAllowed } = require('./security/webviewHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
@@ -19,6 +19,7 @@ const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLog
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
 const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, restoreWindowBounds, saveWindowBounds } = require('./windowManager');
+const { buildShellRegistryValue, MAX_BOOT_FAILURES, resetBootAttemptState, nextBootAttemptState, shouldSelfRevert, validateEscapeLoginResponse } = require('./kioskShell');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -83,6 +84,28 @@ const REMOTE_SERVER_URL = DEV_MODE
 const UPDATE_SERVER_URL = DEV_MODE
   ? 'http://localhost:3001'
   : 'github';
+
+// API server used ONLY by the kiosk escape hatch's live login check — this
+// intentionally does NOT reuse REMOTE_SERVER_URL (the app-shell host); the
+// escape hatch calls the API directly since the renderer/app-shell may be
+// unresponsive when this is needed.
+const KIOSK_ESCAPE_API_BASE = DEV_MODE
+  ? 'http://localhost:8787'
+  : 'https://api.rmpgutah.us';
+
+// Regression guard (see isAllowedApiHost's doc comment in childProcessGuard.js
+// and GEO_IP_LOCATE_ALLOWED_HOSTS further down for the same rationale) for the
+// escape hatch's outbound login request — KIOSK_ESCAPE_API_BASE is a
+// hardcoded/env-derived constant today, not renderer-influenced, so this
+// doesn't close an active vulnerability; it's a tripwire against a future
+// accidental change to the request URL. Computed once at module load, fails
+// closed to `null` (which isAllowedApiHost never matches) if unparseable.
+let KIOSK_ESCAPE_API_HOSTNAME;
+try {
+  KIOSK_ESCAPE_API_HOSTNAME = new URL(KIOSK_ESCAPE_API_BASE).hostname;
+} catch {
+  KIOSK_ESCAPE_API_HOSTNAME = null;
+}
 
 // ─── Trusted host (shared by window-open filtering and IPC sender validation) ───
 let TRUSTED_HOST;
@@ -151,6 +174,25 @@ let splashWindow = null;
 let tray = null;
 let isQuitting = false;
 let appReady = false;
+
+// ─── Kiosk-shell auto-relaunch bookkeeping ────────────────────
+// See docs/superpowers/specs/2026-07-21-desktop-kiosk-shell-mode-design.md,
+// Component 3: on a graceful quit while this instance is running AS the
+// Windows shell (isKioskShell/useKioskChrome in createMainWindow), the app
+// must relaunch itself rather than actually exit — a normal shell
+// (explorer.exe) is always expected to be present, and exiting for good
+// would leave the machine on a black screen with the escape hotkey
+// unregistered and no way back in.
+// isRunningAsKioskShell is set once per createMainWindow() call (i.e. once
+// per boot/relaunch), so it composes correctly with the self-revert boot
+// counter in createMainWindow — it never bypasses or races that counter.
+let isRunningAsKioskShell = false;
+// kioskDeliberatelyReverting is set just before the registry is reverted to
+// explorer.exe via an intentional admin action (disabling Kiosk Mode from
+// Settings, or the Ctrl+Alt+Shift+F12 escape hatch) so that a subsequent
+// window-all-closed during that deliberate revert-and-restart doesn't loop
+// back into relaunching as the kiosk shell.
+let kioskDeliberatelyReverting = false;
 
 // Debounce timer for the main window's 'resize'/'move' listeners below —
 // those events fire continuously (every pixel) during a drag/resize
@@ -802,12 +844,49 @@ async function createMainWindow() {
   // than restored off-screen with no way to drag it back).
   const restoredBounds = restoreWindowBounds(getConfig, screen.getAllDisplays);
 
+  // ─── Kiosk boot detection + self-revert safety net ───────────
+  // See docs/superpowers/specs/2026-07-21-desktop-kiosk-shell-mode-design.md.
+  // Every boot while the shell registry key points at this app counts as a
+  // "kiosk boot attempt" — if MAX_BOOT_FAILURES consecutive boots reach this
+  // point without a successful ready-to-show (see the counter reset below),
+  // the shell key is reverted back to explorer.exe so the machine never
+  // gets stuck showing a black kiosk screen with no way back in.
+  const isKioskShell = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
+  let kioskBootState = null;
+  if (isKioskShell) {
+    kioskBootState = nextBootAttemptState(getConfig('kiosk_boot_attempts'));
+    setConfig('kiosk_boot_attempts', kioskBootState);
+    if (shouldSelfRevert(kioskBootState)) {
+      console.error(`[KIOSK] ${MAX_BOOT_FAILURES} consecutive failed boots — self-reverting shell to explorer.exe`);
+      await runElevatedRegistryWrite('"explorer.exe"');
+      setConfig('kiosk_shell_enabled', false);
+      setConfig('kiosk_boot_attempts', resetBootAttemptState());
+      dialog.showErrorBox(
+        'RMPG Flex Kiosk Mode Disabled',
+        `Kiosk Mode failed to start ${MAX_BOOT_FAILURES} times in a row and has been automatically disabled. Windows will use its normal desktop from now on.`
+      );
+      // Fall through to the normal (non-kiosk) window below — do not exit,
+      // so the operator still gets a usable app window this run.
+    }
+  }
+  const useKioskChrome = isKioskShell && !shouldSelfRevert(kioskBootState);
+  // Module-level flag consulted by the 'window-all-closed' handler below —
+  // deliberately reflects useKioskChrome (post self-revert), not the raw
+  // isKioskShell/getConfig read, so a session that just self-reverted due to
+  // repeated boot failures is correctly treated as NOT running as the shell
+  // and won't relaunch itself back into the broken state.
+  isRunningAsKioskShell = useKioskChrome;
+
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    ...(restoredBounds ? { x: restoredBounds.x, y: restoredBounds.y, width: restoredBounds.width, height: restoredBounds.height } : {}),
-    minWidth: 1024,
-    minHeight: 700,
+    ...(useKioskChrome
+      ? { kiosk: true, frame: false, fullscreen: true, autoHideMenuBar: true }
+      : {
+          width: 1440,
+          height: 900,
+          ...(restoredBounds ? { x: restoredBounds.x, y: restoredBounds.y, width: restoredBounds.width, height: restoredBounds.height } : {}),
+          minWidth: 1024,
+          minHeight: 700,
+        }),
     title: APP_TITLE,
     backgroundColor: '#000000',
     show: false,
@@ -827,6 +906,7 @@ async function createMainWindow() {
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 12, y: 12 },
   });
+  if (useKioskChrome) Menu.setApplicationMenu(null);
 
   // ── Grant geolocation permission automatically ──────────
   // Electron denies geolocation by default. For RMPG Flex, GPS
@@ -896,6 +976,7 @@ async function createMainWindow() {
     closeSplash();
     mainWindow.show();
     mainWindow.focus();
+    if (useKioskChrome) setConfig('kiosk_boot_attempts', resetBootAttemptState());
   });
 
   // Handle page load failures (server down, network error).
@@ -1008,6 +1089,15 @@ async function createMainWindow() {
   };
   mainWindow.on('resize', debouncedSaveWindowBounds);
   mainWindow.on('move', debouncedSaveWindowBounds);
+
+  // Kiosk mode has no window chrome/taskbar to exit through, so a
+  // global shortcut is the only way an operator can reach the escape
+  // hatch (see openKioskEscapeWindow below).
+  if (useKioskChrome) {
+    globalShortcut.register('Ctrl+Alt+Shift+F12', () => {
+      openKioskEscapeWindow();
+    });
+  }
 }
 
 // ─── IPC Handlers ───────────────────────────────────────────
@@ -1455,6 +1545,218 @@ guardedHandle('device:gps-present', async () => {
 guardedHandle('device:set-auto-launch', (event, enabled) => {
   app.setLoginItemSettings({ openAtLogin: Boolean(enabled) });
   return { ok: true };
+});
+
+/**
+ * Runs `reg.exe add ... Shell ...` through an elevated (UAC-prompted)
+ * PowerShell process via Start-Process -Verb RunAs. Returns { ok: true } on
+ * a zero exit code, { ok: false, error } otherwise — including if the user
+ * cancels the UAC prompt (Start-Process throws in that case).
+ * [WINDOWS-UNVERIFIED] — the reg.exe/Start-Process invocation below has not
+ * been run on real Windows; verify manually before shipping.
+ */
+function runElevatedRegistryWrite(shellValue) {
+  return new Promise((resolve) => {
+    const { spawn } = require('child_process');
+    const regKeyPath = 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';
+    // SECURITY: shellValue is derived from process.execPath (the install path
+    // of this app) and is attacker-influenced if the app is ever installed to
+    // a path containing shell metacharacters (e.g. an install dir literally
+    // named C:\Users\O'Brien\...). It used to be interpolated into a single
+    // *string* -ArgumentList wrapped in PowerShell single-quotes, escaping
+    // only embedded double quotes — a literal `'` in shellValue would close
+    // that quoted string early and let the remainder be re-parsed as
+    // additional PowerShell tokens inside a UAC-elevated process (command
+    // injection). Fixed by building -ArgumentList as a PowerShell *array*
+    // literal (`@(...)`) with each reg.exe argument as its own PS
+    // single-quoted string literal. Start-Process passes each array element
+    // through as one literal process argument (no further shell re-parsing),
+    // so no argument — including the reg key path or shellValue — needs
+    // internal double-quote wrapping to survive embedded spaces. The only
+    // escaping required is for the PS single-quoted literal itself: a
+    // literal `'` inside a PS single-quoted string is escaped by doubling it
+    // (`'` -> `''`), per PowerShell's quoting rules. That is applied here to
+    // every value embedded in the command (the key path and shellValue),
+    // which neutralizes single quotes, double quotes, backticks, `$`,
+    // semicolons, pipes, etc. — none of those are special inside a PS
+    // single-quoted literal. [WINDOWS-UNVERIFIED]: this exact escaping has
+    // not been exercised against a live UAC prompt; verify manually on
+    // Windows (including an install path containing a literal `'`) before
+    // shipping.
+    const psSingleQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
+    const regArgs = ['add', regKeyPath, '/v', 'Shell', '/t', 'REG_SZ', '/d', shellValue, '/f'];
+    const argumentListLiteral = `@(${regArgs.map(psSingleQuote).join(',')})`;
+    const psCommand = `Start-Process reg.exe -ArgumentList ${argumentListLiteral} -Verb RunAs -Wait`;
+    const child = spawn('powershell.exe', ['-NoProfile', '-Command', psCommand], { windowsHide: false });
+    let stderr = '';
+    child.stderr?.on('data', (d) => { stderr += d.toString(); });
+    child.on('error', (err) => resolve({ ok: false, error: err.message }));
+    child.on('close', (code) => {
+      if (code === 0) resolve({ ok: true });
+      else resolve({ ok: false, error: stderr || `reg.exe exited with code ${code}` });
+    });
+  });
+}
+
+// ─── Kiosk Shell Mode (Windows only) ─────────────────────────
+// Replaces explorer.exe as the Windows login shell so this machine boots
+// directly into the RMPG Flex desktop. See docs/superpowers/specs/
+// 2026-07-21-desktop-kiosk-shell-mode-design.md for the full design.
+guardedHandle('device:set-kiosk-shell', async (event, enabled) => {
+  if (process.platform !== 'win32') {
+    return { ok: false, error: 'Kiosk mode is only available on Windows' };
+  }
+  const roleCheck = requireOfflineAuthForSensitiveIpc(getConfig('current_user_role'));
+  // requireOfflineAuthForSensitiveIpc only accepts 'admin' today; Kiosk Mode
+  // is also available to 'manager' per the design spec's admin/manager gate
+  // (matches DesktopPage.tsx's isAdmin check), so extend the check inline
+  // rather than widen the shared helper's meaning for its other callers.
+  const role = getConfig('current_user_role');
+  if (!roleCheck.ok && role !== 'manager') {
+    logSecurityAuditEvent('device:set-kiosk-shell', 'denied', { role });
+    return { ok: false, error: 'This action requires an admin or manager session' };
+  }
+  try {
+    const shellValue = enabled
+      ? buildShellRegistryValue(process.execPath)
+      : '"explorer.exe"';
+    // Deliberate revert-and-restart: mark this BEFORE the registry write so
+    // window-all-closed (should the settings window close during this) never
+    // mistakes it for an unexpected exit and relaunches back into kiosk mode.
+    if (!enabled) kioskDeliberatelyReverting = true;
+    // The main process does not run elevated; the actual registry write
+    // happens in a UAC-elevated helper (runElevatedRegistryWrite above),
+    // which spawns `reg.exe` via PowerShell's Start-Process -Verb RunAs so
+    // Windows shows the native UAC consent prompt.
+    const result = await runElevatedRegistryWrite(shellValue);
+    if (!result.ok) {
+      logSecurityAuditEvent('device:set-kiosk-shell', 'error', { enabled, error: result.error });
+      return result;
+    }
+    setConfig('kiosk_shell_enabled', Boolean(enabled));
+    if (enabled) {
+      setConfig('kiosk_boot_attempts', resetBootAttemptState());
+    }
+    logSecurityAuditEvent('device:set-kiosk-shell', 'success', { enabled });
+    if (enabled) {
+      // Fix #2: the confirmation dialog in DesktopKioskSettings.tsx promises
+      // a restart — make that real by offering one here, mirroring the
+      // restart dialog already shown by the kiosk:attempt-escape handler
+      // below. Fire-and-forget (waitUntil not needed — Electron's dialog
+      // module handles its own lifecycle); the IPC response to the renderer
+      // isn't blocked on the operator's choice.
+      dialog
+        .showMessageBox({
+          type: 'info',
+          title: 'Kiosk Mode Enabled',
+          message: 'This machine will now boot directly into RMPG Flex on restart.',
+          detail: 'Restart now to apply, or restart later yourself.',
+          buttons: ['Restart Now', 'Later'],
+          defaultId: 1,
+          cancelId: 1,
+        })
+        .then(({ response }) => {
+          if (response === 0) {
+            app.relaunch();
+            app.exit(0);
+          }
+        })
+        .catch((err) => console.warn('[KIOSK] restart prompt failed:', err && err.message));
+    }
+    return { ok: true };
+  } catch (err) {
+    logSecurityAuditEvent('device:set-kiosk-shell', 'error', { enabled, error: err.message });
+    return { ok: false, error: err.message };
+  }
+});
+
+guardedHandle('device:kiosk-shell-state', () => {
+  if (process.platform !== 'win32') return { supported: false, enabled: false };
+  return { supported: true, enabled: getConfig('kiosk_shell_enabled') === true };
+});
+
+// ─── Kiosk escape hatch ────────────────────────────────────────
+// A small, always-on-top password window that lets an operator exit Kiosk
+// Mode without going through the (possibly unresponsive) main app renderer.
+// Uses its own dedicated preload (kioskEscapePreload.js), NOT preload.js —
+// it must keep working even if the main window's renderer is dead.
+let kioskEscapeWindow = null;
+const kioskEscapeRateLimiter = createRateLimiter(5, 60_000); // 5 attempts/minute
+
+function openKioskEscapeWindow() {
+  if (kioskEscapeWindow) { kioskEscapeWindow.focus(); return; }
+  kioskEscapeWindow = new BrowserWindow({
+    width: 420,
+    height: 260,
+    frame: true,
+    alwaysOnTop: true,
+    resizable: false,
+    title: 'RMPG Flex — Exit Kiosk Mode',
+    webPreferences: hardenWebPreferencesDefaults({
+      preload: resolveTrustedPreloadPath(path.join(__dirname, 'kioskEscapePreload.js'), path.join(__dirname, 'kioskEscapePreload.js')),
+    }),
+  });
+  kioskEscapeWindow.setMenu(null);
+  kioskEscapeWindow.loadFile(path.join(__dirname, 'kioskEscape.html'));
+  kioskEscapeWindow.on('closed', () => { kioskEscapeWindow = null; });
+}
+
+guardedHandle('kiosk:attempt-escape', async (event, username, password) => {
+  const rateCheck = kioskEscapeRateLimiter.checkRateLimit('kiosk:attempt-escape');
+  if (!rateCheck.ok) {
+    logSecurityAuditEvent('kiosk:attempt-escape', 'denied', { reason: 'rate_limited' });
+    return rateCheck;
+  }
+  const shapeCheck = validateKioskEscapeCredentials(username, password);
+  if (!shapeCheck.ok) return shapeCheck;
+
+  try {
+    const loginUrl = `${KIOSK_ESCAPE_API_BASE}/api/auth/login`;
+    if (!isAllowedApiHost(loginUrl, [KIOSK_ESCAPE_API_HOSTNAME])) {
+      logSecurityAuditEvent('kiosk:attempt-escape', 'error', { reason: 'host_not_allowlisted' });
+      return { ok: false, error: 'Could not reach the server — check network connectivity and try again.' };
+    }
+    // Always a live call to the API — never a cached/offline credential
+    // check — since the whole point of the escape hatch is to prove the
+    // operator has current admin/manager credentials right now.
+    const result = await withRequestTimeout(
+      new Promise((resolve, reject) => {
+        const request = net.request({ method: 'POST', url: loginUrl });
+        request.setHeader('Content-Type', 'application/json');
+        let body = '';
+        request.on('response', (response) => {
+          response.on('data', (chunk) => { body += chunk.toString(); });
+          response.on('end', () => resolve(body));
+        });
+        request.on('error', reject);
+        request.write(JSON.stringify({ username, password }));
+        request.end();
+      }),
+      DEFAULT_IPC_REQUEST_TIMEOUT_MS,
+      setTimeout
+    );
+    const validation = validateEscapeLoginResponse(result);
+    logSecurityAuditEvent('kiosk:attempt-escape', validation.ok ? 'success' : 'denied', { username });
+    if (!validation.ok) return validation;
+
+    // Deliberate revert-and-restart — see kioskDeliberatelyReverting's
+    // definition near the top of this file. Set before the registry write
+    // so window-all-closed never mistakes this for an unexpected exit.
+    kioskDeliberatelyReverting = true;
+    await runElevatedRegistryWrite('"explorer.exe"');
+    setConfig('kiosk_shell_enabled', false);
+    setConfig('kiosk_boot_attempts', resetBootAttemptState());
+    kioskEscapeWindow?.close();
+    dialog.showMessageBoxSync({
+      type: 'info',
+      title: 'Kiosk Mode Disabled',
+      message: 'Kiosk Mode has been disabled. Restart the computer to return to the normal Windows desktop.',
+    });
+    return { ok: true };
+  } catch (err) {
+    logSecurityAuditEvent('kiosk:attempt-escape', 'error', { error: err.message });
+    return { ok: false, error: 'Could not reach the server — check network connectivity and try again.' };
+  }
 });
 guardedHandle('device:auto-launch-state', () => app.getLoginItemSettings().openAtLogin);
 guardedHandle('device:register-shortcut', (event, accelerator, actionId) => {
@@ -3899,6 +4201,28 @@ app.on('before-quit', () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    // Fix: on a real Windows kiosk, if all windows close while this instance
+    // is running as the shell — and it isn't a deliberate, admin-initiated
+    // revert-and-restart (Settings disable, or the Ctrl+Alt+Shift+F12 escape
+    // hatch, both of which set kioskDeliberatelyReverting before touching the
+    // registry) — relaunch instead of exiting. Otherwise the machine is left
+    // with no shell running at all: a black screen, no taskbar, and the
+    // escape hotkey unregistered (before-quit above unregisters all global
+    // shortcuts), with no way back in. A normal Windows shell (explorer.exe)
+    // is always expected to be present, so this app must behave the same way
+    // while it's standing in for one.
+    //
+    // This can't loop forever into a broken boot: relaunching calls
+    // createMainWindow() again exactly like any other launch, so the
+    // self-revert boot-failure counter in createMainWindow (shouldSelfRevert/
+    // MAX_BOOT_FAILURES) still increments and will flip kiosk_shell_enabled
+    // off and fall back to explorer.exe after enough consecutive failures.
+    if (isRunningAsKioskShell && !kioskDeliberatelyReverting) {
+      isQuitting = true;
+      app.relaunch();
+      app.exit(0);
+      return;
+    }
     isQuitting = true;
     app.quit();
   }

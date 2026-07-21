@@ -227,6 +227,26 @@ function auditIpcHandlerRegistry(mainJsSource) {
   return violations.length === 0 ? { ok: true } : { ok: false, violations };
 }
 
+/**
+ * Shape-validates the kiosk escape hatch's username/password before main.js
+ * sends them anywhere. Mirrors validatePinInput's convention: non-throwing,
+ * { ok, error } return shape. A generous 1024-char cap is a basic sanity
+ * bound, not a real password-policy check — the live /api/auth/login call
+ * is the actual authority on whether the credentials are correct.
+ */
+function validateKioskEscapeCredentials(username, password) {
+  if (typeof username !== 'string' || username.length === 0) {
+    return { ok: false, error: 'username must be a non-empty string' };
+  }
+  if (typeof password !== 'string' || password.length === 0) {
+    return { ok: false, error: 'password must be a non-empty string' };
+  }
+  if (password.length > 1024) {
+    return { ok: false, error: 'password exceeds maximum length' };
+  }
+  return { ok: true };
+}
+
 module.exports = {
   validateIpcSenderOrigin,
   createIpcGuards,
@@ -239,4 +259,5 @@ module.exports = {
   createRateLimiter,
   requireOfflineAuthForSensitiveIpc,
   auditIpcHandlerRegistry,
+  validateKioskEscapeCredentials,
 };
