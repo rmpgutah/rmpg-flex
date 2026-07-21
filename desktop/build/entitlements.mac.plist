@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened Runtime entitlements for the signed/notarized macOS build.
+  Electron needs the four com.apple.security.cs.* exceptions below to run its
+  JIT and load its own (Apple-signed but not by us) frameworks — without them
+  a hardened-runtime Electron app crashes on launch. network.client is needed
+  for the app's own network calls (api.rmpgutah.us) and the auto-updater.
+  Only used when mac.identity is a real Developer ID (desktop-release.yml's
+  macOS job); local `npm run build:mac` passes -c.mac.identity=null and skips
+  hardened runtime + these entitlements entirely (ad-hoc afterPack sign instead).
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+  </dict>
+</plist>

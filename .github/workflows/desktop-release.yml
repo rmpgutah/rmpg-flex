@@ -14,14 +14,27 @@ name: Desktop Release
 #
 # Where it publishes: the rmpg-flex-api Worker serves the electron-updater feed
 # from the `rmpg-flex-downloads` R2 bucket at https://api.rmpgutah.us/updates/
-# (see src/routes/downloads.ts + desktop/updater.js). We upload the .exe, its
-# .blockmap, and the electron-builder-generated latest.yml (UNEDITED — its
-# sha512 must match the .exe byte-for-byte) straight into that bucket.
+# (see src/routes/downloads.ts + desktop/updater.js). We upload the installer,
+# its blockmap, and the electron-builder-generated latest*.yml (UNEDITED — its
+# sha512 must match the installer byte-for-byte) straight into that bucket.
 #
-# macOS is intentionally NOT built here: the mac app is unsigned
-# (build.mac.identity = null), and electron-updater refuses to apply unsigned
-# updates on macOS (Gatekeeper). Add a signed mac job only once an Apple
-# Developer ID certificate is available.
+# macOS build (build-macos, below): requires an Apple Developer ID Application
+# certificate — electron-updater refuses to apply unsigned updates on macOS
+# (Gatekeeper), so until these secrets exist the job fails loudly rather than
+# silently publishing an unsigned/unnotarized build clients can't install:
+#   APPLE_CERTIFICATE              base64 of the .p12 export of the
+#                                   "Developer ID Application" cert
+#                                   (base64 -i cert.p12 | pbcopy)
+#   APPLE_CERTIFICATE_PASSWORD     password the .p12 was exported with
+#   APPLE_ID                       Apple ID email enrolled in the
+#                                   Apple Developer Program
+#   APPLE_APP_SPECIFIC_PASSWORD    app-specific password for that Apple ID
+#                                   (appleid.apple.com → Sign-In and Security)
+#   APPLE_TEAM_ID                  10-char Team ID (developer.apple.com/account)
+# electron-builder auto-signs from CSC_LINK/CSC_KEY_PASSWORD and
+# auto-notarizes from APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID —
+# no extra electron-builder config needed beyond desktop/package.json's
+# mac.hardenedRuntime + entitlements (already set).
 
 on:
   push:
@@ -94,3 +107,92 @@ jobs:
         run: |
           echo "--- https://api.rmpgutah.us/updates/latest.yml ---"
           curl -sS https://api.rmpgutah.us/updates/latest.yml || true
+
+  build-macos:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      # Fail fast with a clear message instead of a cryptic electron-builder
+      # signing error 20+ minutes into the job. All five must be set — see
+      # the header comment above for what each one is and how to get it.
+      - name: Verify Apple signing secrets are configured
+        env:
+          HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+          HAS_CERT_PW: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+          HAS_APPLE_ID: ${{ secrets.APPLE_ID != '' }}
+          HAS_APP_PW: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD != '' }}
+          HAS_TEAM_ID: ${{ secrets.APPLE_TEAM_ID != '' }}
+        run: |
+          missing=0
+          for name in HAS_CERT HAS_CERT_PW HAS_APPLE_ID HAS_APP_PW HAS_TEAM_ID; do
+            if [ "${!name}" != "true" ]; then
+              echo "::error::Missing required secret for macOS signing (see desktop-release.yml header comment): $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" = "1" ]; then
+            echo "::error::Apple Developer ID secrets are not configured — see the macOS build comment at the top of this workflow for what to add under repo Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      # Same rationale as the Windows job: fail loudly on a broken native
+      # module build rather than shipping wrong-ABI serialport/better-sqlite3
+      # bindings. macos-latest already has Xcode Command Line Tools, so no
+      # extra toolchain setup is needed here (unlike Windows).
+      - name: Rebuild native modules for Electron
+        working-directory: desktop
+        run: npm run rebuild
+
+      # electron-builder auto-discovers the signing identity from CSC_LINK
+      # (base64 .p12) + CSC_KEY_PASSWORD, and auto-notarizes afterward using
+      # APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID — no CLI flags or
+      # extra config needed for either beyond package.json's mac.hardenedRuntime
+      # + entitlements. --publish never: same reasoning as the Windows job,
+      # we host the feed on R2, not GitHub Releases.
+      - name: Build and notarize macOS installer
+        working-directory: desktop
+        env:
+          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-builder --mac --arm64 --publish never
+
+      # Upload the .dmg, its blockmap, and latest-mac.yml to the same R2
+      # bucket the Windows job uses. latest-mac.yml goes last so the .dmg it
+      # references is already fetchable when clients read the manifest.
+      - name: Publish to R2 update feed
+        working-directory: desktop/dist
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          bucket="rmpg-flex-downloads"
+          dmg=$(find . -maxdepth 1 -name '*.dmg' -print -quit)
+          if [ -z "$dmg" ]; then echo "::error::No .dmg found in desktop/dist"; exit 1; fi
+          if [ ! -f "latest-mac.yml" ]; then echo "::error::latest-mac.yml not generated by electron-builder"; exit 1; fi
+          dmg_name=$(basename "$dmg")
+          echo "Publishing $dmg_name to $bucket"
+          npx --yes wrangler@4 r2 object put "$bucket/$dmg_name" --file "$dmg_name" --remote
+          if [ -f "$dmg_name.blockmap" ]; then
+            npx --yes wrangler@4 r2 object put "$bucket/$dmg_name.blockmap" --file "$dmg_name.blockmap" --remote
+          fi
+          npx --yes wrangler@4 r2 object put "$bucket/latest-mac.yml" --file "latest-mac.yml" --remote --content-type "text/yaml"
+
+      - name: Verify feed
+        run: |
+          echo "--- https://api.rmpgutah.us/updates/latest-mac.yml ---"
+          curl -sS https://api.rmpgutah.us/updates/latest-mac.yml || true
