@@ -91,6 +91,8 @@ contextBridge.exposeInMainWorld('electron', {
   checkGpsHardwarePresent: () => ipcRenderer.invoke('device:gps-present'),
   setAutoLaunch: (enabled) => ipcRenderer.invoke('device:set-auto-launch', enabled),
   getAutoLaunchState: () => ipcRenderer.invoke('device:auto-launch-state'),
+  setKioskShell: (enabled) => ipcRenderer.invoke('device:set-kiosk-shell', enabled),
+  getKioskShellState: () => ipcRenderer.invoke('device:kiosk-shell-state'),
   registerGlobalShortcut: (accelerator, actionId) => ipcRenderer.invoke('device:register-shortcut', accelerator, actionId),
   unregisterGlobalShortcut: (accelerator) => ipcRenderer.invoke('device:unregister-shortcut', accelerator),
   onShortcutTriggered: (callback) => {
