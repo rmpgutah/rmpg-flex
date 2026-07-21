@@ -37,22 +37,13 @@
 #     Don't have a GNUEFI_DIR yet (e.g. fresh checkout)? Build one:
 #       ./build-gnuefi-pe.sh              # produces $HOME/.local/gnu-efi-pe
 #       ./build-gnuefi-pe.sh /path/to/dir # or a custom location
-ARCH        = x86_64
-TARGET      = x86_64-unknown-windows
-CC          = clang
-LD          = clang
+#
+# ARCH/TARGET/CC/LD/GNUEFI_DIR/CFLAGS/LDFLAGS are factored into common.mk,
+# shared with test/dummy-bootmgr/Makefile (Task 3's test-only stand-in
+# Windows Boot Manager) so the ruleset isn't duplicated across both.
+include common.mk
 
-GNUEFI_DIR  ?= $(HOME)/.local/gnu-efi-pe
-EFIINC      = $(GNUEFI_DIR)/inc
-EFIINCS     = -I$(EFIINC) -I$(EFIINC)/$(ARCH) -I$(EFIINC)/protocol
-EFILIB      = $(GNUEFI_DIR)/lib/libefi.a
-
-CFLAGS      = -target $(TARGET) $(EFIINCS) -ffreestanding -fshort-wchar \
-              -mno-red-zone -DGNU_EFI_USE_MS_ABI -Wall -Wextra -Wno-unused-parameter
-LDFLAGS     = -target $(TARGET) -fuse-ld=lld -nostdlib \
-              -Wl,-entry:efi_main -Wl,-subsystem:efi_application -Wl,/dll
-
-SRCS        = src/main.c src/splash.c
+SRCS        = src/main.c src/splash.c src/chainload.c
 OBJS        = $(SRCS:.c=.o)
 
 BUILD_DIR   = build
