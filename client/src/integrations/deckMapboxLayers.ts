@@ -11,6 +11,7 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import { ScatterplotLayer, ArcLayer, IconLayer } from '@deck.gl/layers';
 import type mapboxgl from 'mapbox-gl';
 import type { IncidentPoint, UnitPosition, ArcConnection } from './deckLayers';
+import { devWarn } from '../utils/devLog';
 
 // Re-export types for convenience
 export type { IncidentPoint, UnitPosition, ArcConnection };
@@ -100,18 +101,35 @@ let overlay: MapboxOverlay | null = null;
 
 /**
  * Initialize the Deck.gl overlay on a Mapbox GL map.
+ *
+ * Deck.gl's `interleaved: true` GPU-shared-context mode only supports
+ * Mapbox's `mercator`/`globe` projections — `map.addControl` throws
+ * synchronously ("Unsupported projection") for any other active projection
+ * (equalEarth, naturalEarth, etc.). Callers should already guard on the
+ * current projection before calling this (see MapboxMapPage.tsx's deck
+ * effect), but this catch is a second line of defense so a race between a
+ * projection change and this call can never propagate an uncaught error up
+ * to the page-level ErrorBoundary and blank the whole Map tab.
  */
-export function initMapboxDeckOverlay(map: mapboxgl.Map): MapboxOverlay {
+export function initMapboxDeckOverlay(map: mapboxgl.Map): MapboxOverlay | null {
   if (overlay) {
     overlay.finalize();
+    overlay = null;
   }
 
-  overlay = new MapboxOverlay({
+  const next = new MapboxOverlay({
     interleaved: true,
     layers: [],
   });
 
-  map.addControl(overlay as unknown as mapboxgl.IControl);
+  try {
+    map.addControl(next as unknown as mapboxgl.IControl);
+  } catch (err) {
+    devWarn('[deckMapboxLayers] GPU Overlay unsupported for the current map projection', err);
+    return null;
+  }
+
+  overlay = next;
   return overlay;
 }
 

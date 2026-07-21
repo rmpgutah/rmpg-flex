@@ -571,12 +571,20 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   });
 
   // ── Deck.gl GPU Overlay ────────────────────────────────────────────────────
+  // Deck.gl's interleaved GPU-shared-context mode only supports Mapbox's
+  // mercator/globe projections — enabling it under equalEarth/naturalEarth/etc.
+  // previously threw an uncaught "Unsupported projection" error out of
+  // map.addControl, which propagated to the route-level ErrorBoundary and
+  // blanked the entire Map tab. Gate on the current projection here (in
+  // addition to initMapboxDeckOverlay's own try/catch) so toggling GPU
+  // Overlay under an unsupported projection is a no-op, not a crash.
+  const deckSupportsProjection = projection.projection === 'mercator' || projection.projection === 'globe';
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
 
-    if (deckEnabled) {
+    if (deckEnabled && deckSupportsProjection) {
       initMapboxDeckOverlay(map);
 
       const incidents = calls
@@ -621,8 +629,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       destroyMapboxDeckOverlay();
     }
 
-    return () => { if (!deckEnabled) destroyMapboxDeckOverlay(); };
-  }, [deckEnabled, mapLoaded, calls, units]);
+    return () => { if (!deckEnabled || !deckSupportsProjection) destroyMapboxDeckOverlay(); };
+  }, [deckEnabled, deckSupportsProjection, mapLoaded, calls, units]);
 
   // ── Data Fetching ──────────────────────────────────────────────────────────
 
@@ -1100,11 +1108,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       items: [
         { id: 'inspect', label: 'Feature Inspector', active: featureInspect.enabled, onToggle: featureInspect.toggle, color: '#8b5cf6', description: 'Click features for details' },
         { id: 'mapmatch', label: 'Map Match Trace', active: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting(), color: '#fb923c', description: 'Snap GPS to roads' },
-        { id: 'deck', label: 'GPU Overlay', active: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: 'Deck.gl accelerated rendering' },
+        { id: 'deck', label: 'GPU Overlay', active: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: deckSupportsProjection ? 'Deck.gl accelerated rendering' : 'Deck.gl accelerated rendering (requires Mercator or Globe projection)' },
         { id: 'perf-hud', label: 'Performance HUD', active: diagnosticsOpen, onToggle: () => setDiagnosticsOpen((v) => !v), color: '#fb923c', description: 'FPS, layer count, render timing' },
       ],
     },
-  ], [directionsPanel, placesSearch, mapBookmarks, multiStopPanelOpen, speedAnalyticsPanelOpen, speedZoneStats.loading, activeFloatingTool, measure.mode, drawing.mode, glDraw, identifyEnabled, tilequery.loading, featureInspect, mapMatchTrace, deckEnabled, setDeckEnabled, gpsHudOpen, setGpsHudOpen, diagnosticsOpen, setDiagnosticsOpen]);
+  ], [directionsPanel, placesSearch, mapBookmarks, multiStopPanelOpen, speedAnalyticsPanelOpen, speedZoneStats.loading, activeFloatingTool, measure.mode, drawing.mode, glDraw, identifyEnabled, tilequery.loading, featureInspect, mapMatchTrace, deckEnabled, deckSupportsProjection, setDeckEnabled, gpsHudOpen, setGpsHudOpen, diagnosticsOpen, setDiagnosticsOpen]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
