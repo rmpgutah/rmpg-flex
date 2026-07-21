@@ -324,3 +324,25 @@ test('auditIpcHandlerRegistry: flags multiple violations', () => {
   const result = auditIpcHandlerRegistry(source);
   assert.equal(result.violations.length, 2);
 });
+
+const { validateKioskEscapeCredentials } = require('../ipcGuard');
+
+test('validateKioskEscapeCredentials: accepts non-empty username and password', () => {
+  assert.deepEqual(validateKioskEscapeCredentials('czamora', 'hunter2'), { ok: true });
+});
+
+test('validateKioskEscapeCredentials: rejects empty/missing username or password', () => {
+  assert.equal(validateKioskEscapeCredentials('', 'hunter2').ok, false);
+  assert.equal(validateKioskEscapeCredentials('czamora', '').ok, false);
+  assert.equal(validateKioskEscapeCredentials(undefined, 'hunter2').ok, false);
+  assert.equal(validateKioskEscapeCredentials('czamora', undefined).ok, false);
+});
+
+test('validateKioskEscapeCredentials: rejects non-string input', () => {
+  assert.equal(validateKioskEscapeCredentials(123, 'hunter2').ok, false);
+  assert.equal(validateKioskEscapeCredentials('czamora', {}).ok, false);
+});
+
+test('validateKioskEscapeCredentials: rejects an over-length password (basic sanity cap)', () => {
+  assert.equal(validateKioskEscapeCredentials('czamora', 'x'.repeat(1025)).ok, false);
+});
