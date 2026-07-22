@@ -83,17 +83,11 @@ describe('activateNavFunction — electronOnly', () => {
     expect(onElectronOnlyUnavailable).not.toHaveBeenCalled();
   });
 
-  it('calls onElectronOnlyUnavailable when NOT running in Electron', () => {
+  it('navigates to the web Company Browser page when not running in Electron', () => {
     (window as any).electron = undefined;
-    const openWindow = vi.fn();
     const navigate = vi.fn();
-    const onElectronOnlyUnavailable = vi.fn();
-
-    activateNavFunction(COMPANY_BROWSER_FN, { openWindow, navigate, onElectronOnlyUnavailable });
-
-    expect(onElectronOnlyUnavailable).toHaveBeenCalledWith(COMPANY_BROWSER_FN);
-    expect(openWindow).not.toHaveBeenCalled();
-    expect(navigate).not.toHaveBeenCalled();
+    activateNavFunction(COMPANY_BROWSER_FN, { openWindow: vi.fn(), navigate, currentUserRole: 'officer' });
+    expect(navigate).toHaveBeenCalledWith('/web-desktop-company-browser');
   });
 
   it('does not throw when onElectronOnlyUnavailable is omitted and Electron is absent', () => {
