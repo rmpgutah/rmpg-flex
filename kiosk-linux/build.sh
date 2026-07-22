@@ -58,6 +58,20 @@
 # translation involved), so the entire Buildroot build now happens there;
 # only the two final images this project actually needs get copied out to
 # the host-visible kiosk-linux/output/ directory at the very end.
+#
+# --- Windows host note (WSL2) ---
+# This script is unmodified-portable to a WSL2 shell (bash + the `docker` CLI
+# is all it needs) and does NOT need Colima — WSL2 already runs a real Linux
+# kernel, so either Docker Desktop's WSL2 backend (Settings > Resources > WSL
+# Integration, enabled for your distro) or `docker-ce` installed directly
+# inside the WSL2 distro gives a working `docker info` with no VM workaround.
+# The named-Docker-volume requirement still applies for the same reason as on
+# macOS: WSL2's own bind-mount into Windows drives (`/mnt/c/...`) goes through
+# a comparable cross-filesystem translation (Plan 9 protocol) and is not a
+# substitute for a real Linux volume — always run this script from a path
+# inside the WSL2 filesystem itself (e.g. `~/kiosk-linux`, NOT
+# `/mnt/c/Users/.../kiosk-linux`), and let BUILDROOT_VOLUME/BUILD_OUTPUT_VOLUME
+# stay Docker-managed named volumes as below.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -70,9 +84,12 @@ BUILD_OUTPUT_VOLUME="${BUILD_OUTPUT_VOLUME:-kiosk-linux-build-output}"
 mkdir -p "$OUTPUT_DIR/images"
 
 if ! docker info >/dev/null 2>&1; then
-  echo "ERROR: docker is not available/running. On macOS, install+start Colima first:" >&2
-  echo "  brew install colima docker" >&2
-  echo "  colima start --cpu 4 --memory 8 --disk 60" >&2
+  echo "ERROR: docker is not available/running." >&2
+  echo "  On macOS: install+start Colima —" >&2
+  echo "    brew install colima docker && colima start --cpu 4 --memory 8 --disk 60" >&2
+  echo "  On Windows/WSL2: enable Docker Desktop's WSL Integration for your distro" >&2
+  echo "    (Settings > Resources > WSL Integration), or install docker-ce directly" >&2
+  echo "    inside the WSL2 distro — no Colima/VM workaround needed there." >&2
   exit 1
 fi
 

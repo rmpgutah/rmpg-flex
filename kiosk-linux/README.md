@@ -41,6 +41,26 @@ Once `docker info` succeeds, build:
     cd kiosk-linux
     ./build.sh
 
+### Building on Windows (WSL2)
+
+`build.sh` needs no changes to run under WSL2 — it's plain bash + the `docker`
+CLI. WSL2 runs a real Linux kernel, so there's no Colima-style VM workaround
+needed: enable Docker Desktop's **WSL Integration** for your distro (Settings >
+Resources > WSL Integration), or install `docker-ce` directly inside the WSL2
+distro, and `docker info` will succeed the same way it does on a native Linux
+host.
+
+One rule carries over from the macOS case for the same underlying reason:
+**run this from a path inside the WSL2 filesystem** (e.g. `~/kiosk-linux`),
+**not** a Windows drive mounted into WSL2 (`/mnt/c/Users/.../kiosk-linux`) —
+that mount goes through a cross-filesystem translation layer (the 9P/Plan 9
+protocol) analogous to Colima's virtiofs, which is exactly the class of bug
+that forced this project onto named Docker volumes instead of a host bind
+mount in the first place (see "Why named volumes, not a bind mount" below).
+The named-volume build output is unaffected either way, so once you're
+building from the WSL2-native filesystem, `./build.sh` behaves identically to
+the macOS/Colima path.
+
 This:
 1. Builds a Docker image (`docker/Dockerfile`, Ubuntu 24.04 + Buildroot's mandatory
    packages plus a few kernel-build-specific ones — see that file's comments).

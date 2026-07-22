@@ -377,7 +377,35 @@ There is no Worker test suite yet — only typecheck. **Adding vitest for `/src/
 10. **`WelfareWatchDO` is SQLite-backed (`new_sqlite_classes`)** — free-plan compatible. Same API surface for our use case but storage is per-DO, isolated from D1.
 11. **Megafiles still exist on the client** — `FirecrawlTab.tsx` (11k lines), `MapPage.tsx` / `DispatchPage.tsx` (~6k each), `WarrantsPage.tsx` (4k). Split opportunistically when you're already in them; don't schedule a "refactoring sprint."
 12. **Comments in `/src/` and `/client/src/` that say "mirrors server/..."** — that VPS-era source tree no longer exists in this repo (deleted 2026-07-16, previously at `legacy/server-vps/`). Read those comments as historical reference only; the canonical implementation is whatever's in `/src/`.
-13. **D1 100-column SELECT cap** — Cloudflare D1 caps SELECT result sets at ~100 columns. `calls_for_service` (100 cols) and `persons` (94 cols) are at or near the cap on live. **Never `ALTER TABLE … ADD COLUMN` against either of those** — new columns go to the `_ext` overflow table (1:1 pattern, see `calls_for_service_ext`). `scripts/check-column-cap.js` (run by `.github/workflows/column-cap-check.yml` on every PR touching `migrations/`) fails CI if a PR adds an ALTER against a watched table. Override with `ALLOW_ALTER_<TABLE>=1` env var on the workflow run if you genuinely have no other option, and document the reason in the PR body.
+13. **Buildroot (`kiosk-linux/`) does not build on macOS directly** — use Colima + Docker.
+    Build inside **named Docker volumes**, not host bind-mounts — bind-mounting the
+    output tree through Colima's virtiofs/9p hits a repeatable file-corruption bug
+    during kernel tarball extraction. Copy only final images out to the host at the end.
+14. **QEMU + virtio-gpu testing**: pass `-vga none -device virtio-gpu-pci` (the default
+    VGA adapter is captured by `screendump` otherwise, not the virtio device). Monitor
+    Unix sockets must live under `/tmp` via `mktemp -u` — a path under a deep worktree
+    dir exceeds the 104-byte `sockaddr_un` limit. `modetest` exits almost immediately on
+    non-interactive stdin — process-alive is never a valid success signal; check its log
+    output instead, and give it a **read-write** FIFO (`exec 3<>fifo`), not read-only
+    (read-only blocks the whole shell command before `modetest` even runs).
+15. **gnu-efi / UEFI apps on macOS**: the ELF/x86_64-elf-gcc cross-toolchain path
+    page-faults on real boot. Use Apple clang + `lld` targeting `x86_64-unknown-windows`
+    (native PE/COFF) instead — sidesteps the ELF-reloc trampoline entirely.
+16. **`AdminPage.tsx` tab wiring** — adding a tab needs FOUR edits: `VALID_TABS` array,
+    the `TabId` type union, the `{id,label,icon}` config array, AND an
+    `{activeTab === '...' && <Tab/>}` render block. Missing the `TabId` union entry
+    compiles-looks-fine until `tsc` — easy to miss when following an older plan brief.
+17. **`main` is a protected branch** — direct push is rejected; PR + passing checks
+    required. After a squash-merge, a still-open feature branch's later commits diverge
+    from the new squash commit on `origin/main` — don't just diff/rebase blindly; cut a
+    fresh branch off current `origin/main` and `git checkout <old-branch> -- <files>` to
+    bring over only the genuinely-new files, or the PR diff can misleadingly look like it
+    reverts other concurrently-merged work.
+18. **Subagents cannot block across turns for long-running builds** (multi-hour Buildroot
+    compiles, etc.) — a dispatched subagent saying "I'll wait for it to finish" just ends
+    its turn with no progress on resume. Monitor long builds directly via Bash
+    (`docker ps`/`docker logs`) + `ScheduleWakeup` instead of delegating the wait.
+19. **D1 100-column SELECT cap** — Cloudflare D1 caps SELECT result sets at ~100 columns. `calls_for_service` (100 cols) and `persons` (94 cols) are at or near the cap on live. **Never `ALTER TABLE … ADD COLUMN` against either of those** — new columns go to the `_ext` overflow table (1:1 pattern, see `calls_for_service_ext`). `scripts/check-column-cap.js` (run by `.github/workflows/column-cap-check.yml` on every PR touching `migrations/`) fails CI if a PR adds an ALTER against a watched table. Override with `ALLOW_ALTER_<TABLE>=1` env var on the workflow run if you genuinely have no other option, and document the reason in the PR body.
 
 ## Cross-reference: dead instructions to ignore
 
