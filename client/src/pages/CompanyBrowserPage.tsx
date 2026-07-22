@@ -374,7 +374,13 @@ export default function CompanyBrowserPage() {
             key={tab.id}
             ref={(el) => { webviewRefs.current[tab.id] = el; }}
             src={tab.url}
-            style={{ position: 'absolute', inset: 0, display: tab.id === activeTabId ? 'block' : 'none' }}
+            // Electron's <webview> is a custom element that does not reliably
+            // size its internal guest frame from `inset: 0` alone the way a
+            // normal absolutely-positioned element does — it needs explicit
+            // width/height, or the guest page renders at its own intrinsic
+            // content height (observed: a real page loads, but only fills a
+            // thin strip at the top of the window, with the rest blank).
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: tab.id === activeTabId ? 'block' : 'none' }}
             partition={`persist:company-browser-${tab.id}`}
           />
         ))}
