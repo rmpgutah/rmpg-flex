@@ -42,7 +42,7 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Segoe UI', 'Tahoma', 'Geneva', 'Verdana', 'sans-serif'],
+        sans: ['Calibri', 'Arial', 'Helvetica', 'sans-serif'],
         mono: ['Consolas', 'Courier New', 'monospace'],
       },
       fontSize: {
