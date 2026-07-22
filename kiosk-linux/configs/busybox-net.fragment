@@ -1,0 +1,6 @@
+# kiosk-linux/configs/busybox-net.fragment
+# Ensures BusyBox's udhcpc DHCP client applet is built in. Buildroot's default
+# BusyBox config already enables this in most releases, but this fragment
+# makes it an explicit, non-negotiable requirement for this project rather
+# than an implicit default that could silently regress.
+CONFIG_UDHCPC=y

@@ -93,7 +93,7 @@ BR2_LINUX_KERNEL_DEFCONFIG="x86_64"
 # /kiosk-linux inside the container (never at a path relative to BUILDROOT_DIR or
 # the O= volume), so the absolute /kiosk-linux/... form is what's actually
 # reachable at build time regardless of where Buildroot's source checkout lives.
-BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="/kiosk-linux/configs/kernel-drm.fragment"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="/kiosk-linux/configs/kernel-drm.fragment /kiosk-linux/configs/kernel-net.fragment"
 
 # libdrm — DRM userspace library, plus its bundled test tools (provides modetest,
 # the diagnostic tool this sub-project uses as its proof mechanism). Symbol names
@@ -114,3 +114,9 @@ BR2_PACKAGE_LIBDRM_INSTALL_TESTS=y
 # sub-option of BR2_PACKAGE_LIBDRM that a `select` alone would not turn on.
 BR2_PACKAGE_MESA3D=y
 BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VIRGL=y
+
+# Networking (sub-project 3, Task 1). udhcpc (BusyBox) acquires a DHCP lease
+# over the virtio-net interface; ca-certificates provides the Mozilla trust
+# root bundle WPE WebKit needs to validate rmpgutah.us's TLS certificate.
+BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="/kiosk-linux/configs/busybox-net.fragment"
+BR2_PACKAGE_CA_CERTIFICATES=y

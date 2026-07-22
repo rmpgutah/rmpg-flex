@@ -1,0 +1,30 @@
+#!/bin/sh
+# kiosk-linux/rootfs-overlay/etc/init.d/S99kiosk-net-marker
+#
+# Runs after S99kiosk-boot-marker and S99kiosk-drm-marker (lexicographic order:
+# "S99kiosk-boot-marker" < "S99kiosk-drm-marker" < "S99kiosk-net-marker" —
+# same tie-breaking behavior on the shared S99 prefix already confirmed in
+# S99kiosk-drm-marker's own comments). Acquires a DHCP lease over eth0 (the
+# virtio-net interface) and confirms real outbound connectivity with a plain
+# HTTP request — HTTP, not HTTPS, deliberately: BusyBox wget in this image has
+# no TLS support built in, and proving basic IP connectivity + DNS + routing
+# doesn't require it. HTTPS trust (via the ca-certificates bundle installed in
+# Task 1) is exercised for real by WPE WebKit itself in Task 2's browser
+# marker, not by this script.
+ip link set eth0 up 2>/dev/null
+
+# udhcpc -n (exit if lease not obtained) -q (quit after obtaining lease) blocks
+# until it succeeds or gives up — no manual polling loop needed here, unlike
+# the DRM marker's modetest handling, since udhcpc's own exit code IS a
+# trustworthy success/failure signal (it does not fall through to a shared
+# "still running" state the way modetest does).
+if udhcpc -i eth0 -n -q -t 5 -T 3 >/tmp/udhcpc.log 2>&1; then
+  if wget -q -T 5 -O /dev/null http://neverssl.com/; then
+    echo "KIOSK_LINUX_NET_OK"
+  else
+    echo "KIOSK_LINUX_NET_FAILED (dhcp lease acquired, but http reachability check failed)"
+  fi
+else
+  echo "KIOSK_LINUX_NET_FAILED (no dhcp lease, see /tmp/udhcpc.log)"
+  cat /tmp/udhcpc.log
+fi
