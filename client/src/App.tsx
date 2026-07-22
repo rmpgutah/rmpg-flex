@@ -89,6 +89,7 @@ const FieldCameraPage = lazyRetry(() => import('./pages/mobile/FieldCameraPage')
 const MobilePsoCfsPage = lazyRetry(() => import('./pages/mobile/MobilePsoCfsPage'));
 const NavigationPage = lazyRetry(() => import('./pages/NavigationPage'));
 const DesktopPage = lazyRetry(() => import('./pages/DesktopPage'));
+const WebCompanyBrowserPage = lazyRetry(() => import('./pages/WebCompanyBrowserPage'));
 const ShiftPlansPage = lazyRetry(() => import('./pages/ShiftPlansPage'));
 const StatuteAnalyticsPage = lazyRetry(() => import('./pages/StatuteAnalyticsPage'));
 const CustomReportBuilder = lazyRetry(() => import('./pages/CustomReportBuilder'));
@@ -529,6 +530,7 @@ function AppRoutes() {
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
           <Route path="/detached/record/:type/:id" element={<ProtectedRoute><RouteErrorBoundary><RecordDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
           <Route path="/desktop-company-browser" element={<ProtectedRoute><CompanyBrowserRoleGuard><RouteErrorBoundary><CompanyBrowserPage /></RouteErrorBoundary></CompanyBrowserRoleGuard></ProtectedRoute>} />
+          <Route path="/web-desktop-company-browser" element={<ProtectedRoute><CompanyBrowserRoleGuard><RouteErrorBoundary><WebCompanyBrowserPage /></RouteErrorBoundary></CompanyBrowserRoleGuard></ProtectedRoute>} />
 
           {/* Authenticated app shell. The pathless parent route hosts ONE
               app-wide NavTripProvider so vehicle trip detection + live movement

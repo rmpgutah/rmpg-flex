@@ -131,6 +131,7 @@ import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import fleetio from './routes/fleetio';
 import legalDataHunter from './routes/legalDataHunter';
+import webBrowser from './routes/webBrowser';
 import documentFolders from './routes/documents/folders';
 import documentsLibrary from './routes/documents/library';
 import documentIntake from './routes/documentIntake';
@@ -703,6 +704,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/stats', router: stubs, auth: 'required' },
   { prefix: '/api/weather', router: weather, auth: 'required' },
+  { prefix: '/api/web-browser', router: webBrowser, auth: 'required',
+    note: 'Web Company Browser: POST /session issues a session id (blocked for client_viewer/contract_manager) before a WebBrowserSessionDO + Browser Rendering instance is created. The /api/web-browser-ws WebSocket upgrade is handled outside Hono in the top-level fetch() in src/index.ts (mirrors /api/voice-ws).' },
   // NB: do NOT re-mount stubs at /api/email here. The full email router
   // (line ~497 below) supersedes everything stubs ever served on this
   // prefix. Mounting stubs first would let the integrations-tab `/status`
