@@ -66,7 +66,11 @@ const FULL_CSP = [
   `img-src 'self' data: blob: https: http:`,
   `font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com`,
   `connect-src ${ALLOWED_CONNECT}`,
-  `frame-src 'self' blob: https://*.arcgis.com`,
+  // dialer.rmpgutah.us: DialerPanel's embedded Dial Connect iframe (see
+  // client/src/components/DialerPanel.tsx) -- without this the browser
+  // blocks the embed outright, even though the meta-tag CSP in index.html
+  // allows it, because this HTTP header enforces alongside it.
+  `frame-src 'self' blob: https://*.arcgis.com https://www.mapillary.com https://dialer.rmpgutah.us`,
   `media-src 'self' blob: data:`,
   `worker-src 'self' blob:`,
   `child-src 'self' blob:`,
