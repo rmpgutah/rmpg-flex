@@ -84,6 +84,12 @@ comments in the files themselves):
 
 ## Testing
 
+Requires `qemu-system-x86_64` on PATH (`brew install qemu` — already installed for the
+`uefi-bootsplash` project if you've built that first) and GNU `timeout` — a stock macOS
+host has neither `timeout` natively, so `run-qemu.sh` falls back to Homebrew coreutils'
+`gtimeout` (`brew install coreutils`) if `timeout` isn't found; it errors clearly if
+neither is present.
+
     ./test/run-qemu.sh test/boot.log
     ./test/assert-boot-log.sh test/boot.log "KIOSK_LINUX_BOOT_OK"
 
