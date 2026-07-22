@@ -20,6 +20,12 @@ interface DownloadsInfo {
   os?: InstallerMeta;
 }
 
+interface ReleaseNote {
+  version: string;
+  releaseDate: string;
+  notes: string[];
+}
+
 const PLATFORM_CONFIG: Record<Platform, {
   label: string;
   arch: string;
@@ -80,6 +86,8 @@ export default function DownloadsPage() {
   const [info, setInfo] = useState<DownloadsInfo>({});
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
+  const [changelog, setChangelog] = useState<ReleaseNote[]>([]);
+  const [showAllChangelog, setShowAllChangelog] = useState(false);
   const [activeTab, setActiveTab] = useState<Platform>(recommended);
   const [searchParams, setSearchParams] = useSearchParams();
   // Dial Connect's icon is hosted on a separate domain (dialer.rmpgutah.us) and
@@ -117,6 +125,12 @@ export default function DownloadsPage() {
         setFetchError(true);
         setLoading(false);
       });
+  }, []);
+
+  useEffect(() => {
+    apiFetch<ReleaseNote[]>('/api/downloads/changelog')
+      .then((data) => setChangelog(data))
+      .catch(() => setChangelog([]));
   }, []);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
@@ -247,6 +261,43 @@ export default function DownloadsPage() {
             desktop app, Android app, or in any web browser.
           </p>
         </div>
+
+        {/* What's New */}
+        {changelog.length > 0 && (
+          <div
+            className="p-5 mb-8"
+            style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
+          >
+            <h4 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#d4a017' }}>
+              What's New
+            </h4>
+            {(showAllChangelog ? changelog : changelog.slice(0, 1)).map((entry) => (
+              <div key={entry.version} className="mb-4 last:mb-0">
+                <div className="text-xs font-bold mb-1" style={{ color: 'var(--rmpg-300)' }}>
+                  v{entry.version} — {entry.releaseDate}
+                </div>
+                <div className="space-y-1">
+                  {entry.notes.map((note, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs" style={{ color: 'var(--rmpg-400)' }}>
+                      <span style={{ color: '#d4a017' }}>&bull;</span>
+                      {note}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {changelog.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setShowAllChangelog((v) => !v)}
+                className="text-[11px] font-bold uppercase tracking-wider mt-2"
+                style={{ color: 'var(--rmpg-500)' }}
+              >
+                {showAllChangelog ? 'Show less' : `Show ${changelog.length - 1} more`}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── Loading state ─────────────────────────────────────────────── */}
         {loading && (
