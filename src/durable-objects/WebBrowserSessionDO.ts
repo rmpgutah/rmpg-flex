@@ -202,9 +202,7 @@ export class WebBrowserSessionDO {
       this.browser = null;
       this.page = null;
     }
-    if (reason === 'closed') {
-      try { this.socket?.close(); } catch { /* already closed */ }
-    }
+    try { this.socket?.close(); } catch { /* already closed */ }
     this.socket = null;
     this.authenticated = false;
   }
