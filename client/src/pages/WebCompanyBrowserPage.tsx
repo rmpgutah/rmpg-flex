@@ -81,8 +81,35 @@ export default function WebCompanyBrowserPage() {
   }, [addressInput, send]);
 
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    send({ type: 'click', x: e.clientX - rect.left, y: e.clientY - rect.top });
+    const canvas = e.currentTarget;
+    const rect = canvas.getBoundingClientRect();
+    // The canvas's intrinsic bitmap resolution (canvas.width/height) is set to the
+    // remote frame's pixel dimensions, but its on-screen box is CSS-styled to fill
+    // the flex container (width/height: 100%) — those two sizes generally differ.
+    // Scale the CSS-relative click point up to intrinsic canvas pixels before
+    // sending, or every click lands at the wrong spot on the real remote page.
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    send({ type: 'click', x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY });
+  }, [send]);
+
+  const handleCanvasKeyDown = useCallback((e: React.KeyboardEvent<HTMLCanvasElement>) => {
+    let text = '';
+    if (e.key.length === 1) {
+      text = e.key;
+    } else if (e.key === 'Enter') {
+      text = '\n';
+    } else if (e.key === 'Backspace') {
+      text = '\b';
+    } else {
+      return;
+    }
+    e.preventDefault();
+    send({ type: 'type', text });
+  }, [send]);
+
+  const handleCanvasWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
+    send({ type: 'scroll', dx: e.deltaX, dy: e.deltaY });
   }, [send]);
 
   if (sessionEnded) {
@@ -108,7 +135,14 @@ export default function WebCompanyBrowserPage() {
         />
       </form>
       <div className="flex-1 relative">
-        <canvas ref={canvasRef} onClick={handleCanvasClick} style={{ width: '100%', height: '100%' }} />
+        <canvas
+          ref={canvasRef}
+          tabIndex={0}
+          onClick={handleCanvasClick}
+          onKeyDown={handleCanvasKeyDown}
+          onWheel={handleCanvasWheel}
+          style={{ width: '100%', height: '100%' }}
+        />
         {error && (
           <div role="alert" style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '8px 12px', background: 'var(--sev-critical)', color: 'var(--text-primary)', fontSize: 11 }}>
             {error}

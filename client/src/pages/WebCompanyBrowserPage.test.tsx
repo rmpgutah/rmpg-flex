@@ -62,4 +62,36 @@ describe('WebCompanyBrowserPage', () => {
     FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'session_ended', reason: 'idle_timeout' }) });
     await waitFor(() => expect(screen.getByText(/session ended/i)).toBeInTheDocument());
   });
+
+  it('scales click coordinates from CSS-displayed size to intrinsic canvas pixel size', async () => {
+    const { container } = render(<WebCompanyBrowserPage />);
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+    Object.defineProperty(canvas, 'width', { value: 800, configurable: true });
+    Object.defineProperty(canvas, 'height', { value: 600, configurable: true });
+    canvas.getBoundingClientRect = () => ({
+      left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0, toJSON: () => {},
+    });
+    fireEvent.click(canvas, { clientX: 100, clientY: 50 });
+    const sent = FakeWebSocket.instances[0].sent.map((s) => JSON.parse(s));
+    expect(sent).toContainEqual({ type: 'click', x: 200, y: 100 });
+  });
+
+  it('sends a type message on key down for a printable character', async () => {
+    const { container } = render(<WebCompanyBrowserPage />);
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+    fireEvent.keyDown(canvas, { key: 'a' });
+    const sent = FakeWebSocket.instances[0].sent.map((s) => JSON.parse(s));
+    expect(sent).toContainEqual({ type: 'type', text: 'a' });
+  });
+
+  it('sends a scroll message on wheel', async () => {
+    const { container } = render(<WebCompanyBrowserPage />);
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+    fireEvent.wheel(canvas, { deltaX: 12, deltaY: 34 });
+    const sent = FakeWebSocket.instances[0].sent.map((s) => JSON.parse(s));
+    expect(sent).toContainEqual({ type: 'scroll', dx: 12, dy: 34 });
+  });
 });
