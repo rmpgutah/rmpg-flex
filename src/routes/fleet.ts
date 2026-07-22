@@ -1267,8 +1267,13 @@ fleet.put('/:id{[0-9]+}', async (c) => {
       return c.json({ error: 'No editable fields provided' }, 400);
     }
 
-    // MST timestamps — all of /src/ pins SQL clocks to UTC-7 to avoid DST
-    // drift in dispatch timelines (see project memory feedback on timestamps).
+    // datetime('now') is UTC (SQLite has no timezone data). This is
+    // intentional and correct — always store timestamps in UTC, never
+    // manual-offset them (a stale version of this comment previously
+    // claimed the app "pins SQL clocks to UTC-7", which isn't what this
+    // line does and would be DST-unsafe if it were; see utils/denverTime.ts
+    // for the actual DST-aware Denver-local conversion helpers used at
+    // display/query time, not storage time).
     setCols.push("updated_at = datetime('now')");
     bindings.push(id);
     await execute(db, `UPDATE fleet_vehicles SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);

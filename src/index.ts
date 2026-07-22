@@ -255,6 +255,37 @@ export default {
           ),
         ).catch(() => {}),
       );
+      // Case task due-date nudge sweep — was written (2026-06-xx, "v3 Phase
+      // 2") but never actually wired to cron; case-task overdue/due-soon
+      // notifications have never fired in production. Logs failures to
+      // error_log from day one (see the 2026-07-22 UTC/DST audit that found
+      // the sibling warrant-scan task's console-only errors were invisible
+      // for 2+ weeks).
+      ctx.waitUntil(
+        import('./utils/caseTaskNudges').then((m) =>
+          m.sweepCaseTaskNudges(env.DB, env)
+            .then((n) => console.log(`[case-task-nudges] inserted ${n} notification(s)`))
+            .catch((err) => {
+              console.error('Case task nudge sweep failed:', err);
+              logErrorToDb(env.DB, {
+                severity: 'error',
+                category: 'cron',
+                message: `sweepCaseTaskNudges failed: ${err instanceof Error ? err.message : String(err)}`,
+                details: { stack: err instanceof Error ? err.stack : undefined },
+                source: 'scheduled:case-task-nudges',
+              }, ctx);
+            }),
+        ).catch((err) => {
+          console.error('[cron] case task nudges module import failed:', err);
+          logErrorToDb(env.DB, {
+            severity: 'error',
+            category: 'cron',
+            message: `case task nudges module import failed: ${err instanceof Error ? err.message : String(err)}`,
+            details: { stack: err instanceof Error ? err.stack : undefined },
+            source: 'scheduled:case-task-nudges',
+          }, ctx);
+        }),
+      );
       // Warrant auto-expiry sweep — flips any 'active' warrant past its
       // expires_at to 'expired'. Backstops the lazy GET-time check in
       // src/routes/warrants.ts for warrants nobody has read since expiring.

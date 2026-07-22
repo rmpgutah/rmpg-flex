@@ -2,22 +2,16 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst } from '../../utils/db';
 import { log } from '../../utils/logger';
-import { denverOffsetHours } from '../../utils/denverTime';
+import { denverDateExpr, denverNowDateExpr } from '../../utils/denverTime';
 import { LIST_VIEW_COLUMNS } from './calls';
 
-// Same day-boundary shift used in reports.ts (denverDateExpr/denverNowDateExpr)
-// — D1 stores UTC, so a bare DATE(created_at) = DATE('now') comparison uses
-// UTC calendar days. A call at 11pm MT (still "today" in Denver) lands after
-// UTC midnight and gets excluded from "today," or a call just after UTC
-// midnight (still yesterday evening in MT) gets counted as "today."
-function denverDateExpr(column: string): string {
-  const offset = denverOffsetHours();
-  return `DATE(${column}, '${offset} hours')`;
-}
-function denverNowDateExpr(): string {
-  const offset = denverOffsetHours();
-  return `DATE('now', '${offset} hours')`;
-}
+// Same day-boundary shift used elsewhere (reports.ts, admin.ts, dispatch/
+// units.ts) via the shared denverDateExpr/denverNowDateExpr helpers in
+// utils/denverTime.ts — D1 stores UTC, so a bare DATE(created_at) =
+// DATE('now') comparison uses UTC calendar days. A call at 11pm MT (still
+// "today" in Denver) lands after UTC midnight and gets excluded from
+// "today," or a call just after UTC midnight (still yesterday evening in
+// MT) gets counted as "today."
 
 // Shared with /dispatch/calls — keeps the queue rows shape-compatible with
 // the list rows the dispatch panel already knows how to render.

@@ -4,7 +4,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { fireRule, type NotificationRuleRow } from './notificationEngine';
 import { getAnthropicKey, getClaudeModel, callClaude, diagnoseAnthropicError } from '../utils/anthropic';
 import { getOpenAiKey, getOpenAiModel, callOpenAi, diagnoseOpenAiError } from '../utils/openai';
-import { denverOffsetHours } from '../utils/denverTime';
+import { denverNowDateExpr, denverHourExpr, denverStrftimeExpr } from '../utils/denverTime';
 
 const admin = new Hono<Env>();
 
@@ -501,11 +501,10 @@ admin.get('/shift-stats', async (c) => {
     const endHour = shiftName === 'Day' ? 14 : shiftName === 'Swing' ? 22 : 6;
     // shiftHour/startHour/endHour are Denver wall-clock hours, but created_at is
     // stored UTC — strftime('%H', created_at) read the raw UTC hour, off by the
-    // MT UTC offset (6-7h). Shift the timestamp into Denver time before
-    // extracting the hour, same fix already applied to reports.ts's
-    // shift-comparison endpoint.
-    const offset = denverOffsetHours();
-    const shiftedHourExpr = `CAST(strftime('%H', created_at, '${offset} hours') AS INTEGER)`;
+    // MT UTC offset (6-7h). denverHourExpr shifts the timestamp into Denver
+    // time before extracting the hour (utils/denverTime.ts), same helper used
+    // by reports.ts's shift-comparison endpoint.
+    const shiftedHourExpr = denverHourExpr('created_at');
     const dateCondition = shiftName === 'Night'
       ? `(${shiftedHourExpr} >= ${startHour} OR ${shiftedHourExpr} < ${endHour})`
       : `${shiftedHourExpr} BETWEEN ${startHour} AND ${endHour - 1}`;
@@ -523,13 +522,13 @@ admin.get('/upcoming-court-dates', async (c) => {
     const days = parseInt(c.req.query('days') || '30', 10);
     // hearing_date is a plain calendar date (no time-of-day), but "today" needs
     // to be Denver's calendar date, not UTC's — DATE('now') is UTC and drifts a
-    // day off for ~6-7 hours around each midnight (same offset bug fixed above
-    // in shift-stats and previously in reports.ts).
-    const offset = denverOffsetHours();
+    // day off for ~6-7 hours around each midnight. Uses the shared
+    // denverNowDateExpr helper (utils/denverTime.ts) — same fix as shift-stats
+    // above and reports.ts.
     const rows = await query<{ date: string; case_number: string; officer_name: string }>(db,
       `SELECT ce.hearing_date AS date, ce.case_number, COALESCE(u.full_name, 'Unassigned') AS officer_name
        FROM court_events ce LEFT JOIN users u ON u.id = ce.officer_id
-       WHERE ce.hearing_date BETWEEN DATE('now', '${offset} hours') AND DATE('now', '${offset} hours', '+${Math.min(days, 90)} days')
+       WHERE ce.hearing_date BETWEEN ${denverNowDateExpr()} AND ${denverNowDateExpr(`+${Math.min(days, 90)} days`)}
        ORDER BY ce.hearing_date LIMIT 50`);
     return c.json({ count: rows.length, dates: rows });
   } catch { return c.json({ count: 0, dates: [] }); }
@@ -700,13 +699,13 @@ admin.get('/user-activity-heatmap', async (c) => {
   try {
     const db = getDb(c.env);
     const days = Math.min(Number(c.req.query('days') || 30), 90);
-    // Bucket in Mountain Time (denverOffsetHours), not raw UTC — matches the
-    // app-wide "MT MUST BE MT" display rule; a UTC-bucketed heatmap would show
-    // shift patterns shifted by 6-7 hours from what dispatchers actually see.
-    const offset = denverOffsetHours();
+    // Bucket in Mountain Time via the shared denverStrftimeExpr helper
+    // (utils/denverTime.ts), not raw UTC — matches the app-wide "MT MUST BE
+    // MT" display rule; a UTC-bucketed heatmap would show shift patterns
+    // shifted by 6-7 hours from what dispatchers actually see.
     const rows = await query<{ day_of_week: number; hour: number; count: number }>(db, `
-      SELECT CAST(strftime('%w', created_at, '${offset} hours') AS INTEGER) AS day_of_week,
-             CAST(strftime('%H', created_at, '${offset} hours') AS INTEGER) AS hour,
+      SELECT ${denverStrftimeExpr('%w', 'created_at')} AS day_of_week,
+             ${denverStrftimeExpr('%H', 'created_at')} AS hour,
              COUNT(*) AS count
       FROM audit_log
       WHERE created_at > datetime('now', ?)

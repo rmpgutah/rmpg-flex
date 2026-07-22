@@ -4,7 +4,7 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
 import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
-import { denverOffsetHours } from '../../utils/denverTime';
+import { denverNowDateExpr } from '../../utils/denverTime';
 
 const units = new Hono<Env>();
 
@@ -28,11 +28,11 @@ units.get('/', async (c) => {
     // date('now') resolves in UTC — for roughly 6-7 hours a day (evening MT,
     // already past midnight UTC) a vehicle due "today" read as not-yet-due
     // or a vehicle due "tomorrow" read as already overdue. Shift 'now' by
-    // the current MT offset before taking its date, same pattern as
-    // reports.ts's denverDateExpr/denverNowDateExpr.
-    const offset = denverOffsetHours();
-    const denverNow = `date('now', '${offset} hours')`;
-    const denverNowPlus7 = `date('now', '${offset} hours', '+7 days')`;
+    // the current MT offset before taking its date, via the shared
+    // denverNowDateExpr helper (utils/denverTime.ts) used by the other
+    // route files with this same pattern.
+    const denverNow = denverNowDateExpr();
+    const denverNowPlus7 = denverNowDateExpr('+7 days');
     const rows = await query<Record<string, unknown>>(db, `
       SELECT u.*, usr.full_name as officer_name, usr.badge_number,
         c.call_number as current_call_number, c.incident_type as current_call_type,
