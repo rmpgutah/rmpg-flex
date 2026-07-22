@@ -1,0 +1,14 @@
+# kiosk-linux/configs/kernel-drm.fragment
+# Enables DRM/KMS core support plus the virtio-gpu driver, for a real graphics
+# pipeline under QEMU's paravirtualized GPU device. Layered on top of the existing
+# in-tree "x86_64" kernel defconfig (BR2_LINUX_KERNEL_DEFCONFIG in
+# qemu_x86_64_kiosk_defconfig) via Buildroot's kernel config-fragment mechanism
+# (BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES, verified against the real Buildroot
+# 2024.02.9 checkout: package/../linux/Config.in:194 defines the symbol, and
+# linux/linux.mk:339 merges LINUX_KCONFIG_FRAGMENT_FILES into the kernel .config
+# after the base defconfig is applied via scripts/kconfig/merge_config.sh) —
+# this keeps sub-project 1's kernel-defconfig choice untouched rather than
+# requiring a full custom kernel .config file.
+CONFIG_DRM=y
+CONFIG_DRM_KMS_HELPER=y
+CONFIG_DRM_VIRTIO_GPU=y

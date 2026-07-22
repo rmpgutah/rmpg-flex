@@ -81,3 +81,36 @@ BR2_LINUX_KERNEL=y
 # pulls the same kernel.
 BR2_LINUX_KERNEL_LATEST_VERSION=y
 BR2_LINUX_KERNEL_DEFCONFIG="x86_64"
+
+# DRM/KMS graphics stack (sub-project 2, Task 1). The fragment merges into the
+# kernel .config after BR2_LINUX_KERNEL_DEFCONFIG="x86_64" is applied (see
+# configs/kernel-drm.fragment for the merge-mechanism citation). Same absolute
+# in-container path convention as BR2_ROOTFS_OVERLAY above, for the same reason:
+# BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES was verified (linux/Config.in:194 in the
+# real Buildroot checkout) to accept a plain path list passed straight to
+# scripts/kconfig/merge_config.sh with no $(TOPDIR)-relative resolution of its
+# own, but build.sh only bind-mounts this project's kiosk-linux/ directory at
+# /kiosk-linux inside the container (never at a path relative to BUILDROOT_DIR or
+# the O= volume), so the absolute /kiosk-linux/... form is what's actually
+# reachable at build time regardless of where Buildroot's source checkout lives.
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="/kiosk-linux/configs/kernel-drm.fragment"
+
+# libdrm — DRM userspace library, plus its bundled test tools (provides modetest,
+# the diagnostic tool this sub-project uses as its proof mechanism). Symbol names
+# verified against the real Buildroot 2024.02.9 checkout's
+# package/libdrm/Config.in (both symbols matched the brief's best-effort names
+# exactly — no correction needed here).
+BR2_PACKAGE_LIBDRM=y
+BR2_PACKAGE_LIBDRM_INSTALL_TESTS=y
+
+# Mesa3D with the virgl/virtio-gpu Gallium driver — actual rendering capability,
+# not just mode-setting. Verified against the real Buildroot 2024.02.9 checkout's
+# package/mesa3d/Config.in:257 — the real symbol is
+# BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VIRGL (the brief's other guessed alternative,
+# BR2_PACKAGE_MESA3D_DRIVER_VIRGL without "_GALLIUM_", does not exist in this
+# release). Mesa3D's own Config.in already `select`s BR2_PACKAGE_LIBDRM, so the
+# explicit BR2_PACKAGE_LIBDRM=y above is technically redundant once this is set,
+# but is kept explicit since BR2_PACKAGE_LIBDRM_INSTALL_TESTS (modetest) is a
+# sub-option of BR2_PACKAGE_LIBDRM that a `select` alone would not turn on.
+BR2_PACKAGE_MESA3D=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VIRGL=y
