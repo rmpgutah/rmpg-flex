@@ -155,13 +155,16 @@ export default function DownloadsPage() {
 
   const platforms: Platform[] = ['win', 'mac', 'android', 'os'];
 
+  const winExampleName = info.win?.filename?.replace(/\.zip$/, '.exe') ?? 'RMPG Flex Setup.exe';
+  const androidExampleName = info.android?.filename?.replace(/\.zip$/, '.apk') ?? 'RMPG Flex.apk';
+
   const STEPS: Record<Platform, { title: string; steps: string[]; warning?: string }> = {
     win: {
       title: 'Windows',
       steps: [
         'Download the Windows .zip package using the button above.',
         'Right-click the downloaded .zip file and select "Extract All...".',
-        'Open the extracted folder and double-click "RMPG Flex Setup 5.8.0.exe" to install.',
+        `Open the extracted folder and double-click "${winExampleName}" to install.`,
         'If Windows SmartScreen appears, click "More info" then "Run anyway" to finish.',
       ],
       warning: 'Windows SmartScreen note: Because Windows SmartScreen heavily flags raw executable files (.exe) downloaded directly, we bundle the installer in a .zip archive to bypass SmartScreen and browser security protocols automatically. If Windows Defender still prompts, simply select "More info" followed by "Run anyway".',
@@ -182,7 +185,7 @@ export default function DownloadsPage() {
       steps: [
         'Download the Android installation package .zip file above.',
         'Extract the zip package using your phone\'s Files/My Files manager app.',
-        'Tap and open the extracted "RMPG Flex-5.8.0.apk" file.',
+        `Tap and open the extracted "${androidExampleName}" file.`,
         'Enable "Install from Unknown Sources" for your browser/file explorer if prompted, then tap Install.',
       ],
       warning: 'Since this app is distributed internally rather than through the Google Play Store, Android requires bundling the app (.apk) inside a .zip to bypass browser protocol blocks. Safe Browsing will let you extract and run it seamlessly.',
@@ -201,7 +204,7 @@ export default function DownloadsPage() {
 
   // ── Version display ───────────────────────────────────────────────────────
   const displayVersion = !loading
-    ? (info.win?.version ?? info.mac?.version ?? info.android?.version ?? '5.8.0')
+    ? (info.win?.version ?? info.mac?.version ?? info.android?.version ?? info.os?.version ?? '5.8.5')
     : null;
 
   return (
@@ -431,11 +434,13 @@ export default function DownloadsPage() {
             {[
               'Full CAD/RMS dispatch system',
               'Real-time WebSocket dispatch updates',
-              'Mapbox GL JS + OpenLayers tactical map integration',
+              'Mapbox GL JS tactical map integration',
               'Incident, records, warrants, citations management',
+              'ALPR vehicle capture & plate screening',
               'Fleet management & patrol checkpoints',
               'Personnel, training & equipment tracking',
               'Reports, analytics & audit trail',
+              'Dedicated kiosk terminal OS image for fixed installs',
               'Automatic updates — always stay on the latest version',
             ].map((feature, i) => (
               <div key={i} className="flex items-center gap-2 text-xs" style={{ color: 'var(--rmpg-400)' }}>
@@ -517,7 +522,7 @@ export default function DownloadsPage() {
           <h4 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--rmpg-500)' }}>
             System Requirements
           </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
               <strong style={{ color: 'var(--rmpg-400)' }}>Windows:</strong> Windows 10 or later<br />
               64-bit (x64) processor
@@ -529,6 +534,10 @@ export default function DownloadsPage() {
             <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
               <strong style={{ color: 'var(--rmpg-400)' }}>Android:</strong> Android 8.0 (Oreo) or later<br />
               Any modern smartphone or tablet
+            </div>
+            <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
+              <strong style={{ color: 'var(--rmpg-400)' }}>Kiosk Linux OS:</strong> x86_64, QEMU/virtio-gpu<br />
+              For fixed terminal deployments; not yet for bare hardware
             </div>
           </div>
         </div>
