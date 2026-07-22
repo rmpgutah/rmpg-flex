@@ -77,7 +77,7 @@ export default function WebCompanyBrowserPage() {
 
       ws.onclose = () => {
         socketRef.current = null;
-        if (!receivedAnyMessageRef.current) {
+        if (!cancelled && !receivedAnyMessageRef.current) {
           setError('Unable to start browser session, try again.');
         }
       };

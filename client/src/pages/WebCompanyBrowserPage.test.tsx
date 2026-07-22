@@ -87,6 +87,13 @@ describe('WebCompanyBrowserPage', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('does not show an error banner when unmount triggers the close before any message is received', async () => {
+    const { unmount } = render(<WebCompanyBrowserPage />);
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    unmount();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('scales click coordinates from CSS-displayed size to intrinsic canvas pixel size', async () => {
     const { container } = render(<WebCompanyBrowserPage />);
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
