@@ -32,6 +32,7 @@ export interface PointDistrictInfo {
 export function useMapboxTilequery(map: mapboxgl.Map | null) {
   const [pointInfo, setPointInfo] = useState<PointDistrictInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const query = useCallback(async (
     lng: number,
@@ -40,6 +41,7 @@ export function useMapboxTilequery(map: mapboxgl.Map | null) {
     layers?: string[],
   ) => {
     setLoading(true);
+    setError(null);
     try {
       // Query multiple layers for comprehensive district info
       const layerStr = layers?.join(',') || 'place_label,locality_label,neighborhood_label';
@@ -72,8 +74,9 @@ export function useMapboxTilequery(map: mapboxgl.Map | null) {
 
       setPointInfo(info);
       return info;
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[useMapboxTilequery] query failed:', err);
+      setError(err?.message || 'Failed to identify point');
       return null;
     } finally {
       setLoading(false);
@@ -85,5 +88,5 @@ export function useMapboxTilequery(map: mapboxgl.Map | null) {
     return query(lng, lat);
   }, [query]);
 
-  return { pointInfo, loading, query, queryFromMapClick };
+  return { pointInfo, loading, error, query, queryFromMapClick };
 }
