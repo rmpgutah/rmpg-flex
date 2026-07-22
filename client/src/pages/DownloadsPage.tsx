@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Monitor, Apple, Smartphone, Download, ChevronRight } from 'lucide-react';
+import { Monitor, Apple, Smartphone, Download, ChevronRight, HardDrive } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 
-type Platform = 'win' | 'mac' | 'android';
+type Platform = 'win' | 'mac' | 'android' | 'os';
 
 interface InstallerMeta {
   filename: string;
@@ -17,6 +17,7 @@ interface DownloadsInfo {
   mac?: InstallerMeta;
   win?: InstallerMeta;
   android?: InstallerMeta;
+  os?: InstallerMeta;
 }
 
 const PLATFORM_CONFIG: Record<Platform, {
@@ -47,6 +48,13 @@ const PLATFORM_CONFIG: Record<Platform, {
     ext: '.zip',
     buttonLabel: 'Download .zip',
   },
+  os: {
+    label: 'Kiosk Linux OS',
+    arch: 'x86_64 (QEMU/virtio-gpu)',
+    icon: HardDrive,
+    ext: '.tar.gz',
+    buttonLabel: 'Download .tar.gz',
+  },
 };
 
 function getRecommendedPlatform(): Platform {
@@ -62,6 +70,7 @@ function platformFromFileId(fileId: string): Platform | null {
   const lower = fileId.toLowerCase();
   if (lower === 'mac' || lower.includes('mac') || lower.includes('darwin') || lower.endsWith('.dmg')) return 'mac';
   if (lower === 'android' || lower.includes('android') || lower.endsWith('.apk')) return 'android';
+  if (lower === 'os' || lower.includes('kiosk-linux') || lower.endsWith('.tar.gz')) return 'os';
   if (lower === 'win' || lower.includes('win') || lower.endsWith('.exe') || lower.endsWith('.zip')) return 'win';
   return null;
 }
@@ -83,6 +92,7 @@ export default function DownloadsPage() {
     win: null,
     mac: null,
     android: null,
+    os: null,
   });
 
   // ── Deep-link: ?file_id=<platform|filename> ──────────────────────────────
@@ -143,7 +153,7 @@ export default function DownloadsPage() {
     return () => window.removeEventListener('keydown', handler, true);
   }, []);
 
-  const platforms: Platform[] = ['win', 'mac', 'android'];
+  const platforms: Platform[] = ['win', 'mac', 'android', 'os'];
 
   const STEPS: Record<Platform, { title: string; steps: string[]; warning?: string }> = {
     win: {
@@ -176,6 +186,16 @@ export default function DownloadsPage() {
         'Enable "Install from Unknown Sources" for your browser/file explorer if prompted, then tap Install.',
       ],
       warning: 'Since this app is distributed internally rather than through the Google Play Store, Android requires bundling the app (.apk) inside a .zip to bypass browser protocol blocks. Safe Browsing will let you extract and run it seamlessly.',
+    },
+    os: {
+      title: 'Kiosk Linux OS',
+      steps: [
+        'Download the .tar.gz archive using the button above.',
+        'Extract it: tar xzf kiosk-linux-os-<version>.tar.gz',
+        'This produces bzImage (kernel) and rootfs.cpio.gz (root filesystem).',
+        'Boot under QEMU: qemu-system-x86_64 -kernel bzImage -initrd rootfs.cpio.gz -append "console=ttyS0" -nographic',
+      ],
+      warning: 'This image currently targets QEMU/virtio-gpu only — it is not yet built or tested for real hardware. See kiosk-linux/README.md in the source repository for the full scope and current limitations.',
     },
   };
 
@@ -251,7 +271,7 @@ export default function DownloadsPage() {
 
         {/* ── Download Cards (shown after successful load) ───────────────── */}
         {!loading && !fetchError && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
             {platforms.map((p) => {
               const config = PLATFORM_CONFIG[p];
               const installer = info[p as keyof DownloadsInfo];
