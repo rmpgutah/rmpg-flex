@@ -220,7 +220,7 @@ import fieldPhotos from './routes/fieldPhotos';
 // Howen dashcam integration
 import howen from './routes/howen';
 // Downloads + auto-updates
-import downloads from './routes/downloads';
+import downloads, { updates } from './routes/downloads';
 // Offender registry (stats only)
 import narcotics from './routes/narcotics';
 import nav from './routes/nav';
@@ -658,7 +658,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api', router: shiftPlans, auth: 'public',
     note: 'Serves /api/shift-plans/*, /api/shift-swaps/*, /api/shift-overtime, /api/staffing-levels, /api/shift-notifications. See src/routes/shiftPlans.ts for the in-router auth setup.' },
   { prefix: '/api', router: downloads, auth: 'public',
-    note: 'Serves /api/downloads/info + /api/downloads/check for the public download page (no auth of its own — genuinely open). Non-API download paths (/downloads/:filename, /download, etc.) are registered directly in src/index.ts.' },
+    note: 'Serves /api/downloads/info + /api/downloads/check for the public download page (no auth of its own — genuinely open).' },
+  { prefix: '/updates', router: updates, auth: 'public',
+    note: 'Bare (no /api prefix) — electron-updater\'s generic provider (desktop/updater.js) hits <feedUrl>/latest.yml, /latest-mac.yml, and the installer filename the manifest references, all relative to https://api.rmpgutah.us/updates/. Was never mounted anywhere before 2026-07-22, so the whole desktop auto-update feed 404\'d despite R2 uploads succeeding.' },
 
   // ── Warrants — real implementation ─────────────────────────
   { prefix: '/api/warrants/scrapers', router: scrapers, auth: 'required',
