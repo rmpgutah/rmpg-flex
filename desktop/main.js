@@ -1185,23 +1185,6 @@ guardedHandle('window:open-company-browser', (event, role) => {
     title: 'Company Browser — RMPG Flex',
     webPreferences: hardenWebPreferencesDefaults({
       webviewTag: true,
-      // Electron's sandboxed-preload loader (the default when `sandbox` is
-      // left unset) mis-resolves this preload's relative `require('./deviceInfo')`
-      // specifically on windows with webviewTag enabled — confirmed via manual
-      // testing on Electron 40.9.1: "Unable to load preload script ... module
-      // not found: ./deviceInfo", even though preload.js and deviceInfo.js sit
-      // side-by-side on disk and load fine on every other window in this app.
-      // Disabling the sandbox here makes Electron use its plain Node module
-      // loader instead, sidestepping that loader bug. This does NOT weaken the
-      // trust boundary that matters: the preload path is still validated by
-      // resolveTrustedPreloadPath below, contextIsolation stays true (so
-      // untrusted page/webview JS still cannot reach into the preload's scope),
-      // and nodeIntegration stays false for the renderer itself — only the
-      // preload script's OWN execution gets full Node access, which is the
-      // traditional (pre-Electron-20-default) Electron security posture and
-      // matches how this codebase's own preload.js has always been written
-      // (no code path in it behaves differently based on sandbox mode).
-      sandbox: false,
       preload: resolveTrustedPreloadPath(path.join(__dirname, 'preload.js'), path.join(__dirname, 'preload.js')),
     }),
   });

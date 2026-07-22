@@ -4,7 +4,37 @@
 // ============================================================
 
 const { contextBridge, ipcRenderer } = require('electron');
-const { groupMediaDevicesByKind, filterVideoInputDevices } = require('./deviceInfo');
+
+// Inlined from deviceInfo.js (which still exports and unit-tests these same
+// two functions) rather than require()'d from there. Electron's preload
+// require() shim has been observed to fail resolving a preload script's own
+// relative require('./sibling.js') calls entirely — reproduced on Electron
+// 40.9.1 as "Unable to load preload script ... module not found:
+// ./deviceInfo", even with a freshly-reinstalled, correctly-signed Electron
+// binary and with contextIsolation/sandbox left at every combination this
+// app supports. Keeping preload.js self-contained (no local relative
+// requires) sidesteps that failure mode entirely, and is the standard
+// workaround for this class of Electron preload issue. Keep these two
+// bodies in sync with deviceInfo.js's copies if either changes — same
+// duplication rationale as main.js's FATAL_NET_ERRORS.
+function groupMediaDevicesByKind(mediaDeviceInfoList) {
+  const inputs = [];
+  const outputs = [];
+  for (const device of mediaDeviceInfoList || []) {
+    if (device.kind === 'audioinput') {
+      inputs.push({ deviceId: device.deviceId, label: device.label });
+    } else if (device.kind === 'audiooutput') {
+      outputs.push({ deviceId: device.deviceId, label: device.label });
+    }
+  }
+  return { inputs, outputs };
+}
+
+function filterVideoInputDevices(mediaDeviceInfoList) {
+  return (mediaDeviceInfoList || [])
+    .filter((device) => device.kind === 'videoinput')
+    .map((device) => ({ id: device.deviceId, label: device.label }));
+}
 
 contextBridge.exposeInMainWorld('electron', {
   // Platform info
