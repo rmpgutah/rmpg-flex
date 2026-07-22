@@ -71,6 +71,7 @@ own file. Verified 2026-06-22 via `grep -rn "import.*<name>" client/src/`.
 
 | Hook | Likely intent |
 |------|---------------|
+| `useMapboxSearchBox` | Headless programmatic search (wraps Mapbox Search Box), never mounted anywhere |
 | `useMapCallHistory` | History query for a clicked location |
 | `useMapClosestUnit` | Closest-unit dispatch helper |
 | `useMapCorridor` | Corridor analysis math |
