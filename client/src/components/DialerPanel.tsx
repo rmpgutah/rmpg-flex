@@ -85,8 +85,13 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
     <div className="fixed bottom-4 right-4 z-[9998] flex flex-col items-end">
       <div
         style={{
-          width: collapsed ? 0 : 360,
-          height: collapsed ? 0 : 520,
+          // Dial Connect is a full desktop app (its own nav, wide tables,
+          // multi-column call/keypad layout) -- a small box left its content
+          // cramped and forced horizontal scrolling. Sized close to its
+          // actual desktop layout instead, clamped so it never overflows a
+          // smaller viewport.
+          width: collapsed ? 0 : 'min(900px, calc(100vw - 32px))',
+          height: collapsed ? 0 : 'min(680px, calc(100vh - 96px))',
           overflow: 'hidden',
           transition: 'width 0.2s ease, height 0.2s ease',
         }}
