@@ -22,6 +22,8 @@ import type { Env } from '../types';
 import { getDb, queryFirst, execute } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { requireRole } from '../middleware/auth';
+import { rateLimitAllow } from '../utils/rateLimit';
+import { log } from '../utils/logger';
 
 const PUBLIC_APP_URL = 'https://rmpgutah.us';
 
@@ -40,6 +42,12 @@ async function bestEffortAudit(c: any, userId: number | null, action: string, en
 interface MobileAuth { userId: number; username: string; role: string; callId: number }
 
 // Verify the scoped mobile token and confirm it's bound to the :id call.
+// Rate limiting shares the same bucket format as apiRateLimit
+// (src/middleware/rateLimit.ts) — a user active on both the desktop app
+// and the mobile PSO flow shares one budget. Returning null on a
+// rate-limit hit (rather than a distinct response) keeps this function's
+// existing MobileAuth | null contract unchanged; callers already treat
+// null as "auth required" per their existing 401 handling.
 async function verifyMobile(c: any): Promise<MobileAuth | null> {
   const header = c.req.header('authorization');
   const token = header && header.startsWith('Bearer ') ? header.slice(7) : null;
@@ -50,8 +58,14 @@ async function verifyMobile(c: any): Promise<MobileAuth | null> {
     if (payload.scope !== 'pso-mobile' || !payload.callId || !payload.userId) return null;
     const paramId = parseInt(String(c.req.param('id') || ''), 10);
     if (paramId && paramId !== payload.callId) return null;
+    const userId = Number(payload.userId);
+    const allowed = await rateLimitAllow(c.env.KV, `api:user:${userId}`, 600, 300);
+    if (!allowed) {
+      log.warn('Mobile API rate limit exceeded', { userId });
+      return null;
+    }
     return {
-      userId: Number(payload.userId), username: String(payload.username ?? ''),
+      userId, username: String(payload.username ?? ''),
       role: String(payload.role ?? ''), callId: Number(payload.callId),
     };
   } catch { return null; }
