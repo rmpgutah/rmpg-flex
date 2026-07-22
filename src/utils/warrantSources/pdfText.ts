@@ -1,4 +1,5 @@
 import { extractText, getDocumentProxy } from 'unpdf';
+import { fetchWithTimeout } from './fetchTimeout';
 
 /** Options for PDF text extraction. */
 export interface PdfTextOptions {
@@ -32,14 +33,20 @@ export async function extractPdfText(buffer: ArrayBuffer, opts?: PdfTextOptions)
 }
 
 /** Fetch a PDF URL (browser UA — some county CMS/CivicPlus 403 bots) and extract its text. */
+// PDF rosters can be large (Beaumont/Harlingen TX run 25-30K+ rows) and slower
+// to download than a JSON/XML page — a longer timeout than the 15s default
+// avoids false-positive aborts on a legitimately large-but-healthy source
+// while still bounding a genuinely dead/hanging endpoint.
+const PDF_FETCH_TIMEOUT_MS = 30_000;
+
 export async function fetchPdfText(url: string, opts?: PdfTextOptions): Promise<string> {
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
         Accept: 'application/pdf,*/*',
       },
-    });
+    }, PDF_FETCH_TIMEOUT_MS);
     if (!res.ok) return '';
     return await extractPdfText(await res.arrayBuffer(), opts);
   } catch {

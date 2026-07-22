@@ -208,15 +208,35 @@ async function loadPersons(db: D1Database): Promise<PersonRow[]> {
  * that source not seen this run. Isolated per adapter: a throwing source does
  * not abort the remaining adapters. Returns one ScrapedSourceSummary per adapter.
  */
+// Wall-clock budget for the WHOLE full-list leg (all adapters combined), not
+// per-adapter. 2026-07-22 incident: even with every individual fetch() now
+// timeout-guarded (fetchTimeout.ts), a source that iterates many sequential
+// pages (e.g. ohio-drc-pval: up to 26 letters × 25 pages = 650 requests) can
+// still legitimately or pathologically consume the entire cron invocation's
+// execution budget, starving every OTHER enabled source queued after it in
+// this loop — the same "one bad source silently kills the whole run"
+// signature as the original incident, just moved one level up. A skipped
+// adapter gets no scraper_runs row this tick and is simply retried next
+// cron tick, same effect as a transient failure.
+const FULL_LIST_LEG_BUDGET_MS = 90_000;
+
 export async function runFullListLeg(
   db: D1Database,
   adapters: WarrantSourceAdapter[],
-  opts: { now?: () => string } = {},
+  opts: { now?: () => string; budgetMs?: number } = {},
 ): Promise<ScrapedSourceSummary[]> {
   const now = opts.now ?? (() => new Date().toISOString());
+  const budgetMs = opts.budgetMs ?? FULL_LIST_LEG_BUDGET_MS;
+  const legStartedAt = Date.now();
   const out: ScrapedSourceSummary[] = [];
   for (const adapter of adapters) {
     if (adapter.mode !== 'full-list') continue;
+    if (Date.now() - legStartedAt > budgetMs) {
+      console.warn(
+        `[warrantSources.runScan.fullList] leg budget (${budgetMs}ms) exceeded; skipping remaining adapters this tick (starting at ${adapter.meta.key}), will retry next cron tick.`,
+      );
+      break;
+    }
 
     // ── Chunked path (cursor-driven; large rosters across many ticks) ────────
     if (typeof adapter.fetchChunk === 'function') {
