@@ -44,7 +44,6 @@ import {
   MapUnit as Unit, ActiveCall, MapProperty as Property,
   UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS,
   MAP_STYLE_LABELS,
-  TOOLBAR_ITEM_CLASS,
   type MapStyleId,
 } from './utils/mapConstants';
 import { formatIncidentType } from '../../utils/caseNumbers';
