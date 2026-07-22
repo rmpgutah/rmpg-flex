@@ -31,7 +31,7 @@ import { PdfToolsContainer } from './containers/pdfToolsContainer';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
-import { log } from './utils/logger';
+import { log, logErrorToDb } from './utils/logger';
 
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
@@ -201,16 +201,46 @@ export default {
         import('./utils/warrantSources/runScan').then((m) =>
           m.runAllSourceScans(env.DB).then((result) =>
             import('./utils/warrantSources/logScanResult').then((log) =>
-              log.logScanResult(env.DB, result, 'cron').catch((err) =>
-                console.error('scraper_runs logging failed:', err),
-              ),
+              log.logScanResult(env.DB, result, 'cron').catch((err) => {
+                console.error('scraper_runs logging failed:', err);
+                logErrorToDb(env.DB, {
+                  severity: 'error',
+                  category: 'cron',
+                  message: `warrant scan logScanResult failed: ${err instanceof Error ? err.message : String(err)}`,
+                  source: 'scheduled:warrant-scan',
+                }, ctx);
+              }),
             ),
-          ).catch((err) =>
-            import('./utils/warrantSources/logScanResult').then((log) =>
+          ).catch((err) => {
+            // runAllSourceScans itself rejected — this is the failure mode this
+            // logging was added to catch (2026-07-22: the cron warrant scan had
+            // silently produced zero scraper_runs rows for 2+ weeks with nothing
+            // in error_log, because console.error/console.warn calls in
+            // background cron code never reach error_log — only explicit
+            // logErrorToDb calls do).
+            logErrorToDb(env.DB, {
+              severity: 'error',
+              category: 'cron',
+              message: `runAllSourceScans failed: ${err instanceof Error ? err.message : String(err)}`,
+              details: { stack: err instanceof Error ? err.stack : undefined },
+              source: 'scheduled:warrant-scan',
+            }, ctx);
+            return import('./utils/warrantSources/logScanResult').then((log) =>
               log.logOrchestratorFailure(env.DB, 'cron', err),
-            ),
-          ),
-        ).catch(() => {}),
+            );
+          }),
+        ).catch((err) => {
+          // The dynamic import()s themselves failed (module load/eval error) —
+          // this path previously swallowed the error entirely with no trace.
+          console.error('[cron] warrant scan module import failed:', err);
+          logErrorToDb(env.DB, {
+            severity: 'error',
+            category: 'cron',
+            message: `warrant scan module import failed: ${err instanceof Error ? err.message : String(err)}`,
+            details: { stack: err instanceof Error ? err.stack : undefined },
+            source: 'scheduled:warrant-scan',
+          }, ctx);
+        }),
       );
       ctx.waitUntil(
         detectDispatchAnomalies(env.DB)
