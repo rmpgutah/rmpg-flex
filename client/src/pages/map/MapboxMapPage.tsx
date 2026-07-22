@@ -452,10 +452,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       if (identifyPopupRef.current) { identifyPopupRef.current.remove(); identifyPopupRef.current = null; }
       infoPanel.showLocationInfo(e.lngLat.lng, e.lngLat.lat);
       if (!info) {
-        if (tilequery.error) {
+        if (tilequery.errorRef.current) {
           identifyPopupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, className: 'mapbox-popup-dark' })
             .setLngLat(e.lngLat)
-            .setHTML(`<div style="font:11px monospace;color:#f87171;background:#0a0a0a;padding:4px 6px;">${tilequery.error}</div>`)
+            .setHTML(`<div style="font:11px monospace;color:#f87171;background:#0a0a0a;padding:4px 6px;">${tilequery.errorRef.current}</div>`)
             .addTo(map);
         }
         return;
