@@ -27,6 +27,7 @@ import { AlertHubDO } from './durable-objects/AlertHubDO';
 import { DeepResearchDO } from './durable-objects/DeepResearchDO';
 import { PersonIntelDO } from './durable-objects/PersonIntelDO';
 import { FlexCamRemuxDO } from './durable-objects/FlexCamRemuxDO';
+import { WebBrowserSessionDO } from './durable-objects/WebBrowserSessionDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import type { Bindings, Variables } from './types';
@@ -36,7 +37,7 @@ import { log, logErrorToDb } from './utils/logger';
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
 // [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
-export { WelfareWatchDO, VoiceHubDO, AlertHubDO, DeepResearchDO, PersonIntelDO, FlexCamRemuxDO, PdfToolsContainer };
+export { WelfareWatchDO, VoiceHubDO, AlertHubDO, DeepResearchDO, PersonIntelDO, FlexCamRemuxDO, PdfToolsContainer, WebBrowserSessionDO };
 
 // Exported so sub-routers that need to dispatch internal subrequests
 // (e.g. src/routes/offline.ts replaying queued offline writes through
@@ -179,6 +180,15 @@ export default {
       }
       const id = env.VOICE_HUB.idFromName(room);
       return env.VOICE_HUB.get(id).fetch(request);
+    }
+    if (url.pathname === '/api/web-browser-ws') {
+      const sessionId = url.searchParams.get('sessionId') || '';
+      if (!sessionId) return new Response('Missing sessionId query parameter', { status: 400 });
+      if (request.headers.get('Upgrade') !== 'websocket') {
+        return new Response('Expected WebSocket', { status: 426 });
+      }
+      const id = env.WEB_BROWSER_SESSION.idFromName(sessionId);
+      return env.WEB_BROWSER_SESSION.get(id).fetch(request);
     }
     return app.fetch(request, env, ctx);
   },
