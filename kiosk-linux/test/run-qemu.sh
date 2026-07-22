@@ -28,12 +28,14 @@ else
   exit 1
 fi
 
+# -nographic alone implies no display and mux's serial to stdio; the explicit
+# -serial file:"$LOG_FILE" overrides that muxing, so -display none is redundant
+# (kept off here rather than adding a flag that does nothing).
 "$TIMEOUT_CMD" 30 qemu-system-x86_64 \
   -kernel "$KERNEL" \
   -initrd "$INITRD" \
   -append "console=ttyS0" \
   -serial file:"$LOG_FILE" \
-  -display none \
   -nographic \
   -no-reboot || true
 

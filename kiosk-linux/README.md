@@ -108,3 +108,10 @@ documented in `uefi-bootsplash/build-gnuefi-pe.sh`. The volume-based build state
 persists across runs (Docker volumes are not deleted by `build.sh`), so a second
 `./build.sh` run after a code change only rebuilds what actually changed, rather than
 starting the whole toolchain over from scratch.
+
+The persisted Buildroot source checkout + build tree (a full cross-toolchain plus the
+kernel, multiple GB) live in two named Docker volumes:
+`kiosk-linux-buildroot-src` and `kiosk-linux-build-output`. To force a fully clean
+rebuild or reclaim that disk space:
+
+    docker volume rm kiosk-linux-buildroot-src kiosk-linux-build-output

@@ -1,8 +1,12 @@
 # kiosk-linux/configs/qemu_x86_64_kiosk_defconfig
 #
-# Based on Buildroot 2024.02.9's stock configs/qemu_x86_64_defconfig (the exact
-# pinned version this was verified against — see build.sh's BUILDROOT_TAG),
-# with project-specific overrides layered on top per the task-1 brief:
+# A minimal (sparse) defconfig for Buildroot 2024.02.9 (the exact pinned version
+# this was verified against — see build.sh's BUILDROOT_TAG) — NOT a full copy of
+# stock configs/qemu_x86_64_defconfig with overrides layered on top. Only the
+# symbols that differ from Buildroot's own defaults are listed below;
+# `make defconfig` fills in everything else from Buildroot's standard defaults.
+# Compared against the stock qemu_x86_64_defconfig's own settings, the intent
+# per the task-1 brief was:
 #   - BR2_TOOLCHAIN_BUILDROOT_CXX=n     (no C++ needed for this base image)
 #   - BR2_TARGET_GENERIC_HOSTNAME / _ISSUE (kiosk-linux branding)
 #   - BR2_INIT_BUSYBOX=y                (explicit; BusyBox init is already the
@@ -70,5 +74,10 @@ BR2_TARGET_ROOTFS_EXT2=n
 # Kernel: use the kernel's own in-tree x86_64 defconfig rather than
 # Buildroot's board/qemu/x86_64/linux.config
 BR2_LINUX_KERNEL=y
+# LATEST_VERSION=y reads as a reproducibility smell at a glance, but it isn't
+# one here: within a pinned Buildroot release (BUILDROOT_TAG), "latest" always
+# resolves to the one specific kernel version that release's package
+# infrastructure selects — a fresh build against the same BUILDROOT_TAG always
+# pulls the same kernel.
 BR2_LINUX_KERNEL_LATEST_VERSION=y
 BR2_LINUX_KERNEL_DEFCONFIG="x86_64"
