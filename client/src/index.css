@@ -29,7 +29,7 @@
   --window-chrome-maximize: #22c55e;
   /* Typography — centralized font tokens */
   --font-mono: 'Consolas', 'Courier New', ui-monospace, SFMono-Regular, monospace;
-  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Calibri', Arial, Helvetica, sans-serif;
 }
 
 /* --- Global Base Overrides --- */
@@ -3388,7 +3388,7 @@ html.hide-status-bar .status-bar { display: none !important; }
     color: #111 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    font-family: 'Calibri', Arial, Helvetica, sans-serif !important;
   }
 
   /* Remove CRT scanline overlay */
@@ -10324,7 +10324,7 @@ td.sparkline-cell {
 .rmpg-pop-rel { padding: 5px 9px; font-size: 9px; font-weight: 700; color: #d4a017; background: rgba(212,160,23,0.07); border-top: 1px solid var(--border-subtle, #1a1a1a); text-align: center; }
 
 /* ── Document Writer (TipTap) ── */
-.writer-content .tiptap { color: #111; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; font-size: 12px; line-height: 1.7; }
+.writer-content .tiptap { color: #111; font-family: 'Calibri', Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.7; }
 .writer-content .tiptap:focus { outline: none; }
 .writer-content .tiptap p { margin: 0 0 8px; }
 .writer-content .tiptap h1 { font-size: 20px; font-weight: 700; margin: 16px 0 8px; color: #000; }
