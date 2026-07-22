@@ -18,7 +18,10 @@ const webBrowser = new Hono<Env>();
 
 // client_viewer: read-only external role, never gets a live browser session.
 // contract_manager: external contract-facing role, same exclusion as client_viewer.
-const BLOCKED_ROLES = new Set(['client_viewer', 'contract_manager']);
+// Exported so WebBrowserSessionDO can enforce the same blocklist at the WS
+// layer (a sessionId can be reached directly over WS without ever hitting
+// POST /session — see Finding 1 in the 2026-07-22 final review).
+export const BLOCKED_ROLES = new Set(['client_viewer', 'contract_manager']);
 
 webBrowser.post('/session', async (c) => {
   const user = c.get('user') as { id: number; role: string } | undefined;

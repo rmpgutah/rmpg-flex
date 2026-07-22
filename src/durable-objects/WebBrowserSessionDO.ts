@@ -19,15 +19,19 @@
 // VoiceHubDO/AlertHubDO ([[feedback-jwt-claim-naming-mismatch]]).
 //
 // Role check: client_viewer/contract_manager are rejected at the
-// HTTP route level (src/routes/webBrowser.ts, Task 3), before a
-// session is ever created — this DO does not re-check role, since
-// by the time a socket reaches here a session was already created
-// for an allowed role.
+// HTTP route level (src/routes/webBrowser.ts, Task 3) as a first line
+// of defense, AND re-checked here in authenticate() — the WS route in
+// src/index.ts forwards /api/web-browser-ws?sessionId=<anything> to
+// this DO for ANY sessionId string, so a blocked-role user could skip
+// POST /session entirely and connect with a self-invented sessionId
+// (Finding 1, 2026-07-22 final review). BLOCKED_ROLES is imported from
+// webBrowser.ts so the two checks can never drift out of sync.
 // ============================================================
 
 import { jwtVerify } from 'jose';
 import puppeteer, { type Browser, type Page } from '@cloudflare/puppeteer';
 import { getDb, queryFirst } from '../utils/db';
+import { BLOCKED_ROLES } from '../routes/webBrowser';
 import {
   isIdleTimedOut,
   shapeFrameMessage,
@@ -50,6 +54,15 @@ export class WebBrowserSessionDO {
   env: WebBrowserEnv;
   socket: WebSocket | null = null;
   authenticated = false;
+  // Set synchronously (before any await) the instant an `authenticate`
+  // frame is accepted for processing, so a second `authenticate` frame
+  // arriving while the first is still mid-flight (jwtVerify/DB/startBrowser
+  // are all async and yield) is rejected immediately instead of racing
+  // startBrowser() and orphaning a browser instance (Finding 2, 2026-07-22
+  // final review). This is a one-shot per-connection guard, never reset
+  // back to false — a real client only ever sends one `authenticate` frame,
+  // so there is no legitimate retry case to preserve within a single socket.
+  authStarted = false;
   browser: Browser | null = null;
   page: Page | null = null;
   lastInputAt = Date.now();
@@ -105,7 +118,8 @@ export class WebBrowserSessionDO {
     }
 
     if (msg.type === 'authenticate') {
-      if (this.authenticated) return;
+      if (this.authenticated || this.authStarted) return;
+      this.authStarted = true; // synchronous — set before any await, see field comment
       try {
         const secret = new TextEncoder().encode(this.env.JWT_SECRET);
         const { payload } = await jwtVerify(msg.token, secret);
@@ -114,10 +128,11 @@ export class WebBrowserSessionDO {
         if (claimed == null) { this.send(shapeErrorMessage('AUTH_FAILED')); return; }
 
         const db = getDb(this.env as any);
-        const user = await queryFirst<{ id: number; status: string }>(
-          db, 'SELECT id, status FROM users WHERE id = ? AND status = ?', claimed, 'active',
+        const user = await queryFirst<{ id: number; status: string; role: string }>(
+          db, 'SELECT id, status, role FROM users WHERE id = ? AND status = ?', claimed, 'active',
         );
         if (!user) { this.send(shapeErrorMessage('AUTH_FAILED')); return; }
+        if (BLOCKED_ROLES.has(user.role)) { this.send(shapeErrorMessage('AUTH_FAILED')); return; }
 
         this.authenticated = true;
         await this.startBrowser();
