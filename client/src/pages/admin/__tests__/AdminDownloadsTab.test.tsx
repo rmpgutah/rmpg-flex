@@ -24,6 +24,7 @@ describe('<AdminDownloadsTab>', () => {
         win: { filename: 'RMPG-Flex-Setup-5.8.4.zip', version: '5.8.4', size: '142 MB', bytes: 148897792 },
         mac: { filename: 'RMPG-Flex-5.8.4.dmg', version: '5.8.4', size: '138 MB', bytes: 144703488 },
         android: { filename: 'RMPG-Flex-5.8.4.apk.zip', version: '5.8.4', size: '45 MB', bytes: 47185920 },
+        os: { filename: 'kiosk-linux-os-1.0.0.tar.gz', version: '1.0.0', size: '15.0 MB', bytes: 15728640 },
       },
     });
     render(<AdminDownloadsTab />);
@@ -31,6 +32,7 @@ describe('<AdminDownloadsTab>', () => {
     expect(screen.getByText(/142 MB/)).toBeInTheDocument();
     expect(screen.getByText(/138 MB/)).toBeInTheDocument();
     expect(screen.getByText(/45 MB/)).toBeInTheDocument();
+    expect(screen.getByText(/15\.0 MB/)).toBeInTheDocument();
 
     const winLink = screen.getByRole('link', { name: /windows/i });
     expect(winLink).toHaveAttribute('href', '/downloads/RMPG-Flex-Setup-5.8.4.zip');
@@ -38,17 +40,19 @@ describe('<AdminDownloadsTab>', () => {
     expect(macLink).toHaveAttribute('href', '/downloads/RMPG-Flex-5.8.4.dmg');
     const androidLink = screen.getByRole('link', { name: /android/i });
     expect(androidLink).toHaveAttribute('href', '/downloads/RMPG-Flex-5.8.4.apk.zip');
+    const osLink = screen.getByRole('link', { name: /kiosk linux os/i });
+    expect(osLink).toHaveAttribute('href', '/downloads/kiosk-linux-os-1.0.0.tar.gz');
   });
 
   it('shows "Not available" for a platform missing from the response', async () => {
     stub({
       '/api/downloads/info': {
         win: { filename: 'RMPG-Flex-Setup-5.8.4.zip', version: '5.8.4', size: '142 MB', bytes: 148897792 },
-        // mac and android omitted
+        // mac, android, and os omitted
       },
     });
     render(<AdminDownloadsTab />);
-    await waitFor(() => expect(screen.getAllByText(/not available/i)).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText(/not available/i)).toHaveLength(3));
   });
 
   it('shows an error message when the fetch fails', async () => {

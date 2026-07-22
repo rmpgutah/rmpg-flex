@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Monitor, Apple, Smartphone, Download, ExternalLink } from 'lucide-react';
+import { Monitor, Apple, Smartphone, Download, ExternalLink, HardDrive } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
-type Platform = 'win' | 'mac' | 'android';
+type Platform = 'win' | 'mac' | 'android' | 'os';
 
 interface InstallerMeta {
   filename: string;
@@ -16,15 +16,17 @@ interface DownloadsInfo {
   mac?: InstallerMeta;
   win?: InstallerMeta;
   android?: InstallerMeta;
+  os?: InstallerMeta;
 }
 
 const PLATFORM_CONFIG: Record<Platform, { label: string; icon: React.ElementType }> = {
   win: { label: 'Windows', icon: Monitor },
   mac: { label: 'macOS', icon: Apple },
   android: { label: 'Android', icon: Smartphone },
+  os: { label: 'Kiosk Linux OS', icon: HardDrive },
 };
 
-const PLATFORMS: Platform[] = ['win', 'mac', 'android'];
+const PLATFORMS: Platform[] = ['win', 'mac', 'android', 'os'];
 
 export default function AdminDownloadsTab() {
   const [info, setInfo] = useState<DownloadsInfo>({});
@@ -61,7 +63,7 @@ export default function AdminDownloadsTab() {
 
   return (
     <div className="p-4 space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {PLATFORMS.map((p) => {
           const installer = info[p];
           const { label, icon: Icon } = PLATFORM_CONFIG[p];

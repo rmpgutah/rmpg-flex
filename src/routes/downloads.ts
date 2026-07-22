@@ -16,7 +16,7 @@ export async function serveDownloadFile(bucket: R2Bucket, filename: string, c: a
 
   c.header('Content-Type', mime);
   c.header('Content-Length', String(obj.size));
-  if (filename.endsWith('.dmg') || filename.endsWith('.exe') || filename.endsWith('.apk') || filename.endsWith('.zip')) {
+  if (filename.endsWith('.dmg') || filename.endsWith('.exe') || filename.endsWith('.apk') || filename.endsWith('.zip') || filename.endsWith('.tar.gz')) {
     c.header('Content-Disposition', `attachment; filename="${filename}"`);
   }
   return c.body(data);
@@ -132,6 +132,7 @@ interface InstallerInfo {
   win?: InstallerMeta;
   mac?: InstallerMeta;
   android?: InstallerMeta;
+  os?: InstallerMeta;
 }
 
 function fmtBytes(bytes: number): string {
@@ -140,7 +141,7 @@ function fmtBytes(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
+export async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
   const info: InstallerInfo = {};
   const list = await bucket.list();
 
@@ -161,6 +162,8 @@ async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
       if (!info.win || verLt(info.win.version, version)) info.win = meta;
     } else if (name.endsWith('.apk')) {
       if (!info.android || verLt(info.android.version, version)) info.android = meta;
+    } else if (name.endsWith('.tar.gz') && name.startsWith('kiosk-linux-os-')) {
+      if (!info.os || verLt(info.os.version, version)) info.os = meta;
     }
   }
 
