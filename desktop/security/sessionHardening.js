@@ -118,27 +118,6 @@ function hardenWebPreferencesDefaults(overrides = {}) {
     experimentalFeatures: false,
     allowRunningInsecureContent: false,
     enableWebSQL: false,
-    // Electron's SANDBOXED preload loader (the default when `sandbox` is
-    // left unset) has been observed to mis-resolve a preload script's own
-    // relative `require('./sibling.js')` calls — confirmed reproducing on
-    // Electron 40.9.1 with preload.js's `require('./deviceInfo')`:
-    // "Unable to load preload script ... module not found: ./deviceInfo",
-    // even though both files exist side-by-side on disk. This isn't scoped
-    // to any one window — it broke window.electron on the MAIN window too,
-    // not just the Company Browser window it was first caught on — so the
-    // fix belongs here, in the shared defaults every window inherits,
-    // rather than as a per-window override.
-    //
-    // This does NOT weaken the trust boundary that matters:
-    // contextIsolation stays true (untrusted page/webview JS still cannot
-    // reach into the preload's own scope), nodeIntegration stays false for
-    // the renderer itself, and every window's preload path is still
-    // validated via resolveTrustedPreloadPath. Only the preload script's
-    // OWN execution gets full Node access instead of Electron's restricted
-    // sandboxed subset — the traditional (pre-Electron-20-default) preload
-    // posture, and this codebase's preload.js has never had a code path
-    // that behaves differently based on sandbox mode.
-    sandbox: false,
     ...overrides,
   };
 }

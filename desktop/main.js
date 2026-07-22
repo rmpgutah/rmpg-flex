@@ -1184,9 +1184,6 @@ guardedHandle('window:open-company-browser', (event, role) => {
     height: 850,
     title: 'Company Browser — RMPG Flex',
     webPreferences: hardenWebPreferencesDefaults({
-      // sandbox: false is inherited from hardenWebPreferencesDefaults' own
-      // base defaults now (see that function's doc comment for why) —
-      // webviewTag was the ONLY override this window ever genuinely needed.
       webviewTag: true,
       preload: resolveTrustedPreloadPath(path.join(__dirname, 'preload.js'), path.join(__dirname, 'preload.js')),
     }),
