@@ -208,15 +208,60 @@ async function loadPersons(db: D1Database): Promise<PersonRow[]> {
  * that source not seen this run. Isolated per adapter: a throwing source does
  * not abort the remaining adapters. Returns one ScrapedSourceSummary per adapter.
  */
+// Wall-clock budget for the WHOLE full-list leg (all adapters combined), not
+// per-adapter. 2026-07-22 incident: even with every individual fetch() now
+// timeout-guarded (fetchTimeout.ts), a source that iterates many sequential
+// pages (e.g. ohio-drc-pval: up to 26 letters × 25 pages = 650 requests) can
+// still legitimately or pathologically consume the entire cron invocation's
+// execution budget, starving every OTHER enabled source queued after it in
+// this loop — the same "one bad source silently kills the whole run"
+// signature as the original incident, just moved one level up. A skipped
+// adapter gets no scraper_runs row this tick and is simply retried next
+// cron tick, same effect as a transient failure.
+const FULL_LIST_LEG_BUDGET_MS = 90_000;
+
+// Mirrors the warrant_scraper_config consecutive_errors fix above, for the
+// OTHER health-tracking table: config-driven full-list sources (socrata/
+// arcgis/pdf/xml/csv) live in national_warrant_sources, which had ZERO
+// write path from the cron at all — consecutive_errors (and therefore
+// ScrapersTab's circuit-breaker/health-grade display for these sources)
+// could only ever change via a human clicking "reset" or a manual trigger.
+// A no-op for code-resident adapters (FBI/Utah County/Ohio DRC) that have
+// no row in this table — the UPDATE simply matches zero rows for those.
+async function updateNationalSourceHealth(db: D1Database, sourceKey: string, hadErrors: boolean): Promise<void> {
+  try {
+    await execute(
+      db,
+      `UPDATE national_warrant_sources
+          SET consecutive_errors = CASE WHEN ? THEN consecutive_errors + 1 ELSE 0 END
+        WHERE source_key = ?`,
+      hadErrors ? 1 : 0, sourceKey,
+    );
+  } catch (err) {
+    console.warn(
+      `[warrantSources.runScan.fullList] ${sourceKey} national_warrant_sources health update failed:`,
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 export async function runFullListLeg(
   db: D1Database,
   adapters: WarrantSourceAdapter[],
-  opts: { now?: () => string } = {},
+  opts: { now?: () => string; budgetMs?: number } = {},
 ): Promise<ScrapedSourceSummary[]> {
   const now = opts.now ?? (() => new Date().toISOString());
+  const budgetMs = opts.budgetMs ?? FULL_LIST_LEG_BUDGET_MS;
+  const legStartedAt = Date.now();
   const out: ScrapedSourceSummary[] = [];
   for (const adapter of adapters) {
     if (adapter.mode !== 'full-list') continue;
+    if (Date.now() - legStartedAt > budgetMs) {
+      console.warn(
+        `[warrantSources.runScan.fullList] leg budget (${budgetMs}ms) exceeded; skipping remaining adapters this tick (starting at ${adapter.meta.key}), will retry next cron tick.`,
+      );
+      break;
+    }
 
     // ── Chunked path (cursor-driven; large rosters across many ticks) ────────
     if (typeof adapter.fetchChunk === 'function') {
@@ -268,6 +313,7 @@ export async function runFullListLeg(
       }
       // checked:0 — the chunked leg walks the REMOTE roster, not the local persons
       // list, so the per-person 'checked' metric doesn't apply here.
+      await updateNationalSourceHealth(db, key, errors > 0);
       out.push({ source_key: key, checked: 0, found, cleared, errors, degraded });
       continue;
     }
@@ -318,6 +364,7 @@ export async function runFullListLeg(
         err instanceof Error ? err.message : String(err),
       );
     }
+    await updateNationalSourceHealth(db, adapter.meta.key, errors > 0);
     out.push({ source_key: adapter.meta.key, checked: 0, found, cleared, errors, degraded });
   }
   return out;
@@ -444,6 +491,14 @@ export async function runAllSourceScans(
     }
 
     // Persist scraper state (mirror the poller's CASE update). Best-effort.
+    // consecutive_errors drives ScrapersTab's circuit-breaker/health-grade UI
+    // (src/routes/scrapers.ts's circuitOpenFromConsecutiveErrors) but this
+    // cron sweep — the ONLY thing that runs unattended — never updated it,
+    // so the column only ever moved via a human clicking "reset" or a manual
+    // per-source trigger. A source could rack up dozens of real consecutive
+    // cron-tick failures (ada-county-id hit 50 fetch errors in one tick on
+    // 2026-07-18) while the UI kept showing it as healthy/circuit-closed.
+    // Found during the 2026-07-22 warrant-poller audit.
     try {
       const status = summary.errors > 0 ? 'failed' : 'completed';
       const errMsg = summary.errors > 0 ? `${summary.errors} fetch error(s)` : null;
@@ -452,9 +507,10 @@ export async function runAllSourceScans(
         `UPDATE warrant_scraper_config
             SET last_run_at = datetime('now'),
                 last_success_at = CASE WHEN ? = 'completed' THEN datetime('now') ELSE last_success_at END,
-                last_error      = CASE WHEN ? = 'failed'    THEN ? ELSE NULL END
+                last_error      = CASE WHEN ? = 'failed'    THEN ? ELSE NULL END,
+                consecutive_errors = CASE WHEN ? = 'failed' THEN consecutive_errors + 1 ELSE 0 END
           WHERE source_name = ?`,
-        status, status, errMsg, sourceKey,
+        status, status, errMsg, status, sourceKey,
       );
     } catch (err) {
       console.warn(

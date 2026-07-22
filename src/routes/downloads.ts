@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { R2Bucket, R2Object } from '@cloudflare/workers-types';
+import type { R2Bucket, R2Object, D1Database } from '@cloudflare/workers-types';
 
 // ─── Helpers exported for use by src/index.ts (non-API paths) ──
 
@@ -135,6 +135,20 @@ interface InstallerInfo {
   os?: InstallerMeta;
 }
 
+export interface ReleaseNote {
+  version: string;
+  releaseDate: string;
+  notes: string[];
+}
+
+export function parseReleaseNoteRow(row: { version: string; release_date: string; notes: string }): ReleaseNote {
+  return {
+    version: row.version,
+    releaseDate: row.release_date,
+    notes: row.notes.split('\n').map((line) => line.trim()).filter(Boolean),
+  };
+}
+
 function fmtBytes(bytes: number): string {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -200,7 +214,7 @@ export async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
   return info;
 }
 
-const downloads = new Hono<{ Bindings: { DOWNLOADS: R2Bucket } }>();
+const downloads = new Hono<{ Bindings: { DOWNLOADS: R2Bucket; DB: D1Database } }>();
 
 // GET /api/downloads/info — returns installer metadata
 downloads.get('/downloads/info', async (c) => {
@@ -249,6 +263,20 @@ downloads.get('/downloads/check', async (c) => {
   } catch (err) {
     console.error('downloads/check error:', err);
     return c.json({ error: 'Check failed' }, 500);
+  }
+});
+
+// GET /api/downloads/changelog — public release notes for the Downloads page
+downloads.get('/downloads/changelog', async (c) => {
+  try {
+    const result = await c.env.DB.prepare(
+      'SELECT version, release_date, notes FROM download_releases ORDER BY release_date DESC, id DESC LIMIT 10'
+    ).all();
+    const rows = result.results as unknown as Array<{ version: string; release_date: string; notes: string }>;
+    return c.json(rows.map(parseReleaseNoteRow));
+  } catch (err) {
+    console.error('downloads/changelog error:', err);
+    return c.json({ error: 'Failed to read changelog' }, 500);
   }
 });
 
