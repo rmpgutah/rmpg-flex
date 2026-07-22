@@ -1456,7 +1456,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {/* Measurement Result Banner */}
       {measure.result && measure.mode === 'none' && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-border-default px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
-          <Ruler className="w-3.5 h-3.5 text-[#3b82f6]" />
+          <Ruler className="w-3.5 h-3.5 text-brand-gold-500" />
           <span className="text-rmpg-200 text-xs font-mono">
             {measure.result.distanceFormatted}
             {measure.result.areaFormatted && ` · ${measure.result.areaFormatted}`}
