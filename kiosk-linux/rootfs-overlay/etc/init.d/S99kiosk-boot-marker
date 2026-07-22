@@ -1,0 +1,10 @@
+#!/bin/sh
+# kiosk-linux/rootfs-overlay/etc/init.d/S99kiosk-boot-marker
+#
+# Runs last among BusyBox init's /etc/init.d/S* scripts (S99 sorts after every
+# other S-prefixed script in the default numeric ordering). Prints a fixed,
+# purpose-built marker to the console once startup has fully completed — this
+# is what test/assert-boot-log.sh matches against, rather than any generic
+# kernel/BusyBox log text, which can vary across Buildroot/kernel versions and
+# would make the boot test brittle if it depended on incidental log wording.
+echo "KIOSK_LINUX_BOOT_OK"

@@ -1,0 +1,83 @@
+# kiosk-linux/configs/qemu_x86_64_kiosk_defconfig
+#
+# A minimal (sparse) defconfig for Buildroot 2024.02.9 (the exact pinned version
+# this was verified against — see build.sh's BUILDROOT_TAG) — NOT a full copy of
+# stock configs/qemu_x86_64_defconfig with overrides layered on top. Only the
+# symbols that differ from Buildroot's own defaults are listed below;
+# `make defconfig` fills in everything else from Buildroot's standard defaults.
+# Compared against the stock qemu_x86_64_defconfig's own settings, the intent
+# per the task-1 brief was:
+#   - BR2_TOOLCHAIN_BUILDROOT_CXX=n     (no C++ needed for this base image)
+#   - BR2_TARGET_GENERIC_HOSTNAME / _ISSUE (kiosk-linux branding)
+#   - BR2_INIT_BUSYBOX=y                (explicit; BusyBox init is already the
+#                                        Buildroot default, stated here for clarity)
+#   - BR2_SYSTEM_DHCP=""                (no need for automatic eth0 DHCP on a
+#                                        bare console-boot image; stock enables
+#                                        it for its own networking tests)
+#   - BR2_ROOTFS_OVERLAY                (adds our S99kiosk-boot-marker init script)
+#   - BR2_TARGET_ROOTFS_CPIO(+_GZIP)=y / BR2_TARGET_ROOTFS_EXT2=n
+#                                        (initramfs cpio.gz instead of stock's
+#                                        ext2 image, per this task's interface
+#                                        contract: output/images/rootfs.cpio.gz)
+#   - BR2_LINUX_KERNEL_DEFCONFIG="x86_64" instead of stock's
+#                                        BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG +
+#                                        BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE
+#                                        pointing at Buildroot's own
+#                                        board/qemu/x86_64/linux.config — using
+#                                        the kernel's own in-tree defconfig
+#                                        keeps this project independent of
+#                                        Buildroot's qemu board directory
+#                                        conventions, at the cost of losing a
+#                                        few QEMU-specific kernel tweaks that
+#                                        board/qemu/x86_64/linux.config carries
+#                                        (none of which are required for a
+#                                        plain serial-console boot-to-shell).
+#
+# BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_1 / BR2_LINUX_KERNEL_CUSTOM_VERSION*
+# / BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF / BR2_PACKAGE_HOST_QEMU* are dropped:
+# they exist in the stock file to pin an exact kernel version and build a
+# host-qemu for Buildroot's own CI test suite (runtime-tests), neither of
+# which this project needs — we bring our own QEMU (test/run-qemu.sh) and are
+# fine with whatever kernel version BR2_LINUX_KERNEL_DEFCONFIG="x86_64" pulls
+# in via the Linux tarball Buildroot's package infrastructure selects for this
+# release.
+
+# Architecture
+BR2_x86_64=y
+
+# Toolchain
+BR2_TOOLCHAIN_BUILDROOT_CXX=n
+
+# System
+BR2_TARGET_GENERIC_HOSTNAME="kiosk-linux"
+BR2_TARGET_GENERIC_ISSUE="RMPG Flex Kiosk Linux (sub-project 1: base image only)"
+BR2_INIT_BUSYBOX=y
+BR2_SYSTEM_DHCP=""
+
+# Rootfs overlay. Buildroot resolves BR2_ROOTFS_OVERLAY relative to $(TOPDIR)
+# (Buildroot's OWN source tree), never relative to O= — a relative path here
+# is fragile for exactly that reason (this was tried first and failed once
+# the build moved to a Docker named-volume O= output dir with a different
+# relative depth than a plain host bind mount would have had: "rsync:
+# change_dir .../buildroot/../../rootfs-overlay failed: No such file or
+# directory"). Use the absolute in-container path instead — build.sh always
+# bind-mounts this project's kiosk-linux/ directory to /kiosk-linux, so this
+# path is stable regardless of where BUILDROOT_DIR or the O= volume live.
+BR2_ROOTFS_OVERLAY="/kiosk-linux/rootfs-overlay"
+
+# Filesystem: initramfs cpio.gz, not the stock ext2 image
+BR2_TARGET_ROOTFS_CPIO=y
+BR2_TARGET_ROOTFS_CPIO_GZIP=y
+BR2_TARGET_ROOTFS_EXT2=n
+# BR2_TARGET_ROOTFS_TAR is not set
+
+# Kernel: use the kernel's own in-tree x86_64 defconfig rather than
+# Buildroot's board/qemu/x86_64/linux.config
+BR2_LINUX_KERNEL=y
+# LATEST_VERSION=y reads as a reproducibility smell at a glance, but it isn't
+# one here: within a pinned Buildroot release (BUILDROOT_TAG), "latest" always
+# resolves to the one specific kernel version that release's package
+# infrastructure selects — a fresh build against the same BUILDROOT_TAG always
+# pulls the same kernel.
+BR2_LINUX_KERNEL_LATEST_VERSION=y
+BR2_LINUX_KERNEL_DEFCONFIG="x86_64"
