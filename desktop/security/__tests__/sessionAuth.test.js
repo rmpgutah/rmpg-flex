@@ -607,7 +607,7 @@ test('looksLikeSecretValue: non-array knownSecrets -> false, does not throw', ()
 // hardenWebPreferencesDefaults() in sessionHardening.js:
 //   contextIsolation: true, nodeIntegration: false, webSecurity: true,
 //   webviewTag: false, experimentalFeatures: false,
-//   allowRunningInsecureContent: false, enableWebSQL: false
+//   allowRunningInsecureContent: false, enableWebSQL: false, sandbox: false
 
 const SECURE_REFERENCE_PREFS = {
   contextIsolation: true,
@@ -617,6 +617,7 @@ const SECURE_REFERENCE_PREFS = {
   experimentalFeatures: false,
   allowRunningInsecureContent: false,
   enableWebSQL: false,
+  sandbox: false,
 };
 
 test('assertWebPreferencesNotWeaker: identical prefs -> ok:true', () => {
