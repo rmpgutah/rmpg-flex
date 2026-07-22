@@ -131,6 +131,7 @@ import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import fleetio from './routes/fleetio';
 import legalDataHunter from './routes/legalDataHunter';
+import webBrowser from './routes/webBrowser';
 import documentFolders from './routes/documents/folders';
 import documentsLibrary from './routes/documents/library';
 import documentIntake from './routes/documentIntake';
@@ -220,7 +221,7 @@ import fieldPhotos from './routes/fieldPhotos';
 // Howen dashcam integration
 import howen from './routes/howen';
 // Downloads + auto-updates
-import downloads from './routes/downloads';
+import downloads, { updates } from './routes/downloads';
 // Offender registry (stats only)
 import narcotics from './routes/narcotics';
 import nav from './routes/nav';
@@ -658,7 +659,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api', router: shiftPlans, auth: 'public',
     note: 'Serves /api/shift-plans/*, /api/shift-swaps/*, /api/shift-overtime, /api/staffing-levels, /api/shift-notifications. See src/routes/shiftPlans.ts for the in-router auth setup.' },
   { prefix: '/api', router: downloads, auth: 'public',
-    note: 'Serves /api/downloads/info + /api/downloads/check for the public download page (no auth of its own — genuinely open). Non-API download paths (/downloads/:filename, /download, etc.) are registered directly in src/index.ts.' },
+    note: 'Serves /api/downloads/info + /api/downloads/check for the public download page (no auth of its own — genuinely open).' },
+  { prefix: '/updates', router: updates, auth: 'public',
+    note: 'Bare (no /api prefix) — electron-updater\'s generic provider (desktop/updater.js) hits <feedUrl>/latest.yml, /latest-mac.yml, and the installer filename the manifest references, all relative to https://api.rmpgutah.us/updates/. Was never mounted anywhere before 2026-07-22, so the whole desktop auto-update feed 404\'d despite R2 uploads succeeding.' },
 
   // ── Warrants — real implementation ─────────────────────────
   { prefix: '/api/warrants/scrapers', router: scrapers, auth: 'required',
@@ -701,6 +704,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/stats', router: stubs, auth: 'required' },
   { prefix: '/api/weather', router: weather, auth: 'required' },
+  { prefix: '/api/web-browser', router: webBrowser, auth: 'required',
+    note: 'Web Company Browser: POST /session issues a session id (blocked for client_viewer/contract_manager) before a WebBrowserSessionDO + Browser Rendering instance is created. The /api/web-browser-ws WebSocket upgrade is handled outside Hono in the top-level fetch() in src/index.ts (mirrors /api/voice-ws).' },
   // NB: do NOT re-mount stubs at /api/email here. The full email router
   // (line ~497 below) supersedes everything stubs ever served on this
   // prefix. Mounting stubs first would let the integrations-tab `/status`

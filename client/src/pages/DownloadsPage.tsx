@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Monitor, Apple, Smartphone, Download, ChevronRight } from 'lucide-react';
+import { Monitor, Apple, Smartphone, Download, ChevronRight, HardDrive } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 
-type Platform = 'win' | 'mac' | 'android';
+type Platform = 'win' | 'mac' | 'android' | 'os';
 
 interface InstallerMeta {
   filename: string;
@@ -17,6 +17,13 @@ interface DownloadsInfo {
   mac?: InstallerMeta;
   win?: InstallerMeta;
   android?: InstallerMeta;
+  os?: InstallerMeta;
+}
+
+interface ReleaseNote {
+  version: string;
+  releaseDate: string;
+  notes: string[];
 }
 
 const PLATFORM_CONFIG: Record<Platform, {
@@ -47,6 +54,13 @@ const PLATFORM_CONFIG: Record<Platform, {
     ext: '.zip',
     buttonLabel: 'Download .zip',
   },
+  os: {
+    label: 'Kiosk Linux OS',
+    arch: 'x86_64 (QEMU/virtio-gpu)',
+    icon: HardDrive,
+    ext: '.tar.gz',
+    buttonLabel: 'Download .tar.gz',
+  },
 };
 
 function getRecommendedPlatform(): Platform {
@@ -62,6 +76,7 @@ function platformFromFileId(fileId: string): Platform | null {
   const lower = fileId.toLowerCase();
   if (lower === 'mac' || lower.includes('mac') || lower.includes('darwin') || lower.endsWith('.dmg')) return 'mac';
   if (lower === 'android' || lower.includes('android') || lower.endsWith('.apk')) return 'android';
+  if (lower === 'os' || lower.includes('kiosk-linux') || lower.endsWith('.tar.gz')) return 'os';
   if (lower === 'win' || lower.includes('win') || lower.endsWith('.exe') || lower.endsWith('.zip')) return 'win';
   return null;
 }
@@ -71,6 +86,8 @@ export default function DownloadsPage() {
   const [info, setInfo] = useState<DownloadsInfo>({});
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
+  const [changelog, setChangelog] = useState<ReleaseNote[]>([]);
+  const [showAllChangelog, setShowAllChangelog] = useState(false);
   const [activeTab, setActiveTab] = useState<Platform>(recommended);
   const [searchParams, setSearchParams] = useSearchParams();
   // Dial Connect's icon is hosted on a separate domain (dialer.rmpgutah.us) and
@@ -83,6 +100,7 @@ export default function DownloadsPage() {
     win: null,
     mac: null,
     android: null,
+    os: null,
   });
 
   // ── Deep-link: ?file_id=<platform|filename> ──────────────────────────────
@@ -107,6 +125,12 @@ export default function DownloadsPage() {
         setFetchError(true);
         setLoading(false);
       });
+  }, []);
+
+  useEffect(() => {
+    apiFetch<ReleaseNote[]>('/api/downloads/changelog')
+      .then((data) => setChangelog(data))
+      .catch(() => setChangelog([]));
   }, []);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
@@ -143,7 +167,10 @@ export default function DownloadsPage() {
     return () => window.removeEventListener('keydown', handler, true);
   }, []);
 
-  const platforms: Platform[] = ['win', 'mac', 'android'];
+  const platforms: Platform[] = ['win', 'mac', 'android', 'os'];
+
+  const winExampleName = info.win?.filename?.replace(/\.zip$/, '.exe') ?? 'RMPG Flex Setup.exe';
+  const androidExampleName = info.android?.filename?.replace(/\.zip$/, '.apk') ?? 'RMPG Flex.apk';
 
   const STEPS: Record<Platform, { title: string; steps: string[]; warning?: string }> = {
     win: {
@@ -151,7 +178,7 @@ export default function DownloadsPage() {
       steps: [
         'Download the Windows .zip package using the button above.',
         'Right-click the downloaded .zip file and select "Extract All...".',
-        'Open the extracted folder and double-click "RMPG Flex Setup 5.8.0.exe" to install.',
+        `Open the extracted folder and double-click "${winExampleName}" to install.`,
         'If Windows SmartScreen appears, click "More info" then "Run anyway" to finish.',
       ],
       warning: 'Windows SmartScreen note: Because Windows SmartScreen heavily flags raw executable files (.exe) downloaded directly, we bundle the installer in a .zip archive to bypass SmartScreen and browser security protocols automatically. If Windows Defender still prompts, simply select "More info" followed by "Run anyway".',
@@ -172,16 +199,26 @@ export default function DownloadsPage() {
       steps: [
         'Download the Android installation package .zip file above.',
         'Extract the zip package using your phone\'s Files/My Files manager app.',
-        'Tap and open the extracted "RMPG Flex-5.8.0.apk" file.',
+        `Tap and open the extracted "${androidExampleName}" file.`,
         'Enable "Install from Unknown Sources" for your browser/file explorer if prompted, then tap Install.',
       ],
       warning: 'Since this app is distributed internally rather than through the Google Play Store, Android requires bundling the app (.apk) inside a .zip to bypass browser protocol blocks. Safe Browsing will let you extract and run it seamlessly.',
+    },
+    os: {
+      title: 'Kiosk Linux OS',
+      steps: [
+        'Download the .tar.gz archive using the button above.',
+        'Extract it: tar xzf kiosk-linux-os-<version>.tar.gz',
+        'This produces bzImage (kernel) and rootfs.cpio.gz (root filesystem).',
+        'Boot under QEMU: qemu-system-x86_64 -kernel bzImage -initrd rootfs.cpio.gz -append "console=ttyS0" -nographic',
+      ],
+      warning: 'This image currently targets QEMU/virtio-gpu only — it is not yet built or tested for real hardware. See kiosk-linux/README.md in the source repository for the full scope and current limitations.',
     },
   };
 
   // ── Version display ───────────────────────────────────────────────────────
   const displayVersion = !loading
-    ? (info.win?.version ?? info.mac?.version ?? info.android?.version ?? '5.8.0')
+    ? (info.win?.version ?? info.mac?.version ?? info.android?.version ?? info.os?.version ?? '5.8.5')
     : null;
 
   return (
@@ -225,6 +262,43 @@ export default function DownloadsPage() {
           </p>
         </div>
 
+        {/* What's New */}
+        {changelog.length > 0 && (
+          <div
+            className="p-5 mb-8"
+            style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
+          >
+            <h4 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#d4a017' }}>
+              What's New
+            </h4>
+            {(showAllChangelog ? changelog : changelog.slice(0, 1)).map((entry) => (
+              <div key={entry.version} className="mb-4 last:mb-0">
+                <div className="text-xs font-bold mb-1" style={{ color: 'var(--rmpg-300)' }}>
+                  v{entry.version} — {entry.releaseDate}
+                </div>
+                <div className="space-y-1">
+                  {entry.notes.map((note, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs" style={{ color: 'var(--rmpg-400)' }}>
+                      <span style={{ color: '#d4a017' }}>&bull;</span>
+                      {note}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {changelog.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setShowAllChangelog((v) => !v)}
+                className="text-[11px] font-bold uppercase tracking-wider mt-2"
+                style={{ color: 'var(--rmpg-500)' }}
+              >
+                {showAllChangelog ? 'Show less' : `Show ${changelog.length - 1} more`}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* ── Loading state ─────────────────────────────────────────────── */}
         {loading && (
           <div
@@ -251,7 +325,7 @@ export default function DownloadsPage() {
 
         {/* ── Download Cards (shown after successful load) ───────────────── */}
         {!loading && !fetchError && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
             {platforms.map((p) => {
               const config = PLATFORM_CONFIG[p];
               const installer = info[p as keyof DownloadsInfo];
@@ -411,11 +485,13 @@ export default function DownloadsPage() {
             {[
               'Full CAD/RMS dispatch system',
               'Real-time WebSocket dispatch updates',
-              'Mapbox GL JS + OpenLayers tactical map integration',
+              'Mapbox GL JS tactical map integration',
               'Incident, records, warrants, citations management',
+              'ALPR vehicle capture & plate screening',
               'Fleet management & patrol checkpoints',
               'Personnel, training & equipment tracking',
               'Reports, analytics & audit trail',
+              'Dedicated kiosk terminal OS image for fixed installs',
               'Automatic updates — always stay on the latest version',
             ].map((feature, i) => (
               <div key={i} className="flex items-center gap-2 text-xs" style={{ color: 'var(--rmpg-400)' }}>
@@ -497,7 +573,7 @@ export default function DownloadsPage() {
           <h4 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--rmpg-500)' }}>
             System Requirements
           </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
               <strong style={{ color: 'var(--rmpg-400)' }}>Windows:</strong> Windows 10 or later<br />
               64-bit (x64) processor
@@ -509,6 +585,10 @@ export default function DownloadsPage() {
             <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
               <strong style={{ color: 'var(--rmpg-400)' }}>Android:</strong> Android 8.0 (Oreo) or later<br />
               Any modern smartphone or tablet
+            </div>
+            <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
+              <strong style={{ color: 'var(--rmpg-400)' }}>Kiosk Linux OS:</strong> x86_64, QEMU/virtio-gpu<br />
+              For fixed terminal deployments; not yet for bare hardware
             </div>
           </div>
         </div>

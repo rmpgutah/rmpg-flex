@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { R2Bucket, R2Object } from '@cloudflare/workers-types';
+import type { R2Bucket, R2Object, D1Database } from '@cloudflare/workers-types';
 
 // ─── Helpers exported for use by src/index.ts (non-API paths) ──
 
@@ -16,7 +16,7 @@ export async function serveDownloadFile(bucket: R2Bucket, filename: string, c: a
 
   c.header('Content-Type', mime);
   c.header('Content-Length', String(obj.size));
-  if (filename.endsWith('.dmg') || filename.endsWith('.exe') || filename.endsWith('.apk') || filename.endsWith('.zip')) {
+  if (filename.endsWith('.dmg') || filename.endsWith('.exe') || filename.endsWith('.apk') || filename.endsWith('.zip') || filename.endsWith('.tar.gz')) {
     c.header('Content-Disposition', `attachment; filename="${filename}"`);
   }
   return c.body(data);
@@ -132,6 +132,21 @@ interface InstallerInfo {
   win?: InstallerMeta;
   mac?: InstallerMeta;
   android?: InstallerMeta;
+  os?: InstallerMeta;
+}
+
+export interface ReleaseNote {
+  version: string;
+  releaseDate: string;
+  notes: string[];
+}
+
+export function parseReleaseNoteRow(row: { version: string; release_date: string; notes: string }): ReleaseNote {
+  return {
+    version: row.version,
+    releaseDate: row.release_date,
+    notes: row.notes.split('\n').map((line) => line.trim()).filter(Boolean),
+  };
 }
 
 function fmtBytes(bytes: number): string {
@@ -140,7 +155,7 @@ function fmtBytes(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
+export async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
   const info: InstallerInfo = {};
   const list = await bucket.list();
 
@@ -161,6 +176,8 @@ async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
       if (!info.win || verLt(info.win.version, version)) info.win = meta;
     } else if (name.endsWith('.apk')) {
       if (!info.android || verLt(info.android.version, version)) info.android = meta;
+    } else if (name.endsWith('.tar.gz') && name.startsWith('kiosk-linux-os-')) {
+      if (!info.os || verLt(info.os.version, version)) info.os = meta;
     }
   }
 
@@ -197,7 +214,7 @@ async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
   return info;
 }
 
-const downloads = new Hono<{ Bindings: { DOWNLOADS: R2Bucket } }>();
+const downloads = new Hono<{ Bindings: { DOWNLOADS: R2Bucket; DB: D1Database } }>();
 
 // GET /api/downloads/info — returns installer metadata
 downloads.get('/downloads/info', async (c) => {
@@ -249,4 +266,34 @@ downloads.get('/downloads/check', async (c) => {
   }
 });
 
+// GET /api/downloads/changelog — public release notes for the Downloads page
+downloads.get('/downloads/changelog', async (c) => {
+  try {
+    const result = await c.env.DB.prepare(
+      'SELECT version, release_date, notes FROM download_releases ORDER BY release_date DESC, id DESC LIMIT 10'
+    ).all();
+    const rows = result.results as unknown as Array<{ version: string; release_date: string; notes: string }>;
+    return c.json(rows.map(parseReleaseNoteRow));
+  } catch (err) {
+    console.error('downloads/changelog error:', err);
+    return c.json({ error: 'Failed to read changelog' }, 500);
+  }
+});
+
 export default downloads;
+
+// ─── /updates router (mounted bare, no /api prefix) ──
+// electron-updater's generic provider (desktop/updater.js) hits
+// <feedUrl>/latest.yml or /latest-mac.yml directly, then downloads the
+// installer file the manifest references relative to that same base URL —
+// both must be unauthenticated and live at /updates/*, not /api/updates/*.
+// serveUpdatesYaml/serveDownloadFile were written for this but never
+// mounted anywhere, so the whole auto-update feed 404'd since it was
+// introduced — confirmed live 2026-07-22 investigating why a real R2
+// upload (verified via `wrangler r2 object put`) still 404'd from the
+// Worker.
+export const updates = new Hono<{ Bindings: { DOWNLOADS: R2Bucket } }>();
+
+updates.get('/latest.yml', (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'win', c));
+updates.get('/latest-mac.yml', (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'mac', c));
+updates.get('/:filename', (c) => serveDownloadFile(c.env.DOWNLOADS, c.req.param('filename'), c));

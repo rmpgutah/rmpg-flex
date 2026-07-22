@@ -61,7 +61,7 @@ export function activateNavFunction(
     if (electron?.isElectron && typeof electron.openCompanyBrowser === 'function') {
       Promise.resolve(electron.openCompanyBrowser(handlers.currentUserRole)).catch(() => handlers.onElectronOnlyUnavailable?.(fn));
     } else {
-      handlers.onElectronOnlyUnavailable?.(fn);
+      handlers.navigate('/web-desktop-company-browser');
     }
     return;
   }

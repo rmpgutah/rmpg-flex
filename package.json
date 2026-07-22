@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7",
+    "@cloudflare/puppeteer": "^1.1.0",
     "@hono/zod-validator": "^0.9.0",
     "@noble/post-quantum": "^0.6.1",
     "@simplewebauthn/server": "^13.3.2",

@@ -771,13 +771,13 @@ function getReadingTheme(userId?: string | number | null): ReadingTheme {
 
 const BODY_FRAME_CSS: Record<ReadingTheme, string> = {
   dark: `
-        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0c0c0c; margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        body { font-family: Calibri, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0c0c0c; margin: 16px; line-height: 1.6; word-wrap: break-word; }
         a { color: #888888; text-decoration: underline; } a:hover { color: #a0a0a0; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
         td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #2b2b2b; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
         pre { background: #141414; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #2b2b2b; margin: 16px 0; }
   `,
   light: `
-        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #ffffff; margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        body { font-family: Calibri, Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #ffffff; margin: 16px; line-height: 1.6; word-wrap: break-word; }
         a { color: #555555; text-decoration: underline; } a:hover { color: #1a1a1a; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
         td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #d8d8d8; margin: 8px 0; padding: 4px 12px; color: #555; }
         pre { background: #f4f4f4; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #ddd; margin: 16px 0; }
@@ -821,7 +821,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   // Build print document using safe DOM methods
   const style = doc.createElement('style');
   style.textContent = `
-    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12pt; color: #1a1a1a; margin: 40px; line-height: 1.6; }
+    body { font-family: 'Calibri', Arial, sans-serif; font-size: 12pt; color: #1a1a1a; margin: 40px; line-height: 1.6; }
     .header { border-bottom: 2px solid #888888; padding-bottom: 12px; margin-bottom: 16px; }
     .header h1 { font-size: 16pt; margin: 0 0 8px; color: #1a1a1a; }
     .meta { font-size: 10pt; color: #555; margin: 2px 0; }
@@ -866,7 +866,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
     iframe.sandbox.value = 'allow-same-origin';
-    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${cleanHtml}</body></html>`;
+    iframe.srcdoc = `<html><head><style>body{font-family:Calibri,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${cleanHtml}</body></html>`;
     bodyDiv.appendChild(iframe);
   } else {
     const pre = doc.createElement('pre');

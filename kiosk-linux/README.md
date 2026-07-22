@@ -115,3 +115,54 @@ kernel, multiple GB) live in two named Docker volumes:
 rebuild or reclaim that disk space:
 
     docker volume rm kiosk-linux-buildroot-src kiosk-linux-build-output
+
+## Graphics stack (sub-project 2)
+
+Extends the base image with a real DRM/KMS graphics pipeline: kernel `virtio-gpu`
+driver support, `libdrm`, and Mesa3D's virgl/virtio-gpu Gallium driver
+(`BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VIRGL` — the real Buildroot 2024.02.9 symbol,
+verified by grepping the checked-out source; the shorter guess
+`BR2_PACKAGE_MESA3D_DRIVER_VIRGL` without `_GALLIUM_` does not exist in this
+release). Verified two ways: a distinct boot marker (`KIOSK_LINUX_DRM_OK`, printed
+only after `modetest` genuinely commits a mode — see the extensive comments in
+`rootfs-overlay/etc/init.d/S99kiosk-drm-marker` for the real bugs found getting this
+right) and an actual QEMU screenshot showing `modetest`'s SMPTE-style color-bar test
+pattern.
+
+**This build is noticeably heavier than sub-project 1's** — Mesa3D is a large
+package. In this environment, a from-scratch Mesa3D build (with sub-project 1's host
+toolchain/kernel-headers already cached in the Docker volumes) took roughly an hour;
+each subsequent rebuild after a rootfs-overlay-only change (no package/kernel-config
+change) took a few minutes.
+
+    ./build.sh
+    ./test/run-qemu-graphics.sh test/boot-graphics.log test/drm-screenshot.ppm
+    ./test/assert-boot-log.sh test/boot-graphics.log "KIOSK_LINUX_DRM_OK"
+    sips -s format png test/drm-screenshot.ppm --out test/drm-screenshot.png
+
+The PNG should show a real color-bar test pattern — a script-only PASS confirms
+`modetest`'s log doesn't contain a failure and the marker printed, but the screenshot
+is the actual visual proof pixels were drawn, same two-tier verification
+`uefi-bootsplash` used for its own GOP rendering.
+
+Real environment issues found and fixed while getting this working (see inline
+comments in `test/run-qemu-graphics.sh` and `rootfs-overlay/etc/init.d/S99kiosk-drm-marker`
+for full detail):
+- QEMU's monitor Unix socket path exceeded the 104-byte `sockaddr_un` limit under
+  this repo's deeply nested worktree paths — moved to `/tmp` via `mktemp`.
+- The default machine type's built-in VGA adapter, not `virtio-gpu-pci`, is what
+  `screendump` captures by default — needs `-vga none`.
+- `modetest -s` exits almost immediately when its stdin isn't a real interactive
+  terminal, and virtio-gpu tears the scanout back down when it exits — needed a
+  read-write FIFO to keep it genuinely blocked (a *read-only* FIFO blocks the whole
+  shell command from ever starting `modetest` at all, a real bug this project hit).
+- `modetest`'s own exit/liveness is NOT a valid success signal — it still reaches
+  its blocking wait even after logging a real mode-set failure. The marker checks
+  the log content instead, polling briefly rather than trusting one fixed delay.
+
+This QEMU build has no `virgl`/GL acceleration compiled in at all (no
+`virtio-gpu-gl-pci` device, no GL-capable display backend) — not needed once the
+above bugs were fixed; plain software `virtio-gpu-pci` rendering was sufficient for
+a real screenshot.
+
+This does NOT include a compositor, Chromium, or RMPG Flex — see sub-project 3.

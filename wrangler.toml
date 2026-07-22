@@ -100,6 +100,14 @@ class_name = "PersonIntelDO"
 name = "FLEXCAM_REMUX"
 class_name = "FlexCamRemuxDO"
 
+# WebBrowserSessionDO — one instance per active web-based Company Browser
+# session (idFromName(sessionId)), holding a real headless Chrome instance
+# via Cloudflare's Browser Rendering API. Session-scoped, not global —
+# unlike VOICE_HUB/ALERT_HUB, a new id is minted per POST /api/web-browser/session.
+[[durable_objects.bindings]]
+name = "WEB_BROWSER_SESSION"
+class_name = "WebBrowserSessionDO"
+
 [[migrations]]
 tag = "v1"
 # new_sqlite_classes (not new_classes) — free-plan compatible.
@@ -239,6 +247,13 @@ new_sqlite_classes = ["FlexCamRemuxDO"]
 tag = "v6-personinteldo"
 new_sqlite_classes = ["PersonIntelDO"]
 
+# WebBrowserSessionDO — APPENDED (same prefix rule as v2-voicehub above: live
+# tags must be a prefix of this list, so new DO migrations go at the END,
+# never mid-list). SQLite-backed for free-plan compatibility.
+[[migrations]]
+tag = "v7-webbrowsersession"
+new_sqlite_classes = ["WebBrowserSessionDO"]
+
 # ─── Workers AI ────────────────────────────────────────────
 # Used by /api/serve-intake/scan-document + /api/serve-intake/upload
 # for structured field extraction from OCR text and direct vision-LLM
@@ -333,3 +348,10 @@ crons = ["0 */4 * * *", "* * * * *", "*/30 * * * *", "0 3 1 * *"]
 # defined upstream (commit ccb3881b on main added src/durable-objects/
 # WelfareWatchDO.ts + the new_sqlite_classes migration above). Deleting
 # it after main creates it would defeat the whole point.)
+
+# Browser Rendering — powers the web-based Company Browser (Phase 1).
+# Requires Browser Rendering to be enabled on the Cloudflare account
+# (billed separately, per browser-minute) before this binding resolves
+# in a deployed Worker. See docs/superpowers/specs/2026-07-22-web-company-browser-phase1-design.md.
+[browser]
+binding = "BROWSER"

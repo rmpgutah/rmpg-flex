@@ -114,6 +114,15 @@ export type Bindings = {
   DIALER_OIDC_CLIENT_ID?: string;
   DIALER_OIDC_CLIENT_SECRET?: string;
   DIALER_OIDC_REDIRECT_URI?: string;
+  // WebBrowserSessionDO namespace — one instance per active Web Company
+  // Browser session (idFromName(sessionId)). Holds a real headless Chrome
+  // instance via Browser Rendering and streams screenshot frames to the
+  // one connected client. See src/durable-objects/WebBrowserSessionDO.ts.
+  WEB_BROWSER_SESSION: DurableObjectNamespace;
+  // Browser Rendering binding — passed to @cloudflare/puppeteer's
+  // puppeteer.launch(). Fetcher is the correct binding type here (same
+  // shape as a service binding); puppeteer.launch() accepts it structurally.
+  BROWSER: Fetcher;
 };
 
 export type Variables = {

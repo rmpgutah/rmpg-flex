@@ -149,6 +149,7 @@ export default function CompanyBrowserPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [showOwnershipNotice, setShowOwnershipNotice] = useState(() => !hasAcknowledgedOwnership(user?.id));
   const webviewRefs = useRef<Record<string, HTMLWebViewElement | null>>({});
+  const webviewContainerRef = useRef<HTMLDivElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstLoad = useRef(true);
 
@@ -290,6 +291,40 @@ export default function CompanyBrowserPage() {
     };
   }, [activeTab.id, updateTab, recordHistory]);
 
+  // Electron's <webview> has been observed to NOT reliably pick up a
+  // CSS-only size (percentage width/height, `inset: 0`, `display: flex`)
+  // for its internal guest frame — confirmed live: a real page loaded but
+  // rendered only in a thin strip matching its own intrinsic content
+  // height, with the rest of the box blank, regardless of the CSS applied
+  // to the element or its container. The reliable fix used by real-world
+  // Electron apps is to explicitly set the element's pixel width/height in
+  // JS, driven by a ResizeObserver on the container, rather than trusting
+  // CSS sizing alone. Applied to every mounted webview (not just the active
+  // one) so a background tab is already correctly sized before it's
+  // switched to.
+  useEffect(() => {
+    const container = webviewContainerRef.current;
+    if (!container) return;
+
+    const applySize = () => {
+      const { width, height } = container.getBoundingClientRect();
+      for (const el of Object.values(webviewRefs.current)) {
+        if (!el) continue;
+        el.style.width = `${width}px`;
+        el.style.height = `${height}px`;
+      }
+    };
+
+    applySize();
+    // ResizeObserver doesn't exist in the jsdom test environment (only in a
+    // real browser/Electron renderer) — a single applySize() call on mount
+    // still covers that environment's needs.
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(applySize);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [tabs.length]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-base)' }}>
       <div role="tablist" className="flex items-center" style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -368,13 +403,19 @@ export default function CompanyBrowserPage() {
         </div>
       )}
 
-      <div className="flex-1 relative">
+      <div ref={webviewContainerRef} className="flex-1 relative">
         {tabs.map(tab => (
           <webview
             key={tab.id}
             ref={(el) => { webviewRefs.current[tab.id] = el; }}
             src={tab.url}
-            style={{ position: 'absolute', inset: 0, display: tab.id === activeTabId ? 'block' : 'none' }}
+            // position/inset place the element; actual width/height are set
+            // imperatively in px by the ResizeObserver effect above — see
+            // its comment for why CSS-only sizing isn't reliable here.
+            style={{
+              position: 'absolute', inset: 0,
+              display: tab.id === activeTabId ? 'flex' : 'none',
+            }}
             partition={`persist:company-browser-${tab.id}`}
           />
         ))}
