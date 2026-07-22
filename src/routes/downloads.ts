@@ -250,3 +250,19 @@ downloads.get('/downloads/check', async (c) => {
 });
 
 export default downloads;
+
+// ─── /updates router (mounted bare, no /api prefix) ──
+// electron-updater's generic provider (desktop/updater.js) hits
+// <feedUrl>/latest.yml or /latest-mac.yml directly, then downloads the
+// installer file the manifest references relative to that same base URL —
+// both must be unauthenticated and live at /updates/*, not /api/updates/*.
+// serveUpdatesYaml/serveDownloadFile were written for this but never
+// mounted anywhere, so the whole auto-update feed 404'd since it was
+// introduced — confirmed live 2026-07-22 investigating why a real R2
+// upload (verified via `wrangler r2 object put`) still 404'd from the
+// Worker.
+export const updates = new Hono<{ Bindings: { DOWNLOADS: R2Bucket } }>();
+
+updates.get('/latest.yml', (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'win', c));
+updates.get('/latest-mac.yml', (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'mac', c));
+updates.get('/:filename', (c) => serveDownloadFile(c.env.DOWNLOADS, c.req.param('filename'), c));
