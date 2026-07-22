@@ -17,7 +17,7 @@
 import { Hono } from 'hono';
 import { requireRole } from '../middleware/auth';
 import { getDb, query, queryFirst } from '../utils/db';
-import { denverOffsetHours } from '../utils/denverTime';
+import { denverDateExpr, denverNowDateExpr, denverHourExpr } from '../utils/denverTime';
 import type { Env } from '../types';
 
 const reports = new Hono<Env>();
@@ -49,18 +49,11 @@ function clampDays(raw: string | undefined, fallback: number): number {
 // resolve in UTC, so a call made at, say, 11pm MDT (05:00 UTC the NEXT
 // day) was silently excluded from "today," or a call from just after UTC
 // midnight (still yesterday evening in MT) was counted as "today." Shift
-// both sides of every DATE(...)/datetime(...) day comparison by the
-// current MT UTC offset so they compare in Denver-local calendar days.
-// Single current-moment offset (not per-row DST-aware) — see the
-// shift-comparison endpoint's identical tradeoff note below.
-function denverDateExpr(column: string): string {
-  const offset = denverOffsetHours();
-  return `DATE(${column}, '${offset} hours')`;
-}
-function denverNowDateExpr(modifier?: string): string {
-  const offset = denverOffsetHours();
-  return modifier ? `DATE('now', '${modifier}', '${offset} hours')` : `DATE('now', '${offset} hours')`;
-}
+// both sides of every DATE(...)/datetime(...) day comparison via the
+// shared denverDateExpr/denverNowDateExpr helpers (utils/denverTime.ts) so
+// they compare in Denver-local calendar days — and so this file's DST
+// tradeoff can never drift out of sync with the other route files using
+// the same pattern.
 
 // GET /api/reports/incidents-summary?days=30
 reports.get('/incidents-summary', async (c) => {
@@ -1323,12 +1316,10 @@ reports.get('/shift-comparison', async (c) => {
     // Shift hours (Day=0600-1359, Swing=1400-2159, Night=2200-0559) are Mountain
     // Time, but created_at is stored UTC and strftime('%H', created_at) read the
     // UTC hour directly — a call at 13:00 UTC (06:00 MDT, start of Day shift)
-    // was bucketed as Night. Shift the timestamp into Denver wall-clock before
-    // extracting the hour. Single current-moment offset (denverOffsetHours),
-    // not per-row DST-aware — rows on the far side of a DST flip within the
-    // `days` window can be off by 1 hour, versus the prior 6-7 hour UTC/MT bug.
-    const offset = denverOffsetHours();
-    const shiftedHour = `CAST(strftime('%H', created_at, '${offset} hours') AS INTEGER)`;
+    // was bucketed as Night. denverHourExpr shifts the timestamp into Denver
+    // wall-clock before extracting the hour (see utils/denverTime.ts for the
+    // shared DST tradeoff note).
+    const shiftedHour = denverHourExpr('created_at');
     const rows = await query<{ shift: string; calls: number; incidents: number; avg_resp_min: number; hours: number }>(db,
       `SELECT CASE WHEN ${shiftedHour} BETWEEN 6 AND 13 THEN 'Day'
                    WHEN ${shiftedHour} BETWEEN 14 AND 21 THEN 'Swing'
