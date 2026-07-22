@@ -375,12 +375,18 @@ export default function CompanyBrowserPage() {
             ref={(el) => { webviewRefs.current[tab.id] = el; }}
             src={tab.url}
             // Electron's <webview> is a custom element that does not reliably
-            // size its internal guest frame from `inset: 0` alone the way a
-            // normal absolutely-positioned element does — it needs explicit
-            // width/height, or the guest page renders at its own intrinsic
-            // content height (observed: a real page loads, but only fills a
-            // thin strip at the top of the window, with the rest blank).
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: tab.id === activeTabId ? 'block' : 'none' }}
+            // size its internal guest frame from `inset: 0` + width/height
+            // alone — Electron's own docs note the element needs `display:
+            // flex` set on ITSELF (not just its container) for its internal
+            // guest view to actually stretch to fill the box; without it, a
+            // real page loads but only renders in a thin strip matching its
+            // own intrinsic content height, with the rest of the window
+            // blank. `display: none` for inactive tabs is unaffected — that
+            // still fully hides the element regardless of this.
+            style={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%',
+              display: tab.id === activeTabId ? 'flex' : 'none',
+            }}
             partition={`persist:company-browser-${tab.id}`}
           />
         ))}
