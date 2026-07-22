@@ -31,6 +31,11 @@ export default function WebCompanyBrowserPage() {
   const [sessionEnded, setSessionEnded] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  // Tracks whether any message (frame/error/session_ended) has ever been
+  // received on the current socket — used to tell a normal graceful close
+  // (after session_ended) apart from an unexpected early close, so we only
+  // surface an error banner for the latter.
+  const receivedAnyMessageRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,12 +44,18 @@ export default function WebCompanyBrowserPage() {
       const token = localStorage.getItem(TOKEN_STORAGE_KEY) || '';
       const ws = new WebSocket(`${resolveWsBaseUrl()}/api/web-browser-ws?sessionId=${res.sessionId}`);
       socketRef.current = ws;
+      receivedAnyMessageRef.current = false;
 
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: 'authenticate', token }));
       };
 
+      ws.onerror = () => {
+        setError('Unable to start browser session, try again.');
+      };
+
       ws.onmessage = (ev) => {
+        receivedAnyMessageRef.current = true;
         let msg: any;
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.type === 'frame') {
@@ -64,7 +75,12 @@ export default function WebCompanyBrowserPage() {
         }
       };
 
-      ws.onclose = () => { socketRef.current = null; };
+      ws.onclose = () => {
+        socketRef.current = null;
+        if (!receivedAnyMessageRef.current) {
+          setError('Unable to start browser session, try again.');
+        }
+      };
     }).catch(() => setError('Unable to start browser session, try again.'));
 
     return () => { cancelled = true; socketRef.current?.close(); };

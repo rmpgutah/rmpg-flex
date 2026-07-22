@@ -11,6 +11,7 @@ class FakeWebSocket {
   onopen: (() => void) | null = null;
   onmessage: ((ev: { data: string }) => void) | null = null;
   onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
   sent: string[] = [];
   constructor(public url: string) { FakeWebSocket.instances.push(this); }
   send(data: string) { this.sent.push(data); }
@@ -61,6 +62,29 @@ describe('WebCompanyBrowserPage', () => {
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
     FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'session_ended', reason: 'idle_timeout' }) });
     await waitFor(() => expect(screen.getByText(/session ended/i)).toBeInTheDocument());
+  });
+
+  it('shows an inline error banner when the WebSocket itself errors', async () => {
+    render(<WebCompanyBrowserPage />);
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    FakeWebSocket.instances[0].onerror?.();
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Unable to start browser session, try again.'));
+  });
+
+  it('shows an inline error banner when the socket closes before any message is received', async () => {
+    render(<WebCompanyBrowserPage />);
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    FakeWebSocket.instances[0].onclose?.();
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Unable to start browser session, try again.'));
+  });
+
+  it('does not show an error banner on a graceful close after session_ended', async () => {
+    render(<WebCompanyBrowserPage />);
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'session_ended', reason: 'idle_timeout' }) });
+    await waitFor(() => expect(screen.getByText(/session ended/i)).toBeInTheDocument());
+    FakeWebSocket.instances[0].onclose?.();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('scales click coordinates from CSS-displayed size to intrinsic canvas pixel size', async () => {
