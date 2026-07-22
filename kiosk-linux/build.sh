@@ -4,9 +4,12 @@
 # producing kiosk-linux/output/images/{bzImage,rootfs.cpio.gz}.
 #
 # Buildroot version pinned for reproducibility (see uefi-bootsplash/build-gnuefi-pe.sh
-# for the same rationale applied to gnu-efi) — override on the command line if a
-# specific machine already has a different checkout:
-#   BUILDROOT_DIR=/path/to/existing/checkout ./build.sh
+# for the same rationale applied to gnu-efi). The Buildroot source checkout and the O=
+# build-output tree both live inside named Docker volumes (BUILDROOT_VOLUME,
+# BUILD_OUTPUT_VOLUME below) rather than a host path — override those variables on the
+# command line if a machine needs a different volume name (e.g. running two independent
+# builds side by side):
+#   BUILDROOT_VOLUME=my-other-src BUILD_OUTPUT_VOLUME=my-other-output ./build.sh
 #
 # --- macOS host note (read before assuming this behaves like a plain `make`) ---
 # Buildroot officially supports Linux hosts only. Task 1's Step 1 confirmed
