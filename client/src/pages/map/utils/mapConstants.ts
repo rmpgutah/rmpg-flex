@@ -26,6 +26,7 @@ export interface MapUnit {
   gps_updated_at?: string; // timestamp of the last GPS fix — drives the stale/lost marker dimming
   gps_speed?: number | null;       // m/s from GPS tracker
   gps_heading?: number | null;     // degrees 0-360
+  gps_accuracy?: number | null;    // meters, from the mirrored last GPS fix
   battery_level?: number | null;   // 0-100 from mobile device
   dispatched_at?: string | null;   // timestamp when dispatched to current call
   onscene_at?: string | null;      // timestamp when arrived on scene

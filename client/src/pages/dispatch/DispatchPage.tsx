@@ -1100,7 +1100,7 @@ export default function DispatchPage() {
     (typeof navigator === 'undefined' || navigator.onLine !== false), []);
 
   useEffect(() => {
-    const LIVE_UNIT_POLL_MS = 7000;
+    const LIVE_UNIT_POLL_MS = 5000; // aligned with the ~5s client GPS batch interval (useGpsTracking.ts)
     const MOVING_STATUSES = new Set<string>(['available', 'dispatched', 'enroute', 'onscene', 'busy']);
     const iv = setInterval(() => {
       if (!pollEligible()) return;

@@ -3,10 +3,42 @@ import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS } from './mapCo
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { formatEnumValue } from '../../../utils/formatters';
 import { escapeHtml } from '../../../utils/sanitize';
+import { getGpsStaleness } from '../../../utils/gpsStaleness';
+import { haversineDistance } from '../../../utils/unitRecommendation';
 import {
   TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
   TACTICAL_TEXT_PRIMARY, TACTICAL_TEXT_DIM,
 } from './tacticalPalette';
+
+// How long a marker's CSS transform transition runs — matches the fast
+// units-poll interval (MapboxMapPage.tsx UNITS_FAST_POLL_MS) so a position
+// update finishes gliding right as the next one arrives, reading as
+// continuous motion instead of a teleport between polls.
+export const MARKER_TRANSITION_MS = 4500;
+
+// A jump further than this in one poll interval isn't a real drive — it's a
+// reassignment, GPS glitch recovery, or test data. Snap instead of gliding
+// across an implausible distance (miles, since haversineDistance returns miles).
+const MAX_ANIMATED_JUMP_MILES = 0.3; // ~480m
+
+export function shouldAnimateMarkerMove(prevLat: number, prevLng: number, nextLat: number, nextLng: number): boolean {
+  return haversineDistance(prevLat, prevLng, nextLat, nextLng) <= MAX_ANIMATED_JUMP_MILES;
+}
+
+/**
+ * Pure geometry for the accuracy-radius ring, shared by buildUnitMarkerEl and
+ * applyUnitMarkerState so the CSS-string-building code can't drift out of
+ * sync. `marginTop` is computed as a single signed number (`15 - pixelRadius`)
+ * rather than interpolated as `-${pixelRadius - 15}` — the latter produces an
+ * invalid double-minus CSS string (e.g. `margin-top:--5px`) whenever
+ * `pixelRadius <= 15` (i.e. `gps_accuracy <= 30m`, the common good-accuracy
+ * case), which browsers silently ignore.
+ */
+export function computeAccuracyRingGeometry(gpsAccuracyMeters: number): { pixelRadius: number; marginTop: number } {
+  const pixelRadius = Math.min(60, Math.max(8, gpsAccuracyMeters / 2));
+  const marginTop = 15 - pixelRadius;
+  return { pixelRadius, marginTop };
+}
 
 const HAZARD_FLAGS: { key: string; label: string; color: string }[] = [
   { key: 'officer_safety_caution', label: 'OFFICER SAFETY', color: '#ef4444' },
@@ -20,19 +52,11 @@ const HAZARD_FLAGS: { key: string; label: string; color: string }[] = [
 
 export { HAZARD_FLAGS };
 
-// GPS staleness thresholds — must stay in sync with getGpsStaleStatus in
-// UnitStatusBoard.tsx (>2min = stale/amber, >5min = lost/gray). Duplicated
-// here rather than imported because that's a full React component file and
-// this module is a headless DOM-builder; MapUnit's shape also differs
-// slightly from the board's Unit type. A unit that stopped reporting GPS
-// previously stayed full-brightness on the map indefinitely — operators had
-// no way to tell a live position from a dot frozen since last contact.
+// Thin wrapper kept for call-site stability within this file — the actual
+// thresholds now live in gpsStaleness.ts (single source of truth shared
+// with UnitStatusBoard.tsx's getGpsStaleStatus).
 function getMapUnitGpsStaleness(unit: Unit): 'ok' | 'stale' | 'lost' {
-  if (!unit.gps_updated_at || unit.status === 'off_duty') return 'ok';
-  const elapsed = Date.now() - new Date(unit.gps_updated_at.replace(' ', 'T') + (unit.gps_updated_at.includes('Z') ? '' : 'Z')).getTime();
-  if (elapsed > 5 * 60 * 1000) return 'lost';
-  if (elapsed > 2 * 60 * 1000) return 'stale';
-  return 'ok';
+  return getGpsStaleness(unit);
 }
 
 // Simple top-down vehicle glyph — deliberately basic (one <path>, no detail)
@@ -44,15 +68,28 @@ const UNIT_GLYPH_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="no
 export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
   const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
   const staleness = getMapUnitGpsStaleness(unit);
+  // Root element handed to `new mapboxgl.Marker({ element: el })`. Mapbox GL
+  // writes this exact node's `transform` on EVERY render frame during pan/zoom
+  // (not just on our own setLngLat calls), so it must never carry a CSS
+  // transition on `transform` — doing so previously caused every marker to
+  // visibly lag/glide whenever the user panned or zoomed the map. All visual
+  // styling + the glide transition live on the inner wrapper below instead.
   const el = document.createElement('div');
   el.className = 'rmpg-mbx-unit';
-  el.style.cssText = `
-    display:flex;flex-direction:column;align-items:center;gap:2px;
-    cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));
-    opacity:${staleness === 'lost' ? 0.45 : staleness === 'stale' ? 0.7 : 1};
-  `;
+  el.style.cssText = `display:block;cursor:pointer;`;
   el.title = `${unit.call_sign} — ${UNIT_STATUS_LABELS[unit.status] || unit.status}`
     + (staleness === 'lost' ? ' (GPS lost)' : staleness === 'stale' ? ' (GPS stale)' : '');
+
+  const inner = document.createElement('div');
+  inner.setAttribute('data-role', 'marker-inner');
+  inner.style.cssText = `
+    display:flex;flex-direction:column;align-items:center;gap:2px;
+    position:relative;
+    filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));
+    opacity:${staleness === 'lost' ? 0.45 : staleness === 'stale' ? 0.7 : 1};
+    transition:transform ${MARKER_TRANSITION_MS}ms linear;
+  `;
+  el.appendChild(inner);
 
   const badge = document.createElement('div');
   badge.setAttribute('data-role', 'badge');
@@ -65,7 +102,13 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
     box-shadow:0 0 8px ${ringColor}b3;
   `;
   badge.innerHTML = UNIT_GLYPH_SVG;
-  el.appendChild(badge);
+  // Rotate the whole badge to point in the direction of travel. Only applied
+  // when heading is present and non-null — the server nulls implausible
+  // headings (gps.ts bounds validation), so a present value is trustworthy.
+  if (unit.gps_heading != null && Number.isFinite(unit.gps_heading)) {
+    badge.style.transform = `rotate(${unit.gps_heading}deg)`;
+  }
+  inner.appendChild(badge);
 
   const label = document.createElement('div');
   label.setAttribute('data-role', 'label');
@@ -75,7 +118,27 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
     font-family:ui-monospace,monospace;white-space:nowrap;
   `;
   label.textContent = unit.call_sign.slice(0, 6);
-  el.appendChild(label);
+  inner.appendChild(label);
+
+  // Accuracy-radius ring: a translucent circle sized to the reported GPS
+  // accuracy in meters. Rendered only when accuracy data is present (the
+  // server nulls implausible values) so we never draw a fake/default ring.
+  // Sized in CSS pixels using a fixed reference scale (roughly meters-per-
+  // pixel at typical dispatch zoom levels ~14-16); it's an approximate
+  // confidence indicator, not a survey-accurate overlay.
+  if (unit.gps_accuracy != null && Number.isFinite(unit.gps_accuracy) && unit.gps_accuracy > 0) {
+    const ring = document.createElement('div');
+    ring.setAttribute('data-role', 'accuracy-ring');
+    const { pixelRadius, marginTop } = computeAccuracyRingGeometry(unit.gps_accuracy);
+    ring.style.cssText = `
+      position:absolute;top:50%;left:50%;
+      width:${pixelRadius * 2}px;height:${pixelRadius * 2}px;
+      margin-left:-${pixelRadius}px;margin-top:${marginTop}px;
+      border-radius:50%;background:${color}22;border:1px solid ${color}55;
+      pointer-events:none;z-index:-1;
+    `;
+    inner.appendChild(ring);
+  }
 
   return el;
 }
@@ -89,7 +152,10 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
 export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
   const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
   const staleness = getMapUnitGpsStaleness(unit);
-  el.style.opacity = String(staleness === 'lost' ? 0.45 : staleness === 'stale' ? 0.7 : 1);
+  // Opacity (and the position/transition styling) live on the inner wrapper,
+  // not the mapboxgl-controlled root — see buildUnitMarkerEl.
+  const inner = el.querySelector<HTMLElement>('[data-role="marker-inner"]') || el;
+  inner.style.opacity = String(staleness === 'lost' ? 0.45 : staleness === 'stale' ? 0.7 : 1);
   el.title = `${unit.call_sign} — ${UNIT_STATUS_LABELS[unit.status] || unit.status}`
     + (staleness === 'lost' ? ' (GPS lost)' : staleness === 'stale' ? ' (GPS stale)' : '');
 
@@ -99,6 +165,7 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
     badge.style.background = color;
     badge.style.border = `2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? '#0d1520' : ringColor}`;
     badge.style.boxShadow = `0 0 8px ${ringColor}b3`;
+    badge.style.transform = (unit.gps_heading != null && Number.isFinite(unit.gps_heading)) ? `rotate(${unit.gps_heading}deg)` : '';
   }
 
   const label = el.querySelector<HTMLElement>('[data-role="label"]');
@@ -106,6 +173,25 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
     label.style.border = `1.2px solid ${color}`;
     label.style.color = color;
     label.textContent = unit.call_sign.slice(0, 6);
+  }
+
+  // Accuracy ring: remove and rebuild rather than resize in place — it's a
+  // cheap DOM op at this element count and avoids drifting math between
+  // build and update paths.
+  const existingRing = el.querySelector('[data-role="accuracy-ring"]');
+  if (existingRing) existingRing.remove();
+  if (unit.gps_accuracy != null && Number.isFinite(unit.gps_accuracy) && unit.gps_accuracy > 0) {
+    const ring = document.createElement('div');
+    ring.setAttribute('data-role', 'accuracy-ring');
+    const { pixelRadius, marginTop } = computeAccuracyRingGeometry(unit.gps_accuracy);
+    ring.style.cssText = `
+      position:absolute;top:50%;left:50%;
+      width:${pixelRadius * 2}px;height:${pixelRadius * 2}px;
+      margin-left:-${pixelRadius}px;margin-top:${marginTop}px;
+      border-radius:50%;background:${color}22;border:1px solid ${color}55;
+      pointer-events:none;z-index:-1;
+    `;
+    inner.appendChild(ring);
   }
 }
 

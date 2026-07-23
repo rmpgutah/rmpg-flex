@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from '../mapMarkers';
+import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove, computeAccuracyRingGeometry } from '../mapMarkers';
 import { TACTICAL_SURFACE_RAISED, TACTICAL_BRAND_GOLD, TACTICAL_TEXT_PRIMARY } from '../tacticalPalette';
 import type { MapUnit, ActiveCall } from '../mapConstants';
 
@@ -43,17 +43,22 @@ describe('mapMarkers', () => {
   });
 
   it('dims and dashes a unit marker once its GPS fix goes stale/lost', () => {
+    // Opacity lives on the inner `[data-role="marker-inner"]` wrapper, not the
+    // mapboxgl-controlled root element (see buildUnitMarkerEl).
+    const getInnerOpacity = (el: HTMLElement) =>
+      (el.querySelector('[data-role="marker-inner"]') as HTMLElement).style.opacity;
+
     const fresh = buildUnitMarkerEl({ ...unit, gps_updated_at: new Date().toISOString() } as MapUnit);
-    expect(fresh.style.opacity).toBe('1');
+    expect(getInnerOpacity(fresh)).toBe('1');
 
     const staleTs = new Date(Date.now() - 3 * 60 * 1000).toISOString();
     const stale = buildUnitMarkerEl({ ...unit, gps_updated_at: staleTs } as MapUnit);
-    expect(stale.style.opacity).toBe('0.7');
+    expect(getInnerOpacity(stale)).toBe('0.7');
     expect(stale.title).toContain('GPS stale');
 
     const lostTs = new Date(Date.now() - 6 * 60 * 1000).toISOString();
     const lost = buildUnitMarkerEl({ ...unit, gps_updated_at: lostTs } as MapUnit);
-    expect(lost.style.opacity).toBe('0.45');
+    expect(getInnerOpacity(lost)).toBe('0.45');
     expect(lost.title).toContain('GPS lost');
   });
 
@@ -70,5 +75,77 @@ describe('mapMarkers', () => {
     expect(el.querySelector('[data-role="badge"]')).toBe(badgeBefore);
     expect(el.querySelector('[data-role="label"]')).toBe(labelBefore);
     expect(el.querySelector('[data-role="label"]')?.textContent).toBe('B99');
+  });
+});
+
+describe('shouldAnimateMarkerMove', () => {
+  it('animates a normal short move (under the jump threshold)', () => {
+    // ~100m apart — a plausible move within one ~5s poll interval.
+    expect(shouldAnimateMarkerMove(40.7608, -111.8910, 40.7617, -111.8910)).toBe(true);
+  });
+
+  it('skips animation for an implausible long jump', () => {
+    // SLC to Denver — not a real single-poll move; snap instead of glide.
+    expect(shouldAnimateMarkerMove(40.7608, -111.8910, 39.7392, -104.9903)).toBe(false);
+  });
+});
+
+describe('buildUnitMarkerEl — heading and accuracy', () => {
+  it('rotates the badge when heading is present', () => {
+    const el = buildUnitMarkerEl({ ...unit, gps_heading: 90 } as MapUnit);
+    const badge = el.querySelector('[data-role="badge"]') as HTMLElement;
+    expect(badge.style.transform).toContain('rotate(90deg)');
+  });
+
+  it('does not rotate when heading is null', () => {
+    const el = buildUnitMarkerEl({ ...unit, gps_heading: null } as MapUnit);
+    const badge = el.querySelector('[data-role="badge"]') as HTMLElement;
+    expect(badge.style.transform).toBe('');
+  });
+
+  it('renders an accuracy ring when accuracy is present', () => {
+    const el = buildUnitMarkerEl({ ...unit, gps_accuracy: 25 } as MapUnit);
+    expect(el.querySelector('[data-role="accuracy-ring"]')).not.toBeNull();
+  });
+
+  it('omits the accuracy ring when accuracy is absent', () => {
+    const el = buildUnitMarkerEl({ ...unit, gps_accuracy: null } as MapUnit);
+    expect(el.querySelector('[data-role="accuracy-ring"]')).toBeNull();
+  });
+
+  it('computeAccuracyRingGeometry produces a single signed marginTop for a good-accuracy ring (pixelRadius <= 15)', () => {
+    // gps_accuracy 20m -> pixelRadius 10 -> pre-fix this produced the invalid
+    // double-minus `margin-top:-${10 - 15}px` == `margin-top:--5px`.
+    const { pixelRadius, marginTop } = computeAccuracyRingGeometry(20);
+    expect(pixelRadius).toBe(10);
+    expect(marginTop).toBe(5);
+  });
+
+  it('computeAccuracyRingGeometry still produces a negative marginTop for a poor-accuracy ring (pixelRadius > 15)', () => {
+    const { pixelRadius, marginTop } = computeAccuracyRingGeometry(100); // pixelRadius 50
+    expect(pixelRadius).toBe(50);
+    expect(marginTop).toBe(-35);
+  });
+});
+
+describe('buildUnitMarkerEl — marker root vs inner wrapper (pan/zoom smear fix)', () => {
+  it('root element has no CSS transition — mapboxgl.Marker snaps it instantly on every pan/zoom frame', () => {
+    const el = buildUnitMarkerEl(unit);
+    expect(el.style.transition).toBe('');
+    expect(el.style.cssText).not.toContain('transition');
+  });
+
+  it('the glide transition lives on the inner [data-role="marker-inner"] wrapper instead', () => {
+    const el = buildUnitMarkerEl(unit);
+    const inner = el.querySelector('[data-role="marker-inner"]') as HTMLElement;
+    expect(inner).not.toBeNull();
+    expect(inner.style.transition).toContain('transform');
+  });
+
+  it('applyUnitMarkerState mutates the same inner wrapper node identity', () => {
+    const el = buildUnitMarkerEl(unit);
+    const innerBefore = el.querySelector('[data-role="marker-inner"]');
+    applyUnitMarkerState(el, { ...unit, status: 'dispatched' } as MapUnit);
+    expect(el.querySelector('[data-role="marker-inner"]')).toBe(innerBefore);
   });
 });

@@ -115,7 +115,7 @@ import MapDiagnosticsOverlay from './components/MapDiagnosticsOverlay';
 import MapboxDispatchConnections from './components/MapboxDispatchConnections';
 import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
-import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
+import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove } from './utils/mapMarkers';
 import {
   TACTICAL_SURFACE_BASE, TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
   TACTICAL_TEXT_PRIMARY,
@@ -125,6 +125,12 @@ import {
 const SLC_CENTER: [number, number] = [-111.891, 40.7608];
 const DEFAULT_ZOOM = 12;
 const REFRESH_INTERVAL_MS = 30_000;
+// Live unit positions specifically (not the queue/properties fetched by
+// fetchData) refresh on a much tighter cadence to match the ~5s client GPS
+// batch interval (useGpsTracking.ts DEFAULT_BATCH_INTERVAL) — the full
+// fetchData() poll stays at 30s since /dispatch/queue and /records/properties
+// are comparatively heavy and don't change every few seconds.
+const UNITS_FAST_POLL_MS = 5_000;
 
 // Inject GPS self-position pulse animation (module-scope, runs once)
 if (typeof document !== 'undefined' && !document.getElementById('rmpg-pulse-css')) {
@@ -702,6 +708,20 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     return () => { if (refreshTimerRef.current) clearInterval(refreshTimerRef.current); };
   }, [fetchData]);
 
+  const refreshUnitsOnly = useCallback(async () => {
+    try {
+      const u = await apiFetch<Unit[]>('/dispatch/units');
+      setUnits(u);
+    } catch (err) {
+      devWarn('[MapboxMap] fast units poll failed', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = setInterval(refreshUnitsOnly, UNITS_FAST_POLL_MS);
+    return () => clearInterval(t);
+  }, [refreshUnitsOnly]);
+
   // ── WebSocket Subscriptions ────────────────────────────────────────────────
 
   useEffect(() => {
@@ -747,7 +767,26 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       const existing = unitMarkersRef.current.get(unit.id);
       if (existing) {
+        const prevLngLat = existing.getLngLat();
+        const el = existing.getElement();
+        // The glide transition lives on the inner `[data-role="marker-inner"]`
+        // wrapper, NOT the root `el` — `el` is the exact node mapboxgl.Marker
+        // writes position transforms onto every frame (including during pan/
+        // zoom), so it must never carry a transition on `transform` (see
+        // buildUnitMarkerEl in mapMarkers.ts for the full rationale).
+        const innerEl = el.querySelector<HTMLElement>('[data-role="marker-inner"]') || el;
+        const animate = shouldAnimateMarkerMove(prevLngLat.lat, prevLngLat.lng, unit.latitude, unit.longitude);
+        if (!animate) innerEl.style.transitionDuration = '0ms';
         existing.setLngLat([unit.longitude, unit.latitude]);
+        if (!animate) {
+          // NOTE: glide-on-position-update is currently a no-op — nothing
+          // mutates innerEl's own transform on a normal setLngLat, so this
+          // toggle has nothing to animate yet. Left in place as scaffolding
+          // for a follow-up (manual requestAnimationFrame-driven translate
+          // on innerEl) rather than removed, but do not assume a "normal"
+          // move currently glides — it snaps, identically to a flagged jump.
+          requestAnimationFrame(() => { innerEl.style.transitionDuration = ''; });
+        }
         const popup = existing.getPopup();
         if (popup) popup.setHTML(buildUnitPopupHtml(unit));
         // BUG: this used to set `el.textContent = unit.call_sign` directly on
