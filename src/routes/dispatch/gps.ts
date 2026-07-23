@@ -94,6 +94,26 @@ gps.post('/', async (c) => {
       // these unrecoverable fixes instead of re-queuing garbage forever.
       return c.json({ inserted: 0, accepted: 0, dropped: normalized.length }, 200);
     }
+
+    // ── Server-side bounds validation (defense-in-depth) ──────
+    // Mirrors the client's own filters (useGpsTracking.ts DEFAULT_MAX_ACCURACY/
+    // DEFAULT_MAX_SPEED) but a compromised or buggy client can skip those —
+    // this is the last line of defense before data lands in gps_breadcrumbs.
+    // Out-of-range fields are nulled, not dropped: the position itself is
+    // still useful even if its accuracy/heading/speed reading is garbage.
+    const MAX_ACCURACY_M = 2000;
+    const MAX_SPEED_MPS = 60; // ~134 mph, generous for a pursuit
+    for (const pt of points) {
+      if (pt.accuracy != null && (!Number.isFinite(pt.accuracy) || pt.accuracy < 0 || pt.accuracy > MAX_ACCURACY_M)) pt.accuracy = undefined;
+      if (pt.heading != null && (!Number.isFinite(pt.heading) || pt.heading < 0 || pt.heading > 360)) pt.heading = undefined;
+      if (pt.speed != null && (!Number.isFinite(pt.speed) || pt.speed < 0 || pt.speed > MAX_SPEED_MPS)) pt.speed = undefined;
+    }
+
+    // ── Speed-jump flagging ────────────────────────────────────
+    // Compares each point's implied speed from the PRIOR known position
+    // (the unit's last mirrored fix for the first point in the batch, then
+    // each preceding point within the batch) against MAX_SPEED_MPS. Flagged,
+    // not rejected — dispatchers may still want to see a suspect point.
     const lastPt = points[points.length - 1];
 
     // Unit identity: officer → units row. Take-home officers (has_take_home = 1
@@ -108,8 +128,8 @@ gps.post('/', async (c) => {
     // best-effort on-foot detection below — reading it here would let a single
     // unlanded migration 500 the entire GPS write path (breadcrumbs, unit
     // position, trips). It is read separately, guarded, inside that block.
-    const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null; current_call_id: number | null }>(db,
-      'SELECT id, call_sign, status, gps_source, vehicle_id, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId);
+    const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null; current_call_id: number | null; latitude: number | null; longitude: number | null; gps_updated_at: string | null }>(db,
+      'SELECT id, call_sign, status, gps_source, vehicle_id, current_call_id, latitude, longitude, gps_updated_at FROM units WHERE officer_id = ? LIMIT 1', userId);
 
     if (!unit && !isTakeHome) return c.json({ error: 'No assigned unit' }, 400);
 
@@ -143,11 +163,28 @@ gps.post('/', async (c) => {
       resolvedVehicleId = fv?.id ?? null;
     }
 
+    let prevLat = unit?.latitude ?? null;
+    let prevLng = unit?.longitude ?? null;
+    let prevTimeMs = unit?.gps_updated_at
+      ? new Date(unit.gps_updated_at.replace(' ', 'T') + (unit.gps_updated_at.includes('Z') ? '' : 'Z')).getTime()
+      : null;
+    const flags: (string | null)[] = points.map((pt) => {
+      const ptTimeMs = pt.timestamp ? new Date(pt.timestamp).getTime() : Date.now();
+      let flag: string | null = null;
+      if (prevLat != null && prevLng != null && prevTimeMs != null && Number.isFinite(ptTimeMs)) {
+        const distM = haversineM(prevLat, prevLng, pt.latitude, pt.longitude);
+        const dtS = Math.max(1, (ptTimeMs - prevTimeMs) / 1000);
+        if (distM / dtS > MAX_SPEED_MPS) flag = 'speed_jump';
+      }
+      prevLat = pt.latitude; prevLng = pt.longitude; prevTimeMs = Number.isFinite(ptTimeMs) ? ptTimeMs : prevTimeMs;
+      return flag;
+    });
+
     // Batch-insert breadcrumbs — single D1 round-trip instead of N.
-    const stmts = points.map((pt) => ({
-      sql: `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, activity, activity_confidence, recorded_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      bindings: [unitId, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, callSign, pt.activity ?? null, pt.activity_confidence ?? null],
+    const stmts = points.map((pt, i) => ({
+      sql: `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, activity, activity_confidence, recorded_at, flagged_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)`,
+      bindings: [unitId, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, callSign, pt.activity ?? null, pt.activity_confidence ?? null, flags[i]],
     }));
     const results = await executeBatch(db, stmts);
     const inserted = results.map((r) => Number(r.meta.last_row_id)).filter(Boolean);
