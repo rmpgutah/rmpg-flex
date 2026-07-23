@@ -132,8 +132,7 @@ kioskLinux.post('/devices/:id/upload', deviceAuthMiddleware, async (c) => {
 
   const uploadedAt = nowIso();
   const r2Key = `${device.id}/${kind}/${uploadedAt}-${file.name}`;
-  const bytes = await file.arrayBuffer();
-  await bucket.put(r2Key, bytes);
+  await bucket.put(r2Key, file.stream());
 
   const id = crypto.randomUUID();
   await db
@@ -141,7 +140,7 @@ kioskLinux.post('/devices/:id/upload', deviceAuthMiddleware, async (c) => {
       `INSERT INTO kiosk_device_uploads (id, device_id, kind, r2_key, size_bytes, uploaded_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
     )
-    .bind(id, device.id, kind, r2Key, bytes.byteLength, uploadedAt)
+    .bind(id, device.id, kind, r2Key, file.size, uploadedAt)
     .run();
 
   return c.json({ ok: true, id, r2_key: r2Key });

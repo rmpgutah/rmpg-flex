@@ -51,7 +51,7 @@ export async function deviceAuthMiddleware(c: Context, next: Next) {
   }
   const device = await authenticateDeviceToken(kioskDb, deviceId, token);
   if (!device) {
-    return c.json({ error: 'Invalid or revoked device token' }, 401);
+    return c.json({ error: 'Unauthorized' }, 401);
   }
   c.set('kioskDevice', device);
   await next();

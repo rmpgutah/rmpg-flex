@@ -37,7 +37,7 @@ export default function KioskDevicesTab() {
   const register = () => {
     const label = newLabel.trim();
     if (!label) return;
-    apiFetch<{ id: string; label: string; token: string }>('/kiosk-linux/devices', {
+    apiFetch<{ id: string; label: string; token: string; registered_at: string }>('/kiosk-linux/devices', {
       method: 'POST',
       body: JSON.stringify({ label }),
     })
