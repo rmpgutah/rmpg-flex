@@ -30,9 +30,11 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import type { DurableObjectNamespace } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { applyInbound } from '../utils/fleetio/sync';
 import { notConfigured } from '../utils/notConfigured';
+import { rateLimitAllow, rateLimitCount } from '../utils/rateLimit';
 
 const fleetioWebhook = new Hono<Env>();
 
@@ -181,6 +183,19 @@ export function normalizeResource(payload: unknown): { resource: string; action:
 // ─── Route ───────────────────────────────────────────────────
 
 fleetioWebhook.post('/webhook', async (c) => {
+  // IP-keyed rate limit — apiRateLimit (src/middleware/rateLimit.ts) keys
+  // only on userId and is a silent no-op here, since this route bypasses
+  // JWT auth by design (Fleet.io has no session to send one from). 30
+  // req/60s per IP is far above Fleet.io's documented retry policy
+  // (5x/hr + 1x/hr for 24h per failed delivery); sized to stop abuse, not
+  // throttle real traffic. Checked before any D1 read/write or crypto
+  // compare so a flood is cheap to reject.
+  const ip = c.req.header('cf-connecting-ip') ?? 'unknown';
+  const withinLimit = await rateLimitAllow(c.env.KV, `fleetio-webhook:${ip}`, 30, 60);
+  if (!withinLimit) {
+    return c.json({ error: 'rate_limited' }, 429);
+  }
+
   const secret = (c.env as Record<string, unknown>).FLEETIO_WEBHOOK_SECRET;
   if (typeof secret !== 'string' || !secret) {
     // 200 + skipped:true so Fleet.io doesn't retry-storm us with the same
@@ -198,16 +213,44 @@ fleetioWebhook.post('/webhook', async (c) => {
   // the wrangler side too — normalize both sides identically for the compare.
   const expected = normalizeAuthorizationHeader(secret) ?? '';
   if (!constantTimeEquals(authHeader, expected)) {
-    // Don't broadcast anything about the expected value back to the caller.
-    // Log to audit_log so we can spot probe traffic later.
-    try {
-      await c.env.DB.prepare(
-        `INSERT INTO audit_log (action, entity_type, details, created_at)
-         VALUES ('FLEETIO_WEBHOOK_BAD_AUTH', 'fleetio_webhook', ?, datetime('now'))`,
-      ).bind(JSON.stringify({ ip: c.req.header('cf-connecting-ip') ?? null })).run();
-    } catch (err) {
-      console.error('[fleetio-webhook] audit_log INSERT failed', err);
+    // Count this failure (10-minute window), independent of the general
+    // rate limit above — that one blocks by request volume; this one
+    // tracks specifically-failed auth attempts, to detect credential
+    // guessing even from an IP that never crosses the 30/60s cap.
+    await rateLimitAllow(c.env.KV, `fleetio-webhook-badauth:${ip}`, Number.MAX_SAFE_INTEGER, 600);
+    const badAuthCount = await rateLimitCount(c.env.KV, `fleetio-webhook-badauth:${ip}`, 600);
+
+    // Bounded audit logging — only the first 5 failures per IP per window;
+    // once an IP is confirmed probing (see the count===10 alert below),
+    // logging every subsequent identical failure adds no new information.
+    if (badAuthCount <= 5) {
+      try {
+        await c.env.DB.prepare(
+          `INSERT INTO audit_log (action, entity_type, details, created_at)
+           VALUES ('FLEETIO_WEBHOOK_BAD_AUTH', 'fleetio_webhook', ?, datetime('now'))`,
+        ).bind(JSON.stringify({ ip: c.req.header('cf-connecting-ip') ?? null })).run();
+      } catch (err) {
+        console.error('[fleetio-webhook] audit_log INSERT failed', err);
+      }
     }
+
+    // Fire the probe-detected alert exactly once per 10-minute window — the
+    // request that pushes the count to exactly 10 is the trigger; every
+    // later failure in the same window also has count>=10 but is skipped.
+    if (badAuthCount === 10) {
+      try {
+        const { evaluateNotificationRules } = await import('./notificationEngine');
+        await evaluateNotificationRules(c.env.DB, 'fleetio_webhook_probe_detected', {
+          title: 'Fleet.io webhook: possible credential probing',
+          message: `10+ failed webhook auth attempts from ${ip} in the last 10 minutes.`,
+          priority: 'high',
+          entity_type: 'fleetio_webhook_probe',
+        }, c.env as { ALERT_HUB?: DurableObjectNamespace });
+      } catch (err) {
+        console.error('[fleetio-webhook] probe-detected notification failed', err);
+      }
+    }
+
     return c.json({ error: 'invalid authorization' }, 401);
   }
 
