@@ -61,6 +61,12 @@ binding = "GEO_DB"
 database_name = "rmpg-geo"
 database_id = "fbc33751-dce0-499a-bc45-93c0b7ee0da1"
 
+[[d1_databases]]
+binding = "KIOSK_DB"
+database_name = "kiosk-linux-fleet"
+database_id = "REPLACE_WITH_REAL_ID_AFTER_WRANGLER_D1_CREATE"
+migrations_dir = "kiosk-linux/migrations"
+
 # ─── Durable Objects ─────────────────────────────────────
 # WelfareWatchDO — automated officer welfare escalation timer
 # (Spillman parity, DI-4 follow-up). One instance per officer
@@ -132,6 +138,10 @@ bucket_name = "rmpg-flex-uploads"
 [[r2_buckets]]
 binding = "DOWNLOADS"
 bucket_name = "rmpg-flex-downloads"
+
+[[r2_buckets]]
+binding = "KIOSK_DEVICES"
+bucket_name = "kiosk-linux-devices"
 
 # ─── Analytics lakehouse (R2 Data Catalog / Pipelines) ─────
 # OPTIONAL until provisioned. The ALPR dual-write (src/routes/alpr.ts) and the

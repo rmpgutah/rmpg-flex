@@ -17,6 +17,11 @@ export type Bindings = {
   // Desktop/mobile installers R2 bucket. Served via /downloads/* and
   // /updates/* routes. Contains .exe, .dmg, .apk, .zip, .blockmap, .yml.
   DOWNLOADS: R2Bucket;
+  // Kiosk Linux sub-project 4: device registry. Optional — routes in
+  // src/routes/kioskLinux.ts return { ok:false, code:'not_configured' }
+  // when unset, per the established pattern for optional integrations.
+  KIOSK_DB?: D1Database;
+  KIOSK_DEVICES?: R2Bucket;
   // R2 S3-API credentials for presigned direct uploads (src/utils/r2Presign.ts).
   // Optional — presign routes return `{ ok:false, code:'not_configured' }` when
   // unset instead of crashing. Set via `wrangler secret put R2_ACCESS_KEY_ID`
