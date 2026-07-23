@@ -46,6 +46,9 @@ export async function deviceAuthMiddleware(c: Context, next: Next) {
   }
   const token = authHeader.slice(7);
   const deviceId = c.req.param('id');
+  if (!deviceId) {
+    return c.json({ error: 'Device id is required' }, 400);
+  }
   const device = await authenticateDeviceToken(kioskDb, deviceId, token);
   if (!device) {
     return c.json({ error: 'Invalid or revoked device token' }, 401);

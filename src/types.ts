@@ -125,6 +125,10 @@ export type Variables = {
   user: { id: number; username: string; role: string; full_name: string };
   userId: number;
   traceId?: string;
+  // Set by src/middleware/kioskDeviceAuth.ts on successful device-bearer-token
+  // auth (checkin/upload routes in src/routes/kioskLinux.ts) — distinct from
+  // the JWT `user` above, since devices have no user account.
+  kioskDevice?: { id: string; label: string };
 };
 
 export type Env = { Bindings: Bindings; Variables: Variables };
