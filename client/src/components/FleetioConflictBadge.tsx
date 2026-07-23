@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 
 export interface ConflictBadgeConflict {
   id: number;
@@ -94,10 +95,10 @@ export default function FleetioConflictBadge({ conflict, compact, onResolved }: 
           onClick={() => (open ? setOpen(false) : openPopover())}
           className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-sm bg-amber-500/10 text-amber-400 border border-amber-500/30"
           aria-expanded={open}
-          aria-label={`Conflict on ${conflict.field}`}
+          aria-label={`Conflict on ${toDisplayLabel(conflict.field)}`}
         >
           <AlertTriangle className="w-2.5 h-2.5" />
-          {conflict.field}
+          {toDisplayLabel(conflict.field)}
         </button>
         {open && createPortal(
           <div
@@ -113,7 +114,7 @@ export default function FleetioConflictBadge({ conflict, compact, onResolved }: 
             }}
           >
             <div className="space-y-1">
-              <div className="font-semibold text-amber-300">{conflict.field}</div>
+              <div className="font-semibold text-amber-300">{toDisplayLabel(conflict.field)}</div>
               <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[9px]">
                 <span className="text-rmpg-400">Local:</span>
                 <span className="text-rmpg-100 truncate max-w-[120px]">{conflict.local_value ?? '—'}</span>
@@ -149,7 +150,7 @@ export default function FleetioConflictBadge({ conflict, compact, onResolved }: 
   return (
     <div className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-sm bg-amber-500/10 text-amber-300 border border-amber-500/30">
       <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-      <span className="font-mono">{conflict.field}</span>
+      <span className="font-mono">{toDisplayLabel(conflict.field)}</span>
       <span className="text-[9px] text-rmpg-400 mx-1">local: {conflict.local_value ?? '—'}</span>
       <span className="text-[9px] text-rmpg-400 mr-1">vs remote: {conflict.remote_value ?? '—'}</span>
       <button

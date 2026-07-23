@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildVehiclePayload } from '../src/utils/fleetio/seed';
+import { buildVehiclePayload, mapVehicleFieldsToFleetio, mapFuelEntryFieldsToFleetio } from '../src/utils/fleetio/seed';
 
 describe('buildVehiclePayload', () => {
   const baseRow = {
@@ -45,5 +45,51 @@ describe('buildVehiclePayload', () => {
   it('passes null year through unchanged', () => {
     const r = { ...baseRow, year: null };
     expect(buildVehiclePayload(r)?.year).toBeNull();
+  });
+});
+
+describe('mapVehicleFieldsToFleetio', () => {
+  it('translates RMPG raw-row field names to Fleet.io field names', () => {
+    expect(mapVehicleFieldsToFleetio({
+      vehicle_name: 'PS-D19', plate_number: '8JAR3', vin: 'X', year: 2022,
+      make: 'Dodge', model: '1500', color: 'White',
+    })).toEqual({
+      name: 'PS-D19', license_plate: '8JAR3', vin: 'X', year: 2022,
+      make: 'Dodge', model: '1500', color: 'White',
+    });
+  });
+
+  it('drops every RMPG-internal column with no Fleet.io equivalent (the live 422 cause)', () => {
+    const mapped = mapVehicleFieldsToFleetio({
+      id: 1, vehicle_name: 'PS-D19', vehicle_number: 'PS-D19', assigned_unit_id: 1,
+      total_maintenance_cost: null, total_fuel_cost: null, lienholder: 'Bank',
+      equipment: '["Lightbar"]', purchase_vendor: 'Prestman', is_pursuit_rated: 0,
+      pursuit_rated: 0, watch_list: 0, current_mileage: 94016, created_at: 'x', updated_at: 'y',
+    });
+    expect(mapped).toEqual({ name: 'PS-D19' });
+  });
+
+  it('falls back to vehicle_number, then "VIN <vin>", for name', () => {
+    expect(mapVehicleFieldsToFleetio({ vehicle_number: 'U-12' }).name).toBe('U-12');
+    expect(mapVehicleFieldsToFleetio({ vin: 'ABC123' }).name).toBe('VIN ABC123');
+    expect(mapVehicleFieldsToFleetio({})).not.toHaveProperty('name');
+  });
+});
+
+describe('mapFuelEntryFieldsToFleetio', () => {
+  it('translates RMPG fuel_log column names to Fleet.io fuel_entries field names', () => {
+    expect(mapFuelEntryFieldsToFleetio({
+      vehicle_id: 42, fuel_date: '2026-07-17', gallons: 5.026, total_cost: 20,
+    })).toEqual({ vehicle_id: 42, date: '2026-07-17', us_gallons: 5.026, cost: 20 });
+  });
+
+  it('drops RMPG-only fields with no Fleet.io equivalent (the live 422 cause)', () => {
+    const mapped = mapFuelEntryFieldsToFleetio({
+      id: 92, vehicle_id: 1, fuel_date: '2026-07-17', gallons: 5.026,
+      cost_per_gallon: 3.979, fuel_type: 'regular', station: 'Maverik 627',
+      payment_method: 'Cash', driver_name: 'X', location: 'Y', mpg: null,
+      total_cost: 20, custom_fields_json: null,
+    });
+    expect(mapped).toEqual({ vehicle_id: 1, date: '2026-07-17', us_gallons: 5.026, cost: 20 });
   });
 });

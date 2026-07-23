@@ -188,7 +188,7 @@ describe('applyOutbound', () => {
       async updateVehicle(args: { fleetioId: number; payload: Record<string, unknown> }): Promise<unknown> {
         updateCalls++;
         expect(args.fleetioId).toBe(999);
-        expect(args.payload.vehicle_name).toBe('Patrol 12');
+        expect(args.payload.name).toBe('Patrol 12');
         return { id: args.fleetioId, name: 'Patrol 12' };
       },
       async createFuelEntry() { throw new Error('not used'); },
@@ -314,7 +314,7 @@ describe('applyOutbound', () => {
   it('vehicle/create — pushes to Fleet.io, records fleetio_links, marks completed', async () => {
     const state: FleetTables = {
       events: [baseEvent({ id: 11, event_id: 'evt-vc', resource: 'vehicle', action: 'create',
-        payload_json: JSON.stringify({ name: 'Patrol 99', vin: '1HGCM82633A123456' }) })],
+        payload_json: JSON.stringify({ vehicle_name: 'Patrol 99', vin: '1HGCM82633A123456' }) })],
       links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
     };
     const { db } = makeDb(state);
@@ -512,7 +512,7 @@ describe('applyOutbound', () => {
     expect(result.completed).toBe(1);
     expect(seen.fleetioId).toBe(555);
     expect(seen.payload!.vehicle_id).toBe(99999);    // translated
-    expect(seen.payload!.gallons).toBe(13.5);        // preserved
+    expect(seen.payload!.us_gallons).toBe(13.5);     // mapped from RMPG's `gallons`
   });
 
   it('fuel_entry/update — no-op when the row was never linked', async () => {
@@ -619,7 +619,7 @@ describe('applyOutbound', () => {
     const r1 = await applyOutbound({ db: linkedHarness.db, adapter: adapterOk as never, config: stubConfig });
     expect(r1.completed).toBe(1);
     expect(sent!.vehicle_id).toBe(99999);
-    expect(sent!.gallons).toBe(12.4);
+    expect(sent!.us_gallons).toBe(12.4);   // mapped from RMPG's `gallons`
     // Regression: fuel_entry/create must record a fleetio_links row so a
     // subsequent /fleetio/pull dedup query sees this entry and doesn't
     // insert a duplicate local row for the same remote fill-up.

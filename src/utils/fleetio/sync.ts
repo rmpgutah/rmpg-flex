@@ -34,6 +34,7 @@ import {
 } from './ownership';
 import type { FleetioConfig, FleetioFuelEntry } from './client';
 import type { FleetioVehicle } from './types';
+import { mapVehicleFieldsToFleetio, mapFuelEntryFieldsToFleetio } from './seed';
 import {
   FleetioRateLimitError,
   FleetioHttpError,
@@ -242,7 +243,9 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     // vehicle and orphan the original.
     const existing = await lookupFleetioId(deps.db, 'fleet_vehicles', row.resource_id);
     if (existing) return null;
-    const created = await deps.adapter.createVehicle({ payload: filteredPayload });
+    const mapped = mapVehicleFieldsToFleetio(filteredPayload);
+    if (!mapped.name) return null; // no derivable name — nothing safe to create with
+    const created = await deps.adapter.createVehicle({ payload: mapped });
     await recordLink(deps.db, 'fleet_vehicles', row.resource_id, 'vehicle', created.id, now(deps));
     return created;
   }
@@ -253,7 +256,7 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
       // Mark as completed (no-op for now) so we don't retry forever.
       return null;
     }
-    return deps.adapter.updateVehicle({ fleetioId, payload: filteredPayload });
+    return deps.adapter.updateVehicle({ fleetioId, payload: mapVehicleFieldsToFleetio(filteredPayload) });
   }
   if (row.resource === 'vehicle' && row.action === 'delete') {
     // Fleet.io archives instead of hard-deleting — and only if the row was
@@ -266,7 +269,7 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
   if (row.resource === 'fuel_entry' && row.action === 'create') {
     const translated = await translateOutboundFks(deps.db, 'fuel_entry', filteredPayload);
     if (translated == null) return null;       // parent vehicle not linked yet
-    const created = await deps.adapter.createFuelEntry({ payload: translated });
+    const created = await deps.adapter.createFuelEntry({ payload: mapFuelEntryFieldsToFleetio(translated) });
     await recordLink(deps.db, 'fleet_fuel_log', row.resource_id, 'fuel_entries', created.id, now(deps));
     return created;
   }
@@ -290,7 +293,7 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     if (!fleetioId) return null;
     const translated = await translateOutboundFks(deps.db, 'fuel_entry', filteredPayload);
     if (translated == null) return null;
-    return deps.adapter.updateFuelEntry({ fleetioId, payload: translated });
+    return deps.adapter.updateFuelEntry({ fleetioId, payload: mapFuelEntryFieldsToFleetio(translated) });
   }
   if (row.resource === 'work_order' && row.action === 'update') {
     const fleetioId = await lookupFleetioId(deps.db, 'work_orders', row.resource_id);

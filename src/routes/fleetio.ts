@@ -153,6 +153,28 @@ fleetio.get('/health', requireRole('admin'), async (c) => {
   }
 });
 
+/** Requeue a dead-lettered outbound event (status='failed', attempts exhausted
+ *  at maxAttempts()) so the next reconciliation cron tick retries it. Needed
+ *  because attempts < maxAttempts() is a hard SELECT filter in applyOutbound
+ *  — once an event hits 'failed' it never retries on its own, even after the
+ *  underlying bug (e.g. a bad payload mapping) is fixed server-side. Admin
+ *  only; only resets rows already in 'failed' state. */
+fleetio.post('/events/:id{[0-9]+}/retry', requireRole('admin'), async (c) => {
+  const id = parseInt(c.req.param('id') ?? '0', 10);
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const result = await execute(
+    db,
+    `UPDATE fleetio_events SET status = 'pending', attempts = 0, error = NULL
+     WHERE id = ? AND status = 'failed'`,
+    id,
+  );
+  if (!result.meta?.changes) {
+    return c.json({ error: 'Event not found or not in failed state' }, 404);
+  }
+  return c.json({ success: true, id });
+});
+
 /** List unresolved conflicts, optionally filtered by table / id. Auth: required
  *  (not admin-only) so fleet V2 pages can show conflict badges for non-admin
  *  users. Supports `?table=fleet_vehicles&ids=1,2,3` to filter multiple rows. */
