@@ -90,4 +90,53 @@ describe('POST /api/dispatch/gps — bounds validation', () => {
       'SELECT flagged_reason FROM gps_breadcrumbs ORDER BY id DESC LIMIT 1');
     expect(row?.flagged_reason).toBe('speed_jump');
   });
+
+  it('chains speed-jump comparison to the preceding point WITHIN the same batch, not the unit\'s stale stored position', async () => {
+    // Dedicated unit, isolated from other tests, with a stored fix that is
+    // deliberately OLD (3 hours) so the divergence below is unambiguous:
+    //   - Point 1 makes no move at all from the stored fix, 3 hours later
+    //     (speed ~0) -> never flagged under any implementation.
+    //   - Point 2 is ~555km away from point 1, only 3s later -> correctly
+    //     chained, that implies an impossible ~185,000 m/s -> MUST flag.
+    //   - But if the code (bug) compared point 2 against the unit's STALE
+    //     stored fix/time (same position as point 1, but ~3h+3s elapsed)
+    //     instead of point 1, the implied speed would be ~555000/10803 ≈
+    //     51 m/s — UNDER the 60 m/s threshold -> would wrongly NOT flag.
+    // This makes the two implementations diverge on point 2's verdict.
+    // The route resolves the unit by officer_id (userId=1), which is the same
+    // 'D190' unit used by earlier tests. Force its stored fix back to a known,
+    // deliberately stale position/time so this test is deterministic
+    // regardless of what earlier tests left behind.
+    const db = (env as unknown as { DB: D1Database }).DB;
+    await execute(db,
+      `UPDATE units SET latitude = 40.7608, longitude = -111.8910, gps_updated_at = datetime('now', '-3 hours') WHERE officer_id = 1`);
+
+    const now = Date.now();
+    const t1 = new Date(now).toISOString();
+    const t2 = new Date(now + 3000).toISOString(); // 3s after point 1
+
+    const res = await app.request('/api/dispatch/gps', {
+      method: 'POST',
+      body: JSON.stringify({
+        points: [
+          { lat: 40.7608, lng: -111.8910, accuracy: 10, timestamp: t1 },
+          { lat: 45.7608, lng: -111.8910, accuracy: 10, timestamp: t2 }, // ~555km north
+        ],
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(201);
+
+    const rows = await db
+      .prepare('SELECT id, flagged_reason FROM gps_breadcrumbs ORDER BY id ASC')
+      .all<{ id: number; flagged_reason: string | null }>();
+    const inserted = rows.results.slice(-2);
+    expect(inserted.length).toBe(2);
+
+    // Point 1: no movement from the stored fix -> not flagged.
+    expect(inserted[0].flagged_reason).toBeNull();
+    // Point 2: correctly chained against point 1 (3s, 555km) -> must flag.
+    // (A buggy stored-position comparison would wrongly leave this null.)
+    expect(inserted[1].flagged_reason).toBe('speed_jump');
+  });
 });

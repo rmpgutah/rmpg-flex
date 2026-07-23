@@ -176,7 +176,9 @@ gps.post('/', async (c) => {
         const dtS = Math.max(1, (ptTimeMs - prevTimeMs) / 1000);
         if (distM / dtS > MAX_SPEED_MPS) flag = 'speed_jump';
       }
-      prevLat = pt.latitude; prevLng = pt.longitude; prevTimeMs = Number.isFinite(ptTimeMs) ? ptTimeMs : prevTimeMs;
+      if (Number.isFinite(ptTimeMs)) {
+        prevLat = pt.latitude; prevLng = pt.longitude; prevTimeMs = ptTimeMs;
+      }
       return flag;
     });
 
