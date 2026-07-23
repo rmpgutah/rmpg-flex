@@ -200,7 +200,7 @@ describe('GET /calls-for-service', () => {
   test('valid key with service_request_read scope + match -> 200 with mapped fields', async () => {
     const app = makeApp();
     const db = makeMockDb();
-    db.first = vi.fn(async function (this: any) {
+    db.first = vi.fn(async function (this: any): Promise<any> {
       const sql: string = this.__sql || '';
       const args: unknown[] = this.__bindArgs || [];
       if (sql.includes('FROM integration_api_keys WHERE key_hash')) {
