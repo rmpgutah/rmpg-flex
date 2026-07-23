@@ -195,3 +195,108 @@ describe('POST /calls-for-service', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('GET /calls-for-service', () => {
+  test('valid key with service_request_read scope + match -> 200 with mapped fields', async () => {
+    const app = makeApp();
+    const db = makeMockDb();
+    db.first = vi.fn(async function (this: any): Promise<any> {
+      const sql: string = this.__sql || '';
+      const args: unknown[] = this.__bindArgs || [];
+      if (sql.includes('FROM integration_api_keys WHERE key_hash')) {
+        return args[0] === ACTIVE_KEY_HASH
+          ? { id: 1, name: 'Dial Connect', is_active: 1, scopes: '["service_request_read"]' }
+          : null;
+      }
+      if (sql.includes('FROM calls_for_service') && sql.includes('caller_phone')) {
+        return {
+          id: 42,
+          call_number: 'CFS26-00042',
+          status: 'dispatched',
+          incident_type: 'welfare_check',
+          priority: 'P2',
+          created_at: '2026-07-20T10:00:00.000Z',
+        };
+      }
+      return null;
+    });
+
+    const res = await app.request('/calls-for-service?callerPhone=801-555-0100', {
+      headers: { Authorization: 'Bearer valid-service-request-key' },
+    }, { DB: db });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual({
+      id: 42,
+      callNumber: 'CFS26-00042',
+      status: 'dispatched',
+      incidentType: 'welfare_check',
+      priority: 'P2',
+      createdAt: '2026-07-20T10:00:00.000Z',
+    });
+  });
+
+  test('valid key, no matching row -> 404', async () => {
+    const app = makeApp();
+    const db = makeMockDb();
+    db.first = vi.fn(async function (this: any) {
+      const sql: string = this.__sql || '';
+      const args: unknown[] = this.__bindArgs || [];
+      if (sql.includes('FROM integration_api_keys WHERE key_hash')) {
+        return args[0] === ACTIVE_KEY_HASH
+          ? { id: 1, name: 'Dial Connect', is_active: 1, scopes: '["service_request_read"]' }
+          : null;
+      }
+      return null;
+    });
+
+    const res = await app.request('/calls-for-service?callerPhone=801-555-9999', {
+      headers: { Authorization: 'Bearer valid-service-request-key' },
+    }, { DB: db });
+
+    expect(res.status).toBe(404);
+  });
+
+  test('missing callerPhone query param -> 400', async () => {
+    const app = makeApp();
+    const db = makeMockDb();
+    db.first = vi.fn(async function (this: any) {
+      const sql: string = this.__sql || '';
+      const args: unknown[] = this.__bindArgs || [];
+      if (sql.includes('FROM integration_api_keys WHERE key_hash')) {
+        return args[0] === ACTIVE_KEY_HASH
+          ? { id: 1, name: 'Dial Connect', is_active: 1, scopes: '["service_request_read"]' }
+          : null;
+      }
+      return null;
+    });
+
+    const res = await app.request('/calls-for-service', {
+      headers: { Authorization: 'Bearer valid-service-request-key' },
+    }, { DB: db });
+
+    expect(res.status).toBe(400);
+  });
+
+  test('key with only write scope (service_request) -> 403 on the read route', async () => {
+    const app = makeApp();
+    const db = makeMockDb();
+    db.first = vi.fn(async function (this: any) {
+      const sql: string = this.__sql || '';
+      const args: unknown[] = this.__bindArgs || [];
+      if (sql.includes('FROM integration_api_keys WHERE key_hash')) {
+        return args[0] === ACTIVE_KEY_HASH
+          ? { id: 1, name: 'Dial Connect', is_active: 1, scopes: '["service_request"]' }
+          : null;
+      }
+      return null;
+    });
+
+    const res = await app.request('/calls-for-service?callerPhone=801-555-0100', {
+      headers: { Authorization: 'Bearer valid-service-request-key' },
+    }, { DB: db });
+
+    expect(res.status).toBe(403);
+  });
+});

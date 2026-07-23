@@ -431,4 +431,54 @@ integrations.post('/calls-for-service', requireApiKeyScope('service_request'), a
   }
 });
 
+// ── Dial Connect ← calls_for_service read ─────────────────────
+// GET /api/integrations/calls-for-service?callerPhone=...
+//
+// Separate scope from the write route (service_request) on purpose:
+// service_request_read only lets a key look up existing CFS rows, never
+// create them. Same requireApiKeyScope middleware, same auth model as the
+// POST handler above (no human JWT session).
+integrations.get('/calls-for-service', requireApiKeyScope('service_request_read'), async (c) => {
+  try {
+    const callerPhone = c.req.query('callerPhone');
+    if (!callerPhone || !callerPhone.trim()) {
+      return c.json({ error: 'callerPhone query parameter is required' }, 400);
+    }
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{
+      id: number;
+      call_number: string;
+      status: string;
+      incident_type: string;
+      priority: string;
+      created_at: string;
+    }>(
+      db,
+      `SELECT id, call_number, status, incident_type, priority, created_at
+       FROM calls_for_service
+       WHERE caller_phone = ?
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      callerPhone,
+    );
+
+    if (!row) {
+      return c.json({ error: 'No calls for service found for this caller' }, 404);
+    }
+
+    return c.json({
+      id: row.id,
+      callNumber: row.call_number,
+      status: row.status,
+      incidentType: row.incident_type,
+      priority: row.priority,
+      createdAt: row.created_at,
+    });
+  } catch (err) {
+    console.error('[Integrations] Lookup calls-for-service failed:', err);
+    return c.json({ error: 'Failed to look up calls for service' }, 500);
+  }
+});
+
 export default integrations;
