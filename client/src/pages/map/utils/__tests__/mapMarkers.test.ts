@@ -84,3 +84,27 @@ describe('shouldAnimateMarkerMove', () => {
     expect(shouldAnimateMarkerMove(40.7608, -111.8910, 39.7392, -104.9903)).toBe(false);
   });
 });
+
+describe('buildUnitMarkerEl — heading and accuracy', () => {
+  it('rotates the badge when heading is present', () => {
+    const el = buildUnitMarkerEl({ ...unit, gps_heading: 90 } as MapUnit);
+    const badge = el.querySelector('[data-role="badge"]') as HTMLElement;
+    expect(badge.style.transform).toContain('rotate(90deg)');
+  });
+
+  it('does not rotate when heading is null', () => {
+    const el = buildUnitMarkerEl({ ...unit, gps_heading: null } as MapUnit);
+    const badge = el.querySelector('[data-role="badge"]') as HTMLElement;
+    expect(badge.style.transform).toBe('');
+  });
+
+  it('renders an accuracy ring when accuracy is present', () => {
+    const el = buildUnitMarkerEl({ ...unit, gps_accuracy: 25 } as MapUnit);
+    expect(el.querySelector('[data-role="accuracy-ring"]')).not.toBeNull();
+  });
+
+  it('omits the accuracy ring when accuracy is absent', () => {
+    const el = buildUnitMarkerEl({ ...unit, gps_accuracy: null } as MapUnit);
+    expect(el.querySelector('[data-role="accuracy-ring"]')).toBeNull();
+  });
+});

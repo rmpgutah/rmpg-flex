@@ -75,6 +75,12 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
     box-shadow:0 0 8px ${ringColor}b3;
   `;
   badge.innerHTML = UNIT_GLYPH_SVG;
+  // Rotate the whole badge to point in the direction of travel. Only applied
+  // when heading is present and non-null — the server nulls implausible
+  // headings (gps.ts bounds validation), so a present value is trustworthy.
+  if (unit.gps_heading != null && Number.isFinite(unit.gps_heading)) {
+    badge.style.transform = `rotate(${unit.gps_heading}deg)`;
+  }
   el.appendChild(badge);
 
   const label = document.createElement('div');
@@ -86,6 +92,27 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
   `;
   label.textContent = unit.call_sign.slice(0, 6);
   el.appendChild(label);
+
+  // Accuracy-radius ring: a translucent circle sized to the reported GPS
+  // accuracy in meters. Rendered only when accuracy data is present (the
+  // server nulls implausible values) so we never draw a fake/default ring.
+  // Sized in CSS pixels using a fixed reference scale (roughly meters-per-
+  // pixel at typical dispatch zoom levels ~14-16); it's an approximate
+  // confidence indicator, not a survey-accurate overlay.
+  if (unit.gps_accuracy != null && Number.isFinite(unit.gps_accuracy) && unit.gps_accuracy > 0) {
+    const ring = document.createElement('div');
+    ring.setAttribute('data-role', 'accuracy-ring');
+    const pixelRadius = Math.min(60, Math.max(8, unit.gps_accuracy / 2));
+    ring.style.cssText = `
+      position:absolute;top:50%;left:50%;
+      width:${pixelRadius * 2}px;height:${pixelRadius * 2}px;
+      margin-left:-${pixelRadius}px;margin-top:-${pixelRadius - 15}px;
+      border-radius:50%;background:${color}22;border:1px solid ${color}55;
+      pointer-events:none;z-index:-1;
+    `;
+    el.style.position = 'relative';
+    el.appendChild(ring);
+  }
 
   return el;
 }
@@ -109,6 +136,7 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
     badge.style.background = color;
     badge.style.border = `2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? '#0d1520' : ringColor}`;
     badge.style.boxShadow = `0 0 8px ${ringColor}b3`;
+    badge.style.transform = (unit.gps_heading != null && Number.isFinite(unit.gps_heading)) ? `rotate(${unit.gps_heading}deg)` : '';
   }
 
   const label = el.querySelector<HTMLElement>('[data-role="label"]');
@@ -116,6 +144,25 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
     label.style.border = `1.2px solid ${color}`;
     label.style.color = color;
     label.textContent = unit.call_sign.slice(0, 6);
+  }
+
+  // Accuracy ring: remove and rebuild rather than resize in place — it's a
+  // cheap DOM op at this element count and avoids drifting math between
+  // build and update paths.
+  const existingRing = el.querySelector('[data-role="accuracy-ring"]');
+  if (existingRing) existingRing.remove();
+  if (unit.gps_accuracy != null && Number.isFinite(unit.gps_accuracy) && unit.gps_accuracy > 0) {
+    const ring = document.createElement('div');
+    ring.setAttribute('data-role', 'accuracy-ring');
+    const pixelRadius = Math.min(60, Math.max(8, unit.gps_accuracy / 2));
+    ring.style.cssText = `
+      position:absolute;top:50%;left:50%;
+      width:${pixelRadius * 2}px;height:${pixelRadius * 2}px;
+      margin-left:-${pixelRadius}px;margin-top:-${pixelRadius - 15}px;
+      border-radius:50%;background:${color}22;border:1px solid ${color}55;
+      pointer-events:none;z-index:-1;
+    `;
+    el.appendChild(ring);
   }
 }
 

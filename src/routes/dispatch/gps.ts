@@ -217,10 +217,10 @@ gps.post('/', async (c) => {
     // NavigationPage map turning arrow and speed label work.
     if (lastPt && lastPt.latitude != null && lastPt.longitude != null && unitId) {
       await execute(db,
-        `UPDATE units SET latitude = ?, longitude = ?, gps_heading = ?, gps_speed = ?,
+        `UPDATE units SET latitude = ?, longitude = ?, gps_heading = ?, gps_speed = ?, gps_accuracy = ?,
            gps_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
         lastPt.latitude, lastPt.longitude,
-        lastPt.heading ?? null, lastPt.speed ?? null,
+        lastPt.heading ?? null, lastPt.speed ?? null, lastPt.accuracy ?? null,
         unitId);
     }
 
