@@ -25,6 +25,21 @@ export function shouldAnimateMarkerMove(prevLat: number, prevLng: number, nextLa
   return haversineDistance(prevLat, prevLng, nextLat, nextLng) <= MAX_ANIMATED_JUMP_MILES;
 }
 
+/**
+ * Pure geometry for the accuracy-radius ring, shared by buildUnitMarkerEl and
+ * applyUnitMarkerState so the CSS-string-building code can't drift out of
+ * sync. `marginTop` is computed as a single signed number (`15 - pixelRadius`)
+ * rather than interpolated as `-${pixelRadius - 15}` — the latter produces an
+ * invalid double-minus CSS string (e.g. `margin-top:--5px`) whenever
+ * `pixelRadius <= 15` (i.e. `gps_accuracy <= 30m`, the common good-accuracy
+ * case), which browsers silently ignore.
+ */
+export function computeAccuracyRingGeometry(gpsAccuracyMeters: number): { pixelRadius: number; marginTop: number } {
+  const pixelRadius = Math.min(60, Math.max(8, gpsAccuracyMeters / 2));
+  const marginTop = 15 - pixelRadius;
+  return { pixelRadius, marginTop };
+}
+
 const HAZARD_FLAGS: { key: string; label: string; color: string }[] = [
   { key: 'officer_safety_caution', label: 'OFFICER SAFETY', color: '#ef4444' },
   { key: 'weapons_involved',       label: 'WEAPONS',        color: '#ef4444' },
@@ -53,16 +68,28 @@ const UNIT_GLYPH_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="no
 export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
   const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
   const staleness = getMapUnitGpsStaleness(unit);
+  // Root element handed to `new mapboxgl.Marker({ element: el })`. Mapbox GL
+  // writes this exact node's `transform` on EVERY render frame during pan/zoom
+  // (not just on our own setLngLat calls), so it must never carry a CSS
+  // transition on `transform` — doing so previously caused every marker to
+  // visibly lag/glide whenever the user panned or zoomed the map. All visual
+  // styling + the glide transition live on the inner wrapper below instead.
   const el = document.createElement('div');
   el.className = 'rmpg-mbx-unit';
-  el.style.cssText = `
+  el.style.cssText = `display:block;cursor:pointer;`;
+  el.title = `${unit.call_sign} — ${UNIT_STATUS_LABELS[unit.status] || unit.status}`
+    + (staleness === 'lost' ? ' (GPS lost)' : staleness === 'stale' ? ' (GPS stale)' : '');
+
+  const inner = document.createElement('div');
+  inner.setAttribute('data-role', 'marker-inner');
+  inner.style.cssText = `
     display:flex;flex-direction:column;align-items:center;gap:2px;
-    cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));
+    position:relative;
+    filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));
     opacity:${staleness === 'lost' ? 0.45 : staleness === 'stale' ? 0.7 : 1};
     transition:transform ${MARKER_TRANSITION_MS}ms linear;
   `;
-  el.title = `${unit.call_sign} — ${UNIT_STATUS_LABELS[unit.status] || unit.status}`
-    + (staleness === 'lost' ? ' (GPS lost)' : staleness === 'stale' ? ' (GPS stale)' : '');
+  el.appendChild(inner);
 
   const badge = document.createElement('div');
   badge.setAttribute('data-role', 'badge');
@@ -81,7 +108,7 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
   if (unit.gps_heading != null && Number.isFinite(unit.gps_heading)) {
     badge.style.transform = `rotate(${unit.gps_heading}deg)`;
   }
-  el.appendChild(badge);
+  inner.appendChild(badge);
 
   const label = document.createElement('div');
   label.setAttribute('data-role', 'label');
@@ -91,7 +118,7 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
     font-family:ui-monospace,monospace;white-space:nowrap;
   `;
   label.textContent = unit.call_sign.slice(0, 6);
-  el.appendChild(label);
+  inner.appendChild(label);
 
   // Accuracy-radius ring: a translucent circle sized to the reported GPS
   // accuracy in meters. Rendered only when accuracy data is present (the
@@ -102,16 +129,15 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
   if (unit.gps_accuracy != null && Number.isFinite(unit.gps_accuracy) && unit.gps_accuracy > 0) {
     const ring = document.createElement('div');
     ring.setAttribute('data-role', 'accuracy-ring');
-    const pixelRadius = Math.min(60, Math.max(8, unit.gps_accuracy / 2));
+    const { pixelRadius, marginTop } = computeAccuracyRingGeometry(unit.gps_accuracy);
     ring.style.cssText = `
       position:absolute;top:50%;left:50%;
       width:${pixelRadius * 2}px;height:${pixelRadius * 2}px;
-      margin-left:-${pixelRadius}px;margin-top:-${pixelRadius - 15}px;
+      margin-left:-${pixelRadius}px;margin-top:${marginTop}px;
       border-radius:50%;background:${color}22;border:1px solid ${color}55;
       pointer-events:none;z-index:-1;
     `;
-    el.style.position = 'relative';
-    el.appendChild(ring);
+    inner.appendChild(ring);
   }
 
   return el;
@@ -126,7 +152,10 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
 export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
   const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
   const staleness = getMapUnitGpsStaleness(unit);
-  el.style.opacity = String(staleness === 'lost' ? 0.45 : staleness === 'stale' ? 0.7 : 1);
+  // Opacity (and the position/transition styling) live on the inner wrapper,
+  // not the mapboxgl-controlled root — see buildUnitMarkerEl.
+  const inner = el.querySelector<HTMLElement>('[data-role="marker-inner"]') || el;
+  inner.style.opacity = String(staleness === 'lost' ? 0.45 : staleness === 'stale' ? 0.7 : 1);
   el.title = `${unit.call_sign} — ${UNIT_STATUS_LABELS[unit.status] || unit.status}`
     + (staleness === 'lost' ? ' (GPS lost)' : staleness === 'stale' ? ' (GPS stale)' : '');
 
@@ -154,15 +183,15 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
   if (unit.gps_accuracy != null && Number.isFinite(unit.gps_accuracy) && unit.gps_accuracy > 0) {
     const ring = document.createElement('div');
     ring.setAttribute('data-role', 'accuracy-ring');
-    const pixelRadius = Math.min(60, Math.max(8, unit.gps_accuracy / 2));
+    const { pixelRadius, marginTop } = computeAccuracyRingGeometry(unit.gps_accuracy);
     ring.style.cssText = `
       position:absolute;top:50%;left:50%;
       width:${pixelRadius * 2}px;height:${pixelRadius * 2}px;
-      margin-left:-${pixelRadius}px;margin-top:-${pixelRadius - 15}px;
+      margin-left:-${pixelRadius}px;margin-top:${marginTop}px;
       border-radius:50%;background:${color}22;border:1px solid ${color}55;
       pointer-events:none;z-index:-1;
     `;
-    el.appendChild(ring);
+    inner.appendChild(ring);
   }
 }
 

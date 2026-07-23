@@ -769,13 +769,19 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       if (existing) {
         const prevLngLat = existing.getLngLat();
         const el = existing.getElement();
+        // The glide transition lives on the inner `[data-role="marker-inner"]`
+        // wrapper, NOT the root `el` — `el` is the exact node mapboxgl.Marker
+        // writes position transforms onto every frame (including during pan/
+        // zoom), so it must never carry a transition on `transform` (see
+        // buildUnitMarkerEl in mapMarkers.ts for the full rationale).
+        const innerEl = el.querySelector<HTMLElement>('[data-role="marker-inner"]') || el;
         const animate = shouldAnimateMarkerMove(prevLngLat.lat, prevLngLat.lng, unit.latitude, unit.longitude);
-        if (!animate) el.style.transitionDuration = '0ms';
+        if (!animate) innerEl.style.transitionDuration = '0ms';
         existing.setLngLat([unit.longitude, unit.latitude]);
         if (!animate) {
           // Restore the transition on the next frame so the NEXT (presumably
           // normal) move animates again.
-          requestAnimationFrame(() => { el.style.transitionDuration = ''; });
+          requestAnimationFrame(() => { innerEl.style.transitionDuration = ''; });
         }
         const popup = existing.getPopup();
         if (popup) popup.setHTML(buildUnitPopupHtml(unit));
