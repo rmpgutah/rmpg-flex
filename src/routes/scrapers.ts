@@ -469,4 +469,41 @@ scrapers.post('/bulk', async (c) => {
   return c.json({ success: true, affected });
 });
 
+const MIN_MAX_PERSONS_PER_RUN = 10;
+const MAX_MAX_PERSONS_PER_RUN = 1000;
+
+// Live-tunes the Utah warrant poller's per-run person cap (warrant_scraper_config
+// .max_persons_per_run, read by src/utils/utahWarrantPoller.ts — see migration
+// 0200) without a redeploy. Scoped to a single source_key rather than folded
+// into /bulk since it's a numeric setting, not one of the 4 bulk actions.
+scrapers.post('/:key/max-persons-per-run', async (c) => {
+  const user = c.get('user') as { role?: string } | undefined;
+  if (!user?.role || !['admin', 'manager'].includes(user.role)) {
+    return c.json({ error: 'Insufficient permissions' }, 403);
+  }
+
+  const key = c.req.param('key');
+  const body = await c.req.json<{ max_persons_per_run?: number }>();
+  const value = body.max_persons_per_run;
+  if (typeof value !== 'number' || !Number.isInteger(value) ||
+      value < MIN_MAX_PERSONS_PER_RUN || value > MAX_MAX_PERSONS_PER_RUN) {
+    return c.json({
+      error: `max_persons_per_run must be an integer between ${MIN_MAX_PERSONS_PER_RUN} and ${MAX_MAX_PERSONS_PER_RUN}`,
+    }, 400);
+  }
+
+  const db = getDb(c.env);
+  const result = await execute(
+    db,
+    'UPDATE warrant_scraper_config SET max_persons_per_run = ? WHERE source_name = ?',
+    value,
+    key,
+  );
+  if (result.meta.changes === 0) {
+    return c.json({ error: `Unknown source_key: ${key}` }, 404);
+  }
+
+  return c.json({ success: true, max_persons_per_run: value });
+});
+
 export default scrapers;

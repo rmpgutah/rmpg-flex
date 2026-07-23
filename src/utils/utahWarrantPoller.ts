@@ -63,7 +63,14 @@ const PROXY_APP_HEADER = 'warrants';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const BASE_DELAY_MS = 8_000; // matches legacy adaptive baseline
-const MAX_PERSONS_PER_RUN = 50;
+// Fallback only — the live cap is read from warrant_scraper_config.max_persons_per_run
+// (migration 0200) so it can be retuned without a redeploy. This constant is used
+// solely when that row/column is missing (fresh D1, migration not yet applied).
+const DEFAULT_MAX_PERSONS_PER_RUN = 150;
+// Emit a run_progress WS event every N persons so the Sources/Scrapers Live
+// Feed and the Warrants-tab poll-status strip show movement mid-run instead
+// of only start/end.
+const PROGRESS_EVENT_INTERVAL = 10;
 
 interface PersonRow {
   id: number;
@@ -582,6 +589,14 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
   let status: 'completed' | 'failed' = 'completed';
   let error_message: string | undefined;
 
+  const config = await queryFirst<{ max_persons_per_run: number | null; persons_cursor_id: number | null }>(
+    db,
+    'SELECT max_persons_per_run, persons_cursor_id FROM warrant_scraper_config WHERE source_name = ?',
+    SOURCE_KEY,
+  );
+  const maxPersonsPerRun = config?.max_persons_per_run ?? DEFAULT_MAX_PERSONS_PER_RUN;
+  const cursorId = config?.persons_cursor_id ?? 0;
+
   try {
     // Filter rules (mirror server/src/utils/utahWarrantScraper.ts:589-602
     // and looksLikeOrganization() — keep in sync):
@@ -589,11 +604,16 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
     //     "Capital One, N.A., ..." with last_name "(Organization)"
     //   - >30 char names → business descriptions concatenated into one field
     // Filtered rows return HTTP 400 from warrants.utah.gov and burn rate budget.
-    const persons = await query<PersonRow>(
+    // ORDER BY id (not name) + WHERE id > cursor so successive runs sweep a
+    // fresh slice of the roster instead of always restarting at the same
+    // alphabetically-first rows — the resume-cursor pattern the doc header
+    // flagged as deferred v3 work.
+    let persons = await query<PersonRow>(
       db,
       `SELECT id, first_name, middle_name, last_name, dob
          FROM persons
-        WHERE first_name IS NOT NULL AND first_name != ''
+        WHERE id > ?
+          AND first_name IS NOT NULL AND first_name != ''
           AND last_name  IS NOT NULL AND last_name  != ''
           AND first_name NOT LIKE '%(%' AND first_name NOT LIKE '%)%'
           AND first_name NOT LIKE '%,%'
@@ -601,10 +621,40 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
           AND last_name  NOT LIKE '%,%'
           AND length(first_name) <= 30
           AND length(last_name)  <= 30
-        ORDER BY last_name, first_name
+        ORDER BY id
         LIMIT ?`,
-      MAX_PERSONS_PER_RUN,
+      cursorId,
+      maxPersonsPerRun,
     );
+
+    // End of roster reached — wrap back to the start so the next run
+    // doesn't stall forever past the last id.
+    if (persons.length === 0 && cursorId > 0) {
+      persons = await query<PersonRow>(
+        db,
+        `SELECT id, first_name, middle_name, last_name, dob
+           FROM persons
+          WHERE id > 0
+            AND first_name IS NOT NULL AND first_name != ''
+            AND last_name  IS NOT NULL AND last_name  != ''
+            AND first_name NOT LIKE '%(%' AND first_name NOT LIKE '%)%'
+            AND first_name NOT LIKE '%,%'
+            AND last_name  NOT LIKE '%(%' AND last_name  NOT LIKE '%)%'
+            AND last_name  NOT LIKE '%,%'
+            AND length(first_name) <= 30
+            AND length(last_name)  <= 30
+          ORDER BY id
+          LIMIT ?`,
+        maxPersonsPerRun,
+      );
+    }
+    // Advance the cursor to the last id processed; wrap to 0 (restart from
+    // the top) once a pass returns fewer rows than the cap — that means we
+    // hit the end of the eligible roster.
+    const nextCursorId =
+      persons.length === 0 || persons.length < maxPersonsPerRun
+        ? 0
+        : persons[persons.length - 1].id;
 
     for (const person of persons) {
       // Confirmed = local DOB present, so isLikelyMatch age-gated the candidate
@@ -630,6 +680,19 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
         );
       }
       persons_checked++;
+      if (persons_checked % PROGRESS_EVENT_INTERVAL === 0 && persons_checked < persons.length) {
+        try {
+          broadcastAll('scraper_events', {
+            event: 'run_progress',
+            source_key: SOURCE_KEY,
+            display_name: DISPLAY_NAME,
+            persons_checked,
+            persons_total: persons.length,
+            new_warrants_found,
+            errors,
+          });
+        } catch { /* non-fatal */ }
+      }
       if (persons_checked < persons.length) {
         // 8s + 0-2s jitter — matches legacy adaptive pattern, stays under
         // the WAF's "scraper" heuristic.
@@ -640,6 +703,19 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
     // Sweep: anything whose last_seen_at predates this run is cleared —
     // archives the canonical record + emits a warrant_cleared notification.
     warrants_cleared = await markClearedWarrants(db, started_at, run_id);
+
+    // Advance the resume cursor so the next run covers a fresh slice of
+    // the roster (or wraps to the top — see nextCursorId above).
+    try {
+      await execute(
+        db,
+        'UPDATE warrant_scraper_config SET persons_cursor_id = ? WHERE source_name = ?',
+        nextCursorId,
+        SOURCE_KEY,
+      );
+    } catch (err) {
+      console.warn('[Utah Warrants] cursor update failed:', err);
+    }
   } catch (err) {
     status = 'failed';
     error_message = err instanceof Error ? err.message : String(err);

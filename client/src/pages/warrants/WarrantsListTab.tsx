@@ -44,6 +44,9 @@ import StatusPill from '../../components/warrants/StatusPill';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../../components/ToastProvider';
 import { useLiveSync } from '../../hooks/useLiveSync';
+import { useWebSocket } from '../../context/WebSocketContext';
+import type { ScraperWsEvent } from '../../types/scrapers';
+import type { WSMessage } from '../../types';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -216,6 +219,74 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+
+  // ── Utah warrant poll status strip — last run summary + live in-progress
+  // updates via the same 'scraper_events' WS channel the Sources/Scrapers
+  // Live Feed uses (see utahWarrantPoller.ts run_started/run_progress/
+  // run_completed/run_failed broadcasts).
+  const [pollStatus, setPollStatus] = useState<{
+    status: 'running' | 'completed' | 'failed';
+    started_at: string;
+    completed_at: string | null;
+    persons_checked: number;
+    persons_total: number | null;
+    new_warrants_found: number;
+    warrants_cleared: number;
+    errors: number;
+    error_message: string | null;
+  } | null>(null);
+  const { subscribe } = useWebSocket();
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ data: Array<{
+      status: 'running' | 'completed' | 'failed'; started_at: string; completed_at: string | null;
+      persons_checked: number; new_warrants_found: number; warrants_cleared: number;
+      errors: number; error_message: string | null;
+    }> }>('/warrants/watch/runs?limit=1')
+      .then((res) => {
+        if (cancelled) return;
+        const run = res?.data?.[0];
+        if (run) {
+          setPollStatus({ ...run, persons_total: null });
+        }
+      })
+      .catch(() => { /* poll status strip is informational only — fail silent */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    const handler = (msg: WSMessage) => {
+      const data = (msg as { data?: ScraperWsEvent }).data;
+      if (!data || data.source_key !== 'utah-warrant-watch') return;
+      if (data.event === 'run_started') {
+        setPollStatus({
+          status: 'running', started_at: data.started_at, completed_at: null,
+          persons_checked: 0, persons_total: null, new_warrants_found: 0,
+          warrants_cleared: 0, errors: 0, error_message: null,
+        });
+      } else if (data.event === 'run_progress') {
+        setPollStatus((prev) => prev && prev.status === 'running' ? {
+          ...prev,
+          persons_checked: data.persons_checked,
+          persons_total: data.persons_total,
+          new_warrants_found: data.new_warrants_found,
+          errors: data.errors,
+        } : prev);
+      } else if (data.event === 'run_completed') {
+        setPollStatus((prev) => prev ? {
+          ...prev, status: 'completed', completed_at: new Date().toISOString(),
+          new_warrants_found: data.parsed, warrants_cleared: data.updated,
+        } : prev);
+      } else if (data.event === 'run_failed') {
+        setPollStatus((prev) => prev ? {
+          ...prev, status: 'failed', completed_at: new Date().toISOString(), error_message: data.error,
+        } : prev);
+      }
+    };
+    const unsubscribe = subscribe('scraper_events', handler);
+    return () => unsubscribe();
+  }, [subscribe]);
 
   // Batch selection
   const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
@@ -743,6 +814,39 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
 
   return (
     <div style={{ display: isVisible ? undefined : 'none' }}>
+      {pollStatus && (
+        <div
+          className="flex items-center gap-2 px-2 py-1 mb-1.5 border border-[#1a1a1a] bg-[#080808] text-[9px] uppercase font-semibold tracking-wide"
+          title={pollStatus.error_message ?? undefined}
+        >
+          {pollStatus.status === 'running' ? (
+            <Loader2 className="w-3 h-3 text-brand-400 animate-spin shrink-0" />
+          ) : pollStatus.status === 'failed' ? (
+            <XCircle className="w-3 h-3 text-red-400 shrink-0" />
+          ) : (
+            <CheckCircle className="w-3 h-3 text-green-400 shrink-0" />
+          )}
+          <span className="text-rmpg-400">Utah Warrant Poll:</span>
+          {pollStatus.status === 'running' ? (
+            <span className="text-brand-300">
+              Running{pollStatus.persons_total ? ` — ${pollStatus.persons_checked}/${pollStatus.persons_total} checked` : '…'}
+            </span>
+          ) : pollStatus.status === 'failed' ? (
+            <span className="text-red-400">Failed — {pollStatus.error_message ?? 'unknown error'}</span>
+          ) : (
+            <span className="text-rmpg-300">
+              {pollStatus.persons_checked > 0 && `${pollStatus.persons_checked} checked, `}
+              {pollStatus.new_warrants_found} found, {pollStatus.warrants_cleared} cleared
+              {pollStatus.errors > 0 && `, ${pollStatus.errors} errors`}
+            </span>
+          )}
+          {pollStatus.completed_at && (
+            <span className="text-rmpg-500 ml-auto normal-case font-normal">
+              {formatDateTime(pollStatus.completed_at)}
+            </span>
+          )}
+        </div>
+      )}
       {!showArchived && props.isAdminOrManager && (
         <button type="button" onClick={props.onOpenNewForm} className="toolbar-btn toolbar-btn-primary text-[9px] px-3 py-1.5 font-semibold">
           <Plus className="w-3 h-3" /> New Warrant
