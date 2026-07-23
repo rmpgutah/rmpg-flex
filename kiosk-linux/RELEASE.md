@@ -37,6 +37,33 @@ the Colima/Docker toolchain this requires).
 
 ## Current release
 
+- `kiosk-linux-os-1.1.0.tar.gz` — packaged 2026-07-23, not yet uploaded (pending
+  explicit confirmation before the real R2 upload). Adds sub-project 3
+  (networking + a real WPE WebKit/Cog kiosk browser) on top of 1.0.0's base
+  image + DRM/KMS graphics stack. Real state, verified across multiple runs:
+  - Networking works (DHCP lease, real outbound HTTP reachability).
+  - The browser process (`cog --platform=drm`) is genuinely stable — a real,
+    reproducible SIGSEGV was root-caused via gdb (register-level inspection)
+    to a libwayland-server/Cog buffer-pool resize race, fixed with a two-layer
+    patch (libwayland returns NULL instead of a stale pointer on a deferred
+    pool resize; Cog checks for that NULL and drops the frame; a related
+    reference-counting leak in Cog's buffer reuse path was also fixed).
+    Confirmed crash-free across many consecutive boots.
+  - **Known limitation**: the browser successfully loads pages (WebKit's own
+    "Loaded successfully" event fires) but the rendered page is blank white.
+    Direct pixel-byte inspection (via gdb) proved this is *not* a bug in the
+    Cog/libwayland/GBM/DRM pipeline built this session — the raw bytes
+    WebProcess exports are already uniformly blank before any of that code
+    runs. The remaining issue lives inside WebKit's own internal Cairo-based
+    software compositor, which was not resolved this session (three
+    WebKit rebuild attempts were needed just to get this far: the original
+    build, a wasted Debug-mode attempt that silently used a stale cached
+    config, and a genuine Debug rebuild that reached 99.9% completion and
+    then failed to link — confirming Debug mode is not cleanly supported by
+    this WebKit version under this Buildroot toolchain).
+  - Still QEMU/virtio-gpu only — see `kiosk-linux/README.md` for the full
+    scope and current limitations. Not yet tested or intended for real
+    hardware.
 - `kiosk-linux-os-1.0.0.tar.gz` — first published OS image release, uploaded
   2026-07-22. Contains the sub-project 1 (base image) + sub-project 2 (DRM/KMS
   graphics stack) build output. QEMU/virtio-gpu target only — see

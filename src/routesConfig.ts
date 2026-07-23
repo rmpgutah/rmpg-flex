@@ -83,6 +83,7 @@ import intelAi from './routes/intelAi';
 import { intelReports, intelSources } from './routes/intel/development';
 import interagency from './routes/interagency';
 import jail from './routes/jail';
+import kioskLinux from './routes/kioskLinux';
 import offline from './routes/offline';
 import qa from './routes/qa';
 import risk from './routes/risk';
@@ -573,6 +574,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Jail management: inmates, charges, visitors, property, medical, disciplinary, transports' },
   { prefix: '/api/knowledge-base', router: knowledgeBase, auth: 'required',
     note: 'System-wide unified search across all record types by visible identifier/name' },
+  { prefix: '/api/kiosk-linux', router: kioskLinux, auth: 'public',
+    note: 'Kiosk Linux device registry (sub-project 4): registration + fleet tracking only, no OTA delivery. auth:"public" at the registry level because /devices/:id/checkin and /devices/:id/upload use a per-device bearer token, not a JWT — admin routes (/devices GET/POST, /devices/:id DELETE) apply authMiddleware+requireRole per-route inside the file instead. 200 {ok:false,code:"not_configured"} when KIOSK_DB/KIOSK_DEVICES are unset.' },
   { prefix: '/api/qa', router: qa, auth: 'required',
     note: 'Quality Assurance: reviews, criteria, scores, satisfaction surveys' },
   { prefix: '/api/risk', router: risk, auth: 'required',
