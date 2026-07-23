@@ -34,7 +34,7 @@ import {
 } from './ownership';
 import type { FleetioConfig, FleetioFuelEntry } from './client';
 import type { FleetioVehicle } from './types';
-import { mapVehicleFieldsToFleetio, mapFuelEntryFieldsToFleetio } from './seed';
+import { mapVehicleFieldsToFleetio, mapFuelEntryFieldsToFleetio, mapVendorFieldsToFleetio, mapPartFieldsToFleetio } from './seed';
 import {
   FleetioRateLimitError,
   FleetioHttpError,
@@ -305,14 +305,14 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
   if (row.resource === 'vendor' && row.action === 'create') {
     const existing = await lookupFleetioId(deps.db, 'ref_vendors', row.resource_id);
     if (existing) return null;
-    const created = await deps.adapter.createVendor({ payload: filteredPayload });
+    const created = await deps.adapter.createVendor({ payload: mapVendorFieldsToFleetio(filteredPayload) });
     await recordLink(deps.db, 'ref_vendors', row.resource_id, 'vendor', created.id, now(deps));
     return created;
   }
   if (row.resource === 'vendor' && row.action === 'update') {
     const fleetioId = await lookupFleetioId(deps.db, 'ref_vendors', row.resource_id);
     if (!fleetioId) return null; // never pushed — first push happens on next create-shaped emit
-    return deps.adapter.updateVendor({ fleetioId, payload: filteredPayload });
+    return deps.adapter.updateVendor({ fleetioId, payload: mapVendorFieldsToFleetio(filteredPayload) });
   }
   if (row.resource === 'vendor' && row.action === 'delete') {
     const fleetioId = await lookupFleetioId(deps.db, 'ref_vendors', row.resource_id);
@@ -322,14 +322,14 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
   if (row.resource === 'part' && row.action === 'create') {
     const existing = await lookupFleetioId(deps.db, 'fleet_parts', row.resource_id);
     if (existing) return null;
-    const created = await deps.adapter.createPart({ payload: filteredPayload });
+    const created = await deps.adapter.createPart({ payload: mapPartFieldsToFleetio(filteredPayload) });
     await recordLink(deps.db, 'fleet_parts', row.resource_id, 'part', created.id, now(deps));
     return created;
   }
   if (row.resource === 'part' && row.action === 'update') {
     const fleetioId = await lookupFleetioId(deps.db, 'fleet_parts', row.resource_id);
     if (!fleetioId) return null;
-    return deps.adapter.updatePart({ fleetioId, payload: filteredPayload });
+    return deps.adapter.updatePart({ fleetioId, payload: mapPartFieldsToFleetio(filteredPayload) });
   }
   if (row.resource === 'part' && row.action === 'delete') {
     // Fleet.io parts support a hard DELETE (unlike vehicles/vendors). Only
@@ -386,6 +386,55 @@ async function lookupFleetioId(db: D1Database, rmpgTable: string, rmpgId: number
     `SELECT fleetio_id FROM fleetio_links WHERE rmpg_table = ? AND rmpg_id = ? LIMIT 1`,
   ).bind(rmpgTable, rmpgId).first<{ fleetio_id: number }>();
   return row ? row.fleetio_id : null;
+}
+
+// ─── Queue health (Fleet.io reliability & observability hardening) ────
+
+export interface FleetioQueueHealth {
+  failedTotal: number;
+  oldestPendingCreatedAt: string | null;
+}
+
+/** Two cheap COUNT/single-row queries — the same "unhealthy" signal both
+ *  the /fleetio/sync-status route and the healthSweep cron consumer read,
+ *  so the definition of "unhealthy" can't drift between the two. */
+export async function getQueueHealth(db: D1Database): Promise<FleetioQueueHealth> {
+  const [failedRow, oldestPendingRow] = await Promise.all([
+    db.prepare(
+      `SELECT COUNT(*) AS n FROM fleetio_events WHERE direction='outbound' AND status='failed'`,
+    ).first<{ n: number }>(),
+    db.prepare(
+      `SELECT created_at FROM fleetio_events WHERE direction='outbound' AND status='pending' ORDER BY id ASC LIMIT 1`,
+    ).first<{ created_at: string }>(),
+  ]);
+  return {
+    failedTotal: failedRow?.n ?? 0,
+    oldestPendingCreatedAt: oldestPendingRow?.created_at ?? null,
+  };
+}
+
+const UNHEALTHY_FAILED_THRESHOLD = 5;
+const UNHEALTHY_PENDING_AGE_MS = 2 * 60 * 60 * 1000;
+const UNHEALTHY_ALERT_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+
+/** Pure — no I/O, no clock reads. `nowMs` is the caller's `Date.now()`
+ *  (or a fixed value in tests) so this stays deterministic. */
+export function isFleetioQueueUnhealthy(health: FleetioQueueHealth, nowMs: number): boolean {
+  if (health.failedTotal >= UNHEALTHY_FAILED_THRESHOLD) return true;
+  if (health.oldestPendingCreatedAt) {
+    const raw = health.oldestPendingCreatedAt;
+    const parsed = Date.parse(raw.includes('T') ? raw : `${raw}Z`);
+    if (Number.isFinite(parsed) && nowMs - parsed > UNHEALTHY_PENDING_AGE_MS) return true;
+  }
+  return false;
+}
+
+/** Pure — dedupes the queue-unhealthy alert so it doesn't refire every
+ *  30-min cron tick; `lastAlertedIso` comes from fleetio_sync_state. */
+export function shouldFireUnhealthyAlert(lastAlertedIso: string | null, nowMs: number): boolean {
+  if (!lastAlertedIso) return true;
+  const parsed = Date.parse(lastAlertedIso.includes('T') ? lastAlertedIso : `${lastAlertedIso}Z`);
+  return !Number.isFinite(parsed) || nowMs - parsed > UNHEALTHY_ALERT_COOLDOWN_MS;
 }
 
 // ─── applyInbound ─────────────────────────────────────────
