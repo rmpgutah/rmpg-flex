@@ -125,6 +125,12 @@ import {
 const SLC_CENTER: [number, number] = [-111.891, 40.7608];
 const DEFAULT_ZOOM = 12;
 const REFRESH_INTERVAL_MS = 30_000;
+// Live unit positions specifically (not the queue/properties fetched by
+// fetchData) refresh on a much tighter cadence to match the ~5s client GPS
+// batch interval (useGpsTracking.ts DEFAULT_BATCH_INTERVAL) — the full
+// fetchData() poll stays at 30s since /dispatch/queue and /records/properties
+// are comparatively heavy and don't change every few seconds.
+const UNITS_FAST_POLL_MS = 5_000;
 
 // Inject GPS self-position pulse animation (module-scope, runs once)
 if (typeof document !== 'undefined' && !document.getElementById('rmpg-pulse-css')) {
@@ -701,6 +707,20 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     refreshTimerRef.current = setInterval(fetchData, REFRESH_INTERVAL_MS);
     return () => { if (refreshTimerRef.current) clearInterval(refreshTimerRef.current); };
   }, [fetchData]);
+
+  const refreshUnitsOnly = useCallback(async () => {
+    try {
+      const u = await apiFetch<Unit[]>('/dispatch/units');
+      setUnits(u);
+    } catch (err) {
+      devWarn('[MapboxMap] fast units poll failed', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = setInterval(refreshUnitsOnly, UNITS_FAST_POLL_MS);
+    return () => clearInterval(t);
+  }, [refreshUnitsOnly]);
 
   // ── WebSocket Subscriptions ────────────────────────────────────────────────
 
