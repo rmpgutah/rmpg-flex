@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from '../mapMarkers';
+import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove } from '../mapMarkers';
 import { TACTICAL_SURFACE_RAISED, TACTICAL_BRAND_GOLD, TACTICAL_TEXT_PRIMARY } from '../tacticalPalette';
 import type { MapUnit, ActiveCall } from '../mapConstants';
 
@@ -70,5 +70,17 @@ describe('mapMarkers', () => {
     expect(el.querySelector('[data-role="badge"]')).toBe(badgeBefore);
     expect(el.querySelector('[data-role="label"]')).toBe(labelBefore);
     expect(el.querySelector('[data-role="label"]')?.textContent).toBe('B99');
+  });
+});
+
+describe('shouldAnimateMarkerMove', () => {
+  it('animates a normal short move (under the jump threshold)', () => {
+    // ~100m apart — a plausible move within one ~5s poll interval.
+    expect(shouldAnimateMarkerMove(40.7608, -111.8910, 40.7617, -111.8910)).toBe(true);
+  });
+
+  it('skips animation for an implausible long jump', () => {
+    // SLC to Denver — not a real single-poll move; snap instead of glide.
+    expect(shouldAnimateMarkerMove(40.7608, -111.8910, 39.7392, -104.9903)).toBe(false);
   });
 });

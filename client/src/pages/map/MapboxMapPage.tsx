@@ -115,7 +115,7 @@ import MapDiagnosticsOverlay from './components/MapDiagnosticsOverlay';
 import MapboxDispatchConnections from './components/MapboxDispatchConnections';
 import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
-import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
+import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove } from './utils/mapMarkers';
 import {
   TACTICAL_SURFACE_BASE, TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
   TACTICAL_TEXT_PRIMARY,
@@ -767,7 +767,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       const existing = unitMarkersRef.current.get(unit.id);
       if (existing) {
+        const prevLngLat = existing.getLngLat();
+        const el = existing.getElement();
+        const animate = shouldAnimateMarkerMove(prevLngLat.lat, prevLngLat.lng, unit.latitude, unit.longitude);
+        if (!animate) el.style.transitionDuration = '0ms';
         existing.setLngLat([unit.longitude, unit.latitude]);
+        if (!animate) {
+          // Restore the transition on the next frame so the NEXT (presumably
+          // normal) move animates again.
+          requestAnimationFrame(() => { el.style.transitionDuration = ''; });
+        }
         const popup = existing.getPopup();
         if (popup) popup.setHTML(buildUnitPopupHtml(unit));
         // BUG: this used to set `el.textContent = unit.call_sign` directly on

@@ -4,10 +4,26 @@ import { formatIncidentType } from '../../../utils/caseNumbers';
 import { formatEnumValue } from '../../../utils/formatters';
 import { escapeHtml } from '../../../utils/sanitize';
 import { getGpsStaleness } from '../../../utils/gpsStaleness';
+import { haversineDistance } from '../../../utils/unitRecommendation';
 import {
   TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
   TACTICAL_TEXT_PRIMARY, TACTICAL_TEXT_DIM,
 } from './tacticalPalette';
+
+// How long a marker's CSS transform transition runs — matches the fast
+// units-poll interval (MapboxMapPage.tsx UNITS_FAST_POLL_MS) so a position
+// update finishes gliding right as the next one arrives, reading as
+// continuous motion instead of a teleport between polls.
+export const MARKER_TRANSITION_MS = 4500;
+
+// A jump further than this in one poll interval isn't a real drive — it's a
+// reassignment, GPS glitch recovery, or test data. Snap instead of gliding
+// across an implausible distance (miles, since haversineDistance returns miles).
+const MAX_ANIMATED_JUMP_MILES = 0.3; // ~480m
+
+export function shouldAnimateMarkerMove(prevLat: number, prevLng: number, nextLat: number, nextLng: number): boolean {
+  return haversineDistance(prevLat, prevLng, nextLat, nextLng) <= MAX_ANIMATED_JUMP_MILES;
+}
 
 const HAZARD_FLAGS: { key: string; label: string; color: string }[] = [
   { key: 'officer_safety_caution', label: 'OFFICER SAFETY', color: '#ef4444' },
@@ -43,6 +59,7 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
     display:flex;flex-direction:column;align-items:center;gap:2px;
     cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));
     opacity:${staleness === 'lost' ? 0.45 : staleness === 'stale' ? 0.7 : 1};
+    transition:transform ${MARKER_TRANSITION_MS}ms linear;
   `;
   el.title = `${unit.call_sign} — ${UNIT_STATUS_LABELS[unit.status] || unit.status}`
     + (staleness === 'lost' ? ' (GPS lost)' : staleness === 'stale' ? ' (GPS stale)' : '');
