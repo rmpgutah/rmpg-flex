@@ -779,8 +779,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         if (!animate) innerEl.style.transitionDuration = '0ms';
         existing.setLngLat([unit.longitude, unit.latitude]);
         if (!animate) {
-          // Restore the transition on the next frame so the NEXT (presumably
-          // normal) move animates again.
+          // NOTE: glide-on-position-update is currently a no-op — nothing
+          // mutates innerEl's own transform on a normal setLngLat, so this
+          // toggle has nothing to animate yet. Left in place as scaffolding
+          // for a follow-up (manual requestAnimationFrame-driven translate
+          // on innerEl) rather than removed, but do not assume a "normal"
+          // move currently glides — it snaps, identically to a flagged jump.
           requestAnimationFrame(() => { innerEl.style.transitionDuration = ''; });
         }
         const popup = existing.getPopup();
