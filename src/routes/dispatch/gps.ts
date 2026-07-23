@@ -12,6 +12,7 @@ import { log } from '../../utils/logger';
 import { parseZoneFeatures, pointInAnyPolygon, diffZoneMembership } from '../../utils/geofenceZones';
 import { identifyBeat } from '../../utils/geofence';
 import { broadcastAll } from '../ws';
+import { rateLimitAllow } from '../../utils/rateLimit';
 
 const gps = new Hono<Env>();
 
@@ -66,6 +67,16 @@ gps.post('/', async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
+
+    // GPS-specific rate limit — tighter than the generic per-user 600/300s
+    // limit (src/middleware/rateLimit.ts), which is explicitly tuned to NOT
+    // throttle normal GPS traffic. This catches a runaway client loop
+    // hammering the single highest-frequency endpoint in the app.
+    const gpsAllowed = await rateLimitAllow(c.env.KV, `gps:unit:${userId}`, 30, 30);
+    if (!gpsAllowed) {
+      return c.json({ error: 'Too many GPS updates. Slow down and try again shortly.', code: 'RATE_LIMITED' }, 429);
+    }
+
     const body = await c.req.json<Record<string, unknown>>();
 
     const rawPoints: Record<string, unknown>[] = Array.isArray(body.points) ? body.points : [body];
