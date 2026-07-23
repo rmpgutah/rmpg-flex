@@ -372,6 +372,19 @@ export default {
           if (err?.name !== 'FleetioConfigError') console.error('[fleetio-sync] applyOutbound failed:', err);
         }),
       );
+      // Fleet.io health sweep — dead-letter + stuck-queue notifications.
+      // Independent of the reconciliation waitUntil above: it reads
+      // whatever fleetio_events state exists at sweep time, so it doesn't
+      // need to wait for that pass to finish first.
+      ctx.waitUntil(
+        import('./utils/fleetio/healthSweep').then((m) =>
+          m.sweepFleetioHealth(env.DB, env).then((r) => {
+            if (r.deadLetterNotified > 0 || r.queueAlertFired) {
+              console.log(`[fleetio-health-sweep] deadLetterNotified=${r.deadLetterNotified} queueUnhealthy=${r.queueUnhealthy} queueAlertFired=${r.queueAlertFired} failedTotal=${r.failedTotal}`);
+            }
+          }),
+        ).catch((err) => console.error('[fleetio-health-sweep] failed:', err)),
+      );
     }
 
     // ── Every minute ──

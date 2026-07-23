@@ -10,6 +10,7 @@ import {
   AlertCircle,
   XCircle,
   Activity,
+  AlertTriangle,
   Megaphone,
   Network,
   Zap,
@@ -45,6 +46,7 @@ import UserFormModal, { type UserFormData } from '../components/UserFormModal';
 import ClientFormModal from '../components/ClientFormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import type { User, Client, UserRole } from '../types';
+import { isFleetioSyncStatusUnhealthy, type FleetioSyncStatus } from '../utils/fleetioHealth';
 
 // Tab components
 import AdminSettingsTab from './admin/AdminSettingsTab';
@@ -319,6 +321,7 @@ export default function AdminPage() {
 
   // --- Loading / error ---
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [fleetioUnhealthy, setFleetioUnhealthy] = useState(false);
   const [loadingClients, setLoadingClients] = useState(false);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -789,6 +792,22 @@ export default function AdminPage() {
   // Set document title
   useEffect(() => { document.title = 'Administration \u2014 RMPG Flex'; }, []);
 
+  // Fleet.io queue health \u2014 small badge on the tab label so a stuck sync
+  // doesn't require an admin to remember to open the tab (see
+  // docs/superpowers/specs/2026-07-23-fleetio-reliability-observability-design.md).
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+    let cancelled = false;
+    const check = () => {
+      apiFetch<FleetioSyncStatus>('/fleetio/sync-status')
+        .then((status) => { if (!cancelled && status) setFleetioUnhealthy(isFleetioSyncStatusUnhealthy(status, Date.now())); })
+        .catch(() => { /* best-effort \u2014 a failed check just leaves the badge as-is */ });
+    };
+    check();
+    const t = setInterval(check, 60_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [user?.role]);
+
   // \u2500\u2500 /admin?user_id=<id> deep-link auto-select \u2500\u2500
   // Once the personnel roster hydrates, find the target by id, flip to the
   // Users tab, and select it. Strip the param so a refresh doesn't re-pin.
@@ -996,6 +1015,13 @@ export default function AdminPage() {
                     >
                       <Icon style={{ width: 13, height: 13 }} className={`transition-colors duration-150 shrink-0 ${isActive ? 'text-brand-400' : 'text-rmpg-600'}`} aria-hidden="true" />
                       <span className={`truncate${tab.id === 'dev' ? ' text-red-400' : ''}`}>{tab.label}</span>
+                      {tab.id === 'fleetio_health' && fleetioUnhealthy && (
+                        <AlertTriangle
+                          style={{ width: 11, height: 11 }}
+                          className="shrink-0 text-amber-400 ml-auto"
+                          aria-label="Fleet.io sync queue needs attention"
+                        />
+                      )}
                     </button>
                   );
                 })}

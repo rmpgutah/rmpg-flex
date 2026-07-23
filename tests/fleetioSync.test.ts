@@ -5,6 +5,9 @@ import {
   nextAttemptDelaySeconds,
   maxAttempts,
   BACKOFF_SECONDS,
+  getQueueHealth,
+  isFleetioQueueUnhealthy,
+  shouldFireUnhealthyAlert,
 } from '../src/utils/fleetio/sync';
 import {
   FleetioRateLimitError,
@@ -643,6 +646,124 @@ describe('applyOutbound', () => {
     const r2 = await applyOutbound({ db: makeDb(stateOrphan).db, adapter: adapterCount as never, config: stubConfig });
     expect(calls).toBe(0);
     expect(r2.completed).toBe(1);
+  });
+
+  it('vendor/update — sends only Fleet.io-mapped fields, not the raw RMPG row', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ id: 50, event_id: 'evt-vendor-upd', resource: 'vendor', resource_id: 2, action: 'update',
+        payload_json: JSON.stringify({ id: 2, name: 'AutoZone', kind: 'parts_supplier', lat: 40.7, active: 1 }) })],
+      links: [{ rmpg_table: 'ref_vendors', rmpg_id: 2, fleetio_id: 8001 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    let sentPayload: Record<string, unknown> | null = null;
+    const adapter = {
+      async createVehicle() { throw new Error('nu'); }, async updateVehicle() { throw new Error('nu'); },
+      async archiveVehicle() { throw new Error('nu'); }, async createFuelEntry() { throw new Error('nu'); },
+      async createWorkOrder() { throw new Error('nu'); },
+      async updateVendor(args: { fleetioId: number; payload: Record<string, unknown> }) {
+        sentPayload = args.payload;
+        return { id: args.fleetioId } as never;
+      },
+    };
+    const result = await applyOutbound({ db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
+    expect(result.completed).toBe(1);
+    expect(sentPayload).toEqual({ name: 'AutoZone' });
+  });
+
+  it('part/create — sends only Fleet.io-mapped fields, not the raw RMPG row', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ id: 51, event_id: 'evt-part-create', resource: 'part', resource_id: 5, action: 'create',
+        payload_json: JSON.stringify({ id: 5, name: 'Oil Filter', quantity_on_hand: 12, reorder_point: 3, unit_cost: 8.5 }) })],
+      links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    let sentPayload: Record<string, unknown> | null = null;
+    const adapter = {
+      async createVehicle() { throw new Error('nu'); }, async updateVehicle() { throw new Error('nu'); },
+      async archiveVehicle() { throw new Error('nu'); }, async createFuelEntry() { throw new Error('nu'); },
+      async createWorkOrder() { throw new Error('nu'); },
+      async createPart(args: { payload: Record<string, unknown> }) {
+        sentPayload = args.payload;
+        return { id: 9001 } as never;
+      },
+    };
+    const result = await applyOutbound({ db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
+    expect(result.completed).toBe(1);
+    expect(sentPayload).toEqual({ name: 'Oil Filter', unit_cost: 8.5 });
+  });
+});
+
+describe('getQueueHealth', () => {
+  function makeHealthDb(failedCount: number, oldestPendingCreatedAt: string | null) {
+    return {
+      prepare(sql: string) {
+        return {
+          bind() { return this; },
+          async first<T>(): Promise<T | null> {
+            if (/COUNT\(\*\) AS n FROM fleetio_events WHERE direction='outbound' AND status='failed'/.test(sql)) {
+              return { n: failedCount } as unknown as T;
+            }
+            if (/SELECT created_at FROM fleetio_events WHERE direction='outbound' AND status='pending'/.test(sql)) {
+              return oldestPendingCreatedAt ? ({ created_at: oldestPendingCreatedAt } as unknown as T) : null;
+            }
+            return null;
+          },
+        };
+      },
+    } as unknown as Parameters<typeof getQueueHealth>[0];
+  }
+
+  it('returns failedTotal and oldestPendingCreatedAt from the two underlying queries', async () => {
+    const db = makeHealthDb(3, '2026-07-23 10:00:00');
+    expect(await getQueueHealth(db)).toEqual({ failedTotal: 3, oldestPendingCreatedAt: '2026-07-23 10:00:00' });
+  });
+
+  it('returns nulls/zeros when the queue is empty', async () => {
+    const db = makeHealthDb(0, null);
+    expect(await getQueueHealth(db)).toEqual({ failedTotal: 0, oldestPendingCreatedAt: null });
+  });
+});
+
+describe('isFleetioQueueUnhealthy', () => {
+  const NOW = Date.parse('2026-07-23T12:00:00Z');
+
+  it('is healthy with no failures and no pending events', () => {
+    expect(isFleetioQueueUnhealthy({ failedTotal: 0, oldestPendingCreatedAt: null }, NOW)).toBe(false);
+  });
+
+  it('is unhealthy at exactly 5 failed events (boundary)', () => {
+    expect(isFleetioQueueUnhealthy({ failedTotal: 5, oldestPendingCreatedAt: null }, NOW)).toBe(true);
+  });
+
+  it('is healthy at 4 failed events', () => {
+    expect(isFleetioQueueUnhealthy({ failedTotal: 4, oldestPendingCreatedAt: null }, NOW)).toBe(false);
+  });
+
+  it('is unhealthy when the oldest pending event is just over 2h old', () => {
+    const oldest = new Date(NOW - (2 * 60 * 60 * 1000 + 1000)).toISOString();
+    expect(isFleetioQueueUnhealthy({ failedTotal: 0, oldestPendingCreatedAt: oldest }, NOW)).toBe(true);
+  });
+
+  it('is healthy when the oldest pending event is exactly 2h old (boundary)', () => {
+    const oldest = new Date(NOW - 2 * 60 * 60 * 1000).toISOString();
+    expect(isFleetioQueueUnhealthy({ failedTotal: 0, oldestPendingCreatedAt: oldest }, NOW)).toBe(false);
+  });
+});
+
+describe('shouldFireUnhealthyAlert', () => {
+  const NOW = Date.parse('2026-07-23T12:00:00Z');
+
+  it('fires when there is no prior alert timestamp', () => {
+    expect(shouldFireUnhealthyAlert(null, NOW)).toBe(true);
+  });
+
+  it('does not fire again within the 2h cooldown', () => {
+    const lastAlert = new Date(NOW - 60 * 60 * 1000).toISOString();
+    expect(shouldFireUnhealthyAlert(lastAlert, NOW)).toBe(false);
+  });
+
+  it('fires again once the cooldown has elapsed', () => {
+    const lastAlert = new Date(NOW - (2 * 60 * 60 * 1000 + 1000)).toISOString();
+    expect(shouldFireUnhealthyAlert(lastAlert, NOW)).toBe(true);
   });
 });
 

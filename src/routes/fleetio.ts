@@ -32,7 +32,7 @@ import { matchLocalVehicle, buildLocalInsertFromFleetio, decideMatchAction, buil
 import type { RmpgFleetVehicleRow, SeedOutcome, SeedSummary } from '../utils/fleetio/types';
 import { recordAudit } from '../utils/auditLog';
 import fleetioWebhook from './fleetioWebhook';
-import { rmpgTableToResource } from '../utils/fleetio/sync';
+import { rmpgTableToResource, getQueueHealth } from '../utils/fleetio/sync';
 import { emitFleetioEvent, type FleetioEmitKind } from '../utils/fleetio/events';
 
 const fleetio = new Hono<Env>();
@@ -339,17 +339,31 @@ fleetio.get('/analytics', async (c) => {
 
 fleetio.get('/sync-status', requireRole('admin'), async (c) => {
   const db = getDb(c.env);
-  const [links, eventsPending, eventsFailed, conflicts] = await Promise.all([
+  const [links, eventsPending, eventsFailed, conflicts, queueHealth] = await Promise.all([
     queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM fleetio_links'),
     queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM fleetio_events WHERE direction='outbound' AND status='pending'"),
     queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM fleetio_events WHERE status='failed'"),
     queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM fleetio_conflicts WHERE resolved_at IS NULL'),
+    // Same query the cron alert (isFleetioQueueUnhealthy) uses — reused here
+    // (rather than a hand-rolled 6th parallel query) so the outbound-failed
+    // count and the oldest-pending timestamp can never drift from the
+    // worker-side "unhealthy" definition.
+    getQueueHealth(db),
   ]);
   return c.json({
     links_total: links?.n ?? 0,
     outbound_pending: eventsPending?.n ?? 0,
+    // Legacy all-directions failed count — kept for backward compatibility
+    // with other consumers of this field. The "unhealthy" threshold does
+    // NOT use this; see outbound_failed_total below.
     failed_total: eventsFailed?.n ?? 0,
+    // The failed count the "unhealthy" badge threshold actually applies to —
+    // matches the worker-side getQueueHealth()/isFleetioQueueUnhealthy()
+    // definition (outbound-only) exactly, so the dashboard and the cron
+    // alert can't disagree.
+    outbound_failed_total: queueHealth.failedTotal,
     conflicts_unresolved: conflicts?.n ?? 0,
+    oldest_pending_created_at: queueHealth.oldestPendingCreatedAt,
   });
 });
 
