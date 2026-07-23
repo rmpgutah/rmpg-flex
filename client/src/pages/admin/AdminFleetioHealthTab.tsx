@@ -22,6 +22,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 import { CheckCircle2, XCircle, AlertTriangle, RotateCw, Clock, Upload, Download } from 'lucide-react';
 import FleetioConflictBadge from '../../components/FleetioConflictBadge';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface HealthResponse {
   links_total: number;
@@ -282,7 +283,7 @@ export default function AdminFleetioHealthTab() {
             <tbody>
               {health.by_resource.map((r, i) => (
                 <tr key={`${r.resource}-${r.status}-${i}`} className="border-b border-rmpg-800/40">
-                  <td className="py-1 pr-2 text-rmpg-100">{r.resource}</td>
+                  <td className="py-1 pr-2 text-rmpg-100">{toDisplayLabel(r.resource)}</td>
                   <td className="py-1 px-2"><StatusBadge status={r.status} /></td>
                   <td className="py-1 pl-2 text-right text-rmpg-100">{r.n.toLocaleString()}</td>
                 </tr>
@@ -315,9 +316,9 @@ export default function AdminFleetioHealthTab() {
               {health.recent_events.map((e) => (
                 <tr key={e.id as number} className="border-b border-rmpg-800/40 align-top">
                   <td className="py-1 pr-2 font-mono text-rmpg-300">{relTime(e.created_at as string)}</td>
-                  <td className="py-1 px-2 text-rmpg-100">{e.direction as string}</td>
-                  <td className="py-1 px-2 text-rmpg-100">{e.resource as string}</td>
-                  <td className="py-1 px-2 text-rmpg-100">{e.action as string}</td>
+                  <td className="py-1 px-2 text-rmpg-100">{toDisplayLabel(e.direction as string)}</td>
+                  <td className="py-1 px-2 text-rmpg-100">{toDisplayLabel(e.resource as string)}</td>
+                  <td className="py-1 px-2 text-rmpg-100">{toDisplayLabel(e.action as string)}</td>
                   <td className="py-1 px-2"><StatusBadge status={e.status as string} /></td>
                   <td className="py-1 px-2 text-right text-rmpg-300">{e.attempts as number}</td>
                   <td className="py-1 pl-2 text-red-300 max-w-[280px] truncate" title={(e.error as string) ?? ''}>
@@ -367,7 +368,7 @@ export default function AdminFleetioHealthTab() {
               {health.unresolved_conflicts.map((c) => (
                 <tr key={c.id as number} className="border-b border-rmpg-800/40 align-top">
                   <td className="py-1 pr-2 font-mono text-rmpg-300">{relTime(c.created_at as string)}</td>
-                  <td className="py-1 px-2 text-rmpg-100">{c.rmpg_table as string}</td>
+                  <td className="py-1 px-2 text-rmpg-100">{toDisplayLabel(c.rmpg_table as string)}</td>
                   <td className="py-1 px-2 text-rmpg-100">#{c.rmpg_id as number}</td>
                   <td className="py-1 px-2">
                     <FleetioConflictBadge

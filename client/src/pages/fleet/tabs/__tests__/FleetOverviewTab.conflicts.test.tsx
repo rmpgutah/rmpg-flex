@@ -24,7 +24,7 @@ describe('FleetOverviewTab conflict badges', () => {
       return Promise.resolve(null);
     });
     render(<FleetOverviewTab detail={DETAIL} maintenance={MAINTENANCE} />);
-    await waitFor(() => expect(screen.getByRole('button', { name: /conflict on plate_number/i })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: /conflict on plate number/i })).toBeInTheDocument());
   });
 
   it('renders a per-row conflict badge on a maintenance entry', async () => {
