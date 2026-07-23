@@ -3,6 +3,7 @@ import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS } from './mapCo
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { formatEnumValue } from '../../../utils/formatters';
 import { escapeHtml } from '../../../utils/sanitize';
+import { getGpsStaleness } from '../../../utils/gpsStaleness';
 import {
   TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
   TACTICAL_TEXT_PRIMARY, TACTICAL_TEXT_DIM,
@@ -20,19 +21,11 @@ const HAZARD_FLAGS: { key: string; label: string; color: string }[] = [
 
 export { HAZARD_FLAGS };
 
-// GPS staleness thresholds — must stay in sync with getGpsStaleStatus in
-// UnitStatusBoard.tsx (>2min = stale/amber, >5min = lost/gray). Duplicated
-// here rather than imported because that's a full React component file and
-// this module is a headless DOM-builder; MapUnit's shape also differs
-// slightly from the board's Unit type. A unit that stopped reporting GPS
-// previously stayed full-brightness on the map indefinitely — operators had
-// no way to tell a live position from a dot frozen since last contact.
+// Thin wrapper kept for call-site stability within this file — the actual
+// thresholds now live in gpsStaleness.ts (single source of truth shared
+// with UnitStatusBoard.tsx's getGpsStaleStatus).
 function getMapUnitGpsStaleness(unit: Unit): 'ok' | 'stale' | 'lost' {
-  if (!unit.gps_updated_at || unit.status === 'off_duty') return 'ok';
-  const elapsed = Date.now() - new Date(unit.gps_updated_at.replace(' ', 'T') + (unit.gps_updated_at.includes('Z') ? '' : 'Z')).getTime();
-  if (elapsed > 5 * 60 * 1000) return 'lost';
-  if (elapsed > 2 * 60 * 1000) return 'stale';
-  return 'ok';
+  return getGpsStaleness(unit);
 }
 
 // Simple top-down vehicle glyph — deliberately basic (one <path>, no detail)

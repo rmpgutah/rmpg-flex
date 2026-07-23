@@ -5,6 +5,7 @@ import StatusBadge from './StatusBadge';
 import OnFootBadge from './OnFootBadge';
 import OnFootActivityModal from './OnFootActivityModal';
 import { parseTimestamp } from '../utils/dateUtils';
+import { getGpsStaleness } from '../utils/gpsStaleness';
 import { useUnitLocations } from '../hooks/useUnitLocations';
 import { useActiveTripsLive } from '../hooks/useActiveTripsLive';
 import { tripLabel, tripMiles, tripDurationMin, type Trip } from '../hooks/useTrips';
@@ -28,11 +29,7 @@ function isOnFoot(unit: Unit): boolean {
 // instead of re-deriving their own — a unit reads "stale" the same way
 // everywhere in the app.
 export function getGpsStaleStatus(unit: Unit): 'ok' | 'stale' | 'lost' {
-  if (!unit.gps_updated_at || unit.status === 'off_duty') return 'ok';
-  const elapsed = Date.now() - parseTimestamp(unit.gps_updated_at).getTime();
-  if (elapsed > 5 * 60 * 1000) return 'lost';  // >5 min = red (lost)
-  if (elapsed > 2 * 60 * 1000) return 'stale'; // >2 min = amber (stale)
-  return 'ok';
+  return getGpsStaleness(unit);
 }
 
 // Time-in-status: how long a unit has held its current status. Dispatchers
