@@ -72,6 +72,8 @@ export interface RunAllSourceScansOptions {
   delayMs?: (i: number) => number;
   /** Skip the live Utah fetch (tests). Defaults to false — Utah ALWAYS runs in prod. */
   skipUtah?: boolean;
+  /** Wall-clock budget (ms) for the whole per-person leg. Defaults to PER_PERSON_LEG_BUDGET_MS; override in tests. */
+  perPersonBudgetMs?: number;
 }
 
 // ── Local promotion helper (mirrors poller.syncLocalWarrantRecord) ──────────
@@ -432,7 +434,29 @@ export async function runAllSourceScans(
     (a) => a.mode === 'per-person' && typeof a.fetchForPerson === 'function',
   );
 
+  // Wall-clock budget for the WHOLE per-person leg (all adapters combined).
+  // 2026-07-22 incident, part 2: even after the full-list leg got timeout +
+  // budget protection (see runFullListLeg), the cron STILL produced zero
+  // scraper_runs/error_log rows — including for the separately-implemented
+  // Utah leg, which sometimes succeeds and sometimes doesn't. Root cause:
+  // this leg has a DELIBERATE ~8-9s rate-limit sleep between each person
+  // (to stay under small county sites' anti-scraper heuristics), with no
+  // overall cap — up to 50 persons × 2 adapters (ada-county, natrona) ≈ 15
+  // minutes of pure pacing sleep alone, stacked before the full-list leg
+  // ever runs, on top of the Utah leg's own similarly-paced ~7.5 minutes.
+  // That total plausibly exceeds whatever wall-clock ceiling Cloudflare
+  // enforces on a scheduled event's waitUntil work, silently truncating the
+  // ENTIRE invocation with no exception ever thrown. A budget here — same
+  // pattern as runFullListLeg's — guarantees the leg (and therefore the
+  // whole runAllSourceScans call) always finishes in bounded time, even if
+  // that means checking fewer persons this tick and picking up the rest
+  // next tick, rather than risking the whole cron going dark again.
+  const PER_PERSON_LEG_BUDGET_MS = opts.perPersonBudgetMs ?? 120_000;
+  const perPersonLegStartedAt = Date.now();
+  let perPersonBudgetExceeded = false;
+
   for (const adapter of perPersonAdapters) {
+    if (perPersonBudgetExceeded) break;
     const sourceKey = adapter.meta.key;
     const runStartedAt = new Date().toISOString();
     const summary: ScrapedSourceSummary = {
@@ -450,6 +474,15 @@ export async function runAllSourceScans(
     // and each person fetch is individually try/caught.
 
     for (let i = 0; i < persons.length; i++) {
+      if (Date.now() - perPersonLegStartedAt > PER_PERSON_LEG_BUDGET_MS) {
+        perPersonBudgetExceeded = true;
+        console.warn(
+          `[warrantSources.runScan] per-person leg budget (${PER_PERSON_LEG_BUDGET_MS}ms) exceeded ` +
+          `at ${sourceKey} (${i}/${persons.length} persons checked this adapter); ` +
+          `stopping this tick, will resume next cron tick.`,
+        );
+        break;
+      }
       const person = persons[i];
       try {
         const hits = await adapter.fetchForPerson!(person, { DB: db });
@@ -475,11 +508,13 @@ export async function runAllSourceScans(
     }
 
     // Per-source clear sweep (rows of THIS source not seen since runStartedAt).
-    // ONLY when every person fetch succeeded — mirrors the full-list leg's guard.
-    // If any fetch errored, this run's last_seen_at refreshes are incomplete, so a
-    // sweep would wrongly clear warrants for persons we failed to re-check (a total
-    // endpoint outage would otherwise wipe the whole source's active roster).
-    if (summary.errors === 0) {
+    // ONLY when every person fetch succeeded AND the leg budget didn't cut this
+    // adapter's pass short — mirrors the full-list leg's guard. If any fetch
+    // errored, or we bailed early on the budget, this run's last_seen_at
+    // refreshes are incomplete, so a sweep would wrongly clear warrants for
+    // persons we failed (or didn't get to) re-check (a total endpoint outage,
+    // or a budget cutoff, would otherwise wipe the whole source's active roster).
+    if (summary.errors === 0 && !perPersonBudgetExceeded) {
       try {
         summary.cleared = await markScrapedCleared(db, sourceKey, runStartedAt);
       } catch (err) {
