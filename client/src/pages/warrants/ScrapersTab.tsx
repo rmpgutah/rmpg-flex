@@ -137,6 +137,13 @@ function formatLiveFeedEvent(e: ScraperWsEvent): LiveFeedDisplay {
         label: 'RESTORED',
         detail: `${e.display_name} — back online`,
       };
+    case 'run_progress':
+      return {
+        color: 'text-rmpg-400',
+        icon: '●',
+        label: 'RUNNING',
+        detail: `${e.display_name} — ${e.persons_checked}/${e.persons_total} checked, ${e.new_warrants_found} found`,
+      };
   }
 }
 

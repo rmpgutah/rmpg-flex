@@ -116,6 +116,15 @@ export type ScraperWsEvent =
       error: string;
     }
   | {
+      event: 'run_progress';
+      source_key: string;
+      display_name: string;
+      persons_checked: number;
+      persons_total: number;
+      new_warrants_found: number;
+      errors: number;
+    }
+  | {
       event: 'circuit_broken';
       source_key: string;
       display_name: string;
