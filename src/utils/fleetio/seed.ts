@@ -91,3 +91,28 @@ export function mapFuelEntryFieldsToFleetio(payload: Record<string, unknown>): R
   if (typeof payload.total_cost === 'number') out.cost = payload.total_cost;
   return out;
 }
+
+// Vendor/part update payloads still flow through dispatchOutbound's implicit
+// ownership-filter pass-through (VENDOR_OWNERSHIP/PART_OWNERSHIP in
+// ownership.ts). That happens to work today only because those maps were
+// hand-written with field names that already match Fleet.io's vendors/parts
+// resources — an unenforced coincidence, not a mapping. These explicit
+// allowlists close the same class of risk the vehicle/fuel_entry mappers
+// above closed: a future RMPG-only column added to ref_vendors/fleet_parts
+// can no longer silently leak into an outbound payload.
+export function mapVendorFieldsToFleetio(payload: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of ['name', 'address', 'city', 'state', 'zip', 'phone', 'email'] as const) {
+    if (isNonEmptyString(payload[k])) out[k] = payload[k];
+  }
+  return out;
+}
+
+export function mapPartFieldsToFleetio(payload: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of ['name', 'part_number', 'category', 'description', 'supplier'] as const) {
+    if (isNonEmptyString(payload[k])) out[k] = payload[k];
+  }
+  if (typeof payload.unit_cost === 'number') out.unit_cost = payload.unit_cost;
+  return out;
+}

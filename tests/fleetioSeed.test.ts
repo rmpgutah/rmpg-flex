@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildVehiclePayload, mapVehicleFieldsToFleetio, mapFuelEntryFieldsToFleetio } from '../src/utils/fleetio/seed';
+import { buildVehiclePayload, mapVehicleFieldsToFleetio, mapFuelEntryFieldsToFleetio, mapVendorFieldsToFleetio, mapPartFieldsToFleetio } from '../src/utils/fleetio/seed';
 
 describe('buildVehiclePayload', () => {
   const baseRow = {
@@ -91,5 +91,55 @@ describe('mapFuelEntryFieldsToFleetio', () => {
       total_cost: 20, custom_fields_json: null,
     });
     expect(mapped).toEqual({ vehicle_id: 1, date: '2026-07-17', us_gallons: 5.026, cost: 20 });
+  });
+});
+
+describe('mapVendorFieldsToFleetio', () => {
+  it('keeps the fields Fleet.io\'s vendors resource accepts', () => {
+    expect(mapVendorFieldsToFleetio({
+      name: 'AutoZone', address: '123 Main St', city: 'Salt Lake City',
+      state: 'UT', zip: '84115', phone: '801-555-0100', email: 'ap@autozone.example',
+    })).toEqual({
+      name: 'AutoZone', address: '123 Main St', city: 'Salt Lake City',
+      state: 'UT', zip: '84115', phone: '801-555-0100', email: 'ap@autozone.example',
+    });
+  });
+
+  it('drops RMPG-internal ref_vendors columns with no Fleet.io equivalent', () => {
+    const mapped = mapVendorFieldsToFleetio({
+      id: 2, name: 'AutoZone', kind: 'parts_supplier', lat: 40.7, lng: -111.9,
+      notes: 'internal note', active: 1, created_at: 'x', updated_at: 'y',
+    });
+    expect(mapped).toEqual({ name: 'AutoZone' });
+  });
+
+  it('omits empty-string and null/undefined fields', () => {
+    const mapped = mapVendorFieldsToFleetio({ name: 'AutoZone', phone: '', email: null, zip: undefined });
+    expect(mapped).toEqual({ name: 'AutoZone' });
+  });
+});
+
+describe('mapPartFieldsToFleetio', () => {
+  it('keeps the fields Fleet.io\'s parts resource accepts', () => {
+    expect(mapPartFieldsToFleetio({
+      name: 'Oil Filter', part_number: 'PF-46', category: 'Filters',
+      description: 'Standard oil filter', unit_cost: 8.5, supplier: 'AutoZone',
+    })).toEqual({
+      name: 'Oil Filter', part_number: 'PF-46', category: 'Filters',
+      description: 'Standard oil filter', unit_cost: 8.5, supplier: 'AutoZone',
+    });
+  });
+
+  it('drops RMPG-internal fleet_parts columns with no Fleet.io equivalent', () => {
+    const mapped = mapPartFieldsToFleetio({
+      id: 5, name: 'Oil Filter', quantity_on_hand: 12, reorder_point: 3,
+      location: 'Shelf A2', compatible_vehicles: '[1,2,3]',
+    });
+    expect(mapped).toEqual({ name: 'Oil Filter' });
+  });
+
+  it('omits empty-string and null/undefined fields', () => {
+    const mapped = mapPartFieldsToFleetio({ name: 'Oil Filter', supplier: '', unit_cost: null });
+    expect(mapped).toEqual({ name: 'Oil Filter' });
   });
 });
