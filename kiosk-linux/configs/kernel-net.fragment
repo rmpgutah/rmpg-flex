@@ -1,0 +1,12 @@
+# kiosk-linux/configs/kernel-net.fragment
+# Enables the virtio-net paravirtualized NIC driver, for real network
+# connectivity under QEMU (-device virtio-net-pci). Layered on top of the
+# existing in-tree "x86_64" kernel defconfig the same way
+# kiosk-linux/configs/kernel-drm.fragment already layers in DRM/virtio-gpu
+# support, via BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES (both fragments are
+# listed together in qemu_x86_64_kiosk_defconfig).
+CONFIG_VIRTIO_NET=y
+CONFIG_VIRTIO_PCI=y
+CONFIG_NET=y
+CONFIG_INET=y
+CONFIG_PACKET=y

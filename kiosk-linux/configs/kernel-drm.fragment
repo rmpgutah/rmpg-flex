@@ -12,3 +12,19 @@
 CONFIG_DRM=y
 CONFIG_DRM_KMS_HELPER=y
 CONFIG_DRM_VIRTIO_GPU=y
+
+# Added in sub-project 3 (browser). Without this, nothing ever commits an
+# initial mode on the virtio-gpu output at boot, so the encoder's crtc_id
+# stays unset. Cog's DRM platform (platform/drm/cog-platform-drm.c,
+# find_crtc_for_encoder()) only reuses an ALREADY-ACTIVE encoder->crtc
+# pairing — it has no fallback path to allocate a fresh, unbound one — so
+# without a boot-time console already having set a mode, Cog fails with
+# "no crtc for encoder found!" even though the DRM device itself works fine
+# (confirmed: modetest -s, sub-project 2's own proof mechanism, can commit a
+# mode manually just fine). Enabling DRM's own fbdev emulation + a
+# framebuffer console makes the kernel commit an initial mode automatically
+# at boot, the same way it would on real hardware whose firmware/bootloader
+# already left a mode active — satisfying what Cog assumes.
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_FB=y
+CONFIG_FRAMEBUFFER_CONSOLE=y

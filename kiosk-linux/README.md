@@ -41,6 +41,26 @@ Once `docker info` succeeds, build:
     cd kiosk-linux
     ./build.sh
 
+### Building on Windows (WSL2)
+
+`build.sh` needs no changes to run under WSL2 — it's plain bash + the `docker`
+CLI. WSL2 runs a real Linux kernel, so there's no Colima-style VM workaround
+needed: enable Docker Desktop's **WSL Integration** for your distro (Settings >
+Resources > WSL Integration), or install `docker-ce` directly inside the WSL2
+distro, and `docker info` will succeed the same way it does on a native Linux
+host.
+
+One rule carries over from the macOS case for the same underlying reason:
+**run this from a path inside the WSL2 filesystem** (e.g. `~/kiosk-linux`),
+**not** a Windows drive mounted into WSL2 (`/mnt/c/Users/.../kiosk-linux`) —
+that mount goes through a cross-filesystem translation layer (the 9P/Plan 9
+protocol) analogous to Colima's virtiofs, which is exactly the class of bug
+that forced this project onto named Docker volumes instead of a host bind
+mount in the first place (see "Why named volumes, not a bind mount" below).
+The named-volume build output is unaffected either way, so once you're
+building from the WSL2-native filesystem, `./build.sh` behaves identically to
+the macOS/Colima path.
+
 This:
 1. Builds a Docker image (`docker/Dockerfile`, Ubuntu 24.04 + Buildroot's mandatory
    packages plus a few kernel-build-specific ones — see that file's comments).
@@ -166,3 +186,68 @@ above bugs were fixed; plain software `virtio-gpu-pci` rendering was sufficient 
 a real screenshot.
 
 This does NOT include a compositor, Chromium, or RMPG Flex — see sub-project 3.
+
+## Kiosk browser (sub-project 3)
+
+Adds real networking (kernel `virtio-net` + BusyBox `udhcpc` + `ca-certificates`
+for TLS trust roots) and a kiosk browser — WPE WebKit via the Cog launcher,
+rendering directly against the DRM/KMS backend from sub-project 2 with no
+compositor — pointed at the live `https://rmpgutah.us`. Chromium was
+considered and rejected: Buildroot has no Chromium package, and building it
+from source needs Google's own depot_tools/gn/ninja toolchain plus a
+30-100GB source tree — realistically its own separate multi-day-to-multi-week
+program, not a slice of this sub-project.
+
+**Real, honest result** (see `docs/superpowers/specs/2026-07-22-kiosk-linux-rmpg-flex-browser-design.md`
+for the full design):
+
+- Networking: works. `KIOSK_LINUX_NET_OK` confirms a real DHCP lease and outbound
+  HTTP reachability.
+- The browser process (`cog --platform=drm`) is genuinely stable. Getting there
+  required finding and fixing a real, reproducible SIGSEGV — root-caused via gdb
+  (register-level inspection of the faulting instruction, not just a backtrace)
+  to a race between libwayland-server's `wl_shm_pool` resize logic and Cog's own
+  buffer-pool handling: when a resize is deferred (an external reference held
+  open), `wl_shm_buffer_get_data()` logs a warning but still returns a pointer
+  computed against the *not-yet-grown* mapping, which Cog then dereferenced
+  unconditionally. Fixed with a two-part patch: libwayland now returns `NULL` in
+  that exact condition instead of a stale pointer, and Cog checks for `NULL` and
+  drops the frame instead of crashing. A related bug — Cog's buffer-reuse fast
+  path overwriting `buffer->export.shm_buffer` without releasing the previous
+  reference first, permanently leaking the pool's external reference after the
+  first couple of frames — was also found and fixed. Confirmed crash-free across
+  many consecutive boots.
+- **Known limitation, not resolved this round**: the browser successfully loads
+  pages (WebKit's own "Loaded successfully" event fires) but the rendered output
+  is blank white. Direct pixel-byte inspection via gdb proved this is *not* a bug
+  anywhere in the Cog/libwayland/GBM/DRM pipeline above — the raw bytes
+  WebProcess exports are already uniformly `0xff` (blank) before any of that code
+  touches them. The actual painting happens inside WebKit's own Cairo-based
+  software compositor (traced as far as `wpebackend-fdo`'s `ws-shm.cpp`
+  surface-attach/commit path and WebKit's `AcceleratedSurfaceLibWPE`/`WPEBufferSHM`
+  sources), which was not resolved this session. Getting real debug visibility
+  into that layer needs a WebKit Debug build, which this session confirmed is
+  **not cleanly supported** by WPEWebKit 2.44.4 under this Buildroot toolchain —
+  forcing `CMAKE_BUILD_TYPE=Debug` compiles successfully to 99.9% completion and
+  then fails to link (`undefined reference to
+  JSC::UnlinkedMetadataTable::~UnlinkedMetadataTable()`). A future attempt at this
+  should either find the correct Debug-mode fix for that link error, or
+  investigate WebKit's Cairo/compositor source directly without relying on
+  runtime debug logging.
+
+    ./build.sh
+    ./test/run-qemu-browser.sh test/boot-browser.log test/browser-screenshot.ppm
+    ./test/assert-boot-log.sh test/boot-browser.log "KIOSK_LINUX_NET_OK"
+    ./test/assert-boot-log.sh test/boot-browser.log "KIOSK_LINUX_BROWSER_OK"
+    sips -s format png test/browser-screenshot.ppm --out test/browser-screenshot.png
+
+The PNG will show a blank white page — this is the honest, current result, not
+a broken test. `KIOSK_LINUX_NET_OK` and `KIOSK_LINUX_BROWSER_OK` both passing
+confirms the fixed layers; the blank render is the known, documented remaining
+gap above.
+
+This does NOT include auto-login (a human still authenticates against whatever
+page actually renders), an update/provisioning mechanism (sub-project 4), or
+real hardware support (deferred) — see
+`docs/superpowers/specs/2026-07-22-kiosk-linux-rmpg-flex-browser-design.md`
+for the full design and explicit non-goals.

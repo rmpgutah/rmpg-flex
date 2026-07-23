@@ -31,6 +31,7 @@ import {
   RefreshCw,
   Package,
   Download,
+  MonitorSmartphone,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -68,6 +69,7 @@ import AdminCloudflareTab from './admin/AdminCloudflareTab';
 import AdminFleetioHealthTab from './admin/AdminFleetioHealthTab';
 import AdminFleetioDirectoryTab from './admin/AdminFleetioDirectoryTab';
 import AdminInspectionTemplatesTab from './admin/AdminInspectionTemplatesTab';
+import KioskDevicesTab from './admin/KioskDevicesTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
 import AdminWarrantScrapersTab from './admin/AdminWarrantScrapersTab';
@@ -250,7 +252,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'downloads' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'map_data_files' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleetio_health' | 'fleetio_directory' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'downloads' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'map_data_files' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleetio_health' | 'fleetio_directory' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups' | 'kiosk_devices';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -277,7 +279,7 @@ export default function AdminPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'downloads', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'map_data_files', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'downloads', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'map_data_files', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev', 'kiosk_devices'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link, and
@@ -747,6 +749,7 @@ export default function AdminPage() {
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
         { id: 'person_intel', label: 'Person Intel', icon: Search },
         { id: 'cloudflare', label: 'Cloudflare', icon: Cloud },
+        { id: 'kiosk_devices', label: 'Kiosk Devices', icon: MonitorSmartphone },
         { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
         { id: 'email', label: 'Microsoft Email', icon: Mail },
         { id: 'integrations', label: 'API Integrations', icon: Plug },
@@ -1169,6 +1172,10 @@ export default function AdminPage() {
 
         {activeTab === 'inspection_templates' && (
           <AdminInspectionTemplatesTab />
+        )}
+
+        {activeTab === 'kiosk_devices' && (
+          <KioskDevicesTab />
         )}
 
         {activeTab === 'vmrs_browser' && (
