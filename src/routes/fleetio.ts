@@ -339,17 +339,19 @@ fleetio.get('/analytics', async (c) => {
 
 fleetio.get('/sync-status', requireRole('admin'), async (c) => {
   const db = getDb(c.env);
-  const [links, eventsPending, eventsFailed, conflicts] = await Promise.all([
+  const [links, eventsPending, eventsFailed, conflicts, oldestPending] = await Promise.all([
     queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM fleetio_links'),
     queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM fleetio_events WHERE direction='outbound' AND status='pending'"),
     queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM fleetio_events WHERE status='failed'"),
     queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM fleetio_conflicts WHERE resolved_at IS NULL'),
+    queryFirst<{ created_at: string }>(db, "SELECT created_at FROM fleetio_events WHERE direction='outbound' AND status='pending' ORDER BY id ASC LIMIT 1"),
   ]);
   return c.json({
     links_total: links?.n ?? 0,
     outbound_pending: eventsPending?.n ?? 0,
     failed_total: eventsFailed?.n ?? 0,
     conflicts_unresolved: conflicts?.n ?? 0,
+    oldest_pending_created_at: oldestPending?.created_at ?? null,
   });
 });
 
