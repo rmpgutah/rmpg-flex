@@ -5,6 +5,7 @@ import { parseSocrata, type FieldMap } from './parse/socrata';
 import { parseArcgis } from './parse/arcgis';
 import { buildArcgisKeysetUrl, buildSocrataOffsetUrl, maxObjectId, arcgisHasMore, ARCGIS_SERVER_PAGE, CHUNK_TARGET } from './paging';
 import { fetchPdfText } from './pdfText';
+import { fetchWithTimeout } from './fetchTimeout';
 import { parseZuercherPdf } from './parse/pdfZuercher';
 import { parseTxMuniPdf } from './parse/pdfTxMuni';
 import { parseNewtonPdf } from './parse/pdfNewton';
@@ -56,7 +57,7 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
       const offset = cursor ? Number(cursor) : 0;
       try {
         const url = buildSocrataOffsetUrl(row.base_url ?? '', row.resource_id ?? '', offset, CHUNK_TARGET);
-        const res = await fetch(url, { headers: { Accept: 'application/json' } });
+        const res = await fetchWithTimeout(url, { headers: { Accept: 'application/json' } });
         if (!res.ok) {
           // error → retry same page, no sweep. Log so a persistently-failing
           // source isn't a silent stall (cursor stuck with errors:0 in the summary).
@@ -86,7 +87,7 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
         // returns what we have with done=false so the leg retries from lastOid.
         while (hits.length < CHUNK_TARGET) {
           const url = buildArcgisKeysetUrl(row.base_url ?? '', lastOid, ARCGIS_SERVER_PAGE);
-          const res = await fetch(url, { headers: { Accept: 'application/json' } });
+          const res = await fetchWithTimeout(url, { headers: { Accept: 'application/json' } });
           if (!res.ok) {
             // keep what we have, retry from lastOid next tick. Log so a
             // persistently-failing source isn't a silent stall.
@@ -134,7 +135,7 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
   if (textParser) {
     return { meta, mode: 'full-list', async fetchAll(): Promise<FullListResult> {
       try {
-        const res = await fetch(row.base_url ?? '', { headers: { 'User-Agent': BROWSER_UA, Accept: '*/*' } });
+        const res = await fetchWithTimeout(row.base_url ?? '', { headers: { 'User-Agent': BROWSER_UA, Accept: '*/*' } });
         if (!res.ok) {
           // 404/403 — degrade gracefully
           console.warn(`[warrantSources.config] ${row.source_key} text fetch HTTP ${res.status}`);

@@ -20,6 +20,12 @@ interface DownloadsInfo {
   os?: InstallerMeta;
 }
 
+interface ReleaseNote {
+  version: string;
+  releaseDate: string;
+  notes: string[];
+}
+
 const PLATFORM_CONFIG: Record<Platform, {
   label: string;
   arch: string;
@@ -80,6 +86,8 @@ export default function DownloadsPage() {
   const [info, setInfo] = useState<DownloadsInfo>({});
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
+  const [changelog, setChangelog] = useState<ReleaseNote[]>([]);
+  const [showAllChangelog, setShowAllChangelog] = useState(false);
   const [activeTab, setActiveTab] = useState<Platform>(recommended);
   const [searchParams, setSearchParams] = useSearchParams();
   // Dial Connect's icon is hosted on a separate domain (dialer.rmpgutah.us) and
@@ -119,6 +127,12 @@ export default function DownloadsPage() {
       });
   }, []);
 
+  useEffect(() => {
+    apiFetch<ReleaseNote[]>('/api/downloads/changelog')
+      .then((data) => setChangelog(data))
+      .catch(() => setChangelog([]));
+  }, []);
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   // N   — trigger the download link for the currently-active platform tab.
   // Esc — if on a non-recommended tab, snap back to the recommended one;
@@ -155,13 +169,16 @@ export default function DownloadsPage() {
 
   const platforms: Platform[] = ['win', 'mac', 'android', 'os'];
 
+  const winExampleName = info.win?.filename?.replace(/\.zip$/, '.exe') ?? 'RMPG Flex Setup.exe';
+  const androidExampleName = info.android?.filename?.replace(/\.zip$/, '.apk') ?? 'RMPG Flex.apk';
+
   const STEPS: Record<Platform, { title: string; steps: string[]; warning?: string }> = {
     win: {
       title: 'Windows',
       steps: [
         'Download the Windows .zip package using the button above.',
         'Right-click the downloaded .zip file and select "Extract All...".',
-        'Open the extracted folder and double-click "RMPG Flex Setup 5.8.0.exe" to install.',
+        `Open the extracted folder and double-click "${winExampleName}" to install.`,
         'If Windows SmartScreen appears, click "More info" then "Run anyway" to finish.',
       ],
       warning: 'Windows SmartScreen note: Because Windows SmartScreen heavily flags raw executable files (.exe) downloaded directly, we bundle the installer in a .zip archive to bypass SmartScreen and browser security protocols automatically. If Windows Defender still prompts, simply select "More info" followed by "Run anyway".',
@@ -182,7 +199,7 @@ export default function DownloadsPage() {
       steps: [
         'Download the Android installation package .zip file above.',
         'Extract the zip package using your phone\'s Files/My Files manager app.',
-        'Tap and open the extracted "RMPG Flex-5.8.0.apk" file.',
+        `Tap and open the extracted "${androidExampleName}" file.`,
         'Enable "Install from Unknown Sources" for your browser/file explorer if prompted, then tap Install.',
       ],
       warning: 'Since this app is distributed internally rather than through the Google Play Store, Android requires bundling the app (.apk) inside a .zip to bypass browser protocol blocks. Safe Browsing will let you extract and run it seamlessly.',
@@ -201,7 +218,7 @@ export default function DownloadsPage() {
 
   // ── Version display ───────────────────────────────────────────────────────
   const displayVersion = !loading
-    ? (info.win?.version ?? info.mac?.version ?? info.android?.version ?? '5.8.0')
+    ? (info.win?.version ?? info.mac?.version ?? info.android?.version ?? info.os?.version ?? '5.8.5')
     : null;
 
   return (
@@ -244,6 +261,43 @@ export default function DownloadsPage() {
             desktop app, Android app, or in any web browser.
           </p>
         </div>
+
+        {/* What's New */}
+        {changelog.length > 0 && (
+          <div
+            className="p-5 mb-8"
+            style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
+          >
+            <h4 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#d4a017' }}>
+              What's New
+            </h4>
+            {(showAllChangelog ? changelog : changelog.slice(0, 1)).map((entry) => (
+              <div key={entry.version} className="mb-4 last:mb-0">
+                <div className="text-xs font-bold mb-1" style={{ color: 'var(--rmpg-300)' }}>
+                  v{entry.version} — {entry.releaseDate}
+                </div>
+                <div className="space-y-1">
+                  {entry.notes.map((note, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs" style={{ color: 'var(--rmpg-400)' }}>
+                      <span style={{ color: '#d4a017' }}>&bull;</span>
+                      {note}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {changelog.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setShowAllChangelog((v) => !v)}
+                className="text-[11px] font-bold uppercase tracking-wider mt-2"
+                style={{ color: 'var(--rmpg-500)' }}
+              >
+                {showAllChangelog ? 'Show less' : `Show ${changelog.length - 1} more`}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── Loading state ─────────────────────────────────────────────── */}
         {loading && (
@@ -431,11 +485,13 @@ export default function DownloadsPage() {
             {[
               'Full CAD/RMS dispatch system',
               'Real-time WebSocket dispatch updates',
-              'Mapbox GL JS + OpenLayers tactical map integration',
+              'Mapbox GL JS tactical map integration',
               'Incident, records, warrants, citations management',
+              'ALPR vehicle capture & plate screening',
               'Fleet management & patrol checkpoints',
               'Personnel, training & equipment tracking',
               'Reports, analytics & audit trail',
+              'Dedicated kiosk terminal OS image for fixed installs',
               'Automatic updates — always stay on the latest version',
             ].map((feature, i) => (
               <div key={i} className="flex items-center gap-2 text-xs" style={{ color: 'var(--rmpg-400)' }}>
@@ -517,7 +573,7 @@ export default function DownloadsPage() {
           <h4 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--rmpg-500)' }}>
             System Requirements
           </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
               <strong style={{ color: 'var(--rmpg-400)' }}>Windows:</strong> Windows 10 or later<br />
               64-bit (x64) processor
@@ -529,6 +585,10 @@ export default function DownloadsPage() {
             <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
               <strong style={{ color: 'var(--rmpg-400)' }}>Android:</strong> Android 8.0 (Oreo) or later<br />
               Any modern smartphone or tablet
+            </div>
+            <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
+              <strong style={{ color: 'var(--rmpg-400)' }}>Kiosk Linux OS:</strong> x86_64, QEMU/virtio-gpu<br />
+              For fixed terminal deployments; not yet for bare hardware
             </div>
           </div>
         </div>

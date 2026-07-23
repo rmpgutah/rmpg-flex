@@ -7,6 +7,7 @@
 
 import type { WarrantSourceAdapter, RawWarrantHit, FullListResult, SourceMeta } from '../types';
 import { parseOhioPvalPage, parseOhioPvalPageCount } from '../parse/ohioPval';
+import { fetchWithTimeout } from '../fetchTimeout';
 
 const BASE = 'https://appgateway.drc.ohio.gov/OffenderSearch/Search';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
@@ -29,7 +30,7 @@ const meta: SourceMeta = {
 
 async function fetchLetterPage(letter: string, page: number): Promise<string | null> {
   try {
-    const res = await fetch(`${BASE}/PvalListPaging?newLtr=${letter}&newPage=${page}`, {
+    const res = await fetchWithTimeout(`${BASE}/PvalListPaging?newLtr=${letter}&newPage=${page}`, {
       headers: { 'User-Agent': UA, Accept: 'text/html' },
     });
     if (!res.ok) return null;
