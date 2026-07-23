@@ -35,3 +35,25 @@ export async function rateLimitAllow(
     return true;
   }
 }
+
+/** Read-only companion to rateLimitAllow — returns the current window's
+ *  count for `bucket` WITHOUT incrementing it. Computes the same
+ *  window-bucketed key (`rl:${bucket}:${windowStart}`) so it reads exactly
+ *  what rateLimitAllow already wrote for "now". Used where a caller needs
+ *  the running count for a decision (e.g. "has this IP crossed N failures
+ *  in this window") separate from whether to allow/deny the request. */
+export async function rateLimitCount(
+  kv: KVNamespace,
+  bucket: string,
+  windowSeconds: number,
+): Promise<number> {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const windowStart = now - (now % windowSeconds);
+    const key = `rl:${bucket}:${windowStart}`;
+    return Number((await kv.get(key)) ?? '0');
+  } catch (err) {
+    log.error('KV error (failing open)', {}, err);
+    return 0;
+  }
+}
