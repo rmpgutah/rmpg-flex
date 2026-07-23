@@ -20,7 +20,7 @@ ip link set eth0 up 2>/dev/null
 # "still running" state the way modetest does).
 if udhcpc -i eth0 -n -q -t 5 -T 3 >/tmp/udhcpc.log 2>&1; then
   if wget -q -T 5 -O /dev/null http://neverssl.com/; then
-    echo "KIOSK_LINUX_NET_OK"
+    echo "KIOSK_LINUX_NET_OK" | tee /tmp/kiosk-net-marker.log
   else
     echo "KIOSK_LINUX_NET_FAILED (dhcp lease acquired, but http reachability check failed)"
   fi

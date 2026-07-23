@@ -7,7 +7,10 @@
 # `make defconfig` fills in everything else from Buildroot's standard defaults.
 # Compared against the stock qemu_x86_64_defconfig's own settings, the intent
 # per the task-1 brief was:
-#   - BR2_TOOLCHAIN_BUILDROOT_CXX=n     (no C++ needed for this base image)
+#   - BR2_TOOLCHAIN_BUILDROOT_CXX=n originally (no C++ needed for this base
+#                                        image) — flipped to =y in sub-project
+#                                        3 (Task 2), which needs C++ for WPE
+#                                        WebKit; see that section below
 #   - BR2_TARGET_GENERIC_HOSTNAME / _ISSUE (kiosk-linux branding)
 #   - BR2_INIT_BUSYBOX=y                (explicit; BusyBox init is already the
 #                                        Buildroot default, stated here for clarity)
@@ -46,7 +49,16 @@
 BR2_x86_64=y
 
 # Toolchain
-BR2_TOOLCHAIN_BUILDROOT_CXX=n
+# BR2_TOOLCHAIN_BUILDROOT_CXX=n was sub-project 1's original base-image choice
+# ("no C++ needed" — true for a boot-to-shell image). Sub-project 3 (Task 2)
+# changes that: WPE WebKit hard-requires BR2_INSTALL_LIBSTDCPP (see
+# package/wpewebkit/Config.in's "depends on BR2_INSTALL_LIBSTDCPP # harfbuzz,
+# icu" and its "wpewebkit needs a toolchain w/ C++..." comment, confirmed by a
+# real build attempt where the package silently disappeared from the .config
+# with that exact unmet-dependency comment printed — not a guess). The
+# internal Buildroot toolchain's C++ support is gated on this symbol, so it
+# flips to =y here.
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
 
 # System
 BR2_TARGET_GENERIC_HOSTNAME="kiosk-linux"
@@ -115,8 +127,122 @@ BR2_PACKAGE_LIBDRM_INSTALL_TESTS=y
 BR2_PACKAGE_MESA3D=y
 BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VIRGL=y
 
+# Added in sub-project 3 (browser). Plain -device virtio-gpu-pci under QEMU
+# with -display none (headless, no host GUI/GL context) has no real GPU/GL
+# acceleration — QEMU's virgl 3D backend needs an actual host OpenGL context,
+# which a headless test harness cannot provide. Cog/WPE's DRM platform uses
+# GBM+EGL for buffer allocation, which needs SOME working driver; without a
+# software fallback, Mesa's GBM loader fails outright ("MESA-LOADER: failed
+# to open kms_swrast" / "swrast", confirmed by a real run). This adds Mesa's
+# software (LLVMpipe) Gallium driver as that fallback, verified against the
+# real Buildroot 2024.02.9 checkout's package/mesa3d/Config.in:215.
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SWRAST=y
+
+# Added after LIBGL_ALWAYS_SOFTWARE/WEBKIT_DISABLE_COMPOSITING_MODE env-var
+# workarounds both failed to fix a real, repeated boot: WPEWebProcess (the
+# actual page-rendering sub-process) opens its own EGL context that tries
+# Mesa's zink driver (OpenGL-over-Vulkan) and crash-loops when it can't load
+# it. zink needs a working software Vulkan driver (lavapipe), which itself
+# needs LLVM for shader JIT compilation — confirmed against the real
+# Buildroot 2024.02.9 checkout's package/mesa3d/Config.in:309
+# (BR2_PACKAGE_MESA3D_VULKAN_DRIVER_SWRAST depends on
+# BR2_PACKAGE_MESA3D_LLVM and already `select`s
+# BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SWRAST above, so no double-declaration
+# needed there).
+BR2_PACKAGE_MESA3D_LLVM=y
+BR2_PACKAGE_MESA3D_VULKAN_DRIVER_SWRAST=y
+
+# BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VIRGL's own `select` already turns on
+# BR2_PACKAGE_MESA3D_OPENGL_EGL (which in turn selects HAS_LIBEGL_WAYLAND and
+# MESA3D_GBM), but it does NOT select BR2_PACKAGE_MESA3D_OPENGL_ES — that's an
+# independent, non-auto-selected option (mesa3d/Config.in:~365) that provides
+# BR2_PACKAGE_HAS_LIBGLES. WPE WebKit's Config.in has a hard `depends on
+# BR2_PACKAGE_HAS_LIBGLES # libepoxy`, discovered the same way as the C++
+# requirement above (a real build attempt printed wpewebkit's "needs an
+# OpenGL ES w/ EGL-capable Wayland backend" unmet-dependency comment with this
+# symbol missing) — so it must be turned on explicitly here, sub-project 2's
+# defconfig having only needed the Gallium/EGL/GBM path for modetest, not GLES.
+BR2_PACKAGE_MESA3D_OPENGL_ES=y
+
 # Networking (sub-project 3, Task 1). udhcpc (BusyBox) acquires a DHCP lease
 # over the virtio-net interface; ca-certificates provides the Mozilla trust
 # root bundle WPE WebKit needs to validate rmpgutah.us's TLS certificate.
 BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="/kiosk-linux/configs/busybox-net.fragment"
 BR2_PACKAGE_CA_CERTIFICATES=y
+
+# Kiosk browser (sub-project 3, Task 2). WPE WebKit is the embedded-Linux
+# WebKit port purpose-built for kiosk/DRM use (chosen over Chromium — Buildroot
+# has no Chromium package, and building it from source would need Google's own
+# depot_tools/gn/ninja toolchain plus a 30-100GB source tree, realistically its
+# own separate multi-day program). Cog is the minimal fullscreen launcher shell
+# around it, rendering directly against the DRM/KMS backend from sub-project 2
+# with no X11/Wayland compositor needed. Exact symbol names verified against
+# the pinned Buildroot 2024.02.9 checkout per Task 2 Step 1: BR2_PACKAGE_WPEWEBKIT
+# and BR2_PACKAGE_COG matched the brief's guessed names exactly, but the DRM
+# platform backend needed an additional sub-option not in the brief's snippet —
+# BR2_PACKAGE_COG_PLATFORM_DRM defaults to unset (only the Wayland/FDO backend
+# defaults to y in cog/Config.in), so it must be explicitly turned on for
+# `cog --platform=drm` to be a valid choice at runtime. Its own depends
+# (BR2_PACKAGE_HAS_LIBEGL / _HAS_LIBGBM / LIBGBM_HAS_FEATURE_DMA_BUF /
+# LIBGBM_HAS_FEATURE_FORMAT_MODIFIER_PLANE_COUNT) are already satisfied by the
+# Mesa3D virgl Gallium driver enabled above in sub-project 2.
+BR2_PACKAGE_WPEWEBKIT=y
+BR2_PACKAGE_COG=y
+BR2_PACKAGE_COG_PLATFORM_DRM=y
+
+# BR2_PACKAGE_COG_PLATFORM_DRM's own `depends on BR2_PACKAGE_HAS_UDEV # libinput`
+# is unmet by this image's defaults — a first real build attempt confirmed
+# BR2_PACKAGE_COG_PLATFORM_DRM silently dropped out of .config with nothing
+# else providing BR2_PACKAGE_HAS_UDEV. That virtual symbol only comes from
+# eudev (package/eudev/Config.in) or systemd; eudev is the minimal choice here
+# (systemd would be a far larger, unrelated addition). eudev itself further
+# depends on BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV — one arm of Buildroot's
+# System configuration > /dev management choice (mutually exclusive with the
+# devtmpfs-only / static / mdev alternatives) — which must be selected as the
+# active device-creation policy for eudev to even appear as choosable.
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
+BR2_PACKAGE_EUDEV=y
+
+# Debugging aids (temporary, sub-project 3 troubleshooting). WPEWebProcess
+# crashes with zero diagnostic output anywhere in cog.log or the kernel
+# serial log (no segfault/OOM message either) once EGL genuinely initializes
+# — strace and an on-target gdb are needed to get a real backtrace/syscall
+# trace at the crash point. Symbols verified against the real Buildroot
+# 2024.02.9 checkout's package/gdb/Config.in and package/strace/Config.in.
+BR2_PACKAGE_GDB=y
+BR2_PACKAGE_GDB_DEBUGGER=y
+BR2_PACKAGE_STRACE=y
+
+# Real root cause found via strace: fontconfig scans every standard font
+# directory (/usr/share/fonts, /usr/local/share/fonts, /.fonts,
+# /.local/share/fonts) and gets ENOENT on all of them — this image never
+# installed any font at all — then WPEWebProcess hits a fatal GLib
+# assertion and self-aborts (tgkill SIGABRT) immediately after finishing
+# that scan. WebKit requires at least one available font to initialize
+# its text layout engine. DejaVu is Buildroot's standard minimal font
+# package for exactly this need; symbol verified against the real
+# Buildroot 2024.02.9 checkout's package/dejavu/Config.in.
+BR2_PACKAGE_DEJAVU=y
+
+# Debugging aid: the SIGSEGV crash inside libcogplatform-drm.so was only
+# reachable via unsymbolized ("??") gdb frames on the stripped target
+# binary — a manual attempt to swap in the unstripped intermediate build
+# artifact directly (bypassing Buildroot fakeroot/mkusers/makedevs
+# packaging) broke boot outright (missing device nodes -> kernel panic).
+# BR2_STRIP_EXCLUDE_FILES is the correct, minimal-footprint way to keep
+# exactly this one file unstripped through the real, correct packaging
+# pipeline, verified against the real Buildroot Config.in.
+BR2_STRIP_EXCLUDE_FILES="libcogplatform-drm.so"
+
+# REVERTED: BR2_ENABLE_RUNTIME_DEBUG + an explicit -DCMAKE_BUILD_TYPE=Debug
+# override (see kiosk-linux/build.sh) were tried to get WebKit own internal
+# RELEASE_LOG/debug logging compiled in, after raw pixel-byte inspection
+# proved the blank-render bug lives inside WebKit own compositor. Confirmed
+# via a real, full rebuild (~50+ minutes) that this WebKit
+# version/Buildroot combination does NOT support Debug mode cleanly — the
+# build reached 99.9% completion and then failed to LINK
+# ("undefined reference to JSC::UnlinkedMetadataTable::~UnlinkedMetadataTable()"),
+# a genuine structural incompatibility, not a quick patch. Left disabled;
+# see build.sh own comment on the -DCMAKE_BUILD_TYPE=Debug patch for the
+# full history if attempting this again.
+# BR2_ENABLE_RUNTIME_DEBUG=y

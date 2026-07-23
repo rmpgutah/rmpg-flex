@@ -1,0 +1,102 @@
+#!/bin/sh
+# kiosk-linux/rootfs-overlay/etc/init.d/S99kiosk-browser-marker
+#
+# Runs after S99kiosk-net-marker (lexicographic tie-break on the shared S99
+# prefix: "S99kiosk-browser-marker" < "S99kiosk-net-marker" would actually sort
+# BEFORE net-marker alphabetically ('b' < 'n') — so this script explicitly waits
+# on the KIOSK_LINUX_NET_OK marker having already been logged rather than
+# relying on init-script ordering alone, since 'b' < 'n' would otherwise run
+# this script first despite the filename suggesting otherwise. Do not rename
+# to "S99kiosk-webbrowser-marker" or similar to fix the sort order instead — an
+# explicit wait is more robust than depending on lexicographic ordering, since
+# this project has already been burned once by assuming implicit ordering was
+# sufficient.
+i=0
+while [ "$i" -lt 100 ]; do
+  grep -q "KIOSK_LINUX_NET_OK" /tmp/kiosk-net-marker.log 2>/dev/null && break
+  i=$((i + 1))
+  sleep 0.1
+done
+
+WPE_BIN=$(command -v cog)
+if [ -z "$WPE_BIN" ]; then
+  echo "KIOSK_LINUX_BROWSER_FAILED (cog not found)"
+else
+  # Enabling CONFIG_FRAMEBUFFER_CONSOLE (needed so the kernel commits an
+  # initial DRM mode at boot — see kernel-drm.fragment's own comment) has a
+  # side effect: Linux's own text console (fbcon) takes ownership of the
+  # display and keeps drawing to it. fbcon does not hand off automatically
+  # just because another process opens the DRM device — it needs to be
+  # explicitly unbound from its virtual console first, the same way a real
+  # embedded kiosk image would disable the console on its display VT.
+  # Unbinding via sysfs (rather than a kernel boot-arg like fbcon=map:10)
+  # keeps this self-contained in the script that actually needs it,
+  # independent of how any future real bootloader invokes the kernel.
+  for vtcon in /sys/class/vtconsole/vtcon*; do
+    if grep -q "frame buffer device" "$vtcon/name" 2>/dev/null; then
+      echo 0 > "$vtcon/bind" 2>/dev/null
+    fi
+  done
+
+  # Cog's DRM platform module talks directly to libdrm/GBM (from sub-project
+  # 2) with no Wayland/X11 compositor in between. Backgrounded so this init
+  # script can move on; a bounded wait below confirms the process is still
+  # alive (has not immediately crashed) before declaring success — a plain
+  # process-alive check is not by itself sufficient proof the page actually
+  # rendered (see kiosk-linux/README.md for the real crash/blank-screen
+  # investigation this sub-project's build.sh patches fix), so the
+  # screenshot from the test harness remains the actual proof mechanism.
+  mkdir -p /tmp/xdg-runtime
+  chmod 0700 /tmp/xdg-runtime
+  export XDG_RUNTIME_DIR=/tmp/xdg-runtime
+
+  # Diagnostic: the drm_commit_buffer_atomic/_nonatomic breakpoints never
+  # hit even after the reference-leak fix — these are static, single-caller
+  # functions likely inlined at -O2, so that result may be a false negative.
+  # Breaking on drm_commit_buffer itself instead (a real, non-static, real
+  # multi-caller function guaranteed to keep its own symbol) to get a
+  # definitive answer on whether it is reached, how many times, and what it
+  # returns.
+  # Debug symbols now available for cog specifically (meson debugoptimized,
+  # see build.sh). Breaking on wl_shm_buffer_end_access (a real exported
+  # libwayland function, always called right after drm_copy_shm_buffer_into_bo
+  # finishes writing pixel data) and inspecting the CALLER frame's `dst`
+  # buffer directly — this tells us definitively whether real, varied pixel
+  # data is being written (a color/format bug would still show non-uniform
+  # bytes) or whether the buffer is genuinely all one blank value.
+  # No DWARF debug info available (see build.sh comment — tried and
+  # reverted, not worth invalidating the whole build cache). Using
+  # register/disassembly-level inspection instead, the same technique
+  # already used successfully for the original crash: break on
+  # wl_shm_buffer_end_access (a real exported libwayland function, called
+  # right after the pixel copy finishes), go up one frame to the caller
+  # (drm_copy_shm_buffer_into_bo — frame unwinding works fine without
+  # DWARF), and disassemble the last ~20 instructions before the call to
+  # see which registers hold the src/dst pointers at that point.
+  # The previous run confirmed the copy loop completes with a valid,
+  # canonical src pointer (in r9) and no crash. Breaking earlier this time
+  # -- right when wl_shm_buffer_begin_access is called, before the copy --
+  # to read the actual pixel bytes at the src pointer directly. This tells
+  # us definitively whether real, varied (non-blank) pixel content exists
+  # in the exported buffer before any copy/scanout step, ruling in or out
+  # whether the blank result traces back to WebProcess rendering itself.
+  # Confirmed via direct pixel-byte inspection: the exported SHM buffer is
+  # uniformly blank (0xff) coming straight from WebProcess/WebKit's own
+  # compositor -- every downstream layer (Cog, libwayland, GBM, DRM) is
+  # proven correct. Trying WebKit own built-in debug logging env vars
+  # before assuming a deeper C++-level compositor investigation is needed --
+  # these are free (pure runtime, no rebuild) and might reveal why painting
+  # never actually happens in this environment.
+  WEBKIT_DEBUG=Compositing,Layers WEBKIT_SHOW_COMPOSITING_DEBUG_VISUALS=1 \
+    cog --platform=drm "https://rmpgutah.us" >/tmp/cog.log 2>&1 &
+  COG_PID=$!
+  sleep 20
+  if kill -0 "$COG_PID" 2>/dev/null; then
+    echo "KIOSK_LINUX_BROWSER_OK"
+    echo "DEBUG cog.log so far:"
+    cat /tmp/cog.log
+  else
+    echo "KIOSK_LINUX_BROWSER_FAILED (cog exited immediately, see /tmp/cog.log)"
+    cat /tmp/cog.log
+  fi
+fi
