@@ -64,7 +64,7 @@ database_id = "fbc33751-dce0-499a-bc45-93c0b7ee0da1"
 [[d1_databases]]
 binding = "KIOSK_DB"
 database_name = "kiosk-linux-fleet"
-database_id = "REPLACE_WITH_REAL_ID_AFTER_WRANGLER_D1_CREATE"
+database_id = "a74cd65e-5e7f-4ab1-a238-ba86c649efe4"
 migrations_dir = "kiosk-linux/migrations"
 
 # ─── Durable Objects ─────────────────────────────────────
