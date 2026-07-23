@@ -15,6 +15,9 @@ vi.mock('../../../context/ContextMenuContext', () => ({
   useContextMenu: () => ({ openMenu: openMenuMock }),
 }));
 vi.mock('../../../hooks/useLiveSync', () => ({ useLiveSync: () => {} }));
+vi.mock('../../../context/WebSocketContext', () => ({
+  useWebSocket: () => ({ subscribe: () => () => {} }),
+}));
 vi.mock('../../../context/AuthContext', () => ({
   useAuth: () => ({ user: { id: '1', username: 'testofficer', first_name: 'Test', last_name: 'Officer', role: 'admin' } }),
 }));
@@ -100,20 +103,21 @@ describe('WarrantsListTab', () => {
 
   it('debounces the search box — typing does not fire a request per keystroke', async () => {
     renderTab();
-    // 3 calls at mount: the double fetchWarrants invoke plus the
-    // useWatchedWarrantIds hook's own /intel/watchlist fetch.
-    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(3));
+    // 4 calls at mount: the double fetchWarrants invoke, the
+    // useWatchedWarrantIds hook's own /intel/watchlist fetch, and the poll
+    // status strip's /warrants/watch/runs fetch.
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(4));
     const search = screen.getByPlaceholderText(/search by name, warrant #, or charge/i);
     await userEvent.type(search, 'Turley');
     // Immediately after typing, no new request yet (debounce window hasn't elapsed).
-    expect(useApiModule.apiFetch).toHaveBeenCalledTimes(3);
-    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(4), { timeout: 1000 });
+    expect(useApiModule.apiFetch).toHaveBeenCalledTimes(4);
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(5), { timeout: 1000 });
     expect(useApiModule.apiFetch).toHaveBeenLastCalledWith(expect.stringContaining('subject_name=Turley'));
   });
 
   it('calls onOpenNewForm when the New Warrant button is clicked', async () => {
     renderTab();
-    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(4));
     // The empty-state panel also renders a "New Warrant" action button when
     // the list is empty (as it is here, per the mocked apiFetch response),
     // so target the toolbar's primary button specifically (first match).
@@ -124,7 +128,7 @@ describe('WarrantsListTab', () => {
 
   it('is hidden (display: none) when isVisible is false', async () => {
     const { container } = renderTab({ isVisible: false });
-    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(4));
     expect(container.firstChild).toHaveStyle({ display: 'none' });
   });
 
