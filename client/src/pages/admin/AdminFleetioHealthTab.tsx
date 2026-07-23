@@ -63,6 +63,7 @@ export default function AdminFleetioHealthTab() {
   const [seedResult, setSeedResult] = useState<string | null>(null);
   const [pulling, setPulling] = useState(false);
   const [pullResult, setPullResult] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState<number | null>(null);
 
   const fetchHealth = useCallback(() => {
     setErr(null);
@@ -124,6 +125,16 @@ export default function AdminFleetioHealthTab() {
       .catch((e) => {
         setPulling(false);
         setPullResult(`failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      });
+  };
+
+  const retryEvent = (id: number) => {
+    setRetrying(id);
+    apiFetch<{ success: boolean }>(`/fleetio/events/${id}/retry`, { method: 'POST' })
+      .then(() => { setRetrying(null); fetchHealth(); })
+      .catch((e) => {
+        setRetrying(null);
+        alert(`Failed to retry: ${e instanceof Error ? e.message : 'unknown error'}`);
       });
   };
 
@@ -297,6 +308,7 @@ export default function AdminFleetioHealthTab() {
                 <th className="py-1 px-2">Status</th>
                 <th className="py-1 px-2 text-right">Attempts</th>
                 <th className="py-1 pl-2">Error</th>
+                <th className="py-1 pl-2" />
               </tr>
             </thead>
             <tbody>
@@ -310,6 +322,19 @@ export default function AdminFleetioHealthTab() {
                   <td className="py-1 px-2 text-right text-rmpg-300">{e.attempts as number}</td>
                   <td className="py-1 pl-2 text-red-300 max-w-[280px] truncate" title={(e.error as string) ?? ''}>
                     {(e.error as string) ?? ''}
+                  </td>
+                  <td className="py-1 pl-2 text-right whitespace-nowrap">
+                    {e.status === 'failed' && e.direction === 'outbound' && (
+                      <button
+                        type="button"
+                        disabled={retrying === (e.id as number)}
+                        onClick={() => retryEvent(e.id as number)}
+                        className="text-[9px] px-1.5 py-0.5 border border-rmpg-700 rounded-sm hover:bg-rmpg-800 disabled:opacity-50"
+                        aria-label="Retry failed event"
+                      >
+                        {retrying === (e.id as number) ? 'Retrying…' : 'Retry'}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
