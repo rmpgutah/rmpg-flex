@@ -83,6 +83,19 @@ BR2_TARGET_ROOTFS_CPIO_GZIP=y
 BR2_TARGET_ROOTFS_EXT2=n
 # BR2_TARGET_ROOTFS_TAR is not set
 
+# Sub-project 5 (A/B boot partition): syslinux/extlinux is the bootloader
+# that reads extlinux.conf off the new EXT2 boot partition assembled by
+# kiosk-linux/scripts/assemble-disk-image.sh. Buildroot's own syslinux
+# package is NOT used to generate extlinux.conf here (that config is
+# hand-written per-slot by assemble-disk-image.sh) — this Kconfig option
+# only ensures Buildroot's build tree has the pieces this project's own
+# disk-assembly step needs available if it ever wants them; the actual
+# extlinux/mbr.bin tooling used to assemble the disk image runs on the
+# HOST-side Docker build container (see Dockerfile), not inside the target
+# rootfs itself.
+BR2_TARGET_SYSLINUX=y
+BR2_TARGET_SYSLINUX_ISOLINUX=n
+
 # Kernel: use the kernel's own in-tree x86_64 defconfig rather than
 # Buildroot's board/qemu/x86_64/linux.config
 BR2_LINUX_KERNEL=y
@@ -105,7 +118,7 @@ BR2_LINUX_KERNEL_DEFCONFIG="x86_64"
 # /kiosk-linux inside the container (never at a path relative to BUILDROOT_DIR or
 # the O= volume), so the absolute /kiosk-linux/... form is what's actually
 # reachable at build time regardless of where Buildroot's source checkout lives.
-BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="/kiosk-linux/configs/kernel-drm.fragment /kiosk-linux/configs/kernel-net.fragment"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="/kiosk-linux/configs/kernel-drm.fragment /kiosk-linux/configs/kernel-net.fragment /kiosk-linux/configs/kernel-storage.fragment"
 
 # libdrm — DRM userspace library, plus its bundled test tools (provides modetest,
 # the diagnostic tool this sub-project uses as its proof mechanism). Symbol names
