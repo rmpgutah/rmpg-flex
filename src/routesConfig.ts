@@ -186,6 +186,7 @@ import firecrawlTools from './routes/firecrawlTools';
 import webResearch from './routes/webResearch';
 import pdfEngine from './routes/pdfEngine';
 import dar from './routes/dar';
+import formDrafts from './routes/formDrafts';
 import reanalysis from './routes/reanalysis';
 import evidence from './routes/evidence';
 import codeEnforcement from './routes/codeEnforcement';
@@ -736,6 +737,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // (code_violations + vehicle_tows tables) — 2026-06-09 404 sweep.
   { prefix: '/api/code-enforcement', router: codeEnforcement, auth: 'required' },
   { prefix: '/api/dar', router: dar, auth: 'required' },
+  { prefix: '/api/form-drafts', router: formDrafts, auth: 'required' },
   { prefix: '/api/jail-roster', router: jailRoster, auth: 'required' },
   { prefix: '/api/evidence', router: evidence, auth: 'required' },
   { prefix: '/api/diagnostics', router: stubs, auth: 'public' },
