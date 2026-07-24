@@ -32,6 +32,7 @@ import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../u
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { toDisplayLabel } from '../utils/formatters';
+import { ORGANIZATION } from '../constants/organizationConstants';
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import EditServeAttemptModal from '../components/serve/EditServeAttemptModal';
@@ -284,8 +285,8 @@ export default function ServePage() {
       jurisdiction: job.jurisdiction || 'Salt Lake County, Utah',
       serverName: user?.full_name || user?.username || 'Process Server',
       serverBadge: user?.badge_number || '',
-      serverCompany: 'Rocky Mountain Protective Group',
-      serverPhone: '(385) 436-3370',
+      serverCompany: ORGANIZATION.name,
+      serverPhone: ORGANIZATION.phone,
       signature: latestAttempt.signature_data || undefined,
       recipientName: job.recipient_name,
       recipientAddress: fullAddress || (job.recipient_address || 'N/A'),
