@@ -9,8 +9,9 @@
 // ============================================================
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { Plus, Trash2, FileSpreadsheet, Loader2, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Plus, Trash2, FileSpreadsheet, Loader2, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useFormDraft } from '../../hooks/useFormDraft';
 
 export type BulkRowKind = 'individual' | 'business';
 
@@ -76,8 +77,16 @@ function parsePastedTable(raw: string): BulkRow[] {
   return rows;
 }
 
+const DEFAULT_ROWS: BulkRow[] = [{ ...EMPTY_ROW }];
+
 export default function BulkDefendantTable({ onSubmitted }: Props) {
-  const [rows, setRows] = useState<BulkRow[]>([{ ...EMPTY_ROW }]);
+  const {
+    form: rows, setForm: setRows, wasRestored, clearDraft, signalSaved,
+  } = useFormDraft<BulkRow[]>({
+    storageKey: 'rmpg_bulk_defendant_table',
+    defaultValue: DEFAULT_ROWS,
+    isActive: true,
+  });
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<BulkSubmitResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +146,10 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
         body: JSON.stringify({ rows: payload }),
       });
       setResult(res);
+      // Only the successfully-created/merged rows are safe to drop from the
+      // draft — if some rows failed, keep them around so the operator can
+      // fix and resubmit without retyping.
+      if (res.summary.failed === 0) signalSaved();
       if (onSubmitted) onSubmitted(res);
     } catch (err: any) {
       setError(err?.message || 'Bulk intake failed');
@@ -146,10 +159,10 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
   }, [rows, onSubmitted]);
 
   const clearAll = useCallback(() => {
-    setRows([{ ...EMPTY_ROW }]);
+    clearDraft();
     setResult(null);
     setError(null);
-  }, []);
+  }, [clearDraft]);
 
   return (
     <div className="panel-beveled p-3 bg-surface-base space-y-3" onPaste={handlePaste}>
@@ -164,6 +177,13 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
           <button type="button" onClick={clearAll} className="toolbar-btn text-[9px]" title="Clear table">Clear</button>
         </div>
       </div>
+
+      {wasRestored && (
+        <div className="flex items-center justify-between px-2 py-1.5 text-[10px] border border-amber-500/30 bg-amber-950/20 text-amber-400">
+          <div className="flex items-center gap-1.5"><Clock className="w-3 h-3" /> Restored unsaved rows from your last session</div>
+          <button type="button" onClick={clearDraft} className="underline hover:text-amber-300">Discard</button>
+        </div>
+      )}
 
       <p className="text-[10px] text-rmpg-400 leading-relaxed">
         One row per defendant — each row creates one dispatch job. Tip: copy from a spreadsheet (columns:

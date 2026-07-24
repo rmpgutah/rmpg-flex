@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../RichTextArea';
 import {
   X, MapPin, FileText, Camera, Send, CheckCircle, AlertTriangle,
-  Loader2, Navigation, Trash2,
+  Loader2, Navigation, Trash2, Clock,
 } from 'lucide-react';
 import SignaturePad from '../SignaturePad';
 import { apiFetch, apiPostForm } from '../../hooks/useApi';
+import { useFormDraft } from '../../hooks/useFormDraft';
 import type { ServeJob, ServeAttemptData } from '../../types';
 import {
   PSO_CATEGORIES, codesInCategory, lookupPsoCode,
@@ -90,6 +91,50 @@ function fmtHm(hm: string): string {
   return `${h12}:${min} ${period}`;
 }
 
+// ─── Draft-persisted text/dropdown fields ────────────────────────────────
+// GPS, photos, signature, and transient UI state (step, picker category)
+// are intentionally excluded — they're not typed text at risk of loss, and
+// GPS/photos re-acquire fresh on next open anyway.
+interface AttemptDraftForm {
+  attemptType: AttemptType | null;
+  failedReason: FailedReason | null;
+  customReason: string;
+  dispositionCode: string;
+  nextAttemptDate: string;
+  nextAttemptStart: string;
+  nextAttemptEnd: string;
+  nextAttemptText: string;
+  nextAttemptTextDirty: boolean;
+  ageRange: string;
+  height: string;
+  weight: string;
+  hairColor: string;
+  clothing: string;
+  personServedName: string;
+  relationship: string;
+  notes: string;
+}
+
+const EMPTY_ATTEMPT_DRAFT: AttemptDraftForm = {
+  attemptType: null,
+  failedReason: null,
+  customReason: '',
+  dispositionCode: '',
+  nextAttemptDate: '',
+  nextAttemptStart: '',
+  nextAttemptEnd: '',
+  nextAttemptText: '',
+  nextAttemptTextDirty: false,
+  ageRange: '',
+  height: '',
+  weight: '',
+  hairColor: '',
+  clothing: '',
+  personServedName: '',
+  relationship: '',
+  notes: '',
+};
+
 // ─── Haversine Distance ─────────────────────────────────────────────────
 
 function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -120,43 +165,46 @@ export default function ServeAttemptModal({
     loading: true, error: null,
   });
 
-  // Step 2 — Type
-  const [attemptType, setAttemptType] = useState<AttemptType | null>(null);
-  const [failedReason, setFailedReason] = useState<FailedReason | null>(null);
-  // Free-text reason captured only when failedReason === 'other'. Persisted
-  // by prepending to the notes column on submit (no dedicated column).
-  const [customReason, setCustomReason] = useState('');
-  // Structured PS code — the new source of truth. Picker writes here; submit
-  // sends it as `disposition_code`. The server derives the legacy `result`
-  // enum from the code, so we only fill `failedReason` for the legacy code
-  // path (no structured pick).
-  const [dispositionCode, setDispositionCode] = useState<string>('');
+  // Text/dropdown fields — draft-persisted so an in-progress attempt survives
+  // a lost connection, accidental close, or device switch (photos/signature/
+  // GPS are excluded; see AttemptDraftForm comment above).
+  const {
+    form: draft, setForm: setDraft, wasRestored, clearDraft, signalSaved, snapshot,
+  } = useFormDraft<AttemptDraftForm>({
+    storageKey: `rmpg_serve_attempt_draft_${job.id}`,
+    defaultValue: EMPTY_ATTEMPT_DRAFT,
+    isActive: isOpen,
+  });
+  const {
+    attemptType, failedReason, customReason, dispositionCode,
+    nextAttemptDate, nextAttemptStart, nextAttemptEnd, nextAttemptText, nextAttemptTextDirty,
+    ageRange, height, weight, hairColor, clothing, personServedName, relationship, notes,
+  } = draft;
+  const setAttemptType = (v: AttemptType | null) => setDraft({ ...draft, attemptType: v });
+  const setFailedReason = (v: FailedReason | null) => setDraft({ ...draft, failedReason: v });
+  const setCustomReason = (v: string) => setDraft({ ...draft, customReason: v });
+  const setDispositionCode = (v: string) => setDraft({ ...draft, dispositionCode: v });
+  const setNextAttemptDate = (v: string) => setDraft({ ...draft, nextAttemptDate: v });
+  const setNextAttemptStart = (v: string) => setDraft({ ...draft, nextAttemptStart: v });
+  const setNextAttemptEnd = (v: string) => setDraft({ ...draft, nextAttemptEnd: v });
+  const setNextAttemptText = (v: string) => setDraft({ ...draft, nextAttemptText: v });
+  const setNextAttemptTextDirty = (v: boolean) => setDraft({ ...draft, nextAttemptTextDirty: v });
+  const setAgeRange = (v: string) => setDraft({ ...draft, ageRange: v });
+  const setHeight = (v: string) => setDraft({ ...draft, height: v });
+  const setWeight = (v: string) => setDraft({ ...draft, weight: v });
+  const setHairColor = (v: string) => setDraft({ ...draft, hairColor: v });
+  const setClothing = (v: string) => setDraft({ ...draft, clothing: v });
+  const setPersonServedName = (v: string) => setDraft({ ...draft, personServedName: v });
+  const setRelationship = (v: string) => setDraft({ ...draft, relationship: v });
+  const setNotes = (v: string) => setDraft({ ...draft, notes: v });
+
   // Category the operator drilled into on the structured picker. UI-only
   // state — drives which sub-codes are listed below the category buttons.
   const [pickerCategory, setPickerCategory] = useState<string | null>(null);
 
-  // Next-attempt window — operator-set, lives on the parent serve_queue row,
-  // surfaced verbatim on the Notice of Attempt PDF. The picker builds a
-  // sentence; the operator can override it via the editable text field.
-  const [nextAttemptDate, setNextAttemptDate] = useState('');
-  const [nextAttemptStart, setNextAttemptStart] = useState('');
-  const [nextAttemptEnd, setNextAttemptEnd] = useState('');
-  const [nextAttemptText, setNextAttemptText] = useState('');
-  // Once the user edits the text manually, stop overwriting it when they
-  // tweak the picker — they may have refined the wording on purpose.
-  const [nextAttemptTextDirty, setNextAttemptTextDirty] = useState(false);
-
   // Step 3 — Documentation
   const [photos, setPhotos] = useState<{ id: string; url: string }[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [ageRange, setAgeRange] = useState('');
-  const [height, setHeight] = useState('');
-  const [weight, setWeight] = useState('');
-  const [hairColor, setHairColor] = useState('');
-  const [clothing, setClothing] = useState('');
-  const [personServedName, setPersonServedName] = useState('');
-  const [relationship, setRelationship] = useState('');
-  const [notes, setNotes] = useState('');
 
   // Step 4 — Signature & Submit
   const [signature, setSignature] = useState<string | null>(null);
@@ -194,31 +242,17 @@ export default function ServeAttemptModal({
   useEffect(() => {
     if (isOpen) {
       acquireGps();
-      // Reset all state on open
+      // Reset UI/binary state on open — text fields are handled by
+      // useFormDraft (restores a pending draft or starts from EMPTY_ATTEMPT_DRAFT).
       setStep(0);
-      setAttemptType(null);
-      setFailedReason(null);
-      setCustomReason('');
-      setDispositionCode('');
       setPickerCategory(null);
-      setNextAttemptDate('');
-      setNextAttemptStart('');
-      setNextAttemptEnd('');
-      setNextAttemptText('');
-      setNextAttemptTextDirty(false);
       setPhotos([]);
-      setAgeRange('');
-      setHeight('');
-      setWeight('');
-      setHairColor('');
-      setClothing('');
-      setPersonServedName('');
-      setRelationship('');
-      setNotes('');
       setSignature(null);
       setSubmitting(false);
       setSubmitResult(null);
+      setTimeout(() => snapshot(), 0);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, acquireGps]);
 
   // ─── Picker context ────────────────────────────────────────────────
@@ -348,6 +382,7 @@ export default function ServeAttemptModal({
       }
 
       const result = await onSubmit(data);
+      signalSaved();
       setSubmitResult(result);
     } catch {
       // error handled by parent
@@ -357,6 +392,8 @@ export default function ServeAttemptModal({
   };
 
   if (!isOpen) return null;
+
+  const guardedClose = () => { clearDraft(); onClose(); };
 
   // Failed attempts walk the 3-step fast path (Location → Reason → Submit).
   // Anything else (or before a type is picked) uses the full 4-step flow.
@@ -1052,12 +1089,23 @@ export default function ServeAttemptModal({
             Document Service Attempt — {job.recipient_name}
           </h2>
           <button type="button"
-            onClick={onClose}
+            onClick={guardedClose}
             className="text-rmpg-400 hover:text-rmpg-200 transition-colors p-1 rounded-[2px] hover:bg-surface-raised focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
             aria-label="Close modal">
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {wasRestored && (
+          <div className="flex items-center justify-between px-4 py-2 border-b border-amber-500/30 bg-amber-950/20">
+            <div className="flex items-center gap-1.5 text-[10px] text-amber-400 font-medium">
+              <Clock className="w-3.5 h-3.5" /> Restored unsaved attempt details
+            </div>
+            <button type="button" onClick={clearDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+              Discard
+            </button>
+          </div>
+        )}
 
         {/* Step indicator */}
         <StepIndicator />

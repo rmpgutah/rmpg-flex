@@ -52,7 +52,7 @@ export interface OfficerFormData {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: OfficerFormData) => void;
+  onSubmit: (data: OfficerFormData) => Promise<void>;
   isSubmitting: boolean;
   initialData?: Partial<OfficerFormData> & { id?: string };
   mode?: 'create' | 'edit';
@@ -120,10 +120,17 @@ export default function OfficerFormModal({
     }
   }, [isOpen, initialData]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    signalSaved();
-    onSubmit(form);
+    try {
+      await onSubmit(form);
+      // Only clear the draft after the save is confirmed successful — the
+      // parent's catch handler already surfaces a failure toast and keeps
+      // the modal open, so on rejection we deliberately keep the draft.
+      signalSaved();
+    } catch {
+      /* draft intentionally preserved on failure */
+    }
   };
 
   const handleClose = () => { setForm(EMPTY); onClose(); };

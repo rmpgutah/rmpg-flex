@@ -18,7 +18,7 @@ export interface TimeEntryEditData {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: TimeEntryEditData) => void;
+  onSubmit: (data: TimeEntryEditData) => Promise<void>;
   isSubmitting: boolean;
   entry: TimeEntry | null;
 }
@@ -37,6 +37,7 @@ export default function TimeEntryEditModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<{ clockIn: string; clockOut: string; startMi: string; endMi: string; reason: string }>({
     storageKey: 'rmpg_personnel_time_entry_form',
@@ -83,18 +84,26 @@ export default function TimeEntryEditModal({
     ? Math.round((endMiNum - startMiNum) * 10) / 10
     : null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!entry || mileageInvalid) return;
-    // Inputs are Mountain-Time wall-clock; store as UTC (app standard).
-    onSubmit({
-      id: entry.id,
-      clock_in: mtDatetimeLocalToUtc(form.clockIn),
-      clock_out: form.clockOut ? mtDatetimeLocalToUtc(form.clockOut) : form.clockOut,
-      starting_mileage: startMiNum,
-      ending_mileage: endMiNum,
-      reason: form.reason.trim(),
-    });
+    try {
+      // Inputs are Mountain-Time wall-clock; store as UTC (app standard).
+      await onSubmit({
+        id: entry.id,
+        clock_in: mtDatetimeLocalToUtc(form.clockIn),
+        clock_out: form.clockOut ? mtDatetimeLocalToUtc(form.clockOut) : form.clockOut,
+        starting_mileage: startMiNum,
+        ending_mileage: endMiNum,
+        reason: form.reason.trim(),
+      });
+      // Only clear the draft once the save is confirmed successful — on
+      // rejection the parent already shows a failure toast and keeps the
+      // modal open, so we deliberately keep the draft.
+      signalSaved();
+    } catch {
+      /* draft intentionally preserved on failure */
+    }
   };
 
   const handleClose = () => { setForm({ clockIn: '', clockOut: '', startMi: '', endMi: '', reason: '' }); onClose(); };

@@ -11,8 +11,9 @@
 // ============================================================
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Save, Loader2, AlertTriangle, Trash2, Camera, PenTool } from 'lucide-react';
+import { X, Save, Loader2, AlertTriangle, Trash2, Camera, PenTool, Clock } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
+import { useFormDraft } from '../../hooks/useFormDraft';
 import type { ServeAttempt } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
 import {
@@ -56,6 +57,20 @@ function fromDateTimeLocal(local: string): string | null {
   return `${m[1]} ${m[2]}:${m[3] ?? '00'}`;
 }
 
+interface EditAttemptForm {
+  attemptAt: string;
+  attemptType: AttemptTypeOption;
+  dispositionCode: string;
+  notes: string;
+}
+
+const EMPTY_EDIT_FORM: EditAttemptForm = {
+  attemptAt: '',
+  attemptType: 'failed',
+  dispositionCode: '',
+  notes: '',
+};
+
 export default function EditServeAttemptModal({
   isOpen,
   onClose,
@@ -64,22 +79,38 @@ export default function EditServeAttemptModal({
   onSaved,
   onDelete,
 }: EditServeAttemptModalProps) {
-  const [attemptAt, setAttemptAt] = useState<string>('');
-  const [attemptType, setAttemptType] = useState<AttemptTypeOption>('failed');
-  const [dispositionCode, setDispositionCode] = useState<string>('');
-  const [notes, setNotes] = useState<string>('');
+  const {
+    form, setForm, wasRestored, clearDraft, signalSaved, snapshot,
+  } = useFormDraft<EditAttemptForm>({
+    storageKey: `rmpg_edit_serve_attempt_${attempt.id}`,
+    defaultValue: EMPTY_EDIT_FORM,
+    isActive: isOpen,
+  });
+  const { attemptAt, attemptType, dispositionCode, notes } = form;
+  const setAttemptAt = (v: string) => setForm({ ...form, attemptAt: v });
+  const setAttemptType = (v: AttemptTypeOption) => setForm({ ...form, attemptType: v });
+  const setDispositionCode = (v: string) => setForm({ ...form, dispositionCode: v });
+  const setNotes = (v: string) => setForm({ ...form, notes: v });
+
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset form whenever the modal opens against a (possibly different) attempt.
+  // Reset form whenever the modal opens against a (possibly different) attempt,
+  // unless a local draft for this exact attempt was just restored.
   useEffect(() => {
     if (!isOpen) return;
-    setAttemptAt(toDateTimeLocal(attempt.attempt_at));
-    setAttemptType(attempt.attempt_type || 'failed');
-    setDispositionCode(attempt.disposition_code || '');
-    setNotes(attempt.notes || '');
+    if (!wasRestored) {
+      setForm({
+        attemptAt: toDateTimeLocal(attempt.attempt_at),
+        attemptType: attempt.attempt_type || 'failed',
+        dispositionCode: attempt.disposition_code || '',
+        notes: attempt.notes || '',
+      });
+    }
     setError(null);
+    setTimeout(() => snapshot(), 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, attempt]);
 
   // Group codes by category for the picker.
@@ -112,6 +143,7 @@ export default function EditServeAttemptModal({
         method: 'PUT',
         body: JSON.stringify(body),
       });
+      signalSaved();
       onSaved();
       onClose();
     } catch (err) {
@@ -123,13 +155,15 @@ export default function EditServeAttemptModal({
 
   if (!isOpen) return null;
 
+  const guardedClose = () => { clearDraft(); onClose(); };
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-attempt-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      onClick={onClose}
+      onClick={guardedClose}
     >
       <div
         className="panel-beveled w-full max-w-lg rounded-[2px] bg-surface-base p-4 shadow-xl"
@@ -142,7 +176,7 @@ export default function EditServeAttemptModal({
           </h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={guardedClose}
             className="text-rmpg-400 hover:text-rmpg-200 p-1"
             aria-label="Close"
           >
@@ -151,6 +185,16 @@ export default function EditServeAttemptModal({
         </div>
 
         <div className="space-y-3 text-xs">
+          {wasRestored && (
+            <div className="flex items-center justify-between px-2 py-1.5 rounded-[2px] border border-amber-500/30 bg-amber-950/20">
+              <div className="flex items-center gap-1.5 text-[10px] text-amber-400 font-medium">
+                <Clock className="w-3 h-3" /> Restored unsaved edits
+              </div>
+              <button type="button" onClick={clearDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                Discard
+              </button>
+            </div>
+          )}
           {/* Attempt timestamp */}
           <div>
             <label className="text-[10px] text-amber-400 block mb-0.5" htmlFor="edit-attempt-at">Attempted At</label>
@@ -315,7 +359,7 @@ export default function EditServeAttemptModal({
           )}
           <button
             type="button"
-            onClick={onClose}
+            onClick={guardedClose}
             disabled={saving}
             className="text-[11px] text-rmpg-300 hover:text-rmpg-100 px-3 py-1.5"
           >

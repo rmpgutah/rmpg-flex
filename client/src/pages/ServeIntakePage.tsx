@@ -670,7 +670,14 @@ export default function ServeIntakePage() {
         }
       } else if (isImage) {
         const scan = await ocrScanImage(file);
-        if (scan?.success) {
+        // Attach whenever OCR ran at all, not just when scan.success is true.
+        // success requires a field with confidence > 0.3 (serveIntakeExtract.ts),
+        // but fields can be extracted correctly at a lower self-reported
+        // confidence — gating on success here silently dropped the whole
+        // result (and with it, the "Review" step that fills editOverrides),
+        // even though the field values were right there in scan.fields.
+        // The rasterized-scanned-PDF-page branch above never had this gate.
+        if (scan) {
           ocrResult = scan;
           type = scan.documentType === 'court_docket' ? 'court_filing'
             : scan.documentType === 'field_sheet' ? 'field_sheet'

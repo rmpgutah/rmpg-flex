@@ -6,6 +6,7 @@ import {
   ArrowUpDown, Filter, Shield, FileText, Eye, Navigation,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useFormDraft } from '../../hooks/useFormDraft';
 import { withOneRetry } from '../../utils/retryTransient';
 import { useAuth } from '../../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
@@ -113,7 +114,7 @@ export interface BusinessTabState {
   setShowFormModal: (v: boolean) => void;
   editingBusiness: Business | null;
   formSubmitting: boolean;
-  handleSubmit: (data: Partial<Business>) => Promise<void>;
+  handleSubmit: (data: Partial<Business>) => Promise<boolean>;
   openEdit: (b: Business) => void;
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
@@ -171,7 +172,11 @@ export function useBusinessTab(props: {
     );
   }, [businesses, searchQuery]);
 
-  const handleSubmit = useCallback(async (data: Partial<Business>) => {
+  // Returns true on a confirmed successful save, false on failure — callers
+  // (BusinessForm's useFormDraft wiring) rely on this to know when it's safe
+  // to clear the persisted draft, so a failed save never silently loses
+  // typed data.
+  const handleSubmit = useCallback(async (data: Partial<Business>): Promise<boolean> => {
     setFormSubmitting(true);
     try {
       if (editingBusiness) {
@@ -182,10 +187,13 @@ export function useBusinessTab(props: {
       setShowFormModal(false);
       setEditingBusiness(null);
       fetchBusinesses();
+      setFormSubmitting(false);
+      return true;
     } catch (err: any) {
       setError(err.message || 'Failed to save business');
+      setFormSubmitting(false);
+      return false;
     }
-    setFormSubmitting(false);
   }, [editingBusiness, fetchBusinesses, setError]);
 
   const openEdit = useCallback((b: Business) => {
@@ -485,11 +493,11 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
 
 function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
   initial: Business | null;
-  onSubmit: (data: Partial<Business>) => Promise<void>;
+  onSubmit: (data: Partial<Business>) => Promise<boolean>;
   onCancel: () => void;
   submitting: boolean;
 }) {
-  const [form, setForm] = useState({
+  const defaultForm = {
     name: initial?.name || '',
     dba_name: initial?.dba_name || '',
     business_type: initial?.business_type || '',
@@ -516,8 +524,23 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
     // shows for an already-applied record on open, and stays current
     // immediately after a fresh Apply without reopening the form.
     parcel_number: (initial as any)?.parcel_number || '',
+  };
+  // Cross-device draft persistence — keyed per-record (edit) or a shared
+  // "new" key (create), matching the pattern used by the other records
+  // form modals (PersonFormModal, VehicleFormModal, etc).
+  const { form, setForm, clearDraft } = useFormDraft({
+    storageKey: `rmpg_business_form_${initial?.id ?? 'new'}`,
+    defaultValue: defaultForm,
   });
   const set = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
+
+  const handleSave = async () => {
+    const ok = await onSubmit(form);
+    // Only clear the draft after the save is confirmed successful — a
+    // failed save (network/validation error) must not silently lose the
+    // user's typed data.
+    if (ok) clearDraft();
+  };
 
   // ── Salt Lake County Assessor on-blur lookup ──
   // Panel renders below the address input. Apply is gated on `initial?.id`
@@ -659,7 +682,7 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
 
       <div className="flex justify-end gap-2 pt-1">
         <button type="button" onClick={onCancel} className="toolbar-btn">Cancel</button>
-        <button type="button" onClick={() => onSubmit(form)} disabled={!form.name || submitting} className="toolbar-btn toolbar-btn-primary">
+        <button type="button" onClick={handleSave} disabled={!form.name || submitting} className="toolbar-btn toolbar-btn-primary">
           {submitting ? 'Saving...' : initial ? 'Update' : 'Create'}
         </button>
       </div>

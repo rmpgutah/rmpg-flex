@@ -7,6 +7,7 @@ import { useToast } from '../../../components/ToastProvider';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import { asArray } from '../../../utils/asArray';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 
 interface Benefit {
   id: number;
@@ -31,6 +32,8 @@ const COVERAGE_LABELS: Record<string, string> = {
   family: 'Family',
 };
 
+const EMPTY_BENEFIT_FORM = { officer_id: '', benefit_type: 'health', plan_name: '', provider: '', coverage_level: 'individual', employee_cost: 0, employer_cost: 0, effective_date: '' };
+
 export default function BenefitsTab({ userRole }: { userRole: string }) {
   const { addToast } = useToast();
   const [benefits, setBenefits] = useState<Benefit[]>([]);
@@ -39,7 +42,11 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [officers, setOfficers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [form, setForm] = useState({ officer_id: '', benefit_type: 'health', plan_name: '', provider: '', coverage_level: 'individual', employee_cost: 0, employer_cost: 0, effective_date: '' });
+  const { form, setForm, isDirty, wasRestored, clearDraft, snapshot } = useFormDraft<typeof EMPTY_BENEFIT_FORM>({
+    storageKey: 'rmpg_hr_benefits_form',
+    defaultValue: EMPTY_BENEFIT_FORM,
+    isActive: showForm,
+  });
 
   const isManager = ['admin', 'manager'].includes(userRole);
 
@@ -82,7 +89,13 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
     if (!form.officer_id) { addToast('Please select an officer', 'error'); return; }
     if (!form.benefit_type) { addToast('Benefit type is required', 'error'); return; }
     setSubmitting(true);
-    try { await apiFetch('/hr/benefits', { method: 'POST', body: JSON.stringify({ ...form, officer_id: Number(form.officer_id) }) }); addToast('Benefit added', 'success'); setShowForm(false); setForm({ officer_id: '', benefit_type: 'health', plan_name: '', provider: '', coverage_level: 'individual', employee_cost: 0, employer_cost: 0, effective_date: '' }); load(); } catch { addToast('Failed to add benefit', 'error'); } finally { setSubmitting(false); }
+    try {
+      await apiFetch('/hr/benefits', { method: 'POST', body: JSON.stringify({ ...form, officer_id: Number(form.officer_id) }) });
+      addToast('Benefit added', 'success');
+      setShowForm(false);
+      clearDraft();
+      load();
+    } catch { addToast('Failed to add benefit', 'error'); } finally { setSubmitting(false); }
   };
 
   // Filter then group by officer
@@ -108,12 +121,23 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
             <input id="ff-benefitstab-0" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search benefits..." aria-label="Search benefits by officer, type, or plan" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
           </div>
-          {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Benefit</button>}
+          {isManager && <button type="button" onClick={() => { const next = !showForm; setShowForm(next); if (next) snapshot(); }} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Benefit</button>}
         </div>
       </div>
 
       {showForm && isManager && (
         <div className="panel-beveled p-4 space-y-3">
+          {wasRestored && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-amber-400 animate-pulse" />
+                <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+              </div>
+              <button type="button" onClick={() => { setForm({ ...EMPTY_BENEFIT_FORM }); snapshot(); }} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                Discard
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label htmlFor="ff-benefitstab-1" className="field-label">Officer *</label>
@@ -161,7 +185,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={submitting || !form.officer_id} className="toolbar-btn toolbar-btn-success text-xs disabled:opacity-50">{submitting ? <><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Saving...</> : 'Save'}</button>
-            <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="toolbar-btn text-xs">Cancel</button>
+            <button type="button" onClick={() => { if (isDirty && !window.confirm('Discard unsaved changes?')) return; setShowForm(false); }} disabled={submitting} className="toolbar-btn text-xs">Cancel</button>
           </div>
         </div>
       )}
