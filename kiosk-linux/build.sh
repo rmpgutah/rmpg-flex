@@ -575,3 +575,32 @@ ls -la "$OUTPUT_DIR/images/bzImage" "$OUTPUT_DIR/images/rootfs.cpio.gz" 2>/dev/n
   echo "ERROR: expected output images not found in $OUTPUT_DIR/images/ — build likely failed partway; check the make output above." >&2
   exit 1
 }
+
+# Sub-project 5: assemble the A/B boot-partition disk image from the
+# bzImage/rootfs.cpio.gz just built. This runs in its own SEPARATE, small
+# Docker image (kiosk-linux-disktools:latest, from docker/Dockerfile.disktools)
+# rather than $IMAGE_TAG (kiosk-linux-buildroot:latest) — that image stays
+# arch-native for the multi-hour Buildroot compile above. Ubuntu's
+# syslinux-common/extlinux packages this step needs have no arm64 build at
+# all, so kiosk-linux-disktools:latest is built (and run) with
+# --platform linux/amd64 instead of forcing the whole compile under QEMU
+# emulation. It also runs as its own --privileged container invocation
+# (needs losetup/mount, which the rest of this script's unprivileged --user
+# build steps do not have and do not need) — kept separate from the main
+# build step above to limit that extra privilege to only this one, narrowly-
+# scoped operation.
+DISKTOOLS_IMAGE_TAG="kiosk-linux-disktools:latest"
+
+echo "Building the disk-assembly tools image ($DISKTOOLS_IMAGE_TAG) ..."
+docker build --platform linux/amd64 -t "$DISKTOOLS_IMAGE_TAG" -f "$SCRIPT_DIR/docker/Dockerfile.disktools" "$SCRIPT_DIR/docker"
+
+echo "Assembling the A/B boot-partition disk image ..."
+docker run --rm --privileged --platform linux/amd64 \
+  -v "$SCRIPT_DIR":/kiosk-linux \
+  "$DISKTOOLS_IMAGE_TAG" \
+  bash /kiosk-linux/scripts/assemble-disk-image.sh
+
+ls -la "$OUTPUT_DIR/images/disk.img" 2>/dev/null || {
+  echo "ERROR: expected disk.img not found in $OUTPUT_DIR/images/ — disk assembly likely failed; check the output above." >&2
+  exit 1
+}
