@@ -176,6 +176,28 @@ const DEFAULT_FORM_DATA = {
 
 const DRAFT_KEY = 'rmpg_new_call_draft';
 
+// D1-backed mirror of the draft, same wire contract as useFormDraft.ts
+// (/api/form-drafts/:key, PUT {data}/GET/DELETE) — this modal predates
+// useFormDraft and has its own bespoke restore-on-open flow (draft restore
+// is keyed off `isOpen` transitions, not mount, because the modal stays
+// mounted-but-hidden between opens), so it mirrors the same endpoint
+// directly rather than adopting the hook wholesale. Every write is
+// fire-and-forget; localStorage remains the fast/synchronous source of
+// truth, D1 is best-effort cross-device/cleared-storage recovery.
+function draftPath(key: string): string {
+  return `/form-drafts/${encodeURIComponent(key)}`;
+}
+function syncDraftToD1(key: string, data: unknown): void {
+  apiFetch(draftPath(key), { method: 'PUT', body: JSON.stringify({ data }) }).catch(() => {
+    // Offline/network failure — localStorage still has it; next save retries.
+  });
+}
+function deleteDraftFromD1(key: string): void {
+  apiFetch(draftPath(key), { method: 'DELETE' }).catch(() => {
+    // Best-effort — an orphaned D1 row is harmless, overwritten by the next save.
+  });
+}
+
 export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [], clients = [], initialData, defaultMode = 'quick' }: NewCallModalProps) {
   const [formData, setFormData] = useState({ ...DEFAULT_FORM_DATA });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -238,7 +260,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
       setFormData({ ...DEFAULT_FORM_DATA, ...initialData } as typeof DEFAULT_FORM_DATA);
       setHasDraft(false);
     } else if (isOpen) {
-      // Check for saved draft
+      // Check for saved draft (localStorage first — fast/synchronous)
       const draft = localStorage.getItem(DRAFT_KEY);
       if (draft) {
         try {
@@ -254,6 +276,13 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
       }
       setFormData({ ...DEFAULT_FORM_DATA });
       setHasDraft(false);
+      // No local draft (cleared storage, private window, switched device) —
+      // fall back to the D1-mirrored copy so in-progress typing isn't lost.
+      apiFetch<{ data: typeof DEFAULT_FORM_DATA | null }>(draftPath(DRAFT_KEY)).then((res) => {
+        if (res.data == null) return;
+        setFormData({ ...DEFAULT_FORM_DATA, ...res.data });
+        setHasDraft(true);
+      }).catch(() => { /* offline or no D1 draft — stay on defaults */ });
     }
     if (isOpen) setMode(defaultMode);
   }, [isOpen, initialData, defaultMode]);
@@ -268,6 +297,9 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
     });
     if (hasData) {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...formData, _savedAt: Date.now() }));
+      syncDraftToD1(DRAFT_KEY, formData);
+    } else {
+      deleteDraftFromD1(DRAFT_KEY);
     }
     setHasDraft(false);
     onClose();
@@ -275,6 +307,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
   const discardDraft = () => {
     localStorage.removeItem(DRAFT_KEY);
+    deleteDraftFromD1(DRAFT_KEY);
     setFormData({ ...DEFAULT_FORM_DATA });
     setHasDraft(false);
   };
@@ -388,8 +421,11 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
         status: formData.is_historical ? (formData.historical_status || 'closed') : 'pending',
         ...historicalFields,
       } as any);
-      // Only reset form on success (parent closes the modal)
+      // Only reset form on success (parent closes the modal) — draft is only
+      // ever cleared here, AFTER onSubmit has resolved successfully, never
+      // pre-emptively or in the catch block below.
       localStorage.removeItem(DRAFT_KEY);
+      deleteDraftFromD1(DRAFT_KEY);
       setHasDraft(false);
       setFormData({ ...DEFAULT_FORM_DATA });
     } catch {
