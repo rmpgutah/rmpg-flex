@@ -1013,6 +1013,28 @@ calls.post('/:id/status', async (c) => {
       }).catch(() => {});
     }
 
+    // ── Dial Connect status webhook ──────────────────────────────
+    // Fire-and-forget: if this CFS was created via the Dial Connect
+    // integration push (POST /api/integrations/calls-for-service,
+    // external_source_system = 'dial_connect'), notify Dial Connect of the
+    // new status so its own Incident row doesn't go stale. Never blocks or
+    // fails this response -- the status transition has already succeeded
+    // by this point regardless of whether the notification lands.
+    const webhookUrl = (c.env as Record<string, unknown>).DIAL_CONNECT_WEBHOOK_URL as string | undefined;
+    const webhookSecret = (c.env as Record<string, unknown>).DIAL_CONNECT_WEBHOOK_SECRET as string | undefined;
+    if (webhookUrl && webhookSecret) {
+      queryFirst<{ external_source_system: string | null }>(
+        db, 'SELECT external_source_system FROM calls_for_service_ext WHERE id = ?', id
+      ).then((ext) => {
+        if (ext?.external_source_system !== 'dial_connect') return;
+        return fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: webhookSecret },
+          body: JSON.stringify({ cfsId: parseInt(id, 10), callNumber: updated?.call_number, status }),
+        });
+      }).catch((err) => console.error('[dispatch] Dial Connect status webhook failed:', err));
+    }
+
     // Broadcast so every connected dispatcher/map/MDT client re-renders
     // without a manual refresh. call_created already broadcasts (above, in
     // POST /) but this status-transition endpoint never did — clients only

@@ -119,6 +119,11 @@ export type Bindings = {
   DIALER_OIDC_CLIENT_ID?: string;
   DIALER_OIDC_CLIENT_SECRET?: string;
   DIALER_OIDC_REDIRECT_URI?: string;
+  // Outbound status-sync webhook to Dial Connect (fire-and-forget, called
+  // from POST /:id/status in src/routes/dispatch/calls.ts). Set via
+  // wrangler.toml vars (URL) + `wrangler secret put DIAL_CONNECT_WEBHOOK_SECRET`.
+  DIAL_CONNECT_WEBHOOK_URL?: string;
+  DIAL_CONNECT_WEBHOOK_SECRET?: string;
   // WebBrowserSessionDO namespace — one instance per active Web Company
   // Browser session (idFromName(sessionId)). Holds a real headless Chrome
   // instance via Browser Rendering and streams screenshot frames to the
