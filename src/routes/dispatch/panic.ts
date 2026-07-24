@@ -153,9 +153,20 @@ panic.post('/panic', async (c) => {
         await execute(db,
           `UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?`,
           JSON.stringify(available.map((u) => u.id)), backupCallId);
+        const backupUnits = JSON.stringify(available.map((u) => u.call_sign));
         await execute(db,
           `UPDATE panic_alerts SET backup_call_id = ?, backup_units = ? WHERE id = ?`,
-          backupCallId, JSON.stringify(available.map((u) => u.call_sign)), panicId);
+          backupCallId, backupUnits, panicId);
+        // `created` was fetched before this block ran (it's what the
+        // response body and the broadcasts above already used) — without
+        // updating it here, the 201 response and every broadcast report
+        // backup_call_id/backup_units as null even though the DB row (and
+        // the units it dispatched) were genuinely updated. Patch the
+        // in-memory snapshot rather than re-querying.
+        if (created) {
+          created.backup_call_id = backupCallId;
+          created.backup_units = backupUnits;
+        }
         broadcastAll('dispatch_update', {
           action: 'backup_dispatched',
           panic_id: panicId,
