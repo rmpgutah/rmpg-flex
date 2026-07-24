@@ -43,6 +43,20 @@ MONITOR_SOCK="$(mktemp -u /tmp/kiosk-linux-qemu-monitor.XXXXXX.sock)"
 
 rm -f "$LOG_FILE" "$SCREENSHOT_FILE" "$MONITOR_SOCK"
 
+# format=raw: disk.img (assembled by assemble-disk-image.sh) is a plain raw
+# image, not qcow2/vmdk — this silences QEMU's raw-format-probe warning and
+# skips the (irrelevant) format auto-detection.
+#
+# -no-reboot: A/B boot partition (sub-project 5) — if S01kiosk-boot-slot-check
+# force-reboots after 3 failed attempts (flipping extlinux.conf's default
+# slot), -no-reboot makes QEMU EXIT on that guest reboot instead of actually
+# rebooting inside this same process/log. This is intentional, not a bug: the
+# flipped default and reset boot_attempts counter are already persisted to
+# disk.img by that point, so the self-heal is real — verifying it just takes
+# a SEPARATE run of this script afterward (which will show a fresh
+# KIOSK_LINUX_BOOT_ATTEMPT 1 on the now-recovered slot) rather than a second
+# boot cycle appearing in the same log file. Also prevents an actual
+# both-slots-broken infinite reboot loop from hanging this test harness.
 "$TIMEOUT_CMD" 150 qemu-system-x86_64 \
   -drive file="$DISK_IMG",if=virtio,format=raw \
   -m 1024 \

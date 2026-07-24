@@ -592,7 +592,7 @@ ls -la "$OUTPUT_DIR/images/bzImage" "$OUTPUT_DIR/images/rootfs.cpio.gz" 2>/dev/n
 DISKTOOLS_IMAGE_TAG="kiosk-linux-disktools:latest"
 
 echo "Building the disk-assembly tools image ($DISKTOOLS_IMAGE_TAG) ..."
-docker build --platform linux/amd64 -t "$DISKTOOLS_IMAGE_TAG" -f "$SCRIPT_DIR/docker/Dockerfile.disktools" "$SCRIPT_DIR/docker"
+docker build --platform linux/amd64 ${DOCKER_NETWORK_ARGS[@]+"${DOCKER_NETWORK_ARGS[@]}"} -t "$DISKTOOLS_IMAGE_TAG" -f "$SCRIPT_DIR/docker/Dockerfile.disktools" "$SCRIPT_DIR/docker"
 
 echo "Assembling the A/B boot-partition disk image ..."
 docker run --rm --privileged --platform linux/amd64 \
