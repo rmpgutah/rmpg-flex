@@ -35,7 +35,7 @@ import {
 } from './store';
 import { reconcileHits, type CanonicalHit } from './reconcile';
 import { normalizeCharge } from './chargeNormalize';
-import { jitterDelayMs } from './resilience';
+import { jitterDelayMs, isCircuitOpen } from './resilience';
 import type { WarrantSourceAdapter, RawWarrantHit, PersonRow } from './types';
 
 // Cap each firing to the SAME roster slice the Utah poller uses, so the scraped
@@ -468,10 +468,24 @@ export async function runAllSourceScans(
       degraded: false,
     };
 
-    // TODO(phase-2): gate each source on circuit-breaker state derived from
-    // per-source run history (isCircuitOpen over trailing error counts) once a
-    // per-source run-history table exists. For now every adapter is attempted
-    // and each person fetch is individually try/caught.
+    // Circuit breaker: mirrors the same isCircuitOpen(consecutive_errors)
+    // trick circuitOpenFromConsecutiveErrors() uses for the ScrapersTab
+    // badge (src/routes/scrapers.ts) and runUtahWarrantScan now uses to gate
+    // itself — no separate per-source run-history table needed, the single
+    // running tally is enough. Before this, a source could rack up dozens of
+    // real consecutive cron-tick failures (ada-county-id hit 50 in one tick
+    // on 2026-07-18) while every subsequent tick kept hammering it anyway;
+    // this closes that gap for the per-person adapters (ada-county, natrona).
+    const cfgRow = await queryFirst<{ consecutive_errors: number | null }>(
+      db, 'SELECT consecutive_errors FROM warrant_scraper_config WHERE source_name = ?', sourceKey,
+    );
+    if (isCircuitOpen(Array(cfgRow?.consecutive_errors ?? 0).fill(1))) {
+      console.warn(
+        `[warrantSources.runScan] ${sourceKey} circuit open (${cfgRow?.consecutive_errors} consecutive failures) — skipping this tick.`,
+      );
+      scraped.push(summary);
+      continue;
+    }
 
     for (let i = 0; i < persons.length; i++) {
       if (Date.now() - perPersonLegStartedAt > PER_PERSON_LEG_BUDGET_MS) {
