@@ -755,6 +755,17 @@ function proxyEmailImages(html: string): string {
       const proxyUrl = `${window.location.origin}/api/email/image-proxy?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token)}`;
       return `${before}${proxyUrl}${after}`;
     }
+  ).replace(
+    // Inline CID attachments: the server rewrites cid: refs to a RELATIVE
+    // "/api/email/messages/:id/attachments/:aid?inline=1" src. Same blob:
+    // iframe problem as above (relative src never resolves to our origin),
+    // plus <img> can't send an Authorization header — absolutize and append
+    // the query token the media-path auth fallback accepts.
+    /(<img\b[^>]*?\bsrc\s*=\s*["'])(\/api\/email\/messages\/[^"']+)(["'])/gi,
+    (_match, before, path, after) => {
+      const sep = path.includes('?') ? '&' : '?';
+      return `${before}${window.location.origin}${path}${sep}token=${encodeURIComponent(token)}${after}`;
+    }
   );
 }
 
@@ -862,7 +873,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   if (bodyHtml) {
     // Use a sandboxed iframe approach: render HTML body inside an iframe for print
     // Sanitize the HTML the same way EmailBodyFrame does before injecting into srcdoc
-    const cleanHtml = sanitizeHtml(bodyHtml, EMAIL_SANITIZE_OPTIONS);
+    const cleanHtml = proxyEmailImages(sanitizeHtml(bodyHtml, EMAIL_SANITIZE_OPTIONS));
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
     iframe.sandbox.value = 'allow-same-origin';
