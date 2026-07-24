@@ -95,6 +95,13 @@ else
     echo "KIOSK_LINUX_BROWSER_OK"
     echo "DEBUG cog.log so far:"
     cat /tmp/cog.log
+    # Sub-project 5: this is the "confirmed good" signal S01kiosk-boot-
+    # slot-check's fallback logic relies on — reset the failed-attempt
+    # counter now that this boot has genuinely reached a healthy state.
+    if [ -w /mnt/kiosk-boot/boot_attempts ]; then
+      echo "0" > /mnt/kiosk-boot/boot_attempts
+      echo "KIOSK_LINUX_BOOT_ATTEMPTS_RESET"
+    fi
   else
     echo "KIOSK_LINUX_BROWSER_FAILED (cog exited immediately, see /tmp/cog.log)"
     cat /tmp/cog.log

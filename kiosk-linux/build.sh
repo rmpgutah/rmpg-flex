@@ -81,6 +81,21 @@ IMAGE_TAG="kiosk-linux-buildroot:latest"
 BUILDROOT_VOLUME="${BUILDROOT_VOLUME:-kiosk-linux-buildroot-src}"
 BUILD_OUTPUT_VOLUME="${BUILD_OUTPUT_VOLUME:-kiosk-linux-build-output}"
 
+# Some WSL2 kernels (observed on an aarch64/Windows-on-ARM host, 2026-07-23)
+# ship with no bridge/netfilter kernel modules at all — dockerd then can't
+# create its default docker0 bridge network ("no such device"), which the
+# daemon-level fix is to run with iptables/bridge networking disabled
+# entirely (/etc/docker/daemon.json: {"iptables": false, "bridge": "none"}).
+# With no bridge, containers get no network unless they share the host's
+# network namespace directly. This is opt-in (empty by default) rather than
+# always-on: macOS/Colima's bridge networking already works fine, and forcing
+# --network host there is unnecessary. Set KIOSK_LINUX_DOCKER_NETWORK=host
+# on a host where dockerd has no working bridge network.
+DOCKER_NETWORK_ARGS=()
+if [ -n "${KIOSK_LINUX_DOCKER_NETWORK:-}" ]; then
+  DOCKER_NETWORK_ARGS=(--network "$KIOSK_LINUX_DOCKER_NETWORK")
+fi
+
 mkdir -p "$OUTPUT_DIR/images"
 
 if ! docker info >/dev/null 2>&1; then
@@ -94,7 +109,7 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 echo "Building the Buildroot build-environment image ($IMAGE_TAG) ..."
-docker build -t "$IMAGE_TAG" "$SCRIPT_DIR/docker"
+docker build ${DOCKER_NETWORK_ARGS[@]+"${DOCKER_NETWORK_ARGS[@]}"} -t "$IMAGE_TAG" "$SCRIPT_DIR/docker"
 
 # BUILDROOT_DIR lives inside a named Docker volume (not a host bind mount) so
 # the toolchain Buildroot builds from source persists across runs without
@@ -112,6 +127,7 @@ docker run --rm \
   chown "$(id -u):$(id -g)" /buildroot-src /build-output
 
 docker run --rm \
+  ${DOCKER_NETWORK_ARGS[@]+"${DOCKER_NETWORK_ARGS[@]}"} \
   -e HOME=/tmp/home \
   -e BUILDROOT_TAG="$BUILDROOT_TAG" \
   -v "$SCRIPT_DIR":/kiosk-linux \
@@ -557,5 +573,34 @@ COGHASH
 
 ls -la "$OUTPUT_DIR/images/bzImage" "$OUTPUT_DIR/images/rootfs.cpio.gz" 2>/dev/null || {
   echo "ERROR: expected output images not found in $OUTPUT_DIR/images/ — build likely failed partway; check the make output above." >&2
+  exit 1
+}
+
+# Sub-project 5: assemble the A/B boot-partition disk image from the
+# bzImage/rootfs.cpio.gz just built. This runs in its own SEPARATE, small
+# Docker image (kiosk-linux-disktools:latest, from docker/Dockerfile.disktools)
+# rather than $IMAGE_TAG (kiosk-linux-buildroot:latest) — that image stays
+# arch-native for the multi-hour Buildroot compile above. Ubuntu's
+# syslinux-common/extlinux packages this step needs have no arm64 build at
+# all, so kiosk-linux-disktools:latest is built (and run) with
+# --platform linux/amd64 instead of forcing the whole compile under QEMU
+# emulation. It also runs as its own --privileged container invocation
+# (needs losetup/mount, which the rest of this script's unprivileged --user
+# build steps do not have and do not need) — kept separate from the main
+# build step above to limit that extra privilege to only this one, narrowly-
+# scoped operation.
+DISKTOOLS_IMAGE_TAG="kiosk-linux-disktools:latest"
+
+echo "Building the disk-assembly tools image ($DISKTOOLS_IMAGE_TAG) ..."
+docker build --platform linux/amd64 ${DOCKER_NETWORK_ARGS[@]+"${DOCKER_NETWORK_ARGS[@]}"} -t "$DISKTOOLS_IMAGE_TAG" -f "$SCRIPT_DIR/docker/Dockerfile.disktools" "$SCRIPT_DIR/docker"
+
+echo "Assembling the A/B boot-partition disk image ..."
+docker run --rm --privileged --platform linux/amd64 \
+  -v "$SCRIPT_DIR":/kiosk-linux \
+  "$DISKTOOLS_IMAGE_TAG" \
+  bash /kiosk-linux/scripts/assemble-disk-image.sh
+
+ls -la "$OUTPUT_DIR/images/disk.img" 2>/dev/null || {
+  echo "ERROR: expected disk.img not found in $OUTPUT_DIR/images/ — disk assembly likely failed; check the output above." >&2
   exit 1
 }
