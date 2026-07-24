@@ -43,16 +43,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     flex \
     bison \
     libssl-dev \
-    parted \
-    util-linux \
-    e2fsprogs \
-    syslinux-common \
-    extlinux \
     && rm -rf /var/lib/apt/lists/*
-# parted/util-linux/e2fsprogs/syslinux-common/extlinux: sub-project 5's
-# disk-image-assembly script (kiosk-linux/scripts/assemble-disk-image.sh)
-# partitions a raw virtio-blk image, formats an EXT2 boot partition, and
-# installs syslinux's MBR bootstrap + the extlinux bootloader onto it.
 # libelf-dev/flex/bison/libssl-dev: not in Buildroot's own "Mandatory packages"
 # list, but the Linux kernel build's host-side tooling needs them regardless
 # (objtool -- ORC unwind-table generation on x86_64 -- fails at compile time
