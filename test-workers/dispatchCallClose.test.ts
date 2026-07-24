@@ -69,7 +69,7 @@ describe('POST /api/dispatch/calls/:id/status — releases assigned units on clo
     }
   });
 
-  it('a non-terminal transition (dispatched) does NOT release units', async () => {
+  it('a non-terminal transition (dispatched→enroute) cascades unit status but does NOT release the unit', async () => {
     const db = (env as unknown as { DB: D1Database }).DB;
     await execute(db, "INSERT INTO units (call_sign, status) VALUES ('P44', 'dispatched')");
     const unitRow = await db.prepare("SELECT id FROM units WHERE call_sign = 'P44'").first() as { id: number };
@@ -87,7 +87,13 @@ describe('POST /api/dispatch/calls/:id/status — releases assigned units on clo
     expect(res.status).toBe(200);
 
     const unit = await db.prepare('SELECT status, current_call_id FROM units WHERE id = ?').bind(unitRow.id).first() as { status: string; current_call_id: number };
-    expect(unit.status).toBe('dispatched');
+    // Non-terminal transitions (enroute/onscene) mirror onto assigned units
+    // — see the "Cascade non-terminal transitions" block in
+    // src/routes/dispatch/calls.ts, added after this test was first
+    // written. The unit is NOT released (current_call_id stays set,
+    // unlike the terminal-transition case above), but its status now
+    // tracks the call's status instead of staying frozen at 'dispatched'.
+    expect(unit.status).toBe('enroute');
     expect(unit.current_call_id).toBe(callId);
   });
 });
