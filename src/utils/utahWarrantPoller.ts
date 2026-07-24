@@ -45,6 +45,7 @@ import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { execute, query, queryFirst } from './db';
 import { broadcastAll } from '../routes/ws';
+import { isCircuitOpen } from './warrantSources/resilience';
 
 // Source key tying this poller to its warrant_scraper_config row + the
 // scraper_events WebSocket channel + the dispatcher-facing display name
@@ -589,13 +590,49 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
   let status: 'completed' | 'failed' = 'completed';
   let error_message: string | undefined;
 
-  const config = await queryFirst<{ max_persons_per_run: number | null; persons_cursor_id: number | null }>(
+  const config = await queryFirst<{
+    max_persons_per_run: number | null; persons_cursor_id: number | null; consecutive_errors: number | null;
+  }>(
     db,
-    'SELECT max_persons_per_run, persons_cursor_id FROM warrant_scraper_config WHERE source_name = ?',
+    'SELECT max_persons_per_run, persons_cursor_id, consecutive_errors FROM warrant_scraper_config WHERE source_name = ?',
     SOURCE_KEY,
   );
   const maxPersonsPerRun = config?.max_persons_per_run ?? DEFAULT_MAX_PERSONS_PER_RUN;
   const cursorId = config?.persons_cursor_id ?? 0;
+
+  // Circuit breaker: consecutive_errors was previously written for every OTHER
+  // warrant source (see runScan.ts's updateNationalSourceHealth + the generic
+  // scraped-leg health update) but never for Utah — meaning ScrapersTab's
+  // circuit-broken badge for this source was always false regardless of how
+  // long warrants.utah.gov had been down, and the cron kept hitting a dead
+  // upstream every 4 hours forever. Wire it below (post-run) and gate here:
+  // if 5+ consecutive whole-run failures, skip the actual scan (no upstream
+  // calls, no rate-budget burn) and report a failed run immediately.
+  if (isCircuitOpen(Array(config?.consecutive_errors ?? 0).fill(1))) {
+    error_message = `Circuit open after ${config?.consecutive_errors} consecutive failed runs — skipping this scan.`;
+    const completed_at = new Date().toISOString();
+    await execute(
+      db,
+      `UPDATE warrant_watch_runs
+         SET completed_at = ?, status = 'failed', error_message = ?
+       WHERE run_id = ?`,
+      completed_at, error_message, run_id,
+    );
+    try {
+      broadcastAll('scraper_events', {
+        event: 'circuit_broken',
+        source_key: SOURCE_KEY,
+        display_name: DISPLAY_NAME,
+        consecutive_errors: config?.consecutive_errors ?? 0,
+        recovery_at: completed_at,
+        backoff_hours: 0,
+      });
+    } catch { /* non-fatal */ }
+    return {
+      run_id, status: 'failed', persons_checked: 0, new_warrants_found: 0,
+      warrants_cleared: 0, errors: 0, error_message,
+    };
+  }
 
   try {
     // Filter rules (mirror server/src/utils/utahWarrantScraper.ts:589-602
@@ -738,25 +775,49 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
     run_id,
   );
 
+  // A run counts as a whole-source health failure — for circuit-breaker
+  // purposes — either when the scan itself threw (status='failed') or when
+  // EVERY attempted person errored (a strong signal warrants.utah.gov is
+  // fully down/blocking us, vs. isolated per-person hiccups which are
+  // expected and already tolerated).
+  const runHealthFailed = status === 'failed' || (persons_checked > 0 && errors === persons_checked);
+  const wasCircuitOpen = isCircuitOpen(Array(config?.consecutive_errors ?? 0).fill(1));
+
   // Persist current scraper state to warrant_scraper_config so /scrapers
   // shows the correct "current state" even without joining warrant_watch_runs.
   // CASE clauses keep last_success_at on a failed run and clear last_error
   // on a successful one, so the field reads as "is it broken NOW?".
+  // consecutive_errors mirrors the write path every OTHER warrant source
+  // already has (see updateNationalSourceHealth in runScan.ts) — Utah never
+  // had one before, so ScrapersTab's circuit-broken badge for this source
+  // was always false no matter how long the upstream had been down.
   try {
     await execute(
       db,
       `UPDATE warrant_scraper_config
           SET last_run_at = ?,
               last_success_at = CASE WHEN ? = 'completed' THEN ? ELSE last_success_at END,
-              last_error      = CASE WHEN ? = 'failed'    THEN ? ELSE NULL END
+              last_error      = CASE WHEN ? = 'failed'    THEN ? ELSE NULL END,
+              consecutive_errors = CASE WHEN ? THEN consecutive_errors + 1 ELSE 0 END
         WHERE source_name = ?`,
       completed_at,
       status, completed_at,
       status, error_message ?? null,
+      runHealthFailed ? 1 : 0,
       SOURCE_KEY,
     );
   } catch (err) {
     console.warn('[Utah Warrants] config update failed:', err);
+  }
+
+  if (!runHealthFailed && wasCircuitOpen) {
+    try {
+      broadcastAll('scraper_events', {
+        event: 'circuit_restored',
+        source_key: SOURCE_KEY,
+        display_name: DISPLAY_NAME,
+      });
+    } catch { /* non-fatal */ }
   }
 
   // Broadcast run completion (Live Feed). Discriminated union on `event` per
