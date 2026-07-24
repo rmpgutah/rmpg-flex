@@ -1,0 +1,48 @@
+#!/bin/sh
+# kiosk-linux/rootfs-overlay/etc/init.d/S01kiosk-boot-slot-check
+#
+# Sub-project 5 (A/B boot partition): runs very early (S01, well before
+# S99kiosk-net-marker/S99kiosk-browser-marker) to track failed-boot attempts
+# on the persistent boot partition (assembled by
+# kiosk-linux/scripts/assemble-disk-image.sh — a separate EXT2 partition on
+# the same virtio-blk disk this initramfs itself booted from, NOT the
+# initramfs rootfs, which is RAM-only and does not survive a reboot).
+#
+# The boot partition is device /dev/vda1 under this project's QEMU
+# virtio-blk setup (single disk, single partition, per assemble-disk-image.sh)
+# — mounted here at /mnt/kiosk-boot for the rest of this script, and left
+# mounted afterward so S99kiosk-browser-marker (Task 4) can reset the
+# counter through the same mount point without re-mounting.
+BOOT_PART=/dev/vda1
+MOUNT_POINT=/mnt/kiosk-boot
+COUNTER_FILE="$MOUNT_POINT/boot_attempts"
+EXTLINUX_CONF="$MOUNT_POINT/extlinux.conf"
+MAX_ATTEMPTS=3
+
+mkdir -p "$MOUNT_POINT"
+if ! mount -t ext2 "$BOOT_PART" "$MOUNT_POINT" 2>/tmp/kiosk-boot-slot-check.err; then
+  echo "KIOSK_LINUX_BOOT_SLOT_CHECK_FAILED (could not mount $BOOT_PART): $(cat /tmp/kiosk-boot-slot-check.err)"
+  exit 0
+fi
+
+ATTEMPTS="$(cat "$COUNTER_FILE" 2>/dev/null)"
+case "$ATTEMPTS" in
+  ''|*[!0-9]*) ATTEMPTS=0 ;;
+esac
+ATTEMPTS=$((ATTEMPTS + 1))
+echo "$ATTEMPTS" > "$COUNTER_FILE"
+echo "KIOSK_LINUX_BOOT_ATTEMPT $ATTEMPTS"
+
+if [ "$ATTEMPTS" -gt "$MAX_ATTEMPTS" ]; then
+  CURRENT_SLOT="$(grep '^DEFAULT ' "$EXTLINUX_CONF" | awk '{print $2}')"
+  if [ "$CURRENT_SLOT" = "slot_a" ]; then
+    OTHER_SLOT="slot_b"
+  else
+    OTHER_SLOT="slot_a"
+  fi
+  echo "KIOSK_LINUX_BOOT_FALLBACK (from $CURRENT_SLOT to $OTHER_SLOT after $ATTEMPTS failed attempts)"
+  sed -i "s/^DEFAULT .*/DEFAULT $OTHER_SLOT/" "$EXTLINUX_CONF"
+  echo "0" > "$COUNTER_FILE"
+  sync
+  reboot -f
+fi
