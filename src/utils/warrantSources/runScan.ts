@@ -38,9 +38,18 @@ import { normalizeCharge } from './chargeNormalize';
 import { jitterDelayMs, isCircuitOpen } from './resilience';
 import type { WarrantSourceAdapter, RawWarrantHit, PersonRow } from './types';
 
-// Cap each firing to the SAME roster slice the Utah poller uses, so the scraped
-// leg's CPU/time budget mirrors the proven Utah path.
-const MAX_PERSONS_PER_RUN = 50;
+// Upper bound on how many persons are loaded for the per-person leg to work
+// through. Historically pinned to the Utah poller's old default (50) "so the
+// scraped leg's CPU/time budget mirrors the proven Utah path" — but the Utah
+// poller's own cap is now separately configurable (warrant_scraper_config
+// .max_persons_per_run, default 150) and this leg has its OWN hard wall-clock
+// guard (PER_PERSON_LEG_BUDGET_MS below) that already truncates the loop
+// regardless of how many persons were loaded — so raising this cap doesn't
+// change per-tick runtime, only how many persons are ELIGIBLE to be reached
+// before the budget cuts the loop off. Bumped to match Utah's default so a
+// small persons roster (fewer than the budget would otherwise get through)
+// isn't artificially starved to 50 rows.
+const MAX_PERSONS_PER_RUN = 150;
 
 // Base inter-person delay for the scraped leg (mirrors the poller's 8s polite
 // pacing). Overridable via opts.delayMs for tests (pass () => 0).
