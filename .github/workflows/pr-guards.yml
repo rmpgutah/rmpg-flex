@@ -18,6 +18,8 @@ on:
       - 'scripts/check-new-date.js'
       - 'scripts/theme-hex-audit.mjs'
       - 'scripts/check-tofixed-guards.js'
+      - 'scripts/check-form-draft-coverage.js'
+      - 'scripts/form-draft-coverage-baseline.json'
       - 'docs/theme-cleaned-files.txt'
       - '.github/workflows/pr-guards.yml'
 
@@ -57,3 +59,6 @@ jobs:
 
       - name: toFixed false-guard check
         run: node scripts/check-tofixed-guards.js
+
+      - name: Form-draft ("filler") coverage check
+        run: node scripts/check-form-draft-coverage.js
