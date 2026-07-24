@@ -21,11 +21,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LOG_FILE="${1:-$SCRIPT_DIR/boot-browser.log}"
 SCREENSHOT_FILE="${2:-$SCRIPT_DIR/browser-screenshot.ppm}"
-KERNEL="$ROOT_DIR/output/images/bzImage"
-INITRD="$ROOT_DIR/output/images/rootfs.cpio.gz"
+DISK_IMG="$ROOT_DIR/output/images/disk.img"
 
-[ -f "$KERNEL" ] || { echo "kernel not found at $KERNEL — run ./build.sh first" >&2; exit 1; }
-[ -f "$INITRD" ] || { echo "initramfs not found at $INITRD — run ./build.sh first" >&2; exit 1; }
+[ -f "$DISK_IMG" ] || { echo "disk image not found at $DISK_IMG — run ./build.sh first" >&2; exit 1; }
 
 if command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD="timeout"
 elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD="gtimeout"
@@ -46,9 +44,7 @@ MONITOR_SOCK="$(mktemp -u /tmp/kiosk-linux-qemu-monitor.XXXXXX.sock)"
 rm -f "$LOG_FILE" "$SCREENSHOT_FILE" "$MONITOR_SOCK"
 
 "$TIMEOUT_CMD" 150 qemu-system-x86_64 \
-  -kernel "$KERNEL" \
-  -initrd "$INITRD" \
-  -append "console=ttyS0" \
+  -drive file="$DISK_IMG",if=virtio,format=raw \
   -m 1024 \
   -netdev user,id=net0 \
   -device virtio-net-pci,netdev=net0 \
