@@ -8,8 +8,10 @@
 # kiosk-linux/scripts/assemble-disk-image.sh — it needs no build toolchain at
 # all, just disk/bootloader utilities.
 #
-# Built explicitly with `docker build --platform linux/amd64` (see
-# kiosk-linux/build.sh) because Ubuntu's syslinux-common/extlinux packages
+# Built explicitly with `docker build --platform linux/amd64` (wired into
+# kiosk-linux/build.sh's disk-assembly step in a later task of this
+# sub-project — not yet present as of this file's own commit) because
+# Ubuntu's syslinux-common/extlinux packages
 # have no arm64 build at all — confirmed directly on an arm64 macOS host: a
 # plain (arch-native) build of an image containing these packages fails to
 # install them. Forcing the WHOLE Buildroot compile under --platform
