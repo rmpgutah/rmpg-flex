@@ -1,0 +1,10 @@
+{
+  "_comment": "Allow-list for scripts/check-form-draft-coverage.js. Paths are relative to client/src/. Only add an entry with a genuine reason — this is an escape hatch, not a place to silence real gaps.",
+  "exceptions": [
+    { "file": "components/FormModal.tsx", "reason": "Generic modal shell (title/close chrome only) — not a specific entity form, has no fields of its own." },
+    { "file": "pages/fleet/modals/FuelLogModal.tsx", "reason": "Presentational — receives form/onChange/isDirty/draftRestored as props; useFormDraft lives in the parent FleetPage.tsx." },
+    { "file": "pages/fleet/modals/InspectionFormModal.tsx", "reason": "Presentational — receives form/onChange/isDirty/draftRestored as props; useFormDraft lives in the parent FleetPage.tsx." },
+    { "file": "pages/fleet/modals/MaintenanceFormModal.tsx", "reason": "Presentational — receives form/onChange/isDirty/draftRestored as props; useFormDraft lives in the parent FleetPage.tsx." },
+    { "file": "pages/fleet/modals/VehicleFormModal.tsx", "reason": "Presentational — receives form/onChange/isDirty/draftRestored as props; useFormDraft lives in the parent FleetPage.tsx." }
+  ]
+}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { VmrsPicker, type VmrsSelection } from '../../../components/fleet/VmrsPicker';
 import { apiFetch } from '../../../hooks/useApi';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 import type { WorkOrder, WorkOrderStatus } from '../../../types';
 
 export interface WorkOrderFormVehicle {
@@ -16,18 +17,35 @@ interface Props {
   onCreated: () => void;
 }
 
+interface WorkOrderFormState {
+  vehicleId: string;
+  number: string;
+  summary: string;
+  status: WorkOrderStatus;
+  estCost: string;
+  notes: string;
+  priority: string;
+  scheduledDate: string;
+  failureCategory: string;
+  estimatedHours: string;
+  vmrsSelection: VmrsSelection | null;
+}
+
+const EMPTY_WORK_ORDER_FORM: WorkOrderFormState = {
+  vehicleId: '', number: '', summary: '', status: 'open', estCost: '', notes: '',
+  priority: 'normal', scheduledDate: '', failureCategory: '', estimatedHours: '', vmrsSelection: null,
+};
+
 export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Props) {
-  const [vehicleId, setVehicleId] = useState('');
-  const [number, setNumber] = useState('');
-  const [summary, setSummary] = useState('');
-  const [status, setStatus] = useState<WorkOrderStatus>('open');
-  const [estCost, setEstCost] = useState('');
-  const [notes, setNotes] = useState('');
-  const [priority, setPriority] = useState('normal');
-  const [scheduledDate, setScheduledDate] = useState('');
-  const [failureCategory, setFailureCategory] = useState('');
-  const [estimatedHours, setEstimatedHours] = useState('');
-  const [vmrsSelection, setVmrsSelection] = useState<VmrsSelection | null>(null);
+  const { form, setForm, clearDraft } = useFormDraft<WorkOrderFormState>({
+    storageKey: 'rmpg_work_order_form',
+    defaultValue: EMPTY_WORK_ORDER_FORM,
+  });
+  const {
+    vehicleId, number, summary, status, estCost, notes,
+    priority, scheduledDate, failureCategory, estimatedHours, vmrsSelection,
+  } = form;
+  const set = <K extends keyof WorkOrderFormState>(k: K, v: WorkOrderFormState[K]) => setForm({ ...form, [k]: v });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -67,7 +85,7 @@ export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Pro
         notes: notes.trim() || null,
       }),
     })
-      .then(() => { setSaving(false); onCreated(); })
+      .then(() => { setSaving(false); clearDraft(); onCreated(); })
       .catch((e) => {
         setSaving(false);
         setErr(e instanceof Error ? e.message : 'Failed to create work order');
@@ -101,7 +119,7 @@ export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Pro
               id="wo-vehicle"
               className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100"
               value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
+              onChange={(e) => set('vehicleId', e.target.value)}
               aria-required
             >
               <option value="">— select vehicle —</option>
@@ -117,7 +135,7 @@ export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Pro
               type="text"
               className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100 font-mono"
               value={number}
-              onChange={(e) => setNumber(e.target.value)}
+              onChange={(e) => set('number', e.target.value)}
               placeholder="Shop-assigned number"
             />
           </Field>
@@ -126,7 +144,7 @@ export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Pro
               type="text"
               className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100"
               value={summary}
-              onChange={(e) => setSummary(e.target.value)}
+              onChange={(e) => set('summary', e.target.value)}
               placeholder="Short one-liner"
             />
           </Field>
@@ -135,7 +153,7 @@ export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Pro
               <select
                 className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100"
                 value={status}
-                onChange={(e) => setStatus(e.target.value as WorkOrderStatus)}
+                onChange={(e) => set('status', e.target.value as WorkOrderStatus)}
               >
                 <option value="open">Open</option>
                 <option value="in_progress">In progress</option>
@@ -146,7 +164,7 @@ export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Pro
               <select
                 className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100"
                 value={priority}
-                onChange={(e) => setPriority(e.target.value)}
+                onChange={(e) => set('priority', e.target.value)}
               >
                 <option value="low">Low</option>
                 <option value="normal">Normal</option>
@@ -161,7 +179,7 @@ export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Pro
                 type="date"
                 className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100 font-mono"
                 value={scheduledDate}
-                onChange={(e) => setScheduledDate(e.target.value)}
+                onChange={(e) => set('scheduledDate', e.target.value)}
               />
             </Field>
             <Field label="Est. hours">
@@ -171,7 +189,7 @@ export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Pro
                 step="0.5"
                 className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100 font-mono"
                 value={estimatedHours}
-                onChange={(e) => setEstimatedHours(e.target.value)}
+                onChange={(e) => set('estimatedHours', e.target.value)}
                 placeholder="e.g. 2.5"
               />
             </Field>
@@ -180,7 +198,7 @@ export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Pro
             <select
               className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100"
               value={failureCategory}
-              onChange={(e) => setFailureCategory(e.target.value)}
+              onChange={(e) => set('failureCategory', e.target.value)}
             >
               <option value="">— None —</option>
               <option value="mechanical">Mechanical</option>
@@ -198,7 +216,7 @@ export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Pro
             </select>
           </Field>
           <Field label="VMRS Code (optional)">
-            <VmrsPicker value={vmrsSelection} onChange={setVmrsSelection} />
+            <VmrsPicker value={vmrsSelection} onChange={(v) => set('vmrsSelection', v)} />
           </Field>
           <Field label="Est. cost ($)">
             <input
@@ -207,14 +225,14 @@ export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Pro
               step="0.01"
               className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100 font-mono"
               value={estCost}
-              onChange={(e) => setEstCost(e.target.value)}
+              onChange={(e) => set('estCost', e.target.value)}
             />
           </Field>
           <Field label="Notes">
             <textarea
               className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100 h-16 resize-none"
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => set('notes', e.target.value)}
             />
           </Field>
         </div>
