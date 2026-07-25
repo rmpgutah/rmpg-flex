@@ -73,7 +73,12 @@ export function getThemeChromeColor(theme: ThemePreference): string {
 // Blue & Silver forced-override chrome — matches --surface-base / body bg in
 // the html.theme-blue-silver block (theme-palettes.css). It's a dark theme
 // like legacy-black, so it always wins over THEME_CHROME_COLORS[theme].
-const BLUE_SILVER_CHROME = '#0c1a2b';
+// Must track --surface-base in the html.theme-blue-silver block of
+// theme-palettes.css. Was #0c1a2b, which the 2026-07-07 navy repair pass
+// orphaned when surface-base moved to #22405f — the page root and browser
+// theme-color then painted markedly darker than the surfaces above them,
+// reading as a dark band behind content.
+const BLUE_SILVER_CHROME = '#22405f';
 
 function updateThemeMeta(theme: ThemePreference) {
   const legacy = isLegacyBlackForced();
@@ -128,10 +133,16 @@ export function applyThemePreference(
   const legacy = isLegacyBlackForced();
   const blueSilver = !legacy && isBlueSilverForced();
   html.classList.remove('theme-dark', 'theme-light', 'theme-legacy-black', 'theme-blue-silver', 'dark');
-  html.classList.add(`theme-${theme}`);
-  if (theme === 'dark' || legacy || blueSilver) html.classList.add('dark');
+  // Exactly ONE palette class is stamped. Previously `theme-${theme}` was added
+  // unconditionally, so Blue & Silver shipped as "theme-dark dark
+  // theme-blue-silver" and only won because its block appears later in
+  // theme-palettes.css. That made the entire app's appearance depend on CSS
+  // source order — a bundler reordering, or any equal-specificity theme-dark
+  // rule declared after it, would silently revert every surface to night.
   if (legacy) html.classList.add('theme-legacy-black');
-  if (blueSilver) html.classList.add('theme-blue-silver');
+  else if (blueSilver) html.classList.add('theme-blue-silver');
+  else html.classList.add(`theme-${theme}`);
+  if (theme === 'dark' || legacy || blueSilver) html.classList.add('dark');
 
   // Day (light) is a genuinely light surface → native controls/status bar use
   // light mode (dark icons). Night, legacy black, and blue-silver stay dark.
