@@ -30,6 +30,12 @@ beforeAll(async () => {
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
+  // Mirrors live D1's composite unique index (migrations/0001_initial_schema.sql:387).
+  // Without it, an `ON CONFLICT(config_key)` upsert would silently work here
+  // even though it throws against real D1 — the exact regression this file
+  // guards against.
+  await execute(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_system_config_key_value
+    ON system_config(config_key, config_value)`);
 });
 
 describe('PUT /api/admin/system-settings — category round-trip', () => {

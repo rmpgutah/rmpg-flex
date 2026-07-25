@@ -3,6 +3,12 @@ import { AlertCircle } from 'lucide-react';
 interface NotEnforcedNoticeProps {
   /** What this section configures, e.g. "Priority labels and colors". */
   what: string;
+  /**
+   * Optional carve-out naming a value in this section that IS consumed
+   * elsewhere, e.g. "report footer text, which appears on generated PDFs".
+   * Use this when a blanket "nothing here is enforced" would be false.
+   */
+  except?: string;
 }
 
 /**
@@ -12,7 +18,7 @@ interface NotEnforcedNoticeProps {
  * Each Phase 2/3 PR removes this notice from the section it wires — the notice
  * disappearing is the visible signal that enforcement landed.
  */
-export default function NotEnforcedNotice({ what }: NotEnforcedNoticeProps) {
+export default function NotEnforcedNotice({ what, except }: NotEnforcedNoticeProps) {
   return (
     <div
       role="note"
@@ -24,6 +30,12 @@ export default function NotEnforcedNotice({ what }: NotEnforcedNoticeProps) {
         <span className="font-semibold">not yet enforced</span> anywhere in the
         application. Changes persist and will take effect when this section is
         wired to its consumers.
+        {except && (
+          <>
+            {' '}
+            <span className="font-semibold">Exception:</span> {except}.
+          </>
+        )}
       </span>
     </div>
   );

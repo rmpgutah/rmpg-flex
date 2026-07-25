@@ -2489,6 +2489,7 @@ export default function AdminSystemTab({
                 {settingsDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="System settings" except="report footer text, which is read by PDF report generation" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Agency Information</div>

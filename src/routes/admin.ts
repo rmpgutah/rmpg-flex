@@ -712,6 +712,8 @@ admin.get('/backup-status', (c) => c.json({
 // first match); config_audit_log has no writers anywhere in src/. Deleted
 // 2026-07-25.
 admin.get('/config-history', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const limit = Math.min(Number(c.req.query('limit') || 20), 100);
@@ -2050,7 +2052,6 @@ admin.post('/impersonate/:id', async (c) => {
     return c.json({ success: true, user: target, note: 'View-only impersonation — no token issued' });
   } catch { return c.json({ error: 'Failed' }, 500); }
 });
-
 
 // NOTE: '/settings/reset' used to be a no-op stub here. Removed 2026-07-20 —
 // it resolved to the exact same final path as adminSettings.ts's real,

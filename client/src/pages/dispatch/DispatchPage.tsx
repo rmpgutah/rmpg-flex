@@ -4648,8 +4648,7 @@ export default function DispatchPage() {
                               </optgroup>
                             ))}
                             {/* Admin-defined custom codes from /admin/config that
-                                aren't already built in. The live worker returns
-                                none today; the rewrite worker will. */}
+                                aren't already built in. */}
                             {(() => {
                               const customs = dispositionCodes.filter((d) => !DEFAULT_DISPOSITION_CODES.has(d.code));
                               return customs.length > 0 ? (
