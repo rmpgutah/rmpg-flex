@@ -72,8 +72,8 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center gap-2">
-        <CreditCard className="w-4 h-4 text-[#d4a017]" />
-        <h2 className="text-sm font-semibold text-[#d4a017] tracking-wide">OFFICER IDS</h2>
+        <CreditCard className="w-4 h-4 text-accent-silver-500" />
+        <h2 className="text-sm font-semibold text-[color:var(--panel-header-color)] tracking-wide">OFFICER IDS</h2>
         <span className="text-[11px] text-rmpg-500">{rows.length} issued</span>
       </div>
 
@@ -96,7 +96,7 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
       ) : (
         <div className="overflow-x-auto"><table className="w-full text-left">
           <thead>
-            <tr className="text-[9px] font-semibold text-[#888] uppercase border-b border-border-default">
+            <tr className="text-[9px] font-semibold text-rmpg-500 uppercase border-b border-border-default">
               <th className="py-[3px] pr-2">Officer</th>
               <th className="py-[3px] pr-2">Rank / Dept</th>
               <th className="py-[3px] pr-2">Status</th>

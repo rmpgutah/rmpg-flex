@@ -264,19 +264,19 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       <div className="flex gap-2 border-b border-border-default">
         <button
           onClick={() => setSubTab('config')}
-          className={`px-3 py-1 text-xs ${subTab === 'config' ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-rmpg-400'}`}
+          className={`px-3 py-1 text-xs ${subTab === 'config' ? 'text-accent-silver-500 border-b-2 border-accent-silver-500' : 'text-rmpg-400'}`}
         >
           CONFIG
         </button>
         <button
           onClick={() => setSubTab('rules')}
-          className={`px-3 py-1 text-xs ${subTab === 'rules' ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-rmpg-400'}`}
+          className={`px-3 py-1 text-xs ${subTab === 'rules' ? 'text-accent-silver-500 border-b-2 border-accent-silver-500' : 'text-rmpg-400'}`}
         >
           RULES
         </button>
         <button
           onClick={() => setSubTab('audit')}
-          className={`px-3 py-1 text-xs ${subTab === 'audit' ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-rmpg-400'}`}
+          className={`px-3 py-1 text-xs ${subTab === 'audit' ? 'text-accent-silver-500 border-b-2 border-accent-silver-500' : 'text-rmpg-400'}`}
         >
           AUDIT
         </button>
