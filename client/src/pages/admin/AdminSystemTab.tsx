@@ -626,12 +626,23 @@ export default function AdminSystemTab({
     fetchAdminUnits();
   }, [fetchConfig, fetchCallTemplates, fetchAdminUnits]);
 
-  // Auto-search statutes when section is expanded
+  // Auto-search statutes while the Criminal Codes section is active.
+  //
+  // Depends on the PRIMITIVE `activeSection`, never on `expandedSections` —
+  // that is a fresh object literal on every render, so listing it here made the
+  // effect re-run after every render. Because fetchStatutes sets state, each run
+  // scheduled the next one: an unbounded stream of /api/statutes requests for as
+  // long as this section stayed open.
+  //
+  // The 300 ms timer doubles as the search debounce, so typing issues one
+  // request per burst rather than one per keystroke.
   useEffect(() => {
-    if (expandedSections.has('criminal_codes')) {
+    if (activeSection !== 'criminal_codes') return;
+    const timer = setTimeout(() => {
       fetchStatutes(statuteSearch, statuteCategory, statutePage);
-    }
-  }, [expandedSections, statuteSearch, statuteCategory, statutePage, fetchStatutes]);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [activeSection, statuteSearch, statuteCategory, statutePage, fetchStatutes]);
 
   // ============================================================
   // Save JSON config helper
