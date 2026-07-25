@@ -10,6 +10,14 @@ interface InstallerMeta {
   size: string;
   bytes: number;
   releaseDate?: string;
+  /**
+   * Absolute URL supplied by the API. Never build this client-side — see the
+   * matching comment in DownloadsPage.tsx for why a relative path silently
+   * downloads the app shell instead of the artifact.
+   */
+  url: string;
+  /** Hex SHA-256. Absent for artifacts published before checksums existed. */
+  sha256?: string;
 }
 
 interface DownloadsInfo {
@@ -83,7 +91,7 @@ export default function AdminDownloadsTab() {
                     v{installer.version} — {installer.size}
                   </span>
                   <a
-                    href={`/downloads/${encodeURIComponent(installer.filename)}`}
+                    href={installer.url}
                     download={installer.filename}
                     aria-label={label}
                     className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold uppercase tracking-wider"

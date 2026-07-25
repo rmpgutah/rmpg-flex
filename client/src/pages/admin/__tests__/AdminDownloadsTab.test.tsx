@@ -21,10 +21,10 @@ describe('<AdminDownloadsTab>', () => {
   it('fetches /api/downloads/info and renders all present platforms', async () => {
     stub({
       '/api/downloads/info': {
-        win: { filename: 'RMPG-Flex-Setup-5.8.4.zip', version: '5.8.4', size: '142 MB', bytes: 148897792 },
-        mac: { filename: 'RMPG-Flex-5.8.4.dmg', version: '5.8.4', size: '138 MB', bytes: 144703488 },
-        android: { filename: 'RMPG-Flex-5.8.4.apk.zip', version: '5.8.4', size: '45 MB', bytes: 47185920 },
-        os: { filename: 'kiosk-linux-os-1.0.0.tar.gz', version: '1.0.0', size: '15.0 MB', bytes: 15728640 },
+        win: { filename: 'RMPG-Flex-Setup-5.8.4.zip', version: '5.8.4', size: '142 MB', bytes: 148897792, url: 'https://api.rmpgutah.us/downloads/RMPG-Flex-Setup-5.8.4.zip' },
+        mac: { filename: 'RMPG-Flex-5.8.4.dmg', version: '5.8.4', size: '138 MB', bytes: 144703488, url: 'https://api.rmpgutah.us/downloads/RMPG-Flex-5.8.4.dmg' },
+        android: { filename: 'RMPG-Flex-5.8.4.apk.zip', version: '5.8.4', size: '45 MB', bytes: 47185920, url: 'https://api.rmpgutah.us/downloads/RMPG-Flex-5.8.4.apk.zip' },
+        os: { filename: 'kiosk-linux-os-1.0.0.tar.gz', version: '1.0.0', size: '15.0 MB', bytes: 15728640, url: 'https://api.rmpgutah.us/downloads/kiosk-linux-os-1.0.0.tar.gz' },
       },
     });
     render(<AdminDownloadsTab />);
@@ -34,20 +34,25 @@ describe('<AdminDownloadsTab>', () => {
     expect(screen.getByText(/45 MB/)).toBeInTheDocument();
     expect(screen.getByText(/15\.0 MB/)).toBeInTheDocument();
 
+    // Absolute, Worker-origin URLs. A relative /downloads/… href resolves
+    // against Pages, where no route matches, so the `/*  /index.html  200`
+    // catch-all returns the app shell as a 200 and the browser saves ~11 KB of
+    // HTML under the artifact's filename. This test previously asserted that
+    // bug, which is why it survived so long.
     const winLink = screen.getByRole('link', { name: /windows/i });
-    expect(winLink).toHaveAttribute('href', '/downloads/RMPG-Flex-Setup-5.8.4.zip');
+    expect(winLink).toHaveAttribute('href', 'https://api.rmpgutah.us/downloads/RMPG-Flex-Setup-5.8.4.zip');
     const macLink = screen.getByRole('link', { name: /macos/i });
-    expect(macLink).toHaveAttribute('href', '/downloads/RMPG-Flex-5.8.4.dmg');
+    expect(macLink).toHaveAttribute('href', 'https://api.rmpgutah.us/downloads/RMPG-Flex-5.8.4.dmg');
     const androidLink = screen.getByRole('link', { name: /android/i });
-    expect(androidLink).toHaveAttribute('href', '/downloads/RMPG-Flex-5.8.4.apk.zip');
+    expect(androidLink).toHaveAttribute('href', 'https://api.rmpgutah.us/downloads/RMPG-Flex-5.8.4.apk.zip');
     const osLink = screen.getByRole('link', { name: /kiosk linux os/i });
-    expect(osLink).toHaveAttribute('href', '/downloads/kiosk-linux-os-1.0.0.tar.gz');
+    expect(osLink).toHaveAttribute('href', 'https://api.rmpgutah.us/downloads/kiosk-linux-os-1.0.0.tar.gz');
   });
 
   it('shows "Not available" for a platform missing from the response', async () => {
     stub({
       '/api/downloads/info': {
-        win: { filename: 'RMPG-Flex-Setup-5.8.4.zip', version: '5.8.4', size: '142 MB', bytes: 148897792 },
+        win: { filename: 'RMPG-Flex-Setup-5.8.4.zip', version: '5.8.4', size: '142 MB', bytes: 148897792, url: 'https://api.rmpgutah.us/downloads/RMPG-Flex-Setup-5.8.4.zip' },
         // mac, android, and os omitted
       },
     });
