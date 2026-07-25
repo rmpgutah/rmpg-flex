@@ -50,10 +50,12 @@ function forbidUnlessRole(c: any, ...roles: string[]): Response | null {
 // GET /admin/config
 // Returns flat key/value map from system_config + the structured
 // `dispositions` array DispatchPage and DispositionPrompt expect.
-// Dispositions come from system_config rows where key starts with
-// 'disposition.' (each value is JSON {code, description, color?}),
-// falling back to a baked-in common set so the Clear-call dropdown
-// is never empty even on a fresh database.
+// Dispositions are recognized from BOTH historical namespaces — legacy
+// config_key='disposition.<CODE>' rows and category='dispositions' rows
+// (what AdminSystemTab.tsx writes today, always under config_key
+// 'disposition_code') — and merged with the built-in roster for any code
+// not otherwise present. See src/utils/dispositionConfig.ts
+// (mergeDispositions/isDispositionRow) for the assembly + precedence rules.
 admin.get('/config', async (c) => {
   try {
     const actor = c.get('user') as { role: string } | undefined;
@@ -61,7 +63,7 @@ admin.get('/config', async (c) => {
       return c.json({ error: 'Forbidden' }, 403);
     }
     const db = getDb(c.env);
-    const config = await query<Record<string, unknown>>(db, 'SELECT * FROM system_config');
+    const config = await query<Record<string, unknown>>(db, 'SELECT * FROM system_config ORDER BY id');
     const result: Record<string, any> = {};
     const dispositionRows: DispositionConfigRow[] = [];
 

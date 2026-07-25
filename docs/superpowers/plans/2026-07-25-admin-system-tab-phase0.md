@@ -624,7 +624,7 @@ list only from 'disposition.'-prefixed keys. Custom codes appeared in the
 admin table and never reached the DispatchPage or IncidentsPage dropdowns.
 
 GET /config now delegates to mergeDispositions(), which recognizes both
-namespaces, dedupes by code, and keeps the built-in roster. The 40-entry
+namespaces, dedupes by code, and keeps the built-in roster. The 39-entry
 defaults array moves verbatim into the helper.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
@@ -1397,6 +1397,6 @@ consistent across Task 6 Steps 1, 3, and 5.
 
 **Placeholder scan.** No TBD/TODO markers, no "add appropriate error handling", no "similar
 to Task N" back-references. Every code step carries the literal code. The one place the plan
-says "copy, do not retype" is `DEFAULT_DISPOSITIONS` (Task 2 Step 3) — the full 40-entry
+says "copy, do not retype" is `DEFAULT_DISPOSITIONS` (Task 2 Step 3) — the full 39-entry
 array is nonetheless reproduced in the plan so it can be diffed against the original rather
 than trusted.
