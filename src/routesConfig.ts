@@ -224,6 +224,7 @@ import fieldPhotos from './routes/fieldPhotos';
 import howen from './routes/howen';
 // Downloads + auto-updates
 import downloads, { updates, downloadFiles } from './routes/downloads';
+import osUpdates from './routes/osUpdates';
 // Offender registry (stats only)
 import narcotics from './routes/narcotics';
 import nav from './routes/nav';
@@ -664,6 +665,11 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Serves /api/shift-plans/*, /api/shift-swaps/*, /api/shift-overtime, /api/staffing-levels, /api/shift-notifications. See src/routes/shiftPlans.ts for the in-router auth setup.' },
   { prefix: '/api', router: downloads, auth: 'public',
     note: 'Serves /api/downloads/info + /api/downloads/check for the public download page (no auth of its own — genuinely open).' },
+  // OS update feed. /os/manifest must be PUBLIC: a terminal polls it before any
+  // user has signed in, and often with no user at all. /os/promote does its own
+  // admin/manager role check inside the handler.
+  { prefix: '/api', router: osUpdates, auth: 'public',
+    note: 'GET /api/os/manifest?channel=stable|staging returns a flat key=value manifest the on-device rmpg-update agent parses with BusyBox grep/cut (no JSON parser in the image). GET /api/os/channels reports what is published where. POST /api/os/promote copies staging->stable and is the deliberate gate before the fleet installs anything — it requires the exact version to be named, so publishing a build never auto-deploys it.' },
   { prefix: '/downloads', router: downloadFiles, auth: 'public',
     note: 'Bare (no /api prefix) — serves the actual installer/OS files out of the DOWNLOADS R2 bucket at /downloads/<filename>, which is what every button on the public download page links to. Was NEVER mounted before 2026-07-25, so every download returned the SPA index.html (HTTP 200, 11,630 bytes of HTML) under the artifact filename; client/public/_redirects tried to proxy it with a status-200 rule, which Cloudflare Pages does not support (redirects only, no external rewrites).' },
   { prefix: '/updates', router: updates, auth: 'public',

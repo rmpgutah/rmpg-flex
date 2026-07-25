@@ -140,3 +140,14 @@ BR2_PACKAGE_ACPID=y
 # closest legal match to a Windows font stack. DejaVu (already enabled in the
 # base defconfig for WebKit) stays as the fallback.
 BR2_PACKAGE_LIBERATION=y
+
+# ── Idle lock ────────────────────────────────────────────────────────────────
+# libXScrnSaver provides the X Screen Saver extension, which is the only
+# reliable way to ask X "how long since the user last touched this machine"
+# across keyboard, mouse AND touchscreen. Polling input devices directly would
+# miss the FZ-55 touchscreen, and a timer in the shell cannot see input that
+# went to another window.
+#
+# Needed because a patrol terminal left unattended sits there displaying live
+# dispatch, warrant and person data to anyone who walks past the vehicle.
+BR2_PACKAGE_XLIB_LIBXSCRNSAVER=y
