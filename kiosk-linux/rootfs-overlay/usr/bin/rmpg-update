@@ -169,7 +169,14 @@ cmd_apply() {
     kernel_sha="$(manifest_field "$manifest" kernel_sha256)"
     rootfs_url="$(manifest_field "$manifest" rootfs_url)"
     rootfs_sha="$(manifest_field "$manifest" rootfs_sha256)"
-    [ -n "$kernel_url" ] && [ -n "$rootfs_url" ] || die "manifest missing payload URLs"
+    # rootfs_url is OPTIONAL now: a chunked manifest publishes rootfs_part lines
+    # instead. Requiring it here (as this did) would have failed every chunked
+    # update with "manifest missing payload URLs" before the part-download code
+    # was ever reached.
+    [ -n "$kernel_url" ] || die "manifest missing kernel_url"
+    if [ -z "$rootfs_url" ] && ! printf '%s\n' "$manifest" | grep -q '^rootfs_part='; then
+        die "manifest has neither rootfs_url nor rootfs_part entries"
+    fi
 
     target_slot="$(inactive_slot)"
     log "updating $current -> $available into $target_slot"
@@ -186,9 +193,78 @@ cmd_apply() {
     wget -q -T 60 -O "$tmp_kernel" "$kernel_url" || die "kernel download failed"
     verify_sha256 "$tmp_kernel" "$kernel_sha" || die "kernel failed verification"
 
-    log "downloading root filesystem (this is the large one)"
-    wget -q -T 600 -O "$tmp_rootfs" "$rootfs_url" || die "rootfs download failed"
-    verify_sha256 "$tmp_rootfs" "$rootfs_sha" || die "rootfs failed verification"
+    # Root filesystem: fetched in PARTS, verified individually, then assembled.
+    #
+    # A single ~250 MB GET over field Wi-Fi that dies at 90% throws the entire
+    # transfer away, and these terminals have exactly that kind of link. Parts
+    # are cached in /tmp across attempts, so a retry resumes from where it got
+    # to instead of starting over, and a corrupt part is re-fetched on its own
+    # rather than after reassembling the whole payload.
+    #
+    # Falls back to the single-file form when a manifest predates chunking, so an
+    # older published release stays installable.
+    part_dir=/tmp/rmpg-update-parts
+    mkdir -p "$part_dir"
+
+    part_lines="$(printf '%s\n' "$manifest" | grep '^rootfs_part=')"
+    if [ -z "$part_lines" ]; then
+        log "manifest has no parts — using the single-file rootfs form"
+        [ -n "$rootfs_url" ] || die "manifest has neither rootfs_part nor rootfs_url"
+        wget -q -T 600 -O "$tmp_rootfs" "$rootfs_url" || die "rootfs download failed"
+        verify_sha256 "$tmp_rootfs" "$rootfs_sha" || die "rootfs failed verification"
+    else
+        total="$(printf '%s\n' "$part_lines" | wc -l | tr -d ' ')"
+        log "downloading root filesystem in $total parts"
+        idx=0
+        printf '%s\n' "$part_lines" | while IFS= read -r line; do
+            idx=$((idx + 1))
+            # "rootfs_part=<url> <sha256>"
+            spec="${line#rootfs_part=}"
+            purl="${spec%% *}"
+            psha="${spec##* }"
+            pfile="$part_dir/$(basename "$purl")"
+
+            # Already have it and it verifies? Skip — this is the resume path.
+            if [ -f "$pfile" ] && verify_sha256 "$pfile" "$psha" >/dev/null 2>&1; then
+                log "  part $idx/$total already present"
+                continue
+            fi
+
+            # Bounded retries per part. A part is small, so a failure costs
+            # seconds rather than the whole payload.
+            attempt=0
+            while [ "$attempt" -lt 3 ]; do
+                attempt=$((attempt + 1))
+                rm -f "$pfile"
+                if wget -q -T 120 -O "$pfile" "$purl" && verify_sha256 "$pfile" "$psha"; then
+                    log "  part $idx/$total ok"
+                    break
+                fi
+                log "  part $idx/$total attempt $attempt failed"
+                [ "$attempt" -ge 3 ] && { rm -f "$pfile"; exit 1; }
+                sleep 5
+            done
+        done || die "a rootfs part could not be downloaded after 3 attempts"
+
+        # Assemble in lexical order — `split` produced ordered suffixes, so a
+        # plain glob is the correct sequence.
+        log "assembling $total parts"
+        rm -f "$tmp_rootfs"
+        # Version-scoped glob. A bare *rootfs.part-* would silently mix parts
+        # left over from a DIFFERENT version still sitting in the cache — the
+        # whole-payload checksum below would catch it, but only after wasting
+        # the entire download.
+        cat "$part_dir"/kiosk-os-"$available"-rootfs.part-* > "$tmp_rootfs" 2>/dev/null \
+            || die "could not assemble the rootfs parts"
+
+        # Verify the WHOLE payload after assembly, not just the parts. Every part
+        # can be individually valid while the assembly is still wrong (a missing
+        # part, or a stale part left from an earlier version).
+        verify_sha256 "$tmp_rootfs" "$rootfs_sha" \
+            || die "assembled rootfs failed verification — parts may be from mixed versions; clear $part_dir and retry"
+        log "assembled rootfs verified"
+        rm -rf "$part_dir"
+    fi
 
     # Enough free space in the target slot before overwriting it.
     need_kb=$(( ($(stat -c %s "$tmp_kernel") + $(stat -c %s "$tmp_rootfs")) / 1024 ))

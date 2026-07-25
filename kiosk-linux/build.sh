@@ -747,6 +747,31 @@ COGHASH
       echo "KIOSK_LINUX_DESKTOP=0 — building the lean kiosk-only image."
     fi
 
+    # AX211 (Wi-Fi 6E, Mk3) firmware gap: Buildroot own linux-firmware.mk only
+    # globs "iwlwifi-so-a0-gf-a0*" for BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_6E, but
+    # real-world AX211 units request EITHER "so-a0-gf-a0" OR "ty-a0-gf-a0"
+    # firmware depending on the exact host chipset combo -- confirmed both
+    # exist in the pinned linux-firmware-20240115 source tarball, and confirmed
+    # via real dmesg reports from Raptor Lake AX211 systems that "ty-a0" is a
+    # genuinely live variant, not a hypothetical one. Missing this would
+    # silently break Wi-Fi on whichever Mk3 units happen to need the variant
+    # Buildroot does not glob for -- the driver loads, finds no matching
+    # firmware file, and the radio simply never comes up, with nothing in the
+    # boot log pointing at firmware as the cause unless someone thinks to check
+    # dmesg for "Direct firmware load ... failed".
+    LINUX_FW_MK="$BUILDROOT_DIR/package/linux-firmware/linux-firmware.mk"
+    if ! grep -q "ty-a0-gf-a0" "$LINUX_FW_MK"; then
+      echo "Patching $LINUX_FW_MK to also glob the ty-a0-gf-a0 (AX211) firmware variant ..."
+      sed -i "/LINUX_FIRMWARE_FILES += iwlwifi-so-a0-gf-a0\*/a\\
+LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0*.{ucode,pnvm}" "$LINUX_FW_MK"
+      grep -q "ty-a0-gf-a0" "$LINUX_FW_MK" || {
+        echo "ERROR: ty-a0-gf-a0 firmware patch failed to apply — check the sed pattern against the real linux-firmware.mk." >&2
+        exit 1
+      }
+    else
+      echo "linux-firmware.mk already patched for ty-a0-gf-a0."
+    fi
+
     echo "Applying defconfig ..."
     make -C "$BUILDROOT_DIR" O=/build-output BR2_DEFCONFIG="$GEN_DEFCONFIG" defconfig
 
@@ -806,7 +831,19 @@ COGHASH
     # invisible: the taskbar logs "idle lock armed at 600s" and then every poll
     # fails with `Xlib: extension "MIT-SCREEN-SAVER" missing`, so the terminal
     # never locks while appearing to be configured to.
-    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses xserver_xorg-server xserver_xorg-server:screensaver"
+    # linux-firmware:fz55 — the FZ-55 hardware audit added
+    # BR2_PACKAGE_LINUX_FIRMWARE_I915 (i915 DMC blobs, required for display
+    # power management on Mk2/Mk3) and patched linux-firmware.mk to also glob
+    # the ty-a0-gf-a0 AX211 variant. linux-firmware was already built, so
+    # neither change took effect: the patch applied to the .mk but the package
+    # never re-extracted, and the built image had zero i915 and zero ty-a0
+    # firmware files despite both symbols being =y in .config. Verified by
+    # listing target/lib/firmware rather than trusting the build exit code.
+    #
+    # alsa-utils:amixer — same class. amixer is a per-command sub-option that
+    # was not previously requested, so the already-built package had no reason
+    # to rebuild and amixer stayed absent from the image.
+    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses xserver_xorg-server xserver_xorg-server:screensaver linux-firmware:fz55 alsa-utils:amixer"
     if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ]; then
       # The marker is a LIST of packages already reconfigured, not a single
       # all-or-nothing flag. The first version of this was a bare touch file,

@@ -9,6 +9,18 @@ import type { R2Bucket, D1Database } from '@cloudflare/workers-types';
  * agent (kiosk-linux/rootfs-overlay/usr/bin/rmpg-update) downloads into the
  * INACTIVE A/B slot, verifies, and flips the default slot.
  *
+ * The rootfs is published in PARTS, listed as repeated lines:
+ *   rootfs_part=<url> <sha256>
+ * plus rootfs_parts=<count> and rootfs_sha256=<digest of the whole payload>.
+ * A single ~250 MB object could not be uploaded reliably (wrangler's one-shot
+ * PUT stalled twice for over an hour) and could not be downloaded reliably
+ * either — a GET that dies at 90% over field Wi-Fi discards everything. Parts
+ * are verified individually, cached so a retry resumes, and the reassembled
+ * whole is verified again before anything touches a boot slot.
+ *
+ * rootfs_url (single-file form) is still honoured so older published releases
+ * remain installable.
+ *
  * WHY key=value AND NOT JSON: the terminal parses this with BusyBox grep/cut.
  * The image ships no JSON parser, and adding one to read four fields is not a
  * trade worth making on a device in a vehicle.
