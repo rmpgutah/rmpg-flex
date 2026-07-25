@@ -28,6 +28,7 @@ import { getDecrypted } from '../utils/encryptedR2';
 import { listRecentQueries, vacuumCache } from '../utils/nsopw/cache';
 import { recordAudit } from '../utils/auditLog';
 import { enrichPendingOffenders } from '../utils/sorEnrichment/runner';
+import { lookupFailedCoverage } from '../utils/screening/coverage';
 
 const nsopw = new Hono<Env>();
 
@@ -50,18 +51,24 @@ nsopw.get('/status', requireRole(...READ_ROLES), async (c) => {
   ).catch(() => null);
   return c.json({
     configured,
+    // null means the COUNT query itself failed — distinct from a genuine 0. The
+    // old shape collapsed both to 0 while reporting coverage OK, so a broken
+    // lookup read as "configured, 0 offenders on file".
     offenderCount: offenderCount?.n ?? 0,
+    offenderCountKnown: offenderCount !== null,
     lastRun: recentRun,
-    coverage: configured
-      ? { available: true, severity: 'ok' as const }
-      : {
+    coverage: !configured
+      ? {
           available: false,
           severity: 'warning' as const,
           message:
             'NSOPW is not configured (NSOPW_API_KEY unset). Set the secret ' +
             'once the DOJ MOU is in place. Until then, an empty search ' +
             'result CANNOT confirm a subject is not nationally registered.',
-        },
+        }
+      : offenderCount === null
+        ? lookupFailedCoverage('The national sex-offender record count')
+        : { available: true, severity: 'ok' as const },
   });
 });
 

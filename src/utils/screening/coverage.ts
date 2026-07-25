@@ -27,6 +27,32 @@ export interface SourceCoverage {
  * Decide coverage for the Utah Sex Offender Registry from its current
  * row count and whether a data feed is provisioned. Pure — unit tested.
  */
+/**
+ * Coverage for a lookup that FAILED rather than one with no data.
+ *
+ * `sorCoverage` below answers "is there data behind this source". This answers a
+ * different question with the same consequence: the query threw, so we do not
+ * know the answer. Several safety lookups catch their errors and return an empty
+ * collection, which is indistinguishable from "checked, nothing found" — the
+ * false-clear class documented at records.ts:1148. Attaching this to the
+ * response lets the caller say "could not check" instead of implying a clearance.
+ *
+ * `subject` names the thing that could not be checked, e.g. 'Active BOLOs'.
+ */
+export function lookupFailedCoverage(subject: string): SourceCoverage {
+  return {
+    available: false,
+    severity: 'warning',
+    message:
+      `${subject} could not be checked — the lookup failed. This is NOT a ` +
+      'clearance: it can neither confirm nor rule out a match. Retry, and ' +
+      'report it if it persists.',
+  };
+}
+
+/** Coverage for a lookup that ran successfully. */
+export const LOOKUP_OK: SourceCoverage = { available: true, severity: 'ok' };
+
 export function sorCoverage(rowCount: number, feedConfigured: boolean): SourceCoverage {
   if (rowCount > 0) {
     return { available: true, rowCount, configured: feedConfigured, severity: 'ok' };
