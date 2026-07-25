@@ -27,6 +27,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { denverDateExpr, denverNowDateExpr } from '../utils/denverTime';
 
 const ce = new Hono<Env>();
 
@@ -330,7 +331,7 @@ ce.get('/stats', async (c) => {
       const p = await queryFirst<{ n: number }>(db, `
         SELECT COUNT(*) AS n FROM citations
         WHERE (violation LIKE '%park%' OR violation_type LIKE '%park%')
-          AND date(created_at) = date('now')`);
+          AND ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`);
       parkingToday = p?.n ?? 0;
     } catch { /* citations schema drift — leave 0 */ }
     return c.json({

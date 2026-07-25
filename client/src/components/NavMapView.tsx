@@ -43,8 +43,10 @@ const STYLE_OPTIONS: { value: 'dark' | 'satellite' | 'streets'; label: string; u
 ];
 
 // Map the user's style selection (same signal that picks initialUrl/insetUrl)
-// to the RMPG basemap re-skin variant. 'streets' = stock light style → 'light'
-// (basemap intentionally leaves light as-is, the print path).
+// to the RMPG basemap re-skin variant. 'streets' = stock light style → 'light',
+// which now correctly receives the fixed dark Blue/Silver/Gold restyle (this is
+// an on-screen nav surface, not a print/export path — a bright map at night is
+// a driving hazard).
 function basemapVariantFor(s: 'dark' | 'satellite' | 'streets'): BasemapVariant {
   if (s === 'satellite') return 'satellite';
   if (s === 'streets') return 'light';

@@ -22,6 +22,11 @@ export const CLOSED_CALL_STATUSES = [
   // Both spellings occur in live data.
   'cancelled',
   'canceled',
+  // reports.ts's KPI queries (`active_calls`, the recent-calls list) carried
+  // their own longer variant that alone excluded 'completed'. Folding those
+  // call sites into this module would have silently started counting completed
+  // calls as active, so the status belongs here rather than being dropped.
+  'completed',
 ] as const;
 
 /** A plain column reference: `status` or `alias.status`. Nothing else. */
@@ -36,12 +41,20 @@ const QUOTED = CLOSED_CALL_STATUSES.map((s) => `'${s}'`).join(',');
  * literals above — never from caller input. `column` is validated against
  * COLUMN_REF so this can't become an injection seam if a future caller passes
  * something request-derived.
+ *
+ * The COALESCE is load-bearing, not decoration. SQL uses three-valued logic:
+ * for a row with `status IS NULL`, `status NOT IN ('closed', …)` evaluates to
+ * NULL rather than TRUE, so the row satisfies neither this predicate nor its
+ * negation and silently disappears from BOTH the active and the closed counts.
+ * A call with no status is a data problem a dispatcher should see on the board,
+ * not one the dashboard should hide. Coalescing to '' makes such a row count as
+ * active, which surfaces it.
  */
 export function activeCallWhere(column = 'status'): string {
   if (!COLUMN_REF.test(column)) {
     throw new Error(`activeCallWhere: unsafe column reference ${JSON.stringify(column)}`);
   }
-  return `${column} NOT IN (${QUOTED})`;
+  return `COALESCE(${column},'') NOT IN (${QUOTED})`;
 }
 
 /** Convenience constant for the common unqualified `status` case. */

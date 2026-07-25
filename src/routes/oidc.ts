@@ -255,7 +255,15 @@ oidc.get('/dialer/callback', async (c) => {
     if (payload.nonce !== expectedNonce) return backToLogin(appOrigin, 'error', 'Could not verify dialer identity');
     if (!payload.sub) return backToLogin(appOrigin, 'error', 'id_token missing sub claim');
     sub = payload.sub;
-    email = typeof payload.email === 'string' ? payload.email : undefined;
+    // Only accept the email claim for auto-linking when the IdP asserts it is
+    // VERIFIED. The email fallback below silently binds this OIDC sub to an
+    // existing local account by email; if the dialer IdP ever let a user set an
+    // arbitrary/unverified email, that would be a takeover of the matching Flex
+    // account (link attacker's sub → victim's row → full session). Requiring
+    // email_verified closes that regardless of the IdP's registration policy.
+    email = (payload.email_verified === true && typeof payload.email === 'string')
+      ? payload.email
+      : undefined;
   } catch (err) {
     console.error('[oidc] id_token verification failed:', err);
     return backToLogin(appOrigin, 'error', 'Could not verify dialer identity');

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { denverNowDateExpr } from '../utils/denverTime';
 
 // ═══════════════════════════════════════════════════════════════
 // CRM backend — leads, proposals, templates, lead-activity, tasks,
@@ -156,7 +157,7 @@ crm.get('/leads/follow-ups', async (c) => {
   try {
     const db = getDb(c.env);
     const overdue = await query(db, "SELECT * FROM crm_leads WHERE next_follow_up IS NOT NULL AND date(next_follow_up) < date('now') AND pipeline_stage NOT IN ('won','lost','dismissed') ORDER BY next_follow_up");
-    const today = await query(db, "SELECT * FROM crm_leads WHERE next_follow_up IS NOT NULL AND date(next_follow_up) = date('now') AND pipeline_stage NOT IN ('won','lost','dismissed') ORDER BY next_follow_up");
+    const today = await query(db, `SELECT * FROM crm_leads WHERE next_follow_up IS NOT NULL AND date(next_follow_up) = ${denverNowDateExpr()} AND pipeline_stage NOT IN ('won','lost','dismissed') ORDER BY next_follow_up`);
     const upcoming = await query(db, "SELECT * FROM crm_leads WHERE next_follow_up IS NOT NULL AND date(next_follow_up) BETWEEN date('now','+1 day') AND date('now','+14 days') AND pipeline_stage NOT IN ('won','lost','dismissed') ORDER BY next_follow_up");
     return c.json({ overdue, today, upcoming });
   } catch { return c.json({ overdue: [], today: [], upcoming: [] }); }

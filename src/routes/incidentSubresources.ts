@@ -347,6 +347,16 @@ incidentSub.put('/:id{\\d+}/supplements/:sid{\\d+}', requireRole(...WRITE_ROLES)
       if (!SUPPLEMENT_STATUSES.has(String(body.status))) {
         return c.json({ error: 'Invalid status', code: 'SUPPLEMENT_BAD_STATUS' }, 400);
       }
+      // The approval transitions are a supervisory decision — an officer (in
+      // WRITE_ROLES) must not be able to sign off their own supplement by
+      // PUTting status:'approved'/'returned'. Reserve those for supervisor+.
+      const APPROVAL_STATUSES = new Set(['approved', 'returned']);
+      if (APPROVAL_STATUSES.has(String(body.status))) {
+        const actor = c.get('user') as { role?: string } | undefined;
+        if (!actor?.role || !['admin', 'manager', 'supervisor'].includes(actor.role)) {
+          return c.json({ error: 'Only a supervisor may approve or return a supplement', code: 'SUPPLEMENT_APPROVAL_FORBIDDEN' }, 403);
+        }
+      }
       sets.push('status = ?'); vals.push(body.status);
     }
     if (sets.length === 0) {

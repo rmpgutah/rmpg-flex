@@ -12,6 +12,7 @@ import { parseTimestamp } from '../../utils/dateUtils';
 import { mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import LocationNoteModal from './LocationNoteModal';
+import { escapeHtml } from '../../utils/sanitize';
 
 interface QueueMapItem {
   id: number;
@@ -356,7 +357,12 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
 function buildPopupHtml(item: QueueMapItem): string {
   const isBusiness = (item.recipient_type || '').toLowerCase() === 'business';
   const priorityColor = { urgent: '#ef4444', rush: '#f97316', normal: '#3b82f6', routine: '#6b7280' }[item.priority] ?? '#6b7280';
-  const priorityLabel = (item.priority || 'routine').toUpperCase();
+  // escapeHtml on every interpolation below: this string goes to Mapbox
+  // Popup.setHTML(), a raw innerHTML sink. recipient_name/address/case_number/
+  // document_type are populated by OCR of an uploaded intake document
+  // (src/routes/serveIntake.ts), so a process-service client controls them
+  // without needing an account — stored XSS firing in a dispatcher's session.
+  const priorityLabel = escapeHtml((item.priority || 'routine').toUpperCase());
 
   const daysLeft = item.deadline
     ? Math.ceil((parseTimestamp(item.deadline).getTime() - Date.now()) / 86400000)
@@ -367,7 +373,7 @@ function buildPopupHtml(item: QueueMapItem): string {
 
   const noteBlock = item.location_note_id
     ? `<div style="margin-top:6px;padding:4px 6px;background:rgba(212,160,23,0.12);border:1px solid rgba(212,160,23,0.4);border-radius:2px;font-size:10px;color:#d4a017;">
-        ⚠ RECORDED NOTATION: ${item.location_note_text || 'See system record'}
+        ⚠ RECORDED NOTATION: ${escapeHtml(item.location_note_text) || 'See system record'}
        </div>`
     : '';
 
@@ -380,16 +386,16 @@ function buildPopupHtml(item: QueueMapItem): string {
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
         <span style="font-size:14px;">${isBusiness ? '🏢' : '👤'}</span>
         <div>
-          <div style="font-weight:700;color:#e2e8f0;font-size:12px;">${item.recipient_name || '(no name)'}</div>
+          <div style="font-weight:700;color:#e2e8f0;font-size:12px;">${escapeHtml(item.recipient_name) || '(no name)'}</div>
           <div style="color:#94a3b8;font-size:10px;">${isBusiness ? 'Business Service' : 'Individual Service'}</div>
         </div>
         <span style="margin-left:auto;padding:1px 5px;background:${priorityColor}22;border:1px solid ${priorityColor};border-radius:2px;color:${priorityColor};font-size:9px;font-weight:700;">${priorityLabel}</span>
       </div>
-      <div style="color:#94a3b8;font-size:10px;margin-bottom:2px;">${item.recipient_address || ''}${item.recipient_city ? ', ' + item.recipient_city : ''}${item.recipient_state ? ' ' + item.recipient_state : ''}</div>
-      <div style="color:#64748b;font-size:10px;">Case: ${item.case_number || '—'} · Doc: ${item.document_type || '—'}</div>
-      <div style="color:#64748b;font-size:10px;">Deadline: ${deadlineStr}</div>
-      <div style="color:#64748b;font-size:10px;">Attempts: ${item.attempt_count}</div>
-      <div style="color:#64748b;font-size:10px;">Next window: ${nextStr}</div>
+      <div style="color:#94a3b8;font-size:10px;margin-bottom:2px;">${escapeHtml(item.recipient_address)}${item.recipient_city ? ', ' + escapeHtml(item.recipient_city) : ''}${item.recipient_state ? ' ' + escapeHtml(item.recipient_state) : ''}</div>
+      <div style="color:#64748b;font-size:10px;">Case: ${escapeHtml(item.case_number) || '—'} · Doc: ${escapeHtml(item.document_type) || '—'}</div>
+      <div style="color:#64748b;font-size:10px;">Deadline: ${escapeHtml(deadlineStr)}</div>
+      <div style="color:#64748b;font-size:10px;">Attempts: ${escapeHtml(item.attempt_count)}</div>
+      <div style="color:#64748b;font-size:10px;">Next window: ${escapeHtml(nextStr)}</div>
       ${noteBlock}
       <div style="margin-top:8px;display:flex;gap:6px;">
         <button id="srv-popup-open-${item.id}" style="flex:1;padding:3px 6px;background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.5);border-radius:2px;color:#93c5fd;font-size:10px;cursor:pointer;font-family:monospace;">

@@ -155,7 +155,16 @@ const UNIT_WRITABLE_COLUMNS = new Set([
   'audio_mode', 'emergency_active', 'emergency_call_id', 'emergency_since',
   'gps_heading', 'gps_speed',
 ]);
-units.put('/:id', async (c) => {
+// General unit edit (dispatch console edit modal). Writes status, officer_id,
+// emergency_active, call_sign, GPS, etc. Gated to dispatcher+ because it was
+// otherwise an ownership-check bypass: the dedicated PUT /:id/status enforces
+// "officers may only change their OWN unit", but this general PUT accepts the
+// same `status` field with NO ownership check, so an officer could force
+// another officer's unit off_duty (which makes gps.ts drop that officer's live
+// position, erasing them from the AVL map) or toggle their emergency state.
+// Officer self-status changes go through PUT /:id/status, which keeps the
+// ownership floor.
+units.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');

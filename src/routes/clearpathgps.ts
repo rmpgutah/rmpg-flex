@@ -19,6 +19,7 @@ import { Hono, type Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
+import { verifySignedResource } from '../utils/signedAccess';
 import { encryptSecret, CpgCryptoError } from '../utils/cpgCrypto';
 import {
   getCredentials, getConfigValue, setConfigValue, deleteConfigValue, CPG_KEYS,
@@ -350,7 +351,22 @@ cpg.get('/dashcam-events/export', async (c) => {
 });
 
 // Stream a synced dashcam clip from R2 (playback / evidence).
+//
+// Auth: `/stream` matches authMiddleware's media predicate, so a header-less
+// GET with sig+exp is forwarded here UNVERIFIED — this handler must do the
+// verification or the clip is public. These are the same `dashcam_videos`
+// rows that /api/fleet/dashcam-videos/:id/stream protects, so reuse the
+// 'dashcam' resource type: a signature issued for either route works on both,
+// and neither is a bypass of the other.
 cpg.get('/media/:id/stream', async (c) => {
+  const idStr = c.req.param('id');
+  const user = c.get('user') as { id?: number } | undefined;
+  if (!user) {
+    const ok = await verifySignedResource(c.env.JWT_SECRET, 'dashcam', idStr, {
+      sig: c.req.query('sig'), exp: c.req.query('exp'), nonce: c.req.query('nonce'),
+    });
+    if (!ok) return c.json({ error: 'Authentication required' }, 401);
+  }
   const db = getDb(c.env);
   const row = await queryFirst<{ r2_key: string | null; file_path: string | null; mime_type: string | null }>(
     db, 'SELECT r2_key, file_path, mime_type FROM dashcam_videos WHERE id = ?', c.req.param('id')).catch(() => null);

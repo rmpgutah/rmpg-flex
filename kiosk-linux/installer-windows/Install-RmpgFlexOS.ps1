@@ -41,15 +41,7 @@ param(
     [string]$InstallDir = "$env:SystemDrive\RMPG-Flex-OS",
 
     # Skip the confirmation prompt (for scripted fleet deployment).
-    [switch]$Force,
-
-    # Where to fetch the OS payload when it is not next to this script. Kept as
-    # a parameter so a site with its own mirror can point at it.
-    [string]$PayloadUrl = 'https://rmpgutah.us/downloads/RMPG-Flex-OS-Installer.zip',
-
-    # Expected SHA-256 of that payload. Stamped by the release process; when
-    # empty the download proceeds unverified and says so.
-    [string]$PayloadSha256 = ''
+    [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
@@ -110,76 +102,11 @@ then Security > Secure Boot > Disabled. Save with F10 and run this again.
     Write-Warn 'Could not query Secure Boot state; continuing.'
 }
 
-#
-# Payload. If the OS files are not sitting next to this script, fetch them
-# rather than failing.
-#
-# This is what makes the install genuinely one-click. Double-clicking a .bat
-# inside a .zip makes Windows extract ONLY that file to a temp folder, so its
-# siblings are absent and a script that merely errored out here would send the
-# user back to extract the archive by hand — exactly the manual step this is
-# meant to remove. Downloading the payload also means the script alone can be
-# handed to someone with no attachment at all.
-#
-$needed = @('bzImage', 'rootfs.cpio.gz', 'grubx64.efi')
-$missing = $needed | Where-Object { -not (Test-Path (Join-Path $SourceDir $_)) }
-
-if ($missing.Count -gt 0) {
-    Write-Warn "OS files not found alongside this script ($($missing -join ', '))."
-    Write-Step "Downloading the OS payload from $PayloadUrl"
-    Write-Host '    This is roughly 250 MB and takes a few minutes on a normal connection.' -ForegroundColor White
-
-    $tmp = Join-Path $env:TEMP "rmpg-flex-os-payload"
-    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
-    $zipPath = Join-Path $tmp 'payload.zip'
-
-    try {
-        # TLS 1.2 explicitly: older PowerShell hosts default to TLS 1.0, which
-        # Cloudflare rejects, producing a bare "underlying connection was
-        # closed" that looks like a network outage.
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        # WebClient rather than Invoke-WebRequest: on Windows PowerShell 5.1
-        # Invoke-WebRequest buffers the whole response in memory and its
-        # progress rendering makes a 250 MB download crawl.
-        (New-Object Net.WebClient).DownloadFile($PayloadUrl, $zipPath)
-    } catch {
-        Fail @"
-Could not download the OS payload: $($_.Exception.Message)
-
-Check the machine has internet access, or download
-$PayloadUrl
-manually, extract it, and run this script from inside the extracted folder.
-"@
+foreach ($f in @('bzImage', 'rootfs.cpio.gz', 'grubx64.efi')) {
+    $p = Join-Path $SourceDir $f
+    if (-not (Test-Path $p)) {
+        Fail "Required file not found: $p`nExtract the whole downloaded .zip and run this script from inside the extracted folder."
     }
-
-    if (-not (Test-Path $zipPath)) { Fail 'Download reported success but produced no file.' }
-    Write-Ok ("Downloaded {0:N0} MB" -f ((Get-Item $zipPath).Length / 1MB))
-
-    # Verify before trusting it. A truncated image installs happily and then
-    # fails to boot with no clue as to why.
-    if ($PayloadSha256) {
-        Write-Step 'Verifying the download'
-        $actual = (Get-FileHash $zipPath -Algorithm SHA256).Hash
-        if ($actual -ne $PayloadSha256.ToUpper()) {
-            Fail @"
-Downloaded file failed verification — it is incomplete or corrupted.
-  expected SHA-256: $($PayloadSha256.ToUpper())
-  actual   SHA-256: $actual
-Delete $zipPath and run this again.
-"@
-        }
-        Write-Ok 'SHA-256 matches'
-    }
-
-    Write-Step 'Extracting'
-    Expand-Archive -Path $zipPath -DestinationPath $tmp -Force
-    $SourceDir = $tmp
-
-    $stillMissing = $needed | Where-Object { -not (Test-Path (Join-Path $SourceDir $_)) }
-    if ($stillMissing.Count -gt 0) {
-        Fail "The downloaded payload is missing: $($stillMissing -join ', ')"
-    }
-    Write-Ok 'Payload ready'
 }
 Write-Ok 'Found bzImage, rootfs.cpio.gz and grubx64.efi'
 

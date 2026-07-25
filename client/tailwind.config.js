@@ -63,6 +63,11 @@ export default {
           sunken:  'var(--surface-sunken)',   // #0d1520
           overlay: 'var(--surface-overlay)',  // #0a1018
           deep:    'var(--surface-deep)',     // #060c14
+          // Hover/active surface. Defined in all four theme blocks of
+          // theme-palettes.css but was never bound here, so the 14 existing
+          // `bg-surface-hover` usages across the desktop shell and dashcam
+          // surfaces emitted no CSS and their hover feedback silently did nothing.
+          hover:   'var(--surface-hover)',
         },
 
         // ── RMPG Brand ─────────────────────────────────────
@@ -92,6 +97,21 @@ export default {
           500: 'rgb(var(--brand-gold-500-rgb) / <alpha-value>)',
           600: 'rgb(var(--brand-gold-600-rgb) / <alpha-value>)',
           700: 'rgb(var(--brand-gold-700-rgb) / <alpha-value>)',
+        },
+
+        'accent-gold': {
+          300: 'rgb(var(--accent-gold-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--accent-gold-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--accent-gold-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--accent-gold-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--accent-gold-700-rgb) / <alpha-value>)',
+        },
+        'accent-silver': {
+          300: 'rgb(var(--accent-silver-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--accent-silver-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--accent-silver-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--accent-silver-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--accent-silver-700-rgb) / <alpha-value>)',
         },
 
         // Neutral graphite greys — no blue cast

@@ -28,42 +28,6 @@ export default function KioskOsInstallGuide() {
       <GuideHeading>What it looks like</GuideHeading>
       <Screenshots shots={SHOTS} />
 
-      <GuideHeading>Check the download before you flash</GuideHeading>
-      <p className="text-xs leading-relaxed mb-2" style={{ color: 'var(--rmpg-400)' }}>
-        Writing a truncated image to a USB stick produces a machine that fails to boot with no useful
-        error, so it is worth thirty seconds to confirm the file arrived intact. Expected values for{' '}
-        <code>kiosk-linux-os-1.2.0.zip</code>:
-      </p>
-      <Bullets
-        items={[
-          <>Size: <strong>247,872,459 bytes exactly</strong></>,
-          <>SHA-256: <code style={{ fontSize: '10px', wordBreak: 'break-all' }}>dfbe6475ca90f84838cf919484487434b5f08310afa8515459d5948af469d0ea</code></>,
-          <>After extracting, <code>disk.img</code> must be <strong>536,870,912 bytes exactly</strong> (SHA-256 <code style={{ fontSize: '10px', wordBreak: 'break-all' }}>935cb2f2d62aff921c1d8c4a8fdca24d7e458b0341920ee47f64f8adf0643347</code>)</>,
-        ]}
-      />
-      <p className="text-xs leading-relaxed mt-2 mb-1" style={{ color: 'var(--rmpg-400)' }}>
-        To check the hash — Windows PowerShell:
-      </p>
-      <Cmd>{'Get-FileHash .\\kiosk-linux-os-1.2.0.zip -Algorithm SHA256'}</Cmd>
-      <p className="text-xs leading-relaxed mb-1" style={{ color: 'var(--rmpg-400)' }}>
-        macOS or Linux:
-      </p>
-      <Cmd>{'shasum -a 256 kiosk-linux-os-1.2.0.zip'}</Cmd>
-      <p className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-400)' }}>
-        Checksums and exact byte counts for <em>every</em> RMPG Flex download — desktop, mobile and OS —
-        are published at{' '}
-        <a href={downloadUrl('SHA256SUMS.txt')} style={{ color: '#d4a017' }}>SHA256SUMS.txt</a>.
-      </p>
-
-      <Callout label="Why the displayed size may look wrong">
-        The size on the download card uses <strong>binary units</strong> — the same convention Windows
-        Explorer uses — so Windows will agree with it. <strong>macOS Finder uses decimal units</strong> and
-        reports a bigger number for the identical file: the OS image shows as <em>236 MB</em> on Windows
-        but <em>247.9 MB</em> on a Mac, and <code>disk.img</code> shows as <em>512 MB</em> versus{' '}
-        <em>536.9 MB</em>. Nothing is wrong in either case — same bytes, different arithmetic. Compare the
-        exact byte counts above rather than the rounded figures, and the SHA-256 settles it beyond doubt.
-      </Callout>
-
       <GuideHeading>Two ways to install</GuideHeading>
       <p className="text-xs leading-relaxed mb-2" style={{ color: 'var(--rmpg-400)' }}>
         <strong style={{ color: 'var(--rmpg-300)' }}>No USB stick (easiest, if the machine already

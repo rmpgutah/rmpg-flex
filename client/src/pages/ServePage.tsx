@@ -50,6 +50,7 @@ import FloatingSaveBar from '../components/FloatingSaveBar';
 import { parseTimestamp } from '../utils/dateUtils';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { applyRmpgBasemap, getThemeColorRgb } from '../utils/mapboxBasemap';
+import { escapeHtml } from '../utils/sanitize';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -1168,9 +1169,9 @@ export default function ServePage() {
         if (popupRef.current) {
           popupRef.current.setLngLat(lngLat).setHTML(`
             <div style="color:var(--text-primary);background:var(--surface-raised);padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
-              <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${job.recipient_name}</div>
-              <div style="font-size:11px;color:var(--text-secondary);">${fullAddr || 'No address'}</div>
-              <div style="font-size:10px;color:var(--text-muted);margin-top:4px;text-transform:uppercase;">${job.status.replace(/_/g, ' ')} &middot; ${(job.document_type || '').replace(/_/g, ' ')}</div>
+              <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${escapeHtml(job.recipient_name)}</div>
+              <div style="font-size:11px;color:var(--text-secondary);">${escapeHtml(fullAddr) || 'No address'}</div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:4px;text-transform:uppercase;">${escapeHtml(job.status.replace(/_/g, ' '))} &middot; ${escapeHtml((job.document_type || '').replace(/_/g, ' '))}</div>
             </div>
           `).addTo(mapRef.current!);
         }

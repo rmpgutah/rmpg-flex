@@ -130,6 +130,19 @@ fieldPhotos.get('/', async (c) => {
 // GET /file/field-photos/<uuid>.<ext> — stream from R2.
 // :key is multi-segment, so use a wildcard route + manual prefix check.
 fieldPhotos.get('/file/*', async (c) => {
+  // Auth: this path matches authMiddleware's media predicate
+  // (`/field-photos/file/`), so a header-less GET carrying sig+exp is
+  // forwarded here WITHOUT the signature being checked. Nothing in this
+  // handler used to check it either, which made every scene photo — the
+  // header below notes these may show victims, juveniles, or client
+  // interiors — readable by anyone holding or guessing an object key, and
+  // made the `exp` parameter meaningless (a signed URL never expired).
+  //
+  // The client renders these through authedImageUrl(), which appends the
+  // session token, so requiring a real session preserves every caller.
+  const user = c.get('user') as { id?: number } | undefined;
+  if (!user) return c.json({ error: 'Authentication required' }, 401);
+
   const key = c.req.path.replace(/^.*\/file\//, '');
   if (!key.startsWith('field-photos/') || key.includes('..')) {
     return c.json({ error: 'Invalid key' }, 400);

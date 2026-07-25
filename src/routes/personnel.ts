@@ -42,6 +42,40 @@ const VALID_ROLES = new Set([
   'contract_manager', 'client_viewer', 'human_resources',
 ]);
 
+// ── Role assignment ceiling ─────────────────────────────────
+// POST /personnel is open to all of MANAGER_ROLES (which includes
+// `supervisor` and `human_resources`) but used to validate the requested
+// role only against VALID_ROLES — and VALID_ROLES contains 'admin'. So a
+// supervisor could create a brand-new admin account with a password of
+// their choosing and log straight into it: full vertical privilege
+// escalation from the second-lowest write tier.
+//
+// That hole also defeated the surrounding design, which is otherwise
+// careful: POST /:id/role is admin-only and refuses self-changes, and
+// MANAGER_EDITABLE deliberately omits `role`/`password*` so they can't be
+// smuggled through a form payload. Creation was the one unguarded door.
+//
+// Rule: you may only assign a role at or below your own rank. Because
+// equal rank is permitted, `admin` (the highest) is assignable only by an
+// admin, `manager` only by manager/admin, and so on.
+const ROLE_RANK: Record<string, number> = {
+  admin: 100,
+  manager: 80,
+  human_resources: 70,
+  supervisor: 60,
+  dispatcher: 35,
+  officer: 30,
+  contract_manager: 20,
+  client_viewer: 10,
+};
+
+// Unknown/absent roles rank 0, so they can never clear another role's bar.
+export function canAssignRole(actorRole: string, targetRole: string): boolean {
+  const actorRank = ROLE_RANK[actorRole] ?? 0;
+  const targetRank = ROLE_RANK[targetRole] ?? 0;
+  return actorRank > 0 && targetRank > 0 && targetRank <= actorRank;
+}
+
 // Valid status values for POST /:id/status. Matches the union in
 // client/src/types/index.ts. Keep these two in sync.
 const VALID_STATUSES = new Set(['active', 'inactive', 'terminated']);
@@ -1433,6 +1467,14 @@ personnel.post('/', async (c) => {
     if (!fullName) return c.json({ error: 'full_name (or first_name + last_name) is required' }, 400);
     if (!VALID_ROLES.has(role)) {
       return c.json({ error: 'Invalid role', valid: Array.from(VALID_ROLES) }, 400);
+    }
+    // Enforce the assignment ceiling — see ROLE_RANK. Without this a
+    // supervisor or human_resources actor could mint an `admin`.
+    if (!canAssignRole(actor.role, role)) {
+      return c.json({
+        error: `Your role (${actor.role}) cannot create a user with role '${role}'`,
+        code: 'ROLE_CEILING',
+      }, 403);
     }
 
     // ── Username uniqueness (case-insensitive) ───────────────

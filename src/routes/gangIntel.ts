@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { requireRole } from '../middleware/auth';
 
 // Mirror CHECK constraints on gang_intel_members (and gang_intel_gangs.threat_level)
 // from migrations/0048_specialized_modules.sql. Keep in sync if the migration moves.
@@ -27,6 +28,14 @@ function enumError(field: 'status' | 'threat_level') {
 }
 
 const gangIntel = new Hono<Env>();
+
+// Gang intelligence is CJIS-restricted. The sibling intel.ts router gates every
+// endpoint with this same `operational` set (admin/manager/supervisor/officer/
+// dispatcher) precisely to exclude the external-facing contract_manager and
+// client_viewer roles; this router omitted it, so those roles could read (and
+// contract_manager could edit) documented gang-member threat records. Restore
+// the gate router-wide — reads AND writes.
+gangIntel.use('*', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 gangIntel.get('/', async (c) => {
   try {
