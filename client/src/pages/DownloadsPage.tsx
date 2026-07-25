@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Monitor, Apple, Smartphone, Download, ChevronRight, HardDrive } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import { apiFetch, downloadUrl } from '../hooks/useApi';
+import { apiFetch } from '../hooks/useApi';
 import WindowsInstallGuide from '../components/install/WindowsInstallGuide';
 import MacInstallGuide from '../components/install/MacInstallGuide';
 import AndroidInstallGuide from '../components/install/AndroidInstallGuide';
@@ -15,6 +15,15 @@ interface InstallerMeta {
   size: string;
   bytes: number;
   releaseDate?: string;
+  /**
+   * Absolute URL supplied by the API. Never build this client-side: a relative
+   * "/downloads/<file>" resolves against Pages, which has no route for it, so
+   * the SPA catch-all returns index.html with HTTP 200 and the browser saves
+   * ~11 KB of HTML under the artifact's filename with no error shown.
+   */
+  url: string;
+  /** Hex SHA-256. Absent for artifacts published before checksums existed. */
+  sha256?: string;
 }
 
 interface DownloadsInfo {
@@ -346,7 +355,7 @@ export default function DownloadsPage() {
                       </span>
                       <a
                         ref={(el) => { downloadRefs.current[p] = el; }}
-                        href={downloadUrl(installer.filename)}
+                        href={installer.url}
                         download={installer.filename}
                         className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
                         style={{
@@ -367,6 +376,16 @@ export default function DownloadsPage() {
                         <Download className="w-3.5 h-3.5" />
                         {config.buttonLabel}
                       </a>
+                      {/* Guarded, not defaulted: artifacts published before
+                          scripts/publish-download.mjs existed carry no
+                          checksum, and rendering "undefined" next to a
+                          download would be worse than showing nothing. */}
+                      {installer.sha256 && (
+                        <div className="mt-2 text-[9px] leading-snug max-w-[220px] break-all">
+                          <span style={{ color: 'var(--field-label-color)' }}>SHA-256</span>{' '}
+                          <code className="font-mono" style={{ color: 'var(--rmpg-400)' }}>{installer.sha256}</code>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <span className="text-xs mt-4" style={{ color: 'var(--rmpg-500)' }}>Not available</span>

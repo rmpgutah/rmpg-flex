@@ -40,6 +40,20 @@ mode = "smart"
 pattern = "api.rmpgutah.us"
 custom_domain = true
 
+# Serve /downloads/* from the app domain too, so a relative link still reaches
+# this Worker instead of falling through to the Pages SPA catch-all (which
+# returns index.html at HTTP 200 — an 11 KB "installer"). This mirrors the
+# mechanism already proven by rmpg-api-proxy for /api/*: a zone route, NOT a
+# _redirects rule, because Pages ignores status-200 rewrites to another origin.
+#
+# Deliberately a safety net, not the primary path. /api/downloads/info returns
+# absolute URLs and a guard test (client/src/__tests__/downloadLinks.guard.test.ts)
+# forbids relative links, so this only catches surfaces not yet found and links
+# written later.
+[[routes]]
+pattern = "rmpgutah.us/downloads/*"
+zone_name = "rmpgutah.us"
+
 # D1 Database — points at the LIVE production DB (the one bound to the legacy
 # rmpg-flex Worker that the rmpg-api-proxy falls back to). The `rmpg-flex-db`
 # (8893480a-…) created with this rewrite is EMPTY of production data; reading
