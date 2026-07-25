@@ -310,9 +310,9 @@ export default function TrainingDocsPage() {
             <span className="text-[9px] text-rmpg-500 ml-2">Download blank PDF forms for field use</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {(['incident', 'record', 'operations', 'service', 'communications', 'administrative'] as const).map(cat => (
+            {(['incident', 'record', 'operations', 'fleet', 'service', 'communications', 'administrative'] as const).map(cat => (
               <div key={cat}>
-                <h3 className="text-[10px] font-bold text-rmpg-400 uppercase mb-2 tracking-wider">{cat === 'service' ? 'Process Service' : cat}</h3>
+                <h3 className="text-[10px] font-bold text-rmpg-400 uppercase mb-2 tracking-wider">{cat === 'service' ? 'Process Service' : cat === 'fleet' ? 'Vehicle / Fleet' : cat}</h3>
                 {BLANK_FORMS.filter(f => f.category === cat).map(form => (
                   <button
                     key={form.id}
