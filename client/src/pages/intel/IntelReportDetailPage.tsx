@@ -62,7 +62,7 @@ export default function IntelReportDetailPage() {
     </div>
   );
 
-  if (!r) return wrap(<div style={{ color: 'var(--rmpg-500)' }}>Loading…</div>);
+  if (!r) return wrap(<div style={{ color: 'var(--text-muted)' }}>Loading…</div>);
 
   return wrap(
     <div className="space-y-3 max-w-3xl">
@@ -149,13 +149,13 @@ export default function IntelReportDetailPage() {
       {/* Linked entities */}
       <div className="space-y-2 p-2" style={{ border: '1px solid var(--border-subtle)', borderRadius: 2 }}>
         <div className="text-[9px] font-semibold" style={{ color: '#d4a017' }}>LINKED ENTITIES</div>
-        {(r.links || []).length === 0 && <div className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>No linked entities.</div>}
+        {(r.links || []).length === 0 && <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>No linked entities.</div>}
         {(r.links || []).map((l: any) => (
           <div key={l.id} className="flex items-center gap-2 text-[11px]">
             <button onClick={() => nav(linkPath(l.entity_type, l.entity_id))} style={{ color: '#22d3ee' }}>
               {l.entity_type} #{l.entity_id}
             </button>
-            <span style={{ color: 'var(--rmpg-500)' }}>· {l.role}</span>
+            <span style={{ color: 'var(--text-muted)' }}>· {l.role}</span>
             <button onClick={() => removeLink(l.id)} style={{ color: '#ef4444', marginLeft: 'auto', fontSize: 10 }}>remove</button>
           </div>
         ))}

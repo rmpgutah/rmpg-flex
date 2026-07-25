@@ -174,7 +174,7 @@ export function Screenshots({ shots }: { shots: { src: string; caption: string }
                 style={{ borderRadius: 2 }}
               />
             </button>
-            <figcaption className="text-[11px] leading-relaxed mt-1.5" style={{ color: 'var(--rmpg-500)' }}>
+            <figcaption className="text-[11px] leading-relaxed mt-1.5" style={{ color: 'var(--text-muted)' }}>
               {shot.caption}
             </figcaption>
           </figure>
@@ -221,7 +221,7 @@ export function GuideFrame({
       style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
     >
       <h4 className="text-sm font-bold text-rmpg-100 mb-1">{title}</h4>
-      <p className="text-xs leading-relaxed mb-4" style={{ color: 'var(--rmpg-500)' }}>{intro}</p>
+      <p className="text-xs leading-relaxed mb-4" style={{ color: 'var(--text-muted)' }}>{intro}</p>
       {children}
     </div>
   );

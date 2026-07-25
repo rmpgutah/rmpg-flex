@@ -1041,19 +1041,19 @@ export default function ConnectionsPage() {
         <div style={{ width: 320, background: 'var(--surface-overlay)', borderLeft: '1px solid var(--border-subtle)', overflowY: 'auto', padding: 8, flexShrink: 0, maxHeight: '100%' }}>
           <div className="text-[9px] font-semibold mb-2" style={{ color: '#e879f9' }}>TIMELINE — {nodes.length} NODES</div>
           {timelineError && <div style={{ color: 'var(--sev-critical)', fontSize: 11 }}>{timelineError}</div>}
-          {timelineLoading && <div style={{ color: 'var(--rmpg-500)', fontSize: 11 }}>Loading…</div>}
+          {timelineLoading && <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>Loading…</div>}
           {!timelineLoading && !timelineError && timeline.length === 0 && (
-            <div style={{ color: 'var(--rmpg-500)', fontSize: 11 }}>No dated events in this graph.</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>No dated events in this graph.</div>
           )}
           {timeline.map((ev, i) => {
             return (
               <div key={`${ev.kind}-${ev.id}-${i}`} className="py-[3px]" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <div className="flex items-center gap-2 text-[10px]">
                   <span style={{ color: TIMELINE_KIND_COLOR[ev.kind] || '#888', fontWeight: 700 }}>{ev.kind.toUpperCase()}</span>
-                  <span style={{ color: 'var(--rmpg-500)' }}>{ev.date ? ev.date.slice(0, 10) : '—'}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{ev.date ? ev.date.slice(0, 10) : '—'}</span>
                 </div>
                 <div className="text-[11px]" style={{ color: 'var(--rmpg-200)' }}>{ev.title}</div>
-                {ev.subtitle && <div className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>{ev.subtitle}</div>}
+                {ev.subtitle && <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{ev.subtitle}</div>}
               </div>
             );
           })}

@@ -889,7 +889,7 @@ function FavoritesPanel({
 
         {favorites.length === 0 ? (
           <div className="rounded-sm border border-subtle p-4 text-center" style={{ background: 'var(--surface-sunken)' }}>
-            <Star size={20} className="mx-auto mb-1.5" style={{ color: 'var(--rmpg-500)' }} />
+            <Star size={20} className="mx-auto mb-1.5" style={{ color: 'var(--text-muted)' }} />
             <p className="text-[10px] text-rmpg-500">No favorites saved yet</p>
             <p className="text-[9px] text-rmpg-600 mt-1">
               Drop a pin on the map or save your current position to add one.
@@ -1475,7 +1475,7 @@ function HistoryPanel({
 
       {trips.length === 0 ? (
         <div className="rounded-sm border border-subtle p-6 text-center" style={{ background:"var(--surface-sunken)" }}>
-          <Route size={24} className="mx-auto mb-2" style={{ color: 'var(--rmpg-500)' }} />
+          <Route size={24} className="mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
           <p className="text-[11px] text-rmpg-500">No trips recorded yet</p>
           <p className="text-[10px] text-rmpg-600 mt-1">
             Trips are auto-detected when you start moving or can be started manually.

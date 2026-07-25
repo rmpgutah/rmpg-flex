@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 
-const css = readFileSync(resolve(__dirname, '../../styles/theme-palettes.css'), 'utf8');
+const SRC_DIR = resolve(__dirname, '../..');
+const css = readFileSync(resolve(SRC_DIR, 'styles/theme-palettes.css'), 'utf8');
 
 function blueSilverBlock(): string {
   const start = css.indexOf('html.theme-blue-silver {');
@@ -67,4 +68,143 @@ describe('theme-block completeness', () => {
       });
     }
   }
+});
+
+// ── Palette blocks, shared by the suites below ──────────────────────────
+const PALETTE_BLOCKS = [
+  { name: 'night', marker: ':root,' },
+  { name: 'day', marker: 'html.theme-light {' },
+  { name: 'legacy-black', marker: 'html.theme-legacy-black {' },
+  { name: 'blue-silver', marker: 'html.theme-blue-silver {' },
+];
+
+function paletteBlockBody(marker: string): string {
+  const start = css.indexOf(marker);
+  expect(start).toBeGreaterThan(-1);
+  return css.slice(start, css.indexOf('\n}', start));
+}
+
+describe('rmpg bare-alias completeness', () => {
+  // Tailwind consumes --rmpg-NNN-rgb via rgb(var(--x-rgb) / <alpha-value>), but
+  // ~440 inline sites consume the BARE var(--rmpg-NNN). When only the triple
+  // existed, every one of those declarations was invalid at computed-value time
+  // and silently inherited (headings rendered pure white instead of muted).
+  const STEPS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+
+  for (const block of PALETTE_BLOCKS) {
+    it(`${block.name} defines every bare --rmpg-* alias`, () => {
+      const body = paletteBlockBody(block.marker);
+      for (const step of STEPS) {
+        // Derived from the triple, never a literal hex -- a literal would let the
+        // bare and -rgb forms drift apart silently.
+        expect(body).toMatch(
+          new RegExp(`--rmpg-${step}:\\s*rgb\\(var\\(--rmpg-${step}-rgb\\)\\)`),
+        );
+      }
+    });
+  }
+
+  it('repeats the aliases per block rather than hoisting them to one rule', () => {
+    // Not stylistic. Custom properties substitute var() at computed-value time on
+    // the element holding the declaration, and the SUBSTITUTED result inherits.
+    // A single hoisted alias would bake in the page-root theme's color, and
+    // .tactical-dark -- a DESCENDANT class that re-declares these triples to force
+    // night on map/MDT/dashcam -- could never override it.
+    const aliasCount = (css.match(/--rmpg-500:\s*rgb\(var\(--rmpg-500-rgb\)\)/g) ?? []).length;
+    expect(aliasCount).toBe(PALETTE_BLOCKS.length);
+  });
+});
+
+describe('no new dead CSS variables', () => {
+  // A var consumed WITHOUT a fallback and defined nowhere makes the whole
+  // declaration invalid at computed-value time, so the property silently falls
+  // back to the inherited value. That is the bug class that hid --rmpg-* (440
+  // sites), --green-500 and --brand-200/300. This is a ratchet: the allowlist
+  // below is pre-existing debt, and nothing new may be added to it.
+  const KNOWN_DEAD = new Set([
+    // "rt-" radio-theme tokens: 142 occurrences, defined in no stylesheet.
+    '--rt-accent', '--rt-bg', '--rt-border', '--rt-muted', '--rt-panel',
+    '--rt-text', '--rt-tx',
+    // Raw Tailwind-ish color names that were never palette tokens. The correct
+    // tokens are --sev-ok / --sev-warn / --sev-critical / --brand-*.
+    '--amber-400', '--amber-500', '--amber-500-rgb', '--green-400', '--green-500',
+    '--green-500-rgb', '--orange-400', '--orange-500-rgb', '--purple-400',
+    '--purple-500-rgb', '--red-400', '--red-500-rgb',
+    // Undefined brand ramp steps (--brand-400 alone has 19 consumers).
+    '--brand-400', '--brand-500',
+    // Grid tokens referenced by a table skin that never shipped its palette.
+    '--grid-header-text', '--grid-row-even', '--grid-row-selected',
+    '--grid-row-selected-border',
+    // Typo for --sev-warn at NavigationPage.tsx.
+    '--sev-warning',
+  ]);
+
+  // Set at runtime via element.style.setProperty(), so they never appear in CSS.
+  const RUNTIME_SET = new Set([
+    '--crt-scanline-alpha', '--crt-vignette-alpha', '--user-font-scale',
+    '--writer-font', '--writer-line-height', '--writer-measure', '--writer-size',
+  ]);
+
+  function stripComments(text: string): string {
+    // Block comments first: their CONTINUATION lines do not start with a comment
+    // marker, so a purely line-based filter leaks illustrative `var(--x)` examples.
+    // Only treat "//" as a comment at line start, so URLs (https://) survive.
+    return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  }
+
+  function walk(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== '__tests__' && entry.name !== 'node_modules') walk(full, out);
+      } else if (/\.(tsx?|css)$/.test(entry.name)) {
+        out.push(full);
+      }
+    }
+    return out;
+  }
+
+  it('every var(--x) consumed without a fallback is defined somewhere', () => {
+    const files = walk(SRC_DIR);
+    expect(files.length).toBeGreaterThan(100);
+
+    const defined = new Set<string>();
+    for (const file of files) {
+      if (!file.endsWith('.css')) continue;
+      for (const m of readFileSync(file, 'utf8').matchAll(/(--[A-Za-z0-9-]+)\s*:/g)) {
+        defined.add(m[1]);
+      }
+    }
+
+    const offenders = new Map<string, string[]>();
+    for (const file of files) {
+      const text = stripComments(readFileSync(file, 'utf8'));
+      for (const m of text.matchAll(/var\(\s*(--[A-Za-z0-9-]+)\s*\)/g)) {
+        const name = m[1];
+        if (defined.has(name) || RUNTIME_SET.has(name)) continue;
+        if (name.startsWith('--tw-')) continue; // injected by Tailwind at runtime
+        if (KNOWN_DEAD.has(name)) continue;
+        const rel = file.slice(SRC_DIR.length + 1);
+        if (!offenders.has(name)) offenders.set(name, []);
+        if (!offenders.get(name)!.includes(rel)) offenders.get(name)!.push(rel);
+      }
+    }
+
+    expect(
+      Object.fromEntries([...offenders].map(([k, v]) => [k, v.slice(0, 5)])),
+    ).toEqual({});
+  });
+
+  it('does not carry allowlist entries that are already fixed', () => {
+    // Keeps the ratchet honest: once a dead var is defined, it must leave the
+    // allowlist, otherwise the list rots into a permanent excuse.
+    const defined = new Set<string>();
+    for (const file of walk(SRC_DIR)) {
+      if (!file.endsWith('.css')) continue;
+      for (const m of readFileSync(file, 'utf8').matchAll(/(--[A-Za-z0-9-]+)\s*:/g)) {
+        defined.add(m[1]);
+      }
+    }
+    expect([...KNOWN_DEAD].filter((v) => defined.has(v))).toEqual([]);
+  });
 });

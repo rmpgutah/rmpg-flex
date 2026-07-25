@@ -149,7 +149,7 @@ const SOURCE_META: Record<string, { icon: LucideIcon; color: string; label: stri
   gps: { icon: Satellite, color: 'var(--sev-ok)', label: 'GPS' },
   wifi: { icon: Wifi, color: 'var(--brand-gold)', label: 'WiFi' },
   ip: { icon: Globe, color: 'var(--sev-critical)', label: 'IP' },
-  unknown: { icon: Globe, color: 'var(--rmpg-500)', label: '—' },
+  unknown: { icon: Globe, color: 'var(--text-muted)', label: '—' },
 };
 
 const PRIO_COLOR: Record<string, string> = { P1: 'var(--sev-critical)', P2: 'var(--sev-warn)', P3: 'var(--brand-gold)', P4: '#888888' };
