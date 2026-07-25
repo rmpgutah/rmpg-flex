@@ -1203,9 +1203,16 @@ LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0*.{ucode,pnvm}" "$LINUX_FW_MK"
     echo "     ld: cannot find scripts/kconfig/confdata.o: No such file or directory" >&2
     echo "   The second one happened one line after that object compiled successfully." >&2
     echo "   Do not go looking through Kconfig for either of them." >&2
-    echo "   Wait for that build to finish and re-run, or use separate volumes:" >&2
+    echo "   Wait for that build to finish and re-run. Separate volumes are the other" >&2
+    echo "   option, but CHECK FREE SPACE FIRST — the output tree is ~32 GB, and on" >&2
+    echo "   2026-07-25 the Colima VM had only 19 GB free, so a second tree could not" >&2
+    echo "   have fitted even from scratch:" >&2
+    echo "     docker run --rm -v $BUILD_OUTPUT_VOLUME:/out alpine df -h /out" >&2
     echo "     BUILDROOT_VOLUME=kiosk-src-mine BUILD_OUTPUT_VOLUME=kiosk-out-mine ./build.sh" >&2
-    echo "   (a fresh output volume means a full from-scratch build)" >&2
+    echo "   (a fresh output volume also means a full from-scratch build, ~1-2h, and" >&2
+    echo "    WebKitGTK needs a Colima VM of 16 GiB RAM or more to compile at all)" >&2
+    echo "   In practice, on one machine, coordinating with the other build is cheaper" >&2
+    echo "   than isolating from it." >&2
   else
     echo "  No other container is holding the volume now, so this is more likely a" >&2
     echo "  real build failure — but note a colliding build may have already exited." >&2
