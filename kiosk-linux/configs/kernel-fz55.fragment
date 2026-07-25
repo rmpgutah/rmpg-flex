@@ -257,6 +257,56 @@ CONFIG_I2C_DESIGNWARE_PLATFORM=y
 # I2C_HID_ACPI selects the hidden I2C_HID_CORE symbol, so that one is not set
 # here.
 CONFIG_I2C_HID_ACPI=y
+
+# CORRECTION (2026-07-25, second audit pass): the block above is still not
+# sufficient, and neither half of it survives into the kernel .config on its own.
+# Two separate reasons, both silent:
+#
+# (a) I2C_HID_ACPI lives inside `if I2C_HID`, and I2C_HID is a `menuconfig` gate.
+#     Setting I2C_HID_ACPI without it is a no-op. CONFIG_I2C_HID=y is asserted
+#     further down, in the "symbols this build depends on" block.
+# (b) Reading the BUILT config rather than this fragment showed
+#     I2C_DESIGNWARE_PLATFORM silently absent — it
+# `depends on (ACPI && COMMON_CLK) || !ACPI`, and with ACPI=y but COMMON_CLK
+# unset on x86_64 that dependency is unmet, so kconfig drops it without a word.
+# The touchscreen this fragment claims to enable therefore had NO transport at
+# all: the exact "blocker #1" the requirements doc named, still open, while the
+# config looked like it addressed it.
+#
+# The full chain, bottom-up, is:
+#   MFD_INTEL_LPSS_{PCI,ACPI} — the LPSS controllers the I2C host lives behind.
+#     These `select COMMON_CLK` themselves, which is what makes
+#     I2C_DESIGNWARE_PLATFORM selectable at all. Both PCI and ACPI enumeration
+#     paths are enabled because which one a given generation uses is not
+#     verifiable without the hardware.
+#   PINCTRL_INTEL + the per-generation pinctrl driver — an I2C-HID digitizer is
+#     declared in ACPI with a GpioInt interrupt. Without the matching pinctrl
+#     driver that GPIO cannot be resolved, so the device never probes even with
+#     a working I2C bus. One driver per FZ-55 generation:
+#       CANNONLAKE -> Mk1 (Whiskey Lake-U)
+#       TIGERLAKE  -> Mk2 (Tiger Lake-UP3)
+#       ALDERLAKE  -> Mk3 (Raptor Lake-P shares Alder Lake pinctrl)
+#     METEORLAKE is included as cheap forward cover for the Toughbook 56
+#     successor named in the FZ-55 mk3 EOL notice.
+# Corroborated by Panasonic shipping an "Intel Serial IO Driver" as a distinct
+# factory package — that is this same LPSS block on the Windows side.
+CONFIG_MFD_INTEL_LPSS=y
+CONFIG_MFD_INTEL_LPSS_PCI=y
+CONFIG_MFD_INTEL_LPSS_ACPI=y
+CONFIG_COMMON_CLK=y
+# CONFIG_PINCTRL is the `menuconfig` gate over drivers/pinctrl. Setting only the
+# per-platform drivers below leaves them silently absent from .config — the same
+# gate trap this project has now hit four separate times (MEDIA_SUPPORT for the
+# webcam, SOUND/SND for audio, I2C_HID above, and this). Caught here by the
+# post-build assertion in build.sh rather than by a dead touchscreen on a bench
+# unit. PINCTRL_INTEL itself has no prompt and is `select`ed by the per-platform
+# drivers; it is listed anyway so the assertion has a stable symbol to check.
+CONFIG_PINCTRL=y
+CONFIG_PINCTRL_INTEL=y
+CONFIG_PINCTRL_CANNONLAKE=y
+CONFIG_PINCTRL_TIGERLAKE=y
+CONFIG_PINCTRL_ALDERLAKE=y
+CONFIG_PINCTRL_METEORLAKE=y
 # Wacom-class digitizer for the pen/stylus models. HID_MULTITOUCH (above)
 # covers the capacitive touch layer; a Wacom-protocol pen is a separate HID
 # usage this driver is needed to decode.
@@ -334,3 +384,94 @@ CONFIG_POWER_SUPPLY=y
 # should not be able to reach.
 CONFIG_INTEL_IOMMU=y
 CONFIG_INTEL_IOMMU_DEFAULT_ON=y
+
+# ── Derived from Panasonic's OWN pre-installed component inventory ────────
+# (2026-07-25, second pass.) Everything above this line was inferred from spec
+# sheets. This block instead comes from the authoritative list Panasonic
+# publishes of what it factory-installs on the Mk3 — retrieved for real from
+# https://global-pc-support.connect.panasonic.com/driver/dr250205 (the earlier
+# research session could not reach it; its network egress was blocked at the
+# proxy, so its hardware map was search-summary guesswork).
+#
+# The reasoning is one-directional and worth stating: a driver on Panasonic's
+# factory list means the silicon is PRESENT on at least some SKUs. It does not
+# mean Linux needs the same driver. Each entry below names the Panasonic list
+# item it answers, so a future reader can re-derive it rather than trust it.
+#
+# Every symbol verified to exist in the pinned 6.6.63 source and to have its
+# dependencies already met in the merged .config — none guessed.
+
+# Panasonic item 9: "Intel HID Event Filter driver (HID EFD)". This is the
+# ACPI interface the FZ-55's function keys, volume keys and rotation lock
+# arrive on. PANASONIC_LAPTOP (already =y via the base x86_64 defconfig) is the
+# Let's Note interface and is NOT confirmed to bind on a Toughbook; intel_hid
+# is the one Panasonic's own inventory proves is in use. Enabling both costs
+# nothing and only one will bind.
+CONFIG_INTEL_HID_EVENT=y
+
+# Panasonic item 27: "Intel(R) Dynamic Tuning Technology (Intel(R) DTT)".
+# DTT/DPTF is the platform's thermal policy engine. Base ACPI thermal (already
+# on) only exposes the coarse critical-shutdown trip point; the INT340X driver
+# is what exposes the real passive-throttling policy the firmware ships. On a
+# terminal that lives on a vehicle dash in a Salt Lake City summer, the
+# difference is throttling versus a thermal shutdown mid-shift.
+# Selects ACPI_THERMAL_REL, ACPI_FAN, THERMAL_ACPI, INTEL_SOC_DTS_IOSF_CORE
+# and INTEL_TCC on its own — no need to list them.
+CONFIG_INT340X_THERMAL=y
+
+# Panasonic item 8: "Intel Management Engine Software". The ME is present on
+# every one of these platforms. mei/mei_me is also the transport several other
+# subsystems ride on, and its absence makes some firmware-side features simply
+# not enumerate.
+CONFIG_INTEL_MEI=y
+CONFIG_INTEL_MEI_ME=y
+
+# Panasonic item 25: "Intel Integrated Sensor Solution" (gated on camera SKUs).
+# The ISH is the low-power sensor hub carrying the ambient-light sensor. Only
+# useful once something consumes it (auto-brightness is not built yet), but
+# without it the sensors are invisible, so this is the cheap half of that
+# future work.
+CONFIG_INTEL_ISH_HID=y
+
+# ── Networking: THREE distinct NICs, not one ─────────────────────────────
+# The earlier doc guessed "e1000e, Intel I219-LM class" and flagged it as the
+# single most likely first-article failure. Panasonic's list settles it and
+# shows the guess was incomplete rather than wrong:
+#   item 14 "LAN Driver for I219"          -> e1000e   (already =y, CONFIRMED)
+#   item 23 "PCIe LAN(Realtek) 8111/8168"  -> r8169    (=y via base defconfig)
+#   item 22 "USB LAN(Realtek) 8153/8152"   -> r8152    (ABSENT — added here)
+# The USB one is not exotic: it is the Ethernet port on the dock and on every
+# USB-C dongle, which is exactly how a docked in-vehicle terminal gets wired
+# network. Without it a docked unit silently has no Ethernet.
+CONFIG_USB_RTL8152=y
+# I225/I226 is not on Panasonic's list for any FZ-55 generation, but it is the
+# other Intel mobile NIC of this era and costs a few KB. Keeping it removes an
+# entire class of "boots, no network" failure if a late SKU or the Toughbook 56
+# successor swaps the controller.
+CONFIG_IGC=y
+
+# Panasonic items 19 + 20: two separate "USB Serial" driver packages. These
+# back the serial port on the rear xPAK (FZ-VCN551W/552W/553W) and the
+# barcode xPAK's virtual COM port (item 32). USB_SERIAL_OPTION above only
+# covers cellular modems, not these bridges.
+CONFIG_USB_SERIAL_FTDI_SIO=y
+CONFIG_USB_SERIAL_PL2303=y
+CONFIG_USB_SERIAL_CP210X=y
+
+# OPAL self-encrypting drives. Many FZ-55 SKUs ship OPAL NVMe (and the
+# Universal Bay 2nd-SSD xPAKs FZ-VSD55151W / FZ-VSD551T1W are explicitly OPAL).
+# Without this the kernel can see a locked OPAL drive but cannot unlock or
+# manage it, which presents as a disk that enumerates and then refuses every
+# read — one of the confusing failure modes the requirements doc warns about.
+CONFIG_BLK_SED_OPAL=y
+
+# ── The menuconfig gate the I2C-HID block above needs ────────────────────
+# I2C_HID is a `menuconfig`, so every symbol inside `if I2C_HID` — including
+# I2C_HID_ACPI, set above — is unselectable until this is on. It came from the
+# kernel's in-tree x86_64 defconfig by luck rather than by this project asking
+# for it, which is a load-bearing accident for the one input device a terminal
+# with no keyboard cannot do without. A kernel bump that changed the defconfig
+# would have removed it silently, with no build error.
+# (ACPI_BATTERY / ACPI_AC / POWER_SUPPLY are pinned for the same reason further
+# up, by the battery-guard block.)
+CONFIG_I2C_HID=y

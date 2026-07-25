@@ -216,3 +216,13 @@ BR2_PACKAGE_ALSA_LIB=y
 # Bluetooth barcode scanner or headset is unusable even though the hardware is
 # fully enabled.
 BR2_PACKAGE_BLUEZ5_UTILS=y
+
+# Intel Bluetooth firmware (intel/ibt-*.sfi + .ddc). Added 2026-07-25 in the
+# second audit pass, after listing the built rootfs showed no /lib/firmware/intel
+# directory existed at all — see the CORRECTION block in
+# configs/kernel-bluetooth.fragment for why the first pass wrongly concluded the
+# iwlwifi blobs covered this. Buildroot's help text for this option names only
+# older parts (3160/7260/7265/8260/8265), which is misleading: the option globs
+# the whole intel/ibt-* set, which is what AX201 and AX211 also load from.
+# Without it BLUEZ5_UTILS and the whole kernel BT stack are inert.
+BR2_PACKAGE_LINUX_FIRMWARE_IBT=y

@@ -593,7 +593,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
           <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-          <span style={{ fontSize: 8, color: 'var(--rmpg-500)' }}>{activeRoute.distance}</span>
+          <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>{activeRoute.distance}</span>
         </div>
       )}
 
@@ -657,7 +657,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'var(--surface-overlay)',
         }}>
-          <RefreshCw style={{ width: 14, height: 14, color: 'var(--rmpg-500)' }} className="animate-spin" />
+          <RefreshCw style={{ width: 14, height: 14, color: 'var(--text-muted)' }} className="animate-spin" />
         </div>
       )}
 

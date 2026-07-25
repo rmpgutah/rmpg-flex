@@ -1259,7 +1259,7 @@ export default function Layout() {
                   style={{
                     width: 10,
                     height: 10,
-                    color: 'var(--rmpg-500)',
+                    color: 'var(--text-muted)',
                     transform: profileDropdownOpen ? 'rotate(180deg)' : undefined,
                     transition: 'transform 0.15s',
                   }}

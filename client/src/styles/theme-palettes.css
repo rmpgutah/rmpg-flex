@@ -71,6 +71,24 @@ html.theme-dark,
   --rmpg-300-rgb: 150 165 184; --rmpg-400-rgb: 122 140 162; --rmpg-500-rgb: 92 110 132;
   --rmpg-600-rgb: 60 80 102;  --rmpg-700-rgb: 30 43 58;    --rmpg-800-rgb: 21 33 46;
   --rmpg-900-rgb: 13 23 34;   --rmpg-950-rgb: 6 11 16;
+  /* Bare aliases for the ramp above. Tailwind consumes the -rgb triples via
+     rgb(var(--x-rgb) / <alpha-value>), but ~440 inline sites across ~124 files
+     consume the BARE form (style={{ color: 'var(--rmpg-500)' }}). Without these
+     the declaration is invalid at computed-value time and silently inherits —
+     which is why the /downloads headings rendered pure white. Derived from the
+     triple, never a literal hex, so the two forms cannot drift apart.
+     These MUST be repeated in every palette block, not hoisted to a single
+     :root rule: custom properties substitute var() at computed-value time on
+     the element holding the declaration, and the *substituted* result inherits.
+     A single hoisted alias would bake in the page-root theme's color and
+     .tactical-dark (a DESCENDANT class that re-declares these triples to force
+     night on map/MDT/dashcam) could never override it. */
+  --rmpg-50: rgb(var(--rmpg-50-rgb));   --rmpg-100: rgb(var(--rmpg-100-rgb));
+  --rmpg-200: rgb(var(--rmpg-200-rgb)); --rmpg-300: rgb(var(--rmpg-300-rgb));
+  --rmpg-400: rgb(var(--rmpg-400-rgb)); --rmpg-500: rgb(var(--rmpg-500-rgb));
+  --rmpg-600: rgb(var(--rmpg-600-rgb)); --rmpg-700: rgb(var(--rmpg-700-rgb));
+  --rmpg-800: rgb(var(--rmpg-800-rgb)); --rmpg-900: rgb(var(--rmpg-900-rgb));
+  --rmpg-950: rgb(var(--rmpg-950-rgb));
   --brand-50-rgb: 242 244 247; --brand-100-rgb: 221 226 232; --brand-200-rgb: 191 199 209;
   --brand-300-rgb: 158 169 183; --brand-400-rgb: 127 140 158; --brand-500-rgb: 102 116 134;
   --brand-600-rgb: 76 90 108;  --brand-700-rgb: 52 66 82;    --brand-800-rgb: 31 43 56;
@@ -142,6 +160,13 @@ html.theme-light {
   --rmpg-300-rgb: 70 70 70;  --rmpg-400-rgb: 85 85 85;   --rmpg-500-rgb: 100 100 100;
   --rmpg-600-rgb: 150 146 136; --rmpg-700-rgb: 214 211 200; --rmpg-800-rgb: 236 233 221;
   --rmpg-900-rgb: 247 249 251; --rmpg-950-rgb: 255 255 255;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted. */
+  --rmpg-50: rgb(var(--rmpg-50-rgb));   --rmpg-100: rgb(var(--rmpg-100-rgb));
+  --rmpg-200: rgb(var(--rmpg-200-rgb)); --rmpg-300: rgb(var(--rmpg-300-rgb));
+  --rmpg-400: rgb(var(--rmpg-400-rgb)); --rmpg-500: rgb(var(--rmpg-500-rgb));
+  --rmpg-600: rgb(var(--rmpg-600-rgb)); --rmpg-700: rgb(var(--rmpg-700-rgb));
+  --rmpg-800: rgb(var(--rmpg-800-rgb)); --rmpg-900: rgb(var(--rmpg-900-rgb));
+  --rmpg-950: rgb(var(--rmpg-950-rgb));
   --brand-50-rgb: 26 26 26;  --brand-100-rgb: 40 40 40;  --brand-200-rgb: 55 55 55;
   --brand-300-rgb: 70 70 70; --brand-400-rgb: 85 85 85;  --brand-500-rgb: 100 100 100;
   --brand-600-rgb: 150 146 136; --brand-700-rgb: 214 211 200; --brand-800-rgb: 236 233 221;
@@ -219,6 +244,13 @@ html.theme-legacy-black {
   --rmpg-300-rgb: 150 150 150; --rmpg-400-rgb: 117 117 117; --rmpg-500-rgb: 90 90 90;
   --rmpg-600-rgb: 67 67 67; --rmpg-700-rgb: 45 45 45; --rmpg-800-rgb: 27 27 27;
   --rmpg-900-rgb: 13 13 13; --rmpg-950-rgb: 3 3 3;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted. */
+  --rmpg-50: rgb(var(--rmpg-50-rgb));   --rmpg-100: rgb(var(--rmpg-100-rgb));
+  --rmpg-200: rgb(var(--rmpg-200-rgb)); --rmpg-300: rgb(var(--rmpg-300-rgb));
+  --rmpg-400: rgb(var(--rmpg-400-rgb)); --rmpg-500: rgb(var(--rmpg-500-rgb));
+  --rmpg-600: rgb(var(--rmpg-600-rgb)); --rmpg-700: rgb(var(--rmpg-700-rgb));
+  --rmpg-800: rgb(var(--rmpg-800-rgb)); --rmpg-900: rgb(var(--rmpg-900-rgb));
+  --rmpg-950: rgb(var(--rmpg-950-rgb));
   --brand-50-rgb: 242 242 242; --brand-100-rgb: 221 221 221; --brand-200-rgb: 191 191 191;
   --brand-300-rgb: 158 158 158; --brand-400-rgb: 127 127 127; --brand-500-rgb: 102 102 102;
   --brand-600-rgb: 76 76 76; --brand-700-rgb: 52 52 52; --brand-800-rgb: 31 31 31; --brand-900-rgb: 14 14 14;
@@ -309,6 +341,13 @@ html.theme-blue-silver {
   --rmpg-300-rgb: 157 175 194; --rmpg-400-rgb: 129 149 171; --rmpg-500-rgb: 99 118 143;
   --rmpg-600-rgb: 68 89 113;  --rmpg-700-rgb: 44 79 116;   --rmpg-800-rgb: 34 64 95;
   --rmpg-900-rgb: 26 51 80;   --rmpg-950-rgb: 20 40 64;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted. */
+  --rmpg-50: rgb(var(--rmpg-50-rgb));   --rmpg-100: rgb(var(--rmpg-100-rgb));
+  --rmpg-200: rgb(var(--rmpg-200-rgb)); --rmpg-300: rgb(var(--rmpg-300-rgb));
+  --rmpg-400: rgb(var(--rmpg-400-rgb)); --rmpg-500: rgb(var(--rmpg-500-rgb));
+  --rmpg-600: rgb(var(--rmpg-600-rgb)); --rmpg-700: rgb(var(--rmpg-700-rgb));
+  --rmpg-800: rgb(var(--rmpg-800-rgb)); --rmpg-900: rgb(var(--rmpg-900-rgb));
+  --rmpg-950: rgb(var(--rmpg-950-rgb));
   --brand-50-rgb: 245 247 250; --brand-100-rgb: 225 231 238; --brand-200-rgb: 197 209 220;
   --brand-300-rgb: 165 182 199; --brand-400-rgb: 134 154 175; --brand-500-rgb: 109 128 150;
   --brand-600-rgb: 82 101 122;  --brand-700-rgb: 58 78 98;    --brand-800-rgb: 38 58 78;

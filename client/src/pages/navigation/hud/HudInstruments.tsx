@@ -285,7 +285,7 @@ export const GPS_POOR_THRESHOLD_M = 30;
 export function HudQualityPill({ accuracy }: { accuracy: number | null }) {
   const a = accuracy;
   const { color, label } = a == null
-    ? { color: 'var(--rmpg-500)', label: 'NO FIX' }
+    ? { color: 'var(--text-muted)', label: 'NO FIX' }
     : a < GPS_GOOD_THRESHOLD_M ? { color: 'var(--sev-ok)', label: 'GOOD' }
       : a < GPS_POOR_THRESHOLD_M ? { color: 'var(--sev-warn)', label: 'FAIR' }
         : { color: 'var(--sev-critical)', label: 'POOR' };
