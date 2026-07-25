@@ -63,6 +63,11 @@ export default {
           sunken:  'var(--surface-sunken)',   // #0d1520
           overlay: 'var(--surface-overlay)',  // #0a1018
           deep:    'var(--surface-deep)',     // #060c14
+          // Hover/active surface. Defined in all four theme blocks of
+          // theme-palettes.css but was never bound here, so the 14 existing
+          // `bg-surface-hover` usages across the desktop shell and dashcam
+          // surfaces emitted no CSS and their hover feedback silently did nothing.
+          hover:   'var(--surface-hover)',
         },
 
         // ── RMPG Brand ─────────────────────────────────────
