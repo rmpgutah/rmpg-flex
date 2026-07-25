@@ -25,6 +25,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { containsAnyClause } from '../utils/searchText';
 const forensics = new Hono<Env>();
 
 // ── Allowed-value sets (mirror migration CHECK constraints) ──
@@ -154,9 +155,10 @@ forensics.get('/', async (c) => {
     if (q('examiner_id')) { conditions.push('lead_examiner_id = ?'); params.push(q('examiner_id')); }
     const search = q('search');
     if (search) {
-      conditions.push('(lab_number LIKE ? OR title LIKE ? OR description LIKE ?)');
-      const s = `%${search}%`;
-      params.push(s, s, s);
+      // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+      const _m = containsAnyClause(['lab_number', 'title', 'description']);
+      conditions.push(_m.sql);
+      params.push(..._m.binds(search));
     }
     const where = `WHERE ${conditions.join(' AND ')}`;
     const pageNum = Math.max(1, parseInt(q('page') || '1', 10) || 1);

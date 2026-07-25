@@ -305,7 +305,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
     <div className="p-4 space-y-4">
       {/* Header */}
       <div className="flex items-center gap-2">
-        <Link2 className="w-4 h-4 text-[#d4a017]" />
+        <Link2 className="w-4 h-4 text-accent-silver-500" />
         <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">ServeManager Integration</h2>
         {status?.configured && (
           <span className="ml-2 flex items-center gap-1 text-green-400 text-[10px]">
@@ -324,7 +324,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       {/* ═══ Section 1: API Key Management ═══ */}
       <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
-        <div className="flex items-center gap-2 text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">
+        <div className="flex items-center gap-2 text-[10px] font-bold text-[color:var(--panel-header-color)] uppercase tracking-wider">
           <Key className="w-3.5 h-3.5" />
           API Key
         </div>
@@ -336,7 +336,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={status?.configured ? 'Enter new key to replace...' : 'Enter your ServeManager API key...'}
-              className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 font-mono transition-colors"
+              className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-[2px] focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 font-mono transition-colors"
             />
             <button type="button"
               onClick={() => setShowKey(!showKey)}
@@ -395,7 +395,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       {status?.configured && (
         <div className="panel-beveled bg-surface-base p-3 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-[color:var(--panel-header-color)] uppercase tracking-wider">
               <RefreshCw className="w-3.5 h-3.5" />
               Data Sync
             </div>
@@ -447,7 +447,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
           {/* Sync history */}
           {syncLog.length > 0 && (
             <div className="space-y-1">
-              <div className="text-[10px] text-[#d4a017] font-bold uppercase tracking-wider">Sync History</div>
+              <div className="text-[10px] text-[color:var(--panel-header-color)] font-bold uppercase tracking-wider">Sync History</div>
               <div className="max-h-32 overflow-y-auto space-y-0.5">
                 {syncLog.slice(0, 10).map((entry) => (
                   <div key={entry.id} className="flex items-center gap-2 text-[10px] bg-surface-sunken px-2 py-1 rounded-[2px]">
@@ -474,7 +474,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       {status?.configured && (
         <div className="panel-beveled bg-surface-base p-3 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-[color:var(--panel-header-color)] uppercase tracking-wider">
               <Play className="w-3.5 h-3.5" />
               Auto-Poller — Job-to-Dispatch
             </div>
@@ -560,7 +560,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 max={1800}
                 value={pollerInterval}
                 onChange={(e) => { setPollerInterval(e.target.value); setPollerDirty(true); }}
-                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors font-mono"
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors font-mono"
               />
               <div className="text-[9px] text-rmpg-500">Min 60s, max 1800s (30 min)</div>
             </div>
@@ -572,7 +572,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 type="text"
                 value={pollerTargetClient}
                 onChange={(e) => { setPollerTargetClient(e.target.value); setPollerDirty(true); }}
-                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors"
               />
               <div className="text-[9px] text-rmpg-500">Only jobs from this client trigger auto-dispatch</div>
             </div>
@@ -595,7 +595,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       {status?.configured && status.cached_jobs > 0 && (
         <div className="panel-beveled bg-surface-base p-3 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-[color:var(--panel-header-color)] uppercase tracking-wider">
               <Briefcase className="w-3.5 h-3.5" />
               Cached Jobs ({jobTotal})
             </div>
@@ -607,7 +607,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                   value={jobSearch}
                   onChange={(e) => { setJobSearch(e.target.value); setJobPage(1); }}
                   placeholder="Search jobs..." aria-label="Search jobs..."
-                  className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-2 py-1 rounded-[2px] w-48 focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                  className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-2 py-1 rounded-[2px] w-48 focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors"
                 />
               </div>
               <button type="button" onClick={fetchJobs} className="toolbar-btn text-[10px] flex items-center gap-1">
@@ -742,7 +742,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       {/* ═══ Section 4: Serve Nudge Settings ═══ */}
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">
+          <div className="flex items-center gap-2 text-[10px] font-bold text-[color:var(--panel-header-color)] uppercase tracking-wider">
             <Settings className="w-3.5 h-3.5" />
             Attempt Notification Settings
           </div>
@@ -763,7 +763,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 type="number" min={1} max={720}
                 value={nudgeSettings.approaching_hours}
                 onChange={(e) => nudgeSet({ approaching_hours: parseInt(e.target.value, 10) || 48 })}
-                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors font-mono"
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors font-mono"
               />
               <div className="text-[9px] text-rmpg-500">Flag jobs this many hours before court deadline</div>
             </div>
@@ -773,7 +773,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 type="number" min={1} max={30}
                 value={nudgeSettings.diligence_gap_days}
                 onChange={(e) => nudgeSet({ diligence_gap_days: parseInt(e.target.value, 10) || 3 })}
-                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors font-mono"
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors font-mono"
               />
               <div className="text-[9px] text-rmpg-500">Days without a logged attempt before flagging</div>
             </div>
@@ -783,7 +783,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 type="number" min={1} max={720}
                 value={nudgeSettings.unassigned_window_hours}
                 onChange={(e) => nudgeSet({ unassigned_window_hours: parseInt(e.target.value, 10) || 72 })}
-                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors font-mono"
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors font-mono"
               />
               <div className="text-[9px] text-rmpg-500">Hours an unassigned job remains before escalating</div>
             </div>
@@ -793,7 +793,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 type="number" min={1} max={168}
                 value={nudgeSettings.renotify_hours}
                 onChange={(e) => nudgeSet({ renotify_hours: parseInt(e.target.value, 10) || 24 })}
-                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors font-mono"
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors font-mono"
               />
               <div className="text-[9px] text-rmpg-500">Minimum hours between repeated notifications</div>
             </div>

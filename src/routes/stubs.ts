@@ -363,6 +363,13 @@ stubs.get('/messages/priority-stats', async (c) => {
 // useNavBadges (Nav Index toolbar badges). Was a hardcoded-zero stub, which
 // made those badges permanently show nothing regardless of real counts.
 stubs.get('/dashboard', async (c) => {
+  // Same public-mount leak surface as the /bolos/* and /messages/* routes:
+  // this router is ALSO mounted at '/api/diagnostics' and '/api/updates',
+  // both `auth: 'public'`, so every path it defines was reachable there with
+  // no token — publishing live open_cases / pending_serve / active_warrants
+  // counts to anyone. On the auth-required mounts (/api/stats,
+  // /api/dispatch/stats) userId is set, so this guard costs nothing there.
+  if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
   try {
     const row = await c.env.DB.prepare(
       `SELECT
@@ -396,6 +403,10 @@ stubs.get('/google-maps/client-key', (c) => c.json({}));
 // `stats.callsByPriority`; useNavBadges (Nav Index toolbar + the desktop
 // Live Ops widget) reads `active_warrants`. Real query returns all three.
 stubs.get('/', async (c) => {
+  // Public-mount guard: bare GET /api/diagnostics hit this handler with no
+  // token and returned live operational posture (active call count by
+  // priority, units currently on shift, active warrants).
+  if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
   try {
     const [activeRow, warrantsRow, priorityRows, unitsRow] = await Promise.all([
       c.env.DB.prepare(

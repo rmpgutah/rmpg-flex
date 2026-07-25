@@ -184,8 +184,12 @@ panic.post('/panic', async (c) => {
   return c.json(created, 201);
 });
 
-// POST /dispatch/panic/:id/acknowledge — dispatcher confirms receipt
-panic.post('/panic/:id/acknowledge', async (c) => {
+// POST /dispatch/panic/:id/acknowledge — dispatcher confirms receipt.
+// Acknowledging flips an active alarm off the dispatcher's default active-panic
+// monitor, so it must carry the same dispatcher-tier gate as resolve/false-alarm
+// below — otherwise any authenticated role could acknowledge (and thereby
+// suppress) another officer's live distress alarm.
+panic.post('/panic/:id/acknowledge', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const id = c.req.param('id');
   const userId = c.get('userId') as number;

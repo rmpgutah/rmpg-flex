@@ -30,7 +30,7 @@ export default function OutlinePane({ editor, onClose }: { editor: Editor; onClo
         return (
           <button key={i} type="button" onClick={() => jump(h.pos)}
             title={gap ? 'Heading level skipped (accessibility)' : ''}
-            className="block w-full text-left text-[11px] text-rmpg-300 hover:text-[#d4a017] py-0.5 truncate"
+            className="block w-full text-left text-[11px] text-rmpg-300 hover:text-accent-silver-300 py-0.5 truncate"
             style={{ paddingLeft: (h.level - 1) * 12 }}>
             {gap && <span className="text-amber-500" title="Skipped heading level">⚠ </span>}
             {h.text || <span className="italic opacity-50">(empty)</span>}

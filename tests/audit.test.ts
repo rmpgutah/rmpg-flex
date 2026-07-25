@@ -115,7 +115,12 @@ describe('/api/audit', () => {
     it('returns AuditStats shape', async () => {
       const request = buildApp('admin', makeFakeDb([
         { match: /COUNT\(\*\) as total FROM audit_log\s*$/, rows: [{ total: 1234 }] },
-        { match: /date\(created_at\) = date\('now'\)/, rows: [{ total: 17 }] },
+        // Matches the "entries today" query by table+column rather than by the
+        // timezone arithmetic, which legitimately changes: it was UTC
+        // `date(created_at) = date('now')` and is now Denver-bucketed via
+        // denverDateExpr(). Pinning the exact expression made a correct fix
+        // look like a failure.
+        { match: /FROM audit_log\s+WHERE DATE\(created_at/i, rows: [{ total: 17 }] },
         { match: /GROUP BY action ORDER BY count DESC/, rows: [{ action: 'user_login', count: 800 }] },
         { match: /GROUP BY u\.full_name/, rows: [{ user_name: 'Smith', badge_number: 'B042', count: 300 }] },
       ]));

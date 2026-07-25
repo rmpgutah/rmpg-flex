@@ -36,7 +36,7 @@ const CRASH_TYPES = ['vehicle_vehicle', 'vehicle_pedestrian', 'vehicle_bicycle',
 const SEVERITY_LEVELS = ['property_damage_only', 'minor_injury', 'major_injury', 'fatal'];
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: 'text-[#888888]',
+  draft: 'text-rmpg-400',
   pending_review: 'text-amber-400',
   approved: 'text-green-400',
   filed: 'text-blue-400',
@@ -134,9 +134,9 @@ export default function CrashReportsPage() {
           { label: 'Pending Review', value: stats.pending_review },
           { label: 'Filed', value: stats.filed },
         ].map(s => (
-          <div key={s.label} className="bg-[#141414] border border-[#222222] rounded-[2px] p-3">
+          <div key={s.label} className="bg-surface-raised border border-border-default rounded-[2px] p-3">
             <div className="text-lg font-bold text-white">{s.value}</div>
-            <div className="text-[10px] text-[#888888] uppercase tracking-wider">{s.label}</div>
+            <div className="text-[10px] text-rmpg-400 uppercase tracking-wider">{s.label}</div>
           </div>
         ))}
       </div>
@@ -144,67 +144,67 @@ export default function CrashReportsPage() {
       {/* Search + Filters */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[#888888]" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-accent-silver-500" />
           <input
             type="text"
             placeholder="Search report #, location..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none"
+            className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none"
           />
         </div>
         <select value={filterType} onChange={e => setFilterType(e.target.value)}
-          className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-[#d4a017] outline-none">
+          className="bg-surface-sunken border border-border-default rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-accent-silver-600 outline-none">
           <option value="">All Types</option>
           {CRASH_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
         </select>
         <select value={filterSeverity} onChange={e => setFilterSeverity(e.target.value)}
-          className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-[#d4a017] outline-none">
+          className="bg-surface-sunken border border-border-default rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-accent-silver-600 outline-none">
           <option value="">All Severity</option>
           {SEVERITY_LEVELS.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
         </select>
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-          className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-[#d4a017] outline-none" />
-        <span className="text-[#888888] text-xs">to</span>
+          className="bg-surface-sunken border border-border-default rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-accent-silver-600 outline-none" />
+        <span className="text-rmpg-400 text-xs">to</span>
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-          className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-[#d4a017] outline-none" />
+          className="bg-surface-sunken border border-border-default rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-accent-silver-600 outline-none" />
         <button onClick={openWizard}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#d4a017] text-black text-xs font-semibold rounded-[2px] hover:bg-[#b8891a]">
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-silver-500 text-black text-xs font-semibold rounded-[2px] hover:bg-accent-silver-400">
           <Plus className="w-3.5 h-3.5" /> New Report
         </button>
       </div>
 
       {/* Table */}
-      <div className="bg-[#141414] border border-[#222222] rounded-[2px] overflow-hidden">
+      <div className="bg-surface-raised border border-border-default rounded-[2px] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-[#222222]">
+              <tr className="border-b border-border-subtle">
                 {['Report #', 'Date', 'Location', 'Type', 'Severity', 'Vehicles', 'Injuries', 'Fatalities', 'Status'].map(h => (
-                  <th key={h} className="text-left px-3 py-[3px] text-[9px] font-semibold text-[#888888] uppercase tracking-wider">{h}</th>
+                  <th key={h} className="text-left px-3 py-[3px] text-[9px] font-semibold text-rmpg-400 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9} className="text-center py-8 text-[#888888]"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                <tr><td colSpan={9} className="text-center py-8 text-rmpg-400"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></td></tr>
               ) : reports.length === 0 ? (
-                <tr><td colSpan={9} className="text-center py-8 text-[#888888]">No crash reports found</td></tr>
+                <tr><td colSpan={9} className="text-center py-8 text-rmpg-400">No crash reports found</td></tr>
               ) : reports.map(report => (
-                <tr key={report.id} className="border-b border-[#1a1a1a] hover:bg-[#1a1a1a]">
-                  <td className="px-3 py-[2px] text-[#d4a017] font-mono">{report.report_number}</td>
-                  <td className="px-3 py-[2px] text-[#888888]">{report.crash_date}</td>
-                  <td className="px-3 py-[2px] text-[#888888]">{report.location}</td>
-                  <td className="px-3 py-[2px] text-[#888888] capitalize">{report.crash_type.replace(/_/g, ' ')}</td>
-                  <td className="px-3 py-[2px] text-[#888888] capitalize">{report.severity.replace(/_/g, ' ')}</td>
-                  <td className="px-3 py-[2px] text-[#888888] text-center">{report.vehicles_involved}</td>
-                  <td className="px-3 py-[2px] text-[#888888] text-center">{report.injuries}</td>
+                <tr key={report.id} className="border-b border-border-subtle hover:bg-surface-hover">
+                  <td className="px-3 py-[2px] text-rmpg-100 font-mono">{report.report_number}</td>
+                  <td className="px-3 py-[2px] text-rmpg-400">{report.crash_date}</td>
+                  <td className="px-3 py-[2px] text-rmpg-400">{report.location}</td>
+                  <td className="px-3 py-[2px] text-rmpg-400 capitalize">{report.crash_type.replace(/_/g, ' ')}</td>
+                  <td className="px-3 py-[2px] text-rmpg-400 capitalize">{report.severity.replace(/_/g, ' ')}</td>
+                  <td className="px-3 py-[2px] text-rmpg-400 text-center">{report.vehicles_involved}</td>
+                  <td className="px-3 py-[2px] text-rmpg-400 text-center">{report.injuries}</td>
                   <td className="px-3 py-[2px] text-center">
                     {report.fatalities > 0
                       ? <span className="text-red-400 font-bold">{report.fatalities}</span>
-                      : <span className="text-[#888888]">0</span>}
+                      : <span className="text-rmpg-400">0</span>}
                   </td>
-                  <td className={`px-3 py-[2px] font-semibold capitalize ${STATUS_COLORS[report.status] || 'text-[#888888]'}`}>
+                  <td className={`px-3 py-[2px] font-semibold capitalize ${STATUS_COLORS[report.status] || 'text-rmpg-400'}`}>
                     {report.status.replace(/_/g, ' ')}
                   </td>
                 </tr>
@@ -217,24 +217,24 @@ export default function CrashReportsPage() {
       {/* ═══ Wizard Modal ═══ */}
       {wizardOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="bg-[#141414] border border-[#222222] rounded-[2px] w-full max-w-xl mx-4 shadow-lg">
+          <div className="bg-surface-raised border border-border-default rounded-[2px] w-full max-w-xl mx-4 shadow-lg">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-[#222222]">
-              <span className="text-sm font-semibold text-[#d4a017]">New Crash Report</span>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle">
+              <span className="text-sm font-semibold text-[color:var(--panel-header-color)]">New Crash Report</span>
               <IconButton aria-label="Close wizard" onClick={() => setWizardOpen(false)}>
-                <X className="w-4 h-4 text-[#888888]" />
+                <X className="w-4 h-4 text-rmpg-400" />
               </IconButton>
             </div>
 
             {/* Step indicator */}
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1a1a1a]">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border-subtle">
               {STEPS.map((label, i) => (
                 <React.Fragment key={label}>
-                  {i > 0 && <div className="flex-1 h-px bg-[#222222]" />}
+                  {i > 0 && <div className="flex-1 h-px bg-border-subtle" />}
                   <div className={`flex items-center gap-1.5 text-xs font-semibold
-                    ${wizardStep === i + 1 ? 'text-[#d4a017]' : wizardStep > i + 1 ? 'text-green-400' : 'text-[#888888]'}`}>
+                    ${wizardStep === i + 1 ? 'text-accent-silver-500' : wizardStep > i + 1 ? 'text-green-400' : 'text-rmpg-400'}`}>
                     <span className={`w-5 h-5 flex items-center justify-center rounded-full text-[10px] border
-                      ${wizardStep === i + 1 ? 'border-[#d4a017] bg-[#d4a017]/20' : wizardStep > i + 1 ? 'border-green-500 bg-green-500/20' : 'border-[#222222]'}`}>
+                      ${wizardStep === i + 1 ? 'border-accent-silver-600 bg-accent-silver-500/20' : wizardStep > i + 1 ? 'border-green-500 bg-green-500/20' : 'border-border-default'}`}>
                       {i + 1}
                     </span>
                     {label}
@@ -250,40 +250,40 @@ export default function CrashReportsPage() {
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] text-[#888888] uppercase">Crash Date *</label>
+                      <label className="text-[10px] text-rmpg-400 uppercase">Crash Date *</label>
                       <input type="datetime-local" value={step1.crash_date} onChange={e => setStep1(p => ({ ...p, crash_date: e.target.value }))}
-                        className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none" />
+                        className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-[#888888] uppercase">Crash Type</label>
+                      <label className="text-[10px] text-rmpg-400 uppercase">Crash Type</label>
                       <select value={step1.crash_type} onChange={e => setStep1(p => ({ ...p, crash_type: e.target.value }))}
-                        className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none">
+                        className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none">
                         {CRASH_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
                       </select>
                     </div>
                   </div>
                   <div>
-                    <label className="text-[10px] text-[#888888] uppercase">Location *</label>
+                    <label className="text-[10px] text-rmpg-400 uppercase">Location *</label>
                     <input value={step1.location} onChange={e => setStep1(p => ({ ...p, location: e.target.value }))}
-                      className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none" />
+                      className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none" />
                   </div>
                   <div>
-                    <label className="text-[10px] text-[#888888] uppercase">Severity</label>
+                    <label className="text-[10px] text-rmpg-400 uppercase">Severity</label>
                     <select value={step1.severity} onChange={e => setStep1(p => ({ ...p, severity: e.target.value }))}
-                      className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none">
+                      className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none">
                       {SEVERITY_LEVELS.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
                     </select>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] text-[#888888] uppercase">Weather Conditions</label>
+                      <label className="text-[10px] text-rmpg-400 uppercase">Weather Conditions</label>
                       <input value={step1.weather_conditions} onChange={e => setStep1(p => ({ ...p, weather_conditions: e.target.value }))}
-                        className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none" />
+                        className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-[#888888] uppercase">Road Conditions</label>
+                      <label className="text-[10px] text-rmpg-400 uppercase">Road Conditions</label>
                       <input value={step1.road_conditions} onChange={e => setStep1(p => ({ ...p, road_conditions: e.target.value }))}
-                        className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none" />
+                        className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none" />
                     </div>
                   </div>
                 </>
@@ -294,31 +294,31 @@ export default function CrashReportsPage() {
                 <>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="text-[10px] text-[#888888] uppercase">Vehicles Involved</label>
+                      <label className="text-[10px] text-rmpg-400 uppercase">Vehicles Involved</label>
                       <input type="number" min="0" value={step2.vehicles_involved} onChange={e => setStep2(p => ({ ...p, vehicles_involved: e.target.value }))}
-                        className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none" />
+                        className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-[#888888] uppercase">Injuries</label>
+                      <label className="text-[10px] text-rmpg-400 uppercase">Injuries</label>
                       <input type="number" min="0" value={step2.injuries} onChange={e => setStep2(p => ({ ...p, injuries: e.target.value }))}
-                        className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none" />
+                        className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-[#888888] uppercase">Fatalities</label>
+                      <label className="text-[10px] text-rmpg-400 uppercase">Fatalities</label>
                       <input type="number" min="0" value={step2.fatalities} onChange={e => setStep2(p => ({ ...p, fatalities: e.target.value }))}
-                        className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none" />
+                        className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none" />
                     </div>
                   </div>
                   <div>
-                    <label className="text-[10px] text-[#888888] uppercase">Investigating Officer</label>
+                    <label className="text-[10px] text-rmpg-400 uppercase">Investigating Officer</label>
                     <input value={step2.investigating_officer} onChange={e => setStep2(p => ({ ...p, investigating_officer: e.target.value }))}
-                      className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none" />
+                      className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none" />
                   </div>
                   <div>
-                    <label className="text-[10px] text-[#888888] uppercase">Parties / Vehicle Details</label>
+                    <label className="text-[10px] text-rmpg-400 uppercase">Parties / Vehicle Details</label>
                     <textarea value={step2.parties_description} onChange={e => setStep2(p => ({ ...p, parties_description: e.target.value }))} rows={5}
                       placeholder="Enter vehicle/driver/passenger information for each party involved..."
-                      className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none resize-none" />
+                      className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none resize-none" />
                   </div>
                 </>
               )}
@@ -326,34 +326,34 @@ export default function CrashReportsPage() {
               {/* Step 3: Narrative */}
               {wizardStep === 3 && (
                 <div>
-                  <label className="text-[10px] text-[#888888] uppercase">Narrative *</label>
+                  <label className="text-[10px] text-rmpg-400 uppercase">Narrative *</label>
                   <textarea value={step3.narrative} onChange={e => setStep3(p => ({ ...p, narrative: e.target.value }))} rows={10}
                     placeholder="Describe the crash in detail..."
-                    className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none resize-none" />
+                    className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none resize-none" />
                 </div>
               )}
             </div>
 
             {/* Footer */}
-            <div className="flex justify-between px-4 py-3 border-t border-[#222222]">
+            <div className="flex justify-between px-4 py-3 border-t border-border-subtle">
               <div>
                 {wizardStep > 1 && (
                   <button onClick={() => setWizardStep(s => s - 1)}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-xs text-[#888888] hover:text-white">
+                    className="flex items-center gap-1 px-3 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-xs text-rmpg-400 hover:text-white">
                     <ChevronLeft className="w-3.5 h-3.5" /> Back
                   </button>
                 )}
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setWizardOpen(false)} className="px-3 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-xs text-[#888888] hover:text-white">Cancel</button>
+                <button onClick={() => setWizardOpen(false)} className="px-3 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-xs text-rmpg-400 hover:text-white">Cancel</button>
                 {wizardStep < 3 ? (
                   <button onClick={() => setWizardStep(s => s + 1)}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-[#d4a017] text-black text-xs font-semibold rounded-[2px] hover:bg-[#b8891a]">
+                    className="flex items-center gap-1 px-3 py-1.5 bg-accent-silver-500 text-black text-xs font-semibold rounded-[2px] hover:bg-accent-silver-400">
                     Next <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 ) : (
                   <button onClick={handleSubmit} disabled={submitting}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#d4a017] text-black text-xs font-semibold rounded-[2px] hover:bg-[#b8891a] disabled:opacity-50">
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-silver-500 text-black text-xs font-semibold rounded-[2px] hover:bg-accent-silver-400 disabled:opacity-50">
                     {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                     File Report
                   </button>

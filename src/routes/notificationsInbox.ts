@@ -148,7 +148,12 @@ inbox.put('/:id/read', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
-    await execute(db, "UPDATE notifications SET is_read = 1, read_at = datetime('now') WHERE id = ?", id);
+    // Scope to the caller's own rows (or broadcasts). Without the WHERE
+    // user_id clause every other handler in this file uses, any user could
+    // mark ANOTHER officer's directed notification read — silently
+    // suppressing their unread badge for ALPR/watchlist/panic hits.
+    const userId = uid(c);
+    await execute(db, "UPDATE notifications SET is_read = 1, read_at = datetime('now') WHERE id = ? AND (user_id = ? OR user_id IS NULL)", id, userId);
     return c.json({ success: true });
   } catch {
     return c.json({ success: true });
@@ -171,7 +176,11 @@ inbox.delete('/:id', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
-    await execute(db, 'DELETE FROM notifications WHERE id = ?', id);
+    // Own rows only — a user must not be able to destroy another officer's
+    // directed alert. Shared broadcasts (user_id IS NULL) are intentionally
+    // excluded from individual delete (use /delete-read / dismiss instead).
+    const userId = uid(c);
+    await execute(db, 'DELETE FROM notifications WHERE id = ? AND user_id = ?', id, userId);
     return c.json({ success: true });
   } catch {
     return c.json({ success: true });

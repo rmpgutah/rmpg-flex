@@ -34,7 +34,7 @@ RMPG Flex is a **police CAD/RMS** (Computer-Aided Dispatch / Records Management 
 | Frontend | React 18 + TypeScript + Vite 6 + Tailwind (built to `client/dist/`, deployed to Cloudflare Pages project `rmpg-flex`) |
 | Maps | **Mapbox GL JS** (overrides the legacy "Google Maps only" rule, which was anti-fragmentation for the VPS — see `[[project-mapbox-decision]]` memory) |
 | Edge | Python edge runner for Flex Dashcam AI (`edge/`, Jetson target) — independent of the Worker |
-| Styling | **Blue & Silver theme (default as of 2026-07-04)** — deep navy-blue surfaces (`surface-base #0c1a2b`), silver/platinum accent (replaces gold), near-white text, red reserved for critical alerts. Forced always-dark, same tier as the legacy pure-black kill-switch — not part of the old day/night schedule (still selectable as an opt-out, see Design tokens below). Colors come from CSS-variable-backed Tailwind tokens in [`client/src/styles/theme-palettes.css`](client/src/styles/theme-palettes.css) (the single source of palette truth) — **never hardcode hex**. |
+| Styling | **Blue / Silver / Gold theme (Blue & Silver default 2026-07-04; gold reintroduced 2026-07-24)** — deep navy-blue surfaces (`surface-base #22405f`), silver/platinum structural accent, near-white text, and gold restricted to **two roles only** (field labels + section/panel headers, via `--field-label-color` / `--panel-header-color`). Red/green/amber stay reserved for CAD severity. Forced always-dark, same tier as the legacy pure-black kill-switch — not part of the old day/night schedule (still selectable as an opt-out, see Design tokens below). Colors come from CSS-variable-backed Tailwind tokens in [`client/src/styles/theme-palettes.css`](client/src/styles/theme-palettes.css) (the single source of palette truth) — **never hardcode hex**. |
 
 ## Repository Layout
 
@@ -337,7 +337,58 @@ Use `<IconButton aria-label="...">` from `client/src/components/IconButton.tsx`.
 The app's default theme is now **Blue & Silver** (`html.theme-blue-silver`) — deep navy-blue surfaces, a cool silver/platinum accent (replacing the old warm gold), near-white text, and red reserved for critical/safety severity. This is a strict, always-dark forced palette (same tier as the legacy pure-black kill-switch), not part of the old day/night schedule. **Do not hardcode hex** — every surface/brand/border color is a CSS variable, and the same Tailwind token re-themes automatically.
 
 - **Palette source of truth:** [`client/src/styles/theme-palettes.css`](client/src/styles/theme-palettes.css). The `html.theme-blue-silver` block is now the operative default. The historical night (`:root, html.theme-dark, .tactical-dark`, steel-blue+gold) and day (`html.theme-light`, light grey+gold) blocks, plus the legacy kill-switch (`html.theme-legacy-black`, pure-black restore), all still exist and can be selected as opt-outs — see Theme engine below. The `rmpg-*`/`brand-*`/`surface-*`/`blue-*` Tailwind tokens in `client/tailwind.config.js` are `rgb(var(--x-rgb)/<alpha-value>)`, so a component using `bg-rmpg-700`/`text-brand-400` re-themes with zero code changes.
-- **Blue = surfaces/brand accent, Silver = the `--brand-gold` token's value in this palette (a metallic gray-blue, `#b7c2cf`, NOT actual gold), White = near-white text (`--text-primary #eef2f7`), Red = `--sev-critical` for critical/safety alerts only.** Severity/priority/unit-status hues (green=ok, amber=warn, orange=high, purple=special) stay their fixed operational meanings across every theme variant — they encode CAD semantics, not brand chrome, and were intentionally left alone by the re-theme.
+- **Blue = surfaces/brand accent, Silver = structural chrome, Gold = labels/headers only, White = near-white text (`--text-primary #f0f4f9`), Red = `--sev-critical` for critical/safety alerts only.** Severity/priority/unit-status hues (green=ok, amber=warn, orange=high, purple=special) stay their fixed operational meanings across every theme variant — they encode CAD semantics, not brand chrome, and were intentionally left alone by every re-theme.
+
+#### Gold / Silver accent tokens (2026-07-24) — read before touching any accent color
+
+- **Use `--accent-silver-*` and `--accent-gold-*`.** Full ramps 300–700 with matching
+  `-rgb` triples, exposed as Tailwind `accent-silver-*` / `accent-gold-*`.
+- **⚠️ `--brand-gold` renders SILVER (`#c3ccd6`) and is a deliberate compat alias.**
+  That inversion was the original Blue & Silver theme's identity, and ~500 files
+  consume the `brand-gold-*` ramp *expecting silver*. **Do not "fix" it to gold** —
+  that flips 500 files at once. Prefer the explicit `--accent-*` names in new code.
+- **Gold is split by WCAG role. This is measured, not taste:**
+  - **Text** → `--accent-gold-300 #d9bd72`. Passes AA on navy: 5.83 / 4.63 / 7.02
+    against `--surface-base` / `-raised` / `-sunken`.
+  - **Graphics** (map arterial lines only) → `--accent-gold-500 #b8912f`. Graphical
+    objects need just 3:1 (WCAG 1.4.11); passes at 3.63.
+  - **NEVER use `#b8912f` for text** — 2.88:1 on `--surface-raised`, and raised
+    panels are exactly where field labels sit.
+  - **Legacy `#d4a017` is banned** in the blue-silver block: fails AA (4.50 / 3.57 /
+    5.41) *and* is the worst match to `--sev-warn #f59e0b` (1.11 luminance ratio), so
+    decorative gold would be confusable with a real overdue/threshold alert.
+- **Gold has exactly TWO app roles**, both routed through variables:
+  `--field-label-color` and `--panel-header-color`. **Any gold surface not resolving
+  through those two vars (or the map palette) is a defect by definition** — that
+  invariant is what makes gold placement mechanically auditable. Never write a raw
+  `text-accent-gold-*` class in a component.
+- **Icons, borders, dividers, secondary text, and active/selected state stay SILVER.**
+  Gold is banned from badges, chips, status icons, and anything reporting a condition:
+  static chrome cannot signal state, transient indicators can.
+- **Numeric metric values are data, not labels** — use `text-rmpg-100`, not gold.
+- **Every role variable must be defined in ALL FOUR theme blocks.** A var consumed as
+  `text-[color:var(--x)]` silently drops the color when the active block omits it.
+  `accentTokens.test.ts` has a theme-block-completeness test that enforces this.
+- **Nothing color-valued belongs in `client/src/index.css`.** Colors defined there are
+  theme-invariant by construction and escape the theme system entirely. That is what
+  made every panel title bar render a pure-black `--titlebar-gradient` under Blue &
+  Silver, and the active nav tile render `rgba(0,0,0,0.38)`. Fixed 2026-07-24 by moving
+  those vars into all four palette blocks.
+- **Maps use a FIXED palette** (`MAP_PALETTE` in [`client/src/utils/mapboxBasemap.ts`](client/src/utils/mapboxBasemap.ts)),
+  identical across dark / tactical-dark / legacy / day: navy land, darker navy water,
+  **gold arterial lines + gold major place labels**, silver minor roads and labels.
+  This supersedes the 2026-07-07 "maps follow the active theme" decision — under that
+  scheme the map's accent tracked `--brand-gold`, which is silver, so the map had no
+  gold at all. Literal hex is CORRECT in this module: Mapbox GL cannot resolve
+  `var(--x)` in a paint property, and the modern space-separated `rgb(r g b)` form
+  **blanks the map**. Variant `'light'` now routes through the dark restyle; only the
+  explicit `'print'` variant opts out.
+- **Exactly ONE palette class is stamped on `<html>`.** `applyThemePreference` in
+  `theme.ts` and the pre-paint boot script in `client/index.html` must resolve
+  **identically** or the page visibly swaps themes after hydration. Before 2026-07-24
+  production ran as `class="theme-dark dark theme-blue-silver"` — two palettes at once,
+  with Blue & Silver winning only by CSS source order, meaning any bundler reordering
+  would have silently reverted the whole app to night.
 - **Theme engine** — resolution order is `legacy → Blue & Silver (default) → active override → schedule`:
   - [`client/src/utils/themeSchedule.ts`](client/src/utils/themeSchedule.ts) (pure `resolveScheduledTheme`/`resolveEffectiveTheme`, unit-tested) + [`theme.ts`](client/src/utils/theme.ts) (`resolveCurrentTheme`, `readThemeOverride`/`writeThemeOverride`, `isLegacyBlackForced`, `isBlueSilverForced`).
   - `UserPreferencesContext` controller re-applies every 60s + on focus/visibility.
@@ -346,7 +397,31 @@ The app's default theme is now **Blue & Silver** (`html.theme-blue-silver`) — 
   - **Test gotcha:** any test exercising day/night-schedule or legacy-kill-switch logic in isolation must explicitly `localStorage.setItem(BLUE_SILVER_FLAG_KEY, '0')` in its setup, or the new default-on Blue & Silver will force `dark` regardless of what the test is trying to check (see `client/src/utils/__tests__/themeOverride.test.ts`/`themeLegacy.test.ts` for the pattern).
 - **Tactical surfaces stay dark always** via the `.tactical-dark` class — live **Map / dashcam & body-cam HUDs / MDT / turn-by-turn Nav** (a bright map at night blinds a driver), regardless of day/night.
 - Radius: **2 px everywhere** — never `rounded-lg`. Global Tailwind override at the end of `client/src/index.css` enforces this with `!important`.
-- ⚠️ Phase 2/3 tail: ~12k raw-hex values still live in individual components (`docs/theme-hex-audit-baseline.txt` sizes it). Shared surfaces re-theme; per-page hardcoded hex does not. When you touch a page, prefer migrating its hex to tokens.
+- ⚠️ **Per-page hex tail — measure it, don't guess.** Run `cd client && npx tsx scripts/audit-hex.mjs`
+  for the live tally (and `--list <dir>` for one batch's files). As of 2026-07-25:
+  **4,232 in-scope literals across 455 files**, plus 1,058 correctly EXCLUDED across
+  117 files. The old "~12k" figure in `docs/theme-hex-audit-baseline.txt` predates the
+  classifier and is not comparable. Shared surfaces re-theme; per-page hardcoded hex
+  does not. When you touch a page, migrate its hex.
+  - **`scripts/audit-hex.mjs` + `src/utils/hexClassifier.ts` are deny-by-default** and
+    match on PATH. Excluded because migrating them BREAKS things: PDF generators
+    (jsPDF/pdf-lib take literal color args), Mapbox paint modules (`var()` blanks a
+    map), `.tactical-dark` fixed values (map/dashcam/MDT/nav are *intentionally*
+    near-black so a bright UI never blinds a driver at night), fixed CAD palettes, and
+    test fixtures. Wrongly migrating one of these breaks a document or a map; wrongly
+    excluding a file just means a human reviews it later. **When in doubt, exclude.**
+  - **The substitution table is a ROLE map, not a find-and-replace map.** The same hex
+    routinely serves two roles: `AlarmTrackingPage` used `#0a0a0a` for the page
+    background (5 sites) *and* recessed modal inputs (21 sites). Open the JSX and
+    decide what the element IS. Smell test: if converted count == occurrence count for
+    every hex in a file, nothing was split by role and something was missed.
+  - **Run the FULL client suite before landing a batch**, not just targeted tests. A red
+    test (`themeBlueSilver.test.ts`, pinning the stale `#0c1a2b`) hid behind green
+    targeted runs for four tasks in the 2026-07-24 sweep.
+- ⚠️ **A Tailwind class only works if its key is configured.** `bg-surface-hover` was
+  used 14× across 7 components while `hover` was never a key in the `surface` scale, so
+  Tailwind emitted no CSS and every one of those hover states silently did nothing.
+  Verify a new token actually reaches `dist/assets/*.css` before trusting it.
 - Tables: header `font-semibold` 9 px, `py-[3px]`; rows 11 px, `py-[2px]`. No pill badges.
   - **Exception: Warrants page** (`WarrantsPage.tsx` and its extracted tab components, see `docs/superpowers/specs/2026-07-14-warrants-page-rebuild-design.md`) — deliberately uses looser row padding and pill-shaped status badges as part of its 2026-07-14 rebuild. Don't "fix" this back to the dense rule; it's an intentional, approved exception scoped to that page.
 
@@ -457,5 +532,23 @@ When in doubt: `grep` for the actual file under `/src/` or `/client/src/`. The d
 - Fixed imports in StatusBadge, EvidenceTab, BusinessTab, DocumentsTab, BenefitsTab, DashCameraTab, ServeJobCard, IpedPage, DispatchPage, FleetAnalyticsTab, and others
 
 **Verification**: Worker typecheck (`tsc --noEmit` + `tsc -p tsconfig.test.json`) ✅; Node tests (18) ✅; Miniflare worker tests (14) ✅; client build (`vite build`) ✅ 21.34s; client typecheck (12 pre-existing errors, 0 from changes); client tests (9 pre-existing failures in 4 files: equipmentCustodyPdf/prettyAction, MdtPage/button label, PlateLogPage/missing ToastProvider)
+
+> **⚠️ The "12 pre-existing typecheck errors / 9 pre-existing test failures" above is
+> STALE — do not treat it as the current baseline.** Re-measured 2026-07-24: all four
+> gates are clean (worker typecheck 0, worker vitest 246 files/2004 passed,
+> client typecheck 0, client vitest 443 files/3101 passed). Because the baseline is
+> clean, **any** failure you see is caused by your own change — a red gate is a hard
+> stop, not a judgement call. Re-measure rather than trusting this log.
+>
+> **Fresh-worktree prerequisite:** run `cd client && npm install --legacy-peer-deps`
+> first. Without `client/node_modules`, `tsc` reports ~97,000 phantom
+> `Cannot find module` errors that look catastrophic and mean nothing.
+>
+> **Pre-commit hook flake:** a repo-wide hook runs the Worker vitest suite on every
+> commit (`core.hooksPath` is shared across worktrees, so it fires from inside a
+> worktree too). Under CPU contention `tests/pdfSign.test.ts` (SLH-DSA post-quantum
+> keygen) and `tests/footage/flexcamRoute.test.ts` time out against a 5s limit. The
+> failure count tracks machine load — observed 9 fails at load 56, 7 at 47, 1 at 29,
+> 0 at 17 — and all pass in isolation. It is contention, not a regression.
 
 **Infrastructure**: Node.js v24.18.0 installed; `npx` via full path due to PowerShell execution policy blocking `.ps1` scripts; `workerd`/`esbuild`/`sharp` postinstall scripts skipped (allowScripts policy)

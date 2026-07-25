@@ -836,7 +836,13 @@ export default function DocumentWriterPage() {
   const pageW = landscape ? dim.height : dim.width;
   const pageH = landscape ? dim.width : dim.height;
   const pageBg = theme === 'dark' ? '#1e1e1e' : docSettings.background;
-  const textColor = theme === 'dark' ? '#e8e8e8' : 'var(--surface-base)';
+  // Document body text — a LITERAL on purpose, never a theme token. This is the
+  // user's document as it will print and export, not app chrome, so it must not
+  // follow the app palette. Was `var(--surface-base)`, which resolves to the
+  // Blue & Silver navy #22405f and rendered document text navy-on-white in light
+  // mode (and exported that way to PDF). The dark branch is a screen-only
+  // dark-editing affordance; the light branch is the real print appearance.
+  const textColor = theme === 'dark' ? '#e8e8e8' : '#1a1a1a';
   const m = docSettings.page.margins;
   const reading = viewMode === 'reading';
   const fullscreen = viewMode === 'fullscreen';
@@ -1030,7 +1036,7 @@ export default function DocumentWriterPage() {
             type="button"
             title="Open Tools, Snippets, Statutes, Persons, CFS, and more (140+ snippets, 25+ insert tools)"
             onClick={() => setShowFeatures(true)}
-            className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium bg-surface-base border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/10"
+            className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium bg-surface-base border border-accent-silver-600/30 text-accent-silver-500 rounded-[2px] hover:bg-accent-silver-500/10"
           >
             <Sparkles className="w-3 h-3" /> Tools
           </button>

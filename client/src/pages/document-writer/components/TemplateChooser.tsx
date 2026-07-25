@@ -131,16 +131,16 @@ export default function TemplateChooser({ onSelect }: Props) {
                   value={values[f.key] || ''}
                   onChange={(e) => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
                   placeholder={f.source === 'cad' ? `Auto-fill from CAD (${f.cadPath})` : 'Enter value...'}
-                  className="w-full md:flex-1 bg-surface-sunken border border-border-default rounded-[2px] px-2.5 py-1.5 text-xs text-rmpg-200 placeholder-rmpg-600 focus:border-[#d4a017]/50 focus:outline-none min-h-[44px] md:min-h-0"
+                  className="w-full md:flex-1 bg-surface-sunken border border-border-default rounded-[2px] px-2.5 py-1.5 text-xs text-rmpg-200 placeholder-rmpg-600 focus:border-accent-silver-500/50 focus:outline-none min-h-[44px] md:min-h-0"
                 />
-                {f.source === 'cad' && <span className="text-[9px] text-[#d4a017]/60 font-mono">CAD</span>}
+                {f.source === 'cad' && <span className="text-[9px] text-accent-silver-400/60 font-mono">CAD</span>}
               </div>
             ))}
           </div>
         )}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <button type="button" onClick={() => onSelect(selected, values)}
-            className="px-4 py-2 text-xs font-medium bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20 min-h-[44px] sm:min-h-0">
+            className="px-4 py-2 text-xs font-medium bg-accent-silver-500/10 border border-accent-silver-500/30 text-accent-silver-300 rounded-[2px] hover:bg-accent-silver-500/20 min-h-[44px] sm:min-h-0">
             Create Document
           </button>
           <button type="button" onClick={() => { setSelected(null); setValues({}); }}
@@ -190,14 +190,14 @@ export default function TemplateChooser({ onSelect }: Props) {
                 onClick={() => { setActiveGroup(g.id); setQuery(''); }}
                 className={`flex items-center gap-2 px-2 py-1.5 rounded-[2px] text-left transition-colors ${
                   activeGroup === g.id
-                    ? 'bg-[#d4a017]/15 text-[#d4a017]'
+                    ? 'bg-accent-silver-500/15 text-accent-silver-300'
                     : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-surface-raised'
                 }`}
               >
-                <span className={activeGroup === g.id ? 'text-[#d4a017]' : 'text-rmpg-500'}>{g.icon}</span>
+                <span className={activeGroup === g.id ? 'text-accent-silver-300' : 'text-rmpg-500'}>{g.icon}</span>
                 <span className="text-[10px] font-medium flex-1 truncate">{g.label}</span>
                 {count > 0 && (
-                  <span className={`text-[9px] tabular-nums ${activeGroup === g.id ? 'text-[#d4a017]/70' : 'text-rmpg-600'}`}>{count}</span>
+                  <span className={`text-[9px] tabular-nums ${activeGroup === g.id ? 'text-accent-silver-400/70' : 'text-rmpg-600'}`}>{count}</span>
                 )}
               </button>
             );
@@ -216,7 +216,7 @@ export default function TemplateChooser({ onSelect }: Props) {
         {activeGroup === 'saved' ? (
           <>
             <p className="text-[11px] text-rmpg-400 font-medium uppercase tracking-wide mb-2 flex items-center gap-1.5">
-              <Bookmark className="w-3.5 h-3.5 text-[#d4a017]" /> My Saved Templates
+              <Bookmark className="w-3.5 h-3.5 text-accent-silver-400" /> My Saved Templates
             </p>
             {custom.length === 0 ? (
               <div className="p-6 text-center text-rmpg-600 text-xs border border-dashed border-border-default rounded-[2px]">
@@ -225,9 +225,9 @@ export default function TemplateChooser({ onSelect }: Props) {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                 {custom.map((t) => (
-                  <div key={t.name} className="relative flex flex-col items-center gap-2 p-3 bg-surface-base border border-border-default rounded-[2px] hover:border-[#d4a017]/40 transition-colors text-center group">
+                  <div key={t.name} className="relative flex flex-col items-center gap-2 p-3 bg-surface-base border border-border-default rounded-[2px] hover:border-accent-silver-500/40 transition-colors text-center group">
                     <button type="button" onClick={() => setSelected(asTemplate(t))} className="flex flex-col items-center gap-2 w-full">
-                      <Bookmark className="w-5 h-5 text-rmpg-500 group-hover:text-[#d4a017] transition-colors" />
+                      <Bookmark className="w-5 h-5 text-rmpg-500 group-hover:text-accent-silver-300 transition-colors" />
                       <span className="text-[10px] font-medium text-rmpg-300 group-hover:text-rmpg-100 break-words leading-tight">{t.name}</span>
                       <span className="text-[9px] text-rmpg-600">Saved {new Date(t.savedAt).toLocaleDateString()}</span>
                     </button>
@@ -250,9 +250,9 @@ export default function TemplateChooser({ onSelect }: Props) {
             {filtered.map((t) => {
               const isStarred = starred.has(t.id);
               return (
-                <div key={t.id} className="relative flex flex-col items-center gap-2 p-3 bg-surface-base border border-border-default rounded-[2px] hover:border-[#d4a017]/40 transition-colors text-center group">
+                <div key={t.id} className="relative flex flex-col items-center gap-2 p-3 bg-surface-base border border-border-default rounded-[2px] hover:border-accent-silver-500/40 transition-colors text-center group">
                   <button type="button" onClick={() => setSelected(t)}
-                    className="flex flex-col items-center gap-2 w-full text-rmpg-500 group-hover:text-[#d4a017] transition-colors">
+                    className="flex flex-col items-center gap-2 w-full text-rmpg-500 group-hover:text-accent-silver-300 transition-colors">
                     {CATEGORY_ICONS[t.category as TemplateCategory] || <File className="w-4 h-4" />}
                     <span className="text-[10px] font-medium text-rmpg-300 group-hover:text-rmpg-100 break-words leading-tight">{t.name}</span>
                     <span className="text-[9px] text-rmpg-600 uppercase tracking-wider leading-tight">{toDisplayLabel(t.category)}</span>
@@ -261,9 +261,9 @@ export default function TemplateChooser({ onSelect }: Props) {
                     aria-label={isStarred ? `Unstar template ${t.name}` : `Star template ${t.name}`}
                     title={isStarred ? 'Unstar' : 'Star'}
                     onClick={() => toggleStar(t.id)}
-                    className={`absolute top-1 right-1 p-1 transition-colors ${isStarred ? 'text-[#d4a017]' : 'text-rmpg-600 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 hover:text-[#d4a017]'}`}
+                    className={`absolute top-1 right-1 p-1 transition-colors ${isStarred ? 'text-accent-silver-300' : 'text-rmpg-600 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 hover:text-accent-silver-300'}`}
                   >
-                    <StarIcon className="w-3 h-3" fill={isStarred ? '#d4a017' : 'none'} />
+                    <StarIcon className="w-3 h-3" fill={isStarred ? 'currentColor' : 'none'} />
                   </button>
                 </div>
               );

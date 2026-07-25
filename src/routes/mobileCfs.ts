@@ -179,11 +179,18 @@ mobileCfs.post('/cfs/:id/auth', async (c) => {
     if (!row) return c.json({ error: 'Unknown QR token' }, 404);
     if (row.revoked_at) return c.json({ error: 'QR token has been revoked' }, 403);
     if (!row.admin_override && row.scans_used >= row.max_scans) return c.json({ error: 'QR scan limit reached' }, 403);
-    // Officers enter their badge number; fall back to employee_id or users.id.
+    // Officers enter their badge number; employee_id is accepted as the
+    // documented alternate. The `OR id = ?` fallback that used to be here was
+    // removed: this endpoint is unauthenticated (it's gated only by a QR token
+    // PRINTED on paperwork handed to clients and served parties), so a raw
+    // `users.id` lookup let anyone holding that paper mint a session as an
+    // arbitrary user — `user_id: 1` reliably resolves to the first/admin row,
+    // whereas badge numbers at least have to be known and don't line up with
+    // small integers.
     const badgeStr = String(userIdNum);
     const user = await queryFirst<{ id: number; username: string; role: string; full_name: string; status: string }>(db,
       `SELECT id, username, role, full_name, status FROM users
-        WHERE badge_number = ? OR employee_id = ? OR id = ? LIMIT 1`, badgeStr, badgeStr, userIdNum);
+        WHERE badge_number = ? OR employee_id = ? LIMIT 1`, badgeStr, badgeStr);
     if (!user) return c.json({ error: 'User ID not recognized' }, 404);
     if (user.status && user.status !== 'active') return c.json({ error: `User is ${user.status}` }, 403);
     if (!row.admin_override) {
@@ -192,8 +199,12 @@ mobileCfs.post('/cfs/:id/auth', async (c) => {
       await execute(db, `UPDATE pso_qr_tokens SET last_scanned_at = datetime('now'), last_scanned_by = ? WHERE id = ?`, userIdNum, row.id);
     }
     const secret = new TextEncoder().encode(c.env.JWT_SECRET as string);
+    // 12h, not the original 30d: this is a single-shift field session minted
+    // from a printed QR code. A month-long bearer derived from paperwork that
+    // outlives the call is a standing credential, and the token is only useful
+    // for the duration of the on-scene work anyway.
     const scopedToken = await new SignJWT({ userId: user.id, username: user.username, role: user.role, scope: 'pso-mobile', callId })
-      .setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('30d').sign(secret);
+      .setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('12h').sign(secret);
     await bestEffortAudit(c, user.id, 'MOBILE_AUTH', callId, { user_id: userIdNum });
     return c.json({
       token: scopedToken,

@@ -9,6 +9,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { containsAnyClause } from '../utils/searchText';
 
 const animalControl = new Hono<Env>();
 
@@ -43,8 +44,10 @@ animalControl.get('/', async (c) => {
     const offset = (page - 1) * perPage;
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (search) {
-      conditions.push('(case_number LIKE ? OR animal_name LIKE ? OR owner_last_name LIKE ? OR location LIKE ?)');
-      const s = `%${search}%`; params.push(s, s, s, s);
+      // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+      const _m = containsAnyClause(['case_number', 'animal_name', 'owner_last_name', 'location']);
+      conditions.push(_m.sql);
+      params.push(..._m.binds(search));
     }
     if (case_type) { conditions.push('case_type = ?'); params.push(case_type); }
     if (status) { conditions.push('status = ?'); params.push(status); }

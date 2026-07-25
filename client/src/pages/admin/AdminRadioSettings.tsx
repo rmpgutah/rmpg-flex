@@ -72,9 +72,9 @@ function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange
         onClick={() => onChange(!checked)}
         className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-sm transition-colors flex-shrink-0"
         style={{
-          background: checked ? 'rgba(212,160,23,0.12)' : 'var(--surface-sunken)',
-          border: `1px solid ${checked ? '#d4a017' : 'var(--border-subtle)'}`,
-          color: checked ? '#d4a017' : '#888',
+          background: checked ? 'rgba(var(--accent-silver-500-rgb), 0.12)' : 'var(--surface-sunken)',
+          border: `1px solid ${checked ? 'var(--accent-silver-500)' : 'var(--border-subtle)'}`,
+          color: checked ? 'var(--accent-silver-500)' : 'var(--text-muted)',
         }}
       >
         {checked ? 'On' : 'Off'}
@@ -95,9 +95,9 @@ function Segmented({ value, options, onChange, label }: { value: string; options
             onClick={() => onChange(o.id)}
             className="px-2 py-1 text-[9px] font-mono font-bold uppercase tracking-wider rounded-sm"
             style={{
-              border: `1px solid ${value === o.id ? '#d4a017' : '#222'}`,
-              color: value === o.id ? '#d4a017' : '#888',
-              background: value === o.id ? 'rgba(212,160,23,0.10)' : 'transparent',
+              border: `1px solid ${value === o.id ? 'var(--accent-silver-500)' : 'var(--border-default)'}`,
+              color: value === o.id ? 'var(--accent-silver-500)' : 'var(--text-muted)',
+              background: value === o.id ? 'rgba(var(--accent-silver-500-rgb), 0.10)' : 'transparent',
             }}
           >
             {o.label}
@@ -121,7 +121,7 @@ function GroupCard({ icon, title, children }: { icon: React.ReactNode; title: st
 }
 
 const inputCls =
-  'bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-[11px] text-rmpg-200 focus:border-[#d4a017] outline-none';
+  'bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-[11px] text-rmpg-200 focus:border-accent-silver-500 outline-none';
 
 export default function AdminRadioSettings() {
   const [settings, setSettings] = useState<RadioSettings | null>(null);
@@ -210,7 +210,7 @@ export default function AdminRadioSettings() {
           <button
             onClick={save}
             disabled={saving || !dirty}
-            className="flex items-center gap-1.5 bg-[#d4a017] hover:bg-[#a16207] disabled:opacity-50 text-black px-3 py-1.5 rounded-sm text-xs font-semibold transition-colors"
+            className="flex items-center gap-1.5 bg-accent-silver-500 hover:bg-accent-silver-600 disabled:opacity-50 text-black px-3 py-1.5 rounded-sm text-xs font-semibold transition-colors"
           >
             {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
             Save
@@ -223,7 +223,7 @@ export default function AdminRadioSettings() {
       )}
 
       {/* ── AI Dispatcher ── */}
-      <GroupCard icon={<Bot size={14} className="text-[#d4a017]" />} title="AI Dispatcher">
+      <GroupCard icon={<Bot size={14} className="text-accent-silver-500" />} title="AI Dispatcher">
         <Toggle label="AI dispatcher enabled" hint="Master switch. When off, the radio still records but never speaks back." checked={settings.ai_dispatcher_enabled} onChange={(v) => set('ai_dispatcher_enabled', v)} />
         <Segmented label="Respond mode" value={settings.ai_respond_mode} options={options.ai_respond_mode} onChange={(v) => set('ai_respond_mode', v as RadioSettings['ai_respond_mode'])} />
         <div className="text-[10px] text-rmpg-500 -mt-1">“all” answers every transmission; “addressed” only when a unit calls dispatch (or asks for a lookup/log).</div>
@@ -261,7 +261,7 @@ export default function AdminRadioSettings() {
       </GroupCard>
 
       {/* ── Recording & Transcription ── */}
-      <GroupCard icon={<Mic size={14} className="text-[#d4a017]" />} title="Recording & Transcription">
+      <GroupCard icon={<Mic size={14} className="text-accent-silver-500" />} title="Recording & Transcription">
         <Toggle label="Record transmissions" hint="When off, transmissions are still logged but no audio is kept." checked={settings.auto_record} onChange={(v) => set('auto_record', v)} />
         <Toggle label="Auto-transcribe (Whisper)" hint="Transcribe clips that arrive without a client transcript." checked={settings.auto_transcribe} onChange={(v) => set('auto_transcribe', v)} />
         <div className="pt-1">
@@ -283,7 +283,7 @@ export default function AdminRadioSettings() {
       </GroupCard>
 
       {/* ── Officer safety ── */}
-      <GroupCard icon={<ShieldAlert size={14} className="text-[#d4a017]" />} title="Officer Safety">
+      <GroupCard icon={<ShieldAlert size={14} className="text-accent-silver-500" />} title="Officer Safety">
         <Toggle label="Premise hazard alerts" hint="When a unit goes 'out at' a location, auto-warn of known premise hazards." checked={settings.safety_alerts_enabled} onChange={(v) => set('safety_alerts_enabled', v)} />
         <Toggle label="Voice stress / duress monitoring" hint="The AI rates stress on each transmission and escalates emergencies + flags the console." checked={settings.stress_monitoring_enabled} onChange={(v) => set('stress_monitoring_enabled', v)} />
         <div className="flex items-center justify-between gap-3 py-1">
@@ -294,7 +294,7 @@ export default function AdminRadioSettings() {
       </GroupCard>
 
       {/* ── Channel defaults & operator UX ── */}
-      <GroupCard icon={<SlidersHorizontal size={14} className="text-[#d4a017]" />} title="Channel Defaults & Operator UX">
+      <GroupCard icon={<SlidersHorizontal size={14} className="text-accent-silver-500" />} title="Channel Defaults & Operator UX">
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-rmpg-300">Default channel</div>
           <select id="ff-adminradiosettings-7" aria-label="Default channel" className={inputCls} value={settings.default_channel_id ?? ''} onChange={(e) => set('default_channel_id', e.target.value ? Number(e.target.value) : null)}>
@@ -322,7 +322,7 @@ export default function AdminRadioSettings() {
       </GroupCard>
 
       {/* ── Radio audio / P25 effect ── */}
-      <GroupCard icon={<RadioIcon size={14} className="text-[#d4a017]" />} title="Radio Audio / P25 Effect">
+      <GroupCard icon={<RadioIcon size={14} className="text-accent-silver-500" />} title="Radio Audio / P25 Effect">
         <Toggle label="Apply radio “haze” to speech" hint="Run dispatcher/alert TTS through the P25 effect chain." checked={settings.tts_over_radio} onChange={(v) => set('tts_over_radio', v)} />
         <Segmented label="Haze intensity" value={settings.haze_intensity} options={options.haze_intensity} onChange={(v) => set('haze_intensity', v as RadioSettings['haze_intensity'])} />
         <div className="flex items-center justify-between gap-3 py-1">
