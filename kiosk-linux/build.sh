@@ -1196,9 +1196,13 @@ LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0*.{ucode,pnvm}" "$LINUX_FW_MK"
     echo "⚠  ANOTHER BUILD IS USING THE SAME VOLUME RIGHT NOW:" >&2
     echo "$CONCURRENT_NOW" | sed 's/^/     /' >&2
     echo "" >&2
-    echo "   That is very likely the cause, NOT your config. Look for an exec" >&2
-    echo "   error such as 'scripts/basic/fixdep: Permission denied' or 'Error 126'" >&2
-    echo "   above: a shared host tool was replaced while this build was running." >&2
+    echo "   That is very likely the cause, NOT your config. The signature is a file" >&2
+    echo "   that existed moments ago going missing or unusable mid-build, because the" >&2
+    echo "   other build is writing the same tree. Both of these were seen for real:" >&2
+    echo "     scripts/basic/fixdep: Permission denied        (then 'Error 126')" >&2
+    echo "     ld: cannot find scripts/kconfig/confdata.o: No such file or directory" >&2
+    echo "   The second one happened one line after that object compiled successfully." >&2
+    echo "   Do not go looking through Kconfig for either of them." >&2
     echo "   Wait for that build to finish and re-run, or use separate volumes:" >&2
     echo "     BUILDROOT_VOLUME=kiosk-src-mine BUILD_OUTPUT_VOLUME=kiosk-out-mine ./build.sh" >&2
     echo "   (a fresh output volume means a full from-scratch build)" >&2
