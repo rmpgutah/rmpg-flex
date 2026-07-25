@@ -94,3 +94,25 @@ describe('GET /api/admin/config — disposition namespaces', () => {
     expect((cfg as unknown as Record<string, unknown>).disposition_code).toBeUndefined();
   });
 });
+
+describe('GET /api/admin/config-history — single live handler', () => {
+  it('reads activity_log and honors ?limit (the shape AdminHealthTab requests)', async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    await execute(db, `CREATE TABLE IF NOT EXISTS activity_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT, created_at TEXT
+    )`);
+    await execute(db, `INSERT INTO activity_log (action, created_at) VALUES ('config_update', '2026-07-01T00:00:00Z')`);
+    await execute(db, `INSERT INTO activity_log (action, created_at) VALUES ('setting_update', '2026-07-02T00:00:00Z')`);
+    await execute(db, `INSERT INTO activity_log (action, created_at) VALUES ('login', '2026-07-03T00:00:00Z')`);
+
+    const res = await app.request('/api/admin/config-history?limit=1', {}, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { data: Array<{ action: string }> };
+
+    // limit=1 proves the activity_log handler answered: the config_audit_log
+    // duplicate ignores the query param and hardcodes LIMIT 200.
+    expect(body.data).toHaveLength(1);
+    // Newest config-ish action first; 'login' is filtered out entirely.
+    expect(body.data[0].action).toBe('setting_update');
+  });
+});

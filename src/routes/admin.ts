@@ -707,6 +707,10 @@ admin.get('/user-activity-heatmap', async (c) => {
 admin.get('/backup-status', (c) => c.json({
   data: { last_backup_at: null, status: 'unknown', size_bytes: 0, location: null },
 }));
+// Sole /config-history handler. A second one reading config_audit_log was
+// registered further down this file and was unreachable (Hono dispatches the
+// first match); config_audit_log has no writers anywhere in src/. Deleted
+// 2026-07-25.
 admin.get('/config-history', async (c) => {
   try {
     const db = getDb(c.env);
@@ -2047,15 +2051,6 @@ admin.post('/impersonate/:id', async (c) => {
   } catch { return c.json({ error: 'Failed' }, 500); }
 });
 
-// ── Config history ─────────────────────────────────────────
-admin.get('/config-history', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db,
-      `SELECT * FROM config_audit_log ORDER BY created_at DESC LIMIT 200`);
-    return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
-});
 
 // NOTE: '/settings/reset' used to be a no-op stub here. Removed 2026-07-20 —
 // it resolved to the exact same final path as adminSettings.ts's real,
