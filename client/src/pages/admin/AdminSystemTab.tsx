@@ -31,6 +31,7 @@ import { useMenuActions } from '../../utils/contextMenuActions';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { INCIDENT_TYPE_CODES, INCIDENT_TYPE_CATEGORIES, type IncidentCategory } from '../../utils/caseNumbers';
 import { OffenseLevelBadge } from '../../components/StatuteLookup';
+import NotEnforcedNotice from './NotEnforcedNotice';
 import type { User, Unit, UnitStatus } from '../../types';
 
 // ============================================================
@@ -1663,6 +1664,7 @@ export default function AdminSystemTab({
                 {prioritiesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Priority labels, colors and response targets" />
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                   {priorities.map((p, i) => (
                     <div key={p.level} className="p-3 bg-rmpg-900 border border-rmpg-600 space-y-2">
@@ -1716,6 +1718,7 @@ export default function AdminSystemTab({
                 {callSourcesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Call source options" />
                 <div className="space-y-1 mb-3">
                   {callSources.map((src, i) => (
                     <div key={src} className="flex items-center gap-2 p-2 bg-rmpg-900 border border-rmpg-600 hover:border-rmpg-500 transition-colors">
@@ -1803,6 +1806,7 @@ export default function AdminSystemTab({
                 {unitTypesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Unit type labels and colors" />
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mb-3">
                   {unitTypes.map((ut) => (
                     <div key={ut.type} className="flex items-center gap-2 p-2.5 bg-rmpg-900 border border-rmpg-600 hover:border-rmpg-500 transition-colors">
@@ -2011,6 +2015,7 @@ export default function AdminSystemTab({
                 {zonesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Zones and beats" />
                 {zones.length > 0 ? (
                   <table className="table-dark mb-3">
                     <thead>
@@ -2082,6 +2087,7 @@ export default function AdminSystemTab({
                 {evidenceTypesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Evidence type options" />
                 <div className="flex flex-wrap gap-2 mb-3">
                   {evidenceTypes.map((et, i) => (
                     <div key={et} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-rmpg-900 border border-rmpg-600 hover:border-rmpg-500 transition-colors">
@@ -2237,6 +2243,7 @@ export default function AdminSystemTab({
                 {securityDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Password and session policy values" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Password Policy</div>
