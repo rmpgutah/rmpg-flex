@@ -98,10 +98,21 @@ fi
 
 mkdir -p "$OUTPUT_DIR/images"
 
+# --- Build-VM sizing (read this before a "mysterious" compiler crash) ---
+# The desktop build compiles WebKitGTK, which is one of the most
+# memory-hungry C++ builds in common use. An 8 GiB Colima VM was NOT enough:
+# the build ran for ~40 minutes and then died with
+#   "x86_64-buildroot-linux-gnu-g++.br_real: fatal error: Killed signal
+#    terminated program cc1plus"
+# That is the Linux OOM killer, not a code error — nothing in the log points
+# at memory, so it reads like a compiler bug. Give the VM at least 16 GiB
+# (24 GiB used here) and as many cores as the host can spare:
+#   colima stop && colima start --cpu 10 --memory 24 --disk 60
+# Resizing preserves the named volumes, so no build cache is lost.
 if ! docker info >/dev/null 2>&1; then
   echo "ERROR: docker is not available/running." >&2
   echo "  On macOS: install+start Colima —" >&2
-  echo "    brew install colima docker && colima start --cpu 4 --memory 8 --disk 60" >&2
+  echo "    brew install colima docker && colima start --cpu 10 --memory 24 --disk 60" >&2
   echo "  On Windows/WSL2: enable Docker Desktop's WSL Integration for your distro" >&2
   echo "    (Settings > Resources > WSL Integration), or install docker-ce directly" >&2
   echo "    inside the WSL2 distro — no Colima/VM workaround needed there." >&2
@@ -777,14 +788,30 @@ COGHASH
     # off, and pango kept emitting a .gir long after introspection was turned
     # back off. Force-reconfigure the X/GL-sensitive packages the first time a
     # desktop build runs against a kiosk-era output tree.
-    DESKTOP_MARKER=/build-output/.rmpg-desktop-enabled
-    if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ] && [ ! -f "$DESKTOP_MARKER" ]; then
-      echo "First desktop build against this output tree — reconfiguring X/GL-sensitive packages ..."
-      for pkg in mesa3d cairo libepoxy pango libgtk3; do
-        echo "  dirclean: $pkg"
-        make -C /build-output "$pkg-dirclean" >/dev/null 2>&1 || true
+    DESKTOP_MARKER=/build-output/.rmpg-desktop-reconfigured
+    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses"
+    if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ]; then
+      # The marker is a LIST of packages already reconfigured, not a single
+      # all-or-nothing flag. The first version of this was a bare touch file,
+      # which meant a package discovered stale later (ncurses, found when htop
+      # failed with "can not find required library libncursesw" despite
+      # BR2_PACKAGE_NCURSES_WCHAR=y being set) could never be added — the
+      # marker already existed, so the whole block was skipped. Tracking each
+      # package individually makes adding one to the list above take effect on
+      # the next build, and never re-does work that is already done.
+      #
+      # Seed the list from the legacy empty marker so upgrading this logic does
+      # not needlessly rebuild the five packages it had already handled.
+      if [ -f /build-output/.rmpg-desktop-enabled ] && [ ! -f "$DESKTOP_MARKER" ]; then
+        printf "mesa3d\ncairo\nlibepoxy\npango\nlibgtk3\n" > "$DESKTOP_MARKER"
+      fi
+      for pkg in $DESKTOP_STALE_PKGS; do
+        if ! grep -qx "$pkg" "$DESKTOP_MARKER" 2>/dev/null; then
+          echo "Reconfiguring kiosk-era package for the desktop build: $pkg"
+          make -C /build-output "$pkg-dirclean" >/dev/null 2>&1 || true
+          echo "$pkg" >> "$DESKTOP_MARKER"
+        fi
       done
-      touch "$DESKTOP_MARKER"
     fi
 
     echo "Building (this takes a while on first run) ..."

@@ -62,8 +62,8 @@ const PLATFORM_CONFIG: Record<Platform, {
     label: 'Kiosk Linux OS',
     arch: 'Toughbook FZ-55 / x86_64',
     icon: HardDrive,
-    ext: '.tar.gz',
-    buttonLabel: 'Download .tar.gz',
+    ext: '.zip',
+    buttonLabel: 'Download .zip',
   },
 };
 

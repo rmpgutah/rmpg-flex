@@ -176,7 +176,11 @@ export async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
       if (!info.win || verLt(info.win.version, version)) info.win = meta;
     } else if (name.endsWith('.apk')) {
       if (!info.android || verLt(info.android.version, version)) info.android = meta;
-    } else if (name.endsWith('.tar.gz') && name.startsWith('kiosk-linux-os-')) {
+    } else if ((name.endsWith('.tar.gz') || name.endsWith('.zip')) && name.startsWith('kiosk-linux-os-')) {
+      // .zip is accepted alongside .tar.gz because the OS image is installed
+      // from a Windows laptop far more often than from Linux, and Windows
+      // cannot open a .tar.gz by double-clicking. The .zip override below
+      // prefers it when both are present.
       if (!info.os || verLt(info.os.version, version)) info.os = meta;
     }
   }
@@ -204,6 +208,25 @@ export async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
       info.android = {
         filename: zipName,
         version: extractVersion(zipName) || info.android.version,
+        size: fmtBytes(zipObj.size),
+        bytes: zipObj.size,
+        releaseDate: zipObj.uploaded.toISOString(),
+      };
+    }
+  }
+
+  // Prefer .zip for the OS image when both formats exist. These images are
+  // written to a USB stick from whatever laptop is on hand — in practice a
+  // Windows machine — and Windows cannot open a .tar.gz by double-clicking,
+  // which turned the very first install step into a blocker. A .zip opens in
+  // Explorer natively. The .tar.gz is kept in the bucket for Linux/macOS.
+  if (info.os && info.os.filename.endsWith('.tar.gz')) {
+    const zipName = info.os.filename.replace(/\.tar\.gz$/, '.zip');
+    const zipObj = list.objects.find((o) => o.key === zipName);
+    if (zipObj) {
+      info.os = {
+        filename: zipName,
+        version: extractVersion(zipName) || info.os.version,
         size: fmtBytes(zipObj.size),
         bytes: zipObj.size,
         releaseDate: zipObj.uploaded.toISOString(),
