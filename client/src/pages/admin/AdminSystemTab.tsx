@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Settings,
   Plus,
@@ -30,6 +31,7 @@ import { useMenuActions } from '../../utils/contextMenuActions';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { INCIDENT_TYPE_CODES, INCIDENT_TYPE_CATEGORIES, type IncidentCategory } from '../../utils/caseNumbers';
 import { OffenseLevelBadge } from '../../components/StatuteLookup';
+import NotEnforcedNotice from './NotEnforcedNotice';
 import type { User, Unit, UnitStatus } from '../../types';
 
 // ============================================================
@@ -366,9 +368,6 @@ export default function AdminSystemTab({
     setActiveSectionState(section);
     try { localStorage.setItem(LS_ADMIN_SECTIONS, JSON.stringify(section)); } catch { /* ignore */ }
   }, []);
-  // Keep expandedSections API compatible for auto-search triggers
-  const expandedSections = { has: (s: SysSection) => activeSection === s } as Set<SysSection>;
-
   // Priority configuration
   const [priorities, setPriorities] = useState<PriorityConfig[]>(DEFAULT_PRIORITIES);
   const [prioritiesDirty, setPrioritiesDirty] = useState(false);
@@ -626,12 +625,23 @@ export default function AdminSystemTab({
     fetchAdminUnits();
   }, [fetchConfig, fetchCallTemplates, fetchAdminUnits]);
 
-  // Auto-search statutes when section is expanded
+  // Auto-search statutes while the Criminal Codes section is active.
+  //
+  // Depends on the PRIMITIVE `activeSection`, never on a derived object wrapping
+  // it — a fresh object literal is a new reference every render, so listing one
+  // here made the effect re-run after every render. Because fetchStatutes sets
+  // state, each run scheduled the next one: an unbounded stream of /api/statutes
+  // requests for as long as this section stayed open.
+  //
+  // The 300 ms timer doubles as the search debounce, so typing issues one
+  // request per burst rather than one per keystroke.
   useEffect(() => {
-    if (expandedSections.has('criminal_codes')) {
+    if (activeSection !== 'criminal_codes') return;
+    const timer = setTimeout(() => {
       fetchStatutes(statuteSearch, statuteCategory, statutePage);
-    }
-  }, [expandedSections, statuteSearch, statuteCategory, statutePage, fetchStatutes]);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [activeSection, statuteSearch, statuteCategory, statutePage, fetchStatutes]);
 
   // ============================================================
   // Save JSON config helper
@@ -1331,6 +1341,7 @@ export default function AdminSystemTab({
   // ============================================================
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
+  const navigate = useNavigate();
 
   const buildUnitMenu = (unit: Unit): ContextMenuItem[] => [
     m.action('Edit unit', () => startEditUnit(unit), { icon: <Edit size={12} /> }),
@@ -1376,6 +1387,8 @@ export default function AdminSystemTab({
   ];
 
   const buildStatuteMenu = (s: any): ContextMenuItem[] => [
+    m.action('Open in Law Book', () => navigate(`/law-book?statute_id=${s.id}`), { icon: <Scale size={12} /> }),
+    m.separator(),
     m.copy('Copy citation', s.citation),
     m.copy('Copy title', s.short_title),
     m.copyId(s.id, 'Copy statute ID'),
@@ -1651,6 +1664,7 @@ export default function AdminSystemTab({
                 {prioritiesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Priority labels, colors and response targets" />
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                   {priorities.map((p, i) => (
                     <div key={p.level} className="p-3 bg-rmpg-900 border border-rmpg-600 space-y-2">
@@ -1704,6 +1718,7 @@ export default function AdminSystemTab({
                 {callSourcesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Call source options" />
                 <div className="space-y-1 mb-3">
                   {callSources.map((src, i) => (
                     <div key={src} className="flex items-center gap-2 p-2 bg-rmpg-900 border border-rmpg-600 hover:border-rmpg-500 transition-colors">
@@ -1791,6 +1806,7 @@ export default function AdminSystemTab({
                 {unitTypesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Unit type labels and colors" />
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mb-3">
                   {unitTypes.map((ut) => (
                     <div key={ut.type} className="flex items-center gap-2 p-2.5 bg-rmpg-900 border border-rmpg-600 hover:border-rmpg-500 transition-colors">
@@ -1999,6 +2015,7 @@ export default function AdminSystemTab({
                 {zonesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Zones and beats" />
                 {zones.length > 0 ? (
                   <table className="table-dark mb-3">
                     <thead>
@@ -2070,6 +2087,7 @@ export default function AdminSystemTab({
                 {evidenceTypesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Evidence type options" />
                 <div className="flex flex-wrap gap-2 mb-3">
                   {evidenceTypes.map((et, i) => (
                     <div key={et} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-rmpg-900 border border-rmpg-600 hover:border-rmpg-500 transition-colors">
@@ -2225,6 +2243,7 @@ export default function AdminSystemTab({
                 {securityDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Password and session policy values" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Password Policy</div>
@@ -2405,7 +2424,18 @@ export default function AdminSystemTab({
                       <tbody>
                         {statutes.map((s: any) => (
                           <tr key={s.id} className="border-t border-rmpg-700/30 hover:bg-rmpg-700/20" onContextMenu={(e) => openMenu(e, buildStatuteMenu(s))}>
-                            <td className="px-2 py-1.5 font-mono text-brand-400 font-bold whitespace-nowrap">{s.citation}</td>
+                            <td className="px-2 py-1.5 font-mono font-bold whitespace-nowrap">
+                              {/* /law-book?statute_id= is handled by LawBookPage's
+                                  deep-link reader — the statute panel was display-only
+                                  before this. */}
+                              <Link
+                                to={`/law-book?statute_id=${s.id}`}
+                                className="text-brand-400 hover:text-brand-300 hover:underline"
+                                title={`Open ${s.citation} in the Law Book`}
+                              >
+                                {s.citation}
+                              </Link>
+                            </td>
                             <td className="px-2 py-1.5 text-rmpg-200 max-w-[250px] truncate">{s.short_title}</td>
                             <td className="px-2 py-1.5">
                               <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase border ${
@@ -2459,6 +2489,7 @@ export default function AdminSystemTab({
                 {settingsDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="System settings" except="report footer text, which is read by PDF report generation" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Agency Information</div>
