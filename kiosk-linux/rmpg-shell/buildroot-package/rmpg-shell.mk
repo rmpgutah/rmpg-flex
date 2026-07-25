@@ -21,7 +21,12 @@ RMPG_SHELL_LICENSE = Proprietary
 # nothing, and the compile died on "gtk/gtk.h: No such file or directory" —
 # a missing-header error whose real cause was build ORDER, not a missing GTK
 # (rmpg-shell, which needs the same header, had just compiled fine).
-RMPG_SHELL_DEPENDENCIES = libgtk3 webkitgtk xlib_libX11 host-pkgconf
+# xlib_libXScrnSaver is dlopen'd at RUNTIME by the idle-lock watcher, not linked,
+# so nothing here would otherwise force it to be built before this package. It
+# must still be listed: without it the shell starts fine and silently runs with
+# NO IDLE LOCK, which on a terminal displaying dispatch data is a security
+# regression that looks like nothing at all.
+RMPG_SHELL_DEPENDENCIES = libgtk3 webkitgtk xlib_libX11 xlib_libXScrnSaver host-pkgconf
 
 define RMPG_SHELL_BUILD_CMDS
 	$(TARGET_MAKE_ENV) $(MAKE) $(TARGET_CONFIGURE_OPTS) \
@@ -31,6 +36,7 @@ endef
 define RMPG_SHELL_INSTALL_TARGET_CMDS
 	$(INSTALL) -D -m 0755 $(@D)/rmpg-shell $(TARGET_DIR)/usr/bin/rmpg-shell
 	$(INSTALL) -D -m 0755 $(@D)/rmpg-browser $(TARGET_DIR)/usr/bin/rmpg-browser
+	$(INSTALL) -D -m 0755 $(@D)/rmpg-lock    $(TARGET_DIR)/usr/bin/rmpg-lock
 endef
 
 $(eval $(generic-package))

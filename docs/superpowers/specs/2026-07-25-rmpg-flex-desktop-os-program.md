@@ -29,6 +29,15 @@ Shipped and verified:
   **Not yet run on physical hardware.**
 - **Download outage fixed** — `/downloads/<file>` had no route and returned
   11,630 bytes of SPA HTML for every artifact.
+- **Idle lock** (`rmpg-lock` + watcher in the taskbar). Verified: extension live
+  in the server, watcher armed with no poll errors, lock grabs input
+  exclusively. Signs the Flex session out BEFORE covering the screen, so
+  dismissing the overlay reveals only the login page — Flex's own auth stays the
+  access boundary rather than inventing local credential storage on a device in
+  a vehicle.
+- **OTA update system** — `rmpg-update` agent, `/api/os/manifest`, staging
+  channel with an explicit promote gate, 12 tests. Payload publishing blocked,
+  see below.
 
 Hard-won build knowledge — do not rediscover these:
 
@@ -42,10 +51,13 @@ Hard-won build knowledge — do not rediscover these:
 | Wrangler 300 MiB object cap | Fails in ms; looks like success | Ship `disk.img` only (~236 MiB) |
 | Pages `_redirects` status-200 proxy | Silently ignored → SPA HTML served | Absolute Worker-origin URLs |
 | Reading a proxy signal, not the component's log | Three wrong hypotheses in a row | `test/run-qemu-shell.sh`; init scripts echo `(EE)` lines to console |
+| Package needing a SECOND rebuild for a new reason | Guard tracked by name, so it never re-fired | `DESKTOP_STALE_PKGS` entries take a `pkg:reason` suffix |
+| MIT-SCREEN-SAVER absent from the X server | Taskbar logs "idle lock armed" then NEVER locks | Rebuild xorg-server after adding xlib_libXScrnSaver |
+| Grepping a log for the success string only | Confirmation and contradiction were 4 lines apart | Read the whole log |
 
 ## Phases
 
-### Phase 1 — OTA updates on commit (next)
+### Phase 1 — OTA updates on commit (code complete; publishing blocked)
 
 Highest value: without it every future improvement needs a physical visit.
 The A/B mechanism already exists and self-heals; what is missing is delivery.
@@ -62,7 +74,7 @@ The A/B mechanism already exists and self-heals; what is missing is delivery.
 - Resilience: refuse to update on battery below a threshold; never update while
   a call is active on that terminal.
 
-### Phase 2 — Enterprise desktop UI/UX
+### Phase 2 — Enterprise desktop UI/UX (started: idle lock done)
 
 Modelled on Windows behaviours officers already know. Concrete items:
 

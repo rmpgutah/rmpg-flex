@@ -17,7 +17,7 @@ CFLAGS     ?= -O2
 PREFIX     ?= /usr
 
 SHELL_CFLAGS := $(shell $(PKG_CONFIG) --cflags gtk+-3.0 x11)
-SHELL_LIBS   := $(shell $(PKG_CONFIG) --libs   gtk+-3.0 x11)
+SHELL_LIBS   := $(shell $(PKG_CONFIG) --libs   gtk+-3.0 x11) -ldl
 
 # webkit2gtk-4.1 is what Buildroot's webkitgtk provides; 4.0 is the older
 # soup2-based ABI. Probe for 4.1 and fall back, so this Makefile keeps working
@@ -40,7 +40,7 @@ endif
 
 WARNINGS = -Wall -Wextra
 
-all: rmpg-shell rmpg-browser
+all: rmpg-shell rmpg-browser rmpg-lock
 
 rmpg-shell: rmpg-shell.c
 	$(CC) $(CFLAGS) $(WARNINGS) $(SHELL_CFLAGS) -o $@ $< $(LDFLAGS) $(SHELL_LIBS)
@@ -48,11 +48,15 @@ rmpg-shell: rmpg-shell.c
 rmpg-browser: rmpg-browser.c
 	$(CC) $(CFLAGS) $(WARNINGS) $(BROWSER_CFLAGS) -o $@ $< $(LDFLAGS) $(BROWSER_LIBS)
 
+rmpg-lock: rmpg-lock.c
+	$(CC) $(CFLAGS) $(WARNINGS) $(SHELL_CFLAGS) -o $@ $< $(LDFLAGS) $(SHELL_LIBS)
+
 install: all
 	install -D -m 0755 rmpg-shell   $(DESTDIR)$(PREFIX)/bin/rmpg-shell
 	install -D -m 0755 rmpg-browser $(DESTDIR)$(PREFIX)/bin/rmpg-browser
+	install -D -m 0755 rmpg-lock    $(DESTDIR)$(PREFIX)/bin/rmpg-lock
 
 clean:
-	rm -f rmpg-shell rmpg-browser
+	rm -f rmpg-shell rmpg-browser rmpg-lock
 
 .PHONY: all install clean
