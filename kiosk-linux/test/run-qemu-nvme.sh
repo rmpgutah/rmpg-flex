@@ -136,7 +136,15 @@ else
 fi
 
 # 5. And was cleared on a healthy boot, so healthy boots cannot trip a rollback.
-if grep -q "KIOSK_LINUX_BOOT_ATTEMPTS_RESET$" "$LOG_FILE" 2>/dev/null; then
+#
+# The pattern must distinguish RESET from RESET_FAILED and RESET_SKIPPED without
+# anchoring to end-of-line. An earlier version used `RESET$` and reported a
+# false failure on a run whose log demonstrably contained the marker: a serial
+# console carries CRLF and interleaves kernel messages mid-line, so anything
+# after the marker on that line defeats the anchor. `[^_A-Z]` matches the
+# trailing CR, a space, or an interleaved bracket, while still refusing the
+# _FAILED and _SKIPPED suffixes.
+if grep -qE "KIOSK_LINUX_BOOT_ATTEMPTS_RESET([^_A-Z]|$)" "$LOG_FILE" 2>/dev/null; then
   pass "counter reset after a healthy session"
 elif grep -q "KIOSK_LINUX_BOOT_ATTEMPTS_RESET_FAILED\|KIOSK_LINUX_BOOT_ATTEMPTS_RESET_SKIPPED" "$LOG_FILE" 2>/dev/null; then
   fail "counter reset did NOT happen: $(grep -o 'KIOSK_LINUX_BOOT_ATTEMPTS_RESET_[A-Z]*' "$LOG_FILE" | tail -1) — healthy boots would eventually force a rollback"
