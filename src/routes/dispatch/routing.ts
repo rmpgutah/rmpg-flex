@@ -55,10 +55,10 @@ interface CallRow {
   status: string;
   latitude: number | null;
   longitude: number | null;
-  // Live column is location_address. Selecting a bare `location` threw
-  // "no such column: location" and killed every /optimize request (error_log
-  // id 74) — same failure mode as the response_time_sec typo noted in
-  // reports.ts's dashboard query.
+  // The live column is `location_address` — there is no `location` column on
+  // calls_for_service (verified via pragma_table_info: location_address,
+  // location_building, location_floor, location_room). Selecting `location`
+  // made every /optimize call fail with "no such column: location".
   location_address: string | null;
   description: string | null;
   assigned_unit_ids: string | null;

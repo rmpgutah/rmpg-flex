@@ -288,7 +288,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/health', router: health, auth: 'public' },
   { prefix: '/api/auth', router: auth, auth: 'public' },
   { prefix: '/api/oidc', router: oidc, auth: 'public',
-    note: 'Sign in with Dialer (dialer.rmpgutah.us OIDC). Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
+    note: 'Sign in with Dialer (dialer.rmpgutah.us OIDC): /dialer/check (identifier-first SSO probe, IP-rate-limited boolean), /dialer/login, /dialer/callback. Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
   { prefix: '/api/tiles', router: tiles, auth: 'public' },
   { prefix: '/api/geo', router: geo, auth: 'public' },

@@ -108,21 +108,26 @@ health.get('/', async (c) => {
 
   log.info('Health check', { traceId, d1: d1.connected, kv: kv.connected, status: allOk ? 'ok' : 'degraded' });
 
-  if (!allOk) {
-    return c.json({
-      status: 'degraded',
-      version: '1.0.0',
-      timestamp: new Date().toISOString(),
-      services: { d1, kv, map_data: mapData, uploads, downloads, kiosk_devices: kioskDevices, durable_objects: doResults },
-    }, 200); // 200 still — this is a health probe, not a user-facing error
-  }
-
-  return c.json({
-    status: 'ok',
+  // Built ONCE and shared by both the ok and degraded responses. These were
+  // previously two hand-maintained literals, which silently diverged: a field
+  // added to the degraded branch only was invisible in prod (which serves `ok`)
+  // while tests passed against the degraded branch. Keep this single-source.
+  const payload = {
     version: '1.0.0',
     timestamp: new Date().toISOString(),
-    services: { d1, kv, map_data: mapData, uploads, downloads, durable_objects: doResults },
-  });
+    services: {
+      d1,
+      kv,
+      map_data: mapData,
+      uploads,
+      downloads,
+      kiosk_devices: kioskDevices,
+      durable_objects: doResults,
+    },
+  };
+
+  // 200 in both cases — this is a health probe, not a user-facing error.
+  return c.json({ status: allOk ? 'ok' : 'degraded', ...payload }, 200);
 });
 
 export default health;

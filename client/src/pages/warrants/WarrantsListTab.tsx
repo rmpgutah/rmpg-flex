@@ -101,6 +101,25 @@ export interface WarrantsListTabProps {
 // extraction plan; a later phase may hoist these to a shared module)
 // ============================================================
 
+// ── External (scraped) warrant rows ─────────────────────────────────────────
+// GET /warrants/unified merges local `warrants` rows with `scraped_warrants`
+// rows pulled by the national scrapers, and mints a SYNTHETIC string id for
+// the latter — `scraped-<n>` (src/routes/warrants.ts). Those ids have no
+// backing row in the `warrants` table, so every /warrants/:id call made with
+// one (detail, single-warrant PDF, serve, archive, status, delete, reopen)
+// is rejected by the server's `Number.isFinite(id)` guard with a 400
+// "Invalid warrant id" — which showed up live as a stream of console 400s
+// whenever a dispatcher clicked a national-source row.
+//
+// Detection is by id SHAPE rather than by the `source` field, because `source`
+// is free-form (`row.source_key ?? row.source ?? 'national'`) while the id
+// prefix is minted in exactly one place and is therefore reliable.
+const isExternalWarrantId = (id: number | string | null | undefined): boolean =>
+  typeof id === 'string' && !/^\d+$/.test(id);
+
+const EXTERNAL_WARRANT_READONLY_MSG =
+  'External (scraped) warrant — read-only until it is imported into the local system.';
+
 const WARRANT_TYPES: { value: string; label: string }[] = [
   { value: 'arrest', label: 'Arrest' },
   { value: 'search', label: 'Search' },
@@ -204,6 +223,12 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
   // WARRANTS TAB STATE
   // ============================================================
   const [warrants, setWarrants] = useState<UnifiedWarrant[]>([]);
+  // Mirror of `warrants` for callbacks that must read the current list without
+  // taking it as a dependency (fetchWarrantDetail / handlePrintWarrantPdf need
+  // it only to resolve external rows, and re-identifying them on every list
+  // refresh would churn useImperativeHandle).
+  const warrantsRef = useRef<UnifiedWarrant[]>([]);
+  useEffect(() => { warrantsRef.current = warrants; }, [warrants]);
   const [selectedWarrant, setSelectedWarrant] = useState<Warrant | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -345,7 +370,12 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
     setFilterWatchedOnly(false);
   }
 
+  // Batch actions all POST integer id arrays to /warrants/batch-update,
+  // /bulk-archive, /bulk-review and the packet builder — external (scraped)
+  // rows have no local id to send, so they're excluded from selection.
+  const batchSelectableWarrants = warrants.filter((w) => !isExternalWarrantId(w.id));
   const toggleBatchSelect = (id: number) => {
+    if (isExternalWarrantId(id)) { addToast(EXTERNAL_WARRANT_READONLY_MSG, 'warning'); return; }
     setBatchSelected(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
@@ -353,10 +383,10 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
     });
   };
   const toggleSelectAll = () => {
-    if (batchSelected.size === warrants.length) {
+    if (batchSelected.size === batchSelectableWarrants.length) {
       setBatchSelected(new Set());
     } else {
-      setBatchSelected(new Set(warrants.map(w => w.id)));
+      setBatchSelected(new Set(batchSelectableWarrants.map(w => w.id)));
     }
   };
   const handleBatchUpdate = async () => {
@@ -439,10 +469,21 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
   };
 
   // Phase 1: download a single-warrant PDF for the currently selected warrant
-  const handlePrintWarrantPdf = async (id: number) => {
+  const handlePrintWarrantPdf = async (id: number | string) => {
     try {
-      const res = await apiFetch<any>(`/warrants/${id}`);
-      const raw = (res && typeof res === 'object' && 'data' in res ? res.data : res) || {};
+      // External (scraped) rows can't be re-fetched by id (see
+      // isExternalWarrantId) — print from the loaded list row instead.
+      let raw: any;
+      if (isExternalWarrantId(id)) {
+        raw = warrantsRef.current.find((w) => String(w.id) === String(id));
+        if (!raw) {
+          addToast('That external warrant is no longer in the current view', 'warning');
+          return;
+        }
+      } else {
+        const res = await apiFetch<any>(`/warrants/${id}`);
+        raw = (res && typeof res === 'object' && 'data' in res ? res.data : res) || {};
+      }
 
       const printedByName = displayUserName(props.user);
 
@@ -602,13 +643,23 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
   // mutations; 'alerts' never fired (no producer emits that module).
   useLiveSync('warrants', silentRefreshWarrants);
 
-  // Fetch warrant detail
-  const fetchWarrantDetail = useCallback(async (id: number) => {
+  // Fetch warrant detail.
+  //
+  // External (scraped) rows have no /warrants/:id endpoint — the unified list
+  // row IS the whole record, so open the detail pane straight from it instead
+  // of firing a request the server can only answer with a 400.
+  const fetchWarrantDetail = useCallback(async (id: number | string) => {
+    if (isExternalWarrantId(id)) {
+      const row = warrantsRef.current.find((w) => String(w.id) === String(id));
+      if (row) setSelectedWarrant(row);
+      else addToast('That external warrant is no longer in the current view', 'warning');
+      return;
+    }
     try {
       const detail = await apiFetch<Warrant>(`/warrants/${id}`);
       setSelectedWarrant(detail);
     } catch { /* keep existing */ }
-  }, []);
+  }, [addToast]);
 
   // ── /warrants?warrant_id=<id> deep-link auto-select ──
   // Once the warrants list hydrates, find the target by id and select it. If
@@ -654,6 +705,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
 
   const handleServe = async () => {
     if (!selectedWarrant) return;
+    if (isExternalWarrantId(selectedWarrant.id)) { addToast(EXTERNAL_WARRANT_READONLY_MSG, 'warning'); return; }
     setServing(true);
     try {
       const updated = await apiFetch<Warrant>(`/warrants/${selectedWarrant.id}/serve`, {
@@ -671,7 +723,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
     }
   };
 
-  const handleArchive = async (id: number) => {
+  const handleArchive = async (id: number | string) => {
+    if (isExternalWarrantId(id)) { addToast(EXTERNAL_WARRANT_READONLY_MSG, 'warning'); return; }
     try {
       await apiFetch(`/warrants/${id}/archive`, { method: 'POST' });
       await fetchWarrants({ silent: true });
@@ -688,7 +741,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
     setArchiveTargetId(null);
   };
 
-  const handleUnarchive = async (id: number) => {
+  const handleUnarchive = async (id: number | string) => {
+    if (isExternalWarrantId(id)) { addToast(EXTERNAL_WARRANT_READONLY_MSG, 'warning'); return; }
     try {
       await apiFetch(`/warrants/${id}/unarchive`, { method: 'POST' });
       await fetchWarrants({ silent: true });
@@ -700,6 +754,11 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
 
   const handleDelete = async () => {
     if (!deletingWarrant) return;
+    if (isExternalWarrantId(deletingWarrant.id)) {
+      addToast(EXTERNAL_WARRANT_READONLY_MSG, 'warning');
+      setDeletingWarrant(null);
+      return;
+    }
     setDeleteLoading(true);
     try {
       await apiFetch(`/warrants/${deletingWarrant.id}`, { method: 'DELETE' });
@@ -714,7 +773,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
     }
   };
 
-  const handleUpdateStatus = async (id: number, newStatus: string) => {
+  const handleUpdateStatus = async (id: number | string, newStatus: string) => {
+    if (isExternalWarrantId(id)) { addToast(EXTERNAL_WARRANT_READONLY_MSG, 'warning'); return; }
     try {
       const updated = await apiFetch<Warrant>(`/warrants/${id}`, {
         method: 'PUT',
@@ -727,7 +787,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
     }
   };
 
-  const handleReopenWarrant = async (id: number) => {
+  const handleReopenWarrant = async (id: number | string) => {
+    if (isExternalWarrantId(id)) { addToast(EXTERNAL_WARRANT_READONLY_MSG, 'warning'); return; }
     try {
       const updated = await apiFetch<Warrant>(`/warrants/${id}/reopen`, { method: 'POST' });
       setWarrants((prev) => prev.map((w) => w.id === id ? { ...w, ...updated } : w));
@@ -739,6 +800,9 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
 
   // ── Right-click context menu (shared by list + table rows) ──
   const handleToggleWatch = useCallback(async (w: Warrant) => {
+    // intel_watchlist.entity_id is an integer FK — a synthetic `scraped-<n>`
+    // id can't be stored there.
+    if (isExternalWarrantId(w.id)) { addToast(EXTERNAL_WARRANT_READONLY_MSG, 'warning'); return; }
     const isWatched = watchedIds.has(w.id);
     try {
       if (isWatched) {
@@ -760,6 +824,10 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
   const buildWarrantMenu = (w: Warrant): ContextMenuItem[] => {
     const isActive = w.status === 'active';
     const isArchived = !!w.archived_at;
+    // External (scraped) rows have no local record to mutate — omit every write
+    // action rather than offering buttons that can only fail (see
+    // isExternalWarrantId). The read-only entries below still work.
+    const isExternal = isExternalWarrantId(w.id);
     return [
       m.action('View warrant', () => fetchWarrantDetail(w.id), { icon: <Eye size={12} /> }),
       ...(w.subject_person_id
@@ -768,14 +836,16 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       ...(w.subject_name && !/^(none|n\/a)$/i.test(w.subject_name)
         ? [m.go('Run NCIC on subject', `/ncic?type=person&q=${encodeURIComponent(w.subject_name)}`, <User size={12} />)]
         : []),
-      m.action('Edit warrant', () => props.onOpenEditForm(w), { icon: <Pencil size={12} /> }),
-      m.action(
-        watchedIds.has(w.id) ? 'Unwatch this warrant' : 'Watch this warrant',
-        () => handleToggleWatch(w),
-        { icon: <Eye size={12} /> },
-      ),
+      ...(isExternal ? [] : [
+        m.action('Edit warrant', () => props.onOpenEditForm(w), { icon: <Pencil size={12} /> }),
+        m.action(
+          watchedIds.has(w.id) ? 'Unwatch this warrant' : 'Watch this warrant',
+          () => handleToggleWatch(w),
+          { icon: <Eye size={12} /> },
+        ),
+      ]),
       m.separator(),
-      ...(isActive
+      ...(isActive && !isExternal
         ? [
             m.action('Mark served', () => handleUpdateStatus(w.id, 'served'), { icon: <CheckCircle size={12} /> }),
             m.action('Recall', () => handleUpdateStatus(w.id, 'recalled'), { icon: <XCircle size={12} /> }),
@@ -791,11 +861,13 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
             m.go('Arrest history', `/records?tab=arrests&personId=${w.subject_person_id}`, <FileText size={12} />),
           ]
         : []),
-      m.separator(),
-      ...(isArchived
-        ? [m.action('Unarchive', () => handleUnarchive(w.id), { icon: <RotateCcw size={12} /> })]
-        : [m.action('Archive', () => handleArchive(w.id), { icon: <Archive size={12} /> })]),
-      m.action('Delete', () => setDeletingWarrant(w), { icon: <Trash2 size={12} />, danger: true }),
+      ...(isExternal ? [] : [
+        m.separator(),
+        ...(isArchived
+          ? [m.action('Unarchive', () => handleUnarchive(w.id), { icon: <RotateCcw size={12} /> })]
+          : [m.action('Archive', () => handleArchive(w.id), { icon: <Archive size={12} /> })]),
+        m.action('Delete', () => setDeletingWarrant(w), { icon: <Trash2 size={12} />, danger: true }),
+      ]),
     ];
   };
 
@@ -1096,7 +1168,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                   <tr>
                     {(props.isGodMode || props.isAdminOrManager) && (
                       <th style={{ width: 30 }}>
-                        <input id="ff-warrantslisttab-8" type="checkbox" checked={batchSelected.size === warrants.length && warrants.length > 0} onChange={toggleSelectAll} className="accent-brand-500" />
+                        <input id="ff-warrantslisttab-8" type="checkbox" checked={batchSelected.size === batchSelectableWarrants.length && batchSelectableWarrants.length > 0} onChange={toggleSelectAll} className="accent-brand-500" />
                       </th>
                     )}
                     <th style={{ width: 28 }} className="text-center" title="Matches our person">★</th>
@@ -1132,7 +1204,15 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                     >
                       {(props.isGodMode || props.isAdminOrManager) && (
                         <td onClick={e => e.stopPropagation()} className="py-2">
-                          <input id="ff-warrantslisttab-9" type="checkbox" checked={batchSelected.has(w.id)} onChange={() => toggleBatchSelect(w.id)} className="accent-brand-500" />
+                          <input
+                            id="ff-warrantslisttab-9"
+                            type="checkbox"
+                            checked={batchSelected.has(w.id)}
+                            onChange={() => toggleBatchSelect(w.id)}
+                            disabled={isExternalWarrantId(w.id)}
+                            title={isExternalWarrantId(w.id) ? EXTERNAL_WARRANT_READONLY_MSG : undefined}
+                            className="accent-brand-500 disabled:opacity-30"
+                          />
                         </td>
                       )}
                       <td className="text-center py-2">
@@ -1232,8 +1312,25 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
             {props.isMobile && selectedWarrant && (
               <button type="button" onClick={() => setSelectedWarrant(null)} className="toolbar-btn text-[9px]" style={props.isMobile ? { minHeight: 44 } : undefined}>&larr; Back</button>
             )}
-            <PrintRecordButton recordType="warrant" recordData={selectedWarrant} identifier={selectedWarrant?.warrant_number} entityType="warrant" entityId={selectedWarrant?.id} label="Print" />
-            {selectedWarrant && !selectedWarrant.archived_at && (
+            {/* entityId drives an attachment lookup keyed on a local record —
+                omit it for external (scraped) rows, which have none. */}
+            <PrintRecordButton
+              recordType="warrant"
+              recordData={selectedWarrant}
+              identifier={selectedWarrant?.warrant_number}
+              entityType="warrant"
+              entityId={isExternalWarrantId(selectedWarrant?.id) ? undefined : selectedWarrant?.id}
+              label="Print"
+            />
+            {selectedWarrant && isExternalWarrantId(selectedWarrant.id) && (
+              <span
+                className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 border border-amber-500/40 text-amber-400"
+                title={EXTERNAL_WARRANT_READONLY_MSG}
+              >
+                External · read-only
+              </span>
+            )}
+            {selectedWarrant && !selectedWarrant.archived_at && !isExternalWarrantId(selectedWarrant.id) && (
               <>
                 {selectedWarrant.status === 'active' && props.canManageWarrants && (
                   <>
@@ -1269,7 +1366,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                 )}
               </>
             )}
-            {selectedWarrant?.archived_at && props.isAdminOrManager && (
+            {selectedWarrant?.archived_at && props.isAdminOrManager && !isExternalWarrantId(selectedWarrant.id) && (
               <button type="button" onClick={() => handleUnarchive(selectedWarrant.id)} className="toolbar-btn text-[9px] text-amber-400" style={props.isMobile ? { minHeight: 48 } : undefined}>
                 <RotateCcw className="w-3 h-3" /> Unarchive
               </button>
@@ -1326,7 +1423,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                   <LegalDataHunterValidateButton
                     charge={chargesFromJson(selectedWarrant.charge_description)}
                     state={selectedWarrant.source_state ?? undefined}
-                    warrantId={selectedWarrant.id}
+                    warrantId={isExternalWarrantId(selectedWarrant.id) ? undefined : selectedWarrant.id}
                   />
                 </div>
 
@@ -1548,8 +1645,14 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
               )}
 
               {/* Linked Emails (autolinker + manual) */}
-              <LinkedEmailsSection entityType="warrant" entityId={selectedWarrant.id} />
-              <EmailedDocuments recordType="warrant" recordId={selectedWarrant.id} />
+              {/* Both key off a local warrant id — external (scraped) rows have
+                  no local record, so querying them only produces 400s. */}
+              {!isExternalWarrantId(selectedWarrant.id) && (
+                <>
+                  <LinkedEmailsSection entityType="warrant" entityId={selectedWarrant.id} />
+                  <EmailedDocuments recordType="warrant" recordId={selectedWarrant.id} />
+                </>
+              )}
 
               {/* Phase 1: Print PDF action */}
               <button

@@ -22,6 +22,7 @@ import { configFromEnv, resolveCitation, searchLegislation } from '../utils/lega
 import { LdhConfigError, LdhError } from '../utils/legalDataHunter/errors';
 import { checkAndReserveLdhCall, LDH_DAILY_BUDGET } from '../utils/legalDataHunter/rateLimit';
 import { dbErrorResponse } from '../utils/dbErrors';
+import { containsClause, containedByClause } from '../utils/searchText';
 import { log } from '../utils/logger';
 
 // LDH hybrid search score below which a hit is not considered a confident match.
@@ -59,16 +60,24 @@ async function tryLocalStatute(db: ReturnType<typeof getDb>, charge: string, sta
   // charge text CONTAIN the statute's short_title? SQLite supports string
   // concatenation with `||`, so we can express both directions in one query
   // (same pattern used by statutes.ts's `/search` endpoint's LIKE matching).
+  // Uses instr() rather than LIKE: D1 caps LIKE patterns at 50 chars, and real
+  // charge text routinely exceeds that, which made this endpoint return 500 on
+  // ordinary input (11 recorded failures). See containsClause in searchText.ts.
+  // The third condition is the reverse direction and was doubly affected — its
+  // pattern was built from short_title, so long rows broke every caller.
+  const title = containsClause('short_title');
+  const desc = containsClause('description');
+  const reverse = containedByClause('short_title');
   const row = await queryFirst<{ citation: string; short_title: string; source_url: string | null }>(
     db,
     `SELECT citation, short_title, source_url FROM utah_statutes
      WHERE is_active = 1
        AND (
-         short_title LIKE ? OR description LIKE ?
-         OR (LENGTH(short_title) >= 4 AND ? LIKE '%' || short_title || '%')
+         ${title.sql} OR ${desc.sql}
+         OR (LENGTH(short_title) >= 4 AND ${reverse.sql})
        )
      ORDER BY LENGTH(short_title) DESC LIMIT 1`,
-    `%${q}%`, `%${q}%`, q,
+    title.bind(q), desc.bind(q), reverse.bind(q),
   );
   return row;
 }
