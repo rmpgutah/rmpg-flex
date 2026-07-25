@@ -366,9 +366,6 @@ export default function AdminSystemTab({
     setActiveSectionState(section);
     try { localStorage.setItem(LS_ADMIN_SECTIONS, JSON.stringify(section)); } catch { /* ignore */ }
   }, []);
-  // Keep expandedSections API compatible for auto-search triggers
-  const expandedSections = { has: (s: SysSection) => activeSection === s } as Set<SysSection>;
-
   // Priority configuration
   const [priorities, setPriorities] = useState<PriorityConfig[]>(DEFAULT_PRIORITIES);
   const [prioritiesDirty, setPrioritiesDirty] = useState(false);
@@ -628,11 +625,11 @@ export default function AdminSystemTab({
 
   // Auto-search statutes while the Criminal Codes section is active.
   //
-  // Depends on the PRIMITIVE `activeSection`, never on `expandedSections` —
-  // that is a fresh object literal on every render, so listing it here made the
-  // effect re-run after every render. Because fetchStatutes sets state, each run
-  // scheduled the next one: an unbounded stream of /api/statutes requests for as
-  // long as this section stayed open.
+  // Depends on the PRIMITIVE `activeSection`, never on a derived object wrapping
+  // it — a fresh object literal is a new reference every render, so listing one
+  // here made the effect re-run after every render. Because fetchStatutes sets
+  // state, each run scheduled the next one: an unbounded stream of /api/statutes
+  // requests for as long as this section stayed open.
   //
   // The 300 ms timer doubles as the search debounce, so typing issues one
   // request per burst rather than one per keystroke.

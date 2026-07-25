@@ -63,10 +63,16 @@ describe('AdminSystemTab — Criminal Codes', () => {
     const afterOpen = await statuteCallCount();
     expect(afterOpen).toBe(1);
 
-    // Settle any trailing renders — a stable effect must not add requests.
-    await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
+    // Settle across two successive windows, each meaningfully longer than the
+    // 300ms debounce. A reintroduced unstable dependency re-fires the effect on
+    // every render (~3.3 req/s), which a single ~100ms window is too short to
+    // ever catch — two 500ms windows give it two full chances to show up.
+    await act(async () => { await new Promise((r) => setTimeout(r, 500)); });
     expect(await statuteCallCount()).toBe(1);
-  });
+
+    await act(async () => { await new Promise((r) => setTimeout(r, 500)); });
+    expect(await statuteCallCount()).toBe(1);
+  }, 10000);
 
   it('debounces typing into one request per burst', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
