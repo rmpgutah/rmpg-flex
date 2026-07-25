@@ -6,6 +6,7 @@ import { normalizeDob } from '../utils/normalizeDob';
 import { codedLike, containsAnyClause } from '../utils/searchText';
 import { recordAudit } from '../utils/auditLog';
 import { screenPersonForSor } from '../utils/screening/nsopwAdapter';
+import { lookupFailedCoverage, LOOKUP_OK } from '../utils/screening/coverage';
 import { log } from '../utils/logger';
 import { tryRepairAndRetry } from '../utils/repairFts';
 
@@ -1145,8 +1146,18 @@ records.get('/vehicles/bolo-check', async (c) => {
     const rows = await query<Record<string, unknown>>(db,
       `SELECT id, bolo_number, title, description, priority, created_at FROM bolos WHERE status = 'active' AND ${mb.sql} ORDER BY priority ASC, created_at DESC LIMIT 10`,
       ...mb.binds(plate));
-    return c.json({ matches: rows, count: rows.length });
-  } catch (err) { return c.json({ matches: [], count: 0 }); }
+    return c.json({ matches: rows, count: rows.length, checked: true, coverage: LOOKUP_OK });
+  } catch (err) {
+    // Was `catch { return c.json({ matches: [], count: 0 }) }` — a failed BOLO
+    // lookup was indistinguishable from "no BOLOs on this plate". Still a 200 so
+    // the caller's UI keeps rendering, but `checked: false` + coverage say plainly
+    // that this is not a clearance.
+    log.error('bolo-check lookup failed', { plate: c.req.query('plate') }, err as Error);
+    return c.json({
+      matches: [], count: 0, checked: false,
+      coverage: lookupFailedCoverage('Active BOLOs'),
+    });
+  }
 });
 
 // POST /records/vehicles/stolen-check — local stolen-vehicle check.
@@ -1181,16 +1192,24 @@ records.post('/vehicles/stolen-check', async (c) => {
     const localStolen = (rec?.stolen_status || '').trim().toLowerCase() === 'stolen';
 
     // 2. Active BOLO mentioning the plate?
+    // A failure here must NOT read as "no BOLO". Track it: the old
+    // `catch { boloMatches = [] }` let the response below state "no active
+    // BOLOs" when the query never actually ran — asserting an absence the code
+    // had not established.
     let boloMatches: Record<string, unknown>[] = [];
+    let boloCoverage = LOOKUP_OK;
     if (plate) {
       try {
-        // instr(), not LIKE — D1's 50-char LIKE cap throws, and the catch below
-        // degrades that into "no BOLO", a false clear on a stolen-vehicle check.
+        // instr(), not LIKE — D1's 50-char LIKE cap would throw here.
         const mb = containsAnyClause(['vehicle_description', 'description']);
         boloMatches = await query<Record<string, unknown>>(db,
           `SELECT id, bolo_number, title, priority FROM bolos WHERE status = 'active' AND ${mb.sql} ORDER BY priority ASC LIMIT 5`,
           ...mb.binds(plate));
-      } catch { boloMatches = []; }
+      } catch (boloErr) {
+        boloMatches = [];
+        boloCoverage = lookupFailedCoverage('Active BOLOs');
+        log.error('stolen-check BOLO lookup failed', { plate }, boloErr as Error);
+      }
     }
 
     const stolen = localStolen || boloMatches.length > 0;
@@ -1198,13 +1217,16 @@ records.post('/vehicles/stolen-check', async (c) => {
       ? `Vehicle flagged STOLEN in local records${rec?.ncic_entry_number ? ` (NCIC entry ${rec.ncic_entry_number})` : ''}`
       : boloMatches.length > 0
         ? `Active BOLO match: ${boloMatches.map((m) => m.bolo_number || m.title).filter(Boolean).join(', ')}`
-        : 'No stolen flag in local records or active BOLOs — NOT a live NCIC check';
+        : boloCoverage.available
+          ? 'No stolen flag in local records or active BOLOs — NOT a live NCIC check'
+          : 'No stolen flag in local records. THE BOLO CHECK FAILED — this is NOT a clearance.';
     return c.json({
       checked: true, stolen, source: 'local records + BOLO', message,
       plate, vin, state,
       record_id: rec?.id ?? null,
       ncic_entry_number: rec?.ncic_entry_number ?? null,
       bolo_matches: boloMatches,
+      bolo_coverage: boloCoverage,
     });
   } catch (err) {
     // Fail HONESTLY — an error must read as "couldn't check", never as CLEAR.
@@ -1909,10 +1931,30 @@ records.get('/ncic-query', async (c) => {
   const nq = (...cols: string[]) => containsAnyClause(cols);
 
   // Run an OPTIONAL sub-query that must never fail the whole response. A
-  // missing table / drifted column resolves to [] instead of throwing.
-  const soft = async <T>(fn: () => Promise<T[]>): Promise<T[]> => {
-    try { return await fn(); } catch { return []; }
+  // missing table / drifted column resolves to [] instead of throwing — BUT the
+  // failure is now recorded, because on an NCIC terminal a swallowed error
+  // rendered as "no records" is a false clear, not a graceful degradation.
+  const failures: string[] = [];
+  const soft = async <T>(label: string, fn: () => Promise<T[]>): Promise<T[]> => {
+    try { return await fn(); } catch (err) {
+      failures.push(label);
+      log.error('ncic-query sub-query failed', { type, label }, err as Error);
+      return [];
+    }
   };
+  /**
+   * Every success path goes through here so a partial failure can never be
+   * presented as a clean "no records" result.
+   */
+  const respond = (results: unknown) => c.json({
+    type, results, query: q,
+    checked: failures.length === 0,
+    degraded: failures.length > 0,
+    failed_sources: failures,
+    coverage: failures.length
+      ? lookupFailedCoverage(`NCIC records (${failures.join(', ')})`)
+      : LOOKUP_OK,
+  });
   // Warrant projection aliased to the field names the client formatter reads
   // (charge_description, bail_amount). offense_level isn't on the live table —
   // the formatter tolerates its absence.
@@ -1950,21 +1992,21 @@ records.get('/ncic-query', async (c) => {
 
         const results = [];
         for (const p of persons) {
-          const criminalHistory = await soft(() => query<Record<string, any>>(db,
+          const criminalHistory = await soft('criminal history', () => query<Record<string, any>>(db,
             `SELECT * FROM criminal_history WHERE person_id = ? ORDER BY offense_date DESC LIMIT 50`,
             p.id));
-          const warrants = await soft(() => query<Record<string, any>>(db,
+          const warrants = await soft('warrants', () => query<Record<string, any>>(db,
             `SELECT ${WARRANT_COLS} FROM warrants
              WHERE subject_person_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 50`,
             p.id));
           results.push({ person: p, criminalHistory, warrants });
         }
-        return c.json({ type, results, query: q });
+        return respond(results);
       }
       case 'warrant': {
         const mw = nq('w.warrant_number', 'p.first_name', 'p.last_name',
           "p.last_name || ', ' || p.first_name");
-        const results = await soft(() => query<Record<string, any>>(db, `
+        const results = await soft('warrants', () => query<Record<string, any>>(db, `
           SELECT ${WARRANT_COLS.split(',').map(s => 'w.' + s.trim()).join(', ')},
                  p.first_name AS subject_first_name, p.last_name AS subject_last_name
           FROM warrants w
@@ -1973,32 +2015,32 @@ records.get('/ncic-query', async (c) => {
             AND ${mw.sql}
           ORDER BY w.created_at DESC LIMIT 10
         `, ...mw.binds(q)));
-        return c.json({ type, results, query: q });
+        return respond(results);
       }
       case 'vehicle': {
         const mv = nq('v.plate_number', 'v.vin', 'v.make', 'v.model');
-        const results = await soft(() => query<Record<string, any>>(db, `
+        const results = await soft('vehicle records', () => query<Record<string, any>>(db, `
           SELECT v.*, p.first_name AS owner_first_name, p.last_name AS owner_last_name
           FROM vehicles_records v
           LEFT JOIN persons p ON v.owner_person_id = p.id
           WHERE ${mv.sql}
           ORDER BY v.plate_number LIMIT 10
         `, ...mv.binds(q)));
-        return c.json({ type, results, query: q });
+        return respond(results);
       }
       case 'phone': {
         const mph = nq('phone');
-        const results = await soft(() => query<Record<string, any>>(db,
+        const results = await soft('persons by phone', () => query<Record<string, any>>(db,
           `SELECT * FROM persons WHERE ${mph.sql} ORDER BY last_name, first_name LIMIT 10`,
           ...mph.binds(q)));
-        return c.json({ type, results, query: q });
+        return respond(results);
       }
       case 'address': {
         const mad = nq('address');
-        const results = await soft(() => query<Record<string, any>>(db,
+        const results = await soft('persons by address', () => query<Record<string, any>>(db,
           `SELECT * FROM persons WHERE ${mad.sql} ORDER BY last_name, first_name LIMIT 10`,
           ...mad.binds(q)));
-        return c.json({ type, results, query: q });
+        return respond(results);
       }
       default:
         return c.json({ error: 'unknown query type', code: 'UNKNOWN_TYPE' }, 400);

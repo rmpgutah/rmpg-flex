@@ -20,6 +20,9 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { geocodeAddress } from './geocode';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { containsAnyClause } from '../utils/searchText';
+import { lookupFailedCoverage, LOOKUP_OK } from '../utils/screening/coverage';
+import { log } from '../utils/logger';
 const fi = new Hono<Env>();
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -244,17 +247,24 @@ fi.get('/repeat-check', async (c) => {
   try {
     const db = getDb(c.env);
     const name = (c.req.query('name') ?? '').trim();
-    if (name.length < 2) return c.json({ count: 0 });
+    if (name.length < 2) return c.json({ count: 0, checked: false });
+    // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (see searchText.ts).
+    const m = containsAnyClause(['subject_last_name']);
     const row = await queryFirst<{ n: number }>(
       db,
       `SELECT COUNT(*) AS n FROM field_interviews
-        WHERE subject_last_name LIKE ?
+        WHERE ${m.sql}
           AND COALESCE(date, created_at) >= datetime('now', '-30 days')`,
-      `%${name}%`,
+      ...m.binds(name),
     );
-    return c.json({ count: row?.n ?? 0 });
+    return c.json({ count: row?.n ?? 0, checked: true, coverage: LOOKUP_OK });
   } catch (err) {
-    return c.json({ count: 0 });
+    // Was `return c.json({ count: 0 })` — a failed lookup was indistinguishable
+    // from "no prior contacts in 30 days", which is the signal an officer reads
+    // to gauge repeat contact. 200 so the badge still renders, but `checked:
+    // false` + coverage make clear this is not a zero.
+    log.error('FI repeat-check failed', { name: c.req.query('name') }, err as Error);
+    return c.json({ count: 0, checked: false, coverage: lookupFailedCoverage('Repeat field-interview contacts') });
   }
 });
 
