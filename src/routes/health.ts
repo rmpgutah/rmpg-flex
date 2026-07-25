@@ -36,8 +36,13 @@ async function checkKV(kv: KVNamespace | undefined): Promise<{ connected: boolea
   }
 }
 
-async function checkR2(bucket: R2Bucket | undefined, name: string): Promise<{ connected: boolean; latencyMs?: number }> {
-  if (!bucket) return { connected: false };
+// `bound: false` is only emitted when the binding is absent from the env, so an
+// unbound OPTIONAL bucket (KIOSK_DEVICES on a preview deploy / local wrangler dev)
+// is distinguishable from a bound bucket whose R2 call actually failed. Both still
+// report connected:false; callers decide whether "absent" counts against health.
+// Output for the always-bound buckets is unchanged — they never take this branch.
+async function checkR2(bucket: R2Bucket | undefined, name: string): Promise<{ connected: boolean; latencyMs?: number; bound?: boolean }> {
+  if (!bucket) return { connected: false, bound: false };
   const start = Date.now();
   try {
     await bucket.head('__health_probe');
@@ -66,9 +71,10 @@ health.get('/', async (c) => {
   const mapDataPromise = checkR2(c.env.MAP_DATA, 'MAP_DATA');
   const uploadsPromise = checkR2(c.env.UPLOADS, 'UPLOADS');
   const downloadsPromise = checkR2(c.env.DOWNLOADS, 'DOWNLOADS');
+  const kioskDevicesPromise = checkR2(c.env.KIOSK_DEVICES, 'KIOSK_DEVICES');
 
-  const [d1, kv, mapData, uploads, downloads] = await Promise.all([
-    d1Promise, kvPromise, mapDataPromise, uploadsPromise, downloadsPromise,
+  const [d1, kv, mapData, uploads, downloads, kioskDevices] = await Promise.all([
+    d1Promise, kvPromise, mapDataPromise, uploadsPromise, downloadsPromise, kioskDevicesPromise,
   ]);
 
   // Durable Objects — lightweight existence check
@@ -85,6 +91,18 @@ health.get('/', async (c) => {
     doResults[name] = await checkDO(ns, name);
   }
 
+  // kiosk_devices is deliberately REPORT-ONLY — it is reported in `services` but
+  // never contributes to `allOk`, in any of its three states (reachable /
+  // unbound / bound-but-throwing). Two reasons:
+  //   1. KIOSK_DEVICES is an optional binding, so envs that don't bind it
+  //      (preview deploys, local wrangler dev) would otherwise be permanently
+  //      `degraded` for a bucket they were never meant to have.
+  //   2. A broken kiosk-fleet bucket is not an API outage. `status` here means
+  //      "the API is serving", and a deploy-time R2 auth failure on this bucket
+  //      already fails loudly at `wrangler deploy` (the Deploy Worker step has
+  //      no continue-on-error) — that, not this probe, is the real gate. See the
+  //      2026-07-24 kiosk-linux-devices token-scope incident.
+  // Operators reading the payload still see the bucket's true state.
   const allOk = d1.connected && kv.connected && mapData.connected && uploads.connected && downloads.connected
     && Object.values(doResults).every((r) => r.connected);
 
@@ -95,7 +113,7 @@ health.get('/', async (c) => {
       status: 'degraded',
       version: '1.0.0',
       timestamp: new Date().toISOString(),
-      services: { d1, kv, map_data: mapData, uploads, downloads, durable_objects: doResults },
+      services: { d1, kv, map_data: mapData, uploads, downloads, kiosk_devices: kioskDevices, durable_objects: doResults },
     }, 200); // 200 still — this is a health probe, not a user-facing error
   }
 
