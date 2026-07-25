@@ -47,7 +47,7 @@ const UNIT_STATUSES = [
   { label: 'ENROUTE',  status: 'enroute',   color: 'var(--spm-text-muted)' },
   { label: 'ON SCENE', status: 'onscene',   color: 'var(--sev-special-soft)' },
   { label: 'BUSY',     status: 'busy',      color: 'var(--sev-critical)' },
-  { label: 'OFF',      status: 'off_duty',  color: 'var(--rmpg-500)' },
+  { label: 'OFF',      status: 'off_duty',  color: 'var(--text-muted)' },
 ] as const;
 
 // Checks if weapons_involved has a meaningful (non-empty/non-"none") value
@@ -1129,7 +1129,7 @@ export default function MdtPage() {
           <div className="text-[9px] text-green-500 font-mono font-bold">
             {getStatusElapsed(myCalls[0]) ? formatTimer(getStatusElapsed(myCalls[0])!) : ''}
           </div>
-          <ChevronRight style={{ width: 12, height: 12, color: 'var(--rmpg-500)' }} />
+          <ChevronRight style={{ width: 12, height: 12, color: 'var(--text-muted)' }} />
         </div>
       )}
 

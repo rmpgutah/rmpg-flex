@@ -248,7 +248,7 @@
     90deg,
     rgb(var(--rmpg-700-rgb) / 0.3) 25%,
     rgb(var(--rmpg-600-rgb) / 0.4) 50%,
-    rgb(var(--rmpg-700-rpg) / 0.3) 75%
+    rgb(var(--rmpg-700-rgb) / 0.3) 75%
   );
   background-size: 200% 100%;
   animation: skeleton-enhanced-shimmer 1.8s ease-in-out infinite;

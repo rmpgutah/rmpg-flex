@@ -322,7 +322,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
           height: 36,
           borderTop: '1px solid var(--border-default)',
           background: 'var(--surface-overlay)',
-          color: 'var(--rmpg-500)',
+          color: 'var(--text-muted)',
         }}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >

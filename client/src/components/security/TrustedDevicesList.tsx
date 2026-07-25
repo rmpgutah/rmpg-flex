@@ -76,9 +76,9 @@ export default function TrustedDevicesList() {
   if (devices.length === 0) {
     return (
       <div className="text-center py-6">
-        <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--rmpg-500)' }} />
+        <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
         <p className="text-[10px] text-rmpg-500">No trusted devices</p>
-        <p className="text-[9px] mt-1" style={{ color: 'var(--rmpg-500)' }}>
+        <p className="text-[9px] mt-1" style={{ color: 'var(--text-muted)' }}>
           Trust a device during login to skip 2FA for 30 days
         </p>
       </div>
@@ -107,7 +107,7 @@ export default function TrustedDevicesList() {
               <span className="text-[9px] font-mono text-rmpg-500">
                 {device.ip_address}
               </span>
-              <span className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
+              <span className="text-[9px]" style={{ color: 'var(--text-muted)' }}>
                 Last used {timeAgo(device.last_used_at)}
               </span>
             </div>
@@ -133,7 +133,7 @@ export default function TrustedDevicesList() {
         </div>
       ))}
 
-      <div className="text-[9px] pt-1" style={{ color: 'var(--rmpg-500)' }}>
+      <div className="text-[9px] pt-1" style={{ color: 'var(--text-muted)' }}>
         {devices.length} trusted device{devices.length !== 1 ? 's' : ''} — revoking a device will require 2FA on next login from it
       </div>
     </div>

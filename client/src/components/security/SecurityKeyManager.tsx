@@ -210,7 +210,7 @@ export default function SecurityKeyManager() {
                   <span className="text-[9px] font-mono text-rmpg-500">
                     {transportLabel(cred.transports)}
                   </span>
-                  <span className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
+                  <span className="text-[9px]" style={{ color: 'var(--text-muted)' }}>
                     Last used {timeAgo(cred.lastUsedAt)}
                   </span>
                 </div>
@@ -236,9 +236,9 @@ export default function SecurityKeyManager() {
         </div>
       ) : (
         <div className="text-center py-4">
-          <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--rmpg-500)' }} />
+          <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
           <p className="text-[10px] text-rmpg-500">No security keys registered</p>
-          <p className="text-[9px] mt-1" style={{ color: 'var(--rmpg-500)' }}>
+          <p className="text-[9px] mt-1" style={{ color: 'var(--text-muted)' }}>
             Register a YubiKey, Touch ID, or Windows Hello to use as 2FA
           </p>
         </div>
@@ -295,7 +295,7 @@ export default function SecurityKeyManager() {
         </button>
       )}
 
-      <p className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
+      <p className="text-[9px]" style={{ color: 'var(--text-muted)' }}>
         Supports YubiKey, Touch ID, Windows Hello, and other FIDO2-compatible keys
       </p>
     </div>

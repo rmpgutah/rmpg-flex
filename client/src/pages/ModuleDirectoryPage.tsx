@@ -502,7 +502,7 @@ export default function ModuleDirectoryPage() {
               {fn.shortcut && (
                 <span
                   className="text-[8px] font-mono px-1 py-0.5 flex-shrink-0"
-                  style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', color: 'var(--rmpg-500)' }}
+                  style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}
                 >
                   {fn.shortcut}
                 </span>

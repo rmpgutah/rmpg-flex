@@ -745,11 +745,11 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         input.click();
                       }}
                     >
-                      <Upload style={{ width: 16, height: 16, margin: '0 auto 4px', color: 'var(--rmpg-500)' }} />
+                      <Upload style={{ width: 16, height: 16, margin: '0 auto 4px', color: 'var(--text-muted)' }} />
                       <div className="text-[10px] text-rmpg-500">
                         {imageUploading ? 'Uploading...' : 'Drop image here or click to browse'}
                       </div>
-                      <div className="text-[9px] mt-0.5" style={{ color: 'var(--rmpg-500)' }}>
+                      <div className="text-[9px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                         JPG, PNG, WebP — max 2MB
                       </div>
                     </div>
@@ -846,7 +846,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               </div>
 
               {pwPolicy.length > 0 && (
-                <div className="text-[10px] space-y-0.5 p-2" style={{ color: 'var(--rmpg-500)', background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}>
+                <div className="text-[10px] space-y-0.5 p-2" style={{ color: 'var(--text-muted)', background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}>
                   <div className="font-bold text-[9px] uppercase tracking-wider mb-1" style={{ color: '#888888' }}>
                     Password Requirements
                   </div>

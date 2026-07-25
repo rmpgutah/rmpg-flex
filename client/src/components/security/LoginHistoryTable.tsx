@@ -75,7 +75,7 @@ export default function LoginHistoryTable() {
   if (entries.length === 0) {
     return (
       <div className="text-center py-6">
-        <History className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--rmpg-500)' }} />
+        <History className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
         <p className="text-[10px] text-rmpg-500">No login history</p>
       </div>
     );

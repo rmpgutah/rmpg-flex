@@ -53,7 +53,7 @@ const CASE_TYPES = [
 // hit indicators, so an officer's visual muscle memory ("red = bad / amber =
 // urgent / green = done") carries across surfaces.
 const PRIORITIES = [
-  { value: 'routine', label: 'Routine', desc: 'Standard processing — 30 day turnaround', color: 'var(--rmpg-500)' },
+  { value: 'routine', label: 'Routine', desc: 'Standard processing — 30 day turnaround', color: 'var(--text-muted)' },
   { value: 'expedited', label: 'Expedited', desc: 'Priority processing — 14 day turnaround', color: 'var(--text-muted)' },
   { value: 'urgent', label: 'Urgent', desc: 'Urgent case need — 7 day turnaround', color: 'var(--sev-warn)' },
   { value: 'rush', label: 'Rush', desc: 'Immediate attention — 48 hour turnaround', color: 'var(--sev-critical)' },
@@ -67,7 +67,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: str
   analysis_complete: { label: 'Analysis Complete', color: 'var(--sev-ok-soft)', bgColor: 'bg-emerald-900/20', nextAction: 'Results are available — report being drafted' },
   report_draft: { label: 'Report Draft', color: 'var(--sev-ok-soft)', bgColor: 'bg-lime-900/20', nextAction: 'Report is being reviewed before finalization' },
   report_final: { label: 'Report Final', color: 'var(--sev-ok)', bgColor: 'bg-green-900/20', nextAction: 'Final report is available' },
-  closed: { label: 'Closed', color: 'var(--rmpg-500)', bgColor: 'bg-surface-sunken/20', nextAction: 'Case is complete and archived' },
+  closed: { label: 'Closed', color: 'var(--text-muted)', bgColor: 'bg-surface-sunken/20', nextAction: 'Case is complete and archived' },
   cancelled: { label: 'Cancelled', color: 'var(--sev-critical)', bgColor: 'bg-red-900/20', nextAction: 'Case was cancelled' },
 };
 
@@ -915,7 +915,7 @@ export default function ForensicLabPage() {
 
   // ── Helpers ────────────────────────────────────────────
 
-  const getStatusConfig = (status: string) => STATUS_CONFIG[status] || { label: status, color: 'var(--rmpg-500)', bgColor: 'bg-surface-sunken/20', nextAction: '' };
+  const getStatusConfig = (status: string) => STATUS_CONFIG[status] || { label: status, color: 'var(--text-muted)', bgColor: 'bg-surface-sunken/20', nextAction: '' };
   const getCaseTypeLabel = (t: string) => CASE_TYPES.find(c => c.value === t)?.label || t;
   const getPriorityConfig = (p: string) => PRIORITIES.find(pr => pr.value === p) || PRIORITIES[0];
 
