@@ -552,7 +552,10 @@ reports.get('/command-center', async (c) => {
   const active_calls = await list(
     `SELECT id, call_number, incident_type, priority, status, location_address, created_at FROM calls_for_service WHERE ${activeCallFilter()} ORDER BY created_at DESC LIMIT 50`,
   );
-  const units = await list('SELECT id, unit_number, status, current_call_number FROM units ORDER BY unit_number LIMIT 200');
+  // units has call_sign / current_call_id — no unit_number or
+  // current_call_number — so this threw "no such column: unit_number".
+  // Aliased to keep the response shape this code intended.
+  const units = await list('SELECT id, call_sign AS unit_number, status, current_call_id AS current_call_number FROM units ORDER BY call_sign LIMIT 200');
   const calls_by_hour = await list(
     "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE date(created_at) = date('now') GROUP BY strftime('%H', created_at) ORDER BY hour",
   );
