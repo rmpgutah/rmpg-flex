@@ -225,7 +225,38 @@ const CONTAINER_TIMEOUT_MS = 12_000;
 // json_schema constraint, so 25s left only a 3-5s margin and tipped over
 // under model load. Calls run in PARALLEL, so this is the per-doc ceiling
 // AND roughly the whole-request ceiling — not additive across docs.
-const AI_TIMEOUT_MS = 35_000;
+// Per-ATTEMPT ceiling. Raised from 35s on 2026-07-24: the recorded live failure
+// (`Extraction failed: Text extraction timed out`) was a legitimately slow
+// extraction on a large document, not a hung call, so the old ceiling was simply
+// too tight.
+const AI_TIMEOUT_MS = 45_000;
+
+// Per-attempt ceilings do NOT compose. The fallback chains below run
+// SEQUENTIALLY, so their worst case is the SUM of their legs — and Cloudflare's
+// edge abandons a request at ~100s with a 524, which would replace our clean
+// "timed out" error with an opaque edge failure and lose the message entirely.
+//
+// Rather than hand-tune each leg, every chain shares one deadline: each attempt
+// gets min(perLegCeiling, budgetRemaining). Per-attempt generosity can go up
+// without the total ever breaching the edge cutoff.
+const TOTAL_AI_BUDGET_MS = 90_000;
+
+/**
+ * A shared deadline for one sequential fallback chain. Call the returned
+ * function per attempt to get that attempt's timeout:
+ *
+ *   const leg = aiBudget();
+ *   await withTimeout(first(),  leg(), 'first timed out');
+ *   await withTimeout(second(), leg(), 'second timed out');  // gets what's left
+ *
+ * Once the budget is spent the next attempt times out immediately rather than
+ * pushing the request past the edge cutoff.
+ */
+function aiBudget(totalMs: number = TOTAL_AI_BUDGET_MS): (perLegMs?: number) => number {
+  const start = Date.now();
+  return (perLegMs: number = AI_TIMEOUT_MS) =>
+    Math.min(perLegMs, Math.max(0, totalMs - (Date.now() - start)));
+}
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -240,17 +271,19 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 // credits / error) → we transparently fall back to the free Workers-AI path.
 // extraction.model carries 'claude:…' vs the Llama id so callers can label engine.
 async function ocrImage(env: Env['Bindings'], bytes: Uint8Array, mime: string): Promise<ExtractionResult> {
+  const leg = aiBudget();
   const claude = await withTimeout(
-    extractFromImageClaude(env, bytes, mime), AI_TIMEOUT_MS, 'Claude OCR timed out',
+    extractFromImageClaude(env, bytes, mime), leg(), 'Claude OCR timed out',
   ).catch(() => null);
-  return claude ?? withTimeout(extractFromImage(env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
+  return claude ?? withTimeout(extractFromImage(env.AI, bytes), leg(), 'Vision OCR timed out');
 }
 async function ocrText(env: Env['Bindings'], text: string): Promise<ExtractionResult> {
+  const leg = aiBudget();
   const claude = await withTimeout(
-    extractFromTextClaude(env, text), AI_TIMEOUT_MS, 'Claude text timed out',
+    extractFromTextClaude(env, text), leg(), 'Claude text timed out',
   ).catch(() => null);
   return claude ?? withTimeout(
-    extractFromText(env.AI, text, env.SERVE_INTAKE_LORA), AI_TIMEOUT_MS, 'Text extraction timed out',
+    extractFromText(env.AI, text, env.SERVE_INTAKE_LORA), leg(), 'Text extraction timed out',
   );
 }
 
