@@ -104,6 +104,17 @@ html.theme-dark,
   --desktop-shell-border: #2a3a4d; --desktop-shell-accent: #5a85b8;
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.4);
   --desktop-shell-subtle-text: #8fa3b8; --desktop-shell-icon: #8fa3b8;
+
+  /* Module-bar (F-key nav) + panel bevel/titlebar — NIGHT.
+     Moved out of index.css:13-33 on 2026-07-24: those were theme-invariant and
+     escaped the theme system entirely. */
+  --toolbar-nav-text: #8fa3b8;
+  --toolbar-nav-text-hover: #e6edf5;
+  --toolbar-nav-text-active: var(--brand-blue);
+  --toolbar-nav-hover: rgba(255, 255, 255, 0.05);
+  --toolbar-nav-active: #0a1018;
+  --bevel-highlight: #3a4f66;
+  --titlebar-gradient: linear-gradient(180deg, #1d2d3f 0%, #15212e 50%, #1d2d3f 100%);
 }
 
 /* ---- DAY (light grey Spillman; scale INVERTED) ---- */
@@ -174,6 +185,14 @@ html.theme-light {
   --desktop-shell-border: #9a958a; --desktop-shell-accent: #2e4a66;
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.15);
   --desktop-shell-subtle-text: #555555; --desktop-shell-icon: #555555;
+
+  --toolbar-nav-text: #555555;
+  --toolbar-nav-text-hover: #1a1a1a;
+  --toolbar-nav-text-active: var(--brand-blue);
+  --toolbar-nav-hover: rgba(0, 0, 0, 0.05);
+  --toolbar-nav-active: #d6d3c8;
+  --bevel-highlight: #c3cdd8;
+  --titlebar-gradient: linear-gradient(180deg, #ece9dd 0%, #d6d3c8 50%, #c9c5b8 100%);
 }
 
 /* ---- LEGACY BLACK (kill-switch; pure-black pre-refactor) ---- */
@@ -239,6 +258,14 @@ html.theme-legacy-black {
   --desktop-shell-border: #202020; --desktop-shell-accent: #7d7d7d;
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.25);
   --desktop-shell-subtle-text: #b7b7b7; --desktop-shell-icon: #8c8c8c;
+
+  --toolbar-nav-text: #9a9a9a;
+  --toolbar-nav-text-hover: #dcdcdc;
+  --toolbar-nav-text-active: var(--brand-blue);
+  --toolbar-nav-hover: rgba(255, 255, 255, 0.05);
+  --toolbar-nav-active: rgba(0, 0, 0, 0.38);
+  --bevel-highlight: #3a3a3a;
+  --titlebar-gradient: linear-gradient(180deg, #0b0b0b 0%, #060606 50%, #0b0b0b 100%);
 }
 
 /* ---- BLUE & SILVER (optional full-override theme; same tier as legacy-black —
@@ -323,6 +350,17 @@ html.theme-blue-silver {
   --desktop-shell-border: #46688c; --desktop-shell-accent: #5a9ae0;
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.4);
   --desktop-shell-subtle-text: #91a3ba; --desktop-shell-icon: #91a3ba;
+
+  /* Module-bar + bevel/titlebar — BLUE & SILVER. Derived from the navy ramp so
+     the active nav tile reads as *sunken navy*, not a black hole, and panel
+     title bars read as a raised navy step instead of the inherited pure black. */
+  --toolbar-nav-text: #9bb0c7;
+  --toolbar-nav-text-hover: #f0f4f9;
+  --toolbar-nav-text-active: var(--brand-blue);
+  --toolbar-nav-hover: rgba(255, 255, 255, 0.06);
+  --toolbar-nav-active: #142840;
+  --bevel-highlight: #46688c;
+  --titlebar-gradient: linear-gradient(180deg, #2c4f74 0%, #22405f 50%, #2c4f74 100%);
 }
 
 /* ---- TACTICAL DARK (force-dark scope; always NIGHT regardless of html.theme-*) ---- */
