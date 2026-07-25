@@ -94,6 +94,21 @@ export default {
           700: 'rgb(var(--brand-gold-700-rgb) / <alpha-value>)',
         },
 
+        'accent-gold': {
+          300: 'rgb(var(--accent-gold-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--accent-gold-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--accent-gold-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--accent-gold-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--accent-gold-700-rgb) / <alpha-value>)',
+        },
+        'accent-silver': {
+          300: 'rgb(var(--accent-silver-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--accent-silver-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--accent-silver-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--accent-silver-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--accent-silver-700-rgb) / <alpha-value>)',
+        },
+
         // Neutral graphite greys — no blue cast
         rmpg: {
           50:  'rgb(var(--rmpg-50-rgb) / <alpha-value>)',

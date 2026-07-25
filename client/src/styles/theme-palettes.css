@@ -292,7 +292,7 @@ html.theme-blue-silver {
   --surface-hover-step: #294a6b; --surface-hover-step-rgb: 41 74 107;
   --border-default: #46688c; --border-subtle: #2a4763; --border-strong: #7996b8; --border-panel: #3d5f82;
   --text-primary: #f0f4f9; --text-secondary: #cdd8e6; --text-muted: #9bb0c7;
-  --brand-blue: #5a9ae0; --brand-gold: #c3ccd6;
+  --brand-blue: #5a9ae0;
   --pri-scheduled: #63768f;
   /* Record-icon tile — a brighter blue than night's for the "silver-blue" identity. */
   --record-tile-bg: #223e5c; --record-tile-border: #4a80b8; --record-tile-fg: #97c8f7;
@@ -310,9 +310,40 @@ html.theme-blue-silver {
   --blue-300-rgb: 168 185 200; --blue-400-rgb: 129 149 171; --blue-500-rgb: 99 118 143;
   --blue-600-rgb: 68 89 113;  --blue-700-rgb: 44 79 116;    --blue-800-rgb: 34 64 95;
   --blue-900-rgb: 26 51 80;
-  /* gold token renders SILVER here — --brand-gold above is the theme's metallic accent. */
-  --brand-gold-300-rgb: 229 233 238; --brand-gold-400-rgb: 208 216 224; --brand-gold-500-rgb: 195 204 214;
-  --brand-gold-600-rgb: 160 173 189; --brand-gold-700-rgb: 124 139 158;
+  /* ── Accent tokens (2026-07-24). Explicitly named so "silver" and "gold" are
+     separate, addressable colors instead of one overloaded --brand-gold.
+
+     --brand-gold is retained as a SILVER alias on purpose: ~500 files consume
+     the brand-gold-* Tailwind ramp expecting silver (that swap is this theme's
+     original identity). Repointing it at real gold would flip all of them at
+     once. The alias is removed only after Task 6 migrates those consumers. */
+  --accent-silver-300: #e5e9ee; --accent-silver-300-rgb: 229 233 238;
+  --accent-silver-400: #d0d8e0; --accent-silver-400-rgb: 208 216 224;
+  --accent-silver-500: #c3ccd6; --accent-silver-500-rgb: 195 204 214;
+  --accent-silver-600: #a0adbd; --accent-silver-600-rgb: 160 173 189;
+  --accent-silver-700: #7c8b9e; --accent-silver-700-rgb: 124 139 158;
+  --accent-silver: var(--accent-silver-500);
+
+  /* Deepened antique brass — NOT the legacy day/night gold hex used elsewhere
+     in this file. That legacy gold is a near-neighbour of --sev-warn #f59e0b
+     (~38 deg vs ~43 deg hue), so at 9-11px CAD type on navy
+     decorative gold became indistinguishable from "overdue/threshold breached".
+     Hue alone cannot separate them; saturation and peak brightness do. Amber is
+     ~95% saturated with a 245 peak channel and reads as a glow; this is ~74%
+     saturated with a 184 peak channel and reads as metal. Severity hues are
+     deliberately left untouched. */
+  --accent-gold-300: #d9bd72; --accent-gold-300-rgb: 217 189 114;
+  --accent-gold-400: #c9a74e; --accent-gold-400-rgb: 201 167  78;
+  --accent-gold-500: #b8912f; --accent-gold-500-rgb: 184 145  47;
+  --accent-gold-600: #977626; --accent-gold-600-rgb: 151 118  38;
+  --accent-gold-700: #745a1d; --accent-gold-700-rgb: 116  90  29;
+  --accent-gold: var(--accent-gold-500);
+
+  /* Compat alias — renders SILVER. See note above. */
+  --brand-gold: var(--accent-silver-500);
+  --brand-gold-300-rgb: 229 233 238; --brand-gold-400-rgb: 208 216 224;
+  --brand-gold-500-rgb: 195 204 214; --brand-gold-600-rgb: 160 173 189;
+  --brand-gold-700-rgb: 124 139 158;
   --brand-gold-rgb: 195 204 214;
 
   /* Severity palette — bright, like night (dark background). Fixed hues, not re-derived. */
@@ -342,7 +373,19 @@ html.theme-blue-silver {
   /* App chrome tokens — BLUE & SILVER */
   --toolbar-gradient-start: #1a3350; --toolbar-gradient-end: #2c4f74;
   --grid-header-bg: #10213a; --grid-row-alt: #1a3350;
-  --field-label-color: #c3ccd6;
+  /* The only two gold roles in the app (per the 2026-07-24 design decision):
+     field labels and section/panel headers. Everything else stays silver. Any
+     gold surface NOT resolving through these two vars or the map palette is a
+     defect, which is what makes the live audit assertion mechanical.
+
+     These point at the 300 step, NOT 500. Measured 2026-07-24: 500 (#b8912f)
+     is 3.63/2.88/4.36 against base/raised/sunken navy — below WCAG AA 4.5:1
+     for the 9-11px type these labels use, and raised panels are exactly where
+     field labels sit. 300 (#d9bd72) is 5.83/4.63/7.02 and passes everywhere.
+     500 is retained for map arterial LINES, which are graphical objects needing
+     only 3:1 (WCAG 1.4.11) and pass at 3.63. Do not "restore" 500 here. */
+  --field-label-color: var(--accent-gold-300);
+  --panel-header-color: var(--accent-gold-300);
   --surface-panel: #1a3350; --surface-panel-alt: #182f4a; --surface-hover: #294a6b;
   --info-text: #cdd8e6; --info-bg: rgba(90, 154, 224, 0.12); --info-border: rgba(90, 154, 224, 0.24);
   --desktop-shell-start: #142840; --desktop-shell-end: #1a3350;
