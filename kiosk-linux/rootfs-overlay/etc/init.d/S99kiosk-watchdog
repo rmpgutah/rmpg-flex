@@ -1,0 +1,41 @@
+#!/bin/sh
+# /etc/init.d/S99kiosk-watchdog — arm the hardware watchdog, gated on session
+# health. See /usr/bin/rmpg-watchdog for the full rationale.
+#
+# Sorts after "desktop", "drm-marker" and "hwreport" (w is last), so the feeder
+# starts once the session has had its chance to come up. It carries its own
+# startup grace period regardless, because on real hardware a cold boot can
+# legitimately outlast the driver timeout.
+
+PIDFILE=/var/run/rmpg-watchdog.pid
+
+case "$1" in
+    start)
+        if [ ! -c /dev/watchdog ]; then
+            # Stated rather than skipped silently: no watchdog device means this
+            # terminal cannot recover from a hang on its own, which is a real
+            # property of the unit that belongs in the boot log.
+            echo "KIOSK_LINUX_WATCHDOG_UNAVAILABLE (/dev/watchdog absent — no hang protection)"
+            exit 0
+        fi
+        /usr/bin/rmpg-watchdog &
+        echo $! > "$PIDFILE"
+        ;;
+    stop)
+        # Stopping must be orderly: rmpg-watchdog traps TERM and writes the
+        # magic V to disarm. If it were killed with SIGKILL the driver would see
+        # the descriptor close without the magic and, on a clean shutdown, could
+        # reset the machine while it was already going down.
+        if [ -f "$PIDFILE" ]; then
+            kill -TERM "$(cat "$PIDFILE")" 2>/dev/null
+            rm -f "$PIDFILE"
+        else
+            kill -TERM "$(pgrep -f /usr/bin/rmpg-watchdog)" 2>/dev/null
+        fi
+        ;;
+    *)
+        echo "usage: $0 {start|stop}" >&2
+        exit 1
+        ;;
+esac
+exit 0

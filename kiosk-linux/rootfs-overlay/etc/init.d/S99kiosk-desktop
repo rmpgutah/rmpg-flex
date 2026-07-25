@@ -18,6 +18,50 @@
 DESKTOP_LOG=/tmp/rmpg-desktop.log
 FALLBACK_LOG=/tmp/kiosk-console-fallback.log
 
+. /usr/lib/rmpg/boot-store.sh
+
+# Clear the failed-boot counter: this boot reached a working state, so it must
+# not count toward the 3 strikes that trigger an A/B rollback.
+#
+# ── 2026-07-25: this was two lines that would have caused a rollback loop ─────
+#
+# The previous form was:
+#     if [ -w /mnt/kiosk-boot/boot_attempts ]; then echo 0 > ...; fi
+#
+# Both halves of that were wrong once the store stopped being /dev/vda1:
+#
+#   1. On the no-USB install the counter lives at
+#      /mnt/kiosk-boot/RMPG-Flex-OS/boot_attempts, so the path simply did not
+#      exist and the `-w` test quietly skipped the reset.
+#   2. S01kiosk-boot-slot-check now leaves the store mounted READ-ONLY, which
+#      makes `-w` false even for root (access(W_OK) returns EROFS), so the reset
+#      would have been skipped on the USB path too.
+#
+# Either way the counter would have climbed on perfectly healthy boots until it
+# passed 3 — at which point the terminal would roll back to the other slot,
+# boot healthily 3 more times, roll back again, and flip between slots forever.
+# A silent `if` that skips the reset is far more dangerous than a failed write,
+# so this reports every outcome instead of testing a permission bit.
+reset_boot_attempts() {
+    if ! rmpg_bootstore_find; then
+        echo "KIOSK_LINUX_BOOT_ATTEMPTS_RESET_SKIPPED (no boot store found)"
+        return 1
+    fi
+    if ! rmpg_bootstore_rw; then
+        echo "KIOSK_LINUX_BOOT_ATTEMPTS_RESET_FAILED (store is read-only)"
+        return 1
+    fi
+    if echo "0" > "$RMPG_BOOTSTORE_DIR/boot_attempts"; then
+        sync
+        rmpg_bootstore_ro
+        echo "KIOSK_LINUX_BOOT_ATTEMPTS_RESET"
+        return 0
+    fi
+    rmpg_bootstore_ro
+    echo "KIOSK_LINUX_BOOT_ATTEMPTS_RESET_FAILED (write to $RMPG_BOOTSTORE_DIR/boot_attempts failed)"
+    return 1
+}
+
 # Last-resort console mode: run the Flex console fullscreen through cog on
 # DRM/KMS, with no X server and no window manager.
 #
@@ -60,10 +104,7 @@ start_console_fallback() {
         # A terminal serving dispatch is a healthy terminal, even without the
         # desktop — reset the A/B counter so the fallback does not trigger a
         # slot rollback that would land on an image with the same problem.
-        if [ -w /mnt/kiosk-boot/boot_attempts ]; then
-            echo "0" > /mnt/kiosk-boot/boot_attempts
-            echo "KIOSK_LINUX_BOOT_ATTEMPTS_RESET"
-        fi
+        reset_boot_attempts
     else
         echo "KIOSK_LINUX_CONSOLE_FALLBACK_FAILED (see $FALLBACK_LOG)"
         tail -20 "$FALLBACK_LOG" 2>/dev/null
@@ -141,10 +182,7 @@ start() {
             # Sub-project 5: this is the confirmed-good signal the A/B
             # slot-check fallback relies on — reset the failed-boot counter now
             # that this boot has genuinely reached a usable desktop.
-            if [ -w /mnt/kiosk-boot/boot_attempts ]; then
-                echo "0" > /mnt/kiosk-boot/boot_attempts
-                echo "KIOSK_LINUX_BOOT_ATTEMPTS_RESET"
-            fi
+            reset_boot_attempts
             return 0
         fi
         i=$((i + 1))

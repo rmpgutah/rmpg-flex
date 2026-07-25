@@ -17,11 +17,17 @@ CONFIG_DRM_I915=y
 # i915 loads GuC/HuC/DMC firmware opportunistically when present; basic KMS
 # modesetting (all this kiosk needs) works without any firmware blobs, so no
 # linux-firmware package is required for bring-up.
+#
+# (2026-07-25) DMC firmware IS now shipped — see the graphics section at the
+# bottom of this file and BR2_PACKAGE_LINUX_FIRMWARE_I915 in desktop.fragment.
+# "Works without blobs" stays true for bring-up; DMC buys display power
+# management, which a fan-cooled unit in a hot vehicle actually needs.
 CONFIG_DRM_I915_USERPTR=y
 
-# Networking (wired — the kiosk deliberately has no Wi-Fi stack yet; iwlwifi
-# needs out-of-tree firmware blobs and a wpa_supplicant userspace this image
-# doesn't carry).
+# Networking (wired). NOTE: the "no Wi-Fi stack yet" caveat that used to live
+# here went stale on 2026-07-24 — Wi-Fi became a hard requirement (the sites
+# have no ethernet drop) and now has its own configs/kernel-wifi.fragment plus
+# iwlwifi firmware and a connman/wpa_supplicant userspace in desktop.fragment.
 CONFIG_E1000E=y
 
 # Storage: NVMe + AHCI/SATA + the SCSI-disk layer both sit on.
@@ -49,3 +55,148 @@ CONFIG_HID_MULTITOUCH=y
 CONFIG_VFAT_FS=y
 CONFIG_NLS_CODEPAGE_437=y
 CONFIG_NLS_ISO8859_1=y
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FZ-55 STABILIZATION PASS (2026-07-25)
+#
+# Everything above was written for bring-up: enough to POST, find a disk, and
+# light up a display. Everything below is what an unattended terminal in a
+# patrol vehicle needs to keep RUNNING. Each block states the failure it
+# prevents, because none of these are visible under QEMU — the generated
+# .config of the shipped 1.3.0 image was audited symbol by symbol against the
+# real linux-6.6.63 tree to find them.
+#
+# Every symbol here was checked for satisfied dependencies in that same tree.
+# merge_config.sh DROPS a symbol whose dependencies are unmet and only warns,
+# so build.sh asserts each of these is =y in the generated .config before the
+# kernel is allowed to compile (see its FZ55_REQUIRED_KSYMS gate). If you add
+# a symbol here, add it there too.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Touchscreen / touchpad: the Intel LPSS I2C path ──────────────────────────
+# Audit finding: CONFIG_I2C_HID=y was set, but the BUS the digitizer hangs off
+# had no driver at all, so a touch-equipped FZ-55 would have come up with a
+# dead screen and no error pointing at the cause.
+#
+# CONFIG_I2C_DESIGNWARE_PLATFORM was not merely disabled — it was ABSENT from
+# .config entirely, because its `depends on (ACPI && COMMON_CLK) || !ACPI` was
+# unmet: ACPI=y but COMMON_CLK was unset. A symbol whose dependency fails this
+# way leaves no trace in .config, which is why this needed a source-level
+# audit rather than a grep for "is not set".
+CONFIG_COMMON_CLK=y
+CONFIG_MFD_INTEL_LPSS_PCI=y
+CONFIG_MFD_INTEL_LPSS_ACPI=y
+CONFIG_I2C_DESIGNWARE_PLATFORM=y
+CONFIG_I2C_DESIGNWARE_PCI=y
+CONFIG_I2C_HID_ACPI=y
+
+# The digitizer's interrupt arrives on a PCH GPIO pin, so the I2C-HID driver
+# needs the Intel pin controller to resolve its ACPI GpioInt into a real IRQ.
+# Without it, probe fails with "failed to get GPIO IRQ" and touch never works
+# even with the I2C bus present. CONFIG_PINCTRL is a menuconfig gate: while it
+# was unset the ENTIRE drivers/pinctrl/intel/Kconfig menu was invisible, which
+# is why PINCTRL_CANNONLAKE et al. read as absent rather than disabled.
+#
+# One driver per PCH generation, covering the FZ-55 revisions in and near the
+# fleet: Sunrisepoint (SKL/KBL-era), Cannonlake (CFL/WHL-LP — Mk1),
+# Icelake/Tigerlake (interim SKUs), Alderlake (Mk3, 12th gen). PINCTRL_INTEL
+# itself is a hidden tristate with no prompt; each of these `select`s it.
+CONFIG_PINCTRL=y
+CONFIG_PINCTRL_SUNRISEPOINT=y
+CONFIG_PINCTRL_CANNONLAKE=y
+CONFIG_PINCTRL_ICELAKE=y
+CONFIG_PINCTRL_TIGERLAKE=y
+CONFIG_PINCTRL_ALDERLAKE=y
+
+# Touchpad: Synaptics was already enabled; Elantech is the other part Panasonic
+# ships and costs nothing to carry. Without the matching protocol driver the
+# pad still works as a bare PS/2 mouse but loses two-finger scroll and tap.
+CONFIG_MOUSE_PS2_ELANTECH=y
+
+# ── Thermal: the vehicle-heat failure mode ───────────────────────────────────
+# Audit finding: CONFIG_X86_PKG_TEMP_THERMAL was =m. This image is an
+# INITRAMFS with no module-loading in its init path, so the package-temperature
+# thermal zone driver was built, shipped, and never loaded — meaning the
+# kernel had no package-level thermal trip source at all. A terminal docked on
+# a dashboard in a Utah summer would ride hardware PROCHOT throttling straight
+# into a firmware-level thermal shutdown with nothing logged that explains it.
+# =y is the whole fix.
+CONFIG_X86_PKG_TEMP_THERMAL=y
+# coretemp exposes per-core temperatures under /sys/class/hwmon, which is what
+# rmpg-hwreport and the OTA pre-flight check read to refuse an update on a
+# machine that is already cooking.
+CONFIG_SENSORS_CORETEMP=y
+# intel_idle drives the CPU's native C-states. Without it the kernel falls back
+# to ACPI idle, which on these parts idles hotter and shortens battery runtime
+# — both of which matter on a unit that spends its shift on battery in a hot
+# cabin. (Deliberately NOT adding INTEL_POWERCLAMP: idle injection is a
+# last-resort actuator, and intel_pstate with HWP already throttles in
+# hardware well before it would help.)
+CONFIG_INTEL_IDLE=y
+
+# ── Hardware watchdog: unattended recovery ───────────────────────────────────
+# The A/B slots recover from a bad IMAGE. Nothing recovered from a LIVE HANG —
+# a kernel lockup, a wedged X server, or a stuck GPU left the terminal dark
+# until someone drove to the vehicle and held the power button. The Intel TCO
+# watchdog is on every PCH the FZ-55 ships; rmpg-watchdog feeds it only while
+# the session is provably healthy, so a wedge becomes a reboot.
+# ITCO_WDT selects WATCHDOG_CORE + LPC_ICH and needs I2C_I801 (already =y).
+CONFIG_WATCHDOG=y
+CONFIG_ITCO_WDT=y
+# NOWAYOUT is deliberately left OFF: it would make the watchdog un-disarmable
+# once opened, so a clean `rmpg-update` reboot could trip a spurious
+# watchdog reset mid-flash. rmpg-watchdog writes the magic 'V' to disarm.
+
+# ── Graphics: never present a black brick ────────────────────────────────────
+# If i915 fails to bind on some FZ-55 revision — a firmware quirk, a panel it
+# does not recognise — the current image has NO fallback framebuffer, so the
+# screen stays black and the failure is indistinguishable from a dead unit. On
+# a first hardware boot that costs you the one diagnostic you needed most: the
+# console text explaining what went wrong.
+#
+# SYSFB_SIMPLEFB hands the firmware's existing EFI framebuffer to simpledrm,
+# which i915 then takes over from if it does bind (aperture handoff). No effect
+# under QEMU, which boots with -vga none and no firmware framebuffer at all.
+CONFIG_SYSFB_SIMPLEFB=y
+CONFIG_DRM_SIMPLEDRM=y
+
+# ── Panasonic platform integration ───────────────────────────────────────────
+# Fn-key hotkeys and the backlight control on Panasonic's ACPI interface.
+# Without it the FZ-55's brightness keys do nothing — which on a vehicle
+# terminal is a safety issue in both directions: a full-brightness screen
+# blinds a driver at night, and a dimmed one is unreadable in direct sun.
+# Deps verified satisfied: INPUT, ACPI, BACKLIGHT_CLASS_DEVICE, ACPI_VIDEO=y,
+# SERIO_I8042=y; it selects INPUT_SPARSEKMAP itself.
+CONFIG_PANASONIC_LAPTOP=y
+
+# ── Audio: kernel side only ──────────────────────────────────────────────────
+# CONFIG_SND_HDA_INTEL was already =y, but with NO codec parser: the controller
+# binds and then initialises zero codecs, so the hardware reports as present
+# while being incapable of producing sound. Realtek is the codec family
+# Panasonic uses; HDMI covers dock/external display audio.
+#
+# HONEST SCOPE NOTE: this is the KERNEL half only. There is still no audio
+# USERSPACE in this image (no ALSA libs, and WebKitGTK is built without
+# GStreamer), so Flex voice alerts and dispatch tones remain silent on the
+# terminal. Deliberate, 2026-07-25: adding it forces a full WebKitGTK rebuild
+# and ~30-50 MB onto a rootfs whose OTA payload already cannot finish
+# uploading. Enabling the codecs now is ~KB and means that future change needs
+# no kernel rebuild — and it lets rmpg-hwreport tell the truth about what audio
+# hardware the unit actually has.
+CONFIG_SND_HDA_GENERIC=y
+CONFIG_SND_HDA_CODEC_REALTEK=y
+CONFIG_SND_HDA_CODEC_HDMI=y
+
+# ── EFI + the Windows volume (the no-USB install path) ───────────────────────
+# EFIVAR_FS was =m — same unloadable-module problem as the thermal driver — so
+# the terminal could not read its own firmware boot entries to confirm the
+# installer's entry survived a firmware update.
+CONFIG_EFIVAR_FS=y
+
+# NTFS3 with WRITE support is what makes OTA possible on the no-USB install at
+# all: that path keeps the kernel and rootfs in C:\RMPG-Flex-OS\ on the
+# Windows NTFS volume (installer-windows/Install-RmpgFlexOS.ps1), and until now
+# the running system could not write there, so rmpg-update had nowhere to stage
+# a new slot. Needed for A/B on that path too — the slot pointer GRUB reads is
+# a file on this volume. NLS_UTF8 (already =y) is required by NTFS3.
+CONFIG_NTFS3_FS=y

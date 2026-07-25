@@ -54,6 +54,34 @@ the Colima/Docker toolchain this requires).
    rmpg-flex-downloads/kiosk-linux-os-<old-version>.tar.gz --remote` if reclaiming
    space matters.
 
+7. **Package the no-USB installer bundle** (added 2026-07-25):
+
+   ```bash
+   scripts/package-nousb-installer.sh
+   ```
+
+   This step did not exist before, and its absence was a real gap rather than an
+   omission of convenience. The no-USB install is the **primary** method for this
+   fleet — it needs no USB stick carried to each vehicle — and its installer
+   refuses to start unless `bzImage`, `rootfs.cpio.gz` and **`grubx64.efi`** all
+   sit beside it. Buildroot emits that third file as
+   `output/images/efi-part/EFI/BOOT/bootx64.efi`, under a different name, and
+   nothing here told the publisher to include it. So every release to date shipped
+   a download that could not perform a no-USB install, and the failure surfaced as
+   the installer refusing to run on the operator machine.
+
+   The script stages the three artifacts under the names the installer expects,
+   adds both PowerShell scripts, the `.bat` launcher and a READ-ME-FIRST that
+   states the (now doubled, for A/B slots) free-space requirement, then zips it.
+   Upload the resulting `rmpg-flex-os-nousb-installer-<version>.zip` the same way
+   as the disk image in Steps 3-4.
+
+   ⚠️ The READ-ME-FIRST warns operators to fully shut Windows down with Fast
+   Startup disabled before installing. This is not boilerplate: a volume left
+   dirty by Fast Startup or hibernation cannot be mounted writable by `ntfs3`, so
+   the terminal reports its boot store as read-only and **over-the-air updates
+   cannot be staged on that unit** until someone performs a real shutdown.
+
 ## Current release
 
 - `kiosk-linux-os-1.2.0.tar.gz` — **the first release that actually renders the

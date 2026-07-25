@@ -299,10 +299,34 @@ BR2_STRIP_EXCLUDE_FILES="libcogplatform-drm.so"
 # revisions have removed CSM support altogether.
 BR2_TARGET_GRUB2=y
 BR2_TARGET_GRUB2_X86_64_EFI=y
-BR2_TARGET_GRUB2_BUILTIN_MODULES_EFI="boot linux ext2 fat ntfs squash4 part_msdos part_gpt normal configfile search search_fs_uuid search_label echo test all_video efi_gop gzio loadenv"
+# (2026-07-25) Added search_fs_file and chain after checking each command the
+# installer grub.cfg actually issues against grub-core/Makefile.core.def in the
+# real grub2-2.12 tree. Two commands had no module providing them, and because
+# these modules are BUILT IN there is no module directory on the ESP for
+# `insmod` to fall back to — so both failures would have appeared for the first
+# time on a customer machine:
+#
+#   search --file   -> needs search_fs_file (commands/search_file.c). The
+#                      `search` module is only the option-parsing wrapper; the
+#                      --file, --fs-uuid and --label implementations are three
+#                      separate modules. Without it the installer cannot locate
+#                      the Windows volume at all, so the OS never boots.
+#   chainloader     -> needs chain. Without it the "Windows" menu entry fails,
+#                      which on a dual-boot machine is the worse outcome of the
+#                      two: the officer cannot get back into Windows.
+#
+# `source` (used to read slot.cfg) needed nothing new — configfile.c registers
+# configfile, source and dot from one module, already present.
+BR2_TARGET_GRUB2_BUILTIN_MODULES_EFI="boot linux ext2 fat ntfs squash4 part_msdos part_gpt normal configfile search search_fs_file search_fs_uuid search_label chain echo test all_video efi_gop gzio loadenv"
 
-# Post-build hook that removes retired kiosk init scripts left behind in the
-# incremental target/ directory. Buildroot copies the overlay over target/ but
-# never deletes files removed FROM the overlay, which has silently broken two
-# builds — see scripts/prune-stale-overlay.sh for both incidents.
-BR2_ROOTFS_POST_BUILD_SCRIPT="/kiosk-linux/scripts/prune-stale-overlay.sh"
+# Post-build hooks (space-separated list, run in order, each passed TARGET_DIR
+# as $1).
+#   1. prune-stale-overlay.sh — removes retired kiosk init scripts left behind
+#      in the incremental target/ directory. Buildroot copies the overlay over
+#      target/ but never deletes files removed FROM the overlay, which has
+#      silently broken two builds; see that script for both incidents.
+#   2. prune-firmware.sh — drops the 25 MB of i915 GuC/HuC blobs that
+#      BR2_PACKAGE_LINUX_FIRMWARE_I915 installs wholesale, keeping the 888 KB of
+#      DMC blobs that are the actual reason it is enabled. Every byte here is
+#      resident RAM (initramfs root) and OTA payload.
+BR2_ROOTFS_POST_BUILD_SCRIPT="/kiosk-linux/scripts/prune-stale-overlay.sh /kiosk-linux/scripts/prune-firmware.sh"

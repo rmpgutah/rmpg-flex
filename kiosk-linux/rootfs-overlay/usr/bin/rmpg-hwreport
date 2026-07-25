@@ -1,0 +1,235 @@
+#!/bin/sh
+# /usr/bin/rmpg-hwreport — what actually bound on this machine.
+#
+# ── WHY ──────────────────────────────────────────────────────────────────────
+#
+# This OS has never booted on a Panasonic Toughbook FZ-55. Everything about its
+# hardware support is inference from source: the right drivers are enabled, the
+# right firmware ships, the dependency chains were checked. Inference is not
+# evidence.
+#
+# The first boot on real hardware is the single most information-dense event in
+# this program, and it is also the one where information is easiest to lose: the
+# screen may be blank, there may be no keyboard mapped yet, and whoever is
+# holding the unit is standing in a parking lot. Reading a serial console is not
+# an option in a vehicle.
+#
+# So this enumerates, in one pass, every piece of hardware this pass was
+# supposed to enable, states plainly whether it bound, and persists the answer
+# to the boot store where it survives the reboot. A bring-up then produces a
+# file somebody can read afterward instead of a verbal report of what the screen
+# looked like.
+#
+# It reports FINDINGS, not opinions, and never fails a boot: every probe is
+# read-only and every unknown is printed as UNKNOWN rather than guessed.
+#
+#   rmpg-hwreport            print the report and persist it to the boot store
+#   rmpg-hwreport --print    print only, touch nothing
+set -u
+
+PERSIST=1
+[ "${1:-}" = "--print" ] && PERSIST=0
+
+# `cat` a sysfs file, or echo a placeholder. Keeps every probe a one-liner and
+# guarantees a missing file never aborts the report.
+val() { cat "$1" 2>/dev/null || echo "UNKNOWN"; }
+
+# YES/NO on a marker existing, so the report reads as answers rather than paths.
+yn() { if [ -e "$1" ]; then echo YES; else echo NO; fi; }
+
+section() { echo ""; echo "── $* ──"; }
+
+report() {
+    echo "RMPG Flex OS hardware report"
+    echo "generated: $(date 2>/dev/null || echo UNKNOWN)"
+    echo "os version: $(val /etc/rmpg-os-version)"
+    echo "kernel: $(uname -r 2>/dev/null) $(uname -m 2>/dev/null)"
+
+    section "Machine identity (DMI)"
+    # The whole point of the FZ-55 work: confirm what is actually in front of us.
+    # Panasonic reports product_name like "FZ-55" and this is how a report from
+    # the field can be matched to a revision without opening the case.
+    echo "vendor       : $(val /sys/class/dmi/id/sys_vendor)"
+    echo "product      : $(val /sys/class/dmi/id/product_name)"
+    echo "version      : $(val /sys/class/dmi/id/product_version)"
+    echo "bios         : $(val /sys/class/dmi/id/bios_vendor) $(val /sys/class/dmi/id/bios_version) $(val /sys/class/dmi/id/bios_date)"
+    echo "board        : $(val /sys/class/dmi/id/board_name)"
+    # Serial numbers are deliberately NOT collected. This file is copied around
+    # during bring-up and a device serial is an asset identifier, not a
+    # diagnostic — nothing here needs it.
+
+    section "CPU / memory"
+    echo "model        : $(grep -m1 '^model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | sed 's/^ *//' || echo UNKNOWN)"
+    echo "cores        : $(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo UNKNOWN)"
+    echo "memory total : $(awk '/^MemTotal:/ {printf "%d MB", $2/1024}' /proc/meminfo 2>/dev/null || echo UNKNOWN)"
+    echo "cpufreq drv  : $(val /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)"
+    echo "governor     : $(val /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)"
+    echo "cpuidle drv  : $(val /sys/devices/system/cpu/cpuidle/current_driver)"
+
+    section "Graphics"
+    # Which DRM driver bound is the difference between "i915 works" and "we are
+    # running on the EFI framebuffer fallback and nobody noticed". Both light up
+    # a screen; only one is the supported path.
+    for card in /sys/class/drm/card[0-9]; do
+        [ -e "$card" ] || continue
+        drv="UNKNOWN"
+        [ -L "$card/device/driver" ] && drv="$(basename "$(readlink -f "$card/device/driver" 2>/dev/null)" 2>/dev/null)"
+        echo "$(basename "$card")        : driver=$drv"
+    done
+    echo "connectors   : $(ls -d /sys/class/drm/card*-* 2>/dev/null | wc -l | tr -d ' ')"
+    for st in /sys/class/drm/card*-*/status; do
+        [ -f "$st" ] || continue
+        echo "  $(basename "$(dirname "$st")") $(cat "$st" 2>/dev/null)"
+    done
+    # DMC is the reason linux-firmware/i915 is shipped at all. dmesg is the only
+    # place its load is reported without debugfs mounted.
+    dmc="$(dmesg 2>/dev/null | grep -i 'i915.*\(dmc\|DMC\)' | tail -3)"
+    if [ -n "$dmc" ]; then
+        echo "i915 DMC     : reported by the driver:"
+        echo "$dmc" | sed 's/^/  /'
+    else
+        echo "i915 DMC     : no DMC line in dmesg (expected on non-Intel graphics)"
+    fi
+    echo "DMC blobs    : $(ls /lib/firmware/i915/*dmc*.bin 2>/dev/null | wc -l | tr -d ' ') present in /lib/firmware/i915"
+
+    section "Input (touchscreen / touchpad / keyboard)"
+    # The FZ-55 digitizer needs the LPSS I2C bus plus Intel pinctrl for its GPIO
+    # interrupt. If this section lists no touch device on a touch-equipped unit,
+    # that chain is where to look, and the dmesg line below usually names it.
+    if [ -f /proc/bus/input/devices ]; then
+        grep -E '^N: Name=' /proc/bus/input/devices 2>/dev/null | sed 's/^N: Name=/  /'
+    else
+        echo "  UNKNOWN (/proc/bus/input/devices absent)"
+    fi
+    echo "i2c-hid      : $(dmesg 2>/dev/null | grep -ci 'i2c_hid\|i2c-hid' || true) kernel message(s)"
+    echo "i2c buses    : $(ls /sys/bus/i2c/devices 2>/dev/null | wc -l | tr -d ' ')"
+    echo "pinctrl      : $(ls /sys/bus/platform/drivers 2>/dev/null | grep -c 'INT[0-9A-Fa-f]*\|pinctrl' || true) intel pinctrl driver(s) REGISTERED (registered != bound to a device)"
+    i2c_err="$(dmesg 2>/dev/null | grep -iE 'i2c.*(fail|error)|hid.*(fail|error)' | tail -3)"
+    [ -n "$i2c_err" ] && { echo "  input-related errors:"; echo "$i2c_err" | sed 's/^/    /'; }
+
+    section "Power (dual battery + AC)"
+    # The FZ-55 has two bays. A report showing only BAT0 on a two-battery unit
+    # means the second pack is absent or not enumerating, which changes the
+    # runtime estimate an operator plans a shift around.
+    found_bat=0
+    for ps in /sys/class/power_supply/*; do
+        [ -d "$ps" ] || continue
+        name="$(basename "$ps")"
+        type="$(val "$ps/type")"
+        if [ "$type" = "Battery" ]; then
+            found_bat=$((found_bat + 1))
+            echo "$name         : $(val "$ps/capacity")% $(val "$ps/status") health=$(val "$ps/health")"
+        else
+            echo "$name         : type=$type online=$(val "$ps/online")"
+        fi
+    done
+    [ "$found_bat" -eq 0 ] && echo "  no battery reported (expected under QEMU or on a desk-mounted unit)"
+    echo "batteries    : $found_bat"
+
+    section "Thermal"
+    # Enabled in this pass: before it, nothing on the terminal could read its own
+    # die temperature, so a thermal shutdown in a hot vehicle left no evidence.
+    for hw in /sys/class/hwmon/hwmon*; do
+        [ -d "$hw" ] || continue
+        hwname="$(val "$hw/name")"
+        for input in "$hw"/temp*_input; do
+            [ -f "$input" ] || continue
+            raw="$(cat "$input" 2>/dev/null)" || continue
+            case "$raw" in ''|*[!0-9]*) continue ;; esac
+            lbl="$(basename "$input" _input)"
+            echo "  $hwname/$lbl $((raw / 1000))C"
+        done
+    done
+    echo "thermal zones: $(ls -d /sys/class/thermal/thermal_zone* 2>/dev/null | wc -l | tr -d ' ')"
+
+    section "Watchdog"
+    echo "device       : $(yn /dev/watchdog)"
+    echo "driver       : $(val /sys/class/watchdog/watchdog0/identity)"
+    echo "timeout      : $(val /sys/class/watchdog/watchdog0/timeout)s"
+    echo "feeder       : $(pgrep -f rmpg-watchdog >/dev/null 2>&1 && echo RUNNING || echo "NOT RUNNING")"
+
+    section "Storage"
+    # Whatever is here is what boot-store discovery had to work with. On an FZ-55
+    # expect nvme0n1 or sda; a report showing only vda means this is still QEMU.
+    awk 'NR > 2 { printf "  %-12s %8d MB\n", $4, $3/1024 }' /proc/partitions 2>/dev/null
+    echo "efi          : $(yn /sys/firmware/efi) (efivarfs: $(yn /sys/firmware/efi/efivars))"
+    echo "ntfs3        : $(grep -qw ntfs3 /proc/filesystems 2>/dev/null && echo AVAILABLE || echo MISSING)"
+
+    section "Network"
+    for n in /sys/class/net/*; do
+        [ -d "$n" ] || continue
+        ifn="$(basename "$n")"
+        [ "$ifn" = "lo" ] && continue
+        kind="wired"
+        [ -d "$n/wireless" ] && kind="wireless"
+        echo "  $ifn ($kind) state=$(val "$n/operstate") mac-present=$(yn "$n/address")"
+    done
+    echo "iwlwifi      : $(dmesg 2>/dev/null | grep -ci iwlwifi || true) kernel message(s)"
+    fw_fail="$(dmesg 2>/dev/null | grep -iE 'firmware.*(fail|not found|direct loading.*failed)' | tail -5)"
+    if [ -n "$fw_fail" ]; then
+        # A missing firmware blob is the single most likely reason a radio or the
+        # display engine is silently degraded, and it is invisible unless asked.
+        echo "  FIRMWARE LOAD FAILURES:"
+        echo "$fw_fail" | sed 's/^/    /'
+    else
+        echo "  no firmware load failures in dmesg"
+    fi
+
+    section "Audio"
+    echo "hda cards    : $(ls -d /sys/class/sound/card* 2>/dev/null | wc -l | tr -d ' ')"
+    echo "codecs       : $(dmesg 2>/dev/null | grep -ci 'snd_hda\|hdaudio' || true) kernel message(s)"
+    echo "NOTE         : kernel-side only in this build — there is no ALSA userspace"
+    echo "               and WebKitGTK has no GStreamer, so Flex tones stay silent."
+
+    section "Boot store / update state"
+    if . /usr/lib/rmpg/boot-store.sh 2>/dev/null && rmpg_bootstore_find >/dev/null 2>&1; then
+        echo "kind         : $RMPG_BOOTSTORE_KIND"
+        echo "device       : ${RMPG_BOOTSTORE_DEV:-UNKNOWN}"
+        echo "directory    : $RMPG_BOOTSTORE_DIR"
+        echo "active slot  : $(rmpg_bootstore_get_slot 2>/dev/null || echo UNKNOWN)"
+        echo "boot attempts: $(val "$RMPG_BOOTSTORE_DIR/boot_attempts")"
+        echo "rollback     : ARMED (counter is being maintained)"
+    else
+        echo "kind         : NONE FOUND"
+        echo "rollback     : NOT ARMED — this terminal cannot self-recover from a bad update"
+    fi
+
+    section "Kernel errors worth a look"
+    errs="$(dmesg 2>/dev/null | grep -iE '\b(error|failed|fault|panic|oops|taint)\b' | grep -viE 'i8042|acpi bios error|thermal_zone' | tail -12)"
+    if [ -n "$errs" ]; then
+        echo "$errs" | sed 's/^/  /'
+    else
+        echo "  none matching"
+    fi
+}
+
+OUT="$(report)"
+echo "$OUT"
+
+echo ""
+echo "KIOSK_LINUX_HWREPORT_DONE product=$(val /sys/class/dmi/id/product_name | tr ' ' '_') drm=$(ls -d /sys/class/drm/card[0-9] 2>/dev/null | wc -l | tr -d ' ') batteries=$(ls -d /sys/class/power_supply/BAT* 2>/dev/null | wc -l | tr -d ' ') watchdog=$(yn /dev/watchdog)"
+
+# Persist to the boot store so the report survives the reboot that follows a
+# bring-up. Best effort by design: a terminal with no writable store still
+# printed the whole report to the console above, and failing a boot over a
+# diagnostic file would be absurd.
+if [ "$PERSIST" = "1" ]; then
+    if . /usr/lib/rmpg/boot-store.sh 2>/dev/null && rmpg_bootstore_find >/dev/null 2>&1; then
+        if rmpg_bootstore_rw >/dev/null 2>&1; then
+            mkdir -p "$RMPG_BOOTSTORE_DIR/hwreports" 2>/dev/null
+            # Keep the newest under a stable name for a human to find, plus one
+            # timestamped copy so a second bring-up boot does not erase the
+            # evidence from the first.
+            stamp="$(date +%Y%m%d-%H%M%S 2>/dev/null || echo unknown)"
+            printf '%s\n' "$OUT" > "$RMPG_BOOTSTORE_DIR/hwreports/latest.txt" 2>/dev/null
+            printf '%s\n' "$OUT" > "$RMPG_BOOTSTORE_DIR/hwreports/$stamp.txt" 2>/dev/null
+            sync
+            rmpg_bootstore_ro >/dev/null 2>&1
+            echo "KIOSK_LINUX_HWREPORT_SAVED $RMPG_BOOTSTORE_DIR/hwreports/latest.txt"
+        else
+            echo "KIOSK_LINUX_HWREPORT_NOT_SAVED (boot store is read-only)"
+        fi
+    else
+        echo "KIOSK_LINUX_HWREPORT_NOT_SAVED (no boot store found)"
+    fi
+fi

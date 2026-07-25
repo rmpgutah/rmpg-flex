@@ -119,6 +119,50 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+# ── Concurrent-build guard (2026-07-25) ──────────────────────────────────────
+#
+# BUILDROOT_VOLUME and BUILD_OUTPUT_VOLUME default to FIXED names, and this repo
+# is worked on through many git worktrees at once. Two worktrees running
+# build.sh therefore share one Buildroot source tree and one output tree by
+# default — a warning that was already in this file, but only as prose.
+#
+# What that actually does was measured on 2026-07-25, when a build in the
+# warrant-tab worktree overlapped one here:
+#
+#   - target/ ended up holding the OTHER worktree overlay, so the image carried
+#     the wrong /etc/rmpg-os-version
+#   - gzip compressed images/rootfs.cpio while the other build was still writing
+#     it, emitting only "file size changed while zipping" and producing a
+#     rootfs.cpio.gz that decompressed to 218 MB of a 651 MB archive: 1329 of
+#     11063 entries, ending mid usr/lib
+#
+# That last one is the dangerous one. A truncated initramfs is a valid gzip file
+# of the right general size that passes `gzip -t`, so nothing downstream notices
+# — it just panics at boot, on a terminal in a vehicle, after an OTA update.
+#
+# A running build is exactly a running container holding the volume, so ask
+# Docker rather than maintaining a lock file with its own staleness problems.
+CONCURRENT="$(docker ps --filter volume="$BUILD_OUTPUT_VOLUME" --format '{{.ID}} {{.Image}}' 2>/dev/null || true)"
+if [ -n "$CONCURRENT" ]; then
+  echo "ERROR: another container is already using the build-output volume '$BUILD_OUTPUT_VOLUME':" >&2
+  echo "$CONCURRENT" | sed 's/^/  /' >&2
+  cat >&2 <<'CONCURRENTHELP'
+
+Two builds sharing one output volume corrupt each other. The damage is quiet:
+the losing build can emit a TRUNCATED rootfs.cpio.gz that still passes gzip -t
+and only fails as a kernel panic at boot.
+
+Either wait for that build to finish, or give this one its own volumes:
+
+  BUILDROOT_VOLUME=kiosk-src-$(basename "$PWD") \
+  BUILD_OUTPUT_VOLUME=kiosk-out-$(basename "$PWD") ./build.sh
+
+Note a fresh output volume means a full from-scratch build (WebKitGTK alone is
+roughly an hour), so waiting is usually the cheaper option.
+CONCURRENTHELP
+  exit 1
+fi
+
 echo "Building the Buildroot build-environment image ($IMAGE_TAG) ..."
 docker build ${DOCKER_NETWORK_ARGS[@]+"${DOCKER_NETWORK_ARGS[@]}"} -t "$IMAGE_TAG" "$SCRIPT_DIR/docker"
 
@@ -806,7 +850,14 @@ COGHASH
     # invisible: the taskbar logs "idle lock armed at 600s" and then every poll
     # fails with `Xlib: extension "MIT-SCREEN-SAVER" missing`, so the terminal
     # never locks while appearing to be configured to.
-    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses xserver_xorg-server xserver_xorg-server:screensaver"
+    # grub2:builtin-modules — (2026-07-25) BR2_TARGET_GRUB2_BUILTIN_MODULES_EFI
+    # gained search_fs_file and chain, without which the no-USB install cannot
+    # locate its own volume and cannot chainload back into Windows. That variable
+    # is consumed while LINKING grubx64.efi, and Buildroot will not relink it just
+    # because the value changed — the package stamp already exists — so the new
+    # modules would silently not be in the shipped binary. The entry name carries
+    # the reason because this list is tracked BY NAME in the marker file.
+    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses xserver_xorg-server xserver_xorg-server:screensaver grub2:builtin-modules"
     if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ]; then
       # The marker is a LIST of packages already reconfigured, not a single
       # all-or-nothing flag. The first version of this was a bare touch file,
@@ -831,11 +882,243 @@ COGHASH
       done
     fi
 
+    # ── FZ-55 kernel-symbol gate (2026-07-25) ────────────────────────────────
+    # The same "silently dropped symbol" hazard the desktop check above guards
+    # against exists one layer down, in the KERNEL config, and is worse there
+    # because the failure only appears on real hardware:
+    # scripts/kconfig/merge_config.sh applies our fragments over the expanded
+    # x86_64 defconfig and, when the dependencies of a requested symbol are not
+    # met,
+    # it prints a warning and CARRIES ON — leaving the symbol absent from
+    # .config entirely rather than "=n". Two real instances found in the
+    # shipped 1.3.0 image by auditing its generated .config:
+    #
+    #   - CONFIG_I2C_DESIGNWARE_PLATFORM was absent, not disabled, because
+    #     `depends on (ACPI && COMMON_CLK)` was unmet (COMMON_CLK unset). The
+    #     FZ-55 touchscreen bus therefore had no driver, with nothing in any
+    #     log pointing at the cause.
+    #   - CONFIG_X86_PKG_TEMP_THERMAL was =m in an initramfs image that never
+    #     loads modules, so thermal protection was inert while every grep for
+    #     "is not set" reported it as enabled.
+    #
+    # NOTE: no apostrophes anywhere in this block. It lives inside a
+    # `bash -c '...'` string, and an apostrophe surrounded by whitespace closes
+    # that quote, splits the argument, and TRUNCATES the container script at
+    # that point — while `bash -n` still reports the file as valid, because an
+    # even number of apostrophes re-balances the quoting. That is why other
+    # comments here read "the guest own log" rather than the natural phrasing.
+    #
+    # `linux-configure` stops after the kernel config+configure step, so this
+    # asserts on the REAL generated .config for pennies of build time, before
+    # the ~15 minute compile — and long before a boot log on hardware nobody
+    # has in front of them. Keep this list in sync with
+    # configs/kernel-fz55.fragment.
+    # Force the kernel fragments to be re-merged on EVERY run.
+    #
+    # In theory this is unnecessary: pkg-kconfig.mk:158 declares
+    # .stamp_dotconfig as depending on LINUX_KCONFIG_FRAGMENT_FILES, so editing
+    # a fragment should make it stale and trigger a re-merge. In practice that
+    # did NOT fire on 2026-07-25 — a run whose fragment was 16 minutes newer
+    # than the stamp regenerated the stamp and still produced a .config with
+    # none of the new symbols in it, and removing the stamp by hand merged them
+    # correctly on the very next attempt with no other change. The fragments
+    # reach the container through a Colima virtiofs bind mount, which is the
+    # same layer that already broke POSIX directory permissions badly enough to
+    # move this whole build into named volumes, so its timestamp semantics are
+    # not something to stake a release on.
+    #
+    # Removing the stamp costs about two seconds: merge_config.sh re-runs, and
+    # if the resulting .config is byte-identical then make has nothing to
+    # rebuild anyway. Cheap and deterministic beats subtle and occasionally
+    # silent — the failure mode being avoided is a build that reports success
+    # while shipping a kernel that quietly ignored the config change.
+    # Gated on a CHECKSUM of the fragments rather than done unconditionally.
+    # Removing the stamp costs about two seconds by itself, but it makes the
+    # kernel .config regenerate, which makes Buildroot re-run the configure step,
+    # which triggers a full ~10-15 minute kernel recompile — on EVERY build, even
+    # one that only edited a shell script in the overlay. Measured on 2026-07-25
+    # when a pack-only rebuild spent that time in arch/x86/boot/compressed.
+    #
+    # The checksum lives in the output volume beside the build it describes, so
+    # the compare is against what this tree actually last built from.
+    LINUX_BUILD_DIR="$(ls -d /build-output/build/linux-[0-9]* 2>/dev/null | head -1)"
+    FRAGMENT_SUM_FILE=/build-output/.rmpg-kernel-fragment-sum
+    FRAGMENT_SUM="$(cat /kiosk-linux/configs/kernel-*.fragment 2>/dev/null | sha256sum | cut -d" " -f1)"
+    if [ -n "$LINUX_BUILD_DIR" ] && [ -f "$LINUX_BUILD_DIR/.stamp_dotconfig" ]; then
+      if [ "$FRAGMENT_SUM" != "$(cat "$FRAGMENT_SUM_FILE" 2>/dev/null)" ]; then
+        echo "Kernel fragments changed — forcing a re-merge (removing $LINUX_BUILD_DIR/.stamp_dotconfig) ..."
+        rm -f "$LINUX_BUILD_DIR/.stamp_dotconfig"
+      else
+        echo "Kernel fragments unchanged (sha256 matches) — skipping the forced re-merge."
+      fi
+    fi
+    # Written only after the symbol gate below passes, so a failed build does not
+    # record its fragments as successfully applied.
+
+    echo "Configuring the kernel and verifying FZ-55 symbols survived merge_config ..."
+    make -C /build-output linux-configure
+
+    KCONFIG_FILE="$(ls -d /build-output/build/linux-[0-9]*/.config 2>/dev/null | head -1)"
+    if [ -z "$KCONFIG_FILE" ]; then
+      echo "ERROR: could not locate the generated kernel .config under /build-output/build/linux-*/" >&2
+      exit 1
+    fi
+    echo "Auditing $KCONFIG_FILE"
+
+    # Grouped by the failure each one prevents, so a future failure message
+    # says WHY the symbol matters instead of just naming it.
+    FZ55_REQUIRED_KSYMS="
+      CONFIG_COMMON_CLK:touchscreen-bus-gate
+      CONFIG_MFD_INTEL_LPSS_PCI:touchscreen-bus
+      CONFIG_MFD_INTEL_LPSS_ACPI:touchscreen-bus
+      CONFIG_I2C_DESIGNWARE_PLATFORM:touchscreen-bus
+      CONFIG_I2C_HID_ACPI:touchscreen-transport
+      CONFIG_PINCTRL:digitizer-gpio-irq-gate
+      CONFIG_PINCTRL_CANNONLAKE:digitizer-gpio-irq-mk1
+      CONFIG_PINCTRL_ALDERLAKE:digitizer-gpio-irq-mk3
+      CONFIG_X86_PKG_TEMP_THERMAL:thermal-trip-source
+      CONFIG_SENSORS_CORETEMP:thermal-telemetry
+      CONFIG_INTEL_IDLE:battery-runtime-and-heat
+      CONFIG_ITCO_WDT:hang-recovery
+      CONFIG_DRM_SIMPLEDRM:no-black-brick-fallback
+      CONFIG_SYSFB_SIMPLEFB:no-black-brick-fallback
+      CONFIG_PANASONIC_LAPTOP:brightness-hotkeys
+      CONFIG_SND_HDA_CODEC_REALTEK:audio-codec-parser
+      CONFIG_EFIVAR_FS:read-own-boot-entries
+      CONFIG_NTFS3_FS:ota-on-no-usb-install
+      CONFIG_DRM_I915:fz55-graphics
+      CONFIG_E1000E:fz55-wired-net
+      CONFIG_IWLWIFI:fz55-wifi
+      CONFIG_BLK_DEV_NVME:fz55-storage
+    "
+    ksym_failed=0
+    for entry in $FZ55_REQUIRED_KSYMS; do
+      sym="${entry%%:*}"
+      why="${entry#*:}"
+      if ! grep -q "^${sym}=y$" "$KCONFIG_FILE"; then
+        actual="$(grep -E "^${sym}=|^# ${sym} is not set" "$KCONFIG_FILE" || true)"
+        if [ -z "$actual" ]; then
+          actual="ABSENT from .config — its dependencies are unmet, so merge_config.sh dropped it"
+        fi
+        echo "ERROR: $sym is not =y (needed for: $why)" >&2
+        echo "       $actual" >&2
+        ksym_failed=1
+      fi
+    done
+    if [ "$ksym_failed" -ne 0 ]; then
+      echo "" >&2
+      echo "One or more FZ-55 kernel symbols did not reach the generated .config." >&2
+      echo "An =m value is ALSO a failure here: this image is an initramfs with no" >&2
+      echo "module loading in its init path, so a module is built and never loaded." >&2
+      exit 1
+    fi
+    echo "FZ-55 kernel symbols verified =y in the generated .config."
+
+    # Record the fragment checksum only now: if the gate above had failed, the
+    # next run must re-merge and re-check rather than trusting a config that was
+    # never accepted.
+    printf "%s\n" "$FRAGMENT_SUM" > "$FRAGMENT_SUM_FILE"
+
     echo "Building (this takes a while on first run) ..."
     make -C /build-output
 
     echo "Build complete inside the volume:"
     ls -la /build-output/images/bzImage /build-output/images/rootfs.cpio.gz
+
+    # ── Initramfs integrity gate (2026-07-25) ────────────────────────────────
+    #
+    # A truncated rootfs.cpio.gz is the worst artifact this build can produce,
+    # because every cheap check passes it: gzip -t reports OK, the file size looks
+    # plausible, and `cpio -t | grep` finds early paths just fine. It only fails
+    # as a kernel panic, on a terminal, in a vehicle, possibly after an OTA update
+    # that reported success.
+    #
+    # Observed for real on 2026-07-25: a concurrent build in another worktree
+    # wrote images/rootfs.cpio while gzip was reading it, and the result held 1329
+    # of 11063 entries and ended mid usr/lib. The only warning anywhere was one
+    # line of gzip output: "file size changed while zipping".
+    #
+    # Buildroot leaves the uncompressed archive next to the compressed one, so the
+    # check is exact rather than heuristic: decompressed size must equal it.
+    CPIO_RAW=/build-output/images/rootfs.cpio
+    if [ -f "$CPIO_RAW" ]; then
+      raw_bytes="$(stat -c %s "$CPIO_RAW")"
+      dec_bytes="$(gzip -dc /build-output/images/rootfs.cpio.gz | wc -c)"
+      if [ "$raw_bytes" != "$dec_bytes" ]; then
+        echo "ERROR: rootfs.cpio.gz is TRUNCATED." >&2
+        echo "  uncompressed archive : $raw_bytes bytes" >&2
+        echo "  decompresses to      : $dec_bytes bytes" >&2
+        echo "" >&2
+        echo "This image would panic at boot. The usual cause is another build" >&2
+        echo "running against the same Docker volumes (see the concurrent-build" >&2
+        echo "guard near the top of this script). Re-run the build." >&2
+        exit 1
+      fi
+      echo "Initramfs integrity verified: $dec_bytes bytes decompressed, matching the archive."
+    else
+      echo "WARNING: $CPIO_RAW absent — cannot verify the initramfs was packed whole." >&2
+    fi
+
+    # The version the OTA updater compares MUST be the one from this worktree
+    # overlay. A concurrent build in another worktree overwrote target/ on
+    # 2026-07-25 and produced an image stamped with that worktree version, which
+    # would make every terminal either skip the update or take the wrong one.
+    OVERLAY_VERSION="$(tr -d "[:space:]" < /kiosk-linux/rootfs-overlay/etc/rmpg-os-version)"
+    PACKED_VERSION="$(gzip -dc /build-output/images/rootfs.cpio.gz | cpio -i --to-stdout etc/rmpg-os-version 2>/dev/null | tr -d "[:space:]")"
+    if [ "$OVERLAY_VERSION" != "$PACKED_VERSION" ]; then
+      echo "ERROR: version mismatch between the overlay and the packed image." >&2
+      echo "  overlay says : $OVERLAY_VERSION" >&2
+      echo "  image says   : $PACKED_VERSION" >&2
+      echo "Another build may have overwritten target/, or the overlay copy was skipped." >&2
+      exit 1
+    fi
+    echo "Image version verified: $PACKED_VERSION"
+
+    # ── Overlay manifest gate (2026-07-25) ───────────────────────────────────
+    #
+    # Assert that every file the overlay is responsible for is actually IN the
+    # packed image. The integrity and version gates above both passed on an image
+    # that was missing three init scripts, because a concurrent build from another
+    # worktree overwrote target/ between the overlay copy and the cpio pack: the
+    # archive was internally consistent and correctly versioned, just gutted from
+    # 11011 entries down to 2282.
+    #
+    # The consequence of each missing file is severe and silent — no boot-attempt
+    # counting (no rollback), no watchdog (no hang recovery), no hardware report
+    # (a bring-up that yields nothing) — and the boot log looks normal, because a
+    # script that does not exist cannot report that it is missing.
+    #
+    # Derived from the overlay itself rather than hardcoded, so a new init script
+    # or helper is covered the moment it is added, with no second place to update.
+    echo "Verifying the overlay reached the packed image ..."
+    gzip -dc /build-output/images/rootfs.cpio.gz > /tmp/rmpg-verify.cpio
+    cpio -t < /tmp/rmpg-verify.cpio > /tmp/rmpg-verify.list 2>/dev/null
+
+    overlay_missing=0
+    for f in $(cd /kiosk-linux/rootfs-overlay && find . -type f | sed "s|^\./||"); do
+      case "$f" in
+        # Intentionally not shipped: the disabled marker is a documentation
+        # artifact retired with the browser-only boot path.
+        *.disabled) continue ;;
+      esac
+      if ! grep -qx "$f" /tmp/rmpg-verify.list && ! grep -qx "./$f" /tmp/rmpg-verify.list; then
+        echo "ERROR: overlay file missing from the packed image: $f" >&2
+        overlay_missing=$((overlay_missing + 1))
+      fi
+    done
+    rm -f /tmp/rmpg-verify.cpio /tmp/rmpg-verify.list
+
+    if [ "$overlay_missing" -ne 0 ]; then
+      echo "" >&2
+      echo "$overlay_missing overlay file(s) did not reach the image." >&2
+      echo "The usual cause is another build writing to the same Docker volumes" >&2
+      echo "(see the concurrent-build guard near the top of this script). Note that" >&2
+      echo "guard only protects builds that HAVE it — a checkout of this script from" >&2
+      echo "before 2026-07-25, in another worktree, will still start alongside this" >&2
+      echo "one. Confirm nothing else is building, then re-run." >&2
+      exit 1
+    fi
+    echo "Overlay manifest verified: every overlay file is present in the image."
 
     echo "Copying final images out to the host-visible output/ directory ..."
     mkdir -p /kiosk-linux/output/images
