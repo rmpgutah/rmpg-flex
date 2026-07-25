@@ -28,6 +28,7 @@
 #include <X11/Xatom.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dlfcn.h>
 
 #define PANEL_HEIGHT 40
 #define APPS_CONF "/etc/rmpg-desktop/apps.conf"
@@ -60,6 +61,9 @@ static char *run_capture(const char *cmd);
 static void  on_system_info(GtkMenuItem *item, gpointer data);
 static void  on_wifi_settings(GtkMenuItem *item, gpointer data);
 static void  update_network(void);
+/* Idle lock lives further down (it needs run_capture and the status labels), but
+ * the Start menu wires up "Lock terminal" before that point. */
+static void  on_lock_now(GtkMenuItem *item, gpointer data);
 
 /* ---------------------------------------------------------------- helpers */
 
@@ -361,6 +365,10 @@ static void on_start_clicked(GtkButton *btn, gpointer data)
     }
 
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+
+    GtkWidget *lock = gtk_menu_item_new_with_label("Lock terminal");
+    g_signal_connect(lock, "activate", G_CALLBACK(on_lock_now), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), lock);
 
     GtkWidget *wifi = gtk_menu_item_new_with_label("Wi-Fi…");
     g_signal_connect(wifi, "activate", G_CALLBACK(on_wifi_settings), NULL);
@@ -913,6 +921,118 @@ static void on_system_info(GtkMenuItem *item, gpointer data)
     gtk_widget_show_all(win);
 }
 
+/* -------------------------------------------------------------- idle lock */
+
+/*
+ * Idle detection via the X Screen Saver extension. This is the only source that
+ * sees ALL input — keyboard, mouse and the FZ-55's touchscreen — regardless of
+ * which window received it. A timer in this process would only notice input
+ * delivered to the panel, and polling devices directly misses the touchscreen.
+ *
+ * Loaded with dlopen rather than linked, so a build without libXss still
+ * produces a working taskbar minus the lock, instead of failing to start at all.
+ * A terminal with no taskbar is unusable; a terminal with no idle lock is merely
+ * less secure, and says so in the log.
+ */
+typedef struct {
+    Window window;
+    int state;
+    int kind;
+    unsigned long til_or_since;
+    unsigned long idle;      /* milliseconds since last input */
+    unsigned long eventMask;
+} RmpgXssInfo;
+
+typedef RmpgXssInfo *(*XssAllocInfoFn)(void);
+typedef int (*XssQueryInfoFn)(Display *, Drawable, RmpgXssInfo *);
+
+static XssAllocInfoFn  xss_alloc_info;
+static XssQueryInfoFn  xss_query_info;
+static RmpgXssInfo    *xss_info;
+static guint           g_idle_timeout_s;
+static gboolean        g_locking;
+
+static void init_idle_detection(void)
+{
+    const char *env = g_getenv("RMPG_LOCK_IDLE_SECONDS");
+    /* 600s default. Long enough not to interrupt an officer reading a long
+     * call narrative, short enough that a vehicle left unattended is not
+     * displaying dispatch data for many minutes. 0 disables. */
+    g_idle_timeout_s = env ? (guint) atoi(env) : 600;
+    if (g_idle_timeout_s == 0) {
+        g_message("rmpg-shell: idle lock disabled (RMPG_LOCK_IDLE_SECONDS=0)");
+        return;
+    }
+
+    void *lib = dlopen("libXss.so.1", RTLD_LAZY);
+    if (!lib) {
+        g_warning("rmpg-shell: libXss unavailable — IDLE LOCK IS DISABLED (%s)", dlerror());
+        g_idle_timeout_s = 0;
+        return;
+    }
+    xss_alloc_info = (XssAllocInfoFn) dlsym(lib, "XScreenSaverAllocInfo");
+    xss_query_info = (XssQueryInfoFn) dlsym(lib, "XScreenSaverQueryInfo");
+    if (!xss_alloc_info || !xss_query_info) {
+        g_warning("rmpg-shell: libXss missing expected symbols — IDLE LOCK IS DISABLED");
+        g_idle_timeout_s = 0;
+        return;
+    }
+    xss_info = xss_alloc_info();
+    g_message("rmpg-shell: idle lock armed at %us", g_idle_timeout_s);
+}
+
+/*
+ * Sign the Flex session out, then lock.
+ *
+ * Order matters: sign out FIRST. If the lock were shown first and the terminal
+ * lost power or the lock crashed, the screen would come back to a still
+ * authenticated console. Signing out before covering the screen means the worst
+ * case is a logged-out terminal, never an unlocked authenticated one.
+ *
+ * Sign-out is done by restarting the console window pointed at the Flex login
+ * URL. Crude, but it reuses Flex's own auth as the access boundary instead of
+ * inventing a second credential path on the device — see rmpg-lock.c.
+ */
+static void lock_screen(void)
+{
+    if (g_locking) return;
+    g_locking = TRUE;
+
+    g_message("rmpg-shell: idle for %us — signing out and locking", g_idle_timeout_s);
+
+    /* Replace the console window with a fresh, unauthenticated one. */
+    if (system("pkill -f 'rmpg-browser --app=' >/dev/null 2>&1") == -1)
+        g_warning("rmpg-shell: could not signal the console window");
+    g_spawn_command_line_async("rmpg-browser --app=https://rmpgutah.us", NULL);
+
+    /* Blocking: nothing else should happen in the panel while locked. */
+    int rc = system("rmpg-lock");
+    if (rc != 0)
+        g_warning("rmpg-shell: rmpg-lock exited %d — terminal may not have locked", rc);
+
+    g_locking = FALSE;
+}
+
+static gboolean idle_check(gpointer data)
+{
+    (void)data;
+    if (g_idle_timeout_s == 0 || !xss_info || g_locking) return G_SOURCE_CONTINUE;
+
+    Display *d = xdisplay();
+    if (!xss_query_info(d, DefaultRootWindow(d), xss_info)) return G_SOURCE_CONTINUE;
+
+    if (xss_info->idle / 1000 >= g_idle_timeout_s) lock_screen();
+    return G_SOURCE_CONTINUE;
+}
+
+static void on_lock_now(GtkMenuItem *item, gpointer data)
+{
+    (void)item; (void)data;
+    /* Explicit lock from the Start menu — an officer stepping out of the vehicle
+     * should not have to wait for the idle timer. */
+    lock_screen();
+}
+
 /* ------------------------------------------------------------------ clock */
 
 static gboolean tick(gpointer data)
@@ -1074,6 +1194,10 @@ int main(int argc, char **argv)
     g_timeout_add_seconds(1, tick, NULL);
     slow_tick(NULL);
     g_timeout_add_seconds(10, slow_tick, NULL);
+    init_idle_detection();
+    /* 5s poll: fine-grained enough that the lock lands within a few seconds of
+     * the threshold, cheap enough to be invisible (one X round-trip). */
+    g_timeout_add_seconds(5, idle_check, NULL);
     rebuild_task_list();
 
     g_print("rmpg-shell: panel up (%dx%d, admin=%d, %d apps)\n",

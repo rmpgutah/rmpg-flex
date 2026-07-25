@@ -789,7 +789,24 @@ COGHASH
     # back off. Force-reconfigure the X/GL-sensitive packages the first time a
     # desktop build runs against a kiosk-era output tree.
     DESKTOP_MARKER=/build-output/.rmpg-desktop-reconfigured
-    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses"
+    # xserver_xorg-server MUST come after mesa3d in this list. Its modesetting
+    # driver uses GBM (via glamor), but it was originally built in this tree
+    # before mesa3d was rebuilt, so gbm.pc did not exist at configure time and
+    # the driver was linked WITHOUT libgbm while still referencing GBM symbols.
+    # X then died at every startup with "no screens found", whose real cause
+    # only appeared in the guest own /var/log/Xorg.0.log:
+    #   Failed to load modesetting_drv.so: undefined symbol: gbm_bo_get_plane_count
+    # NOTE: entries are tracked by NAME in the marker file, so a package that must
+    # be rebuilt AGAIN for a different reason needs a NEW name here. xorg-server
+    # appears twice for exactly that reason: first for libgbm/glamor, then for the
+    # MIT-SCREEN-SAVER extension, which Buildroot only enables when
+    # xlib_libXScrnSaver exists at ITS configure time (xserver_xorg-server.mk:
+    # --enable-screensaver is conditional on that package). Adding libXScrnSaver
+    # later left the server without the extension, and the failure is nearly
+    # invisible: the taskbar logs "idle lock armed at 600s" and then every poll
+    # fails with `Xlib: extension "MIT-SCREEN-SAVER" missing`, so the terminal
+    # never locks while appearing to be configured to.
+    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses xserver_xorg-server xserver_xorg-server:screensaver"
     if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ]; then
       # The marker is a LIST of packages already reconfigured, not a single
       # all-or-nothing flag. The first version of this was a bare touch file,
@@ -807,8 +824,8 @@ COGHASH
       fi
       for pkg in $DESKTOP_STALE_PKGS; do
         if ! grep -qx "$pkg" "$DESKTOP_MARKER" 2>/dev/null; then
-          echo "Reconfiguring kiosk-era package for the desktop build: $pkg"
-          make -C /build-output "$pkg-dirclean" >/dev/null 2>&1 || true
+          echo "Reconfiguring package for the desktop build: ${pkg%%:*} (${pkg#*:})"
+          make -C /build-output "${pkg%%:*}-dirclean" >/dev/null 2>&1 || true
           echo "$pkg" >> "$DESKTOP_MARKER"
         fi
       done
