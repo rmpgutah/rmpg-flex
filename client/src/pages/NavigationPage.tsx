@@ -2558,7 +2558,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setCrimeOn((v) => !v)}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: crimeOn ? 'var(--sev-warn)' : 'var(--rmpg-600)' }}
+          style={{ color: crimeOn ? 'var(--sev-warn)' : 'var(--text-muted)' }}
           title={crimeOn ? 'Hide crime layer' : 'Show crime layer (SLC + RMPG)'}
           aria-label={crimeOn ? 'Hide crime layer' : 'Show crime layer'}
         >
