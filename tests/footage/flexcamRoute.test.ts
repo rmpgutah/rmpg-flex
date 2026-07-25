@@ -2,6 +2,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import flexcam from '../../src/routes/flexcam';
 
+// vitest attributes first-import transform cost to whichever test triggers it,
+// and `src/routes/flexcam` pulls in a heavy module graph — so under a full-suite
+// run the first test here can spend most of the 5000ms default budget compiling
+// rather than asserting. Observed 2026-07-24: the two court-package cases timing
+// out at 7–8.8s and blocking the husky pre-commit gate, with the failing subset
+// shifting between runs (whichever test won the race to pay the import cost).
+// Raises the ceiling only — these tests still complete in milliseconds once warm.
+vi.setConfig({ testTimeout: 30_000 });
+
 describe('flexcam route', () => {
   it('rejects a request with an invalid window', async () => {
     const res = await flexcam.request('/request', {

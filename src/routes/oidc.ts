@@ -10,6 +10,10 @@
 // (see routesConfig.ts) rather than relying on the bypass string match.
 //
 // Flow:
+//   GET  /api/oidc/dialer/check     Identifier-first probe from LoginPage.tsx
+//                                   (fetch, not a redirect): does this email
+//                                   belong to an active dialer-linked account?
+//                                   Answers a bare {ssoEnabled:boolean}.
 //   GET  /api/oidc/dialer/login     Browser hits this directly (not fetch —
 //                                   it's a full-page redirect chain). Builds
 //                                   the authorization_endpoint URL, stashes a
@@ -80,6 +84,69 @@ function backToLogin(appOrigin: string, status: 'error', message: string) {
   const params = new URLSearchParams({ sso: 'dialer', status, message });
   return Response.redirect(`${appOrigin}/login?${params}`, 302);
 }
+
+// ── GET /dialer/check?email=… ──────────────────────────────────────────────
+// Identifier-first SSO probe. LoginPage.tsx asks this before rendering the
+// password field: if the typed identifier belongs to an active, dialer-linked
+// account, the SPA skips the password step and redirects into
+// /dialer/login instead. This endpoint was called by the client from day one
+// but never existed — every "Continue" click produced a console 404 and the
+// probe silently fell through to the password field, so SSO users could never
+// actually be routed into SSO.
+//
+// Enumeration posture: any identifier-first SSO flow necessarily reveals that
+// an identifier is SSO-enabled (Google and Microsoft both do). Kept as tight
+// as the feature allows — a bare boolean, nothing echoed back, only ACTIVE
+// linked accounts count, non-SSO and unknown identifiers are indistinguishable
+// (both `false`), and a KV counter caps probes per client IP so the endpoint
+// can't be walked through an address list. Never reports whether an account
+// exists when it isn't SSO-linked.
+const CHECK_PROBES_PER_MINUTE = 20;
+
+async function overCheckProbeLimit(env: Env['Bindings'], ip: string, nowMs: number): Promise<boolean> {
+  const key = `oidc:dialer:check:${ip}:${Math.floor(nowMs / 60_000)}`;
+  try {
+    const raw = await env.KV.get(key);
+    const count = raw ? parseInt(raw, 10) || 0 : 0;
+    if (count >= CHECK_PROBES_PER_MINUTE) return true;
+    await env.KV.put(key, String(count + 1), { expirationTtl: 120 });
+  } catch { /* KV unavailable — fail open, the probe is a boolean either way */ }
+  return false;
+}
+
+oidc.get('/dialer/check', async (c) => {
+  const env = c.env as Env['Bindings'];
+  // Not configured → a plain `false`, not a 503: the SPA's only question is
+  // "should I skip the password field", and the answer is no.
+  if (!env.DIALER_OIDC_ISSUER || !env.DIALER_OIDC_CLIENT_ID) {
+    return c.json({ ssoEnabled: false });
+  }
+
+  const email = (c.req.query('email') || '').trim().toLowerCase();
+  if (!email || email.length > 254) return c.json({ ssoEnabled: false });
+
+  const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown';
+  if (await overCheckProbeLimit(env, ip, Date.now())) {
+    return c.json({ ssoEnabled: false });
+  }
+
+  try {
+    const db = getDb(env);
+    await ensureDialerOidcColumns(db);
+    const row = await queryFirst<{ n: number }>(
+      db,
+      `SELECT COUNT(*) AS n FROM users
+        WHERE LOWER(email) = ? AND status = 'active' AND dialer_oidc_sub IS NOT NULL`,
+      email,
+    );
+    return c.json({ ssoEnabled: (row?.n ?? 0) > 0 });
+  } catch (err) {
+    // A lookup failure must not block login — the SPA falls through to the
+    // password field on `false`, which is the correct degraded behaviour.
+    log.error('[oidc] dialer SSO check failed', { traceId: c.get('traceId') }, err as Error);
+    return c.json({ ssoEnabled: false });
+  }
+});
 
 oidc.get('/dialer/login', async (c) => {
   const env = c.env as Env['Bindings'];

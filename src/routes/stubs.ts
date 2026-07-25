@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { encryptBrowserData, decryptBrowserData } from '../utils/companyBrowserCrypto';
-import { activeCallFilter } from '../utils/callStatus';
+import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
 
 const stubs = new Hono<Env>();
 
@@ -399,12 +399,12 @@ stubs.get('/', async (c) => {
   try {
     const [activeRow, warrantsRow, priorityRows, unitsRow] = await Promise.all([
       c.env.DB.prepare(
-        `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${activeCallFilter()}`
+        `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE}`
       ).first<{ n: number }>(),
       c.env.DB.prepare(`SELECT COUNT(*) AS n FROM warrants WHERE status = 'active'`).first<{ n: number }>(),
       c.env.DB.prepare(
         `SELECT priority, COUNT(*) AS count FROM calls_for_service
-         WHERE ${activeCallFilter()} GROUP BY priority`
+         WHERE ${ACTIVE_CALL_WHERE} GROUP BY priority`
       ).all<{ priority: string; count: number }>(),
       c.env.DB.prepare(`SELECT COUNT(*) AS n FROM units WHERE status != 'off_duty'`).first<{ n: number }>(),
     ]);

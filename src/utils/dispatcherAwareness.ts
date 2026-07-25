@@ -30,9 +30,8 @@ import { geocodeAddress, reverseGeocodeAddress } from '../routes/geocode';
 import { resolveDistrict } from './districtResolver';
 import { estimateEta } from './eta';
 import { withUniqueRetry } from './serveIntakeRecords';
+import { CLOSED_CALL_STATUSES } from './callStatus';
 
-// Statuses that mean a call is no longer on the active board.
-const CLOSED_CALL_STATUSES = ['closed', 'cleared', 'archived', 'cancelled', 'canceled'];
 // Statuses that mean a unit is not currently working.
 const OFF_DUTY_UNIT_STATUSES = ['off_duty', 'offline', 'out_of_service', 'oos', 'unavailable'];
 

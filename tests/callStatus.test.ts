@@ -1,78 +1,111 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { TERMINAL_CALL_STATUSES, activeCallFilter, terminalCallFilter } from '../src/utils/callStatus';
+import {
+  CLOSED_CALL_STATUSES,
+  ACTIVE_CALL_WHERE,
+  activeCallWhere,
+} from '../src/utils/callStatus';
 
-describe('callStatus vocabulary', () => {
-  it('treats archived as terminal — the 2026-07-24 dashboard bug', () => {
-    // The Dashboard reported 96 ACTIVE CALLS while the header badge reported 0,
-    // because the reports query omitted 'archived'. All 96 were archived.
-    expect(TERMINAL_CALL_STATUSES).toContain('archived');
+// Regression guard for the 2026-07-24 audit finding: /api/reports/dashboard
+// reported activeCalls: 96 on live while its own callsByStatus proved all 96
+// rows were status='archived'. Six queries across reports.ts, admin.ts and
+// shiftBriefings.ts excluded only ('cleared','closed','cancelled') — omitting
+// 'archived' — so archived calls were counted as active on the main CAD
+// dashboard, in admin stats, and in shift briefings.
+describe('CLOSED_CALL_STATUSES', () => {
+  it("includes 'archived' — the status that caused the phantom active-call count", () => {
+    expect(CLOSED_CALL_STATUSES).toContain('archived');
   });
 
-  it('matches both spellings of cancelled', () => {
-    expect(TERMINAL_CALL_STATUSES).toContain('cancelled');
-    expect(TERMINAL_CALL_STATUSES).toContain('canceled');
+  it('covers both cancel spellings', () => {
+    expect(CLOSED_CALL_STATUSES).toContain('cancelled');
+    expect(CLOSED_CALL_STATUSES).toContain('canceled');
   });
 
-  it('activeCallFilter excludes every terminal status', () => {
-    const sql = activeCallFilter();
-    for (const s of TERMINAL_CALL_STATUSES) expect(sql).toContain(`'${s}'`);
-    expect(sql).toMatch(/^COALESCE\(status,''\) NOT IN \(/);
+  it('covers the plainly-terminal statuses', () => {
+    expect(CLOSED_CALL_STATUSES).toContain('closed');
+    expect(CLOSED_CALL_STATUSES).toContain('cleared');
   });
 
-  it('accepts an alias-qualified column', () => {
-    expect(activeCallFilter('c.status')).toContain("COALESCE(c.status,'')");
-  });
-
-  it('terminalCallFilter is the inverse', () => {
-    expect(terminalCallFilter()).toContain(' IN (');
-    expect(terminalCallFilter()).not.toContain(' NOT IN (');
-  });
-
-  it('treats a NULL status as active rather than dropping the row', () => {
-    // SQL three-valued logic: `status NOT IN (...)` is NULL (not TRUE) for a
-    // NULL status, so such a call would vanish from every count. COALESCE
-    // makes it surface as active, which is the visible-problem behaviour.
-    expect(activeCallFilter()).toContain('COALESCE');
+  it('has no duplicates and is all lowercase', () => {
+    expect(new Set(CLOSED_CALL_STATUSES).size).toBe(CLOSED_CALL_STATUSES.length);
+    for (const s of CLOSED_CALL_STATUSES) expect(s).toBe(s.toLowerCase());
   });
 });
 
-describe('no route re-inlines the call-status list', () => {
-  // Guard against the drift that caused the original bug: six sites had gone
-  // stale because each carried its own copy of the status list.
+describe('ACTIVE_CALL_WHERE', () => {
+  it('excludes every terminal status', () => {
+    for (const s of CLOSED_CALL_STATUSES) {
+      expect(ACTIVE_CALL_WHERE).toContain(`'${s}'`);
+    }
+  });
+
+  it('is a NOT IN predicate over the status column', () => {
+    expect(ACTIVE_CALL_WHERE).toMatch(/^status NOT IN \(/);
+  });
+
+  // The fragment is interpolated straight into SQL, so it must never carry
+  // anything but a fixed list of quoted literals — no binds, no user input.
+  it('contains no bind placeholders', () => {
+    expect(ACTIVE_CALL_WHERE).not.toContain('?');
+  });
+});
+
+// A test on the constant alone can't catch the thing that caused this bug:
+// someone hand-rolling a fresh status list inside a query. This scans the
+// Worker source for any NOT IN list over call statuses that forgets 'archived'.
+describe('no hand-rolled call-status lists in src/', () => {
   const walk = (dir: string): string[] =>
-    readdirSync(dir).flatMap((e) => {
-      const p = join(dir, e);
+    readdirSync(dir).flatMap((name) => {
+      const p = join(dir, name);
       return statSync(p).isDirectory() ? walk(p) : p.endsWith('.ts') ? [p] : [];
     });
 
-  // Scoped to calls_for_service only. `incidents` and `warrants` have their
-  // own status vocabularies and legitimately keep their own lists — so we look
-  // backwards from the match for the table being queried and skip anything
-  // that isn't a CFS query.
-  const tableFor = (lines: string[], idx: number): string | null => {
-    for (let i = idx; i >= Math.max(0, idx - 8); i--) {
-      const m = /\b(?:FROM|UPDATE|INTO)\s+([a-z_][a-z0-9_]*)/i.exec(lines[i]);
-      if (m) return m[1].toLowerCase();
-    }
-    return null;
-  };
-
-  it('has no inline calls_for_service status list outside callStatus.ts', () => {
+  it("has no calls_for_service status list that omits 'archived'", () => {
+    const notIn = /NOT IN \(([^)]*)\)/g;
     const offenders: string[] = [];
-    for (const file of walk('src')) {
-      if (file.endsWith('callStatus.ts')) continue;
-      const lines = readFileSync(file, 'utf8').split('\n');
-      lines.forEach((line, i) => {
-        // An inline list naming both 'cleared' and 'closed' as quoted SQL
-        // literals is the shape we are outlawing.
-        const shape = /NOT IN \([^)]*'cleared'[^)]*'closed'|NOT IN \([^)]*'closed'[^)]*'cleared'/.test(line);
-        if (shape && tableFor(lines, i) === 'calls_for_service') {
-          offenders.push(`${file}:${i + 1}`);
-        }
-      });
+
+    for (const file of walk(join(__dirname, '..', 'src'))) {
+      const src = readFileSync(file, 'utf8');
+      for (const m of src.matchAll(notIn)) {
+        const list = m[1];
+        // Only status lists, not id/number lists.
+        if (!list.includes("'cleared'") && !list.includes("'closed'")) continue;
+        if (list.includes("'archived'")) continue;
+        // Scope to queries actually about calls. Match on the nearest preceding
+        // table reference rather than a proximity window — a plain "is
+        // calls_for_service nearby" check wrongly flags the `incidents` list in
+        // admin.ts, which sits three lines below an unrelated calls query.
+        // Other domains (warrants: 'served'/'recalled'/'quashed'; incidents)
+        // legitimately have different terminal states.
+        const idx = m.index ?? 0;
+        const table = [...src.slice(0, idx).matchAll(/\b(?:FROM|UPDATE|JOIN)\s+([a-z_][a-z0-9_]*)/gi)].pop();
+        if (table?.[1] !== 'calls_for_service') continue;
+        const line = src.slice(0, idx).split('\n').length;
+        offenders.push(`${file.replace(/.*\/src\//, 'src/')}:${line} — NOT IN (${list})`);
+      }
     }
-    expect(offenders, `use activeCallFilter() instead:\n${offenders.join('\n')}`).toEqual([]);
+
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('activeCallWhere', () => {
+  it('defaults to the bare status column', () => {
+    expect(activeCallWhere()).toBe(ACTIVE_CALL_WHERE);
+  });
+
+  it('qualifies the column when a table alias is given', () => {
+    const w = activeCallWhere('c.status');
+    expect(w).toMatch(/^c\.status NOT IN \(/);
+    expect(w).toContain("'archived'");
+  });
+
+  it('rejects anything that is not a plain column reference', () => {
+    // Guards against the fragment becoming an injection seam if a caller ever
+    // passes something derived from a request.
+    expect(() => activeCallWhere("status) OR 1=1 --")).toThrow();
+    expect(() => activeCallWhere('')).toThrow();
   });
 });

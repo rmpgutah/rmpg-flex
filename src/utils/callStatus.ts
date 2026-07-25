@@ -1,60 +1,48 @@
-// ============================================================
-// RMPG Flex — canonical calls_for_service status vocabulary
-//
-// WHY THIS EXISTS
-// The "which statuses mean the call is finished" list was duplicated inline
-// across ~18 query sites and drifted. Six of them still used the pre-`archived`
-// three-status form, which is why the Dashboard reported 96 ACTIVE CALLS on
-// 2026-07-24 while the header badge (correctly) reported 0 — all 96 were
-// archived. Two spellings of cancelled are also in circulation.
-//
-// Import from here instead of writing the list inline. A new terminal status
-// then needs exactly one edit, and no surface can silently disagree with
-// another about what "active" means.
-// ============================================================
-
 /**
- * Statuses that mean a call is finished and must NOT count as active.
+ * Single source of truth for "is this call still on the active board?".
  *
- * Both `cancelled` and `canceled` are listed deliberately: the codebase has
- * written both spellings over time (see the former local list in
- * `dispatcherAwareness.ts`). Matching both is harmless — a status can only be
- * one of them — and missing one silently inflates every "active" count.
+ * This list used to live as a module-private const in dispatcherAwareness.ts
+ * while six other queries hand-rolled their own shorter version. The 2026-07-24
+ * live audit found the consequence: /api/reports/dashboard reported
+ * `activeCalls: 96` while its own `callsByStatus` showed all 96 rows were
+ * status='archived'. The main CAD dashboard was showing a dispatcher 96 phantom
+ * active calls, a fake P2/P3/P4 breakdown, and an avg-response figure computed
+ * from archived records — because those queries excluded only
+ * ('cleared','closed','cancelled') and forgot 'archived'.
  *
- * `completed` came from a fifth variant found in `reports.ts` during the same
- * audit; no other copy of the list knew about it.
- *
- * This vocabulary is for `calls_for_service` ONLY. The `incidents` and
- * `warrants` tables have their own lifecycles (`served`, `recalled`, `quashed`,
- * …) and must not be filtered with this.
+ * Anything that needs "active calls" MUST use this module. Do not re-inline a
+ * status list.
  */
-export const TERMINAL_CALL_STATUSES = [
-  'cleared',
+
+/** Statuses that mean a call is no longer on the active board. */
+export const CLOSED_CALL_STATUSES = [
   'closed',
+  'cleared',
+  'archived',
+  // Both spellings occur in live data.
   'cancelled',
   'canceled',
-  'archived',
-  'completed',
 ] as const;
 
-const quoted = TERMINAL_CALL_STATUSES.map((s) => `'${s}'`).join(',');
+/** A plain column reference: `status` or `alias.status`. Nothing else. */
+const COLUMN_REF = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/;
+
+const QUOTED = CLOSED_CALL_STATUSES.map((s) => `'${s}'`).join(',');
 
 /**
  * SQL predicate selecting calls that are still active.
  *
- * Uses `COALESCE(status,'')` so a NULL status counts as active rather than
- * being silently dropped by SQL's three-valued logic — a call with no status
- * is a data problem an operator should see, not one the dashboard should hide.
- *
- * @param column — table alias qualified column, e.g. `c.status`. Callers pass a
- *   literal, never user input; this is string interpolation into SQL by design
- *   (D1 cannot bind an IN-list).
+ * Interpolated directly into query strings, so it is built only from the fixed
+ * literals above — never from caller input. `column` is validated against
+ * COLUMN_REF so this can't become an injection seam if a future caller passes
+ * something request-derived.
  */
-export function activeCallFilter(column = 'status'): string {
-  return `COALESCE(${column},'') NOT IN (${quoted})`;
+export function activeCallWhere(column = 'status'): string {
+  if (!COLUMN_REF.test(column)) {
+    throw new Error(`activeCallWhere: unsafe column reference ${JSON.stringify(column)}`);
+  }
+  return `${column} NOT IN (${QUOTED})`;
 }
 
-/** Inverse of {@link activeCallFilter} — calls that are finished. */
-export function terminalCallFilter(column = 'status'): string {
-  return `COALESCE(${column},'') IN (${quoted})`;
-}
+/** Convenience constant for the common unqualified `status` case. */
+export const ACTIVE_CALL_WHERE = activeCallWhere();

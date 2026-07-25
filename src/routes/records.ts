@@ -3,7 +3,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { normalizeDob } from '../utils/normalizeDob';
-import { codedLike } from '../utils/searchText';
+import { codedLike, containsAnyClause } from '../utils/searchText';
 import { recordAudit } from '../utils/auditLog';
 import { screenPersonForSor } from '../utils/screening/nsopwAdapter';
 import { log } from '../utils/logger';
@@ -66,7 +66,7 @@ records.get('/properties', async (c) => {
     let sql = 'SELECT * FROM properties';
     const params: unknown[] = [];
     const wheres: string[] = [];
-    if (search) { wheres.push("(name LIKE ? OR address LIKE ?)"); params.push(`%${search}%`, `%${search}%`); }
+    if (search) { const m = containsAnyClause(['name', 'address']); wheres.push(m.sql); params.push(...m.binds(search)); }
     if (client_id) { wheres.push('client_id = ?'); params.push(client_id); }
     if (archived === 'true') wheres.push('archived_at IS NOT NULL');
     else if (archived !== 'all') wheres.push('(archived_at IS NULL)');
@@ -486,11 +486,12 @@ records.get('/persons/search', async (c) => {
     const db = getDb(c.env);
     const q = c.req.query('q');
     if (!q || q.length < 2) return c.json([]);
+    const mq = containsAnyClause(['last_name', 'first_name', 'phone']);
     const rows = await query<Record<string, unknown>>(db, `
       SELECT * FROM persons
-      WHERE last_name LIKE ? OR first_name LIKE ? OR phone LIKE ?
+      WHERE ${mq.sql}
       ORDER BY last_name, first_name LIMIT 50
-    `, `%${q}%`, `%${q}%`, `%${q}%`);
+    `, ...mq.binds(q));
     return c.json(rows);
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
@@ -582,10 +583,10 @@ records.get('/persons/alias-search', async (c) => {
     const db = getDb(c.env);
     const q = c.req.query('q');
     if (!q || q.length < 2) return c.json([]);
-    const like = `%${q}%`;
+    const ma = containsAnyClause(['first_name', 'last_name']);
     const rows = await query<Record<string, unknown>>(db,
-      'SELECT id, first_name, last_name, dob, gender FROM persons WHERE first_name LIKE ? OR last_name LIKE ? ORDER BY last_name, first_name LIMIT 50',
-      like, like);
+      `SELECT id, first_name, last_name, dob, gender FROM persons WHERE ${ma.sql} ORDER BY last_name, first_name LIMIT 50`,
+      ...ma.binds(q));
     return c.json(rows);
   } catch (err) { return c.json([]); }
 });
@@ -978,12 +979,13 @@ records.get('/vehicles/search', async (c) => {
     const db = getDb(c.env);
     const q = c.req.query('q');
     if (!q || q.length < 2) return c.json([]);
+    const mq = containsAnyClause(['v.plate_number', 'v.vin', 'v.make', 'v.model']);
     const rows = await query<Record<string, unknown>>(db, `
       SELECT v.*, p.first_name, p.last_name, p.first_name AS owner_first_name, p.last_name AS owner_last_name FROM vehicles_records v
       LEFT JOIN persons p ON v.owner_person_id = p.id
-      WHERE v.plate_number LIKE ? OR v.vin LIKE ? OR v.make LIKE ? OR v.model LIKE ?
+      WHERE ${mq.sql}
       ORDER BY v.plate_number LIMIT 50
-    `, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+    `, ...mq.binds(q));
     return c.json(rows);
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
@@ -1136,10 +1138,13 @@ records.get('/vehicles/bolo-check', async (c) => {
     const db = getDb(c.env);
     const plate = c.req.query('plate');
     if (!plate || plate.length < 2) return c.json({ matches: [], count: 0 });
-    const like = `%${plate.toUpperCase()}%`;
+    // instr(), not LIKE — D1's 50-char LIKE cap would throw here, and the catch
+    // below turns any throw into an empty BOLO result: a false clear on
+    // officer-safety data. containsAnyClause is case-insensitive via lower().
+    const mb = containsAnyClause(['vehicle_description', 'description']);
     const rows = await query<Record<string, unknown>>(db,
-      "SELECT id, bolo_number, title, description, priority, created_at FROM bolos WHERE status = 'active' AND (UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?) ORDER BY priority ASC, created_at DESC LIMIT 10",
-      like, like);
+      `SELECT id, bolo_number, title, description, priority, created_at FROM bolos WHERE status = 'active' AND ${mb.sql} ORDER BY priority ASC, created_at DESC LIMIT 10`,
+      ...mb.binds(plate));
     return c.json({ matches: rows, count: rows.length });
   } catch (err) { return c.json({ matches: [], count: 0 }); }
 });
@@ -1179,10 +1184,12 @@ records.post('/vehicles/stolen-check', async (c) => {
     let boloMatches: Record<string, unknown>[] = [];
     if (plate) {
       try {
-        const like = `%${plate}%`;
+        // instr(), not LIKE — D1's 50-char LIKE cap throws, and the catch below
+        // degrades that into "no BOLO", a false clear on a stolen-vehicle check.
+        const mb = containsAnyClause(['vehicle_description', 'description']);
         boloMatches = await query<Record<string, unknown>>(db,
-          "SELECT id, bolo_number, title, priority FROM bolos WHERE status = 'active' AND (UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?) ORDER BY priority ASC LIMIT 5",
-          like, like);
+          `SELECT id, bolo_number, title, priority FROM bolos WHERE status = 'active' AND ${mb.sql} ORDER BY priority ASC LIMIT 5`,
+          ...mb.binds(plate));
       } catch { boloMatches = []; }
     }
 
@@ -1343,7 +1350,7 @@ records.get('/evidence', async (c) => {
     const status = c.req.query('status');
     let sql = 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE 1=1';
     const params: unknown[] = [];
-    if (q) { sql += ' AND (e.evidence_number LIKE ? OR e.description LIKE ?)'; const s = `%${q}%`; params.push(s, s); }
+    if (q) { const m = containsAnyClause(['e.evidence_number', 'e.description']); sql += ` AND ${m.sql}`; params.push(...m.binds(q)); }
     if (status) { sql += ' AND e.status = ?'; params.push(status); }
     sql += ' ORDER BY e.created_at DESC LIMIT 500';
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
@@ -1894,7 +1901,12 @@ records.get('/ncic-query', async (c) => {
   if (!type || !q || q.length < 2) {
     return c.json({ error: 'type and query (min 2 chars) required', code: 'TYPE_AND_QUERY_MIN' }, 400);
   }
-  const like = `%${q}%`;
+  // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (see searchText.ts).
+  // Especially important here: most branches below are wrapped in soft(), which
+  // swallows the D1 error and returns []. A too-long query therefore reported
+  // "no records" on an NCIC terminal rather than failing — a false clear, the
+  // same hazard class as the 2026-06-10 stolen-check incident.
+  const nq = (...cols: string[]) => containsAnyClause(cols);
 
   // Run an OPTIONAL sub-query that must never fail the whole response. A
   // missing table / drifted column resolves to [] instead of throwing.
@@ -1916,13 +1928,13 @@ records.get('/ncic-query', async (c) => {
   try {
     switch (type) {
       case 'person': {
+        const mp = nq('first_name', 'last_name',
+          "first_name || ' ' || last_name", "last_name || ', ' || first_name");
         const persons = await query<Record<string, any>>(db, `
           SELECT * FROM persons
-          WHERE first_name LIKE ? OR last_name LIKE ?
-            OR (first_name || ' ' || last_name) LIKE ?
-            OR (last_name || ', ' || first_name) LIKE ?
+          WHERE ${mp.sql}
           ORDER BY last_name, first_name LIMIT 5
-        `, like, like, like, like);
+        `, ...mp.binds(q));
 
         // Normalize live column-name drift to the field names the NCIC client
         // terminal formatter reads. Live `persons` stores dob/gender/dl_number
@@ -1950,36 +1962,42 @@ records.get('/ncic-query', async (c) => {
         return c.json({ type, results, query: q });
       }
       case 'warrant': {
+        const mw = nq('w.warrant_number', 'p.first_name', 'p.last_name',
+          "p.last_name || ', ' || p.first_name");
         const results = await soft(() => query<Record<string, any>>(db, `
           SELECT ${WARRANT_COLS.split(',').map(s => 'w.' + s.trim()).join(', ')},
                  p.first_name AS subject_first_name, p.last_name AS subject_last_name
           FROM warrants w
           LEFT JOIN persons p ON p.id = w.subject_person_id
           WHERE w.status = 'active'
-            AND (w.warrant_number LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ?
-                 OR (p.last_name || ', ' || p.first_name) LIKE ?)
+            AND ${mw.sql}
           ORDER BY w.created_at DESC LIMIT 10
-        `, like, like, like, like));
+        `, ...mw.binds(q)));
         return c.json({ type, results, query: q });
       }
       case 'vehicle': {
+        const mv = nq('v.plate_number', 'v.vin', 'v.make', 'v.model');
         const results = await soft(() => query<Record<string, any>>(db, `
           SELECT v.*, p.first_name AS owner_first_name, p.last_name AS owner_last_name
           FROM vehicles_records v
           LEFT JOIN persons p ON v.owner_person_id = p.id
-          WHERE v.plate_number LIKE ? OR v.vin LIKE ? OR v.make LIKE ? OR v.model LIKE ?
+          WHERE ${mv.sql}
           ORDER BY v.plate_number LIMIT 10
-        `, like, like, like, like));
+        `, ...mv.binds(q)));
         return c.json({ type, results, query: q });
       }
       case 'phone': {
+        const mph = nq('phone');
         const results = await soft(() => query<Record<string, any>>(db,
-          `SELECT * FROM persons WHERE phone LIKE ? ORDER BY last_name, first_name LIMIT 10`, like));
+          `SELECT * FROM persons WHERE ${mph.sql} ORDER BY last_name, first_name LIMIT 10`,
+          ...mph.binds(q)));
         return c.json({ type, results, query: q });
       }
       case 'address': {
+        const mad = nq('address');
         const results = await soft(() => query<Record<string, any>>(db,
-          `SELECT * FROM persons WHERE address LIKE ? ORDER BY last_name, first_name LIMIT 10`, like));
+          `SELECT * FROM persons WHERE ${mad.sql} ORDER BY last_name, first_name LIMIT 10`,
+          ...mad.binds(q)));
         return c.json({ type, results, query: q });
       }
       default:
@@ -2004,7 +2022,9 @@ records.get('/search', async (c) => {
     const q = c.req.query('q');
     const type = (c.req.query('type') || 'person').toLowerCase();
     if (!q || q.length < 2) return c.json([]);
-    const like = `%${q}%`;
+    // instr(), not LIKE: D1 caps LIKE patterns at 50 chars, so a search term past
+    // 48 characters returned a 500 (8 recorded live failures). searchText.ts.
+    const match = (...cols: string[]) => containsAnyClause(cols);
 
     // Client (LinkRecordModal.tsx) renders `result.label || result.name ||
     // result.id`. Without a `label` field it falls back to the numeric record
@@ -2014,12 +2034,12 @@ records.get('/search', async (c) => {
     // address. We synthesize `label` on every row.
 
     if (type === 'person') {
+      const mp = match('last_name', 'first_name', 'phone', "first_name || ' ' || last_name");
       const rows = await query<Record<string, unknown>>(db, `
         SELECT * FROM persons
-        WHERE last_name LIKE ? OR first_name LIKE ? OR phone LIKE ?
-          OR (first_name || ' ' || last_name) LIKE ?
+        WHERE ${mp.sql}
         ORDER BY last_name, first_name LIMIT 50
-      `, like, like, like, like);
+      `, ...mp.binds(q));
       return c.json(rows.map((r) => ({
         ...r,
         label: [r.last_name, r.first_name].filter(Boolean).join(', ') || `Person #${r.id}`,
@@ -2027,13 +2047,14 @@ records.get('/search', async (c) => {
     }
 
     if (type === 'vehicle') {
+      const mv = match('v.plate_number', 'v.vin', 'v.make', 'v.model');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT v.*, p.first_name, p.last_name
         FROM vehicles_records v
         LEFT JOIN persons p ON v.owner_person_id = p.id
-        WHERE v.plate_number LIKE ? OR v.vin LIKE ? OR v.make LIKE ? OR v.model LIKE ?
+        WHERE ${mv.sql}
         ORDER BY v.plate_number LIMIT 50
-      `, like, like, like, like);
+      `, ...mv.binds(q));
       return c.json(rows.map((r) => {
         const plate = (r.plate_number as string | null) || '';
         const yearMakeModel = [r.year, r.make, r.model].filter(Boolean).join(' ');
@@ -2050,11 +2071,12 @@ records.get('/search', async (c) => {
       // businesses live in the dedicated `businesses` table (migration 0125);
       // `properties` is real-estate only. LINK_ENTITY_TABLE and recordExists
       // both target `businesses`, so search must return IDs from that table.
+      const mb = match('name', 'dba_name', 'address', 'owner_name');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT id, name, dba_name, business_type, address, city, state, phone, owner_name FROM businesses
-        WHERE name LIKE ? OR dba_name LIKE ? OR address LIKE ? OR owner_name LIKE ?
+        WHERE ${mb.sql}
         ORDER BY name LIMIT 50
-      `, like, like, like, like);
+      `, ...mb.binds(q));
       return c.json(rows.map((r) => {
         const name = (r.name as string | null) || '';
         const dba = (r.dba_name as string | null) || '';
@@ -2065,11 +2087,12 @@ records.get('/search', async (c) => {
     }
 
     if (type === 'property') {
+      const mpr = match('name', 'address');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT * FROM properties
-        WHERE name LIKE ? OR address LIKE ?
+        WHERE ${mpr.sql}
         ORDER BY name LIMIT 50
-      `, like, like);
+      `, ...mpr.binds(q));
       return c.json(rows.map((r) => {
         const name = (r.name as string | null) || '';
         const address = (r.address as string | null) || '';
@@ -2079,11 +2102,12 @@ records.get('/search', async (c) => {
     }
 
     if (type === 'evidence') {
+      const me = match('evidence_number', 'description', 'lab_case_number');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT * FROM evidence
-        WHERE evidence_number LIKE ? OR description LIKE ? OR lab_case_number LIKE ?
+        WHERE ${me.sql}
         ORDER BY evidence_number LIMIT 50
-      `, like, like, like);
+      `, ...me.binds(q));
       return c.json(rows.map((r) => ({
         ...r,
         label: [r.evidence_number, r.description].filter(Boolean).join(' — ') || `Evidence #${r.id}`,
@@ -2092,11 +2116,12 @@ records.get('/search', async (c) => {
 
     if (type === 'incident') {
       const itLike = codedLike('incident_type', q);
+      const mi = match('incident_number', 'location_address');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT id, incident_number, incident_type, status, location_address, created_at FROM incidents
-        WHERE incident_number LIKE ? OR ${itLike.sql} OR location_address LIKE ?
+        WHERE ${mi.sql} OR ${itLike.sql}
         ORDER BY created_at DESC LIMIT 50
-      `, like, ...itLike.binds, like);
+      `, ...mi.binds(q), ...itLike.binds);
       return c.json(rows.map((r) => ({
         ...r,
         label: [r.incident_number, r.incident_type].filter(Boolean).join(' — ') || `Incident #${r.id}`,
@@ -2105,11 +2130,12 @@ records.get('/search', async (c) => {
 
     if (type === 'case') {
       const ctLike = codedLike('case_type', q);
+      const mc = match('case_number', 'title');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT id, case_number, title, status, case_type, created_at FROM cases
-        WHERE case_number LIKE ? OR title LIKE ? OR ${ctLike.sql}
+        WHERE ${mc.sql} OR ${ctLike.sql}
         ORDER BY created_at DESC LIMIT 50
-      `, like, like, ...ctLike.binds);
+      `, ...mc.binds(q), ...ctLike.binds);
       return c.json(rows.map((r) => ({
         ...r,
         label: [r.case_number, r.title].filter(Boolean).join(' — ') || `Case #${r.id}`,
@@ -2117,11 +2143,12 @@ records.get('/search', async (c) => {
     }
 
     if (type === 'warrant') {
+      const mw = match('warrant_number', 'subject_name', 'charge_description');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT id, warrant_number, subject_name, charge_description, status, created_at FROM warrants
-        WHERE warrant_number LIKE ? OR subject_name LIKE ? OR charge_description LIKE ?
+        WHERE ${mw.sql}
         ORDER BY created_at DESC LIMIT 50
-      `, like, like, like);
+      `, ...mw.binds(q));
       return c.json(rows.map((r) => ({
         ...r,
         label: [r.warrant_number, r.subject_name].filter(Boolean).join(' — ') || `Warrant #${r.id}`,
@@ -2634,9 +2661,9 @@ records.get('/persons', async (c) => {
     }
     const params: unknown[] = [];
     if (search) {
-      wheres.push(`(first_name LIKE ? OR last_name LIKE ? OR alias_nickname LIKE ? OR phone LIKE ? OR email LIKE ? OR dl_number LIKE ?)`);
-      const like = `%${search}%`;
-      params.push(like, like, like, like, like, like);
+      const ms = containsAnyClause(['first_name', 'last_name', 'alias_nickname', 'phone', 'email', 'dl_number']);
+      wheres.push(ms.sql);
+      params.push(...ms.binds(search));
     }
     const whereClause = wheres.length ? ' WHERE ' + wheres.join(' AND ') : '';
     const sql = `SELECT ${PERSONS_BULK_COLUMNS} FROM persons${whereClause} ORDER BY last_name, first_name LIMIT ?`;
@@ -2665,9 +2692,9 @@ records.get('/vehicles', async (c) => {
     }
     const params: unknown[] = [];
     if (search) {
-      wheres.push(`(plate_number LIKE ? OR vin LIKE ? OR make LIKE ? OR model LIKE ? OR owner_name LIKE ? OR registered_owner LIKE ?)`);
-      const like = `%${search}%`;
-      params.push(like, like, like, like, like, like);
+      const ms = containsAnyClause(['plate_number', 'vin', 'make', 'model', 'owner_name', 'registered_owner']);
+      wheres.push(ms.sql);
+      params.push(...ms.binds(search));
     }
     const whereClause = wheres.length ? ' WHERE ' + wheres.join(' AND ') : '';
     const sql = `SELECT ${VEHICLES_BULK_COLUMNS} FROM vehicles_records${whereClause} ORDER BY updated_at DESC LIMIT ?`;
