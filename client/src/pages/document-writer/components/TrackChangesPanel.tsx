@@ -51,7 +51,7 @@ export default function TrackChangesPanel({
 
       <button type="button" onClick={onToggleMode}
         className={`w-full mb-2 px-2 py-1.5 text-[10px] rounded-[2px] border flex items-center justify-center gap-1.5 ${
-          suggestMode ? 'bg-[#d4a017]/15 border-[#d4a017]/40 text-[#d4a017]' : 'bg-surface-base border-border-default text-rmpg-300 hover:bg-surface-raised'
+          suggestMode ? 'bg-accent-silver-500/15 border-accent-silver-500/40 text-accent-silver-300' : 'bg-surface-base border-border-default text-rmpg-300 hover:bg-surface-raised'
         }`}>
         <Pencil className="w-3 h-3" /> Suggestion mode: {suggestMode ? 'ON' : 'OFF'}
       </button>

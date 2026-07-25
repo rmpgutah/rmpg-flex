@@ -53,12 +53,12 @@ export default function StatusBar({ editor }: { editor: Editor }) {
       <Item label={`min read (${stats.avgWordsPerSentence} avg w/sent)`} value={stats.readingMinutes} />
       <button type="button" onClick={editGoal}
         title="Set a word-count goal"
-        className="flex items-center gap-1.5 whitespace-nowrap hover:text-[#d4a017] group">
-        <Target className="w-3 h-3 text-rmpg-500 group-hover:text-[#d4a017]" />
+        className="flex items-center gap-1.5 whitespace-nowrap hover:text-accent-silver-300 group">
+        <Target className="w-3 h-3 text-rmpg-500 group-hover:text-accent-silver-300" />
         {goal > 0 ? (
           <>
             <span className="w-16 h-1.5 bg-surface-raised rounded-full overflow-hidden inline-block">
-              <span className="block h-full bg-[#d4a017]" style={{ width: `${pct}%` }} />
+              <span className="block h-full bg-accent-silver-500" style={{ width: `${pct}%` }} />
             </span>
             <span className="text-rmpg-300 tabular-nums">{pct}%</span>
             <span className="text-rmpg-600">of {goal.toLocaleString()}</span>
@@ -68,7 +68,7 @@ export default function StatusBar({ editor }: { editor: Editor }) {
         )}
       </button>
       {hasSelection && (
-        <span className="whitespace-nowrap ml-auto text-[#d4a017]">
+        <span className="whitespace-nowrap ml-auto text-rmpg-100">
           <span className="tabular-nums">{selectedWords}</span>
           <span className="ml-1 opacity-80">words selected</span>
         </span>
