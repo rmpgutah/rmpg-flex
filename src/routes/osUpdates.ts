@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { R2Bucket, D1Database } from '@cloudflare/workers-types';
+import { authMiddleware } from '../middleware/auth';
 
 /**
  * OS update manifest feed for RMPG Flex terminals.
@@ -28,6 +29,31 @@ interface Bindings {
 }
 
 const osUpdates = new Hono<{ Bindings: Bindings }>();
+
+// Auth lives INSIDE this router, not at the registry level. The registry entry
+// mounts at the bare `/api` prefix as `auth: 'public'` because /os/manifest must
+// stay reachable with no user at all — a terminal polls it before anyone has
+// signed in, and often with nobody in the vehicle. Marking the entry
+// `auth: 'required'` would make the loop in src/index.ts register
+// `app.use('/api/*', authMiddleware)`, blanket-blocking every public route
+// including /api/auth/login (incident #627). Same pattern as src/routes/geocode.ts
+// and src/routes/shiftPlans.ts.
+//
+// ⚠️  Scope this to the exact paths that need it — NOT `'*'`. A router-internal
+// `osUpdates.use('*', mw)` merges through `app.route('/api', osUpdates)` into the
+// parent app's route table as a genuinely global `/api/*` pattern, which is the
+// blanket-block this arrangement exists to avoid (regressed that way 2026-07-18;
+// see test-workers/mobileAuthRouting.test.ts).
+//
+// Only /os/promote is gated: it is the one mutating endpoint, and it is the gate
+// before the whole fleet installs an image. Its handler checks for admin/manager,
+// but that check reads c.get('user'), which NOTHING populated while this router
+// was mounted public — so promote returned 403 to every caller including real
+// admins, and the gate could never be opened. Fail-closed, but non-functional.
+// The bare path and its glob are both listed because Hono's `/x/*` does not match
+// the bare `/x` (same gotcha documented in routesConfig.ts's header).
+osUpdates.use('/os/promote', authMiddleware);
+osUpdates.use('/os/promote/*', authMiddleware);
 
 const CHANNELS = ['stable', 'staging'] as const;
 type Channel = (typeof CHANNELS)[number];

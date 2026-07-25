@@ -52,7 +52,7 @@ export default function KioskOsInstallGuide() {
       <p className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-400)' }}>
         Checksums and exact byte counts for <em>every</em> RMPG Flex download — desktop, mobile and OS —
         are published at{' '}
-        <a href={downloadUrl('SHA256SUMS.txt')} style={{ color: '#d4a017' }}>SHA256SUMS.txt</a>.
+        <a href={downloadUrl('SHA256SUMS.txt')} style={{ color: 'var(--brand-gold)' }}>SHA256SUMS.txt</a>.
       </p>
 
       <Callout label="Why the displayed size may look wrong">
@@ -127,7 +127,7 @@ export default function KioskOsInstallGuide() {
 
         <Step n={2} title="Write disk.img to the USB drive">
           <strong style={{ color: 'var(--rmpg-300)' }}>Windows (recommended path) —</strong> download{' '}
-          <a href="https://rufus.ie" target="_blank" rel="noreferrer" style={{ color: '#d4a017' }}>Rufus</a>{' '}
+          <a href="https://rufus.ie" target="_blank" rel="noreferrer" style={{ color: 'var(--brand-gold)' }}>Rufus</a>{' '}
           (a single portable .exe, no install). Run it, then: <strong>Device</strong> → your USB drive
           → <strong>SELECT</strong> → change the file-type dropdown in the bottom-right of the file
           picker from "Disk or ISO image" to <strong>All files (*.*)</strong> so <code>disk.img</code>{' '}
