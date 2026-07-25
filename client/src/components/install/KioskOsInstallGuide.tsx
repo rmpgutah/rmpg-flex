@@ -27,7 +27,39 @@ export default function KioskOsInstallGuide() {
       <GuideHeading>What it looks like</GuideHeading>
       <Screenshots shots={SHOTS} />
 
-      <GuideHeading>What you need</GuideHeading>
+      <GuideHeading>Two ways to install</GuideHeading>
+      <p className="text-xs leading-relaxed mb-2" style={{ color: 'var(--rmpg-400)' }}>
+        <strong style={{ color: 'var(--rmpg-300)' }}>No USB stick (easiest, if the machine already
+        runs Windows)</strong> — run the included installer from Windows and RMPG Flex OS is added as a
+        second option on the boot menu. Nothing is repartitioned, Windows stays exactly as it is, and
+        Windows remains the default so an unattended reboot always comes back up normally. This works
+        because the OS loads entirely into RAM, so it needs no partition of its own — just two files and
+        a boot entry. Jump to <em>Installing from Windows</em> below.
+      </p>
+      <p className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-400)' }}>
+        <strong style={{ color: 'var(--rmpg-300)' }}>USB stick</strong> — for a bare machine, a wiped
+        unit, or any install where you want the terminal to be the only thing on the device. Follow the
+        numbered procedure below.
+      </p>
+
+      <GuideHeading>Installing from Windows (no USB)</GuideHeading>
+      <Bullets
+        items={[
+          <>Requires <strong>UEFI boot mode</strong> and <strong>Secure Boot disabled</strong> (F2 at the Panasonic splash → Security → Secure Boot → Disabled → F10). The installer checks both and stops with instructions rather than half-installing.</>,
+          <>Extract the downloaded <code>.zip</code>, then double-click <strong>INSTALL - Double-click me.bat</strong> and approve the administrator prompt.</>,
+          <>It copies the OS to <code>C:\RMPG-Flex-OS</code>, installs a small bootloader, backs up your current boot configuration, and adds a <strong>RMPG Flex OS</strong> entry to the boot menu.</>,
+          <>Restart. A 10-second menu appears — pick RMPG Flex OS, or wait and Windows starts as usual.</>,
+          <>To remove it completely, run <strong>Uninstall-RmpgFlexOS.ps1</strong> as Administrator.</>,
+        ]}
+      />
+      <Callout label="Untested on hardware">
+        The no-USB installer modifies the boot configuration of a working machine. It backs up the boot
+        record first and is fully reversible, but it has <strong>not yet been run on a physical FZ-55</strong> —
+        validate it on a spare or non-critical unit before using it on a machine you depend on. The USB
+        procedure below is the conservative choice until that validation is done.
+      </Callout>
+
+      <GuideHeading>What you need (USB method)</GuideHeading>
       <Bullets
         items={[
           <>Panasonic Toughbook FZ-55 (Mk1 or Mk2) with AC power connected</>,
@@ -38,7 +70,7 @@ export default function KioskOsInstallGuide() {
         ]}
       />
 
-      <GuideHeading>Procedure</GuideHeading>
+      <GuideHeading>Procedure (USB method)</GuideHeading>
       <div className="space-y-0">
         <Step n={1} title="Extract the image">
           The download is a <code>.zip</code> containing a single file, <code>disk.img</code> — the
