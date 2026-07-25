@@ -768,6 +768,25 @@ COGHASH
       rm -f /buildroot-src/.cog-needs-dirclean
     fi
 
+    # Packages built BEFORE the desktop fragment was introduced were configured
+    # without X11 and without desktop OpenGL, and Buildroot will not reconfigure
+    # them on its own because their stamp files already exist. That surfaces as
+    # baffling downstream failures rather than anything pointing at the cause —
+    # observed for real: libgtk3 configure died on "cairo-xlib found: NO"
+    # because cairo had been built in the kiosk era when BR2_PACKAGE_XORG7 was
+    # off, and pango kept emitting a .gir long after introspection was turned
+    # back off. Force-reconfigure the X/GL-sensitive packages the first time a
+    # desktop build runs against a kiosk-era output tree.
+    DESKTOP_MARKER=/build-output/.rmpg-desktop-enabled
+    if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ] && [ ! -f "$DESKTOP_MARKER" ]; then
+      echo "First desktop build against this output tree — reconfiguring X/GL-sensitive packages ..."
+      for pkg in mesa3d cairo libepoxy pango libgtk3; do
+        echo "  dirclean: $pkg"
+        make -C /build-output "$pkg-dirclean" >/dev/null 2>&1 || true
+      done
+      touch "$DESKTOP_MARKER"
+    fi
+
     echo "Building (this takes a while on first run) ..."
     make -C /build-output
 
