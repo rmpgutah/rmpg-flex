@@ -70,29 +70,74 @@ cd "$REPO_DIR"
 echo "Uploading kernel ..."
 npx wrangler r2 object put "$BUCKET/$KERNEL_NAME" --file="$KERNEL" --remote >/dev/null
 
-# NOTE ON THE LARGE UPLOAD (observed 2026-07-25):
-# `wrangler r2 object put` on the ~244 MiB rootfs stalled for 1h21m without
-# completing or erroring, while the 13 MB kernel uploaded in seconds on the same
-# run. It is a single-shot PUT with no resume and no progress output, so a slow
-# or lossy uplink looks identical to a hang — and killing it leaves the payload
-# absent while the kernel is already up.
+# THE ROOTFS IS UPLOADED IN CHUNKS, NOT AS ONE OBJECT.
 #
-# That partial state is SAFE by construction: the manifest is written last, so a
-# terminal can never discover a release whose payload did not finish uploading.
-# Do not reorder these steps.
+# `wrangler r2 object put` on the ~244 MiB rootfs stalled for 1h21m twice
+# without completing or erroring, while the 13 MB kernel uploaded in seconds on
+# the same runs. It is a single-shot PUT with no resume and no progress output,
+# so a slow or lossy uplink is indistinguishable from a hang.
 #
-# If this stalls, the workarounds in preference order are:
-#   1. Re-run — the kernel step is idempotent and quick, so only the rootfs
-#      retries.
-#   2. Upload the rootfs from a machine with better upstream bandwidth, then
-#      re-run with SKIP_PAYLOAD=1 to write just the manifest.
-#   3. Use the Cloudflare dashboard's R2 uploader, which does multipart.
+# Chunking fixes the same problem at BOTH ends, which is why it is worth doing
+# properly rather than retrying:
+#   * Publishing: each part is small enough to succeed or fail fast, and a
+#     re-run skips parts already uploaded instead of restarting 244 MiB.
+#   * Installing: a terminal on field Wi-Fi downloads and verifies one part at a
+#     time and can resume. A single 250 MB GET that dies at 90% previously threw
+#     the whole transfer away — on the exact connection these terminals have.
+#
+# 16 MiB parts: small enough that one failure costs seconds, large enough that a
+# 244 MiB payload is ~16 requests rather than hundreds.
+CHUNK_MB="${CHUNK_MB:-16}"
+
 if [ "${SKIP_PAYLOAD:-0}" = "1" ]; then
   echo "SKIP_PAYLOAD=1 — assuming payloads are already uploaded; writing the manifest only."
+  # Recompute the chunk list so the manifest still describes reality.
+  CHUNK_DIR="$(mktemp -d -t rmpg-os-chunks)"
+  split -b "${CHUNK_MB}m" "$ROOTFS" "$CHUNK_DIR/part-"
 else
-  echo "Uploading root filesystem (large — see the note in this script if it stalls) ..."
-  npx wrangler r2 object put "$BUCKET/$ROOTFS_NAME" --file="$ROOTFS" --remote >/dev/null
+  CHUNK_DIR="$(mktemp -d -t rmpg-os-chunks)"
+  echo "Splitting the root filesystem into ${CHUNK_MB} MiB parts ..."
+  # split's default suffixes are alphabetic (part-aa, part-ab, ...), which sort
+  # correctly lexically, so `cat` in glob order reassembles the original exactly
+  # — verified byte-for-byte against the source with sha256. Two letters allow
+  # 676 parts; a 244 MiB payload at 16 MiB each uses 16.
+  split -b "${CHUNK_MB}m" "$ROOTFS" "$CHUNK_DIR/part-"
+
+  CHUNK_TOTAL="$(ls "$CHUNK_DIR" | wc -l | tr -d ' ')"
+  echo "Uploading $CHUNK_TOTAL parts ..."
+  n=0
+  for part in "$CHUNK_DIR"/part-*; do
+    n=$((n + 1))
+    part_name="kiosk-os-${VERSION}-rootfs.part-$(basename "$part" | sed 's/^part-//')"
+    printf "  [%2d/%2d] %s ... " "$n" "$CHUNK_TOTAL" "$part_name"
+    # Skip parts already present so an interrupted publish resumes rather than
+    # re-uploading everything.
+    if npx wrangler r2 object get "$BUCKET/$part_name" --remote --file=/dev/null >/dev/null 2>&1; then
+      echo "already uploaded"
+      continue
+    fi
+    if npx wrangler r2 object put "$BUCKET/$part_name" --file="$part" --remote >/dev/null 2>&1; then
+      echo "ok"
+    else
+      echo "FAILED"
+      echo "ERROR: part $part_name failed to upload. Re-run this script — completed parts are skipped." >&2
+      rm -rf "$CHUNK_DIR"
+      exit 1
+    fi
+  done
 fi
+
+# Per-part digests go in the manifest so the terminal can verify each part as it
+# arrives and re-fetch just the bad one, instead of discovering corruption only
+# after reassembling the whole 244 MiB.
+CHUNK_LIST=""
+for part in "$CHUNK_DIR"/part-*; do
+  suffix="$(basename "$part" | sed 's/^part-//')"
+  CHUNK_LIST="${CHUNK_LIST}rootfs_part=${BASE_URL}/kiosk-os-${VERSION}-rootfs.part-${suffix} $(sha "$part")
+"
+done
+CHUNK_COUNT="$(ls "$CHUNK_DIR" | wc -l | tr -d ' ')"
+rm -rf "$CHUNK_DIR"
 
 MANIFEST_FILE="$(mktemp -t rmpg-os-manifest)"
 cat > "$MANIFEST_FILE" <<MANIFEST
@@ -101,8 +146,9 @@ cat > "$MANIFEST_FILE" <<MANIFEST
 version=$VERSION
 kernel_url=$BASE_URL/$KERNEL_NAME
 kernel_sha256=$KERNEL_SHA
-rootfs_url=$BASE_URL/$ROOTFS_NAME
 rootfs_sha256=$ROOTFS_SHA
+rootfs_parts=$CHUNK_COUNT
+$CHUNK_LIST
 MANIFEST
 
 echo "Uploading manifest ..."

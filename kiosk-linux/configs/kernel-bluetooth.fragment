@@ -1,0 +1,22 @@
+# kiosk-linux/configs/kernel-bluetooth.fragment
+# Bluetooth for the FZ-55. Confirmed on the Mk3 datasheet: "Bluetooth v5.3
+# (Class 1)". Mk1/Mk2 also ship BT — it rides on the same Intel wireless combo
+# card as Wi-Fi (9560 / AX201 / AX211 all include a Bluetooth radio sharing the
+# antenna and, for the two newer chips, the same iwlwifi firmware blob), so
+# there is zero additional firmware cost — kernel-wifi.fragment's existing
+# iwlwifi firmware selections already cover the BT side of these combo chips.
+#
+# Genuinely required rather than a nice-to-have: with no kernel BT stack at
+# all (which is what existed before this fragment), Bluetooth peripherals —
+# barcode-scanner accessories, wireless headsets for radio traffic — simply
+# cannot pair, with no error message a user would ever see; the radio just
+# never appears.
+#
+# Symbols verified against the real pinned kernel 6.6.63 source.
+CONFIG_BT=y
+CONFIG_BT_HCIBTUSB=y
+# Intel-specific firmware/vendor-command handling. Without this the generic
+# HCI USB driver can still enumerate an Intel BT radio but cannot load its
+# firmware, so it stays stuck in an inert bootloader-only state.
+CONFIG_BT_INTEL=y
+CONFIG_BT_LE=y

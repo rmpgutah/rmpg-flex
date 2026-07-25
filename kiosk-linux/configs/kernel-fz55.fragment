@@ -14,14 +14,23 @@
 # - USB 3.x xHCI ports (also how the OS image itself boots from a USB stick,
 #   and keyboard/touchscreen input for the kiosk) → xhci + usb-storage + HID.
 CONFIG_DRM_I915=y
-# i915 loads GuC/HuC/DMC firmware opportunistically when present; basic KMS
-# modesetting (all this kiosk needs) works without any firmware blobs, so no
-# linux-firmware package is required for bring-up.
 CONFIG_DRM_I915_USERPTR=y
+# CORRECTION (2026-07-25 hardware audit): this previously claimed i915 needs no
+# firmware blobs. That holds for the Mk1's UHD 620 (Whiskey Lake), where bare
+# KMS works — but NOT for Mk2 (Iris Xe / Tiger Lake) or Mk3 (Iris Xe / Raptor
+# Lake), which need DMC firmware for display power management. Missing it
+# degrades or removes display power states: flicker, no low-power display
+# entry, and worse battery life on a terminal expected to last a shift.
+# BR2_PACKAGE_LINUX_FIRMWARE_I915 in configs/desktop.fragment supplies the
+# i915/ blob directory (adlp_dmc* for Raptor Lake's Alder Lake-P display IP,
+# tgl_dmc* for Mk2). Firmware is loaded opportunistically, so the same image
+# still boots fine under QEMU where no Intel GPU exists.
 
-# Networking (wired — the kiosk deliberately has no Wi-Fi stack yet; iwlwifi
-# needs out-of-tree firmware blobs and a wpa_supplicant userspace this image
-# doesn't carry).
+# Networking (wired). Wi-Fi (all 3 generations use an Intel combo card) is
+# covered separately by kernel-wifi.fragment + kernel-bluetooth.fragment —
+# this comment used to say "no Wi-Fi stack yet"; that stopped being true once
+# those fragments were added and the comment was never updated. Fixed here
+# rather than left contradicting the actual config.
 CONFIG_E1000E=y
 
 # Storage: NVMe + AHCI/SATA + the SCSI-disk layer both sit on.
@@ -49,3 +58,101 @@ CONFIG_HID_MULTITOUCH=y
 CONFIG_VFAT_FS=y
 CONFIG_NLS_CODEPAGE_437=y
 CONFIG_NLS_ISO8859_1=y
+
+# ── Findings from the real Mk3 datasheet (fetched 2026-07-25 from
+# ap.connect.panasonic.com), cross-checked against Mk1/Mk2 listings — every
+# symbol below verified present in the pinned 6.6.63 kernel source before
+# being added; none of this was guessed. ──────────────────────────────────
+
+# Webcam: Mk1/Mk2/Mk3 all ship a UVC-class camera (Mk3: "2MP (1080p) w/
+# privacy cover — Infrared with Windows Hello support"). RMPG Flex has its own
+# field-camera capture workflow; without this the internal webcam is
+# invisible to the OS entirely, not merely low quality.
+# MEDIA_SUPPORT is a `menuconfig` gate, off by default in a minimal config —
+# without it USB_VIDEO_CLASS cannot even be selected, let alone compiled.
+# The gate chain here is deeper than it looks and cost a build cycle to find:
+# MEDIA_SUPPORT alone is NOT enough. Setting only MEDIA_SUPPORT caused
+# MEDIA_SUPPORT_FILTER to auto-enable (it defaults y when !EXPERT), which HIDES
+# all camera drivers unless the specific category is also selected — so
+# USB_VIDEO_CLASS silently vanished from the generated .config with no error.
+# The full chain is MEDIA_SUPPORT -> MEDIA_CAMERA_SUPPORT (the category
+# filter) -> MEDIA_USB_SUPPORT (the `if USB && MEDIA_SUPPORT` menuconfig
+# guarding drivers/media/usb) -> VIDEO_DEV (V4L2 core) -> USB_VIDEO_CLASS.
+CONFIG_MEDIA_SUPPORT=y
+CONFIG_MEDIA_CAMERA_SUPPORT=y
+CONFIG_MEDIA_USB_SUPPORT=y
+CONFIG_VIDEO_DEV=y
+CONFIG_USB_VIDEO_CLASS=y
+CONFIG_USB_VIDEO_CLASS_INPUT_EVDEV=y
+
+# MicroSDXC card reader (Mk3 spec: "MicroSDXC UHS-I"; present on Mk1/Mk2 too).
+CONFIG_MMC=y
+CONFIG_MMC_BLOCK=y
+CONFIG_MMC_SDHCI=y
+CONFIG_MMC_SDHCI_PCI=y
+
+# I2C + touch/pen digitizer. The Mk3 FHD panel is "capacitive touch (1000
+# nit)" with "4 models (glove, touch, pen, pen/touch)" and a stylus — a
+# genuinely different input path from the plain HID multitouch already
+# enabled above. Intel's mobile platforms expose their I2C-attached touch
+# controllers through the "Designware" I2C core (LPSS), not a discrete PCI
+# device, so that specific I2C host driver is required, not just generic I2C.
+CONFIG_I2C=y
+CONFIG_I2C_DESIGNWARE_CORE=y
+CONFIG_I2C_DESIGNWARE_PLATFORM=y
+# Wacom-class digitizer for the pen/stylus models. HID_MULTITOUCH (above)
+# covers the capacitive touch layer; a Wacom-protocol pen is a separate HID
+# usage this driver is needed to decode.
+CONFIG_HID_WACOM=y
+
+# USB4/Thunderbolt (Mk3 confirmed: "USB-C Thunderbolt 4, 40Gbps"; Mk2 listings
+# also show a Thunderbolt 4 USB-C port). Without this, a Thunderbolt-only dock
+# or accessory plugged into that port is invisible — plain USB devices on the
+# same port still work via xHCI's USB fallback mode, so this specifically
+# affects Thunderbolt-mode docks and DisplayPort-alt-mode external monitors.
+CONFIG_USB4=y
+
+# Serial-over-USB for the optional dedicated GPS module (Mk3: "Optional
+# dedicated GPS (u-blox NEO-M8N)"). u-blox GPS modules on this class of
+# hardware expose themselves as a USB CDC-ACM serial port (/dev/ttyACM0)
+# carrying NMEA/UBX sentences; RMPG Flex has its own GPS ingestion pipeline
+# that needs a real serial device to read from. Also generically useful for
+# the optional WWAN modem's AT-command port (see below).
+CONFIG_USB_ACM=y
+
+# Optional WWAN (Mk3: "Optional 4G — 4G (LTE, LTE-A)"; Dual SIM Nano-SIM +
+# eSIM). Kernel-side only — this enables the network/serial device nodes a
+# WWAN modem needs to appear at all (as a QMI or MBIM network interface, or a
+# plain AT-command serial port), but does NOT include a userspace modem
+# manager (ModemManager). Units without the WWAN xPAK populated simply never
+# see these drivers match anything, at zero cost. Units WITH it get basic
+# connectivity; full cellular management (APN config, signal UI, SIM PIN)
+# would be separate, larger scoped work if RMPG's purchased units actually
+# have this option enabled.
+CONFIG_USB_SERIAL=y
+CONFIG_USB_SERIAL_OPTION=y
+CONFIG_USB_NET_DRIVERS=y
+CONFIG_USB_USBNET=y
+CONFIG_USB_NET_QMI_WWAN=y
+CONFIG_USB_NET_CDC_MBIM=y
+
+# ── Security (Mk3 datasheet: "Secured-core PC", "TPM v.2.0", "NIST BIOS
+# compliant") ────────────────────────────────────────────────────────────
+# TPM 2.0. Modern "Secured-core PC" platforms (Mk3, and likely Mk2 given its
+# listing also shows "TPM 2.0") expose the TPM over the UEFI-standard CRB
+# (Command Response Buffer) interface rather than the older TIS interface —
+# both are enabled since which one a given firmware/BIOS revision uses is not
+# something verifiable without the physical unit, and enabling both costs
+# nothing.
+CONFIG_TCG_TPM=y
+CONFIG_TCG_TIS=y
+CONFIG_TCG_TIS_CORE=y
+CONFIG_TCG_CRB=y
+
+# IOMMU (Intel VT-d). Part of what "Secured-core PC" means on the Windows
+# side (Kernel DMA Protection), and independently good practice here because
+# Thunderbolt (enabled above) is a DMA-capable external bus — an IOMMU is the
+# standard mitigation against a malicious Thunderbolt device reading memory it
+# should not be able to reach.
+CONFIG_INTEL_IOMMU=y
+CONFIG_INTEL_IOMMU_DEFAULT_ON=y

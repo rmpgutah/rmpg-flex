@@ -151,3 +151,46 @@ BR2_PACKAGE_LIBERATION=y
 # Needed because a patrol terminal left unattended sits there displaying live
 # dispatch, warrant and person data to anyone who walks past the vehicle.
 BR2_PACKAGE_XLIB_LIBXSCRNSAVER=y
+
+# ── FZ-55 hardware enablement, userspace side (2026-07-25 hardware audit) ────
+# Kernel-side counterparts live in configs/kernel-{audio,bluetooth,fz55}.fragment.
+# Every symbol below was verified to exist in the pinned Buildroot 2024.02.9
+# checkout before being added.
+
+# Intel i915 GPU firmware — DMC (Display Microcontroller), GuC and HuC blobs.
+#
+# NOT optional on the newer FZ-55 generations, despite the older comment in
+# kernel-fz55.fragment claiming i915 needs no firmware. That was true for the
+# Mk1's UHD 620 (Whiskey Lake), where basic KMS works bare. It is NOT true for
+# Mk2 (Iris Xe / Tiger Lake) or Mk3 (Iris Xe / Raptor Lake): those need DMC
+# firmware for display power management, and without it i915 runs with display
+# power states degraded or unavailable — which presents as flicker, failure to
+# reach low-power display states, and measurably worse battery life on a
+# vehicle terminal that is supposed to last a shift.
+# Confirmed present in the pinned linux-firmware-20240115 tarball:
+# i915/adlp_dmc*.bin (Alder Lake-P — the display IP Raptor Lake shares) and
+# i915/tgl_dmc*.bin (Tiger Lake, Mk2).
+BR2_PACKAGE_LINUX_FIRMWARE_I915=y
+
+# Audio userspace. The kernel gives a sound device; something has to be able to
+# set the mixer or every stream comes out muted at zero gain, which is
+# indistinguishable from "audio does not work" to an officer.
+# alsa-utils brings amixer/alsactl (used by the shell's volume control) and
+# alsa-lib is what any application links against to open a PCM device at all.
+BR2_PACKAGE_ALSA_UTILS=y
+# alsa-utils installs NOTHING by default beyond a couple of tools — each
+# command is its own sub-option. amixer specifically was absent from the built
+# image despite BR2_PACKAGE_ALSA_UTILS=y, because it has to be asked for by
+# name. amixer is the one the taskbar volume control actually shells out to;
+# alsactl saves/restores mixer state across reboots (otherwise the terminal
+# comes back muted every boot), and aplay is how any alert sound gets played.
+BR2_PACKAGE_ALSA_UTILS_AMIXER=y
+BR2_PACKAGE_ALSA_UTILS_ALSACTL=y
+BR2_PACKAGE_ALSA_UTILS_APLAY=y
+BR2_PACKAGE_ALSA_LIB=y
+
+# Bluetooth userspace. bluez5_utils provides bluetoothd — without the daemon the
+# kernel radio exists but nothing can pair, scan, or hold a connection, so a
+# Bluetooth barcode scanner or headset is unusable even though the hardware is
+# fully enabled.
+BR2_PACKAGE_BLUEZ5_UTILS=y
