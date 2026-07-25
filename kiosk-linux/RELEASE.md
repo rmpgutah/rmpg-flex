@@ -11,12 +11,19 @@ the Colima/Docker toolchain this requires).
 
 1. **Build**: `cd kiosk-linux && ./build.sh` — produces
    `output/images/{bzImage,rootfs.cpio.gz}`.
-2. **Package**: `cd output/images && tar czf kiosk-linux-os-<version>.tar.gz disk.img
-   bzImage rootfs.cpio.gz` — `<version>` is this OS image's own release number,
-   independent of the RMPG Flex app version — this is a separate artifact with its
-   own release lifecycle. **`disk.img` is what real hardware installs use** (it
-   carries the bootloader and both A/B slots); `bzImage` + `rootfs.cpio.gz` are
-   kept in the tarball for QEMU/development use.
+2. **Package**: `cd output/images && tar czf kiosk-linux-os-<version>.tar.gz disk.img`
+   — `<version>` is this OS image's own release number, independent of the RMPG
+   Flex app version; this is a separate artifact with its own release lifecycle.
+
+   **Ship `disk.img` ONLY.** It already contains the bootloader plus a full
+   kernel + rootfs in *each* of the two A/B slots, so adding the standalone
+   `bzImage` and `rootfs.cpio.gz` ships the same data a third and fourth time.
+   Doing that pushed the 1.2.0 tarball to 354 MiB and **`wrangler r2 object put`
+   hard-rejects anything over 300 MiB** ("Wrangler only supports uploading files
+   up to 300 MiB in size" — it fails in milliseconds, so a "finished" command is
+   not evidence the upload happened; always confirm with Step 4). disk.img alone
+   compresses to ~236 MiB, under the cap and a far smaller field download.
+   `disk.img` also boots directly under QEMU, so developers lose nothing.
 3. **Upload**: `wrangler r2 object put rmpg-flex-downloads/kiosk-linux-os-<version>.tar.gz
    --file=kiosk-linux-os-<version>.tar.gz --remote`
 4. **Verify the upload landed** (independent of whether the site code has deployed
@@ -40,9 +47,10 @@ the Colima/Docker toolchain this requires).
 ## Current release
 
 - `kiosk-linux-os-1.2.0.tar.gz` — **the first release that actually renders the
-  RMPG Flex console.** Contains `disk.img` (the flashable A/B-slot disk image
-  field installs use) alongside the existing `bzImage` + `rootfs.cpio.gz`
-  development artifacts. Verified by a real QEMU screenshot showing the live
+  RMPG Flex console.** Contains `disk.img` only (the flashable A/B-slot disk
+  image field installs use, which also boots directly under QEMU — see the
+  packaging note above for why the standalone kernel/rootfs are no longer
+  shipped). Verified by a real QEMU screenshot showing the live
   login screen — warning banner, seal, login panel, and the device panel
   reporting Server/Connection Online — with zero segfaults across the run.
   - **Root cause of the 1.1.0 "loads pages but renders blank white"

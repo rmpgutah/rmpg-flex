@@ -28,7 +28,12 @@ ip link set eth0 up 2>/dev/null
 # udhcpc -n (exit if lease not obtained) -q (quit after obtaining lease) blocks
 # until it succeeds or gives up — its exit code is a trustworthy signal.
 if udhcpc -i eth0 -n -q -t 5 -T 3 >/tmp/udhcpc.log 2>&1; then
-  if nc -w 5 rmpgutah.us 443 </dev/null >/dev/null 2>&1; then
+  # -z: connect and close immediately, reporting the result as an exit code.
+  # -w 5: bound the connect so a dead network cannot stall boot.
+  # BOTH flags require BusyBox's NC_110_COMPAT and NC_EXTRA options — see
+  # configs/busybox-net.fragment. Plain CONFIG_NC=y builds a minimal nc that
+  # accepts no flags at all and silently turns this check into a usage error.
+  if nc -w 5 -z rmpgutah.us 443 >/dev/null 2>&1; then
     echo "KIOSK_LINUX_NET_OK" | tee /tmp/kiosk-net-marker.log
   else
     echo "KIOSK_LINUX_NET_FAILED (dhcp lease acquired, but TCP 443 reachability check failed)" | tee /tmp/kiosk-net-marker.log

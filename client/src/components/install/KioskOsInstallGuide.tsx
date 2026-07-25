@@ -28,10 +28,11 @@ export default function KioskOsInstallGuide() {
       <GuideHeading>Procedure</GuideHeading>
       <div className="space-y-0">
         <Step n={1} title="Extract the image">
-          Unpack the downloaded archive. The file you need for a hardware install is <code>disk.img</code>:
+          Unpack the downloaded archive. It contains a single file, <code>disk.img</code> — the complete
+          bootable image, bootloader and both recovery slots included:
           <Cmd>{'tar xzf kiosk-linux-os-1.2.0.tar.gz'}</Cmd>
-          The <code>bzImage</code> and <code>rootfs.cpio.gz</code> files in the same archive are for
-          QEMU/development use — ignore them for a Toughbook install.
+          The archive is about 236 MB and expands to a 512 MB image, so make sure you have roughly 1 GB
+          free before extracting.
         </Step>
 
         <Step n={2} title="Write disk.img to the USB drive">
