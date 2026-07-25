@@ -56,7 +56,7 @@ const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
 // Built at render time (not module scope) — index 4 is the theme-resolved
 // gold series color, only correct once the theme class is stamped on <html>.
 function issueBarColors(): string[] {
-  return ['#888888', '#555555', 'var(--rmpg-500)', '#888888', chartSeriesColors()[2]];
+  return ['#888888', '#555555', 'var(--text-muted)', '#888888', chartSeriesColors()[2]];
 }
 
 const STATUS_DOT_COLORS: Record<string, string> = {
@@ -499,8 +499,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={maintenance_cost_trend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
-                <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
+                <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => `$${v}`} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(value: any) => [`$${Number(value).toFixed(0)}`, 'Cost']} />
                 <Bar dataKey="total_cost" fill="#888888" radius={[2, 2, 0, 0]} />
@@ -520,8 +520,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={fuel_economy_trend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
-                <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
+                <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => `${v} mpg`} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(value: any) => [value != null ? `${value} mpg` : 'N/A', 'Avg MPG']} />
                 <Line type="monotone" dataKey="avg_mpg" stroke="#22c55e" strokeWidth={2} dot={{ r: 3, fill: '#22c55e' }} connectNulls />
@@ -620,7 +620,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: 'var(--rmpg-500)', fontSize: 8 }}
+                  tick={{ fill: 'var(--text-muted)', fontSize: 8 }}
                   tickLine={false}
                   axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => {
@@ -628,7 +628,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     return `${d.getMonth() + 1}/${d.getDate()}`;
                   }}
                 />
-                <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
                 <Tooltip
                   {...CHART_TOOLTIP_STYLE}
                   formatter={(value: any) => [`${value} mi`, 'Miles']}
@@ -713,7 +713,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: 'var(--rmpg-500)', fontSize: 8 }}
+                  tick={{ fill: 'var(--text-muted)', fontSize: 8 }}
                   tickLine={false}
                   axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => {
@@ -722,7 +722,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   }}
                 />
                 <YAxis
-                  tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }}
+                  tick={{ fill: 'var(--text-muted)', fontSize: 9 }}
                   tickLine={false}
                   axisLine={{ stroke: 'var(--border-subtle)' }}
                   allowDecimals={false}
@@ -881,8 +881,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-              <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
-              <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
+              <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
               <Tooltip
                 {...CHART_TOOLTIP_STYLE}
@@ -919,8 +919,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={monthlySpend.map((m: any) => ({ ...m, month: m.month.substring(5) }))}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-              <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
-              <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
+              <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
               <Tooltip
                 {...CHART_TOOLTIP_STYLE}
@@ -1054,7 +1054,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       <tr key={v.id} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
                         <td className="py-1 pr-1">
                           <div className="flex items-center gap-1">
-                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_DOT_COLORS[v.status] || 'var(--rmpg-500)' }} />
+                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_DOT_COLORS[v.status] || 'var(--text-muted)' }} />
                             <span className="font-mono font-bold text-rmpg-100">{v.vehicle_number}</span>
                           </div>
                         </td>

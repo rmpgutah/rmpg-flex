@@ -183,12 +183,12 @@ export const INCIDENT_CATEGORY_COLORS: Record<string, string> = {
   WRNT: '#7c3aed',
   HZMT: '#fbbf24',
   ANML: '#a3e635',
-  CALL: 'var(--rmpg-500)',
+  CALL: 'var(--text-muted)',
 };
 
 export function getIncidentCategoryColor(type: string): string {
   const { category } = getIncidentCategory(type);
-  return INCIDENT_CATEGORY_COLORS[category] || 'var(--rmpg-500)';
+  return INCIDENT_CATEGORY_COLORS[category] || 'var(--text-muted)';
 }
 
 // ── Incident Category Glyphs (lucide-style monochrome SVG) ───────

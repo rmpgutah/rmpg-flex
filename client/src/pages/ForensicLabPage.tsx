@@ -1314,7 +1314,9 @@ export default function ForensicLabPage() {
                 const custodyLog = meta.custody_log || [];
                 const CUSTODY_ACTIONS = ['received', 'transferred', 'stored', 'analyzed', 'returned'] as const;
                 const actionColors: Record<string, string> = {
-                  received: 'var(--text-muted)', transferred: 'var(--sev-warn)', stored: 'var(--sev-special-soft)', analyzed: 'var(--sev-ok-soft)', returned: 'var(--rmpg-500)',
+                  // `returned` must not reuse --text-muted: it is `received`'s color, and
+                  // the two are opposite ends of a custody transfer.
+                  received: 'var(--text-muted)', transferred: 'var(--sev-warn)', stored: 'var(--sev-special-soft)', analyzed: 'var(--sev-ok-soft)', returned: 'var(--text-secondary)',
                 };
                 return (
                   <div className="panel-beveled bg-surface-sunken p-3 space-y-3">
@@ -1347,14 +1349,14 @@ export default function ForensicLabPage() {
                           {custodyLog.map((ev, i) => (
                             <div key={ev.id} className="flex gap-3 relative">
                               <div className="w-3 h-3 rounded-full border-2 flex-shrink-0 mt-0.5 z-10" style={{
-                                borderColor: actionColors[ev.action] || 'var(--rmpg-500)',
-                                backgroundColor: i === 0 ? (actionColors[ev.action] || 'var(--rmpg-500)') : 'var(--surface-overlay)',
+                                borderColor: actionColors[ev.action] || 'var(--text-muted)',
+                                backgroundColor: i === 0 ? (actionColors[ev.action] || 'var(--text-muted)') : 'var(--surface-overlay)',
                               }} />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm" style={{
-                                    backgroundColor: (actionColors[ev.action] || 'var(--rmpg-500)') + '20',
-                                    color: actionColors[ev.action] || 'var(--rmpg-500)',
+                                    backgroundColor: (actionColors[ev.action] || 'var(--text-muted)') + '20',
+                                    color: actionColors[ev.action] || 'var(--text-muted)',
                                   }}>{toDisplayLabel(ev.action)}</span>
                                   <span className="text-[10px] text-rmpg-300">
                                     <span className="text-rmpg-200 font-semibold">{ev.from_person}</span>

@@ -551,7 +551,7 @@ export default function HelpPage() {
                 borderLeft: active ? '3px solid var(--rmpg-400)' : '3px solid transparent',
               }}
             >
-              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? 'var(--rmpg-300)' : 'var(--rmpg-500)' }} />
+              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? 'var(--rmpg-300)' : 'var(--text-muted)' }} />
               <span className="text-[11px] font-medium">{item.label}</span>
             </button>
           );

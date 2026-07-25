@@ -226,7 +226,7 @@ export default function SecurityKeyManager() {
                 onClick={() => handleRevoke(cred.id)}
                 disabled={revoking === cred.id}
                 className="toolbar-btn flex items-center gap-1 text-[9px]"
-                style={{ color: revoking === cred.id ? 'var(--rmpg-500)' : '#ef4444' }}
+                style={{ color: revoking === cred.id ? 'var(--text-muted)' : '#ef4444' }}
                 title="Remove key"
               >
                 <Trash2 className="w-3 h-3" />

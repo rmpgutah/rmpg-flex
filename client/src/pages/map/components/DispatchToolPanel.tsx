@@ -98,7 +98,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
             className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
             style={{
               borderBottom: activeTab === tab.id ? '2px solid #d4a017' : '2px solid transparent',
-              color: activeTab === tab.id ? '#d4a017' : 'var(--rmpg-500)',
+              color: activeTab === tab.id ? '#d4a017' : 'var(--text-muted)',
               background: activeTab === tab.id ? 'var(--surface-base)' : 'transparent',
             }}
           >
@@ -262,7 +262,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                     style={{
                       borderRadius: 2,
                       borderColor: isoMinutes.includes(min) ? '#d4a017' : '#3a3a3a',
-                      color: isoMinutes.includes(min) ? '#d4a017' : 'var(--rmpg-500)',
+                      color: isoMinutes.includes(min) ? '#d4a017' : 'var(--text-muted)',
                       background: isoMinutes.includes(min) ? '#1a1a0d' : '#0a0a0a',
                     }}
                   >

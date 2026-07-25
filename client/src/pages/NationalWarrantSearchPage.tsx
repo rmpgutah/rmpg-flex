@@ -219,7 +219,7 @@ function coverageStroke(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return 'var(--sev-ok)';
     case 'pending': return 'var(--sev-warn)';
-    default: return 'var(--rmpg-600)';
+    default: return 'var(--text-muted)';
   }
 }
 function coverageHoverFill(status: CoverageStatus | undefined): string {

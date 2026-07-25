@@ -279,7 +279,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                       width: 16,
                       height: 16,
                       flexShrink: 0,
-                      color: active ? '#aaaaaa' : 'var(--rmpg-500)',
+                      color: active ? '#aaaaaa' : 'var(--text-muted)',
                       transition: 'color 0.1s',
                     }}
                   />

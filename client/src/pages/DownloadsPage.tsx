@@ -474,7 +474,7 @@ export default function DownloadsPage() {
               color: 'var(--rmpg-300)',
               borderRadius: 2,
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--border-default)'; e.currentTarget.style.borderColor = 'var(--rmpg-500)'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--border-default)'; e.currentTarget.style.borderColor = 'var(--border-strong)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-raised)'; e.currentTarget.style.borderColor = 'var(--border-subtle)'; }}
           >
             Open Web App
@@ -529,7 +529,7 @@ export default function DownloadsPage() {
                 onClick={() => setActiveTab(p)}
                 className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors"
                 style={{
-                  color: activeTab === p ? 'var(--accent-silver-400)' : 'var(--rmpg-600)',
+                  color: activeTab === p ? 'var(--accent-silver-400)' : 'var(--text-muted)',
                   borderBottom: activeTab === p ? '2px solid var(--accent-silver-400)' : '2px solid transparent',
                 }}
               >

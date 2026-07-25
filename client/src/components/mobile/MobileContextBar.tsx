@@ -66,7 +66,7 @@ export default function MobileContextBar({
           style={{
             fontSize: 10,
             fontFamily: 'var(--font-mono, monospace)',
-            color: radioChannel ? '#22c55e' : 'var(--rmpg-500)',
+            color: radioChannel ? '#22c55e' : 'var(--text-muted)',
             textTransform: 'uppercase',
             whiteSpace: 'nowrap',
           }}
@@ -100,7 +100,7 @@ export default function MobileContextBar({
           style={{
             fontSize: 10,
             fontFamily: 'var(--font-mono, monospace)',
-            color: gpsTracking ? '#22c55e' : 'var(--rmpg-500)',
+            color: gpsTracking ? '#22c55e' : 'var(--text-muted)',
           }}
         >
           {gpsTracking ? 'GPS' : ''}
