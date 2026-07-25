@@ -532,7 +532,7 @@ reports.get('/command-center', async (c) => {
 
   const kpis = {
     calls_today: await one(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`),
-    active_calls: await one(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${activeCallFilter()}`),
+    active_calls: await one(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE}`),
     avg_response_min: 0,
     units_available: await one("SELECT COUNT(*) AS n FROM units WHERE status = 'available'"),
     units_total: await one('SELECT COUNT(*) AS n FROM units'),
@@ -550,14 +550,22 @@ reports.get('/command-center', async (c) => {
   // call.location_address with a call_type/address fallback, so this fix
   // alone is enough — no client change needed.
   const active_calls = await list(
-    `SELECT id, call_number, incident_type, priority, status, location_address, created_at FROM calls_for_service WHERE ${activeCallFilter()} ORDER BY created_at DESC LIMIT 50`,
+    `SELECT id, call_number, incident_type, priority, status, location_address, created_at FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE} ORDER BY created_at DESC LIMIT 50`,
   );
   // units has call_sign / current_call_id — no unit_number or
   // current_call_number — so this threw "no such column: unit_number".
   // Aliased to keep the response shape this code intended.
   const units = await list('SELECT id, call_sign AS unit_number, status, current_call_id AS current_call_number FROM units ORDER BY call_sign LIMIT 200');
   const calls_by_hour = await list(
-    "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE date(created_at) = date('now') GROUP BY strftime('%H', created_at) ORDER BY hour",
+    // Both the day bucket AND the hour label must be Denver-local: the hour is
+    // what the chart's x-axis shows an operator, and raw strftime('%H') reads
+    // the UTC hour, shifting every call 6-7 hours from when it actually
+    // happened. Sibling queries in this file were already converted; this one
+    // was missed.
+    `SELECT ${denverHourExpr('created_at')} AS hour, COUNT(*) AS count
+       FROM calls_for_service
+      WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}
+      GROUP BY hour ORDER BY hour`,
   );
   const anomaly_alerts = await list('SELECT * FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0 ORDER BY created_at DESC LIMIT 20');
 

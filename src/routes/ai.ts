@@ -22,7 +22,6 @@ import {
   rankUnitsForCall, suggestUnits, analyzeCall, narrativeAssist, smartSearch,
   GPS_FRESH_WINDOW_S, type RawUnit, type CallContext,
 } from '../utils/dispatchAi';
-import { activeCallFilter } from '../utils/callStatus';
 
 const ai = new Hono<Env>();
 

@@ -22,6 +22,11 @@ export const CLOSED_CALL_STATUSES = [
   // Both spellings occur in live data.
   'cancelled',
   'canceled',
+  // reports.ts's KPI queries (`active_calls`, the recent-calls list) carried
+  // their own longer variant that alone excluded 'completed'. Folding those
+  // call sites into this module would have silently started counting completed
+  // calls as active, so the status belongs here rather than being dropped.
+  'completed',
 ] as const;
 
 /** A plain column reference: `status` or `alias.status`. Nothing else. */
