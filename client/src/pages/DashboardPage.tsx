@@ -31,6 +31,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { chartSeriesColors } from '../utils/chartPalette';
 import SpmGroup from './dashboard/SpmGroup';
 import DashboardViewSelector from './dashboard/DashboardViewSelector';
 import ServeSchedulerPanel from '../components/scheduler/ServeSchedulerPanel';
@@ -1873,6 +1874,7 @@ export default function DashboardPage() {
               const series = buildVolumeSeries(callVolume, 7);
               const weekTotal = series.reduce((sum, d) => sum + d.count, 0);
               const peak = series.reduce((m, d) => Math.max(m, d.count), 0);
+              const goldSeries = chartSeriesColors()[2];
               return (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -1886,8 +1888,8 @@ export default function DashboardPage() {
                     <AreaChart data={series} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#d4a017" stopOpacity={0.35} />
-                          <stop offset="95%" stopColor="#d4a017" stopOpacity={0.02} />
+                          <stop offset="5%" stopColor={goldSeries} stopOpacity={0.35} />
+                          <stop offset="95%" stopColor={goldSeries} stopOpacity={0.02} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" />
@@ -1897,9 +1899,9 @@ export default function DashboardPage() {
                         contentStyle={{ backgroundColor: 'var(--surface-raised)', border: '1px solid var(--border-strong)', borderRadius: '2px', color: 'var(--text-primary)', fontSize: '11px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', padding: '8px 12px' }}
                         labelStyle={{ color: 'var(--spm-text-muted)', fontSize: '10px', marginBottom: '4px' }}
                         formatter={(value: any) => [`${value} calls`, '']}
-                        cursor={{ stroke: '#d4a017', strokeWidth: 1, strokeDasharray: '4 4' }}
+                        cursor={{ stroke: goldSeries, strokeWidth: 1, strokeDasharray: '4 4' }}
                       />
-                      <Area type="monotone" dataKey="count" stroke="#d4a017" strokeWidth={2} fill="url(#volumeGradient)" dot={{ fill: '#d4a017', r: 2, strokeWidth: 0 }} activeDot={{ fill: 'rgb(var(--brand-gold-300-rgb))', r: 5, strokeWidth: 2, stroke: 'var(--spm-text)' }} animationDuration={700} />
+                      <Area type="monotone" dataKey="count" stroke={goldSeries} strokeWidth={2} fill="url(#volumeGradient)" dot={{ fill: goldSeries, r: 2, strokeWidth: 0 }} activeDot={{ fill: 'rgb(var(--brand-gold-300-rgb))', r: 5, strokeWidth: 2, stroke: 'var(--spm-text)' }} animationDuration={700} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -1960,8 +1962,9 @@ export default function DashboardPage() {
         const maxZone = callsByZone.reduce((m, z) => Math.max(m, z.count), 0) || 1;
         const zoneTotal = callsByZone.reduce((sum, z) => sum + z.count, 0);
         // Gold→red ramp by relative volume so hot zones read at a glance.
+        const goldTier = chartSeriesColors()[2];
         const heatColor = (ratio: number) =>
-          ratio >= 0.75 ? 'var(--stat-accent-red-bright)' : ratio >= 0.5 ? 'var(--stat-accent-amber)' : ratio >= 0.25 ? '#d4a017' : 'var(--spm-text-muted)';
+          ratio >= 0.75 ? 'var(--stat-accent-red-bright)' : ratio >= 0.5 ? 'var(--stat-accent-amber)' : ratio >= 0.25 ? goldTier : 'var(--spm-text-muted)';
         return (
           <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Calls by zone">
             <PanelTitleBar title="CALLS BY ZONE — LAST 7 DAYS" icon={MapIcon}>
@@ -2030,10 +2033,10 @@ export default function DashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" horizontal={false} />
                   <XAxis type="number" tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }} allowDecimals={false} />
                   <YAxis type="category" dataKey="type" width={100} tick={{ fill: 'var(--spm-text)', fontSize: 9 }} />
-                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: any) => [`${value} calls`, '']} cursor={{ fill: 'rgba(212, 160, 23, 0.06)' }} />
-                  <Bar dataKey="count" radius={[0, 3, 3, 0]} fill="#d4a017" animationDuration={600}>
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: any) => [`${value} calls`, '']} cursor={{ fill: `color-mix(in srgb, ${chartSeriesColors()[2]} 6%, transparent)` }} />
+                  <Bar dataKey="count" radius={[0, 3, 3, 0]} fill={chartSeriesColors()[2]} animationDuration={600}>
                     {callsByType.slice(0, 8).map((_, i) => (
-                      <Cell key={i} fill={i === 0 ? '#d4a017' : i < 3 ? 'rgb(var(--brand-gold-600-rgb))' : 'var(--spm-text-muted)'} />
+                      <Cell key={i} fill={i === 0 ? chartSeriesColors()[2] : i < 3 ? 'rgb(var(--brand-gold-600-rgb))' : 'var(--spm-text-muted)'} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -2201,7 +2204,7 @@ export default function DashboardPage() {
                   <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                   <Legend wrapperStyle={{ fontSize: '10px', color: '#888' }} />
                   <Bar dataKey="calls" name="Calls" fill="var(--spm-text-muted)" radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="incidents" name="Incidents" fill="#d4a017" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="incidents" name="Incidents" fill={chartSeriesColors()[2]} radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
               {/* Active shift highlight */}
@@ -2330,7 +2333,7 @@ export default function DashboardPage() {
           {/* Crime Type Breakdown */}
           <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/incidents')}>
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2" style={{ background: '#d4a017', borderRadius: '1px' }} />
+              <div className="w-2 h-2" style={{ background: chartSeriesColors()[2], borderRadius: '1px' }} />
               <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Top Incident Types</span>
             </div>
             <div className="space-y-1">
@@ -2340,7 +2343,7 @@ export default function DashboardPage() {
                   <div key={t.incident_type || i} className="flex items-center gap-2">
                     <span className="text-[9px] text-rmpg-400 w-24 truncate capitalize">{(t.incident_type || 'Unknown').replace(/_/g, ' ')}</span>
                     <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
-                      <div className="h-full" style={{ width: `${(t.count / maxCount) * 100}%`, background: '#d4a017', opacity: 1 - i * 0.08 }} />
+                      <div className="h-full" style={{ width: `${(t.count / maxCount) * 100}%`, background: chartSeriesColors()[2], opacity: 1 - i * 0.08 }} />
                     </div>
                     <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{t.count}</span>
                   </div>

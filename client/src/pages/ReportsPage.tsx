@@ -46,6 +46,7 @@ import { localToday, dateToLocalYMD, parseTimestamp } from '../utils/dateUtils';
 import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { toDisplayLabel } from '../utils/formatters';
+import { chartSeriesColors } from '../utils/chartPalette';
 
 // ============================================================
 // Types
@@ -112,18 +113,23 @@ const PRIORITY_COLORS: Record<string, string> = {
   P4: 'var(--rmpg-500)',
 };
 
-const CHART_TOOLTIP_STYLE = {
-  contentStyle: {
-    backgroundColor: 'var(--surface-deep)',
-    border: '1px solid var(--border-default)',
-    borderRadius: '2px',
-    color: 'var(--text-primary)',
-    fontSize: '11px',
-    fontFamily: 'monospace',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-  },
-  cursor: { fill: 'rgba(212,160,23,0.12)' },
-};
+// Built at render time (not module scope) — the cursor fill is derived from
+// the theme-resolved gold series color, which is only correct once the theme
+// class has been stamped on <html>.
+function chartTooltipStyle() {
+  return {
+    contentStyle: {
+      backgroundColor: 'var(--surface-deep)',
+      border: '1px solid var(--border-default)',
+      borderRadius: '2px',
+      color: 'var(--text-primary)',
+      fontSize: '11px',
+      fontFamily: 'monospace',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+    },
+    cursor: { fill: `color-mix(in srgb, ${chartSeriesColors()[2]} 12%, transparent)` },
+  };
+}
 
 // ============================================================
 // Helper Functions
@@ -676,7 +682,7 @@ function WeeklyDigestCard() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickFormatter={(d: string) => parseTimestamp(d).toLocaleDateString('en-US', { weekday: 'short' })} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
-                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Tooltip {...chartTooltipStyle()} />
                   <Bar dataKey="count" fill="var(--text-muted)" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -736,7 +742,7 @@ function CrimeTrendCard() {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
               <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
               <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
-              <Tooltip {...CHART_TOOLTIP_STYLE} />
+              <Tooltip {...chartTooltipStyle()} />
               <Area type="monotone" dataKey="count" stroke="#ef4444" strokeWidth={2} fill="url(#trendGrad)" />
             </AreaChart>
           </ResponsiveContainer>
@@ -816,7 +822,7 @@ function CitationRevenueCard() {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
               <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
               <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
-              <Tooltip {...CHART_TOOLTIP_STYLE} />
+              <Tooltip {...chartTooltipStyle()} />
               <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '9px' }} />
               <Bar dataKey="collected" name="Collected" fill="#22c55e" radius={[2, 2, 0, 0]} />
               <Bar dataKey="outstanding" name="Outstanding" fill="#f59e0b" radius={[2, 2, 0, 0]} />
@@ -1542,7 +1548,7 @@ export default function ReportsPage() {
                           <Cell key={entry.name} fill={entry.fill} />
                         ))}
                       </Pie>
-                      <Tooltip {...CHART_TOOLTIP_STYLE} />
+                      <Tooltip {...chartTooltipStyle()} />
                     </PieChart>
                   </ResponsiveContainer>
                   {/* Legend */}
@@ -1578,7 +1584,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
-                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Tooltip {...chartTooltipStyle()} />
                   <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                     {priorityChartData.map((entry, i) => (
                       <Cell key={i} fill={entry.fill} />
@@ -1608,7 +1614,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} domain={[0, 'auto']} />
-                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Tooltip {...chartTooltipStyle()} />
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="var(--text-muted)" strokeWidth={2} dot={{ fill: 'var(--text-muted)', r: 3 }} />
                   <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="var(--brand-gold)" strokeDasharray="5 5" strokeWidth={1} dot={false} />
@@ -1636,7 +1642,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} width={70} />
-                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Tooltip {...chartTooltipStyle()} />
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Bar dataKey="calls" name="Calls" fill="var(--text-muted)" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="incidents" name="Incidents" fill="var(--brand-gold)" radius={[0, 4, 4, 0]} />
@@ -1669,7 +1675,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} allowDecimals={false} />
-                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Tooltip {...chartTooltipStyle()} />
                   <Area type="monotone" dataKey="calls" name="Calls" stroke="var(--text-muted)" strokeWidth={2} fill="url(#callVolumeGradient)" />
                 </AreaChart>
               </ResponsiveContainer>
@@ -1695,7 +1701,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
-                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Tooltip {...chartTooltipStyle()} />
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Bar dataKey="avgMinutes" name="Avg Response (min)" radius={[4, 4, 0, 0]}>
                     {responseTimesData.byPriority.map((item, i) => (
