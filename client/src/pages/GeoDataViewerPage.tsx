@@ -65,7 +65,7 @@ const LAYERS: LayerMeta[] = [
     file: '/geojson/county.geojson',
     icon: Map,
     description: 'Utah county polygons with census population data',
-    color: 'var(--rmpg-400)',
+    color: 'var(--text-secondary)',
   },
   {
     id: 'municipality',
@@ -163,7 +163,7 @@ function LayerCard({
         ) : count !== null ? (
           <span
             className="text-[9px] font-mono px-1.5 py-0.5"
-            style={{ background: 'var(--surface-sunken)', color: 'var(--rmpg-400)', border: '1px solid var(--border-subtle)' }}
+            style={{ background: 'var(--surface-sunken)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
           >
             {count.toLocaleString()}
           </span>
@@ -216,7 +216,7 @@ function FeatureDetailPanel({
       <div className="px-3 py-1.5 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
         <span
           className="text-[9px] font-mono px-2 py-0.5"
-          style={{ background: 'var(--surface-base)', color: 'var(--rmpg-400)', border: '1px solid var(--border-subtle)' }}
+          style={{ background: 'var(--surface-base)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
         >
           {feature.geometry?.type ?? 'Unknown'}
         </span>
@@ -236,7 +236,7 @@ function FeatureDetailPanel({
                 </td>
                 <td
                   className="py-1 align-top text-[10px] break-all"
-                  style={{ color: 'var(--rmpg-300)' }}
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   {formatPropValue(val)}
                 </td>
@@ -469,7 +469,7 @@ export default function GeoDataViewerPage() {
               style={{
                 background: 'var(--surface-base)',
                 border: '1px solid var(--border-default)',
-                color: sorted.length ? 'var(--rmpg-400)' : 'var(--text-muted)',
+                color: sorted.length ? 'var(--text-secondary)' : 'var(--text-muted)',
                 cursor: sorted.length ? 'pointer' : 'not-allowed',
               }}
             >
@@ -534,7 +534,7 @@ export default function GeoDataViewerPage() {
                   value={search}
                   onChange={(e) => handleSearch(e.target.value)}
                   className="flex-1 text-[10px] bg-transparent outline-none placeholder-rmpg-600"
-                  style={{ color: 'var(--rmpg-300)', border: 'none' }}
+                  style={{ color: 'var(--text-secondary)', border: 'none' }}
                 />
                 {search && (
                   <button type="button" onClick={() => handleSearch('')} style={{ color: 'var(--text-muted)', lineHeight: 0 }}>
@@ -553,7 +553,7 @@ export default function GeoDataViewerPage() {
                   className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
                   style={{
                     background: viewMode === 'table' ? 'var(--surface-raised)' : 'var(--surface-overlay)',
-                    color: viewMode === 'table' ? 'var(--rmpg-400)' : 'var(--text-muted)',
+                    color: viewMode === 'table' ? 'var(--text-secondary)' : 'var(--text-muted)',
                     cursor: 'pointer',
                   }}
                 >
@@ -568,7 +568,7 @@ export default function GeoDataViewerPage() {
                   className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
                   style={{
                     background: viewMode === 'map' ? 'var(--surface-raised)' : 'var(--surface-overlay)',
-                    color: viewMode === 'map' ? 'var(--rmpg-400)' : 'var(--text-muted)',
+                    color: viewMode === 'map' ? 'var(--text-secondary)' : 'var(--text-muted)',
                     cursor: 'pointer',
                     borderLeft: '1px solid var(--surface-raised)',
                   }}
@@ -586,7 +586,7 @@ export default function GeoDataViewerPage() {
                 style={{
                   background: showFilter ? 'var(--surface-raised)' : 'var(--surface-overlay)',
                   border: `1px solid ${showFilter ? 'var(--border-default)' : 'var(--surface-raised)'}`,
-                  color: showFilter ? 'var(--rmpg-400)' : 'var(--text-muted)',
+                  color: showFilter ? 'var(--text-secondary)' : 'var(--text-muted)',
                   cursor: 'pointer',
                 }}
               >
@@ -605,7 +605,7 @@ export default function GeoDataViewerPage() {
                   style={{
                     background: 'var(--surface-base)',
                     border: '1px solid var(--border-default)',
-                    color: 'var(--rmpg-300)',
+                    color: 'var(--text-secondary)',
                     padding: '2px 6px',
                     width: 120,
                   }}
@@ -621,7 +621,7 @@ export default function GeoDataViewerPage() {
                     type="button"
                     disabled={page <= 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    style={{ color: page > 1 ? 'var(--rmpg-400)' : 'var(--rmpg-700)', lineHeight: 0, cursor: page > 1 ? 'pointer' : 'default' }}
+                    style={{ color: page > 1 ? 'var(--text-secondary)' : 'var(--text-muted)', lineHeight: 0, cursor: page > 1 ? 'pointer' : 'default' }}
                   >
                     <ChevronLeft style={{ width: 11, height: 11 }} />
                   </button>
@@ -632,7 +632,7 @@ export default function GeoDataViewerPage() {
                     type="button"
                     disabled={page >= totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    style={{ color: page < totalPages ? 'var(--rmpg-400)' : 'var(--rmpg-700)', lineHeight: 0, cursor: page < totalPages ? 'pointer' : 'default' }}
+                    style={{ color: page < totalPages ? 'var(--text-secondary)' : 'var(--text-muted)', lineHeight: 0, cursor: page < totalPages ? 'pointer' : 'default' }}
                   >
                     <ChevronRightIcon style={{ width: 11, height: 11 }} />
                   </button>
@@ -681,7 +681,7 @@ export default function GeoDataViewerPage() {
                   <button
                     type="button"
                     className="text-[10px] mt-1"
-                    style={{ color: 'var(--rmpg-400)', cursor: 'pointer' }}
+                    style={{ color: 'var(--text-secondary)', cursor: 'pointer' }}
                     onClick={() => handleSearch('')}
                   >
                     Clear search
@@ -753,7 +753,7 @@ export default function GeoDataViewerPage() {
                               className="text-[10px]"
                               style={{
                                 padding: '2px 8px',
-                                color: 'var(--rmpg-300)',
+                                color: 'var(--text-secondary)',
                                 whiteSpace: 'nowrap',
                                 maxWidth: 180,
                                 overflow: 'hidden',

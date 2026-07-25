@@ -85,9 +85,9 @@ function todayStr() {
 // already palette-aware); archived/completed share the muted-gray
 // surface used by other "terminal-state" pills across the app.
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  draft:     { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-400)', border: 'var(--border-default)' },
+  draft:     { bg: 'var(--surface-sunken)',           text: 'var(--text-secondary)', border: 'var(--border-default)' },
   active:    { bg: 'rgba(var(--sev-ok-rgb),0.15)',     text: 'var(--sev-ok)',   border: 'rgba(var(--sev-ok-rgb),0.5)' },
-  completed: { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-400)', border: 'var(--border-default)' },
+  completed: { bg: 'var(--surface-sunken)',           text: 'var(--text-secondary)', border: 'var(--border-default)' },
   archived:  { bg: 'var(--surface-sunken)',           text: 'var(--text-muted)', border: 'var(--border-default)' },
 };
 
@@ -724,7 +724,7 @@ export default function ShiftPlansPage() {
                         >
                           <td className="px-4 py-2">
                             <div className="flex items-center gap-1.5">
-                              <MapPin style={{ width: 9, height: 9, color: a.color || 'var(--rmpg-400)' }} />
+                              <MapPin style={{ width: 9, height: 9, color: a.color || 'var(--text-secondary)' }} />
                               <span className="font-semibold text-rmpg-100">{a.label}</span>
                             </div>
                           </td>

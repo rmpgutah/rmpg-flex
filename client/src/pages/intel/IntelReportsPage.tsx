@@ -30,7 +30,7 @@ export default function IntelReportsPage() {
   useEffect(load, [load]);
 
   return (
-    <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', minHeight: '100%', color: 'var(--rmpg-200)' }}>
+    <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', minHeight: '100%', color: 'var(--text-primary)' }}>
       <div className="flex items-center justify-between">
         <h1 className="text-sm font-semibold tracking-wide" style={{ color: '#d4a017' }}>
           INTELLIGENCE PRODUCTS

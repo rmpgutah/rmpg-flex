@@ -26,7 +26,7 @@ export default function DesktopQuickAccessWidget({ catalog }: DesktopQuickAccess
 
   return (
     <div className="p-3" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-default)', width: 220 }}>
-      <div className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--rmpg-400)' }}>Quick Access</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>Quick Access</div>
       {favorites.length === 0 && recent.length === 0 ? (
         <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>No favorites yet — star a module in the Directory.</div>
       ) : (

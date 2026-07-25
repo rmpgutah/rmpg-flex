@@ -61,7 +61,7 @@ const CATEGORY_META: Record<string, CatMeta> = {
   wildlife:      { label: 'Wildlife Resources',     short: 'Wildlife',   blurb: 'Title 23A — hunting, fishing, licensing & wildlife offenses',                       icon: Leaf,        accent: '#65a30d' },
   alcohol:       { label: 'Alcoholic Beverage',     short: 'Alcohol',    blurb: 'Title 32B — alcohol control, licensing & related offenses',                        icon: Wine,        accent: '#b45309' },
   protective:    { label: 'Protective Orders',      short: 'Protective', blurb: 'Title 78B ch 7 — protective orders, stalking injunctions & enforcement',            icon: Shield,      accent: '#e11d48' },
-  licensing:     { label: 'Security · PI · Process',short: 'Licensing',  blurb: 'Title 58/78B licensing statutes + implementing administrative rules',               icon: ShieldCheck, accent: 'var(--rmpg-400)' },
+  licensing:     { label: 'Security · PI · Process',short: 'Licensing',  blurb: 'Title 58/78B licensing statutes + implementing administrative rules',               icon: ShieldCheck, accent: 'var(--text-secondary)' },
 };
 const CATEGORY_ORDER = ['criminal', 'fraud', 'procedure', 'vehicle', 'controlled', 'public_safety', 'juvenile', 'wildlife', 'alcohol', 'protective', 'licensing'];
 function getCatMeta(cat: string): CatMeta {
@@ -481,7 +481,7 @@ export default function LawBookPage() {
               style={{
                 background: level === l.key ? 'var(--surface-raised)' : 'var(--surface-sunken)',
                 borderColor: level === l.key ? l.dot : 'var(--border-subtle)',
-                color: level === l.key ? 'var(--rmpg-100)' : 'var(--spm-text-muted)', borderRadius: 2,
+                color: level === l.key ? 'var(--text-primary)' : 'var(--spm-text-muted)', borderRadius: 2,
               }}>
               <span className="w-2 h-2 rounded-full" style={{ background: l.dot }} />
               {l.short}

@@ -50,7 +50,7 @@ export default function MobileContextBar({
             fontSize: 11,
             fontFamily: 'var(--font-mono, monospace)',
             fontWeight: 700,
-            color: 'var(--rmpg-400)',
+            color: 'var(--text-secondary)',
             textTransform: 'uppercase',
             whiteSpace: 'nowrap',
           }}

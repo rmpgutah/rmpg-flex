@@ -63,7 +63,7 @@ export default function AdminDownloadsTab() {
 
   if (fetchError) {
     return (
-      <div className="p-4 text-xs" style={{ color: 'var(--sev-critical, var(--rmpg-400))' }}>
+      <div className="p-4 text-xs" style={{ color: 'var(--sev-critical, var(--text-secondary))' }}>
         Could not load download info — check your connection and refresh.
       </div>
     );
@@ -114,7 +114,7 @@ export default function AdminDownloadsTab() {
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider"
-        style={{ color: 'var(--rmpg-400)' }}
+        style={{ color: 'var(--text-secondary)' }}
       >
         Open full Downloads page
         <ExternalLink className="w-3 h-3" />

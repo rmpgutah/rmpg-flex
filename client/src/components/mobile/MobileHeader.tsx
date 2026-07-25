@@ -69,7 +69,7 @@ export default function MobileHeader({
         <button type="button"
           onClick={onMenuOpen}
           className="flex items-center justify-center"
-          style={{ width: 44, height: 44, color: 'var(--rmpg-400)' }}
+          style={{ width: 44, height: 44, color: 'var(--text-secondary)' }}
           aria-label="Open navigation"
         >
           <Menu style={{ width: 20, height: 20 }} />

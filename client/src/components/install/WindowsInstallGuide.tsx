@@ -97,12 +97,12 @@ export default function WindowsInstallGuide({ exeName }: { exeName: string }) {
       </Callout>
 
       <GuideHeading>Silent install (IT / fleet deployment)</GuideHeading>
-      <p className="text-xs leading-relaxed mb-1" style={{ color: 'var(--rmpg-400)' }}>
+      <p className="text-xs leading-relaxed mb-1" style={{ color: 'var(--text-secondary)' }}>
         For imaging multiple machines, the NSIS installer accepts standard silent-install flags. Run from
         an elevated command prompt:
       </p>
       <Cmd>{`"${exeName}" /S`}</Cmd>
-      <p className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-400)' }}>
+      <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
         Add <code>/D=C:\\Path\\To\\Install</code> as the final argument to override the install directory
         (no quotes around the path, and it must be the last argument).
       </p>

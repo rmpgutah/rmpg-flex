@@ -29,7 +29,7 @@ export default function KioskOsInstallGuide() {
       <Screenshots shots={SHOTS} />
 
       <GuideHeading>Check the download before you flash</GuideHeading>
-      <p className="text-xs leading-relaxed mb-2" style={{ color: 'var(--rmpg-400)' }}>
+      <p className="text-xs leading-relaxed mb-2" style={{ color: 'var(--text-secondary)' }}>
         Writing a truncated image to a USB stick produces a machine that fails to boot with no useful
         error, so it is worth thirty seconds to confirm the file arrived intact. Expected values for{' '}
         <code>kiosk-linux-os-1.2.0.zip</code>:
@@ -41,15 +41,15 @@ export default function KioskOsInstallGuide() {
           <>After extracting, <code>disk.img</code> must be <strong>536,870,912 bytes exactly</strong> (SHA-256 <code style={{ fontSize: '10px', wordBreak: 'break-all' }}>935cb2f2d62aff921c1d8c4a8fdca24d7e458b0341920ee47f64f8adf0643347</code>)</>,
         ]}
       />
-      <p className="text-xs leading-relaxed mt-2 mb-1" style={{ color: 'var(--rmpg-400)' }}>
+      <p className="text-xs leading-relaxed mt-2 mb-1" style={{ color: 'var(--text-secondary)' }}>
         To check the hash — Windows PowerShell:
       </p>
       <Cmd>{'Get-FileHash .\\kiosk-linux-os-1.2.0.zip -Algorithm SHA256'}</Cmd>
-      <p className="text-xs leading-relaxed mb-1" style={{ color: 'var(--rmpg-400)' }}>
+      <p className="text-xs leading-relaxed mb-1" style={{ color: 'var(--text-secondary)' }}>
         macOS or Linux:
       </p>
       <Cmd>{'shasum -a 256 kiosk-linux-os-1.2.0.zip'}</Cmd>
-      <p className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-400)' }}>
+      <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
         Checksums and exact byte counts for <em>every</em> RMPG Flex download — desktop, mobile and OS —
         are published at{' '}
         <a href={downloadUrl('SHA256SUMS.txt')} className="underline" style={{ color: 'var(--brand-gold)' }}>SHA256SUMS.txt</a>.
@@ -65,16 +65,16 @@ export default function KioskOsInstallGuide() {
       </Callout>
 
       <GuideHeading>Two ways to install</GuideHeading>
-      <p className="text-xs leading-relaxed mb-2" style={{ color: 'var(--rmpg-400)' }}>
-        <strong style={{ color: 'var(--rmpg-300)' }}>No USB stick (easiest, if the machine already
+      <p className="text-xs leading-relaxed mb-2" style={{ color: 'var(--text-secondary)' }}>
+        <strong style={{ color: 'var(--text-secondary)' }}>No USB stick (easiest, if the machine already
         runs Windows)</strong> — run the included installer from Windows and RMPG Flex OS is added as a
         second option on the boot menu. Nothing is repartitioned, Windows stays exactly as it is, and
         Windows remains the default so an unattended reboot always comes back up normally. This works
         because the OS loads entirely into RAM, so it needs no partition of its own — just two files and
         a boot entry. Jump to <em>Installing from Windows</em> below.
       </p>
-      <p className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-400)' }}>
-        <strong style={{ color: 'var(--rmpg-300)' }}>USB stick</strong> — for a bare machine, a wiped
+      <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+        <strong style={{ color: 'var(--text-secondary)' }}>USB stick</strong> — for a bare machine, a wiped
         unit, or any install where you want the terminal to be the only thing on the device. Follow the
         numbered procedure below.
       </p>
@@ -113,12 +113,12 @@ export default function KioskOsInstallGuide() {
           The download is a <code>.zip</code> containing a single file, <code>disk.img</code> — the
           complete bootable image, bootloader and both recovery slots included.
           <br />
-          <strong style={{ color: 'var(--rmpg-300)' }}>Windows —</strong> right-click the downloaded
+          <strong style={{ color: 'var(--text-secondary)' }}>Windows —</strong> right-click the downloaded
           file → <strong>Extract All…</strong> → <strong>Extract</strong>. No extra software needed.
           <br />
-          <strong style={{ color: 'var(--rmpg-300)' }}>macOS —</strong> double-click it.
+          <strong style={{ color: 'var(--text-secondary)' }}>macOS —</strong> double-click it.
           <br />
-          <strong style={{ color: 'var(--rmpg-300)' }}>Linux —</strong> <code>unzip
+          <strong style={{ color: 'var(--text-secondary)' }}>Linux —</strong> <code>unzip
           kiosk-linux-os-1.2.0.zip</code>, or use the <code>.tar.gz</code> in the same bucket.
           <br />
           The download is about 236 MB and expands to a 512 MB image, so allow roughly 1 GB of free
@@ -126,7 +126,7 @@ export default function KioskOsInstallGuide() {
         </Step>
 
         <Step n={2} title="Write disk.img to the USB drive">
-          <strong style={{ color: 'var(--rmpg-300)' }}>Windows (recommended path) —</strong> download{' '}
+          <strong style={{ color: 'var(--text-secondary)' }}>Windows (recommended path) —</strong> download{' '}
           <a href="https://rufus.ie" target="_blank" rel="noreferrer" className="underline" style={{ color: 'var(--brand-gold)' }}>Rufus</a>{' '}
           (a single portable .exe, no install). Run it, then: <strong>Device</strong> → your USB drive
           → <strong>SELECT</strong> → change the file-type dropdown in the bottom-right of the file
@@ -134,10 +134,10 @@ export default function KioskOsInstallGuide() {
           becomes visible → pick it → keep <strong>DD Image</strong> mode if prompted →{' '}
           <strong>START</strong> → confirm the erase warning. Takes a few minutes.
           <br />
-          <strong style={{ color: 'var(--rmpg-300)' }}>macOS —</strong> find the disk number with{' '}
+          <strong style={{ color: 'var(--text-secondary)' }}>macOS —</strong> find the disk number with{' '}
           <code>diskutil list</code> (match it by size), then:
           <Cmd>{'diskutil unmountDisk /dev/diskN\nsudo dd if=disk.img of=/dev/rdiskN bs=4m status=progress'}</Cmd>
-          <strong style={{ color: 'var(--rmpg-300)' }}>Linux —</strong> find the device with{' '}
+          <strong style={{ color: 'var(--text-secondary)' }}>Linux —</strong> find the device with{' '}
           <code>lsblk</code>, then:
           <Cmd>{'sudo dd if=disk.img of=/dev/sdX bs=4M status=progress conv=fsync'}</Cmd>
           Double-check the device name before pressing Return — <code>dd</code> overwrites whatever it is
@@ -172,7 +172,7 @@ export default function KioskOsInstallGuide() {
       </div>
 
       <GuideHeading>How the A/B slots protect the kiosk</GuideHeading>
-      <p className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-400)' }}>
+      <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
         The disk carries two identical OS slots (<code>slot_a</code> / <code>slot_b</code>). Every boot
         increments an attempt counter that is cleared only once the kiosk reaches a verified-healthy state
         — browser up and serving. Three consecutive failed boots automatically flip the default to the
@@ -228,7 +228,7 @@ export default function KioskOsInstallGuide() {
       />
 
       <GuideHeading>Trying it without hardware</GuideHeading>
-      <p className="text-xs leading-relaxed mb-1" style={{ color: 'var(--rmpg-400)' }}>
+      <p className="text-xs leading-relaxed mb-1" style={{ color: 'var(--text-secondary)' }}>
         The same <code>disk.img</code> boots under QEMU on any x86_64 workstation — useful for evaluating
         the kiosk build before flashing a Toughbook:
       </p>
