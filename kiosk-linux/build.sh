@@ -839,6 +839,22 @@ busybox $busybox_frag_hash"
       if ! grep -qx "$pkg $hash" "$FRAGMENT_HASH_FILE" 2>/dev/null; then
         echo "Config fragments for [$pkg] changed since it was last configured — forcing reconfigure ..."
         echo "  (without this the edit silently would not reach the build; see the comment above)"
+        # Repeated reconfigure cycles can leave the kernel host-tool objects in a
+        # half-built state: scripts/kconfig/*.o present with their fixdep .d files
+        # gone, which fails the very next configure with
+        #   fixdep: error opening file: scripts/kconfig/.confdata.o.d
+        # and reads as kernel-source corruption rather than as leftover state.
+        # Observed for real while developing this gate. Removing the host objects
+        # costs seconds and makes the reconfigure self-healing; the alternative a
+        # reader reaches for is linux-dirclean, which recompiles the whole kernel.
+        # linux-[0-9]* rather than linux-* on purpose: the latter also matches
+        # linux-headers-<ver>, a different package this has no business touching.
+        if [ "$pkg" = linux ]; then
+          rm -f /build-output/build/linux-[0-9]*/scripts/kconfig/*.o \
+                /build-output/build/linux-[0-9]*/scripts/kconfig/.*.o.d \
+                /build-output/build/linux-[0-9]*/scripts/basic/*.o \
+                /build-output/build/linux-[0-9]*/scripts/basic/.*.o.d 2>/dev/null || true
+        fi
         make -C /build-output "$pkg-reconfigure"
       fi
     done
