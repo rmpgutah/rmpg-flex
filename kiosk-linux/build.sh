@@ -986,21 +986,44 @@ LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0*.{ucode,pnvm}" "$LINUX_FW_MK"
     #
     # The checksum lives in the output volume beside the build it describes, so
     # the compare is against what this tree actually last built from.
+    # ⚠️ The checksum is NOT sufficient on its own, and the reason is subtle.
+    # It answers "did MY fragments change", when what actually matters is "does
+    # the current .config reflect my fragments". Those differ whenever something
+    # else rewrites the .config — which is routine here, because another worktree
+    # building in this shared volume regenerates it from ITS fragments.
+    #
+    # Observed 2026-07-25: the checksum matched, the re-merge was skipped, and the
+    # .config in the volume held another worktree config carrying 2 of 4 probe
+    # symbols. The symbol gate correctly refused the build, but as a hard failure
+    # for a condition that is trivially recoverable.
+    #
+    # So the gate below is a RETRY LOOP: if the audit fails on the fast path,
+    # force the re-merge and audit again before giving up. The fast path stays
+    # fast (no needless 15-minute kernel rebuild) and a clobbered .config heals
+    # itself instead of stopping the build.
     LINUX_BUILD_DIR="$(ls -d /build-output/build/linux-[0-9]* 2>/dev/null | head -1)"
     FRAGMENT_SUM_FILE=/build-output/.rmpg-kernel-fragment-sum
     FRAGMENT_SUM="$(cat /kiosk-linux/configs/kernel-*.fragment 2>/dev/null | sha256sum | cut -d" " -f1)"
+    FORCE_REMERGE=0
     if [ -n "$LINUX_BUILD_DIR" ] && [ -f "$LINUX_BUILD_DIR/.stamp_dotconfig" ]; then
       if [ "$FRAGMENT_SUM" != "$(cat "$FRAGMENT_SUM_FILE" 2>/dev/null)" ]; then
-        echo "Kernel fragments changed — forcing a re-merge (removing $LINUX_BUILD_DIR/.stamp_dotconfig) ..."
-        rm -f "$LINUX_BUILD_DIR/.stamp_dotconfig"
+        echo "Kernel fragments changed since the last successful build — will force a re-merge."
+        FORCE_REMERGE=1
       else
-        echo "Kernel fragments unchanged (sha256 matches) — skipping the forced re-merge."
+        echo "Kernel fragments unchanged (sha256 matches) — trying the fast path first."
       fi
     fi
-    # Written only after the symbol gate below passes, so a failed build does not
-    # record its fragments as successfully applied.
+    # The checksum is written only after the gate passes, so a failed build never
+    # records its fragments as successfully applied.
 
-    echo "Configuring the kernel and verifying FZ-55 symbols survived merge_config ..."
+  CONFIG_ATTEMPT=1
+  while : ; do
+    if [ "$FORCE_REMERGE" = "1" ] && [ -n "$LINUX_BUILD_DIR" ]; then
+      echo "Forcing a kernel fragment re-merge (removing $LINUX_BUILD_DIR/.stamp_dotconfig) ..."
+      rm -f "$LINUX_BUILD_DIR/.stamp_dotconfig"
+    fi
+
+    echo "Configuring the kernel and verifying FZ-55 symbols survived merge_config (attempt $CONFIG_ATTEMPT) ..."
     make -C /build-output linux-configure
 
     KCONFIG_FILE="$(ls -d /build-output/build/linux-[0-9]*/.config 2>/dev/null | head -1)"
@@ -1050,14 +1073,34 @@ LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0*.{ucode,pnvm}" "$LINUX_FW_MK"
         ksym_failed=1
       fi
     done
-    if [ "$ksym_failed" -ne 0 ]; then
-      echo "" >&2
-      echo "One or more FZ-55 kernel symbols did not reach the generated .config." >&2
-      echo "An =m value is ALSO a failure here: this image is an initramfs with no" >&2
-      echo "module loading in its init path, so a module is built and never loaded." >&2
-      exit 1
+    if [ "$ksym_failed" -eq 0 ]; then
+      break
     fi
-    echo "FZ-55 kernel symbols verified =y in the generated .config."
+
+    # Failed. If the fast path was taken, the overwhelmingly likely cause is a
+    # .config written by something other than this tree, so re-merge and re-check
+    # once rather than failing a build over a recoverable state.
+    if [ "$CONFIG_ATTEMPT" -eq 1 ] && [ "$FORCE_REMERGE" = "0" ]; then
+      echo "" >&2
+      echo "Symbols missing on the fast path — the .config in this volume does not" >&2
+      echo "reflect these fragments (another build in the shared volume regenerates" >&2
+      echo "it from ITS fragments). Forcing a re-merge and re-checking ..." >&2
+      FORCE_REMERGE=1
+      CONFIG_ATTEMPT=2
+      continue
+    fi
+
+    echo "" >&2
+    echo "One or more FZ-55 kernel symbols did not reach the generated .config," >&2
+    echo "even after a forced fragment re-merge. This is a REAL config problem." >&2
+    echo "An =m value is ALSO a failure here: this image is an initramfs with no" >&2
+    echo "module loading in its init path, so a module is built and never loaded." >&2
+    echo "Check the dependencies of the symbols listed above against the kernel" >&2
+    echo "source in /build-output/build/linux-*/ — merge_config.sh drops a symbol" >&2
+    echo "whose deps are unmet and leaves NO trace of it in .config." >&2
+    exit 1
+  done
+  echo "FZ-55 kernel symbols verified =y in the generated .config (after $CONFIG_ATTEMPT config attempt(s))."
 
     # Record the fragment checksum only now: if the gate above had failed, the
     # next run must re-merge and re-check rather than trusting a config that was
