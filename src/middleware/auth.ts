@@ -15,10 +15,23 @@ export interface JwtPayload {
   userId?: number;
   username: string;
   role: string;
+  // Token purpose. 'access' for real sessions; absent on legacy-issued
+  // tokens. Anything in NON_SESSION_TOKEN_TYPES is rejected below.
+  type?: string;
+  // Narrow, single-purpose grants (e.g. 'pso-mobile'). Never a session.
+  scope?: string;
   iat?: number;
   exp?: number;
   [key: string]: unknown;
 }
+
+// Token `type` values minted elsewhere with JWT_SECRET that must NEVER be
+// accepted as a session bearer. Each is redeemable only by the endpoint
+// that owns its flow:
+//   refresh      → POST /api/auth/refresh
+//   2fa_pending  → POST /api/auth/login/verify-2fa  (pre-second-factor)
+//   pwd_reset    → the forgot-password completion handler
+const NON_SESSION_TOKEN_TYPES = new Set(['refresh', '2fa_pending', 'pwd_reset']);
 
 // Paths that MUST stay public no matter where authMiddleware is invoked from.
 // OAuth providers (Microsoft Identity) redirect the user's BROWSER straight to
@@ -41,6 +54,39 @@ function isPublicAuthBypass(pathname: string): boolean {
     // JWT session — gated instead by requireApiKeyScope('service_request')
     // in src/routes/integrations.ts (integration_api_keys, migration 0006).
     || pathname === '/api/integrations/calls-for-service';
+}
+
+// ── Audited self-verifying media routes ─────────────────────────
+// The `sig`+`exp` passthrough below hands a request to the handler WITHOUT
+// verifying the signature, on the promise that the handler verifies it
+// itself (via verifySignedResource() or uploads' resolveAuth()). That
+// promise is unenforceable by construction: a new `/stream` route that
+// merely MATCHES isMediaPath() silently inherits "no authentication at
+// all" rather than failing closed. That is exactly how the dashcam,
+// FlexCam, ClearPath, field-photo and email-proxy handlers ended up
+// world-readable.
+//
+// So the passthrough is now DEFAULT-DENY: a path must appear here, having
+// been read and confirmed to verify its own signature, or it gets a 401
+// like any other unauthenticated request. Adding a new signed-media route
+// means adding its pattern here — and if you forget, the failure is a
+// visible 401 on your own feature, not silent public access to evidence.
+const SELF_VERIFYING_MEDIA_PATHS: RegExp[] = [
+  /^\/api\/uploads\/[^/]+(\/(content|thumbnail))?$/,            // resolveAuth() — HMAC binds fileId
+  /^\/api\/fleet\/dashcam-videos\/\d+\/stream$/,                // verifySignedResource 'dashcam'
+  /^\/api\/personnel\/bodycam-videos\/\d+\/(stream|thumbnail)$/, // 'bodycam' / 'bodycam-thumb'
+  /^\/api\/radio\/transmissions\/\d+\/audio$/,                  // 'radio'
+  /^\/api\/alpr\/image\/.+$/,                                   // requireRole → fails closed without a user
+  /^\/api\/driving-events\/\d+\/stream$/,                       // 'driving-event'
+  /^\/api\/clearpathgps\/media\/\d+\/stream$/,                  // 'dashcam' (same rows as the fleet route)
+  /^\/api\/flexcam\/footage\/\d+\/chunk\/\d+\/stream$/,         // 'flexcam-chunk'
+  /^\/api\/field-photos\/file\/.+$/,                            // 'field-photo'
+  /^\/api\/email\/image-proxy$/,                                // 'email-image'
+  /^\/api\/email\/messages\/[^/]+\/attachments\/[^/]+$/,        // 'email-attachment'
+];
+
+function isSelfVerifyingMediaPath(pathname: string): boolean {
+  return SELF_VERIFYING_MEDIA_PATHS.some((re) => re.test(pathname));
 }
 
 // Media endpoints that browser tags fetch without headers. Auth for these
@@ -89,7 +135,10 @@ export async function authMiddleware(c: Context, next: Next) {
     const sig = c.req.query('sig');
     const exp = c.req.query('exp');
     const path = new URL(c.req.url).pathname;
-    if (sig && exp && c.req.method === 'GET' && isMediaPath(path)) {
+    // Default-deny: only routes explicitly listed as self-verifying may run
+    // header-less. isMediaPath() alone is NOT sufficient — see the comment
+    // on SELF_VERIFYING_MEDIA_PATHS.
+    if (sig && exp && c.req.method === 'GET' && isSelfVerifyingMediaPath(path)) {
       await next();
       return;
     }
@@ -100,6 +149,31 @@ export async function authMiddleware(c: Context, next: Next) {
     const secret = new TextEncoder().encode(c.env.JWT_SECRET as string);
     const { payload } = await jwtVerify(token, secret);
     const jwtPayload = payload as unknown as JwtPayload;
+
+    // ── Token purpose enforcement ─────────────────────────────
+    // Several flows mint short-lived JWTs with the SAME JWT_SECRET this
+    // middleware trusts. Verifying the signature alone is therefore not
+    // enough to prove a token is a session: without these checks, a
+    // pre-2FA handle is a full API session (MFA bypass), and a refresh
+    // token works as an access token.
+    //
+    // `type` is absent on legacy-issued tokens (see JwtPayload above), so
+    // this is a DENY-list on known non-session purposes rather than an
+    // allow-list on 'access' — an allow-list would log out every legacy
+    // session on deploy.
+    const tokenType = typeof jwtPayload.type === 'string' ? jwtPayload.type : null;
+    if (tokenType && NON_SESSION_TOKEN_TYPES.has(tokenType)) {
+      return c.json({ error: 'Token is not valid for session use' }, 401);
+    }
+
+    // Scoped tokens (currently the PSO QR session minted by
+    // src/routes/mobileCfs.ts, `scope: 'pso-mobile'`) authorize ONE call
+    // and are verified by their own router, which is mounted public. If
+    // accepted here they would silently become a full API session
+    // carrying whatever role the user row holds.
+    if (jwtPayload.scope != null) {
+      return c.json({ error: 'Scoped token cannot be used as a session' }, 401);
+    }
 
     const userId = jwtPayload.user_id ?? jwtPayload.userId;
     if (userId == null) {

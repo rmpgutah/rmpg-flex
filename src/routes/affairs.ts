@@ -43,6 +43,13 @@ async function generateComplaintNumber(db: ReturnType<typeof getDb>): Promise<st
 // ═══════════════════════════════════════════════════════════════
 
 affairs.get('/complaints', async (c) => {
+  // IA records are restricted personnel files (they name the subject officer
+  // and the allegation). Reads were ungated while every write in this file
+  // checks admin|manager|supervisor — so an `officer` could read complaints
+  // about colleagues, and the external `contract_manager` / `client_viewer`
+  // roles could read the entire IA file. Match the write policy.
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
   try {
     const db = getDb(c.env);
     const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='ia_complaints'");
@@ -70,6 +77,8 @@ affairs.get('/complaints', async (c) => {
 });
 
 affairs.get('/complaints/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
@@ -198,6 +207,8 @@ affairs.delete('/complaints/:id', async (c) => {
 // ═══════════════════════════════════════════════════════════════
 
 affairs.get('/complaints/:id/investigations', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
@@ -280,6 +291,8 @@ affairs.put('/complaints/:id/investigations/:invId', async (c) => {
 // ═══════════════════════════════════════════════════════════════
 
 affairs.get('/flags', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
   try {
     const db = getDb(c.env);
     const q = c.req.query.bind(c.req);
@@ -360,6 +373,8 @@ affairs.put('/flags/:id', async (c) => {
 });
 
 affairs.get('/stats', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
   try {
     const db = getDb(c.env);
     const complaintTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='ia_complaints'");

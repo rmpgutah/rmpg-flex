@@ -53,6 +53,7 @@ import MileageAuditTab from './patrol/MileageAuditTab';
 import PricingTab from './patrol/PricingTab';
 import ContractsTab from './patrol/ContractsTab';
 import BillingReviewTab from './patrol/BillingReviewTab';
+import { escapeHtml } from '../utils/sanitize';
 
 // Add Mapbox type for TypeScript
 declare global {
@@ -197,8 +198,8 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         .addTo(map);
 
       const popup = new mapboxgl.Popup({ offset: 15 })
-        .setHTML(`<div style="color:#000;font-size:12px;font-weight:bold">${cp.name}</div>
-          <div style="color:#666;font-size:10px">${cp.is_active ? 'Active' : 'Inactive'} • Every ${cp.scan_required_interval_minutes || '?'} min</div>`);
+        .setHTML(`<div style="color:#000;font-size:12px;font-weight:bold">${escapeHtml(cp.name)}</div>
+          <div style="color:#666;font-size:10px">${cp.is_active ? 'Active' : 'Inactive'} • Every ${escapeHtml(cp.scan_required_interval_minutes) || '?'} min</div>`);
       marker.setPopup(popup);
       markers.push(marker);
     });

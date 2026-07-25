@@ -583,6 +583,29 @@ uploads.post('/create', async (c) => {
   }
 });
 
+// ── Attachment mutation authorization ───────────────────────
+// This router is mounted auth:'public' (so <img>/<video> can present HMAC
+// params instead of a header), which means NEITHER authMiddleware NOR
+// readOnlyRoleGuard runs for any handler here. resolveAuth() proves only
+// that a JWT is valid — it returns no scope and makes no claim about THIS
+// attachment. The DELETE handler below has always applied an owner-or-admin
+// check; /content and /link did not, so any authenticated account could
+// overwrite the bytes of any attachment by file_id (evidence included) or
+// re-parent it to a different case. Same rule for all three now.
+const ATTACHMENT_ADMIN_ROLES = new Set(['admin', 'manager', 'supervisor']);
+// client_viewer is listed explicitly because readOnlyRoleGuard — which
+// normally blocks it from every write — is bypassed by the public mount.
+const ATTACHMENT_READONLY_ROLES = new Set(['client_viewer']);
+
+function canMutateAttachment(
+  auth: { userId: number; role: string },
+  att: { uploaded_by?: number | null },
+): boolean {
+  if (ATTACHMENT_READONLY_ROLES.has(auth.role)) return false;
+  if (att.uploaded_by != null && att.uploaded_by === auth.userId) return true;
+  return ATTACHMENT_ADMIN_ROLES.has(auth.role);
+}
+
 // Save text content back into an existing attachment in R2.
 // PUT /api/uploads/:fileId/content  body = raw text
 uploads.put('/:fileId/content', async (c) => {
@@ -593,6 +616,9 @@ uploads.put('/:fileId/content', async (c) => {
     const fileId = c.req.param('fileId');
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
+    if (!canMutateAttachment(auth, att)) {
+      return c.json({ error: 'Not authorized to modify this file', code: 'FORBIDDEN' }, 403);
+    }
 
     const text = await c.req.text();
     const encoded = new TextEncoder().encode(text);
@@ -621,7 +647,16 @@ uploads.put('/:fileId/link', async (c) => {
       return c.json({ error: 'entity_type and entity_id are required', code: 'ENTITYTYPE_AND_ENTITYID_ARE' }, 400);
     }
 
-    const result = await execute(
+    // Load and authorize BEFORE writing — the previous order issued the
+    // UPDATE first and only then checked the row existed, so an unauthorized
+    // caller's re-parenting had already been committed.
+    const existing = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
+    if (!existing) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
+    if (!canMutateAttachment(auth, existing)) {
+      return c.json({ error: 'Not authorized to modify this file', code: 'FORBIDDEN' }, 403);
+    }
+
+    await execute(
       db,
       'UPDATE attachments SET entity_type = ?, entity_id = ? WHERE file_id = ?',
       entity_type, parseInt(entity_id, 10), fileId,
