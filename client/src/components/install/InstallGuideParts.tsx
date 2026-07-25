@@ -9,7 +9,7 @@ export function GuideHeading({ children }: { children: React.ReactNode }) {
   return (
     <h5
       className="text-[11px] font-bold uppercase tracking-wider mb-2 mt-5 first:mt-0"
-      style={{ color: '#d4a017' }}
+      style={{ color: 'var(--panel-header-color)' }}
     >
       {children}
     </h5>
@@ -71,7 +71,7 @@ export function Cmd({ children }: { children: string }) {
         style={{
           background: 'var(--surface-raised)',
           border: '1px solid var(--border-default)',
-          color: copied ? '#4ade80' : 'var(--rmpg-400)',
+          color: copied ? 'var(--sev-ok)' : 'var(--rmpg-400)',
           borderRadius: 2,
         }}
       >
@@ -87,7 +87,7 @@ export function Step({ n, title, children }: { n: number; title: string; childre
     <div className="flex gap-3 py-3 border-b last:border-b-0" style={{ borderColor: 'var(--surface-raised)' }}>
       <span
         className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-[11px] font-bold"
-        style={{ background: 'var(--surface-overlay)', color: '#d4a017', borderRadius: 2 }}
+        style={{ background: 'var(--surface-overlay)', color: 'var(--accent-silver-400)', borderRadius: 2 }}
       >
         {n}
       </span>
@@ -135,11 +135,11 @@ export function Callout({ label, children }: { label: string; children: React.Re
       style={{
         background: 'var(--surface-sunken)',
         border: '1px solid var(--border-default)',
-        color: 'var(--brand-300, #f59e0b)',
+        color: 'var(--sev-warn)',
         borderRadius: 2,
       }}
     >
-      <strong style={{ color: 'var(--brand-200, #fbbf24)' }}>{label}:</strong> {children}
+      <strong style={{ color: 'var(--sev-warn-soft)' }}>{label}:</strong> {children}
     </div>
   );
 }
