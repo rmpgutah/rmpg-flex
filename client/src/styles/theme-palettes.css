@@ -93,12 +93,41 @@ html.theme-dark,
   --brand-300-rgb: 158 169 183; --brand-400-rgb: 127 140 158; --brand-500-rgb: 102 116 134;
   --brand-600-rgb: 76 90 108;  --brand-700-rgb: 52 66 82;    --brand-800-rgb: 31 43 56;
   --brand-900-rgb: 14 22 32;
+  /* Bare aliases for the brand ramp — same defect and same fix as --rmpg-* above.
+     19 inline sites consume var(--brand-400) and 3 consume var(--brand-500) while
+     only the -rgb triples existed, so every one of those declarations was invalid
+     at computed-value time and silently inherited (the desktop taskbar/clock
+     "active" accent was indistinguishable from its inactive state). Derived from
+     the triple, never a literal, and repeated per block for the same
+     computed-value/.tactical-dark reason spelled out for --rmpg-* above. */
+  --brand-50: rgb(var(--brand-50-rgb));   --brand-100: rgb(var(--brand-100-rgb));
+  --brand-200: rgb(var(--brand-200-rgb)); --brand-300: rgb(var(--brand-300-rgb));
+  --brand-400: rgb(var(--brand-400-rgb)); --brand-500: rgb(var(--brand-500-rgb));
+  --brand-600: rgb(var(--brand-600-rgb)); --brand-700: rgb(var(--brand-700-rgb));
+  --brand-800: rgb(var(--brand-800-rgb)); --brand-900: rgb(var(--brand-900-rgb));
   --blue-50-rgb: 241 244 247; --blue-100-rgb: 217 223 230; --blue-200-rgb: 189 199 209;
   --blue-300-rgb: 161 173 187; --blue-400-rgb: 122 140 162; --blue-500-rgb: 92 110 132;
   --blue-600-rgb: 60 80 102;  --blue-700-rgb: 30 43 58;     --blue-800-rgb: 21 33 46;
   --blue-900-rgb: 13 23 34;
   --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
   --brand-gold-600-rgb: 184 136 15; --brand-gold-700-rgb: 147 108 10;
+
+  /* ── Silver accent ramp. Added to the BASE block 2026-07-25: these tokens were
+     introduced in the 2026-07-24 accent split but declared ONLY inside
+     html.theme-blue-silver, while ~22 inline sites consume them (DownloadsPage,
+     InstallGuideParts, AdminRadioTab/Settings, AdminSettingsTab). Because this
+     block's selector includes :root — the same <html> the theme class is stamped
+     on — declaring them here is what makes them resolve under EVERY theme; the
+     day and legacy-black blocks then override with values suited to their own
+     surfaces. Without a base declaration the rmpg_theme_legacy='1' kill-switch
+     silently stripped the color off all 22 sites.
+     Steel-blue-tinted to sit on night's dark steel surfaces. Every step measured
+     ≥4.5:1 (WCAG AA) on base/raised/sunken, so no step is a trap for text. */
+  --accent-silver-300: #e3e9f0; --accent-silver-300-rgb: 227 233 240;
+  --accent-silver-400: #cfd8e2; --accent-silver-400-rgb: 207 216 226;
+  --accent-silver-500: #bfcad7; --accent-silver-500-rgb: 191 202 215;
+  --accent-silver-600: #9caab9; --accent-silver-600-rgb: 156 170 185;
+  --accent-silver-700: #828fa0; --accent-silver-700-rgb: 130 143 160;
 
   /* Records chrome tokens — NIGHT (dark steel-blue) */
   --spm-chrome: #15212e; --spm-form: #0d1722; --spm-field: #101a26;
@@ -171,6 +200,12 @@ html.theme-light {
   --brand-300-rgb: 70 70 70; --brand-400-rgb: 85 85 85;  --brand-500-rgb: 100 100 100;
   --brand-600-rgb: 150 146 136; --brand-700-rgb: 214 211 200; --brand-800-rgb: 236 233 221;
   --brand-900-rgb: 247 249 251;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted. */
+  --brand-50: rgb(var(--brand-50-rgb));   --brand-100: rgb(var(--brand-100-rgb));
+  --brand-200: rgb(var(--brand-200-rgb)); --brand-300: rgb(var(--brand-300-rgb));
+  --brand-400: rgb(var(--brand-400-rgb)); --brand-500: rgb(var(--brand-500-rgb));
+  --brand-600: rgb(var(--brand-600-rgb)); --brand-700: rgb(var(--brand-700-rgb));
+  --brand-800: rgb(var(--brand-800-rgb)); --brand-900: rgb(var(--brand-900-rgb));
   /* blue token renders NEUTRAL (mirrors rmpg) — the steel accent lives in --brand-blue / --spm-* */
   --blue-50-rgb: 26 26 26;   --blue-100-rgb: 40 40 40;   --blue-200-rgb: 55 55 55;
   --blue-300-rgb: 70 70 70;  --blue-400-rgb: 85 85 85;   --blue-500-rgb: 100 100 100;
@@ -179,6 +214,17 @@ html.theme-light {
   /* gold — DAY: distinct darkening steps for hierarchy, all legible on light */
   --brand-gold-300-rgb: 176 130 30; --brand-gold-400-rgb: 160 116 18; --brand-gold-500-rgb: 147 108 10;
   --brand-gold-600-rgb: 120 88 8;   --brand-gold-700-rgb: 100 73 7;
+  /* silver — DAY: shifted into the legible-on-light range instead of inheriting
+     night's light silver, which would be near-invisible on white/#ece9dd. Keeps
+     the ramp's direction (higher index = darker), exactly as the gold ramp above
+     does for this theme. Measured ≥4.5:1 (WCAG AA) on base/raised/sunken — the
+     sunken beige #d6d3c8 is the binding constraint, so the lightest step is
+     already mid-slate. */
+  --accent-silver-300: #515c68; --accent-silver-300-rgb: 81 92 104;
+  --accent-silver-400: #4a5561; --accent-silver-400-rgb: 74 85 97;
+  --accent-silver-500: #3f4954; --accent-silver-500-rgb: 63 73 84;
+  --accent-silver-600: #343d46; --accent-silver-600-rgb: 52 61 70;
+  --accent-silver-700: #293038; --accent-silver-700-rgb: 41 48 56;
 
   /* Records chrome tokens — DAY (current light Spillman look) */
   --spm-chrome: #d6d3c8; --spm-form: #ece9dd; --spm-field: #f7f9fb;
@@ -254,12 +300,28 @@ html.theme-legacy-black {
   --brand-50-rgb: 242 242 242; --brand-100-rgb: 221 221 221; --brand-200-rgb: 191 191 191;
   --brand-300-rgb: 158 158 158; --brand-400-rgb: 127 127 127; --brand-500-rgb: 102 102 102;
   --brand-600-rgb: 76 76 76; --brand-700-rgb: 52 52 52; --brand-800-rgb: 31 31 31; --brand-900-rgb: 14 14 14;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted. */
+  --brand-50: rgb(var(--brand-50-rgb));   --brand-100: rgb(var(--brand-100-rgb));
+  --brand-200: rgb(var(--brand-200-rgb)); --brand-300: rgb(var(--brand-300-rgb));
+  --brand-400: rgb(var(--brand-400-rgb)); --brand-500: rgb(var(--brand-500-rgb));
+  --brand-600: rgb(var(--brand-600-rgb)); --brand-700: rgb(var(--brand-700-rgb));
+  --brand-800: rgb(var(--brand-800-rgb)); --brand-900: rgb(var(--brand-900-rgb));
   --blue-50-rgb: 241 241 241; --blue-100-rgb: 217 217 217; --blue-200-rgb: 189 189 189;
   /* blue-400 intentionally lighter than 300 — mirrors original tailwind.config anomaly for exact legacy restore */
   --blue-300-rgb: 161 161 161; --blue-400-rgb: 200 200 200; --blue-500-rgb: 154 154 154;
   --blue-600-rgb: 115 115 115; --blue-700-rgb: 79 79 79; --blue-800-rgb: 46 46 46; --blue-900-rgb: 20 20 20;
   --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
   --brand-gold-600-rgb: 184 136 15; --brand-gold-700-rgb: 147 108 10;
+  /* silver — LEGACY BLACK: pure neutral greys, no blue tint, because this theme is
+     a deliberate greyscale restore (its --brand-blue is #9a9a9a). This block is
+     also the one the rmpg_theme_legacy='1' kill-switch selects, i.e. the exact
+     path that exposed the missing ramp. Measured ≥4.5:1 (WCAG AA) on all three
+     surfaces. */
+  --accent-silver-300: #e8e8e8; --accent-silver-300-rgb: 232 232 232;
+  --accent-silver-400: #d4d4d4; --accent-silver-400-rgb: 212 212 212;
+  --accent-silver-500: #c4c4c4; --accent-silver-500-rgb: 196 196 196;
+  --accent-silver-600: #a1a1a1; --accent-silver-600-rgb: 161 161 161;
+  --accent-silver-700: #7d7d7d; --accent-silver-700-rgb: 125 125 125;
 
   /* Records chrome tokens — LEGACY BLACK (dark neutrals) */
   --spm-chrome: #0b0b0b; --spm-form: #000000; --spm-field: #0d0d0d;
@@ -352,6 +414,22 @@ html.theme-blue-silver {
   --brand-300-rgb: 165 182 199; --brand-400-rgb: 134 154 175; --brand-500-rgb: 109 128 150;
   --brand-600-rgb: 82 101 122;  --brand-700-rgb: 58 78 98;    --brand-800-rgb: 38 58 78;
   --brand-900-rgb: 20 40 64;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted.
+     ⚠️ CONTRAST NOTE: --brand-400 here resolves to #869aaf, which measures
+     3.69/2.93/4.44 on base/raised/sunken navy. That clears WCAG 1.4.11's 3:1 for
+     graphics (borders, outlines, icons — 14 of the 19 consumers) but NOT AA 4.5:1
+     for text. Five consumers are 10-11px text: DesktopTaskbar.tsx:192,
+     DesktopClockWidget.tsx:23, DesktopShiftTimerWidget.tsx:40, HelpPage.tsx:720,
+     ModuleDirectoryPage.tsx:344. The same value applied under night (4.77), day
+     (4.97) and legacy-black (4.92), where it passes. Repointing those five at an
+     AA-passing accent is a design decision left open deliberately — do NOT "fix"
+     it by giving this block a literal bare value, which would break the
+     derived-from-triple invariant the tests pin. */
+  --brand-50: rgb(var(--brand-50-rgb));   --brand-100: rgb(var(--brand-100-rgb));
+  --brand-200: rgb(var(--brand-200-rgb)); --brand-300: rgb(var(--brand-300-rgb));
+  --brand-400: rgb(var(--brand-400-rgb)); --brand-500: rgb(var(--brand-500-rgb));
+  --brand-600: rgb(var(--brand-600-rgb)); --brand-700: rgb(var(--brand-700-rgb));
+  --brand-800: rgb(var(--brand-800-rgb)); --brand-900: rgb(var(--brand-900-rgb));
   --blue-50-rgb: 244 247 250; --blue-100-rgb: 221 229 237; --blue-200-rgb: 195 208 219;
   --blue-300-rgb: 168 185 200; --blue-400-rgb: 129 149 171; --blue-500-rgb: 99 118 143;
   --blue-600-rgb: 68 89 113;  --blue-700-rgb: 44 79 116;    --blue-800-rgb: 34 64 95;

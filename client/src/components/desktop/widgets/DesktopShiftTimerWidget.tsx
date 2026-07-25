@@ -37,7 +37,7 @@ export default function DesktopShiftTimerWidget() {
       ) : active ? (
         <>
           <div className="text-[18px] font-mono" style={{ color: 'var(--text-primary)' }}>{elapsed}</div>
-          <div className="text-[10px]" style={{ color: 'var(--brand-400)' }}>On Duty</div>
+          <div className="text-[10px]" style={{ color: 'var(--accent-silver-400)' }}>On Duty</div>
         </>
       ) : (
         <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Off Duty</div>
