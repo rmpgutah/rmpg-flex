@@ -1002,6 +1002,11 @@ citations.get('/statutes/lookup', async (c) => {
 
 // ── Batch citation creation (traffic enforcement) ────────────
 citations.post('/batch', async (c) => {
+  // Bulk citation creation was the one citations mutation with no role gate —
+  // every other write requires an issuing role. Match them so the external
+  // contract_manager role can't bulk-insert enforcement records.
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;

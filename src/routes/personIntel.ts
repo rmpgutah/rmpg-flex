@@ -6,6 +6,30 @@ import type { IntelSeed } from '../utils/personIntel/types';
 
 const app = new Hono<Env>();
 
+// A dossier is scoped to its creator (or org). The list endpoint enforces
+// `WHERE created_by = ? OR org_id = ?`, but the detail / annotate / delete
+// paths fetched purely by :id and applied no scope — so any authenticated
+// non-client_viewer role could read, alter, or permanently DELETE another
+// user's OSINT subject dossier (and its data points / connections / sources)
+// by enumerating sequential ids. Supervisory roles legitimately see all
+// dossiers; everyone else is confined to their own.
+const INTEL_OVERSIGHT_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
+// Returns null if the caller may act on this dossier, or a 403/404 Response.
+async function authorizeDossier(c: any, dossierId: number): Promise<Response | null> {
+  const user = c.get('user');
+  const row = await c.env.DB.prepare(
+    'SELECT created_by, org_id FROM person_intelligence WHERE id = ?'
+  ).bind(dossierId).first() as { created_by: number | null; org_id: string | null } | null;
+  if (!row) return c.json({ error: 'not found' }, 404);
+  if (INTEL_OVERSIGHT_ROLES.has(user.role)) return null;
+  const orgId: string | null = (user as any).org_id ?? null;
+  const ownsByUser = row.created_by != null && row.created_by === user.id;
+  const ownsByOrg = orgId != null && row.org_id != null && row.org_id === orgId;
+  if (ownsByUser || ownsByOrg) return null;
+  return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+}
+
 // POST /api/person-intel — create dossier + kick off PersonIntelDO
 app.post('/', async (c) => {
   const user = c.get('user');
@@ -47,6 +71,8 @@ app.get('/', async (c) => {
 // GET /api/person-intel/:id — get dossier with data points
 app.get('/:id', async (c) => {
   const dossierId = Number(c.req.param('id'));
+  const denied = await authorizeDossier(c, dossierId);
+  if (denied) return denied;
   const dossier = await c.env.DB.prepare(`SELECT * FROM person_intelligence WHERE id = ?`).bind(dossierId).first();
   if (!dossier) return c.json({ error: 'not found' }, 404);
 
@@ -72,16 +98,23 @@ app.get('/:id', async (c) => {
 
 // PATCH /api/person-intel/:id/data-point/:dpId — officer annotate a data point
 app.patch('/:id/data-point/:dpId', async (c) => {
+  const dossierId = Number(c.req.param('id'));
+  const denied = await authorizeDossier(c, dossierId);
+  if (denied) return denied;
   const dpId = Number(c.req.param('dpId'));
   const body = await c.req.json<{ officer_note?: string; officer_flagged?: boolean; promoted?: boolean }>();
-  await execute(c.env.DB, `UPDATE person_intel_data_points SET officer_note=COALESCE(?,officer_note), officer_flagged=COALESCE(?,officer_flagged), promoted=COALESCE(?,promoted) WHERE id=?`,
-    [body.officer_note ?? null, body.officer_flagged != null ? (body.officer_flagged ? 1 : 0) : null, body.promoted != null ? (body.promoted ? 1 : 0) : null, dpId]);
+  // Bind dpId AND dossier_id so a caller authorized for THIS dossier can't
+  // annotate a data point that belongs to a different (unauthorized) one.
+  await execute(c.env.DB, `UPDATE person_intel_data_points SET officer_note=COALESCE(?,officer_note), officer_flagged=COALESCE(?,officer_flagged), promoted=COALESCE(?,promoted) WHERE id=? AND dossier_id=?`,
+    [body.officer_note ?? null, body.officer_flagged != null ? (body.officer_flagged ? 1 : 0) : null, body.promoted != null ? (body.promoted ? 1 : 0) : null, dpId, dossierId]);
   return c.json({ ok: true });
 });
 
 // DELETE /api/person-intel/:id — delete dossier
 app.delete('/:id', async (c) => {
   const dossierId = Number(c.req.param('id'));
+  const denied = await authorizeDossier(c, dossierId);
+  if (denied) return denied;
   await execute(c.env.DB, `DELETE FROM person_intel_data_points WHERE dossier_id=?`, [dossierId]);
   await execute(c.env.DB, `DELETE FROM person_intel_connections WHERE dossier_id=?`, [dossierId]);
   await execute(c.env.DB, `DELETE FROM person_intel_sources WHERE dossier_id=?`, [dossierId]);

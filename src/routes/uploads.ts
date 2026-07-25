@@ -102,7 +102,14 @@ async function verifyJwt(token: string, secret: string): Promise<{ userId: numbe
     const p = payload as Record<string, unknown>;
     const userId = (p.user_id ?? p.userId) as number | undefined;
     if (userId == null) return null;
-    if (p.type === 'refresh') return null;
+    // /api/uploads is a PUBLIC mount, so authMiddleware never runs here and
+    // this is the only token-purpose gate. Reject the same non-session token
+    // types authMiddleware denies (refresh / pre-2FA / password-reset) and any
+    // scoped token — otherwise a pre-2FA or PSO-scoped token could read, write,
+    // or delete attachments. Keep it a deny-list so legacy tokens (no `type`)
+    // still resolve.
+    if (typeof p.type === 'string' && ['refresh', '2fa_pending', 'pwd_reset'].includes(p.type)) return null;
+    if (p.scope != null) return null;
     return {
       userId,
       username: (p.username as string) || '',

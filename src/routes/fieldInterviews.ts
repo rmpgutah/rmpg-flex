@@ -18,9 +18,15 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { geocodeAddress } from './geocode';
+import { requireRole } from '../middleware/auth';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 const fi = new Hono<Env>();
+
+// Field-interview narratives are LE intelligence. Gate the router to the same
+// operational set intel.ts uses, so the external contract_manager /
+// client_viewer roles can neither read nor edit/archive FI records.
+fi.use('*', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // ── Helpers ─────────────────────────────────────────────────
 
