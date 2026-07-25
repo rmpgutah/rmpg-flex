@@ -794,6 +794,72 @@ LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0*.{ucode,pnvm}" "$LINUX_FW_MK"
       echo "Desktop symbols verified present in .config."
     fi
 
+    # ── Kernel/BusyBox config-fragment staleness gate ────────────────────────
+    # (2026-07-25, second FZ-55 audit pass.) Buildroot tracks the config symbol
+    # that LISTS the fragment paths, but nothing watches the CONTENTS of the
+    # fragment files. Once linux/.stamp_configured exists, editing a fragment
+    # changes nothing: merge_config.sh is never re-run, the kernel .config keeps
+    # its old contents, and `make` happily rebuilds and reports success.
+    #
+    # This is not hypothetical. The entire 2026-07-25 FZ-55 hardware audit
+    # (PR #3023 — Bluetooth, TPM, webcam, SD reader, USB4, WWAN, Wacom pen) was
+    # committed, built, and shipped WITHOUT REACHING THE KERNEL AT ALL. Verified
+    # by reading the built .config rather than the fragments: every symbol the
+    # audit added read "not set", while symbols from fragments that predated the
+    # last reconfigure were correctly =y. There was no error anywhere — the
+    # image just quietly lacked half its hardware support.
+    #
+    # Hashing the fragment contents and forcing a reconfigure on change is the
+    # cheap fix. `<pkg>-reconfigure` re-runs the configure step (which is where
+    # merge_config.sh lives) and rebuilds incrementally — for the kernel that is
+    # minutes, not the hour a dirclean would cost.
+    FRAGMENT_HASH_FILE=/build-output/.rmpg-config-fragment-hashes
+    fragment_hash() {
+      # $1 = the .config variable holding a space-separated path list.
+      # Missing files are tolerated: sha256sum reports them on stderr and the
+      # differing hash forces a reconfigure, which is the safe direction.
+      local files
+      files="$(sed -n "s/^$1=\"\(.*\)\"$/\1/p" /build-output/.config)"
+      [ -n "$files" ] || return 0
+      # shellcheck disable=SC2086
+      cat $files 2>/dev/null | sha256sum | cut -d" " -f1
+    }
+    kernel_frag_hash="$(fragment_hash BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES)"
+    busybox_frag_hash="$(fragment_hash BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES)"
+    new_hashes="linux $kernel_frag_hash
+busybox $busybox_frag_hash"
+
+    for entry in "linux $kernel_frag_hash" "busybox $busybox_frag_hash"; do
+      pkg="${entry%% *}"
+      hash="${entry##* }"
+      [ -n "$hash" ] || continue
+      # Only meaningful if the package has already been configured once; on a
+      # fresh build the first configure picks the fragments up anyway.
+      ls /build-output/build/$pkg-*/.stamp_configured >/dev/null 2>&1 || continue
+      if ! grep -qx "$pkg $hash" "$FRAGMENT_HASH_FILE" 2>/dev/null; then
+        echo "Config fragments for [$pkg] changed since it was last configured — forcing reconfigure ..."
+        echo "  (without this the edit silently would not reach the build; see the comment above)"
+        # Repeated reconfigure cycles can leave the kernel host-tool objects in a
+        # half-built state: scripts/kconfig/*.o present with their fixdep .d files
+        # gone, which fails the very next configure with
+        #   fixdep: error opening file: scripts/kconfig/.confdata.o.d
+        # and reads as kernel-source corruption rather than as leftover state.
+        # Observed for real while developing this gate. Removing the host objects
+        # costs seconds and makes the reconfigure self-healing; the alternative a
+        # reader reaches for is linux-dirclean, which recompiles the whole kernel.
+        # linux-[0-9]* rather than linux-* on purpose: the latter also matches
+        # linux-headers-<ver>, a different package this has no business touching.
+        if [ "$pkg" = linux ]; then
+          rm -f /build-output/build/linux-[0-9]*/scripts/kconfig/*.o \
+                /build-output/build/linux-[0-9]*/scripts/kconfig/.*.o.d \
+                /build-output/build/linux-[0-9]*/scripts/basic/*.o \
+                /build-output/build/linux-[0-9]*/scripts/basic/.*.o.d 2>/dev/null || true
+        fi
+        make -C /build-output "$pkg-reconfigure"
+      fi
+    done
+    printf "%s\n" "$new_hashes" > "$FRAGMENT_HASH_FILE"
+
     # Buildroot only auto-applies package patches on a fresh source extract —
     # when a patch block above just wrote a NEW patch file, force that
     # package to re-extract/rebuild so an incremental run actually picks it
@@ -843,7 +909,16 @@ LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0*.{ucode,pnvm}" "$LINUX_FW_MK"
     # alsa-utils:amixer — same class. amixer is a per-command sub-option that
     # was not previously requested, so the already-built package had no reason
     # to rebuild and amixer stayed absent from the image.
-    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses xserver_xorg-server xserver_xorg-server:screensaver linux-firmware:fz55 alsa-utils:amixer"
+    #
+    # linux-firmware:ibt — second FZ-55 audit pass added
+    # BR2_PACKAGE_LINUX_FIRMWARE_IBT (Intel Bluetooth blobs). Same class again:
+    # linux-firmware was already built, so the new option changed nothing and
+    # the rootfs still had no /lib/firmware/intel directory at all. A NEW marker
+    # name is required — linux-firmware:fz55 is already recorded as done, so
+    # reusing it would skip the rebuild. This entry is also what re-runs the
+    # target install, which is what restores the i915 GuC/HuC blobs the Mk3 GPU
+    # needs; the post-build gate asserts both actually landed.
+    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses xserver_xorg-server xserver_xorg-server:screensaver linux-firmware:fz55 alsa-utils:amixer linux-firmware:ibt"
     if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ]; then
       # The marker is a LIST of packages already reconfigured, not a single
       # all-or-nothing flag. The first version of this was a bare touch file,
@@ -873,6 +948,87 @@ LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0*.{ucode,pnvm}" "$LINUX_FW_MK"
 
     echo "Build complete inside the volume:"
     ls -la /build-output/images/bzImage /build-output/images/rootfs.cpio.gz
+
+    # ── FZ-55 hardware-enablement gate ───────────────────────────────────────
+    # (2026-07-25, second audit pass.) Everything in this project that has ever
+    # silently failed has failed the same way: a config edit that never reached
+    # the artifact, with a green build. The staleness gate earlier in this
+    # script prevents the known cause; this checks the RESULT, which is what
+    # actually matters and which no amount of upstream-mechanism reasoning can
+    # substitute for.
+    #
+    # Two independent things get asserted against the real built artifacts:
+    #   1. kernel symbols  — read from the built .config, not from the fragments
+    #   2. firmware blobs  — read from the target rootfs, not from Buildroot .config
+    #
+    # (2) is not redundant with (1). The shipped image was found carrying i915
+    # DMC blobs but zero GuC/HuC despite BR2_PACKAGE_LINUX_FIRMWARE_I915=y and a
+    # complete br-firmware.tar — the target install and the images install
+    # disagreed by 88 files. Only listing the rootfs catches that.
+    KBUILD_CONFIG="$(ls -d /build-output/build/linux-*/.config 2>/dev/null | head -1)"
+    if [ -z "$KBUILD_CONFIG" ]; then
+      echo "ERROR: no built kernel .config found — cannot verify FZ-55 enablement." >&2
+      exit 1
+    fi
+
+    # Kernel symbols. Each is something the terminal cannot do without, and each
+    # maps to a device the Panasonic factory driver inventory proves is
+    # present on at least one FZ-55 generation. Kept as the UNION across
+    # mk1/mk2/mk3 deliberately: the exact fleet model mix is not yet recorded
+    # (see docs/panasonic-fz55-os-build-requirements.md section 9), and a driver
+    # that finds no device costs kilobytes while a missing one costs a field
+    # failure that looks like broken hardware.
+    fz55_missing=""
+    for sym in CONFIG_DRM_I915 CONFIG_E1000E CONFIG_R8169 CONFIG_USB_RTL8152 \
+               CONFIG_IWLWIFI CONFIG_IWLMVM CONFIG_BT_HCIBTUSB CONFIG_BT_INTEL \
+               CONFIG_I2C_HID_ACPI CONFIG_I2C_DESIGNWARE_PLATFORM \
+               CONFIG_MFD_INTEL_LPSS_PCI CONFIG_MFD_INTEL_LPSS_ACPI \
+               CONFIG_PINCTRL_INTEL CONFIG_PINCTRL_ALDERLAKE \
+               CONFIG_HID_MULTITOUCH CONFIG_ACPI_BATTERY CONFIG_ACPI_AC \
+               CONFIG_TCG_CRB CONFIG_MMC_SDHCI_PCI CONFIG_USB_VIDEO_CLASS \
+               CONFIG_INTEL_HID_EVENT CONFIG_INT340X_THERMAL CONFIG_BLK_DEV_NVME \
+               CONFIG_SND_HDA_INTEL CONFIG_USB_XHCI_HCD; do
+      grep -q "^${sym}=y" "$KBUILD_CONFIG" || fz55_missing="$fz55_missing $sym"
+    done
+
+    # Firmware blobs, checked as globs against the target rootfs. Rationale for
+    # each family:
+    #   i915/*_dmc_*   display power management (Mk2/Mk3) — flicker + battery
+    #   i915/adlp_guc  Raptor/Alder Lake-P: i915 in 6.6 turns GuC submission ON
+    #                  BY DEFAULT for this platform (uc_expand_default_options()
+    #                  in drivers/gpu/drm/i915/gt/uc/intel_uc.c falls through to
+    #                  ENABLE_GUC_LOAD_HUC|ENABLE_GUC_SUBMISSION — only TGL and
+    #                  RKL are excluded). A missing GuC blob on a Mk3 is a GPU
+    #                  that fails to initialise, i.e. a black screen.
+    #   intel/ibt-*    Intel Bluetooth; without it the radio stays in bootloader
+    #   iwlwifi-*      Wi-Fi, incl. the ty-a0-gf-a0 AX211 variant this script patches in
+    fw_missing=""
+    for glob in "i915/*_dmc_*.bin" "i915/adlp_guc_*.bin" "i915/tgl_dmc_*.bin" \
+                "intel/ibt-*.sfi" "iwlwifi-so-a0-gf-a0-*.ucode" \
+                "iwlwifi-ty-a0-gf-a0-*.ucode" "iwlwifi-QuZ-a0-*.ucode"; do
+      # shellcheck disable=SC2086
+      ls /build-output/target/lib/firmware/$glob >/dev/null 2>&1 \
+        || fw_missing="$fw_missing $glob"
+    done
+
+    if [ -n "$fz55_missing" ] || [ -n "$fw_missing" ]; then
+      echo "" >&2
+      echo "ERROR: the built image is missing FZ-55 hardware enablement." >&2
+      [ -n "$fz55_missing" ] && echo "  kernel symbols not =y in the BUILT .config:$fz55_missing" >&2
+      [ -n "$fw_missing" ]   && echo "  firmware absent from the target rootfs:$fw_missing" >&2
+      echo "" >&2
+      echo "  This is almost always a stale incremental build, not a bad config:" >&2
+      echo "  Buildroot does not notice edits to kernel config fragments or to" >&2
+      echo "  linux-firmware package options once a package is already built." >&2
+      echo "  Force the relevant package to redo its work, then re-run ./build.sh:" >&2
+      echo "    make -C /build-output linux-reconfigure        # missing kernel symbols" >&2
+      echo "    make -C /build-output linux-firmware-dirclean  # missing firmware blobs" >&2
+      echo "  (run those inside the build container; note that a kernel symbol can also" >&2
+      echo "   be absent because its dependencies are unmet — check the Kconfig depends" >&2
+      echo "   line before assuming staleness.)" >&2
+      exit 1
+    fi
+    echo "FZ-55 enablement verified in the built kernel and rootfs."
 
     echo "Copying final images out to the host-visible output/ directory ..."
     mkdir -p /kiosk-linux/output/images
