@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import AdminSystemTab from '../AdminSystemTab';
 
 vi.mock('../../../hooks/useApi', () => ({
@@ -35,7 +36,9 @@ vi.mock('../../../hooks/useUnsavedChanges', () => ({ useUnsavedChanges: vi.fn() 
 const LoadingSpinner = () => <div>loading</div>;
 
 const renderTab = () => render(
-  <AdminSystemTab users={[]} error={null} setError={vi.fn()} LoadingSpinner={LoadingSpinner} />,
+  <MemoryRouter>
+    <AdminSystemTab users={[]} error={null} setError={vi.fn()} LoadingSpinner={LoadingSpinner} />
+  </MemoryRouter>,
 );
 
 const statuteCallCount = async () => {
@@ -90,5 +93,11 @@ describe('AdminSystemTab — Criminal Codes', () => {
 
     await act(async () => { vi.advanceTimersByTime(400); });
     await waitFor(async () => expect(await statuteCallCount()).toBe(baseline + 1));
+  });
+
+  it('renders the citation as a Law Book deep link', async () => {
+    renderTab();
+    const link = await screen.findByRole('link', { name: /76-5-102/ });
+    expect(link).toHaveAttribute('href', '/law-book?statute_id=1');
   });
 });

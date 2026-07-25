@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Settings,
   Plus,
@@ -1339,6 +1340,7 @@ export default function AdminSystemTab({
   // ============================================================
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
+  const navigate = useNavigate();
 
   const buildUnitMenu = (unit: Unit): ContextMenuItem[] => [
     m.action('Edit unit', () => startEditUnit(unit), { icon: <Edit size={12} /> }),
@@ -1384,6 +1386,8 @@ export default function AdminSystemTab({
   ];
 
   const buildStatuteMenu = (s: any): ContextMenuItem[] => [
+    m.action('Open in Law Book', () => navigate(`/law-book?statute_id=${s.id}`), { icon: <Scale size={12} /> }),
+    m.separator(),
     m.copy('Copy citation', s.citation),
     m.copy('Copy title', s.short_title),
     m.copyId(s.id, 'Copy statute ID'),
@@ -2413,7 +2417,18 @@ export default function AdminSystemTab({
                       <tbody>
                         {statutes.map((s: any) => (
                           <tr key={s.id} className="border-t border-rmpg-700/30 hover:bg-rmpg-700/20" onContextMenu={(e) => openMenu(e, buildStatuteMenu(s))}>
-                            <td className="px-2 py-1.5 font-mono text-brand-400 font-bold whitespace-nowrap">{s.citation}</td>
+                            <td className="px-2 py-1.5 font-mono font-bold whitespace-nowrap">
+                              {/* /law-book?statute_id= is handled by LawBookPage's
+                                  deep-link reader — the statute panel was display-only
+                                  before this. */}
+                              <Link
+                                to={`/law-book?statute_id=${s.id}`}
+                                className="text-brand-400 hover:text-brand-300 hover:underline"
+                                title={`Open ${s.citation} in the Law Book`}
+                              >
+                                {s.citation}
+                              </Link>
+                            </td>
                             <td className="px-2 py-1.5 text-rmpg-200 max-w-[250px] truncate">{s.short_title}</td>
                             <td className="px-2 py-1.5">
                               <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase border ${
