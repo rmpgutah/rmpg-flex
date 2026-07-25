@@ -60,6 +60,68 @@ describe('GET /api/health — multi-service health probe', () => {
     expect(body.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
+  // The Miniflare env can NEVER produce status:'ok' — d1, map_data, downloads and
+  // all six DO namespaces probe as disconnected here, so every test above only
+  // ever exercises the 'degraded' response. Prod serves 'ok'. That asymmetry is
+  // how a field added to only one of two duplicated payload literals shipped
+  // invisibly (2026-07-24). The payload is now built once and shared, and this
+  // fixture pins the 'ok' branch so the two can never silently diverge again.
+  const healthyEnv = () => {
+    const row = <T,>(v: T) => ({ first: async () => v, bind: () => ({ first: async () => v }) });
+    return {
+      ...(env as unknown as Record<string, unknown>),
+      DB: {
+        prepare: (sql: string) => (sql.includes('system_config')
+          ? row({ value: '1.2.3' })
+          : row({ count: 5 })),
+      },
+      KV: { get: async () => null },
+      MAP_DATA: { head: async () => null },
+      UPLOADS: { head: async () => null },
+      DOWNLOADS: { head: async () => null },
+      KIOSK_DEVICES: { head: async () => null },
+      WELFARE_WATCH: { idFromName: () => ({}) },
+      VOICE_HUB: { idFromName: () => ({}) },
+      ALERT_HUB: { idFromName: () => ({}) },
+      DEEP_RESEARCH: { idFromName: () => ({}) },
+      PERSON_INTEL_DO: { idFromName: () => ({}) },
+      FLEXCAM_REMUX: { idFromName: () => ({}) },
+    };
+  };
+
+  describe("status:'ok' branch (what prod actually serves)", () => {
+    it('reports ok when every service is reachable', async () => {
+      const res = await app.request('/api/health', {}, healthyEnv());
+      expect(res.status).toBe(200);
+      const body = await res.json() as { status: string };
+      expect(body.status).toBe('ok');
+    });
+
+    it('includes kiosk_devices in the ok payload, not just the degraded one', async () => {
+      const res = await app.request('/api/health', {}, healthyEnv());
+      const body = await res.json() as {
+        status: string;
+        services: { kiosk_devices?: { connected: boolean } };
+      };
+      expect(body.status).toBe('ok');
+      expect(body.services.kiosk_devices).toBeDefined();
+      expect(body.services.kiosk_devices!.connected).toBe(true);
+    });
+
+    it('emits an identical services key set in both ok and degraded responses', async () => {
+      const okRes = await app.request('/api/health', {}, healthyEnv());
+      const okBody = await okRes.json() as { status: string; services: Record<string, unknown> };
+      const degradedRes = await app.request('/api/health', {}, env as unknown as Record<string, unknown>);
+      const degradedBody = await degradedRes.json() as { status: string; services: Record<string, unknown> };
+
+      // guard: the two requests must actually hit different branches
+      expect(okBody.status).toBe('ok');
+      expect(degradedBody.status).toBe('degraded');
+
+      expect(Object.keys(okBody.services).sort()).toEqual(Object.keys(degradedBody.services).sort());
+    });
+  });
+
   // kiosk_devices is an OPTIONAL binding and is deliberately report-only: it
   // appears in `services` but must never move `status` to 'degraded', in any of
   // its three states. See the comment above `allOk` in src/routes/health.ts.

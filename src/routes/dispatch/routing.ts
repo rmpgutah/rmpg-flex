@@ -55,7 +55,11 @@ interface CallRow {
   status: string;
   latitude: number | null;
   longitude: number | null;
-  location: string | null;
+  // The live column is `location_address` — there is no `location` column on
+  // calls_for_service (verified via pragma_table_info: location_address,
+  // location_building, location_floor, location_room). Selecting `location`
+  // made every /optimize call fail with "no such column: location".
+  location_address: string | null;
   description: string | null;
   assigned_unit_ids: string | null;
 }
@@ -78,7 +82,7 @@ routing.post('/optimize', async (c) => {
     // set, so membership is filtered in JS rather than string-LIKE SQL.
     const candidates = await query<CallRow>(db, `
       SELECT id, call_number, incident_type, priority, status, latitude, longitude,
-             location, description, assigned_unit_ids
+             location_address, description, assigned_unit_ids
       FROM calls_for_service
       WHERE status IN ('pending','on_hold','dispatched','enroute','onscene')
       ORDER BY created_at ASC LIMIT 500`);
@@ -123,7 +127,7 @@ routing.post('/optimize', async (c) => {
       priority: s.call.priority || 'P3',
       latitude: s.latitude,
       longitude: s.longitude,
-      location_address: s.call.location || '',
+      location_address: s.call.location_address || '',
       status: s.call.status,
       description: s.call.description || undefined,
       distance_from_prev_miles: Math.round(legsMiles[i] * 100) / 100,
