@@ -1,0 +1,51 @@
+# kiosk-linux/configs/kernel-fz55.fragment
+# Real-hardware enablement for the Panasonic Toughbook FZ-55 deployment
+# target (first physical target hardware, selected 2026-07-24). Everything is
+# built in (=y, no module infrastructure in this image) and purely ADDITIVE to
+# the QEMU/virtio fragments — the same image boots under both QEMU (virtio
+# devices) and the FZ-55 (Intel devices); each driver simply finds no device
+# on the other platform.
+#
+# FZ-55 (Mk1/Mk2) hardware map this covers:
+# - Intel UHD 620 graphics (Whiskey/Comet Lake iGPU) → i915 KMS driver;
+#   userspace 3D comes from Mesa's iris Gallium driver (defconfig).
+# - Intel gigabit ethernet → e1000e.
+# - NVMe SSD and/or SATA (2.5" bay) → nvme + ahci + sd_mod.
+# - USB 3.x xHCI ports (also how the OS image itself boots from a USB stick,
+#   and keyboard/touchscreen input for the kiosk) → xhci + usb-storage + HID.
+CONFIG_DRM_I915=y
+# i915 loads GuC/HuC/DMC firmware opportunistically when present; basic KMS
+# modesetting (all this kiosk needs) works without any firmware blobs, so no
+# linux-firmware package is required for bring-up.
+CONFIG_DRM_I915_USERPTR=y
+
+# Networking (wired — the kiosk deliberately has no Wi-Fi stack yet; iwlwifi
+# needs out-of-tree firmware blobs and a wpa_supplicant userspace this image
+# doesn't carry).
+CONFIG_E1000E=y
+
+# Storage: NVMe + AHCI/SATA + the SCSI-disk layer both sit on.
+CONFIG_BLK_DEV_NVME=y
+CONFIG_ATA=y
+CONFIG_SATA_AHCI=y
+CONFIG_SCSI=y
+CONFIG_BLK_DEV_SD=y
+
+# USB: xHCI host controller (all FZ-55 ports), mass storage (the install USB
+# stick this image is dd'd onto), and HID input (kiosk touchscreen/keyboard).
+CONFIG_USB_SUPPORT=y
+CONFIG_USB=y
+CONFIG_USB_XHCI_HCD=y
+CONFIG_USB_STORAGE=y
+CONFIG_USB_HID=y
+CONFIG_HID_GENERIC=y
+CONFIG_INPUT_EVDEV=y
+# FZ-55 touchscreen models expose HID multitouch devices.
+CONFIG_HID_MULTITOUCH=y
+
+# VFAT/EFI-adjacent bits: the boot partition tooling stays ext2/syslinux
+# (legacy/CSM boot), but USB sticks reformatted in the field are commonly
+# FAT — cheap to read support.
+CONFIG_VFAT_FS=y
+CONFIG_NLS_CODEPAGE_437=y
+CONFIG_NLS_ISO8859_1=y

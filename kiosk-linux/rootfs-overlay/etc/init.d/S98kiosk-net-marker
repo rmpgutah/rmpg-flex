@@ -1,0 +1,39 @@
+#!/bin/sh
+# kiosk-linux/rootfs-overlay/etc/init.d/S98kiosk-net-marker
+#
+# Renamed S99→S98 (2026-07-24) so it deterministically runs BEFORE
+# S99kiosk-browser-marker by numeric prefix rather than relying on the
+# lexicographic tie-break that previously ran the BROWSER first ('b' < 'n'
+# within the shared S99 prefix). Running network validation before the
+# browser removes a real observed race: cog's very first page load failed
+# with "Error resolving 'rmpgutah.us'" because DNS wasn't ready yet, and
+# only its automatic retry succeeded.
+#
+# Acquires a DHCP lease over eth0 (the virtio-net interface) and confirms
+# real outbound connectivity. The probe is a TCP connect to rmpgutah.us:443
+# via BusyBox nc (enabled in configs/busybox-net.fragment) — this proves DNS
+# resolution + routing + outbound TCP to the host the kiosk actually needs.
+# The previous probe (plain-HTTP wget to a third-party site, chosen because
+# BusyBox wget has no TLS) produced a false NET_FAILED on a network where
+# port-80 egress is blocked but HTTPS works fine — observed in a real
+# 2026-07-24 run where wget timed out while the browser loaded the same
+# target over HTTPS without issue. TLS trust itself is still exercised for
+# real by WPE WebKit in the browser marker.
+#
+# Always writes a line (OK or FAILED) to /tmp/kiosk-net-marker.log —
+# S99kiosk-browser-marker polls that file, and a FAILED line lets it stop
+# waiting immediately instead of burning its full poll window.
+ip link set eth0 up 2>/dev/null
+
+# udhcpc -n (exit if lease not obtained) -q (quit after obtaining lease) blocks
+# until it succeeds or gives up — its exit code is a trustworthy signal.
+if udhcpc -i eth0 -n -q -t 5 -T 3 >/tmp/udhcpc.log 2>&1; then
+  if nc -w 5 rmpgutah.us 443 </dev/null >/dev/null 2>&1; then
+    echo "KIOSK_LINUX_NET_OK" | tee /tmp/kiosk-net-marker.log
+  else
+    echo "KIOSK_LINUX_NET_FAILED (dhcp lease acquired, but TCP 443 reachability check failed)" | tee /tmp/kiosk-net-marker.log
+  fi
+else
+  echo "KIOSK_LINUX_NET_FAILED (no dhcp lease, see /tmp/udhcpc.log)" | tee /tmp/kiosk-net-marker.log
+  cat /tmp/udhcpc.log
+fi

@@ -4,3 +4,9 @@
 # makes it an explicit, non-negotiable requirement for this project rather
 # than an implicit default that could silently regress.
 CONFIG_UDHCPC=y
+# nc (netcat) backs S98kiosk-net-marker's reachability probe: a TCP connect to
+# rmpgutah.us:443 proves DNS + routing + outbound TCP without needing TLS
+# (BusyBox wget has none) or port-80 egress (a real 2026-07-24 run showed
+# plain-HTTP fetches to third-party hosts timing out on a network where the
+# browser's HTTPS load to the same target worked fine).
+CONFIG_NC=y

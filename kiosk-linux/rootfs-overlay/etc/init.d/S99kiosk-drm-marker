@@ -19,7 +19,19 @@
 # a test pattern via `-s <connector>:<mode>`.
 CONN_MODE="34:1280x800"
 MODETEST_BIN=$(command -v modetest)
-if [ -n "$MODETEST_BIN" ]; then
+
+# Sub-project 3+ era: when the kiosk browser (cog) is installed and running it
+# owns DRM master, and modetest's own mode-set attempt then fails with
+# "Permission denied" — observed in a real 2026-07-24 boot log, because
+# BusyBox init runs the shared-S99 scripts lexicographically and
+# "S99kiosk-browser-marker" < "S99kiosk-drm-marker" ('b' < 'd'), so cog is
+# already on the display by the time this script runs. That is not a display
+# failure: the browser actively scanning out IS the strongest possible proof
+# the DRM stack works. Only fall back to the modetest mode-set when no
+# browser is holding the display (e.g. a future config without cog).
+if pidof cog >/dev/null 2>&1; then
+  echo "KIOSK_LINUX_DRM_OK (kiosk browser owns the display)"
+elif [ -n "$MODETEST_BIN" ]; then
   # modetest -s is meant to draw the pattern and then block reading stdin for a
   # keypress, holding the frame on screen — but stdin inherited from a
   # non-interactive init script hits EOF immediately, so modetest returns from

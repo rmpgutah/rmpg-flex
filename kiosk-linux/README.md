@@ -8,13 +8,32 @@ Kiosk Shell Mode / UEFI Boot Splash work already shipped elsewhere in this repo.
 See [`docs/superpowers/specs/2026-07-21-kiosk-linux-base-image-design.md`](../docs/superpowers/specs/2026-07-21-kiosk-linux-base-image-design.md)
 for the full design and explicit scope decisions.
 
+## Current state (2026-07-24)
+
+**The kiosk boots to a working, fully rendered RMPG Flex console.** Verified by a
+real QEMU screenshot showing the live login screen with the device panel reporting
+Server/Connection Online, zero segfaults across the run. See
+[`RELEASE.md`](RELEASE.md) for what changed in 1.2.0 — in particular the
+`glib-networking` fix that resolved the long-standing "loads pages but renders
+blank white" limitation, and the cog `user_data` fix (patch 0005) behind the
+SIGSEGV that appeared once real page content started flowing.
+
+Target hardware is now the **Panasonic Toughbook FZ-55** — the kernel and Mesa
+config carry i915/iris graphics, e1000e networking, NVMe/SATA storage, and
+USB/HID enablement for it (`configs/kernel-fz55.fragment`). That enablement is
+purely additive; the same image still boots under QEMU on virtio devices.
+
 ## What this does NOT do yet
 
-- No graphics/display stack (sub-project 2)
-- Does not run RMPG Flex or any browser (sub-project 3)
-- No update/provisioning mechanism (sub-project 4)
-- No real hardware support — QEMU/generic x86_64 only (deferred until specific target
-  hardware is identified)
+- **Not yet validated on physical FZ-55 hardware** — all verification to date is
+  under the QEMU reference environment. Flash and confirm one unit before any
+  fleet rollout.
+- No Wi-Fi stack (wired ethernet only — iwlwifi needs firmware blobs and a
+  wpa_supplicant userspace this image does not carry)
+- Legacy/CSM boot only — no UEFI-native boot path yet (some late FZ-55 firmware
+  revisions have removed CSM; a UEFI build is planned)
+- No OTA update delivery — the A/B slot *mechanism* exists and self-heals a bad
+  boot, but nothing yet pushes a new image into the inactive slot
 - No connection to the existing `uefi-bootsplash/` project — that project still
   chainloads to Windows only; whether it might later chainload to this image instead
   is an undecided future integration question
