@@ -380,18 +380,42 @@ admin.delete('/call-templates/:id', async (c) => {
 });
 
 // ── /admin/clients — full CRUD (AdminPage, CrmPage, IncidentsPage all call this prefix) ──
+// Roles allowed to see full client records incl. commercial terms. The
+// external-facing roles (contract_manager, client_viewer) are deliberately
+// absent — there is no tenancy column on `users`, so nothing scopes a
+// client-side account to its OWN client, and any of them could otherwise
+// read every other client's rates by incrementing :id.
+const CLIENT_FULL_ROLES = ['admin', 'manager', 'supervisor'];
+
 admin.get('/clients', async (c) => {
   try {
     const db = getDb(c.env);
     const status = c.req.query('status');
+    // This list is a CLIENT PICKER for dispatch / incidents / serve /
+    // invoices, so it must stay readable to officers and dispatchers — but
+    // `SELECT *` also handed rate_per_hour, contract_value, total_invoiced,
+    // total_paid and outstanding_balance to every role. Privileged roles get
+    // the full row; everyone else gets only what a picker needs.
+    const actor = c.get('user') as { role?: string } | undefined;
+    // Restricted set is limited to columns the surrounding query already
+    // proves exist (ORDER BY name / WHERE status) — live D1 carries schema
+    // drift, and naming a missing column here would 500 the picker for
+    // every officer rather than degrade.
+    const cols = CLIENT_FULL_ROLES.includes(actor?.role ?? '')
+      ? '*'
+      : 'id, name, status';
     const sql = status
-      ? 'SELECT * FROM clients WHERE status = ? ORDER BY name'
-      : 'SELECT * FROM clients ORDER BY name';
+      ? `SELECT ${cols} FROM clients WHERE status = ? ORDER BY name`
+      : `SELECT ${cols} FROM clients ORDER BY name`;
     return c.json(status ? await query(db, sql, status) : await query(db, sql));
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 admin.get('/clients/:id', async (c) => {
+  // Detail view: contracts, contact persons, and the client's incidents and
+  // calls. Only AdminClientsTab consumes it, so gating costs no function.
+  const denied = forbidUnlessRole(c, ...CLIENT_FULL_ROLES);
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
@@ -406,6 +430,8 @@ admin.get('/clients/:id', async (c) => {
 });
 
 admin.get('/clients/:id/incidents', async (c) => {
+  const denied = forbidUnlessRole(c, ...CLIENT_FULL_ROLES);
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     return c.json(await query(db, `SELECT id, incident_number, occurred_date, status, incident_type FROM incidents WHERE client_id = ? ORDER BY occurred_date DESC LIMIT 100`, Number(c.req.param('id'))));
@@ -413,6 +439,8 @@ admin.get('/clients/:id/incidents', async (c) => {
 });
 
 admin.get('/clients/:id/calls', async (c) => {
+  const denied = forbidUnlessRole(c, ...CLIENT_FULL_ROLES);
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     return c.json(await query(db, `SELECT id, call_number, created_at, status, incident_type, priority FROM calls_for_service WHERE client_id = ? ORDER BY created_at DESC LIMIT 100`, Number(c.req.param('id'))));
@@ -420,6 +448,9 @@ admin.get('/clients/:id/calls', async (c) => {
 });
 
 admin.get('/clients/:id/billing', async (c) => {
+  // Rates, invoiced/paid totals and outstanding balance.
+  const denied = forbidUnlessRole(c, ...CLIENT_FULL_ROLES);
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const client = await queryFirst<Record<string, unknown>>(db, 'SELECT total_invoiced, total_paid, outstanding_balance, billing_cycle, payment_terms, rate_per_hour, rate_per_incident, rate_per_cfs FROM clients WHERE id = ?', Number(c.req.param('id')));
