@@ -7,6 +7,7 @@
 //   bzImage         — bare kernel  (QEMU / development use)
 //   rootfs.cpio.gz  — bare initramfs (QEMU / development use)
 import { Bullets, Callout, Cmd, GuideFrame, GuideHeading, Screenshots, Step, Troubleshooting } from './InstallGuideParts';
+import { downloadUrl } from '../../hooks/useApi';
 
 // Real captures from the running OS under the QEMU reference environment —
 // not mockups. Regenerate with kiosk-linux/test/run-qemu-browser.sh and copy

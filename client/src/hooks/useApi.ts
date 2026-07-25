@@ -351,6 +351,26 @@ function maybeRedirectToCfWorker(url: string): string {
 // this origin. REMOVE these opt-ins once the dispatcher binding is fixed.
 const CF_WORKER_DIRECT_BASE = 'https://api.rmpgutah.us';
 
+/**
+ * Absolute URL for a published download (installer / OS image).
+ *
+ * MUST be absolute to the Worker origin. A relative "/downloads/<file>" link
+ * resolves against the Pages SPA, and client/public/_redirects tries to proxy
+ * that to the Worker with a status-200 rule — which Cloudflare Pages does not
+ * support (it honours redirect statuses only; 200-rewrites to another origin
+ * are a Netlify feature). The rule is silently ignored, the request falls
+ * through to the SPA catch-all, and the browser saves index.html under the
+ * artifact's filename: an 11,630-byte "installer" that fails with no error.
+ * Reported from the field as "files download at 11.5 kb".
+ *
+ * In dev, Vite's proxy does forward /downloads to the local Worker, so a
+ * relative path is correct there.
+ */
+export function downloadUrl(filename: string): string {
+  const encoded = encodeURIComponent(filename);
+  return import.meta.env.DEV ? `/downloads/${encoded}` : `${CF_WORKER_DIRECT_BASE}/downloads/${encoded}`;
+}
+
 export async function apiFetch<T>(
   endpoint: string,
   options?: RequestInit & { timeoutMs?: number; directWorker?: boolean }

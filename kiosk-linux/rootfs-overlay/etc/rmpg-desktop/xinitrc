@@ -47,7 +47,14 @@ rmpg-shell >/tmp/rmpg-shell.log 2>&1 &
 #    a native application rather than a browser tab, while still being a real
 #    resizable window the user can minimize like any other.
 if [ "${RMPG_DESKTOP_AUTOSTART_FLEX:-1}" = "1" ]; then
-  midori --app="https://rmpgutah.us" >/tmp/flex-app.log 2>&1 &
+  # rmpg-browser, NOT midori: midori was dropped from the build because it
+  # depends on libpeas, which forces gobject-introspection on globally and
+  # broke the build outright (pango could not generate its .gir because
+  # harfbuzz had already been built for wpewebkit without introspection).
+  # This line still said "midori" after that swap — a dead reference to a
+  # binary no longer in the image, which fails silently because it is
+  # backgrounded, leaving the desktop up with no console window and no error.
+  rmpg-browser --app="https://rmpgutah.us" >/tmp/flex-app.log 2>&1 &
 fi
 
 echo "KIOSK_LINUX_DESKTOP_SESSION_UP"
