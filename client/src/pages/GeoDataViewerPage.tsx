@@ -469,7 +469,7 @@ export default function GeoDataViewerPage() {
               style={{
                 background: 'var(--surface-base)',
                 border: '1px solid var(--border-default)',
-                color: sorted.length ? 'var(--rmpg-400)' : 'var(--rmpg-600)',
+                color: sorted.length ? 'var(--rmpg-400)' : 'var(--text-muted)',
                 cursor: sorted.length ? 'pointer' : 'not-allowed',
               }}
             >
@@ -553,7 +553,7 @@ export default function GeoDataViewerPage() {
                   className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
                   style={{
                     background: viewMode === 'table' ? 'var(--surface-raised)' : 'var(--surface-overlay)',
-                    color: viewMode === 'table' ? 'var(--rmpg-400)' : 'var(--rmpg-500)',
+                    color: viewMode === 'table' ? 'var(--rmpg-400)' : 'var(--text-muted)',
                     cursor: 'pointer',
                   }}
                 >
@@ -568,7 +568,7 @@ export default function GeoDataViewerPage() {
                   className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
                   style={{
                     background: viewMode === 'map' ? 'var(--surface-raised)' : 'var(--surface-overlay)',
-                    color: viewMode === 'map' ? 'var(--rmpg-400)' : 'var(--rmpg-500)',
+                    color: viewMode === 'map' ? 'var(--rmpg-400)' : 'var(--text-muted)',
                     cursor: 'pointer',
                     borderLeft: '1px solid var(--surface-raised)',
                   }}
@@ -586,7 +586,7 @@ export default function GeoDataViewerPage() {
                 style={{
                   background: showFilter ? 'var(--surface-raised)' : 'var(--surface-overlay)',
                   border: `1px solid ${showFilter ? 'var(--border-default)' : 'var(--surface-raised)'}`,
-                  color: showFilter ? 'var(--rmpg-400)' : 'var(--rmpg-500)',
+                  color: showFilter ? 'var(--rmpg-400)' : 'var(--text-muted)',
                   cursor: 'pointer',
                 }}
               >
@@ -706,7 +706,7 @@ export default function GeoDataViewerPage() {
                             className="text-[9px] font-semibold uppercase tracking-wider text-left cursor-pointer select-none"
                             style={{
                               padding: '3px 8px',
-                              color: isSorted ? activeLayer.color : 'var(--rmpg-600)',
+                              color: isSorted ? activeLayer.color : 'var(--text-muted)',
                               whiteSpace: 'nowrap',
                               borderRight: '1px solid var(--border-subtle)',
                             }}
@@ -766,7 +766,7 @@ export default function GeoDataViewerPage() {
                             </td>
                           ))}
                           <td style={{ padding: '2px 8px', textAlign: 'center' }}>
-                            <Eye style={{ width: 10, height: 10, color: isSelected ? activeLayer.color : 'var(--rmpg-600)' }} />
+                            <Eye style={{ width: 10, height: 10, color: isSelected ? activeLayer.color : 'var(--text-muted)' }} />
                           </td>
                         </tr>
                       );

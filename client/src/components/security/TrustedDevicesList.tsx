@@ -125,7 +125,7 @@ export default function TrustedDevicesList() {
             onClick={() => revokeDevice(device.id)}
             disabled={revoking === device.id}
             className="toolbar-btn flex items-center gap-1 text-[9px]"
-            style={{ color: revoking === device.id ? 'var(--rmpg-500)' : '#ef4444' }}
+            style={{ color: revoking === device.id ? 'var(--text-muted)' : '#ef4444' }}
             title="Revoke trust"
           >
             <Trash2 className="w-3 h-3" />

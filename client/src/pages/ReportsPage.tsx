@@ -1223,7 +1223,7 @@ export default function ReportsPage() {
   const priorityChartData = (Array.isArray(dashboardData?.callsByPriority) ? dashboardData.callsByPriority : []).map(item => ({
     priority: item.priority,
     count: item.count,
-    fill: PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)',
+    fill: PRIORITY_COLORS[item.priority] || 'var(--text-muted)',
   }));
 
   const responseTimeChartData = (Array.isArray(responseTimesData?.dailyTrend) ? responseTimesData.dailyTrend : []).map(item => ({
@@ -1696,7 +1696,7 @@ export default function ReportsPage() {
                   priority: item.priority,
                   avgMinutes: parseFloat((Number(item.avg_response_minutes) || 0).toFixed(1)),
                   count: item.count,
-                  fill: PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)',
+                  fill: PRIORITY_COLORS[item.priority] || 'var(--text-muted)',
                 }))}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
@@ -1705,7 +1705,7 @@ export default function ReportsPage() {
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Bar dataKey="avgMinutes" name="Avg Response (min)" radius={[4, 4, 0, 0]}>
                     {responseTimesData.byPriority.map((item, i) => (
-                      <Cell key={i} fill={PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)'} />
+                      <Cell key={i} fill={PRIORITY_COLORS[item.priority] || 'var(--text-muted)'} />
                     ))}
                   </Bar>
                 </BarChart>

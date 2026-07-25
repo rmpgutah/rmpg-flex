@@ -53,7 +53,7 @@ function activityColor(type: string): string {
     case 'disciplinary': return '#ef4444';
     case 'review': return '#888888';
     case 'commendation': return '#8b5cf6';
-    default: return 'var(--rmpg-500)';
+    default: return 'var(--text-muted)';
   }
 }
 
@@ -181,7 +181,7 @@ function ManagerDashboard({
           icon={Clock}
           label="Pending Approvals"
           value={data.pending_approvals}
-          accent={data.pending_approvals > 0 ? '#ef4444' : 'var(--rmpg-500)'}
+          accent={data.pending_approvals > 0 ? '#ef4444' : 'var(--text-muted)'}
           onClick={data.pending_approvals > 0 ? onNavigateToLeave : undefined}
         />
       </div>

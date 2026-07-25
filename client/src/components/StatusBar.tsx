@@ -98,7 +98,7 @@ function StatusBar({
                 </span>
               )}
               {gpsLastSent && (
-                <span className="tabular-nums" style={{ color: isStale ? gpsColor : 'var(--rmpg-600)', marginLeft: 4 }}>
+                <span className="tabular-nums" style={{ color: isStale ? gpsColor : 'var(--text-muted)', marginLeft: 4 }}>
                   {safeTimeStr(gpsLastSent)}
                 </span>
               )}

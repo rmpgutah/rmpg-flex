@@ -161,7 +161,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
           fontSize: 10,
           fontFamily: 'monospace',
           fontWeight: 700,
-          color: timerUrgent ? '#ef4444' : 'var(--rmpg-500)',
+          color: timerUrgent ? '#ef4444' : 'var(--text-muted)',
           minWidth: 24,
           textAlign: 'right',
         }}>

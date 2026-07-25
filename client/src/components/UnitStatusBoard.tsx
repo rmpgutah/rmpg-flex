@@ -57,7 +57,7 @@ function statusDwell(unit: Unit): { mins: number; color: string } | null {
 // neutral gray; no active trip → nothing. Format: "▶ RESPONSE 24-0613 · 2.1 mi · 4m".
 function TripBadge({ trip }: { trip: Trip }) {
   const isResponse = trip.trip_type === 'call_response';
-  const color = isResponse ? 'var(--brand-gold)' : 'var(--rmpg-500)';
+  const color = isResponse ? 'var(--brand-gold)' : 'var(--text-muted)';
   const miles = tripMiles(trip);
   const mins = tripDurationMin(trip);
   const parts: string[] = [tripLabel(trip)];
@@ -319,7 +319,7 @@ export default React.memo(function UnitStatusBoard({
                         </span>
                         {unit.gps_updated_at && unit.status !== 'off_duty' && (() => {
                           const mins = Math.floor((Date.now() - parseTimestamp(unit.gps_updated_at).getTime()) / 60000);
-                          const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : 'var(--rmpg-500)';
+                          const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : 'var(--text-muted)';
                           return <span className="text-[8px] font-mono ml-1 flex-shrink-0" style={{ color }} title="GPS age">{mins}m</span>;
                         })()}
                       </div>

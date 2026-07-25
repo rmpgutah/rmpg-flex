@@ -153,7 +153,7 @@ export default function Force2FASetupModal() {
               className="w-full flex items-center justify-center gap-2 py-2 text-[10px] uppercase tracking-wider font-bold transition-colors"
               style={{ color: 'var(--rmpg-500)', background: 'transparent', border: 'none' }}
               onMouseEnter={e => (e.currentTarget.style.color = '#888888')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'var(--rmpg-500)')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
             >
               <Clock style={{ width: 12, height: 12 }} />
               Set Up Later
