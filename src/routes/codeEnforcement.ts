@@ -28,6 +28,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { denverDateExpr, denverNowDateExpr } from '../utils/denverTime';
+import { containsAnyClause } from '../utils/searchText';
 
 const ce = new Hono<Env>();
 
@@ -65,9 +66,10 @@ ce.get('/violations', async (c) => {
     if (q('violation_type')) { conditions.push('violation_type = ?'); params.push(q('violation_type')); }
     const search = q('search');
     if (search) {
-      conditions.push('(violation_number LIKE ? OR location LIKE ? OR description LIKE ? OR violator_name LIKE ?)');
-      const s = `%${search}%`;
-      params.push(s, s, s, s);
+      // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+      const _m = containsAnyClause(['violation_number', 'location', 'description', 'violator_name']);
+      conditions.push(_m.sql);
+      params.push(..._m.binds(search));
     }
     const where = `WHERE ${conditions.join(' AND ')}`;
     const page = Math.max(1, parseInt(q('page') || '1', 10) || 1);
@@ -191,9 +193,10 @@ ce.get('/tows', async (c) => {
     if (q('status')) { conditions.push('status = ?'); params.push(q('status')); }
     const search = q('search');
     if (search) {
-      conditions.push('(tow_number LIKE ? OR vehicle_plate LIKE ? OR vehicle_vin LIKE ? OR tow_from LIKE ?)');
-      const s = `%${search}%`;
-      params.push(s, s, s, s);
+      // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+      const _m = containsAnyClause(['tow_number', 'vehicle_plate', 'vehicle_vin', 'tow_from']);
+      conditions.push(_m.sql);
+      params.push(..._m.binds(search));
     }
     const where = `WHERE ${conditions.join(' AND ')}`;
     const page = Math.max(1, parseInt(q('page') || '1', 10) || 1);

@@ -15,6 +15,7 @@ import { geocodeAddress } from './geocode';
 import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { containsAnyClause } from '../utils/searchText';
 const citations = new Hono<Env>();
 
 const VALID_TYPES = new Set(['traffic', 'criminal', 'parking', 'warning']);
@@ -202,9 +203,10 @@ citations.get('/', async (c) => {
     if (q('date_to')) { conditions.push('violation_date <= ?'); params.push(q('date_to')); }
     const search = q('search');
     if (search) {
-      conditions.push('(citation_number LIKE ? OR person_name LIKE ? OR vehicle_plate LIKE ? OR location LIKE ?)');
-      const s = `%${search}%`;
-      params.push(s, s, s, s);
+      // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+      const _m = containsAnyClause(['citation_number', 'person_name', 'vehicle_plate', 'location']);
+      conditions.push(_m.sql);
+      params.push(..._m.binds(search));
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;

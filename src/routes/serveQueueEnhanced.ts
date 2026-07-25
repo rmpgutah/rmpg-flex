@@ -23,6 +23,7 @@ import {
   haversineDistance,
   estimateDriveTime,
 } from '../utils/serveRouteOptimizer';
+import { containsAnyClause } from '../utils/searchText';
 import {
   crossReferenceDefendant,
   validateCharges,
@@ -76,9 +77,10 @@ sqe.get('/enhanced', async (c) => {
   if (dateTo) { where.push('q.created_at <= ?'); args.push(dateTo + ' 23:59:59'); }
   if (documentType) { where.push('q.document_type = ?'); args.push(documentType); }
   if (search) {
-    where.push('(q.defendant_name LIKE ? OR q.recipient_name LIKE ? OR q.case_number LIKE ? OR q.recipient_address LIKE ?)');
-    const s = `%${search}%`;
-    args.push(s, s, s, s);
+    // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+    const _m = containsAnyClause(['q.defendant_name', 'q.recipient_name', 'q.case_number', 'q.recipient_address']);
+    where.push(_m.sql);
+    args.push(..._m.binds(search));
   }
 
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';

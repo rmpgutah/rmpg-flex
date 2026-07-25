@@ -9,6 +9,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { containsAnyClause } from '../utils/searchText';
 
 const pawn = new Hono<Env>();
 
@@ -29,8 +30,10 @@ pawn.get('/', async (c) => {
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (status) { conditions.push('status = ?'); params.push(status); }
     if (search) {
-      conditions.push('(serial_number LIKE ? OR item_description LIKE ? OR seller_last_name LIKE ? OR seller_first_name LIKE ?)');
-      const s = `%${search}%`; params.push(s, s, s, s);
+      // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+      const _m = containsAnyClause(['serial_number', 'item_description', 'seller_last_name', 'seller_first_name']);
+      conditions.push(_m.sql);
+      params.push(..._m.binds(search));
     }
     const rows = await query<Record<string, unknown>>(
       db, `SELECT * FROM pawn_transactions WHERE ${conditions.join(' AND ')} ORDER BY transaction_date DESC LIMIT 500`, ...params);

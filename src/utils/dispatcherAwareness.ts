@@ -26,6 +26,7 @@ import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
 import { emitAlert } from './alertHub';
 import { isFlagSet } from './sentinel';
+import { containsAnyClause } from './searchText';
 import { geocodeAddress, reverseGeocodeAddress } from '../routes/geocode';
 import { resolveDistrict } from './districtResolver';
 import { estimateEta } from './eta';
@@ -371,15 +372,32 @@ async function lookupPerson(db: D1Database, raw: string): Promise<LookupResult> 
   if (!p) return { text: `No person record matching "${raw.trim()}".` };
   const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || raw.trim();
   // Outstanding warrants for this person (by id or by name).
+  //
+  // A failure here MUST NOT be spoken as "No active warrants on file" — this
+  // text goes out over the air, so a swallowed error becomes an audible false
+  // clear on warrant status. Track the failure and say so instead.
+  //
+  // instr() rather than LIKE on the name legs: D1 caps LIKE patterns at 50
+  // chars (see searchText.ts), so a long subject name threw here — and the old
+  // `.catch(() => [])` turned exactly that into "no warrants".
+  let warrantLookupFailed = false;
+  const nameMatch = containsAnyClause([
+    "TRIM(COALESCE(subject_first_name,'') || ' ' || COALESCE(subject_last_name,''))",
+    'subject_name',
+  ]);
   const warrants = await query<{ warrant_number: string | null; offense: string | null; status: string | null }>(
     db,
     `SELECT warrant_number, charge_description AS offense, status
      FROM warrants
-     WHERE (subject_person_id = ? OR TRIM(COALESCE(subject_first_name,'') || ' ' || COALESCE(subject_last_name,'')) LIKE ? OR subject_name LIKE ?)
+     WHERE (subject_person_id = ? OR ${nameMatch.sql})
        AND archived_at IS NULL AND COALESCE(status,'') NOT IN ('served','cleared','recalled','closed','quashed')
      LIMIT 3`,
-    p.id, `%${name}%`, `%${name}%`,
-  ).catch(() => []);
+    p.id, ...nameMatch.binds(name),
+  ).catch((err) => {
+    warrantLookupFailed = true;
+    log.error('dispatcher-awareness warrant lookup failed', { personId: p.id }, err as Error);
+    return [];
+  });
   // Sentinel guard (isFlagSet): live D1 stores "None"/"N/A"/"0" not NULL, so a
   // raw truthiness check would speak a FALSE "gang affiliation noted: None" /
   // "Caution: None" over the air on a clean subject. Guard every flag read.
@@ -388,7 +406,10 @@ async function lookupPerson(db: D1Database, raw: string): Promise<LookupResult> 
     `${name}${p.dob ? `, DOB ${p.dob}` : ''}.`,
     warrants.length
       ? `ACTIVE WARRANT${warrants.length > 1 ? 'S' : ''}: ${warrants.map((w) => `${w.warrant_number || 'warrant'}${w.offense ? ` for ${w.offense}` : ''}`).join('; ')}. Confirm before action.`
-      : 'No active warrants on file.',
+      : warrantLookupFailed
+        // Never speak a clearance we did not establish.
+        ? 'WARRANT CHECK FAILED — warrant status UNKNOWN. Verify manually before action.'
+        : 'No active warrants on file.',
     isFlagSet(p.is_sex_offender) ? 'Registered sex offender.' : null,
     isFlagSet(p.gang_affiliation) ? `Gang affiliation noted: ${p.gang_affiliation}.` : null,
     cautions ? `Caution: ${cautions}.` : null,
