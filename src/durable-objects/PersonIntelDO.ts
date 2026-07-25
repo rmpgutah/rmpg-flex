@@ -114,7 +114,9 @@ export class PersonIntelDO {
     // Auto-link: check if persons table has a match
     let linkedPersonId: number | null = null;
     if (st.seed.name) {
-      const person = await this.env.DB.prepare(`SELECT id FROM persons WHERE full_name LIKE ? LIMIT 1`).bind(`%${st.seed.name.split(' ')[0]}%`).first<{ id: number }>();
+      // persons has first_name/last_name, not full_name — this threw
+      // "no such column: full_name" and the lookup always came back empty.
+      const person = await this.env.DB.prepare(`SELECT id FROM persons WHERE (first_name || ' ' || last_name) LIKE ? LIMIT 1`).bind(`%${st.seed.name.split(' ')[0]}%`).first<{ id: number }>();
       if (person) linkedPersonId = person.id;
     }
 
