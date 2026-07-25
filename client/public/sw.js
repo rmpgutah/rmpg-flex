@@ -3,6 +3,17 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1101: Console-error sweep. (1) Warrants: clicking a national-scraper row
+//        no longer fires /warrants/<scraped-id> (synthetic string ids 400 on
+//        the server's numeric guard) — the detail pane, single-warrant PDF and
+//        attachment/email panels now read the unified list row, and every write
+//        action is hidden on those rows with an "External · read-only" badge.
+//        (2) New GET /api/oidc/dialer/check — the identifier-first SSO probe
+//        LoginPage has always called but which never existed (404 every login).
+//        (3) Password-change and password-reset forms now carry a hidden
+//        username field for password managers / the Chrome DOM warning.
+//        (The feature-flags 401 poll loop from the same log was already fixed
+//        on main by #2990 — that fix is kept as-is, not re-litigated here.)
 // v1096: Fleet v2 (FleetShell) — Page 73 of the full-app frontend pass.
 //        Added N shortcut (open New Vehicle modal when not typing),
 //        Esc cascade (closes New Vehicle modal before propagating),

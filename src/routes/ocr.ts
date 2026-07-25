@@ -44,8 +44,28 @@ const MIN_CLIENT_TEXT_CHARS = 200;
 // path can't hang forever on a stalled Vision/PDF/LLM call (the "stuck on
 // upload" failure mode the commit pipeline already guards against). The
 // catch block below turns a thrown timeout into a clean HTTP 500.
-const AI_TIMEOUT_MS = 35_000;
+// Per-ATTEMPT ceiling, raised from 35s on 2026-07-24 to match serveIntake.ts.
+const AI_TIMEOUT_MS = 45_000;
 const CONTAINER_TIMEOUT_MS = 12_000;
+
+// Per-attempt ceilings do NOT compose, and the image path below is a THREE-leg
+// sequential fallback (Claude vision → profile-aware Workers-AI → legacy
+// extractor). At the old flat 35s that was already a 105s worst case — past the
+// ~100s point where Cloudflare's edge abandons the request with a 524 and our
+// clean "timed out" error is replaced by an opaque edge failure.
+//
+// So the legs share one deadline: each attempt gets
+// min(perLegCeiling, budgetRemaining), and the total can never breach the cutoff
+// no matter how many fallbacks are added later.
+const TOTAL_AI_BUDGET_MS = 90_000;
+
+/** A shared deadline for one sequential fallback chain. See serveIntake.ts. */
+function aiBudget(totalMs: number = TOTAL_AI_BUDGET_MS): (perLegMs?: number) => number {
+  const start = Date.now();
+  return (perLegMs: number = AI_TIMEOUT_MS) =>
+    Math.min(perLegMs, Math.max(0, totalMs - (Date.now() - start)));
+}
+
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
     p,
@@ -153,18 +173,19 @@ ocr.post('/scan-document', async (c) => {
         ? raw : 'auto') as OcrProfileSelector;
       // 1) Claude vision (best). 2) profile-aware Workers-AI vision (free, works for
       // all profiles). 3) legacy serve-doc Workers-AI extractor (last resort).
+      const leg = aiBudget();
       let r = await withTimeout(
-        extractVision(c.env, bytes, file.type, sel), AI_TIMEOUT_MS, 'Claude OCR timed out',
+        extractVision(c.env, bytes, file.type, sel), leg(), 'Claude OCR timed out',
       ).catch(() => null);
       let engine = 'claude-vision';
       if (!r) {
         r = await withTimeout(
-          extractVisionWorkersAI(c.env, bytes, file.type, sel), AI_TIMEOUT_MS, 'Workers AI OCR timed out',
+          extractVisionWorkersAI(c.env, bytes, file.type, sel), leg(), 'Workers AI OCR timed out',
         ).catch(() => null);
         engine = 'workers-ai-vision';
       }
       if (!r) {
-        r = await withTimeout(extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
+        r = await withTimeout(extractFromImage(c.env.AI, bytes), leg(), 'Vision OCR timed out');
         engine = 'workers-ai-vision';
       }
       return c.json({
@@ -177,8 +198,10 @@ ocr.post('/scan-document', async (c) => {
     if (file.type === 'application/pdf') {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-      const txt = await withTimeout(extractTextFromPdf(container, bytes, file.name || 'doc.pdf'), CONTAINER_TIMEOUT_MS, 'PDF text extraction timed out');
-      const r = await withTimeout(extractFromText(c.env.AI, txt.text, c.env.SERVE_INTAKE_LORA), AI_TIMEOUT_MS, 'Text extraction timed out');
+      // Shared deadline so the container's time counts against the total too.
+      const leg = aiBudget();
+      const txt = await withTimeout(extractTextFromPdf(container, bytes, file.name || 'doc.pdf'), leg(CONTAINER_TIMEOUT_MS), 'PDF text extraction timed out');
+      const r = await withTimeout(extractFromText(c.env.AI, txt.text, c.env.SERVE_INTAKE_LORA), leg(), 'Text extraction timed out');
       return c.json({
         success: r.success, documentType: r.documentType, confidence: r.confidence,
         fields: r.fields, rawText: r.rawText, allDates: r.allDates,
