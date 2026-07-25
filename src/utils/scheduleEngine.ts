@@ -13,6 +13,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, execute } from './db';
+import { ACTIVE_CALL_WHERE } from './callStatus';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -584,9 +585,21 @@ export async function getShiftHandoffData(
   // Active calls (dispatched, not cleared)
   const activeCalls = await query(
     db,
-    `SELECT id, incident_number, type, priority, status, location, assigned_units, created_at
+    // Every column here was wrong: calls_for_service has call_number /
+    // incident_type / location_address / assigned_unit_ids — there is no
+    // incident_number, type, location or assigned_units — so this threw
+    // "no such column: incident_number" and shift handoff never returned any
+    // active calls. Aliased back to the names this code intended.
+    //
+    // The status filter was wrong too: the live CHECK constraint allows only
+    // ('pending','dispatched','enroute','onscene','cleared','closed',
+    // 'cancelled','archived'), so 'en_route', 'on_scene' and 'investigating'
+    // could never match anything. Using the canonical active-call predicate
+    // instead, which also surfaces still-pending calls — what a handoff wants.
+    `SELECT id, call_number AS incident_number, incident_type AS type, priority, status,
+            location_address AS location, assigned_unit_ids AS assigned_units, created_at
        FROM calls_for_service
-       WHERE status IN ('dispatched','en_route','on_scene','investigating')
+       WHERE ${ACTIVE_CALL_WHERE}
        ORDER BY priority ASC, created_at ASC
        LIMIT 50`,
   );
