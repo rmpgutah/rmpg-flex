@@ -38,7 +38,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
-    "@cloudflare/vitest-pool-workers": "^0.18.6",
+    "@cloudflare/vitest-pool-workers": "^0.18.8",
     "@cloudflare/workers-types": "^5.20260719.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^26.1.1",
@@ -46,7 +46,7 @@
     "husky": "^9.1.7",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10",
-    "wrangler": "^4.112.0"
+    "wrangler": "^4.114.0"
   },
   "overrides": {
     "esbuild": "^0.28.1"

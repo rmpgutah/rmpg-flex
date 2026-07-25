@@ -13,6 +13,84 @@ export function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
+// ── D1's LIKE pattern cap ────────────────────────────────────────────────────
+//
+// Cloudflare D1 sets SQLITE_LIMIT_LIKE_PATTERN_LENGTH to **50 characters**.
+// Stock SQLite defaults to 50000, so this has no local equivalent: it cannot
+// reproduce in `wrangler dev`, in Miniflare, or in any unit test — it only
+// surfaces against remote D1, as `D1_ERROR: LIKE or GLOB pattern too complex`.
+// Measured empirically against the live DB on 2026-07-24 (50 chars OK, 52 fails).
+//
+// A pattern of `%<term>%` therefore breaks once the term passes 48 characters —
+// well within ordinary input. Two live routes were returning 500s on real user
+// text: `/api/legal-data-hunter/validate` (charge strings like "THEFT BY
+// RECEIVING STOLEN PROPERTY - 3RD DEGREE FELONY", 53 chars) and
+// `/api/records/search`. Note that escapeLike() makes this WORSE, since each
+// escaped wildcard costs two characters.
+//
+// Prefer `containsClause()` below for substring matching. `instr()` is not a
+// LIKE pattern, so it has no length cap at all, and it matches literally —
+// no wildcard escaping needed.
+
+/** Cloudflare D1's SQLITE_LIMIT_LIKE_PATTERN_LENGTH. Stock SQLite uses 50000. */
+export const D1_LIKE_PATTERN_LIMIT = 50;
+
+/**
+ * True when `%term%` (after wildcard escaping) would exceed D1's LIKE pattern
+ * cap and thus fail at runtime. Use to guard any remaining raw LIKE call site.
+ */
+export function exceedsLikePatternLimit(term: string): boolean {
+  return escapeLike(term).length + 2 > D1_LIKE_PATTERN_LIMIT;
+}
+
+/**
+ * A case-insensitive "column contains term" clause that is safe at ANY term
+ * length — the D1-safe replacement for `col LIKE '%term%'`.
+ *
+ * Bind the RAW term (no wildcards, no escapeLike) — matching is literal:
+ *   const { sql, bind } = containsClause('p.last_name');
+ *   query(db, `SELECT * FROM persons WHERE ${sql}`, bind(userInput));
+ *
+ * `col` MUST be a hard-coded column name, never user input — it is interpolated
+ * straight into the SQL string.
+ */
+export function containsClause(col: string): { sql: string; bind: (term: string) => string } {
+  return {
+    sql: `instr(lower(${col}), lower(?)) > 0`,
+    bind: (term: string) => term,
+  };
+}
+
+/**
+ * OR-joined "contains" across several columns — the D1-safe replacement for
+ * `(a LIKE ? OR b LIKE ? OR c LIKE ?)` with one wildcard bind per column:
+ *   const m = containsAnyClause(['last_name', 'first_name']);
+ *   query(db, `SELECT * FROM persons WHERE ${m.sql}`, ...m.binds(userInput));
+ *
+ * Every entry of `cols` MUST be a hard-coded column name or SQL expression,
+ * never user input.
+ */
+export function containsAnyClause(cols: string[]): { sql: string; binds: (term: string) => string[] } {
+  return {
+    sql: '(' + cols.map((c) => `instr(lower(${c}), lower(?)) > 0`).join(' OR ') + ')',
+    binds: (term: string) => cols.map(() => term),
+  };
+}
+
+/**
+ * The reverse direction: does the bound TERM contain the column's value?
+ * (e.g. does a long charge string contain a short statute title?)
+ *
+ * Replaces `? LIKE '%' || col || '%'`, which was doubly unsafe — that pattern is
+ * built from table DATA, so a single long row broke the query for every caller.
+ */
+export function containedByClause(col: string): { sql: string; bind: (term: string) => string } {
+  return {
+    sql: `instr(lower(?), lower(${col})) > 0`,
+    bind: (term: string) => term,
+  };
+}
+
 // ── Reverse-map: plain-English term → stored code(s) ─────────────────────────
 //
 // Only entries where snake_case(label) does NOT already equal the stored code.

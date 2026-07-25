@@ -82,49 +82,74 @@ extract_columns() {
     | tr -d '`"'
 }
 
-# Query D1 to check if a table exists
-table_exists() {
-  local table="$1"
-  local result
+# Mode flag for wrangler d1 execute (--local / --remote).
+d1_mode_flag() {
   case "$DB_MODE" in
-    local)
-      result=$(npx wrangler d1 execute "$DB_NAME" --local \
-        --command "SELECT 1 FROM sqlite_master WHERE type='table' AND name='$table'" 2>/dev/null)
-      echo "$result" | grep -qE '"[0-9]+"' && return 0 || return 1
-      ;;
-    remote)
-      result=$(npx wrangler d1 execute "$DB_NAME" --remote \
-        --command "SELECT 1 FROM sqlite_master WHERE type='table' AND name='$table'" 2>/dev/null)
-      echo "$result" | grep -qE '"[0-9]+"' && return 0 || return 1
-      ;;
-    *)
-      # dry-run: assume exists
-      return 0
-      ;;
+    local)  echo "--local" ;;
+    remote) echo "--remote" ;;
   esac
 }
 
-# Query D1 to check if a column exists in a table
-check_column_exists() {
+# Fetch the ENTIRE live schema in one round-trip: sqlite_master stores the
+# full (SQLite-maintained) CREATE TABLE DDL per table, and SQLite rewrites
+# that stored DDL whenever ALTER TABLE ADD COLUMN runs — so one query yields
+# both the table list and every column name. The previous implementation did
+# one `wrangler d1 execute` per table AND per column (~400 sequential remote
+# round-trips at >1s each), which blew CI's 3-minute step timeout — and its
+# result parsing grepped for a QUOTED number ('"[0-9]+"') that wrangler's
+# JSON output (unquoted numbers, e.g. `"ok": 1`) can never produce, so every
+# probe returned "missing" and the check was a pure false-positive generator.
+#
+# Writes:
+#   $1 — file to receive one live table name per line
+#   $2 — file to receive "table<TAB>column" per line
+fetch_live_schema() {
+  local tables_out="$1"
+  local cols_out="$2"
+  local raw
+  raw=$(mktemp)
+  if ! npx wrangler d1 execute "$DB_NAME" "$(d1_mode_flag)" --json \
+      --command "SELECT name, sql FROM sqlite_master WHERE type='table'" \
+      > "$raw" 2>/dev/null; then
+    rm -f "$raw"
+    return 1
+  fi
+  # Parse with node (repo already requires it; avoids jq dependency).
+  # Column detection here is a word-boundary scan of the stored DDL — a
+  # present column ALWAYS appears in the DDL, so a name found in the DDL is
+  # treated as present. (A constraint mentioning the name could in theory
+  # mask a genuinely missing column; suspected misses get an exact
+  # pragma_table_info confirmation query below, so no false alarms either way.)
+  node -e '
+    const fs = require("fs");
+    const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const results = (Array.isArray(data) ? data : [data]).flatMap(r => r.results || []);
+    const tables = [];
+    const cols = [];
+    for (const row of results) {
+      if (!row.name) continue;
+      tables.push(row.name);
+      const idents = new Set((row.sql || "").match(/[A-Za-z_][A-Za-z0-9_]*/g) || []);
+      for (const id of idents) cols.push(row.name + "\t" + id);
+    }
+    fs.writeFileSync(process.argv[2], tables.join("\n") + (tables.length ? "\n" : ""));
+    fs.writeFileSync(process.argv[3], cols.join("\n") + (cols.length ? "\n" : ""));
+  ' "$raw" "$tables_out" "$cols_out"
+  local rc=$?
+  rm -f "$raw"
+  return $rc
+}
+
+# Exact column-existence probe (used ONLY to confirm suspected misses from
+# the DDL scan — normally zero calls). Note `SELECT 1 AS ok` + grep for the
+# unquoted JSON value wrangler actually emits.
+check_column_exists_exact() {
   local table="$1"
   local column="$2"
   local result
-  case "$DB_MODE" in
-    local)
-      result=$(npx wrangler d1 execute "$DB_NAME" --local \
-        --command "SELECT 1 FROM pragma_table_info('$table') WHERE name='$column'" 2>/dev/null)
-      echo "$result" | grep -qE '"[0-9]+"' && return 0 || return 1
-      ;;
-    remote)
-      result=$(npx wrangler d1 execute "$DB_NAME" --remote \
-        --command "SELECT 1 FROM pragma_table_info('$table') WHERE name='$column'" 2>/dev/null)
-      echo "$result" | grep -qE '"[0-9]+"' && return 0 || return 1
-      ;;
-    *)
-      # dry-run: assume exists
-      return 0
-      ;;
-  esac
+  result=$(npx wrangler d1 execute "$DB_NAME" "$(d1_mode_flag)" --json \
+    --command "SELECT 1 AS ok FROM pragma_table_info('$table') WHERE name='$column'" 2>/dev/null)
+  echo "$result" | grep -q '"ok": 1'
 }
 
 # ── Collect expected schema from migrations ──────────────────
@@ -210,9 +235,28 @@ fi
 
 log "verifying schema against $DB_MODE D1 ($DB_NAME)..."
 
+LIVE_TABLES_FILE=$(mktemp)
+LIVE_COLS_FILE=$(mktemp)
+trap 'rm -f "$TABLES_FILE" "$COLUMNS_FILE" "$LIVE_TABLES_FILE" "$LIVE_COLS_FILE"' EXIT
+
+if ! fetch_live_schema "$LIVE_TABLES_FILE" "$LIVE_COLS_FILE"; then
+  err "failed to fetch live schema snapshot from $DB_MODE D1 — cannot verify"
+  exit 2
+fi
+
+LIVE_TABLE_COUNT=$(grep -c . "$LIVE_TABLES_FILE" || true)
+if [ "$LIVE_TABLE_COUNT" -eq 0 ]; then
+  err "live schema snapshot came back EMPTY — refusing to report every table as drift"
+  exit 2
+fi
+log "live snapshot: $LIVE_TABLE_COUNT tables"
+
 while IFS= read -r tname; do
   [ -z "$tname" ] && continue
-  if ! table_exists "$tname"; then
+  # `*_new` tables are table-rebuild temporaries (CREATE x_new → copy →
+  # DROP x → RENAME x_new TO x) — they are supposed to be gone afterward.
+  case "$tname" in *_new) continue ;; esac
+  if ! grep -qxF "$tname" "$LIVE_TABLES_FILE"; then
     err "MISSING TABLE: $tname (expected by $(table_source "$tname"))"
     MISSING_TABLES+=("$tname")
     DRIFT_COUNT=$((DRIFT_COUNT + 1))
@@ -223,10 +267,23 @@ while IFS= read -r colkey; do
   [ -z "$colkey" ] && continue
   tname="${colkey%%.*}"
   cname="${colkey#*.}"
-  if ! check_column_exists "$tname" "$cname"; then
-    err "MISSING COLUMN: $tname.$cname (expected by $(column_source "$colkey"))"
-    MISSING_COLUMNS+=("$colkey")
-    DRIFT_COUNT=$((DRIFT_COUNT + 1))
+  # Skip column checks for tables already reported missing.
+  if ! grep -qxF "$tname" "$LIVE_TABLES_FILE"; then
+    continue
+  fi
+  # Capped tables (calls_for_service, persons — D1's ~100-column SELECT cap)
+  # keep newer columns in a 1:1 `<table>_ext` overflow table; a column found
+  # there counts as present.
+  if grep -qxF "$(printf '%s_ext\t%s' "$tname" "$cname")" "$LIVE_COLS_FILE"; then
+    continue
+  fi
+  if ! grep -qxF "$(printf '%s\t%s' "$tname" "$cname")" "$LIVE_COLS_FILE"; then
+    # DDL scan says missing — confirm with an exact pragma probe before alarming.
+    if ! check_column_exists_exact "$tname" "$cname"; then
+      err "MISSING COLUMN: $tname.$cname (expected by $(column_source "$colkey"))"
+      MISSING_COLUMNS+=("$colkey")
+      DRIFT_COUNT=$((DRIFT_COUNT + 1))
+    fi
   fi
 done <<< "$UNIQUE_COLUMNS"
 

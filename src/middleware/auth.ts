@@ -52,7 +52,9 @@ function isMediaPath(pathname: string): boolean {
     || pathname.includes('/full-drive/clip/')  // dashcam clip streaming (<video> can't send header)
     || pathname.endsWith('/stream')
     || pathname.endsWith('/audio')
-    || pathname.endsWith('/thumbnail');  // bodycam-video <img> tags (Task 4, storage-architecture phase)
+    || pathname.endsWith('/thumbnail')  // bodycam-video <img> tags (Task 4, storage-architecture phase)
+    || pathname === '/api/email/image-proxy'  // email remote-image proxy (<img> in blob: iframe)
+    || /\/email\/messages\/[^/]+\/attachments\/[^/]+$/.test(pathname);  // email inline CID images
 }
 
 export async function authMiddleware(c: Context, next: Next) {

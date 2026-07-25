@@ -16,6 +16,7 @@ import TotpCodeInput from '../components/TotpCodeInput';
 import PasswordStrengthMeter from '../components/security/PasswordStrengthMeter';
 import BackupCodesDisplay from '../components/security/BackupCodesDisplay';
 import { parseTimestamp } from '../utils/dateUtils';
+import { useDeviceInfo } from '../utils/deviceInfo';
 
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '5.3.9';
@@ -35,35 +36,6 @@ function isLowPerfDevice(): boolean {
 }
 
 // ── Device detection helpers ──────────────────────
-function getDeviceInfo() {
-  const ua = navigator.userAgent;
-  let browser = 'Unknown';
-  if (ua.includes('Electron')) browser = 'RMPG Desktop';
-  else if (ua.includes('Edg/')) browser = 'Edge';
-  else if (ua.includes('Chrome/') && !ua.includes('Edg/')) browser = 'Chrome';
-  else if (ua.includes('Firefox/')) browser = 'Firefox';
-  else if (ua.includes('Safari/') && !ua.includes('Chrome')) browser = 'Safari';
-
-  let os = 'Unknown';
-  if (ua.includes('Windows NT 10')) os = 'Windows 10/11';
-  else if (ua.includes('Windows')) os = 'Windows';
-  else if (ua.includes('Mac OS X')) os = 'macOS';
-  else if (ua.includes('Android')) os = 'Android';
-  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
-  else if (ua.includes('Linux')) os = 'Linux';
-
-  let deviceType = 'Desktop';
-  if (/Mobi|Android/i.test(ua)) deviceType = 'Mobile';
-  else if (/Tablet|iPad/i.test(ua)) deviceType = 'Tablet';
-
-  const screen = `${window.screen.width}×${window.screen.height}`;
-  const viewport = `${window.innerWidth}×${window.innerHeight}`;
-  const touchEnabled = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  const online = navigator.onLine;
-
-  return { browser, os, deviceType, screen, viewport, touchEnabled, online };
-}
-
 function getCurrentTime() {
   return new Date().toLocaleString('en-US', {
     timeZone: 'America/Denver',
@@ -281,8 +253,9 @@ export default function LoginPage() {
     return () => clearInterval(iv);
   }, [lowPerf]);
 
-  // Device info (computed once)
-  const device = useMemo(() => getDeviceInfo(), []);
+  // Live device info — viewport and online status re-sample on change rather
+  // than freezing at mount. See utils/deviceInfo.ts.
+  const device = useDeviceInfo();
 
   // Derived: true when the credentials form is the active step.
   // Declared here (before the keyboard useEffect) so the closure captures it.
@@ -384,7 +357,10 @@ export default function LoginPage() {
     clearError();
     try {
       const res = await fetchWithTimeout(`/api/oidc/dialer/check?email=${encodeURIComponent(loginUsername.trim())}`);
-      const data = await res.json();
+      // Guard on res.ok before parsing — a non-JSON error body (WAF challenge
+      // page, SPA HTML fallback) would otherwise throw inside the try and read
+      // as "SSO check failed" with a misleading JSON-parse error.
+      const data = res.ok ? await res.json() : { ssoEnabled: false };
       if (data.ssoEnabled) {
         window.location.href = '/api/oidc/dialer/login';
         return;
@@ -1212,6 +1188,22 @@ export default function LoginPage() {
             {/* ══════ Password Change Required ══════ */}
             {loginStep === 'password_change' && (
               <form onSubmit={handlePasswordChange} className="space-y-3">
+                {/* A password form with no username field makes password
+                    managers guess which account the new password belongs to,
+                    and Chrome logs "Password forms should have (optionally
+                    hidden) username fields for accessibility". The identifier
+                    is already known at this step — expose it read-only and
+                    off-screen so managers can attribute the update. */}
+                <input
+                  type="text"
+                  name="username"
+                  autoComplete="username"
+                  value={loginUsername}
+                  readOnly
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  className="sr-only"
+                />
                 <div className="text-center mb-2">
                   <Lock className="w-8 h-8 mx-auto mb-2 text-rmpg-400" />
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
@@ -1405,6 +1397,18 @@ export default function LoginPage() {
                 {/* Step: Reset Password */}
                 {forgotPwStep === 'reset' && (
                   <form onSubmit={handleForgotReset} className="space-y-3">
+                    {/* Same rationale as the password_change form above — give
+                        password managers the account this reset belongs to. */}
+                    <input
+                      type="text"
+                      name="username"
+                      autoComplete="username"
+                      value={forgotUsername}
+                      readOnly
+                      aria-hidden="true"
+                      tabIndex={-1}
+                      className="sr-only"
+                    />
                     <div className="text-center mb-1">
                       <Lock className="w-8 h-8 mx-auto mb-1" style={{ color: 'var(--brand-gold)' }} />
                       <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">

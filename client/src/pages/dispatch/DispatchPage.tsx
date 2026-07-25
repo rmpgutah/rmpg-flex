@@ -36,6 +36,7 @@ import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { formatIncidentType, INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../../utils/caseNumbers';
 import { formatPhoneInput, toDisplayLabel } from '../../utils/formatters';
+import { ORGANIZATION } from '../../constants/organizationConstants';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -291,10 +292,9 @@ export default function DispatchPage() {
       await openNoticeOfCommunication(failedCall, {
         officerName,
         officerBadge: (user as any)?.badge_number || '',
-        // RMPG Dispatch direct line. Embedded as a build-time constant
-        // for now (single agency, single phone); migrate to a Worker
-        // settings row when a second tenant ever shows up.
-        dispatchPhone: '(385) 436-3370',
+        // RMPG Dispatch direct line. Centralized in organizationConstants.ts.
+        // When multiple tenants exist, migrate this to a Worker settings row.
+        dispatchPhone: ORGANIZATION.phone,
         redispatchCallNumber: extra?.redispatchCallNumber,
         nextWindow: extra?.nextWindow,
       });

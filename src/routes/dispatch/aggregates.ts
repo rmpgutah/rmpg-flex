@@ -4,6 +4,7 @@ import { getDb, query, queryFirst } from '../../utils/db';
 import { log } from '../../utils/logger';
 import { denverDateExpr, denverNowDateExpr } from '../../utils/denverTime';
 import { LIST_VIEW_COLUMNS } from './calls';
+import { ACTIVE_CALL_WHERE } from '../../utils/callStatus';
 
 // Same day-boundary shift used elsewhere (reports.ts, admin.ts, dispatch/
 // units.ts) via the shared denverDateExpr/denverNowDateExpr helpers in
@@ -43,9 +44,9 @@ aggregates.get('/', async (c) => {
         SUM(CASE WHEN status = 'dispatched' THEN 1 ELSE 0 END) as dispatched,
         SUM(CASE WHEN status = 'enroute' THEN 1 ELSE 0 END) as enroute,
         SUM(CASE WHEN status = 'onscene' THEN 1 ELSE 0 END) as onscene,
-        SUM(CASE WHEN priority = 'P1' AND status NOT IN ('cleared','closed','cancelled','archived') THEN 1 ELSE 0 END) as p1_count,
-        SUM(CASE WHEN priority = 'P2' AND status NOT IN ('cleared','closed','cancelled','archived') THEN 1 ELSE 0 END) as p2_count,
-        SUM(CASE WHEN priority = 'P3' AND status NOT IN ('cleared','closed','cancelled','archived') THEN 1 ELSE 0 END) as p3_count
+        SUM(CASE WHEN priority = 'P1' AND ${ACTIVE_CALL_WHERE} THEN 1 ELSE 0 END) as p1_count,
+        SUM(CASE WHEN priority = 'P2' AND ${ACTIVE_CALL_WHERE} THEN 1 ELSE 0 END) as p2_count,
+        SUM(CASE WHEN priority = 'P3' AND ${ACTIVE_CALL_WHERE} THEN 1 ELSE 0 END) as p3_count
       FROM calls_for_service
     `);
 

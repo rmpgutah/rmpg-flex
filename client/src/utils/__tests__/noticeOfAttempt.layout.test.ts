@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { generateNoticeOfAttempt } from '../servePdfGenerator';
+import { ORGANIZATION } from '../../constants/organizationConstants';
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -33,8 +34,8 @@ describe('generateNoticeOfAttempt — single-page layout', () => {
       jurisdiction: 'Salt Lake County, Utah',
       serverName: 'Christopher Zamora',
       serverBadge: '5721',
-      serverCompany: 'Rocky Mountain Protective Group',
-      serverPhone: '(385) 436-3370',
+      serverCompany: ORGANIZATION.name,
+      serverPhone: ORGANIZATION.phone,
       recipientName: 'Authorized Representative (or current occupant)',
       recipientAddress: '745 East Village Way, Sandy, Utah 84094',
       documentType: 'Subpoena Service',

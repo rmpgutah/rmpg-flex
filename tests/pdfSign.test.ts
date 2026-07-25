@@ -11,6 +11,15 @@ import type { Bindings } from '../src/types';
 // Both are FIPS 205, NIST category 5 (256-bit) — same security level; f/s is
 // purely a speed/signature-size tradeoff, not a security downgrade.
 
+// vitest's 5000ms default is too tight for post-quantum signing. The benchmarks
+// above are warm, single-op numbers on an idle machine; under a full-suite run
+// (246 files, parallel workers) or on a loaded/throttled host, SLH-DSA keygen +
+// sign + verify in one test routinely exceeds 5s and the whole file goes red for
+// reasons unrelated to the code under test. Observed 2026-07-24: 7 spurious
+// timeouts (5.6–8.8s) blocking the husky pre-commit gate.
+// This raises the ceiling only — fast tests still finish fast.
+vi.setConfig({ testTimeout: 30_000 });
+
 describe('@noble/post-quantum — library sanity', () => {
   it('ml_dsa87 signs and verifies with a deterministic 32-byte seed', () => {
     const seed = new Uint8Array(32).fill(7);
