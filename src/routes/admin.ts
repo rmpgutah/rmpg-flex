@@ -2016,8 +2016,14 @@ admin.put('/system-settings', async (c) => {
       // on live D1 ("does not match any UNIQUE constraint"). DELETE+INSERT
       // collapses any multi-row history for the key to the single new value.
       await execute(db, `DELETE FROM system_config WHERE config_key = ?`, key);
+      // `category` is REQUIRED here. system_config.category is NOT NULL DEFAULT
+      // 'general', so omitting it silently filed every setting under 'general'
+      // while AdminSystemTab reloads from GET /config-items → grouped.system_settings
+      // — the panel's 60 fields saved and then reverted to defaults on refresh.
+      // 'system_settings' is the convention src/routes/audit.ts:312 already uses.
       await execute(db,
-        `INSERT INTO system_config (config_key, config_value, updated_at) VALUES (?, ?, datetime('now'))`,
+        `INSERT INTO system_config (config_key, config_value, category, is_active, updated_at)
+         VALUES (?, ?, 'system_settings', 1, datetime('now'))`,
         key, val);
     }
     return c.json({ success: true });
