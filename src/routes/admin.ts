@@ -612,7 +612,7 @@ admin.get('/config/branding', (c) => c.json([]));
 // runtime, so `server` stays zeroed — but everything D1 can answer
 // (sessions, units, calls, login/error activity) is now real, using
 // only tables that already exist (sessions, units, calls_for_service,
-// audit_log, error_log) rather than a not-yet-built metrics pipeline.
+// login_attempts, error_log) rather than a not-yet-built metrics pipeline.
 admin.get('/health/detailed', async (c) => {
   try {
     const db = getDb(c.env);
@@ -621,8 +621,15 @@ admin.get('/health/detailed', async (c) => {
       cnt(`SELECT COUNT(*) AS n FROM sessions WHERE COALESCE(is_active,1) = 1 AND expires_at > datetime('now')`),
       cnt(`SELECT COUNT(*) AS n FROM units WHERE status NOT IN ('off_duty','out_of_service','OFD')`),
       cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE}`),
-      cnt(`SELECT COUNT(*) AS n FROM audit_log WHERE action = 'login_success' AND created_at > datetime('now','-1 day')`),
-      cnt(`SELECT COUNT(*) AS n FROM audit_log WHERE action = 'login_failed' AND created_at > datetime('now','-1 day')`),
+      // Logins are recorded in `login_attempts` (username/ip_address/success/
+      // failure_reason), NOT as audit_log rows. Nothing anywhere writes
+      // action='login_success'/'login_failed' — those strings existed only in
+      // these two queries — so the admin security panel reported zero login
+      // activity permanently. Verified on live: the audit_log form returns 0
+      // while this form returns 11 for the same 24h window.
+      // Same source as /api/auth/security/event-timeline (auth.ts).
+      cnt(`SELECT COUNT(*) AS n FROM login_attempts WHERE COALESCE(success,0) = 1 AND created_at > datetime('now','-1 day')`),
+      cnt(`SELECT COUNT(*) AS n FROM login_attempts WHERE COALESCE(success,0) = 0 AND created_at > datetime('now','-1 day')`),
       query<Record<string, unknown>>(db, `SELECT id, severity, message, created_at FROM error_log ORDER BY created_at DESC LIMIT 10`).catch(() => []),
     ]);
     return c.json({
