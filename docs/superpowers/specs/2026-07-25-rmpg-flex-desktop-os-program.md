@@ -99,6 +99,23 @@ channel assignment, remote reboot, per-site policy.
   Track what genuinely works in `docs/kiosk-os-feature-inventory.md`, counted
   honestly — a padded list is worse than a short one.
 
+## Known blocker: publishing the OTA payload
+
+`wrangler r2 object put` **stalled for 1h21m** on the ~244 MiB rootfs (2026-07-25)
+while the 13 MB kernel uploaded in seconds on the same run. It is a single-shot
+PUT with no resume and no progress output, so a slow uplink is
+indistinguishable from a hang.
+
+The partial state is safe — the manifest is written last, so a terminal cannot
+discover a release whose payload did not finish. **Do not reorder those steps.**
+
+OS 1.3.0 is therefore **not yet on staging**: kernel uploaded, rootfs and
+manifest not. Options are in `scripts/publish-os-release.sh` (retry,
+`SKIP_PAYLOAD=1` after uploading elsewhere, or the dashboard's multipart
+uploader). Worth solving properly — a 250 MB single-shot PUT is not a viable
+release mechanism long-term, and the same size problem will hit every terminal
+downloading over Wi-Fi.
+
 ## Validation still owed on physical hardware
 
 1. Wi-Fi association with a real AP (WPA2-PSK and Enterprise)

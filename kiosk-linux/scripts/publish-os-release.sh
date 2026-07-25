@@ -69,8 +69,30 @@ cd "$REPO_DIR"
 # receive a manifest naming files that are not fully uploaded yet.
 echo "Uploading kernel ..."
 npx wrangler r2 object put "$BUCKET/$KERNEL_NAME" --file="$KERNEL" --remote >/dev/null
-echo "Uploading root filesystem (large) ..."
-npx wrangler r2 object put "$BUCKET/$ROOTFS_NAME" --file="$ROOTFS" --remote >/dev/null
+
+# NOTE ON THE LARGE UPLOAD (observed 2026-07-25):
+# `wrangler r2 object put` on the ~244 MiB rootfs stalled for 1h21m without
+# completing or erroring, while the 13 MB kernel uploaded in seconds on the same
+# run. It is a single-shot PUT with no resume and no progress output, so a slow
+# or lossy uplink looks identical to a hang — and killing it leaves the payload
+# absent while the kernel is already up.
+#
+# That partial state is SAFE by construction: the manifest is written last, so a
+# terminal can never discover a release whose payload did not finish uploading.
+# Do not reorder these steps.
+#
+# If this stalls, the workarounds in preference order are:
+#   1. Re-run — the kernel step is idempotent and quick, so only the rootfs
+#      retries.
+#   2. Upload the rootfs from a machine with better upstream bandwidth, then
+#      re-run with SKIP_PAYLOAD=1 to write just the manifest.
+#   3. Use the Cloudflare dashboard's R2 uploader, which does multipart.
+if [ "${SKIP_PAYLOAD:-0}" = "1" ]; then
+  echo "SKIP_PAYLOAD=1 — assuming payloads are already uploaded; writing the manifest only."
+else
+  echo "Uploading root filesystem (large — see the note in this script if it stalls) ..."
+  npx wrangler r2 object put "$BUCKET/$ROOTFS_NAME" --file="$ROOTFS" --remote >/dev/null
+fi
 
 MANIFEST_FILE="$(mktemp -t rmpg-os-manifest)"
 cat > "$MANIFEST_FILE" <<MANIFEST
