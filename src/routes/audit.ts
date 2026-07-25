@@ -14,6 +14,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { denverDateExpr, denverNowDateExpr } from '../utils/denverTime';
 const audit = new Hono<Env>();
 
 // ── Role gate ──────────────────────────────────────────────
@@ -106,7 +107,7 @@ audit.get('/stats', async (c) => {
     const db = getDb(c.env);
     const totalRow = await queryFirst<{ total: number }>(db, 'SELECT COUNT(*) as total FROM audit_log');
     const todayRow = await queryFirst<{ total: number }>(
-      db, `SELECT COUNT(*) as total FROM audit_log WHERE date(created_at) = date('now')`,
+      db, `SELECT COUNT(*) as total FROM audit_log WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`,
     );
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const topActions = await query<Record<string, unknown>>(

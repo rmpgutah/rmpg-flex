@@ -11,6 +11,7 @@ import { safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 import { useIntelContext } from './IntelContext';
 import { useIntelGeo } from './useIntelGeo';
 import { LAYER_DEFS, toGeoJSON } from './map/geoLayers';
+import { escapeHtml } from '../../utils/sanitize';
 
 const DAYS_OPTS = [1, 7, 30];
 
@@ -72,7 +73,7 @@ export default function IntelMapPage() {
         const type = p.entity_type, id = Number(p.entity_id);
         if (type === 'vehicle' || type === 'person') { selectEntity(type, id, p.label || `#${id}`); return; }
         if (type === 'warrant') { navigate(`/warrants?id=${id}`); return; }
-        popupRef.current?.setLngLat(e.lngLat).setHTML(`<div style="font:11px monospace;color:#111">${p.label || type}</div>`).addTo(map);
+        popupRef.current?.setLngLat(e.lngLat).setHTML(`<div style="font:11px monospace;color:#111">${escapeHtml(p.label || type)}</div>`).addTo(map);
       });
       map.on('mouseenter', srcId, () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', srcId, () => { map.getCanvas().style.cursor = ''; });

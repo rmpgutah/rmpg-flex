@@ -879,7 +879,12 @@ calls.post('/:id/merge', async (c) => {
 });
 
 // DELETE /dispatch/calls/:id
-calls.delete('/:id', async (c) => {
+// Hard-deletes a dispatch record permanently — same destructiveness class as
+// the bulk /force-close-all above, so it carries the same admin|manager gate.
+// Was ungated, letting any authenticated non-client_viewer role (officer,
+// contract_manager, human_resources) erase an in-progress officer-safety call
+// by id, wiping it from every console via the broadcast below.
+calls.delete('/:id', requireRole('admin', 'manager'), async (c) => {
   try {
     const db = getDb(c.env);
     const idStr = c.req.param('id');

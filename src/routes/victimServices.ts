@@ -4,7 +4,27 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 
 const victimServices = new Hono<Env>();
 
+// victim_services_records holds victim name, phone, email, HOME ADDRESS,
+// safety_plan and protective_order flags, plus advocate notes. Only DELETE
+// was gated, so every other role — including the external-facing
+// contract_manager and client_viewer — could read and silently rewrite these
+// rows. For a protective-order subject, an address leak here is a physical
+// safety issue, so reads are restricted to sworn/advocacy roles and writes
+// to the supervisory set.
+const VS_READ_ROLES = ['admin', 'manager', 'supervisor', 'officer'];
+const VS_WRITE_ROLES = ['admin', 'manager', 'supervisor'];
+
+function forbidUnlessRole(c: any, roles: string[]): Response | null {
+  const actor = c.get('user') as { role?: string } | undefined;
+  if (!actor?.role || !roles.includes(actor.role)) {
+    return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+  }
+  return null;
+}
+
 victimServices.get('/victims', async (c) => {
+  const denied = forbidUnlessRole(c, VS_READ_ROLES);
+  if (denied) return denied;
   try {
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM victim_services_records ORDER BY created_at DESC LIMIT 200');
@@ -13,6 +33,8 @@ victimServices.get('/victims', async (c) => {
 });
 
 victimServices.post('/victims', async (c) => {
+  const denied = forbidUnlessRole(c, VS_WRITE_ROLES);
+  if (denied) return denied;
   try {
   const db = getDb(c.env);
   const body = await c.req.json();
@@ -27,6 +49,8 @@ victimServices.post('/victims', async (c) => {
 });
 
 victimServices.put('/victims/:id', async (c) => {
+  const denied = forbidUnlessRole(c, VS_WRITE_ROLES);
+  if (denied) return denied;
   try {
   const db = getDb(c.env);
   const id = c.req.param('id');
@@ -53,6 +77,8 @@ victimServices.delete('/victims/:id', async (c) => {
 });
 
 victimServices.get('/stats', async (c) => {
+  const denied = forbidUnlessRole(c, VS_READ_ROLES);
+  if (denied) return denied;
   try {
   const db = getDb(c.env);
   const total = await queryFirst<{cnt:number}>(db, 'SELECT COUNT(*) as cnt FROM victim_services_records');

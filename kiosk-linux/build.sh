@@ -789,14 +789,7 @@ COGHASH
     # back off. Force-reconfigure the X/GL-sensitive packages the first time a
     # desktop build runs against a kiosk-era output tree.
     DESKTOP_MARKER=/build-output/.rmpg-desktop-reconfigured
-    # xserver_xorg-server MUST come after mesa3d in this list. Its modesetting
-    # driver uses GBM (via glamor), but it was originally built in this tree
-    # before mesa3d was rebuilt, so gbm.pc did not exist at configure time and
-    # the driver was linked WITHOUT libgbm while still referencing GBM symbols.
-    # X then died at every startup with "no screens found", whose real cause
-    # only appeared in the guest own /var/log/Xorg.0.log:
-    #   Failed to load modesetting_drv.so: undefined symbol: gbm_bo_get_plane_count
-    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses xserver_xorg-server"
+    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses"
     if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ]; then
       # The marker is a LIST of packages already reconfigured, not a single
       # all-or-nothing flag. The first version of this was a bare touch file,

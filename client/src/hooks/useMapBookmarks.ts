@@ -8,6 +8,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
+import { escapeHtml } from '../utils/sanitize';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -86,8 +87,8 @@ export function useMapBookmarks(
           new mapboxgl.Popup({ offset: 14, closeButton: true, className: 'mapbox-popup-dark' })
             .setHTML(`
               <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-size:11px;min-width:140px;">
-                <div style="font-weight:700;color:${bm.color};margin-bottom:2px;">★ ${bm.name}</div>
-                ${bm.notes ? `<div style="color:#888;font-size:10px;margin-top:2px;">${bm.notes}</div>` : ''}
+                <div style="font-weight:700;color:${escapeHtml(bm.color)};margin-bottom:2px;">★ ${escapeHtml(bm.name)}</div>
+                ${bm.notes ? `<div style="color:#888;font-size:10px;margin-top:2px;">${escapeHtml(bm.notes)}</div>` : ''}
                 <div style="color:#555;font-size:9px;margin-top:4px;">${bm.latitude.toFixed(5)}, ${bm.longitude.toFixed(5)}</div>
                 <div style="color:#555;font-size:9px;">${new Date(bm.createdAt).toLocaleDateString()}</div>
               </div>

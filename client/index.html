@@ -42,14 +42,17 @@
             }
           }
 
+          // Must resolve IDENTICALLY to applyThemePreference() in src/utils/theme.ts, or
+          // the pre-paint class and the runtime class disagree and the page
+          // visibly swaps themes after hydration. Exactly one palette class.
           html.classList.remove('theme-dark', 'theme-light', 'theme-legacy-black', 'theme-blue-silver', 'dark');
-          html.classList.add('theme-' + theme);
-          if (theme === 'dark' || legacy || blueSilver) html.classList.add('dark');
           if (legacy) html.classList.add('theme-legacy-black');
-          if (blueSilver) html.classList.add('theme-blue-silver');
+          else if (blueSilver) html.classList.add('theme-blue-silver');
+          else html.classList.add('theme-' + theme);
+          if (theme === 'dark' || legacy || blueSilver) html.classList.add('dark');
 
           var lightSurface = theme === 'light' && !legacy && !blueSilver;
-          var chrome = legacy ? '#000000' : blueSilver ? '#0c1a2b' : (theme === 'light' ? '#d6d3c8' : '#0d1722');
+          var chrome = legacy ? '#000000' : blueSilver ? '#22405f' : (theme === 'light' ? '#d6d3c8' : '#0d1722');
           html.style.colorScheme = lightSurface ? 'light' : 'dark';
           html.style.backgroundColor = chrome;
 
@@ -78,7 +81,7 @@
       #pre-splash { background: #0d1722; }
       html.theme-light #pre-splash { background: #ece9dd; }
       html.theme-legacy-black #pre-splash { background: #0a0a0a; }
-      html.theme-blue-silver #pre-splash { background: #0c1a2b; }
+      html.theme-blue-silver #pre-splash { background: #22405f; }
     </style>
     <!--
       CSP Note: 'unsafe-inline' is required in script-src and style-src for:

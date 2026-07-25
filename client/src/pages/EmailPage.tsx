@@ -2113,15 +2113,34 @@ export default function EmailPage() {
   const [attViewer, setAttViewer] = useState<{ url: string; title: string; type: 'pdf' | 'image' } | null>(null);
   const [attBusyId, setAttBusyId] = useState<string | null>(null);
 
-  const fetchAttachmentBlob = useCallback(async (att: EmailAttachment): Promise<string> => {
+  // MIME types we are willing to hand to a blob: URL for inline rendering.
+  // SVG is deliberately excluded (script-bearing XML) — it downloads instead.
+  const INLINE_IMAGE_MIME: Record<string, string> = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+    gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff',
+  };
+
+  // `forceType` is REQUIRED for anything that will be rendered rather than
+  // saved. Rationale: the response Content-Type is chosen by whoever SENT the
+  // email, and URL.createObjectURL() propagates the Blob's type into the
+  // blob: URL. A blob: document inherits the creating page's origin, and the
+  // app CSP allows 'unsafe-inline' script — so an attachment named
+  // "Case_Report.pdf" served as text/html used to execute the sender's script
+  // as https://rmpgutah.us and could read the session token out of
+  // localStorage. Re-wrapping the bytes with a type WE choose removes the
+  // sender's influence over how the bytes are interpreted.
+  const fetchAttachmentBlob = useCallback(async (att: EmailAttachment, forceType: string): Promise<string> => {
     const blob = await apiFetchBlob(`/email/messages/${encodeURIComponent(selectedMessage!.id)}/attachments/${encodeURIComponent(att.id)}?inline=1`);
-    return URL.createObjectURL(blob);
+    const retyped = new Blob([await blob.arrayBuffer()], { type: forceType });
+    return URL.createObjectURL(retyped);
   }, [selectedMessage]);
 
   const handleDownloadAttachment = useCallback(async (att: EmailAttachment) => {
     setAttBusyId(att.id);
     try {
-      const url = await fetchAttachmentBlob(att);
+      // Downloads never render, so the most inert type is correct — the
+      // filename (a.download) is what drives the OS app association.
+      const url = await fetchAttachmentBlob(att, 'application/octet-stream');
       const a = document.createElement('a');
       a.href = url; a.download = att.name || 'attachment';
       document.body.appendChild(a); a.click(); a.remove();
@@ -2135,12 +2154,17 @@ export default function EmailPage() {
   const handleOpenAttachment = useCallback(async (att: EmailAttachment) => {
     const ext = (att.name || '').split('.').pop()?.toLowerCase() || '';
     const ct = (att.contentType || '').toLowerCase();
-    const isImage = ct.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext);
+    // Resolve to a concrete MIME type from OUR allow-list. Both the declared
+    // content type and the extension are attacker-chosen, so neither is
+    // trusted as a value — they only select from types known to be inert.
+    // Anything unrecognized (incl. .svg, .html, .doc, .xlsx) downloads.
     const isPdf = ct === 'application/pdf' || ext === 'pdf';
-    if (!isImage && !isPdf) { void handleDownloadAttachment(att); return; } // no in-browser renderer for doc/xlsx etc.
+    const imageMime = INLINE_IMAGE_MIME[ext]
+      ?? (Object.values(INLINE_IMAGE_MIME).includes(ct) ? ct : undefined);
+    if (!isPdf && !imageMime) { void handleDownloadAttachment(att); return; } // no safe in-browser renderer
     setAttBusyId(att.id);
     try {
-      const url = await fetchAttachmentBlob(att);
+      const url = await fetchAttachmentBlob(att, isPdf ? 'application/pdf' : imageMime!);
       setAttViewer({ url, title: att.name || 'Attachment', type: isPdf ? 'pdf' : 'image' });
     } catch (err) {
       console.error('[EmailPage] attachment open failed:', err);

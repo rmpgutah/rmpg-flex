@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { requireRole } from '../middleware/auth';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 // Mirror CHECK constraints on narcotics_cases from migrations/0048_specialized_modules.sql
@@ -27,6 +28,12 @@ function narcEnumError(field: 'case_type' | 'status' | 'priority') {
 }
 
 const narcotics = new Hono<Env>();
+
+// Narcotics cases include ci_management (confidential-informant) records and
+// subject names — CJIS-restricted. Gate the whole router to operational roles
+// so the external contract_manager / client_viewer cannot read or write them
+// (matching intel.ts's `operational` set).
+narcotics.use('*', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 narcotics.get('/cases', async (c) => {
   try { const db = getDb(c.env); const rows = await query(db, 'SELECT * FROM narcotics_cases ORDER BY created_at DESC LIMIT 200'); return c.json(rows || []); }

@@ -56,7 +56,13 @@ describe('@noble/post-quantum — library sanity', () => {
   });
 });
 
-describe('signTriple', () => {
+// Every signTriple() call below does a full SLH-DSA-256f keygen+sign on top of
+// ML-DSA-87 and Ed25519. That lands close enough to vitest's 5s default that
+// these tests flake on a loaded machine (observed 2026-07-24: two timeouts in
+// `logCryptoKeyEvent`). The work is genuinely slow, not hung — give it room.
+const PQC_TIMEOUT = 30_000;
+
+describe('signTriple', { timeout: PQC_TIMEOUT }, () => {
   const env = { JWT_SECRET: 'test-jwt-secret-value' } as unknown as Bindings;
 
   it('produces three independently-verifiable signatures over the same message', async () => {
@@ -107,7 +113,7 @@ describe('signTriple', () => {
   });
 });
 
-describe('logCryptoKeyEvent (via signTriple cache-miss)', () => {
+describe('logCryptoKeyEvent (via signTriple cache-miss)', { timeout: PQC_TIMEOUT }, () => {
   function makeMockDb() {
     const run = vi.fn(async () => ({ success: true }));
     const bind = vi.fn(() => ({ run }));
@@ -163,7 +169,7 @@ describe('logCryptoKeyEvent (via signTriple cache-miss)', () => {
   });
 });
 
-describe('signTriple — backward compat', () => {
+describe('signTriple — backward compat', { timeout: PQC_TIMEOUT }, () => {
   it('BACKWARD COMPAT: keyId for a known JWT_SECRET matches the pre-PQC value', async () => {
     // Golden value captured from the ORIGINAL getPdfSigningKey() (before this
     // plan), to prove deriveEd25519Seed()'s formula — and therefore every

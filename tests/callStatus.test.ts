@@ -42,7 +42,16 @@ describe('ACTIVE_CALL_WHERE', () => {
   });
 
   it('is a NOT IN predicate over the status column', () => {
-    expect(ACTIVE_CALL_WHERE).toMatch(/^status NOT IN \(/);
+    expect(ACTIVE_CALL_WHERE).toMatch(/^COALESCE\(status,''\) NOT IN \(/);
+  });
+
+  it('coalesces NULL so a status-less call still counts as active', () => {
+    // SQL three-valued logic: for `status IS NULL`, a bare
+    // `status NOT IN (...)` evaluates to NULL, not TRUE — so the row satisfies
+    // neither this predicate nor its negation and vanishes from the active AND
+    // the closed counts. A call with no status is a data problem a dispatcher
+    // should see, not one the dashboard should silently swallow.
+    expect(ACTIVE_CALL_WHERE).toContain("COALESCE(status,'')");
   });
 
   // The fragment is interpolated straight into SQL, so it must never carry
@@ -98,7 +107,7 @@ describe('activeCallWhere', () => {
 
   it('qualifies the column when a table alias is given', () => {
     const w = activeCallWhere('c.status');
-    expect(w).toMatch(/^c\.status NOT IN \(/);
+    expect(w).toMatch(/^COALESCE\(c\.status,''\) NOT IN \(/);
     expect(w).toContain("'archived'");
   });
 

@@ -31,6 +31,30 @@ interface UnitLike {
 
 const round = (n: number) => n.toFixed(4); // ~11 m grid
 
+/**
+ * True only when a unit has a real GPS fix.
+ *
+ * The previous guard was `Number.isFinite(Number(u.latitude))`, which lets a
+ * unit with NO fix through: D1 returns SQL NULL for a missing coordinate, and
+ * `Number(null)` is `0` — a perfectly finite number. Every such unit was then
+ * reverse-geocoded at 0°N 0°E ("Null Island", in the Atlantic), producing a
+ * wasted round-trip and a meaningless address. `Number(undefined)` would have
+ * been NaN and caught, which is why this only ever bit rows sourced from the
+ * database.
+ *
+ * Exact 0,0 is also rejected outright — it is never a real patrol position for
+ * a Utah agency, and is the classic sentinel for "coordinates not set".
+ */
+export function hasFix(lat: unknown, lng: unknown): boolean {
+  if (lat == null || lng == null || lat === '' || lng === '') return false;
+  const la = Number(lat);
+  const ln = Number(lng);
+  if (!Number.isFinite(la) || !Number.isFinite(ln)) return false;
+  if (la === 0 && ln === 0) return false;
+  // Out-of-range values are corrupt, not merely absent.
+  return Math.abs(la) <= 90 && Math.abs(ln) <= 180;
+}
+
 export function useUnitLocations(units: UnitLike[]): Record<string, UnitLocation> {
   const [locations, setLocations] = useState<Record<string, UnitLocation>>({});
   const cacheRef = useRef<Map<string, UnitLocation>>(new Map());   // coordKey → resolved
@@ -72,9 +96,8 @@ export function useUnitLocations(units: UnitLike[]): Record<string, UnitLocation
     };
 
     for (const u of units) {
-      const lat = Number(u.latitude);
-      const lng = Number(u.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) resolveOne(String(u.id), lat, lng);
+      if (!hasFix(u.latitude, u.longitude)) continue;
+      resolveOne(String(u.id), Number(u.latitude), Number(u.longitude));
     }
     return () => { cancelled = true; };
   }, [units]);

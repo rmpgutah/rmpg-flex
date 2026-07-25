@@ -45,7 +45,7 @@ const TIP_TYPES = ['criminal_activity', 'drug_activity', 'theft', 'fraud', 'miss
 const URGENCY_COLORS: Record<string, string> = {
   immediate: 'text-red-400',
   urgent: 'text-amber-400',
-  routine: 'text-[#888888]',
+  routine: 'text-rmpg-400',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -53,7 +53,7 @@ const STATUS_COLORS: Record<string, string> = {
   reviewed: 'text-blue-400',
   investigating: 'text-amber-400',
   actionable: 'text-green-400',
-  closed: 'text-[#888888]',
+  closed: 'text-rmpg-400',
   unfounded: 'text-red-400',
 };
 
@@ -162,9 +162,9 @@ export default function TipsPage() {
           { label: 'Investigating', value: stats.investigating, color: 'text-amber-400' },
           { label: 'Actionable', value: stats.actionable, color: 'text-green-400' },
         ].map(s => (
-          <div key={s.label} className="bg-[#141414] border border-[#222222] rounded-[2px] p-3">
+          <div key={s.label} className="bg-surface-raised border border-border-default rounded-[2px] p-3">
             <div className={`text-lg font-bold ${s.color}`}>{s.value}</div>
-            <div className="text-[10px] text-[#888888] uppercase tracking-wider">{s.label}</div>
+            <div className="text-[10px] text-rmpg-400 uppercase tracking-wider">{s.label}</div>
           </div>
         ))}
       </div>
@@ -172,17 +172,17 @@ export default function TipsPage() {
       {/* Search / Filter */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[#888888]" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-accent-silver-500" />
           <input
             type="text"
             placeholder="Search tracking #, description..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none"
+            className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none"
           />
         </div>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-          className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-[#d4a017] outline-none">
+          className="bg-surface-sunken border border-border-default rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-accent-silver-600 outline-none">
           <option value="">All Status</option>
           {['new', 'reviewed', 'investigating', 'actionable', 'closed', 'unfounded'].map(s => (
             <option key={s} value={s}>{s}</option>
@@ -193,39 +193,39 @@ export default function TipsPage() {
       {/* Main layout: Table + Detail Panel */}
       <div className="flex gap-4">
         {/* Table */}
-        <div className={`bg-[#141414] border border-[#222222] rounded-[2px] overflow-hidden ${selectedTip ? 'flex-1' : 'w-full'}`}>
+        <div className={`bg-surface-raised border border-border-default rounded-[2px] overflow-hidden ${selectedTip ? 'flex-1' : 'w-full'}`}>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-[#222222]">
+                <tr className="border-b border-border-subtle">
                   {['Tracking #', 'Date', 'Type', 'Description', 'Urgency', 'Status', 'Assigned To'].map(h => (
-                    <th key={h} className="text-left px-3 py-[3px] text-[9px] font-semibold text-[#888888] uppercase tracking-wider">{h}</th>
+                    <th key={h} className="text-left px-3 py-[3px] text-[9px] font-semibold text-rmpg-400 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7} className="text-center py-8 text-[#888888]"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                  <tr><td colSpan={7} className="text-center py-8 text-rmpg-400"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                 ) : tips.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-8 text-[#888888]">No tips found</td></tr>
+                  <tr><td colSpan={7} className="text-center py-8 text-rmpg-400">No tips found</td></tr>
                 ) : tips.map(tip => (
                   <tr
                     key={tip.id}
                     onClick={() => handleSelectTip(tip)}
-                    className={`border-b border-[#1a1a1a] hover:bg-[#1a1a1a] cursor-pointer
-                      ${selectedTip?.id === tip.id ? 'bg-[#1a1a1a]' : ''}`}
+                    className={`border-b border-border-subtle hover:bg-surface-hover cursor-pointer
+                      ${selectedTip?.id === tip.id ? 'bg-surface-hover' : ''}`}
                   >
-                    <td className="px-3 py-[2px] text-[#d4a017] font-mono">{tip.tracking_number}</td>
-                    <td className="px-3 py-[2px] text-[#888888]">{tip.received_at}</td>
-                    <td className="px-3 py-[2px] text-[#888888] capitalize">{tip.tip_type.replace(/_/g, ' ')}</td>
-                    <td className="px-3 py-[2px] text-[#888888] max-w-[200px] truncate">{tip.description}</td>
-                    <td className={`px-3 py-[2px] font-semibold capitalize ${URGENCY_COLORS[tip.urgency] || 'text-[#888888]'}`}>
+                    <td className="px-3 py-[2px] text-rmpg-100 font-mono">{tip.tracking_number}</td>
+                    <td className="px-3 py-[2px] text-rmpg-400">{tip.received_at}</td>
+                    <td className="px-3 py-[2px] text-rmpg-400 capitalize">{tip.tip_type.replace(/_/g, ' ')}</td>
+                    <td className="px-3 py-[2px] text-rmpg-400 max-w-[200px] truncate">{tip.description}</td>
+                    <td className={`px-3 py-[2px] font-semibold capitalize ${URGENCY_COLORS[tip.urgency] || 'text-rmpg-400'}`}>
                       {tip.urgency}
                     </td>
-                    <td className={`px-3 py-[2px] font-semibold capitalize ${STATUS_COLORS[tip.status] || 'text-[#888888]'}`}>
+                    <td className={`px-3 py-[2px] font-semibold capitalize ${STATUS_COLORS[tip.status] || 'text-rmpg-400'}`}>
                       {tip.status}
                     </td>
-                    <td className="px-3 py-[2px] text-[#888888]">{tip.assigned_to_name || '—'}</td>
+                    <td className="px-3 py-[2px] text-rmpg-400">{tip.assigned_to_name || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -235,11 +235,11 @@ export default function TipsPage() {
 
         {/* ═══ Detail Panel ═══ */}
         {selectedTip && (
-          <div className="w-[380px] shrink-0 bg-[#141414] border border-[#222222] rounded-[2px] overflow-y-auto max-h-[70vh]">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-[#222222]">
-              <span className="text-sm font-semibold text-[#d4a017]">{selectedTip.tracking_number}</span>
+          <div className="w-[380px] shrink-0 bg-surface-raised border border-border-default rounded-[2px] overflow-y-auto max-h-[70vh]">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle">
+              <span className="text-sm font-semibold text-[color:var(--panel-header-color)]">{selectedTip.tracking_number}</span>
               <IconButton aria-label="Close detail panel" onClick={() => setSelectedTip(null)}>
-                <X className="w-4 h-4 text-[#888888]" />
+                <X className="w-4 h-4 text-accent-silver-500" />
               </IconButton>
             </div>
 
@@ -247,70 +247,70 @@ export default function TipsPage() {
               {/* Metadata */}
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-[10px] text-[#888888] uppercase block">Date</span>
+                  <span className="text-[10px] text-rmpg-400 uppercase block">Date</span>
                   <span className="text-white">{selectedTip.received_at}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-[#888888] uppercase block">Type</span>
+                  <span className="text-[10px] text-rmpg-400 uppercase block">Type</span>
                   <span className="text-white capitalize">{selectedTip.tip_type.replace(/_/g, ' ')}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-[#888888] uppercase block">Urgency</span>
+                  <span className="text-[10px] text-rmpg-400 uppercase block">Urgency</span>
                   <span className={`font-semibold capitalize ${URGENCY_COLORS[selectedTip.urgency] || 'text-white'}`}>
                     {selectedTip.urgency}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-[#888888] uppercase block">Status</span>
+                  <span className="text-[10px] text-rmpg-400 uppercase block">Status</span>
                   <span className={`font-semibold capitalize ${STATUS_COLORS[selectedTip.status] || 'text-white'}`}>
                     {selectedTip.status}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-[#888888] uppercase block">Source</span>
+                  <span className="text-[10px] text-rmpg-400 uppercase block">Source</span>
                   <span className="text-white">{selectedTip.source || '—'}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-[#888888] uppercase block">Location</span>
+                  <span className="text-[10px] text-rmpg-400 uppercase block">Location</span>
                   <span className="text-white">{selectedTip.location || '—'}</span>
                 </div>
               </div>
 
               {/* Full description */}
               <div>
-                <span className="text-[10px] text-[#888888] uppercase block mb-1">Description</span>
-                <div className="text-xs text-white bg-[#0a0a0a] border border-[#1a1a1a] rounded-[2px] p-2 whitespace-pre-wrap">
+                <span className="text-[10px] text-rmpg-400 uppercase block mb-1">Description</span>
+                <div className="text-xs text-white bg-surface-sunken border border-border-subtle rounded-[2px] p-2 whitespace-pre-wrap">
                   {selectedTip.description}
                 </div>
               </div>
 
               {/* Assignment */}
               <div>
-                <span className="text-[10px] text-[#888888] uppercase block mb-1">Assigned To</span>
+                <span className="text-[10px] text-rmpg-400 uppercase block mb-1">Assigned To</span>
                 <div className="text-xs text-white">{selectedTip.assigned_to_name || 'Unassigned'}</div>
               </div>
 
               {/* Linked case */}
               {selectedTip.linked_case_number && (
                 <div>
-                  <span className="text-[10px] text-[#888888] uppercase block mb-1">Linked Case</span>
-                  <div className="text-xs text-[#d4a017] font-mono">{selectedTip.linked_case_number}</div>
+                  <span className="text-[10px] text-rmpg-400 uppercase block mb-1">Linked Case</span>
+                  <div className="text-xs text-rmpg-100 font-mono">{selectedTip.linked_case_number}</div>
                 </div>
               )}
 
               {/* Notes */}
               {selectedTip.notes && (
                 <div>
-                  <span className="text-[10px] text-[#888888] uppercase block mb-1">Notes</span>
-                  <div className="text-xs text-[#888888] bg-[#0a0a0a] border border-[#1a1a1a] rounded-[2px] p-2 whitespace-pre-wrap">
+                  <span className="text-[10px] text-rmpg-400 uppercase block mb-1">Notes</span>
+                  <div className="text-xs text-rmpg-400 bg-surface-sunken border border-border-subtle rounded-[2px] p-2 whitespace-pre-wrap">
                     {selectedTip.notes}
                   </div>
                 </div>
               )}
 
               {/* Status actions */}
-              <div className="border-t border-[#222222] pt-3 space-y-2">
-                <span className="text-[10px] text-[#888888] uppercase block">Update Status</span>
+              <div className="border-t border-border-subtle pt-3 space-y-2">
+                <span className="text-[10px] text-rmpg-400 uppercase block">Update Status</span>
                 <div className="flex flex-wrap gap-1">
                   {['reviewed', 'investigating', 'actionable', 'closed', 'unfounded'].map(s => (
                     <button
@@ -319,8 +319,8 @@ export default function TipsPage() {
                       disabled={selectedTip.status === s}
                       className={`px-2 py-1 text-[10px] rounded-[2px] border capitalize
                         ${selectedTip.status === s
-                          ? 'bg-[#d4a017]/20 border-[#d4a017] text-[#d4a017]'
-                          : 'bg-[#0a0a0a] border-[#222222] text-[#888888] hover:text-white hover:border-[#d4a017]'}`}
+                          ? 'bg-accent-silver-500/20 border-accent-silver-600 text-accent-silver-500'
+                          : 'bg-surface-sunken border-border-default text-rmpg-400 hover:text-white hover:border-accent-silver-600'}`}
                     >
                       {s}
                     </button>
@@ -329,25 +329,25 @@ export default function TipsPage() {
               </div>
 
               {/* Assign button */}
-              <div className="border-t border-[#222222] pt-3">
+              <div className="border-t border-border-subtle pt-3">
                 {!assignOpen ? (
                   <button onClick={() => setAssignOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-xs text-white hover:border-[#d4a017] w-full justify-center">
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-xs text-white hover:border-accent-silver-600 w-full justify-center">
                     <UserCheck className="w-3.5 h-3.5" /> Assign to Investigator
                   </button>
                 ) : (
                   <div className="space-y-2">
                     <select value={assignTo} onChange={e => setAssignTo(e.target.value)}
-                      className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs focus:border-[#d4a017] outline-none">
+                      className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none">
                       <option value="">Select investigator...</option>
                       {investigators.map(inv => (
                         <option key={inv.id} value={inv.id}>{inv.name}</option>
                       ))}
                     </select>
                     <div className="flex gap-2">
-                      <button onClick={() => setAssignOpen(false)} className="flex-1 px-2 py-1 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-xs text-[#888888] hover:text-white">Cancel</button>
+                      <button onClick={() => setAssignOpen(false)} className="flex-1 px-2 py-1 bg-surface-sunken border border-border-default rounded-[2px] text-xs text-rmpg-400 hover:text-white">Cancel</button>
                       <button onClick={handleAssign} disabled={assigning || !assignTo}
-                        className="flex-1 px-2 py-1 bg-[#d4a017] text-black text-xs font-semibold rounded-[2px] hover:bg-[#b8891a] disabled:opacity-50">
+                        className="flex-1 px-2 py-1 bg-accent-silver-500 text-black text-xs font-semibold rounded-[2px] hover:bg-accent-silver-400 disabled:opacity-50">
                         {assigning ? 'Assigning...' : 'Assign'}
                       </button>
                     </div>
@@ -356,10 +356,10 @@ export default function TipsPage() {
               </div>
 
               {/* Link to case */}
-              <div className="border-t border-[#222222] pt-3">
+              <div className="border-t border-border-subtle pt-3">
                 {!linkOpen ? (
                   <button onClick={() => setLinkOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-xs text-white hover:border-[#d4a017] w-full justify-center">
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-xs text-white hover:border-accent-silver-600 w-full justify-center">
                     <Link2 className="w-3.5 h-3.5" /> Link to Case
                   </button>
                 ) : (
@@ -369,12 +369,12 @@ export default function TipsPage() {
                       placeholder="Enter case number..."
                       value={linkCaseNumber}
                       onChange={e => setLinkCaseNumber(e.target.value)}
-                      className="w-full px-2 py-1.5 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-white text-xs font-mono focus:border-[#d4a017] outline-none"
+                      className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs font-mono focus:border-accent-silver-600 outline-none"
                     />
                     <div className="flex gap-2">
-                      <button onClick={() => setLinkOpen(false)} className="flex-1 px-2 py-1 bg-[#0a0a0a] border border-[#222222] rounded-[2px] text-xs text-[#888888] hover:text-white">Cancel</button>
+                      <button onClick={() => setLinkOpen(false)} className="flex-1 px-2 py-1 bg-surface-sunken border border-border-default rounded-[2px] text-xs text-rmpg-400 hover:text-white">Cancel</button>
                       <button onClick={handleLinkCase} disabled={linking || !linkCaseNumber}
-                        className="flex-1 px-2 py-1 bg-[#d4a017] text-black text-xs font-semibold rounded-[2px] hover:bg-[#b8891a] disabled:opacity-50">
+                        className="flex-1 px-2 py-1 bg-accent-silver-500 text-black text-xs font-semibold rounded-[2px] hover:bg-accent-silver-400 disabled:opacity-50">
                         {linking ? 'Linking...' : 'Link'}
                       </button>
                     </div>
