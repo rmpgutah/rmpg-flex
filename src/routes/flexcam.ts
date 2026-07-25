@@ -127,6 +127,17 @@ flexcam.get('/footage/:id', async (c): Promise<Response> => {
 });
 
 flexcam.get('/footage/:id/chunk/:seq/stream', async (c): Promise<Response> => {
+  // Auth: `/stream` matches authMiddleware's media predicate, so a header-less
+  // GET with sig+exp reaches this handler unverified. Require a real session —
+  // the client fetches chunks via apiFetchBlob (which sends the Authorization
+  // header), so there is no bare-<video> case to accommodate here.
+  //
+  // This also stops logCustody() below from writing a chain-of-custody
+  // "viewed" row with actorUserId: null, which recorded anonymous evidence
+  // access as a legitimate view instead of refusing it.
+  const user = c.get('user') as { id?: number } | undefined;
+  if (!user) return c.json({ error: 'Authentication required' }, 401);
+
   const db = getDb(c.env);
   const row = await queryFirst<{ r2_key: string | null; content_type: string | null }>(db,
     'SELECT r2_key, content_type FROM footage_chunks WHERE request_id=? AND seq=?', c.req.param('id'), c.req.param('seq')).catch(() => null);

@@ -14,6 +14,24 @@ import { pollServeManagerJobs } from '../utils/serveManagerPoller';
 
 const sm = new Hono<Env>();
 
+// This router backs the ADMIN ServeManager tab, but had no role gate at all:
+// with only readOnlyRoleGuard on the mount, any authenticated non-client_viewer
+// role (officer, dispatcher, contract_manager, human_resources) could overwrite
+// or clear the stored integration API key, repoint the poller, or force a sync.
+// Substituting an attacker's key makes the poller pull jobs from an
+// attacker-controlled ServeManager account; clearing it sabotages the feed.
+// Gate every mutating method to admin/manager (reads/status stay open to the
+// tab's viewers). Matches the adminOnly pattern in traccar.ts / clearpathgps.ts.
+sm.use('*', async (c, next) => {
+  const method = c.req.method;
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return next();
+  const actor = c.get('user') as { role?: string } | undefined;
+  if (!actor?.role || !['admin', 'manager'].includes(actor.role)) {
+    return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+  }
+  return next();
+});
+
 // GET /servemanager/status — top-level integration status card on
 // AdminServeManagerTab. Distinct from /poller/status (auto-poller config);
 // this is "is the API key set + how did the last sync go + cache size".

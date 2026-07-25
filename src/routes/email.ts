@@ -653,6 +653,15 @@ email.get('/messages/:id/attachments', async (c) => {
 // ?inline=1 → Content-Disposition: inline (used by rewritten <img>);
 // otherwise attachment;filename=...
 email.get('/messages/:id/attachments/:aid', async (c) => {
+  // Auth: this path matches authMiddleware's inline-CID media regex, so a
+  // header-less GET with sig+exp reaches the handler unverified — which made
+  // the department mailbox's attachments readable without a session using the
+  // server-side Graph bearer. proxyEmailImages() appends the session token to
+  // inline CID srcs, and the attachment click path uses apiFetchBlob (header),
+  // so both real callers still work.
+  const user = c.get('user') as { id?: number } | undefined;
+  if (!user) return c.json({ error: 'Authentication required' }, 401);
+
   const id = c.req.param('id');
   const aid = c.req.param('aid');
   const inline = c.req.query('inline') === '1';
@@ -665,12 +674,31 @@ email.get('/messages/:id/attachments/:aid', async (c) => {
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     const safeName = (a.name || 'attachment').replace(/[\r\n"]/g, '_');
+
+    // `a.contentType` is chosen by whoever SENT the email — echoing it let an
+    // external sender serve text/html from our own origin. Combined with the
+    // viewer opening attachments in a blob: iframe (blob: inherits the creating
+    // origin), that was arbitrary script execution as rmpgutah.us and theft of
+    // the reader's session token. So: only render a type inline when it is one
+    // we can prove is inert, and never let the browser sniff its way to HTML.
+    const declared = (a.contentType || '').split(';')[0].trim().toLowerCase();
+    const INLINE_SAFE = new Set([
+      'application/pdf',
+      'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff',
+    ]);
+    // image/svg+xml is deliberately absent — SVG is a script-bearing format.
+    const canInline = inline && INLINE_SAFE.has(declared);
+    const contentType = canInline ? declared : 'application/octet-stream';
+
     return new Response(bytes, {
       headers: {
-        'Content-Type': a.contentType || 'application/octet-stream',
+        'Content-Type': contentType,
         'Content-Length': String(bytes.length),
-        'Content-Disposition': inline ? `inline; filename="${safeName}"` : `attachment; filename="${safeName}"`,
+        // Anything not provably inert downloads instead of rendering.
+        'Content-Disposition': canInline ? `inline; filename="${safeName}"` : `attachment; filename="${safeName}"`,
         'Cache-Control': 'private, max-age=300',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; sandbox",
       },
     });
   } catch (err: unknown) {
@@ -682,6 +710,16 @@ email.get('/messages/:id/attachments/:aid', async (c) => {
 // Whitelist HTTPS only; bounded size; pass-through Content-Type. EmailPage
 // rewrites <img src> through this when "load remote images" is enabled.
 email.get('/image-proxy', async (c) => {
+  // Auth: '/api/email/image-proxy' is in authMiddleware's media list, so a
+  // header-less GET with sig+exp lands here unverified. Without this check
+  // the endpoint was an UNAUTHENTICATED open proxy: any caller could make
+  // the Worker fetch an arbitrary https host from Cloudflare's edge and use
+  // the distinct 400/502/415 responses as a host/port enumeration oracle.
+  // proxyEmailImages() in EmailPage.tsx appends the session token, so
+  // requiring a session keeps remote-image loading working.
+  const user = c.get('user') as { id?: number } | undefined;
+  if (!user) return c.json({ error: 'Authentication required' }, 401);
+
   const raw = c.req.query('url');
   if (!raw) return c.json({ error: 'url required' }, 400);
   let url: URL;

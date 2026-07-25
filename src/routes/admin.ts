@@ -28,6 +28,24 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
 // dedicated /third-party-keys endpoints' redact-to-{configured:boolean}.
 const SECRET_KEY_PATTERN = /_(api_key|access_key|access_key_id|secret|secret_access_key|token|password|client_secret|app_key|key_id|webhook_url|webhook_token)$/i;
 
+// ── Router-wide role gate ───────────────────────────────────
+// Being mounted under /api/admin proves only that the caller has a VALID
+// SESSION — it does not make them an administrator. authMiddleware sets
+// `user` for every role, and readOnlyRoleGuard blocks only `client_viewer`
+// from writes, so an `officer` or `contract_manager` token reaches every
+// handler in this file. Each one must therefore declare its own roles;
+// a number of them historically did not, which left secret dumps, audit-log
+// purges and session revocation open to any logged-in account.
+//
+// Usage: `const denied = forbidUnlessRole(c, 'admin', 'manager'); if (denied) return denied;`
+function forbidUnlessRole(c: any, ...roles: string[]): Response | null {
+  const actor = c.get('user') as { role?: string } | undefined;
+  if (!actor?.role || !roles.includes(actor.role)) {
+    return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+  }
+  return null;
+}
+
 // GET /admin/config
 // Returns flat key/value map from system_config + the structured
 // `dispositions` array DispatchPage and DispositionPrompt expect.
@@ -363,18 +381,42 @@ admin.delete('/call-templates/:id', async (c) => {
 });
 
 // ── /admin/clients — full CRUD (AdminPage, CrmPage, IncidentsPage all call this prefix) ──
+// Roles allowed to see full client records incl. commercial terms. The
+// external-facing roles (contract_manager, client_viewer) are deliberately
+// absent — there is no tenancy column on `users`, so nothing scopes a
+// client-side account to its OWN client, and any of them could otherwise
+// read every other client's rates by incrementing :id.
+const CLIENT_FULL_ROLES = ['admin', 'manager', 'supervisor'];
+
 admin.get('/clients', async (c) => {
   try {
     const db = getDb(c.env);
     const status = c.req.query('status');
+    // This list is a CLIENT PICKER for dispatch / incidents / serve /
+    // invoices, so it must stay readable to officers and dispatchers — but
+    // `SELECT *` also handed rate_per_hour, contract_value, total_invoiced,
+    // total_paid and outstanding_balance to every role. Privileged roles get
+    // the full row; everyone else gets only what a picker needs.
+    const actor = c.get('user') as { role?: string } | undefined;
+    // Restricted set is limited to columns the surrounding query already
+    // proves exist (ORDER BY name / WHERE status) — live D1 carries schema
+    // drift, and naming a missing column here would 500 the picker for
+    // every officer rather than degrade.
+    const cols = CLIENT_FULL_ROLES.includes(actor?.role ?? '')
+      ? '*'
+      : 'id, name, status';
     const sql = status
-      ? 'SELECT * FROM clients WHERE status = ? ORDER BY name'
-      : 'SELECT * FROM clients ORDER BY name';
+      ? `SELECT ${cols} FROM clients WHERE status = ? ORDER BY name`
+      : `SELECT ${cols} FROM clients ORDER BY name`;
     return c.json(status ? await query(db, sql, status) : await query(db, sql));
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 admin.get('/clients/:id', async (c) => {
+  // Detail view: contracts, contact persons, and the client's incidents and
+  // calls. Only AdminClientsTab consumes it, so gating costs no function.
+  const denied = forbidUnlessRole(c, ...CLIENT_FULL_ROLES);
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
@@ -389,6 +431,8 @@ admin.get('/clients/:id', async (c) => {
 });
 
 admin.get('/clients/:id/incidents', async (c) => {
+  const denied = forbidUnlessRole(c, ...CLIENT_FULL_ROLES);
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     return c.json(await query(db, `SELECT id, incident_number, occurred_date, status, incident_type FROM incidents WHERE client_id = ? ORDER BY occurred_date DESC LIMIT 100`, Number(c.req.param('id'))));
@@ -396,6 +440,8 @@ admin.get('/clients/:id/incidents', async (c) => {
 });
 
 admin.get('/clients/:id/calls', async (c) => {
+  const denied = forbidUnlessRole(c, ...CLIENT_FULL_ROLES);
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     return c.json(await query(db, `SELECT id, call_number, created_at, status, incident_type, priority FROM calls_for_service WHERE client_id = ? ORDER BY created_at DESC LIMIT 100`, Number(c.req.param('id'))));
@@ -403,6 +449,9 @@ admin.get('/clients/:id/calls', async (c) => {
 });
 
 admin.get('/clients/:id/billing', async (c) => {
+  // Rates, invoiced/paid totals and outstanding balance.
+  const denied = forbidUnlessRole(c, ...CLIENT_FULL_ROLES);
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const client = await queryFirst<Record<string, unknown>>(db, 'SELECT total_invoiced, total_paid, outstanding_balance, billing_cycle, payment_terms, rate_per_hour, rate_per_incident, rate_per_cfs FROM clients WHERE id = ?', Number(c.req.param('id')));
@@ -1425,6 +1474,10 @@ admin.delete('/users/:id/security-questions', async (c) => {
 // client's own user_id-based filter (AdminUsersTab's loadUserSessions).
 // Was a permanent `[]` stub, so "Active Sessions" always read 0.
 admin.get('/sessions', async (c) => {
+  // Returns up to 500 live sessions with user_id + ip_address + user_agent.
+  // Ungated, every account got a map of who is logged in from where.
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const rows = await query(db,
@@ -1443,6 +1496,12 @@ admin.get('/sessions', async (c) => {
 
 // DELETE /admin/sessions/:id — revoke a single session (AdminSessionsTab).
 admin.delete('/sessions/:id', async (c) => {
+  // Revokes ANY session by id, with no ownership check. Combined with the
+  // ungated list above, any authenticated account could knock a specific
+  // officer or admin offline mid-shift. Matches the gating already on
+  // POST /users/:id/revoke-sessions.
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -1648,7 +1707,15 @@ admin.get('/users/presence', async (c) => {
 });
 
 // ── Internal Affairs ────────────────────────────────────────
+// IA complaints and disciplinary records are restricted personnel files:
+// they name the subject officer and the allegation. These three reads were
+// ungated, so an `officer` could read complaints filed against colleagues
+// (or themselves), and the external-facing `contract_manager` /
+// `client_viewer` roles could read the whole IA file. hr.ts gates its
+// parallel /disciplinary endpoints — this matches that standard.
 admin.get('/ia/complaints', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
@@ -1658,6 +1725,8 @@ admin.get('/ia/complaints', async (c) => {
 });
 
 admin.get('/ia/disciplinary', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
@@ -1667,6 +1736,8 @@ admin.get('/ia/disciplinary', async (c) => {
 });
 
 admin.get('/ia/stats', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   const db = getDb(c.env);
   async function cnt(sql: string): Promise<number> {
     try { const r = await queryFirst<{ n: number }>(db, sql); return r?.n ?? 0; } catch { return 0; }
@@ -1737,6 +1808,13 @@ admin.post('/database/vacuum', async (c) => {
 
 // ── Purge endpoints ────────────────────────────────────────
 admin.post('/purge/activity-logs', async (c) => {
+  // Admin-only: this DELETEs from audit_log, i.e. it destroys the CJIS audit
+  // trail — including the record of the actor's own prior access. Ungated,
+  // any authenticated non-client_viewer role could erase the entire table
+  // with `{"before_date":"9999-12-31"}`. Compare audit.ts /retention/enforce,
+  // which correctly requires admin for the same class of deletion.
+  const denied = forbidUnlessRole(c, 'admin');
+  if (denied) return denied;
   try {
     const body: { before_date?: string; days_to_keep?: number } = await c.req.json().catch(() => ({}));
     const cutoff = body.before_date
@@ -1752,6 +1830,8 @@ admin.post('/purge/activity-logs', async (c) => {
 });
 
 admin.post('/purge/notifications', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin');
+  if (denied) return denied;
   try {
     const body: { before_date?: string; days_to_keep?: number } = await c.req.json().catch(() => ({}));
     const cutoff = body.before_date
@@ -1767,6 +1847,10 @@ admin.post('/purge/notifications', async (c) => {
 });
 
 admin.post('/purge/sessions', async (c) => {
+  // Deletes every inactive/expired session row. Ungated, any authenticated
+  // account could mass-invalidate session bookkeeping.
+  const denied = forbidUnlessRole(c, 'admin');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const r = await execute(db, `DELETE FROM sessions WHERE is_active = 0 OR expires_at < datetime('now')`);
@@ -1897,12 +1981,22 @@ admin.get('/health/client-error', async (c) => {
 
 // ── System settings (org-wide config) ──────────────────────
 admin.get('/system-settings', async (c) => {
+  // system_config is the SAME flat bag that PUT /third-party-keys writes
+  // integration secrets into (microbilt_client_secret, traccar_password,
+  // roboflow_api_key, …). This handler used to return the whole table with
+  // no role check and no redaction, so any authenticated account — including
+  // client_viewer, since a GET isn't blocked by readOnlyRoleGuard — could
+  // read every third-party credential in plaintext. Mirror GET /config:
+  // gate the role AND drop secret-shaped keys.
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const rows = await query<{ config_key: string; config_value: string }>(db,
       `SELECT config_key, config_value FROM system_config ORDER BY config_key`);
     const settings: Record<string, unknown> = {};
     for (const r of rows) {
+      if (SECRET_KEY_PATTERN.test(r.config_key)) continue;
       try { settings[r.config_key] = JSON.parse(r.config_value); } catch { settings[r.config_key] = r.config_value; }
     }
     return c.json(settings);

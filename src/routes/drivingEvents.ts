@@ -16,6 +16,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { classifyDrivingEvent, fleetStatusFor } from '../utils/drivingEvents';
 import { getApiConfig, listMediaForAsset, type CpgMediaObject } from '../utils/clearpathGps';
 import { recordAudit } from '../utils/auditLog';
+import { verifySignedResource } from '../utils/signedAccess';
 
 const drivingEvents = new Hono<Env>();
 
@@ -415,9 +416,25 @@ drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
 // Stream the mp4. Serves from R2 when available; proxies ClearPath on first
 // access and downloads to R2 in the background so subsequent plays are instant.
 drivingEvents.get('/:id/stream', async (c: Context<Env>): Promise<Response> => {
+  // Auth: this path ends in `/stream`, so authMiddleware forwards header-less
+  // GETs carrying sig+exp WITHOUT verifying them (a <video> tag can't send an
+  // Authorization header). Verification is therefore this handler's job — and
+  // until it was added, the whole dashcam archive was readable unauthenticated
+  // by anyone passing `?sig=x&exp=1`, with sequential ids to enumerate.
+  // A plain JWT (header, cookie, or the media ?token= fallback) also works,
+  // since authMiddleware sets `user` in that case.
+  const idStr = c.req.param('id') ?? '';
+  const user = c.get('user') as { id?: number } | undefined;
+  if (!user) {
+    const ok = await verifySignedResource(c.env.JWT_SECRET, 'driving-event', idStr, {
+      sig: c.req.query('sig'), exp: c.req.query('exp'), nonce: c.req.query('nonce'),
+    });
+    if (!ok) return c.json({ error: 'Authentication required' }, 401);
+  }
+
   const db = getDb(c.env);
   await ensureDashcamClipColumn(db);
-  const id = Number(c.req.param('id'));
+  const id = Number(idStr);
   let resolved: Awaited<ReturnType<typeof resolveEventMedia>> = null;
   try { resolved = await resolveEventMedia(c.env, db, id); } catch { resolved = null; }
 

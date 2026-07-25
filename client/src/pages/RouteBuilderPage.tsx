@@ -34,6 +34,7 @@ import { getDirections } from '../utils/mapboxServices';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { toDisplayLabel } from '../utils/formatters';
+import { escapeHtml } from '../utils/sanitize';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -380,14 +381,14 @@ export default function RouteBuilderPage() {
           .setHTML(`
             <div style="background:#141414;color:#e5e5e5;padding:8px 12px;border-radius:2px;min-width:200px;font-family:system-ui;">
               <div style="font-weight:600;color:#d4a017;margin-bottom:4px;">
-                Stop ${idx + 1} — ${stop.call_number}
+                Stop ${idx + 1} — ${escapeHtml(stop.call_number)}
               </div>
               <div style="font-size:12px;margin-bottom:2px;">
-                <span style="color:${color};font-weight:600;">${stop.priority}</span>
-                &nbsp;${stop.incident_type}
+                <span style="color:${color};font-weight:600;">${escapeHtml(stop.priority)}</span>
+                &nbsp;${escapeHtml(stop.incident_type)}
               </div>
-              <div style="font-size:11px;color:#888;">${stop.location_address}</div>
-              ${stop.description ? `<div style="font-size:11px;color:#666;margin-top:4px;">${stop.description.slice(0, 100)}</div>` : ''}
+              <div style="font-size:11px;color:#888;">${escapeHtml(stop.location_address)}</div>
+              ${stop.description ? `<div style="font-size:11px;color:#666;margin-top:4px;">${escapeHtml(stop.description.slice(0, 100))}</div>` : ''}
               ${stop.completed ? '<div style="color:#22c55e;font-size:11px;margin-top:4px;">✓ Completed</div>' : ''}
             </div>
           `);

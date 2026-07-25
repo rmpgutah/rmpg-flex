@@ -475,10 +475,12 @@ ct.put('/events/:id/verdict', async (c) => {
 // ── PUT /events/:id/confirm — officer attendance confirmation ─
 // officer_confirmations is a JSON map { "<officer_id>": true|false }.
 ct.put('/events/:id/confirm', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
+  if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
-  const user = c.get('user') as { id: number } | undefined;
+  const user = c.get('user') as { id: number; role: string } | undefined;
   if (!user) return c.json({ error: 'Unauthenticated' }, 401);
   const db = getDb(c.env);
   const row = await queryFirst<{ officer_confirmations: string }>(
@@ -486,7 +488,16 @@ ct.put('/events/:id/confirm', async (c) => {
   );
   if (!row) return c.json({ error: 'Not found' }, 404);
   const map = parseJsonCol<Record<string, boolean>>(row.officer_confirmations, {});
-  map[String(body.officer_id ?? user.id)] = body.confirmed !== false;
+  // The confirming officer is the AUTHENTICATED user, not a body field —
+  // otherwise anyone could forge or clear another officer's subpoena/
+  // attendance confirmation with {"officer_id":<victim>,"confirmed":false},
+  // falsifying a court record. Only a supervisor+ may confirm on someone
+  // else's behalf (e.g. logging attendance for a squad).
+  const canActForOthers = ['admin', 'manager', 'supervisor'].includes(user.role);
+  const targetOfficer = canActForOthers && body.officer_id != null
+    ? String(body.officer_id)
+    : String(user.id);
+  map[targetOfficer] = body.confirmed !== false;
   await execute(
     db,
     `UPDATE court_events SET officer_confirmations = ?, updated_at = datetime('now') WHERE id = ?`,

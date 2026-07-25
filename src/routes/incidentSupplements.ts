@@ -56,6 +56,19 @@ function coerce(col: string, raw: unknown): unknown {
   return raw;
 }
 
+// Supervisory sign-off columns on the pursuit supplement. WRITE_ROLES includes
+// `officer`, and the upsert wrote any body key in PURSUIT_COLS — so an officer
+// could forge supervisory approval / review completion on their OWN use-of-
+// pursuit report by POSTing e.g. {"review_completed":true,
+// "supervisory_approval_user_id":<self>}. These columns are writable only by a
+// supervisor+; for anyone else they are silently dropped from the write.
+const SUPERVISORY_COLS = new Set([
+  'supervisory_approval_user_id', 'supervisory_approval_at',
+  'review_completed', 'review_findings', 'review_completed_by', 'review_completed_at',
+  'terminated_by_supervisor_id',
+]);
+const SUPERVISOR_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
 function buildHandlers(table: 'dv_supplements' | 'pursuit_supplements', cols: string[]) {
   return {
     get: async (c: any) => {
@@ -81,9 +94,17 @@ function buildHandlers(table: 'dv_supplements' | 'pursuit_supplements', cols: st
         if (!incident) return c.json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' }, 404);
 
         const body = await c.req.json().catch(() => ({} as any));
+        const actor = c.get('user') as { role?: string } | undefined;
+        const canApprove = !!actor?.role && SUPERVISOR_ROLES.has(actor.role);
         const existing: any = await queryFirst(db, `SELECT * FROM ${table} WHERE incident_id = ?`, incidentId);
         const data: Record<string, unknown> = {};
-        for (const col of cols) if (col in body) data[col] = coerce(col, body[col]);
+        for (const col of cols) {
+          if (!(col in body)) continue;
+          // Drop supervisory sign-off columns for non-supervisors so an officer
+          // can't approve/close-out their own pursuit report.
+          if (SUPERVISORY_COLS.has(col) && !canApprove) continue;
+          data[col] = coerce(col, body[col]);
+        }
 
         if (existing) {
           if (Object.keys(data).length === 0) return c.json(existing);
