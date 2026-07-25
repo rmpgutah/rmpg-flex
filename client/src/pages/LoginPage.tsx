@@ -357,7 +357,10 @@ export default function LoginPage() {
     clearError();
     try {
       const res = await fetchWithTimeout(`/api/oidc/dialer/check?email=${encodeURIComponent(loginUsername.trim())}`);
-      const data = await res.json();
+      // Guard on res.ok before parsing — a non-JSON error body (WAF challenge
+      // page, SPA HTML fallback) would otherwise throw inside the try and read
+      // as "SSO check failed" with a misleading JSON-parse error.
+      const data = res.ok ? await res.json() : { ssoEnabled: false };
       if (data.ssoEnabled) {
         window.location.href = '/api/oidc/dialer/login';
         return;
@@ -1185,6 +1188,22 @@ export default function LoginPage() {
             {/* ══════ Password Change Required ══════ */}
             {loginStep === 'password_change' && (
               <form onSubmit={handlePasswordChange} className="space-y-3">
+                {/* A password form with no username field makes password
+                    managers guess which account the new password belongs to,
+                    and Chrome logs "Password forms should have (optionally
+                    hidden) username fields for accessibility". The identifier
+                    is already known at this step — expose it read-only and
+                    off-screen so managers can attribute the update. */}
+                <input
+                  type="text"
+                  name="username"
+                  autoComplete="username"
+                  value={loginUsername}
+                  readOnly
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  className="sr-only"
+                />
                 <div className="text-center mb-2">
                   <Lock className="w-8 h-8 mx-auto mb-2 text-rmpg-400" />
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
@@ -1378,6 +1397,18 @@ export default function LoginPage() {
                 {/* Step: Reset Password */}
                 {forgotPwStep === 'reset' && (
                   <form onSubmit={handleForgotReset} className="space-y-3">
+                    {/* Same rationale as the password_change form above — give
+                        password managers the account this reset belongs to. */}
+                    <input
+                      type="text"
+                      name="username"
+                      autoComplete="username"
+                      value={forgotUsername}
+                      readOnly
+                      aria-hidden="true"
+                      tabIndex={-1}
+                      className="sr-only"
+                    />
                     <div className="text-center mb-1">
                       <Lock className="w-8 h-8 mx-auto mb-1" style={{ color: 'var(--brand-gold)' }} />
                       <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">

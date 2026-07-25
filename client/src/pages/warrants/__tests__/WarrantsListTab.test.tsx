@@ -234,3 +234,72 @@ describe('WarrantsListTab — watch/unwatch action', () => {
     expect(menuItems?.some((i) => /unwatch this warrant/i.test(i.label))).toBe(true);
   });
 });
+
+// ── External (scraped) rows ─────────────────────────────────────────────────
+// /warrants/unified merges local rows with scraped_warrants rows carrying a
+// synthetic `scraped-<n>` id. Every /warrants/:id call made with one is
+// rejected 400 by the server's numeric-id guard, so the UI must never make one.
+describe('WarrantsListTab — external (scraped) rows', () => {
+  const externalRow = {
+    id: 'scraped-95960',
+    warrant_number: 'NAT-95960',
+    status: 'active',
+    type: 'arrest',
+    subject_name: 'John Doe',
+    subject_person_id: null,
+    source: 'national',
+  };
+
+  function mockUnifiedWith(row: unknown) {
+    return vi.spyOn(useApiModule, 'apiFetch').mockImplementation(async (path: string) => {
+      if (String(path).includes('/warrants/unified')) return { warrants: [row], total: 1 };
+      if (String(path) === '/intel/watchlist') return [];
+      return {};
+    });
+  }
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+    openMenuMock.mockClear();
+  });
+
+  it('opens the detail pane from the list row without requesting /warrants/<synthetic-id>', async () => {
+    mockUnifiedWith(externalRow);
+    renderTab();
+    const cell = await screen.findByText('NAT-95960');
+    await userEvent.click(cell);
+
+    // Detail pane populated from the row itself…
+    await waitFor(() => expect(screen.getByText(/external · read-only/i)).toBeTruthy());
+    // …and no request was made with the synthetic id.
+    const paths = (useApiModule.apiFetch as unknown as { mock: { calls: unknown[][] } }).mock.calls
+      .map((args) => String(args[0]));
+    expect(paths.some((p) => p.includes('scraped-95960'))).toBe(false);
+  });
+
+  it('omits every write action from the context menu', async () => {
+    mockUnifiedWith(externalRow);
+    renderTab();
+    const cell = await screen.findByText('NAT-95960');
+    cell.closest('tr, div')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+
+    await waitFor(() => expect(openMenuMock).toHaveBeenCalled());
+    const calls = openMenuMock.mock.calls;
+    const labels = ((calls[calls.length - 1]?.[1] ?? []) as { label?: string }[])
+      .map((i) => i.label ?? '');
+    expect(labels.some((l) => /view warrant/i.test(l))).toBe(true);
+    for (const forbidden of [/edit warrant/i, /mark served/i, /recall/i, /archive/i, /^delete$/i, /watch this warrant/i]) {
+      expect(labels.some((l) => forbidden.test(l))).toBe(false);
+    }
+  });
+
+  it('disables batch selection for external rows', async () => {
+    mockUnifiedWith(externalRow);
+    renderTab();
+    await screen.findByText('NAT-95960');
+    const rowCheckbox = document.getElementById('ff-warrantslisttab-9') as HTMLInputElement | null;
+    expect(rowCheckbox).toBeTruthy();
+    expect(rowCheckbox!.disabled).toBe(true);
+  });
+});
