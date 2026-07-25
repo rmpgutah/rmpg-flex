@@ -15,7 +15,7 @@ export default function RecentDocsPanel({ onClose, onOpen, onChange }: Props) {
     <div className="w-[300px] flex-shrink-0 bg-surface-sunken border border-border-default rounded-[2px] flex flex-col text-rmpg-200 text-xs">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
         <span className="flex items-center gap-1.5 font-semibold text-rmpg-100 uppercase tracking-wider text-[10px]">
-          <FileStack className="w-3.5 h-3.5 text-[#d4a017]" /> Recent Documents
+          <FileStack className="w-3.5 h-3.5 text-accent-silver-400" /> Recent Documents
         </span>
         <button type="button" onClick={onClose} aria-label="Close recent documents" className="text-rmpg-500 hover:text-rmpg-100">
           <X className="w-3.5 h-3.5" />
@@ -26,7 +26,7 @@ export default function RecentDocsPanel({ onClose, onOpen, onChange }: Props) {
           <p className="text-[10px] text-rmpg-500 px-1 py-2">No recent documents yet. They appear here as you open and edit documents on this device.</p>
         )}
         {docs.map((d) => (
-          <div key={d.id} className="group flex items-center gap-1 p-2 bg-surface-base border border-border-default rounded-[2px] hover:border-[#d4a017]/40">
+          <div key={d.id} className="group flex items-center gap-1 p-2 bg-surface-base border border-border-default rounded-[2px] hover:border-accent-silver-500/40">
             <button type="button" onClick={() => onOpen(d)} className="flex-1 text-left min-w-0">
               <div className="text-[11px] text-rmpg-200 truncate">{d.title || 'Untitled'}</div>
               <div className="text-[9px] text-rmpg-600">
