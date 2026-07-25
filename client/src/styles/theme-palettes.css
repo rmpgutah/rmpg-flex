@@ -415,16 +415,18 @@ html.theme-blue-silver {
   --brand-600-rgb: 82 101 122;  --brand-700-rgb: 58 78 98;    --brand-800-rgb: 38 58 78;
   --brand-900-rgb: 20 40 64;
   /* Bare aliases — see the night block for why these are per-block, not hoisted.
-     ⚠️ CONTRAST NOTE: --brand-400 here resolves to #869aaf, which measures
-     3.69/2.93/4.44 on base/raised/sunken navy. That clears WCAG 1.4.11's 3:1 for
-     graphics (borders, outlines, icons — 14 of the 19 consumers) but NOT AA 4.5:1
-     for text. Five consumers are 10-11px text: DesktopTaskbar.tsx:192,
-     DesktopClockWidget.tsx:23, DesktopShiftTimerWidget.tsx:40, HelpPage.tsx:720,
-     ModuleDirectoryPage.tsx:344. The same value applied under night (4.77), day
-     (4.97) and legacy-black (4.92), where it passes. Repointing those five at an
-     AA-passing accent is a design decision left open deliberately — do NOT "fix"
-     it by giving this block a literal bare value, which would break the
-     derived-from-triple invariant the tests pin. */
+     ⚠️ --brand-400 here resolves to #869aaf: 3.69/2.93/4.44 on base/raised/sunken
+     navy. That clears WCAG 1.4.11's 3:1 for GRAPHICS (borders, outlines, icons)
+     but not AA 4.5:1 for TEXT — and it is the worst case of the four themes
+     (night 4.77, day 4.97, legacy-black 4.92 all pass).
+     Because of that, the 8 TEXT consumers were re-pointed to --accent-silver-400
+     when these aliases were defined, in the same commit: leaving them would have
+     rendered the ON state at 2.93 against an OFF state of --text-muted at 3.81,
+     i.e. active LESS visible than inactive. Icons/borders/outlines keep
+     --brand-400 and are fine at the 3:1 graphics threshold.
+     Do NOT "fix" the text case by giving this block a literal bare value — that
+     breaks the derived-from-triple invariant accentTokens.test.ts pins, and lets
+     the bare and -rgb forms drift apart silently. */
   --brand-50: rgb(var(--brand-50-rgb));   --brand-100: rgb(var(--brand-100-rgb));
   --brand-200: rgb(var(--brand-200-rgb)); --brand-300: rgb(var(--brand-300-rgb));
   --brand-400: rgb(var(--brand-400-rgb)); --brand-500: rgb(var(--brand-500-rgb));

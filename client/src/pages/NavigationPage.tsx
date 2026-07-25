@@ -2585,7 +2585,7 @@ export default function NavigationPage() {
         <button
           onClick={() => { setTripOpen((v) => !v); if (!tripOpen) { setLogOpen(false); setTripsOpen(false); } }}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: tripOpen ? 'var(--brand-400)' : 'var(--text-muted)' }}
+          style={{ color: tripOpen ? 'var(--accent-silver-400)' : 'var(--text-muted)' }}
           title="Movement report (speed, g-force, driving events)"
           aria-label="Toggle movement report"
         >
@@ -2594,7 +2594,7 @@ export default function NavigationPage() {
         <button
           onClick={() => { setTripsOpen((v) => !v); if (!tripsOpen) { setTripOpen(false); setLogOpen(false); } }}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: tripsOpen ? 'var(--brand-400)' : 'var(--text-muted)' }}
+          style={{ color: tripsOpen ? 'var(--accent-silver-400)' : 'var(--text-muted)' }}
           title="Trip chain — per-trip movement reports for this unit"
           aria-label="Toggle trips drawer"
         >
@@ -2603,7 +2603,7 @@ export default function NavigationPage() {
         <button
           onClick={() => { setLogOpen((v) => !v); if (!logOpen) { setTripOpen(false); setTripsOpen(false); } }}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: logOpen ? 'var(--brand-400)' : 'var(--text-muted)' }}
+          style={{ color: logOpen ? 'var(--accent-silver-400)' : 'var(--text-muted)' }}
           title="Call history log for this unit"
           aria-label="Toggle call history log"
         >

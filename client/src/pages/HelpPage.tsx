@@ -717,7 +717,7 @@ export default function HelpPage() {
                         height: 22,
                         background: 'rgba(212,160,23,0.15)',
                         border: '1px solid rgba(212,160,23,0.3)',
-                        color: 'var(--brand-400)',
+                        color: 'var(--accent-silver-400)',
                       }}
                     >
                       {item.step}
