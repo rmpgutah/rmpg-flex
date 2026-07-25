@@ -45,7 +45,29 @@ A repo-wide pre-commit hook runs the Worker vitest suite (~17s) on every commit,
 | Client typecheck | 0 errors |
 | Client vitest | 443 files, 3101 passed |
 
-Clean. Any failure during implementation is caused by this work — a red gate is a hard stop.
+Clean. Any failure during implementation is caused by this work — a red gate is a hard stop, **with one documented exception below.**
+
+### Known flake — do NOT chase it
+
+`tests/pdfSign.test.ts` and `tests/footage/flexcamRoute.test.ts` (7 tests total)
+intermittently fail with **`Test timed out in 5000ms`** when the machine is under
+load. SLH-DSA post-quantum keygen genuinely costs seconds per call, and the
+suite's per-test timeout is 5s.
+
+Verified 2026-07-24: these 7 failed during a loaded full-suite run (49.9s
+duration) and then passed 22/22 when the two files were run in isolation (`npx
+vitest run tests/pdfSign.test.ts tests/footage/flexcamRoute.test.ts`).
+
+This work does not touch `/src/`, so **any** failure in these two files is a
+flake. Distinguishing it is unambiguous:
+
+- **Flake:** `Test timed out in 5000ms` on post-quantum signing or flexcam routes.
+- **Real failure:** an assertion comparing wrong values.
+
+If the pre-commit hook trips on this, re-run the two files in isolation to
+confirm, then retry the commit. Do not "fix" crypto code, do not raise the
+timeout, and do not disable the tests — none of that is in scope for a
+presentation-layer change.
 
 ## File Structure
 
@@ -563,7 +585,7 @@ EOF
 
 ### Task 3: Stop stamping two theme classes; fix the stale chrome color
 
-Fixes E5 and E6. `theme.ts` and the pre-paint boot script must change together — if they disagree, the page flashes one theme then swaps.
+Fixes E5 and E6. `theme.ts` (`applyThemePreference`) and the pre-paint boot script must change together — if they disagree, the page flashes one theme then swaps.
 
 **Files:**
 - Modify: `client/src/utils/theme.ts:76`, `client/src/utils/theme.ts:130-134`
@@ -572,7 +594,7 @@ Fixes E5 and E6. `theme.ts` and the pre-paint boot script must change together �
 
 **Interfaces:**
 - Consumes: `--surface-base` `#22405f` from the palette (Task 1/2 context).
-- Produces: no new exported symbols. `applyTheme` keeps its existing signature.
+- Produces: no new exported symbols. `applyThemePreference(value, options?)` keeps its existing signature.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -580,50 +602,58 @@ Create `client/src/utils/__tests__/themeClassStamp.test.ts`:
 
 ```ts
 import { describe, it, expect, beforeEach } from 'vitest';
-import { BLUE_SILVER_FLAG_KEY } from '../theme';
+import { applyThemePreference, BLUE_SILVER_FLAG_KEY, LEGACY_FLAG_KEY } from '../theme';
+
+// NOTE: the exported function is applyThemePreference(value, options?), NOT
+// applyTheme. Pass { persist: false, syncNative: false } so the test does not
+// write localStorage back or reach for the Capacitor status-bar module.
+const apply = () => applyThemePreference('dark', { persist: false, syncNative: false });
 
 describe('theme class stamping', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.className = '';
+    document.documentElement.style.cssText = '';
   });
 
-  it('does not stamp theme-dark alongside theme-blue-silver', async () => {
+  it('does not stamp theme-dark alongside theme-blue-silver', () => {
     // Blue & Silver is default-ON when the flag is absent.
-    const { applyTheme } = await import('../theme');
-    applyTheme('dark');
+    apply();
     const cls = document.documentElement.className;
     expect(cls).toContain('theme-blue-silver');
     expect(cls).toContain('dark');
-    expect(cls).not.toContain('theme-dark');
+    expect(cls.split(/\s+/)).not.toContain('theme-dark');
   });
 
-  it('stamps theme-dark when Blue & Silver is opted out', async () => {
+  it('stamps theme-dark when Blue & Silver is opted out', () => {
     localStorage.setItem(BLUE_SILVER_FLAG_KEY, '0');
-    const { applyTheme } = await import('../theme');
-    applyTheme('dark');
+    apply();
     const cls = document.documentElement.className;
-    expect(cls).toContain('theme-dark');
+    expect(cls.split(/\s+/)).toContain('theme-dark');
     expect(cls).not.toContain('theme-blue-silver');
   });
 
-  it('legacy black wins over blue-silver and stamps neither theme-dark nor blue-silver', async () => {
-    localStorage.setItem('rmpg_theme_legacy', '1');
-    const { applyTheme } = await import('../theme');
-    applyTheme('dark');
+  it('legacy black wins and stamps neither theme-dark nor theme-blue-silver', () => {
+    localStorage.setItem(LEGACY_FLAG_KEY, '1');
+    apply();
     const cls = document.documentElement.className;
     expect(cls).toContain('theme-legacy-black');
     expect(cls).not.toContain('theme-blue-silver');
-    expect(cls).not.toContain('theme-dark');
+    expect(cls.split(/\s+/)).not.toContain('theme-dark');
   });
 
-  it('uses the current navy surface-base as the chrome color, not the stale #0c1a2b', async () => {
-    const { applyTheme } = await import('../theme');
-    applyTheme('dark');
+  it('uses the current navy surface-base as the chrome color, not the stale #0c1a2b', () => {
+    apply();
     expect(document.documentElement.style.backgroundColor).toBe('rgb(34, 64, 95)');
   });
 });
 ```
+
+**Note on the class assertions:** `expect(cls).not.toContain('theme-dark')` would
+be a false negative — the substring `theme-dark` does not appear in
+`theme-blue-silver`, but a naive substring check on class strings is fragile in
+general. The assertions above split on whitespace and check for the exact class
+token instead.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -649,7 +679,7 @@ with:
 const BLUE_SILVER_CHROME = '#22405f';
 ```
 
-At `client/src/utils/theme.ts:130-134`, replace:
+At `client/src/utils/theme.ts:130-134` (inside `applyThemePreference`), replace:
 
 ```ts
   html.classList.remove('theme-dark', 'theme-light', 'theme-legacy-black', 'theme-blue-silver', 'dark');
@@ -690,7 +720,7 @@ In `client/index.html`, replace lines 45–49:
 with:
 
 ```js
-          // Must resolve IDENTICALLY to applyTheme() in src/utils/theme.ts, or
+          // Must resolve IDENTICALLY to applyThemePreference() in src/utils/theme.ts, or
           // the pre-paint class and the runtime class disagree and the page
           // visibly swaps themes after hydration. Exactly one palette class.
           html.classList.remove('theme-dark', 'theme-light', 'theme-legacy-black', 'theme-blue-silver', 'dark');
@@ -724,7 +754,7 @@ git add client/src/utils/theme.ts client/index.html client/src/utils/__tests__/t
 git commit -m "$(cat <<'EOF'
 fix(theme): stamp exactly one palette class; un-stale the chrome color
 
-applyTheme added `theme-${theme}` unconditionally before adding
+applyThemePreference added `theme-${theme}` unconditionally before adding
 theme-blue-silver, so the live app shipped as
 class="theme-dark dark theme-blue-silver". Blue & Silver won only
 because its block sits later in theme-palettes.css, making the whole
