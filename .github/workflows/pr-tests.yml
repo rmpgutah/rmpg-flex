@@ -37,6 +37,42 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
 
+  # The Worker's two suites existed, passed, and had npm scripts + configs for
+  # months — but gated NOTHING. Only the bypassable husky hook ran them, so a
+  # --no-verify push could land a broken Worker with all PR checks green. The
+  # 2026-07-24 audit found regression guards that would never have run in CI.
+  worker-tests:
+    name: Worker tests
+    needs: [worker-typecheck]
+    runs-on: ubuntu-latest
+    # Longer than the client jobs: this suite is ~250 files and the pdfSign
+    # SLH-DSA cases are genuinely slow.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run
+
+  # Route-level smoke tests against real Miniflare D1/KV/R2 bindings. Separate
+  # job from the node suite because it runs in workerd, not node.
+  worker-integration-tests:
+    name: Worker integration tests
+    needs: [worker-typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:worker
+
   client-typecheck:
     name: Client typecheck
     runs-on: ubuntu-latest
@@ -55,7 +91,9 @@ jobs:
     name: Client tests
     needs: [client-typecheck]
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Was 5, but this suite took 4m27s on PR #2998 — under 35s of headroom on a
+    # required check. One slow runner would have failed a green PR.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
