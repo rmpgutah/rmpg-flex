@@ -60,6 +60,47 @@ describe('GET /api/health — multi-service health probe', () => {
     expect(body.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
+  // kiosk_devices is an OPTIONAL binding and is deliberately report-only: it
+  // appears in `services` but must never move `status` to 'degraded', in any of
+  // its three states. See the comment above `allOk` in src/routes/health.ts.
+  describe('kiosk_devices — optional binding, report-only', () => {
+    const baseStatus = async (overrides?: Record<string, unknown>) => {
+      const testEnv = { ...(env as unknown as Record<string, unknown>), ...overrides };
+      const res = await app.request('/api/health', {}, testEnv);
+      return res.json() as Promise<{
+        status: string;
+        services: { kiosk_devices: { connected: boolean; bound?: boolean } };
+      }>;
+    };
+
+    it('reports kiosk_devices in the services payload', async () => {
+      const body = await baseStatus();
+      expect(body.services.kiosk_devices).toBeDefined();
+      expect(typeof body.services.kiosk_devices.connected).toBe('boolean');
+    });
+
+    it('marks an unbound bucket bound:false without degrading status', async () => {
+      const withStatus = await baseStatus();
+      const body = await baseStatus({ KIOSK_DEVICES: undefined });
+      expect(body.services.kiosk_devices.connected).toBe(false);
+      expect(body.services.kiosk_devices.bound).toBe(false);
+      // status must match the unmodified run — the absent binding changed nothing
+      expect(body.status).toBe(withStatus.status);
+    });
+
+    it('does not degrade status when a bound bucket throws (R2 auth failure)', async () => {
+      const withStatus = await baseStatus();
+      const throwingBucket = {
+        head: () => { throw new Error('Authentication error [code: 10000]'); },
+      };
+      const body = await baseStatus({ KIOSK_DEVICES: throwingBucket });
+      expect(body.services.kiosk_devices.connected).toBe(false);
+      // bound:false is reserved for absent bindings — this one exists, it failed
+      expect(body.services.kiosk_devices.bound).toBeUndefined();
+      expect(body.status).toBe(withStatus.status);
+    });
+  });
+
   it('includes Durable Object status', async () => {
     const res = await app.request('/api/health', {}, env as unknown as Record<string, unknown>);
     const body = await res.json() as { services: { durable_objects: Record<string, { connected: boolean }> } };
