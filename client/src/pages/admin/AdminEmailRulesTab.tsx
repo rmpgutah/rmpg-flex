@@ -126,13 +126,13 @@ export default function AdminEmailRulesTab() {
   return (
     <div className="p-4 space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-sm font-semibold text-[#d4a017]">EMAIL RULES</h2>
+        <h2 className="text-sm font-semibold text-[color:var(--panel-header-color)]">EMAIL RULES</h2>
         <button
           onClick={() => {
             setTestResult(null);
             setEditing({ isActive: true, conditions_json: '{}', actions_json: '[]' });
           }}
-          className="px-3 py-1 border border-border-default text-xs hover:border-[#d4a017] hover:text-[#d4a017]"
+          className="px-3 py-1 border border-border-default text-xs hover:border-accent-silver-500 hover:text-accent-silver-400"
         >
           NEW RULE
         </button>
@@ -157,7 +157,7 @@ export default function AdminEmailRulesTab() {
                     setTestResult(null);
                     setEditing(r);
                   }}
-                  className="px-2 py-0.5 border border-border-default mr-2 hover:border-[#d4a017]"
+                  className="px-2 py-0.5 border border-border-default mr-2 hover:border-accent-silver-500"
                 >
                   EDIT
                 </button>
@@ -225,13 +225,13 @@ export default function AdminEmailRulesTab() {
           <div className="flex gap-2 items-center">
             <button
               onClick={save}
-              className="px-3 py-1 border border-[#d4a017] text-[#d4a017]"
+              className="px-3 py-1 border border-accent-silver-500 text-accent-silver-500"
             >
               SAVE
             </button>
             <button
               onClick={testMatch}
-              className="px-3 py-1 border border-border-default hover:border-[#d4a017]"
+              className="px-3 py-1 border border-border-default hover:border-accent-silver-500"
             >
               TEST MATCH
             </button>

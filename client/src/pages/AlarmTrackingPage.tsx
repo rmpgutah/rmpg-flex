@@ -318,11 +318,11 @@ export default function AlarmTrackingPage() {
 
   if (selectedPermit) {
     return (
-      <div className="p-4 space-y-4 bg-[#0a0a0a] min-h-full">
+      <div className="p-4 space-y-4 bg-surface-base min-h-full">
         <PanelTitleBar title={`PERMIT ${selectedPermit.permit_number}`} icon={Bell}>
           <button
             onClick={() => setSelectedPermit(null)}
-            className="flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-300 hover:text-white border border-[#222222] bg-[#141414] hover:bg-[#1a1a1a] transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-300 hover:text-white border border-border-default bg-surface-raised hover:bg-[color:var(--surface-hover)] transition-colors"
           >
             <ChevronLeft className="w-3.5 h-3.5" /> Back
           </button>
@@ -330,7 +330,7 @@ export default function AlarmTrackingPage() {
 
         {/* Permit info */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-[#141414] border border-[#222222] p-3">
+          <div className="bg-surface-raised border border-border-default p-3">
             <p className="text-[9px] uppercase tracking-wider text-gray-500 mb-1">Location</p>
             <p className="text-[11px] text-gray-200">{selectedPermit.location_name}</p>
             <p className="text-[10px] text-gray-400 flex items-center gap-1.5">
@@ -338,16 +338,16 @@ export default function AlarmTrackingPage() {
               <ViewOnMapLink address={selectedPermit.location_address} label={selectedPermit.location_name} />
             </p>
           </div>
-          <div className="bg-[#141414] border border-[#222222] p-3">
+          <div className="bg-surface-raised border border-border-default p-3">
             <p className="text-[9px] uppercase tracking-wider text-gray-500 mb-1">Alarm Company</p>
             <p className="text-[11px] text-gray-200">{selectedPermit.alarm_company}</p>
           </div>
-          <div className="bg-[#141414] border border-[#222222] p-3">
+          <div className="bg-surface-raised border border-border-default p-3">
             <p className="text-[9px] uppercase tracking-wider text-gray-500 mb-1">Contact</p>
             <p className="text-[11px] text-gray-200">{selectedPermit.contact_name}</p>
             <p className="text-[10px] text-gray-400">{selectedPermit.contact_phone}</p>
           </div>
-          <div className="bg-[#141414] border border-[#222222] p-3">
+          <div className="bg-surface-raised border border-border-default p-3">
             <p className="text-[9px] uppercase tracking-wider text-gray-500 mb-1">Status</p>
             <div className="mt-1">{statusBadge(selectedPermit.status)}</div>
             <p className="text-[10px] text-gray-400 mt-1">
@@ -358,10 +358,10 @@ export default function AlarmTrackingPage() {
 
         {/* Permit activations table */}
         <PanelTitleBar title="ACTIVATION HISTORY" icon={Clock} />
-        <div className="border border-[#222222] bg-[#0a0a0a] overflow-x-auto">
+        <div className="border border-border-default bg-surface-base overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-[#222222]" style={{ background: 'linear-gradient(180deg, #1a1a1a, #141414)' }}>
+              <tr className="border-b border-border-default" style={{ background: 'linear-gradient(180deg, var(--surface-hover), var(--surface-raised))' }}>
                 <th className="px-2 py-[3px] text-[9px] font-semibold uppercase tracking-wider text-gray-400">Date</th>
                 <th className="px-2 py-[3px] text-[9px] font-semibold uppercase tracking-wider text-gray-400">Type</th>
                 <th className="px-2 py-[3px] text-[9px] font-semibold uppercase tracking-wider text-gray-400">Response</th>
@@ -376,7 +376,7 @@ export default function AlarmTrackingPage() {
               ) : permitActivations.length === 0 ? (
                 <tr><td colSpan={6} className="px-2 py-6 text-center text-[11px] text-gray-500">No activations recorded</td></tr>
               ) : permitActivations.map(a => (
-                <tr key={a.id} className="border-b border-[#1a1a1a] hover:bg-[#141414] transition-colors">
+                <tr key={a.id} className="border-b border-border-subtle hover:bg-surface-raised transition-colors">
                   <td className="px-2 py-[2px] text-[11px] text-gray-300 font-mono">{safeDateTimeStr(a.activation_date)}</td>
                   <td className="px-2 py-[2px] text-[11px] text-gray-300">{a.alarm_type}</td>
                   <td className="px-2 py-[2px] text-[11px] text-gray-300 font-mono">{a.response_time_minutes != null ? `${a.response_time_minutes} min` : '—'}</td>
@@ -396,7 +396,7 @@ export default function AlarmTrackingPage() {
         <div className="flex justify-end">
           <button
             onClick={() => openEditPermit(selectedPermit)}
-            className="px-3 py-1.5 text-[11px] font-semibold bg-[#141414] border border-[#222222] text-[#d4a017] hover:bg-[#1a1a1a] transition-colors"
+            className="px-3 py-1.5 text-[11px] font-semibold bg-surface-raised border border-border-default text-accent-silver-500 hover:bg-[color:var(--surface-hover)] transition-colors"
           >
             Edit Permit
           </button>
@@ -408,19 +408,19 @@ export default function AlarmTrackingPage() {
   // ─── Main View ───────────────────────────────────────────────
 
   return (
-    <div className="p-4 space-y-4 bg-[#0a0a0a] min-h-full">
+    <div className="p-4 space-y-4 bg-surface-base min-h-full">
       <PanelTitleBar title="ALARM TRACKING" icon={Bell} />
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-[#222222]">
+      <div className="flex gap-0 border-b border-border-default">
         {(['permits', 'activations'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2 text-[11px] font-semibold uppercase tracking-wider transition-colors border-b-2 ${
               activeTab === tab
-                ? 'text-[#d4a017] border-[#d4a017] bg-[#141414]'
-                : 'text-gray-500 border-transparent hover:text-gray-300 hover:bg-[#0f0f0f]'
+                ? 'text-accent-silver-500 border-accent-silver-600 bg-surface-raised'
+                : 'text-gray-500 border-transparent hover:text-gray-300 hover:bg-surface-sunken'
             }`}
           >
             {tab === 'permits' ? 'Permits' : 'Activations'}
@@ -447,13 +447,13 @@ export default function AlarmTrackingPage() {
                 placeholder="Search permits…"
                 value={permitSearch}
                 onChange={e => setPermitSearch(e.target.value)}
-                className="w-full pl-7 pr-2 py-1.5 text-[11px] bg-[#141414] border border-[#222222] text-gray-200 placeholder-gray-600 focus:border-[#d4a017]/50 focus:outline-none"
+                className="w-full pl-7 pr-2 py-1.5 text-[11px] bg-surface-raised border border-border-default text-gray-200 placeholder-gray-600 focus:border-accent-silver-600/50 focus:outline-none"
               />
             </div>
             <select
               value={permitStatusFilter}
               onChange={e => setPermitStatusFilter(e.target.value)}
-              className="px-2 py-1.5 text-[11px] bg-[#141414] border border-[#222222] text-gray-300 focus:outline-none"
+              className="px-2 py-1.5 text-[11px] bg-surface-raised border border-border-default text-gray-300 focus:outline-none"
             >
               <option value="all">All Status</option>
               <option value="active">Active</option>
@@ -463,17 +463,17 @@ export default function AlarmTrackingPage() {
             </select>
             <button
               onClick={openNewPermit}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold bg-[#d4a017] text-black hover:bg-[#b8891a] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold bg-accent-silver-500 text-black hover:bg-accent-silver-400 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" /> New Permit
             </button>
           </div>
 
           {/* Table */}
-          <div className="border border-[#222222] bg-[#0a0a0a] overflow-x-auto">
+          <div className="border border-border-default bg-surface-base overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-[#222222]" style={{ background: 'linear-gradient(180deg, #1a1a1a, #141414)' }}>
+                <tr className="border-b border-border-default" style={{ background: 'linear-gradient(180deg, var(--surface-hover), var(--surface-raised))' }}>
                   <th className="px-2 py-[3px] text-[9px] font-semibold uppercase tracking-wider text-gray-400">Permit #</th>
                   <th className="px-2 py-[3px] text-[9px] font-semibold uppercase tracking-wider text-gray-400">Location</th>
                   <th className="px-2 py-[3px] text-[9px] font-semibold uppercase tracking-wider text-gray-400">Alarm Co</th>
@@ -493,9 +493,9 @@ export default function AlarmTrackingPage() {
                   <tr
                     key={p.id}
                     onClick={() => selectPermit(p)}
-                    className="border-b border-[#1a1a1a] hover:bg-[#141414] cursor-pointer transition-colors"
+                    className="border-b border-border-subtle hover:bg-surface-raised cursor-pointer transition-colors"
                   >
-                    <td className="px-2 py-[2px] text-[11px] text-[#d4a017] font-mono font-semibold">{p.permit_number}</td>
+                    <td className="px-2 py-[2px] text-[11px] text-rmpg-100 font-mono font-semibold">{p.permit_number}</td>
                     <td className="px-2 py-[2px] text-[11px] text-gray-200">
                       <div>{p.location_name}</div>
                       <div className="text-[10px] text-gray-500">{p.location_address}</div>
@@ -525,7 +525,7 @@ export default function AlarmTrackingPage() {
                 type="date"
                 value={dateFrom}
                 onChange={e => setDateFrom(e.target.value)}
-                className="px-2 py-1.5 text-[11px] bg-[#141414] border border-[#222222] text-gray-300 focus:outline-none"
+                className="px-2 py-1.5 text-[11px] bg-surface-raised border border-border-default text-gray-300 focus:outline-none"
                 placeholder="From"
               />
               <span className="text-gray-600 text-[10px]">to</span>
@@ -533,7 +533,7 @@ export default function AlarmTrackingPage() {
                 type="date"
                 value={dateTo}
                 onChange={e => setDateTo(e.target.value)}
-                className="px-2 py-1.5 text-[11px] bg-[#141414] border border-[#222222] text-gray-300 focus:outline-none"
+                className="px-2 py-1.5 text-[11px] bg-surface-raised border border-border-default text-gray-300 focus:outline-none"
                 placeholder="To"
               />
             </div>
@@ -542,7 +542,7 @@ export default function AlarmTrackingPage() {
                 type="checkbox"
                 checked={falseAlarmOnly}
                 onChange={e => setFalseAlarmOnly(e.target.checked)}
-                className="accent-[#d4a017]"
+                className="accent-accent-silver-500"
               />
               <Filter className="w-3 h-3" />
               False alarms only
@@ -550,17 +550,17 @@ export default function AlarmTrackingPage() {
             <div className="flex-1" />
             <button
               onClick={openNewActivation}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold bg-[#d4a017] text-black hover:bg-[#b8891a] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold bg-accent-silver-500 text-black hover:bg-accent-silver-400 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" /> Log Activation
             </button>
           </div>
 
           {/* Table */}
-          <div className="border border-[#222222] bg-[#0a0a0a] overflow-x-auto">
+          <div className="border border-border-default bg-surface-base overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-[#222222]" style={{ background: 'linear-gradient(180deg, #1a1a1a, #141414)' }}>
+                <tr className="border-b border-border-default" style={{ background: 'linear-gradient(180deg, var(--surface-hover), var(--surface-raised))' }}>
                   <th className="px-2 py-[3px] text-[9px] font-semibold uppercase tracking-wider text-gray-400">Date</th>
                   <th className="px-2 py-[3px] text-[9px] font-semibold uppercase tracking-wider text-gray-400">Permit / Location</th>
                   <th className="px-2 py-[3px] text-[9px] font-semibold uppercase tracking-wider text-gray-400">Type</th>
@@ -576,10 +576,10 @@ export default function AlarmTrackingPage() {
                 ) : activations.length === 0 ? (
                   <tr><td colSpan={7}><EmptyState icon={Bell} title="No activations found" description="Log an alarm activation to begin tracking." /></td></tr>
                 ) : activations.map(a => (
-                  <tr key={a.id} className="border-b border-[#1a1a1a] hover:bg-[#141414] transition-colors">
+                  <tr key={a.id} className="border-b border-border-subtle hover:bg-surface-raised transition-colors">
                     <td className="px-2 py-[2px] text-[11px] text-gray-300 font-mono">{safeDateTimeStr(a.activation_date)}</td>
                     <td className="px-2 py-[2px] text-[11px]">
-                      <span className="text-[#d4a017] font-mono">{a.permit_number || '—'}</span>
+                      <span className="text-rmpg-100 font-mono">{a.permit_number || '—'}</span>
                       {a.location_name && <span className="text-gray-400 ml-1.5">{a.location_name}</span>}
                     </td>
                     <td className="px-2 py-[2px] text-[11px] text-gray-300">{a.alarm_type}</td>
@@ -603,11 +603,11 @@ export default function AlarmTrackingPage() {
       {permitFormOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setPermitFormOpen(false)}>
           <div
-            className="w-full max-w-lg bg-[#141414] border border-[#222222] shadow-2xl"
+            className="w-full max-w-lg bg-surface-raised border border-border-default shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-[#222222]" style={{ background: 'linear-gradient(180deg, #1a1a1a, #141414)' }}>
-              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#d4a017]">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border-default" style={{ background: 'linear-gradient(180deg, var(--surface-hover), var(--surface-raised))' }}>
+              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--panel-header-color)]">
                 {editingPermit ? 'Edit Permit' : 'New Alarm Permit'}
               </h2>
               <IconButton onClick={() => setPermitFormOpen(false)} aria-label="Close permit form">
@@ -619,12 +619,12 @@ export default function AlarmTrackingPage() {
                 <label className="block">
                   <span className="text-[9px] uppercase tracking-wider text-gray-500">Permit #</span>
                   <input type="text" value={permitForm.permit_number} onChange={e => setPermitForm(f => ({ ...f, permit_number: e.target.value }))}
-                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:border-[#d4a017]/50 focus:outline-none" placeholder="Auto-generated if blank" />
+                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:border-accent-silver-600/50 focus:outline-none" placeholder="Auto-generated if blank" />
                 </label>
                 <label className="block">
                   <span className="text-[9px] uppercase tracking-wider text-gray-500">Alarm Type</span>
                   <select value={permitForm.alarm_type} onChange={e => setPermitForm(f => ({ ...f, alarm_type: e.target.value }))}
-                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none">
+                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none">
                     {ALARM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </label>
@@ -632,57 +632,57 @@ export default function AlarmTrackingPage() {
               <label className="block">
                 <span className="text-[9px] uppercase tracking-wider text-gray-500">Location Name *</span>
                 <input type="text" value={permitForm.location_name} onChange={e => setPermitForm(f => ({ ...f, location_name: e.target.value }))}
-                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:border-[#d4a017]/50 focus:outline-none" required />
+                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:border-accent-silver-600/50 focus:outline-none" required />
               </label>
               <label className="block">
                 <span className="text-[9px] uppercase tracking-wider text-gray-500">Location Address</span>
                 <input type="text" value={permitForm.location_address} onChange={e => setPermitForm(f => ({ ...f, location_address: e.target.value }))}
-                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:border-[#d4a017]/50 focus:outline-none" />
+                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:border-accent-silver-600/50 focus:outline-none" />
               </label>
               <label className="block">
                 <span className="text-[9px] uppercase tracking-wider text-gray-500">Alarm Company *</span>
                 <input type="text" value={permitForm.alarm_company} onChange={e => setPermitForm(f => ({ ...f, alarm_company: e.target.value }))}
-                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:border-[#d4a017]/50 focus:outline-none" required />
+                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:border-accent-silver-600/50 focus:outline-none" required />
               </label>
               <div className="grid grid-cols-3 gap-3">
                 <label className="block">
                   <span className="text-[9px] uppercase tracking-wider text-gray-500">Contact Name</span>
                   <input type="text" value={permitForm.contact_name} onChange={e => setPermitForm(f => ({ ...f, contact_name: e.target.value }))}
-                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none" />
+                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none" />
                 </label>
                 <label className="block">
                   <span className="text-[9px] uppercase tracking-wider text-gray-500">Phone</span>
                   <input type="text" value={permitForm.contact_phone} onChange={e => setPermitForm(f => ({ ...f, contact_phone: e.target.value }))}
-                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none" />
+                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none" />
                 </label>
                 <label className="block">
                   <span className="text-[9px] uppercase tracking-wider text-gray-500">Email</span>
                   <input type="text" value={permitForm.contact_email} onChange={e => setPermitForm(f => ({ ...f, contact_email: e.target.value }))}
-                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none" />
+                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none" />
                 </label>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-[9px] uppercase tracking-wider text-gray-500">Billing Threshold</span>
                   <input type="number" min="1" value={permitForm.billing_threshold} onChange={e => setPermitForm(f => ({ ...f, billing_threshold: e.target.value }))}
-                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none" />
+                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none" />
                 </label>
                 <label className="block">
                   <span className="text-[9px] uppercase tracking-wider text-gray-500">Expiration Date</span>
                   <input type="date" value={permitForm.expiration_date} onChange={e => setPermitForm(f => ({ ...f, expiration_date: e.target.value }))}
-                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none" />
+                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none" />
                 </label>
               </div>
               <label className="block">
                 <span className="text-[9px] uppercase tracking-wider text-gray-500">Notes</span>
                 <textarea rows={2} value={permitForm.notes} onChange={e => setPermitForm(f => ({ ...f, notes: e.target.value }))}
-                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none resize-none" />
+                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none resize-none" />
               </label>
-              <div className="flex justify-end gap-2 pt-2 border-t border-[#222222]">
+              <div className="flex justify-end gap-2 pt-2 border-t border-border-default">
                 <button type="button" onClick={() => setPermitFormOpen(false)}
-                  className="px-3 py-1.5 text-[11px] text-gray-400 border border-[#222222] bg-[#0a0a0a] hover:bg-[#141414] transition-colors">Cancel</button>
+                  className="px-3 py-1.5 text-[11px] text-gray-400 border border-border-default bg-surface-sunken hover:bg-surface-raised transition-colors">Cancel</button>
                 <button type="submit" disabled={submittingPermit}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold bg-[#d4a017] text-black hover:bg-[#b8891a] disabled:opacity-50 transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold bg-accent-silver-500 text-black hover:bg-accent-silver-400 disabled:opacity-50 transition-colors">
                   {submittingPermit ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                   {editingPermit ? 'Update' : 'Create'}
                 </button>
@@ -696,11 +696,11 @@ export default function AlarmTrackingPage() {
       {activationFormOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setActivationFormOpen(false)}>
           <div
-            className="w-full max-w-lg bg-[#141414] border border-[#222222] shadow-2xl"
+            className="w-full max-w-lg bg-surface-raised border border-border-default shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-[#222222]" style={{ background: 'linear-gradient(180deg, #1a1a1a, #141414)' }}>
-              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#d4a017]">Log Alarm Activation</h2>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border-default" style={{ background: 'linear-gradient(180deg, var(--surface-hover), var(--surface-raised))' }}>
+              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--panel-header-color)]">Log Alarm Activation</h2>
               <IconButton onClick={() => setActivationFormOpen(false)} aria-label="Close activation form">
                 <X className="w-4 h-4" />
               </IconButton>
@@ -709,7 +709,7 @@ export default function AlarmTrackingPage() {
               <label className="block">
                 <span className="text-[9px] uppercase tracking-wider text-gray-500">Permit *</span>
                 <select value={activationForm.permit_id} onChange={e => setActivationForm(f => ({ ...f, permit_id: e.target.value }))}
-                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none" required>
+                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none" required>
                   <option value="">Select permit…</option>
                   {permits.filter(p => p.status === 'active').map(p => (
                     <option key={p.id} value={p.id}>{p.permit_number} — {p.location_name}</option>
@@ -720,12 +720,12 @@ export default function AlarmTrackingPage() {
                 <label className="block">
                   <span className="text-[9px] uppercase tracking-wider text-gray-500">Date/Time</span>
                   <input type="datetime-local" value={activationForm.activation_date} onChange={e => setActivationForm(f => ({ ...f, activation_date: e.target.value }))}
-                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none" />
+                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none" />
                 </label>
                 <label className="block">
                   <span className="text-[9px] uppercase tracking-wider text-gray-500">Alarm Type</span>
                   <select value={activationForm.alarm_type} onChange={e => setActivationForm(f => ({ ...f, alarm_type: e.target.value }))}
-                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none">
+                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none">
                     {ALARM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </label>
@@ -734,12 +734,12 @@ export default function AlarmTrackingPage() {
                 <label className="block">
                   <span className="text-[9px] uppercase tracking-wider text-gray-500">Response Time (min)</span>
                   <input type="number" min="0" value={activationForm.response_time_minutes} onChange={e => setActivationForm(f => ({ ...f, response_time_minutes: e.target.value }))}
-                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none" />
+                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none" />
                 </label>
                 <label className="block">
                   <span className="text-[9px] uppercase tracking-wider text-gray-500">Responding Officer</span>
                   <input type="text" value={activationForm.responding_officer} onChange={e => setActivationForm(f => ({ ...f, responding_officer: e.target.value }))}
-                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none" />
+                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none" />
                 </label>
               </div>
               <div className="flex items-center gap-4">
@@ -751,31 +751,31 @@ export default function AlarmTrackingPage() {
                 </label>
                 <label className="flex items-center gap-1.5 text-[11px] text-gray-300 cursor-pointer select-none">
                   <input type="checkbox" checked={activationForm.billed} onChange={e => setActivationForm(f => ({ ...f, billed: e.target.checked }))}
-                    className="accent-[#d4a017]" />
+                    className="accent-accent-silver-500" />
                   Billed
                 </label>
                 {activationForm.billed && (
                   <input type="number" step="0.01" min="0" placeholder="Amount" value={activationForm.billed_amount}
                     onChange={e => setActivationForm(f => ({ ...f, billed_amount: e.target.value }))}
-                    className="w-24 px-2 py-1 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none" />
+                    className="w-24 px-2 py-1 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none" />
                 )}
               </div>
               <label className="block">
                 <span className="text-[9px] uppercase tracking-wider text-gray-500">Cause / Disposition</span>
                 <input type="text" value={activationForm.cause} onChange={e => setActivationForm(f => ({ ...f, cause: e.target.value }))}
-                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none"
+                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none"
                   placeholder="e.g., User error, Equipment malfunction, Weather…" />
               </label>
               <label className="block">
                 <span className="text-[9px] uppercase tracking-wider text-gray-500">Notes</span>
                 <textarea rows={2} value={activationForm.notes} onChange={e => setActivationForm(f => ({ ...f, notes: e.target.value }))}
-                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-[#0a0a0a] border border-[#222222] text-gray-200 focus:outline-none resize-none" />
+                  className="w-full mt-0.5 px-2 py-1.5 text-[11px] bg-surface-sunken border border-border-default text-gray-200 focus:outline-none resize-none" />
               </label>
-              <div className="flex justify-end gap-2 pt-2 border-t border-[#222222]">
+              <div className="flex justify-end gap-2 pt-2 border-t border-border-default">
                 <button type="button" onClick={() => setActivationFormOpen(false)}
-                  className="px-3 py-1.5 text-[11px] text-gray-400 border border-[#222222] bg-[#0a0a0a] hover:bg-[#141414] transition-colors">Cancel</button>
+                  className="px-3 py-1.5 text-[11px] text-gray-400 border border-border-default bg-surface-sunken hover:bg-surface-raised transition-colors">Cancel</button>
                 <button type="submit" disabled={submittingActivation}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold bg-[#d4a017] text-black hover:bg-[#b8891a] disabled:opacity-50 transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold bg-accent-silver-500 text-black hover:bg-accent-silver-400 disabled:opacity-50 transition-colors">
                   {submittingActivation ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                   Log Activation
                 </button>

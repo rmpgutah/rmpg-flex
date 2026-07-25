@@ -157,7 +157,7 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
           return (
             <button key={t.id} type="button"
               onClick={() => { setTab(t.id); setQ(''); }}
-              className={`flex items-center gap-1 px-2 py-1 text-[10px] rounded-[2px] border transition-colors ${active ? 'bg-[#d4a017]/15 border-[#d4a017]/40 text-[#d4a017]' : 'bg-surface-base border-border-default text-rmpg-400 hover:text-rmpg-200'}`}>
+              className={`flex items-center gap-1 px-2 py-1 text-[10px] rounded-[2px] border transition-colors ${active ? 'bg-accent-silver-500/15 border-accent-silver-500/40 text-accent-silver-300' : 'bg-surface-base border-border-default text-rmpg-400 hover:text-rmpg-200'}`}>
               {t.icon}<span>{t.label}</span>{t.count !== undefined && <span className="text-rmpg-600">{t.count}</span>}
             </button>
           );
@@ -175,7 +175,7 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
               tab === 'persons' ? 'Search persons by name or DOB...' :
               'Search calls by # or address...'
             }
-            className="w-full bg-surface-sunken border border-border-default rounded-[2px] pl-6 pr-2 py-1 text-[11px] focus:border-[#d4a017]/40 focus:outline-none"
+            className="w-full bg-surface-sunken border border-border-default rounded-[2px] pl-6 pr-2 py-1 text-[11px] focus:border-accent-silver-500/40 focus:outline-none"
           />
         </div>
       )}
@@ -190,7 +190,7 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
                 return (
                   <div key={s.id} className="group flex items-start gap-1 hover:bg-surface-sunken rounded-[2px] p-1">
                     <button type="button" title={isFav ? 'Unfavorite' : 'Favorite'} onClick={() => toggleFav(s.id)}
-                      className={`flex-shrink-0 mt-0.5 ${isFav ? 'text-[#d4a017]' : 'text-rmpg-700 hover:text-[#d4a017]'}`}>
+                      className={`flex-shrink-0 mt-0.5 ${isFav ? 'text-accent-silver-300' : 'text-rmpg-700 hover:text-accent-silver-300'}`}>
                       <Star className="w-3 h-3" fill={isFav ? 'currentColor' : 'none'} />
                     </button>
                     <button type="button" onClick={() => insertSnip(s)}
@@ -212,8 +212,8 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
             {!searching && q && statuteHits.length === 0 && <p className="text-[10px] text-rmpg-500">No matches. Try a code number (e.g. 76-5-102) or keyword.</p>}
             {statuteHits.map((h) => (
               <button key={h.code} type="button" onClick={() => insertStatute(editor, h)}
-                className="w-full text-left p-2 bg-surface-base border border-border-default rounded-[2px] hover:border-[#d4a017]/40">
-                <div className="text-[#d4a017] text-[11px] font-mono">§{h.code}</div>
+                className="w-full text-left p-2 bg-surface-base border border-border-default rounded-[2px] hover:border-accent-silver-500/40">
+                <div className="text-rmpg-100 text-[11px] font-mono">§{h.code}</div>
                 {h.title && <div className="text-[10px] text-rmpg-200">{h.title}</div>}
                 {h.text && <div className="text-[9px] text-rmpg-500 line-clamp-2 mt-0.5">{h.text}</div>}
               </button>
@@ -228,7 +228,7 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
               const name = p.full_name || [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Unknown';
               return (
                 <button key={p.person_id || p.id || i} type="button" onClick={() => insertPersonBlock(editor, p)}
-                  className="w-full text-left p-2 bg-surface-base border border-border-default rounded-[2px] hover:border-[#d4a017]/40">
+                  className="w-full text-left p-2 bg-surface-base border border-border-default rounded-[2px] hover:border-accent-silver-500/40">
                   <div className="text-[11px] text-rmpg-100 font-medium">{name}</div>
                   <div className="text-[9px] text-rmpg-500">DOB {p.dob || '—'} · {p.address || ''}</div>
                 </button>
@@ -242,8 +242,8 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
             {searching && <p className="text-[10px] text-rmpg-500">Searching...</p>}
             {callHits.map((c, i) => (
               <button key={c.call_id || i} type="button" onClick={() => insertCallBlock(editor, c)}
-                className="w-full text-left p-2 bg-surface-base border border-border-default rounded-[2px] hover:border-[#d4a017]/40">
-                <div className="text-[#d4a017] text-[11px] font-mono">{c.call_number}</div>
+                className="w-full text-left p-2 bg-surface-base border border-border-default rounded-[2px] hover:border-accent-silver-500/40">
+                <div className="text-rmpg-100 text-[11px] font-mono">{c.call_number}</div>
                 <div className="text-[10px] text-rmpg-200">{c.call_type} · {c.status}</div>
                 <div className="text-[9px] text-rmpg-500">{c.address}</div>
               </button>
@@ -315,7 +315,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 function Btn({ icon, label, onClick, active }: { icon: React.ReactNode; label: string; onClick: () => void; active?: boolean }) {
   return (
     <button type="button" onClick={onClick}
-      className={`flex items-center gap-1.5 px-2 py-1.5 text-[10px] rounded-[2px] border transition-colors ${active ? 'bg-[#d4a017]/15 border-[#d4a017]/40 text-[#d4a017]' : 'bg-surface-base border-border-default text-rmpg-300 hover:border-[#d4a017]/40 hover:text-rmpg-100'}`}>
+      className={`flex items-center gap-1.5 px-2 py-1.5 text-[10px] rounded-[2px] border transition-colors ${active ? 'bg-accent-silver-500/15 border-accent-silver-500/40 text-accent-silver-300' : 'bg-surface-base border-border-default text-rmpg-300 hover:border-accent-silver-500/40 hover:text-rmpg-100'}`}>
       <span className="[&>svg]:w-3 [&>svg]:h-3 flex-shrink-0">{icon}</span>
       <span className="truncate">{label}</span>
     </button>

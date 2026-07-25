@@ -1,0 +1,11 @@
+# /etc/rmpg-os-release — human-readable build identity.
+#
+# The machine-readable version the OTA updater compares against lives in
+# /etc/rmpg-os-version (one bare semver line, parsed by BusyBox). This file is
+# for humans and for the System Information window.
+NAME="RMPG Flex Desktop OS"
+ID=rmpg-flex-os
+VERSION=1.3.0
+PRETTY_NAME="RMPG Flex Desktop OS 1.3.0"
+HOME_URL="https://rmpgutah.us"
+VENDOR="Rocky Mountain Protective Group, LLC"

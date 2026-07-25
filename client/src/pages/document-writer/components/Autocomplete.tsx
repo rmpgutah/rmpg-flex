@@ -116,8 +116,8 @@ export default function Autocomplete({ editor, enabled }: { editor: Editor; enab
         <button key={s.label + i} type="button"
           onMouseDown={(e) => { e.preventDefault(); accept(s); }}
           onMouseEnter={() => setActive(i)}
-          className={`block w-full text-left px-2 py-1 ${i === active ? 'bg-[#d4a017]/15' : 'hover:bg-surface-base'}`}>
-          <div className={`text-[10px] font-medium ${i === active ? 'text-[#d4a017]' : 'text-rmpg-200'}`}>{decode(s.label)}</div>
+          className={`block w-full text-left px-2 py-1 ${i === active ? 'bg-accent-silver-500/15' : 'hover:bg-surface-base'}`}>
+          <div className={`text-[10px] font-medium ${i === active ? 'text-accent-silver-300' : 'text-rmpg-200'}`}>{decode(s.label)}</div>
           <div className="text-[9px] text-rmpg-500 line-clamp-1">{decode(s.text)}</div>
         </button>
       ))}

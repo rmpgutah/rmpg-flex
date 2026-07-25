@@ -41,6 +41,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
 import PrintRecordButton from '../../components/PrintRecordButton';
+import ToolbarOverflow from '../../components/ToolbarOverflow';
 import { useToast } from '../../components/ToastProvider';
 import { useWebSocket } from '../../context/WebSocketContext';
 import WarningTags from '../../components/WarningTags';
@@ -4016,21 +4017,27 @@ export default function DispatchPage() {
                     </span>
                   )}
                 </div>
-                {/* Row 2: Action buttons — separate row to prevent cramping. This row
-                    scrolls horizontally (it can hold 15+ buttons depending on call
-                    state), but the scrollbar-dark thumb is low-contrast against
-                    dark surfaces (dark gray thumb on a transparent track) — the
-                    mask-image fade below gives a visual cue that more buttons
-                    exist to the right, instead of the row silently truncating
-                    with no affordance. No extra wrapper element needed: the mask
-                    applies to this div's own painted content. */}
-                <div
-                  className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--spm-border)] overflow-x-auto whitespace-nowrap scrollbar-dark"
-                  style={{
-                    background: 'var(--surface-deep)',
-                    WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 24px), transparent 100%)',
-                    maskImage: 'linear-gradient(to right, black calc(100% - 24px), transparent 100%)',
-                  }}
+                {/* Row 2: Action buttons — separate row to prevent cramping.
+                    This row used to be `overflow-x-auto` with a mask-image fade
+                    hinting that more buttons existed off to the right. The
+                    2026-07-24 live audit measured the result: 419px of visible
+                    row against 1419px of content, so 5 of 18 controls were
+                    reachable and 13 — Edit, NCIC, Citation, Archive, Delete
+                    among them — were only findable by discovering that a
+                    hairline scrollbar existed. The fade communicated the
+                    problem; it did not solve it.
+
+                    ToolbarOverflow measures the row and moves whatever does not
+                    fit into a "More" menu, so nothing is ever unreachable at any
+                    viewport. The button JSX below is unchanged and still owns
+                    all of its own call-state conditionals — each top-level
+                    expression is one overflow item, so a `<>Save + Cancel</>`
+                    pair travels together. PrintRecordButton is pinned inline: it
+                    owns a preview modal and must not remount on resize. */}
+                <ToolbarOverflow
+                  pinnedCount={1}
+                  className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--spm-border)] whitespace-nowrap"
+                  style={{ background: 'var(--surface-deep)' }}
                 >
                   {isEditing ? (
                     // While editing, the in-form values aren't yet on selectedCall,
@@ -4374,7 +4381,7 @@ export default function DispatchPage() {
                         <Trash2 style={{ width: 10, height: 10 }} /> Delete
                       </button>
                     )}
-                  </div>
+                </ToolbarOverflow>
                 </div>
 
               {/* Warning Tags / Caution Alerts — always visible above tabs */}

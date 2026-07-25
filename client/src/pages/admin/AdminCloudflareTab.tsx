@@ -93,7 +93,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
   const Stat = ({ icon: Icon, label, rows }: { icon: any; label: string; rows: any[] }) => (
     <div className={card}>
       <div className="px-3 py-1.5 border-b border-border-default text-[9px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1.5">
-        <Icon size={11} /> {label} <span className="text-[#d4a017]">{rows.length}</span>
+        <Icon size={11} /> {label} <span className="text-rmpg-100">{rows.length}</span>
       </div>
       <div className="max-h-40 overflow-y-auto">
         {rows.length === 0
@@ -111,14 +111,14 @@ export default function AdminCloudflareTab({ setError }: Props) {
   return (
     <div className="space-y-4 max-w-3xl">
       <div className="flex items-center gap-2">
-        <Cloud size={16} className="text-[#d4a017]" />
+        <Cloud size={16} className="text-accent-silver-500" />
         <h2 className="text-[13px] font-bold text-rmpg-100 uppercase tracking-wider">Cloudflare Platform</h2>
         {status?.token_valid && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 bg-green-900/40 text-green-400 border border-green-700/50 flex items-center gap-1"><ShieldCheck size={10} /> Connected</span>}
         {config?.token_set && status && !status.token_valid && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 bg-red-900/40 text-red-300 border border-red-600/70 flex items-center gap-1"><AlertTriangle size={10} /> Token invalid</span>}
       </div>
 
       {/* Security notice */}
-      <div className="px-3 py-2 bg-[#15120a] border border-[#2e2814] text-[9px] text-[#a89878] leading-relaxed rounded-sm">
+      <div className="px-3 py-2 bg-surface-sunken border border-border-default text-[9px] text-text-secondary leading-relaxed rounded-sm">
         Paste a <b className="text-rmpg-300">least-privilege, read-only</b> Cloudflare API token (plus Cache Purge if you use it). Recommended scopes: Account Analytics&nbsp;Read, Workers Scripts&nbsp;Read, D1&nbsp;Read, R2&nbsp;Read, KV&nbsp;Read, Zone→Cache&nbsp;Purge. <b className="text-rmpg-300">Do NOT</b> grant account/zone edit or token-management scopes. The token is stored server-side (masked) and never exposed to the browser.
       </div>
 
@@ -142,7 +142,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
             </div>
           </div>
           <div className="flex items-center gap-2 pt-1">
-            <button type="button" onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-2 bg-[#d4a017] hover:bg-[#b88a12] disabled:opacity-40 rounded-sm text-[11px] font-bold text-black">
+            <button type="button" onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-2 bg-accent-silver-500 hover:bg-accent-silver-400 disabled:opacity-40 rounded-sm text-[11px] font-bold text-black">
               {saving ? <Loader2 size={13} className="animate-spin" /> : null} Save
             </button>
             <button type="button" onClick={load} className="flex items-center gap-1.5 px-3 py-2 bg-surface-base border border-rmpg-700 rounded-sm text-[10px] font-bold text-rmpg-300 hover:text-rmpg-100">

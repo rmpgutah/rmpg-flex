@@ -1,0 +1,67 @@
+#!/bin/sh
+# /etc/init.d/S97kiosk-update-agent — periodic OS update checks.
+#
+# S97: after networking (S45 connman / S98 marker ordering aside, connman is up
+# by S45) and BEFORE the desktop session at S99, so a staged update is never
+# competing with session startup for bandwidth on a Wi-Fi link.
+#
+# Runs rmpg-update in a slow loop rather than a cron job: this image has no
+# crond, and a loop keeps the retry policy visible in one place.
+#
+# The agent only ever STAGES an update into the inactive slot and flips the
+# bootloader default — it never reboots the terminal itself. Rebooting a patrol
+# vehicle's terminal out from under an officer is not a decision an unattended
+# script should make; the staged image comes up at the next natural restart, and
+# S01kiosk-boot-slot-check rolls it back automatically if it fails to reach a
+# healthy state three times.
+
+UPDATE_LOG=/tmp/rmpg-update.log
+# 6 hours. Frequent enough that a fleet converges within a day, infrequent
+# enough that a hundred terminals do not hammer the manifest endpoint or chew
+# metered Wi-Fi.
+INTERVAL="${RMPG_UPDATE_INTERVAL:-21600}"
+# Stagger so an entire site's terminals, which all boot when the shift starts,
+# do not download the same 250 MB payload simultaneously and saturate the
+# uplink. Derived from the MAC address so each terminal picks a stable, distinct
+# offset without needing a random source at boot.
+jitter() {
+    mac="$(cat /sys/class/net/*/address 2>/dev/null | grep -v '00:00:00:00:00:00' | head -1 | tr -d ':')"
+    [ -n "$mac" ] || { echo 0; return; }
+    # Last two hex digits -> 0..255 -> spread across 30 minutes.
+    printf '%d' $(( 0x$(printf '%s' "$mac" | tail -c 2) * 7 )) 2>/dev/null || echo 0
+}
+
+start() {
+    if [ ! -x /usr/bin/rmpg-update ]; then
+        echo "KIOSK_LINUX_UPDATE_AGENT_UNAVAILABLE (rmpg-update not installed)"
+        return 1
+    fi
+
+    (
+        sleep "$(jitter)"
+        while true; do
+            {
+                echo "--- $(date) check ---"
+                /usr/bin/rmpg-update apply 2>&1
+            } >> "$UPDATE_LOG" 2>&1
+            sleep "$INTERVAL"
+        done
+    ) &
+
+    echo "KIOSK_LINUX_UPDATE_AGENT_OK (checking every $((INTERVAL / 3600))h)"
+    return 0
+}
+
+stop() {
+    # Kill the loop, not any in-flight download: a partial download lives in
+    # /tmp and is discarded, and the slot is only written after verification.
+    pkill -f "rmpg-update apply" 2>/dev/null
+    return 0
+}
+
+case "$1" in
+    start) start ;;
+    stop)  stop ;;
+    restart|reload) stop; start ;;
+    *) echo "usage: $0 {start|stop|restart}" >&2; exit 1 ;;
+esac

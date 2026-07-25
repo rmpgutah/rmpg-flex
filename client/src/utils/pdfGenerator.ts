@@ -369,6 +369,92 @@ export function sanitizePdfText(text: string, opts: { preserveMarkers?: boolean;
   return s;
 }
 
+/** Points → millimetres. The documents are built with jsPDF `unit: 'mm'`, but
+ *  `setFontSize()` always takes points, so any layout maths that mixes the two
+ *  needs this conversion. */
+const PT_TO_MM = 25.4 / 72;
+
+/**
+ * Baseline for the FIRST line of text inside a section's content box.
+ *
+ * `openAutoSection()` returns `contentY` as the *top edge* of the content area,
+ * only `SPACING.SECTION_CONTENT_PAD` (1.2mm) below the filled header bar. jsPDF
+ * positions text by its BASELINE and draws glyphs upward from it, so passing
+ * `contentY` straight to `doc.text()` renders the line back up inside the bar.
+ *
+ * That is exactly what happened to the "None recorded" empty state under
+ * VEHICLES INVOLVED (0) and EVIDENCE / PROPERTY (0): at 7.5pt the cap height is
+ * ~1.85mm against a 1.2mm pad, so the text was struck through the header. It
+ * only ever showed on EMPTY sections — the populated path goes through
+ * `addTableWithShading()`, which applies its own baseline offset — which is why
+ * it survived unnoticed on the most common kind of report.
+ *
+ * Callers elsewhere hand-tuned this with bare `+ 2` / `+ 2.5` nudges; prefer
+ * this so the offset tracks the font size instead of being a magic number.
+ */
+export function firstLineBaseline(contentY: number, fontSizePt: number): number {
+  return contentY + fontSizePt * PT_TO_MM;
+}
+
+export interface ResponseDurations {
+  /** Dispatched → on scene. */
+  responseTime: string;
+  /** On scene → cleared. */
+  onSceneTime: string;
+  /** Dispatched → cleared (or closed). */
+  totalTime: string;
+  /** True when at least one duration could be computed. */
+  any: boolean;
+}
+
+/**
+ * Dispatch response durations, formatted for print ("14m", "1h 07m").
+ *
+ * Extracted from `generateGeneralIncident` during the 2026-07-24 PDF audit.
+ * The logic previously lived inline inside the `PSO Client Request Details`
+ * section, which is gated on `pso_service_type || pso_requestor_name ||
+ * pso_billing_code || contract_id` — so an ordinary incident report printed no
+ * response times at all, even with every dispatch timestamp populated. The
+ * screen showed Duration / Response / On-Scene for the same call while the
+ * printed record omitted them, which is precisely the data an after-action or
+ * liability review needs.
+ *
+ * Returns empty strings rather than throwing on missing or malformed inputs; a
+ * report must still render when a call was never dispatched.
+ */
+export function computeResponseDurations(data: {
+  dispatched_at?: string; enroute_at?: string; onscene_at?: string;
+  cleared_at?: string; closed_at?: string;
+}): ResponseDurations {
+  // parseTimestamp() falls back to `new Date()` for unparseable input. That is
+  // fine for display, but catastrophic for arithmetic: a call with a valid
+  // dispatched_at and a corrupt onscene_at would measure dispatch → REPORT
+  // GENERATION TIME and print a fabricated response time on a court-bound
+  // record, with nothing marking it as wrong. Require a recognisable date
+  // before trusting the parse; print nothing when we cannot.
+  const parseStrict = (s?: string): number | null => {
+    if (!s || !/\d{4}-\d{2}-\d{2}/.test(s)) return null;
+    const t = parseTimestamp(s).getTime();
+    return Number.isFinite(t) ? t : null;
+  };
+  const durMin = (from?: string, to?: string): string => {
+    const a = parseStrict(from);
+    const b = parseStrict(to);
+    if (a == null || b == null) return '';
+    // b < a means the timestamps are out of order — bad data, not a negative
+    // duration. Print nothing rather than "-12m".
+    if (b < a) return '';
+    const mins = Math.round((b - a) / 60_000);
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
+  };
+  const responseTime = durMin(data.dispatched_at, data.onscene_at);
+  const onSceneTime = durMin(data.onscene_at, data.cleared_at);
+  const totalTime = durMin(data.dispatched_at, data.cleared_at || data.closed_at);
+  return { responseTime, onSceneTime, totalTime, any: !!(responseTime || onSceneTime || totalTime) };
+}
+
 export function fitPdfText(doc: jsPDF, text: string, maxWidth: number): string {
   const safeText = sanitizePdfText(text || '');
   if (!safeText || maxWidth <= 0) return '';
@@ -3002,16 +3088,20 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     const fy11 = addFieldPair(doc, 'Reporting Officer', data.officer_name || '', lx, y, ffw * 0.75);
     const fy12 = addFieldPair(doc, 'Badge #', data.badge_number || '', lx + ffw * 0.75, y, ffw * 0.25);
     y = Math.max(fy11, fy12);
-    // Row 4: Address (full width)
-    y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
-    // Row 5: Section/Zone/Beat (combined chart code), Section, Zone, Beat, Responding Agency, LE Case #
-    const fy13 = addFieldPair(doc, 'Section/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '', lx, y, w6);
-    const fy14 = addFieldPair(doc, 'Section', data.sector_id || '', lx + w6, y, w6);
-    const fy15 = addFieldPair(doc, 'Zone', zoneLeaf(data.zone_id), lx + w6 * 2, y, w6);
-    const fy16 = addFieldPair(doc, 'Beat', beatLeaf(data.beat_id), lx + w6 * 3, y, w6);
-    const fy17 = addFieldPair(doc, 'Responding Agency', data.responding_le_agency || '', lx + w6 * 4, y, w6);
-    const fy18 = addFieldPair(doc, 'LE Case #', data.le_case_number || '', lx + w6 * 5, y, w6);
-    y = Math.max(fy13, fy14, fy15, fy16, fy17, fy18);
+    // Row 4: Responding Agency, LE Case #.
+    //
+    // The address and the Section/Zone/Beat quartet used to render here too.
+    // Both were verbatim duplicates: the address already appears in INCIDENT
+    // OVERVIEW (which always renders) and again as INCIDENT LOCATION's Full
+    // Address, and the geography quartet was repeated field-for-field in
+    // INCIDENT LOCATION. On a typical report that was eleven cells restating
+    // facts printed elsewhere on the same page — mostly reading "N/A" — which
+    // pushed the narrative onto page 2 and made the form read as machine-dumped
+    // rather than authored. Geography now lives only in INCIDENT LOCATION,
+    // whose gate was widened to match.
+    const fy13 = addFieldPair(doc, 'Responding Agency', data.responding_le_agency || '', lx, y, ffw / 2);
+    const fy14 = addFieldPair(doc, 'LE Case #', data.le_case_number || '', lx + ffw / 2, y, ffw / 2);
+    y = Math.max(fy13, fy14);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -3111,30 +3201,11 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         } catch { /* malformed JSON — skip rather than crash */ }
       }
 
-      // Row 7: Response-time metrics — computed from dispatch lifecycle timestamps.
-      // Internal-record value is having the durations printed alongside the section
-      // rather than forcing the reader into a separate analytics UI.
-      if (data.dispatched_at || data.onscene_at || data.cleared_at || data.closed_at) {
-        const durMin = (from?: string, to?: string): string => {
-          if (!from || !to) return '';
-          const a = parseTimestamp(from).getTime();
-          const b = parseTimestamp(to).getTime();
-          if (Number.isNaN(a) || Number.isNaN(b) || b < a) return '';
-          const mins = Math.round((b - a) / 60_000);
-          const h = Math.floor(mins / 60);
-          const m = mins % 60;
-          return h > 0 ? `${h}h ${m}m` : `${m}m`;
-        };
-        const responseTime = durMin(data.dispatched_at, data.onscene_at);
-        const onSceneTime = durMin(data.onscene_at, data.cleared_at);
-        const totalTime = durMin(data.dispatched_at, data.cleared_at || data.closed_at);
-        if (responseTime || onSceneTime || totalTime) {
-          const fya = addFieldPair(doc, 'Response Time', responseTime || '—', lx, y, thirdW);
-          const fyb = addFieldPair(doc, 'On-Scene Time', onSceneTime || '—', lx + thirdW, y, thirdW);
-          const fyc = addFieldPair(doc, 'Total Duration', totalTime || '—', lx + thirdW * 2, y, thirdW);
-          y = Math.max(fya, fyb, fyc);
-        }
-      }
+      // Response-time metrics used to be rendered here, inside the PSO-only
+      // section. They are dispatch lifecycle facts, not PSO facts, so they now
+      // render for EVERY report from the Dispatch Linkage section below (see
+      // computeResponseDurations). Kept out of here to avoid printing them
+      // twice on a PSO report.
 
       // Row 8: Record-keeping meta
       if (data.created_by || data.dispatcher_name || data.created_at) {
@@ -3180,7 +3251,12 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   // SECTION 1E — INCIDENT LOCATION (ENHANCED)
   // ═══════════════════════════════════════════════════════════
-  if (data.latitude != null || data.longitude != null || data.property_name) {
+  // Section/zone/beat now lives ONLY here (it used to be duplicated verbatim in
+  // Administrative Data). This gate must therefore also open the section for a
+  // call that has geography but no coordinates and no property name — otherwise
+  // de-duplicating would have silently dropped the geography from those reports.
+  if (data.latitude != null || data.longitude != null || data.property_name
+      || data.sector_id || data.zone_id || data.beat_id || data.dispatch_code) {
     y = checkPageBreak(doc, y, 15);
     { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
       // Row 1: Full address, Property Name
@@ -3369,6 +3445,8 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
     } else {
       doc.setFontSize(FONT.SIZE_TABLE_BODY); doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      // Baseline must clear the section header bar — see firstLineBaseline().
+      y = firstLineBaseline(y, FONT.SIZE_TABLE_BODY);
       doc.text('None recorded', lx, y); doc.setTextColor(...COLOR.TEXT_PRIMARY); y += SPACING.XL;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -3397,6 +3475,8 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
     } else {
       doc.setFontSize(FONT.SIZE_TABLE_BODY); doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      // Baseline must clear the section header bar — see firstLineBaseline().
+      y = firstLineBaseline(y, FONT.SIZE_TABLE_BODY);
       doc.text('None recorded', lx, y); doc.setTextColor(...COLOR.TEXT_PRIMARY); y += SPACING.XL;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -3418,10 +3498,14 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   // SECTION 10 — DISPATCH / CALL DETAILS
   // ═══════════════════════════════════════════════════════════
-  if (data.call_number || data.call_type || data.caller_name || data.call_notes) {
+  // Lifecycle timestamps alone are enough to open this section: a dispatched
+  // call always has response durations worth printing even when it carries no
+  // caller name or call notes.
+  const durations = computeResponseDurations(data);
+  if (data.call_number || data.call_type || data.caller_name || data.call_notes || durations.any) {
     y = checkPageBreak(doc, y, 22, data.priority);
     const hasDispatchFields = data.call_number || data.call_type || data.call_created_at || data.caller_name || data.caller_phone || (data.latitude != null && data.longitude != null);
-    if (hasDispatchFields || data.call_notes) {
+    if (hasDispatchFields || data.call_notes || durations.any) {
       const sec = openAutoSection(doc, 'Dispatch Linkage', y); y = sec.contentY;
       // Row 1: CFS Call #, Call Type, Dispatched
       const r1Fields: { label: string; value: string }[] = [];
@@ -3452,6 +3536,17 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         }
         y = maxR2Y;
       }
+      // Row 3: Response durations. These are the numbers an after-action or
+      // liability review reaches for, and before the 2026-07-24 audit they
+      // printed only on PSO client-request reports.
+      if (durations.any) {
+        const dThirdW = ffw / 3;
+        const fya = addFieldPair(doc, 'Response Time', durations.responseTime || '—', lx, y, dThirdW);
+        const fyb = addFieldPair(doc, 'On-Scene Time', durations.onSceneTime || '—', lx + dThirdW, y, dThirdW);
+        const fyc = addFieldPair(doc, 'Total Duration', durations.totalTime || '—', lx + dThirdW * 2, y, dThirdW);
+        y = Math.max(fya, fyb, fyc);
+      }
+
       // Call Notes (narrative text below fields)
       if (data.call_notes) {
         y += SPACING.LG;
@@ -4366,6 +4461,37 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   y = addStackedSignatures(doc, 'Process Server / Officer', '', y, getOfficerSig(), undefined, data.priority);
 }
 
+/**
+ * Populate the PDF's document-information dictionary.
+ *
+ * Before the 2026-07-24 audit every generated report shipped with Title,
+ * Author, Subject and Keywords all unset. These exports leave the building —
+ * court filings, discovery packages, email attachments — and an untitled PDF
+ * carries no evidence of what it is or who produced it once it is detached
+ * from the app. `Title` is also what a PDF viewer shows in its window and tab,
+ * and what desktop and e-discovery search index.
+ *
+ * Set at the START of generation so a later `embedSidecar()` (v2 engine) can
+ * still overwrite `keywords` with its payload — that call intentionally wins.
+ */
+function applyDocumentProperties(doc: jsPDF, reportType: PdfReportType, data: IncidentData): void {
+  const agency = getActiveBranding()?.report_header_text || 'Rocky Mountain Protective Group';
+  const label = PDF_REPORT_LABELS[reportType] || 'Report';
+  const caseNo = data.incident_number || '';
+
+  doc.setProperties({
+    title: caseNo ? `${label} — ${caseNo}` : label,
+    // The reporting officer is the document's author; fall back to the agency
+    // so the field is never blank.
+    author: data.officer_name || agency,
+    subject: [label, data.incident_type ? formatIncidentType(data.incident_type) : '', data.location || '']
+      .filter(Boolean).join(' · '),
+    keywords: [caseNo, data.call_number || '', label, data.incident_type || '', agency]
+      .filter(Boolean).join(', '),
+    creator: `${agency} — RMPG Flex`,
+  });
+}
+
 // ── Public API ───────────────────────────────────────────────
 
 export function generatePdfReport(reportType: PdfReportType, data: IncidentData, options: PdfReportOptions = {}): jsPDF {
@@ -4375,6 +4501,7 @@ export function generatePdfReport(reportType: PdfReportType, data: IncidentData,
 
   setActiveFormKey(reportType);
   setActiveCaseNumber(data.incident_number);
+  applyDocumentProperties(doc, reportType, data);
 
   generationTimestamp = new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',

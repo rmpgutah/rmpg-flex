@@ -223,7 +223,7 @@ import fieldPhotos from './routes/fieldPhotos';
 // Howen dashcam integration
 import howen from './routes/howen';
 // Downloads + auto-updates
-import downloads, { updates } from './routes/downloads';
+import downloads, { updates, downloadFiles } from './routes/downloads';
 // Offender registry (stats only)
 import narcotics from './routes/narcotics';
 import nav from './routes/nav';
@@ -664,6 +664,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Serves /api/shift-plans/*, /api/shift-swaps/*, /api/shift-overtime, /api/staffing-levels, /api/shift-notifications. See src/routes/shiftPlans.ts for the in-router auth setup.' },
   { prefix: '/api', router: downloads, auth: 'public',
     note: 'Serves /api/downloads/info + /api/downloads/check for the public download page (no auth of its own — genuinely open).' },
+  { prefix: '/downloads', router: downloadFiles, auth: 'public',
+    note: 'Bare (no /api prefix) — serves the actual installer/OS files out of the DOWNLOADS R2 bucket at /downloads/<filename>, which is what every button on the public download page links to. Was NEVER mounted before 2026-07-25, so every download returned the SPA index.html (HTTP 200, 11,630 bytes of HTML) under the artifact filename; client/public/_redirects tried to proxy it with a status-200 rule, which Cloudflare Pages does not support (redirects only, no external rewrites).' },
   { prefix: '/updates', router: updates, auth: 'public',
     note: 'Bare (no /api prefix) — electron-updater\'s generic provider (desktop/updater.js) hits <feedUrl>/latest.yml, /latest-mac.yml, and the installer filename the manifest references, all relative to https://api.rmpgutah.us/updates/. Was never mounted anywhere before 2026-07-22, so the whole desktop auto-update feed 404\'d despite R2 uploads succeeding.' },
 

@@ -487,7 +487,7 @@ export default function AIDevChatPanel() {
         <div className="p-3 border-b border-rmpg-700">
           <button
             onClick={createNewSession}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#5a5a5a] text-rmpg-100 text-xs font-medium rounded transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-100 text-xs font-medium rounded transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             New Chat
@@ -577,14 +577,14 @@ export default function AIDevChatPanel() {
           {messages.map((msg, i) => (
             <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'assistant' && (
-                <div className="w-7 h-7 rounded bg-[#888888] flex items-center justify-center flex-shrink-0">
+                <div className="w-7 h-7 rounded bg-rmpg-700 flex items-center justify-center flex-shrink-0">
                   <Bot className="w-4 h-4 text-rmpg-100" />
                 </div>
               )}
               <div
                 className={`max-w-[80%] ${
                   msg.role === 'user'
-                    ? 'bg-[#888888] text-rmpg-100 rounded-sm px-3 py-2'
+                    ? 'bg-rmpg-700 text-rmpg-100 rounded-sm px-3 py-2'
                     : 'bg-surface-raised text-rmpg-200 rounded-sm px-3 py-2 border border-rmpg-700'
                 }`}
               >
@@ -612,7 +612,7 @@ export default function AIDevChatPanel() {
               <div className="max-w-[80%]">
                 {/* Thinking phase — rich visual reasoning display (stays visible during response) */}
                 {(isThinking || thinkingText) && (
-                  <div className={`bg-gradient-to-b from-[#181818] to-[#141414] rounded-sm border overflow-hidden mb-2 min-w-[340px] transition-all duration-300 ${
+                  <div className={`bg-gradient-to-b from-surface-raised to-surface-base rounded-sm border overflow-hidden mb-2 min-w-[340px] transition-all duration-300 ${
                     streamingContent ? 'border-amber-500/10 max-h-28' : 'border-amber-500/20'
                   }`}>
                     {/* Animated header bar */}

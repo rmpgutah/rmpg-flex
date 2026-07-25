@@ -3,23 +3,78 @@ import type { R2Bucket, R2Object, D1Database } from '@cloudflare/workers-types';
 
 // ─── Helpers exported for use by src/index.ts (non-API paths) ──
 
+function downloadMime(filename: string): string {
+  if (filename.endsWith('.dmg')) return 'application/x-apple-diskimage';
+  if (filename.endsWith('.exe')) return 'application/x-msdownload';
+  if (filename.endsWith('.apk')) return 'application/vnd.android.package-archive';
+  if (filename.endsWith('.zip')) return 'application/zip';
+  if (filename.endsWith('.tar.gz') || filename.endsWith('.tgz')) return 'application/gzip';
+  if (filename.endsWith('.txt')) return 'text/plain; charset=utf-8';
+  if (filename.endsWith('.yml') || filename.endsWith('.yaml')) return 'text/yaml';
+  return 'application/octet-stream';
+}
+
+/**
+ * Serve a file out of the DOWNLOADS bucket.
+ *
+ * STREAMS the object body instead of buffering it. The previous version called
+ * `obj.arrayBuffer()`, which pulls the whole file into Worker memory — fine for
+ * a 100 MB installer, fatal for the 250 MB OS image, since a Worker has a
+ * 128 MB memory ceiling. Returning R2's ReadableStream hands the bytes straight
+ * through with effectively no memory cost regardless of file size.
+ *
+ * Range requests are honoured so a 250 MB download over field Wi-Fi can be
+ * resumed rather than restarted, which is exactly the connection these OS
+ * images get fetched over.
+ */
 export async function serveDownloadFile(bucket: R2Bucket, filename: string, c: any) {
-  const obj = await bucket.get(filename);
+  const rangeHeader = c.req.header('range');
+
+  // Parse a single "bytes=start-end" range. Multi-range requests are rare from
+  // browsers and download managers, so anything unparseable falls back to a
+  // full-body response rather than failing the download outright.
+  let range: { offset: number; length?: number } | undefined;
+  let rangeStart = 0;
+  if (rangeHeader) {
+    const m = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+    if (m && m[1]) {
+      rangeStart = parseInt(m[1], 10);
+      range = { offset: rangeStart };
+      if (m[2]) range.length = parseInt(m[2], 10) - rangeStart + 1;
+    }
+  }
+
+  const obj = await bucket.get(filename, range ? { range } : undefined);
   if (!obj) return c.json({ error: 'File not found' }, 404);
 
-  const data = await obj.arrayBuffer();
-  let mime = 'application/octet-stream';
-  if (filename.endsWith('.dmg')) mime = 'application/x-apple-diskimage';
-  else if (filename.endsWith('.exe')) mime = 'application/x-msdownload';
-  else if (filename.endsWith('.apk')) mime = 'application/vnd.android.package-archive';
-  else if (filename.endsWith('.yml') || filename.endsWith('.yaml')) mime = 'text/yaml';
+  const mime = downloadMime(filename);
+  const headers: Record<string, string> = {
+    'Content-Type': mime,
+    // Lets clients resume instead of starting a large download over.
+    'Accept-Ranges': 'bytes',
+    // Immutable: published artifacts are never rewritten in place — a new
+    // release gets a new filename — so caching aggressively is safe and keeps
+    // repeat fleet downloads off the origin.
+    'Cache-Control': 'public, max-age=31536000, immutable',
+  };
 
-  c.header('Content-Type', mime);
-  c.header('Content-Length', String(obj.size));
-  if (filename.endsWith('.dmg') || filename.endsWith('.exe') || filename.endsWith('.apk') || filename.endsWith('.zip') || filename.endsWith('.tar.gz')) {
-    c.header('Content-Disposition', `attachment; filename="${filename}"`);
+  // Anything that is not plain text is a file to save, not something to render.
+  // Without this a browser may display a .txt or, worse, sniff and render an
+  // archive as a page.
+  if (!filename.endsWith('.txt')) {
+    headers['Content-Disposition'] = `attachment; filename="${filename}"`;
   }
-  return c.body(data);
+
+  if (range) {
+    const total = obj.size;
+    const end = range.length ? rangeStart + range.length - 1 : total - 1;
+    headers['Content-Range'] = `bytes ${rangeStart}-${end}/${total}`;
+    headers['Content-Length'] = String(end - rangeStart + 1);
+    return new Response(obj.body as any, { status: 206, headers });
+  }
+
+  headers['Content-Length'] = String(obj.size);
+  return new Response(obj.body as any, { status: 200, headers });
 }
 
 export async function serveDownloadPage(bucket: R2Bucket, c: any) {
@@ -149,10 +204,25 @@ export function parseReleaseNoteRow(row: { version: string; release_date: string
   };
 }
 
+/**
+ * Human-readable size.
+ *
+ * Binary units (1024-based) labelled KB/MB/GB, which is exactly what Windows
+ * Explorer shows — and Windows is where people actually check a downloaded
+ * file against what this page advertised. macOS Finder uses decimal units and
+ * will report a larger number for the same file (a 247,872,459-byte download
+ * is "236 MB" on Windows and "247.9 MB" on macOS); that is a units convention,
+ * not a corrupt or truncated download. The exact byte count is published
+ * alongside this string so the comparison can be made unambiguously.
+ *
+ * The GB tier is not cosmetic: without it the 2 GB desktop image renders as
+ * "2048.0 MB", which reads like a mistake.
+ */
 function fmtBytes(bytes: number): string {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
 export async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
@@ -320,3 +390,32 @@ export const updates = new Hono<{ Bindings: { DOWNLOADS: R2Bucket } }>();
 updates.get('/latest.yml', (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'win', c));
 updates.get('/latest-mac.yml', (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'mac', c));
 updates.get('/:filename', (c) => serveDownloadFile(c.env.DOWNLOADS, c.req.param('filename'), c));
+
+// ─── /downloads/:filename — the actual file downloads ────────────────────────
+//
+// THIS IS WHAT EVERY DOWNLOAD BUTTON ON THE PUBLIC PAGE POINTS AT, and it did
+// not exist until 2026-07-25. The effect was that every download — Windows,
+// macOS, Android and the OS image alike — returned an 11,630-byte HTML file:
+// the SPA's index.html, saved under the artifact's filename. Reported from the
+// field as "files download at 11.5 kb".
+//
+// Two independent faults produced it, which is why it survived so long:
+//
+//   1. No route. serveDownloadFile() existed and was wired ONLY to /updates/*
+//      for electron-updater. Nothing served /downloads/*.
+//   2. client/public/_redirects tried to paper over that with
+//        /downloads/*  https://api.rmpgutah.us/downloads/:splat  200
+//      but Cloudflare Pages _redirects supports only redirect statuses
+//      (301/302/303/307/308) — status-200 "rewrite to another origin" is a
+//      Netlify feature that Pages does not implement. The rule is silently
+//      ignored, so the request fell through to the `/*  /index.html  200` SPA
+//      catch-all and returned the page with HTTP 200. A 200 plus a plausible
+//      filename is why browsers saved it without complaint and nothing looked
+//      broken until someone checked the file size.
+//
+// Mounted bare (no /api prefix) so the existing public URLs keep working, and
+// public because installers must be fetchable before anyone can sign in.
+export const downloadFiles = new Hono<{ Bindings: { DOWNLOADS: R2Bucket } }>();
+
+downloadFiles.get('/:filename', (c) =>
+  serveDownloadFile(c.env.DOWNLOADS, c.req.param('filename'), c));

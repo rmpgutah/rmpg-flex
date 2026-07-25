@@ -32,6 +32,7 @@ import { broadcastAll } from './ws';
 import { recordAudit } from '../utils/auditLog';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { containsAnyClause } from '../utils/searchText';
 const cases = new Hono<Env>();
 
 // ── 2-letter case_type codes (mirrors legacy caseNumbers.ts) ──
@@ -225,9 +226,10 @@ cases.get('/', async (c) => {
     else conditions.push('c.archived_at IS NULL');
     const search = q('search');
     if (search) {
-      conditions.push('(c.case_number LIKE ? OR c.title LIKE ? OR c.summary LIKE ?)');
-      const s = `%${search}%`;
-      params.push(s, s, s);
+      // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+      const _m = containsAnyClause(['c.case_number', 'c.title', 'c.summary']);
+      conditions.push(_m.sql);
+      params.push(..._m.binds(search));
     }
     // SLA attention queue — past due_date or elapsed sla_hours (mirrors the
     // /stats overdue tally and the client computeSlaStatus).

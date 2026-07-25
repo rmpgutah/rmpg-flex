@@ -339,8 +339,8 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
   };
 
   return (
-    <div className="panel-beveled bg-surface-base border border-[#1c2e42] rounded-sm">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1c2e42]">
+    <div className="panel-beveled bg-surface-base border border-border-default rounded-sm">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border-default">
         <Key className="w-4 h-4 text-brand-400" />
         <h2 className="text-sm font-semibold text-rmpg-300">API Integrations</h2>
       </div>

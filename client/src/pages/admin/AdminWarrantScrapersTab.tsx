@@ -163,7 +163,7 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
       {/* Header strip */}
       <div className="panel-raised p-3 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3 text-[11px]">
-          <span className="uppercase tracking-widest text-[#d4a017] font-bold">
+          <span className="uppercase tracking-widest text-[color:var(--panel-header-color)] font-bold">
             Warrant Scrapers
           </span>
           <span className="text-rmpg-500">
@@ -335,7 +335,7 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
 
       <div className="text-[10px] text-rmpg-600">
         For the full dashboard with live feed and health charts, see{' '}
-        <span className="text-[#d4a017]">Warrants → Scrapers tab</span>.
+        <span className="text-accent-silver-500">Warrants → Scrapers tab</span>.
       </div>
     </div>
   );

@@ -64,7 +64,7 @@ export default function OutlineReorder({
             onDragOver={(e) => e.preventDefault()}
             onDrop={() => onDrop(i)}
             className={`group flex items-center gap-1 rounded-[2px] px-1 py-1 border ${
-              dragIndex === i ? 'border-[#d4a017]/50 bg-[#d4a017]/10' : 'border-transparent hover:bg-surface-base'
+              dragIndex === i ? 'border-accent-silver-500/50 bg-accent-silver-500/10' : 'border-transparent hover:bg-surface-base'
             }`}
             style={{ paddingLeft: 4 + (s.level - 1) * 10 }}
             title="Drag to reorder, or use the arrows"
@@ -74,11 +74,11 @@ export default function OutlineReorder({
               {s.text || <span className="italic opacity-50">(empty heading)</span>}
             </span>
             <button type="button" onClick={() => move(i, 'up')} disabled={i === 0}
-              aria-label="Move section up" className="text-rmpg-500 hover:text-[#d4a017] disabled:opacity-20">
+              aria-label="Move section up" className="text-rmpg-500 hover:text-accent-silver-300 disabled:opacity-20">
               <ChevronUp className="w-3 h-3" />
             </button>
             <button type="button" onClick={() => move(i, 'down')} disabled={i === sections.length - 1}
-              aria-label="Move section down" className="text-rmpg-500 hover:text-[#d4a017] disabled:opacity-20">
+              aria-label="Move section down" className="text-rmpg-500 hover:text-accent-silver-300 disabled:opacity-20">
               <ChevronDown className="w-3 h-3" />
             </button>
           </div>

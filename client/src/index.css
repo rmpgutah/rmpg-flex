@@ -11,22 +11,20 @@
 
 /* --- Theme Custom Properties ─────────────────────────────── */
 :root {
-  /* Surface, border, text, brand-color, and app-chrome vars are now owned by
-     client/src/styles/theme-palettes.css (imported above). */
-  /* Spillman module-bar (F-key nav) — beveled-tile states. Translucent so the
-     sunken/raised look adapts to any shell background (black or legacy blue). */
-  --toolbar-nav-text: #9a9a9a;
-  --toolbar-nav-text-hover: #dcdcdc;
-  --toolbar-nav-text-active: var(--brand-blue);
-  --toolbar-nav-hover: rgba(255, 255, 255, 0.05);
-  --toolbar-nav-active: rgba(0, 0, 0, 0.38);
-  /* Panel bevel highlight + title bar gradient — theme-aware. */
-  --bevel-highlight: #3a3a3a;
-  --titlebar-gradient: linear-gradient(180deg, #0b0b0b 0%, #060606 50%, #0b0b0b 100%);
-  /* Spillman Flex window chrome — 3D button bevel colors for panel title bars */
+  /* Surface, border, text, brand-color, app-chrome, AND module-bar/bevel/titlebar
+     vars are owned by client/src/styles/theme-palettes.css (imported above).
+     Nothing color-valued belongs in this block — anything defined here is
+     theme-invariant by construction and silently escapes the theme system.
+     That is what made every panel title bar render a pure-black gradient under
+     Blue & Silver (--titlebar-gradient) and the active nav tile render black
+     (--toolbar-nav-active). See the 2026-07-24 UI color repair spec. */
+
+  /* Window chrome traffic-light triad — intentionally theme-invariant.
+     These are control affordances (close/minimize/maximize), not brand chrome. */
   --window-chrome-close: #ef4444;
   --window-chrome-minimize: #d4a017;
   --window-chrome-maximize: #22c55e;
+
   /* Typography — centralized font tokens */
   --font-mono: 'Consolas', 'Courier New', ui-monospace, SFMono-Regular, monospace;
   --font-sans: 'Calibri', Arial, Helvetica, sans-serif;
@@ -4298,8 +4296,6 @@ html.font-large { font-size: 19px; }
 html.theme-light {
   /* --surface-*, --border-*, --text-*, --brand-blue/gold, and app-chrome vars
      are now in theme-palettes.css (imported at top of this file). */
-  --bevel-highlight: #c3cdd8;
-  --titlebar-gradient: linear-gradient(180deg, #ece9dd 0%, #d6d3c8 50%, #c9c5b8 100%);
   color-scheme: light;
   background-color: #ece9dd;
 }
