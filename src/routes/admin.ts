@@ -5,6 +5,7 @@ import { fireRule, type NotificationRuleRow } from './notificationEngine';
 import { getAnthropicKey, getClaudeModel, callClaude, diagnoseAnthropicError } from '../utils/anthropic';
 import { getOpenAiKey, getOpenAiModel, callOpenAi, diagnoseOpenAiError } from '../utils/openai';
 import { denverNowDateExpr, denverHourExpr, denverStrftimeExpr } from '../utils/denverTime';
+import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
 
 const admin = new Hono<Env>();
 
@@ -570,7 +571,7 @@ admin.get('/health/detailed', async (c) => {
     const [activeSessions, activeUnits, pendingCalls, successful24h, failed24h, recentErrors] = await Promise.all([
       cnt(`SELECT COUNT(*) AS n FROM sessions WHERE COALESCE(is_active,1) = 1 AND expires_at > datetime('now')`),
       cnt(`SELECT COUNT(*) AS n FROM units WHERE status NOT IN ('off_duty','out_of_service','OFD')`),
-      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('closed','cleared','cancelled')`),
+      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE}`),
       cnt(`SELECT COUNT(*) AS n FROM audit_log WHERE action = 'login_success' AND created_at > datetime('now','-1 day')`),
       cnt(`SELECT COUNT(*) AS n FROM audit_log WHERE action = 'login_failed' AND created_at > datetime('now','-1 day')`),
       query<Record<string, unknown>>(db, `SELECT id, severity, message, created_at FROM error_log ORDER BY created_at DESC LIMIT 10`).catch(() => []),
@@ -633,7 +634,7 @@ admin.get('/realtime-stats', async (c) => {
     const db = getDb(c.env);
     const cnt = async (sql: string) => (await queryFirst<{ n: number }>(db, sql).catch(() => null))?.n ?? 0;
     const [activeCalls, unitsOnDuty, pendingIncidents, activeBolos, activeSessions, todayActivity, todayCalls] = await Promise.all([
-      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('closed','cleared','cancelled')`),
+      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE}`),
       cnt(`SELECT COUNT(*) AS n FROM units WHERE status NOT IN ('off_duty','out_of_service','OFD')`),
       cnt(`SELECT COUNT(*) AS n FROM incidents WHERE status NOT IN ('closed','cleared')`),
       cnt(`SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'`),
@@ -1815,7 +1816,7 @@ admin.post('/calls/force-close-all', async (c) => {
     const r = await execute(db,
       `UPDATE calls_for_service
           SET status = 'closed', closed_at = datetime('now'), disposition = ?, updated_at = datetime('now')
-        WHERE status NOT IN ('cleared','closed','cancelled','archived')`,
+        WHERE ${ACTIVE_CALL_WHERE}`,
       disp);
     return c.json({ closed: r.meta.changes ?? 0 });
   } catch (err) {

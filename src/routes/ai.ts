@@ -17,6 +17,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
+import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
 import {
   rankUnitsForCall, suggestUnits, analyzeCall, narrativeAssist, smartSearch,
   GPS_FRESH_WINDOW_S, type RawUnit, type CallContext,
@@ -327,7 +328,7 @@ ai.get('/health', async (c) => {
     const pageSizeRow = await queryFirst<{ page_size: number }>(db, 'PRAGMA page_size').catch(() => null);
     const sizeMb = ((tblSizeRow?.page_count ?? 0) * (pageSizeRow?.page_size ?? 4096)) / (1024 * 1024);
     const [calls, persons, units] = await Promise.all([
-      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled','archived')`),
+      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE}`),
       cnt('SELECT COUNT(*) AS n FROM persons'),
       cnt('SELECT COUNT(*) AS n FROM units'),
     ]);
@@ -714,9 +715,9 @@ Return ONLY valid JSON with these keys (use null for missing fields):
 // Real D1 queries against calls_for_service/units — no AI call involved
 // despite living under /api/ai; the panel's name is aspirational, the
 // detection heuristics below are plain SQL using the same open-status set
-// already established elsewhere (aggregates.ts, calls.ts): NOT IN
-// ('cleared','closed','cancelled','archived').
-const OPEN_CALL_STATUSES_SQL = `status NOT IN ('cleared','closed','cancelled','archived')`;
+// already established elsewhere — now sourced from utils/callStatus so there is
+// exactly one definition of "still on the active board".
+const OPEN_CALL_STATUSES_SQL = ACTIVE_CALL_WHERE;
 const STALE_CALL_HOURS = 12;
 
 ai.get('/cleanup/scan', requireRole('admin', 'manager', 'supervisor'), async (c) => {
