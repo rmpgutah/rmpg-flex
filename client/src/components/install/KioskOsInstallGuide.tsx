@@ -27,33 +27,75 @@ export default function KioskOsInstallGuide() {
       <GuideHeading>What it looks like</GuideHeading>
       <Screenshots shots={SHOTS} />
 
-      <GuideHeading>What you need</GuideHeading>
+      <GuideHeading>Two ways to install</GuideHeading>
+      <p className="text-xs leading-relaxed mb-2" style={{ color: 'var(--rmpg-400)' }}>
+        <strong style={{ color: 'var(--rmpg-300)' }}>No USB stick (easiest, if the machine already
+        runs Windows)</strong> — run the included installer from Windows and RMPG Flex OS is added as a
+        second option on the boot menu. Nothing is repartitioned, Windows stays exactly as it is, and
+        Windows remains the default so an unattended reboot always comes back up normally. This works
+        because the OS loads entirely into RAM, so it needs no partition of its own — just two files and
+        a boot entry. Jump to <em>Installing from Windows</em> below.
+      </p>
+      <p className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-400)' }}>
+        <strong style={{ color: 'var(--rmpg-300)' }}>USB stick</strong> — for a bare machine, a wiped
+        unit, or any install where you want the terminal to be the only thing on the device. Follow the
+        numbered procedure below.
+      </p>
+
+      <GuideHeading>Installing from Windows (no USB)</GuideHeading>
+      <Bullets
+        items={[
+          <>Requires <strong>UEFI boot mode</strong> and <strong>Secure Boot disabled</strong> (F2 at the Panasonic splash → Security → Secure Boot → Disabled → F10). The installer checks both and stops with instructions rather than half-installing.</>,
+          <>Extract the downloaded <code>.zip</code>, then double-click <strong>INSTALL - Double-click me.bat</strong> and approve the administrator prompt.</>,
+          <>It copies the OS to <code>C:\RMPG-Flex-OS</code>, installs a small bootloader, backs up your current boot configuration, and adds a <strong>RMPG Flex OS</strong> entry to the boot menu.</>,
+          <>Restart. A 10-second menu appears — pick RMPG Flex OS, or wait and Windows starts as usual.</>,
+          <>To remove it completely, run <strong>Uninstall-RmpgFlexOS.ps1</strong> as Administrator.</>,
+        ]}
+      />
+      <Callout label="Untested on hardware">
+        The no-USB installer modifies the boot configuration of a working machine. It backs up the boot
+        record first and is fully reversible, but it has <strong>not yet been run on a physical FZ-55</strong> —
+        validate it on a spare or non-critical unit before using it on a machine you depend on. The USB
+        procedure below is the conservative choice until that validation is done.
+      </Callout>
+
+      <GuideHeading>What you need (USB method)</GuideHeading>
       <Bullets
         items={[
           <>Panasonic Toughbook FZ-55 (Mk1 or Mk2) with AC power connected</>,
           <>A USB flash drive, 4 GB or larger — <strong>all contents will be erased</strong></>,
           <>Any Windows, macOS, or Linux computer to write the USB drive</>,
-          <>The Kiosk Linux OS <code>.tar.gz</code> from the download card above</>,
-          <>A wired ethernet drop at the kiosk's location — this image has no Wi-Fi stack</>,
+          <>The Kiosk Linux OS <code>.zip</code> from the download card above</>,
+          <><strong>A wired ethernet drop at the kiosk's location.</strong> The currently published image is wired-only — it has no Wi-Fi stack, so it cannot come online over Wi-Fi. Wi-Fi support is built and is shipping in the next release; if your site has no ethernet, wait for that rather than flashing this one.</>,
         ]}
       />
 
-      <GuideHeading>Procedure</GuideHeading>
+      <GuideHeading>Procedure (USB method)</GuideHeading>
       <div className="space-y-0">
         <Step n={1} title="Extract the image">
-          Unpack the downloaded archive. It contains a single file, <code>disk.img</code> — the complete
-          bootable image, bootloader and both recovery slots included:
-          <Cmd>{'tar xzf kiosk-linux-os-1.2.0.tar.gz'}</Cmd>
-          The archive is about 236 MB and expands to a 512 MB image, so make sure you have roughly 1 GB
-          free before extracting.
+          The download is a <code>.zip</code> containing a single file, <code>disk.img</code> — the
+          complete bootable image, bootloader and both recovery slots included.
+          <br />
+          <strong style={{ color: 'var(--rmpg-300)' }}>Windows —</strong> right-click the downloaded
+          file → <strong>Extract All…</strong> → <strong>Extract</strong>. No extra software needed.
+          <br />
+          <strong style={{ color: 'var(--rmpg-300)' }}>macOS —</strong> double-click it.
+          <br />
+          <strong style={{ color: 'var(--rmpg-300)' }}>Linux —</strong> <code>unzip
+          kiosk-linux-os-1.2.0.zip</code>, or use the <code>.tar.gz</code> in the same bucket.
+          <br />
+          The download is about 236 MB and expands to a 512 MB image, so allow roughly 1 GB of free
+          space.
         </Step>
 
         <Step n={2} title="Write disk.img to the USB drive">
-          <strong style={{ color: 'var(--rmpg-300)' }}>Windows —</strong> use{' '}
-          <a href="https://rufus.ie" target="_blank" rel="noreferrer" style={{ color: '#d4a017' }}>Rufus</a>:
-          select the USB drive, click SELECT, change the file-type filter to <em>All files</em> so
-          <code> disk.img</code> is visible, pick it, keep <strong>DD Image</strong> mode when prompted,
-          then START.
+          <strong style={{ color: 'var(--rmpg-300)' }}>Windows (recommended path) —</strong> download{' '}
+          <a href="https://rufus.ie" target="_blank" rel="noreferrer" style={{ color: '#d4a017' }}>Rufus</a>{' '}
+          (a single portable .exe, no install). Run it, then: <strong>Device</strong> → your USB drive
+          → <strong>SELECT</strong> → change the file-type dropdown in the bottom-right of the file
+          picker from "Disk or ISO image" to <strong>All files (*.*)</strong> so <code>disk.img</code>{' '}
+          becomes visible → pick it → keep <strong>DD Image</strong> mode if prompted →{' '}
+          <strong>START</strong> → confirm the erase warning. Takes a few minutes.
           <br />
           <strong style={{ color: 'var(--rmpg-300)' }}>macOS —</strong> find the disk number with{' '}
           <code>diskutil list</code> (match it by size), then:
@@ -132,6 +174,18 @@ export default function KioskOsInstallGuide() {
           {
             symptom: 'Terminal boots to the old image after an update',
             fix: <>The A/B fallback rolled back after three failed boots — the previous slot is intentionally still serving. Report it rather than re-flashing; the failure is worth capturing.</>,
+          },
+          {
+            symptom: 'Windows: "How do you want to open this file?" or the download will not open',
+            fix: <>Make sure you downloaded the <code>.zip</code> from the button above, not a <code>.tar.gz</code> — Windows cannot open a .tar.gz by double-clicking. Right-click the .zip → <strong>Extract All…</strong></>,
+          },
+          {
+            symptom: 'Rufus does not list disk.img in the file picker',
+            fix: <>Its file filter defaults to disk images and ISOs only. Change the dropdown in the bottom-right corner of the picker to <strong>All files (*.*)</strong>.</>,
+          },
+          {
+            symptom: 'Browser warns the download is uncommon or blocks it',
+            fix: <>Choose Keep / Download anyway. The file is unsigned because it is an internal OS image rather than commercial software; verify you started the download from rmpgutah.us.</>,
           },
         ]}
       />

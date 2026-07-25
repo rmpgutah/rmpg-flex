@@ -276,3 +276,27 @@ BR2_STRIP_EXCLUDE_FILES="libcogplatform-drm.so"
 # see build.sh own comment on the -DCMAKE_BUILD_TYPE=Debug patch for the
 # full history if attempting this again.
 # BR2_ENABLE_RUNTIME_DEBUG=y
+
+# ── GRUB2 EFI: the no-USB install path ───────────────────────────────────────
+# (2026-07-25) Added so the OS can be installed onto a machine that already
+# runs Windows WITHOUT writing a USB stick at all.
+#
+# This works because our root filesystem is an INITRAMFS
+# (BR2_TARGET_ROOTFS_CPIO) — the whole userspace is loaded into RAM by the
+# bootloader, so a install needs no Linux partition, no repartitioning, and no
+# resizing of the Windows volume. It needs exactly two files on the existing
+# NTFS C: drive plus a firmware boot entry pointing at GRUB.
+#
+# NTFS is the critical module here and is NOT in Buildroot default EFI module
+# list ("boot linux ext2 fat squash4 part_msdos part_gpt normal efi_gop") —
+# without it GRUB cannot read the kernel off the Windows volume at all. The
+# list below is that default plus ntfs, search (to locate the volume by label
+# rather than a fragile hd0,gpt3 path), configfile, and the video modules the
+# console needs before the kernel takes over.
+#
+# Booting via GRUB EFI also sidesteps the Legacy/CSM requirement of the
+# syslinux USB image entirely, which matters because some late FZ-55 firmware
+# revisions have removed CSM support altogether.
+BR2_TARGET_GRUB2=y
+BR2_TARGET_GRUB2_X86_64_EFI=y
+BR2_TARGET_GRUB2_BUILTIN_MODULES_EFI="boot linux ext2 fat ntfs squash4 part_msdos part_gpt normal configfile search search_fs_uuid search_label echo test all_video efi_gop gzio loadenv"

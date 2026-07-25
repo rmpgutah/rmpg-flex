@@ -26,6 +26,18 @@ WEBKIT_PC := $(shell $(PKG_CONFIG) --exists webkit2gtk-4.1 && echo webkit2gtk-4.
 BROWSER_CFLAGS := $(shell $(PKG_CONFIG) --cflags gtk+-3.0 $(WEBKIT_PC))
 BROWSER_LIBS   := $(shell $(PKG_CONFIG) --libs   gtk+-3.0 $(WEBKIT_PC))
 
+# Fail loudly when the webkit module is missing. pkg-config returns NOTHING on
+# an unknown module, so without this check the compile proceeds with empty
+# CFLAGS and dies on "gtk/gtk.h: No such file or directory" — an error that
+# points at GTK when the real problem is webkitgtk being absent or not built
+# yet (which happened for real: rmpg-shell.mk was missing its webkitgtk
+# dependency, so this package was built first).
+ifeq ($(strip $(BROWSER_CFLAGS)),)
+$(error webkit2gtk pkg-config module not found ($(WEBKIT_PC)). \
+  Is BR2_PACKAGE_WEBKITGTK enabled, and is webkitgtk listed in \
+  RMPG_SHELL_DEPENDENCIES so it builds first?)
+endif
+
 WARNINGS = -Wall -Wextra
 
 all: rmpg-shell rmpg-browser
