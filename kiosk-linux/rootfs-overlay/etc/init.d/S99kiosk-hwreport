@@ -1,0 +1,37 @@
+#!/bin/sh
+# /etc/init.d/S99kiosk-hwreport — print and persist the hardware report.
+#
+# Runs LAST on purpose. BusyBox init runs S* scripts in lexicographic order, and
+# "hwreport" sorts after both "desktop" and "drm-marker" (h > d), so by the time
+# this runs the graphics stack has bound, the network has been probed, and the
+# desktop session has either come up or failed — meaning the report describes
+# the terminal in its settled state rather than mid-boot.
+#
+# This is the artifact a first FZ-55 bring-up produces. It never fails the boot.
+
+case "$1" in
+    start)
+        # Report in the background: a bring-up boot should not wait on dmesg
+        # parsing before handing the officer a usable console. The report lands
+        # on the console a second or two later either way.
+        #
+        # `tee`, not a plain redirect. The first version sent everything to
+        # /tmp/rmpg-hwreport.log only, which meant the report was invisible on the
+        # serial console — so a bench bring-up with a serial cable (the one place
+        # it is easy to read) saw nothing, and no automated boot check could
+        # assert on it either. Confirmed against a real QEMU boot on 2026-07-25:
+        # the log showed every other S99 marker and no report at all.
+        #
+        # Both destinations matter: the console for a bench bring-up, the file for
+        # a unit already in a vehicle. The persistent copy on the boot store is
+        # written by rmpg-hwreport itself.
+        /usr/bin/rmpg-hwreport 2>&1 | tee /tmp/rmpg-hwreport.log &
+        ;;
+    stop)
+        ;;
+    *)
+        echo "usage: $0 {start|stop}" >&2
+        exit 1
+        ;;
+esac
+exit 0
