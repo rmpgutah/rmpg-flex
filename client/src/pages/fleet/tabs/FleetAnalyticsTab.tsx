@@ -682,7 +682,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 {utilization && (
                   <div className="mt-2 pt-2 border-t border-rmpg-700 text-[9px] text-rmpg-400">
                     <span>Utilization: </span>
-                    <span className="font-mono font-bold text-accent-gold-300 tabular-nums">{utilization.rate}%</span>
+                    <span className="font-mono font-bold text-rmpg-100 tabular-nums">{utilization.rate}%</span>
                     <span className="ml-1">({utilization.assigned} assigned)</span>
                   </div>
                 )}
@@ -840,7 +840,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <Activity className="w-3 h-3 text-accent-silver-500" />
             <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Fleet Utilization</span>
           </div>
-          <div className="text-lg font-bold font-mono tabular-nums text-accent-gold-300">
+          <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">
             {utilization ? `${utilization.rate}%` : '--'}
           </div>
           {utilization && (
