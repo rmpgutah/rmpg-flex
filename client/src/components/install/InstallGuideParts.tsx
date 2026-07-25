@@ -144,6 +144,67 @@ export function Callout({ label, children }: { label: string; children: React.Re
   );
 }
 
+/**
+ * Screenshot gallery. Click a shot to open it full size in a lightbox —
+ * these are 1280x800 captures, unreadable at inline width.
+ *
+ * Every image here must be a REAL capture of the running system. A mockup on a
+ * download page is a promise the product has to keep on first boot.
+ */
+export function Screenshots({ shots }: { shots: { src: string; caption: string }[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+
+  return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {shots.map((shot) => (
+          <figure key={shot.src} className="m-0">
+            <button
+              type="button"
+              onClick={() => setOpen(shot.src)}
+              aria-label={`View full size: ${shot.caption}`}
+              className="block w-full p-0 cursor-zoom-in"
+              style={{ background: 'none', border: '1px solid var(--border-default)', borderRadius: 2 }}
+            >
+              <img
+                src={shot.src}
+                alt={shot.caption}
+                loading="lazy"
+                className="block w-full"
+                style={{ borderRadius: 2 }}
+              />
+            </button>
+            <figcaption className="text-[11px] leading-relaxed mt-1.5" style={{ color: 'var(--rmpg-500)' }}>
+              {shot.caption}
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Screenshot full size"
+          onClick={() => setOpen(null)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setOpen(null); }}
+          tabIndex={-1}
+          ref={(el) => el?.focus()}
+          className="fixed inset-0 z-50 flex items-center justify-center p-6 cursor-zoom-out"
+          style={{ background: 'rgba(0,0,0,0.85)' }}
+        >
+          <img
+            src={open}
+            alt=""
+            className="max-w-full max-h-full"
+            style={{ border: '1px solid var(--border-default)', borderRadius: 2 }}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
 /** Outer frame shared by every platform guide. */
 export function GuideFrame({
   title,

@@ -29,8 +29,8 @@ MODETEST_BIN=$(command -v modetest)
 # failure: the browser actively scanning out IS the strongest possible proof
 # the DRM stack works. Only fall back to the modetest mode-set when no
 # browser is holding the display (e.g. a future config without cog).
-if pidof cog >/dev/null 2>&1; then
-  echo "KIOSK_LINUX_DRM_OK (kiosk browser owns the display)"
+if pidof X Xorg cog >/dev/null 2>&1; then
+  echo "KIOSK_LINUX_DRM_OK (display owned by the active session)"
 elif [ -n "$MODETEST_BIN" ]; then
   # modetest -s is meant to draw the pattern and then block reading stdin for a
   # keypress, holding the frame on screen — but stdin inherited from a

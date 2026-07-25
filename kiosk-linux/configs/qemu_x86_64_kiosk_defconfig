@@ -118,7 +118,7 @@ BR2_LINUX_KERNEL_DEFCONFIG="x86_64"
 # /kiosk-linux inside the container (never at a path relative to BUILDROOT_DIR or
 # the O= volume), so the absolute /kiosk-linux/... form is what's actually
 # reachable at build time regardless of where Buildroot's source checkout lives.
-BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="/kiosk-linux/configs/kernel-drm.fragment /kiosk-linux/configs/kernel-net.fragment /kiosk-linux/configs/kernel-storage.fragment /kiosk-linux/configs/kernel-fz55.fragment"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="/kiosk-linux/configs/kernel-drm.fragment /kiosk-linux/configs/kernel-net.fragment /kiosk-linux/configs/kernel-storage.fragment /kiosk-linux/configs/kernel-fz55.fragment /kiosk-linux/configs/kernel-wifi.fragment"
 
 # libdrm — DRM userspace library, plus its bundled test tools (provides modetest,
 # the diagnostic tool this sub-project uses as its proof mechanism). Symbol names

@@ -6,7 +6,17 @@
 //                     this is what field installs use.
 //   bzImage         — bare kernel  (QEMU / development use)
 //   rootfs.cpio.gz  — bare initramfs (QEMU / development use)
-import { Bullets, Callout, Cmd, GuideFrame, GuideHeading, Step, Troubleshooting } from './InstallGuideParts';
+import { Bullets, Callout, Cmd, GuideFrame, GuideHeading, Screenshots, Step, Troubleshooting } from './InstallGuideParts';
+
+// Real captures from the running OS under the QEMU reference environment —
+// not mockups. Regenerate with kiosk-linux/test/run-qemu-browser.sh and copy
+// the resulting PNG into client/public/kiosk-os/.
+const SHOTS = [
+  {
+    src: '/kiosk-os/kiosk-console.png',
+    caption: 'Boot straight into the RMPG Flex console — fullscreen, no desktop, no exposed OS. The status panel confirms the terminal is online and authenticated against the live system.',
+  },
+];
 
 export default function KioskOsInstallGuide() {
   return (
@@ -14,6 +24,9 @@ export default function KioskOsInstallGuide() {
       title="Kiosk Terminal Install — Panasonic Toughbook FZ-55"
       intro="Turns an FZ-55 into a dedicated RMPG Flex kiosk terminal. The device boots straight into the Flex console fullscreen — no Windows, no desktop, no user-serviceable OS surface. The image carries dual A/B boot slots, so a failed boot automatically falls back to the last known-good copy."
     >
+      <GuideHeading>What it looks like</GuideHeading>
+      <Screenshots shots={SHOTS} />
+
       <GuideHeading>What you need</GuideHeading>
       <Bullets
         items={[

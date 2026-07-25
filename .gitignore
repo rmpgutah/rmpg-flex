@@ -77,3 +77,8 @@ tmp/
 .audit-rms-result.json
 .worktrees/
 .serena/
+
+# kiosk-linux: compiled first-party desktop binaries (built by Buildroot)
+kiosk-linux/rmpg-shell/rmpg-shell
+kiosk-linux/rmpg-shell/rmpg-browser
+kiosk-linux/output/

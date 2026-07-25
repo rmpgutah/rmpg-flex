@@ -690,8 +690,73 @@ COGHASH
       echo "cog.mk POST_PATCH user_data hook already present."
     fi
 
+    # First-party desktop components (rmpg-shell taskbar + rmpg-browser).
+    # Buildroot can only build packages that live inside its own tree, so the
+    # package definition is copied in and registered in package/Config.in. The
+    # SOURCE stays in this repo at kiosk-linux/rmpg-shell and is pulled in via
+    # SITE_METHOD=local, so editing the C is a plain rmpg-shell-rebuild with no
+    # tarball or version bump.
+    RMPG_SHELL_PKG_DIR="$BUILDROOT_DIR/package/rmpg-shell"
+    mkdir -p "$RMPG_SHELL_PKG_DIR"
+    cp /kiosk-linux/rmpg-shell/buildroot-package/Config.in "$RMPG_SHELL_PKG_DIR/"
+    cp /kiosk-linux/rmpg-shell/buildroot-package/rmpg-shell.mk "$RMPG_SHELL_PKG_DIR/"
+
+    if ! grep -q "package/rmpg-shell/Config.in" "$BUILDROOT_DIR/package/Config.in"; then
+      echo "Registering rmpg-shell in package/Config.in ..."
+      # Insert next to another package in the same menu so it appears in a
+      # sensible place; appending at EOF would land outside every menu block
+      # and the symbol would never become visible to Kconfig.
+      sed -i "s|\tsource \"package/openbox/Config.in\"|\tsource \"package/openbox/Config.in\"\n\tsource \"package/rmpg-shell/Config.in\"|" "$BUILDROOT_DIR/package/Config.in"
+      grep -q "package/rmpg-shell/Config.in" "$BUILDROOT_DIR/package/Config.in" || {
+        echo "ERROR: failed to register rmpg-shell in package/Config.in" >&2
+        exit 1
+      }
+    else
+      echo "rmpg-shell already registered in package/Config.in."
+    fi
+
+    # Always force a rebuild: SITE_METHOD=local copies the source at build
+    # time, and without this an edit to rmpg-shell.c would be ignored because
+    # the package stamp is already present.
+    rm -f /build-output/build/rmpg-shell-*/.stamp_built 2>/dev/null || true
+
+    # The desktop fragment (X.org + Openbox + GTK3 + midori + pcmanfm) is
+    # purely ADDITIVE to the kiosk defconfig — it removes nothing, so one image
+    # serves both roles: it boots to a Windows-like desktop, with the original
+    # fullscreen kiosk browser still installed and launchable as an app.
+    # Buildroot own `defconfig` target takes a single BR2_DEFCONFIG file, so the
+    # two are concatenated into one generated file rather than merged by
+    # Kconfig. Set KIOSK_LINUX_DESKTOP=0 to build the lean kiosk-only image.
+    GEN_DEFCONFIG=/tmp/kiosk-linux-generated-defconfig
+    cat /kiosk-linux/configs/qemu_x86_64_kiosk_defconfig > "$GEN_DEFCONFIG"
+    if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ]; then
+      echo "Including the desktop fragment (X.org + Openbox + GTK3 + browser) ..."
+      cat /kiosk-linux/configs/desktop.fragment >> "$GEN_DEFCONFIG"
+    else
+      echo "KIOSK_LINUX_DESKTOP=0 — building the lean kiosk-only image."
+    fi
+
     echo "Applying defconfig ..."
-    make -C "$BUILDROOT_DIR" O=/build-output BR2_DEFCONFIG=/kiosk-linux/configs/qemu_x86_64_kiosk_defconfig defconfig
+    make -C "$BUILDROOT_DIR" O=/build-output BR2_DEFCONFIG="$GEN_DEFCONFIG" defconfig
+
+    # Verify the headline desktop symbols actually survived into .config.
+    # Buildroot silently DROPS any symbol whose dependencies are unmet, with no
+    # error — this project has lost packages that way before, so fail loudly
+    # here instead of discovering it in a boot log an hour later.
+    if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ]; then
+      for sym in BR2_PACKAGE_XSERVER_XORG_SERVER BR2_PACKAGE_OPENBOX \
+                 BR2_PACKAGE_LIBGTK3 BR2_PACKAGE_LIBGTK3_X11 \
+                 BR2_PACKAGE_WEBKITGTK BR2_PACKAGE_PCMANFM \
+                 BR2_PACKAGE_RMPG_SHELL BR2_PACKAGE_CONNMAN \
+                 BR2_PACKAGE_LINUX_FIRMWARE BR2_PACKAGE_WPA_SUPPLICANT; do
+        grep -q "^${sym}=y" /build-output/.config || {
+          echo "ERROR: $sym did not survive into .config — its dependencies are unmet." >&2
+          grep -n "$sym" /build-output/.config >&2 || true
+          exit 1
+        }
+      done
+      echo "Desktop symbols verified present in .config."
+    fi
 
     # Buildroot only auto-applies package patches on a fresh source extract —
     # when a patch block above just wrote a NEW patch file, force that
