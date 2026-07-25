@@ -11,9 +11,14 @@
 # explicit wait is more robust than depending on lexicographic ordering, since
 # this project has already been burned once by assuming implicit ordering was
 # sufficient.
+# (2026-07-24) The net marker now runs first by numeric prefix (S98 < S99)
+# and always writes a line — OK or FAILED — to its log file, so this wait is
+# a short belt-and-braces check rather than the primary ordering mechanism.
+# Break on ANY line: if the network genuinely failed, waiting the full poll
+# window would not fix it, and cog retries failed loads itself.
 i=0
 while [ "$i" -lt 100 ]; do
-  grep -q "KIOSK_LINUX_NET_OK" /tmp/kiosk-net-marker.log 2>/dev/null && break
+  [ -s /tmp/kiosk-net-marker.log ] && break
   i=$((i + 1))
   sleep 0.1
 done
@@ -50,45 +55,13 @@ else
   chmod 0700 /tmp/xdg-runtime
   export XDG_RUNTIME_DIR=/tmp/xdg-runtime
 
-  # Diagnostic: the drm_commit_buffer_atomic/_nonatomic breakpoints never
-  # hit even after the reference-leak fix — these are static, single-caller
-  # functions likely inlined at -O2, so that result may be a false negative.
-  # Breaking on drm_commit_buffer itself instead (a real, non-static, real
-  # multi-caller function guaranteed to keep its own symbol) to get a
-  # definitive answer on whether it is reached, how many times, and what it
-  # returns.
-  # Debug symbols now available for cog specifically (meson debugoptimized,
-  # see build.sh). Breaking on wl_shm_buffer_end_access (a real exported
-  # libwayland function, always called right after drm_copy_shm_buffer_into_bo
-  # finishes writing pixel data) and inspecting the CALLER frame's `dst`
-  # buffer directly — this tells us definitively whether real, varied pixel
-  # data is being written (a color/format bug would still show non-uniform
-  # bytes) or whether the buffer is genuinely all one blank value.
-  # No DWARF debug info available (see build.sh comment — tried and
-  # reverted, not worth invalidating the whole build cache). Using
-  # register/disassembly-level inspection instead, the same technique
-  # already used successfully for the original crash: break on
-  # wl_shm_buffer_end_access (a real exported libwayland function, called
-  # right after the pixel copy finishes), go up one frame to the caller
-  # (drm_copy_shm_buffer_into_bo — frame unwinding works fine without
-  # DWARF), and disassemble the last ~20 instructions before the call to
-  # see which registers hold the src/dst pointers at that point.
-  # The previous run confirmed the copy loop completes with a valid,
-  # canonical src pointer (in r9) and no crash. Breaking earlier this time
-  # -- right when wl_shm_buffer_begin_access is called, before the copy --
-  # to read the actual pixel bytes at the src pointer directly. This tells
-  # us definitively whether real, varied (non-blank) pixel content exists
-  # in the exported buffer before any copy/scanout step, ruling in or out
-  # whether the blank result traces back to WebProcess rendering itself.
-  # Confirmed via direct pixel-byte inspection: the exported SHM buffer is
-  # uniformly blank (0xff) coming straight from WebProcess/WebKit's own
-  # compositor -- every downstream layer (Cog, libwayland, GBM, DRM) is
-  # proven correct. Trying WebKit own built-in debug logging env vars
-  # before assuming a deeper C++-level compositor investigation is needed --
-  # these are free (pure runtime, no rebuild) and might reveal why painting
-  # never actually happens in this environment.
-  WEBKIT_DEBUG=Compositing,Layers WEBKIT_SHOW_COMPOSITING_DEBUG_VISUALS=1 \
-    cog --platform=drm "https://rmpgutah.us" >/tmp/cog.log 2>&1 &
+  # (2026-07-24) The long blank-render investigation concluded: the
+  # compositor pipeline is healthy (WEBKIT_SHOW_COMPOSITING_DEBUG_VISUALS
+  # tile borders + repaint counters render correctly). The debug env vars
+  # used during that investigation are removed for release builds —
+  # WEBKIT_DEBUG channels are compiled out of Release WebKit anyway, and the
+  # debug visuals draw literal yellow tile borders over the kiosk UI.
+  cog --platform=drm "https://rmpgutah.us" >/tmp/cog.log 2>&1 &
   COG_PID=$!
   sleep 20
   if kill -0 "$COG_PID" 2>/dev/null; then

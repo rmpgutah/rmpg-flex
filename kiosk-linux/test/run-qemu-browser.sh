@@ -57,7 +57,7 @@ rm -f "$LOG_FILE" "$SCREENSHOT_FILE" "$MONITOR_SOCK"
 # KIOSK_LINUX_BOOT_ATTEMPT 1 on the now-recovered slot) rather than a second
 # boot cycle appearing in the same log file. Also prevents an actual
 # both-slots-broken infinite reboot loop from hanging this test harness.
-"$TIMEOUT_CMD" 150 qemu-system-x86_64 \
+"$TIMEOUT_CMD" 300 qemu-system-x86_64 \
   -drive file="$DISK_IMG",if=virtio,format=raw \
   -m 1024 \
   -netdev user,id=net0 \
@@ -77,7 +77,13 @@ QEMU_PID=$!
 # marker scripts still running (no software KVM acceleration under QEMU TCG
 # means cold WebKit process startup + a real HTTPS round-trip is slow) — 90s
 # gives real headroom for the full net+browser marker chain to complete.
-sleep 90
+# (2026-07-24) Raised 90s -> 210s. Once the TLS backend fix let real content
+# through, a 90s capture caught the SPA mid-boot: the screenshot was a
+# uniform #0c1a2b, which is the app own Blue & Silver surface-base color --
+# proof the HTML and CSS bundle had loaded and applied, but React had not
+# finished mounting. Downloading and executing several MB of JS under QEMU
+# TCG (no KVM on this host) is simply slow; the page itself is fine.
+sleep 210
 
 for _ in $(seq 1 20); do
   [ -S "$MONITOR_SOCK" ] && break

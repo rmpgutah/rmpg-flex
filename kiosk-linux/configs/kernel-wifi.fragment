@@ -1,0 +1,49 @@
+# kiosk-linux/configs/kernel-wifi.fragment
+# Wi-Fi support. Promoted from "explicitly out of scope" to a hard requirement
+# on 2026-07-24: the deployment sites have no wired ethernet drop, so Wi-Fi is
+# the ONLY way these terminals reach rmpgutah.us.
+#
+# Built in (=y) rather than modules, consistent with the rest of this image —
+# there is no module infrastructure in the initramfs.
+#
+# Firmware is the part that trips people up: iwlwifi is useless without the
+# matching binary blob, which is why configs/desktop.fragment also enables the
+# linux-firmware iwlwifi packages. The kernel must be able to request them at
+# runtime, hence FW_LOADER + the user-helper path being available.
+
+# 802.11 core stack.
+CONFIG_CFG80211=y
+CONFIG_MAC80211=y
+# Load the regulatory database so the card is allowed to use the channels the
+# local domain permits. Without this the card falls back to the most
+# restrictive world domain and may not see 5 GHz networks at all.
+CONFIG_CFG80211_CRDA_SUPPORT=y
+CONFIG_RFKILL=y
+CONFIG_RFKILL_INPUT=y
+
+# Intel wireless — the FZ-55 ships Intel parts across its revisions
+# (Wireless-AC 9560 on Mk1, Wi-Fi 6 AX201 on later units). IWLMVM covers the
+# 7000-series and newer including both of those; IWLDVM covers older 5000/6000
+# parts and costs almost nothing to keep for older hardware in the fleet.
+CONFIG_IWLWIFI=y
+CONFIG_IWLMVM=y
+CONFIG_IWLDVM=y
+
+# Firmware loading from /lib/firmware (where the linux-firmware package
+# installs the iwlwifi blobs).
+CONFIG_FW_LOADER=y
+CONFIG_FW_LOADER_USER_HELPER=y
+
+# WPA2/WPA3 needs these crypto primitives available to mac80211. They are
+# normally pulled in automatically, but stating them explicitly keeps a future
+# kernel-config change from silently breaking authentication.
+CONFIG_CRYPTO_AES=y
+CONFIG_CRYPTO_CCM=y
+CONFIG_CRYPTO_GCM=y
+CONFIG_CRYPTO_CMAC=y
+CONFIG_CRYPTO_MICHAEL_MIC=y
+
+# Generic USB Wi-Fi fallback: if a site has a dongle rather than working
+# internal Wi-Fi, these two cover the most common cheap adapters.
+CONFIG_RTL8XXXU=y
+CONFIG_MT7601U=y

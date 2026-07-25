@@ -1,0 +1,142 @@
+# kiosk-linux/configs/desktop.fragment
+# RMPG Flex Desktop (sub-project 6) — turns the single-purpose kiosk into a
+# Windows-like general-purpose workstation: taskbar with Start menu, real
+# draggable/resizable windows, a file manager with desktop icons, a full
+# tabbed web browser, and a terminal.
+#
+# Appended to configs/qemu_x86_64_kiosk_defconfig via `make defconfig` reading
+# both files (see build.sh). Every symbol below was verified against the real
+# pinned Buildroot 2024.02.9 checkout rather than guessed — this project has
+# been burned repeatedly by symbols that silently do not exist and drop out of
+# .config with no error.
+#
+# WHY X11 AND NOT WAYLAND: the existing kiosk browser (cog --platform=drm)
+# talks straight to DRM/KMS with no compositor, which is exactly why it can
+# only ever show one fullscreen page. A desktop needs a window manager, and
+# X.org + Openbox is the shortest path to real Windows-style window
+# decorations, minimize/maximize/close, alt-tab, and edge snapping — all of
+# which Openbox provides natively. The X.org "modesetting" driver is built
+# into the server (no separate package since xserver 1.18) and drives BOTH
+# QEMU's virtio-gpu and the FZ-55's Intel i915 through the same KMS interface
+# the kiosk build already proved works.
+
+# ── X.org server ─────────────────────────────────────────────────────────────
+BR2_PACKAGE_XORG7=y
+BR2_PACKAGE_XSERVER_XORG_SERVER=y
+BR2_PACKAGE_XSERVER_XORG_SERVER_MODULAR=y
+# libinput input driver: keyboard, mouse/touchpad, and the FZ-55's touchscreen.
+BR2_PACKAGE_XDRIVER_XF86_INPUT_LIBINPUT=y
+# startx / xinit — how the session is launched from the init script.
+BR2_PACKAGE_XAPP_XINIT=y
+# Display geometry query + root-window setup used by the session script.
+BR2_PACKAGE_XAPP_XRANDR=y
+BR2_PACKAGE_XAPP_XSETROOT=y
+BR2_PACKAGE_XAPP_XDPYINFO=y
+
+# ── Window manager ───────────────────────────────────────────────────────────
+# Openbox: stacking WM with real title bars, window buttons, alt-tab, and
+# keyboard-driven half-screen snapping. Themed to a Windows-like look via the
+# rootfs overlay's openbox rc.xml/themerc.
+BR2_PACKAGE_OPENBOX=y
+
+# ── GTK3 stack (shell, file manager, browser all use it) ─────────────────────
+# GTK3's X11 GDK backend has a hard `depends on BR2_PACKAGE_HAS_LIBGL` — full
+# desktop OpenGL, not the GLES/EGL the kiosk build already had. Only
+# BR2_PACKAGE_MESA3D_OPENGL_GLX provides that symbol (mesa3d/Config.in:345).
+# Without it BR2_PACKAGE_LIBGTK3_X11 silently drops out of .config, which then
+# takes rmpg-shell with it — caught for real by the symbol-verification guard
+# in build.sh rather than surfacing as a missing taskbar an hour later.
+BR2_PACKAGE_MESA3D_OPENGL_GLX=y
+BR2_PACKAGE_LIBGTK3=y
+BR2_PACKAGE_LIBGTK3_X11=y
+BR2_PACKAGE_ADWAITA_ICON_THEME=y
+BR2_PACKAGE_HICOLOR_ICON_THEME=y
+BR2_PACKAGE_SHARED_MIME_INFO=y
+
+# ── Desktop applications ─────────────────────────────────────────────────────
+# pcmanfm doubles as the file manager AND the desktop-icon/wallpaper layer
+# (--desktop mode), which is why no separate desktop-shell package is needed.
+BR2_PACKAGE_PCMANFM=y
+# WebKitGTK is the browser ENGINE; the browser itself is rmpg-browser, built
+# from kiosk-linux/rmpg-browser in this repo.
+#
+# Midori was the obvious off-the-shelf choice and was tried first — it fails.
+# Midori depends on libpeas, which forces BR2_PACKAGE_GOBJECT_INTROSPECTION on
+# globally, and that broke the build for real: pango could not generate
+# Pango-1.0.gir because harfbuzz had already been built (for wpewebkit) WITHOUT
+# introspection, so HarfBuzz-0.0.gir did not exist. Recovering means force-
+# rebuilding the whole glib/harfbuzz/cairo/pango gir chain. WebKitGTK itself
+# only builds gir when introspection is already on (webkitgtk.mk:71 guards it),
+# so writing our own browser against the engine sidesteps the entire problem —
+# and drops granite, libpeas, gcr and python3 from the image as a bonus.
+BR2_PACKAGE_WEBKITGTK=y
+# Terminal — admin/diagnostic use; hidden from the Start menu in locked-down
+# mode (see the rmpg-shell menu config in the rootfs overlay).
+BR2_PACKAGE_XTERM=y
+
+# ── First-party desktop components ───────────────────────────────────────────
+# rmpg-shell (taskbar, Start menu, status indicators, Wi-Fi picker) and
+# rmpg-browser (tabbed WebKitGTK browser). Source lives in this repo under
+# kiosk-linux/rmpg-shell; build.sh copies the package definition into the
+# Buildroot tree and registers it in package/Config.in.
+BR2_PACKAGE_RMPG_SHELL=y
+
+# ── Bundled applications ─────────────────────────────────────────────────────
+# A workstation needs more than a browser. All verified present in the pinned
+# Buildroot 2024.02.9 checkout.
+BR2_PACKAGE_MUPDF=y        # PDF viewer (X11 GUI) — warrants, reports, statutes
+BR2_PACKAGE_FEH=y          # Image viewer — field photos, evidence stills
+BR2_PACKAGE_HTOP=y         # Task manager (runs in a terminal window)
+BR2_PACKAGE_NANO=y         # Console text editor, admin use
+BR2_PACKAGE_VIM=y          # Console text editor, admin use
+BR2_PACKAGE_MC=y           # Midnight Commander — console file manager, admin use
+
+# ── Wi-Fi ────────────────────────────────────────────────────────────────────
+# Promoted from out-of-scope to REQUIRED on 2026-07-24: the deployment sites
+# have no wired ethernet drop, so Wi-Fi is the only path to rmpgutah.us.
+# Kernel side lives in configs/kernel-wifi.fragment.
+#
+# connman is the network manager rather than raw wpa_supplicant + udhcpc
+# scripting: it owns scanning, association, DHCP, and — critically for an
+# unattended terminal — it PERSISTS known networks and reconnects on its own
+# after a reboot or a dropout. connmanctl gives the desktop Wi-Fi picker a
+# stable CLI to drive, with no D-Bus client code to maintain.
+BR2_PACKAGE_CONNMAN=y
+BR2_PACKAGE_CONNMAN_WIFI=y
+BR2_PACKAGE_CONNMAN_CLIENT=y
+BR2_PACKAGE_WPA_SUPPLICANT=y
+BR2_PACKAGE_WPA_SUPPLICANT_NL80211=y
+# EAP: law-enforcement and municipal networks are frequently WPA2-Enterprise,
+# which plain WPA2-PSK support cannot join at all.
+BR2_PACKAGE_WPA_SUPPLICANT_EAP=y
+BR2_PACKAGE_WPA_SUPPLICANT_CLI=y
+BR2_PACKAGE_IW=y
+
+# Regulatory database — without it the card uses the most restrictive world
+# domain and may not see 5 GHz networks.
+BR2_PACKAGE_WIRELESS_REGDB=y
+
+# Intel Wi-Fi firmware. iwlwifi is inert without the matching blob. The FZ-55
+# ships different radios across revisions, so cover the plausible range rather
+# than betting on one: 9xxx (Wireless-AC 9560, Mk1), 6E (Wi-Fi 6 AX200/AX201,
+# later units), QuZ (AX201 in some SKUs), and 8265 for older stock.
+BR2_PACKAGE_LINUX_FIRMWARE=y
+BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_9XXX=y
+BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_6E=y
+BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_QUZ=y
+BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_8265=y
+
+# ── Power management (battery indicator) ─────────────────────────────────────
+# acpid delivers lid/power-button events. The taskbar battery gauge itself
+# reads /sys/class/power_supply directly rather than going through upower —
+# one fewer daemon, no D-Bus dependency, and it works identically on the
+# FZ-55's dual batteries (BAT0 + BAT1) as on a machine with none (QEMU
+# reports no power supply at all, and the indicator simply hides).
+BR2_PACKAGE_ACPID=y
+
+# ── Fonts ────────────────────────────────────────────────────────────────────
+# Liberation is metric-compatible with Arial/Times/Courier, so pages and
+# documents authored against the Microsoft core fonts lay out correctly — the
+# closest legal match to a Windows font stack. DejaVu (already enabled in the
+# base defconfig for WebKit) stays as the fallback.
+BR2_PACKAGE_LIBERATION=y

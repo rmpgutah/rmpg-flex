@@ -64,9 +64,18 @@ LABEL slot_b
   APPEND console=ttyS0
 EXTLINUXCONF
 
-echo "Creating raw disk image ($DISK_IMG) ..."
+# Disk size must hold TWO complete slots (kernel + rootfs each) plus the
+# bootloader and filesystem overhead. 512M was ample for the kiosk-only image
+# (~112M rootfs per slot), but the desktop build adds X.org, GTK3, WebKitGTK
+# and midori, which roughly doubles the rootfs — two slots would no longer fit
+# and the copy would fail partway with a confusing ENOSPC. 2G leaves real
+# headroom for both slots plus future growth, and still writes to a 4GB+ USB
+# stick. The image is sparse until filled, so the compressed release tarball
+# only grows by what is actually used.
+DISK_SIZE="${KIOSK_DISK_SIZE:-2G}"
+echo "Creating raw disk image ($DISK_IMG, $DISK_SIZE) ..."
 rm -f "$DISK_IMG"
-truncate -s 512M "$DISK_IMG"
+truncate -s "$DISK_SIZE" "$DISK_IMG"
 
 echo "Writing partition table (one bootable primary partition, EXT2) ..."
 parted --script "$DISK_IMG" mklabel msdos

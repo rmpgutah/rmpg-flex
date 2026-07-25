@@ -1,0 +1,15 @@
+config BR2_PACKAGE_RMPG_SHELL
+	bool "rmpg-shell"
+	depends on BR2_PACKAGE_LIBGTK3
+	depends on BR2_PACKAGE_LIBGTK3_X11
+	depends on BR2_PACKAGE_XORG7
+	help
+	  RMPG Flex Desktop taskbar: Start menu, live window list, and
+	  clock. First-party shell for the kiosk-linux desktop image.
+
+	  The Start menu serves a fixed, policy-controlled application
+	  list from /etc/rmpg-desktop/apps.conf, which is what makes the
+	  locked-down terminal requirement enforceable.
+
+comment "rmpg-shell needs a GTK3 X11 build"
+	depends on !BR2_PACKAGE_LIBGTK3 || !BR2_PACKAGE_LIBGTK3_X11

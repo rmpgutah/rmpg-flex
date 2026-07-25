@@ -1,0 +1,87 @@
+#!/bin/sh
+# /etc/init.d/S99kiosk-desktop — start the RMPG Flex Desktop session.
+#
+# Replaces the old S99kiosk-browser-marker fullscreen-cog launcher. That script
+# ran `cog --platform=drm` straight against DRM/KMS with no window manager,
+# which is exactly why it could only ever show one fullscreen page. This starts
+# a real X session instead (see /etc/rmpg-desktop/xinitrc).
+#
+# Runs AFTER S98kiosk-net-marker so the network is up before the session
+# starts — the desktop opens the RMPG Flex console immediately, and a DNS
+# failure at that moment shows the user an error page they then have to
+# manually reload.
+#
+# The session is supervised: if X or the window manager exits (a crash, or the
+# user choosing "Sign out"), it restarts. A kiosk terminal must never drop to a
+# bare console and sit there.
+
+DESKTOP_LOG=/tmp/rmpg-desktop.log
+
+start() {
+    if [ ! -x /usr/bin/xinit ]; then
+        echo "KIOSK_LINUX_DESKTOP_FAILED (xinit not found — desktop packages missing)"
+        return 1
+    fi
+
+    # Home for the desktop user. pcmanfm, the browser download directory and
+    # per-session state all land here.
+    mkdir -p /root/Desktop /root/Downloads /root/Documents
+
+    (
+        # Supervision loop. A short delay between restarts stops a session that
+        # crashes instantly from spinning the CPU at 100% forever.
+        restarts=0
+        while true; do
+            xinit /etc/rmpg-desktop/xinitrc -- /usr/bin/X :0 vt1 -nolisten tcp \
+                >>"$DESKTOP_LOG" 2>&1
+            restarts=$((restarts + 1))
+            echo "KIOSK_LINUX_DESKTOP_SESSION_EXITED (restart #$restarts)" >>"$DESKTOP_LOG"
+
+            # After many rapid failures, stop trying and leave the log intact
+            # rather than hiding the cause under an endless restart cycle. The
+            # A/B boot fallback (S01kiosk-boot-slot-check) then has a chance to
+            # roll the terminal back to its previous known-good image.
+            if [ "$restarts" -ge 10 ]; then
+                echo "KIOSK_LINUX_DESKTOP_GIVING_UP (10 consecutive session exits)" >>"$DESKTOP_LOG"
+                break
+            fi
+            sleep 2
+        done
+    ) &
+
+    # Confirm the session actually came up rather than reporting success the
+    # instant the background job was spawned. xinitrc echoes the marker below
+    # once the window manager, desktop layer and taskbar are all running.
+    i=0
+    while [ "$i" -lt 120 ]; do
+        if grep -q "KIOSK_LINUX_DESKTOP_SESSION_UP" "$DESKTOP_LOG" 2>/dev/null; then
+            echo "KIOSK_LINUX_DESKTOP_OK"
+
+            # Sub-project 5: this is the confirmed-good signal the A/B
+            # slot-check fallback relies on — reset the failed-boot counter now
+            # that this boot has genuinely reached a usable desktop.
+            if [ -w /mnt/kiosk-boot/boot_attempts ]; then
+                echo "0" > /mnt/kiosk-boot/boot_attempts
+                echo "KIOSK_LINUX_BOOT_ATTEMPTS_RESET"
+            fi
+            return 0
+        fi
+        i=$((i + 1))
+        sleep 0.5
+    done
+
+    echo "KIOSK_LINUX_DESKTOP_FAILED (session did not come up within 60s, see $DESKTOP_LOG)"
+    tail -30 "$DESKTOP_LOG" 2>/dev/null
+    return 1
+}
+
+stop() {
+    killall rmpg-shell pcmanfm openbox X 2>/dev/null
+}
+
+case "$1" in
+    start) start ;;
+    stop)  stop ;;
+    restart|reload) stop; sleep 1; start ;;
+    *) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

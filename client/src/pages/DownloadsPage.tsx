@@ -2,6 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Monitor, Apple, Smartphone, Download, ChevronRight, HardDrive } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
+import WindowsInstallGuide from '../components/install/WindowsInstallGuide';
+import MacInstallGuide from '../components/install/MacInstallGuide';
+import AndroidInstallGuide from '../components/install/AndroidInstallGuide';
+import KioskOsInstallGuide from '../components/install/KioskOsInstallGuide';
 
 type Platform = 'win' | 'mac' | 'android' | 'os';
 
@@ -56,7 +60,7 @@ const PLATFORM_CONFIG: Record<Platform, {
   },
   os: {
     label: 'Kiosk Linux OS',
-    arch: 'x86_64 (QEMU/virtio-gpu)',
+    arch: 'Toughbook FZ-55 / x86_64',
     icon: HardDrive,
     ext: '.tar.gz',
     buttonLabel: 'Download .tar.gz',
@@ -172,48 +176,15 @@ export default function DownloadsPage() {
   const winExampleName = info.win?.filename?.replace(/\.zip$/, '.exe') ?? 'RMPG Flex Setup.exe';
   const androidExampleName = info.android?.filename?.replace(/\.zip$/, '.apk') ?? 'RMPG Flex.apk';
 
-  const STEPS: Record<Platform, { title: string; steps: string[]; warning?: string }> = {
-    win: {
-      title: 'Windows',
-      steps: [
-        'Download the Windows .zip package using the button above.',
-        'Right-click the downloaded .zip file and select "Extract All...".',
-        `Open the extracted folder and double-click "${winExampleName}" to install.`,
-        'If Windows SmartScreen appears, click "More info" then "Run anyway" to finish.',
-      ],
-      warning: 'Windows SmartScreen note: Because Windows SmartScreen heavily flags raw executable files (.exe) downloaded directly, we bundle the installer in a .zip archive to bypass SmartScreen and browser security protocols automatically. If Windows Defender still prompts, simply select "More info" followed by "Run anyway".',
-    },
-    mac: {
-      title: 'macOS',
-      steps: [
-        'Download the .dmg file using the button above.',
-        'Open Terminal (Cmd+Space, type "Terminal") and run: xattr -d com.apple.quarantine ~/Downloads/RMPG\\ Flex-*.dmg',
-        'Open the .dmg file and drag RMPG Flex into the Applications folder.',
-        'Run: sudo xattr -cr /Applications/RMPG\\ Flex.app (enter your password)',
-        'Right-click the app → Open → click Open. Future launches work normally.',
-      ],
-      warning: 'Getting "damaged and can\'t be opened"? Run both: xattr -d com.apple.quarantine ~/Downloads/RMPG\\ Flex-*.dmg and sudo xattr -cr /Applications/RMPG\\ Flex.app',
-    },
-    android: {
-      title: 'Android',
-      steps: [
-        'Download the Android installation package .zip file above.',
-        'Extract the zip package using your phone\'s Files/My Files manager app.',
-        `Tap and open the extracted "${androidExampleName}" file.`,
-        'Enable "Install from Unknown Sources" for your browser/file explorer if prompted, then tap Install.',
-      ],
-      warning: 'Since this app is distributed internally rather than through the Google Play Store, Android requires bundling the app (.apk) inside a .zip to bypass browser protocol blocks. Safe Browsing will let you extract and run it seamlessly.',
-    },
-    os: {
-      title: 'Kiosk Linux OS',
-      steps: [
-        'Download the .tar.gz archive using the button above.',
-        'Extract it: tar xzf kiosk-linux-os-<version>.tar.gz',
-        'This produces bzImage (kernel) and rootfs.cpio.gz (root filesystem).',
-        'Boot under QEMU: qemu-system-x86_64 -kernel bzImage -initrd rootfs.cpio.gz -append "console=ttyS0" -nographic',
-      ],
-      warning: 'This image currently targets QEMU/virtio-gpu only — it is not yet built or tested for real hardware. See kiosk-linux/README.md in the source repository for the full scope and current limitations.',
-    },
+  // Each platform's step-by-step instructions live in their own guide
+  // component under components/install/ — they are long enough (real
+  // troubleshooting, copyable commands, post-install guidance) that keeping
+  // them inline here would bury the rest of the page.
+  const GUIDES: Record<Platform, React.ReactNode> = {
+    win: <WindowsInstallGuide exeName={winExampleName} />,
+    mac: <MacInstallGuide />,
+    android: <AndroidInstallGuide apkName={androidExampleName} />,
+    os: <KioskOsInstallGuide />,
   };
 
   // ── Version display ───────────────────────────────────────────────────────
@@ -529,40 +500,8 @@ export default function DownloadsPage() {
             ))}
           </div>
 
-          {/* Steps */}
-          <div className="space-y-0">
-            {STEPS[activeTab].steps.map((step, i) => (
-              <div key={i} className="flex gap-3 py-2.5 border-b last:border-b-0" style={{ borderColor: 'var(--surface-raised)' }}>
-                <span
-                  className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-[11px] font-bold"
-                  style={{
-                    background: 'var(--surface-overlay)',
-                    color: '#d4a017',
-                    borderRadius: 2,
-                  }}
-                >
-                  {i + 1}
-                </span>
-                <span className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-400)' }}>
-                  {step}
-                </span>
-              </div>
-            ))}
-            {STEPS[activeTab].warning && (
-              <div
-                className="mt-3 p-3 text-xs leading-relaxed"
-                style={{
-                  background: 'var(--surface-sunken)',
-                  border: '1px solid var(--border-default)',
-                  color: 'var(--brand-300, #f59e0b)',
-                  borderRadius: 2,
-                }}
-              >
-                <strong style={{ color: 'var(--brand-200, #fbbf24)' }}>Note:</strong>{' '}
-                {STEPS[activeTab].warning}
-              </div>
-            )}
-          </div>
+          {/* The full guide for the selected platform. */}
+          {GUIDES[activeTab]}
         </div>
 
         {/* System Requirements */}
@@ -579,16 +518,16 @@ export default function DownloadsPage() {
               64-bit (x64) processor
             </div>
             <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
-              <strong style={{ color: 'var(--rmpg-400)' }}>macOS:</strong> macOS 10.15 (Catalina) or later<br />
-              Apple Silicon (M1/M2/M3/M4) or Intel
+              <strong style={{ color: 'var(--rmpg-400)' }}>macOS:</strong> macOS 11 (Big Sur) or later<br />
+              Apple Silicon only (M1/M2/M3/M4) — not Intel
             </div>
             <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
               <strong style={{ color: 'var(--rmpg-400)' }}>Android:</strong> Android 8.0 (Oreo) or later<br />
               Any modern smartphone or tablet
             </div>
             <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
-              <strong style={{ color: 'var(--rmpg-400)' }}>Kiosk Linux OS:</strong> x86_64, QEMU/virtio-gpu<br />
-              For fixed terminal deployments; not yet for bare hardware
+              <strong style={{ color: 'var(--rmpg-400)' }}>Kiosk Linux OS:</strong> Panasonic Toughbook FZ-55<br />
+              (or QEMU x86_64) — dedicated kiosk terminals; see dossier above
             </div>
           </div>
         </div>

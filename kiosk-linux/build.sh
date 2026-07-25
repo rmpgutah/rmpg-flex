@@ -440,6 +440,116 @@ COGPATCH4
       echo "cog SHM release-previous-export patch already written."
     fi
 
+    # 0005 (2026-07-24): the DEEPEST root cause in this whole family of SHM
+    # crashes, found once glib-networking finally let real page content
+    # render (every earlier patch was validated only against blank pages,
+    # which never destroy buffers): cog own modeset renderer calls
+    # wl_resource_set_user_data(buffer_resource, self) on the wl_shm
+    # buffer resource — but that user_data slot is OWNED BY LIBWAYLAND own
+    # wayland-shm.c, which stores its own struct wl_shm_buffer* there.
+    # wl_shm_buffer_get() and destroy_buffer() both read it back. Cog own
+    # hijack means (a) any later wl_shm_buffer_get() on that resource
+    # returns the renderer pointer as if it were a wl_shm_buffer (the
+    # original garbage-pointer SIGSEGV family), and (b) when the web
+    # process destroys a buffer, cog own destroy listener runs first, nulls
+    # user_data, and libwayland own own destroy_buffer then dereferences
+    # NULL->pool (offset 0x20) — a 100%-reproducible segfault at address
+    # 0x20 in libwayland-server.so observed the moment real page content
+    # started flowing (real pages resize and destroy buffers; blank pages
+    # never did). Fix: keep the renderer pointer in cog own own
+    # buffer_object (found via wl_container_of from the destroy listener)
+    # and leave the resource own user_data alone entirely.
+    # NOTE: the two create functions end in IDENTICAL 5-line blocks; the
+    # second hunk below deliberately carries extra UNIQUE context lines
+    # (the g_strerror error path) because GNU patch -t (as invoked by
+    # Buildroot) silently SKIPPED an identical-context second hunk as
+    # "already applied" once the first hunk had landed — observed for real:
+    # the shm-buffer create path kept the user_data hijack and crashed with
+    # renderer==NULL in the destroy listener.
+    COG_PATCH_FILE5="$COG_PATCH_DIR/0005-drm-modeset-dont-hijack-shm-resource-user-data.patch"
+    if [ ! -f "$COG_PATCH_FILE5" ]; then
+      echo "Writing $COG_PATCH_FILE5 (stop clobbering libwayland own wl_shm buffer resource user_data) ..."
+      cat > "$COG_PATCH_FILE5" <<'COGPATCH5'
+Stop hijacking the wl_shm buffer resource own user_data slot. That slot is
+owned by libwayland own wayland-shm.c (it stores its struct wl_shm_buffer*
+there; wl_shm_buffer_get() and its internal destroy_buffer() both read it
+back). Overwriting it with the renderer pointer meant later
+wl_shm_buffer_get() calls returned a non-wl_shm_buffer pointer, and — once
+real page content caused the web process to destroy buffers — libwayland own
+destroy_buffer() dereferenced the NULL this module had written into
+user_data from its own destroy listener, a 100%-reproducible segfault at
+address 0x20 inside libwayland-server.so. Keep the renderer pointer in the
+module own own buffer_object instead, reachable via wl_container_of from the
+destroy listener.
+
+--- a/platform/drm/cog-drm-modeset-renderer.c
++++ b/platform/drm/cog-drm-modeset-renderer.c
+@@ -70,6 +70,8 @@
+ struct buffer_object {
+     struct wl_list     link;
+     struct wl_listener destroy_listener;
++    /* Owning renderer; the typedef is declared later in this file. */
++    void *renderer;
+
+     uint32_t            fb_id;
+     struct gbm_bo      *bo;
+@@ -137,7 +139,7 @@
+ destroy_buffer_notify(struct wl_listener *listener, void *data)
+ {
+     struct buffer_object  *buffer = wl_container_of(listener, buffer, destroy_listener);
+-    CogDrmModesetRenderer *renderer = wl_resource_get_user_data(buffer->buffer_resource);
++    CogDrmModesetRenderer *renderer = buffer->renderer;
+
+     if (renderer->committed_buffer == buffer)
+         renderer->committed_buffer = NULL;
+@@ -145,7 +147,6 @@
+
+     wl_list_remove(&buffer->link);
+
+-    wl_resource_set_user_data(buffer->buffer_resource, NULL);
+     destroy_buffer(renderer, buffer);
+ }
+
+@@ -218,7 +219,7 @@
+     struct buffer_object *buffer = g_new0(struct buffer_object, 1);
+     wl_list_insert(&self->buffer_list, &buffer->link);
+     buffer->destroy_listener.notify = destroy_buffer_notify;
+     wl_resource_add_destroy_listener(buffer_resource, &buffer->destroy_listener);
+-    wl_resource_set_user_data(buffer_resource, self);
++    buffer->renderer = self;
+
+     buffer->fb_id = fb_id;
+     buffer->bo = bo;
+@@ -267,15 +268,15 @@
+     uint32_t fb_id = 0;
+     int ret = drmModeAddFB2(get_drm_fd(self), width, height, gbm_format, in_handles, in_strides, in_offsets, &fb_id, 0);
+     if (ret) {
+         gbm_bo_destroy(bo);
+         g_warning("failed to create framebuffer: %s", g_strerror(errno));
+         return NULL;
+     }
+
+     struct buffer_object *buffer = g_new0(struct buffer_object, 1);
+     wl_list_insert(&self->buffer_list, &buffer->link);
+     buffer->destroy_listener.notify = destroy_buffer_notify;
+     wl_resource_add_destroy_listener(buffer_resource, &buffer->destroy_listener);
+-    wl_resource_set_user_data(buffer_resource, self);
++    buffer->renderer = self;
+
+     buffer->fb_id = fb_id;
+     buffer->bo = bo;
+COGPATCH5
+      grep -q "buffer->renderer = self" "$COG_PATCH_FILE5" || {
+        echo "ERROR: cog user-data-hijack patch failed to write correctly." >&2
+        exit 1
+      }
+      # Patches only auto-apply on a fresh extract — force cog to re-extract
+      # and rebuild so an incremental run picks 0005 up.
+      touch /buildroot-src/.cog-needs-dirclean 2>/dev/null || true
+    else
+      echo "cog user-data-hijack patch already written."
+    fi
+
     # Debugging aid attempted and reverted: tried overriding cog own meson
     # buildtype to get DWARF debug info for gdb struct/variable printing.
     # Meson rejects a duplicate -Dbuildtype (Buildroot own generic
@@ -557,8 +667,125 @@ COGHASH
       echo "cog.mk already patched to disable libportal."
     fi
 
+    # Post-patch enforcement for the 0005 user_data fix. The two functions
+    # that create a buffer_object end in IDENTICAL 5-line blocks, and GNU
+    # patch (invoked by Buildroot with -t) silently treats the second
+    # occurrence as "already applied" and skips it — observed for real
+    # across three rebuilds, each time leaving the shm-buffer create path
+    # still hijacking libwayland own user_data slot and segfaulting the
+    # moment a real page destroyed a buffer. Extra unique context in the
+    # patch hunk did not reliably fix it, so this POST_PATCH hook enforces
+    # the invariant directly: after patching, NO call site may still pass
+    # `self` into wl_resource_set_user_data(). The build fails loudly if the
+    # rewrite does not stick, rather than shipping a half-patched renderer.
+    if ! grep -q "COG_POST_PATCH_HOOKS" "$COG_MK"; then
+      echo "Adding the POST_PATCH user_data-fix hook to $COG_MK ..."
+      cat /kiosk-linux/configs/cog-post-patch-hook.mk >> "$COG_MK"
+      grep -q "COG_POST_PATCH_HOOKS" "$COG_MK" || {
+        echo "ERROR: cog.mk POST_PATCH hook failed to append." >&2
+        exit 1
+      }
+      touch /buildroot-src/.cog-needs-dirclean 2>/dev/null || true
+    else
+      echo "cog.mk POST_PATCH user_data hook already present."
+    fi
+
+    # First-party desktop components (rmpg-shell taskbar + rmpg-browser).
+    # Buildroot can only build packages that live inside its own tree, so the
+    # package definition is copied in and registered in package/Config.in. The
+    # SOURCE stays in this repo at kiosk-linux/rmpg-shell and is pulled in via
+    # SITE_METHOD=local, so editing the C is a plain rmpg-shell-rebuild with no
+    # tarball or version bump.
+    RMPG_SHELL_PKG_DIR="$BUILDROOT_DIR/package/rmpg-shell"
+    mkdir -p "$RMPG_SHELL_PKG_DIR"
+    cp /kiosk-linux/rmpg-shell/buildroot-package/Config.in "$RMPG_SHELL_PKG_DIR/"
+    cp /kiosk-linux/rmpg-shell/buildroot-package/rmpg-shell.mk "$RMPG_SHELL_PKG_DIR/"
+
+    if ! grep -q "package/rmpg-shell/Config.in" "$BUILDROOT_DIR/package/Config.in"; then
+      echo "Registering rmpg-shell in package/Config.in ..."
+      # Insert next to another package in the same menu so it appears in a
+      # sensible place; appending at EOF would land outside every menu block
+      # and the symbol would never become visible to Kconfig.
+      sed -i "s|\tsource \"package/openbox/Config.in\"|\tsource \"package/openbox/Config.in\"\n\tsource \"package/rmpg-shell/Config.in\"|" "$BUILDROOT_DIR/package/Config.in"
+      grep -q "package/rmpg-shell/Config.in" "$BUILDROOT_DIR/package/Config.in" || {
+        echo "ERROR: failed to register rmpg-shell in package/Config.in" >&2
+        exit 1
+      }
+    else
+      echo "rmpg-shell already registered in package/Config.in."
+    fi
+
+    # Always force a rebuild: SITE_METHOD=local copies the source at build
+    # time, and without this an edit to rmpg-shell.c would be ignored because
+    # the package stamp is already present.
+    rm -f /build-output/build/rmpg-shell-*/.stamp_built 2>/dev/null || true
+
+    # The desktop fragment (X.org + Openbox + GTK3 + midori + pcmanfm) is
+    # purely ADDITIVE to the kiosk defconfig — it removes nothing, so one image
+    # serves both roles: it boots to a Windows-like desktop, with the original
+    # fullscreen kiosk browser still installed and launchable as an app.
+    # Buildroot own `defconfig` target takes a single BR2_DEFCONFIG file, so the
+    # two are concatenated into one generated file rather than merged by
+    # Kconfig. Set KIOSK_LINUX_DESKTOP=0 to build the lean kiosk-only image.
+    GEN_DEFCONFIG=/tmp/kiosk-linux-generated-defconfig
+    cat /kiosk-linux/configs/qemu_x86_64_kiosk_defconfig > "$GEN_DEFCONFIG"
+    if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ]; then
+      echo "Including the desktop fragment (X.org + Openbox + GTK3 + browser) ..."
+      cat /kiosk-linux/configs/desktop.fragment >> "$GEN_DEFCONFIG"
+    else
+      echo "KIOSK_LINUX_DESKTOP=0 — building the lean kiosk-only image."
+    fi
+
     echo "Applying defconfig ..."
-    make -C "$BUILDROOT_DIR" O=/build-output BR2_DEFCONFIG=/kiosk-linux/configs/qemu_x86_64_kiosk_defconfig defconfig
+    make -C "$BUILDROOT_DIR" O=/build-output BR2_DEFCONFIG="$GEN_DEFCONFIG" defconfig
+
+    # Verify the headline desktop symbols actually survived into .config.
+    # Buildroot silently DROPS any symbol whose dependencies are unmet, with no
+    # error — this project has lost packages that way before, so fail loudly
+    # here instead of discovering it in a boot log an hour later.
+    if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ]; then
+      for sym in BR2_PACKAGE_XSERVER_XORG_SERVER BR2_PACKAGE_OPENBOX \
+                 BR2_PACKAGE_LIBGTK3 BR2_PACKAGE_LIBGTK3_X11 \
+                 BR2_PACKAGE_WEBKITGTK BR2_PACKAGE_PCMANFM \
+                 BR2_PACKAGE_RMPG_SHELL BR2_PACKAGE_CONNMAN \
+                 BR2_PACKAGE_LINUX_FIRMWARE BR2_PACKAGE_WPA_SUPPLICANT; do
+        grep -q "^${sym}=y" /build-output/.config || {
+          echo "ERROR: $sym did not survive into .config — its dependencies are unmet." >&2
+          grep -n "$sym" /build-output/.config >&2 || true
+          exit 1
+        }
+      done
+      echo "Desktop symbols verified present in .config."
+    fi
+
+    # Buildroot only auto-applies package patches on a fresh source extract —
+    # when a patch block above just wrote a NEW patch file, force that
+    # package to re-extract/rebuild so an incremental run actually picks it
+    # up (flag file written by the patch-writing blocks).
+    if [ -f /buildroot-src/.cog-needs-dirclean ]; then
+      echo "New cog patch detected — forcing cog re-extract/rebuild ..."
+      make -C /build-output cog-dirclean
+      rm -f /buildroot-src/.cog-needs-dirclean
+    fi
+
+    # Packages built BEFORE the desktop fragment was introduced were configured
+    # without X11 and without desktop OpenGL, and Buildroot will not reconfigure
+    # them on its own because their stamp files already exist. That surfaces as
+    # baffling downstream failures rather than anything pointing at the cause —
+    # observed for real: libgtk3 configure died on "cairo-xlib found: NO"
+    # because cairo had been built in the kiosk era when BR2_PACKAGE_XORG7 was
+    # off, and pango kept emitting a .gir long after introspection was turned
+    # back off. Force-reconfigure the X/GL-sensitive packages the first time a
+    # desktop build runs against a kiosk-era output tree.
+    DESKTOP_MARKER=/build-output/.rmpg-desktop-enabled
+    if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ] && [ ! -f "$DESKTOP_MARKER" ]; then
+      echo "First desktop build against this output tree — reconfiguring X/GL-sensitive packages ..."
+      for pkg in mesa3d cairo libepoxy pango libgtk3; do
+        echo "  dirclean: $pkg"
+        make -C /build-output "$pkg-dirclean" >/dev/null 2>&1 || true
+      done
+      touch "$DESKTOP_MARKER"
+    fi
 
     echo "Building (this takes a while on first run) ..."
     make -C /build-output

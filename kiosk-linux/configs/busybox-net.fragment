@@ -4,3 +4,22 @@
 # makes it an explicit, non-negotiable requirement for this project rather
 # than an implicit default that could silently regress.
 CONFIG_UDHCPC=y
+# nc (netcat) backs S98kiosk-net-marker's reachability probe: a TCP connect to
+# rmpgutah.us:443 proves DNS + routing + outbound TCP without needing TLS
+# (BusyBox wget has none) or port-80 egress (a real 2026-07-24 run showed
+# plain-HTTP fetches to third-party hosts timing out on a network where the
+# browser's HTTPS load to the same target worked fine).
+CONFIG_NC=y
+# CONFIG_NC alone builds nc in its MINIMAL form — usage is literally
+# "nc [IPADDR PORT]" with NO option flags, so `nc -w 5 -z host 443` printed a
+# usage message and exited non-zero. That produced a false KIOSK_LINUX_NET_FAILED
+# on boots where the browser demonstrably loaded the site over HTTPS (confirmed
+# by running both probe forms interactively in the guest, 2026-07-24; DNS
+# resolved fine in the same run). These two options add what the probe needs:
+#   NC_EXTRA       -> -w SEC (connection timeout, so a dead network cannot hang boot)
+#   NC_110_COMPAT  -> -z     (connect-and-close with a meaningful exit code)
+# Without -z the minimal form would block waiting for server data that never
+# arrives on a bare TCP connect to 443, and the timeout kill would look like a
+# failure even on success.
+CONFIG_NC_EXTRA=y
+CONFIG_NC_110_COMPAT=y

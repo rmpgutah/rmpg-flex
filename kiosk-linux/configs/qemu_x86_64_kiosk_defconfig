@@ -118,7 +118,7 @@ BR2_LINUX_KERNEL_DEFCONFIG="x86_64"
 # /kiosk-linux inside the container (never at a path relative to BUILDROOT_DIR or
 # the O= volume), so the absolute /kiosk-linux/... form is what's actually
 # reachable at build time regardless of where Buildroot's source checkout lives.
-BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="/kiosk-linux/configs/kernel-drm.fragment /kiosk-linux/configs/kernel-net.fragment /kiosk-linux/configs/kernel-storage.fragment"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="/kiosk-linux/configs/kernel-drm.fragment /kiosk-linux/configs/kernel-net.fragment /kiosk-linux/configs/kernel-storage.fragment /kiosk-linux/configs/kernel-fz55.fragment /kiosk-linux/configs/kernel-wifi.fragment"
 
 # libdrm — DRM userspace library, plus its bundled test tools (provides modetest,
 # the diagnostic tool this sub-project uses as its proof mechanism). Symbol names
@@ -150,6 +150,11 @@ BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VIRGL=y
 # software (LLVMpipe) Gallium driver as that fallback, verified against the
 # real Buildroot 2024.02.9 checkout's package/mesa3d/Config.in:215.
 BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SWRAST=y
+# (2026-07-24) Real-hardware target: Panasonic Toughbook FZ-55's Intel UHD 620
+# iGPU (Gen9.5) — Mesa's iris Gallium driver pairs with the kernel's i915 KMS
+# driver (configs/kernel-fz55.fragment). Additive: QEMU boots keep using
+# virgl/swrast; on the FZ-55 GBM/EGL picks iris instead.
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_IRIS=y
 
 # Added after LIBGL_ALWAYS_SOFTWARE/WEBKIT_DISABLE_COMPOSITING_MODE env-var
 # workarounds both failed to fix a real, repeated boot: WPEWebProcess (the
@@ -182,6 +187,18 @@ BR2_PACKAGE_MESA3D_OPENGL_ES=y
 # root bundle WPE WebKit needs to validate rmpgutah.us's TLS certificate.
 BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="/kiosk-linux/configs/busybox-net.fragment"
 BR2_PACKAGE_CA_CERTIFICATES=y
+# (2026-07-24) glib-networking is the GIO TLS runtime module
+# (/usr/lib/gio/modules/libgiognutls.so, pulls gnutls) that libsoup3 — WPE
+# WebKit's HTTP stack — loads to perform HTTPS. Nothing links against it, so
+# its absence broke nothing at build time; at runtime EVERY https:// load
+# "succeeded" in ~50ms with an empty document that painted solid white. This
+# was the true root cause of the long-standing "browser loads pages but the
+# rendered page is blank white" limitation shipped in OS image 1.1.0:
+# isolation tests showed data: URLs and plain-HTTP pages render perfectly
+# (colors, fonts, layout) while ALL https pages (rmpgutah.us AND example.com)
+# painted white. ca-certificates above provided the trust roots, but nothing
+# was installed that could actually speak TLS to use them.
+BR2_PACKAGE_GLIB_NETWORKING=y
 
 # Kiosk browser (sub-project 3, Task 2). WPE WebKit is the embedded-Linux
 # WebKit port purpose-built for kiosk/DRM use (chosen over Chromium — Buildroot

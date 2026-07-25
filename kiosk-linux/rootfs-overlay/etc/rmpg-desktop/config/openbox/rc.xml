@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Openbox configuration for RMPG Flex Desktop.
+
+  Read via XDG_CONFIG_HOME=/etc/rmpg-desktop/config (set in xinitrc), so this
+  is system-wide policy rather than a per-user dotfile a user could edit.
+
+  The keybindings deliberately mirror Windows: Super+E for the file manager,
+  Super+D to show the desktop, Alt+Tab to cycle windows, Alt+F4 to close, and
+  Super+Left/Right for half-screen snapping.
+-->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+
+  <resistance>
+    <strength>10</strength>
+    <screen_edge_strength>20</screen_edge_strength>
+  </resistance>
+
+  <focus>
+    <focusNew>yes</focusNew>
+    <followMouse>no</followMouse>
+    <focusLast>yes</focusLast>
+    <underMouse>no</underMouse>
+  </focus>
+
+  <placement>
+    <!-- Smart placement avoids stacking every new window in the same corner,
+         which matters on a 1280x800 panel where overlap is immediate. -->
+    <policy>Smart</policy>
+    <center>yes</center>
+  </placement>
+
+  <theme>
+    <name>Clearlooks</name>
+    <titleLayout>NLIMC</titleLayout>
+    <keepBorder>yes</keepBorder>
+    <animateIconify>yes</animateIconify>
+    <font place="ActiveWindow">
+      <name>Liberation Sans</name>
+      <size>9</size>
+      <weight>bold</weight>
+    </font>
+    <font place="InactiveWindow">
+      <name>Liberation Sans</name>
+      <size>9</size>
+      <weight>normal</weight>
+    </font>
+  </theme>
+
+  <desktops>
+    <!-- One desktop. Multiple virtual desktops confuse users coming from
+         Windows and give a kiosk terminal no benefit. -->
+    <number>1</number>
+    <firstdesk>1</firstdesk>
+    <names><name>Desktop</name></names>
+  </desktops>
+
+  <!-- Leave room for the rmpg-shell taskbar. The panel also sets
+       _NET_WM_STRUT_PARTIAL, which is what actually reserves the space; this
+       margin is a belt-and-braces fallback for the brief window during startup
+       before the panel has mapped. -->
+  <margins>
+    <top>0</top>
+    <bottom>40</bottom>
+    <left>0</left>
+    <right>0</right>
+  </margins>
+
+  <keyboard>
+    <keybind key="A-Tab">
+      <action name="NextWindow"><finalactions>
+        <action name="Focus"/><action name="Raise"/><action name="Unshade"/>
+      </finalactions></action>
+    </keybind>
+    <keybind key="A-S-Tab">
+      <action name="PreviousWindow"><finalactions>
+        <action name="Focus"/><action name="Raise"/><action name="Unshade"/>
+      </finalactions></action>
+    </keybind>
+    <keybind key="A-F4">
+      <action name="Close"/>
+    </keybind>
+
+    <!-- Windows-style snapping. -->
+    <keybind key="W-Left">
+      <action name="UnmaximizeFull"/>
+      <action name="MoveResizeTo"><x>0</x><y>0</y><width>50%</width><height>100%</height></action>
+    </keybind>
+    <keybind key="W-Right">
+      <action name="UnmaximizeFull"/>
+      <action name="MoveResizeTo"><x>-0</x><y>0</y><width>50%</width><height>100%</height></action>
+    </keybind>
+    <keybind key="W-Up">
+      <action name="Maximize"/>
+    </keybind>
+    <keybind key="W-Down">
+      <action name="Iconify"/>
+    </keybind>
+    <keybind key="W-d">
+      <action name="ToggleShowDesktop"/>
+    </keybind>
+    <keybind key="W-e">
+      <action name="Execute"><command>pcmanfm</command></action>
+    </keybind>
+    <keybind key="W-b">
+      <action name="Execute"><command>rmpg-browser</command></action>
+    </keybind>
+  </keyboard>
+
+  <mouse>
+    <context name="Frame">
+      <mousebind button="A-Left" action="Drag"><action name="Move"/></mousebind>
+      <mousebind button="A-Right" action="Drag"><action name="Resize"/></mousebind>
+    </context>
+    <context name="Titlebar">
+      <mousebind button="Left" action="Drag"><action name="Move"/></mousebind>
+      <mousebind button="Left" action="DoubleClick"><action name="ToggleMaximize"/></mousebind>
+      <mousebind button="Left" action="Press">
+        <action name="Focus"/><action name="Raise"/>
+      </mousebind>
+    </context>
+    <context name="Client">
+      <mousebind button="Left" action="Press">
+        <action name="Focus"/><action name="Raise"/>
+      </mousebind>
+    </context>
+    <context name="Close">
+      <mousebind button="Left" action="Click"><action name="Close"/></mousebind>
+    </context>
+    <context name="Maximize">
+      <mousebind button="Left" action="Click"><action name="ToggleMaximize"/></mousebind>
+    </context>
+    <context name="Iconify">
+      <mousebind button="Left" action="Click"><action name="Iconify"/></mousebind>
+    </context>
+    <context name="Top">
+      <mousebind button="Left" action="Drag"><action name="Resize"><edge>top</edge></action></mousebind>
+    </context>
+    <context name="Bottom">
+      <mousebind button="Left" action="Drag"><action name="Resize"><edge>bottom</edge></action></mousebind>
+    </context>
+    <context name="Left">
+      <mousebind button="Left" action="Drag"><action name="Resize"><edge>left</edge></action></mousebind>
+    </context>
+    <context name="Right">
+      <mousebind button="Left" action="Drag"><action name="Resize"><edge>right</edge></action></mousebind>
+    </context>
+    <context name="BLCorner">
+      <mousebind button="Left" action="Drag"><action name="Resize"/></mousebind>
+    </context>
+    <context name="BRCorner">
+      <mousebind button="Left" action="Drag"><action name="Resize"/></mousebind>
+    </context>
+  </mouse>
+
+  <applications>
+    <!-- RMPG Flex opens maximized: it is the primary workload and a small
+         floating window would be the wrong first impression on every boot. -->
+    <application title="RMPG Flex">
+      <maximized>yes</maximized>
+    </application>
+  </applications>
+
+</openbox_config>

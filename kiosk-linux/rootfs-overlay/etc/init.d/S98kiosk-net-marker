@@ -1,0 +1,73 @@
+#!/bin/sh
+# /etc/init.d/S98kiosk-net-marker
+#
+# Brings the network up and reports whether the terminal can actually reach
+# rmpgutah.us. Runs before S99kiosk-desktop (numeric prefix, not a
+# lexicographic accident) so the desktop does not open the Flex console before
+# DNS is ready — a race that previously showed users an error page on the very
+# first load.
+#
+# Wi-Fi is now the primary path: the deployment sites have no wired ethernet
+# drop (2026-07-24). connman owns Wi-Fi scanning, association, DHCP, and — the
+# part that matters for an unattended terminal — reconnecting to a known
+# network by itself after a reboot or a dropout. Ethernet still works when a
+# cable is present; connman handles both and prefers the wired link.
+#
+# Always writes a line (OK or FAILED) to /tmp/kiosk-net-marker.log.
+
+MARKER=/tmp/kiosk-net-marker.log
+
+# Bring every non-loopback interface up so connman can see and manage them.
+for dev in /sys/class/net/*; do
+    name=$(basename "$dev")
+    [ "$name" = "lo" ] && continue
+    ip link set "$name" up 2>/dev/null
+done
+
+# Unblock any rfkill soft-block. A soft-blocked radio looks exactly like
+# absent hardware to userspace, and shipped laptops frequently boot blocked.
+if command -v rfkill >/dev/null 2>&1; then
+    rfkill unblock all 2>/dev/null
+fi
+
+if command -v connmanctl >/dev/null 2>&1; then
+    connmanctl enable wifi >/dev/null 2>&1
+    # Kick a scan so any already-provisioned network is found promptly rather
+    # than waiting for connman's own slower background scan cycle.
+    connmanctl scan wifi >/dev/null 2>&1
+
+    # connman reconnects to known networks on its own; wait for it to report a
+    # usable connection instead of assuming it is instant. 30s covers DHCP on
+    # a slow AP without stalling boot indefinitely on a site with no network.
+    i=0
+    while [ "$i" -lt 60 ]; do
+        state=$(connmanctl state 2>/dev/null | sed -n "s/.*State = *//p")
+        case "$state" in
+            online|ready) break ;;
+        esac
+        i=$((i + 1))
+        sleep 0.5
+    done
+else
+    # No connman (lean kiosk-only build): fall back to DHCP on the wired link.
+    udhcpc -i eth0 -n -q -t 5 -T 3 >/tmp/udhcpc.log 2>&1
+fi
+
+# Reachability is measured against the host the terminal actually needs.
+# -z connect-and-close with -w timeout; BOTH flags require BusyBox NC_110_COMPAT
+# and NC_EXTRA (configs/busybox-net.fragment). A plain CONFIG_NC=y build accepts
+# no flags at all and silently turns this check into a usage error — that bug
+# produced false NET_FAILED reports for an entire release cycle.
+if nc -w 5 -z rmpgutah.us 443 >/dev/null 2>&1; then
+    echo "KIOSK_LINUX_NET_OK" | tee "$MARKER"
+else
+    if command -v connmanctl >/dev/null 2>&1 && \
+       ! connmanctl services 2>/dev/null | grep -q .; then
+        echo "KIOSK_LINUX_NET_FAILED (no networks available — configure Wi-Fi from the desktop)" | tee "$MARKER"
+    else
+        echo "KIOSK_LINUX_NET_FAILED (network up but rmpgutah.us:443 unreachable)" | tee "$MARKER"
+    fi
+    # Not fatal: the desktop still starts, and the user can pick a Wi-Fi
+    # network from the taskbar. A terminal that refuses to boot because it
+    # cannot see the network is far worse than one that boots and says so.
+fi

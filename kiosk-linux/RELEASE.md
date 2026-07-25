@@ -11,10 +11,19 @@ the Colima/Docker toolchain this requires).
 
 1. **Build**: `cd kiosk-linux && ./build.sh` — produces
    `output/images/{bzImage,rootfs.cpio.gz}`.
-2. **Package**: `cd output/images && tar czf kiosk-linux-os-<version>.tar.gz bzImage
-   rootfs.cpio.gz` — `<version>` is this OS image's own release number, independent
-   of the RMPG Flex app version — this is a separate artifact with its own release
-   lifecycle.
+2. **Package**: `cd output/images && tar czf kiosk-linux-os-<version>.tar.gz disk.img`
+   — `<version>` is this OS image's own release number, independent of the RMPG
+   Flex app version; this is a separate artifact with its own release lifecycle.
+
+   **Ship `disk.img` ONLY.** It already contains the bootloader plus a full
+   kernel + rootfs in *each* of the two A/B slots, so adding the standalone
+   `bzImage` and `rootfs.cpio.gz` ships the same data a third and fourth time.
+   Doing that pushed the 1.2.0 tarball to 354 MiB and **`wrangler r2 object put`
+   hard-rejects anything over 300 MiB** ("Wrangler only supports uploading files
+   up to 300 MiB in size" — it fails in milliseconds, so a "finished" command is
+   not evidence the upload happened; always confirm with Step 4). disk.img alone
+   compresses to ~236 MiB, under the cap and a far smaller field download.
+   `disk.img` also boots directly under QEMU, so developers lose nothing.
 3. **Upload**: `wrangler r2 object put rmpg-flex-downloads/kiosk-linux-os-<version>.tar.gz
    --file=kiosk-linux-os-<version>.tar.gz --remote`
 4. **Verify the upload landed** (independent of whether the site code has deployed
@@ -36,6 +45,50 @@ the Colima/Docker toolchain this requires).
    space matters.
 
 ## Current release
+
+- `kiosk-linux-os-1.2.0.tar.gz` — **the first release that actually renders the
+  RMPG Flex console.** Contains `disk.img` only (the flashable A/B-slot disk
+  image field installs use, which also boots directly under QEMU — see the
+  packaging note above for why the standalone kernel/rootfs are no longer
+  shipped). Verified by a real QEMU screenshot showing the live
+  login screen — warning banner, seal, login panel, and the device panel
+  reporting Server/Connection Online — with zero segfaults across the run.
+  - **Root cause of the 1.1.0 "loads pages but renders blank white"
+    limitation: `glib-networking` was missing.** That package provides the GIO
+    TLS module libsoup3 (WPE WebKit's HTTP stack) loads to perform HTTPS.
+    `ca-certificates` supplied the trust roots, but nothing in the image could
+    actually speak TLS, so every `https://` load "succeeded" in ~50ms with an
+    empty document that painted white. Isolation testing proved it: `data:`
+    URLs and plain-HTTP pages rendered perfectly (colors, fonts, layout) while
+    *every* HTTPS page — rmpgutah.us and example.com alike — came back blank.
+    The rendering pipeline was never at fault.
+  - **Cog SIGSEGV finally root-caused (patch 0005).** Once real content flowed,
+    cog crashed immediately and reproducibly. Cog's DRM renderer writes its own
+    pointer into the wl_shm buffer resource's `user_data` slot, but that slot is
+    owned by libwayland's `wayland-shm.c`. Real pages destroy buffers (blank
+    pages never did), and on the first destroy libwayland dereferenced the NULL
+    cog's listener had written there — segfault at address 0x20. Fixed by
+    keeping the renderer pointer in cog's own `buffer_object`. ⚠️ The two
+    affected call sites end in *identical* lines and GNU `patch -t` silently
+    skips the second as "already applied" — a `COG_POST_PATCH_HOOKS` hook
+    (`configs/cog-post-patch-hook.mk`) now enforces the fix at every call site
+    and **fails the build** if any survive.
+  - **Panasonic Toughbook FZ-55 hardware enablement** (`configs/kernel-fz55.fragment`
+    + Mesa `iris`): Intel UHD 620 graphics, Intel gigabit ethernet, NVMe/SATA
+    storage, USB boot, and HID/multitouch input. Purely additive — the same
+    image still boots under QEMU on virtio. **Not yet validated on physical
+    FZ-55 hardware** — first-article validation is required before fleet rollout.
+  - **Boot-marker fixes:** three markers were reporting false failures — the DRM
+    self-test raced the browser for display ownership (`modetest` cannot set a
+    mode while cog holds DRM master — that the browser is scanning out *is* the
+    proof the stack works), the network check used plain HTTP on a network that
+    blocks port 80, and the browser started before DNS was ready (renamed
+    `S99kiosk-net-marker` → `S98` so ordering is numeric, not a lexicographic
+    accident).
+  - Removed the `WEBKIT_DEBUG` / compositing-debug-visuals env vars from the
+    browser launcher — those drew literal yellow tile borders over the kiosk UI.
+
+### Previous releases
 
 - `kiosk-linux-os-1.1.0.tar.gz` — packaged 2026-07-23, not yet uploaded (pending
   explicit confirmation before the real R2 upload). Adds sub-project 3
