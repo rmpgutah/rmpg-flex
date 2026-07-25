@@ -409,8 +409,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
       {/* Period Filter */}
       <div className="flex items-center gap-1.5">
-        <Calendar className="w-3 h-3 text-accent-gold-300" />
-        <span className="text-[8px] text-accent-gold-300 uppercase font-bold tracking-wider mr-2">Period</span>
+        <Calendar className="w-3 h-3 text-accent-silver-500" />
+        <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider mr-2">Period</span>
         {PERIOD_OPTIONS.map((opt) => (
           <button
             key={opt.value}
@@ -431,8 +431,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         {/* Total Fleet Costs */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <DollarSign className="w-3 h-3 text-accent-gold-300" />
-            <span className="text-[8px] text-accent-gold-300 uppercase font-bold tracking-wider">Total Fleet Costs</span>
+            <DollarSign className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Total Fleet Costs</span>
             <InfoTooltip text={KPI_TOOLTIPS.total_fleet_costs} />
           </div>
           <div className="text-xl font-bold font-mono text-rmpg-100 tabular-nums">
@@ -447,8 +447,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         {/* Average MPG */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <Fuel className="w-3 h-3 text-accent-gold-300" />
-            <span className="text-[8px] text-accent-gold-300 uppercase font-bold tracking-wider">Average MPG</span>
+            <Fuel className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Average MPG</span>
             <InfoTooltip text={KPI_TOOLTIPS.average_mpg} />
           </div>
           <div className="text-xl font-bold font-mono text-rmpg-100 tabular-nums">
@@ -460,8 +460,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         {/* Service Compliance */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <Wrench className="w-3 h-3 text-accent-gold-300" />
-            <span className="text-[8px] text-accent-gold-300 uppercase font-bold tracking-wider">Service Compliance</span>
+            <Wrench className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Service Compliance</span>
             <InfoTooltip text={KPI_TOOLTIPS.service_compliance} />
           </div>
           <div className={`text-xl font-bold font-mono tabular-nums ${complianceRate >= 80 ? 'text-green-400' : complianceRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
@@ -475,8 +475,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         {/* Inspection Pass Rate */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <CheckCircle className="w-3 h-3 text-accent-gold-300" />
-            <span className="text-[8px] text-accent-gold-300 uppercase font-bold tracking-wider">Inspection Pass Rate</span>
+            <CheckCircle className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Inspection Pass Rate</span>
             <InfoTooltip text={KPI_TOOLTIPS.inspection_pass_rate} />
           </div>
           <div className={`text-xl font-bold font-mono tabular-nums ${inspPassRate >= 80 ? 'text-green-400' : inspPassRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
@@ -492,7 +492,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Maintenance Cost Trend (Bar Chart) */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <DollarSign className="w-3 h-3" /> Maintenance Cost Trend
           </h4>
           {maintenance_cost_trend.length > 0 ? (
@@ -513,7 +513,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
         {/* Fuel Economy Trend (Line Chart) */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Fuel className="w-3 h-3" /> Fuel Economy Trend
           </h4>
           {fuel_economy_trend.length > 0 ? (
@@ -537,7 +537,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Top Vehicles by Cost */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <TrendingUp className="w-3 h-3" /> Top Vehicles by Cost
           </h4>
           {(cost_per_mile_ranking && cost_per_mile_ranking.length > 0) ? (
@@ -574,7 +574,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
         {/* Service Alerts */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <ShieldAlert className="w-3 h-3" /> Service Alerts
             {serviceAlerts.length > 0 && (
               <span className="ml-auto bg-red-900/40 text-red-400 px-1.5 py-0.5 rounded-[2px] text-[8px] font-mono tabular-nums">
@@ -611,7 +611,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Daily Mileage Run (GPS miles per day, fleet-wide) */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Gauge className="w-3 h-3" /> Daily Mileage Run
           </h4>
           {dailyMileageRun.length > 0 ? (
@@ -647,7 +647,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
         {/* Fleet Status (Donut) */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Car className="w-3 h-3" /> Fleet Status
           </h4>
           {status_breakdown.length > 0 ? (
@@ -698,7 +698,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Daily Fleet Utilization (Area Chart) */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Activity className="w-3 h-3" /> Daily Fleet Utilization
           </h4>
           {daily_usage && daily_usage.length > 0 ? (
@@ -751,7 +751,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
         {/* Maintenance Forecast */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Wrench className="w-3 h-3" /> Maintenance Forecast
           </h4>
           {maintenance_forecast && maintenance_forecast.length > 0 ? (
@@ -801,8 +801,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         {/* Avg Daily Miles */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <Gauge className="w-3 h-3 text-accent-gold-300" />
-            <span className="text-[8px] text-accent-gold-300 uppercase font-bold tracking-wider">Avg Daily Miles</span>
+            <Gauge className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Avg Daily Miles</span>
           </div>
           <div className="text-lg font-bold font-mono text-rmpg-100 tabular-nums">
             {avg_daily_miles != null && avg_daily_miles > 0 ? avg_daily_miles.toFixed(1) : '--'}
@@ -813,8 +813,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         {/* Total Vehicles */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <Car className="w-3 h-3 text-accent-gold-300" />
-            <span className="text-[8px] text-accent-gold-300 uppercase font-bold tracking-wider">Total Vehicles</span>
+            <Car className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Total Vehicles</span>
           </div>
           <div className="text-lg font-bold font-mono text-rmpg-100 tabular-nums">
             {fleet_summary.total_vehicles}
@@ -825,8 +825,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         {/* Oldest Vehicle */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <Calendar className="w-3 h-3 text-accent-gold-300" />
-            <span className="text-[8px] text-accent-gold-300 uppercase font-bold tracking-wider">Oldest Vehicle</span>
+            <Calendar className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Oldest Vehicle</span>
           </div>
           <div className="text-lg font-bold font-mono text-rmpg-100 tabular-nums">
             {oldest_vehicle_year ?? '--'}
@@ -837,8 +837,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         {/* Fleet Utilization */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <Activity className="w-3 h-3 text-accent-gold-300" />
-            <span className="text-[8px] text-accent-gold-300 uppercase font-bold tracking-wider">Fleet Utilization</span>
+            <Activity className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Fleet Utilization</span>
           </div>
           <div className="text-lg font-bold font-mono tabular-nums text-accent-gold-300">
             {utilization ? `${utilization.rate}%` : '--'}
@@ -864,7 +864,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
       {/* ROW 7: Combined Cost Trend (Full Width) */}
       <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-        <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+        <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
           <TrendingUp className="w-3 h-3" /> Combined Cost Trend (12 Months)
         </h4>
         {costTrendChartData.length > 0 ? (
@@ -913,7 +913,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 7b: Monthly Spend (Last 8 Months) */}
       {monthlySpend.length > 0 && (
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <DollarSign className="w-3 h-3" /> Monthly Spend (Last 8 Months)
           </h4>
           <ResponsiveContainer width="100%" height={200}>
@@ -946,7 +946,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
       {/* ROW 7c: Daily GPS Mileage (Start of Shift → End of Shift) */}
       <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-        <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+        <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
           <Gauge className="w-3 h-3" /> Daily GPS Mileage (Start of Shift — End of Shift)
         </h4>
         {dailyGpsLoading ? (
@@ -993,7 +993,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Top Maintenance Issues (Horizontal Bar Chart) */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Wrench className="w-3 h-3" /> Top Maintenance Issues
           </h4>
           {top_issues && top_issues.length > 0 ? (
@@ -1029,7 +1029,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
         {/* Vehicle Lifecycle Table */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Activity className="w-3 h-3" /> Vehicle Lifecycle
           </h4>
           {lifecycle.length > 0 ? (
@@ -1086,7 +1086,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           onClick={() => setCompareExpanded(!compareExpanded)}
           className="w-full flex items-center justify-between p-3 hover:bg-surface-sunken transition-colors duration-150"
         >
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Search className="w-3 h-3" /> Compare Vehicles
           </h4>
           {compareExpanded ? (
@@ -1241,7 +1241,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 10: Vehicle Health Dashboard */}
       <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
         <div className="flex items-center justify-between mb-3">
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Heart className="w-3 h-3" /> Vehicle Health Scores
           </h4>
           <select id="ff-fleetanalyticstab-0"
@@ -1331,7 +1331,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 11: Maintenance Schedule */}
       <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
         <div className="flex items-center gap-2 mb-3">
-          <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Wrench className="w-3 h-3" /> Maintenance Schedule
           </h4>
           {overdueCount > 0 && (
@@ -1394,7 +1394,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
       {/* ROW 12: Driver Performance */}
       <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-        <h4 className="text-[9px] text-accent-gold-300 uppercase font-bold tracking-wider flex items-center gap-1.5 mb-3">
+        <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider flex items-center gap-1.5 mb-3">
           <User className="w-3 h-3" /> Driver Performance
         </h4>
         {driverPerf.length > 0 ? (
