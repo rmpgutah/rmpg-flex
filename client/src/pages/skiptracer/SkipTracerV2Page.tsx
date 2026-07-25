@@ -263,7 +263,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 function categoryColor(category: string): string {
-  return CATEGORY_COLORS[category] || 'var(--rmpg-500)';
+  return CATEGORY_COLORS[category] || 'var(--text-muted)';
 }
 
 function sourceColor(source: string): string {

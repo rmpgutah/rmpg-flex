@@ -94,10 +94,23 @@ try {
 Write-Step 'Removing OS files'
 # The BCD backup is kept deliberately — if the boot entry removal above failed,
 # it is the recovery path, and it is only a few hundred kilobytes.
-foreach ($f in @('bzImage', 'rootfs.cpio.gz')) {
+# Updated 2026-07-25 for the A/B layout. The kernel and rootfs now live in
+# slot_a/ and slot_b/ rather than at the top level, so a loop over two filenames
+# removed nothing and left the whole payload — hundreds of megabytes — behind on
+# a drive the operator believed had been cleaned. Top-level names stay in the
+# list to also clean up installs made before the slots existed.
+foreach ($f in @('bzImage', 'rootfs.cpio.gz', 'slot.cfg', 'boot_attempts')) {
     $p = Join-Path $InstallDir $f
     if (Test-Path $p) { Remove-Item $p -Force; Write-Ok "Removed $f" }
 }
+foreach ($slot in @('slot_a', 'slot_b')) {
+    $p = Join-Path $InstallDir $slot
+    if (Test-Path $p) { Remove-Item $p -Recurse -Force; Write-Ok "Removed $slot" }
+}
+# Hardware reports written by rmpg-hwreport during bring-up. Diagnostics, safe to
+# discard on uninstall.
+$hw = Join-Path $InstallDir 'hwreports'
+if (Test-Path $hw) { Remove-Item $hw -Recurse -Force; Write-Ok 'Removed hwreports' }
 if (Test-Path $BackupDir) {
     Write-Warn "Kept the boot-configuration backup at $BackupDir (safe to delete once the machine has rebooted normally)"
 } elseif (Test-Path $InstallDir) {

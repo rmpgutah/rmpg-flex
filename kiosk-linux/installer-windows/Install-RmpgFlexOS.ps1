@@ -186,8 +186,16 @@ Write-Ok 'Found bzImage, rootfs.cpio.gz and grubx64.efi'
 # Free space: the two files plus headroom. Checked against the actual sizes
 # rather than a guessed constant, since the desktop image is much larger than
 # the kiosk one.
+#
+# ×2 as of 2026-07-25 for the A/B slots. This install writes a full kernel and
+# rootfs into BOTH slot_a and slot_b, so the requirement doubled — roughly 660 MB
+# rather than 330 MB for the current desktop image. Leaving the old figure would
+# have passed the precheck on a nearly-full drive and then run out of space
+# partway through writing the second slot, which is the worst place to stop: the
+# firmware boot entry is not added until later, but the volume would be full.
+$slotCount = 2
 $needed = ((Get-Item (Join-Path $SourceDir 'bzImage')).Length +
-           (Get-Item (Join-Path $SourceDir 'rootfs.cpio.gz')).Length) * 1.2
+           (Get-Item (Join-Path $SourceDir 'rootfs.cpio.gz')).Length) * $slotCount * 1.2
 $freeBytes = (Get-PSDrive -Name $env:SystemDrive.Trim(':')).Free
 if ($freeBytes -lt $needed) {
     Fail ("Not enough free space on {0} — need about {1:N0} MB, have {2:N0} MB." -f `
@@ -229,9 +237,47 @@ To undo all of this later, run Uninstall-RmpgFlexOS.ps1.
 Write-Step "Copying OS files to $InstallDir"
 New-Item -ItemType Directory -Force -Path $InstallDir  | Out-Null
 New-Item -ItemType Directory -Force -Path $BackupDir   | Out-Null
-Copy-Item (Join-Path $SourceDir 'bzImage')        (Join-Path $InstallDir 'bzImage')        -Force
-Copy-Item (Join-Path $SourceDir 'rootfs.cpio.gz') (Join-Path $InstallDir 'rootfs.cpio.gz') -Force
-Write-Ok 'Kernel and RAM filesystem copied'
+
+# ── A/B slots (2026-07-25) ───────────────────────────────────────────────────
+#
+# This path used to install ONE copy of the kernel and rootfs directly in
+# $InstallDir. The USB install has had A/B slots with automatic rollback since
+# sub-project 5; this path had none, so a bad over-the-air update on a no-USB
+# terminal had nothing to fall back to — and no-USB is the primary install
+# method for the fleet, because it needs no stick carried to each vehicle.
+#
+# Both slots are seeded with the SAME image, exactly as
+# scripts/assemble-disk-image.sh does for the USB path, so the terminal starts
+# with a known-good fallback already present rather than acquiring one on its
+# first successful update.
+#
+# GRUB picks the slot by sourcing slot.cfg, a two-line file the running system
+# rewrites through rmpg_bootstore_set_slot. That indirection is what makes the
+# pointer writable from Linux at all: grub-editenv is not in this image, so a
+# grubenv block would need tooling the terminal does not have, whereas a plain
+# text file needs nothing beyond NTFS3 write support (also new in this pass).
+foreach ($slot in @('slot_a', 'slot_b')) {
+    $slotDir = Join-Path $InstallDir $slot
+    New-Item -ItemType Directory -Force -Path $slotDir | Out-Null
+    Copy-Item (Join-Path $SourceDir 'bzImage')        (Join-Path $slotDir 'bzImage')        -Force
+    Copy-Item (Join-Path $SourceDir 'rootfs.cpio.gz') (Join-Path $slotDir 'rootfs.cpio.gz') -Force
+    Write-Ok "Seeded $slot"
+}
+
+# The slot pointer, and the failed-boot counter S01kiosk-boot-slot-check
+# maintains. Written with ASCII + Unix line endings deliberately: GRUB parses
+# this file, and a UTF-8 BOM (which PowerShell would add by default) makes GRUB
+# fail to read the first line.
+$slotCfg = "# Written by the installer; rewritten by rmpg-update on the terminal.`nset rmpg_slot=slot_a`n"
+[System.IO.File]::WriteAllText((Join-Path $InstallDir 'slot.cfg'), $slotCfg, (New-Object System.Text.ASCIIEncoding))
+[System.IO.File]::WriteAllText((Join-Path $InstallDir 'boot_attempts'), "0`n", (New-Object System.Text.ASCIIEncoding))
+Write-Ok 'Slot pointer set to slot_a, failed-boot counter initialised'
+
+# A copy at the old top-level location is deliberately NOT kept. Two bootable
+# copies of the kernel on one volume, only one of which the updater maintains,
+# is how a terminal ends up silently booting a stale image after an update that
+# reported success.
+Write-Ok 'Kernel and RAM filesystem copied into both slots'
 
 Write-Step 'Backing up the current boot configuration'
 # bcdedit /export is the supported way to snapshot the BCD store. If anything
@@ -262,31 +308,80 @@ try {
     # (hd0,gpt3) — disk enumeration is not stable across machines or firmware,
     # and a hardcoded index is the single most common reason a hand-rolled
     # GRUB entry boots on the bench and fails in the field.
-    $grubCfg = @"
+    # A/B aware. The active slot comes from slot.cfg on the Windows volume, which
+    # the terminal rewrites when it stages an update or rolls back.
+    #
+    # `set rmpg_slot=slot_a` before sourcing is the fallback, not a default to be
+    # overwritten blindly: if slot.cfg is missing, unreadable, or truncated by a
+    # power loss mid-write, GRUB still has a valid slot to boot. Without it a
+    # damaged pointer would expand to an empty path and the machine would drop to
+    # a GRUB prompt in a vehicle — the exact unattended failure this design is
+    # meant to prevent. (boot-store.sh writes the pointer via a same-directory
+    # rename to keep that window as close to zero as the filesystem allows.)
+    # VERBATIM here-string (@' '@), not an expandable one (@" "@). Every $ below
+    # is a GRUB variable that must reach grub.cfg literally, and PowerShell would
+    # expand them to empty strings inside @" "@ — producing a config that boots
+    # nothing, from a file that looks correct in the source. Escaping each one
+    # with a backtick would also work, but requires being right every time; a
+    # verbatim here-string cannot get it wrong. (Note PowerShell escapes with a
+    # backtick, NOT a backslash, so `\$rmpg_slot` would emit a literal backslash
+    # and still expand the variable.)
+    $grubCfg = @'
 set timeout=5
 set default=0
 
+# Locate the Windows volume that holds the OS files, by content rather than by a
+# partition index — disk enumeration is not stable across machines or firmware.
+search --no-floppy --file --set=rmpgroot /RMPG-Flex-OS/slot_a/bzImage
+
+# Fallback before sourcing, so a missing or truncated slot.cfg still boots
+# something rather than dropping to a GRUB prompt in a vehicle.
+set rmpg_slot=slot_a
+if [ -f ($rmpgroot)/RMPG-Flex-OS/slot.cfg ]; then
+    source ($rmpgroot)/RMPG-Flex-OS/slot.cfg
+fi
+
 menuentry "RMPG Flex OS" {
-    search --no-floppy --file --set=root /RMPG-Flex-OS/bzImage
-    linux  /RMPG-Flex-OS/bzImage console=tty0 quiet
-    initrd /RMPG-Flex-OS/rootfs.cpio.gz
+    set root=$rmpgroot
+    linux  /RMPG-Flex-OS/$rmpg_slot/bzImage console=tty0 quiet
+    initrd /RMPG-Flex-OS/$rmpg_slot/rootfs.cpio.gz
 }
 
 menuentry "RMPG Flex OS (verbose boot, for troubleshooting)" {
-    search --no-floppy --file --set=root /RMPG-Flex-OS/bzImage
-    linux  /RMPG-Flex-OS/bzImage console=tty0
-    initrd /RMPG-Flex-OS/rootfs.cpio.gz
+    set root=$rmpgroot
+    linux  /RMPG-Flex-OS/$rmpg_slot/bzImage console=tty0
+    initrd /RMPG-Flex-OS/$rmpg_slot/rootfs.cpio.gz
+}
+
+# Both slots reachable by hand. If automatic rollback itself fails, this is what
+# an officer can be talked through over the radio without a USB stick.
+menuentry "RMPG Flex OS (force slot_a)" {
+    set root=$rmpgroot
+    linux  /RMPG-Flex-OS/slot_a/bzImage console=tty0
+    initrd /RMPG-Flex-OS/slot_a/rootfs.cpio.gz
+}
+
+menuentry "RMPG Flex OS (force slot_b)" {
+    set root=$rmpgroot
+    linux  /RMPG-Flex-OS/slot_b/bzImage console=tty0
+    initrd /RMPG-Flex-OS/slot_b/rootfs.cpio.gz
 }
 
 menuentry "Windows" {
-    insmod part_gpt
-    insmod fat
-    insmod chain
+    # No `insmod` here on purpose. part_gpt, fat and chain are compiled INTO
+    # grubx64.efi (BR2_TARGET_GRUB2_BUILTIN_MODULES_EFI), and this build ships no
+    # module directory on the ESP — so `insmod chain` would look for a chain.mod
+    # that does not exist and raise an error inside the entry that is supposed to
+    # get the officer back into Windows.
     search --no-floppy --file --set=root /EFI/Microsoft/Boot/bootmgfw.efi
     chainloader /EFI/Microsoft/Boot/bootmgfw.efi
 }
-"@
-    Set-Content -Path (Join-Path $efiDir 'grub.cfg') -Value $grubCfg -Encoding ASCII
+'@
+    # WriteAllText rather than Set-Content, matching how slot.cfg is written:
+    # Set-Content appends a platform line ending and its encoding defaults have
+    # changed between PowerShell 5.1 and 7, and GRUB parses this file. Writing
+    # the exact bytes leaves nothing to a host default.
+    [System.IO.File]::WriteAllText((Join-Path $efiDir 'grub.cfg'), $grubCfg, (New-Object System.Text.ASCIIEncoding))
     Write-Ok "Bootloader installed to $EfiVendorDir"
 
     Write-Step 'Adding the boot entry'

@@ -1999,7 +1999,7 @@ export default function IncidentsPage() {
                 <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)' }}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? 'var(--sev-critical)' : offense.offense_level === 'misdemeanor' ? 'var(--sev-warn)' : 'var(--rmpg-500)' }}>
+                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? 'var(--sev-critical)' : offense.offense_level === 'misdemeanor' ? 'var(--sev-warn)' : 'var(--text-muted)' }}>
                         {offense.offense_code}
                       </span>
                       <span className="text-xs text-rmpg-100 font-medium truncate">{offense.description}</span>
@@ -2148,7 +2148,7 @@ export default function IncidentsPage() {
                   citation: 'var(--sev-warn-rgb)',
                   arrest: 'var(--pink-400-rgb, 236 72 153)',
                 };
-                const fg = typeColors[link.linked_type] || 'var(--rmpg-500)';
+                const fg = typeColors[link.linked_type] || 'var(--text-muted)';
                 const rgb = typeColorRgb[link.linked_type] || 'var(--rmpg-500-rgb)';
                 const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
                 return (

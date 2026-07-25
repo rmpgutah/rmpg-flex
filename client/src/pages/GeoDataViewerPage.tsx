@@ -469,7 +469,7 @@ export default function GeoDataViewerPage() {
               style={{
                 background: 'var(--surface-base)',
                 border: '1px solid var(--border-default)',
-                color: sorted.length ? 'var(--rmpg-400)' : 'var(--rmpg-600)',
+                color: sorted.length ? 'var(--rmpg-400)' : 'var(--text-muted)',
                 cursor: sorted.length ? 'pointer' : 'not-allowed',
               }}
             >
@@ -553,7 +553,7 @@ export default function GeoDataViewerPage() {
                   className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
                   style={{
                     background: viewMode === 'table' ? 'var(--surface-raised)' : 'var(--surface-overlay)',
-                    color: viewMode === 'table' ? 'var(--rmpg-400)' : 'var(--rmpg-500)',
+                    color: viewMode === 'table' ? 'var(--rmpg-400)' : 'var(--text-muted)',
                     cursor: 'pointer',
                   }}
                 >
@@ -568,7 +568,7 @@ export default function GeoDataViewerPage() {
                   className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
                   style={{
                     background: viewMode === 'map' ? 'var(--surface-raised)' : 'var(--surface-overlay)',
-                    color: viewMode === 'map' ? 'var(--rmpg-400)' : 'var(--rmpg-500)',
+                    color: viewMode === 'map' ? 'var(--rmpg-400)' : 'var(--text-muted)',
                     cursor: 'pointer',
                     borderLeft: '1px solid var(--surface-raised)',
                   }}
@@ -586,7 +586,7 @@ export default function GeoDataViewerPage() {
                 style={{
                   background: showFilter ? 'var(--surface-raised)' : 'var(--surface-overlay)',
                   border: `1px solid ${showFilter ? 'var(--border-default)' : 'var(--surface-raised)'}`,
-                  color: showFilter ? 'var(--rmpg-400)' : 'var(--rmpg-500)',
+                  color: showFilter ? 'var(--rmpg-400)' : 'var(--text-muted)',
                   cursor: 'pointer',
                 }}
               >

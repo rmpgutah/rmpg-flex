@@ -143,7 +143,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
       <span
         className="text-[7px] font-black uppercase px-1 py-px rounded-sm"
         style={{
-          background: colors[ch] || 'var(--rmpg-500)',
+          background: colors[ch] || 'var(--text-muted)',
           color: 'var(--surface-base)',
           letterSpacing: '0.05em',
         }}
@@ -217,7 +217,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
               className="text-[8px] font-bold uppercase px-1.5 py-0.5 transition-colors"
               style={{
                 background: composeChannel === ch ? 'var(--spm-text-muted)' : 'transparent',
-                color: composeChannel === ch ? 'var(--surface-base)' : 'var(--rmpg-500)',
+                color: composeChannel === ch ? 'var(--surface-base)' : 'var(--text-muted)',
                 border: `1px solid ${composeChannel === ch ? 'var(--spm-text-muted)' : 'var(--border-subtle)'}`,
               }}
             >
@@ -770,7 +770,7 @@ export default function MdtPage() {
       case 'P1': return 'var(--sev-critical)';
       case 'P2': return 'var(--sev-high)';
       case 'P3': return 'var(--sev-caution)';
-      default: return 'var(--rmpg-500)';
+      default: return 'var(--text-muted)';
     }
   };
 
@@ -1146,7 +1146,7 @@ export default function MdtPage() {
                 className="flex-1 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
                 style={{
                   background: activeTab === tab ? 'var(--surface-deep)' : 'transparent',
-                  color: activeTab === tab ? 'var(--sev-ok)' : 'var(--rmpg-500)',
+                  color: activeTab === tab ? 'var(--sev-ok)' : 'var(--text-muted)',
                   borderBottom: activeTab === tab ? '2px solid var(--sev-ok)' : '2px solid transparent',
                 }}
               >

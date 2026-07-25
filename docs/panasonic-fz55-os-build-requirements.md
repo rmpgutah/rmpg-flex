@@ -1,5 +1,31 @@
 # Panasonic Toughbook FZ-55 — build requirements for a privately built OS
 
+> ## ⚠️ Partially superseded — read this box first (2026-07-25, second pass)
+>
+> This document was written from **search-engine summaries** because its session could
+> not reach any Panasonic page (see section 1). A later session **did** have network and
+> retrieved the real pages, which corrected several conclusions here. The third-party
+> dependency manifest, the corrected hardware map, and the build-side findings now live
+> in **[`docs/fz55-third-party-build-dependencies.md`](fz55-third-party-build-dependencies.md)**.
+>
+> Still authoritative here: sections 2–4 (model split, the two tracks, the Panasonic
+> download checklist), 7 (boot/firmware prerequisites), 8 (lifecycle/EOL) and 9 (the
+> first-article checklist).
+>
+> **Corrected by the second pass — do not act on these below:**
+>
+> | Section | What it says | What is actually true |
+> | --- | --- | --- |
+> | 1 | "No Panasonic page was actually opened" | The pages were later retrieved; the `[P]` tags in section 5 are now backed by real page contents |
+> | 5 | Ethernet is `e1000e`, part number unconfirmed | **Confirmed** Intel I219 — *and* the FZ-55 also ships a Realtek PCIe NIC (`r8169`) and a Realtek USB/dock NIC (`r8152`). Three NICs, not one |
+> | 5 | Bluetooth "❌ not enabled" | Kernel side was enabled by PR #3023 — but the firmware never was, so it did not work. Fixed in the second pass |
+> | 5 | SD reader is `sdhci-pci` (Intel PCH) | The controller is a **BayHub** part; `sdhci-pci` covers it via the O2Micro/BayHub quirk path, unvalidated |
+> | 5 | WWAN is Sierra EM7455 / EM7511 | mk3 ships **EM7421 (EU) / EM7511 (US-CA) / EM7595 (US-CA)** plus the EM9190 5G xPAK |
+> | 5, 6 | `panasonic-laptop` is the hotkey driver to try | Panasonic's factory list evidences **Intel HID Event Filter** (`intel_hid`) instead; both are now enabled |
+> | 6 | Items 1–8 are "missing" | Most were closed by PR #3023 the same day — but **that PR never reached the built kernel at all** (Buildroot ignores config-fragment content changes). See the new document, section 7 |
+> | 6 | SOF audio blobs "must come from `linux-firmware`" | Intel SOF firmware is **not in linux-firmware 20240115** and Buildroot 2024.02.9 has no `sof-bin` package. It is a real work item, not a config flag |
+>
+
 **Status:** research complete, hardware-unvalidated · **Date:** 2026-07-25
 · **Revised:** 2026-07-25 after PR #3023 landed a datasheet-grounded hardware audit —
 sections 5 and 6 were rewritten against it; where it disagrees with an inference here, it wins.

@@ -601,7 +601,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 onClick={() => setActiveTab(tab.id)}
                 className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors"
                 style={{
-                  color: activeTab === tab.id ? '#ffffff' : 'var(--rmpg-500)',
+                  color: activeTab === tab.id ? '#ffffff' : 'var(--text-muted)',
                   borderBottom: activeTab === tab.id ? '2px solid #888888' : '2px solid transparent',
                   background: activeTab === tab.id ? 'rgba(136, 136, 136, 0.08)' : 'transparent',
                 }}

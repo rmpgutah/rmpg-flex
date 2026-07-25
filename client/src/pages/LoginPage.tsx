@@ -797,7 +797,7 @@ export default function LoginPage() {
                         onClick={() => setShowPassword(!showPassword)}
                                               className="absolute right-0 top-1/2 -translate-y-1/2 transition-colors flex items-center justify-center w-11 h-11 text-rmpg-500"
                         onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                         tabIndex={0}
                       >
@@ -826,7 +826,7 @@ export default function LoginPage() {
                   onClick={() => { setForgotPwActive(true); setForgotPwStep('username'); setForgotUsername(loginUsername); setForgotError(''); }}
                                     className="w-full text-center text-[10px] uppercase tracking-wider font-bold mt-2 transition-colors text-rmpg-500"
                   onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--brand-gold)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
                   aria-label="Forgot password"
                 >
                   Forgot Password?
@@ -914,7 +914,7 @@ export default function LoginPage() {
                     onClick={handleBackWebAuthn}
                                         className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5 text-rmpg-500"
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
                     aria-label="Go back to credentials"
                   >
                     <ArrowLeft className="w-3 h-3" aria-hidden="true" />
@@ -927,7 +927,7 @@ export default function LoginPage() {
                       disabled={loginBusy}
                                             className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5 text-rmpg-500"
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#d97706'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
                       aria-label="Verify with YubiKey security key"
                     >
                       <Usb className="w-3 h-3" aria-hidden="true" />
@@ -938,7 +938,7 @@ export default function LoginPage() {
                       onClick={() => { setTwoFactorMode('backup'); setUseBackupCode(true); clearError(); }}
                                             className="text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5 text-rmpg-500"
                       onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--rmpg-400)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
                       aria-label="Use a backup recovery code"
                     >
                       Backup Code
@@ -985,7 +985,7 @@ export default function LoginPage() {
                     onClick={handleBackWebAuthn}
                                         className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors text-rmpg-500"
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
                   >
                     <ArrowLeft className="w-3 h-3" />
                     Back
@@ -1037,7 +1037,7 @@ export default function LoginPage() {
                     onClick={handleBackWebAuthn}
                                         className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors text-rmpg-500"
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
                   >
                     <ArrowLeft className="w-3 h-3" />
                     Back
@@ -1047,7 +1047,7 @@ export default function LoginPage() {
                     onClick={() => { setTwoFactorMode('totp'); clearError(); }}
                                         className="text-[10px] uppercase tracking-wide font-bold transition-colors text-rmpg-500"
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--rmpg-400)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
                   >
                     Use Authenticator
                   </button>

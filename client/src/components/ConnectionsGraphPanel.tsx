@@ -233,7 +233,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                     stroke="var(--border-default)" strokeWidth={1.5} strokeDasharray="4,3"
                   />
                   {e.label && (
-                    <text x={mx} y={my - 4} textAnchor="middle" fontSize={7} fill="var(--rmpg-500)" fontFamily="monospace">
+                    <text x={mx} y={my - 4} textAnchor="middle" fontSize={7} fill="var(--text-muted)" fontFamily="monospace">
                       <title>{sentence}</title>
                       {e.label}
                     </text>
@@ -284,7 +284,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   {n.subLabel && (
                     <text
                       x={n.x} y={n.y + r + 19} textAnchor="middle"
-                      fontSize={6} fill="var(--rmpg-500)" fontFamily="monospace"
+                      fontSize={6} fill="var(--text-muted)" fontFamily="monospace"
                     >
                       {n.subLabel}
                     </text>

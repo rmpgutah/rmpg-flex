@@ -200,7 +200,7 @@ export default function ModuleTileBar({
                 cursor: 'pointer',
                 transition: 'all 120ms ease',
                 background: active ? 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' : 'transparent',
-                color: active ? '#d1d5db' : 'var(--rmpg-500)',
+                color: active ? '#d1d5db' : 'var(--text-muted)',
                 borderBottom: active ? '2px solid #6f6f6f' : '2px solid transparent',
                 boxShadow: active ? 'inset 0 1px 0 rgba(255,255,255,0.03), 0 0 10px rgba(255,255,255,0.04)' : 'none',
               }}
@@ -215,7 +215,7 @@ export default function ModuleTileBar({
                 if (!active) {
                   (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
                   (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
-                  (e.currentTarget as HTMLButtonElement).style.color = 'var(--rmpg-500)';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)';
                 }
               }}
             >

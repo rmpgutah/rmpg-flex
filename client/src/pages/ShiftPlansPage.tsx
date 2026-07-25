@@ -85,10 +85,10 @@ function todayStr() {
 // already palette-aware); archived/completed share the muted-gray
 // surface used by other "terminal-state" pills across the app.
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  draft:     { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-400)', border: 'var(--rmpg-600)' },
+  draft:     { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-400)', border: 'var(--border-default)' },
   active:    { bg: 'rgba(var(--sev-ok-rgb),0.15)',     text: 'var(--sev-ok)',   border: 'rgba(var(--sev-ok-rgb),0.5)' },
-  completed: { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-400)', border: 'var(--rmpg-500)' },
-  archived:  { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-500)', border: 'var(--rmpg-600)' },
+  completed: { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-400)', border: 'var(--border-default)' },
+  archived:  { bg: 'var(--surface-sunken)',           text: 'var(--text-muted)', border: 'var(--border-default)' },
 };
 
 function PlanStatusBadge({ status }: { status: string }) {
@@ -556,7 +556,7 @@ export default function ShiftPlansPage() {
                     className="px-3 py-2.5 cursor-pointer transition-all duration-150 border-b border-rmpg-800/50 hover:brightness-110"
                     style={{
                       background: isSelected ? 'var(--surface-raised)' : 'transparent',
-                      borderLeft: `3px solid ${shiftConfig?.color || 'var(--rmpg-500)'}`,
+                      borderLeft: `3px solid ${shiftConfig?.color || 'var(--border-default)'}`,
                     }}
                     role="button"
                     tabIndex={0}
