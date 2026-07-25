@@ -61,7 +61,7 @@ export default function MergePanel({
     <div className="w-[320px] flex-shrink-0 bg-surface-sunken border border-border-default rounded-[2px] flex flex-col text-rmpg-200 text-xs">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
         <span className="font-semibold text-rmpg-100 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
-          <Merge className="w-3.5 h-3.5 text-[#d4a017]" /> Mail Merge
+          <Merge className="w-3.5 h-3.5 text-accent-silver-300" /> Mail Merge
         </span>
         <button type="button" onClick={onClose} aria-label="Close mail merge" className="text-rmpg-500 hover:text-rmpg-100"><X className="w-3.5 h-3.5" /></button>
       </div>
@@ -78,18 +78,18 @@ export default function MergePanel({
                 onChange={(e) => setCallNumber(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') lookupCall(); }}
                 placeholder="Call number…"
-                className="w-full bg-surface-sunken border border-border-default rounded-[2px] pl-6 pr-2 py-1 text-[11px] focus:border-[#d4a017]/40 focus:outline-none"
+                className="w-full bg-surface-sunken border border-border-default rounded-[2px] pl-6 pr-2 py-1 text-[11px] focus:border-accent-silver-500/40 focus:outline-none"
               />
             </div>
             <button type="button" onClick={lookupCall} disabled={loadingCall}
-              className="px-2 py-1 text-[10px] bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20 disabled:opacity-50">
+              className="px-2 py-1 text-[10px] bg-accent-silver-500/10 border border-accent-silver-500/30 text-accent-silver-300 rounded-[2px] hover:bg-accent-silver-500/20 disabled:opacity-50">
               {loadingCall ? '…' : 'Fetch'}
             </button>
           </div>
           {callError && <div className="text-[10px] text-red-400/80 mt-1">{callError}</div>}
           {call && (
             <div className="mt-1.5 p-1.5 bg-surface-base border border-border-default rounded-[2px] text-[10px]">
-              <div className="text-[#d4a017] font-mono">{String(call.call_number || '')}</div>
+              <div className="text-accent-silver-300 font-mono">{String(call.call_number || '')}</div>
               <div className="text-rmpg-300">{String(call.call_type || '')} · {String(call.address || '')}</div>
             </div>
           )}
@@ -102,10 +102,10 @@ export default function MergePanel({
           </div>
           {placeholders.length === 0 && (
             <p className="text-[10px] text-rmpg-600 leading-snug">
-              No <code className="text-[#d4a017]">{'{{tokens}}'}</code> found. Add tokens like
-              {' '}<code className="text-[#d4a017]">{'{{officer_name}}'}</code>,
-              {' '}<code className="text-[#d4a017]">{'{{call_number}}'}</code>,
-              {' '}<code className="text-[#d4a017]">{'{{address}}'}</code> and they'll be filled here.
+              No <code className="text-accent-silver-300">{'{{tokens}}'}</code> found. Add tokens like
+              {' '}<code className="text-accent-silver-300">{'{{officer_name}}'}</code>,
+              {' '}<code className="text-accent-silver-300">{'{{call_number}}'}</code>,
+              {' '}<code className="text-accent-silver-300">{'{{address}}'}</code> and they'll be filled here.
             </p>
           )}
           <div className="space-y-0.5">
@@ -114,7 +114,7 @@ export default function MergePanel({
               const val = auto ?? manual[p] ?? '';
               return (
                 <div key={p} className="flex items-center gap-1">
-                  <code className="text-[10px] text-[#d4a017] w-28 truncate" title={p}>{`{{${p}}}`}</code>
+                  <code className="text-[10px] text-accent-silver-300 w-28 truncate" title={p}>{`{{${p}}}`}</code>
                   {auto !== undefined ? (
                     <span className="min-w-0 flex-1 text-[10px] text-rmpg-300 truncate" title={auto}>{auto || <span className="text-rmpg-600 italic">empty</span>}</span>
                   ) : (
@@ -122,7 +122,7 @@ export default function MergePanel({
                       value={manual[p] ?? ''}
                       onChange={(e) => setManual((m) => ({ ...m, [p]: e.target.value }))}
                       placeholder="(manual)"
-                      className="flex-1 bg-surface-sunken border border-border-default rounded-[2px] px-1.5 py-0.5 text-[10px] focus:border-[#d4a017]/40 focus:outline-none"
+                      className="flex-1 bg-surface-sunken border border-border-default rounded-[2px] px-1.5 py-0.5 text-[10px] focus:border-accent-silver-500/40 focus:outline-none"
                     />
                   )}
                 </div>
@@ -145,7 +145,7 @@ export default function MergePanel({
         </button>
         <button type="button" onClick={doMerge}
           disabled={placeholders.length === 0}
-          className="flex-1 px-2 py-1.5 text-[10px] font-medium bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20 disabled:opacity-40 flex items-center justify-center gap-1">
+          className="flex-1 px-2 py-1.5 text-[10px] font-medium bg-accent-silver-500/10 border border-accent-silver-500/30 text-accent-silver-300 rounded-[2px] hover:bg-accent-silver-500/20 disabled:opacity-40 flex items-center justify-center gap-1">
           <Merge className="w-3 h-3" /> Merge into document
         </button>
       </div>
