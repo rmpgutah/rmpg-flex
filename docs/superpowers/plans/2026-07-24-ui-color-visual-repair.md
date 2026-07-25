@@ -18,7 +18,12 @@
 - **Do not touch** PDF generators (`*Pdf*.ts`, `pdfTokens.ts`, `pdf-editor/` canvas), Mapbox paint literals outside `mapboxBasemap.ts`, `.tactical-dark` fixed values, or test fixtures/snapshots.
 - **Border radius is 2px everywhere** — never `rounded-lg`.
 - **Gold appears only** via `--field-label-color`, `--panel-header-color`, or the map palette. Any other gold surface is a defect by definition.
-- **Brand gold value is `#b8912f`** (deepened antique brass), **not** legacy `#d4a017`. Rationale: `#d4a017` is a near-neighbour of `--sev-warn #f59e0b`, and decorative gold must not read as an alert.
+- **Gold is split by role, and this is measured, not preference** (decided 2026-07-24 after running the contrast numbers):
+  - **Text roles** (field labels, panel/section headers, map major place labels) use `--accent-gold-300 #d9bd72`. It passes WCAG AA on all three navy surfaces (5.83 / 4.63 / 7.02 against base / raised / sunken).
+  - **Graphic roles** (map arterial *lines*) use `--accent-gold-500 #b8912f`. Lines are graphical objects, which need only 3:1 per WCAG §1.4.11; `#b8912f` passes at 3.63 on navy base.
+  - **`#b8912f` must NOT be used for text.** It measures 2.88:1 on `--surface-raised` — below AA, and raised panels are exactly where field labels sit.
+  - Legacy `#d4a017` is banned outright: it fails AA too (4.50 / 3.57 / 5.41) *and* has the worst separation from `--sev-warn` (1.11).
+  - Gold remains banned from badges, chips, status icons, and anything that reports a condition. Static chrome cannot signal state; transient indicators can, which is where amber-confusion actually bites.
 - **`--brand-gold` stays aliased to silver** under Blue & Silver. ~500 files consume the `brand-gold-*` ramp expecting silver; repointing it would flip them all to gold.
 - **Every `setPaint`/`setLayout` in `mapboxBasemap.ts` stays guarded** — a cosmetic restyle must never blank a map.
 - **Gates (all must pass, baseline is clean so any failure is yours):**
@@ -442,9 +447,11 @@ describe('Blue & Silver accent tokens', () => {
     expect(block).toMatch(/--brand-gold:\s*var\(--accent-silver-500\)/);
   });
 
-  it('routes both gold roles through dedicated variables', () => {
-    expect(block).toMatch(/--field-label-color:\s*var\(--accent-gold-500\)/);
-    expect(block).toMatch(/--panel-header-color:\s*var\(--accent-gold-500\)/);
+  it('routes both gold text roles through the AA-passing 300 step', () => {
+    // 300 (#d9bd72), NOT 500 (#b8912f): 500 measures 2.88:1 on --surface-raised,
+    // below WCAG AA, and raised panels are where field labels live.
+    expect(block).toMatch(/--field-label-color:\s*var\(--accent-gold-300\)/);
+    expect(block).toMatch(/--panel-header-color:\s*var\(--accent-gold-300\)/);
   });
 
   it('does not alter the warning severity hues', () => {
@@ -502,9 +509,16 @@ In `client/src/styles/theme-palettes.css`, inside `html.theme-blue-silver`, repl
   /* The only two gold roles in the app (per the 2026-07-24 design decision):
      field labels and section/panel headers. Everything else stays silver. Any
      gold surface NOT resolving through these two vars or the map palette is a
-     defect, which is what makes the live audit assertion mechanical. */
-  --field-label-color: var(--accent-gold-500);
-  --panel-header-color: var(--accent-gold-500);
+     defect, which is what makes the live audit assertion mechanical.
+
+     These point at the 300 step, NOT 500. Measured 2026-07-24: 500 (#b8912f)
+     is 3.63/2.88/4.36 against base/raised/sunken navy — below WCAG AA 4.5:1
+     for the 9-11px type these labels use, and raised panels are exactly where
+     field labels sit. 300 (#d9bd72) is 5.83/4.63/7.02 and passes everywhere.
+     500 is retained for map arterial LINES, which are graphical objects needing
+     only 3:1 (WCAG 1.4.11) and pass at 3.63. Do not "restore" 500 here. */
+  --field-label-color: var(--accent-gold-300);
+  --panel-header-color: var(--accent-gold-300);
 ```
 
 Remove the old `--brand-gold: #c3ccd6;` declaration from the `--brand-blue` line (leave `--brand-blue: #5a9ae0;` intact) and remove the superseded `--brand-gold-*-rgb` / `--field-label-color` lines further down the block so each variable is declared exactly once.
@@ -551,7 +565,15 @@ console.log(fn.padEnd(11),sn.padEnd(7),ratio(fv,sv).toFixed(2));
 "
 ```
 
-Expected: every `silver500` row ≥ 4.5. If any **`gold500`** row is below 4.5, that role fails WCAG AA for text — switch `--field-label-color` and `--panel-header-color` to `var(--accent-gold-400)` (`#c9a74e`) and re-run. The constraint (dull, deep, distinguishable from amber, ≥4.5:1 for text roles) is fixed; the exact step is not. Record the chosen step in the commit message.
+This is now a **regression check, not an exploration** — the values were measured on 2026-07-24 and the role split was decided from the results. Confirm you reproduce these:
+
+| Foreground | base | raised | sunken | Verdict |
+|---|---|---|---|---|
+| `gold300 #d9bd72` (text roles) | 5.83 | 4.63 | 7.02 | passes AA |
+| `gold500 #b8912f` (map lines only) | 3.63 | **2.88** | 4.36 | fails AA — never use for text |
+| `silver500 #c3ccd6` | 6.57 | 5.22 | 7.92 | passes AA |
+
+If your numbers differ, a token value was transcribed wrong — fix the token, do not adjust the table. If `gold300`'s minimum drops below 4.5, stop and report; do not silently pick a different step.
 
 - [ ] **Step 7: Run the full gates**
 
@@ -979,9 +1001,10 @@ describe('MAP_PALETTE', () => {
     document.documentElement.className = '';
   });
 
-  it('uses the deepened gold for arterials and major labels', () => {
+  it('uses deep gold for arterial lines and lighter gold for major label text', () => {
+    // Split by WCAG role: lines need 3:1, text needs 4.5:1 on navy.
     expect(MAP_PALETTE.arterial).toBe('#b8912f');
-    expect(MAP_PALETTE.labelMajor).toBe('#b8912f');
+    expect(MAP_PALETTE.labelMajor).toBe('#d9bd72');
   });
 
   it('uses silver for secondary roads and minor labels', () => {
@@ -1066,8 +1089,13 @@ Add above `applyDark`:
 export const MAP_PALETTE = Object.freeze({
   land: '#22405f',        // navy base
   water: '#142840',       // darker navy step
-  arterial: '#b8912f',    // GOLD — motorway / trunk / primary
-  labelMajor: '#b8912f',  // GOLD — city / town / settlement-major
+  // GOLD, split by WCAG role. Arterials are LINES (graphical objects, 3:1 per
+  // 1.4.11) so they take the deep brass, which measures 3.63 on navy. Major
+  // place labels are TEXT (4.5:1 per 1.4.3) so they take the lighter 300-step
+  // gold, which measures 4.63+. Do not unify these two on #b8912f — that would
+  // put unreadable text on the map.
+  arterial: '#b8912f',    // GOLD (deep)  — motorway / trunk / primary LINES
+  labelMajor: '#d9bd72',  // GOLD (light) — city / town / settlement-major TEXT
   road: '#c3ccd6',        // silver — secondary / tertiary
   roadMinor: '#7c8b9e',   // dim silver — residential / service
   boundary: '#46688c',    // subtle navy-silver border
@@ -1531,14 +1559,24 @@ Add, after the existing bullet list:
 
 ```markdown
 - **Gold (reintroduced 2026-07-24).** Blue & Silver is now Blue / Silver / **Gold**.
-  Brand gold is `--accent-gold-500 #b8912f` — a deepened antique brass,
-  deliberately NOT legacy `#d4a017`, because legacy gold is a hue neighbour of
-  `--sev-warn #f59e0b` and decorative chrome must never read as an overdue or
-  threshold alert. Gold has exactly **two** app roles, both routed through
-  variables: `--field-label-color` and `--panel-header-color`. Any other gold
-  surface is a defect. Everything structural — borders, dividers, secondary text,
-  icons, brand chrome, active/selected state — stays silver
-  (`--accent-silver-*`).
+  Legacy `#d4a017` is banned: it is a hue neighbour of `--sev-warn #f59e0b`
+  (decorative chrome must never read as an overdue/threshold alert) *and* it fails
+  WCAG AA on navy (4.50 / 3.57 / 5.41 against base / raised / sunken).
+  Gold is **split by WCAG role**, measured 2026-07-24:
+  - **Text** — `--accent-gold-300 #d9bd72`, which passes AA everywhere
+    (5.83 / 4.63 / 7.02). Used by `--field-label-color`, `--panel-header-color`,
+    and the map's major place labels.
+  - **Graphics** — `--accent-gold-500 #b8912f`, used only for map arterial lines.
+    Graphical objects need 3:1 (WCAG 1.4.11) and this passes at 3.63.
+    **Never use `#b8912f` for text**: it is 2.88:1 on `--surface-raised`, and
+    raised panels are exactly where field labels sit.
+
+  Gold has exactly **two** app roles, both routed through variables:
+  `--field-label-color` and `--panel-header-color`. Any other gold surface is a
+  defect. Gold is banned from badges, chips, status icons, and anything reporting
+  a condition — static chrome cannot signal state, transient indicators can.
+  Everything structural — borders, dividers, secondary text, icons, brand chrome,
+  active/selected state — stays silver (`--accent-silver-*`).
 - **`--brand-gold` is a compat alias that renders SILVER.** ~500 files consume the
   `brand-gold-*` Tailwind ramp expecting silver; that swap was the original theme's
   identity. Prefer `--accent-silver-*` / `--accent-gold-*` in new code.
