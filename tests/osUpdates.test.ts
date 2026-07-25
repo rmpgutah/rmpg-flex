@@ -1,11 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
+import { SignJWT } from 'jose';
 import osUpdates from '../src/routes/osUpdates';
 
 /**
  * The promote gate is the highest-consequence code in the OS update path: a
  * mistake here reboots every terminal in the fleet into an untested image. These
  * tests pin the guards that make that impossible by accident.
+ *
+ * These tests drive the REAL authMiddleware — a signed JWT plus a users-table
+ * lookup — rather than injecting `c.get('user')` directly. That distinction is
+ * the whole point: the earlier version of this file set `user` from its own
+ * middleware, which no longer resembled production once the router was mounted
+ * `auth: 'public'`. Nothing populated `user` there, so /os/promote answered 403
+ * to admins and officers alike, and all twelve tests still passed — a green
+ * suite certifying a gate that could never be opened. Fabricating a precondition
+ * production cannot produce does not merely miss a bug; it endorses it.
  */
 
 function bucket(objects: Record<string, string>) {
@@ -29,12 +39,42 @@ const MANIFEST = [
 ].join('\n');
 
 
+const JWT_SECRET = 'test-secret-for-os-updates';
+
+/** A signed session token of the shape authMiddleware actually accepts. */
+async function bearer(userId = 1): Promise<Record<string, string>> {
+  const token = await new SignJWT({ user_id: userId })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime('1h')
+    .sign(new TextEncoder().encode(JWT_SECRET));
+  return { Authorization: `Bearer ${token}` };
+}
+
+/**
+ * Stands in for the `users` row authMiddleware looks up after verifying the JWT.
+ * Returns null when no user is configured, which is how an inactive/absent
+ * account behaves.
+ */
+function usersDb(user?: { role: string }) {
+  const row = user
+    ? { id: 1, username: 'tester', role: user.role, full_name: 'Tester', status: 'active' }
+    : null;
+  return {
+    prepare: () => ({
+      bind: () => ({ first: async () => row, all: async () => ({ results: row ? [row] : [] }) }),
+      first: async () => row,
+      all: async () => ({ results: row ? [row] : [] }),
+    }),
+  } as any;
+}
+
 function mount(objects: Record<string, string>, user?: { role: string }) {
   const app = new Hono();
-  // Mirror routesConfig: mounted at /api, and the promote handler reads c.get('user').
+  // Mirror routesConfig for real: mounted at /api as a PUBLIC entry, with no
+  // ambient middleware setting `user`. Anything that needs a role has to earn it
+  // through authMiddleware inside the router, exactly as it does in production.
   app.use('*', async (c, next) => {
-    if (user) c.set('user' as never, user as never);
-    c.env = { DOWNLOADS: bucket(objects), DB: {} as any } as never;
+    c.env = { DOWNLOADS: bucket(objects), DB: usersDb(user), JWT_SECRET } as never;
     await next();
   });
   app.route('/api', osUpdates);
@@ -85,10 +125,25 @@ describe('GET /api/os/manifest', () => {
 });
 
 describe('POST /api/os/promote — the gate before the fleet installs anything', () => {
+  it('rejects an unauthenticated caller at the middleware, not the handler', async () => {
+    // The router is mounted PUBLIC so terminals can poll the manifest, so the
+    // gate depends entirely on authMiddleware being registered on this one path.
+    // 401 (not 403) proves the middleware ran: the handler's own role check
+    // answers 403, so a 403 here would mean auth was skipped and the request
+    // reached the handler with no user.
+    const app = mount({ 'os/staging/manifest.txt': MANIFEST }, { role: 'admin' });
+    const res = await app.request('/api/os/promote', {
+      method: 'POST',
+      body: JSON.stringify({ version: '1.3.0' }),
+    });
+    expect(res.status).toBe(401);
+  });
+
   it('requires admin or manager', async () => {
     const app = mount({ 'os/staging/manifest.txt': MANIFEST }, { role: 'officer' });
     const res = await app.request('/api/os/promote', {
       method: 'POST',
+      headers: await bearer(),
       body: JSON.stringify({ version: '1.3.0' }),
     });
     expect(res.status).toBe(403);
@@ -99,6 +154,7 @@ describe('POST /api/os/promote — the gate before the fleet installs anything',
     const app = mount({ 'os/staging/manifest.txt': MANIFEST }, { role: 'admin' });
     const res = await app.request('/api/os/promote', {
       method: 'POST',
+      headers: await bearer(),
       body: JSON.stringify({ version: '1.2.0' }),
     });
     expect(res.status).toBe(409);
@@ -108,28 +164,62 @@ describe('POST /api/os/promote — the gate before the fleet installs anything',
 
   it('requires the version to be named at all', async () => {
     const app = mount({ 'os/staging/manifest.txt': MANIFEST }, { role: 'admin' });
-    const res = await app.request('/api/os/promote', { method: 'POST', body: '{}' });
+    const res = await app.request('/api/os/promote', {
+      method: 'POST',
+      headers: await bearer(),
+      body: '{}',
+    });
     expect(res.status).toBe(400);
   });
 
   it('copies staging to stable when the version matches', async () => {
+    // The case that was unreachable in production: a real admin, with a real
+    // token, actually getting through the gate.
     const objects: Record<string, string> = { 'os/staging/manifest.txt': MANIFEST };
     const app = mount(objects, { role: 'admin' });
     const res = await app.request('/api/os/promote', {
       method: 'POST',
+      headers: await bearer(),
       body: JSON.stringify({ version: '1.3.0' }),
     });
     expect(res.status).toBe(200);
     expect(objects['os/stable/manifest.txt']).toBe(MANIFEST);
   });
 
+  it('lets a manager promote too, not just an admin', async () => {
+    const objects: Record<string, string> = { 'os/staging/manifest.txt': MANIFEST };
+    const app = mount(objects, { role: 'manager' });
+    const res = await app.request('/api/os/promote', {
+      method: 'POST',
+      headers: await bearer(),
+      body: JSON.stringify({ version: '1.3.0' }),
+    });
+    expect(res.status).toBe(200);
+  });
+
   it('404s when staging is empty', async () => {
     const app = mount({}, { role: 'admin' });
     const res = await app.request('/api/os/promote', {
       method: 'POST',
+      headers: await bearer(),
       body: JSON.stringify({ version: '1.3.0' }),
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('the public endpoints stay public', () => {
+  // The counterweight to the promote gate: scoping auth to /os/promote must not
+  // leak onto the polling endpoints. A terminal boots with no user at all, so a
+  // 401 here would silently strand the entire fleet on its current image.
+  it('serves the manifest with no credentials', async () => {
+    const app = mount({ 'os/stable/manifest.txt': MANIFEST });
+    expect((await app.request('/api/os/manifest')).status).toBe(200);
+  });
+
+  it('serves the channel report with no credentials', async () => {
+    const app = mount({ 'os/stable/manifest.txt': MANIFEST });
+    expect((await app.request('/api/os/channels')).status).toBe(200);
   });
 });
 
