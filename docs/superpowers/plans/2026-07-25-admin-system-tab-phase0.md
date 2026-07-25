@@ -926,8 +926,8 @@ assertion window — widen the `waitFor` timeout to 2000 ms rather than removing
 cd client && npx tsc --noEmit
 ```
 
-Expected: no NEW errors. There are 12 pre-existing errors in the client tree; compare
-against `git stash` output if unsure whether one is yours.
+Expected: 0 errors. (`CLAUDE.md` claims 12 pre-existing client type errors; that is stale —
+the tree typechecks clean as of 2026-07-25.)
 
 - [ ] **Step 6: Commit**
 
@@ -1229,10 +1229,16 @@ Expected: `6`
 cd client && npx tsc --noEmit && npx vitest run
 ```
 
-Expected: no NEW type errors; no NEW test failures. Baseline per `CLAUDE.md` is 12
-pre-existing type errors and 9 pre-existing failures across 4 files
-(equipmentCustodyPdf/prettyAction, MdtPage, PlateLogPage). Anything beyond that baseline is
-yours to fix.
+Expected: **zero** type errors and **zero** test failures.
+
+`CLAUDE.md` claims a baseline of 12 pre-existing type errors and 9 pre-existing failures —
+that is stale. Verified during Task 4 (2026-07-25, via `git stash`): the client tree
+typechecks clean at 0 errors and the full suite is green at 2075 passing / 1 skipped across
+252 files. Treat **any** error or failure as yours. Do not wave one off as pre-existing.
+
+If `client/node_modules` is absent in a fresh worktree, run
+`npm install --legacy-peer-deps` from `client/` first, and do **not** commit the resulting
+`client/package-lock.json` churn — it is outside this plan's scope.
 
 - [ ] **Step 8: Commit**
 
