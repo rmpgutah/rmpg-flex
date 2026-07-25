@@ -1,0 +1,236 @@
+#!/bin/sh
+# /usr/bin/rmpg-update — over-the-air OS updater for RMPG Flex terminals.
+#
+# Downloads a new OS image into the INACTIVE A/B slot, verifies it, and flips
+# the default slot so the next reboot runs it. The running slot is never
+# touched, so a failed or interrupted update cannot break the terminal the
+# officer is currently using — worst case nothing changes and it tries again
+# later.
+#
+# This pairs with S01kiosk-boot-slot-check, which already rolls back to the
+# other slot after 3 failed boots. Together: a bad image gets one chance, fails
+# to reach a healthy state 3 times, and the terminal returns to the version it
+# was running before, unattended and with no site visit.
+#
+# Deliberately a shell script against a static manifest rather than a daemon
+# with a control channel. A terminal that can be remotely told to run arbitrary
+# code is a liability in a vehicle; this can only ever fetch a signed-by-hash
+# image from a fixed URL and reboot.
+#
+#   rmpg-update check      report what is available, change nothing
+#   rmpg-update apply      download + verify + stage + flip the slot
+#   rmpg-update status     what is installed and staged
+set -u
+
+MANIFEST_URL="${RMPG_UPDATE_MANIFEST:-https://api.rmpgutah.us/api/os/manifest}"
+CHANNEL="${RMPG_UPDATE_CHANNEL:-stable}"
+MOUNT_POINT=/mnt/kiosk-boot
+EXTLINUX_CONF="$MOUNT_POINT/extlinux.conf"
+VERSION_FILE=/etc/rmpg-os-version
+STATE_DIR="$MOUNT_POINT/update-state"
+LOG_TAG="rmpg-update"
+
+log() { echo "[$LOG_TAG] $*"; logger -t "$LOG_TAG" "$*" 2>/dev/null; }
+die() { log "ERROR: $*"; exit 1; }
+
+installed_version() { cat "$VERSION_FILE" 2>/dev/null || echo "0.0.0"; }
+
+active_slot() {
+    grep '^DEFAULT ' "$EXTLINUX_CONF" 2>/dev/null | awk '{print $2}'
+}
+
+inactive_slot() {
+    [ "$(active_slot)" = "slot_a" ] && echo "slot_b" || echo "slot_a"
+}
+
+# Semantic-version compare: is $1 strictly newer than $2? Pure shell so the
+# image needs no extra tooling.
+version_gt() {
+    [ "$1" = "$2" ] && return 1
+    newest="$(printf '%s\n%s\n' "$1" "$2" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)"
+    [ "$newest" = "$1" ]
+}
+
+require_boot_mount() {
+    mountpoint -q "$MOUNT_POINT" 2>/dev/null && return 0
+    mkdir -p "$MOUNT_POINT"
+    mount -t ext2 /dev/vda1 "$MOUNT_POINT" 2>/dev/null \
+        || die "boot partition not mounted and could not be mounted"
+}
+
+# Remount read-write only for the moments we must write, then drop back. The
+# boot partition is the one thing whose corruption cannot be recovered from in
+# the field, so it spends as little time writable as possible.
+boot_rw()  { mount -o remount,rw "$MOUNT_POINT" 2>/dev/null; }
+boot_ro()  { sync; mount -o remount,ro "$MOUNT_POINT" 2>/dev/null; }
+
+fetch_manifest() {
+    # -T: never hang forever on a captive portal, which is a realistic state
+    # for a vehicle terminal parked near a hotel or municipal hotspot.
+    wget -q -T 20 -O - "$MANIFEST_URL?channel=$CHANNEL&current=$(installed_version)" 2>/dev/null
+}
+
+# The manifest is flat key=value, not JSON: no JSON parser exists in this image
+# and adding one to parse four fields is not worth the attack surface.
+#   version=1.3.0
+#   kernel_url=https://.../kiosk-os-1.3.0-bzImage
+#   kernel_sha256=...
+#   rootfs_url=https://.../kiosk-os-1.3.0-rootfs.cpio.gz
+#   rootfs_sha256=...
+manifest_field() { printf '%s\n' "$1" | grep "^$2=" | head -1 | cut -d= -f2-; }
+
+verify_sha256() {
+    file="$1"; expected="$2"
+    [ -n "$expected" ] || { log "WARNING: no checksum published — refusing"; return 1; }
+    actual="$(sha256sum "$file" 2>/dev/null | cut -d' ' -f1)"
+    [ "$actual" = "$expected" ] && return 0
+    log "checksum mismatch for $file"
+    log "  expected $expected"
+    log "  actual   $actual"
+    return 1
+}
+
+# Guards that protect the officer using the terminal, not the update.
+safe_to_update() {
+    # Never mid-call. An update that reboots a terminal during an active call is
+    # far worse than staying a version behind.
+    if [ -f /tmp/rmpg-active-call ]; then
+        log "deferring: an active call is in progress on this terminal"
+        return 1
+    fi
+
+    # Never on low battery unplugged: losing power between staging and the flip
+    # is survivable (the slot flip is last), but rebooting into a new image with
+    # no power margin is not worth the risk.
+    for bat in /sys/class/power_supply/BAT*; do
+        [ -d "$bat" ] || continue
+        cap="$(cat "$bat/capacity" 2>/dev/null || echo 100)"
+        status="$(cat "$bat/status" 2>/dev/null || echo Unknown)"
+        if [ "$status" != "Charging" ] && [ "$status" != "Full" ] && [ "$cap" -lt 40 ]; then
+            log "deferring: battery at ${cap}% and not charging"
+            return 1
+        fi
+    done
+    return 0
+}
+
+cmd_status() {
+    require_boot_mount
+    echo "installed version : $(installed_version)"
+    echo "active slot       : $(active_slot)"
+    echo "inactive slot     : $(inactive_slot)"
+    echo "channel           : $CHANNEL"
+    if [ -f "$STATE_DIR/staged_version" ]; then
+        echo "staged version    : $(cat "$STATE_DIR/staged_version") (pending reboot)"
+    else
+        echo "staged version    : none"
+    fi
+}
+
+cmd_check() {
+    manifest="$(fetch_manifest)" || die "could not reach $MANIFEST_URL"
+    [ -n "$manifest" ] || die "empty manifest from $MANIFEST_URL"
+    available="$(manifest_field "$manifest" version)"
+    [ -n "$available" ] || die "manifest has no version field"
+
+    current="$(installed_version)"
+    echo "installed: $current"
+    echo "available: $available (channel $CHANNEL)"
+    if version_gt "$available" "$current"; then
+        echo "UPDATE_AVAILABLE"
+        return 0
+    fi
+    echo "UP_TO_DATE"
+    return 1
+}
+
+cmd_apply() {
+    require_boot_mount
+    safe_to_update || exit 0
+
+    manifest="$(fetch_manifest)" || die "could not reach $MANIFEST_URL"
+    available="$(manifest_field "$manifest" version)"
+    [ -n "$available" ] || die "manifest has no version field"
+
+    current="$(installed_version)"
+    if ! version_gt "$available" "$current"; then
+        log "already up to date ($current)"
+        exit 0
+    fi
+
+    # Do not restage a version already waiting to boot.
+    if [ -f "$STATE_DIR/staged_version" ] && \
+       [ "$(cat "$STATE_DIR/staged_version")" = "$available" ]; then
+        log "$available is already staged and pending reboot"
+        exit 0
+    fi
+
+    kernel_url="$(manifest_field "$manifest" kernel_url)"
+    kernel_sha="$(manifest_field "$manifest" kernel_sha256)"
+    rootfs_url="$(manifest_field "$manifest" rootfs_url)"
+    rootfs_sha="$(manifest_field "$manifest" rootfs_sha256)"
+    [ -n "$kernel_url" ] && [ -n "$rootfs_url" ] || die "manifest missing payload URLs"
+
+    target_slot="$(inactive_slot)"
+    log "updating $current -> $available into $target_slot"
+
+    # Download to /tmp (RAM) first and verify BEFORE anything touches the boot
+    # partition. A truncated download must never reach a slot: the A/B rollback
+    # would recover it, but only after the terminal has failed to boot three
+    # times in front of an officer.
+    tmp_kernel=/tmp/rmpg-update-bzImage
+    tmp_rootfs=/tmp/rmpg-update-rootfs.cpio.gz
+    rm -f "$tmp_kernel" "$tmp_rootfs"
+
+    log "downloading kernel"
+    wget -q -T 60 -O "$tmp_kernel" "$kernel_url" || die "kernel download failed"
+    verify_sha256 "$tmp_kernel" "$kernel_sha" || die "kernel failed verification"
+
+    log "downloading root filesystem (this is the large one)"
+    wget -q -T 600 -O "$tmp_rootfs" "$rootfs_url" || die "rootfs download failed"
+    verify_sha256 "$tmp_rootfs" "$rootfs_sha" || die "rootfs failed verification"
+
+    # Enough free space in the target slot before overwriting it.
+    need_kb=$(( ($(stat -c %s "$tmp_kernel") + $(stat -c %s "$tmp_rootfs")) / 1024 ))
+    free_kb=$(df -k "$MOUNT_POINT" | tail -1 | awk '{print $4}')
+    slot_kb=$(du -sk "$MOUNT_POINT/$target_slot" 2>/dev/null | awk '{print $1}' || echo 0)
+    if [ "$need_kb" -gt $((free_kb + slot_kb)) ]; then
+        die "not enough space in $MOUNT_POINT (need ${need_kb}KB, have $((free_kb + slot_kb))KB)"
+    fi
+
+    boot_rw
+    mkdir -p "$MOUNT_POINT/$target_slot" "$STATE_DIR"
+
+    # Write to temp names in the slot, then rename into place. A power loss
+    # mid-copy then leaves the OLD slot contents intact rather than a truncated
+    # kernel that the bootloader would happily try to start.
+    log "staging into $target_slot"
+    cp "$tmp_kernel" "$MOUNT_POINT/$target_slot/bzImage.new" || { boot_ro; die "copy failed"; }
+    cp "$tmp_rootfs" "$MOUNT_POINT/$target_slot/rootfs.cpio.gz.new" || { boot_ro; die "copy failed"; }
+    sync
+    mv "$MOUNT_POINT/$target_slot/bzImage.new"        "$MOUNT_POINT/$target_slot/bzImage"
+    mv "$MOUNT_POINT/$target_slot/rootfs.cpio.gz.new" "$MOUNT_POINT/$target_slot/rootfs.cpio.gz"
+    sync
+
+    # Flip the default slot LAST — this is the commit point. Everything before
+    # it is reversible by doing nothing.
+    log "pointing the bootloader at $target_slot"
+    sed -i "s/^DEFAULT .*/DEFAULT $target_slot/" "$EXTLINUX_CONF" || { boot_ro; die "could not update $EXTLINUX_CONF"; }
+
+    # Reset the failed-boot counter so the new image gets its full 3 attempts.
+    echo "0" > "$MOUNT_POINT/boot_attempts"
+    echo "$available" > "$STATE_DIR/staged_version"
+    echo "$current"   > "$STATE_DIR/previous_version"
+    sync
+    boot_ro
+
+    rm -f "$tmp_kernel" "$tmp_rootfs"
+    log "KIOSK_LINUX_UPDATE_STAGED $available (reboot to apply; rollback to $current is automatic if it fails)"
+}
+
+case "${1:-check}" in
+    check)  cmd_check ;;
+    apply)  cmd_apply ;;
+    status) cmd_status ;;
+    *) echo "usage: rmpg-update {check|apply|status}" >&2; exit 2 ;;
+esac
