@@ -16,6 +16,7 @@ import TotpCodeInput from '../components/TotpCodeInput';
 import PasswordStrengthMeter from '../components/security/PasswordStrengthMeter';
 import BackupCodesDisplay from '../components/security/BackupCodesDisplay';
 import { parseTimestamp } from '../utils/dateUtils';
+import { useDeviceInfo } from '../utils/deviceInfo';
 
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '5.3.9';
@@ -35,35 +36,6 @@ function isLowPerfDevice(): boolean {
 }
 
 // ── Device detection helpers ──────────────────────
-function getDeviceInfo() {
-  const ua = navigator.userAgent;
-  let browser = 'Unknown';
-  if (ua.includes('Electron')) browser = 'RMPG Desktop';
-  else if (ua.includes('Edg/')) browser = 'Edge';
-  else if (ua.includes('Chrome/') && !ua.includes('Edg/')) browser = 'Chrome';
-  else if (ua.includes('Firefox/')) browser = 'Firefox';
-  else if (ua.includes('Safari/') && !ua.includes('Chrome')) browser = 'Safari';
-
-  let os = 'Unknown';
-  if (ua.includes('Windows NT 10')) os = 'Windows 10/11';
-  else if (ua.includes('Windows')) os = 'Windows';
-  else if (ua.includes('Mac OS X')) os = 'macOS';
-  else if (ua.includes('Android')) os = 'Android';
-  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
-  else if (ua.includes('Linux')) os = 'Linux';
-
-  let deviceType = 'Desktop';
-  if (/Mobi|Android/i.test(ua)) deviceType = 'Mobile';
-  else if (/Tablet|iPad/i.test(ua)) deviceType = 'Tablet';
-
-  const screen = `${window.screen.width}×${window.screen.height}`;
-  const viewport = `${window.innerWidth}×${window.innerHeight}`;
-  const touchEnabled = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  const online = navigator.onLine;
-
-  return { browser, os, deviceType, screen, viewport, touchEnabled, online };
-}
-
 function getCurrentTime() {
   return new Date().toLocaleString('en-US', {
     timeZone: 'America/Denver',
@@ -281,8 +253,9 @@ export default function LoginPage() {
     return () => clearInterval(iv);
   }, [lowPerf]);
 
-  // Device info (computed once)
-  const device = useMemo(() => getDeviceInfo(), []);
+  // Live device info — viewport and online status re-sample on change rather
+  // than freezing at mount. See utils/deviceInfo.ts.
+  const device = useDeviceInfo();
 
   // Derived: true when the credentials form is the active step.
   // Declared here (before the keyboard useEffect) so the closure captures it.
