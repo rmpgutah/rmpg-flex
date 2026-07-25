@@ -101,7 +101,7 @@ export default function Minimap({
         />
         {/* Viewport indicator. */}
         <div
-          className="absolute left-0 right-0 bg-[#d4a017]/25 border-y border-[#d4a017]/60 pointer-events-none"
+          className="absolute left-0 right-0 bg-accent-silver-500/25 border-y border-accent-silver-500/60 pointer-events-none"
           style={{ top: `${scrollFrac * (1 - viewFrac) * 100}%`, height: `${viewFrac * 100}%` }}
         />
       </div>

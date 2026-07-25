@@ -18,6 +18,20 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   tests: /(__tests__|\.test\.|\.spec\.)/,
   // The audit tooling itself must keep literal reference values.
   auditTooling: /(^|\/)(liveAudit|hexClassifier|chartPalette)\.ts$/,
+  // Fixed CATEGORICAL palettes — the colors ARE the data, not chrome.
+  //
+  // connectionsGraphStyle.ts assigns one color per entity type in the relationship
+  // graph, and its header documents deliberate collision-avoidance tuning
+  // ("person + case both #d4a017 -> case bumped to #84cc16 lime"; "evidence +
+  // arrest both #ef4444 -> arrest bumped to #f43f5e rose"). Every type must stay
+  // visually distinct from every other type; re-theming them onto a navy/silver
+  // ramp would collapse those distinctions and undo the tuning.
+  //
+  // geographyLabels.ts assigns identity colors to districts and sectors
+  // (SL1-SL6, DV1-DV3, WB1-WB2, UC1-UC3) plus fallback ramps. Operators learn
+  // these by sight — "SL2 is the gold one" — so recoloring changes district
+  // identity on the map, not just its styling.
+  categoricalPalette: /(^|\/)(connectionsGraphStyle|geographyLabels)\.ts$/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {

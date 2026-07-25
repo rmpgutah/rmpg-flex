@@ -37,7 +37,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
   const TabBtn = ({ id, icon: Icon, label }: { id: Tab; icon: typeof Gauge; label: string }) => (
     <button type="button" onClick={() => setTab(id)} title={label}
       className={`flex-1 flex items-center justify-center gap-1 py-1 text-[9px] rounded-[2px] ${
-        tab === id ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-surface-raised'
+        tab === id ? 'bg-accent-silver-500/20 text-accent-silver-300' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-surface-raised'
       }`}>
       <Icon className="w-3 h-3" />{label}
     </button>
@@ -72,7 +72,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
       {tab === 'readability' && (
         <div>
           <div className="bg-surface-base border border-border-default rounded-[2px] p-2 mb-2 text-center">
-            <div className="text-2xl font-bold text-[#d4a017] tabular-nums">{readability.fleschReadingEase}</div>
+            <div className="text-2xl font-bold text-rmpg-100 tabular-nums">{readability.fleschReadingEase}</div>
             <div className="text-[9px] text-rmpg-400 uppercase tracking-wide">Flesch Reading Ease</div>
             <div className="text-[10px] text-rmpg-200 mt-0.5">{readability.ease}</div>
           </div>
@@ -114,7 +114,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
               <div key={w.word} className="flex items-center gap-1.5">
                 <span className="text-[10px] text-rmpg-300 w-24 truncate">{w.word}</span>
                 <span className="flex-1 h-1.5 bg-surface-raised rounded-full overflow-hidden">
-                  <span className="block h-full bg-[#d4a017]/70" style={{ width: `${Math.min(100, (w.count / (words[0]?.count || 1)) * 100)}%` }} />
+                  <span className="block h-full bg-accent-silver-500/70" style={{ width: `${Math.min(100, (w.count / (words[0]?.count || 1)) * 100)}%` }} />
                 </span>
                 <span className="text-[10px] text-rmpg-500 tabular-nums w-5 text-right">{w.count}</span>
               </div>
@@ -142,7 +142,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
             value={prevText}
             onChange={(e) => setPrevText(e.target.value)}
             placeholder="Paste a previous version here to compare against the current document…"
-            className="w-full h-20 bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] p-1.5 focus:outline-none focus:border-[#d4a017]/50 resize-none mb-2"
+            className="w-full h-20 bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] p-1.5 focus:outline-none focus:border-accent-silver-500/50 resize-none mb-2"
           />
           {prevText && (
             <>
