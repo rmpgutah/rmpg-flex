@@ -16,6 +16,7 @@ import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registr
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
 import { requireRole } from '../middleware/auth';
 import { isValidStatus, isValidTransition, TERMINAL_STATUSES, WARRANT_STATUSES, type WarrantStatus, applyLazyWarrantExpiry } from '../utils/warrantStatus';
+import { denverDateExpr, denverNowDateExpr } from '../utils/denverTime';
 
 const warrants = new Hono<Env>();
 
@@ -653,6 +654,39 @@ function ageDaysFrom(createdAt: unknown): number | null {
   return Math.max(0, (Date.now() - t) / 86_400_000);
 }
 
+/**
+ * SQL for the "Hits Today" tile.
+ *
+ * ── What was wrong ──────────────────────────────────────────────────────────
+ * This previously counted `date(last_seen_at) = date('now')`, which had two
+ * independent defects:
+ *
+ *   1. `last_seen_at` is refreshed every time the poller re-observes a warrant,
+ *      so it counted "warrants the poller looked at today" — i.e. all of them.
+ *      On 2026-07-24 the tile read 44, exactly equal to Active Warrants.
+ *   2. `date('now')` is UTC. At 19:28 Denver it is already tomorrow in UTC, so
+ *      the window rolled over mid-evening, every day.
+ *
+ * Note that fixing (2) alone would NOT have fixed the tile: bucketed into
+ * Denver, `last_seen_at` still returns 44. They had to be fixed separately.
+ *
+ * ── The definition in force ─────────────────────────────────────────────────
+ * A "hit today" = a warrant record FIRST discovered during today's Denver
+ * calendar day. On the live data that is 9, versus 44 before.
+ *
+ * ── Changing it ─────────────────────────────────────────────────────────────
+ * This is an operational definition, not a technical one. If "hit" should mean
+ * something else for RMPG — only warrants matched to a known person, only
+ * confirmed (DOB-verified) matches, or every re-confirmation — this function is
+ * the single place to change it. `utah_warrants` offers: `first_seen_at`,
+ * `last_seen_at`, `fetched_at`, `issue_date`, `is_active`, `person_id`,
+ * `source`.
+ */
+function hitsTodaySql(): string {
+  return `SELECT COUNT(*) AS n FROM utah_warrants
+           WHERE ${denverDateExpr('first_seen_at')} = ${denverNowDateExpr()}`;
+}
+
 // GET /dashboard/stats — WarrantsPage dashboard tab's top stat tiles.
 warrants.get('/dashboard/stats', async (c) => {
   const db = getDb(c.env);
@@ -674,9 +708,7 @@ warrants.get('/dashboard/stats', async (c) => {
          JOIN persons p ON p.id = uw.person_id
         WHERE uw.is_active = 1 AND (p.dob IS NULL OR p.dob = '')`,
     );
-    const hitsToday = await safeCount(
-      `SELECT COUNT(*) AS n FROM utah_warrants WHERE date(last_seen_at) = date('now')`,
-    );
+    const hitsToday = await safeCount(hitsTodaySql());
     const personsFlagged = await safeCount(
       `SELECT COUNT(DISTINCT person_id) AS n FROM utah_warrants WHERE is_active = 1 AND person_id IS NOT NULL`,
     );

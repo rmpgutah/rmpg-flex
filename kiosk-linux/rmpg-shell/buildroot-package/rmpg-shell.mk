@@ -13,7 +13,15 @@ RMPG_SHELL_VERSION = 1.0.0
 RMPG_SHELL_SITE = /kiosk-linux/rmpg-shell
 RMPG_SHELL_SITE_METHOD = local
 RMPG_SHELL_LICENSE = Proprietary
-RMPG_SHELL_DEPENDENCIES = libgtk3 xlib_libX11 host-pkgconf
+
+# webkitgtk is a HARD dependency, not an optional one: rmpg-browser includes
+# gtk/gtk.h through the webkit2gtk pkg-config module. Omitting it here let
+# Buildroot schedule this package BEFORE webkitgtk, so webkit2gtk-4.1.pc was
+# not in the sysroot yet, the pkg-config probe in the Makefile returned
+# nothing, and the compile died on "gtk/gtk.h: No such file or directory" —
+# a missing-header error whose real cause was build ORDER, not a missing GTK
+# (rmpg-shell, which needs the same header, had just compiled fine).
+RMPG_SHELL_DEPENDENCIES = libgtk3 webkitgtk xlib_libX11 host-pkgconf
 
 define RMPG_SHELL_BUILD_CMDS
 	$(TARGET_MAKE_ENV) $(MAKE) $(TARGET_CONFIGURE_OPTS) \
@@ -22,6 +30,7 @@ endef
 
 define RMPG_SHELL_INSTALL_TARGET_CMDS
 	$(INSTALL) -D -m 0755 $(@D)/rmpg-shell $(TARGET_DIR)/usr/bin/rmpg-shell
+	$(INSTALL) -D -m 0755 $(@D)/rmpg-browser $(TARGET_DIR)/usr/bin/rmpg-browser
 endef
 
 $(eval $(generic-package))

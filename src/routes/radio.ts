@@ -42,6 +42,7 @@ import { gatherAwareness, runLookup, runAction, VERBATIM_LOOKUPS } from '../util
 import { getRadioSettings, setRadioSettings, RADIO_SETTING_DEFAULTS, RADIO_SETTING_OPTIONS } from '../utils/radioSettings';
 import { generateIncidentNarrative, generateShiftSummary } from '../utils/aiReports';
 import type { Bindings } from '../types';
+import { denverDateExpr, denverNowDateExpr } from '../utils/denverTime';
 
 const rt = new Hono<Env>();
 
@@ -51,7 +52,7 @@ function rangeClause(range: string | undefined): { sql: string; args: unknown[] 
   if (!range || range === 'all' || !ALLOWED_RANGES.has(range)) return { sql: '', args: [] };
   // SQLite datetime() math in TEXT comparison form — same shape as the
   // other route files (patrol/audit) so query plans stay consistent.
-  if (range === 'today') return { sql: " AND date(transmitted_at) = date('now')", args: [] };
+  if (range === 'today') return { sql: ` AND ${denverDateExpr('transmitted_at')} = ${denverNowDateExpr()}`, args: [] };
   if (range === 'h24')   return { sql: " AND transmitted_at >= datetime('now','-1 day')", args: [] };
   if (range === 'week')  return { sql: " AND transmitted_at >= datetime('now','-7 days')", args: [] };
   if (range === 'month') return { sql: " AND transmitted_at >= datetime('now','-30 days')", args: [] };
@@ -395,7 +396,7 @@ rt.get('/stats', async (c) => {
     // SQLite throws `near "all": syntax error`. The double quotes keep
     // the result column named `all` (the client reads totals.all).
     `SELECT
-       SUM(CASE WHEN date(transmitted_at) = date('now') THEN 1 ELSE 0 END) AS today,
+       SUM(CASE WHEN ${denverDateExpr('transmitted_at')} = ${denverNowDateExpr()} THEN 1 ELSE 0 END) AS today,
        SUM(CASE WHEN transmitted_at >= datetime('now','-7 days') THEN 1 ELSE 0 END) AS week,
        COUNT(*) AS "all" FROM radio_transmissions`,
   );

@@ -24,8 +24,18 @@ the Colima/Docker toolchain this requires).
    not evidence the upload happened; always confirm with Step 4). disk.img alone
    compresses to ~236 MiB, under the cap and a far smaller field download.
    `disk.img` also boots directly under QEMU, so developers lose nothing.
+2b. **Also package a `.zip`** — `zip -9 kiosk-linux-os-<version>.zip disk.img`.
+   These images get written to a USB stick from whatever laptop is on hand,
+   which in practice is a **Windows** machine, and Windows cannot open a
+   `.tar.gz` by double-clicking — serving only that made the very first
+   install step a blocker for the people who actually do installs. A `.zip`
+   opens in Explorer natively and compresses to essentially the same size
+   (236.1 MB vs 236.1 MB for 1.2.0). `scanInstallers()` prefers the `.zip`
+   when both are present and falls back to the `.tar.gz`, so keep publishing
+   both: Linux/macOS users and scripts still get a tarball.
+
 3. **Upload**: `wrangler r2 object put rmpg-flex-downloads/kiosk-linux-os-<version>.tar.gz
-   --file=kiosk-linux-os-<version>.tar.gz --remote`
+   --file=kiosk-linux-os-<version>.tar.gz --remote` (and again for the `.zip`)
 4. **Verify the upload landed** (independent of whether the site code has deployed
    yet): `wrangler r2 object get rmpg-flex-downloads/kiosk-linux-os-<version>.tar.gz
    --remote --file=/tmp/verify.tar.gz` and confirm the file size matches.

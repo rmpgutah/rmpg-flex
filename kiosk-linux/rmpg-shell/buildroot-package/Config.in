@@ -3,9 +3,15 @@ config BR2_PACKAGE_RMPG_SHELL
 	depends on BR2_PACKAGE_LIBGTK3
 	depends on BR2_PACKAGE_LIBGTK3_X11
 	depends on BR2_PACKAGE_XORG7
+	select BR2_PACKAGE_WEBKITGTK
 	help
-	  RMPG Flex Desktop taskbar: Start menu, live window list, and
-	  clock. First-party shell for the kiosk-linux desktop image.
+	  RMPG Flex Desktop shell — two first-party components:
+
+	  rmpg-shell, the taskbar (Start menu, live window list, clock,
+	  battery/network/memory indicators, Wi-Fi picker, System
+	  Information), and rmpg-browser, a tabbed WebKitGTK browser that
+	  also provides the chromeless --app mode used to present RMPG
+	  Flex as an application.
 
 	  The Start menu serves a fixed, policy-controlled application
 	  list from /etc/rmpg-desktop/apps.conf, which is what makes the
