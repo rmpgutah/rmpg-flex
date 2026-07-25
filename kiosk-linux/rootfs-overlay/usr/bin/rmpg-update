@@ -102,8 +102,10 @@ safe_to_update() {
     # Never on low battery unplugged: losing power between staging and the flip
     # is survivable (the slot flip is last), but rebooting into a new image with
     # no power margin is not worth the risk.
+    batteries_seen=0
     for bat in /sys/class/power_supply/BAT*; do
         [ -d "$bat" ] || continue
+        batteries_seen=$((batteries_seen + 1))
         cap="$(cat "$bat/capacity" 2>/dev/null || echo 100)"
         status="$(cat "$bat/status" 2>/dev/null || echo Unknown)"
         if [ "$status" != "Charging" ] && [ "$status" != "Full" ] && [ "$cap" -lt 40 ]; then
@@ -111,6 +113,15 @@ safe_to_update() {
             return 1
         fi
     done
+    # An unexpanded glob leaves this loop having done nothing, and the guard
+    # then passes — it fails OPEN. That happens either on genuinely mains-only
+    # hardware (QEMU, a bench unit) or on a kernel built without ACPI_BATTERY,
+    # and nothing here can tell those two apart. Log it so a fail-open is
+    # visibly different from a battery that was actually checked and found
+    # healthy; the kernel side is pinned in configs/kernel-fz55.fragment.
+    if [ "$batteries_seen" -eq 0 ]; then
+        log "no battery reported by the kernel; low-battery guard did not run"
+    fi
     return 0
 }
 

@@ -1,6 +1,8 @@
 # Panasonic Toughbook FZ-55 — build requirements for a privately built OS
 
 **Status:** research complete, hardware-unvalidated · **Date:** 2026-07-25
+· **Revised:** 2026-07-25 after PR #3023 landed a datasheet-grounded hardware audit —
+sections 5 and 6 were rewritten against it; where it disagrees with an inference here, it wins.
 **Scope:** what Rocky Mountain Protective Group needs from Panasonic in order to build
 its own OS image for the Toughbook FZ-55 fleet, rather than shipping Panasonic's
 factory image.
@@ -168,26 +170,34 @@ This is the FZ-55 restated as "what the kernel must drive". Silicon identificati
 `[D]` are inferred from the confirmed CPU generation and are the ones most worth checking
 with `lspci -nn` / `lsusb` on a real unit before trusting.
 
+**Updated 2026-07-25 after PR #3023.** That PR was written with the mk3 datasheet actually
+in hand (fetched directly from `ap.connect.panasonic.com`) and its symbols verified against
+the pinned 6.6.63 kernel source — both things this research pass could not do. Where it
+contradicts an inference made here, **it wins**. It upgraded several `[D]`/`[R]` guesses
+below to datasheet-confirmed facts: the GPS module is a u-blox NEO-M8N, the USB-C port is
+Thunderbolt 4, the card reader is MicroSDXC UHS-I, Bluetooth is v5.3, and the mk3 is a
+Secured-core PC with TPM 2.0.
+
 | Subsystem | Part | Linux driver | In our build? |
 | --- | --- | --- | --- |
-| Graphics | UHD 620 (mk1) / Iris Xe (mk2, mk3) `[R]` | `i915` + Mesa `iris` | ✅ `kernel-fz55.fragment` |
+| Graphics | UHD 620 (mk1) / Iris Xe (mk2, mk3) `[R]` | `i915` + Mesa `iris` | ✅ + DMC firmware (#3023) |
 | Display backlight | Intel eDP panel `[D]` | `i915` backlight, `acpi_video` | ⚠️ untested |
-| Touchscreen | 10-point capacitive digitizer `[PS]`; HID-over-I²C on Intel LPSS `[D]` | `i2c-hid-acpi` + `intel-lpss` + `hid-multitouch` | ⚠️ **`hid-multitouch` yes, I²C-HID transport missing** |
-| Wired NIC | 1 Gbps Ethernet `[PS]`; Intel I219-LM class `[D]` | `e1000e` | ✅ (part number unverified) |
+| Touchscreen | 10-point capacitive digitizer, 4 touch modes `[PS]` | `i2c-hid-acpi` on Designware I²C + `hid-multitouch`; `hid-wacom` for pen SKUs | ✅ bus + pen (#3023), transport added after |
+| Wired NIC | 1 Gbps Ethernet `[PS]`; Intel I219-LM class `[D]` | `e1000e` | ✅ (part number still unverified) |
 | Wi-Fi | AC 9560 (mk1, assumed) / AX201 (mk2) / AX211 (mk3) `[PS]`/`[R]` | `iwlwifi` + `iwlmvm` + blobs | ✅ `kernel-wifi.fragment` |
-| Bluetooth | Intel, BT 5.1 `[R]` | `btintel` + `btusb` | ❌ not enabled |
-| Storage | NVMe PCIe SSD, many SKUs **OPAL** self-encrypting `[R]` | `nvme` | ✅ (see OPAL note, §8) |
+| Bluetooth | Intel combo radio, BT v5.3 on mk3 `[PS]` | `btusb` + `btintel` | ✅ `kernel-bluetooth.fragment` (#3023) |
+| Storage | NVMe PCIe SSD, many SKUs **OPAL** self-encrypting `[R]` | `nvme` | ✅ (see OPAL note, §7) |
 | 2nd storage | Universal Bay SSD xPAK `[R]` | `nvme` / `ahci` | ✅ |
-| Audio | Waves MaxxAudio + tetra-array mic `[PS]`; Intel SST/HDA `[D]` | mk1 `snd-hda-intel`; mk2/mk3 need **SOF** (`sof-tgl.ri` / `sof-rpl.ri`) | ❌ no audio at all |
-| SD reader | SD / microSDXC slot `[PS]` (slot type inconsistent across sources) | `sdhci-pci` | ❌ |
-| USB | 2x USB-A 3.1 Gen1, 1x USB-C `[PS]` | `xhci` | ✅ |
-| Batteries | Dual hot-swap, 10.8 V 6,500 mAh `[PS]` | ACPI battery, `CONFIG_ACPI_BATTERY` | ❌ **no gauge — a fielded requirement** |
-| Thermals | Intel DPTF / ACPI thermal `[D]` | `CONFIG_ACPI_THERMAL`, `intel_powerclamp` | ❌ |
-| Hotkeys | Panasonic ACPI hotkey interface `[D]` | `panasonic-laptop` (`drivers/platform/x86/`) — documented for Let's Note, which Toughbook is the export name of `[R]` | ❌ |
-| TPM | TPM 2.0 `[PS]` | `tpm_crb` / `tpm_tis` | ❌ |
-| WWAN | Sierra EM7455/EM7511 (mk1/mk2), EM9190 5G xPAK (mk3 only) `[P]`/`[R]` | `cdc_mbim` / `mhi_net` + ModemManager | ❌ |
-| GPS | Dedicated GPS option on some SKUs `[R]`; also via WWAN module | `gnss` / NMEA over serial | ❌ |
-| Webcam | IR webcam (Windows Hello capable) `[R]` | `uvcvideo` | ❌ |
+| Audio | Intel HD Audio + Realtek codec `[PS]`/`[D]` | `snd-hda-intel`; SOF on mk2/mk3 | ✅ `kernel-audio.fragment` (#3023) |
+| Card reader | MicroSDXC UHS-I `[PS]` | `sdhci-pci` | ✅ (#3023) |
+| USB | 2x USB-A 3.1 Gen1, 1x USB-C **Thunderbolt 4** `[PS]` | `xhci` + `usb4` | ✅ (#3023) |
+| Batteries | Dual hot-swap, 10.8 V 6,500 mAh `[PS]` | `CONFIG_ACPI_BATTERY` / `ACPI_AC` | ✅ pinned after #3023 — see §6 |
+| Thermals | Intel DPTF / ACPI thermal `[D]` | `CONFIG_ACPI_THERMAL`, `intel_powerclamp` | ⚠️ unasserted (likely inherited) |
+| Hotkeys | Panasonic ACPI hotkey interface `[D]` | `panasonic-laptop` — documented for Let's Note, which Toughbook is the export name of `[R]` | ❌ |
+| TPM | TPM 2.0, Secured-core PC `[PS]` | `tpm_crb` + `tpm_tis` | ✅ both (#3023) |
+| WWAN | Sierra EM7455/EM7511 (mk1/mk2), EM9190 5G xPAK (mk3 only) `[P]`/`[R]` | `qmi_wwan` / `cdc_mbim` + ModemManager | ✅ kernel side (#3023); no ModemManager |
+| GPS | Optional dedicated **u-blox NEO-M8N** `[PS]`; also via WWAN | CDC-ACM serial, NMEA/UBX | ✅ `cdc-acm` (#3023) |
+| Webcam | 2 MP IR webcam w/ privacy cover `[PS]` | `uvcvideo` | ✅ (#3023) |
 | xPAK front/rear | fingerprint, smartcard (insertable + contactless), barcode, VGA, serial, 2nd LAN, DVD/Blu-ray `[R]` | varies — mostly USB-attached internally | ❌ |
 
 ### xPAK catalog (confirmed part numbers) `[R]`
@@ -209,48 +219,55 @@ constraint if any unit is already provisioned on LTE.
 
 ## 6. Gap analysis against `kernel-fz55.fragment`
 
-The current fragment covers i915, e1000e, NVMe/AHCI/SCSI, xHCI/USB-storage/HID/multitouch,
-and VFAT. Against section 5 that leaves the following genuinely missing. Nothing here has
-been compiled or booted — this is a review finding, not a tested change.
+PR #3023 closed most of what the first pass of this section listed — audio, Bluetooth,
+webcam, MicroSDXC, Thunderbolt, TPM, IOMMU, WWAN, GPS, and the i915 DMC firmware all
+landed there. What follows is what was still open **after** it.
 
-**Blocking for a usable field terminal:**
+Nothing here has been compiled or booted. Unlike #3023, this pass had no kernel source and
+no network to fetch one, so these symbol names come from knowledge of mainline's Kconfig
+rather than a grep of the pinned 6.6.63 tree. Verify before trusting.
 
-1. **Touchscreen transport.** `CONFIG_HID_MULTITOUCH` is enabled but nothing carries the
-   HID reports. A modern Intel laptop digitizer is HID-over-I²C behind the LPSS controller,
-   which needs `CONFIG_I2C_HID_ACPI`, `CONFIG_I2C_DESIGNWARE_PLATFORM`, and
-   `CONFIG_MFD_INTEL_LPSS_PCI`/`_ACPI`. Without these the touchscreen is inert, and the
-   kiosk has no keyboard by design. `[D]`
-2. **Battery gauge.** `CONFIG_ACPI_BATTERY` and `CONFIG_ACPI_AC` are absent, so the
-   taskbar has nothing to read and the OTA agent's "refuse to update on low battery" rule
-   in the program plan cannot be implemented. Dual hot-swap batteries enumerate as two
-   ACPI battery devices. `[D]`
-3. **Bluetooth.** `btusb` + `btintel` are absent. Not needed for the browser kiosk; needed
-   the moment any peripheral pairs.
+**Closed immediately after #3023 (see the follow-up PR to this document):**
 
-**Important but not blocking:**
+1. **Touchscreen transport.** #3023 added `I2C_DESIGNWARE_CORE`/`_PLATFORM` (the I²C bus)
+   and `HID_WACOM` (pen protocol) but not `CONFIG_I2C_HID_ACPI` — the HID-over-I²C
+   transport that actually attaches a digitizer to that bus. Bus plus multitouch plus pen,
+   with no transport between them, reads as a complete touch stack and isn't one: the
+   controller powers up, is addressable, and emits no input events. On a kiosk with no
+   keyboard by design, that is the entire input path. Now added.
+2. **Battery gauge.** `CONFIG_ACPI_BATTERY` and `ACPI_AC` are `default y` in mainline and
+   are therefore *probably* inherited from the `x86_64` base defconfig — the earlier claim
+   here that they were simply "absent" overstated it. But #3023 also shipped
+   `rmpg-update`'s `safe_to_update()`, which reads `/sys/class/power_supply/BAT*/capacity`.
+   If that glob never expands, the loop body never runs and the guard **returns success** —
+   it fails open, and every terminal takes an update and reboots on a flat battery. A guard
+   whose correctness rests on an unasserted inherited default is worth three lines to pin.
+   Now pinned, and the fail-open path now logs instead of passing silently.
 
-4. **Audio** — mk2/mk3 need the SOF stack plus Intel-signed firmware (`sof-tgl.ri`,
-   `sof-rpl.ri`). Community-signed firmware is not an option on PCI devices; the blobs must
-   come from `linux-firmware`. mk1 (Whiskey Lake) works with legacy `snd-hda-intel`. `[D]`
-5. **Thermal management** — no ACPI thermal zone support means no passive throttling. In a
-   vehicle in a Salt Lake City summer that is a real reliability concern, not a nicety.
-6. **`panasonic-laptop`** — brightness and hotkeys. Documented against Let's Note models
+**Still open:**
+
+3. **Thermal management.** `CONFIG_ACPI_THERMAL` is likewise `default y` and likely
+   inherited, but unasserted. No passive throttling in a vehicle through a Salt Lake City
+   summer is a reliability concern, not a nicety. Confirm against the generated `.config`
+   before deciding whether to pin it too.
+4. **`panasonic-laptop`** — brightness and hotkeys. Documented against Let's Note models
    with Toughbook named as the export equivalent; FZ-55 support is **not** confirmed
    upstream. Cheap to enable, must be validated on hardware. `[R]`
-7. **TPM** — `tpm_crb`. Required if disk encryption is ever sealed to the platform.
-8. **SD reader** (`sdhci-pci`), **webcam** (`uvcvideo`), **GNSS**, **WWAN** — enable when
-   the corresponding feature is actually scheduled.
+5. **xPAK peripherals** — fingerprint, smartcard, barcode. Enable when one is scheduled.
+6. **ModemManager** — #3023 enabled the WWAN kernel devices but deliberately stopped short
+   of userspace cellular management (APN, signal, SIM PIN). That remains separate work.
 
-**Firmware blobs to add to the image** beyond the 32 iwlwifi files already carried:
-`intel/sof/sof-tgl.ri` + `sof-rpl.ri` and matching `sof-tplg/*` topologies (audio);
-`i915/*_dmc_*.bin` (display power management — i915 modesets without it but loses DC
-states and burns battery); `intel/ibt-*` (Bluetooth). `[D]`
+**How to check the inherited-default questions.** All three (`ACPI_BATTERY`, `ACPI_AC`,
+`ACPI_THERMAL`) are answerable in seconds with hardware or a completed build, and not at
+all without one: `zcat /proc/config.gz | grep -E 'ACPI_(BATTERY|AC|THERMAL)'` on a booted
+unit, or read the generated `.config` out of the `kiosk-linux-build-output` Docker volume.
 
 **Wired-NIC caveat.** The fragment asserts `e1000e`. The spec sheets only say "1 Gbps
-Ethernet" — no controller part number was recoverable from any Panasonic source. `e1000e`
-is the right guess for an Intel I219-LM PCH NIC, but adding `CONFIG_IGC` (I225/I226) and
-`CONFIG_R8169` costs a few kilobytes and removes an entire class of "boots but no network"
-first-article failure. Confirm with `lspci -nn | grep -i ethernet` on a real unit.
+Ethernet" — no controller part number was recoverable from any Panasonic source, and #3023
+did not settle it either. `e1000e` is the right guess for an Intel I219-LM PCH NIC, but
+adding `CONFIG_IGC` (I225/I226) and `CONFIG_R8169` costs a few kilobytes and removes an
+entire class of "boots but no network" first-article failure. Confirm with
+`lspci -nn | grep -i ethernet` on a real unit.
 
 ---
 

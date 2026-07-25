@@ -100,6 +100,16 @@ CONFIG_MMC_SDHCI_PCI=y
 CONFIG_I2C=y
 CONFIG_I2C_DESIGNWARE_CORE=y
 CONFIG_I2C_DESIGNWARE_PLATFORM=y
+# The Designware symbols above bring up the I2C *bus*; they do not attach
+# anything to it. A capacitive touchscreen on an Intel mobile platform is a
+# HID-over-I2C device enumerated from an ACPI node, which needs the I2C-HID
+# transport driver on top of that bus before HID_MULTITOUCH (below) ever sees
+# a report descriptor. Without it the controller is powered and addressable
+# and still produces no input events — the failure looks like a dead
+# touchscreen, not a missing driver, which is what makes it easy to miss.
+# I2C_HID_ACPI selects the hidden I2C_HID_CORE symbol, so that one is not set
+# here.
+CONFIG_I2C_HID_ACPI=y
 # Wacom-class digitizer for the pen/stylus models. HID_MULTITOUCH (above)
 # covers the capacitive touch layer; a Wacom-protocol pen is a separate HID
 # usage this driver is needed to decode.
@@ -148,6 +158,27 @@ CONFIG_TCG_TPM=y
 CONFIG_TCG_TIS=y
 CONFIG_TCG_TIS_CORE=y
 CONFIG_TCG_CRB=y
+
+# ── Power (dual hot-swap batteries, Mk3 datasheet: two 10.8 V / 6,500 mAh
+# packs, hot-swappable) ───────────────────────────────────────────────────
+# These are `default y` in mainline's drivers/acpi/Kconfig and so are very
+# likely already inherited from the BR2_LINUX_KERNEL_DEFCONFIG="x86_64" base.
+# They are pinned here anyway because live code now depends on them and the
+# dependency is invisible: rmpg-update's safe_to_update() reads
+# /sys/class/power_supply/BAT*/capacity, and that glob is provided by
+# ACPI_BATTERY alone. If a future defconfig bump or a kernel-version change
+# ever drops the inherited default, the guard does not error — the glob simply
+# fails to expand, the loop body never runs, and safe_to_update() returns
+# success. It fails OPEN: every terminal in the fleet would take an update and
+# reboot on a flat battery, which is the exact outcome the guard exists to
+# prevent. A silent fail-open in a vehicle is worth three lines of config.
+#
+# ACPI_AC provides the mains-present state the same guard reads as
+# BAT*/status. POWER_SUPPLY is `select`ed by both, and is stated explicitly
+# for the same reason kernel-wifi.fragment states its crypto primitives.
+CONFIG_ACPI_BATTERY=y
+CONFIG_ACPI_AC=y
+CONFIG_POWER_SUPPLY=y
 
 # IOMMU (Intel VT-d). Part of what "Secured-core PC" means on the Windows
 # side (Kernel DMA Protection), and independently good practice here because
