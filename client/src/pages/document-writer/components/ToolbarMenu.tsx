@@ -37,7 +37,7 @@ export default function ToolbarMenu({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={`flex items-center gap-1 px-2 py-1 text-[10px] rounded-[2px] transition-colors ${
-          open ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-surface-raised'
+          open ? 'bg-accent-silver-500/20 text-accent-silver-300' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-surface-raised'
         }`}
       >
         {Icon && <Icon className="w-3.5 h-3.5" />}
@@ -73,7 +73,7 @@ export function MenuButton({ onClick, children, active }: { onClick: () => void;
       type="button"
       onClick={onClick}
       className={`w-full text-left px-2 py-1 text-[11px] rounded-[2px] transition-colors ${
-        active ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-200 hover:bg-surface-raised'
+        active ? 'bg-accent-silver-500/20 text-accent-silver-300' : 'text-rmpg-200 hover:bg-surface-raised'
       }`}
     >
       {children}
