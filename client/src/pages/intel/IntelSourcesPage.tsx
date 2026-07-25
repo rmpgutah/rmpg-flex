@@ -62,7 +62,7 @@ export default function IntelSourcesPage() {
               <td className="py-[2px] uppercase">{formatEnumValue(s.status)}</td>
             </tr>
           ))}
-          {!rows.length && <tr><td colSpan={5} className="py-3 text-center" style={{ color: 'var(--rmpg-500)' }}>No sources.</td></tr>}
+          {!rows.length && <tr><td colSpan={5} className="py-3 text-center" style={{ color: 'var(--text-muted)' }}>No sources.</td></tr>}
         </tbody>
       </table></div>
     </div>

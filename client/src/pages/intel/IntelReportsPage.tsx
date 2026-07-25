@@ -82,7 +82,7 @@ export default function IntelReportsPage() {
             </tr>
           ))}
           {!rows.length && !loading && (
-            <tr><td colSpan={6} className="py-3 text-center" style={{ color: 'var(--rmpg-500)' }}>No reports.</td></tr>
+            <tr><td colSpan={6} className="py-3 text-center" style={{ color: 'var(--text-muted)' }}>No reports.</td></tr>
           )}
         </tbody>
       </table></div>

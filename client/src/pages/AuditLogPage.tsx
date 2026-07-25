@@ -542,7 +542,7 @@ const AuditLogPage: React.FC = () => {
           <RmpgLogo height={64} />
           <div className="flex-1">
             <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: 'var(--rmpg-300)' }}>Audit Log</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: 'var(--rmpg-500)' }}>Rocky Mountain Protective Group, LLC</p>
+            <p className="text-[9px] tracking-wide" style={{ color: 'var(--text-muted)' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>
       </div>

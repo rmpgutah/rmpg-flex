@@ -55,7 +55,7 @@ export default function AdminDownloadsTab() {
 
   if (loading) {
     return (
-      <div className="p-4 text-xs uppercase tracking-wider" style={{ color: 'var(--rmpg-500)' }}>
+      <div className="p-4 text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
         Loading download info…
       </div>
     );
@@ -87,7 +87,7 @@ export default function AdminDownloadsTab() {
               </div>
               {installer ? (
                 <>
-                  <span className="text-[11px]" style={{ color: 'var(--rmpg-500)' }}>
+                  <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                     v{installer.version} — {installer.size}
                   </span>
                   <a
@@ -102,7 +102,7 @@ export default function AdminDownloadsTab() {
                   </a>
                 </>
               ) : (
-                <span className="text-[11px]" style={{ color: 'var(--rmpg-500)' }}>Not available</span>
+                <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Not available</span>
               )}
             </div>
           );

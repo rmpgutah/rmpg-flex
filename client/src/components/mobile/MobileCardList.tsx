@@ -160,7 +160,7 @@ export default function MobileCardList<T>({
               border: '1px solid var(--border-default)',
             }}
           >
-            <Search style={{ width: 16, height: 16, color: 'var(--rmpg-500)', flexShrink: 0 }} />
+            <Search style={{ width: 16, height: 16, color: 'var(--text-muted)', flexShrink: 0 }} />
             <input id="ff-mobilecardlist-0"
               type="text"
               value={searchValue}

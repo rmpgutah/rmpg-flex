@@ -109,7 +109,7 @@ export const PRIORITIES: readonly PriorityLevel[] = [
   { level: 'P2', label: 'URGENT', color: '#f97316', desc: 'In-progress crime, injury, or time-sensitive' },
   { level: 'P3', label: 'ROUTINE', color: '#d4a017', desc: 'Standard response — no immediate danger' },
   { level: 'P4', label: 'LOW', color: '#888888', desc: 'Report only, information, or follow-up' },
-  { level: 'P5', label: 'SCHEDULED', color: 'var(--rmpg-500)', desc: 'Pre-planned activity or appointment' },
+  { level: 'P5', label: 'SCHEDULED', color: 'var(--text-muted)', desc: 'Pre-planned activity or appointment' },
 ] as const;
 
 export interface UnitStatus {
@@ -126,7 +126,7 @@ export const UNIT_STATUSES: readonly UnitStatus[] = [
   { code: 'ONS', label: 'On Scene', color: '#ef4444', desc: 'Arrived at call location' },
   { code: 'BSY', label: 'Busy', color: '#eab308', desc: 'Occupied, not available for calls' },
   { code: 'OOD', label: 'Out of District', color: '#888888', desc: 'Operating outside assigned area' },
-  { code: 'OOS', label: 'Out of Service', color: 'var(--rmpg-500)', desc: 'Not available (break, end of shift)' },
+  { code: 'OOS', label: 'Out of Service', color: 'var(--text-muted)', desc: 'Not available (break, end of shift)' },
 ] as const;
 
 export interface CadCommand {

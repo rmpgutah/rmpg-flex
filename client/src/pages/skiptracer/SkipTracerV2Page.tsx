@@ -1040,7 +1040,7 @@ export default function SkipTracerV2Page() {
                 className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm border transition-colors"
                 style={{
                   backgroundColor: isActive ? color + '33' : 'transparent',
-                  color: isActive ? color : 'var(--rmpg-600)',
+                  color: isActive ? color : 'var(--text-muted)',
                   borderColor: isActive ? color + '55' : 'var(--border-subtle)',
                 }}
               >

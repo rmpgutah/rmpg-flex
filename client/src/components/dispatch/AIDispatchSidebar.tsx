@@ -44,7 +44,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
         /* AI Unavailable state */
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="text-center">
-            <Brain className="w-8 h-8 mx-auto mb-2" style={{ opacity: 0.2, color: 'var(--rmpg-500)' }} />
+            <Brain className="w-8 h-8 mx-auto mb-2" style={{ opacity: 0.2, color: 'var(--text-muted)' }} />
             <p className="text-[10px] font-semibold uppercase tracking-wider text-rmpg-500 mb-1">AI Unavailable</p>
             <p className="text-[9px] text-rmpg-500 leading-relaxed max-w-[180px] mx-auto">
               No AI analysis available for this call. Analysis runs automatically when calls are created or updated.

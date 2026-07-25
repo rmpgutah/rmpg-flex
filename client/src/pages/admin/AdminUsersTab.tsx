@@ -798,7 +798,7 @@ export default function AdminUsersTab({
                       Reset 2FA
                     </button>
                   </div>
-                  <p className="text-[9px] mt-2" style={{ color: 'var(--rmpg-500)' }}>
+                  <p className="text-[9px] mt-2" style={{ color: 'var(--text-muted)' }}>
                     Resetting 2FA will delete the user's TOTP secret, backup codes, and trusted devices.
                   </p>
                 </div>
@@ -866,7 +866,7 @@ export default function AdminUsersTab({
                           {sqAdminQuestions.map((q, i) => <li key={i}>{q}</li>)}
                         </ul>
                       )}
-                      <p className="text-[9px] mb-3" style={{ color: 'var(--rmpg-500)' }}>
+                      <p className="text-[9px] mb-3" style={{ color: 'var(--text-muted)' }}>
                         Answers are hashed and never shown here. Clear them if the user is locked out
                         of "Forgot password?" or the questions/answers may be compromised — the user
                         will need to set up new ones from their profile's Security tab.
