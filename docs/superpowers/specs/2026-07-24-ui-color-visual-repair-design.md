@@ -26,6 +26,31 @@ Dashboard route (`/`), 2,921 elements:
 | **C — structural** | `<html class="theme-dark dark theme-blue-silver">` — both palettes applied at once | Whole app; latent |
 | **D — per-page hex** | 5,690 hex literals across 549 `.tsx`/`.ts` files; 274 files contain `bg-black` / `#000000` / `rgba(0,0,0,…)` | Long tail |
 
+### Root causes traced to source (2026-07-24)
+
+Tracing the live symptoms back to source found the dominant cause is **not** the
+per-page hex long tail. It is a block of theme-invariant chrome variables in
+`client/src/index.css` lines 13–33, which live *outside* the theme system
+(`theme-palettes.css` is imported on line 1 and owns surfaces; this block does
+not participate). The block still carries its original header comment: *"Pure
+black shell / Black chrome, neutral gray surfaces, gold utility accents."*
+
+| # | Source | Defect |
+|---|---|---|
+| **E1** | `index.css:25` | `--titlebar-gradient: linear-gradient(180deg, #0b0b0b, #060606, #0b0b0b)` — a **pure-black gradient on every panel title bar, in every theme**. Consumed at `index.css:1381`, `:8614`, `:9038`. `html.theme-light` overrides it at `:4302`; **Blue & Silver has no override**, so it inherits pure black. This is the single largest "black overlay" source. |
+| **E2** | `index.css:22` | `--toolbar-nav-active: rgba(0, 0, 0, 0.38)` — Class A. Theme-invariant black on the active nav tile. |
+| **E3** | `index.css:19` | `--toolbar-nav-text: #9a9a9a` — flat gray, never re-themes to silver. |
+| **E4** | `index.css:24` | `--bevel-highlight: #3a3a3a` — flat gray; day theme overrides at `:4301`, Blue & Silver does not. |
+| **E5** | `theme.ts:131` + `index.html:46` | `classList.add('theme-' + theme)` runs unconditionally, then `theme-blue-silver` is added after — producing the observed `class="theme-dark dark theme-blue-silver"`. Class C, duplicated in both the runtime and the pre-paint boot script. |
+| **E6** | `theme.ts:76`, `index.html:52`, `index.html:81` | `BLUE_SILVER_CHROME = '#0c1a2b'` is **stale**: the 2026-07-07 navy repair moved `--surface-base` to `#22405f`. The page root, browser `theme-color`, and `#pre-splash` therefore paint a much darker navy than the app surfaces above them, reading as a dark band/flash. |
+
+`--window-chrome-close/minimize/maximize` (`#ef4444` / `#d4a017` / `#22c55e`) are
+in the same block but are a deliberate traffic-light triad, not brand chrome —
+**leave them alone**.
+
+E1–E6 are cheap, high-leverage, and cascade to all 139 routes. They are
+sequenced before the Class D sweep for that reason.
+
 Class C is the highest-severity finding despite not being visible today.
 Blue & Silver wins over the night palette **only because its block appears later
 in `theme-palettes.css`** (line 250 vs line 12). Correctness depends on CSS
@@ -195,11 +220,30 @@ client vitest, `vite build`, and a live re-audit of the affected routes.
 
 ### Section 5 — Verification
 
-**Baseline first.** CLAUDE.md records 12 pre-existing client typecheck errors and
-9 pre-existing client test failures on main (`equipmentCustodyPdf`/`prettyAction`,
-`MdtPage` button label, `PlateLogPage` missing `ToastProvider`). Capture and
-record this baseline before the first edit so pre-existing failures are never
-attributed to this work, and so a genuine new failure is not lost in the noise.
+**Baseline — measured 2026-07-24, and it is clean.**
+
+| Gate | Result |
+|---|---|
+| Worker typecheck (`npm run typecheck`) | 0 errors |
+| Worker vitest (`npm test`) | 246 files, 2004 passed, 1 skipped |
+| Client typecheck (`npx tsc --noEmit`) | 0 errors |
+| Client vitest (`npx vitest run`) | 443 files, 3101 passed |
+
+CLAUDE.md's recorded "12 pre-existing client typecheck errors and 9 pre-existing
+client test failures" is **stale** — both are now clean. CLAUDE.md should be
+corrected as part of this work.
+
+Because the baseline is clean, **any** failure appearing during implementation is
+caused by this work. There is no pre-existing noise to disentangle, so a red gate
+is a hard stop rather than a judgement call.
+
+**Worktree prerequisite:** a fresh worktree has no `client/node_modules`, and
+without it `tsc` reports ~97,000 phantom `Cannot find module` errors. Run
+`npm install --legacy-peer-deps` in `client/` before any gate.
+
+**Hook note:** a repo-wide pre-commit hook runs the Worker vitest suite (~17s) on
+every commit, and `core.hooksPath` is shared across worktrees. Commits will fail
+on a broken Worker test even though this work does not touch `/src/`.
 
 Per-route acceptance, via the live computed-style audit:
 
