@@ -6,6 +6,7 @@ import { getAnthropicKey, getClaudeModel, callClaude, diagnoseAnthropicError } f
 import { getOpenAiKey, getOpenAiModel, callOpenAi, diagnoseOpenAiError } from '../utils/openai';
 import { denverNowDateExpr, denverHourExpr, denverStrftimeExpr } from '../utils/denverTime';
 import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
+import { mergeDispositions, isDispositionRow, type DispositionConfigRow } from '../utils/dispositionConfig';
 
 const admin = new Hono<Env>();
 
@@ -62,97 +63,31 @@ admin.get('/config', async (c) => {
     const db = getDb(c.env);
     const config = await query<Record<string, unknown>>(db, 'SELECT * FROM system_config');
     const result: Record<string, any> = {};
-    const customDispositions: any[] = [];
+    const dispositionRows: DispositionConfigRow[] = [];
+
     for (const row of config) {
       // Live system_config columns are config_key/config_value (NOT key/value);
-      // reading key/value yielded "undefined" for every row, so custom
-      // dispositions + flat config never loaded once this route goes live.
+      // reading key/value yielded "undefined" for every row.
       const key = String(row.config_key);
       const value = String(row.config_value ?? '');
-      // Disposition rows live under the 'disposition.<code>' namespace
-      // so we can keep the flat key/value schema while still allowing
-      // the client to consume them as a typed array.
-      if (key.startsWith('disposition.')) {
-        try {
-          const parsed = JSON.parse(value);
-          customDispositions.push({
-            code: parsed.code,
-            description: parsed.description,
-            color: parsed.color,
-            is_active: parsed.is_active !== false,
-            // Keep `config_value` for backward-compat with the existing
-            // client mapping that JSON.parses each row.
-            config_value: value,
-          });
-        } catch { /* malformed row — skip */ }
+      const candidate: DispositionConfigRow = {
+        config_key: key,
+        config_value: value,
+        category: row.category == null ? null : String(row.category),
+      };
+
+      if (isDispositionRow(candidate)) {
+        // Consumed as a disposition below. Deliberately NOT also written into
+        // the flat map: every category='dispositions' row shares the constant
+        // config_key 'disposition_code', so doing both left a meaningless
+        // last-write-wins scalar on the response. Nothing reads it.
+        dispositionRows.push(candidate);
       } else if (!SECRET_KEY_PATTERN.test(key)) {
         result[key] = value;
       }
     }
 
-    // Baked-in defaults so the dropdown is never empty on a fresh
-    // database. Custom rows above OVERRIDE these by code (admin can
-    // tweak description/color in system_config without losing the
-    // built-in roster).
-    const defaults = [
-      { code: 'Report Taken',     description: 'Report Taken' },
-      { code: 'Unfounded',        description: 'Unfounded' },
-      { code: 'GOA',              description: 'Gone on Arrival' },
-      { code: 'Referred',         description: 'Referred to other agency' },
-      { code: 'No Action',        description: 'No Action Required' },
-      { code: 'Arrest',           description: 'Arrest Made' },
-      { code: 'Warning',          description: 'Warning Issued' },
-      { code: 'Citation',         description: 'Citation Issued' },
-      { code: 'Trespass Warning', description: 'Trespass Warning Issued' },
-      { code: 'Civil Matter',     description: 'Civil Matter — No Action' },
-      { code: 'Resolved',         description: 'Resolved on Scene' },
-      { code: 'Transported',      description: 'Subject Transported' },
-      { code: 'False Alarm',      description: 'False Alarm' },
-      { code: 'Verbal Warning',   description: 'Verbal Warning Issued' },
-      { code: 'Field Interview',  description: 'Field Interview (FI) Conducted' },
-      { code: 'Counseled',        description: 'Subject Counseled' },
-      { code: 'Documentation Only', description: 'Documentation Only' },
-      { code: 'UTL',              description: 'Unable to Locate' },
-      { code: 'Assist Rendered',  description: 'Assist Rendered' },
-      { code: 'Negative Contact', description: 'Negative Contact' },
-      { code: 'Patrol Completed', description: 'Patrol Completed' },
-      { code: 'Premise Secured',  description: 'Premise Secured' },
-      { code: 'Owner Notified',   description: 'Owner/Keyholder Notified' },
-      { code: 'Vehicle Towed',    description: 'Vehicle Towed' },
-      { code: 'Standby Complete', description: 'Standby Complete' },
-      // Process Service outcomes (paper service — pso_client_request / process_service calls).
-      // Namespaced with a 'PS ' code prefix so they group together and never
-      // collide with the law-enforcement codes above. Per-attempt diligence
-      // tracking still lives in the dedicated serve subsystem (serve_attempts);
-      // these are the call-level closeout codes.
-      { code: 'PS Served',            description: 'Process Served — Personal' },
-      { code: 'PS Sub-Served',        description: 'Process Served — Substitute' },
-      { code: 'PS Posted',            description: 'Process Served — Posted & Mailed' },
-      { code: 'PS Corporate',         description: 'Process Served — Corporate/Registered Agent' },
-      { code: 'PS Mailed',            description: 'Process Served — By Mail' },
-      { code: 'PS Non-Service',       description: 'Process — Unable to Serve' },
-      { code: 'PS Evasive',           description: 'Process — Evasive / Avoiding Service' },
-      { code: 'PS Vacant',            description: 'Process — Vacant / Unoccupied' },
-      { code: 'PS No Access',         description: 'Process — Gated / No Access' },
-      { code: 'PS Unknown',           description: 'Process — Recipient Unknown at Address' },
-      { code: 'PS Out of Jurisdiction', description: 'Process — Out of Jurisdiction' },
-      { code: 'PS Recalled',          description: 'Process — Recalled by Client' },
-      { code: 'PS Non Est',           description: 'Process — Returned Non-Est (Return of Service Filed)' },
-      { code: 'Cancelled',        description: 'Call Cancelled' },
-    ];
-    const overrideCodes = new Set(customDispositions.map((d) => d.code));
-    const merged = [
-      ...customDispositions,
-      ...defaults
-        .filter((d) => !overrideCodes.has(d.code))
-        .map((d) => ({
-          ...d,
-          is_active: true,
-          config_value: JSON.stringify(d),
-        })),
-    ];
-
-    result.dispositions = merged;
+    result.dispositions = mergeDispositions(dispositionRows);
     return c.json(result);
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });

@@ -71,3 +71,26 @@ describe('PUT /api/admin/system-settings — category round-trip', () => {
     expect(rows[0].config_value).toBe('120');
   });
 });
+
+describe('GET /api/admin/config — disposition namespaces', () => {
+  it('returns a disposition created the way AdminSystemTab writes it', async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    // Exactly what AdminSystemTab.tsx:733 POSTs.
+    await execute(db,
+      `INSERT INTO system_config (config_key, config_value, category, is_active)
+       VALUES ('disposition_code', ?, 'dispositions', 1)`,
+      JSON.stringify({ code: 'PATROL CHECK', description: 'Patrol Check Completed', color: '#888888' }));
+
+    const res = await app.request('/api/admin/config', {}, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const cfg = await res.json() as { dispositions: Array<{ code: string; description: string; is_active: boolean }> };
+
+    const found = cfg.dispositions.find((d) => d.code === 'PATROL CHECK');
+    expect(found).toBeDefined();
+    expect(found!.description).toBe('Patrol Check Completed');
+
+    // Built-ins still present, and the raw row no longer leaks as a scalar.
+    expect(cfg.dispositions.some((d) => d.code === 'Report Taken')).toBe(true);
+    expect((cfg as unknown as Record<string, unknown>).disposition_code).toBeUndefined();
+  });
+});
