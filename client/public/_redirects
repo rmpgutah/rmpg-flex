@@ -16,15 +16,33 @@
 
 /api/*  https://api.rmpgutah.us/api/:splat  200
 
-# Download / update files proxy — routes /downloads/* and /updates/*
-# to the Worker (FILES) DOWNLOADS R2 bucket. Without this, relative
-# download links resolve to the Pages SPA which returns index.html
-# (HTTP 200, text/html) instead of the actual binary, breaking all
-# desktop installer downloads and electron-updater auto-update checks.
-/downloads/*  https://api.rmpgutah.us/downloads/:splat  200
-/updates/*    https://api.rmpgutah.us/updates/:splat    200
-/download      https://api.rmpgutah.us/download          200
-/rmpg-seal.png https://api.rmpgutah.us/rmpg-seal.png     200
+# REMOVED 2026-07-25: four status-200 "rewrite to another origin" rules
+# (/downloads/*, /updates/*, /download, /rmpg-seal.png).
+#
+# Cloudflare Pages supports redirect statuses (301/302/303/307/308) but NOT
+# status-200 rewrites to another origin — that is a Netlify feature Pages does
+# not implement. All four were silently ignored and fell through to the
+# `/*  /index.html  200` catch-all below, so the request returned the app shell
+# with HTTP 200. A download then saved ~11 KB of HTML under the artifact's
+# filename and nothing reported an error. Measured before removal:
+#
+#   rmpgutah.us/downloads/<os-zip>     -> 200 text/html   (app shell)
+#   rmpgutah.us/updates/latest.yml     -> 200 text/html   (app shell)
+#   rmpgutah.us/download               -> 200 text/html   (app shell)
+#   rmpgutah.us/rmpg-seal.png          -> 404
+#   api.rmpgutah.us/updates/latest.yml -> 200 text/yaml   (works)
+#
+# Nothing depended on them: /downloads/* is replaced by absolute URLs from
+# /api/downloads/info plus a rmpgutah.us/downloads/* zone route in
+# wrangler.toml (a Worker route, which does work); electron-updater hardcodes
+# https://api.rmpgutah.us/updates/ in desktop/updater.js; and root-level assets
+# already 404 on live, which is why PDFs switched to Vite ?url imports (see
+# client/src/utils/pdfAssets.ts).
+#
+# /api/* below is intentionally KEPT. It is almost certainly inert too,
+# surviving only because the separate rmpg-api-proxy Worker route covers the
+# same path — but if that reasoning is wrong, deleting it breaks every API call
+# in the product, and removing one redundant line does not justify that risk.
 
 # Missing build assets must 404, NOT fall through to the SPA catch-all.
 # After a deploy the build emits new hashed chunk names and DELETES the old

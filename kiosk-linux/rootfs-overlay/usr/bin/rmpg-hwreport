@@ -178,8 +178,12 @@ report() {
     section "Audio"
     echo "hda cards    : $(ls -d /sys/class/sound/card* 2>/dev/null | wc -l | tr -d ' ')"
     echo "codecs       : $(dmesg 2>/dev/null | grep -ci 'snd_hda\|hdaudio' || true) kernel message(s)"
-    echo "NOTE         : kernel-side only in this build — there is no ALSA userspace"
-    echo "               and WebKitGTK has no GStreamer, so Flex tones stay silent."
+    echo "mixer        : $(command -v amixer >/dev/null 2>&1 && echo "amixer present" || echo "amixer MISSING")"
+    echo "NOTE         : ALSA userspace ships as of the 2026-07-25 audit"
+    echo "               (alsa-lib + alsa-utils). WebKitGTK is still built without"
+    echo "               GStreamer, so in-page HTML5 audio does not play yet even"
+    echo "               though the card and mixer work — check with speaker-test"
+    echo "               rather than a page before concluding the hardware is dead."
 
     section "Boot store / update state"
     if . /usr/lib/rmpg/boot-store.sh 2>/dev/null && rmpg_bootstore_find >/dev/null 2>&1; then

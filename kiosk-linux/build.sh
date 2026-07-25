@@ -791,6 +791,31 @@ COGHASH
       echo "KIOSK_LINUX_DESKTOP=0 — building the lean kiosk-only image."
     fi
 
+    # AX211 (Wi-Fi 6E, Mk3) firmware gap: Buildroot own linux-firmware.mk only
+    # globs "iwlwifi-so-a0-gf-a0*" for BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_6E, but
+    # real-world AX211 units request EITHER "so-a0-gf-a0" OR "ty-a0-gf-a0"
+    # firmware depending on the exact host chipset combo -- confirmed both
+    # exist in the pinned linux-firmware-20240115 source tarball, and confirmed
+    # via real dmesg reports from Raptor Lake AX211 systems that "ty-a0" is a
+    # genuinely live variant, not a hypothetical one. Missing this would
+    # silently break Wi-Fi on whichever Mk3 units happen to need the variant
+    # Buildroot does not glob for -- the driver loads, finds no matching
+    # firmware file, and the radio simply never comes up, with nothing in the
+    # boot log pointing at firmware as the cause unless someone thinks to check
+    # dmesg for "Direct firmware load ... failed".
+    LINUX_FW_MK="$BUILDROOT_DIR/package/linux-firmware/linux-firmware.mk"
+    if ! grep -q "ty-a0-gf-a0" "$LINUX_FW_MK"; then
+      echo "Patching $LINUX_FW_MK to also glob the ty-a0-gf-a0 (AX211) firmware variant ..."
+      sed -i "/LINUX_FIRMWARE_FILES += iwlwifi-so-a0-gf-a0\*/a\\
+LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0*.{ucode,pnvm}" "$LINUX_FW_MK"
+      grep -q "ty-a0-gf-a0" "$LINUX_FW_MK" || {
+        echo "ERROR: ty-a0-gf-a0 firmware patch failed to apply — check the sed pattern against the real linux-firmware.mk." >&2
+        exit 1
+      }
+    else
+      echo "linux-firmware.mk already patched for ty-a0-gf-a0."
+    fi
+
     echo "Applying defconfig ..."
     make -C "$BUILDROOT_DIR" O=/build-output BR2_DEFCONFIG="$GEN_DEFCONFIG" defconfig
 
@@ -857,7 +882,27 @@ COGHASH
     # because the value changed — the package stamp already exists — so the new
     # modules would silently not be in the shipped binary. The entry name carries
     # the reason because this list is tracked BY NAME in the marker file.
-    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses xserver_xorg-server xserver_xorg-server:screensaver grub2:builtin-modules"
+    #
+    # linux-firmware:fz55 — the FZ-55 hardware audit added
+    # BR2_PACKAGE_LINUX_FIRMWARE_I915 (i915 DMC blobs, required for display
+    # power management on Mk2/Mk3) and patched linux-firmware.mk to also glob
+    # the ty-a0-gf-a0 AX211 variant. linux-firmware was already built, so
+    # neither change took effect: the patch applied to the .mk but the package
+    # never re-extracted, and the built image had zero i915 and zero ty-a0
+    # firmware files despite both symbols being =y in .config. Verified by
+    # listing target/lib/firmware rather than trusting the build exit code.
+    #
+    # (This entry also explains an oddity seen from the other side of the same
+    # week: a build in this worktree DID come out with the 33 i915 DMC blobs
+    # present, because a build in another worktree had already forced
+    # linux-firmware to re-extract in the SHARED Docker volume. Same symbol, same
+    # config, different outcome depending on what another checkout had done —
+    # exactly the reason both this list and the post-build gates exist.)
+    #
+    # alsa-utils:amixer — same class. amixer is a per-command sub-option that
+    # was not previously requested, so the already-built package had no reason
+    # to rebuild and amixer stayed absent from the image.
+    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses xserver_xorg-server xserver_xorg-server:screensaver grub2:builtin-modules linux-firmware:fz55 alsa-utils:amixer"
     if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ]; then
       # The marker is a LIST of packages already reconfigured, not a single
       # all-or-nothing flag. The first version of this was a bare touch file,
@@ -1123,7 +1168,48 @@ COGHASH
     echo "Copying final images out to the host-visible output/ directory ..."
     mkdir -p /kiosk-linux/output/images
     cp /build-output/images/bzImage /build-output/images/rootfs.cpio.gz /kiosk-linux/output/images/
-  '
+  ' || {
+  # ── Name the concurrent-build cause on failure (2026-07-25) ────────────────
+  #
+  # `set -e` would otherwise abort here with only Buildroot output on screen, and
+  # the symptom of a mid-build collision looks nothing like its cause. Observed
+  # three times in one day; the third read:
+  #
+  #   /bin/sh: 1: scripts/basic/fixdep: Permission denied
+  #   make[5]: *** [net/netfilter/nf_nat_masquerade.o] Error 126
+  #
+  # fixdep is a host helper the kernel build execs for EVERY object file. It had
+  # compiled fine and hundreds of objects had already used it — then a build in
+  # another worktree, sharing this same Docker volume, replaced it mid-run. Two
+  # random object files failed with an exec error while the config was perfectly
+  # valid, which sends you looking at Kconfig for a problem that is not there.
+  #
+  # The guard at the top of this script only checks at START, so a build that
+  # begins after ours cannot be refused. This turns the aftermath into a
+  # diagnosis instead of a mystery.
+  BUILD_RC=$?
+  CONCURRENT_NOW="$(docker ps --filter volume="$BUILD_OUTPUT_VOLUME" --format '{{.ID}} {{.Image}}' 2>/dev/null || true)"
+  echo "" >&2
+  echo "ERROR: the Buildroot container exited non-zero (rc=$BUILD_RC)." >&2
+  if [ -n "$CONCURRENT_NOW" ]; then
+    echo "" >&2
+    echo "⚠  ANOTHER BUILD IS USING THE SAME VOLUME RIGHT NOW:" >&2
+    echo "$CONCURRENT_NOW" | sed 's/^/     /' >&2
+    echo "" >&2
+    echo "   That is very likely the cause, NOT your config. Look for an exec" >&2
+    echo "   error such as 'scripts/basic/fixdep: Permission denied' or 'Error 126'" >&2
+    echo "   above: a shared host tool was replaced while this build was running." >&2
+    echo "   Wait for that build to finish and re-run, or use separate volumes:" >&2
+    echo "     BUILDROOT_VOLUME=kiosk-src-mine BUILD_OUTPUT_VOLUME=kiosk-out-mine ./build.sh" >&2
+    echo "   (a fresh output volume means a full from-scratch build)" >&2
+  else
+    echo "  No other container is holding the volume now, so this is more likely a" >&2
+    echo "  real build failure — but note a colliding build may have already exited." >&2
+    echo "  An 'Error 126' or 'Permission denied' on a script under scripts/ is a" >&2
+    echo "  collision signature regardless of what docker ps says at this moment." >&2
+  fi
+  exit "$BUILD_RC"
+}
 
 ls -la "$OUTPUT_DIR/images/bzImage" "$OUTPUT_DIR/images/rootfs.cpio.gz" 2>/dev/null || {
   echo "ERROR: expected output images not found in $OUTPUT_DIR/images/ — build likely failed partway; check the make output above." >&2

@@ -26,6 +26,7 @@ import {
   getVoiceChannelConfig,
 } from '../utils/voiceChannel';
 import { setDetailLevel, getDetailLevel, type NarrativeDetail } from '../utils/narrativeComposer';
+import { apiFetch } from '../hooks/useApi';
 
 // ============================================================
 // Types
@@ -102,6 +103,29 @@ export default function MenuBar({
   const navigate = useNavigate();
   const location = useLocation();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [winInstallerUrl, setWinInstallerUrl] = useState<string | null>(null);
+
+  // Resolve the current Windows installer from the API instead of hardcoding a
+  // filename. The previous literal — https://rmpgutah.us/downloads/RMPG-Flex-Setup-5.8.1.exe
+  // — was wrong twice over: that host is Pages, which returns the SPA shell for
+  // /downloads/* with HTTP 200, and the published artifact had moved on to
+  // 5.8.6 as a .zip, so the .exe filename no longer existed in the bucket.
+  useEffect(() => {
+    apiFetch<{ win?: { url: string } }>('/api/downloads/info')
+      .then((info) => setWinInstallerUrl(info?.win?.url ?? null))
+      .catch(() => setWinInstallerUrl(null));
+  }, []);
+
+  // Open the resolved installer, or fall back to the downloads page. Never
+  // guess a URL — a guessed /downloads/<name> is precisely what produced the
+  // 11 KB HTML "installer" reported from the field.
+  const openWindowsInstaller = useCallback(() => {
+    if (winInstallerUrl) {
+      window.open(winInstallerUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      navigate('/downloads');
+    }
+  }, [winInstallerUrl, navigate]);
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
   const menuBarRef = useRef<HTMLDivElement>(null);
 
@@ -968,13 +992,9 @@ export default function MenuBar({
             // prompts via the 'update-status' IPC stream.
             electron.checkForUpdates();
           } else {
-            // Web browser — no auto-updater; open the installer page
-            // in a new tab so a Windows user can grab the latest EXE.
-            window.open(
-              'https://rmpgutah.us/downloads/RMPG-Flex-Setup-5.8.1.exe',
-              '_blank',
-              'noopener,noreferrer',
-            );
+            // Web browser — no auto-updater; open the current installer in a
+            // new tab so a Windows user can grab the latest build.
+            openWindowsInstaller();
           }
         },
       },
@@ -982,13 +1002,7 @@ export default function MenuBar({
         type: 'action',
         label: 'Download Installer (Windows)',
         icon: Download,
-        action: () => {
-          window.open(
-            'https://rmpgutah.us/downloads/RMPG-Flex-Setup-5.8.1.exe',
-            '_blank',
-            'noopener,noreferrer',
-          );
-        },
+        action: openWindowsInstaller,
       },
       { type: 'separator' },
       { type: 'action', label: 'Report a Problem', icon: Bug, action: () => navigate('/admin?tab=system') },

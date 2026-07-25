@@ -36,19 +36,27 @@ commit.
   firmware ships. None of it has met the hardware. `rmpg-hwreport` exists to
   make that first boot produce evidence rather than an anecdote. Flash and
   confirm one unit before any fleet rollout.
-- **No audio userspace.** The kernel has HDA plus the Realtek and HDMI codec
-  parsers, but there is no ALSA userspace and WebKitGTK is built without
-  GStreamer, so Flex voice alerts and dispatch tones do not sound on the
-  terminal. Deliberate: enabling it forces a full WebKitGTK rebuild and adds
-  roughly 30-50 MB to a rootfs whose OTA payload already cannot finish
-  uploading in one PUT.
+- **Audio plays through ALSA, but not through the browser.** Superseded in part
+  on 2026-07-25: the hardware audit added `configs/kernel-audio.fragment` plus
+  `alsa-lib`/`alsa-utils`, so the card, codecs and mixer are all real now — this
+  entry previously said there was no audio userspace at all. What is still
+  missing is GStreamer in WebKitGTK, so **in-page HTML5 audio does not play**,
+  which is what Flex voice alerts and dispatch tones use. Adding it forces a
+  full WebKitGTK rebuild and 30-50 MB onto a rootfs whose OTA payload already
+  cannot finish uploading in one PUT. Verify with `speaker-test`/`aplay` before
+  concluding a unit has dead audio hardware.
 - **Wi-Fi has never associated with a real access point.** The stack is built
   (iwlwifi + 32 firmware blobs + connman + WPA2-Enterprise) but QEMU has no
   Wi-Fi radio, so there is nothing to test against here.
-- **OTA payload publishing is still blocked.** The updater, manifest, staging
-  channel and promote gate all exist; `wrangler r2 object put` stalled for 1h21m
-  on the ~244 MiB rootfs, and a single-shot PUT with no resume is not a viable
-  release mechanism. See the program spec for the options.
+- ~~**OTA payload publishing is blocked.**~~ **Resolved 2026-07-25** by the
+  parallel hardware-audit PR, which moved both ends to 16 MiB chunks:
+  `scripts/publish-os-release.sh` uploads parts (a re-run skips parts already
+  uploaded instead of restarting 244 MiB) and `rmpg-update` downloads and
+  verifies them individually, caching parts in `/tmp` so a retry resumes rather
+  than starting over. That matters more on the install side than the publish
+  side — a single ~250 MB GET that dies at 90% on field Wi-Fi threw the whole
+  transfer away. The single-file form is still accepted so older published
+  releases stay installable.
 - **No fleet-side device check-in.** `rmpg-hwreport` writes locally to the boot
   store. It deliberately does NOT post anywhere: the only OS endpoints today are
   manifest/channels/promote, and adding an unauthenticated ingest endpoint for

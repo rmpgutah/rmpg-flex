@@ -14,20 +14,23 @@
 # - USB 3.x xHCI ports (also how the OS image itself boots from a USB stick,
 #   and keyboard/touchscreen input for the kiosk) → xhci + usb-storage + HID.
 CONFIG_DRM_I915=y
-# i915 loads GuC/HuC/DMC firmware opportunistically when present; basic KMS
-# modesetting (all this kiosk needs) works without any firmware blobs, so no
-# linux-firmware package is required for bring-up.
-#
-# (2026-07-25) DMC firmware IS now shipped — see the graphics section at the
-# bottom of this file and BR2_PACKAGE_LINUX_FIRMWARE_I915 in desktop.fragment.
-# "Works without blobs" stays true for bring-up; DMC buys display power
-# management, which a fan-cooled unit in a hot vehicle actually needs.
 CONFIG_DRM_I915_USERPTR=y
+# CORRECTION (2026-07-25 hardware audit): this previously claimed i915 needs no
+# firmware blobs. That holds for the Mk1's UHD 620 (Whiskey Lake), where bare
+# KMS works — but NOT for Mk2 (Iris Xe / Tiger Lake) or Mk3 (Iris Xe / Raptor
+# Lake), which need DMC firmware for display power management. Missing it
+# degrades or removes display power states: flicker, no low-power display
+# entry, and worse battery life on a terminal expected to last a shift.
+# BR2_PACKAGE_LINUX_FIRMWARE_I915 in configs/desktop.fragment supplies the
+# i915/ blob directory (adlp_dmc* for Raptor Lake's Alder Lake-P display IP,
+# tgl_dmc* for Mk2). Firmware is loaded opportunistically, so the same image
+# still boots fine under QEMU where no Intel GPU exists.
 
-# Networking (wired). NOTE: the "no Wi-Fi stack yet" caveat that used to live
-# here went stale on 2026-07-24 — Wi-Fi became a hard requirement (the sites
-# have no ethernet drop) and now has its own configs/kernel-wifi.fragment plus
-# iwlwifi firmware and a connman/wpa_supplicant userspace in desktop.fragment.
+# Networking (wired). Wi-Fi (all 3 generations use an Intel combo card) is
+# covered separately by kernel-wifi.fragment + kernel-bluetooth.fragment —
+# this comment used to say "no Wi-Fi stack yet"; that stopped being true once
+# those fragments were added and the comment was never updated. Fixed here
+# rather than left contradicting the actual config.
 CONFIG_E1000E=y
 
 # Storage: NVMe + AHCI/SATA + the SCSI-disk layer both sit on.
@@ -83,12 +86,18 @@ CONFIG_NLS_ISO8859_1=y
 # unmet: ACPI=y but COMMON_CLK was unset. A symbol whose dependency fails this
 # way leaves no trace in .config, which is why this needed a source-level
 # audit rather than a grep for "is not set".
+# ⚠️ MERGE NOTE (2026-07-25): the hardware-audit block further down also sets
+# CONFIG_I2C_DESIGNWARE_PLATFORM and CONFIG_I2C_HID_ACPI, from the Mk3
+# datasheet. Those lines are kept there and NOT repeated here — but on their own
+# they were INERT: without COMMON_CLK below, I2C_DESIGNWARE_PLATFORM fails its
+# `depends on (ACPI && COMMON_CLK)` and merge_config.sh drops it silently, and
+# without PINCTRL the digitizer GPIO interrupt has no driver. The two changes
+# only add up to a working touchscreen together, which is why these gates are
+# listed apart from the devices they enable.
 CONFIG_COMMON_CLK=y
 CONFIG_MFD_INTEL_LPSS_PCI=y
 CONFIG_MFD_INTEL_LPSS_ACPI=y
-CONFIG_I2C_DESIGNWARE_PLATFORM=y
 CONFIG_I2C_DESIGNWARE_PCI=y
-CONFIG_I2C_HID_ACPI=y
 
 # The digitizer's interrupt arrives on a PCH GPIO pin, so the I2C-HID driver
 # needs the Intel pin controller to resolve its ACPI GpioInt into a real IRQ.
@@ -169,23 +178,20 @@ CONFIG_DRM_SIMPLEDRM=y
 # SERIO_I8042=y; it selects INPUT_SPARSEKMAP itself.
 CONFIG_PANASONIC_LAPTOP=y
 
-# ── Audio: kernel side only ──────────────────────────────────────────────────
-# CONFIG_SND_HDA_INTEL was already =y, but with NO codec parser: the controller
-# binds and then initialises zero codecs, so the hardware reports as present
-# while being incapable of producing sound. Realtek is the codec family
-# Panasonic uses; HDMI covers dock/external display audio.
+# ── Audio: now owned by configs/kernel-audio.fragment ────────────────────────
+# This block used to set SND_HDA_GENERIC / _CODEC_REALTEK / _CODEC_HDMI here,
+# with a note that the image had no audio USERSPACE so Flex tones would stay
+# silent. Both halves of that are superseded: the 2026-07-25 hardware audit
+# added configs/kernel-audio.fragment (the same codec symbols, with the SND_PCI
+# dependency stated) AND the ALSA userspace in desktop.fragment, so audio is a
+# complete path now rather than a kernel-only stub.
 #
-# HONEST SCOPE NOTE: this is the KERNEL half only. There is still no audio
-# USERSPACE in this image (no ALSA libs, and WebKitGTK is built without
-# GStreamer), so Flex voice alerts and dispatch tones remain silent on the
-# terminal. Deliberate, 2026-07-25: adding it forces a full WebKitGTK rebuild
-# and ~30-50 MB onto a rootfs whose OTA payload already cannot finish
-# uploading. Enabling the codecs now is ~KB and means that future change needs
-# no kernel rebuild — and it lets rmpg-hwreport tell the truth about what audio
-# hardware the unit actually has.
-CONFIG_SND_HDA_GENERIC=y
-CONFIG_SND_HDA_CODEC_REALTEK=y
-CONFIG_SND_HDA_CODEC_HDMI=y
+# Removed rather than duplicated: two fragments setting the same symbols is a
+# maintenance trap — the day they disagree, merge_config.sh silently takes
+# whichever is merged last, which depends on the order in
+# BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES rather than on anyone's intent.
+# build.sh still asserts SND_HDA_CODEC_REALTEK is =y in the FINAL .config, so
+# the guarantee survives the move; the gate checks the result, not the source.
 
 # ── EFI + the Windows volume (the no-USB install path) ───────────────────────
 # EFIVAR_FS was =m — same unloadable-module problem as the thermal driver — so
@@ -200,3 +206,131 @@ CONFIG_EFIVAR_FS=y
 # a new slot. Needed for A/B on that path too — the slot pointer GRUB reads is
 # a file on this volume. NLS_UTF8 (already =y) is required by NTFS3.
 CONFIG_NTFS3_FS=y
+# ── Findings from the real Mk3 datasheet (fetched 2026-07-25 from
+# ap.connect.panasonic.com), cross-checked against Mk1/Mk2 listings — every
+# symbol below verified present in the pinned 6.6.63 kernel source before
+# being added; none of this was guessed. ──────────────────────────────────
+
+# Webcam: Mk1/Mk2/Mk3 all ship a UVC-class camera (Mk3: "2MP (1080p) w/
+# privacy cover — Infrared with Windows Hello support"). RMPG Flex has its own
+# field-camera capture workflow; without this the internal webcam is
+# invisible to the OS entirely, not merely low quality.
+# MEDIA_SUPPORT is a `menuconfig` gate, off by default in a minimal config —
+# without it USB_VIDEO_CLASS cannot even be selected, let alone compiled.
+# The gate chain here is deeper than it looks and cost a build cycle to find:
+# MEDIA_SUPPORT alone is NOT enough. Setting only MEDIA_SUPPORT caused
+# MEDIA_SUPPORT_FILTER to auto-enable (it defaults y when !EXPERT), which HIDES
+# all camera drivers unless the specific category is also selected — so
+# USB_VIDEO_CLASS silently vanished from the generated .config with no error.
+# The full chain is MEDIA_SUPPORT -> MEDIA_CAMERA_SUPPORT (the category
+# filter) -> MEDIA_USB_SUPPORT (the `if USB && MEDIA_SUPPORT` menuconfig
+# guarding drivers/media/usb) -> VIDEO_DEV (V4L2 core) -> USB_VIDEO_CLASS.
+CONFIG_MEDIA_SUPPORT=y
+CONFIG_MEDIA_CAMERA_SUPPORT=y
+CONFIG_MEDIA_USB_SUPPORT=y
+CONFIG_VIDEO_DEV=y
+CONFIG_USB_VIDEO_CLASS=y
+CONFIG_USB_VIDEO_CLASS_INPUT_EVDEV=y
+
+# MicroSDXC card reader (Mk3 spec: "MicroSDXC UHS-I"; present on Mk1/Mk2 too).
+CONFIG_MMC=y
+CONFIG_MMC_BLOCK=y
+CONFIG_MMC_SDHCI=y
+CONFIG_MMC_SDHCI_PCI=y
+
+# I2C + touch/pen digitizer. The Mk3 FHD panel is "capacitive touch (1000
+# nit)" with "4 models (glove, touch, pen, pen/touch)" and a stylus — a
+# genuinely different input path from the plain HID multitouch already
+# enabled above. Intel's mobile platforms expose their I2C-attached touch
+# controllers through the "Designware" I2C core (LPSS), not a discrete PCI
+# device, so that specific I2C host driver is required, not just generic I2C.
+CONFIG_I2C=y
+CONFIG_I2C_DESIGNWARE_CORE=y
+CONFIG_I2C_DESIGNWARE_PLATFORM=y
+# The Designware symbols above bring up the I2C *bus*; they do not attach
+# anything to it. A capacitive touchscreen on an Intel mobile platform is a
+# HID-over-I2C device enumerated from an ACPI node, which needs the I2C-HID
+# transport driver on top of that bus before HID_MULTITOUCH (below) ever sees
+# a report descriptor. Without it the controller is powered and addressable
+# and still produces no input events — the failure looks like a dead
+# touchscreen, not a missing driver, which is what makes it easy to miss.
+# I2C_HID_ACPI selects the hidden I2C_HID_CORE symbol, so that one is not set
+# here.
+CONFIG_I2C_HID_ACPI=y
+# Wacom-class digitizer for the pen/stylus models. HID_MULTITOUCH (above)
+# covers the capacitive touch layer; a Wacom-protocol pen is a separate HID
+# usage this driver is needed to decode.
+CONFIG_HID_WACOM=y
+
+# USB4/Thunderbolt (Mk3 confirmed: "USB-C Thunderbolt 4, 40Gbps"; Mk2 listings
+# also show a Thunderbolt 4 USB-C port). Without this, a Thunderbolt-only dock
+# or accessory plugged into that port is invisible — plain USB devices on the
+# same port still work via xHCI's USB fallback mode, so this specifically
+# affects Thunderbolt-mode docks and DisplayPort-alt-mode external monitors.
+CONFIG_USB4=y
+
+# Serial-over-USB for the optional dedicated GPS module (Mk3: "Optional
+# dedicated GPS (u-blox NEO-M8N)"). u-blox GPS modules on this class of
+# hardware expose themselves as a USB CDC-ACM serial port (/dev/ttyACM0)
+# carrying NMEA/UBX sentences; RMPG Flex has its own GPS ingestion pipeline
+# that needs a real serial device to read from. Also generically useful for
+# the optional WWAN modem's AT-command port (see below).
+CONFIG_USB_ACM=y
+
+# Optional WWAN (Mk3: "Optional 4G — 4G (LTE, LTE-A)"; Dual SIM Nano-SIM +
+# eSIM). Kernel-side only — this enables the network/serial device nodes a
+# WWAN modem needs to appear at all (as a QMI or MBIM network interface, or a
+# plain AT-command serial port), but does NOT include a userspace modem
+# manager (ModemManager). Units without the WWAN xPAK populated simply never
+# see these drivers match anything, at zero cost. Units WITH it get basic
+# connectivity; full cellular management (APN config, signal UI, SIM PIN)
+# would be separate, larger scoped work if RMPG's purchased units actually
+# have this option enabled.
+CONFIG_USB_SERIAL=y
+CONFIG_USB_SERIAL_OPTION=y
+CONFIG_USB_NET_DRIVERS=y
+CONFIG_USB_USBNET=y
+CONFIG_USB_NET_QMI_WWAN=y
+CONFIG_USB_NET_CDC_MBIM=y
+
+# ── Security (Mk3 datasheet: "Secured-core PC", "TPM v.2.0", "NIST BIOS
+# compliant") ────────────────────────────────────────────────────────────
+# TPM 2.0. Modern "Secured-core PC" platforms (Mk3, and likely Mk2 given its
+# listing also shows "TPM 2.0") expose the TPM over the UEFI-standard CRB
+# (Command Response Buffer) interface rather than the older TIS interface —
+# both are enabled since which one a given firmware/BIOS revision uses is not
+# something verifiable without the physical unit, and enabling both costs
+# nothing.
+CONFIG_TCG_TPM=y
+CONFIG_TCG_TIS=y
+CONFIG_TCG_TIS_CORE=y
+CONFIG_TCG_CRB=y
+
+# ── Power (dual hot-swap batteries, Mk3 datasheet: two 10.8 V / 6,500 mAh
+# packs, hot-swappable) ───────────────────────────────────────────────────
+# These are `default y` in mainline's drivers/acpi/Kconfig and so are very
+# likely already inherited from the BR2_LINUX_KERNEL_DEFCONFIG="x86_64" base.
+# They are pinned here anyway because live code now depends on them and the
+# dependency is invisible: rmpg-update's safe_to_update() reads
+# /sys/class/power_supply/BAT*/capacity, and that glob is provided by
+# ACPI_BATTERY alone. If a future defconfig bump or a kernel-version change
+# ever drops the inherited default, the guard does not error — the glob simply
+# fails to expand, the loop body never runs, and safe_to_update() returns
+# success. It fails OPEN: every terminal in the fleet would take an update and
+# reboot on a flat battery, which is the exact outcome the guard exists to
+# prevent. A silent fail-open in a vehicle is worth three lines of config.
+#
+# ACPI_AC provides the mains-present state the same guard reads as
+# BAT*/status. POWER_SUPPLY is `select`ed by both, and is stated explicitly
+# for the same reason kernel-wifi.fragment states its crypto primitives.
+CONFIG_ACPI_BATTERY=y
+CONFIG_ACPI_AC=y
+CONFIG_POWER_SUPPLY=y
+
+# IOMMU (Intel VT-d). Part of what "Secured-core PC" means on the Windows
+# side (Kernel DMA Protection), and independently good practice here because
+# Thunderbolt (enabled above) is a DMA-capable external bus — an IOMMU is the
+# standard mitigation against a malicious Thunderbolt device reading memory it
+# should not be able to reach.
+CONFIG_INTEL_IOMMU=y
+CONFIG_INTEL_IOMMU_DEFAULT_ON=y

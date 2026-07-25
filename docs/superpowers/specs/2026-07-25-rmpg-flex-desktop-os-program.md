@@ -36,14 +36,36 @@ Shipped and verified:
   access boundary rather than inventing local credential storage on a device in
   a vehicle.
 - **OTA update system** — `rmpg-update` agent, `/api/os/manifest`, staging
-  channel with an explicit promote gate, 12 tests. Payload publishing blocked,
-  see below.
+  channel with an explicit promote gate, 12 tests. Payload delivery now uses
+  16 MiB chunks that resume on both publish and install (the former blocker;
+  see the resolved-blocker section).
 
 ## FZ-55 stabilization pass (2026-07-25, OS 1.4.0)
 
 Scope chosen with the owner: hardware stabilization, **no audio userspace** (it
-forces a full WebKitGTK rebuild and adds 30-50 MB to an already-unpublishable
-payload), and **full A/B on the no-USB install path**.
+forces a full WebKitGTK rebuild and adds 30-50 MB to the rootfs), and **full A/B on the no-USB install path**.
+
+> **Superseded in part.** A parallel hardware-audit PR (#3023) landed ALSA
+> (`kernel-audio.fragment` + `alsa-lib`/`alsa-utils`) while this work was in
+> flight, so the audio deferral above applies only to **GStreamer in
+> WebKitGTK** — the card, codecs and mixer do ship. In-page HTML5 audio, which
+> is what Flex voice alerts use, still does not play. Two sessions audited the
+> same hardware from different angles; see the merge note below for how the two
+> changes interact.
+
+### How this merged with the parallel audit (#3023, #3025)
+
+Worth knowing, because the two changes are only correct together: the audit
+enabled `I2C_DESIGNWARE_PLATFORM` and `I2C_HID_ACPI` for the touchscreen from
+the Mk3 datasheet, but **neither took effect on its own** — without
+`COMMON_CLK` the first fails its `depends on (ACPI && COMMON_CLK)` and
+`merge_config.sh` drops it silently, and without `PINCTRL` the digitizer GPIO
+interrupt has no driver. This branch supplies both gates. Conversely the audit
+found that `linux-firmware` never re-extracted, so `BR2_PACKAGE_LINUX_FIRMWARE_I915`
+shipped ZERO i915 blobs — which is also why this branch appeared to get the 33
+DMC blobs "for free" on one build: another worktree had already forced the
+re-extract in the shared Docker volume. Both fixes are now in
+`DESKTOP_STALE_PKGS`.
 
 ### What was actually broken
 
@@ -188,12 +210,28 @@ channel assignment, remote reboot, per-site policy.
   Track what genuinely works in `docs/kiosk-os-feature-inventory.md`, counted
   honestly — a padded list is worse than a short one.
 
-## Known blocker: publishing the OTA payload
+## RESOLVED blocker: publishing the OTA payload
+
+**Fixed 2026-07-25** by the parallel hardware-audit PR — kept here because the
+diagnosis is still the useful part, and because the fix changed the manifest
+format that everything downstream reads.
+
+Both ends now use 16 MiB chunks: `scripts/publish-os-release.sh` uploads parts
+and skips ones already uploaded on a re-run, while `rmpg-update` fetches and
+verifies each part separately, caching them in `/tmp` so a retry resumes instead
+of restarting. Manifests may now carry `rootfs_part=` lines instead of a single
+`rootfs_url=`; the single-file form is still accepted so older published
+releases stay installable. **`rootfs_url` is therefore optional — code that
+requires it rejects every chunked update before reaching the part-download
+path.**
+
+The original diagnosis, for context:
 
 `wrangler r2 object put` **stalled for 1h21m** on the ~244 MiB rootfs (2026-07-25)
 while the 13 MB kernel uploaded in seconds on the same run. It is a single-shot
 PUT with no resume and no progress output, so a slow uplink is
-indistinguishable from a hang.
+indistinguishable from a hang. The install side was the worse half: a single
+~250 MB GET dying at 90% on field Wi-Fi discarded the entire transfer.
 
 The partial state is safe — the manifest is written last, so a terminal cannot
 discover a release whose payload did not finish. **Do not reorder those steps.**
@@ -230,10 +268,9 @@ display engine is silently degraded.
 
 1. **Get one FZ-55 booted** and read the hardware report. Everything else is
    guessing until then.
-2. **Solve payload publishing** (still blocked, see above). A 250 MB single-shot
-   PUT is not a release mechanism, and the same size lands on every terminal over
-   Wi-Fi. Options worth costing: R2 multipart, or shipping a delta against the
-   previous rootfs.
+2. ~~Solve payload publishing~~ — **done** via 16 MiB chunking on both ends
+   (see the resolved-blocker section). A delta against the previous rootfs is
+   still the bigger win if field bandwidth becomes the constraint.
 3. **Trim the rootfs.** iwlwifi firmware is ~70 MB of it, covering every radio
    the FZ-55 might have. Unlike i915 DMC there is no cheap way to know which one
    a given unit needs, so this needs a decision rather than a prune.

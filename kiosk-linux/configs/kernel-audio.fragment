@@ -1,0 +1,32 @@
+# kiosk-linux/configs/kernel-audio.fragment
+# Audio hardware for the Panasonic Toughbook FZ-55 (all generations: Mk1/Mk2/Mk3
+# all ship Intel HD Audio + a Realtek codec — confirmed by the Mk3 datasheet's
+# "Integrated dual-array mic w/ AI noise reduction" + "92db speakers", and this
+# is the standard codec pairing on every Intel U/P-series mobile platform from
+# Whiskey Lake through Raptor Lake).
+#
+# Genuinely required, not a nice-to-have: RMPG Flex has a real audio subsystem
+# (radio PTT/panic voice, voice alerts, console audio) that depends on this
+# terminal actually having working sound. Before this fragment, ZERO audio
+# kernel config existed anywhere in this project — the OS would boot with no
+# sound device at all, silently.
+#
+# Every symbol below verified against the real pinned kernel 6.6.63 source
+# (grep on sound/*/Kconfig), not guessed — SOUND and SND are `menuconfig` gates
+# off by default in a minimal config, so they must be explicitly turned on or
+# the entire audio subsystem compiles out regardless of the driver-specific
+# options below.
+CONFIG_SOUND=y
+CONFIG_SND=y
+# default y once SND is on, but stated explicitly rather than relied upon —
+# defaults are exactly the kind of assumption this audit is meant to remove.
+CONFIG_SND_PCI=y
+CONFIG_SND_HDA_INTEL=y
+# HDMI 4K output (Mk3 spec) carries audio over the same HDA controller; without
+# this the display works but any audio routed to an external monitor is silent.
+CONFIG_SND_HDA_CODEC_HDMI=y
+# Realtek ALC-series is the codec on essentially every Intel-platform laptop of
+# this era; GENERIC is a zero-cost fallback if the specific codec ID Panasonic
+# used is not one of Realtek's own IDs.
+CONFIG_SND_HDA_CODEC_REALTEK=y
+CONFIG_SND_HDA_GENERIC=y

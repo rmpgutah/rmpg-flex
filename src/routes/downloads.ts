@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { R2Bucket, R2Object, D1Database } from '@cloudflare/workers-types';
+import { log } from '../utils/logger';
 
 // ─── Helpers exported for use by src/index.ts (non-API paths) ──
 
@@ -181,6 +182,29 @@ interface InstallerMeta {
   size: string;
   bytes: number;
   releaseDate: string;
+  /**
+   * Absolute URL for this artifact.
+   *
+   * Built from the incoming request's origin rather than a constant. The client
+   * previously held `CF_WORKER_DIRECT_BASE = 'https://api.rmpgutah.us'` — a
+   * build-time constant encoding a deployment-time fact, which could only
+   * change with a full client rebuild and could go stale inside a cached
+   * bundle. A request-derived origin cannot drift, and is automatically correct
+   * in dev (localhost:8787) with no environment branch.
+   */
+  url: string;
+  /**
+   * Hex-encoded SHA-256, read from R2 customMetadata.
+   *
+   * Optional because artifacts published before scripts/publish-download.mjs
+   * existed have no checksum. Consumers must hide the field rather than render
+   * `undefined`.
+   *
+   * Deliberately NOT derived from the R2 etag: a multipart object's etag is the
+   * hash of the concatenated per-part MD5 sums plus "-<partCount>", so it is
+   * not a content hash at all once publishing uses multipart.
+   */
+  sha256?: string;
 }
 
 interface InstallerInfo {
@@ -225,20 +249,58 @@ function fmtBytes(bytes: number): string {
   return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
-export async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
-  const info: InstallerInfo = {};
-  const list = await bucket.list();
+/**
+ * Every object in the bucket, following the cursor.
+ *
+ * `include: ['customMetadata']` is REQUIRED to read the sha256 written at
+ * publish time. Our compatibility_date (2026-05-01) is past the 2022-08-04
+ * cutoff, so a bare list() omits customMetadata and the checksum silently
+ * reads undefined — nothing appears broken.
+ *
+ * Requesting metadata also makes R2 return FEWER objects per page to stay under
+ * a response-size cap, so the cursor must be followed. Never compare
+ * objects.length against a limit — use `truncated`.
+ */
+async function listAllObjects(bucket: R2Bucket): Promise<R2Object[]> {
+  const out: R2Object[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const page = await bucket.list({ include: ['customMetadata'], cursor });
+    out.push(...page.objects);
+    if (!page.truncated) return out;
+    cursor = page.cursor;
+  }
+}
 
-  for (const obj of list.objects) {
+/**
+ * Build an InstallerMeta from an R2 object.
+ *
+ * Four call sites construct metas (the main scan plus the .zip overrides for
+ * Windows, Android and the OS image); they all route through here so `url` and
+ * `sha256` cannot be forgotten in one of them.
+ */
+function toMeta(obj: R2Object, origin: string, versionFallback?: string): InstallerMeta {
+  const version = extractVersion(obj.key) || versionFallback || '0.0.0';
+  const sha256 = obj.customMetadata?.sha256;
+  return {
+    filename: obj.key,
+    version,
+    size: fmtBytes(obj.size),
+    bytes: obj.size,
+    releaseDate: obj.uploaded.toISOString(),
+    url: `${origin}/downloads/${encodeURIComponent(obj.key)}`,
+    ...(sha256 ? { sha256 } : {}),
+  };
+}
+
+export async function scanInstallers(bucket: R2Bucket, origin: string): Promise<InstallerInfo> {
+  const info: InstallerInfo = {};
+  const objects = await listAllObjects(bucket);
+
+  for (const obj of objects) {
     const name = obj.key;
     const version = extractVersion(name) || '0.0.0';
-    const meta: InstallerMeta = {
-      filename: name,
-      version,
-      size: fmtBytes(obj.size),
-      bytes: obj.size,
-      releaseDate: obj.uploaded.toISOString(),
-    };
+    const meta = toMeta(obj, origin);
 
     if (name.endsWith('.dmg') && !name.includes('blockmap')) {
       if (!info.mac || verLt(info.mac.version, version)) info.mac = meta;
@@ -259,30 +321,14 @@ export async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
   // to bypass Chrome SmartScreen / Safe Browsing download blocks.
   if (info.win) {
     const zipName = info.win.filename.replace(/\.exe$/, '.zip');
-    const zipObj = list.objects.find((o) => o.key === zipName);
-    if (zipObj) {
-      info.win = {
-        filename: zipName,
-        version: extractVersion(zipName) || info.win.version,
-        size: fmtBytes(zipObj.size),
-        bytes: zipObj.size,
-        releaseDate: zipObj.uploaded.toISOString(),
-      };
-    }
+    const zipObj = objects.find((o) => o.key === zipName);
+    if (zipObj) info.win = toMeta(zipObj, origin, info.win.version);
   }
 
   if (info.android) {
     const zipName = info.android.filename.replace(/\.apk$/, '.zip');
-    const zipObj = list.objects.find((o) => o.key === zipName);
-    if (zipObj) {
-      info.android = {
-        filename: zipName,
-        version: extractVersion(zipName) || info.android.version,
-        size: fmtBytes(zipObj.size),
-        bytes: zipObj.size,
-        releaseDate: zipObj.uploaded.toISOString(),
-      };
-    }
+    const zipObj = objects.find((o) => o.key === zipName);
+    if (zipObj) info.android = toMeta(zipObj, origin, info.android.version);
   }
 
   // Prefer .zip for the OS image when both formats exist. These images are
@@ -292,16 +338,8 @@ export async function scanInstallers(bucket: R2Bucket): Promise<InstallerInfo> {
   // Explorer natively. The .tar.gz is kept in the bucket for Linux/macOS.
   if (info.os && info.os.filename.endsWith('.tar.gz')) {
     const zipName = info.os.filename.replace(/\.tar\.gz$/, '.zip');
-    const zipObj = list.objects.find((o) => o.key === zipName);
-    if (zipObj) {
-      info.os = {
-        filename: zipName,
-        version: extractVersion(zipName) || info.os.version,
-        size: fmtBytes(zipObj.size),
-        bytes: zipObj.size,
-        releaseDate: zipObj.uploaded.toISOString(),
-      };
-    }
+    const zipObj = objects.find((o) => o.key === zipName);
+    if (zipObj) info.os = toMeta(zipObj, origin, info.os.version);
   }
 
   return info;
@@ -312,9 +350,10 @@ const downloads = new Hono<{ Bindings: { DOWNLOADS: R2Bucket; DB: D1Database } }
 // GET /api/downloads/info — returns installer metadata
 downloads.get('/downloads/info', async (c) => {
   try {
-    return c.json(await scanInstallers(c.env.DOWNLOADS));
+    const origin = new URL(c.req.url).origin;
+    return c.json(await scanInstallers(c.env.DOWNLOADS, origin));
   } catch (err) {
-    console.error('downloads/info error:', err);
+    log.error('downloads/info failed', { route: '/api/downloads/info' }, err as Error);
     return c.json({ error: 'Failed to read downloads' }, 500);
   }
 });
