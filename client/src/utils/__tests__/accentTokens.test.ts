@@ -43,3 +43,28 @@ describe('Blue & Silver accent tokens', () => {
     expect(block).toContain('--sev-caution: #facc15');
   });
 });
+
+describe('theme-block completeness', () => {
+  const BLOCKS = [
+    { name: 'night', marker: ':root,' },
+    { name: 'day', marker: 'html.theme-light {' },
+    { name: 'legacy-black', marker: 'html.theme-legacy-black {' },
+    { name: 'blue-silver', marker: 'html.theme-blue-silver {' },
+  ];
+
+  // A var consumed as text-[color:var(--x)] silently drops the color if the
+  // active theme block doesn't define it. Every role variable must exist in
+  // EVERY block, or opting out of Blue & Silver strips styling.
+  const ROLE_VARS = ['--field-label-color', '--panel-header-color'];
+
+  for (const block of BLOCKS) {
+    for (const roleVar of ROLE_VARS) {
+      it(`${block.name} defines ${roleVar}`, () => {
+        const start = css.indexOf(block.marker);
+        expect(start).toBeGreaterThan(-1);
+        const body = css.slice(start, css.indexOf('\n}', start));
+        expect(body).toMatch(new RegExp(`${roleVar}\\s*:`));
+      });
+    }
+  }
+});
