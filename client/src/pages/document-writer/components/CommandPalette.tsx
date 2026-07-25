@@ -88,7 +88,7 @@ export default function CommandPalette({ editor, onClose }: Props) {
     >
       <div className="absolute inset-0 bg-black/60" />
       <div
-        className="relative w-[640px] max-w-[94vw] bg-surface-sunken border border-[#d4a017]/60 shadow-2xl flex flex-col"
+        className="relative w-[640px] max-w-[94vw] bg-surface-sunken border border-accent-silver-500/60 shadow-2xl flex flex-col"
         style={{ borderRadius: 2 }}
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -106,7 +106,7 @@ export default function CommandPalette({ editor, onClose }: Props) {
                 onClick={() => setTab(t)}
                 className={`px-3 py-1.5 text-[11px] uppercase tracking-wider whitespace-nowrap border-r border-border-default flex items-center gap-1.5 ${
                   active
-                    ? 'bg-surface-sunken text-[#d4a017] border-b-2 border-b-[#d4a017]'
+                    ? 'bg-surface-sunken text-accent-silver-300 border-b-2 border-b-accent-silver-400'
                     : 'text-rmpg-500 hover:text-rmpg-200 hover:bg-surface-sunken'
                 }`}
                 style={{ borderRadius: 0 }}
@@ -161,7 +161,7 @@ export default function CommandPalette({ editor, onClose }: Props) {
               onMouseEnter={() => setIdx(i)}
               onClick={() => run(a)}
               className={`w-full text-left px-3 py-1.5 text-[12px] flex items-center justify-between gap-3 ${
-                i === idx ? 'bg-[#d4a017]/15 text-rmpg-100' : 'text-rmpg-300 hover:bg-surface-base'
+                i === idx ? 'bg-accent-silver-500/15 text-rmpg-100' : 'text-rmpg-300 hover:bg-surface-base'
               }`}
               style={{ borderRadius: 0 }}
             >
