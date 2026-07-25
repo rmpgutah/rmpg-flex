@@ -210,12 +210,23 @@ split by role and something was missed.
    each `--surface-{base,raised,sunken}-rgb`, assert ≥ 4.5:1. Verified green against
    the values in §3.2 — worst case is blue-silver muted-on-raised at 4.62.
 3. **Ratchet**, modeled on the existing `no new dead CSS variables` block in
-   `accentTokens.test.ts`. Scan `client/src` (excluding `__tests__`) for
-   `\btext-rmpg-(300|400)\b` and `\bplaceholder-rmpg-(300|400)\b` and pin the combined
-   count at **6,318** — `text-rmpg-300` 1,913 + `text-rmpg-400` 4,405; the two
-   `placeholder-` patterns are **0 today** and are included so a future one trips the
-   guard rather than slipping in. Fail if the count rises; also fail if it falls
-   without the pin being lowered, so tier 2 cannot quietly stall.
+   `accentTokens.test.ts`. Scan `client/src` (excluding `__tests__`) for the single
+   pattern `\b(text|placeholder)-rmpg-(300|400|500|600)\b` and pin the count. Fail if
+   it rises; also fail if it falls without the pin being lowered, so neither tier can
+   quietly stall.
+
+   **One ratchet across all four steps, not one per tier.** A tier-2-only pin (6,318)
+   would not move when a tier-1 batch lands, so "each PR lowers the pin" would be
+   false and six of the seven migration PRs would touch no guard at all.
+
+   | milestone | pin |
+   |---|---:|
+   | PR 0 (nothing migrated) | **11,114** |
+   | after PR 7 (tier-2 residue, this program's floor) | **6,318** |
+
+   11,114 = `text-rmpg-` 300 (1,913) + 400 (4,405) + 500 (3,934) + 600 (666), plus
+   `placeholder-rmpg-` 500/600 (196). `placeholder-rmpg-300|400` is **0 today** and is
+   included in the pattern so a future one trips the guard rather than slipping in.
 
 A guard that is red on landing is worse than no guard — §3.2's values were chosen so
 assertion 2 passes immediately.
@@ -261,7 +272,25 @@ no overlap and no gap.
 Megafiles last, once the classification pattern has settled across five hundred
 smaller decisions.
 
-Each migration PR lowers the ratchet pin by the count it removed.
+Each migration PR lowers the §3.4 ratchet pin by exactly the tier-1 occurrences it
+removes. Occurrence counts (`text-` + `placeholder-`, steps 500/600) and the resulting
+pin, measured on `4b6996244c`:
+
+| PR | files | occurrences removed | new pin |
+|---|---:|---:|---:|
+| 0 | 0 | 0 | 11,114 |
+| 1 | 166 | 570 | 10,544 |
+| 2 | 95 | 1,035 | 9,509 |
+| 3 | 22 | 205 | 9,304 |
+| 4 | 102 | 465 | 8,839 |
+| 5 | 35 | 353 | 8,486 |
+| 6 | 92 | 1,607 | 6,879 |
+| 7 | 3 | 561 | 6,318 |
+| | **515** | **4,796** | |
+
+If a batch's actual removal differs from the figure above, the pin is the *measured*
+post-change count — the table is a forecast, not an assertion. Re-measure with the
+§3.4 pattern rather than subtracting.
 
 ---
 
