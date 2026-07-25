@@ -25,6 +25,18 @@ describe('findBlackOverlays', () => {
     const host = mount('<div style="background-color: rgb(0,0,0); width: 4px; height: 4px"></div>');
     expect(findBlackOverlays(host)).toHaveLength(0);
   });
+
+  it('flags a near-black that only barely skews blue', () => {
+    // rgb(5,5,14) passes a naive `b > r + 8` check but is functionally black.
+    const host = mount('<div style="background-color: rgb(5,5,14); width: 200px; height: 100px"></div>');
+    expect(findBlackOverlays(host)).toHaveLength(1);
+  });
+
+  it('does not flag the darkest legitimate navy surface', () => {
+    // --surface-overlay #142840 = rgb(20,40,64), the darkest step of the ramp.
+    const host = mount('<div style="background-color: rgb(20,40,64); width: 200px; height: 100px"></div>');
+    expect(findBlackOverlays(host)).toHaveLength(0);
+  });
 });
 
 describe('findGoldLeaks', () => {

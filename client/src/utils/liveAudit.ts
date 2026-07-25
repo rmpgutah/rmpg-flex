@@ -30,6 +30,25 @@ const AUDITED_PROPS = ['color', 'backgroundColor', 'borderTopColor', 'borderLeft
 
 type Rgba = { r: number; g: number; b: number; a: number };
 
+/** Minimum blue channel for a color to plausibly be on the navy surface ramp.
+ *  The ramp's darkest step is --surface-overlay #142840 (blue=64); near-blacks
+ *  sit well under 20. Without this floor, rgb(5,5,14) passes the blue-push test
+ *  (14 > 5+8) and a functionally black overlay escapes detection. */
+const MIN_NAVY_BLUE = 32;
+
+/** True when a dark color is plausibly a legitimate navy surface rather than a
+ *  black overlay. Requires a blue push over red AND enough absolute blue that
+ *  the color reads as navy rather than as black with a rounding error.
+ *
+ *  Known limitation: under the night/legacy themes, --surface-overlay #060b10
+ *  (blue=16) falls below MIN_NAVY_BLUE and WILL be flagged here. That is
+ *  intended — this audit targets the Blue & Silver theme, where that color
+ *  should never appear, and callers exclude `.tactical-dark` subtrees (which
+ *  legitimately use the night values) when interpreting results. */
+function isNavySurface({ r, b }: Rgba): boolean {
+  return b > r + 8 && b >= MIN_NAVY_BLUE;
+}
+
 function parseColor(value: string | null | undefined): Rgba | null {
   const match = /rgba?\(([^)]+)\)/.exec(value ?? '');
   if (!match) return null;
@@ -63,9 +82,8 @@ export function findBlackOverlays(root: HTMLElement, opts?: { minArea?: number }
     if (!bg || bg.a < 0.3) continue;
     const size = area(el);
     if (size < minArea) continue;
-    const blueDominant = bg.b > bg.r + 8;
     const L = luminance(bg);
-    if (L >= LUMINANCE_FLOOR || blueDominant) continue;
+    if (L >= LUMINANCE_FLOOR || isNavySurface(bg)) continue;
     findings.push({
       selector: describe(el),
       backgroundColor: getComputedStyle(el).backgroundColor,
