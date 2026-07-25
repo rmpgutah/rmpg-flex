@@ -288,7 +288,11 @@ export default function PageCanvas(props: Props) {
     }
     if (tool === 'stamp') {
       const w = 220; const h = 64;
-      onAddAnnotation({ id: uid(), type: 'stamp', page: visualPageNumber, x: p.x, y: p.y, w, h, label: pendingStamp ?? 'CONFIDENTIAL', color: 'var(--rmpg-500)' });
+      // Literal hex, matching this file's own stamp default below: annotation
+      // colors are consumed by sinks that cannot resolve var() — the PDF writer
+      // takes numeric rgb, and the properties-panel <input type="color"> only
+      // accepts #rrggbb (a CSS-var string there silently coerces to black).
+      onAddAnnotation({ id: uid(), type: 'stamp', page: visualPageNumber, x: p.x, y: p.y, w, h, label: pendingStamp ?? 'CONFIDENTIAL', color: '#555555' });
       return;
     }
     if (tool === 'check' || tool === 'cross') {
