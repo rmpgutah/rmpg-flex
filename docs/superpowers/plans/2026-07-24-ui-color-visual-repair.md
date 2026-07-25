@@ -1485,6 +1485,25 @@ Substitution table — apply by *role*, not by matching the old value:
 
 If a literal encodes severity, priority, or unit status, **leave it** — those are CAD semantics. If you cannot determine the role, leave it and note the file in the PR body rather than guessing.
 
+> **⚠️ THE SAME HEX IS OFTEN TWO DIFFERENT ROLES. This table is a role map, not a
+> find-and-replace map.** Batch 1 proved it: `AlarmTrackingPage.tsx` used
+> `#0a0a0a` for the true page background (5 sites) *and* for recessed inputs and
+> Cancel buttons inside raised modals (21 sites). A mechanical
+> `#0a0a0a → bg-surface-base` substitution would have flattened the depth ladder
+> and made every modal input look like page background. The correct result split
+> that one hex across `bg-surface-base` and `bg-surface-sunken` by reading the JSX
+> at each site.
+>
+> So for every occurrence: **open the JSX and decide what the element IS** — page,
+> card, well, hover, border, label, header, icon, or value. Never map by the hex
+> value alone. If a batch's conversion count exactly equals its occurrence count
+> for every hex, that is a smell: it means nothing was split by role, and the
+> file almost certainly had at least one hex serving two purposes.
+>
+> The highest-risk classification is `#d4a017` (legacy gold): label vs. header vs.
+> icon vs. value are four different destinations, and only the first two may stay
+> gold. Icons are silver. Values are `text-rmpg-100`.
+
 - [ ] **Step 3: Verify the batch dropped to zero in-scope literals**
 
 Run: `cd client && npx tsx scripts/audit-hex.mjs | grep "src/pages/<area>"`
