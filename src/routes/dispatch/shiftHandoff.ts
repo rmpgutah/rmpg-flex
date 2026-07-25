@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, queryFirst, execute, query } from '../../utils/db';
 import { log } from '../../utils/logger';
+import { activeCallFilter } from '../../utils/callStatus';
 
 const handoff = new Hono<Env>();
 
@@ -52,7 +53,7 @@ handoff.get('/briefing', async (c) => {
     // Active calls summary
     const activeCalls = await query<{ count: number; p1: number }>(
       db, `SELECT COUNT(*) AS count, SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) AS p1
-           FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled','archived')`,
+           FROM calls_for_service WHERE ${activeCallFilter()}`,
     );
     results.active_calls = activeCalls[0];
 

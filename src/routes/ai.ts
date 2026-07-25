@@ -21,6 +21,7 @@ import {
   rankUnitsForCall, suggestUnits, analyzeCall, narrativeAssist, smartSearch,
   GPS_FRESH_WINDOW_S, type RawUnit, type CallContext,
 } from '../utils/dispatchAi';
+import { activeCallFilter } from '../utils/callStatus';
 
 const ai = new Hono<Env>();
 
@@ -327,7 +328,7 @@ ai.get('/health', async (c) => {
     const pageSizeRow = await queryFirst<{ page_size: number }>(db, 'PRAGMA page_size').catch(() => null);
     const sizeMb = ((tblSizeRow?.page_count ?? 0) * (pageSizeRow?.page_size ?? 4096)) / (1024 * 1024);
     const [calls, persons, units] = await Promise.all([
-      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled','archived')`),
+      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${activeCallFilter()}`),
       cnt('SELECT COUNT(*) AS n FROM persons'),
       cnt('SELECT COUNT(*) AS n FROM units'),
     ]);
@@ -716,7 +717,7 @@ Return ONLY valid JSON with these keys (use null for missing fields):
 // detection heuristics below are plain SQL using the same open-status set
 // already established elsewhere (aggregates.ts, calls.ts): NOT IN
 // ('cleared','closed','cancelled','archived').
-const OPEN_CALL_STATUSES_SQL = `status NOT IN ('cleared','closed','cancelled','archived')`;
+const OPEN_CALL_STATUSES_SQL = activeCallFilter();
 const STALE_CALL_HOURS = 12;
 
 ai.get('/cleanup/scan', requireRole('admin', 'manager', 'supervisor'), async (c) => {

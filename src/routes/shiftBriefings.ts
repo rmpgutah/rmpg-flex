@@ -11,6 +11,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { activeCallFilter } from '../utils/callStatus';
 
 const sb = new Hono<Env>();
 
@@ -80,7 +81,7 @@ sb.get('/generate', async (c) => {
       ORDER BY id DESC LIMIT 10`),
     query<Record<string, any>>(db, `
       SELECT call_number, incident_type, priority, created_at AS time FROM calls_for_service
-      WHERE status NOT IN ('closed','cleared','cancelled') AND created_at >= datetime('now','-24 hours')
+      WHERE ${activeCallFilter()} AND created_at >= datetime('now','-24 hours')
       ORDER BY priority, id DESC LIMIT 10`),
     query<Record<string, any>>(db, `
       SELECT warrant_number, COALESCE(subject_name, subject_first_name || ' ' || subject_last_name) AS subject,

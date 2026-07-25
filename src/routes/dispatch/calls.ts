@@ -12,6 +12,7 @@ import { recordAudit } from '../../utils/auditLog';
 import { emitFleetioEvent } from '../../utils/fleetio/events';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
+import { activeCallFilter } from '../../utils/callStatus';
 const calls = new Hono<Env>();
 
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
@@ -481,7 +482,7 @@ calls.get('/check-duplicate', async (c) => {
       const rows = await query<Record<string, unknown>>(db, `
         SELECT id, call_number, incident_type, priority, status, location_address, latitude, longitude, created_at
         FROM calls_for_service
-        WHERE status NOT IN ('cleared','closed','cancelled','archived')
+        WHERE ${activeCallFilter()}
           AND UPPER(REPLACE(location_address, '  ', ' ')) LIKE ?
         ORDER BY created_at DESC LIMIT 10
       `, `%${normalized}%`);
@@ -499,7 +500,7 @@ calls.get('/check-duplicate', async (c) => {
         const rows = await query<Record<string, unknown>>(db, `
           SELECT id, call_number, incident_type, priority, status, location_address, latitude, longitude, created_at
           FROM calls_for_service
-          WHERE status NOT IN ('cleared','closed','cancelled','archived')
+          WHERE ${activeCallFilter()}
             AND latitude IS NOT NULL AND longitude IS NOT NULL
             AND latitude BETWEEN ? AND ?
             AND longitude BETWEEN ? AND ?
@@ -1143,7 +1144,7 @@ calls.post('/force-close-all', requireRole('admin', 'manager'), async (c) => {
     const db = getDb(c.env);
     const { disposition } = await c.req.json<{ disposition?: string }>().catch(() => ({}) as { disposition?: string });
     const open = await query<{ id: number; assigned_unit_ids: string | null }>(db,
-      `SELECT id, assigned_unit_ids FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled','archived')`);
+      `SELECT id, assigned_unit_ids FROM calls_for_service WHERE ${activeCallFilter()}`);
     if (open.length === 0) return c.json({ closed: 0 });
 
     const dispSql = typeof disposition === 'string' && disposition.length > 0 ? ', disposition = ?' : '';

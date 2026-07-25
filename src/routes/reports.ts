@@ -17,7 +17,8 @@
 import { Hono } from 'hono';
 import { requireRole } from '../middleware/auth';
 import { getDb, query, queryFirst } from '../utils/db';
-import { denverDateExpr, denverNowDateExpr, denverHourExpr } from '../utils/denverTime';
+import { denverDateExpr, denverHourExpr, denverNowDateExpr } from '../utils/denverTime';
+import { activeCallFilter } from '../utils/callStatus';
 import type { Env } from '../types';
 
 const reports = new Hono<Env>();
@@ -530,8 +531,8 @@ reports.get('/command-center', async (c) => {
   };
 
   const kpis = {
-    calls_today: await one("SELECT COUNT(*) AS n FROM calls_for_service WHERE date(created_at) = date('now')"),
-    active_calls: await one("SELECT COUNT(*) AS n FROM calls_for_service WHERE COALESCE(status,'') NOT IN ('cleared','closed','cancelled','archived','completed')"),
+    calls_today: await one(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`),
+    active_calls: await one(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${activeCallFilter()}`),
     avg_response_min: 0,
     units_available: await one("SELECT COUNT(*) AS n FROM units WHERE status = 'available'"),
     units_total: await one('SELECT COUNT(*) AS n FROM units'),
@@ -549,7 +550,7 @@ reports.get('/command-center', async (c) => {
   // call.location_address with a call_type/address fallback, so this fix
   // alone is enough — no client change needed.
   const active_calls = await list(
-    "SELECT id, call_number, incident_type, priority, status, location_address, created_at FROM calls_for_service WHERE COALESCE(status,'') NOT IN ('cleared','closed','cancelled','archived','completed') ORDER BY created_at DESC LIMIT 50",
+    `SELECT id, call_number, incident_type, priority, status, location_address, created_at FROM calls_for_service WHERE ${activeCallFilter()} ORDER BY created_at DESC LIMIT 50`,
   );
   const units = await list('SELECT id, unit_number, status, current_call_number FROM units ORDER BY unit_number LIMIT 200');
   const calls_by_hour = await list(
@@ -640,7 +641,7 @@ reports.get('/dashboard', async (c) => {
   try {
     const db = getDb(c.env);
     const [calls, unitsOn, totalUnits, pending, bolos, avgResp, byPriority, byStatus, byHour, officers] = await Promise.all([
-      queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled')"),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${activeCallFilter()}`),
       queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM units WHERE status NOT IN ('off_duty','out_of_service')"),
       queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM units'),
       queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM incidents WHERE status IN ('draft','submitted','under_review')"),
@@ -651,7 +652,7 @@ reports.get('/dashboard', async (c) => {
       // column is also NULL on all current live rows, so fall back to the
       // onscene_at − created_at delta when it's missing.
       queryFirst<{ avg: number | null }>(db, "SELECT ROUND(AVG(COALESCE(response_time_seconds / 60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at) - julianday(dispatched_at)) * 1440 END)), 1) AS avg FROM calls_for_service WHERE (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL) AND created_at >= datetime('now','-24 hours')"),
-      query<{ priority: string; count: number }>(db, "SELECT priority, COUNT(*) AS count FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled') GROUP BY priority"),
+      query<{ priority: string; count: number }>(db, `SELECT priority, COUNT(*) AS count FROM calls_for_service WHERE ${activeCallFilter()} GROUP BY priority`),
       query<{ status: string; count: number }>(db, "SELECT status, COUNT(*) AS count FROM calls_for_service GROUP BY status"),
       query<{ hour: string; count: number }>(db, "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE created_at >= datetime('now','-24 hours') GROUP BY hour ORDER BY hour"),
       query<Record<string, unknown>>(db, "SELECT u.id, usr.full_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.status NOT IN ('off_duty','out_of_service')"),
@@ -738,7 +739,7 @@ reports.get('/calls-near', async (c) => {
       SELECT id, call_number, priority, status, location_address, description,
              latitude, longitude, created_at
       FROM calls_for_service
-      WHERE status NOT IN ('cleared','closed','cancelled')
+      WHERE ${activeCallFilter()}
         AND latitude IS NOT NULL AND longitude IS NOT NULL
         AND latitude BETWEEN ? AND ?
         AND longitude BETWEEN ? AND ?

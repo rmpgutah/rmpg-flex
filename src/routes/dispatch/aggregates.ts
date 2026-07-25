@@ -4,6 +4,7 @@ import { getDb, query, queryFirst } from '../../utils/db';
 import { log } from '../../utils/logger';
 import { denverDateExpr, denverNowDateExpr } from '../../utils/denverTime';
 import { LIST_VIEW_COLUMNS } from './calls';
+import { activeCallFilter } from '../../utils/callStatus';
 
 // Same day-boundary shift used elsewhere (reports.ts, admin.ts, dispatch/
 // units.ts) via the shared denverDateExpr/denverNowDateExpr helpers in
@@ -43,9 +44,9 @@ aggregates.get('/', async (c) => {
         SUM(CASE WHEN status = 'dispatched' THEN 1 ELSE 0 END) as dispatched,
         SUM(CASE WHEN status = 'enroute' THEN 1 ELSE 0 END) as enroute,
         SUM(CASE WHEN status = 'onscene' THEN 1 ELSE 0 END) as onscene,
-        SUM(CASE WHEN priority = 'P1' AND status NOT IN ('cleared','closed','cancelled','archived') THEN 1 ELSE 0 END) as p1_count,
-        SUM(CASE WHEN priority = 'P2' AND status NOT IN ('cleared','closed','cancelled','archived') THEN 1 ELSE 0 END) as p2_count,
-        SUM(CASE WHEN priority = 'P3' AND status NOT IN ('cleared','closed','cancelled','archived') THEN 1 ELSE 0 END) as p3_count
+        SUM(CASE WHEN priority = 'P1' AND ${activeCallFilter()} THEN 1 ELSE 0 END) as p1_count,
+        SUM(CASE WHEN priority = 'P2' AND ${activeCallFilter()} THEN 1 ELSE 0 END) as p2_count,
+        SUM(CASE WHEN priority = 'P3' AND ${activeCallFilter()} THEN 1 ELSE 0 END) as p3_count
       FROM calls_for_service
     `);
 
@@ -600,7 +601,7 @@ aggregates.get('/integration-dashboard', async (c) => {
           SUM(CASE WHEN status = 'completed' THEN distance_miles ELSE 0 END) as miles_today,
           AVG(CASE WHEN status = 'completed' THEN max_speed_mph END) as avg_max_speed_today
         FROM nav_trip_log
-        WHERE date(start_time) = date('now')`),
+        WHERE ${denverDateExpr('start_time')} = ${denverNowDateExpr()}`),
 
       // Fleet alerts: vehicles needing attention
       query<Record<string, unknown>>(db, `
