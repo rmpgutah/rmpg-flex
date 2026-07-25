@@ -47,18 +47,18 @@ export default function SectionsPanel({ editor, onClose }: { editor: Editor; onC
           <div key={`${s.title}-${i}`} className="border border-border-default rounded-[2px] px-1.5 py-1">
             <div className="flex items-center gap-1">
               <button type="button" onClick={() => goTo(s)} title="Scroll to section"
-                className="min-w-0 flex-1 text-left text-[10px] text-rmpg-200 hover:text-[#d4a017] truncate"
+                className="min-w-0 flex-1 text-left text-[10px] text-rmpg-200 hover:text-accent-silver-300 truncate"
                 style={{ paddingLeft: `${Math.max(0, s.level - 1) * 8}px` }}>
                 {s.title}
               </button>
               <span className="text-[10px] text-rmpg-400 tabular-nums">{s.words}</span>
               <button type="button" onClick={() => editGoal(s)} title="Set word goal"
-                className="text-rmpg-600 hover:text-[#d4a017]"><Target className="w-3 h-3" /></button>
+                className="text-rmpg-600 hover:text-accent-silver-300"><Target className="w-3 h-3" /></button>
             </div>
             {s.goal > 0 && (
               <div className="flex items-center gap-1.5 mt-1">
                 <span className="flex-1 h-1.5 bg-surface-raised rounded-full overflow-hidden">
-                  <span className="block h-full bg-[#d4a017]" style={{ width: `${s.pct}%` }} />
+                  <span className="block h-full bg-accent-silver-500" style={{ width: `${s.pct}%` }} />
                 </span>
                 <span className="text-[9px] text-rmpg-500 tabular-nums">{s.pct}% / {s.goal}</span>
               </div>
