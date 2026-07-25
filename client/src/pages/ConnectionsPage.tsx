@@ -1052,7 +1052,7 @@ export default function ConnectionsPage() {
                   <span style={{ color: TIMELINE_KIND_COLOR[ev.kind] || '#888', fontWeight: 700 }}>{ev.kind.toUpperCase()}</span>
                   <span style={{ color: 'var(--text-muted)' }}>{ev.date ? ev.date.slice(0, 10) : '—'}</span>
                 </div>
-                <div className="text-[11px]" style={{ color: 'var(--rmpg-200)' }}>{ev.title}</div>
+                <div className="text-[11px]" style={{ color: 'var(--text-primary)' }}>{ev.title}</div>
                 {ev.subtitle && <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{ev.subtitle}</div>}
               </div>
             );

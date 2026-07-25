@@ -233,7 +233,7 @@ function coverageTextColor(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return 'var(--sev-ok-soft)';
     case 'pending': return 'var(--sev-warn-soft)';
-    default: return 'var(--rmpg-400)';
+    default: return 'var(--text-secondary)';
   }
 }
 
@@ -728,7 +728,7 @@ export default function NationalWarrantSearchPage() {
                           fontSize: 11,
                           fontWeight: 600,
                           fontFamily: 'JetBrains Mono, monospace',
-                          fill: isSelected ? 'var(--rmpg-400)' : coverageTextColor(status),
+                          fill: isSelected ? 'var(--text-secondary)' : coverageTextColor(status),
                         }}
                       >
                         {st.label}

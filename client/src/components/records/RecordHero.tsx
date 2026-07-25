@@ -86,7 +86,7 @@ function RecordHero({
             <span
               className={`text-[8px] font-bold uppercase tracking-widest px-1.5 py-[2px] rounded-[2px] leading-none whitespace-nowrap ${posture.pulse ? 'animate-led-pulse' : ''}`}
               style={{
-                color: isClear ? 'var(--rmpg-400)' : t.text,
+                color: isClear ? 'var(--text-secondary)' : t.text,
                 background: isClear ? 'rgba(255,255,255,0.04)' : t.bg,
                 border: `1px solid ${isClear ? 'var(--border-default)' : t.border}`,
               }}

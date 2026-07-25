@@ -96,7 +96,7 @@ export default function AndroidInstallGuide({ apkName }: { apkName: string }) {
       </Callout>
 
       <GuideHeading>Prefer not to install anything?</GuideHeading>
-      <p className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-400)' }}>
+      <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
         Open <code>rmpgutah.us</code> in Chrome and use the browser menu → <strong>Add to Home screen</strong>.
         That gives you an app-like icon with most of the same functionality — useful for a personal device
         or a quick loaner. The installed app is still the better choice for daily field work: it handles

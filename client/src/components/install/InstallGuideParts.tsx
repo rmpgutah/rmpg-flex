@@ -56,7 +56,7 @@ export function Cmd({ children }: { children: string }) {
         style={{
           background: 'var(--surface-sunken)',
           border: '1px solid var(--border-subtle)',
-          color: 'var(--rmpg-300)',
+          color: 'var(--text-secondary)',
           borderRadius: 2,
           fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         }}
@@ -71,7 +71,7 @@ export function Cmd({ children }: { children: string }) {
         style={{
           background: 'var(--surface-raised)',
           border: '1px solid var(--border-default)',
-          color: copied ? 'var(--sev-ok)' : 'var(--rmpg-400)',
+          color: copied ? 'var(--sev-ok)' : 'var(--text-secondary)',
           borderRadius: 2,
         }}
       >
@@ -93,7 +93,7 @@ export function Step({ n, title, children }: { n: number; title: string; childre
       </span>
       <div className="min-w-0">
         <div className="text-xs font-bold mb-1 text-rmpg-100">{title}</div>
-        <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-400)' }}>{children}</div>
+        <div className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{children}</div>
       </div>
     </div>
   );
@@ -102,7 +102,7 @@ export function Step({ n, title, children }: { n: number; title: string; childre
 /** Plain bulleted list used for requirements / notes. */
 export function Bullets({ items }: { items: React.ReactNode[] }) {
   return (
-    <ul className="text-xs leading-relaxed space-y-1" style={{ color: 'var(--rmpg-400)' }}>
+    <ul className="text-xs leading-relaxed space-y-1" style={{ color: 'var(--text-secondary)' }}>
       {items.map((item, i) => (
         <li key={i}>• {item}</li>
       ))}
@@ -118,7 +118,7 @@ export function Troubleshooting({ items }: { items: { symptom: string; fix: Reac
   return (
     <div className="space-y-2">
       {items.map((item, i) => (
-        <div key={i} className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-400)' }}>
+        <div key={i} className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
           <div className="font-bold text-rmpg-100">{item.symptom}</div>
           <div>{item.fix}</div>
         </div>

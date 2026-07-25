@@ -276,7 +276,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   {/* Label below */}
                   <text
                     x={n.x} y={n.y + r + 10} textAnchor="middle"
-                    fontSize={8} fill="var(--rmpg-300)" fontFamily="monospace"
+                    fontSize={8} fill="var(--text-secondary)" fontFamily="monospace"
                   >
                     {n.label.length > 18 ? n.label.slice(0, 16) + '…' : n.label}
                   </text>

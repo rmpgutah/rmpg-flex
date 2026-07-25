@@ -937,7 +937,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => { setTwoFactorMode('backup'); setUseBackupCode(true); clearError(); }}
                                             className="text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5 text-rmpg-500"
-                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--rmpg-400)'; }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
                       aria-label="Use a backup recovery code"
                     >
@@ -1046,7 +1046,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => { setTwoFactorMode('totp'); clearError(); }}
                                         className="text-[10px] uppercase tracking-wide font-bold transition-colors text-rmpg-500"
-                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--rmpg-400)'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
                   >
                     Use Authenticator
@@ -1353,7 +1353,7 @@ export default function LoginPage() {
                         <label htmlFor="ff-loginpage-2" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                           Question {i + 1}
                         </label>
-                        <p className="text-[10px] mb-1" style={{ color: 'var(--rmpg-400)' }}>{forgotQuestions[i]}</p>
+                        <p className="text-[10px] mb-1" style={{ color: 'var(--text-secondary)' }}>{forgotQuestions[i]}</p>
                         <input id="ff-loginpage-2"
                           type="text"
                           className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"

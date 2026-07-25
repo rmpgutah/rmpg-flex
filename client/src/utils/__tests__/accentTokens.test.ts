@@ -208,3 +208,73 @@ describe('no new dead CSS variables', () => {
     expect([...KNOWN_DEAD].filter((v) => defined.has(v))).toEqual([]);
   });
 });
+
+describe('the --rmpg-* ramp is never used as a text colour', () => {
+  // Defining the bare aliases fixed the "renders as inherited white" bug, but it
+  // also made a WRONG colour renderable. The ramp encodes SURFACE ELEVATION and
+  // inverts between themes (day: low index = dark text; dark themes: low index =
+  // light), so it only ever read correctly as text under the day theme. Measured
+  // against --surface-raised on the default blue-silver theme:
+  //
+  //   --rmpg-300  3.77:1   AA-large only
+  //   --rmpg-400  2.75:1   fails AA
+  //   --rmpg-500  1.82:1   fails badly
+  //   --rmpg-600  1.18:1   effectively invisible
+  //
+  // Use --text-primary / --text-secondary / --text-muted for any colour, all of
+  // which are theme-stable and do not invert.
+  const TEXT_CONTEXTS: Array<[string, RegExp]> = [
+    ['color:', /(?<![-\w])color:\s*['"`]?var\(\s*--rmpg-\d+\s*[,)]/],
+    ['.style.color =', /\.style\.color\s*=\s*['"`]var\(\s*--rmpg-\d+\s*[,)]/],
+    ['WebkitTextFillColor', /WebkitTextFillColor:\s*['"`]?var\(\s*--rmpg-\d+\s*[,)]/],
+    // Colour maps key by semantic ROLE, not by CSS property. These reach a
+    // `color:` downstream and are invisible to a plain `color:` scan -- worse, a
+    // neighbouring `border: string` type annotation makes an automated classifier
+    // read them as borders. Three separate passes over this ramp missed them.
+    ['text: role key', /(?<![-\w])text:\s*['"`]var\(\s*--rmpg-\d+\s*[,)]/],
+  ];
+
+  function walkSrc(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== '__tests__' && entry.name !== 'node_modules') walkSrc(full, out);
+      } else if (/\.(tsx?|css)$/.test(entry.name)) {
+        out.push(full);
+      }
+    }
+    return out;
+  }
+
+  // Blank comment bodies, preserving newlines so line numbers stay correct.
+  // Documentation legitimately quotes the broken form as an example -- the palette
+  // file's own alias comment does exactly that -- and must not trip the guard.
+  // String literals are neutralised FIRST: `input.accept = 'image/*'` would
+  // otherwise open a bogus block comment and swallow real code, hiding violations.
+  function blankComments(src: string): string {
+    const noStrings = src.replace(
+      /(["'`])(?:\\.|(?!\1)[^\\\n])*\1/g,
+      (m) => m[0] + m.slice(1, -1).replace(/./g, '') + m[0],
+    );
+    const blanked = noStrings
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+      .replace(/(^|[^:])\/\/[^\n]*/g, (m, p) => p + m.slice(p.length).replace(/./g, ' '));
+    return [...src].map((ch, i) => (blanked[i] === ' ' && ch !== ' ' ? ' ' : ch)).join('');
+  }
+
+  it('has no text-context var(--rmpg-N) anywhere in client/src', () => {
+    const offenders: string[] = [];
+    for (const file of walkSrc(SRC_DIR)) {
+      const raw = readFileSync(file, 'utf8');
+      blankComments(raw).split('\n').forEach((line, i) => {
+        for (const [label, re] of TEXT_CONTEXTS) {
+          if (re.test(line)) {
+            const original = raw.split('\n')[i].trim().slice(0, 90);
+            offenders.push(`${file.slice(SRC_DIR.length + 1)}:${i + 1} [${label}] ${original}`);
+          }
+        }
+      });
+    }
+    expect(offenders, `Use a --text-* token instead:\n${offenders.join('\n')}`).toEqual([]);
+  });
+});

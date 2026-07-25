@@ -10,7 +10,7 @@ const HANDLING = ['H1', 'H2', 'H3', 'H4', 'H5'];
 const btn = (bg: string, fg = '#000'): React.CSSProperties => ({
   background: bg, color: fg, borderRadius: 2, padding: '4px 10px', fontSize: 11, fontWeight: 600,
 });
-const field: React.CSSProperties = { background: 'var(--surface-overlay)', color: 'var(--rmpg-200)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '4px 6px', fontSize: 11, width: '100%' };
+const field: React.CSSProperties = { background: 'var(--surface-overlay)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '4px 6px', fontSize: 11, width: '100%' };
 
 export default function IntelReportDetailPage() {
   const { id } = useParams();
@@ -55,7 +55,7 @@ export default function IntelReportDetailPage() {
       : t === 'warrant' ? `/warrants?id=${eid}` : `/connections?type=${t}&id=${eid}`;
 
   const wrap = (children: React.ReactNode) => (
-    <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', minHeight: '100%', color: 'var(--rmpg-200)' }}>
+    <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', minHeight: '100%', color: 'var(--text-primary)' }}>
       <button onClick={() => nav('/intel/reports')} style={{ color: '#888', fontSize: 11 }}>← Products</button>
       {msg && <div style={{ color: '#ef4444', fontSize: 11 }}>{msg}</div>}
       {children}
@@ -72,7 +72,7 @@ export default function IntelReportDetailPage() {
         </h1>
         <span className="uppercase text-[11px]" style={{ color: '#888' }}>{r.status?.replace('_', ' ')}</span>
       </div>
-      <div className="text-[11px]" style={{ color: 'var(--rmpg-400)' }}>
+      <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
         Grade: {r.grade_label} · Confidence: {r.confidence} · Handling: {r.handling_code || '—'} · Threat: {r.threat_level}
         {r.review_date && <> · Review: {r.review_date}</>}
       </div>
@@ -176,7 +176,7 @@ export default function IntelReportDetailPage() {
         <div className="space-y-1 p-2" style={{ border: '1px solid var(--border-subtle)', borderRadius: 2 }}>
           <div className="text-[9px] font-semibold" style={{ color: '#d4a017' }}>DISSEMINATION LOG</div>
           {r.dissemination.map((d: any) => (
-            <div key={d.id} className="text-[10px]" style={{ color: 'var(--rmpg-400)' }}>
+            <div key={d.id} className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
               {d.channel} → {d.recipient_label || `user #${d.recipient_id}`}{d.reason ? ` · ${d.reason}` : ''}
             </div>
           ))}

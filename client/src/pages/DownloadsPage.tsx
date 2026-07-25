@@ -255,12 +255,12 @@ export default function DownloadsPage() {
             </h4>
             {(showAllChangelog ? changelog : changelog.slice(0, 1)).map((entry) => (
               <div key={entry.version} className="mb-4 last:mb-0">
-                <div className="text-xs font-bold mb-1" style={{ color: 'var(--rmpg-300)' }}>
+                <div className="text-xs font-bold mb-1" style={{ color: 'var(--text-secondary)' }}>
                   v{entry.version} — {entry.releaseDate}
                 </div>
                 <div className="space-y-1">
                   {entry.notes.map((note, i) => (
-                    <div key={i} className="flex items-start gap-2 text-xs" style={{ color: 'var(--rmpg-400)' }}>
+                    <div key={i} className="flex items-start gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
                       <span style={{ color: 'var(--accent-silver-600)' }}>&bull;</span>
                       {note}
                     </div>
@@ -393,7 +393,7 @@ export default function DownloadsPage() {
                       {installer.sha256 && (
                         <div className="mt-2 text-[9px] leading-snug max-w-[220px] break-all">
                           <span style={{ color: 'var(--field-label-color)' }}>SHA-256</span>{' '}
-                          <code className="font-mono" style={{ color: 'var(--rmpg-400)' }}>{installer.sha256}</code>
+                          <code className="font-mono" style={{ color: 'var(--text-secondary)' }}>{installer.sha256}</code>
                         </div>
                       )}
                     </>
@@ -471,7 +471,7 @@ export default function DownloadsPage() {
             style={{
               background: 'var(--surface-raised)',
               border: '1px solid var(--border-default)',
-              color: 'var(--rmpg-300)',
+              color: 'var(--text-secondary)',
               borderRadius: 2,
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--border-default)'; e.currentTarget.style.borderColor = 'var(--border-strong)'; }}
@@ -503,7 +503,7 @@ export default function DownloadsPage() {
               'Dedicated kiosk terminal OS image for fixed installs',
               'Automatic updates — always stay on the latest version',
             ].map((feature, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs" style={{ color: 'var(--rmpg-400)' }}>
+              <div key={i} className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
                 <span style={{ color: 'var(--sev-ok)' }}>&#10003;</span>
                 {feature}
               </div>
@@ -552,19 +552,19 @@ export default function DownloadsPage() {
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              <strong style={{ color: 'var(--rmpg-400)' }}>Windows:</strong> Windows 10 or later<br />
+              <strong style={{ color: 'var(--text-secondary)' }}>Windows:</strong> Windows 10 or later<br />
               64-bit (x64) processor
             </div>
             <div className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              <strong style={{ color: 'var(--rmpg-400)' }}>macOS:</strong> macOS 11 (Big Sur) or later<br />
+              <strong style={{ color: 'var(--text-secondary)' }}>macOS:</strong> macOS 11 (Big Sur) or later<br />
               Apple Silicon only (M1/M2/M3/M4) — not Intel
             </div>
             <div className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              <strong style={{ color: 'var(--rmpg-400)' }}>Android:</strong> Android 8.0 (Oreo) or later<br />
+              <strong style={{ color: 'var(--text-secondary)' }}>Android:</strong> Android 8.0 (Oreo) or later<br />
               Any modern smartphone or tablet
             </div>
             <div className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              <strong style={{ color: 'var(--rmpg-400)' }}>Kiosk Linux OS:</strong> Panasonic Toughbook FZ-55<br />
+              <strong style={{ color: 'var(--text-secondary)' }}>Kiosk Linux OS:</strong> Panasonic Toughbook FZ-55<br />
               (or QEMU x86_64) — dedicated kiosk terminals; see dossier above
             </div>
           </div>

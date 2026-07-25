@@ -132,7 +132,7 @@ export default function DispatcherTranscript() {
                 >
                   <span style={{ color: SEV_COLOR[e.severity], textShadow: `0 0 4px ${SEV_COLOR[e.severity]}` }}>●</span>
                   <span style={{ color: '#888888', minWidth: 56 }}>{fmtTime(e.ts)}</span>
-                  <span style={{ color: 'var(--rmpg-300)', flex: 1, wordBreak: 'break-word' }}>{e.text}</span>
+                  <span style={{ color: 'var(--text-secondary)', flex: 1, wordBreak: 'break-word' }}>{e.text}</span>
                 </li>
               ))}
             </ul>

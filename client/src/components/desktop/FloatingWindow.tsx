@@ -234,16 +234,16 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
             onClick={() => toggleAlwaysOnTop(win.id)}
             className="p-1 hover:bg-surface-hover"
           >
-            {win.alwaysOnTop ? <Pin className="w-3 h-3" style={{ color: 'var(--brand-400)' }} /> : <PinOff className="w-3 h-3" style={{ color: 'var(--rmpg-400)' }} />}
+            {win.alwaysOnTop ? <Pin className="w-3 h-3" style={{ color: 'var(--brand-400)' }} /> : <PinOff className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />}
           </button>
           <button type="button" aria-label={`Minimize ${win.title}`} onClick={() => minimizeWindow(win.id)} className="p-1 hover:bg-surface-hover">
-            <Minus className="w-3 h-3" style={{ color: 'var(--rmpg-400)' }} />
+            <Minus className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />
           </button>
           <button type="button" aria-label={`Maximize ${win.title}`} onClick={() => toggleMaximize(win.id)} className="p-1 hover:bg-surface-hover">
-            <Square className="w-3 h-3" style={{ color: 'var(--rmpg-400)' }} />
+            <Square className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />
           </button>
           <button type="button" aria-label={`Close ${win.title}`} onClick={() => closeWindow(win.id)} className="p-1 hover:bg-surface-hover">
-            <X className="w-3 h-3" style={{ color: 'var(--sev-critical, var(--rmpg-400))' }} />
+            <X className="w-3 h-3" style={{ color: 'var(--sev-critical, var(--text-secondary))' }} />
           </button>
         </div>
       </div>

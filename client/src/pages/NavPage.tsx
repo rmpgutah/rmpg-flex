@@ -534,7 +534,7 @@ export default function NavPage() {
             style={{
               width: 24, height: 22,
               borderColor: favoritesOpen ? '#d4a017' : '#222',
-              color: favoritesOpen ? '#d4a017' : 'var(--rmpg-400)',
+              color: favoritesOpen ? '#d4a017' : 'var(--text-secondary)',
               background: favoritesOpen ? 'rgba(212,160,23,0.10)' : 'transparent',
             }}
             title="Favorite destinations"
@@ -551,7 +551,7 @@ export default function NavPage() {
             style={{
               width: 24, height: 22,
               borderColor: settingsOpen ? '#d4a017' : '#222',
-              color: settingsOpen ? '#d4a017' : 'var(--rmpg-400)',
+              color: settingsOpen ? '#d4a017' : 'var(--text-secondary)',
               background: settingsOpen ? 'rgba(212,160,23,0.10)' : 'transparent',
             }}
             title="Navigation settings"
@@ -636,7 +636,7 @@ export default function NavPage() {
                   minHeight: 22,
                   borderColor: active ? '#d4a017' : '#222',
                   background: active ? '#d4a017' : 'transparent',
-                  color: active ? '#000' : 'var(--rmpg-400)',
+                  color: active ? '#000' : 'var(--text-secondary)',
                 }}
               >
                 {label}
@@ -654,7 +654,7 @@ export default function NavPage() {
             onClick={() => setTab(t)}
             className="px-4 py-1.5 text-[11px] font-medium uppercase tracking-wider transition-colors"
             style={{
-              color: tab === t ? '#d4a017' : 'var(--rmpg-400)',
+              color: tab === t ? '#d4a017' : 'var(--text-secondary)',
               borderBottom: tab === t ? '2px solid #d4a017' : '2px solid transparent',
             }}
           >
@@ -1298,7 +1298,7 @@ function CurrentTripPanel({
           <button
             onClick={onRefresh}
             className="py-2 max-md:min-h-[44px] rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-            style={{ background: 'var(--surface-base)', color: 'var(--rmpg-400)', border: '1px solid var(--border-subtle)' }}
+            style={{ background: 'var(--surface-base)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
           >
             <RefreshCw size={11} /> Refresh
           </button>
@@ -1349,7 +1349,7 @@ function CurrentTripPanel({
           )}
           <div className="flex justify-between">
             <span className="text-rmpg-500">Vehicle</span>
-            <span style={{ color: gps.unitCallSign ? '#d4a017' : (hasTakeHome ? '#22c55e' : 'var(--rmpg-400)') }}>
+            <span style={{ color: gps.unitCallSign ? '#d4a017' : (hasTakeHome ? '#22c55e' : 'var(--text-secondary)') }}>
               {gps.unitCallSign
                 ? `${gps.unitCallSign} (on duty)`
                 : hasTakeHome
@@ -1404,7 +1404,7 @@ function CurrentTripPanel({
         <button
           onClick={onRefresh}
           className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-          style={{ background: 'var(--surface-base)', color: 'var(--rmpg-400)', border: '1px solid var(--border-subtle)' }}
+          style={{ background: 'var(--surface-base)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
         >
           <RefreshCw size={11} /> Refresh
         </button>

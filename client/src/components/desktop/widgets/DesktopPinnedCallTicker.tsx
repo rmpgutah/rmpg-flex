@@ -31,7 +31,7 @@ export default function DesktopPinnedCallTicker() {
 
   return (
     <div className="p-3" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-default)', width: 220, maxHeight: 160, overflowY: 'auto' }}>
-      <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--rmpg-400)' }}>Active Calls</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-secondary)' }}>Active Calls</div>
       {!loaded ? (
         <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>…</div>
       ) : calls.length === 0 ? (

@@ -1252,7 +1252,7 @@ body.fx-noise::after {
   }
   .btn-primary:hover:not(:disabled) {
     background: var(--rmpg-500);
-    border-color: var(--rmpg-500);
+    border-color: var(--text-muted);
   }
 
   .btn-secondary {
