@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Monitor, Apple, Smartphone, Download, ChevronRight, HardDrive } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, downloadUrl } from '../hooks/useApi';
 import WindowsInstallGuide from '../components/install/WindowsInstallGuide';
 import MacInstallGuide from '../components/install/MacInstallGuide';
 import AndroidInstallGuide from '../components/install/AndroidInstallGuide';
@@ -332,12 +332,21 @@ export default function DownloadsPage() {
 
                   {installer ? (
                     <>
-                      <span className="text-[11px] mb-4" style={{ color: 'var(--rmpg-500)' }}>
+                      {/* Exact byte count in the tooltip: the friendly size is
+                          binary-units (what Windows shows), so macOS Finder
+                          reports a larger number for the same file. Exposing
+                          the exact bytes makes "did my download complete?"
+                          answerable without guessing at unit conventions. */}
+                      <span
+                        className="text-[11px] mb-4"
+                        style={{ color: 'var(--rmpg-500)' }}
+                        title={`${installer.bytes.toLocaleString()} bytes exactly`}
+                      >
                         v{installer.version} — {installer.size}
                       </span>
                       <a
                         ref={(el) => { downloadRefs.current[p] = el; }}
-                        href={`/downloads/${encodeURIComponent(installer.filename)}`}
+                        href={downloadUrl(installer.filename)}
                         download={installer.filename}
                         className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
                         style={{

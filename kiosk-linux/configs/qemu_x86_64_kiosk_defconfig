@@ -300,3 +300,9 @@ BR2_STRIP_EXCLUDE_FILES="libcogplatform-drm.so"
 BR2_TARGET_GRUB2=y
 BR2_TARGET_GRUB2_X86_64_EFI=y
 BR2_TARGET_GRUB2_BUILTIN_MODULES_EFI="boot linux ext2 fat ntfs squash4 part_msdos part_gpt normal configfile search search_fs_uuid search_label echo test all_video efi_gop gzio loadenv"
+
+# Post-build hook that removes retired kiosk init scripts left behind in the
+# incremental target/ directory. Buildroot copies the overlay over target/ but
+# never deletes files removed FROM the overlay, which has silently broken two
+# builds — see scripts/prune-stale-overlay.sh for both incidents.
+BR2_ROOTFS_POST_BUILD_SCRIPT="/kiosk-linux/scripts/prune-stale-overlay.sh"
