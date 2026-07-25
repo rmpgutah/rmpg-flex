@@ -126,11 +126,33 @@ trip succeeds), `rmpg-hwreport` (what actually bound, persisted to the store),
 
 ### Verification
 
-`build.sh` now asserts 22 FZ-55 kernel symbols are `=y` in the generated
-`.config` before the compile. New tests: `test/test-boot-store.sh` (17
-assertions, verified to go red when the `vda1` hardcoding is reintroduced),
-`test/run-qemu-nvme.sh` (boots the real image on NVMe/AHCI instead of virtio),
-`test/assert-build-payload.sh`, `test/lint-installer.py`.
+**Result on the merged tree (this branch + #3023 + #3025): build `BUILD=0` with
+all four gates green, and `test/run-qemu-nvme.sh` → 8/8 assertions, 0 crashes,
+`RESULT: PASS (nvme)`.** Discovery on `/dev/nvme0n1p1`, counter increment,
+counter reset on a healthy boot, `DESKTOP_OK`, `DRM_OK`, hardware report on the
+console AND persisted to `hwreports/latest.txt`.
+
+`build.sh` gates the build four ways — a kernel-symbol gate (22 symbols must be
+`=y` in the generated `.config`, BEFORE the ~15 min compile), initramfs
+integrity (decompressed size must equal the archive), image version (packed must
+equal the overlay), and an overlay manifest (every overlay file present) — plus
+a refusal to start when another container holds the shared Docker volume.
+
+The symbol gate is a RETRY LOOP, not a hard stop: if the fast path finds symbols
+missing it forces a fragment re-merge and re-audits once, because the usual cause
+is another worktree having regenerated the `.config` from ITS fragments. Only a
+second failure is a real config problem. (Measured: the fast path can match on
+checksum while the `.config` in the volume carries 2 of 4 probe symbols.)
+
+New tests: `test/test-boot-store.sh` (17 assertions, verified to go red when the
+`vda1` hardcoding is reintroduced), `test/run-qemu-nvme.sh` (boots the real image
+on NVMe/AHCI instead of virtio — the class of test whose absence hid the original
+bug), `test/assert-build-payload.sh`, `test/lint-installer.py`.
+
+Each gate earned its place by catching something real while being written: a
+truncated `rootfs.cpio.gz` (1329 of 11063 entries, still passing `gzip -t`), an
+image stamped with another worktree version, three silently-missing init scripts,
+and the symbol regression above.
 
 Hard-won build knowledge — do not rediscover these:
 
