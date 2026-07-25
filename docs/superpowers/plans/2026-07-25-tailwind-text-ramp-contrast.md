@@ -10,7 +10,19 @@
 
 **Spec:** [`docs/superpowers/specs/2026-07-25-tailwind-text-ramp-contrast-design.md`](../specs/2026-07-25-tailwind-text-ramp-contrast-design.md)
 
-**Base:** `origin/main` @ `4b6996244c`. Spec commit `71e1ecda3a`.
+**Base:** `origin/main` @ `ec6eba539c` (#3032). Re-measured after that merge — every count below is unchanged, because #3032 touched only the inline `var(--rmpg-N)` path.
+
+### Relationship to #3032
+
+#3032 landed `describe('the --rmpg-* ramp is never used as a text colour')` in `accentTokens.test.ts:212`. **It is a sibling of this program's guard, not a duplicate.** It matches four *inline* patterns — `color:`, `.style.color =`, `WebkitTextFillColor`, and `text:` role keys — all against `var(--rmpg-N)`. It cannot see a Tailwind class: `className="text-rmpg-500"` matches none of its regexes. It also asserts `toEqual([])`, which is right for the inline path (fully cleaned) and impossible for this one (6,318 tier-2 sites remain), so this program ratchets instead.
+
+Place the Task 6 ratchet immediately after that block so the two read as one policy.
+
+### Relationship to the `:root`-is-the-base-layer rule
+
+#3032's spec establishes that `:root` is the **base layer**, not a fourth peer block — the night selector is `:root, html.theme-dark, .tactical-dark`, and `:root` is `<html>`, the same element the theme class is stamped on. So a var declared only in the night block resolves under every theme, and a guard asserting "declared in all four blocks" **false-positives** on deliberately theme-invariant vars like `--stat-accent-*`.
+
+That rule does not conflict with Task 3. `--text-primary/secondary/muted` carry a **different value per theme** (`#e6edf5` / `#1a1a1a` / `#f2f2f2` / `#f0f4f9`), so base-only membership would be wrong for them — every block genuinely must redeclare. All-four is the correct assertion *for these specific tokens*, and Task 3's test says so in a comment rather than restating the general rule.
 
 ---
 
@@ -124,10 +136,11 @@ export function ratio(a: number[], b: number[]): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-// The four palette blocks, identified by the LAST selector in each group so a
-// single indexOf lands on the opening brace.
+// The four palette blocks. Markers match the convention already used by
+// accentTokens.test.ts's `theme-block completeness` block -- ':root,' for night,
+// since ':root' is the BASE layer and the true start of that rule.
 export const THEME_BLOCKS = [
-  { name: 'night (:root / theme-dark / tactical-dark)', marker: '.tactical-dark {' },
+  { name: 'night (:root / theme-dark / tactical-dark)', marker: ':root,' },
   { name: 'day (theme-light)', marker: 'html.theme-light {' },
   { name: 'legacy-black', marker: 'html.theme-legacy-black {' },
   { name: 'blue-silver (default)', marker: 'html.theme-blue-silver {' },
@@ -357,8 +370,14 @@ describe('text-role rgb triples', () => {
   // Tailwind consumes rgb(var(--x-rgb) / <alpha-value>). A missing triple in
   // ANY block makes text-fg-* resolve to nothing there. Same failure mode the
   // bare --rmpg-* aliases had before #3029.
+  // All four blocks must redeclare these. That is NOT the general rule -- ':root'
+  // is the base layer, so a base-only var resolves everywhere and an
+  // "all four blocks" assertion false-positives on theme-invariant tokens like
+  // --stat-accent-* (see #3032's spec). It holds HERE because --text-* carries a
+  // different value per theme (#e6edf5 / #1a1a1a / #f2f2f2 / #f0f4f9), so
+  // base-only membership would leave three themes with the night value.
   const BLOCKS = [
-    { name: 'night', marker: '.tactical-dark {', triples: {
+    { name: 'night', marker: ':root,', triples: {
       'text-primary': '230 237 245',
       'text-secondary': '195 208 222',
       'text-muted': '143 163 184',
@@ -697,10 +716,14 @@ cannot reach dist/ until a call site uses it in PR 1."
 
 - [ ] **Step 1: Write the test**
 
-Append to `client/src/utils/__tests__/accentTokens.test.ts`:
+Insert into `client/src/utils/__tests__/accentTokens.test.ts` **immediately after** the `describe('the --rmpg-* ramp is never used as a text colour')` block that #3032 landed at line 212. The two are one policy split across two consumption paths — that one catches inline `var(--rmpg-N)` and demands zero; this one catches Tailwind utilities and ratchets. Adjacency is how the next reader learns both exist.
 
 ```ts
-describe('rmpg text-ramp ratchet', () => {
+describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
+  // Sibling to the block above. That guard matches four INLINE patterns against
+  // var(--rmpg-N) -- color:, .style.color =, WebkitTextFillColor, and `text:`
+  // role keys -- and none of them can see className="text-rmpg-500". This is the
+  // utility half of the same defect.
   // The rmpg ramp is not a text scale. Steps 300-600 are all below WCAG AA on
   // blue-silver panel surfaces (300: 3.77, 400: 2.75, 500: 1.82, 600: 1.18 on
   // --surface-raised). This is a RATCHET over pre-existing debt: the count may

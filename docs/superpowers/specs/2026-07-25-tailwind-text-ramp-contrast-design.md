@@ -2,8 +2,20 @@
 
 **Date:** 2026-07-25
 **Status:** Approved, not yet implemented
-**Base:** `origin/main` @ `4b6996244c`
-**Predecessors:** #3029 (`6fad12930a`, bare `--rmpg-*` aliases), #3031 (`1c6844e92f`, 129 inline sites re-pointed by role)
+**Base:** `origin/main` @ `ec6eba539c`
+**Predecessors:** #3029 (`6fad12930a`, bare `--rmpg-*` aliases), #3031 (`1c6844e92f`, 129 inline sites re-pointed by role), #3032 (`ec6eba539c`, inline text-context guard)
+
+> **#3032 merged mid-authoring and closes the inline path for good.** Its
+> `describe('the --rmpg-* ramp is never used as a text colour')` guard
+> (`accentTokens.test.ts:212`) matches four inline patterns against `var(--rmpg-N)` —
+> `color:`, `.style.color =`, `WebkitTextFillColor`, `text:` role keys — and demands
+> **zero** offenders. **It cannot see a Tailwind class**; `className="text-rmpg-500"`
+> matches none of its regexes. Every count in this spec was re-measured on
+> `ec6eba539c` and is unchanged, because #3032 touched only inline sites.
+>
+> #3032 also establishes that **`:root` is the base layer**, not a fourth peer block,
+> so "declared in all four blocks" is the wrong guard rule *in general*. It remains the
+> right assertion for `--text-*`, which carries a different value per theme — see §3.2.
 
 ---
 
