@@ -10,11 +10,13 @@
 //   • Process-service CFS → PSO_DISPOSITION_GROUPS (10 categories, 53 codes
 //     from processServiceCodes.ts — PS/00.01 … PS/45.04).
 //
-// The LIVE worker's /admin/config does NOT yet return a `dispositions`
-// array, so these hardcoded defaults are what render in production; any
-// API/DB custom codes are merged ON TOP at the call sites. This chart is
-// also seeded into system_config (disposition_code rows) so it is
-// server-backed + manageable. Keep the two in sync.
+// The worker's /admin/config returns a `dispositions` array (39 built-ins
+// plus any admin-created custom rows, merged via
+// src/utils/dispositionConfig.ts); these hardcoded defaults are the
+// client-side fallback/source-of-truth and are merged with whatever the API
+// returns at the call sites. This chart is also seeded into system_config
+// (disposition_code rows) so it is server-backed + manageable. Keep the two
+// in sync.
 // ============================================================
 
 import { PSO_CATEGORIES, codesInCategory } from './processServiceCodes';

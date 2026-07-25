@@ -6,6 +6,7 @@ import { getAnthropicKey, getClaudeModel, callClaude, diagnoseAnthropicError } f
 import { getOpenAiKey, getOpenAiModel, callOpenAi, diagnoseOpenAiError } from '../utils/openai';
 import { denverNowDateExpr, denverHourExpr, denverStrftimeExpr } from '../utils/denverTime';
 import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
+import { mergeDispositions, isDispositionRow, type DispositionConfigRow } from '../utils/dispositionConfig';
 
 const admin = new Hono<Env>();
 
@@ -49,10 +50,12 @@ function forbidUnlessRole(c: any, ...roles: string[]): Response | null {
 // GET /admin/config
 // Returns flat key/value map from system_config + the structured
 // `dispositions` array DispatchPage and DispositionPrompt expect.
-// Dispositions come from system_config rows where key starts with
-// 'disposition.' (each value is JSON {code, description, color?}),
-// falling back to a baked-in common set so the Clear-call dropdown
-// is never empty even on a fresh database.
+// Dispositions are recognized from BOTH historical namespaces — legacy
+// config_key='disposition.<CODE>' rows and category='dispositions' rows
+// (what AdminSystemTab.tsx writes today, always under config_key
+// 'disposition_code') — and merged with the built-in roster for any code
+// not otherwise present. See src/utils/dispositionConfig.ts
+// (mergeDispositions/isDispositionRow) for the assembly + precedence rules.
 admin.get('/config', async (c) => {
   try {
     const actor = c.get('user') as { role: string } | undefined;
@@ -60,99 +63,33 @@ admin.get('/config', async (c) => {
       return c.json({ error: 'Forbidden' }, 403);
     }
     const db = getDb(c.env);
-    const config = await query<Record<string, unknown>>(db, 'SELECT * FROM system_config');
+    const config = await query<Record<string, unknown>>(db, 'SELECT * FROM system_config ORDER BY id');
     const result: Record<string, any> = {};
-    const customDispositions: any[] = [];
+    const dispositionRows: DispositionConfigRow[] = [];
+
     for (const row of config) {
       // Live system_config columns are config_key/config_value (NOT key/value);
-      // reading key/value yielded "undefined" for every row, so custom
-      // dispositions + flat config never loaded once this route goes live.
+      // reading key/value yielded "undefined" for every row.
       const key = String(row.config_key);
       const value = String(row.config_value ?? '');
-      // Disposition rows live under the 'disposition.<code>' namespace
-      // so we can keep the flat key/value schema while still allowing
-      // the client to consume them as a typed array.
-      if (key.startsWith('disposition.')) {
-        try {
-          const parsed = JSON.parse(value);
-          customDispositions.push({
-            code: parsed.code,
-            description: parsed.description,
-            color: parsed.color,
-            is_active: parsed.is_active !== false,
-            // Keep `config_value` for backward-compat with the existing
-            // client mapping that JSON.parses each row.
-            config_value: value,
-          });
-        } catch { /* malformed row — skip */ }
+      const candidate: DispositionConfigRow = {
+        config_key: key,
+        config_value: value,
+        category: row.category == null ? null : String(row.category),
+      };
+
+      if (isDispositionRow(candidate)) {
+        // Consumed as a disposition below. Deliberately NOT also written into
+        // the flat map: every category='dispositions' row shares the constant
+        // config_key 'disposition_code', so doing both left a meaningless
+        // last-write-wins scalar on the response. Nothing reads it.
+        dispositionRows.push(candidate);
       } else if (!SECRET_KEY_PATTERN.test(key)) {
         result[key] = value;
       }
     }
 
-    // Baked-in defaults so the dropdown is never empty on a fresh
-    // database. Custom rows above OVERRIDE these by code (admin can
-    // tweak description/color in system_config without losing the
-    // built-in roster).
-    const defaults = [
-      { code: 'Report Taken',     description: 'Report Taken' },
-      { code: 'Unfounded',        description: 'Unfounded' },
-      { code: 'GOA',              description: 'Gone on Arrival' },
-      { code: 'Referred',         description: 'Referred to other agency' },
-      { code: 'No Action',        description: 'No Action Required' },
-      { code: 'Arrest',           description: 'Arrest Made' },
-      { code: 'Warning',          description: 'Warning Issued' },
-      { code: 'Citation',         description: 'Citation Issued' },
-      { code: 'Trespass Warning', description: 'Trespass Warning Issued' },
-      { code: 'Civil Matter',     description: 'Civil Matter — No Action' },
-      { code: 'Resolved',         description: 'Resolved on Scene' },
-      { code: 'Transported',      description: 'Subject Transported' },
-      { code: 'False Alarm',      description: 'False Alarm' },
-      { code: 'Verbal Warning',   description: 'Verbal Warning Issued' },
-      { code: 'Field Interview',  description: 'Field Interview (FI) Conducted' },
-      { code: 'Counseled',        description: 'Subject Counseled' },
-      { code: 'Documentation Only', description: 'Documentation Only' },
-      { code: 'UTL',              description: 'Unable to Locate' },
-      { code: 'Assist Rendered',  description: 'Assist Rendered' },
-      { code: 'Negative Contact', description: 'Negative Contact' },
-      { code: 'Patrol Completed', description: 'Patrol Completed' },
-      { code: 'Premise Secured',  description: 'Premise Secured' },
-      { code: 'Owner Notified',   description: 'Owner/Keyholder Notified' },
-      { code: 'Vehicle Towed',    description: 'Vehicle Towed' },
-      { code: 'Standby Complete', description: 'Standby Complete' },
-      // Process Service outcomes (paper service — pso_client_request / process_service calls).
-      // Namespaced with a 'PS ' code prefix so they group together and never
-      // collide with the law-enforcement codes above. Per-attempt diligence
-      // tracking still lives in the dedicated serve subsystem (serve_attempts);
-      // these are the call-level closeout codes.
-      { code: 'PS Served',            description: 'Process Served — Personal' },
-      { code: 'PS Sub-Served',        description: 'Process Served — Substitute' },
-      { code: 'PS Posted',            description: 'Process Served — Posted & Mailed' },
-      { code: 'PS Corporate',         description: 'Process Served — Corporate/Registered Agent' },
-      { code: 'PS Mailed',            description: 'Process Served — By Mail' },
-      { code: 'PS Non-Service',       description: 'Process — Unable to Serve' },
-      { code: 'PS Evasive',           description: 'Process — Evasive / Avoiding Service' },
-      { code: 'PS Vacant',            description: 'Process — Vacant / Unoccupied' },
-      { code: 'PS No Access',         description: 'Process — Gated / No Access' },
-      { code: 'PS Unknown',           description: 'Process — Recipient Unknown at Address' },
-      { code: 'PS Out of Jurisdiction', description: 'Process — Out of Jurisdiction' },
-      { code: 'PS Recalled',          description: 'Process — Recalled by Client' },
-      { code: 'PS Non Est',           description: 'Process — Returned Non-Est (Return of Service Filed)' },
-      { code: 'Cancelled',        description: 'Call Cancelled' },
-    ];
-    const overrideCodes = new Set(customDispositions.map((d) => d.code));
-    const merged = [
-      ...customDispositions,
-      ...defaults
-        .filter((d) => !overrideCodes.has(d.code))
-        .map((d) => ({
-          ...d,
-          is_active: true,
-          config_value: JSON.stringify(d),
-        })),
-    ];
-
-    result.dispositions = merged;
+    result.dispositions = mergeDispositions(dispositionRows);
     return c.json(result);
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
@@ -777,7 +714,13 @@ admin.get('/user-activity-heatmap', async (c) => {
 admin.get('/backup-status', (c) => c.json({
   data: { last_backup_at: null, status: 'unknown', size_bytes: 0, location: null },
 }));
+// Sole /config-history handler. A second one reading config_audit_log was
+// registered further down this file and was unreachable (Hono dispatches the
+// first match); config_audit_log has no writers anywhere in src/. Deleted
+// 2026-07-25.
 admin.get('/config-history', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const limit = Math.min(Number(c.req.query('limit') || 20), 100);
@@ -2023,8 +1966,14 @@ admin.put('/system-settings', async (c) => {
       // on live D1 ("does not match any UNIQUE constraint"). DELETE+INSERT
       // collapses any multi-row history for the key to the single new value.
       await execute(db, `DELETE FROM system_config WHERE config_key = ?`, key);
+      // `category` is REQUIRED here. system_config.category is NOT NULL DEFAULT
+      // 'general', so omitting it silently filed every setting under 'general'
+      // while AdminSystemTab reloads from GET /config-items → grouped.system_settings
+      // — the panel's 60 fields saved and then reverted to defaults on refresh.
+      // 'system_settings' is the convention src/routes/audit.ts:312 already uses.
       await execute(db,
-        `INSERT INTO system_config (config_key, config_value, updated_at) VALUES (?, ?, datetime('now'))`,
+        `INSERT INTO system_config (config_key, config_value, category, is_active, updated_at)
+         VALUES (?, ?, 'system_settings', 1, datetime('now'))`,
         key, val);
     }
     return c.json({ success: true });
@@ -2109,16 +2058,6 @@ admin.post('/impersonate/:id', async (c) => {
     if (!target) return c.json({ error: 'User not found' }, 404);
     return c.json({ success: true, user: target, note: 'View-only impersonation — no token issued' });
   } catch { return c.json({ error: 'Failed' }, 500); }
-});
-
-// ── Config history ─────────────────────────────────────────
-admin.get('/config-history', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db,
-      `SELECT * FROM config_audit_log ORDER BY created_at DESC LIMIT 200`);
-    return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
 });
 
 // NOTE: '/settings/reset' used to be a no-op stub here. Removed 2026-07-20 —
