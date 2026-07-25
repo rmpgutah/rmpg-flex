@@ -11,6 +11,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { containsAnyClause } from '../utils/searchText';
 
 const tips = new Hono<Env>();
 
@@ -44,8 +45,10 @@ tips.get('/', async (c) => {
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (status) { conditions.push('t.status = ?'); params.push(status); }
     if (search) {
-      conditions.push('(t.tracking_number LIKE ? OR t.description LIKE ? OR t.location LIKE ?)');
-      const s = `%${search}%`; params.push(s, s, s);
+      // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+      const _m = containsAnyClause(['t.tracking_number', 't.description', 't.location']);
+      conditions.push(_m.sql);
+      params.push(..._m.binds(search));
     }
     const where = conditions.join(' AND ');
     const rows = await query<Record<string, unknown>>(db, `

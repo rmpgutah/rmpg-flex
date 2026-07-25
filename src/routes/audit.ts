@@ -15,6 +15,7 @@ import { recordAudit } from '../utils/auditLog';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { denverDateExpr, denverNowDateExpr } from '../utils/denverTime';
+import { containsAnyClause } from '../utils/searchText';
 const audit = new Hono<Env>();
 
 // ── Role gate ──────────────────────────────────────────────
@@ -73,7 +74,7 @@ audit.get('/logs', async (c) => {
     if (userId) { conditions.push('al.user_id = ?'); params.push(userId); }
     if (startDate) { conditions.push('al.created_at >= ?'); params.push(startDate); }
     if (endDate) { conditions.push('al.created_at <= ?'); params.push(endDate); }
-    if (search) { conditions.push('al.details LIKE ?'); params.push(`%${search}%`); }
+    if (search) { const _m = containsAnyClause(['al.details']); conditions.push(_m.sql); params.push(..._m.binds(search)); }
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const countRow = await queryFirst<{ total: number }>(
@@ -184,7 +185,7 @@ audit.get('/export', async (c) => {
     if (userId) { conditions.push('al.user_id = ?'); params.push(userId); }
     if (startDate) { conditions.push('al.created_at >= ?'); params.push(startDate); }
     if (endDate) { conditions.push('al.created_at <= ?'); params.push(endDate); }
-    if (search) { conditions.push('al.details LIKE ?'); params.push(`%${search}%`); }
+    if (search) { const _m = containsAnyClause(['al.details']); conditions.push(_m.sql); params.push(..._m.binds(search)); }
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const rows = await query<Record<string, unknown>>(

@@ -15,6 +15,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
+import { containsAnyClause } from '../../utils/searchText';
 
 const lib = new Hono<Env>();
 
@@ -70,7 +71,7 @@ lib.get('/', async (c) => {
 
     const where: string[] = ['d.deleted_at IS NULL'];
     const whereParams: unknown[] = [];
-    if (q) { where.push('d.title LIKE ?'); whereParams.push(`%${q}%`); }
+    if (q) { const _m = containsAnyClause(['d.title']); where.push(_m.sql); whereParams.push(..._m.binds(q)); }
     if (status) {
       if (status !== 'draft' && status !== 'finalized') {
         return c.json({ error: 'status must be draft|finalized', code: 'DOC_BAD_STATUS' }, 400);
