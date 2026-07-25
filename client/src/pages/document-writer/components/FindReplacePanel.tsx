@@ -46,7 +46,7 @@ export default function FindReplacePanel({
 
   const optBtn = (k: keyof SearchOptions, label: string, title: string) => (
     <button type="button" title={title} onClick={() => toggle(k)}
-      className={`px-1.5 py-0.5 text-[10px] rounded-[2px] border ${opts[k] ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'border-border-default text-rmpg-400 hover:bg-surface-raised'}`}>
+      className={`px-1.5 py-0.5 text-[10px] rounded-[2px] border ${opts[k] ? 'bg-accent-silver-500/20 border-accent-silver-500/40 text-accent-silver-300' : 'border-border-default text-rmpg-400 hover:bg-surface-raised'}`}>
       {label}
     </button>
   );
@@ -57,7 +57,7 @@ export default function FindReplacePanel({
         <input
           ref={inputRef} list="rmpg-search-history" value={term} onChange={(e) => setTerm(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.shiftKey ? prev() : onSubmit(); } if (e.key === 'Escape') onClose(); }}
-          placeholder="Find" className="flex-1 bg-surface-base border border-border-default text-[11px] text-rmpg-100 rounded-[2px] px-2 py-1 focus:outline-none focus:border-[#d4a017]/50"
+          placeholder="Find" className="flex-1 bg-surface-base border border-border-default text-[11px] text-rmpg-100 rounded-[2px] px-2 py-1 focus:outline-none focus:border-accent-silver-500/50"
         />
         <datalist id="rmpg-search-history">{readHistory().map((h) => <option key={h} value={h} />)}</datalist>
         <span className="text-[10px] text-rmpg-500 w-14 text-center tabular-nums">{total ? `${current}/${total}` : '0'}</span>
@@ -69,11 +69,11 @@ export default function FindReplacePanel({
       {mode === 'replace' && (
         <div className="flex items-center gap-1">
           <input value={replacement} onChange={(e) => setReplacement(e.target.value)} placeholder="Replace with"
-            className="flex-1 bg-surface-base border border-border-default text-[11px] text-rmpg-100 rounded-[2px] px-2 py-1 focus:outline-none focus:border-[#d4a017]/50" />
+            className="flex-1 bg-surface-base border border-border-default text-[11px] text-rmpg-100 rounded-[2px] px-2 py-1 focus:outline-none focus:border-accent-silver-500/50" />
           <button type="button" onClick={() => { editor.commands.replaceCurrent(replacement); editor.commands.setSearchTerm(term, opts); force((n) => n + 1); }}
             className="px-2 py-1 text-[10px] bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">Replace</button>
           <button type="button" onClick={() => { editor.commands.replaceAll(replacement); force((n) => n + 1); }}
-            className="px-2 py-1 text-[10px] bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20 flex items-center gap-1"><ArrowDownAZ className="w-3 h-3" />All</button>
+            className="px-2 py-1 text-[10px] bg-accent-silver-500/10 border border-accent-silver-500/30 text-accent-silver-300 rounded-[2px] hover:bg-accent-silver-500/20 flex items-center gap-1"><ArrowDownAZ className="w-3 h-3" />All</button>
         </div>
       )}
 
