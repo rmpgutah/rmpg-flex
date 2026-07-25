@@ -27,6 +27,14 @@ describe('classifyFile', () => {
     expect(classifyFile('src/utils/liveAudit.ts')).toBe('excluded');
   });
 
+  it('excludes fixed categorical palettes, where the colors ARE the data', () => {
+    // connectionsGraphStyle assigns one color per entity type and was hand-tuned
+    // for collision avoidance; geographyLabels assigns district/sector identity
+    // colors operators learn by sight. Re-theming either changes meaning.
+    expect(classifyFile('src/utils/connectionsGraphStyle.ts')).toBe('excluded');
+    expect(classifyFile('src/utils/geographyLabels.ts')).toBe('excluded');
+  });
+
   it('includes ordinary page and component chrome', () => {
     for (const p of [
       'src/pages/CrashReportsPage.tsx',
