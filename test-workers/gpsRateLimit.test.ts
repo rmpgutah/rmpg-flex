@@ -36,15 +36,40 @@ beforeAll(async () => {
 });
 
 describe('POST /api/dispatch/gps — rate limit', () => {
-  it('rejects the 31st request within 30s with 429', async () => {
-    let lastStatus = 200;
-    for (let i = 0; i < 31; i++) {
+  // Must match the window passed to rateLimitAllow in src/routes/dispatch/gps.ts.
+  const WINDOW_SECONDS = 30;
+  const currentWindow = () => Math.floor(Date.now() / 1000 / WINDOW_SECONDS);
+
+  async function burst(n: number): Promise<number> {
+    let lastStatus = 0;
+    for (let i = 0; i < n; i++) {
       const res = await app.request('/api/dispatch/gps', {
         method: 'POST',
         body: JSON.stringify({ points: [{ lat: 40.76 + i * 0.0001, lng: -111.89 }] }),
         headers: { 'Content-Type': 'application/json' },
       }, env as unknown as Record<string, unknown>);
       lastStatus = res.status;
+    }
+    return lastStatus;
+  }
+
+  it('rejects the 31st request within 30s with 429', async () => {
+    // rateLimitAllow (src/utils/rateLimit.ts) is a FIXED-window limiter: its
+    // key embeds `now - (now % 30)`, so the counter resets outright at every
+    // 30s boundary. A burst that straddles one leaves its final request in a
+    // fresh window where 201 is the CORRECT answer — which made this
+    // assertion a coin flip on a loaded runner (reproduced locally as
+    // fail/pass/pass across three consecutive runs of one commit).
+    //
+    // Retry only when the burst actually crossed a boundary. That is the
+    // whole point: a burst that stayed inside one window is a valid
+    // observation and is asserted on immediately, so a genuine regression
+    // still fails here rather than being retried away.
+    let lastStatus = 0;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const windowAtStart = currentWindow();
+      lastStatus = await burst(31);
+      if (currentWindow() === windowAtStart) break;
     }
     expect(lastStatus).toBe(429);
   });
