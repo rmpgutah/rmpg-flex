@@ -57,7 +57,7 @@ export default function AdminEmailAuditTab() {
               onClick={() => setFilter(f)}
               className={`px-2 py-0.5 text-[10px] uppercase tracking-wide rounded-sm ${
                 filter === f
-                  ? 'bg-[#d4a017] text-black font-semibold'
+                  ? 'bg-accent-silver-500 text-black font-semibold'
                   : 'bg-surface-base text-rmpg-400 hover:text-rmpg-100 border border-border-default'
               }`}
             >

@@ -231,9 +231,9 @@ export default function AdminRadioTab() {
           onClick={() => setView(v)}
           className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider rounded-sm"
           style={{
-            color: view === v ? '#d4a017' : '#888',
-            background: view === v ? 'rgba(212,160,23,0.10)' : 'transparent',
-            border: `1px solid ${view === v ? '#d4a017' : 'transparent'}`,
+            color: view === v ? 'var(--accent-silver-500)' : 'var(--text-muted)',
+            background: view === v ? 'rgba(var(--accent-silver-500-rgb), 0.10)' : 'transparent',
+            border: `1px solid ${view === v ? 'var(--accent-silver-500)' : 'transparent'}`,
           }}
         >
           {v}
@@ -253,7 +253,7 @@ export default function AdminRadioTab() {
       <div className="bg-surface-base border border-border-default rounded-sm p-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Radio size={18} className="text-[#d4a017]" />
+            <Radio size={18} className="text-accent-silver-500" />
             <div>
               <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wide">Radio Channels</h2>
               <p className="text-[11px] text-rmpg-500">
@@ -265,7 +265,7 @@ export default function AdminRadioTab() {
           </div>
           <button
             onClick={openNew}
-            className="flex items-center gap-1.5 bg-[#d4a017] hover:bg-[#a16207] text-black px-3 py-1.5 rounded-sm text-xs font-semibold transition-colors"
+            className="flex items-center gap-1.5 bg-accent-silver-500 hover:bg-accent-silver-600 text-black px-3 py-1.5 rounded-sm text-xs font-semibold transition-colors"
           >
             <Plus size={14} /> New Channel
           </button>
@@ -336,7 +336,7 @@ export default function AdminRadioTab() {
                       <div className="text-rmpg-200 font-medium">
                         {ch.name}
                         {isArchived && <span className="ml-1.5 text-[9px] uppercase text-rmpg-500">[archived]</span>}
-                        {ch.is_default === 1 && <span className="ml-1.5 text-[9px] uppercase text-[#d4a017]">[default]</span>}
+                        {ch.is_default === 1 && <span className="ml-1.5 text-[9px] uppercase text-accent-silver-500">[default]</span>}
                       </div>
                       {ch.description && <div className="text-[10px] text-rmpg-500 truncate max-w-[24rem]">{ch.description}</div>}
                     </td>
@@ -407,7 +407,7 @@ export default function AdminRadioTab() {
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="e.g. Dispatch Main"
-                  className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-xs text-rmpg-200 focus:border-[#d4a017] outline-none"
+                  className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-xs text-rmpg-200 focus:border-accent-silver-500 outline-none"
                   autoFocus
                 />
               </div>
@@ -417,7 +417,7 @@ export default function AdminRadioTab() {
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   placeholder="What this channel is used for"
-                  className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-xs text-rmpg-200 focus:border-[#d4a017] outline-none"
+                  className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-xs text-rmpg-200 focus:border-accent-silver-500 outline-none"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -427,7 +427,7 @@ export default function AdminRadioTab() {
                     value={form.frequency}
                     onChange={(e) => setForm({ ...form, frequency: e.target.value })}
                     placeholder="155.475 MHz"
-                    className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-xs text-rmpg-200 font-mono focus:border-[#d4a017] outline-none"
+                    className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-xs text-rmpg-200 font-mono focus:border-accent-silver-500 outline-none"
                   />
                 </div>
                 <div>
@@ -436,7 +436,7 @@ export default function AdminRadioTab() {
                     value={form.talkgroup}
                     onChange={(e) => setForm({ ...form, talkgroup: e.target.value })}
                     placeholder="TG-1234"
-                    className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-xs text-rmpg-200 font-mono focus:border-[#d4a017] outline-none"
+                    className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-xs text-rmpg-200 font-mono focus:border-accent-silver-500 outline-none"
                   />
                 </div>
               </div>
@@ -448,7 +448,7 @@ export default function AdminRadioTab() {
                       value={form.color}
                       onChange={(e) => setForm({ ...form, color: e.target.value })}
                       placeholder="#d4a017"
-                      className="flex-1 bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-xs text-rmpg-200 font-mono focus:border-[#d4a017] outline-none"
+                      className="flex-1 bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-xs text-rmpg-200 font-mono focus:border-accent-silver-500 outline-none"
                     />
                     <span
                       className="inline-block w-6 h-6 rounded-sm border border-rmpg-700 flex-shrink-0"
@@ -474,7 +474,7 @@ export default function AdminRadioTab() {
                     type="number"
                     value={form.sort_order}
                     onChange={(e) => setForm({ ...form, sort_order: parseInt(e.target.value, 10) || 0 })}
-                    className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-xs text-rmpg-200 font-mono focus:border-[#d4a017] outline-none"
+                    className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-xs text-rmpg-200 font-mono focus:border-accent-silver-500 outline-none"
                   />
                   <p className="text-[9px] text-rmpg-500 mt-0.5">Lower = higher in operator picker.</p>
                 </div>
@@ -491,7 +491,7 @@ export default function AdminRadioTab() {
               <button
                 onClick={submit}
                 disabled={submitting || !form.name.trim()}
-                className="flex items-center gap-1.5 bg-[#d4a017] hover:bg-[#a16207] disabled:opacity-50 text-black px-3 py-1 rounded-sm text-xs font-semibold transition-colors"
+                className="flex items-center gap-1.5 bg-accent-silver-500 hover:bg-accent-silver-600 disabled:opacity-50 text-black px-3 py-1 rounded-sm text-xs font-semibold transition-colors"
               >
                 {submitting && <Loader2 size={11} className="animate-spin" />}
                 {editing ? 'Save Changes' : 'Create Channel'}

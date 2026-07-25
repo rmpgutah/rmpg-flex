@@ -129,11 +129,11 @@ export default function AdminGpsHealthTab({ LoadingSpinner, setError }: Props) {
   return (
     <div className="p-4 space-y-4">
       {/* Summary strip */}
-      <div className="flex items-start gap-3 p-3 border border-[#222] bg-surface-raised" style={{ borderRadius: 2 }}>
-        <Activity className="w-5 h-5 text-[#d4a017] flex-shrink-0 mt-0.5" />
+      <div className="flex items-start gap-3 p-3 border border-border-default bg-surface-raised" style={{ borderRadius: 2 }}>
+        <Activity className="w-5 h-5 text-accent-silver-500 flex-shrink-0 mt-0.5" />
         <div className="flex-1">
           <h2 className="text-sm font-semibold text-white mb-1">GPS Health — Authoritative Source Snapshot</h2>
-          <p className="text-[11px] text-[#aaa]">
+          <p className="text-[11px] text-text-secondary">
             Live freshness of OwnTracks / Traccar / ClearPathGPS heartbeats per unit. Browser fallback sources do not stamp authoritative freshness, so this view shows when the dominant tracker actually went silent — not when any source last wrote.
           </p>
           <div className="flex gap-3 mt-2 flex-wrap">
@@ -147,7 +147,7 @@ export default function AdminGpsHealthTab({ LoadingSpinner, setError }: Props) {
         <button
           type="button"
           onClick={load}
-          className="px-2 py-1 text-[11px] font-mono border border-[#2e2e2e] hover:border-[#d4a017] hover:text-[#d4a017] text-[#aaa] flex items-center gap-1"
+          className="px-2 py-1 text-[11px] font-mono border border-border-default hover:border-accent-silver-500 hover:text-accent-silver-400 text-text-secondary flex items-center gap-1"
           style={{ borderRadius: 2 }}
           title="Refresh now"
         >
@@ -176,45 +176,45 @@ export default function AdminGpsHealthTab({ LoadingSpinner, setError }: Props) {
                     {style.label}
                   </span>
                 </div>
-                <span className="text-[10px] text-[#888] uppercase">{u.status || '—'}</span>
+                <span className="text-[10px] text-text-muted uppercase">{u.status || '—'}</span>
               </div>
-              <div className="text-[11px] text-[#bbb] mb-2 truncate">
+              <div className="text-[11px] text-text-secondary mb-2 truncate">
                 {u.officer_name || 'Unassigned'}{u.badge_number ? ` · #${u.badge_number}` : ''}
               </div>
-              <table className="w-full text-[10px] font-mono text-[#aaa]">
+              <table className="w-full text-[10px] font-mono text-text-secondary">
                 <tbody>
                   <tr>
-                    <td className="py-0.5 pr-2 text-[#666]">Authoritative</td>
+                    <td className="py-0.5 pr-2 text-rmpg-500">Authoritative</td>
                     <td className="py-0.5 text-white">
-                      {u.last_authoritative_gps_source || <span className="text-[#666]">none</span>}
+                      {u.last_authoritative_gps_source || <span className="text-rmpg-500">none</span>}
                       {u.auth_age_seconds != null && (
-                        <span className="ml-1 text-[#888]">({fmtAge(u.auth_age_seconds)} ago)</span>
+                        <span className="ml-1 text-text-muted">({fmtAge(u.auth_age_seconds)} ago)</span>
                       )}
                     </td>
                   </tr>
                   <tr>
-                    <td className="py-0.5 pr-2 text-[#666]">Live source</td>
+                    <td className="py-0.5 pr-2 text-rmpg-500">Live source</td>
                     <td className="py-0.5 text-white">
-                      {u.gps_source || <span className="text-[#666]">none</span>}
+                      {u.gps_source || <span className="text-rmpg-500">none</span>}
                       {u.live_age_seconds != null && (
-                        <span className="ml-1 text-[#888]">({fmtAge(u.live_age_seconds)} ago)</span>
+                        <span className="ml-1 text-text-muted">({fmtAge(u.live_age_seconds)} ago)</span>
                       )}
                     </td>
                   </tr>
                   <tr>
-                    <td className="py-0.5 pr-2 text-[#666]">24h points</td>
+                    <td className="py-0.5 pr-2 text-rmpg-500">24h points</td>
                     <td className="py-0.5 text-white">
                       <span className={u.authoritative_points_24h > 0 ? 'text-green-400' : 'text-red-400'}>
                         {u.authoritative_points_24h}
                       </span>
-                      <span className="text-[#666]"> auth / </span>
+                      <span className="text-rmpg-500"> auth / </span>
                       <span>{u.total_points_24h}</span>
-                      <span className="text-[#666]"> total</span>
+                      <span className="text-rmpg-500"> total</span>
                     </td>
                   </tr>
                   {u.latitude != null && u.longitude != null && (
                     <tr>
-                      <td className="py-0.5 pr-2 text-[#666]">Position</td>
+                      <td className="py-0.5 pr-2 text-rmpg-500">Position</td>
                       <td className="py-0.5 text-[10px]">{u.latitude.toFixed(5)}, {u.longitude.toFixed(5)}</td>
                     </tr>
                   )}
@@ -226,7 +226,7 @@ export default function AdminGpsHealthTab({ LoadingSpinner, setError }: Props) {
       </div>
 
       {generatedAt && (
-        <div className="text-[10px] text-[#666] text-right font-mono">
+        <div className="text-[10px] text-rmpg-500 text-right font-mono">
           Last refresh: {parseTimestamp(generatedAt).toLocaleTimeString()} · Auto-refreshes every 5s while tab is visible
         </div>
       )}
