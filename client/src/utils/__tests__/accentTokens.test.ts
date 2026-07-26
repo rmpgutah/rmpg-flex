@@ -282,3 +282,114 @@ describe('the --rmpg-* ramp is never used as a text colour', () => {
     expect(offenders, `Use a --text-* token instead:\n${offenders.join('\n')}`).toEqual([]);
   });
 });
+
+describe('bare --rmpg-500/600 occurrence ratchet', () => {
+  // The TEXT_CONTEXTS scan above is shape-based, so it only catches the spellings
+  // someone thought to enumerate. Measured against the seven shapes this ramp
+  // actually appears in, it catches two: the direct `color: 'var(--rmpg-N)'` form
+  // and the `.style.color =` handler. It MISSES ternaries
+  // (`color: on ? '#fff' : 'var(--rmpg-600)'`), `||` map fallbacks, SVG `fill=`,
+  // and Recharts `tick={{ fill }}`.
+  //
+  // That gap shipped a regression. #3031 re-pointed 129 of these sites; #3028
+  // independently fixed the OTHER colour on NavigationPage.tsx:2561, the crime
+  // toggle's two-colour line. The auto-merge of main into #3031 resolved that line
+  // by taking #3028's copy whole, silently discarding the contrast fix, and #3031
+  // merged 128/129. Nothing caught it: the surviving line was still valid
+  // TypeScript and valid CSS, so typecheck, tests and build all passed on the
+  // merged tree. `MERGED` read as success.
+  //
+  // This ratchet is deliberately shape-AGNOSTIC. It counts occurrences per file and
+  // pins them, so a dropped fix, a novel spelling, or a copy-paste all fail the same
+  // way, without any regex to keep in sync. Scoped to 500/600 because those two have
+  // no defensible foreground use (1.82:1 and 1.18:1 on --surface-raised) while the
+  // lighter steps are legitimately used for chart gradients and graphics.
+  //
+  // Adding a site is allowed — pin it here WITH a reason. An unexplained bump is the
+  // thing this is meant to stop.
+  const PINNED: Record<string, { count: number; why: string }> = {
+    'index.css': {
+      count: 1,
+      why: '.btn-primary:hover background — a surface use, and a var() so it still re-themes',
+    },
+    'pages/CrimeAnalysisPage.tsx': {
+      count: 1,
+      why: 'SVG <stop stopColor> gradient — a chart graphic, and carries a hex fallback',
+    },
+    'pages/ReportsPage.tsx': {
+      count: 2,
+      why: 'PIE_COLORS[6] + PRIORITY_COLORS.P4 — categorical palette. PRIORITY_COLORS.P3 is '
+        + 'already --text-muted, so matching it would render two CAD priority levels '
+        + 'identically. Tracked as its own design task.',
+    },
+    'styles/theme-palettes.css': {
+      count: 1,
+      why: 'the alias comment quotes the bare form as documentation',
+    },
+    'utils/pdfGenerator.ts': {
+      count: 1,
+      why: 'inside a comment; jsPDF takes literal colours and the file is classifier-excluded',
+    },
+  };
+
+  // Matches the bare ramp reference with or without a fallback — `var(--rmpg-500)`
+  // and `var(--rmpg-600, #1e4a7a)` both count. The `[,)]` tail is what keeps the
+  // `-rgb` triples (`var(--rmpg-500-rgb)`) from matching.
+  const BARE_RAMP = /var\(\s*--rmpg-(?:500|600)\s*[,)]/g;
+
+  function collect(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== '__tests__' && entry.name !== 'node_modules') collect(full, out);
+      } else if (/\.(tsx?|css)$/.test(entry.name)) {
+        out.push(full);
+      }
+    }
+    return out;
+  }
+
+  it('has no unpinned bare --rmpg-500/600 occurrence in client/src', () => {
+    const actual: Record<string, number> = {};
+    for (const file of collect(SRC_DIR)) {
+      const n = (readFileSync(file, 'utf8').match(BARE_RAMP) ?? []).length;
+      if (n > 0) actual[file.slice(SRC_DIR.length + 1).replace(/\\/g, '/')] = n;
+    }
+
+    const expected: Record<string, number> = {};
+    for (const [path, { count }] of Object.entries(PINNED)) expected[path] = count;
+
+    const notes: string[] = [];
+    for (const path of new Set([...Object.keys(actual), ...Object.keys(expected)])) {
+      const now = actual[path] ?? 0;
+      const pin = expected[path] ?? 0;
+      if (now === pin) continue;
+      notes.push(
+        now > pin
+          ? `  ${path}: ${pin} pinned -> ${now} found. A bare --rmpg-500/600 was ADDED, or a `
+            + `merge dropped a fix on a line another branch also touched. Re-point it at a `
+            + `--text-* token, or pin it here with a reason if it is genuinely a surface/graphic.`
+          : `  ${path}: ${pin} pinned -> ${now} found. One was FIXED — lower the pin (or drop the `
+            + `entry) so the ratchet stays tight.`,
+      );
+    }
+
+    expect(actual, `bare --rmpg-500/600 drifted from its pinned floor:\n${notes.join('\n')}`)
+      .toEqual(expected);
+  });
+
+  it('pins only files that still contain an occurrence', () => {
+    // A deleted pinned file is a stale pin, not a crash — read defensively so the
+    // failure names the obsolete entry instead of surfacing a bare ENOENT.
+    const stale = Object.keys(PINNED).filter((p) => {
+      let src: string;
+      try {
+        src = readFileSync(resolve(SRC_DIR, p), 'utf8');
+      } catch {
+        return true;
+      }
+      return !(src.match(BARE_RAMP) ?? []).length;
+    });
+    expect(stale, `these pins are obsolete and should be deleted:\n${stale.join('\n')}`).toEqual([]);
+  });
+});
