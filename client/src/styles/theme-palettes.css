@@ -488,8 +488,8 @@ html.theme-blue-silver {
   /* Records chrome tokens — BLUE & SILVER */
   --spm-chrome: #1a3350; --spm-form: #142840; --spm-field: #182f4a;
   --spm-border: #46688c; --spm-field-border: #46688c; --spm-accent: #5a9ae0;
-  --spm-select: #316ac5; --spm-text: #f0f4f9; --spm-text-muted: #9bb0c7;
-  --spm-text-rgb: 240 244 249; --spm-text-muted-rgb: 155 176 199;
+  --spm-select: #316ac5; --spm-text: #f0f4f9; --spm-text-muted: #b1c1d3;
+  --spm-text-rgb: 240 244 249; --spm-text-muted-rgb: 177 193 211;
   --spm-group-head: linear-gradient(#2c4f74, #22405f);
   --spm-toolbar: linear-gradient(#2c4f74, #22405f);
   --spm-toolbar-hover: linear-gradient(#345c85, #294a6b);
@@ -523,7 +523,7 @@ html.theme-blue-silver {
   /* Module-bar + bevel/titlebar — BLUE & SILVER. Derived from the navy ramp so
      the active nav tile reads as *sunken navy*, not a black hole, and panel
      title bars read as a raised navy step instead of the inherited pure black. */
-  --toolbar-nav-text: #9bb0c7;
+  --toolbar-nav-text: #b1c1d3;
   --toolbar-nav-text-hover: #f0f4f9;
   --toolbar-nav-text-active: var(--brand-blue);
   --toolbar-nav-hover: rgba(255, 255, 255, 0.06);

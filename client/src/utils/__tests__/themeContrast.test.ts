@@ -62,7 +62,18 @@ function channels(block: string, name: string): [number, number, number] {
   throw new Error(`theme-palettes.css: cannot resolve --${name} in this block`);
 }
 
-const TEXT_ROLES = ['text-primary', 'text-secondary', 'text-muted'];
+// --spm-text-muted (206 usages, Spillman-replica chrome) and --toolbar-nav-text
+// are SHADOW copies of --text-muted: before this program they carried its exact
+// value in all four blocks. They are listed here so the lockstep is enforced by
+// the guard instead of by memory -- lifting --text-muted alone silently left 206
+// sites on the old sub-AA value.
+const TEXT_ROLES = [
+  'text-primary',
+  'text-secondary',
+  'text-muted',
+  'spm-text-muted',
+  'toolbar-nav-text',
+];
 const SURFACES = ['surface-base', 'surface-raised', 'surface-sunken'];
 
 describe('theme contrast (WCAG AA, 4.5:1)', () => {
