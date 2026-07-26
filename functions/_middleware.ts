@@ -24,6 +24,11 @@ interface Env {}
 const ALLOWED_CONNECT = [
   "'self'",
   'ws:', 'wss:',
+  // fetch() of an in-page blob: URL (e.g. PrintRecordButton re-reading its own
+  // generated PDF blob to attach it to an email) is subject to connect-src,
+  // not img-src/media-src — Chrome blocks it without this explicit token even
+  // though the blob was created same-origin.
+  'blob:',
   'https://api.rmpgutah.us',
   'https://*.rmpgutah.us',
   'https://api.mapbox.com',
