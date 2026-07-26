@@ -263,7 +263,7 @@ what change that.
 
 | Item | Situation | Recommendation |
 | --- | --- | --- |
-| **SOF audio firmware** | The earlier doc said the `sof-tgl.ri` / `sof-rpl.ri` blobs "must come from `linux-firmware`". They are **not in linux-firmware 20240115** — that tarball's `intel/` has only `avs/`, `catpt/`, `ice/`, `vsc/` `[V]` — and Buildroot 2024.02.9 has **no `sof-bin` package** `[V]`. SOF firmware is a separate upstream project. | Panasonic ships a plain Realtek "Sound Driver" with no Intel SST/SOF package, which indicates the codec runs in **legacy HDA mode** `[P]` — so speakers and headphones should work on `snd_hda_intel` alone. The **digital mic array is the risk**: DMICs typically hang off the PCH DSP and are SOF-only. Validate on hardware before assuming radio PTT audio works; if the mics are dead, packaging `sof-bin` becomes real scoped work, not a config flag. |
+| **SOF audio firmware** | The earlier doc said the `sof-tgl.ri` / `sof-rpl.ri` blobs "must come from `linux-firmware`". They are **not in linux-firmware 20240115** — that tarball's `intel/` has only `avs/`, `catpt/`, `ice/`, `vsc/` `[V]` — and Buildroot 2024.02.9 has **no `sof-bin` package** `[V]`. SOF firmware is a separate upstream project. | Panasonic ships a plain Realtek "Sound Driver" with no Intel SST/SOF package, which indicates the codec runs in **legacy HDA mode** `[P]` — so speakers and headphones should work on `snd_hda_intel` alone. The **digital mic array is the risk**: DMICs typically hang off the PCH DSP and are SOF-only. **Scoped and decided 2026-07-25:** do not enable SOF speculatively — it is a *switch*, not an addition (the TGL/ADL entries in `intel-dsp-config.c` are compile-gated, so building SOF makes any DMIC unit stop using legacy HDA and demand firmware, turning working speakers into silence if anything mismatches). Diagnose on the first unit, then build once if needed. Firmware is `thesofproject/sof-bin` v2023.12.1, not `linux-firmware`. Design: [`2026-07-25-fz55-sof-audio-design.md`](superpowers/specs/2026-07-25-fz55-sof-audio-design.md). |
 | **DisplayLink docks** | No mainline driver; the out-of-tree `evdi` module is the only option | Do not buy DisplayLink docks for this fleet. Use Thunderbolt/USB-C alt-mode docks, which `USB4` + `i915` already handle. |
 | **Intel GNA** | No mainline driver | Ignore — nothing in RMPG Flex uses it. |
 | **Fingerprint readers** | Kernel side is generic USB; matching needs `libfprint` + a supported sensor | Only if the fingerprint xPAK is actually purchased. Synaptics FS7600 support in `libfprint` should be confirmed before buying. |
@@ -284,7 +284,17 @@ Specific to this manifest, on real hardware confirm:
 1. `dmesg | grep -i "firmware"` — no `Direct firmware load ... failed` lines.
 2. `hciconfig`/`bluetoothctl` — the Bluetooth adapter appears (proves the IBT fix).
 3. `dmesg | grep -i guc` on an **mk3** — GuC loads, GPU initialises (proves §4 defect 2).
-4. `arecord -l` — the internal mic array enumerates (settles the SOF question in §8).
+4. **The SOF decision** (§8). Three commands settle it, and the answer determines whether a
+   whole package of work is needed or can be closed:
+   ```sh
+   arecord -l                                    # capture device under legacy HDA?
+   ls -l /sys/firmware/acpi/tables/NHLT           # does the platform declare digital mics?
+   dmesg | grep -iE "snd_hda_intel|sof|hdaudio"   # which driver actually bound
+   ```
+   Capture works, or no NHLT table → **SOF is not needed; close the item.** NHLT present
+   *and* no working capture → the mic array is behind the PCH DSP and SOF is required. Full
+   reasoning and the build plan:
+   [`docs/superpowers/specs/2026-07-25-fz55-sof-audio-design.md`](superpowers/specs/2026-07-25-fz55-sof-audio-design.md).
 5. `cat /sys/class/power_supply/BAT*/capacity` — both hot-swap batteries report.
 6. `ls /sys/class/thermal/` — INT340X zones appear, not just the ACPI critical trip.
 7. Touchscreen and pen both generate events (`evtest`).

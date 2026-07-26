@@ -8,7 +8,7 @@ import { join, relative } from 'node:path';
  * The bug class: synthesizing a translucent color by welding a 2-digit hex
  * alpha onto a color string — `${color}22` or `color + '20'` — only produces
  * valid CSS when `color` is a raw 6-digit hex. With a CSS variable it yields
- * `var(--rmpg-500)22`, which the browser drops silently, so the tint, glow, or
+ * `var(--text-muted)22`, which the browser drops silently, so the tint, glow, or
  * ring simply does not render. Nothing throws and nothing logs.
  *
  * That is what makes this worth a ratchet rather than a code-review habit. The

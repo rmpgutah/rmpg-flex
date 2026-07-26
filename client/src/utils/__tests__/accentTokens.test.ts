@@ -335,6 +335,80 @@ describe('palette vars resolve under every theme', () => {
   });
 });
 
+describe('text-role rgb triples', () => {
+  // Tailwind consumes rgb(var(--x-rgb) / <alpha-value>). A missing triple in
+  // ANY block makes text-fg-* resolve to nothing there. Same failure mode the
+  // bare --rmpg-* aliases had before #3029.
+  // All four blocks must redeclare these. That is NOT the general rule -- ':root'
+  // is the base layer, so a base-only var resolves everywhere and an
+  // "all four blocks" assertion false-positives on theme-invariant tokens like
+  // --stat-accent-* (see #3032's spec). It holds HERE because --text-* carries a
+  // different value per theme (#e6edf5 / #1a1a1a / #f2f2f2 / #f0f4f9), so
+  // base-only membership would leave three themes with the night value.
+  const BLOCKS = [
+    { name: 'night', marker: ':root,', triples: {
+      'text-primary': '230 237 245',
+      'text-secondary': '195 208 222',
+      'text-muted': '143 163 184',
+    } },
+    { name: 'day', marker: 'html.theme-light {', triples: {
+      'text-primary': '26 26 26',
+      'text-secondary': '51 49 43',
+      'text-muted': '85 85 85',
+    } },
+    { name: 'legacy-black', marker: 'html.theme-legacy-black {', triples: {
+      'text-primary': '242 242 242',
+      'text-secondary': '207 207 207',
+      'text-muted': '138 138 138',
+    } },
+    { name: 'blue-silver', marker: 'html.theme-blue-silver {', triples: {
+      'text-primary': '240 244 249',
+      'text-secondary': '205 216 230',
+      'text-muted': '177 193 211',
+    } },
+  ];
+
+  // One local helper. accentTokens.test.ts already inlines this indexOf/slice
+  // pair six times; do not make it eight.
+  const bodyOf = (marker: string) => {
+    const start = css.indexOf(marker);
+    expect(start, `no block matching ${marker}`).toBeGreaterThan(-1);
+    return css.slice(start, css.indexOf('\n}', start));
+  };
+
+  for (const { name, marker } of BLOCKS) {
+    const block = bodyOf(marker);
+
+    for (const role of ['text-primary', 'text-secondary', 'text-muted']) {
+      it(`${name} defines --${role}-rgb`, () => {
+        expect(block).toMatch(new RegExp(`--${role}-rgb:\\s*\\d+ \\d+ \\d+`));
+      });
+
+      it(`${name} re-points --${role} at its own triple`, () => {
+        expect(block).toContain(`--${role}: rgb(var(--${role}-rgb))`);
+      });
+    }
+  }
+
+  it('carries the exact channel values, per block', () => {
+    for (const { name, marker, triples } of BLOCKS) {
+      const block = bodyOf(marker);
+      for (const [role, value] of Object.entries(triples)) {
+        expect(block, `${name} --${role}-rgb`).toContain(`--${role}-rgb: ${value}`);
+      }
+    }
+  });
+
+  it('repeats the triples per block rather than hoisting them', () => {
+    // .tactical-dark is a DESCENDANT that re-declares triples to force night on
+    // map / MDT / dashcam. A hoisted :root alias substitutes at computed-value
+    // time on the root element and the substituted result inherits, so a
+    // descendant could never override it. Proven in-browser during #3029.
+    const count = (css.match(/--text-muted-rgb:/g) ?? []).length;
+    expect(count).toBe(4);
+  });
+});
+
 describe('the --rmpg-* ramp is never used as a text colour', () => {
   // Defining the bare aliases fixed the "renders as inherited white" bug, but it
   // also made a WRONG colour renderable. The ramp encodes SURFACE ELEVATION and
@@ -375,18 +449,53 @@ describe('the --rmpg-* ramp is never used as a text colour', () => {
   // Blank comment bodies, preserving newlines so line numbers stay correct.
   // Documentation legitimately quotes the broken form as an example -- the palette
   // file's own alias comment does exactly that -- and must not trip the guard.
-  // String literals are neutralised FIRST: `input.accept = 'image/*'` would
-  // otherwise open a bogus block comment and swallow real code, hiding violations.
+  //
+  // String literals are masked FIRST, to EQUAL-LENGTH spaces, so `input.accept =
+  // 'image/*'` cannot open a bogus block comment and swallow real code. The mask is
+  // used ONLY to locate comments; the returned text keeps string contents intact,
+  // because every violation scanned for here lives inside quotes
+  // (`color: 'var(--rmpg-500)'`).
+  //
+  // Equal-length masking is load-bearing. An earlier version deleted string bodies
+  // (`.replace(/./g, '')`) and then indexed the shortened result against the
+  // original, so every offset past the first string literal was wrong: it blanked
+  // arbitrary characters out of live code and, worse, ate the leading `c` of a real
+  // `color:` so the scan silently reported clean. Blank ranges by index instead of
+  // rebuilding through a positional compare.
   function blankComments(src: string): string {
-    const noStrings = src.replace(
+    const masked = src.replace(
       /(["'`])(?:\\.|(?!\1)[^\\\n])*\1/g,
-      (m) => m[0] + m.slice(1, -1).replace(/./g, '') + m[0],
+      (m) => m[0] + m.slice(1, -1).replace(/[^\n]/g, ' ') + m[m.length - 1],
     );
-    const blanked = noStrings
-      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-      .replace(/(^|[^:])\/\/[^\n]*/g, (m, p) => p + m.slice(p.length).replace(/./g, ' '));
-    return [...src].map((ch, i) => (blanked[i] === ' ' && ch !== ' ' ? ' ' : ch)).join('');
+    const out = [...src];
+    const blank = (from: number, to: number) => {
+      for (let i = from; i < to && i < out.length; i++) if (out[i] !== '\n') out[i] = ' ';
+    };
+    for (const m of masked.matchAll(/\/\*[\s\S]*?\*\//g)) {
+      blank(m.index, m.index + m[0].length);
+    }
+    for (const m of masked.matchAll(/(^|[^:])\/\/[^\n]*/g)) {
+      blank(m.index + m[1].length, m.index + m[0].length);
+    }
+    return out.join('');
   }
+
+  it('blanks comments without corrupting code or hiding violations', () => {
+    const probe = /(?<![-\w])color:\s*['"`]?var\(\s*--rmpg-\d+\s*[,)]/;
+    // Length must be preserved, or every offset after the first string is wrong.
+    expect(blankComments(`const a = 'hi';\nconst b = 2;`)).toBe(`const a = 'hi';\nconst b = 2;`);
+    // A quoted violation AFTER a string literal is the case the old version ate.
+    expect(probe.test(blankComments(`const l = 'Downloads';\nconst s = { color: 'var(--rmpg-500)' };`))).toBe(true);
+    expect(probe.test(blankComments(`const a='x'; const b='y';\nstyle={{ color: 'var(--rmpg-600)' }}`))).toBe(true);
+    // A literal containing `/*` must not open a comment and swallow what follows.
+    expect(probe.test(blankComments(`x.accept = 'image/*';\nconst s = { color: 'var(--rmpg-500)' };`))).toBe(true);
+    // A `//` inside a string is not a comment.
+    expect(probe.test(blankComments(`const u = 'https://x.test';\nconst s = { color: 'var(--rmpg-400)' };`))).toBe(true);
+    // Real comments still get blanked, in both spellings, including trailing ones.
+    expect(probe.test(blankComments(`// color: 'var(--rmpg-500)'`))).toBe(false);
+    expect(probe.test(blankComments(`/* color: 'var(--rmpg-500)' */`))).toBe(false);
+    expect(probe.test(blankComments(`const n = 1; // color: 'var(--rmpg-500)'`))).toBe(false);
+  });
 
   it('has no text-context var(--rmpg-N) anywhere in client/src', () => {
     const offenders: string[] = [];
@@ -454,11 +563,10 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
     },
     'utils/withAlpha.ts': {
       count: 6,
-      why: 'all six are prose in the module docstring, not styling — withAlpha exists BECAUSE '
-        + 'var(--rmpg-500) is the value the old concat idiom broke on, so it is the worked '
-        + 'example throughout (the two live palette entries it names, the @param shape list, '
-        + 'and the @example input/output pair). Re-pointing them at --text-* would make the '
-        + 'documentation describe a bug that never happened.',
+      why: 'all six are JSDoc examples quoting the broken form this module exists to fix '
+        + '(`var(--rmpg-500)22`, and the two offending call sites it names). Same case as '
+        + 'the theme-palettes.css pin above. #3037 and #3038 landed independently and this '
+        + 'scan does not blank comments, so main was red on their intersection.',
     },
   };
 
@@ -521,5 +629,105 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
       return !(src.match(BARE_RAMP) ?? []).length;
     });
     expect(stale, `these pins are obsolete and should be deleted:\n${stale.join('\n')}`).toEqual([]);
+  });
+});
+
+describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
+  // Sibling to the two guards above. Those match INLINE patterns against
+  // var(--rmpg-N); none of them can see className="text-rmpg-500". This is the
+  // Tailwind-utility half of the same defect.
+  //
+  // The ramp is not a text scale. Steps 300-600 are all below WCAG AA on
+  // blue-silver panel surfaces (300: 3.77, 400: 2.75, 500: 1.82, 600: 1.18 on
+  // --surface-raised). A RATCHET over pre-existing debt: the count may only go
+  // down, and the pin must be lowered whenever it does.
+  //
+  //   PR 0 (nothing migrated)     11114
+  //   after PR 7 (tier-2 residue)  6318
+  //
+  // placeholder-rmpg-300|400 is 0 today; the pattern includes it so a future one
+  // trips the guard rather than slipping in.
+  const PIN = 11114;
+  const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
+
+  function sourceFiles(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === '__tests__' || entry.name === 'node_modules') continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) sourceFiles(full, out);
+      else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) out.push(full);
+    }
+    return out;
+  }
+
+  const total = sourceFiles(SRC_DIR).reduce(
+    (n, file) => n + (readFileSync(file, 'utf8').match(PATTERN)?.length ?? 0),
+    0,
+  );
+
+  it('adds no new sub-AA text-ramp utilities', () => {
+    expect(
+      total,
+      `Found ${total} sub-AA text-ramp utilities, pinned at ${PIN}. `
+        + 'Use text-fg-muted / text-fg-secondary / placeholder-fg-muted instead.',
+    ).toBeLessThanOrEqual(PIN);
+  });
+
+  it('has its pin lowered when sites are migrated', () => {
+    expect(
+      total,
+      `Only ${total} remain but the pin is still ${PIN}. `
+        + `Lower PIN to ${total} in this same commit so the ratchet keeps holding.`,
+    ).toBeGreaterThanOrEqual(PIN);
+  });
+});
+
+describe('print stylesheet text channels', () => {
+  // index.css:3308 is a @media print block that flips surfaces to white and
+  // text to near-black with !important. It already overrides the five
+  // --surface-*-rgb channels because Tailwind token classes would otherwise
+  // print dark on white. The text channels need the same treatment or every
+  // text-fg-* label prints light grey on paper. This is a FIFTH theme context
+  // beyond the four palette blocks.
+  const indexCss = readFileSync(resolve(SRC_DIR, 'index.css'), 'utf8');
+
+  const EXPECTED = {
+    'text-primary': '17 17 17',
+    'text-secondary': '51 51 51',
+    'text-muted': '102 102 102',
+  };
+
+  for (const [role, value] of Object.entries(EXPECTED)) {
+    it(`overrides --${role}-rgb for print`, () => {
+      expect(indexCss).toContain(`--${role}-rgb: ${value} !important;`);
+    });
+  }
+});
+
+describe('fg Tailwind scale', () => {
+  // Verified at the CONFIG level, not by grepping dist/. Tailwind is
+  // content-scanned, so text-fg-muted only reaches dist/assets/*.css once a
+  // call site uses it -- and PR 0 changes zero call sites. The emitted-CSS
+  // check belongs in the first migration batch. Getting this backwards is the
+  // bg-surface-hover trap: used 14x, emitted never, silently inert.
+  const cfg = readFileSync(resolve(SRC_DIR, '../tailwind.config.js'), 'utf8');
+
+  it('binds every fg step to a text-role triple', () => {
+    for (const [step, role] of [
+      ['DEFAULT', 'text-primary'],
+      ['primary', 'text-primary'],
+      ['secondary', 'text-secondary'],
+      ['muted', 'text-muted'],
+    ]) {
+      expect(cfg).toContain(`${step}: 'rgb(var(--${role}-rgb) / <alpha-value>)'`);
+    }
+  });
+
+  it('does not collide with a fontSize key', () => {
+    // text-<key> resolves fontSize first. `label` IS a fontSize key, which is
+    // why a `label` COLOR token must never be introduced -- text-label would
+    // become ambiguous. `fg` is free.
+    const fontSizeKeys = ['micro', 'label', 'caption', 'body-sm', 'body', 'title', 'heading', 'display'];
+    expect(fontSizeKeys).not.toContain('fg');
   });
 });

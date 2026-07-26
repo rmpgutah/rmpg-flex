@@ -321,6 +321,10 @@ const PatrolPage: React.FC = () => {
   const [showQrModal, setShowQrModal] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [selectedQrCode, setSelectedQrCode] = useState('');
+  // Rendered PNG for the checkpoint token. The modal used to show only the token
+  // as text under "Scan this code with a QR scanner app", which is unscannable —
+  // there was no QR image anywhere in the checkpoint flow.
+  const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const rowRefs = useRef<Map<number, HTMLTableRowElement | null>>(new Map());
   const deepLinkConsumedRef = useRef(false);
@@ -679,6 +683,36 @@ const PatrolPage: React.FC = () => {
     setSelectedQrCode(qrCode);
     setShowQrModal(true);
   };
+
+  // Encode the checkpoint token into a real, scannable symbol whenever the modal
+  // opens. It encodes the RAW token (e.g. "CP-A1B2C3D4E5F6") — the same string
+  // the modal prints and "Copy QR code" copies — because the token is matched
+  // against patrol_checkpoints.qr_code on scan; there is no deep-link route that
+  // would consume a URL form, so inventing one here would encode a dead link.
+  //
+  // Dynamic import keeps the encoder out of this already-large page's initial
+  // chunk, matching how MyIdPage loads it. Standard dark-on-light polarity: this
+  // is printed and posted at a physical checkpoint, then read by whatever scanner
+  // an officer has, so it must be spec-compliant rather than theme-tinted.
+  useEffect(() => {
+    if (!showQrModal || !selectedQrCode) { setQrImageUrl(null); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const QRCode = (await import('qrcode')).default;
+        const url = await QRCode.toDataURL(selectedQrCode, {
+          errorCorrectionLevel: 'H', // printed signage tolerates smudging/wear
+          margin: 4,                 // ISO/IEC 18004 quiet zone
+          width: 512,
+          color: { dark: '#0a0a0a', light: '#ffffff' },
+        });
+        if (alive) setQrImageUrl(url);
+      } catch {
+        if (alive) setQrImageUrl(null); // token text below stays usable
+      }
+    })();
+    return () => { alive = false; };
+  }, [showQrModal, selectedQrCode]);
 
   // ── Build a checkpoint row context menu ──
   const buildCheckpointMenu = (cp: Checkpoint): ContextMenuItem[] => [
@@ -1896,8 +1930,22 @@ const PatrolPage: React.FC = () => {
             </div>
 
             <div className="bg-surface-sunken panel-inset p-8 text-center">
-              <QrCode className="w-16 h-16 text-brand-400 mx-auto mb-4" />
-              <p className="text-xs text-rmpg-300 mb-2">Scan this code with a QR scanner app:</p>
+              {qrImageUrl ? (
+                <>
+                  {/* White tile supplies the light quiet zone; a QR drawn straight
+                      onto the sunken panel has no distinguishable margin. */}
+                  <div className="bg-white p-3 inline-block mb-4">
+                    <img src={qrImageUrl} alt={`QR code for checkpoint token ${selectedQrCode}`}
+                      width={200} height={200} className="block" />
+                  </div>
+                  <p className="text-xs text-rmpg-300 mb-2">Scan this code with a QR scanner app:</p>
+                </>
+              ) : (
+                <>
+                  <QrCode className="w-16 h-16 text-brand-400 mx-auto mb-4" aria-hidden="true" />
+                  <p className="text-xs text-rmpg-300 mb-2">Enter this checkpoint token manually:</p>
+                </>
+              )}
               <p className="text-2xl font-mono text-rmpg-100 break-all">{selectedQrCode}</p>
             </div>
 

@@ -214,7 +214,17 @@ export default function ShiftCard() {
     let alive = true;
     // High error-correction so the QR still scans from across a desk or
     // through a phone-screen glare angle — paid for in pixel density.
-    QRCode.toDataURL(qrUrl, { errorCorrectionLevel: 'H', margin: 1, width: 220, color: { dark: '#d4a017', light: '#0a0a0a' } })
+    //
+    // Dark-on-light is NOT a style choice. ISO/IEC 18004 defines the symbol as
+    // dark modules on a light background, and this QR is scanned by the
+    // officer's own phone camera, which does not try inverted polarity. The
+    // previous gold-on-near-black (#d4a017 on #0a0a0a) was inverted — the
+    // "dark" modules were ~130x LIGHTER than the "light" ones — and its
+    // near-black quiet zone dissolved into the navy card behind it, leaving no
+    // quiet zone at all. Keep the encoder margin modest and let the white tile
+    // in the markup supply the optical quiet zone, so raising the margin does
+    // not shrink the modules at this fixed width.
+    QRCode.toDataURL(qrUrl, { errorCorrectionLevel: 'H', margin: 2, width: 220, color: { dark: '#0a0a0a', light: '#ffffff' } })
       .then((url) => { if (alive) setQrDataUrl(url); })
       .catch((err) => { console.warn('[ShiftCard] QR render failed', err); if (alive) setQrDataUrl(null); });
     return () => { alive = false; };
@@ -291,7 +301,12 @@ export default function ShiftCard() {
       {isActive && qrDataUrl && (
         <div className="mb-3 border border-border-default bg-surface-base p-2 flex flex-col items-center">
           <div className="text-rmpg-400 text-[9px] uppercase tracking-widest mb-1">Scan with phone — vehicle walkthrough</div>
-          <img src={qrDataUrl} alt="Shift inspection QR" width={180} height={180} className="block" />
+          {/* White tile is load-bearing, not decoration: it supplies the light
+              quiet zone the symbol needs. Rendering the QR straight onto the
+              navy card leaves the margin indistinguishable from the surround. */}
+          <div className="bg-white p-2">
+            <img src={qrDataUrl} alt="Shift inspection QR" width={180} height={180} className="block" />
+          </div>
           <div className="mt-1 text-[9px] text-rmpg-500 font-mono truncate max-w-full" title={qrUrl ?? ''}>{qrUrl}</div>
         </div>
       )}
