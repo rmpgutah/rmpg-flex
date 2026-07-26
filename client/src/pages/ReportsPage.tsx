@@ -46,7 +46,7 @@ import { localToday, dateToLocalYMD, parseTimestamp } from '../utils/dateUtils';
 import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { toDisplayLabel } from '../utils/formatters';
-import { chartSeriesColors } from '../utils/chartPalette';
+import { chartSeriesColors, chartPriorityColor, chartPlotSurface } from '../utils/chartPalette';
 
 // ============================================================
 // Types
@@ -105,13 +105,6 @@ interface OfficerActivityData {
 // ============================================================
 
 const PIE_COLORS = ['var(--text-muted)', 'var(--brand-gold)', 'var(--text-muted)', '#a855f7', '#22c55e', '#22c55e', 'var(--rmpg-500)', '#ec4899', '#8b5cf6'];
-
-const PRIORITY_COLORS: Record<string, string> = {
-  P1: '#dc2626',
-  P2: 'var(--brand-gold)',
-  P3: 'var(--text-muted)',
-  P4: 'var(--rmpg-500)',
-};
 
 // Built at render time (not module scope) — the cursor fill is derived from
 // the theme-resolved gold series color, which is only correct once the theme
@@ -1223,7 +1216,7 @@ export default function ReportsPage() {
   const priorityChartData = (Array.isArray(dashboardData?.callsByPriority) ? dashboardData.callsByPriority : []).map(item => ({
     priority: item.priority,
     count: item.count,
-    fill: PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)',
+    fill: chartPriorityColor(item.priority),
   }));
 
   const responseTimeChartData = (Array.isArray(responseTimesData?.dailyTrend) ? responseTimesData.dailyTrend : []).map(item => ({
@@ -1579,6 +1572,7 @@ export default function ReportsPage() {
                   <p className="text-sm">No data for selected filters</p>
                 </div>
               ) : (
+              <div className="p-2" style={{ background: chartPlotSurface() }}>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={priorityChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
@@ -1592,6 +1586,7 @@ export default function ReportsPage() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+              </div>
               )}
               </div>
             </div>
@@ -1691,12 +1686,13 @@ export default function ReportsPage() {
                 <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Response Time by Priority (minutes)</h3>
               </div>
               <div className="p-4">
+              <div className="p-2" style={{ background: chartPlotSurface() }}>
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={responseTimesData.byPriority.map(item => ({
                   priority: item.priority,
                   avgMinutes: parseFloat((Number(item.avg_response_minutes) || 0).toFixed(1)),
                   count: item.count,
-                  fill: PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)',
+                  fill: chartPriorityColor(item.priority),
                 }))}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
@@ -1705,11 +1701,12 @@ export default function ReportsPage() {
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Bar dataKey="avgMinutes" name="Avg Response (min)" radius={[4, 4, 0, 0]}>
                     {responseTimesData.byPriority.map((item, i) => (
-                      <Cell key={i} fill={PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)'} />
+                      <Cell key={i} fill={chartPriorityColor(item.priority)} />
                     ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+              </div>
               </div>
             </div>
           )}
