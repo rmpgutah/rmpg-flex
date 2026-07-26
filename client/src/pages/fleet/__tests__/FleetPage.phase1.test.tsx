@@ -189,3 +189,51 @@ describe('FleetPage — cost-per-mile failure is visible', () => {
     expect(await screen.findByText(/failed to load cost per mile/i)).toBeInTheDocument();
   });
 });
+
+describe('FleetPage — list truncation is visible', () => {
+  beforeEach(() => {
+    mockedApiFetch.mockReset();
+    localStorage.clear();
+  });
+
+  it('reports the shortfall when the server returns fewer rows than exist', async () => {
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url.startsWith('/fleet?')) {
+        return Promise.resolve({ data: [VEHICLE], pagination: { total: 240 } });
+      }
+      if (url.startsWith('/fleet/analytics')) return Promise.resolve({ scope: 'fleet', fleet_summary: {} });
+      if (url.startsWith('/form-drafts/')) return Promise.resolve({ data: null });
+      return Promise.resolve({ data: [] });
+    });
+    renderPage();
+    expect(await screen.findByTestId('vehicle-count')).toHaveTextContent('1 of 240');
+  });
+
+  it('shows a plain count when nothing is truncated', async () => {
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url.startsWith('/fleet?')) {
+        return Promise.resolve({ data: [VEHICLE], pagination: { total: 1 } });
+      }
+      if (url.startsWith('/fleet/analytics')) return Promise.resolve({ scope: 'fleet', fleet_summary: {} });
+      if (url.startsWith('/form-drafts/')) return Promise.resolve({ data: null });
+      return Promise.resolve({ data: [] });
+    });
+    renderPage();
+    const el = await screen.findByTestId('vehicle-count');
+    expect(el).toHaveTextContent('1');
+    expect(el).not.toHaveTextContent('of');
+  });
+
+  it('requests an explicit page size rather than relying on the server default', async () => {
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url.startsWith('/fleet?')) return Promise.resolve({ data: [], pagination: { total: 0 } });
+      if (url.startsWith('/fleet/analytics')) return Promise.resolve({ scope: 'fleet', fleet_summary: {} });
+      if (url.startsWith('/form-drafts/')) return Promise.resolve({ data: null });
+      return Promise.resolve({ data: [] });
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(mockedApiFetch).toHaveBeenCalledWith(expect.stringContaining('per_page='));
+    });
+  });
+});

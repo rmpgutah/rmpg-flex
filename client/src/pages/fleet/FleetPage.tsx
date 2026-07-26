@@ -61,6 +61,11 @@ const FLEET_VIEWS: { id: FleetViewMode; label: string; icon?: typeof FileText }[
   { id: 'service', label: 'Service' },
 ];
 
+// Explicit page size for the vehicle list request. Without this the Worker
+// applied its own default (200 rows) and the client silently dropped any
+// vehicles past that cap — see vehicleTotal/fetchVehicles below.
+const FLEET_PAGE_SIZE = 500;
+
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e', maintenance: '#f59e0b',
   out_of_service: '#ef4444', retired: '#6b7280',
@@ -144,6 +149,9 @@ export default function FleetPage() {
 
   // Core state
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
+  // Server-reported total. The list is a page, not necessarily the whole
+  // fleet — without this the client silently dropped rows past the cap.
+  const [vehicleTotal, setVehicleTotal] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
   const [detail, setDetail] = useState<FleetVehicle | null>(null);
   const [maintenance, setMaintenance] = useState<FleetMaintenance[]>([]);
@@ -381,8 +389,13 @@ export default function FleetPage() {
 
   const fetchVehicles = useCallback(async (options?: { silent?: boolean }) => {
     try {
-      const resp = await apiFetch<{ data: FleetVehicle[]; pagination: any }>(`/fleet?archived=${showArchived}`);
-      setVehicles(Array.isArray(resp) ? resp : resp.data || []);
+      const resp = await apiFetch<{ data: FleetVehicle[]; pagination?: { total?: number } }>(
+        `/fleet?archived=${showArchived}&per_page=${FLEET_PAGE_SIZE}`,
+      );
+      const rows = Array.isArray(resp) ? resp : resp.data || [];
+      setVehicles(rows);
+      const total = Array.isArray(resp) ? rows.length : resp.pagination?.total;
+      setVehicleTotal(typeof total === 'number' ? total : rows.length);
     } catch (err) {
       if (!options?.silent) addToast('Failed to load fleet vehicles', 'error');
     }
@@ -1442,6 +1455,17 @@ export default function FleetPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
+            <span
+              data-testid="vehicle-count"
+              className="flex-shrink-0 text-[9px] font-mono text-fg-muted tabular-nums"
+              title={vehicleTotal != null && vehicleTotal > vehicles.length
+                ? `Showing ${vehicles.length} of ${vehicleTotal} vehicles — narrow your filters to see the rest`
+                : `${vehicles.length} vehicles`}
+            >
+              {vehicleTotal != null && vehicleTotal > vehicles.length
+                ? `${vehicles.length} of ${vehicleTotal}`
+                : `${vehicles.length}`}
+            </span>
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark" role="list" aria-label="Fleet vehicles">
