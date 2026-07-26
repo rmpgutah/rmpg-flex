@@ -5,9 +5,10 @@ import {
   groupByDay,
   formatDayHeader,
   computeChipBand,
+  layoutDayChips,
   type ScheduleSlot,
 } from '../../utils/schedulerView';
-import { snapToBand, type DragPayload } from './dnd';
+import { snapToBand, validateDrop, type DragPayload } from './dnd';
 
 interface Props {
   anchorYmd: string;             // first day of the visible window (YYYY-MM-DD)
@@ -39,6 +40,13 @@ export default function WeekTimeline({
     (e.currentTarget as HTMLElement).style.opacity = '0.4';
   };
 
+  // Without this the 0.4 set above is permanent — a chip whose drop was
+  // rejected (or cancelled with Esc) stays ghosted until the next refetch,
+  // which reads as "drag and drop broke the row".
+  const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+    (e.currentTarget as HTMLElement).style.opacity = '';
+  };
+
   const handleDragOver = (cellKey: string) => (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
@@ -59,9 +67,29 @@ export default function WeekTimeline({
       const payload = JSON.parse(raw) as DragPayload;
       const slot = slots.find((s) => s.id === payload.slot_id);
       if (!slot) return;
+      // Same day + same band ⇒ nothing to persist. Skipping here avoids a
+      // pointless PATCH that would also re-stamp manually_moved/moved_at.
+      const origin = computeChipBand(slot.window_start, slot.window_end);
+      if (!validateDrop(payload, { date, row }, { row: origin.rowStart }).ok) return;
       const window = snapToBand(row);
       onSlotDrop(slot, { date, ...window });
     } catch { /* ignore malformed drag payload */ }
+  };
+
+  // Chips are z-10 grid items painted OVER the band cells that own the drop
+  // handlers. A drop landing on a chip therefore hit an element with no
+  // dragover/preventDefault, so the browser refused it outright — no request,
+  // no error, nothing. That made every occupied band silently undroppable,
+  // which is precisely the "won't let me overlap another job" symptom.
+  // Re-derive the band from the pointer's position inside the chip and forward
+  // to the same handler the bare cell would have used.
+  const rowFromPointer = (
+    e: React.DragEvent<HTMLDivElement>, rowStart: number, rowSpan: number,
+  ): number => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const bandHeight = rect.height / rowSpan;
+    const offset = bandHeight > 0 ? Math.floor((e.clientY - rect.top) / bandHeight) : 0;
+    return rowStart + Math.max(0, Math.min(rowSpan - 1, offset));
   };
 
   return (
@@ -111,31 +139,40 @@ export default function WeekTimeline({
         {/* Chips overlaid via grid-row positioning */}
         {days.map((d, dayIdx) => {
           const daySlots = grouped.get(d) ?? [];
-          return daySlots.map((slot) => {
-            const band = computeChipBand(slot.window_start, slot.window_end);
-            return (
-              <div
-                key={slot.id}
-                className="z-10 px-0.5 py-0.5"
-                style={{
-                  gridColumn: `${dayIdx + 2}`,
-                  gridRow: `${band.rowStart + 1} / span ${band.rowSpan}`,
+          return layoutDayChips(daySlots).map(({ slot, rowStart, rowSpan, lane, lanes }) => (
+            <div
+              key={slot.id}
+              className="z-10 px-0.5 py-0.5"
+              style={{
+                gridColumn: `${dayIdx + 2}`,
+                gridRow: `${rowStart + 1} / span ${rowSpan}`,
+                // Share the band with anything it overlaps rather than stacking.
+                width: `${100 / lanes}%`,
+                marginLeft: `${(lane * 100) / lanes}%`,
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                setDragOverCell(`${d}-${rowFromPointer(e, rowStart, rowSpan) - 1}`);
+              }}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(d, rowFromPointer(e, rowStart, rowSpan))(e)}
+            >
+              <AttemptChip
+                slot={slot}
+                overlapping={lanes > 1}
+                onClick={() => onSlotClick?.(slot)}
+                onDragStart={handleDragStart(slot)}
+                onDragEnd={handleDragEnd}
+                onContextMenu={(e) => {
+                  if (!onSlotContextMenu) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSlotContextMenu(slot, e);
                 }}
-              >
-                <AttemptChip
-                  slot={slot}
-                  onClick={() => onSlotClick?.(slot)}
-                  onDragStart={handleDragStart(slot)}
-                  onContextMenu={(e) => {
-                    if (!onSlotContextMenu) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onSlotContextMenu(slot, e);
-                  }}
-                />
-              </div>
-            );
-          });
+              />
+            </div>
+          ));
         })}
       </div>
     </div>
