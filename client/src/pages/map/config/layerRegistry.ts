@@ -16,7 +16,7 @@
 
 import {
   Activity, AlertTriangle, Anchor, Boxes, Brush, CircleDot, Cloud, Compass,
-  Crosshair, Footprints, Gauge, Gauge as GaugeIcon, Globe, Grid3x3, Hexagon,
+  Crosshair, Footprints, Gauge, Globe, Grid3x3, Hexagon,
   History, Layers, LineChart, Locate, MapPin, Mountain, Move3d, Navigation,
   PenTool, PlayCircle, Radar, Radio, Route, Ruler, Search, Shield, Siren,
   SquareDashed, Star, Sun, Timer, TrafficCone, Volume2, Waypoints, Wrench,
@@ -97,7 +97,7 @@ const STATIC_LAYERS: MapLayerDef[] = [
   { id: 'identify', label: 'Identify', icon: Crosshair, group: 'Dispatch Tools', colorVar: 'var(--sev-warn)', description: 'Click the map for place/district info' },
   { id: 'places', label: 'Places Search', icon: Search, group: 'Dispatch Tools', colorVar: 'var(--sev-ok)', description: 'Nearby POI search' },
   { id: 'bookmarks', label: 'Drop Bookmark', icon: Star, group: 'Dispatch Tools', colorVar: 'var(--sev-warn)', description: 'Click the map to save a location' },
-  { id: 'gps-hud', label: 'GPS HUD', icon: GaugeIcon, group: 'Dispatch Tools', colorVar: 'var(--sev-ok)', description: 'Heading, speed, route progress' },
+  { id: 'gps-hud', label: 'GPS HUD', icon: Gauge, group: 'Dispatch Tools', colorVar: 'var(--sev-ok)', description: 'Heading, speed, route progress' },
   { id: 'optimize', label: 'Route Optimizer', icon: Compass, group: 'Dispatch Tools', colorVar: 'var(--sev-special)', description: 'Queue calls, pick a unit, optimize the visiting order' },
 
   // ── Measurement & Marking ──
@@ -123,6 +123,20 @@ const STATIC_LAYERS: MapLayerDef[] = [
 // Boundary entries are DERIVED from the very config arrays MapboxMapPage
 // consumes, so adding a district level or a GeoJSON layer can never leave the
 // registry stale. Only icon + color (absent from those configs) live here.
+// Static id-to-variable lookup mirroring each GEO_LAYER_CONFIGS entry's real
+// stroke color (see client/src/hooks/useGeoJsonLayers.ts). Never derived from
+// the config's hex at runtime — that would put literal hex back into registry
+// data, which layerRegistry.test.ts forbids. Falls back to silver for any id
+// not listed here so a newly added GeoJSON layer still renders.
+const GEO_LAYER_COLOR_VARS: Record<string, string> = {
+  state_boundary: 'var(--text-primary)',
+  county: 'var(--text-secondary)',
+  municipality: 'var(--sev-special)',
+  beat: 'var(--sev-ok)',
+  highway: 'var(--sev-critical)',
+  place: 'var(--sev-ok)',
+};
+
 const BOUNDARY_LAYERS: MapLayerDef[] = [
   ...HIERARCHY_CONFIGS.map((cfg): MapLayerDef => ({
     id: `district-${cfg.id}`,
@@ -137,7 +151,7 @@ const BOUNDARY_LAYERS: MapLayerDef[] = [
     label: cfg.label,
     icon: Layers,
     group: 'Administrative Boundaries',
-    colorVar: 'var(--accent-silver-400)',
+    colorVar: GEO_LAYER_COLOR_VARS[cfg.id] ?? 'var(--accent-silver-400)',
     description: cfg.file.replace('.geojson', ''),
   })),
 ];

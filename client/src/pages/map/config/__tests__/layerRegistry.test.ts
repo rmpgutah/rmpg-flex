@@ -66,4 +66,17 @@ describe('MAP_LAYER_REGISTRY', () => {
   it('contains all 55 toggles', () => {
     expect(MAP_LAYER_REGISTRY.length).toBe(55);
   });
+
+  // The six GeoJSON boundary layers (geo-*) previously all collapsed onto one
+  // hardcoded silver color, a visible regression from the per-layer stroke
+  // colors MapboxMapPage used to derive from useGeoJsonLayers configs.
+  it('gives the geo-* boundary layers distinct colors, not one flat silver', () => {
+    const geoLayers = MAP_LAYER_REGISTRY.filter((l) => l.id.startsWith('geo-'));
+    expect(geoLayers.length).toBeGreaterThan(0);
+    const distinctColors = new Set(geoLayers.map((l) => l.colorVar));
+    expect(distinctColors.size).toBeGreaterThan(1);
+
+    expect(LAYER_BY_ID.get('geo-highway')?.colorVar).toBe('var(--sev-critical)');
+    expect(LAYER_BY_ID.get('geo-beat')?.colorVar).toBe('var(--sev-ok)');
+  });
 });
