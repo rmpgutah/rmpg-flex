@@ -17,6 +17,24 @@ html.theme-dark,
   --surface-sunken: #0a1018; --surface-sunken-rgb: 10 16 24;
   --surface-overlay: #060b10; --surface-overlay-rgb: 6 11 16;
   --surface-deep: #060b10;   --surface-deep-rgb: 6 11 16;
+
+  /* ── Chart palette ────────────────────────────────────────────────
+     --chart-pri-* is an ORDINAL heat ramp (P1 urgent → P4 routine), not a
+     categorical set. Generated in OKLCH: hues 30→64° (one warm arc), chroma
+     0.200→0.028 descending, lightness evenly spaced 0.075 apart, anchored so
+     P4 lands just above 3:1 on --chart-plot-surface.
+     Recession is carried by DESATURATION, not by luminance collapse — that is
+     what lets P4 recede without dropping under the contrast floor.
+     A ramp (not 4 distinct hues) is deliberate: under deuteranopia the hues
+     collapse and this degrades to a pure lightness ramp, which is still
+     readable. A 4-hue categorical set scored deutan ΔE 1.2 here.
+     P4 stays WARM (hue ~65°), never neutral gray — a gray dot is ambiguous
+     with the en-route / off-duty unit-status grays (see statusColors.ts).
+     Verified by chartTokens.test.ts. Do not hand-edit one step in isolation. */
+  --chart-pri-1: #ff6b57; --chart-pri-2: #c96e40;
+  --chart-pri-3: #936a48; --chart-pri-4: #6a5c4e;
+  --chart-plot-surface: #060b10;
+
   --border-default: #2a3a4d; --border-subtle: #1e2b3a; --border-strong: #3a4f66; --border-panel: #243a52;
   --text-primary-rgb: 230 237 245; --text-primary: rgb(var(--text-primary-rgb));
   --text-secondary-rgb: 195 208 222; --text-secondary: rgb(var(--text-secondary-rgb));
@@ -216,6 +234,13 @@ html.theme-light {
   --surface-sunken: #d6d3c8; --surface-sunken-rgb: 214 211 200;
   --surface-overlay: #ffffff; --surface-overlay-rgb: 255 255 255;
   --surface-deep: #c9c5b8;   --surface-deep-rgb: 201 197 184;
+
+  /* Chart palette — see the night block for the full rationale. Day inverts:
+     marks are DARK on a light well, so the ramp runs dark→light. */
+  --chart-pri-1: #600200; --chart-pri-2: #6f2c00;
+  --chart-pri-3: #754d2c; --chart-pri-4: #78695c;
+  --chart-plot-surface: #c9c5b8;
+
   --border-default: #9a958a; --border-subtle: #c3cdd8; --border-strong: #6f7b8a; --border-panel: #9a958a;
   --text-primary-rgb: 26 26 26; --text-primary: rgb(var(--text-primary-rgb));
   --text-secondary-rgb: 51 49 43; --text-secondary: rgb(var(--text-secondary-rgb));
@@ -331,6 +356,12 @@ html.theme-legacy-black {
   --surface-sunken: #000000; --surface-sunken-rgb: 0 0 0;
   --surface-overlay: #030303; --surface-overlay-rgb: 3 3 3;
   --surface-deep: #000000; --surface-deep-rgb: 0 0 0;
+
+  /* Chart palette — see the night block for the full rationale. */
+  --chart-pri-1: #ff614d; --chart-pri-2: #c46a3c;
+  --chart-pri-3: #8f6644; --chart-pri-4: #66584a;
+  --chart-plot-surface: #000000;
+
   --border-default: #232323; --border-subtle: #121212; --border-strong: #3a3a3a; --border-panel: #262626;
   --text-primary-rgb: 242 242 242; --text-primary: rgb(var(--text-primary-rgb));
   --text-secondary-rgb: 207 207 207; --text-secondary: rgb(var(--text-secondary-rgb));
@@ -446,6 +477,15 @@ html.theme-blue-silver {
   --surface-sunken: #1a3350; --surface-sunken-rgb: 26 51 80;
   --surface-overlay: #142840; --surface-overlay-rgb: 20 40 64;
   --surface-deep: #142840;   --surface-deep-rgb: 20 40 64;
+
+  /* Chart palette — see the night block for the full rationale.
+     This is the DEFAULT theme and the binding case: --surface-base #22405f is a
+     mid-tone, so a 3:1 floor there pins every mark into OKLCH L ∈ [0.67, 1.0] —
+     too narrow for four steps. Charts draw on this recessed well instead. */
+  --chart-pri-1: #ff9483; --chart-pri-2: #e08355;
+  --chart-pri-3: #a87e5b; --chart-pri-4: #7e6f61;
+  --chart-plot-surface: #142840;
+
   /* Extra tonal steps (2026-07-08) so panel headers and hover states read as a
      close, deliberate shade shift off the ramp instead of a flat jump. */
   --surface-header: #284a6c; --surface-header-rgb: 40 74 108;

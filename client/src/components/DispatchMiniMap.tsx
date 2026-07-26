@@ -16,7 +16,7 @@ import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecov
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { buildUnitMarker, isValidLngLat, STATUS_COLORS } from '../utils/mapMarkers';
-import { PRIORITY_HEX } from '../utils/statusColors';
+import { priorityHex, CALL_MARKER_INK } from '../utils/statusColors';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { apiFetch } from '../hooks/useApi';
@@ -66,8 +66,6 @@ function formatEta(seconds: number): string {
   return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
 }
 
-const MINI_PRIORITY_COLORS: Record<string, string> = PRIORITY_HEX;
-
 /** Format meters into a human-readable distance */
 function formatDistance(meters: number): string {
   const miles = meters / 1609.344;
@@ -75,8 +73,8 @@ function formatDistance(meters: number): string {
 }
 
 /** Build a call marker DOM element with priority-colored badge */
-function buildCallMarker(label: string, priority?: string): HTMLElement {
-  const color = MINI_PRIORITY_COLORS[priority || ''] || '#ef4444';
+export function buildCallMarker(label: string, priority?: string): HTMLElement {
+  const color = priorityHex(priority);
   const el = document.createElement('div');
   el.style.cssText = `
     display:flex;flex-direction:column;align-items:center;
@@ -85,8 +83,8 @@ function buildCallMarker(label: string, priority?: string): HTMLElement {
 
   const tag = document.createElement('div');
   tag.style.cssText = `
-    background:${color};color:#fff;font-size:7px;font-weight:900;
-    padding:2px 4px;border:1.5px solid rgba(255,255,255,0.9);
+    background:${color};color:${CALL_MARKER_INK};font-size:7px;font-weight:900;
+    padding:2px 4px;border:1.5px solid ${CALL_MARKER_INK};
     white-space:nowrap;font-family:'JetBrains Mono',monospace;
     letter-spacing:0.03em;border-radius:1px;
     box-shadow:0 0 8px ${withAlpha(color, '50')};
@@ -495,7 +493,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     );
   }
 
-  const priorityColor = MINI_PRIORITY_COLORS[(call as any)?.priority] || '#888888';
+  const priorityColor = priorityHex((call as any)?.priority);
 
   return (
     <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid var(--border-subtle)' }}>

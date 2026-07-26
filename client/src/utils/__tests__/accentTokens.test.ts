@@ -551,12 +551,12 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
       count: 1,
       why: 'SVG <stop stopColor> gradient — a chart graphic, and carries a hex fallback',
     },
-    'pages/ReportsPage.tsx': {
-      count: 2,
-      why: 'PIE_COLORS[6] + PRIORITY_COLORS.P4 — categorical palette. PRIORITY_COLORS.P3 is '
-        + 'already --text-muted, so matching it would render two CAD priority levels '
-        + 'identically. Tracked as its own design task.',
-    },
+    // NO 'pages/ReportsPage.tsx' ENTRY — its 2 occurrences (PIE_COLORS[6] and
+    // PRIORITY_COLORS.P4) are GONE as of the chart-palette rebuild, which is the
+    // "own design task" the old pin deferred to. PIE_COLORS was deleted outright
+    // (the pie became sorted single-colour bars, since incident types are nominal)
+    // and the priority scale moved to the --chart-pri-* ordinal ramp, so P3 and P4
+    // no longer collide on --text-muted. Do not re-add this pin.
     'utils/pdfGenerator.ts': {
       count: 1,
       why: 'a TRAILING `//` comment on a code line. stripComments() only removes `//` at line '
@@ -667,7 +667,11 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // of this ratchet failed — the guard catching its own slack, which is what it
   // is for. A pin left above the real count is not harmless: it re-opens room
   // for exactly the regressions the ratchet exists to block.
-  const PIN = 10534;
+  //
+  // 10534 -> 10533: the chart-palette rebuild removed one text-rmpg-* site from
+  // ReportsPage's incidents panel when the pie chart's legend list was replaced
+  // by bar labels.
+  const PIN = 10533;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

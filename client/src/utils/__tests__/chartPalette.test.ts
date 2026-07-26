@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   chartSeriesColors, chartAxisColor, chartGridColor, chartLegendColor, resolveThemeColor,
+  chartPriorityColors, chartPriorityColor, chartPlotSurface,
 } from '../chartPalette';
 
 describe('chartPalette', () => {
@@ -27,5 +28,46 @@ describe('chartPalette', () => {
     const series = chartSeriesColors();
     expect(series.length).toBeGreaterThanOrEqual(4);
     expect(new Set(series).size).toBe(series.length);
+  });
+});
+
+describe('chart priority ramp', () => {
+  beforeEach(() => {
+    document.documentElement.style.cssText = '';
+    document.documentElement.style.setProperty('--chart-pri-1', '#ff9483');
+    document.documentElement.style.setProperty('--chart-pri-2', '#e08355');
+    document.documentElement.style.setProperty('--chart-pri-3', '#a87e5b');
+    document.documentElement.style.setProperty('--chart-pri-4', '#7e6f61');
+    document.documentElement.style.setProperty('--chart-plot-surface', '#142840');
+  });
+
+  it('returns the four ramp steps in P1..P4 order', () => {
+    expect(chartPriorityColors()).toEqual(['#ff9483', '#e08355', '#a87e5b', '#7e6f61']);
+  });
+
+  it('resolves the plot surface', () => {
+    expect(chartPlotSurface()).toBe('#142840');
+  });
+
+  it('accepts both the "P1" and bare "1" key shapes', () => {
+    // The map's ActiveCall.priority is a bare number string while the typed
+    // CallPriority is 'P1'. Both must resolve or markers silently go gray.
+    // Covers all four steps (not just P1/P4) so an index swap in the middle
+    // of the ramp would be caught too.
+    expect(chartPriorityColor('P1')).toBe('#ff9483');
+    expect(chartPriorityColor('1')).toBe('#ff9483');
+    expect(chartPriorityColor(1)).toBe('#ff9483');
+    expect(chartPriorityColor('P2')).toBe('#e08355');
+    expect(chartPriorityColor('2')).toBe('#e08355');
+    expect(chartPriorityColor('P3')).toBe('#a87e5b');
+    expect(chartPriorityColor('3')).toBe('#a87e5b');
+    expect(chartPriorityColor('p4')).toBe('#7e6f61');
+    expect(chartPriorityColor('4')).toBe('#7e6f61');
+  });
+
+  it('falls back to the most recessive step, never to a failing color', () => {
+    expect(chartPriorityColor(undefined)).toBe('#7e6f61');
+    expect(chartPriorityColor('banana')).toBe('#7e6f61');
+    expect(chartPriorityColor('9')).toBe('#7e6f61');
   });
 });

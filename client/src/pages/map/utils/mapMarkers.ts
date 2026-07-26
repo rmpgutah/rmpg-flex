@@ -1,5 +1,6 @@
 import type { MapUnit as Unit, ActiveCall } from './mapConstants';
-import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS } from './mapConstants';
+import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, priorityHex } from './mapConstants';
+import { CALL_MARKER_INK } from '../../../utils/statusColors';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { formatEnumValue } from '../../../utils/formatters';
 import { escapeHtml } from '../../../utils/sanitize';
@@ -10,6 +11,12 @@ import {
   TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
   TACTICAL_TEXT_PRIMARY, TACTICAL_TEXT_DIM,
 } from './tacticalPalette';
+
+// Re-exported for call sites that already import CALL_MARKER_INK from here —
+// the canonical definition now lives in utils/statusColors.ts, right below
+// PRIORITY_HEX, since it's used by any badge filled with a PRIORITY_HEX color,
+// not just this file's map markers.
+export { CALL_MARKER_INK };
 
 // How long a marker's CSS transform transition runs — matches the fast
 // units-poll interval (MapboxMapPage.tsx UNITS_FAST_POLL_MS) so a position
@@ -219,7 +226,7 @@ export function buildUnitPopupHtml(unit: Unit): string {
 
 /** Build HTML for a call marker element. */
 export function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
-  const color = PRIORITY_COLORS[call.priority] || '#888888';
+  const color = priorityHex(call.priority);
   const el = document.createElement('div');
   el.className = 'rmpg-mbx-call';
   el.style.cssText = `
@@ -230,7 +237,7 @@ export function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
     cursor:pointer;box-shadow:0 0 8px ${withAlpha(color, '99')};
   `;
   const inner = document.createElement('span');
-  inner.style.cssText = `transform:rotate(-45deg);font-size:8px;font-weight:700;color:#fff;font-family:ui-monospace,monospace;`;
+  inner.style.cssText = `transform:rotate(-45deg);font-size:8px;font-weight:700;color:${CALL_MARKER_INK};font-family:ui-monospace,monospace;`;
   inner.textContent = `P${call.priority}`;
   el.appendChild(inner);
   el.title = `${call.call_number} — ${formatIncidentType(call.incident_type)}`;
@@ -239,7 +246,7 @@ export function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
 
 /** Build HTML popup for a call. */
 export function buildCallPopupHtml(call: ActiveCall, queued: boolean = false): string {
-  const color = PRIORITY_COLORS[call.priority] || '#888888';
+  const color = priorityHex(call.priority);
   const flags = HAZARD_FLAGS
     .filter(f => (call as any)[f.key])
     .map(f => `<span style="background:${withAlpha(f.color, '22')};color:${f.color};padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:3px;">${f.label}</span>`)

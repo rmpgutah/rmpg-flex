@@ -10,6 +10,7 @@ import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils
 import { buildDetailPopupHtml } from '../pages/map/utils/mapMarkers';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { formatEnumValue } from '../utils/formatters';
+import { priorityHex } from '../utils/statusColors';
 
 interface HistoryCall {
   id: number;
@@ -29,13 +30,6 @@ const CIRCLE_SOURCE_ID = 'rmpg-history-calls-source';
 const CIRCLE_LAYER_ID = 'rmpg-history-calls-layer';
 const LABEL_SOURCE_ID = 'rmpg-history-labels-source';
 const LABEL_LAYER_ID = 'rmpg-history-labels-layer';
-
-const PRIORITY_COLORS: Record<string, string> = {
-  P1: '#f03c3c',
-  P2: '#f0b428',
-  P3: '#64d264',
-  P4: '#888888',
-};
 
 export interface HistoryOptions {
   days?: number;
@@ -87,7 +81,7 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
           response_time: c.response_time_min,
           created_at: c.created_at,
           age_hours: Math.round(ageHours),
-          priorityColor: PRIORITY_COLORS[c.priority] || '#888888',
+          priorityColor: priorityHex(c.priority),
         },
         geometry: { type: 'Point', coordinates: [c.longitude, c.latitude] },
       };
@@ -105,8 +99,13 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
       source: CIRCLE_SOURCE_ID,
       paint: {
         'circle-radius': [
+          // Tolerant of both key shapes ('P1' and bare '1') — see
+          // priorityHex() in statusColors.ts. 'circle-color' above already
+          // resolves through priorityHex(c.priority), so this match must
+          // agree with it on shape or a call can render one priority's color
+          // at another priority's radius.
           'match', ['get', 'priority'],
-          'P1', 5, 'P2', 4, 'P3', 3, 2.5,
+          ['P1', '1'], 5, ['P2', '2'], 4, ['P3', '3'], 3, 2.5,
         ],
         'circle-color': ['get', 'priorityColor'],
         'circle-opacity': ['interpolate', ['linear'], ['get', 'age_hours'],

@@ -42,7 +42,7 @@ import { usePersistedState, usePersistedTab } from '../../hooks/usePersistedStat
 import { useToast } from '../../components/ToastProvider';
 import {
   MapUnit as Unit, ActiveCall, MapProperty as Property,
-  UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS,
+  UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, priorityHex,
   MAP_STYLE_LABELS,
   type MapStyleId,
 } from './utils/mapConstants';
@@ -587,7 +587,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       if (!clustering.enabled) {
         const clPts = calls
           .filter(c => c.latitude != null && c.longitude != null)
-          .map(c => ({ id: c.id, longitude: c.longitude!, latitude: c.latitude!, priority: c.priority, label: c.call_number, color: PRIORITY_COLORS[c.priority] || '#888' }));
+          .map(c => ({ id: c.id, longitude: c.longitude!, latitude: c.latitude!, priority: c.priority, label: c.call_number, color: priorityHex(c.priority) }));
         clustering.updatePoints(clPts);
       }
       clustering.toggle();
