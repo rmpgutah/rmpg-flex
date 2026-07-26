@@ -147,18 +147,22 @@ describe('no new dead CSS variables', () => {
   // back to the inherited value. That is the bug class that hid --rmpg-* (440
   // sites), --green-500 and --brand-200/300. This is a ratchet: the allowlist
   // below is pre-existing debt, and nothing new may be added to it.
-  const KNOWN_DEAD = new Set([
-    // "rt-" radio-theme tokens: 142 occurrences, defined in no stylesheet.
-    '--rt-accent', '--rt-bg', '--rt-border', '--rt-muted', '--rt-panel',
-    '--rt-text', '--rt-tx',
-    // Raw Tailwind-ish color names that were never palette tokens. The correct
-    // tokens are --sev-ok / --sev-warn / --sev-critical / --brand-*.
-    '--amber-400', '--amber-500', '--amber-500-rgb', '--green-400', '--green-500',
-    '--green-500-rgb', '--orange-400', '--orange-500-rgb', '--purple-400',
-    '--purple-500-rgb', '--red-400', '--red-500-rgb',
-    // Grid tokens referenced by a table skin that never shipped its palette.
-    '--grid-header-text', '--grid-row-even', '--grid-row-selected',
-    '--grid-row-selected-border',
+  // Explicitly Set<string>: with the list empty, an inferred Set<never> makes the
+  // .has(name) calls below a type error.
+  const KNOWN_DEAD = new Set<string>([
+    // EMPTY as of 2026-07-26 — the debt this list tracked is paid off:
+    //   - '--rt-*' (7 names, 161 occurrences): the radio console rendered
+    //     entirely inherited colors. Now declared in all four palette blocks as
+    //     role aliases (bg/panel/border/text/muted/accent/tx).
+    //   - Raw Tailwind-ish names ('--red-500', '--amber-400', ...): never palette
+    //     tokens. Their 27 call sites were re-pointed to the --sev-* equivalents
+    //     rather than legitimising a parallel naming scheme.
+    //   - '--grid-header-text' / '--grid-row-even' / '--grid-row-selected(-border)':
+    //     half of the grid family was already declared in all four blocks; the
+    //     missing four are now declared alongside their siblings.
+    //   - '--sev-warning' was a typo, evicted when #3028 fixed its sole consumer.
+    // Keep it empty. An entry here is a promise to a future reader that the site
+    // is knowingly broken, so adding one needs a reason in the same commit.
     // NOTE: '--sev-warning' was removed from this list once its sole consumer
     // (NavigationPage.tsx's crime-layer toggle) was corrected to --sev-warn. It
     // was a typo, never a real token, so it could never become *defined* — the
@@ -444,14 +448,15 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
         + 'already --text-muted, so matching it would render two CAD priority levels '
         + 'identically. Tracked as its own design task.',
     },
-    'styles/theme-palettes.css': {
-      count: 1,
-      why: 'the alias comment quotes the bare form as documentation',
-    },
     'utils/pdfGenerator.ts': {
       count: 1,
-      why: 'inside a comment; jsPDF takes literal colours and the file is classifier-excluded',
+      why: 'a TRAILING `//` comment on a code line. stripComments() only removes `//` at line '
+        + 'start (so that https:// survives), so this one legitimately still counts. jsPDF '
+        + 'takes literal colours and the file is classifier-excluded either way.',
     },
+    // NOTE: 'styles/theme-palettes.css' was pinned here at 1 for "the alias comment quotes
+    // the bare form as documentation". It is no longer pinned because this ratchet now strips
+    // comments before counting — see the stripComments() call below.
   };
 
   // Matches the bare ramp reference with or without a fallback — `var(--rmpg-500)`
@@ -474,7 +479,15 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
   it('has no unpinned bare --rmpg-500/600 occurrence in client/src', () => {
     const actual: Record<string, number> = {};
     for (const file of collect(SRC_DIR)) {
-      const n = (readFileSync(file, 'utf8').match(BARE_RAMP) ?? []).length;
+      // Strip comments FIRST. A prose mention of var(--rmpg-500) is documentation, not a
+      // colour site, and counting it made this ratchet break on writing about the bug it
+      // guards: #3038 added withAlpha.ts whose JSDoc cites the bare form 6 times as the
+      // canonical example, and main went red the moment that landed alongside this test
+      // (each PR was green against its own base — the ratchet never saw the new file and
+      // the new file never saw the ratchet). Pinning those 6 would have asserted "6 known
+      // -bad colour sites" about pure prose, and would then have masked a real regression
+      // in that file.
+      const n = (stripComments(readFileSync(file, 'utf8')).match(BARE_RAMP) ?? []).length;
       if (n > 0) actual[file.slice(SRC_DIR.length + 1).replace(/\\/g, '/')] = n;
     }
 

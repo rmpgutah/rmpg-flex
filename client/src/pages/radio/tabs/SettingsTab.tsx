@@ -125,7 +125,7 @@ export default function SettingsTab({ theme, onTheme, fontScale, onFontScale }: 
               style={{ color: 'var(--rt-text)', border: '1px solid var(--rt-border)', padding: '2px 6px' }} />
           </SettingRow>
           {quietStart && quietEnd && (
-            <div className="text-[10px] font-mono" style={{ color: quietActive ? 'var(--rt-tx)' : 'var(--rt-muted)' }}>
+            <div className="text-[10px] font-mono" style={{ color: quietActive ? 'var(--accent-active)' : 'var(--rt-muted)' }}>
               {quietActive ? 'STATUS: QUIET HOURS ACTIVE' : 'STATUS: NOT IN QUIET HOURS'}
             </div>
           )}

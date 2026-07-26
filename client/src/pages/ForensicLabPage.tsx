@@ -1356,7 +1356,7 @@ export default function ForensicLabPage() {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm" style={{
-                                    backgroundColor: (actionColors[ev.action] || 'var(--text-muted)') + '20',
+                                    backgroundColor: withAlpha(actionColors[ev.action] || 'var(--text-muted)', '20'),
                                     color: actionColors[ev.action] || 'var(--text-muted)',
                                   }}>{toDisplayLabel(ev.action)}</span>
                                   <span className="text-[10px] text-rmpg-300">

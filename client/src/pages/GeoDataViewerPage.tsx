@@ -73,7 +73,7 @@ const LAYERS: LayerMeta[] = [
     file: '/geojson/municipality.geojson',
     icon: Building2,
     description: 'Cities and towns within Utah',
-    color: 'var(--green-400)',
+    color: 'var(--sev-ok)',
   },
   {
     id: 'beat',
@@ -81,7 +81,7 @@ const LAYERS: LayerMeta[] = [
     file: '/geojson/beat.geojson',
     icon: Grid3X3,
     description: 'RMPG patrol beat polygons by district',
-    color: 'var(--red-400)',
+    color: 'var(--sev-critical)',
   },
   {
     id: 'highway',
@@ -89,7 +89,7 @@ const LAYERS: LayerMeta[] = [
     file: '/geojson/highway.geojson',
     icon: Map,
     description: 'Major interstate and highway corridors',
-    color: 'var(--purple-400)',
+    color: 'var(--sev-special)',
   },
   {
     id: 'place',
@@ -97,7 +97,7 @@ const LAYERS: LayerMeta[] = [
     file: '/geojson/place.geojson',
     icon: MapPin,
     description: 'Cities, towns, and named places (point features)',
-    color: 'var(--orange-400)',
+    color: 'var(--sev-high)',
   },
 ];
 
