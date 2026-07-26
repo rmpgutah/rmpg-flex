@@ -563,6 +563,11 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
         + 'start (so that https:// survives), so this one legitimately still counts. jsPDF '
         + 'takes literal colours and the file is classifier-excluded either way.',
     },
+    'utils/withAlpha.ts': {
+      count: 6,
+      why: 'all inside the JSDoc documenting the exact bare-ramp bug this helper fixes '
+        + '(the two shipped var(--rmpg-500) call sites it references, plus @example lines)',
+    },
   };
   // NOTE: 'utils/withAlpha.ts' was pinned at 6 — JSDoc examples quoting the broken
   // form that module exists to fix. Those examples have since been rewritten and the

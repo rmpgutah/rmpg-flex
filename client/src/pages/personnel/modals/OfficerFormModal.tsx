@@ -104,7 +104,7 @@ export default function OfficerFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<OfficerFormData>({
-    storageKey: 'rmpg_personnel_officer_form',
+    storageKey: `rmpg_personnel_officer_form_${initialData?.id ?? 'new'}`,
     defaultValue: EMPTY,
     isActive: isOpen,
   });

@@ -71,7 +71,7 @@ export default function LeaveRequestModal({
     clearDraft,
     snapshot,
   } = useFormDraft<LeaveFormData>({
-    storageKey: 'rmpg_hr_leave_request_form',
+    storageKey: `rmpg_hr_leave_request_form_${editRequest?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });

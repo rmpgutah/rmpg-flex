@@ -106,6 +106,8 @@ interface Props {
   mode: 'create' | 'edit';
   /** Optional: pre-populate form for editing. When omitted, starts empty. */
   initial?: CostFormState | null;
+  /** The id of the record being edited (undefined in create mode) — scopes the draft key per-record. */
+  recordId?: string | number | null;
   onSave: (payload: Record<string, any>) => Promise<void>;
   onClose: () => void;
   saving: boolean;
@@ -228,7 +230,7 @@ function buildPayload(category: CostCategory, f: CostFormState): { payload: Reco
 }
 
 export default function FleetCostFormModal({
-  isOpen, category, mode, initial, onSave, onClose, saving,
+  isOpen, category, mode, initial, recordId, onSave, onClose, saving,
 }: Props) {
   const titleId = useId();
   const {
@@ -239,7 +241,7 @@ export default function FleetCostFormModal({
     clearDraft,
     snapshot,
   } = useFormDraft<CostFormState>({
-    storageKey: `rmpg_fleet_cost_form_${category}`,
+    storageKey: `rmpg_fleet_cost_form_${category}_${recordId ?? 'new'}`,
     defaultValue: EMPTY_COST_FORM,
     isActive: isOpen,
   });

@@ -129,23 +129,29 @@ export default function FleetPage() {
   const [viewMode, setViewMode] = useState<'dashboard' | 'analysis' | 'work_orders' | 'vendors' | 'service'>('dashboard');
   const [workOrdersVehicleFilter, setWorkOrdersVehicleFilter] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalMode>('none');
+  // Editing state — tracks which record is being edited. Declared here
+  // (rather than further down with the other editing/delete state) because
+  // the useFormDraft storageKeys below need it to scope drafts per-record.
+  const [editingFuelId, setEditingFuelId] = useState<string | null>(null);
+  const [editingMaintenanceId, setEditingMaintenanceId] = useState<string | null>(null);
+  const [editingInspectionId, setEditingInspectionId] = useState<string | null>(null);
   const v = useFormDraft<VehicleFormState>({
-    storageKey: 'rmpg_fleet_vehicle_form',
+    storageKey: `rmpg_fleet_vehicle_form_${modal === 'edit_vehicle' ? (selectedId ?? 'new') : 'new'}`,
     defaultValue: EMPTY_VEHICLE_FORM,
     isActive: modal === 'new_vehicle' || modal === 'edit_vehicle',
   });
   const m = useFormDraft<MaintenanceFormState>({
-    storageKey: 'rmpg_fleet_maintenance_form',
+    storageKey: `rmpg_fleet_maintenance_form_${editingMaintenanceId ?? 'new'}`,
     defaultValue: EMPTY_MAINT_FORM,
     isActive: modal === 'log_maintenance' || modal === 'edit_maintenance',
   });
   const f = useFormDraft<FuelFormState>({
-    storageKey: 'rmpg_fleet_fuel_log_form',
+    storageKey: `rmpg_fleet_fuel_log_form_${editingFuelId ?? 'new'}`,
     defaultValue: EMPTY_FUEL_FORM,
     isActive: modal === 'log_fuel' || modal === 'edit_fuel',
   });
   const i = useFormDraft<InspectionFormState>({
-    storageKey: 'rmpg_fleet_inspection_form',
+    storageKey: `rmpg_fleet_inspection_form_${editingInspectionId ?? 'new'}`,
     defaultValue: EMPTY_INSPECTION_FORM,
     isActive: modal === 'new_inspection' || modal === 'edit_inspection',
   });
@@ -177,11 +183,6 @@ export default function FleetPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [deletingVehicleId, setDeletingVehicleId] = useState<string | number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // Editing state — tracks which record is being edited
-  const [editingFuelId, setEditingFuelId] = useState<string | null>(null);
-  const [editingMaintenanceId, setEditingMaintenanceId] = useState<string | null>(null);
-  const [editingInspectionId, setEditingInspectionId] = useState<string | null>(null);
 
   // Delete confirmation state for sub-records
   const [deletingFuel, setDeletingFuel] = useState<FleetFuelLog | null>(null);
@@ -1682,6 +1683,7 @@ export default function FleetPage() {
         category={costCategory}
         mode={costMode}
         initial={costInitial}
+        recordId={editingCostId}
         onSave={handleSaveCost}
         onClose={() => { setCostModalOpen(false); setEditingCostId(null); }}
         saving={savingCost}

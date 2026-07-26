@@ -71,7 +71,7 @@ export default function BodyCameraFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<BodyCameraFormData>({
-    storageKey: 'rmpg_personnel_bodycam_form',
+    storageKey: `rmpg_personnel_bodycam_form_${initialData?.id ?? 'new'}`,
     defaultValue: EMPTY,
     isActive: isOpen,
   });

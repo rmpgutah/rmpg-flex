@@ -99,7 +99,7 @@ export default function ReviewFormModal({
     clearDraft,
     snapshot,
   } = useFormDraft<typeof EMPTY_FORM>({
-    storageKey: 'rmpg_hr_review_form',
+    storageKey: `rmpg_hr_review_form_${editReview?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });

@@ -77,7 +77,7 @@ export default function CredentialFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<CredentialFormData>({
-    storageKey: 'rmpg_credential_form',
+    storageKey: `rmpg_credential_form_${initialData?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });
