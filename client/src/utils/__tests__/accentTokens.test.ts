@@ -452,6 +452,14 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
       count: 1,
       why: 'inside a comment; jsPDF takes literal colours and the file is classifier-excluded',
     },
+    'utils/withAlpha.ts': {
+      count: 6,
+      why: 'all six are prose in the module docstring, not styling — withAlpha exists BECAUSE '
+        + 'var(--rmpg-500) is the value the old concat idiom broke on, so it is the worked '
+        + 'example throughout (the two live palette entries it names, the @param shape list, '
+        + 'and the @example input/output pair). Re-pointing them at --text-* would make the '
+        + 'documentation describe a bug that never happened.',
+    },
   };
 
   // Matches the bare ramp reference with or without a fallback — `var(--rmpg-500)`
