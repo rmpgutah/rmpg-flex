@@ -7,12 +7,17 @@
 
 'use strict';
 
-const { URL } = require('url');
+const { URL, fileURLToPath } = require('url');
 const path = require('path');
 
 /**
  * Throws if the IPC call's sender frame doesn't match expectedHost.
  * Returns true on success (never returns false — callers branch on throw).
+ *
+ * NOTE: this is a HOST check, so it only ever admits http(s) frames. A page
+ * loaded with BrowserWindow.loadFile() has a `file://` URL whose host is the
+ * empty string and can never match a real host — see
+ * validateIpcSenderIsLocalFile below for the guard those windows need.
  */
 function validateIpcSenderOrigin(event, expectedHost) {
   if (!event || !event.senderFrame || typeof event.senderFrame.url !== 'string') {
@@ -26,6 +31,61 @@ function validateIpcSenderOrigin(event, expectedHost) {
   }
   if (host !== expectedHost) {
     throw new Error(`IPC_UNTRUSTED_SENDER: host "${host}" does not match expected "${expectedHost}"`);
+  }
+  return true;
+}
+
+/**
+ * Normalizes a filesystem path for comparison. Windows paths are
+ * case-insensitive (and `fileURLToPath` is not guaranteed to round-trip the
+ * drive letter in the same case `__dirname` reports), so fold case there —
+ * but NOT on macOS/Linux, where two paths differing only in case are two
+ * genuinely different files and folding would widen the allow-list.
+ */
+function normalizePathForCompare(candidate) {
+  const resolved = path.resolve(candidate);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+/**
+ * Throws unless the IPC call's sender frame is one of a fixed set of local
+ * `file://` pages shipped inside the app bundle.
+ *
+ * validateIpcSenderOrigin can't serve these windows: it compares
+ * `new URL(url).host`, which is `''` for every `file://` URL and so never
+ * equals a real host. Trusted-local windows (the kiosk escape hatch) must
+ * still be gated, so they get their own guard that matches on the resolved
+ * FILE PATH — an exact match against an explicit allow-list, not a
+ * scheme-only "is it file://" check, so an arbitrary HTML file elsewhere on
+ * disk (a download, a USB stick) opened in some future window can never
+ * reach a channel registered through this guard.
+ *
+ * Returns true on success (never returns false — callers branch on throw).
+ */
+function validateIpcSenderIsLocalFile(event, allowedFilePaths) {
+  if (!event || !event.senderFrame || typeof event.senderFrame.url !== 'string') {
+    throw new Error('IPC_UNTRUSTED_SENDER: missing senderFrame');
+  }
+  let parsed;
+  try {
+    parsed = new URL(event.senderFrame.url);
+  } catch {
+    throw new Error('IPC_UNTRUSTED_SENDER: unparseable sender URL');
+  }
+  if (parsed.protocol !== 'file:') {
+    throw new Error(`IPC_UNTRUSTED_SENDER: expected a file:// sender, got "${parsed.protocol}"`);
+  }
+  let senderPath;
+  try {
+    senderPath = normalizePathForCompare(fileURLToPath(parsed));
+  } catch {
+    throw new Error('IPC_UNTRUSTED_SENDER: sender URL is not a usable file path');
+  }
+  const allowed = (allowedFilePaths || []).some(
+    (candidate) => normalizePathForCompare(candidate) === senderPath
+  );
+  if (!allowed) {
+    throw new Error(`IPC_UNTRUSTED_SENDER: file "${senderPath}" is not an allowed local page`);
   }
   return true;
 }
@@ -47,6 +107,37 @@ function createIpcGuards(ipcMain, expectedHost) {
     ipcMain.on(channel, (event, ...args) => {
       try {
         validateIpcSenderOrigin(event, expectedHost);
+      } catch (err) {
+        console.error(`[ipcGuard] rejected "${channel}":`, err.message);
+        return;
+      }
+      handler(event, ...args);
+    });
+  }
+
+  return { guardedHandle, guardedOn };
+}
+
+/**
+ * createIpcGuards' sibling for channels served by trusted local `file://`
+ * pages instead of the remote app shell. Same registration contract
+ * (guardedHandle/guardedOn), same throw-on-reject behavior — only the
+ * sender predicate differs. Kept as a separate factory rather than a mode
+ * flag on createIpcGuards so a channel can never accidentally accept BOTH
+ * a remote origin and a local file.
+ */
+function createLocalFileIpcGuards(ipcMain, allowedFilePaths) {
+  function guardedHandle(channel, handler) {
+    ipcMain.handle(channel, async (event, ...args) => {
+      validateIpcSenderIsLocalFile(event, allowedFilePaths);
+      return handler(event, ...args);
+    });
+  }
+
+  function guardedOn(channel, handler) {
+    ipcMain.on(channel, (event, ...args) => {
+      try {
+        validateIpcSenderIsLocalFile(event, allowedFilePaths);
       } catch (err) {
         console.error(`[ipcGuard] rejected "${channel}":`, err.message);
         return;
@@ -249,7 +340,9 @@ function validateKioskEscapeCredentials(username, password) {
 
 module.exports = {
   validateIpcSenderOrigin,
+  validateIpcSenderIsLocalFile,
   createIpcGuards,
+  createLocalFileIpcGuards,
   sanitizeReconToolArgs,
   validatePinInput,
   validateUserIdInput,
