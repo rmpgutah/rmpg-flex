@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
+import { useNavigate } from 'react-router-dom';
 import RichTextArea from '../../components/RichTextArea';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
@@ -131,6 +132,7 @@ const PRETRIP_DEFAULTS = PRETRIP_ITEMS.reduce<Record<string, boolean>>(
 );
 
 export default function FleetPage() {
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { user } = useAuth();
@@ -1301,7 +1303,7 @@ export default function FleetPage() {
           <button
             type="button"
             className="toolbar-btn"
-            onClick={() => { window.location.href = '/fleet/reports'; }}
+            onClick={() => navigate('/fleet/reports')}
             title="Daily Patrol Reports Archive"
           >
             <Calendar className="w-3 h-3" /> Daily Reports
