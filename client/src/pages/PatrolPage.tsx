@@ -346,7 +346,7 @@ const PatrolPage: React.FC = () => {
     clearDraft: clearFormDraft,
     snapshot: snapshotForm,
   } = useFormDraft<typeof EMPTY_CHECKPOINT_FORM>({
-    storageKey: 'rmpg_checkpoint_form',
+    storageKey: `rmpg_checkpoint_form_${editingCheckpoint?.id ?? 'new'}`,
     defaultValue: EMPTY_CHECKPOINT_FORM,
     isActive: showCheckpointModal,
   });
@@ -1938,12 +1938,12 @@ const PatrolPage: React.FC = () => {
                     <img src={qrImageUrl} alt={`QR code for checkpoint token ${selectedQrCode}`}
                       width={200} height={200} className="block" />
                   </div>
-                  <p className="text-xs text-fg-secondary mb-2">Scan this code with a QR scanner app:</p>
+                  <p className="text-xs text-fg-muted mb-2">Scan this code with a QR scanner app:</p>
                 </>
               ) : (
                 <>
                   <QrCode className="w-16 h-16 text-brand-400 mx-auto mb-4" aria-hidden="true" />
-                  <p className="text-xs text-fg-secondary mb-2">Enter this checkpoint token manually:</p>
+                  <p className="text-xs text-fg-muted mb-2">Enter this checkpoint token manually:</p>
                 </>
               )}
               <p className="text-2xl font-mono text-rmpg-100 break-all">{selectedQrCode}</p>

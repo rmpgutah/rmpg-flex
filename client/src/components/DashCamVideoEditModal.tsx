@@ -59,7 +59,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
     clearDraft,
     snapshot,
   } = useFormDraft<DashCamVideoEditData>({
-    storageKey: 'rmpg_dashcam_video_edit_form',
+    storageKey: `rmpg_dashcam_video_edit_form_${video?.id ?? 'new'}`,
     defaultValue: EMPTY,
     isActive: isOpen,
   });

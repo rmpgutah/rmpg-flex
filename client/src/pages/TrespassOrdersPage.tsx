@@ -110,7 +110,7 @@ export default function TrespassOrdersPage() {
     clearDraft: clearFormDraft,
     snapshot: snapshotForm,
   } = useFormDraft<typeof EMPTY_FORM>({
-    storageKey: 'rmpg_trespass_order_form',
+    storageKey: `rmpg_trespass_order_form_${editingOrder?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: formOpen,
   });

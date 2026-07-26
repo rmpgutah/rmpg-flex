@@ -78,7 +78,7 @@ export default function FuelBudgetModal({
     clearDraft,
     snapshot,
   } = useFormDraft<BudgetFormState>({
-    storageKey: 'rmpg_fleet_fuel_budget_form',
+    storageKey: `rmpg_fleet_fuel_budget_form_${initial?.id ?? 'new'}`,
     defaultValue: EMPTY_BUDGET_FORM,
     isActive: isOpen,
   });

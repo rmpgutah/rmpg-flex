@@ -106,8 +106,8 @@ export default function ArrestFormModal({
   // context hasn't hydrated yet (login-screen pre-fill safety).
   const { user } = useAuth();
   const draftKey = user?.id
-    ? `rmpg_arrest_form_${user.id}`
-    : 'rmpg_arrest_form';
+    ? `rmpg_arrest_form_${user.id}_${editingRecord?.id ?? 'new'}`
+    : `rmpg_arrest_form_${editingRecord?.id ?? 'new'}`;
   const {
     form,
     setForm,
