@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove, computeAccuracyRingGeometry, CALL_MARKER_INK } from '../mapMarkers';
 import { TACTICAL_SURFACE_RAISED, TACTICAL_BRAND_GOLD, TACTICAL_TEXT_PRIMARY } from '../tacticalPalette';
 import type { MapUnit, ActiveCall } from '../mapConstants';
@@ -256,5 +258,17 @@ describe('buildUnitMarkerEl — marker root vs inner wrapper (pan/zoom smear fix
     const innerBefore = el.querySelector('[data-role="marker-inner"]');
     applyUnitMarkerState(el, { ...unit, status: 'dispatched' } as MapUnit);
     expect(el.querySelector('[data-role="marker-inner"]')).toBe(innerBefore);
+  });
+});
+
+describe('unit marker glyph theming', () => {
+  it('does not hardcode the glyph fill hex', () => {
+    const src = readFileSync(resolve(__dirname, '../mapMarkers.ts'), 'utf8');
+    expect(src).not.toContain('#0d1520');
+  });
+
+  it('resolves the glyph fill from a theme variable', () => {
+    const src = readFileSync(resolve(__dirname, '../mapMarkers.ts'), 'utf8');
+    expect(src).toMatch(/var\(--surface-sunken\)|currentColor/);
   });
 });

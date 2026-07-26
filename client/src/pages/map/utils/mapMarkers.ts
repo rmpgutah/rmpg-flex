@@ -69,8 +69,12 @@ function getMapUnitGpsStaleness(unit: Unit): 'ok' | 'stale' | 'lost' {
 
 // Simple top-down vehicle glyph — deliberately basic (one <path>, no detail)
 // so it stays legible at map scale; it's a silhouette, not an illustration.
+// Fill is `currentColor` so the glyph inherits from the badge element, whose
+// color is set from a theme variable below. This keeps the marker inside the
+// theme system. NOTE: this is a DOM-rendered SVG, not a Mapbox paint property —
+// paint properties must keep literal hex, because var() blanks a Mapbox map.
 const UNIT_GLYPH_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-  + '<path d="M12 2 L19 9 L19 21 L15 21 L15 17 L9 17 L9 21 L5 21 L5 9 Z" fill="#0d1520"/></svg>';
+  + '<path d="M12 2 L19 9 L19 21 L15 21 L15 17 L9 17 L9 21 L5 21 L5 9 Z" fill="currentColor"/></svg>';
 
 /** Build a bold solid-badge unit marker: status-colored disc + vehicle glyph + call-sign label. */
 export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
@@ -106,9 +110,10 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
     width:30px;height:30px;border-radius:50%;
     display:flex;align-items:center;justify-content:center;
     background:${color};
-    border:2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? '#0d1520' : ringColor};
+    border:2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? 'var(--surface-sunken)' : ringColor};
     box-shadow:0 0 8px ${withAlpha(ringColor, 'b3')};
   `;
+  badge.style.color = 'var(--surface-sunken)';
   badge.innerHTML = UNIT_GLYPH_SVG;
   // Rotate the whole badge to point in the direction of travel. Only applied
   // when heading is present and non-null — the server nulls implausible
@@ -171,7 +176,7 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
   const badge = el.querySelector<HTMLElement>('[data-role="badge"]');
   if (badge) {
     badge.style.background = color;
-    badge.style.border = `2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? '#0d1520' : ringColor}`;
+    badge.style.border = `2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? 'var(--surface-sunken)' : ringColor}`;
     badge.style.boxShadow = `0 0 8px ${withAlpha(ringColor, 'b3')}`;
     badge.style.transform = (unit.gps_heading != null && Number.isFinite(unit.gps_heading)) ? `rotate(${unit.gps_heading}deg)` : '';
   }
