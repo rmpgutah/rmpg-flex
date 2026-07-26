@@ -424,7 +424,7 @@ export default function CrimeAnalysisPage() {
                     const pct = Math.min(100, ((metric.avg_minutes ?? 0) / target) * 100);
                     const overTarget = (metric.avg_minutes ?? 0) > target;
                     const barColor = overTarget ? 'var(--red-500, #ef4444)' : metric.priority === 'critical' ? 'var(--amber-500, #f59e0b)' : 'var(--green-500, #10b981)';
-                    const labelColor = metric.priority === 'critical' ? 'var(--red-400)' : metric.priority === 'high' ? 'var(--amber-400)' : 'var(--text-secondary)';
+                    const labelColor = metric.priority === 'critical' ? 'var(--sev-critical)' : metric.priority === 'high' ? 'var(--sev-warn-soft)' : 'var(--text-secondary)';
                     return (
                       <div key={idx} className="px-2 py-2 panel-beveled space-y-1">
                         <div className="flex items-center justify-between">

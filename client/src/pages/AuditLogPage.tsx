@@ -607,7 +607,7 @@ const AuditLogPage: React.FC = () => {
               </div>
               <div className="text-2xl font-bold text-brand-400 font-mono">{stats.totalEntries.toLocaleString()}</div>
             </div>
-            <div className="panel-beveled p-3" style={{ background: 'var(--surface-overlay)', borderLeft: stats.entriesToday > 0 ? '2px solid var(--green-500)' : undefined }}>
+            <div className="panel-beveled p-3" style={{ background: 'var(--surface-overlay)', borderLeft: stats.entriesToday > 0 ? '2px solid var(--sev-ok)' : undefined }}>
               <div className="flex items-center gap-2 mb-2">
                 <Calendar className="w-4 h-4 text-green-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Today</span>
@@ -706,7 +706,7 @@ const AuditLogPage: React.FC = () => {
               days fell below the 1-entry/day daily-coverage threshold and
               investigate accordingly. */}
           {complianceReport && Array.isArray(complianceReport.gaps) && complianceReport.gaps.length > 0 && (
-            <div className="panel-beveled p-3 mt-3" style={{ background: 'var(--surface-overlay)', borderLeft: '2px solid var(--amber-500)' }}>
+            <div className="panel-beveled p-3 mt-3" style={{ background: 'var(--surface-overlay)', borderLeft: '2px solid var(--sev-warn)' }}>
               <div className="flex items-center gap-1.5 mb-1">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
                 <span className="text-[10px] text-amber-300 uppercase font-bold tracking-wider">Coverage Gaps (30d)</span>

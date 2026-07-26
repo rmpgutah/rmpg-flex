@@ -145,6 +145,44 @@ html.theme-dark,
   /* App chrome tokens — NIGHT (dark steel-blue) */
   --toolbar-gradient-start: #15212e; --toolbar-gradient-end: #1d2d3f;
   --grid-header-bg: #0a1018; --grid-row-alt: #111c28;
+  /* The other half of the grid family. `.spillman-grid` in index.css consumed these
+     four while only -header-bg/-row-alt were ever declared, so the table header text,
+     zebra striping and selected-row highlight all silently inherited. Note
+     --grid-row-even is the name index.css actually uses for the zebra row that
+     --grid-row-alt already described, so it aliases rather than duplicating a value. */
+  --grid-header-text: var(--text-secondary);
+  --grid-row-even: var(--grid-row-alt);
+  --grid-row-selected: #1b3350;
+  --grid-row-selected-border: var(--spm-select);
+  /* The "ON state" accent, as a role rather than a ramp step. Split out because a
+     single silver value cannot serve every theme: on DAY, silver-400 (#4a5561) sits
+     right next to --text-muted (#555555), so an active toggle read almost identical
+     to an inactive one. Day therefore uses its own steel accent; the dark themes
+     keep silver, per the rule that active/selected state stays silver. Every theme's
+     value is >= 4.5:1 on base/raised/sunken. */
+  --accent-active: var(--accent-silver-400);
+  /* ── Radio console theme (`--rt-*`). 161 occurrences across pages/radio/* and
+     DispatchRecordPanel consumed these while they were declared in NO stylesheet, so
+     the entire radio console rendered inherited colours. Declared as role aliases so
+     the console re-themes with the app instead of pinning its own palette.
+     Base-block only is correct AND sufficient here: these are aliases, not literals,
+     so the var() substitutes against whichever theme block won on the element. This
+     rule's selector includes .tactical-dark, so a force-dark radio panel re-declares
+     both the referenced token and the alias together and still resolves to night.
+     (Contrast with a hoisted standalone :root{} rule, which .tactical-dark would not
+     match and so could never re-substitute — that is the case the --rmpg-* note
+     above warns about.)
+     --rt-tx is the live-TRANSMIT indicator: red, per radio convention, and it drives
+     a waveform, a status dot, a border and a fill — all graphics. Its one text
+     consumer was a "quiet hours active" label, which is a state and not a
+     transmission, and now uses --accent-active. */
+  --rt-bg: var(--surface-base);
+  --rt-panel: var(--surface-raised);
+  --rt-border: var(--border-default);
+  --rt-text: var(--text-primary);
+  --rt-muted: var(--text-muted);
+  --rt-accent: var(--accent-active);
+  --rt-tx: var(--sev-critical);
   --field-label-color: #d4a017;
   /* Panel/section headers share the field-label accent in this theme, as they
      did historically. Must be defined in EVERY theme block: components consume
@@ -257,6 +295,16 @@ html.theme-light {
   /* App chrome tokens — DAY (light grey Spillman) */
   --toolbar-gradient-start: #ffffff; --toolbar-gradient-end: #e8e6da;
   --grid-header-bg: #d6d3c8; --grid-row-alt: #f6f5ef;
+  --grid-header-text: var(--text-secondary);
+  --grid-row-even: var(--grid-row-alt);
+  --grid-row-selected: #cfe0f5;
+  --grid-row-selected-border: var(--spm-select);
+  /* DAY uses its own steel accent, NOT silver-400 (#4a5561): on light surfaces that
+     step lands beside --text-muted (#555555) and an active toggle became almost
+     indistinguishable from an inactive one. --brand-blue is 7.55/9.18/6.12 here and
+     is a saturated blue against a neutral grey, so the two separate by hue as well
+     as contrast. */
+  --accent-active: var(--brand-blue);
   --field-label-color: #936c0a;
   --panel-header-color: #936c0a;
   --surface-panel: #ece9dd; --surface-panel-alt: #f9f7f1; --surface-hover: #e0ddd4;
@@ -356,6 +404,11 @@ html.theme-legacy-black {
   /* App chrome tokens — LEGACY BLACK (original pure-black) */
   --toolbar-gradient-start: #0b0b0b; --toolbar-gradient-end: #101010;
   --grid-header-bg: #050505; --grid-row-alt: #0d0d0d;
+  --grid-header-text: var(--text-secondary);
+  --grid-row-even: var(--grid-row-alt);
+  --grid-row-selected: #14202c;
+  --grid-row-selected-border: var(--spm-select);
+  --accent-active: var(--accent-silver-400);
   --field-label-color: #d4a017;
   --panel-header-color: #d4a017;
   --surface-panel: #101010; --surface-panel-alt: #0c0c0c; --surface-hover: #161616;
@@ -507,6 +560,11 @@ html.theme-blue-silver {
   /* App chrome tokens — BLUE & SILVER */
   --toolbar-gradient-start: #1a3350; --toolbar-gradient-end: #2c4f74;
   --grid-header-bg: #10213a; --grid-row-alt: #1a3350;
+  --grid-header-text: var(--text-secondary);
+  --grid-row-even: var(--grid-row-alt);
+  --grid-row-selected: #2c5480;
+  --grid-row-selected-border: var(--spm-select);
+  --accent-active: var(--accent-silver-400);
   /* The only two gold roles in the app (per the 2026-07-24 design decision):
      field labels and section/panel headers. Everything else stays silver. Any
      gold surface NOT resolving through these two vars or the map palette is a
