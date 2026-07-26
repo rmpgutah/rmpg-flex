@@ -34,19 +34,44 @@ export const FLEET_ONLY_BLOCKS = [
 ] as const;
 
 /**
+ * Only a plain run of ASCII decimal digits with no leading zero (or the
+ * single digit '0', rejected separately below) is accepted as an id.
+ * This deliberately excludes hex ('0x2A'), scientific notation ('1e2'),
+ * signs, decimals, and — WHITESPACE POLICY — leading/trailing whitespace:
+ * `Number(' 42 ')` silently trims and would accept a padded value, but
+ * a query-string value with embedded whitespace is not a value we should
+ * be lenient about, so it is rejected rather than trimmed.
+ */
+const VEHICLE_ID_PATTERN = /^[1-9][0-9]*$/;
+
+/**
  * Parse a `?vehicle_id=` query value into a positive integer id.
  * Returns null for anything else — absent, empty, non-numeric,
- * zero, negative, fractional, or non-finite.
+ * zero, negative, fractional, non-finite, hex/exponential forms,
+ * whitespace-padded strings, or values outside the safe-integer range.
  */
 export function parseVehicleScope(raw: string | undefined | null): number | null {
   if (raw == null || raw === '') return null;
+  if (!VEHICLE_ID_PATTERN.test(raw)) return null;
   const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0) return null;
+  if (!Number.isSafeInteger(n) || n <= 0) return null;
   return n;
 }
 
+/**
+ * Column identifiers accepted by scopeAnd: a plain snake_case identifier,
+ * optionally qualified with a single table alias (e.g. 'fv.id' for joined
+ * queries). Anything else — spaces, quotes, semicolons, parentheses,
+ * comment markers, multiple dots, empty string — throws rather than being
+ * spliced into SQL text.
+ */
+const SCOPE_COLUMN_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$/;
+
 /** `AND <column> = ?` when scoped; '' when fleet-wide. */
 export function scopeAnd(column: string, vehicleId: number | null): string {
+  if (!SCOPE_COLUMN_PATTERN.test(column)) {
+    throw new Error(`fleetAnalyticsScope.scopeAnd: invalid column identifier '${column}'`);
+  }
   return vehicleId == null ? '' : `AND ${column} = ?`;
 }
 

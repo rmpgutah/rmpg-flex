@@ -31,6 +31,23 @@ describe('parseVehicleScope', () => {
   it('rejects Infinity', () => {
     expect(parseVehicleScope('Infinity')).toBeNull();
   });
+
+  it('rejects hex notation', () => {
+    expect(parseVehicleScope('0x2A')).toBeNull();
+  });
+
+  it('rejects scientific notation', () => {
+    expect(parseVehicleScope('1e2')).toBeNull();
+  });
+
+  it('rejects values beyond the safe-integer range', () => {
+    expect(parseVehicleScope('999999999999999999999999')).toBeNull();
+  });
+
+  it('rejects whitespace-padded input rather than silently trimming it', () => {
+    expect(parseVehicleScope(' 42 ')).toBeNull();
+    expect(parseVehicleScope('42\n')).toBeNull();
+  });
 });
 
 describe('scopeAnd', () => {
@@ -48,6 +65,14 @@ describe('scopeAnd', () => {
 
   it('supports a qualified column for joined queries', () => {
     expect(scopeAnd('fv.id', 7)).toBe('AND fv.id = ?');
+  });
+
+  it('throws on malicious/malformed column identifiers', () => {
+    expect(() => scopeAnd('vehicle_id = 1; DROP TABLE fleet_vehicles; --', 42)).toThrow();
+    expect(() => scopeAnd('id) OR (1=1', 42)).toThrow();
+    expect(() => scopeAnd("id' OR '1'='1", 42)).toThrow();
+    expect(() => scopeAnd('id /* comment */', 42)).toThrow();
+    expect(() => scopeAnd('', 42)).toThrow();
   });
 });
 
