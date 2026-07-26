@@ -58,6 +58,13 @@
         "to": "rmpg flex.png"
       }
     ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*",
+      "**/node_modules/serialport/**/*",
+      "**/node_modules/@serialport/**/*",
+      "**/node_modules/bindings/**/*",
+      "**/node_modules/file-uri-to-path/**/*"
+    ],
     "mac": {
       "category": "public.app-category.business",
       "target": [
@@ -111,6 +118,7 @@
     }
   },
   "dependencies": {
+    "@serialport/parser-readline": "^13.0.0",
     "better-sqlite3": "^12.11.1",
     "electron-updater": "^6.8.9",
     "serialport": "^13.0.0"
