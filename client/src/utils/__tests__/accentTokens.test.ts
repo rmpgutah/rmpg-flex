@@ -563,12 +563,16 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
         + 'start (so that https:// survives), so this one legitimately still counts. jsPDF '
         + 'takes literal colours and the file is classifier-excluded either way.',
     },
-    // NOTE: 'utils/withAlpha.ts' was pinned at 6 here and is now removed. Its 6
-    // occurrences are all inside JSDoc, and this scanner strips comments BEFORE
-    // counting -- so it finds 0 there and the pin contradicted the scan. The pin
-    // and the comment-stripping landed in different PRs, each green against its
-    // own base, and main went red at the intersection. Both ratchet tests below
-    // (the unpinned-drift one and the obsolete-pin one) fail on that entry.
+    // NO 'utils/withAlpha.ts' ENTRY — deliberately, and this is the second time it
+    // has been removed. Its 6 occurrences are JSDoc prose, and since #3042 taught
+    // the scan to stripComments() first they no longer count, so the pin reads
+    // "6 pinned -> 0 found" and the obsolete-pin test rejects it.
+    //
+    // It came back because #3051 and #3054 both edited this map and merged
+    // back-to-back, so the deletion in one was clobbered by the other. If a future
+    // merge resurrects it again, delete it rather than re-deriving the reasoning:
+    // pinning prose asserts "known-bad colour sites" about text and would mask a
+    // real regression in that file.
   };
 
   // Matches the bare ramp reference with or without a fallback — `var(--rmpg-500)`
@@ -653,9 +657,16 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //
   //   PR 0 (nothing migrated)     11114
   //   after PR 7 (tier-2 residue)  6318
+  //   after CSP/SW fix pass       11098
   //
   // placeholder-rmpg-300|400 is 0 today; the pattern includes it so a future one
   // trips the guard rather than slipping in.
+  //
+  // 11114 -> 11098: #3051 migrated 16 sites but landed alongside #3054 without
+  // lowering the pin, so the "has its pin lowered when sites are migrated" arm
+  // of this ratchet failed — the guard catching its own slack, which is what it
+  // is for. A pin left above the real count is not harmless: it re-opens room
+  // for exactly the regressions the ratchet exists to block.
   const PIN = 10534;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
