@@ -922,7 +922,7 @@ export default function PersonFormModal({
                     </button>
                   </>
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-rmpg-500">
+                  <div className="w-full h-full flex flex-col items-center justify-center text-fg-muted">
                     <CreditCard className="w-8 h-8 mb-1" />
                     <span className="text-[9px]">No Image</span>
                   </div>
@@ -938,7 +938,7 @@ export default function PersonFormModal({
                   <Upload className="w-3 h-3" />
                   {form.id_image_url || idImageFile ? 'Replace Image' : 'Upload ID Image'}
                 </button>
-                <p className="text-[9px] text-rmpg-500 mt-1.5">Accepted: JPEG, PNG, GIF, WebP. Max 50MB.</p>
+                <p className="text-[9px] text-fg-muted mt-1.5">Accepted: JPEG, PNG, GIF, WebP. Max 50MB.</p>
                 {idImageFile && (
                   <p className="text-[9px] text-green-400 mt-0.5">{idImageFile.name} ({(idImageFile.size / 1024).toFixed(0)} KB)</p>
                 )}
@@ -951,13 +951,13 @@ export default function PersonFormModal({
                 )}
                 {/* Fallback: manual URL entry */}
                 <div className="mt-2">
-                  <label className="text-[9px] text-rmpg-500 uppercase font-semibold">Or enter image URL directly</label>
+                  <label className="text-[9px] text-fg-muted uppercase font-semibold">Or enter image URL directly</label>
                   <input name="id_image_url" type="text" className="input-dark mt-0.5 text-xs" placeholder="https://..." value={form.id_image_url} onChange={handleChange} />
                 </div>
                 {/* Separate face/mugshot photo. id_image_url is the
                     scanned ID document; photo_url is the subject's face. */}
                 <div className="mt-2">
-                  <label className="text-[9px] text-rmpg-500 uppercase font-semibold">Face Photo / Mugshot URL</label>
+                  <label className="text-[9px] text-fg-muted uppercase font-semibold">Face Photo / Mugshot URL</label>
                   <input name="photo_url" type="text" className="input-dark mt-0.5 text-xs" placeholder="https://..." value={form.photo_url} onChange={handleChange} />
                 </div>
               </div>

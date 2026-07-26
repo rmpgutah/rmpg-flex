@@ -85,7 +85,7 @@ export default function CallTimeline({ entries, className = '' }: CallTimelinePr
                 <p className="font-mono text-[9px] text-rmpg-400 mt-0.5 leading-none">
                   {entry.user_name}
                   {entry.badge_number && (
-                    <span className="text-rmpg-500 ml-1">#{entry.badge_number}</span>
+                    <span className="text-fg-muted ml-1">#{entry.badge_number}</span>
                   )}
                 </p>
               )}

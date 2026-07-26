@@ -490,7 +490,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   if (isAuthError) {
     return (
       <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-base)' }}>
-        <span className="text-[9px] text-rmpg-500">{error}</span>
+        <span className="text-[9px] text-fg-muted">{error}</span>
       </div>
     );
   }

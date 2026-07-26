@@ -83,13 +83,13 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
         <span className="text-[10px] uppercase font-semibold text-[#888]">
           Attach To Incident <span className="text-[#ef4444]">*</span>
         </span>
-        <span className="text-[9px] text-rmpg-500">
+        <span className="text-[9px] text-fg-muted">
           {loading ? 'loading…' : `${filtered.length} of ${incidents.length}`}
         </span>
       </div>
       <div className="px-3 py-2 border-b border-border-default">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
+          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-fg-muted" />
           <input id="ff-incidentpicker-0"
             type="text"
             value={query}
@@ -131,7 +131,7 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
                 <div className="text-[10px] text-rmpg-300 mt-0.5">
                   {i.type || 'Unknown type'}
                   {i.status && <span className="ml-2 text-[#888]">[{humanizeStatus(i.status, 'incident')}]</span>}
-                  {i.officer_name && <span className="ml-2 text-rmpg-500">· {i.officer_name}</span>}
+                  {i.officer_name && <span className="ml-2 text-fg-muted">· {i.officer_name}</span>}
                 </div>
                 {i.location && (
                   <div className="text-[10px] text-[#888] mt-0.5 truncate">{i.location}</div>

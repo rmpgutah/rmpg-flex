@@ -82,7 +82,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
               CONFIDENTIAL
             </span>
           </div>
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close" title="Close">
+          <button type="button" onClick={onClose} className="text-fg-muted hover:text-rmpg-300" aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -97,7 +97,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
           )}
 
           {!loading && !data?.found && (
-            <div className="text-center py-8 text-rmpg-500 text-xs">
+            <div className="text-center py-8 text-fg-muted text-xs">
               Report not found. It may have been removed from the cache.
             </div>
           )}
@@ -237,7 +237,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
               )}
 
               {/* Footer disclaimer */}
-              <div className="text-[9px] text-rmpg-600 bg-surface-sunken p-2 rounded-sm">
+              <div className="text-[9px] text-fg-muted bg-surface-sunken p-2 rounded-sm">
                 This report contains information from third-party databases. Verify all information
                 independently before taking any official action. Search ID: #{searchId}.
                 Results cached for 30 days — use QB! to force a fresh search.

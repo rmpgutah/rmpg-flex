@@ -328,16 +328,16 @@ export default function PersonHistoryPanel({
                   </div>
                   <div className="text-rmpg-200 text-[11px]">{w.charge_description}</div>
                   {w.statute_citation && (
-                    <div className="text-rmpg-500 text-[10px] font-mono">{w.statute_citation}</div>
+                    <div className="text-fg-muted text-[10px] font-mono">{w.statute_citation}</div>
                   )}
                   {w.expires_at && (
-                    <div className="text-rmpg-500 text-[10px]">Expires: {formatDate(w.expires_at)}</div>
+                    <div className="text-fg-muted text-[10px]">Expires: {formatDate(w.expires_at)}</div>
                   )}
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-[11px] text-rmpg-500 ml-5">No warrants on file</p>
+            <p className="text-[11px] text-fg-muted ml-5">No warrants on file</p>
           )
         )}
       </div>
@@ -406,7 +406,7 @@ export default function PersonHistoryPanel({
                 {c.violation_description && (
                   <div className="text-rmpg-200 text-[11px]">{c.violation_description}</div>
                 )}
-                <div className="flex items-center gap-3 text-[10px] text-rmpg-500">
+                <div className="flex items-center gap-3 text-[10px] text-fg-muted">
                   {c.statute_citation && <span className="font-mono">{c.statute_citation}</span>}
                   {c.location && <span className="truncate max-w-[200px]">{c.location}</span>}
                   {c.court_date && <span>Court: {formatDate(c.court_date)}</span>}
@@ -452,7 +452,7 @@ export default function PersonHistoryPanel({
               ))}
             </div>
           ) : (
-            <p className="text-[11px] text-rmpg-500 ml-5">No incidents linked</p>
+            <p className="text-[11px] text-fg-muted ml-5">No incidents linked</p>
           )
         )}
       </div>
@@ -486,7 +486,7 @@ export default function PersonHistoryPanel({
                   {c.priority && <StatusBadge status={c.priority} type="priority" size="sm" />}
                   <StatusBadge status={c.status} type="call_status" size="sm" />
                   {c.location && (
-                    <span className="text-rmpg-500 text-[10px] truncate max-w-[180px]" title={c.location}>
+                    <span className="text-fg-muted text-[10px] truncate max-w-[180px]" title={c.location}>
                       {c.location}
                     </span>
                   )}
@@ -495,7 +495,7 @@ export default function PersonHistoryPanel({
               ))}
             </div>
           ) : (
-            <p className="text-[11px] text-rmpg-500 ml-5">No dispatch calls linked</p>
+            <p className="text-[11px] text-fg-muted ml-5">No dispatch calls linked</p>
           )
         )}
       </div>

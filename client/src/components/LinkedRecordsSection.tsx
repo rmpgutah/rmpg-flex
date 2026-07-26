@@ -124,7 +124,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
 
       {/* Empty state */}
       {!loading && links.length === 0 && (
-        <p className="text-[10px] text-rmpg-500 text-center py-3 italic">No linked records</p>
+        <p className="text-[10px] text-fg-muted text-center py-3 italic">No linked records</p>
       )}
 
       {/* Link list */}
@@ -161,7 +161,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
                 {/* Delete button */}
                 <button
                   type="button"
-                  className="text-rmpg-500 hover:text-red-400 p-1 disabled:opacity-40"
+                  className="text-fg-muted hover:text-red-400 p-1 disabled:opacity-40"
                   disabled={isDeleting}
                   onClick={() => handleDelete(link.id)}
                   title="Remove link"

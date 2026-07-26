@@ -657,6 +657,7 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //
   //   PR 0 (nothing migrated)     11114
   //   after PR 7 (tier-2 residue)  6318
+  //   after CSP/SW fix pass       11098
   //
   // placeholder-rmpg-300|400 is 0 today; the pattern includes it so a future one
   // trips the guard rather than slipping in.
@@ -666,7 +667,7 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // of this ratchet failed — the guard catching its own slack, which is what it
   // is for. A pin left above the real count is not harmless: it re-opens room
   // for exactly the regressions the ratchet exists to block.
-  const PIN = 11098;
+  const PIN = 10534;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

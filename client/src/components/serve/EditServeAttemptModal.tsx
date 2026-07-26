@@ -226,7 +226,7 @@ export default function EditServeAttemptModal({
           {/* PSO disposition code — grouped by category */}
           <div>
             <label className="text-[10px] text-amber-400 block mb-0.5" htmlFor="edit-disposition-code">
-              Disposition Code <span className="text-rmpg-500 normal-case font-normal">(leave blank to keep current result)</span>
+              Disposition Code <span className="text-fg-muted normal-case font-normal">(leave blank to keep current result)</span>
             </label>
             <select
               id="edit-disposition-code"

@@ -65,7 +65,7 @@ export default function RecordPicker({
         type="text"
         disabled
         placeholder="Pick a record type first…"
-        className="w-full bg-surface-sunken border border-border-default pl-2 pr-2 py-1.5 text-[11px] text-rmpg-500 disabled:opacity-50"
+        className="w-full bg-surface-sunken border border-border-default pl-2 pr-2 py-1.5 text-[11px] text-fg-muted disabled:opacity-50"
         style={{ borderRadius: 2 }}
         aria-label="Record (type required first)"
       />

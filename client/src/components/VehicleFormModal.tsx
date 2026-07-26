@@ -666,7 +666,7 @@ export default function VehicleFormModal({
             <FormField label="Notes">
               <RichTextArea name="notes" rows={3} className="input-dark mt-1" value={form.notes} onChange={handleChange} maxLength={5000} />
             </FormField>
-            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
+            <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.notes.length}/5000</div>
           </div>
         </>
       )}

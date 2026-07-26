@@ -149,7 +149,7 @@ export default function IntegrationHub({ onSetupClick }: IntegrationHubProps) {
                   {intg.configured ? (
                     <>
                       <p className="text-[9px] text-rmpg-400 font-mono">{formatStats(intg.stats)}</p>
-                      <div className="flex items-center justify-between text-[9px] text-rmpg-500">
+                      <div className="flex items-center justify-between text-[9px] text-fg-muted">
                         <span>Last sync: {relativeTime(intg.lastSync)}</span>
                         {intg.lastError && (
                           <span className="text-red-400 truncate max-w-[120px]" title={intg.lastError}>
@@ -162,7 +162,7 @@ export default function IntegrationHub({ onSetupClick }: IntegrationHubProps) {
                       {intg.uptimePercent !== null && (
                         <div className="space-y-0.5">
                           <div className="flex items-center justify-between text-[8px]">
-                            <span className="text-rmpg-600 uppercase">24h Uptime</span>
+                            <span className="text-fg-muted uppercase">24h Uptime</span>
                             <span
                               className="font-mono"
                               style={{
@@ -205,7 +205,7 @@ export default function IntegrationHub({ onSetupClick }: IntegrationHubProps) {
                     </>
                   ) : (
                     <>
-                      <p className="text-[9px] text-rmpg-500">{intg.description}</p>
+                      <p className="text-[9px] text-fg-muted">{intg.description}</p>
                       <button
                         className="toolbar-btn toolbar-btn-primary text-[8px] w-full flex items-center justify-center gap-1"
                         style={{ padding: '3px 8px' }}

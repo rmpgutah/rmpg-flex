@@ -118,7 +118,7 @@ export default function BoloAlertBanner({ address, subject, vehicle, onViewBolo 
                 {onViewBolo && (
                   <button type="button"
                     onClick={() => onViewBolo(bolo.id)}
-                    className="text-rmpg-500 hover:text-red-400 hover:bg-red-900/30 p-0.5 rounded-sm flex-shrink-0 transition-colors"
+                    className="text-fg-muted hover:text-red-400 hover:bg-red-900/30 p-0.5 rounded-sm flex-shrink-0 transition-colors"
                     title="View BOLO"
                     aria-label={`View BOLO ${bolo.bolo_number}`}
                   >

@@ -71,7 +71,7 @@ export default function UnitRecommendationPanel({
             Recommended Units
           </span>
         </div>
-        <span className="text-[9px] text-rmpg-500">{ranked.length} available</span>
+        <span className="text-[9px] text-fg-muted">{ranked.length} available</span>
       </div>
 
       {/* Unit list */}
@@ -127,7 +127,7 @@ export default function UnitRecommendationPanel({
                     <MapPin style={{ width: 8, height: 8 }} />
                     <span className="font-mono">{(Number(item.distance) || 0).toFixed(1)} mi</span>
                   </div>
-                  <div className="flex items-center gap-1 text-[9px] text-rmpg-500">
+                  <div className="flex items-center gap-1 text-[9px] text-fg-muted">
                     <Clock style={{ width: 7, height: 7 }} />
                     <span>~{Math.max(1, Math.round(item.eta))} min</span>
                   </div>

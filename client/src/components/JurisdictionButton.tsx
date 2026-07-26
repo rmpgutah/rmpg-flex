@@ -49,7 +49,7 @@ export function JurisdictionButton({ address, recordType, recordId }: Props) {
                 {info.override && <span className="ml-1 text-brand-400">(manually overridden)</span>}
               </div>
               <label className="block mb-2">
-                <span className="block text-rmpg-500 mb-1">Override county</span>
+                <span className="block text-fg-muted mb-1">Override county</span>
                 <select
                   className="w-full bg-surface-raised text-rmpg-200 border border-surface-raised p-1"
                   value={info.override ?? ''}

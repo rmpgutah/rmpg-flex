@@ -74,7 +74,7 @@ export default function AnomalyAlertBanner() {
             <Icon style={{ width: 12, height: 12, color: style.icon, flexShrink: 0 }} className={alert.severity === 'critical' ? 'animate-pulse' : ''} />
             <span className="font-bold" style={{ color: style.text }}>{alert.title}</span>
             <span className="text-rmpg-400 min-w-0 truncate flex-1">{alert.details}</span>
-            <span className="text-[9px] text-rmpg-500 flex-shrink-0">{elapsed}m ago</span>
+            <span className="text-[9px] text-fg-muted flex-shrink-0">{elapsed}m ago</span>
             <button
               onClick={() => handleAcknowledge(alert.id)}
               className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-bold text-green-400 bg-green-900/30 border border-green-700/40 hover:bg-green-900/50"
@@ -84,7 +84,7 @@ export default function AnomalyAlertBanner() {
             </button>
             <button
               onClick={() => handleDismiss(alert.id)}
-              className="text-rmpg-500 hover:text-rmpg-300"
+              className="text-fg-muted hover:text-rmpg-300"
               title="Dismiss"
             >
               <X style={{ width: 10, height: 10 }} />
@@ -93,7 +93,7 @@ export default function AnomalyAlertBanner() {
         );
       })}
       {visibleAlerts.length > 3 && (
-        <span className="text-[9px] text-rmpg-500 text-center">+{visibleAlerts.length - 3} more alerts</span>
+        <span className="text-[9px] text-fg-muted text-center">+{visibleAlerts.length - 3} more alerts</span>
       )}
     </div>
   );

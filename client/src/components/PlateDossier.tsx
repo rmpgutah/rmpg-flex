@@ -123,7 +123,7 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
                     {s.location_text || (s.lat != null ? `${s.lat.toFixed(4)}, ${s.lng?.toFixed(4)}` : '—')}
                   </span>
                   {s.confidence != null && <span className="text-[#888888] shrink-0">{Math.round(s.confidence * 100)}%</span>}
-                  <span className="text-rmpg-500 shrink-0">{String(s.created_at).slice(5, 16)}</span>
+                  <span className="text-fg-muted shrink-0">{String(s.created_at).slice(5, 16)}</span>
                 </div>
               );
             })}

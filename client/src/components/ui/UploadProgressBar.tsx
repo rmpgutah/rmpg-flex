@@ -106,7 +106,7 @@ export default function UploadProgressBar({
 
       {/* Multi-file counter */}
       {totalFiles && totalFiles > 1 && phase === 'uploading' && (
-        <div className="text-[9px] text-rmpg-500">
+        <div className="text-[9px] text-fg-muted">
           Uploading {fileCount ?? 1} of {totalFiles} files
         </div>
       )}

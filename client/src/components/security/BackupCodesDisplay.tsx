@@ -75,7 +75,7 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
             className="flex items-center gap-2 px-2 py-1"
             style={{ background:"var(--surface-sunken)" }}
           >
-            <span className="text-[9px] w-4 text-right text-rmpg-500">
+            <span className="text-[9px] w-4 text-right text-fg-muted">
               {i + 1}.
             </span>
             <span className="text-body-sm tracking-wider text-rmpg-300">

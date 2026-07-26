@@ -39,11 +39,11 @@ export default function UpcomingSchedulePanel() {
         <span className="flex items-center gap-2 text-[9px] font-semibold uppercase tracking-wider text-rmpg-400">
           <CalendarDays className="w-3.5 h-3.5 text-brand-400" /> Upcoming Schedule — 7 Days
         </span>
-        <ChevronRight className="w-3.5 h-3.5 text-rmpg-600 group-hover:text-brand-400" />
+        <ChevronRight className="w-3.5 h-3.5 text-fg-muted group-hover:text-brand-400" />
       </button>
-      {!loaded && <div className="px-3 py-3 text-[10px] text-rmpg-600">Loading…</div>}
+      {!loaded && <div className="px-3 py-3 text-[10px] text-fg-muted">Loading…</div>}
       {loaded && items.length === 0 && (
-        <div className="px-3 py-3 text-[10px] text-rmpg-600">Nothing scheduled in the next 7 days.</div>
+        <div className="px-3 py-3 text-[10px] text-fg-muted">Nothing scheduled in the next 7 days.</div>
       )}
       <div className="divide-y divide-rmpg-800/60">
         {items.map((i) => {

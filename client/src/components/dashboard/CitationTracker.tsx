@@ -28,15 +28,15 @@ export default function CitationTracker({
           <div className="grid grid-cols-3 gap-1 text-center">
             <div className="bg-surface-sunken p-1 panel-beveled">
               <div className="text-xs font-bold font-mono tabular-nums text-amber-400">{today}</div>
-              <div className="text-[7px] text-rmpg-500 uppercase font-bold tracking-wider">Today</div>
+              <div className="text-[7px] text-fg-muted uppercase font-bold tracking-wider">Today</div>
             </div>
             <div className="bg-surface-sunken p-1 panel-beveled">
               <div className="text-xs font-bold font-mono tabular-nums text-rmpg-200">{thisWeek}</div>
-              <div className="text-[7px] text-rmpg-500 uppercase font-bold tracking-wider">Week</div>
+              <div className="text-[7px] text-fg-muted uppercase font-bold tracking-wider">Week</div>
             </div>
             <div className="bg-surface-sunken p-1 panel-beveled">
               <div className="text-xs font-bold font-mono tabular-nums text-rmpg-200">{thisMonth}</div>
-              <div className="text-[7px] text-rmpg-500 uppercase font-bold tracking-wider">Month</div>
+              <div className="text-[7px] text-fg-muted uppercase font-bold tracking-wider">Month</div>
             </div>
           </div>
           {pendingReview > 0 && (

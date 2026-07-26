@@ -1152,7 +1152,7 @@ export default function MenuBar({
               <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
                 10-Codes Quick Reference
-                <span className="text-[8px] font-mono text-rmpg-500 bg-rmpg-800 px-1 py-0 border border-rmpg-700">APCO</span>
+                <span className="text-[8px] font-mono text-fg-muted bg-rmpg-800 px-1 py-0 border border-rmpg-700">APCO</span>
               </h2>
               <button type="button" onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-rmpg-100 text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500" aria-label="Close 10-codes reference">ESC</button>
             </div>
@@ -1293,7 +1293,7 @@ export default function MenuBar({
               </div>
             </div>
             <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: 'var(--surface-overlay)' }}>
-              <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded-sm text-[8px]">ESC</kbd> to close</span>
+              <span className="text-[9px] text-fg-muted">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded-sm text-[8px]">ESC</kbd> to close</span>
             </div>
           </div>
         </div>
