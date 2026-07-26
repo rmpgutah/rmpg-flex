@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseVehicleScope,
-  scopeAnd,
-  scopeBinds,
+  vehicleScope,
   FLEET_ONLY_BLOCKS,
 } from '../src/utils/fleetAnalyticsScope';
 
@@ -40,6 +39,9 @@ describe('parseVehicleScope', () => {
     expect(parseVehicleScope('1e2')).toBeNull();
   });
 
+  // This is the case that makes Number.isSafeInteger load-bearing rather than
+  // belt-and-braces: a long digit run satisfies VEHICLE_ID_PATTERN (all ASCII
+  // digits, no leading zero) and only the safe-integer check stops it.
   it('rejects values beyond the safe-integer range', () => {
     expect(parseVehicleScope('999999999999999999999999')).toBeNull();
   });
@@ -50,41 +52,105 @@ describe('parseVehicleScope', () => {
   });
 });
 
-describe('scopeAnd', () => {
+describe('vehicleScope().and', () => {
   it('emits a bound predicate when scoped', () => {
-    expect(scopeAnd('vehicle_id', 42)).toBe('AND vehicle_id = ?');
+    expect(vehicleScope(42).and('vehicle_id')).toBe('AND vehicle_id = ?');
   });
 
   it('emits an empty string when fleet-wide, leaving the query unchanged', () => {
-    expect(scopeAnd('vehicle_id', null)).toBe('');
+    expect(vehicleScope(null).and('vehicle_id')).toBe('');
   });
 
   it('never interpolates the id into the SQL text', () => {
-    expect(scopeAnd('vehicle_id', 42)).not.toContain('42');
+    expect(vehicleScope(42).and('vehicle_id')).not.toContain('42');
   });
 
   it('supports a qualified column for joined queries', () => {
-    expect(scopeAnd('fv.id', 7)).toBe('AND fv.id = ?');
+    expect(vehicleScope(7).and('fv.id')).toBe('AND fv.id = ?');
   });
 
   it('throws on malicious/malformed column identifiers', () => {
-    expect(() => scopeAnd('vehicle_id = 1; DROP TABLE fleet_vehicles; --', 42)).toThrow();
-    expect(() => scopeAnd('id) OR (1=1', 42)).toThrow();
-    expect(() => scopeAnd("id' OR '1'='1", 42)).toThrow();
-    expect(() => scopeAnd('id /* comment */', 42)).toThrow();
-    expect(() => scopeAnd('', 42)).toThrow();
+    expect(() => vehicleScope(42).and('vehicle_id = 1; DROP TABLE fleet_vehicles; --')).toThrow();
+    expect(() => vehicleScope(42).and('id) OR (1=1')).toThrow();
+    expect(() => vehicleScope(42).and("id' OR '1'='1")).toThrow();
+    expect(() => vehicleScope(42).and('id /* comment */')).toThrow();
+    expect(() => vehicleScope(42).and('')).toThrow();
+  });
+
+  it('validates the column on the fleet-wide path too, not just when scoped', () => {
+    // Otherwise a bad identifier stays hidden until someone passes ?vehicle_id=.
+    expect(() => vehicleScope(null).and('id; DROP TABLE fleet_vehicles')).toThrow();
   });
 });
 
-describe('scopeBinds', () => {
-  it('returns one bind per predicate when scoped', () => {
-    expect(scopeBinds(42)).toEqual([42]);
-    expect(scopeBinds(42, 3)).toEqual([42, 42, 42]);
+describe('vehicleScope().binds', () => {
+  it('derives one bind per scoped and() call rather than a hand-passed count', () => {
+    const one = vehicleScope(42);
+    one.and('vehicle_id');
+    expect(one.binds()).toEqual([42]);
+
+    const three = vehicleScope(42);
+    three.and('vehicle_id');
+    three.and('id');
+    three.and('fv.id');
+    expect(three.binds()).toEqual([42, 42, 42]);
   });
 
-  it('returns no binds when fleet-wide', () => {
-    expect(scopeBinds(null)).toEqual([]);
-    expect(scopeBinds(null, 3)).toEqual([]);
+  it('reserves nothing when no predicate was emitted', () => {
+    expect(vehicleScope(42).binds()).toEqual([]);
+  });
+
+  it('returns no binds when fleet-wide, however many and() calls were made', () => {
+    const s = vehicleScope(null);
+    s.and('vehicle_id');
+    s.and('id');
+    expect(s.binds()).toEqual([]);
+  });
+
+  // The regression this API exists to prevent: the fragment count and the bind
+  // count are the same number by construction, so adding a predicate cannot
+  // leave a `?` unbound the way scopeBinds(id, times) could.
+  it('keeps fragments and binds in step as predicates are added', () => {
+    for (const columns of [['vehicle_id'], ['vehicle_id', 'id'], ['a', 'b', 'c', 'd']]) {
+      const s = vehicleScope(9);
+      const sql = columns.map((col) => s.and(col)).join(' ');
+      const placeholders = (sql.match(/\?/g) ?? []).length;
+      expect(s.binds()).toHaveLength(placeholders);
+    }
+  });
+
+  it('matches the real call shape, where and() runs inside the template literal', () => {
+    // Argument evaluation is left to right, so every and() in the SQL string
+    // has already run by the time ...binds() is evaluated.
+    const build = (id: number | null) => {
+      const s = vehicleScope(id);
+      return [`SELECT 1 FROM t WHERE 1=1 ${s.and('vehicle_id')}`, ...s.binds()] as const;
+    };
+    expect(build(42)).toEqual(['SELECT 1 FROM t WHERE 1=1 AND vehicle_id = ?', 42]);
+    expect(build(null)).toEqual(['SELECT 1 FROM t WHERE 1=1 ']);
+  });
+});
+
+describe('vehicleScope() single-use sealing', () => {
+  it('throws when and() is called after binds(), instead of emitting an unbound ?', () => {
+    const s = vehicleScope(42);
+    s.and('vehicle_id');
+    s.binds();
+    expect(() => s.and('id')).toThrow(/after binds/);
+  });
+
+  it('throws when one builder is reused for a second query', () => {
+    const s = vehicleScope(42);
+    s.and('vehicle_id');
+    s.binds();
+    expect(() => s.binds()).toThrow(/twice/);
+  });
+
+  it('seals even when fleet-wide, so misuse is caught on both paths', () => {
+    const s = vehicleScope(null);
+    s.binds();
+    expect(() => s.binds()).toThrow();
+    expect(() => s.and('vehicle_id')).toThrow();
   });
 });
 
