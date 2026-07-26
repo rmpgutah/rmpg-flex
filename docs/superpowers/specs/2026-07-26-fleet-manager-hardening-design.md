@@ -113,10 +113,12 @@ treats a missing `scope` field as `'fleet'` and a missing `fleet_comparison` as 
 comparison band" — an old Worker with a new client degrades to today's behavior rather than
 rendering `undefined`.
 
-**Theme (finding 2).** The 10 literals are replaced by role variables: the active tab resolves
-through `--panel-header-color`, the inactive through the silver ramp. Gold reaches the DOM only
-via `--field-label-color` / `--panel-header-color`, never a raw `text-accent-gold-*` class —
-that invariant is what makes gold placement mechanically auditable.
+**Theme (finding 2).** The 10 literals are replaced by the **silver** ramp classes used by the
+equivalent view strip at `client/src/pages/ServePage.tsx:1495`
+(`text-brand-gold-500 border-brand-gold-500 bg-brand-gold-500/5` — `brand-gold-*` renders silver
+via the deliberate compat alias). Gold is *not* correct here: it has exactly two sanctioned
+roles, `--field-label-color` (field labels) and `--panel-header-color` (section/panel headers),
+and a tab is neither. No raw `text-accent-gold-*` class is written in the component.
 
 **Duplicate ids (finding 3).** `id={`ff-pretrip-${item.key}`}` with a matching `htmlFor` on the
 wrapping `<label>`.
@@ -136,11 +138,16 @@ truncation visible is the fix; raising the cap alone would just move the cliff.
 and an error toast. This follows the project's established rule that an unavailable dependency
 must report itself rather than vanish.
 
-**Pre-trip modal (finding 8).** Ported to the shared modal component used by the other five
-dialogs, which brings focus trap, focus restore, and Escape handling. Backdrop dismiss runs
-the same dirty-guard the other forms use, so a completed checklist is not discardable by a
-stray click. The page-level `keydown` listener that existed only to close this modal is removed
-as now-redundant.
+**Pre-trip modal (finding 8).** There is **no shared modal component** in this app — `ConfirmDialog`
+is confirm-only, and the five fleet form modals each hand-roll the same convention. The pre-trip
+modal is brought up to that convention as established by `VehicleFormModal`: `role="dialog"` +
+`aria-modal` + `aria-labelledby` via `useId`, a dirty-guarded Escape, a dirty-guarded backdrop
+click, and initial focus. The page-level `keydown` listener is rewritten to route through the
+guard rather than closing unconditionally.
+
+**Out of scope, stated explicitly:** no modal in this app implements a focus *trap*. Adding one
+only to the pre-trip modal would be inconsistent with its five siblings, so it is not done here.
+An app-wide focus trap is a separate change.
 
 **Tablist semantics (finding 9).** `role="tablist"` / `role="tab"` / `aria-selected` /
 `aria-controls`, arrow-key navigation, and `viewMode` moved to `usePersistedTab` — the same
