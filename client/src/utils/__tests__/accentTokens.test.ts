@@ -590,6 +590,56 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
   });
 });
 
+describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
+  // Sibling to the two guards above. Those match INLINE patterns against
+  // var(--rmpg-N); none of them can see className="text-rmpg-500". This is the
+  // Tailwind-utility half of the same defect.
+  //
+  // The ramp is not a text scale. Steps 300-600 are all below WCAG AA on
+  // blue-silver panel surfaces (300: 3.77, 400: 2.75, 500: 1.82, 600: 1.18 on
+  // --surface-raised). A RATCHET over pre-existing debt: the count may only go
+  // down, and the pin must be lowered whenever it does.
+  //
+  //   PR 0 (nothing migrated)     11114
+  //   after PR 7 (tier-2 residue)  6318
+  //
+  // placeholder-rmpg-300|400 is 0 today; the pattern includes it so a future one
+  // trips the guard rather than slipping in.
+  const PIN = 11114;
+  const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
+
+  function sourceFiles(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === '__tests__' || entry.name === 'node_modules') continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) sourceFiles(full, out);
+      else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) out.push(full);
+    }
+    return out;
+  }
+
+  const total = sourceFiles(SRC_DIR).reduce(
+    (n, file) => n + (readFileSync(file, 'utf8').match(PATTERN)?.length ?? 0),
+    0,
+  );
+
+  it('adds no new sub-AA text-ramp utilities', () => {
+    expect(
+      total,
+      `Found ${total} sub-AA text-ramp utilities, pinned at ${PIN}. `
+        + 'Use text-fg-muted / text-fg-secondary / placeholder-fg-muted instead.',
+    ).toBeLessThanOrEqual(PIN);
+  });
+
+  it('has its pin lowered when sites are migrated', () => {
+    expect(
+      total,
+      `Only ${total} remain but the pin is still ${PIN}. `
+        + `Lower PIN to ${total} in this same commit so the ratchet keeps holding.`,
+    ).toBeGreaterThanOrEqual(PIN);
+  });
+});
+
 describe('print stylesheet text channels', () => {
   // index.css:3308 is a @media print block that flips surfaces to white and
   // text to near-black with !important. It already overrides the five
