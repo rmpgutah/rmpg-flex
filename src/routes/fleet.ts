@@ -9,8 +9,7 @@ import { recordAudit } from '../utils/auditLog';
 import { emitFleetioEvent } from '../utils/fleetio/events';
 import {
   parseVehicleScope,
-  scopeAnd,
-  scopeBinds,
+  vehicleScope,
   FLEET_ONLY_BLOCKS,
 } from '../utils/fleetAnalyticsScope';
 
@@ -229,18 +228,21 @@ fleet.get('/analytics', async (c) => {
   // strftime('%Y-%m', ...) groups MST-stored timestamps cleanly into months;
   // we don't shift to UTC because the dashboard's "this month" semantics
   // are wall-clock MST per the project's america/denver convention.
-  const maintenance_cost_trend = await safe(() => query<{ month: string; total_cost: number; count: number }>(
-    db,
-    `SELECT strftime('%Y-%m', performed_at) as month,
-            COALESCE(SUM(cost), 0) as total_cost,
-            COUNT(*) as count
-     FROM fleet_maintenance
-     WHERE performed_at >= datetime('now', '-12 months')
-       ${scopeAnd('vehicle_id', vehicleId)}
-     GROUP BY month
-     ORDER BY month`,
-    ...scopeBinds(vehicleId),
-  ), []);
+  const maintenance_cost_trend = await safe(() => {
+    const vScope = vehicleScope(vehicleId);
+    return query<{ month: string; total_cost: number; count: number }>(
+      db,
+      `SELECT strftime('%Y-%m', performed_at) as month,
+              COALESCE(SUM(cost), 0) as total_cost,
+              COUNT(*) as count
+       FROM fleet_maintenance
+       WHERE performed_at >= datetime('now', '-12 months')
+         ${vScope.and('vehicle_id')}
+       GROUP BY month
+       ORDER BY month`,
+      ...vScope.binds(),
+    );
+  }, []);
 
   // mileage_distribution — fixed buckets, simpler than a CASE WHEN ladder.
   // Fleet-only: a single vehicle's mileage bucket carries no meaning.
@@ -288,32 +290,35 @@ fleet.get('/analytics', async (c) => {
   // span ÷ gallons within the month, summed across vehicles. Needs ≥2
   // odometer readings in the month for a vehicle to contribute; months
   // without derivable distance return null (chart connectNulls).
-  const fuel_economy_trend = await safe(() => query<{
-    month: string; avg_mpg: number | null; total_gallons: number; total_cost: number;
-  }>(
-    db,
-    `WITH monthly AS (
-       SELECT strftime('%Y-%m', fuel_date) as month,
-              vehicle_id,
-              SUM(gallons) as gallons,
-              SUM(total_cost) as cost,
-              CASE WHEN COUNT(odometer) >= 2 THEN MAX(odometer) - MIN(odometer) END as miles
-       FROM fleet_fuel_log
-       WHERE fuel_date >= date('now', '-12 months')
-         ${scopeAnd('vehicle_id', vehicleId)}
-       GROUP BY month, vehicle_id
-     )
-     SELECT month,
-            CASE WHEN SUM(CASE WHEN miles > 0 THEN gallons END) > 0
-                 THEN ROUND(SUM(miles) * 1.0 / SUM(CASE WHEN miles > 0 THEN gallons END), 1)
-            END as avg_mpg,
-            COALESCE(SUM(gallons), 0) as total_gallons,
-            COALESCE(SUM(cost), 0) as total_cost
-     FROM monthly
-     GROUP BY month
-     ORDER BY month`,
-    ...scopeBinds(vehicleId),
-  ), []);
+  const fuel_economy_trend = await safe(() => {
+    const vScope = vehicleScope(vehicleId);
+    return query<{
+      month: string; avg_mpg: number | null; total_gallons: number; total_cost: number;
+    }>(
+      db,
+      `WITH monthly AS (
+         SELECT strftime('%Y-%m', fuel_date) as month,
+                vehicle_id,
+                SUM(gallons) as gallons,
+                SUM(total_cost) as cost,
+                CASE WHEN COUNT(odometer) >= 2 THEN MAX(odometer) - MIN(odometer) END as miles
+         FROM fleet_fuel_log
+         WHERE fuel_date >= date('now', '-12 months')
+           ${vScope.and('vehicle_id')}
+         GROUP BY month, vehicle_id
+       )
+       SELECT month,
+              CASE WHEN SUM(CASE WHEN miles > 0 THEN gallons END) > 0
+                   THEN ROUND(SUM(miles) * 1.0 / SUM(CASE WHEN miles > 0 THEN gallons END), 1)
+              END as avg_mpg,
+              COALESCE(SUM(gallons), 0) as total_gallons,
+              COALESCE(SUM(cost), 0) as total_cost
+       FROM monthly
+       GROUP BY month
+       ORDER BY month`,
+      ...vScope.binds(),
+    );
+  }, []);
 
   // Aggregate summary — costs come from the SOURCE tables
   // (fleet_maintenance / fleet_fuel_log), period-scoped. The
@@ -324,25 +329,31 @@ fleet.get('/analytics', async (c) => {
   // Summary is computed twice when scoped: once for this vehicle, once
   // fleet-wide, so the UI can show "this vehicle vs. the fleet".
   const computeSummary = async (scopeId: number | null) => {
+    // One builder per query — a builder's bind list is defined over a single
+    // statement, and vehicleScope() seals itself after binds() to enforce that.
+    const vehScope = vehicleScope(scopeId);
     const veh = await queryFirst<{ total_vehicles: number; avg_mileage: number }>(
       db,
       `SELECT COUNT(*) as total_vehicles, COALESCE(AVG(current_mileage), 0) as avg_mileage
-       FROM fleet_vehicles WHERE archived_at IS NULL ${scopeAnd('id', scopeId)}`,
-      ...scopeBinds(scopeId),
+       FROM fleet_vehicles WHERE archived_at IS NULL ${vehScope.and('id')}`,
+      ...vehScope.binds(),
     );
+    const maintScope = vehicleScope(scopeId);
     const maint = await queryFirst<{ total: number }>(
       db,
       `SELECT COALESCE(SUM(cost), 0) as total FROM fleet_maintenance
-       WHERE 1=1 ${maintPeriod} ${scopeAnd('vehicle_id', scopeId)}`,
-      ...scopeBinds(scopeId),
+       WHERE 1=1 ${maintPeriod} ${maintScope.and('vehicle_id')}`,
+      ...maintScope.binds(),
     );
+    const fuelScope = vehicleScope(scopeId);
     const fuel = await queryFirst<{ total: number }>(
       db,
       `SELECT COALESCE(SUM(total_cost), 0) as total FROM fleet_fuel_log
-       WHERE 1=1 ${fuelPeriod} ${scopeAnd('vehicle_id', scopeId)}`,
-      ...scopeBinds(scopeId),
+       WHERE 1=1 ${fuelPeriod} ${fuelScope.and('vehicle_id')}`,
+      ...fuelScope.binds(),
     );
     // Lifetime MPG per vehicle (odometer span ÷ gallons), averaged.
+    const mpgScope = vehicleScope(scopeId);
     const mpg = await queryFirst<{ avg_mpg: number | null }>(
       db,
       `WITH per_vehicle AS (
@@ -351,12 +362,12 @@ fleet.get('/analytics', async (c) => {
                 SUM(gallons) as gallons
          FROM fleet_fuel_log
          WHERE odometer IS NOT NULL AND gallons > 0
-           ${scopeAnd('vehicle_id', scopeId)}
+           ${mpgScope.and('vehicle_id')}
          GROUP BY vehicle_id
          HAVING COUNT(*) >= 2 AND miles > 0
        )
        SELECT ROUND(AVG(miles * 1.0 / gallons), 1) as avg_mpg FROM per_vehicle`,
-      ...scopeBinds(scopeId),
+      ...mpgScope.binds(),
     );
     return {
       total_vehicles: veh?.total_vehicles ?? 0,
@@ -381,33 +392,42 @@ fleet.get('/analytics', async (c) => {
     };
   }, null);
 
-  const vehicles_needing_service = (await safe(() => queryFirst<{ n: number }>(
-    db,
-    `SELECT COUNT(*) as n FROM fleet_vehicles
-     WHERE archived_at IS NULL
-       AND ((next_service_due IS NOT NULL AND date(next_service_due) <= date('now'))
-            OR (next_service_mileage IS NOT NULL AND current_mileage >= next_service_mileage))
-       ${scopeAnd('id', vehicleId)}`,
-    ...scopeBinds(vehicleId),
-  ), null))?.n ?? 0;
+  const vehicles_needing_service = (await safe(() => {
+    const vScope = vehicleScope(vehicleId);
+    return queryFirst<{ n: number }>(
+      db,
+      `SELECT COUNT(*) as n FROM fleet_vehicles
+       WHERE archived_at IS NULL
+         AND ((next_service_due IS NOT NULL AND date(next_service_due) <= date('now'))
+              OR (next_service_mileage IS NOT NULL AND current_mileage >= next_service_mileage))
+         ${vScope.and('id')}`,
+      ...vScope.binds(),
+    );
+  }, null))?.n ?? 0;
 
-  const inspections_failing = (await safe(() => queryFirst<{ n: number }>(
-    db,
-    `SELECT COUNT(*) as n FROM fleet_inspections
-     WHERE overall_result = 'fail'
-       AND inspection_date >= date('now', '-90 days')
-       ${scopeAnd('vehicle_id', vehicleId)}`,
-    ...scopeBinds(vehicleId),
-  ), null))?.n ?? 0;
+  const inspections_failing = (await safe(() => {
+    const vScope = vehicleScope(vehicleId);
+    return queryFirst<{ n: number }>(
+      db,
+      `SELECT COUNT(*) as n FROM fleet_inspections
+       WHERE overall_result = 'fail'
+         AND inspection_date >= date('now', '-90 days')
+         ${vScope.and('vehicle_id')}`,
+      ...vScope.binds(),
+    );
+  }, null))?.n ?? 0;
 
   // fuel_summary.total_entries — backs the Fleet v2 dashboard's "Recent Fuel
   // Entries" card (DashboardRoute.tsx), scoped to the same ?period window
   // as the rest of this endpoint's stats.
-  const fuel_entries_total = (await safe(() => queryFirst<{ n: number }>(
-    db,
-    `SELECT COUNT(*) as n FROM fleet_fuel_log WHERE 1=1 ${fuelPeriod} ${scopeAnd('vehicle_id', vehicleId)}`,
-    ...scopeBinds(vehicleId),
-  ), null))?.n ?? 0;
+  const fuel_entries_total = (await safe(() => {
+    const vScope = vehicleScope(vehicleId);
+    return queryFirst<{ n: number }>(
+      db,
+      `SELECT COUNT(*) as n FROM fleet_fuel_log WHERE 1=1 ${fuelPeriod} ${vScope.and('vehicle_id')}`,
+      ...vScope.binds(),
+    );
+  }, null))?.n ?? 0;
 
   // service_compliance — overdue = the vehicles_needing_service set;
   // compliant = remaining active vehicles.
@@ -425,13 +445,14 @@ fleet.get('/analytics', async (c) => {
 
   // inspection_pass_rate — period-scoped pass/fail counts.
   const inspection_pass_rate = await safe(async () => {
+    const vScope = vehicleScope(vehicleId);
     const row = await queryFirst<{ total: number; passed: number; failed: number }>(
       db,
       `SELECT COUNT(*) as total,
               SUM(CASE WHEN overall_result = 'pass' THEN 1 ELSE 0 END) as passed,
               SUM(CASE WHEN overall_result = 'fail' THEN 1 ELSE 0 END) as failed
-       FROM fleet_inspections WHERE 1=1 ${inspPeriod} ${scopeAnd('vehicle_id', vehicleId)}`,
-      ...scopeBinds(vehicleId),
+       FROM fleet_inspections WHERE 1=1 ${inspPeriod} ${vScope.and('vehicle_id')}`,
+      ...vScope.binds(),
     );
     const total = row?.total ?? 0;
     const passed = row?.passed ?? 0;
@@ -458,22 +479,25 @@ fleet.get('/analytics', async (c) => {
   // daily_usage — last 30 days from gps_breadcrumbs: how many fleet
   // vehicles (units holding an active fleet vehicle) pinged each day.
   // moving = speed > 2 mph filters out stationary idle pings.
-  const daily_usage = await safe(() => query<{
-    date: string; active_vehicles: number; total_pings: number; moving_pings: number;
-  }>(
-    db,
-    `SELECT date(g.recorded_at) as date,
-            COUNT(DISTINCT fv.id) as active_vehicles,
-            COUNT(*) as total_pings,
-            SUM(CASE WHEN g.speed > 2 THEN 1 ELSE 0 END) as moving_pings
-     FROM gps_breadcrumbs g
-     JOIN fleet_vehicles fv ON fv.assigned_unit_id = g.unit_id AND fv.archived_at IS NULL
-     WHERE g.recorded_at >= datetime('now', '-30 days')
-       ${scopeAnd('fv.id', vehicleId)}
-     GROUP BY date(g.recorded_at)
-     ORDER BY date`,
-    ...scopeBinds(vehicleId),
-  ), []);
+  const daily_usage = await safe(() => {
+    const vScope = vehicleScope(vehicleId);
+    return query<{
+      date: string; active_vehicles: number; total_pings: number; moving_pings: number;
+    }>(
+      db,
+      `SELECT date(g.recorded_at) as date,
+              COUNT(DISTINCT fv.id) as active_vehicles,
+              COUNT(*) as total_pings,
+              SUM(CASE WHEN g.speed > 2 THEN 1 ELSE 0 END) as moving_pings
+       FROM gps_breadcrumbs g
+       JOIN fleet_vehicles fv ON fv.assigned_unit_id = g.unit_id AND fv.archived_at IS NULL
+       WHERE g.recorded_at >= datetime('now', '-30 days')
+         ${vScope.and('fv.id')}
+       GROUP BY date(g.recorded_at)
+       ORDER BY date`,
+      ...vScope.binds(),
+    );
+  }, []);
 
   // avg_daily_miles — fleet average derived from fuel-log odometer
   // spans (matches the client's "Fleet avg from fuel logs" caption on
@@ -481,6 +505,7 @@ fleet.get('/analytics', async (c) => {
   // vehicle's own daily-miles rate from the same per_vehicle CTE — a
   // meaningful per-vehicle figure, not a fleet aggregate.
   const avg_daily_miles = await safe(async () => {
+    const vScope = vehicleScope(vehicleId);
     const row = await queryFirst<{ v: number | null }>(
       db,
       `WITH per_vehicle AS (
@@ -489,12 +514,12 @@ fleet.get('/analytics', async (c) => {
                   MAX(1, julianday(MAX(fuel_date)) - julianday(MIN(fuel_date))) as daily
          FROM fleet_fuel_log
          WHERE odometer IS NOT NULL
-           ${scopeAnd('vehicle_id', vehicleId)}
+           ${vScope.and('vehicle_id')}
          GROUP BY vehicle_id
          HAVING COUNT(*) >= 2 AND MAX(odometer) > MIN(odometer)
        )
        SELECT ROUND(AVG(daily), 1) as v FROM per_vehicle`,
-      ...scopeBinds(vehicleId),
+      ...vScope.binds(),
     );
     return row?.v ?? null;
   }, null);
@@ -505,6 +530,7 @@ fleet.get('/analytics', async (c) => {
   // Scoped to one vehicle_id, this returns just that vehicle's own
   // forecast row rather than every active vehicle in the fleet.
   const maintenance_forecast = await safe(async () => {
+    const vehiclesScope = vehicleScope(vehicleId);
     const vehicles = await query<{
       id: number; vehicle_number: string; current_mileage: number | null;
       next_service_due: string | null; next_service_mileage: number | null;
@@ -514,10 +540,11 @@ fleet.get('/analytics', async (c) => {
        FROM fleet_vehicles
        WHERE archived_at IS NULL AND status != 'retired'
          AND (next_service_due IS NOT NULL OR next_service_mileage IS NOT NULL)
-         ${scopeAnd('id', vehicleId)}
+         ${vehiclesScope.and('id')}
        ORDER BY vehicle_number`,
-      ...scopeBinds(vehicleId),
+      ...vehiclesScope.binds(),
     );
+    const dailyScope = vehicleScope(vehicleId);
     const dailyByVehicle = await query<{ vehicle_id: number; daily: number }>(
       db,
       `SELECT vehicle_id,
@@ -525,10 +552,10 @@ fleet.get('/analytics', async (c) => {
                 MAX(1, julianday(MAX(fuel_date)) - julianday(MIN(fuel_date))) as daily
        FROM fleet_fuel_log
        WHERE odometer IS NOT NULL
-         ${scopeAnd('vehicle_id', vehicleId)}
+         ${dailyScope.and('vehicle_id')}
        GROUP BY vehicle_id
        HAVING COUNT(*) >= 2 AND MAX(odometer) > MIN(odometer)`,
-      ...scopeBinds(vehicleId),
+      ...dailyScope.binds(),
     );
     const dailyMap = new Map(dailyByVehicle.map((d) => [d.vehicle_id, d.daily]));
     const today = Date.now();
@@ -593,16 +620,19 @@ fleet.get('/analytics', async (c) => {
   // top_issues — maintenance grouped by type, period-scoped, and (when
   // ?vehicle_id is present) scoped to that vehicle's own maintenance
   // history rather than the whole fleet's.
-  const top_issues = await safe(() => query<{ type: string; count: number; total_cost: number }>(
-    db,
-    `SELECT COALESCE(type, 'other') as type, COUNT(*) as count, COALESCE(SUM(cost), 0) as total_cost
-     FROM fleet_maintenance WHERE 1=1 ${maintPeriod}
-       ${scopeAnd('vehicle_id', vehicleId)}
-     GROUP BY COALESCE(type, 'other')
-     ORDER BY count DESC
-     LIMIT 10`,
-    ...scopeBinds(vehicleId),
-  ), []);
+  const top_issues = await safe(() => {
+    const vScope = vehicleScope(vehicleId);
+    return query<{ type: string; count: number; total_cost: number }>(
+      db,
+      `SELECT COALESCE(type, 'other') as type, COUNT(*) as count, COALESCE(SUM(cost), 0) as total_cost
+       FROM fleet_maintenance WHERE 1=1 ${maintPeriod}
+         ${vScope.and('vehicle_id')}
+       GROUP BY COALESCE(type, 'other')
+       ORDER BY count DESC
+       LIMIT 10`,
+      ...vScope.binds(),
+    );
+  }, []);
 
   return c.json({
     maintenance_cost_trend,
