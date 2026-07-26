@@ -28,6 +28,7 @@ import { getQueueHealth, isFleetioQueueUnhealthy, shouldFireUnhealthyAlert } fro
 
 interface DeadLetterCandidate {
   id: number;
+  direction: string;
   event_id: string;
   resource: string;
   action: string;
@@ -53,11 +54,17 @@ export async function sweepFleetioHealth(
   const nowMs = nowDate.getTime();
 
   // ── 1. Dead-letter notify (once per event) ──
+  // Both directions. This was `direction = 'outbound'` only, which was correct
+  // while inbound events could never reach 'failed' — applyInbound returned
+  // early on an apply error and left the row 'pending' forever. Now that it
+  // records failures (markInboundFailure), an exhausted INBOUND event is a real
+  // dead letter and means remote changes are being dropped on the floor; it
+  // needs the same one-time notification an outbound one gets.
   const candidates = await query<DeadLetterCandidate>(
     db,
-    `SELECT id, event_id, resource, action, error
+    `SELECT id, direction, event_id, resource, action, error
      FROM fleetio_events
-     WHERE direction = 'outbound' AND status = 'failed' AND dead_letter_notified_at IS NULL
+     WHERE status = 'failed' AND dead_letter_notified_at IS NULL
      ORDER BY id ASC
      LIMIT ?`,
     DEAD_LETTER_SWEEP_LIMIT,
@@ -66,7 +73,7 @@ export async function sweepFleetioHealth(
   for (const ev of candidates) {
     await evaluateNotificationRules(db, 'fleetio_event_dead_lettered', {
       title: 'Fleet.io sync: event permanently failed',
-      message: `${ev.resource}/${ev.action} (event ${ev.event_id}) failed after exhausting all retry attempts: ${ev.error ?? '(no error message)'}`,
+      message: `${ev.direction} ${ev.resource}/${ev.action} (event ${ev.event_id}) failed after exhausting all retry attempts: ${ev.error ?? '(no error message)'}`,
       priority: 'high',
       entity_type: 'fleetio_event',
       entity_id: ev.id,

@@ -213,6 +213,60 @@ PR 4. Full spec: [`docs/superpowers/specs/2026-06-21-fleetio-integration-design.
   `785de7ae` and verify via `pragma_table_info` (deploy is `continue-on-error`).
   Set the two secrets, then hit `POST /api/fleetio/seed` once.
 
+#### Fleet.io invariants — read before touching the adapter (hardened 2026-07-26)
+
+- **⚠️ Fleet.io has TWO pagination contracts and the live one is decided by the
+  API VERSION BOUND TO THE KEY** (chosen at key creation; there is no
+  per-request version header, so the code cannot read it). Cursor-era
+  (2024-01-01+, incl. the current 2025-05-05): `?per_page=<=100` +
+  `?start_cursor=`, body `{ records, current_cursor, next_cursor, per_page,
+  estimated_remaining_count }`. Legacy: `?page=N&per=<=100`, body is a **bare
+  array**, counts in `X-Pagination-*` **headers**. **There is no
+  `{records, pagination:{total_pages}}` body envelope** — an earlier revision
+  declared one, so `pagination?.total_pages ?? 1` always resolved to 1 and every
+  paginated pull silently stopped after 100 records. Always paginate via
+  `iterateList` / `listAllVehicles` / `listAllFuelEntries` in
+  [`client.ts`](src/utils/fleetio/client.ts); never hand-roll a page loop.
+- **`fleetio_links.fleetio_resource` is part of a UNIQUE index**
+  (`UNIQUE(fleetio_resource, fleetio_id)`), so the string is **identity, not a
+  label**. Always source it from `FLEETIO_LINK_RESOURCE` in
+  [`resources.ts`](src/utils/fleetio/resources.ts) (canonical = the Fleet.io REST
+  path segment: `vehicles`, `fuel_entries`, `work_orders`, `vendors`, `parts`).
+  `/seed`+`/pull` once wrote `'vehicles'` while `recordLink` wrote `'vehicle'`,
+  which both defeated the unique index and made `/pull` blind to sync-created
+  links. Migration `0206` normalizes existing rows; readers stay tolerant of the
+  legacy singular via `acceptedLinkResources`.
+- **`fleetio_events.resource_id` MEANS DIFFERENT THINGS PER DIRECTION** — the
+  RMPG row id on `outbound`, the **Fleet.io id** on `inbound`. `applyInbound`
+  must resolve it through `fleetio_links` first (it does, via `lookupRmpgId`).
+  Using it directly as a local id — which every inbound path did before
+  2026-07-26 — makes a webhook for Fleet.io vehicle 501 run
+  `UPDATE fleet_vehicles … WHERE id = 501`, corrupting an unrelated record with
+  no error surface.
+- **Inbound FK values are remote ids.** `vendor_id` / `vehicle_id` arrive as
+  Fleet.io ids and MUST be reverse-translated (`INBOUND_FK_MAP` +
+  `translateInboundFks`) before they touch an RMPG FK column; drop them when
+  unmappable rather than writing the remote id through.
+- **POST and DELETE are never retried** (`isRetryableMethod`). Fleet.io has no
+  idempotency-key header, so replaying a timed-out POST double-creates and
+  replaying a succeeded DELETE 404s into a false dead letter.
+- **Every emit kind in `EMIT_KIND_TO_RESOURCE` needs a `dispatchOutbound`
+  branch.** A missing one isn't inert — it throws 501, burns all 7 retries,
+  dead-letters, and pages an operator. `fuel.delete` did exactly that for weeks.
+- **Match delete semantics per resource**: RMPG soft-deletes vendors
+  (`active=0`) → Fleet.io `POST /vendors/:id/archive`; RMPG hard-deletes parts
+  and fuel entries → Fleet.io `DELETE`. Never translate a soft delete into a
+  hard remote one.
+- **`/pull` and `/seed` both pace at `PACE_MS` (1.2 s)** against Fleet.io's
+  50 req/min account ceiling. Any new loop that calls Fleet.io must pace too.
+- Parse D1 timestamps with `parseD1TimestampMs` — `datetime('now')` is
+  zone-less and `Date.parse` reads that as LOCAL time, which silently skews
+  every `shared`-field last-write-wins verdict off a UTC host.
+- **🔴 After merge**: apply `0206_fleetio_link_resource_canonicalization.sql` to
+  live D1 `785de7ae` via `scripts/apply-migration.sh`, then verify with
+  `SELECT fleetio_resource, COUNT(*) FROM fleetio_links GROUP BY 1` — expect
+  only the five canonical plural values.
+
 ### Legal Data Hunter (manual warrant-charge validation)
 
 Manual, officer-initiated cross-reference of a warrant's charge text against the Legal Data
