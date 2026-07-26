@@ -1,7 +1,12 @@
 // client/src/utils/chartPalette.ts
-// Single owner of chart color decisions. Recharts takes literal color strings
-// (a `var(--x)` reference is not resolved inside SVG paint attributes), so
-// colors are read off <html> at call time instead of being hardcoded.
+// Single owner of chart color decisions. Colors are read off <html> at call
+// time rather than hardcoded.
+//
+// NOTE: `var()` DOES resolve in SVG presentation attributes in current Chrome
+// (verified Chrome 148: `fill="var(--x)"` computes correctly). The previous
+// claim here that it does not was wrong. Resolving via getComputedStyle is
+// still preferred — it keeps one owner for the decision and does not depend on
+// that browser behavior.
 //
 // This exists because chart internals were carrying literal #d4a017, which is
 // legacy gold: it never re-themed, and it survived the Blue & Silver migration
@@ -19,6 +24,11 @@ const FALLBACKS: Record<string, string> = {
   '--sev-special': '#c084fc',
   '--text-muted': '#9bb0c7',
   '--border-subtle': '#2a4763',
+  '--chart-pri-1': '#ff9483',
+  '--chart-pri-2': '#e08355',
+  '--chart-pri-3': '#a87e5b',
+  '--chart-pri-4': '#7e6f61',
+  '--chart-plot-surface': '#142840',
 };
 
 export function resolveThemeColor(varName: string, fallback: string): string {
@@ -59,4 +69,31 @@ export function chartGridColor(): string {
 
 export function chartLegendColor(): string {
   return themeColor('--text-muted');
+}
+
+/** Ordinal priority heat ramp, index 0 = P1 (urgent) … index 3 = P4 (routine).
+ *  This is a RAMP, not a categorical set — see theme-palettes.css. */
+export function chartPriorityColors(): string[] {
+  return [
+    themeColor('--chart-pri-1'),
+    themeColor('--chart-pri-2'),
+    themeColor('--chart-pri-3'),
+    themeColor('--chart-pri-4'),
+  ];
+}
+
+/** Ramp step for one priority. Accepts 'P1' | '1' | 1 — the typed CallPriority
+ *  is 'P1' but the map's ActiveCall carries a bare number string, and a lookup
+ *  that misses used to fall through to a gray that failed contrast. Unknown
+ *  input returns the most recessive step, which still clears 3:1. */
+export function chartPriorityColor(priority: string | number | null | undefined): string {
+  const ramp = chartPriorityColors();
+  const n = Number(String(priority ?? '').trim().replace(/^p/i, ''));
+  return Number.isInteger(n) && n >= 1 && n <= 4 ? ramp[n - 1] : ramp[3];
+}
+
+/** Recessed plot-area surface. A mid-tone panel background compresses the legal
+ *  lightness band below what a 4-step ramp needs; charts draw on this instead. */
+export function chartPlotSurface(): string {
+  return themeColor('--chart-plot-surface');
 }
