@@ -563,11 +563,12 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
         + 'start (so that https:// survives), so this one legitimately still counts. jsPDF '
         + 'takes literal colours and the file is classifier-excluded either way.',
     },
-    'utils/withAlpha.ts': {
-      count: 6,
-      why: 'all inside the JSDoc documenting the exact bare-ramp bug this helper fixes '
-        + '(the two shipped var(--rmpg-500) call sites it references, plus @example lines)',
-    },
+    // NOTE: 'utils/withAlpha.ts' was pinned at 6 here and is now removed. Its 6
+    // occurrences are all inside JSDoc, and this scanner strips comments BEFORE
+    // counting -- so it finds 0 there and the pin contradicted the scan. The pin
+    // and the comment-stripping landed in different PRs, each green against its
+    // own base, and main went red at the intersection. Both ratchet tests below
+    // (the unpinned-drift one and the obsolete-pin one) fail on that entry.
   };
 
   // Matches the bare ramp reference with or without a fallback — `var(--rmpg-500)`
@@ -655,7 +656,7 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //
   // placeholder-rmpg-300|400 is 0 today; the pattern includes it so a future one
   // trips the guard rather than slipping in.
-  const PIN = 10550;
+  const PIN = 10534;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
