@@ -1462,7 +1462,7 @@ export default function FleetPage() {
               data-testid="vehicle-count"
               className="flex-shrink-0 text-[9px] font-mono text-fg-muted tabular-nums"
               title={vehicleTotal != null && vehicleTotal > vehicles.length
-                ? `Showing ${vehicles.length} of ${vehicleTotal} vehicles — narrow your filters to see the rest`
+                ? `The server returned only ${vehicles.length} of ${vehicleTotal} fleet vehicles. Filtering the loaded rows will not reveal the rest.`
                 : `${vehicles.length} vehicles`}
             >
               {vehicleTotal != null && vehicleTotal > vehicles.length
