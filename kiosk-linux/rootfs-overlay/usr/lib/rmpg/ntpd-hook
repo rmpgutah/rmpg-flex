@@ -1,0 +1,28 @@
+#!/bin/sh
+# /usr/lib/rmpg/ntpd-hook
+#
+# Invoked by busybox ntpd (started from S98kiosk-timesync with -S) on clock
+# step, stratum change, and roughly every 11 minutes. $1 carries the event:
+# "step", "stratum", "periodic", or "unsync".
+#
+# Its only job is to persist a corrected clock into the RTC. Root here is an
+# initramfs, so nothing on the running system survives a reboot — the RTC is
+# the only place a good time can be kept. Without this, a terminal that is out
+# of coverage at power-on re-acquires the same drift every morning even though
+# it synced perfectly the previous shift.
+#
+# "unsync" is deliberately excluded: it means ntpd has LOST confidence in its
+# time, and writing an untrusted clock into the RTC would persist the error
+# rather than correct it.
+
+case "$1" in
+    step|stratum|periodic)
+        [ -e /dev/rtc0 ] || [ -e /dev/rtc ] || exit 0
+        # -u: the RTC is kept in UTC. Storing local time there would make the
+        # clock jump by the DST offset on any boot that happens before ntpd has
+        # synced, which is exactly the offline case this hook exists for.
+        hwclock -w -u 2>/dev/null
+        ;;
+esac
+
+exit 0
