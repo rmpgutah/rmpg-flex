@@ -261,14 +261,29 @@ describe('buildUnitMarkerEl — marker root vs inner wrapper (pan/zoom smear fix
   });
 });
 
-describe('unit marker glyph theming', () => {
-  it('does not hardcode the glyph fill hex', () => {
-    const src = readFileSync(resolve(__dirname, '../mapMarkers.ts'), 'utf8');
-    expect(src).not.toContain('#0d1520');
+describe('unit marker tactical palette', () => {
+  // Unit markers deliberately use a FIXED near-black, NOT a theme variable:
+  // buildUnitMarkerEl also renders inside DashboardMiniMap, which has no
+  // `.tactical-dark` ancestor, so `var(--surface-sunken)` would resolve to the
+  // ambient theme there (light tan under html.theme-light). The invariant worth
+  // guarding is therefore "defined once as a named constant", not "no hex".
+  const src = () => readFileSync(resolve(__dirname, '../mapMarkers.ts'), 'utf8');
+
+  it('declares the near-black tactical value exactly once, as a named constant', () => {
+    const body = src();
+    const occurrences = body.match(/#0d1520/g) ?? [];
+    expect(occurrences).toHaveLength(1);
+    expect(body).toMatch(/const TACTICAL_BADGE_SURFACE = '#0d1520';/);
   });
 
-  it('resolves the glyph fill from a theme variable', () => {
-    const src = readFileSync(resolve(__dirname, '../mapMarkers.ts'), 'utf8');
-    expect(src).toMatch(/var\(--surface-sunken\)|currentColor/);
+  it('routes the badge ring and glyph color through that constant', () => {
+    const body = src();
+    // Both the build path and the in-place update path set the ring color.
+    expect(body.match(/TACTICAL_BADGE_SURFACE : ringColor/g) ?? []).toHaveLength(2);
+    // The glyph inherits via currentColor from the badge element's color.
+    expect(body).toContain("badge.style.color = TACTICAL_BADGE_SURFACE;");
+    expect(body).toContain('fill="currentColor"');
+    // And it must not have drifted back onto an ambient theme variable.
+    expect(body).not.toMatch(/badge\.style\.color = 'var\(/);
   });
 });

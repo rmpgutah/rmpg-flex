@@ -48,6 +48,23 @@ describe('buildDockSections', () => {
     expect(section.items.find((i) => i.id === 'heatmap')!.label).toBe('Crime Heatmap');
   });
 
+  it('lets a binding override the description for state-dependent help text', () => {
+    const bindings = allBindings();
+    bindings.deck = {
+      ...bindings.deck,
+      description: 'Deck.gl accelerated rendering (requires Mercator or Globe projection)',
+    };
+    const [section] = buildDockSections(['Diagnostics'], bindings);
+    expect(section.items.find((i) => i.id === 'deck')!.description)
+      .toBe('Deck.gl accelerated rendering (requires Mercator or Globe projection)');
+  });
+
+  it('falls back to the registry description when no override is supplied', () => {
+    const [section] = buildDockSections(['Diagnostics'], allBindings());
+    expect(section.items.find((i) => i.id === 'deck')!.description)
+      .toBe('Deck.gl accelerated rendering');
+  });
+
   it('omits a layer that has no binding rather than rendering a dead toggle', () => {
     const bindings = allBindings();
     delete bindings.traffic;

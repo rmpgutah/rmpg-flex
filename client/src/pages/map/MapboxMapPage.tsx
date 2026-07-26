@@ -99,7 +99,7 @@ import type { IncidentPoint, UnitPosition } from '../../integrations/deckMapboxL
 import MapRosterDock, { type MapRosterDockProps, type RosterUnit, type RosterCall } from './components/MapRosterDock';
 import MapLeftDock from './components/MapLeftDock';
 import MapRightDock from './components/MapRightDock';
-import { buildDockSections, type LayerBindingMap } from './hooks/useLayerBindings';
+import { buildDockSections, findUnboundLayers, type LayerBindingMap } from './hooks/useLayerBindings';
 import { LEFT_DOCK_GROUPS, RIGHT_DOCK_GROUPS } from './config/layerRegistry';
 import { MapDensityProvider } from './hooks/useMapDensity';
 import MapTopToolbar from './components/MapTopToolbar';
@@ -1184,7 +1184,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     // ── Diagnostics ──
     inspect: { active: featureInspect.enabled, onToggle: featureInspect.toggle },
     mapmatch: { active: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting() },
-    deck: { active: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v) },
+    deck: {
+      active: deckEnabled,
+      onToggle: () => setDeckEnabled((v: boolean) => !v),
+      // Conditional helper text: under Equal Earth (or any non-Mercator/Globe
+      // projection) the deck.gl overlay is inert, so say so rather than
+      // leaving the operator with a toggle that silently does nothing.
+      description: deckSupportsProjection
+        ? 'Deck.gl accelerated rendering'
+        : 'Deck.gl accelerated rendering (requires Mercator or Globe projection)',
+    },
     'perf-hud': { active: diagnosticsOpen, onToggle: () => setDiagnosticsOpen((v) => !v) },
     'mapbox-status': { active: dispatchConnectionsOpen, onToggle: () => setDispatchConnectionsOpen((v) => !v) },
   }), [
@@ -1203,9 +1212,24 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     setActiveFloatingTool, identifyEnabled, tilequery.loading, placesSearch, mapBookmarks,
     gpsHudOpen, setGpsHudOpen, multiStopPanelOpen, measure.mode, setShowMeasureMenu, drawing.mode,
     setShowDrawMenu, glDraw, speedAnalyticsPanelOpen, speedZoneStats.loading, featureInspect,
-    mapMatchTrace, deckEnabled, setDeckEnabled, diagnosticsOpen, setDiagnosticsOpen,
-    dispatchConnectionsOpen, setDispatchConnectionsOpen,
+    mapMatchTrace, deckEnabled, deckSupportsProjection, setDeckEnabled, diagnosticsOpen,
+    setDiagnosticsOpen, dispatchConnectionsOpen, setDispatchConnectionsOpen,
   ]);
+
+  // Dev-only wiring guard. buildDockSections SILENTLY drops any registry layer
+  // that has no binding, so a typo'd binding key makes a dispatch layer vanish
+  // with no error at all. Warn (never throw) so a mis-wire is loud in dev and
+  // can never break the map in production.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const { missingBinding, unknownBinding } = findUnboundLayers(layerBindings);
+    if (missingBinding.length) {
+      console.warn('[map] registry layers with no binding (will not render):', missingBinding.join(', '));
+    }
+    if (unknownBinding.length) {
+      console.warn('[map] bindings with no registry layer (likely typo\'d id):', unknownBinding.join(', '));
+    }
+  }, [layerBindings]);
 
   const mapLeftDockSections = useMemo(
     () => buildDockSections(LEFT_DOCK_GROUPS, layerBindings),

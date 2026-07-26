@@ -22,6 +22,10 @@ export interface LayerBinding {
   /** Overrides the registry label for layers that interpolate live state
    *  (heatmap mode, projection, atmosphere preset). */
   label?: string;
+  /** Overrides the registry description for layers whose helper text depends
+   *  on live state (e.g. the GPU overlay explaining that it needs a Mercator
+   *  or Globe projection). */
+  description?: string;
 }
 
 export type LayerBindingMap = Record<string, LayerBinding>;
@@ -53,7 +57,7 @@ export function buildDockSections(
           label: binding.label ?? layer.label,
           icon: layer.icon,
           color: layer.colorVar,
-          description: layer.description,
+          description: binding.description ?? layer.description,
           pinned: layer.pinned,
           active: binding.active,
           onToggle: binding.onToggle,
