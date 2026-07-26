@@ -67,10 +67,28 @@ function getMapUnitGpsStaleness(unit: Unit): 'ok' | 'stale' | 'lost' {
   return getGpsStaleness(unit);
 }
 
+// Near-black backdrop for the unit marker's glyph and badge ring.
+//
+// Unit markers use a FIXED tactical palette — NOT theme variables. Two reasons:
+//   1. They render on tactical surfaces (the Map page, MDT, nav), which are
+//      always near-black by design regardless of the app-wide day/night theme.
+//   2. buildUnitMarkerEl is also called by components/DashboardMiniMap.tsx,
+//      which has NO `.tactical-dark` ancestor. A `var(--surface-sunken)` there
+//      resolves to the ambient theme (#1a3350 under Blue & Silver, #d6d3c8 —
+//      light tan — under html.theme-light), producing a washed-out glyph and
+//      border on a status-colored disc.
+// This file is on the hex-audit exclusion list (utils/hexClassifier.ts,
+// `mapboxPaint`) for exactly this reason. Defined once here so the value
+// isn't repeated at each site.
+const TACTICAL_BADGE_SURFACE = '#0d1520';
+
 // Simple top-down vehicle glyph — deliberately basic (one <path>, no detail)
 // so it stays legible at map scale; it's a silhouette, not an illustration.
+// Fill is `currentColor` so the glyph inherits from the badge element, whose
+// `color` is set to TACTICAL_BADGE_SURFACE below — that indirection keeps the
+// glyph and the badge ring on a single source of truth.
 const UNIT_GLYPH_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-  + '<path d="M12 2 L19 9 L19 21 L15 21 L15 17 L9 17 L9 21 L5 21 L5 9 Z" fill="#0d1520"/></svg>';
+  + '<path d="M12 2 L19 9 L19 21 L15 21 L15 17 L9 17 L9 21 L5 21 L5 9 Z" fill="currentColor"/></svg>';
 
 /** Build a bold solid-badge unit marker: status-colored disc + vehicle glyph + call-sign label. */
 export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
@@ -106,9 +124,10 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
     width:30px;height:30px;border-radius:50%;
     display:flex;align-items:center;justify-content:center;
     background:${color};
-    border:2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? '#0d1520' : ringColor};
+    border:2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? TACTICAL_BADGE_SURFACE : ringColor};
     box-shadow:0 0 8px ${withAlpha(ringColor, 'b3')};
   `;
+  badge.style.color = TACTICAL_BADGE_SURFACE;
   badge.innerHTML = UNIT_GLYPH_SVG;
   // Rotate the whole badge to point in the direction of travel. Only applied
   // when heading is present and non-null — the server nulls implausible
@@ -171,7 +190,7 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
   const badge = el.querySelector<HTMLElement>('[data-role="badge"]');
   if (badge) {
     badge.style.background = color;
-    badge.style.border = `2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? '#0d1520' : ringColor}`;
+    badge.style.border = `2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? TACTICAL_BADGE_SURFACE : ringColor}`;
     badge.style.boxShadow = `0 0 8px ${withAlpha(ringColor, 'b3')}`;
     badge.style.transform = (unit.gps_heading != null && Number.isFinite(unit.gps_heading)) ? `rotate(${unit.gps_heading}deg)` : '';
   }
