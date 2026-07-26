@@ -276,11 +276,11 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
       <div ref={containerRef} role="application" aria-label="Plate sightings map" style={{ width: '100%', height: '100%' }} />
       {!loaded && (
         <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center bg-surface-sunken">
-          <RefreshCw className="w-3.5 h-3.5 text-rmpg-600 animate-spin" />
+          <RefreshCw className="w-3.5 h-3.5 text-fg-muted animate-spin" />
         </div>
       )}
       {loaded && !located.length && (
-        <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center pointer-events-none text-[10px] text-rmpg-500">
+        <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center pointer-events-none text-[10px] text-fg-muted">
           No GPS-tagged sightings yet
         </div>
       )}

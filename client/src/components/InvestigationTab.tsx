@@ -112,7 +112,7 @@ function ConnectionsView({ caseId }: { caseId: number }) {
               </div>
               <div className="text-[9px] text-fg-muted">{link.link_category}</div>
             </div>
-            <ChevronRight className="w-3 h-3 text-rmpg-600 shrink-0" />
+            <ChevronRight className="w-3 h-3 text-fg-muted shrink-0" />
           </div>
         );
       })}

@@ -63,7 +63,7 @@ export default function DragToReorder<T>({ items, onReorder, renderItem, keyExtr
             ${overIdx === idx && dragIdx !== idx ? 'border-t-2 border-brand-400' : ''}
           `}
         >
-          <div className="cursor-grab active:cursor-grabbing p-1 text-rmpg-500 hover:text-rmpg-300 flex-shrink-0">
+          <div className="cursor-grab active:cursor-grabbing p-1 text-fg-muted hover:text-rmpg-300 flex-shrink-0">
             <GripVertical className="w-3.5 h-3.5" />
           </div>
           <div className="flex-1">{renderItem(item, idx)}</div>

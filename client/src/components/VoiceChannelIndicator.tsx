@@ -363,7 +363,7 @@ export default function VoiceChannelIndicator() {
                     transcriptFinal ? 'text-green-400' : 'text-green-300/60 italic'
                   }`}
                 >
-                  <span className="text-[9px] uppercase tracking-wider text-rmpg-500 mr-1.5">YOU</span>
+                  <span className="text-[9px] uppercase tracking-wider text-fg-muted mr-1.5">YOU</span>
                   {transcript}
                   {!transcriptFinal && <span className="text-green-300/40 ml-0.5">…</span>}
                 </div>
@@ -414,8 +414,8 @@ export default function VoiceChannelIndicator() {
                 <li><span className="text-rmpg-200">🔊 / 🔇</span> — dispatch voice on/off for both spoken AND typed input (default ON)</li>
                 <li><span className="text-rmpg-200">Speak during a reply</span> — barge-in: dispatch stops, listens to you</li>
                 <li><span className="text-rmpg-200">Esc</span> — close panel</li>
-                <li className="pt-1 text-rmpg-500">Drive mode auto-engages above 30 mph and re-opens the mic after every reply</li>
-                <li className="text-rmpg-500">Try: "who's nearest?", "10-97", "run plate ABC123"</li>
+                <li className="pt-1 text-fg-muted">Drive mode auto-engages above 30 mph and re-opens the mic after every reply</li>
+                <li className="text-fg-muted">Try: "who's nearest?", "10-97", "run plate ABC123"</li>
               </ul>
             </div>
           )}
@@ -464,7 +464,7 @@ export default function VoiceChannelIndicator() {
                     'Type or hold V…'
                   }
                   disabled={state === 'alerting' || state === 'processing' || state === 'responding'}
-                  className="flex-1 min-w-0 bg-transparent border-0 outline-none px-2.5 py-2 text-xs font-mono text-rmpg-200 placeholder-rmpg-500"
+                  className="flex-1 min-w-0 bg-transparent border-0 outline-none px-2.5 py-2 text-xs font-mono text-rmpg-200 placeholder-fg-muted"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -494,7 +494,7 @@ export default function VoiceChannelIndicator() {
               type="button"
               onClick={cycleConfirmMode}
               className={`px-2 text-[11px] font-mono transition-colors ${
-                confirmMode === 'speak' ? 'text-[#d4a017]' : 'text-rmpg-500 hover:text-rmpg-300'
+                confirmMode === 'speak' ? 'text-[#d4a017]' : 'text-fg-muted hover:text-rmpg-300'
               }`}
               title={confirmMode === 'speak' ? 'Voice ON — tap to mute (text only)' : 'Voice MUTED — tap to enable speech'}
               aria-label={confirmMode === 'speak' ? 'Mute dispatch voice' : 'Enable dispatch voice'}
@@ -505,7 +505,7 @@ export default function VoiceChannelIndicator() {
             <button
               type="button"
               onClick={() => setShowHelp(s => !s)}
-              className="px-1.5 text-[11px] font-mono text-rmpg-500 hover:text-[#d4a017] transition-colors"
+              className="px-1.5 text-[11px] font-mono text-fg-muted hover:text-[#d4a017] transition-colors"
               title="Toggle help"
               aria-label="Toggle help"
             >
@@ -514,7 +514,7 @@ export default function VoiceChannelIndicator() {
             <button
               type="button"
               onClick={() => { setOpen(false); setShowHelp(false); }}
-              className="px-1.5 text-xs text-rmpg-500 hover:text-rmpg-200 transition-colors"
+              className="px-1.5 text-xs text-fg-muted hover:text-rmpg-200 transition-colors"
               title="Close panel (Esc)"
               aria-label="Close voice panel"
             >
@@ -535,7 +535,7 @@ export default function VoiceChannelIndicator() {
             </span>
             {radioBusy
               ? <span className="text-purple-400">RADIO ACTIVE — PAUSED</span>
-              : <span className="text-rmpg-500">HOLD V · TAP V · TYPE</span>}
+              : <span className="text-fg-muted">HOLD V · TAP V · TYPE</span>}
           </div>
         </div>
       )}

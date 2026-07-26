@@ -367,7 +367,7 @@ export default function ProposalsTab() {
                   <div className="text-xs text-rmpg-300">Client: <span className="text-rmpg-100">{selectedProposal.client_name}</span></div>
                 )}
                 {!selectedProposal.lead_name && !selectedProposal.client_name && (
-                  <div className="text-xs text-rmpg-500">Not linked</div>
+                  <div className="text-xs text-fg-muted">Not linked</div>
                 )}
               </div>
 
@@ -378,7 +378,7 @@ export default function ProposalsTab() {
                   <div className="space-y-1.5">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label htmlFor="ff-proposalstab-2" className="text-[10px] text-rmpg-500">Monthly Value</label>
+                        <label htmlFor="ff-proposalstab-2" className="text-[10px] text-fg-muted">Monthly Value</label>
                         <input id="ff-proposalstab-2"
                           type="number"
                           value={editForm.monthly_value || ''}
@@ -387,7 +387,7 @@ export default function ProposalsTab() {
                         />
                       </div>
                       <div>
-                        <label htmlFor="ff-proposalstab-3" className="text-[10px] text-rmpg-500">Total Value</label>
+                        <label htmlFor="ff-proposalstab-3" className="text-[10px] text-fg-muted">Total Value</label>
                         <input id="ff-proposalstab-3"
                           type="number"
                           value={editForm.total_value || ''}
@@ -397,7 +397,7 @@ export default function ProposalsTab() {
                       </div>
                     </div>
                     <div>
-                      <label htmlFor="ff-proposalstab-4" className="text-[10px] text-rmpg-500">Billing Frequency</label>
+                      <label htmlFor="ff-proposalstab-4" className="text-[10px] text-fg-muted">Billing Frequency</label>
                       <select id="ff-proposalstab-4"
                         value={editForm.billing_frequency || 'monthly'}
                         onChange={e => setEditForm(f => ({ ...f, billing_frequency: e.target.value }))}
@@ -413,10 +413,10 @@ export default function ProposalsTab() {
                 ) : (
                   <>
                     <div className="flex items-center gap-1.5 text-xs text-rmpg-300">
-                      <DollarSign className="w-3 h-3 text-rmpg-500" /> Monthly: <span className="font-mono text-green-400">{formatCurrency(selectedProposal.monthly_value)}</span>
+                      <DollarSign className="w-3 h-3 text-fg-muted" /> Monthly: <span className="font-mono text-green-400">{formatCurrency(selectedProposal.monthly_value)}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-rmpg-300">
-                      <DollarSign className="w-3 h-3 text-rmpg-500" /> Total: <span className="font-mono text-green-400">{formatCurrency(selectedProposal.total_value)}</span>
+                      <DollarSign className="w-3 h-3 text-fg-muted" /> Total: <span className="font-mono text-green-400">{formatCurrency(selectedProposal.total_value)}</span>
                     </div>
                     <div className="text-xs text-rmpg-300">Billing: {toDisplayLabel(selectedProposal.billing_frequency || 'monthly')}</div>
                   </>
@@ -430,7 +430,7 @@ export default function ProposalsTab() {
                   <div className="space-y-1.5">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label htmlFor="ff-proposalstab-5" className="text-[10px] text-rmpg-500">Start Date</label>
+                        <label htmlFor="ff-proposalstab-5" className="text-[10px] text-fg-muted">Start Date</label>
                         <input id="ff-proposalstab-5"
                           type="date"
                           value={editForm.proposed_start || ''}
@@ -439,7 +439,7 @@ export default function ProposalsTab() {
                         />
                       </div>
                       <div>
-                        <label htmlFor="ff-proposalstab-6" className="text-[10px] text-rmpg-500">End Date</label>
+                        <label htmlFor="ff-proposalstab-6" className="text-[10px] text-fg-muted">End Date</label>
                         <input id="ff-proposalstab-6"
                           type="date"
                           value={editForm.proposed_end || ''}
@@ -450,7 +450,7 @@ export default function ProposalsTab() {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label htmlFor="ff-proposalstab-7" className="text-[10px] text-rmpg-500">Valid Until</label>
+                        <label htmlFor="ff-proposalstab-7" className="text-[10px] text-fg-muted">Valid Until</label>
                         <input id="ff-proposalstab-7"
                           type="date"
                           value={editForm.valid_until || ''}
@@ -459,7 +459,7 @@ export default function ProposalsTab() {
                         />
                       </div>
                       <div>
-                        <label htmlFor="ff-proposalstab-8" className="text-[10px] text-rmpg-500">Contract Months</label>
+                        <label htmlFor="ff-proposalstab-8" className="text-[10px] text-fg-muted">Contract Months</label>
                         <input id="ff-proposalstab-8"
                           type="number"
                           value={editForm.contract_length_months || ''}
@@ -472,10 +472,10 @@ export default function ProposalsTab() {
                 ) : (
                   <>
                     <div className="flex items-center gap-1.5 text-xs text-rmpg-300">
-                      <Calendar className="w-3 h-3 text-rmpg-500" /> Start: {formatDate(selectedProposal.proposed_start)}
+                      <Calendar className="w-3 h-3 text-fg-muted" /> Start: {formatDate(selectedProposal.proposed_start)}
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-rmpg-300">
-                      <Calendar className="w-3 h-3 text-rmpg-500" /> End: {formatDate(selectedProposal.proposed_end)}
+                      <Calendar className="w-3 h-3 text-fg-muted" /> End: {formatDate(selectedProposal.proposed_end)}
                     </div>
                     <div className="text-xs text-rmpg-300">Valid Until: {formatDate(selectedProposal.valid_until)}</div>
                     {selectedProposal.contract_length_months && (

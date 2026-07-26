@@ -54,7 +54,7 @@ const STATUS_COLORS: Record<string, { bg: string; glow: string; dot: string; lab
   served:      { bg: 'bg-green-500',             glow: 'shadow-[0_0_6px_rgba(34,197,94,0.5)]',   dot: 'bg-green-400',   label: 'SERVED',      badge: 'bg-green-900/50 text-green-300 border-green-700/50' },
   failed:      { bg: 'bg-red-500',               glow: 'shadow-[0_0_6px_rgba(239,68,68,0.5)]',   dot: 'bg-red-400',     label: 'FAILED',      badge: 'bg-red-900/50 text-red-300 border-red-700/50' },
   skipped:     { bg: 'bg-rmpg-500',              glow: 'shadow-[0_0_6px_rgba(107,114,128,0.5)]', dot: 'bg-rmpg-400',    label: 'SKIPPED',     badge: 'bg-rmpg-800/60 text-rmpg-400 border-rmpg-600/50' },
-  archived:    { bg: 'bg-rmpg-600',              glow: 'shadow-[0_0_6px_rgba(75,85,99,0.5)]',    dot: 'bg-rmpg-500',    label: 'ARCHIVED',    badge: 'bg-rmpg-900/60 text-rmpg-500 border-rmpg-700/50' },
+  archived:    { bg: 'bg-rmpg-600',              glow: 'shadow-[0_0_6px_rgba(75,85,99,0.5)]',    dot: 'bg-rmpg-500',    label: 'ARCHIVED',    badge: 'bg-rmpg-900/60 text-fg-muted border-rmpg-700/50' },
 };
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -472,7 +472,7 @@ export default React.memo(function ServeJobCard({
                       return (
                         <span
                           className={`text-[10px] truncate flex-1 min-w-0 ${
-                            isFallback ? 'italic text-rmpg-500' : 'text-rmpg-400'
+                            isFallback ? 'italic text-fg-muted' : 'text-rmpg-400'
                           }`}
                           title={isFallback ? 'No operator notes — showing disposition code' : undefined}
                         >

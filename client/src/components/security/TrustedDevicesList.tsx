@@ -68,7 +68,7 @@ export default function TrustedDevicesList() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <RefreshCw className="w-4 h-4 animate-spin text-rmpg-500" />
+        <RefreshCw className="w-4 h-4 animate-spin text-fg-muted" />
       </div>
     );
   }
@@ -77,7 +77,7 @@ export default function TrustedDevicesList() {
     return (
       <div className="text-center py-6">
         <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
-        <p className="text-[10px] text-rmpg-500">No trusted devices</p>
+        <p className="text-[10px] text-fg-muted">No trusted devices</p>
         <p className="text-[9px] mt-1" style={{ color: 'var(--text-muted)' }}>
           Trust a device during login to skip 2FA for 30 days
         </p>
@@ -104,7 +104,7 @@ export default function TrustedDevicesList() {
               {device.device_name}
             </div>
             <div className="flex items-center gap-3 mt-0.5">
-              <span className="text-[9px] font-mono text-rmpg-500">
+              <span className="text-[9px] font-mono text-fg-muted">
                 {device.ip_address}
               </span>
               <span className="text-[9px]" style={{ color: 'var(--text-muted)' }}>

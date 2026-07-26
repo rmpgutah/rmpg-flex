@@ -750,7 +750,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 })()}
               </select>
               {formData.client_id && (
-                <p className="mt-0.5 text-[9px] text-rmpg-500">Caller name, phone &amp; address auto-filled from this client (edit freely).</p>
+                <p className="mt-0.5 text-[9px] text-fg-muted">Caller name, phone &amp; address auto-filled from this client (edit freely).</p>
               )}
             </div>
           )}
@@ -1041,7 +1041,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="relative" ref={personDropdownRef}>
-              <label htmlFor="ff-newcallmodal-28" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Subject / Name <span className="text-rmpg-500 normal-case">(search records)</span></label>
+              <label htmlFor="ff-newcallmodal-28" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Subject / Name <span className="text-fg-muted normal-case">(search records)</span></label>
               <input id="ff-newcallmodal-28" type="text" className="input-dark" placeholder="Type name to search records..." value={formData.subject_description} onChange={(e) => { update('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
               {showPersonDropdown && personSearchResults.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
@@ -1053,14 +1053,14 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                     }}>
                       <span className="font-semibold text-rmpg-100">{p.last_name}, {p.first_name}</span>
                       {p.dob && <span className="text-rmpg-400 ml-1">DOB: {p.dob}</span>}
-                      {p.address && <span className="text-rmpg-500 ml-1 text-[10px]">— {p.address}</span>}
+                      {p.address && <span className="text-fg-muted ml-1 text-[10px]">— {p.address}</span>}
                     </button>
                   ))}
                 </div>
               )}
             </div>
             <div className="relative" ref={vehicleDropdownRef}>
-              <label htmlFor="ff-newcallmodal-29" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Vehicle <span className="text-rmpg-500 normal-case">(search records)</span></label>
+              <label htmlFor="ff-newcallmodal-29" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Vehicle <span className="text-fg-muted normal-case">(search records)</span></label>
               <input id="ff-newcallmodal-29" type="text" className="input-dark" placeholder="Type plate/make/model to search..." value={formData.vehicle_description} onChange={(e) => { update('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
               {showVehicleDropdown && vehicleSearchResults.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
@@ -1312,7 +1312,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
                 {/* Status Timestamps (optional) */}
                 <div>
-                  <label className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Status Timestamps <span className="text-rmpg-500 normal-case">(optional)</span></label>
+                  <label className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Status Timestamps <span className="text-fg-muted normal-case">(optional)</span></label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                     <div>
                       <label htmlFor="ff-newcallmodal-65" className="block text-[9px] text-rmpg-400 mb-0.5">Dispatched</label>

@@ -181,7 +181,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
 
       {/* Overlay info */}
       {video?.overlay_status === 'complete' && (
-        <p className="text-[10px] text-rmpg-500 italic">
+        <p className="text-[10px] text-fg-muted italic">
           Changing classification, case number, or recorded date will automatically re-burn the video overlay.
         </p>
       )}

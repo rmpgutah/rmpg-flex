@@ -190,7 +190,7 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
 
           {(['plate', 'face', 'person', 'manual'] as RedactionKind[]).map((k) => counts[k] ? (
             <label key={k} className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 inline-block" style={{ background: KIND_COLOR[k] }} /> Blur all {k}s <span className="text-rmpg-500">({counts[k]})</span></span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 inline-block" style={{ background: KIND_COLOR[k] }} /> Blur all {k}s <span className="text-fg-muted">({counts[k]})</span></span>
               <input type="checkbox" checked={regions.some((r) => r.kind === k && r.enabled)} onChange={(e) => toggleKind(k, e.target.checked)} />
             </label>
           ) : null)}
@@ -216,16 +216,16 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
                   <span style={{ color: KIND_COLOR[r.kind] }}>{r.kind} · {r.tStart.toFixed(1)}–{r.tEnd.toFixed(1)}s</span>
                   {r.source === 'deep-scan' && <span className="text-[8px] px-1 py-px border border-purple-500/60 text-purple-300 uppercase tracking-wide shrink-0">Deep</span>}
                 </span>
-                <button onClick={() => removeRegion(r.id)} aria-label="Delete region" className="text-rmpg-500 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+                <button onClick={() => removeRegion(r.id)} aria-label="Delete region" className="text-fg-muted hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             ))}
-            {!regions.length && <div className="text-rmpg-500 italic">No regions yet — run auto-detect or add a box.</div>}
+            {!regions.length && <div className="text-fg-muted italic">No regions yet — run auto-detect or add a box.</div>}
           </div>
 
           <button onClick={exportRedacted} disabled={!!render || !regions.length} className="w-full flex items-center justify-center gap-1.5 px-2 py-2 border border-green-700 text-green-300 bg-green-950/30 hover:bg-green-900/40 disabled:opacity-60">
             {render ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {render.phase === 'encode' ? 'Encoding MP4…' : `Rendering… ${Math.round(render.frac * 100)}%`}</> : <><Download className="w-3.5 h-3.5" /> Export redacted MP4</>}
           </button>
-          {render && <div className="text-[9px] text-rmpg-500">Runs in your browser — keep this tab open. Short clips take a minute or two.</div>}
+          {render && <div className="text-[9px] text-fg-muted">Runs in your browser — keep this tab open. Short clips take a minute or two.</div>}
           {err && <div className="text-[10px] text-red-400">{err}</div>}
         </div>
       </div>

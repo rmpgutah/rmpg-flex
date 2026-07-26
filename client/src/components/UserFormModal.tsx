@@ -571,12 +571,12 @@ export default function UserFormModal({
           <div>
             <label htmlFor="ff-userformmodal-30" className={labelCls}>Certifications</label>
             <input id="ff-userformmodal-30" type="text" value={form.certifications} onChange={e => set('certifications', e.target.value)} placeholder="CPR, First Aid, Guard Card (comma-separated)" className={inputCls} />
-            <p className="text-[9px] text-rmpg-500 mt-1">Enter certifications separated by commas</p>
+            <p className="text-[9px] text-fg-muted mt-1">Enter certifications separated by commas</p>
           </div>
           <div>
             <label className={labelCls}>Notes</label>
             <RichTextArea value={form.notes} onChange={e => set('notes', e.target.value)} rows={4} placeholder="Additional notes..." maxLength={5000} className={`${inputCls} resize-none`} />
-            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
+            <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.notes.length}/5000</div>
           </div>
         </div>
       )}

@@ -328,7 +328,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
             >
               {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ScanSearch className="w-3.5 h-3.5" />}
             </button>
-            <button type="button" onClick={() => setHudVisible(!hudVisible)} className="text-[9px] font-mono text-rmpg-500 hover:text-rmpg-200 px-1.5 py-0.5 transition-colors" title="Toggle HUD overlay">
+            <button type="button" onClick={() => setHudVisible(!hudVisible)} className="text-[9px] font-mono text-fg-muted hover:text-rmpg-200 px-1.5 py-0.5 transition-colors" title="Toggle HUD overlay">
               HUD {hudVisible ? 'ON' : 'OFF'}
             </button>
             <button type="button" onClick={toggleFullscreen} className="toolbar-btn p-1" title="Toggle fullscreen">
@@ -353,7 +353,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
               Your browser does not support the video tag.
             </video>
           ) : (
-            <div className="w-full h-[40vh] flex items-center justify-center text-[11px] text-rmpg-500">
+            <div className="w-full h-[40vh] flex items-center justify-center text-[11px] text-fg-muted">
               AUTHORIZING STREAM…
             </div>
           )}
@@ -421,13 +421,13 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
             <span>RETENTION: <span className="text-rmpg-200 capitalize">{video.retention_status?.replace(/_/g, ' ') || '-'}</span></span>
           </div>
           {video.notes && (
-            <p className="text-[9px] text-rmpg-500 italic mt-1 truncate">{video.notes}</p>
+            <p className="text-[9px] text-fg-muted italic mt-1 truncate">{video.notes}</p>
           )}
         </div>
 
         {video.transcript && (
           <div className="px-3 py-2 bg-surface-deep border-t border-rmpg-800">
-            <p className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wide mb-1">Transcript</p>
+            <p className="text-[9px] font-mono text-fg-muted uppercase tracking-wide mb-1">Transcript</p>
             <p className="text-[10px] text-rmpg-300 leading-relaxed max-h-24 overflow-y-auto scrollbar-dark">{video.transcript}</p>
           </div>
         )}
@@ -436,7 +436,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
         {(analyzing || analyzeError || analysis) && (
           <div className="px-3 py-2 bg-surface-deep border-t border-rmpg-800">
             {analyzing ? (
-              <p className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wide flex items-center gap-1.5">
+              <p className="text-[9px] font-mono text-fg-muted uppercase tracking-wide flex items-center gap-1.5">
                 <Loader2 className="w-2.5 h-2.5 animate-spin" />
                 {analyzeProgress ? `Analyzing — frame ${analyzeProgress.done} of ${analyzeProgress.total}` : 'Analyzing…'}
               </p>
@@ -450,12 +450,12 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
                 )}
                 {analysis && (
                   <>
-                    <p className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wide mb-1">
+                    <p className="text-[9px] font-mono text-fg-muted uppercase tracking-wide mb-1">
                       AI Findings — {analysis.frame_count} frame(s) analyzed
                     </p>
                     {!analysis.weapon && !analysis.force_indicators && analysis.vehicles.length === 0 &&
                       analysis.scene_types.length === 0 && analysis.officer_safety_flags.length === 0 ? (
-                      <p className="text-[10px] text-rmpg-500 italic">No findings.</p>
+                      <p className="text-[10px] text-fg-muted italic">No findings.</p>
                     ) : (
                       <div className="space-y-1">
                         {analysis.weapon && (
@@ -466,7 +466,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
                           >
                             <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
                             Weapon detected — {Math.round(analysis.weapon.max_confidence * 100)}% confidence — review required
-                            <span className="text-rmpg-500">(jump to {formatMmSs(analysis.weapon.timestamps[0])})</span>
+                            <span className="text-fg-muted">(jump to {formatMmSs(analysis.weapon.timestamps[0])})</span>
                           </button>
                         )}
                         {analysis.force_indicators && (
@@ -477,7 +477,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
                           >
                             <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
                             Force indicator detected — {Math.round(analysis.force_indicators.max_confidence * 100)}% confidence — review required
-                            <span className="text-rmpg-500">(jump to {formatMmSs(analysis.force_indicators.timestamps[0])})</span>
+                            <span className="text-fg-muted">(jump to {formatMmSs(analysis.force_indicators.timestamps[0])})</span>
                           </button>
                         )}
                         {analysis.officer_safety_flags.map((flag, i) => (
@@ -489,7 +489,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
                           >
                             <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
                             Officer safety flag: {flag.flag} — review required
-                            <span className="text-rmpg-500">(jump to {formatMmSs(flag.timestamp)})</span>
+                            <span className="text-fg-muted">(jump to {formatMmSs(flag.timestamp)})</span>
                           </button>
                         ))}
                         {analysis.vehicles.map((v, i) => (
@@ -499,9 +499,9 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
                             onClick={() => seekToTime(v.timestamps[0])}
                             className="w-full text-left flex items-center gap-1.5 text-[10px] text-rmpg-300 hover:text-rmpg-100 transition-colors"
                           >
-                            <ScanSearch className="w-2.5 h-2.5 flex-shrink-0 text-rmpg-500" />
+                            <ScanSearch className="w-2.5 h-2.5 flex-shrink-0 text-fg-muted" />
                             Vehicle: {v.description}
-                            <span className="text-rmpg-500">(jump to {formatMmSs(v.timestamps[0])})</span>
+                            <span className="text-fg-muted">(jump to {formatMmSs(v.timestamps[0])})</span>
                           </button>
                         ))}
                         {analysis.scene_types.map((s, i) => (
@@ -511,9 +511,9 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
                             onClick={() => seekToTime(s.timestamps[0])}
                             className="w-full text-left flex items-center gap-1.5 text-[10px] text-rmpg-300 hover:text-rmpg-100 transition-colors"
                           >
-                            <ScanSearch className="w-2.5 h-2.5 flex-shrink-0 text-rmpg-500" />
+                            <ScanSearch className="w-2.5 h-2.5 flex-shrink-0 text-fg-muted" />
                             Scene: {s.type}
-                            <span className="text-rmpg-500">(jump to {formatMmSs(s.timestamps[0])})</span>
+                            <span className="text-fg-muted">(jump to {formatMmSs(s.timestamps[0])})</span>
                           </button>
                         ))}
                       </div>

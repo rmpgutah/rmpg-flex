@@ -68,7 +68,7 @@ export default function ServeAuditLogModal({ jobId, onClose }: ServeAuditLogModa
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   {e.user_name && <span className="text-[9px] text-rmpg-400">{e.user_name}</span>}
-                  <span className="text-[9px] text-rmpg-500">{e.entity_type}{e.entity_id != null ? ` #${e.entity_id}` : ''}</span>
+                  <span className="text-[9px] text-fg-muted">{e.entity_type}{e.entity_id != null ? ` #${e.entity_id}` : ''}</span>
                 </div>
                 {e.details && (
                   <pre className="text-[9px] text-rmpg-400 mt-1 whitespace-pre-wrap font-mono leading-tight">

@@ -175,7 +175,7 @@ export default function PersonPicker({
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
-        <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" />
+        <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-fg-muted pointer-events-none" />
         <input
           id={id}
           ref={inputRef}
@@ -200,7 +200,7 @@ export default function PersonPicker({
           <button
             type="button"
             onClick={clear}
-            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-rmpg-500 hover:text-rmpg-100"
+            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-rmpg-100"
             aria-label="Clear selection"
           >
             <X className="w-3 h-3" />

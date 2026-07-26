@@ -267,7 +267,7 @@ export default function CompetitorMonitorPanel() {
           <span className="text-xs text-rmpg-400 font-mono">
             Firecrawl {!statusChecked ? 'checking...' : firecrawlConnected ? 'connected' : 'disconnected'}
           </span>
-          <span className="text-[10px] text-rmpg-500 font-mono ml-auto">
+          <span className="text-[10px] text-fg-muted font-mono ml-auto">
             {monitors.length} monitor{monitors.length !== 1 ? 's' : ''}
           </span>
         </div>
@@ -332,9 +332,9 @@ export default function CompetitorMonitorPanel() {
         </div>
       ) : monitors.length === 0 ? (
         <div className="panel-beveled bg-surface-base p-6 text-center">
-          <Eye className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+          <Eye className="w-8 h-8 text-fg-muted mx-auto mb-2" />
           <p className="text-sm text-rmpg-400">No competitor URLs being monitored.</p>
-          <p className="text-xs text-rmpg-500 mt-1">Add a URL above to start tracking changes.</p>
+          <p className="text-xs text-fg-muted mt-1">Add a URL above to start tracking changes.</p>
         </div>
       ) : (
         <div className="space-y-1">
@@ -357,7 +357,7 @@ export default function CompetitorMonitorPanel() {
                   <span className="text-xs font-medium text-rmpg-100 truncate min-w-0 flex-shrink">{m.label}</span>
 
                   {/* URL */}
-                  <span className="text-[10px] font-mono text-rmpg-500 truncate hidden sm:inline" title={m.url}>
+                  <span className="text-[10px] font-mono text-fg-muted truncate hidden sm:inline" title={m.url}>
                     {truncateUrl(m.url)}
                   </span>
 
@@ -367,7 +367,7 @@ export default function CompetitorMonitorPanel() {
                   </span>
 
                   {/* Last checked */}
-                  <span className="text-[9px] font-mono text-rmpg-500 shrink-0 flex items-center gap-0.5">
+                  <span className="text-[9px] font-mono text-fg-muted shrink-0 flex items-center gap-0.5">
                     <Clock className="w-2.5 h-2.5" />
                     {relativeTime(m.last_checked)}
                   </span>
@@ -408,7 +408,7 @@ export default function CompetitorMonitorPanel() {
                   </div>
 
                   {/* Expand chevron */}
-                  {isExpanded ? <ChevronUp className="w-3 h-3 text-rmpg-500 shrink-0" /> : <ChevronDown className="w-3 h-3 text-rmpg-500 shrink-0" />}
+                  {isExpanded ? <ChevronUp className="w-3 h-3 text-fg-muted shrink-0" /> : <ChevronDown className="w-3 h-3 text-fg-muted shrink-0" />}
                 </div>
 
                 {/* Expanded: change history */}
@@ -420,7 +420,7 @@ export default function CompetitorMonitorPanel() {
                         <span className="text-xs text-rmpg-400">Loading changes...</span>
                       </div>
                     ) : changes.length === 0 ? (
-                      <p className="text-xs text-rmpg-500 text-center py-2">No changes detected yet.</p>
+                      <p className="text-xs text-fg-muted text-center py-2">No changes detected yet.</p>
                     ) : (
                       <div className="space-y-2">
                         <h4 className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider">Change History</h4>
@@ -436,7 +436,7 @@ export default function CompetitorMonitorPanel() {
                                   <span className={`text-[9px] font-mono px-1.5 py-0.5 border rounded-sm ${significanceStyle(c.significance)}`}>
                                     {c.significance}
                                   </span>
-                                  <span className="text-[9px] font-mono text-rmpg-500">
+                                  <span className="text-[9px] font-mono text-fg-muted">
                                     {relativeTime(c.created_at)}
                                   </span>
                                 </div>

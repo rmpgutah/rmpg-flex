@@ -1145,7 +1145,7 @@ export default function Layout() {
               {/* 6: WS + Users with tabular-nums for stable count display */}
               <div className="flex items-center gap-1 px-1.5 py-0.5 panel-inset bg-surface-sunken" title={`${isConnected ? 'Connected' : 'Disconnected'} - ${presence.count} users online`}>
                 <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
-                <Users style={{ width: 9, height: 9 }} className="text-rmpg-500" />
+                <Users style={{ width: 9, height: 9 }} className="text-fg-muted" />
                 <span className="text-[9px] font-mono font-bold text-rmpg-300 tabular-nums">{presence.count}</span>
               </div>
 
@@ -1279,7 +1279,7 @@ export default function Layout() {
                     <div className="text-xs font-bold text-rmpg-100">
                       {user?.first_name} {user?.last_name}
                     </div>
-                    <div className="text-[9px] font-mono text-rmpg-500 mt-0.5">
+                    <div className="text-[9px] font-mono text-fg-muted mt-0.5">
                       {user?.email}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
@@ -1374,7 +1374,7 @@ export default function Layout() {
         {/* 19: Operator info with distinct badge highlight */}
         <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 flex-shrink-0 whitespace-nowrap ml-4">
           <span>
-            OPR: <span className="text-rmpg-300">{user?.badge_number ? `#${user.badge_number}` : '---'}</span> {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} <span className="text-rmpg-500">|</span> <span className="text-brand-400">{toDisplayLabel(user?.role || '---').toUpperCase()}</span>
+            OPR: <span className="text-rmpg-300">{user?.badge_number ? `#${user.badge_number}` : '---'}</span> {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} <span className="text-fg-muted">|</span> <span className="text-brand-400">{toDisplayLabel(user?.role || '---').toUpperCase()}</span>
           </span>
         </div>
       </div>
@@ -1750,7 +1750,7 @@ export default function Layout() {
           <div className="bg-surface-base border border-border-default rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default bg-surface-overlay">
               <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
-              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-rmpg-100 transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-fg-muted hover:text-rmpg-100 transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto scrollbar-dark">
               <div className="space-y-1.5">

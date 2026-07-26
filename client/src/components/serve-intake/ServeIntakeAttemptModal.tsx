@@ -176,7 +176,7 @@ export default function ServeIntakeAttemptModal({
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border-default sticky top-0 bg-surface-base">
           <div>
-            <div className="text-[10px] uppercase tracking-wider text-rmpg-500 font-bold">Log Service Attempt</div>
+            <div className="text-[10px] uppercase tracking-wider text-fg-muted font-bold">Log Service Attempt</div>
             <div className="text-sm text-rmpg-100 font-bold truncate">{recipientName}</div>
             <div className="text-[10px] text-rmpg-400 truncate">
               {recipientAddress}
@@ -282,7 +282,7 @@ export default function ServeIntakeAttemptModal({
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
                 placeholder="Description, recipient demographics, witness, etc."
-                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:outline-none focus:border-brand-500"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100 placeholder:text-fg-muted focus:outline-none focus:border-brand-500"
               />
             </div>
 
@@ -319,7 +319,7 @@ export default function ServeIntakeAttemptModal({
               <button
                 onClick={handleSubmit}
                 disabled={!result || submitting}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-rmpg-800 disabled:text-rmpg-600 text-rmpg-100 font-bold text-xs uppercase rounded-sm transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-rmpg-800 disabled:text-fg-muted text-rmpg-100 font-bold text-xs uppercase rounded-sm transition-colors"
               >
                 {submitting ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>

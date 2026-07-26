@@ -133,7 +133,7 @@ export const KeyboardShortcuts: React.FC = () => {
                       <div className="flex items-center gap-1">
                         {shortcut.keys.map((key, ki) => (
                           <React.Fragment key={ki}>
-                            {ki > 0 && <span className="text-rmpg-500 text-xs">+</span>}
+                            {ki > 0 && <span className="text-fg-muted text-xs">+</span>}
                             <kbd
                               className="px-2 py-0.5 text-xs font-mono font-bold bg-surface-sunken text-rmpg-200 border border-rmpg-600"
                               style={{ minWidth: '24px', textAlign: 'center' }}

@@ -143,7 +143,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
 
         {/* Footer */}
         {data && data.packages.length > 0 && (
-          <div className="px-3 py-1.5 border-t border-border-default text-[9px] text-rmpg-500">
+          <div className="px-3 py-1.5 border-t border-border-default text-[9px] text-fg-muted">
             {data.packages.length} package{data.packages.length !== 1 ? 's' : ''} on file · newest first
           </div>
         )}

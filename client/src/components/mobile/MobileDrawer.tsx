@@ -458,7 +458,7 @@ export default function MobileDrawer({
             <div className="flex items-center gap-1.5">
               <Users
                 style={{ width: 14, height: 14 }}
-                className="text-rmpg-500"
+                className="text-fg-muted"
               />
               <span className="text-xs font-mono font-bold text-rmpg-300">
                 {onlineCount}

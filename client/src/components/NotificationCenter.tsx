@@ -444,7 +444,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
               >
                 <Bell className="w-6 h-6 mb-2 opacity-30" aria-hidden="true" />
                 <span style={{ fontSize: '10px' }}>No notifications</span>
-                <span className="text-rmpg-500" style={{ fontSize: '9px', marginTop: '2px' }}>You're all caught up</span>
+                <span className="text-fg-muted" style={{ fontSize: '9px', marginTop: '2px' }}>You're all caught up</span>
               </div>
             )}
 
@@ -517,7 +517,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                         {formatTimestamp(notification.created_at)}
                       </span>
                       <span
-                        className="text-rmpg-500 uppercase"
+                        className="text-fg-muted uppercase"
                         style={{ fontSize: '8px', fontWeight: 700, letterSpacing: '0.5px' }}
                       >
                         {toDisplayLabel(notification.type)}

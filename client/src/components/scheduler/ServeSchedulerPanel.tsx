@@ -187,7 +187,7 @@ export default function ServeSchedulerPanel() {
             <p className="text-[11px] text-rmpg-400">
               No scheduled attempt windows found for this period.
             </p>
-            <p className="text-[10px] text-rmpg-500">
+            <p className="text-[10px] text-fg-muted">
               Jobs added manually or synced from ServeManager need their schedules generated.
             </p>
             <button

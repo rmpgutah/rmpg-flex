@@ -655,7 +655,7 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //
   // placeholder-rmpg-300|400 is 0 today; the pattern includes it so a future one
   // trips the guard rather than slipping in.
-  const PIN = 10909;
+  const PIN = 10550;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

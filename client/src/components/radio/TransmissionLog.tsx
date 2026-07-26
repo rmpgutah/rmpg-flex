@@ -141,7 +141,7 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
         style={{ maxHeight: 140 }}
       >
         {entries.length === 0 ? (
-          <div className="text-[9px] text-rmpg-500 italic py-1">No transmissions</div>
+          <div className="text-[9px] text-fg-muted italic py-1">No transmissions</div>
         ) : (
           entries.map((entry) => (
             <div
@@ -150,7 +150,7 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
               style={{ fontFamily: 'monospace' }}
               onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}
             >
-              <span className="text-[10px] text-rmpg-500 tabular-nums shrink-0 whitespace-nowrap">
+              <span className="text-[10px] text-fg-muted tabular-nums shrink-0 whitespace-nowrap">
                 {entry.time}
               </span>
               <span

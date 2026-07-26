@@ -247,7 +247,7 @@ export default function ReportsTab() {
                 <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: STAGE_COLORS[ps.stage] }} />
                 <div>
                   <div className="text-[10px] text-rmpg-400">{toDisplayLabel(ps.stage)}</div>
-                  <div className="text-xs text-rmpg-100 font-mono">{ps.count} <span className="text-rmpg-500">({formatCurrency(ps.total_value)})</span></div>
+                  <div className="text-xs text-rmpg-100 font-mono">{ps.count} <span className="text-fg-muted">({formatCurrency(ps.total_value)})</span></div>
                 </div>
               </div>
             ))}

@@ -45,7 +45,7 @@ export default function PersonnelRoster({
               <div key={i} className="flex items-center gap-2 py-1 border-b border-rmpg-800/50 last:border-0">
                 <span className={`led-dot ${STATUS_DOT[entry.status] || 'led-off'}`} />
                 <span className="text-[11px] text-rmpg-200 font-medium truncate flex-1">{entry.name}</span>
-                {entry.badge && <span className="text-[9px] text-rmpg-500 font-mono">#{entry.badge}</span>}
+                {entry.badge && <span className="text-[9px] text-fg-muted font-mono">#{entry.badge}</span>}
               </div>
             ))}
             {onDuty.length > 12 && (

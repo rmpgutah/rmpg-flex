@@ -20,14 +20,14 @@ export default function Breadcrumbs({ items, className = '' }: BreadcrumbsProps)
     <nav className={`flex items-center gap-1 text-[10px] ${className}`} aria-label="Breadcrumb">
       <Link
         to="/"
-        className="text-rmpg-500 hover:text-brand-400 transition-colors"
+        className="text-fg-muted hover:text-brand-400 transition-colors"
         title="Home"
       >
         <Home className="w-3 h-3" />
       </Link>
       {items.map((item, i) => (
         <React.Fragment key={i}>
-          <ChevronRight className="w-2.5 h-2.5 text-rmpg-600 flex-shrink-0" />
+          <ChevronRight className="w-2.5 h-2.5 text-fg-muted flex-shrink-0" />
           {item.path && i < items.length - 1 ? (
             <Link
               to={item.path}

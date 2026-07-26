@@ -86,7 +86,7 @@ export default function SupplementFormModal({
     >
       <div className="space-y-3">
         <div>
-          <label htmlFor="ff-supplementformmodal-0" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Report Type</label>
+          <label htmlFor="ff-supplementformmodal-0" className="text-[9px] text-fg-muted uppercase font-semibold block mb-1">Report Type</label>
           <select id="ff-supplementformmodal-0"
             className="select-dark w-full text-[11px]"
             value={form.report_type}
@@ -98,7 +98,7 @@ export default function SupplementFormModal({
           </select>
         </div>
         <div>
-          <label htmlFor="ff-supplementformmodal-1" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Subject *</label>
+          <label htmlFor="ff-supplementformmodal-1" className="text-[9px] text-fg-muted uppercase font-semibold block mb-1">Subject *</label>
           <input id="ff-supplementformmodal-1"
             className="input-dark w-full text-[11px]"
             value={form.subject}
@@ -110,7 +110,7 @@ export default function SupplementFormModal({
           />
         </div>
         <div>
-          <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Narrative *</label>
+          <label className="text-[9px] text-fg-muted uppercase font-semibold block mb-1">Narrative *</label>
           <RichTextArea
             className="textarea-dark w-full text-[11px]"
             rows={10}
@@ -120,7 +120,7 @@ export default function SupplementFormModal({
             required
             maxLength={10000}
           />
-          <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.narrative.length}/10000</div>
+          <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.narrative.length}/10000</div>
         </div>
       </div>
     </FormModal>
