@@ -613,7 +613,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
             AI TRACK
             {aiOn && detStatus === 'loading' && <Loader2 className="w-3 h-3 animate-spin" />}
             {aiOn && detStatus === 'ready' && <span className="text-[8px] tabular-nums">· {tracks.length} tracked</span>}
-            {aiOn && detStatus === 'unavailable' && <span className="text-[8px] text-rmpg-500">(telemetry)</span>}
+            {aiOn && detStatus === 'unavailable' && <span className="text-[8px] text-fg-muted">(telemetry)</span>}
           </button>
           <button onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100 p-1" aria-label="Close player"><X className="w-5 h-5" /></button>
         </div>
@@ -721,7 +721,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
             ) : media.still_url ? (
               <img src={authedImageUrl(media.still_url)} alt="Dashcam still" className="max-h-full max-w-full object-contain" />
             ) : (
-              <div className="text-rmpg-500 text-sm">No video or still available for this event.</div>
+              <div className="text-fg-muted text-sm">No video or still available for this event.</div>
             )}
 
             {/* Live Plate Magnifier — crops the target's plate region and runs the
@@ -829,7 +829,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                 <span className="flex items-center gap-0.5">
                   {(['svg', 'map'] as const).map((v) => (
                     <button key={v} onClick={() => setTrackView(v)}
-                      className={`text-[8px] px-1.5 py-0.5 border ${trackView === v ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-rmpg-500'}`}>
+                      className={`text-[8px] px-1.5 py-0.5 border ${trackView === v ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-fg-muted'}`}>
                       {v === 'svg' ? 'SCHEMATIC' : 'MAP'}
                     </button>
                   ))}
@@ -851,9 +851,9 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                   {dot && <circle cx={dot.x} cy={dot.y} r={2.4} fill="#fff" stroke={GOLD} strokeWidth={1} vectorEffect="non-scaling-stroke" />}
                 </svg>
               ) : (
-                <div className="text-[11px] text-rmpg-500 italic py-4 text-center">No GPS track for this clip.</div>
+                <div className="text-[11px] text-fg-muted italic py-4 text-center">No GPS track for this clip.</div>
               )}
-              <div className="flex items-center justify-between mt-1.5 text-[8px] text-rmpg-500">
+              <div className="flex items-center justify-between mt-1.5 text-[8px] text-fg-muted">
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Start</span>
                 <span>slow→fast</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />End</span>
@@ -948,7 +948,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                     <span className="text-rmpg-400"> — {prior.count} prior sighting{prior.count === 1 ? '' : 's'}{prior.distinct_days ? ` over ${prior.distinct_days} day${prior.distinct_days === 1 ? '' : 's'}` : ''}</span>
                   </div>
                   {prior.sightings.slice(0, 4).map((s) => (
-                    <button key={s.id} onClick={() => setDossier(media.plate)} className="w-full text-left text-[10px] text-rmpg-500 flex justify-between gap-2 mt-0.5 hover:text-rmpg-300">
+                    <button key={s.id} onClick={() => setDossier(media.plate)} className="w-full text-left text-[10px] text-fg-muted flex justify-between gap-2 mt-0.5 hover:text-rmpg-300">
                       <span className="truncate">{s.location || s.source}</span>
                       <span className="shrink-0 font-mono">{String(s.created_at || '').slice(5, 16)}</span>
                     </button>
@@ -956,7 +956,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                 </div>
               )}
 
-              <div className="mt-3 text-[9px] text-rmpg-600">
+              <div className="mt-3 text-[9px] text-fg-muted">
                 On-demand stream — clip is fetched only on play, never archived. Telemetry: ClearPath 1&nbsp;Hz GPS.
               </div>
             </div>
@@ -967,7 +967,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
       {rescan.result && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/90 border border-[#d4a017] text-[#d4a017] text-[11px] font-mono tracking-wider flex items-center gap-2">
           <ScanSearch className="w-3.5 h-3.5" /> PLATE RE-SCAN — {rescan.result}
-          <button onClick={() => setRescan({ busy: false, result: null })} className="text-rmpg-500 hover:text-rmpg-100 ml-1" aria-label="Dismiss">×</button>
+          <button onClick={() => setRescan({ busy: false, result: null })} className="text-fg-muted hover:text-rmpg-100 ml-1" aria-label="Dismiss">×</button>
         </div>
       )}
       {dossier && <PlateDossier plate={dossier} onClose={() => setDossier(null)} />}
@@ -986,7 +986,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
 function Stat({ icon: Icon, label, value, tone = 'normal' }: { icon: any; label: string; value: string; tone?: 'normal' | 'warn' }) {
   return (
     <div className={`border px-2 py-1.5 ${tone === 'warn' ? 'border-amber-800/50 bg-amber-950/20' : 'border-[#222] bg-surface-sunken'}`}>
-      <div className="flex items-center gap-1 text-[8px] uppercase tracking-wider text-rmpg-500"><Icon className="w-2.5 h-2.5" />{label}</div>
+      <div className="flex items-center gap-1 text-[8px] uppercase tracking-wider text-fg-muted"><Icon className="w-2.5 h-2.5" />{label}</div>
       <div className={`font-mono mt-0.5 ${tone === 'warn' ? 'text-amber-300' : 'text-rmpg-100'}`}>{value}</div>
     </div>
   );

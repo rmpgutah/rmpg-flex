@@ -303,7 +303,7 @@ export default function DocumentViewer({
       </div>
 
       {/* Status bar */}
-      <div className="flex items-center justify-between px-4 py-1 bg-surface-base border-t border-rmpg-600 text-[9px] text-rmpg-500 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-1 bg-surface-base border-t border-rmpg-600 text-[9px] text-fg-muted flex-shrink-0">
         <span>Press Esc to close</span>
         <span>
           {detectedType === 'image'

@@ -46,9 +46,9 @@ export default function EmailedDocuments({ recordType, recordId, title = 'Emaile
         {title}{items.length ? ` (${items.length})` : ''}
       </div>
       {loading ? (
-        <div className="px-3 py-2 text-rmpg-500 text-[11px]">Loading…</div>
+        <div className="px-3 py-2 text-fg-muted text-[11px]">Loading…</div>
       ) : items.length === 0 ? (
-        <div className="px-3 py-2 text-rmpg-500 text-[11px] italic">No documents emailed from this record yet.</div>
+        <div className="px-3 py-2 text-fg-muted text-[11px] italic">No documents emailed from this record yet.</div>
       ) : (
         <div className="overflow-x-auto"><table className="w-full text-[11px]">
           <thead>

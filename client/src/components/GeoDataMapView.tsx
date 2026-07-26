@@ -211,7 +211,7 @@ export default function GeoDataMapView({
       <div ref={containerRef} role="application" aria-label="Geo data layer map" style={{ width: '100%', height: '100%' }} />
       {!loaded && (
         <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center bg-surface-sunken">
-          <RefreshCw className="w-3.5 h-3.5 text-rmpg-600 animate-spin" />
+          <RefreshCw className="w-3.5 h-3.5 text-fg-muted animate-spin" />
         </div>
       )}
     </div>

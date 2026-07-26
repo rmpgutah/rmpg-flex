@@ -392,7 +392,7 @@ export default function FileAttachments({
                   />
                   {/* Fallback icon (hidden by default) */}
                   <div className="w-full h-28 items-center justify-center bg-rmpg-800" style={{ display: 'none' }}>
-                    <Image className="w-8 h-8 text-rmpg-500" />
+                    <Image className="w-8 h-8 text-fg-muted" />
                   </div>
                   {/* Overlay */}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
@@ -476,7 +476,7 @@ export default function FileAttachments({
       ) : (
         /* 55: Empty state with icon and larger padding; 56: File icon for empty state */
         !readOnly && (
-          <div className="flex flex-col items-center gap-1 py-3 text-rmpg-500">
+          <div className="flex flex-col items-center gap-1 py-3 text-fg-muted">
             <Paperclip className="w-4 h-4 opacity-40" aria-hidden="true" />
             <p className="text-[10px]">No files attached</p>
           </div>

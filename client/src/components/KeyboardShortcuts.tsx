@@ -153,7 +153,7 @@ export const KeyboardShortcuts: React.FC = () => {
 
         {/* Footer */}
         <div className="px-4 py-2 border-t border-rmpg-600 text-center">
-          <span className="text-micro text-rmpg-500">
+          <span className="text-micro text-fg-muted">
             Press <kbd className="px-1 py-0.5 text-micro font-mono bg-surface-sunken text-rmpg-300 border border-rmpg-600">?</kbd> to toggle this panel
           </span>
         </div>

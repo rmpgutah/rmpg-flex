@@ -1112,7 +1112,7 @@ export default function Layout() {
                 className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-all duration-150 bg-surface-sunken hover:bg-rmpg-800 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
                 aria-label={`Active calls: ${activeCallCount}. Click to open dispatch.`}
               >
-                <Phone style={{ width: 9, height: 9 }} className={activeCallCount > 0 ? 'text-red-500' : 'text-rmpg-500'} />
+                <Phone style={{ width: 9, height: 9 }} className={activeCallCount > 0 ? 'text-red-500' : 'text-fg-muted'} />
                 <span className="text-[9px] font-mono font-bold text-rmpg-400">CALLS:</span>
                 <span className={`text-[9px] font-mono font-bold tabular-nums ${activeCallCount > 0 ? 'text-red-400' : 'text-rmpg-100'}`}>{activeCallCount}</span>
               </button>

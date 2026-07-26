@@ -151,7 +151,7 @@ export default class ErrorBoundary extends Component<Props, State> {
                   )}
                   {error?.stack && (
                     <div>
-                      <div className="text-[9px] text-rmpg-500 font-bold uppercase tracking-wider mb-1">Stack Trace</div>
+                      <div className="text-[9px] text-fg-muted font-bold uppercase tracking-wider mb-1">Stack Trace</div>
                       <pre className="p-3 bg-black/40 border border-rmpg-700 text-[10px] text-rmpg-400 font-mono overflow-auto max-h-[150px] whitespace-pre-wrap">
                         {error.stack}
                       </pre>

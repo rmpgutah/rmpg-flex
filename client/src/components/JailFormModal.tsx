@@ -202,7 +202,7 @@ export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting,
       {activeSection === 'notes' && (
         <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
           <textarea name="notes" rows={6} className="input-dark mt-1" value={form.notes} onChange={handleChange} maxLength={5000} />
-          <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
+          <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.notes.length}/5000</div>
         </div>
       )}
     </FormModal>

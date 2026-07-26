@@ -596,7 +596,7 @@ export default function IncidentFormModal({
                 if (suggestions.length === 0) return null;
                 return (
                   <div className="mt-1 flex flex-wrap gap-1">
-                    <span className="text-[8px] text-rmpg-500">Suggested:</span>
+                    <span className="text-[8px] text-fg-muted">Suggested:</span>
                     {suggestions.slice(0, 3).map(s => (
                       <button
                         key={s.type}
@@ -1452,7 +1452,7 @@ export default function IncidentFormModal({
                 />
               </div>
             </div>
-            <p className="text-[10px] text-rmpg-500">
+            <p className="text-[10px] text-fg-muted">
               Guided detail entries are appended to the saved narrative automatically and loaded back into these fields when you reopen the report.
             </p>
           </div>
@@ -1480,7 +1480,7 @@ export default function IncidentFormModal({
             onChange={(e) => update('narrative', e.target.value)}
             spellCheck={true}
           />
-          <p className="text-[10px] text-rmpg-500 mt-1">
+          <p className="text-[10px] text-fg-muted mt-1">
             {/* Feature 39: Word count display */}
             {compiledNarrative.length} characters | {compiledNarrative.split(/\s+/).filter(Boolean).length} words after guided details
             {compiledNarrative.split(/\s+/).filter(Boolean).length >= 100 && (
