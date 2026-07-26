@@ -30,11 +30,11 @@ interface CommandCenterData {
 
 // CSS-variable-backed color tokens for unit status dots — avoids hardcoded hex
 const UNIT_STATUS_TOK: Record<string, { dot: string; label: string }> = {
-  available:      { dot: 'rgb(var(--green-500-rgb))',  label: 'text-green-400' },
-  dispatched:     { dot: 'rgb(var(--amber-500-rgb))',  label: 'text-amber-400' },
+  available:      { dot: 'rgb(var(--sev-ok-rgb))',  label: 'text-green-400' },
+  dispatched:     { dot: 'rgb(var(--sev-warn-rgb))',  label: 'text-amber-400' },
   enroute:        { dot: 'rgb(var(--rmpg-400-rgb))',   label: 'text-rmpg-400' },
-  onscene:        { dot: 'rgb(var(--purple-500-rgb))', label: 'text-purple-400' },
-  busy:           { dot: 'rgb(var(--red-500-rgb))',    label: 'text-red-400' },
+  onscene:        { dot: 'rgb(var(--sev-special-rgb))', label: 'text-purple-400' },
+  busy:           { dot: 'rgb(var(--sev-critical-rgb))',    label: 'text-red-400' },
   off_duty:       { dot: 'rgb(var(--rmpg-600-rgb))',   label: 'text-rmpg-600' },
   out_of_service: { dot: 'rgb(var(--rmpg-600-rgb))',   label: 'text-rmpg-600' },
 };
@@ -179,8 +179,8 @@ export default function CommandCenterPage() {
                 value: data.kpis.active_calls,
                 icon: Phone,
                 color: data.kpis.active_calls > 5
-                  ? 'rgb(var(--red-500-rgb))'
-                  : 'rgb(var(--green-500-rgb))',
+                  ? 'rgb(var(--sev-critical-rgb))'
+                  : 'rgb(var(--sev-ok-rgb))',
               },
               {
                 label: 'CALLS TODAY',
@@ -193,23 +193,23 @@ export default function CommandCenterPage() {
                 value: `${data.kpis.avg_response_min}m`,
                 icon: Clock,
                 color: data.kpis.avg_response_min > 8
-                  ? 'rgb(var(--orange-500-rgb))'
-                  : 'rgb(var(--green-500-rgb))',
+                  ? 'rgb(var(--sev-high-rgb))'
+                  : 'rgb(var(--sev-ok-rgb))',
               },
               {
                 label: 'UNITS AVAIL',
                 value: `${data.kpis.units_available}/${data.kpis.units_total}`,
                 icon: Users,
                 color: data.kpis.units_available < 2
-                  ? 'rgb(var(--red-500-rgb))'
-                  : 'rgb(var(--green-500-rgb))',
+                  ? 'rgb(var(--sev-critical-rgb))'
+                  : 'rgb(var(--sev-ok-rgb))',
               },
               {
                 label: 'BOLOS',
                 value: data.kpis.active_bolos,
                 icon: ShieldAlert,
                 color: data.kpis.active_bolos > 0
-                  ? 'rgb(var(--amber-500-rgb))'
+                  ? 'rgb(var(--sev-warn-rgb))'
                   : 'rgb(var(--rmpg-600-rgb))',
               },
             ].map((kpi) => (
@@ -242,9 +242,9 @@ export default function CommandCenterPage() {
                           key={index}
                           fill={
                             entry.count > 5
-                              ? 'rgb(var(--red-500-rgb))'
+                              ? 'rgb(var(--sev-critical-rgb))'
                               : entry.count > 3
-                              ? 'rgb(var(--amber-500-rgb))'
+                              ? 'rgb(var(--sev-warn-rgb))'
                               : 'rgb(var(--rmpg-400-rgb))'
                           }
                         />
@@ -284,8 +284,8 @@ export default function CommandCenterPage() {
               ) : (
                 (data.active_calls ?? []).map((call: any) => {
                   const priorityDot =
-                    call.priority === 'P1' ? 'rgb(var(--red-500-rgb))'
-                    : call.priority === 'P2' ? 'rgb(var(--amber-500-rgb))'
+                    call.priority === 'P1' ? 'rgb(var(--sev-critical-rgb))'
+                    : call.priority === 'P2' ? 'rgb(var(--sev-warn-rgb))'
                     : call.priority === 'P3' ? 'rgb(var(--rmpg-400-rgb))'
                     : 'rgb(var(--rmpg-600-rgb))';
                   return (
@@ -295,7 +295,7 @@ export default function CommandCenterPage() {
                       style={{
                         borderLeft: `3px solid ${priorityDot}`,
                         background: call.priority === 'P1'
-                          ? 'rgba(var(--red-500-rgb), 0.06)'
+                          ? 'rgba(var(--sev-critical-rgb), 0.06)'
                           : 'var(--surface-base)',
                       }}
                     >
@@ -309,11 +309,11 @@ export default function CommandCenterPage() {
                               className="text-[8px] font-bold font-mono px-1"
                               style={{
                                 color: call.risk_score >= 80
-                                  ? 'rgb(var(--red-500-rgb))'
-                                  : 'rgb(var(--orange-500-rgb))',
+                                  ? 'rgb(var(--sev-critical-rgb))'
+                                  : 'rgb(var(--sev-high-rgb))',
                                 background: call.risk_score >= 80
-                                  ? 'rgba(var(--red-500-rgb), 0.15)'
-                                  : 'rgba(var(--orange-500-rgb), 0.15)',
+                                  ? 'rgba(var(--sev-critical-rgb), 0.15)'
+                                  : 'rgba(var(--sev-high-rgb), 0.15)',
                               }}
                             >
                               R:{call.risk_score}

@@ -22,7 +22,7 @@ const EMPTY_FORM: BillingFormData = {
 
 export default function BillingFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError }: BillingFormModalProps) {
   const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<BillingFormData>({
-    storageKey: 'rmpg_invoice_form', defaultValue: EMPTY_FORM, isActive: isOpen,
+    storageKey: `rmpg_invoice_form_${editingRecord?.id ?? 'new'}`, defaultValue: EMPTY_FORM, isActive: isOpen,
   });
 
   useEffect(() => {

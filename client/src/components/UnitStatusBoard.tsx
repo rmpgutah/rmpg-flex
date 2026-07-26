@@ -57,7 +57,7 @@ function statusDwell(unit: Unit): { mins: number; color: string } | null {
 // neutral gray; no active trip → nothing. Format: "▶ RESPONSE 24-0613 · 2.1 mi · 4m".
 function TripBadge({ trip }: { trip: Trip }) {
   const isResponse = trip.trip_type === 'call_response';
-  const color = isResponse ? 'var(--brand-gold)' : 'var(--rmpg-500)';
+  const color = isResponse ? 'var(--brand-gold)' : 'var(--text-muted)';
   const miles = tripMiles(trip);
   const mins = tripDurationMin(trip);
   const parts: string[] = [tripLabel(trip)];
@@ -204,7 +204,7 @@ export default React.memo(function UnitStatusBoard({
               <div className="text-xs font-bold text-rmpg-100 font-mono truncate">{unit.call_sign}</div>
               {isOnFoot(unit) && <OnFootBadge since={unit.on_foot_since} onClick={() => setFootUnit(unit)} />}
               {/* 34: Italic unassigned label in compact mode */}
-              <div className={`text-[10px] truncate ${unit.officer_name ? 'text-rmpg-300' : 'text-rmpg-500 italic'}`}>{unit.officer_name || 'Unassigned'}</div>
+              <div className={`text-[10px] truncate ${unit.officer_name ? 'text-rmpg-300' : 'text-fg-muted italic'}`}>{unit.officer_name || 'Unassigned'}</div>
             </div>
           </div>
         ))}
@@ -267,7 +267,7 @@ export default React.memo(function UnitStatusBoard({
                 </div>
               </td>
               {/* 29: Italic styling on unassigned officer for distinction */}
-              <td className="text-rmpg-200">{unit.officer_name || <span className="text-rmpg-500 italic">Unassigned</span>}</td>
+              <td className="text-rmpg-200">{unit.officer_name || <span className="text-fg-muted italic">Unassigned</span>}</td>
               <td>
                 <div className="flex items-center gap-1.5">
                   <StatusBadge status={unit.status} type="unit_status" size="sm" />
@@ -288,7 +288,7 @@ export default React.memo(function UnitStatusBoard({
               <td className="text-rmpg-300 text-xs font-mono">
                 <div className="flex flex-col gap-0.5">
                   <span>
-                    {unit.current_call_number || <span className="text-rmpg-500 italic text-[10px]">Unassigned</span>}
+                    {unit.current_call_number || <span className="text-fg-muted italic text-[10px]">Unassigned</span>}
                   </span>
                   {(() => {
                     const trip = getTrip(unit.id);
@@ -302,7 +302,7 @@ export default React.memo(function UnitStatusBoard({
                   const hasCoords = unit.latitude != null && unit.longitude != null
                     && Number.isFinite(lat) && Number.isFinite(lng);
                   if (!unit.location && !hasCoords) {
-                    return <span className="text-rmpg-500 italic text-[10px]">No GPS</span>;
+                    return <span className="text-fg-muted italic text-[10px]">No GPS</span>;
                   }
                   // Three-line live location: street address, cross street, and
                   // coordinates — resolved from the unit's GPS (useUnitLocations).
@@ -319,17 +319,17 @@ export default React.memo(function UnitStatusBoard({
                         </span>
                         {unit.gps_updated_at && unit.status !== 'off_duty' && (() => {
                           const mins = Math.floor((Date.now() - parseTimestamp(unit.gps_updated_at).getTime()) / 60000);
-                          const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : 'var(--rmpg-500)';
+                          const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : 'var(--text-muted)';
                           return <span className="text-[8px] font-mono ml-1 flex-shrink-0" style={{ color }} title="GPS age">{mins}m</span>;
                         })()}
                       </div>
                       {cross && (
-                        <span className="text-[9px] text-rmpg-500 truncate pl-4" title={`Cross street: ${loc?.onStreet ? loc.onStreet + ' & ' : ''}${cross}`}>
+                        <span className="text-[9px] text-fg-muted truncate pl-4" title={`Cross street: ${loc?.onStreet ? loc.onStreet + ' & ' : ''}${cross}`}>
                           &times; {loc?.onStreet ? `${loc.onStreet} & ` : ''}{cross}
                         </span>
                       )}
                       {coords && street && (
-                        <span className="text-[8px] font-mono text-rmpg-600 pl-4 select-all" title="Live coordinates">{coords}</span>
+                        <span className="text-[8px] font-mono text-fg-muted pl-4 select-all" title="Live coordinates">{coords}</span>
                       )}
                     </div>
                   );
@@ -351,7 +351,7 @@ export default React.memo(function UnitStatusBoard({
                   ) : assignedUnitIds.includes(unit.id) ? (
                     <span className="text-[10px] text-brand-400 font-bold">Assigned</span>
                   ) : (
-                    <span className="text-[10px] text-rmpg-500">-</span>
+                    <span className="text-[10px] text-fg-muted">-</span>
                   )}
                 </td>
               )}
@@ -386,7 +386,7 @@ export default React.memo(function UnitStatusBoard({
               {/* 31: Empty state with larger icon and fade-in; 32: aria-hidden on decorative icon */}
             <td colSpan={colCount} className="text-center text-rmpg-400 py-8">
                 <div className="flex flex-col items-center gap-2 animate-fade-in">
-                  <Radio className="w-6 h-6 text-rmpg-500 opacity-50" aria-hidden="true" />
+                  <Radio className="w-6 h-6 text-fg-muted opacity-50" aria-hidden="true" />
                   <p className="text-xs">No units configured</p>
                   {onCreateUnit && (
                     <button type="button"

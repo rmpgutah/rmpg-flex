@@ -26,7 +26,7 @@ export default function MacInstallGuide() {
           <>About 600 MB of free disk space.</>,
         ]}
       />
-      <p className="text-xs leading-relaxed mt-2" style={{ color: 'var(--rmpg-400)' }}>
+      <p className="text-xs leading-relaxed mt-2" style={{ color: 'var(--text-secondary)' }}>
         Not sure which Mac you have? Click the Apple menu → <strong>About This Mac</strong>. If the Chip
         line says "Apple M…", you are on Apple Silicon and good to go.
       </p>

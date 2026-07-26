@@ -54,7 +54,7 @@ export default function ClearPathDashcamPanel({ dashcamCount }: { dashcamCount: 
             of captures. Fall back to the prop if the server field is absent. */}
         <Stat value={media?.total_dashcam_reads ?? dashcamCount} label="reads" />
       </div>
-      {lastSync && <div className="px-2 py-1 text-[9px] text-rmpg-500 border-t border-border-default">Last sync: {String(lastSync).replace('T', ' ').slice(0, 16)}</div>}
+      {lastSync && <div className="px-2 py-1 text-[9px] text-fg-muted border-t border-border-default">Last sync: {String(lastSync).replace('T', ' ').slice(0, 16)}</div>}
       {!configured && (
         <div className="px-2 py-1.5 text-[10px] text-[#888888] border-t border-border-default">
           Connect your ClearPath cameras to read plates passively from dashcam footage. Tap <span className="text-purple-300">Configure</span>.

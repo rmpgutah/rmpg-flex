@@ -27,6 +27,7 @@ import sanitizeHtml from 'sanitize-html';
 import EnrollmentBanner from '../components/email/EnrollmentBanner';
 import ForwardRedactionModal from '../components/email/ForwardRedactionModal';
 import { toDisplayLabel } from '../utils/formatters';
+import { withAlpha } from '../utils/withAlpha';
 
 // ─── Per-user localStorage scoping ──────────────────────────────────────
 // The Email page used to write every preference and the compose-draft cache
@@ -1437,7 +1438,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                 return (
                   <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] text-rmpg-300 group">
                     <div className="w-5 h-5 rounded-sm flex items-center justify-center text-[7px] font-bold uppercase"
-                      style={{ backgroundColor: fileColor + '15', color: fileColor }}>{ext.slice(0, 3)}</div>
+                      style={{ backgroundColor: withAlpha(fileColor, '15'), color: fileColor }}>{ext.slice(0, 3)}</div>
                     <span className="truncate max-w-[100px]">{att.name}</span>
                     <span className="text-rmpg-600 text-[9px]">{formatSize(att.size)}</span>
                     <button type="button" onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
@@ -3360,7 +3361,7 @@ export default function EmailPage() {
                             ) : (
                               <button type="button" onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
                                 className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold transition-all group-hover:ring-2 group-hover:ring-rmpg-600"
-                                style={{ backgroundColor: avatarColor + '20', color: avatarColor }}>
+                                style={{ backgroundColor: withAlpha(avatarColor, '20'), color: avatarColor }}>
                                 {avatarInitial}
                               </button>
                             )}
@@ -3464,7 +3465,7 @@ export default function EmailPage() {
                 return (
                   <div className="flex items-start gap-3 px-4 pb-2">
                     <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5"
-                      style={{ backgroundColor: avatarColor + '20', color: avatarColor }}>
+                      style={{ backgroundColor: withAlpha(avatarColor, '20'), color: avatarColor }}>
                       {(fullMessage.fromName || fullMessage.fromAddress).charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -3606,7 +3607,7 @@ export default function EmailPage() {
                             className="flex items-center gap-2 min-w-0 flex-1 text-left disabled:opacity-50"
                             title={viewable ? 'Open in viewer' : 'Download'}>
                             <div className="w-8 h-8 rounded-sm flex items-center justify-center text-[8px] font-bold uppercase flex-shrink-0"
-                              style={{ backgroundColor: fileColor + '15', color: fileColor }}>
+                              style={{ backgroundColor: withAlpha(fileColor, '15'), color: fileColor }}>
                               {attBusyId === att.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : ext.slice(0, 4)}
                             </div>
                             <div className="min-w-0 flex-1">

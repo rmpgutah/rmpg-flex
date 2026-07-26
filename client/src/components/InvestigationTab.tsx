@@ -63,7 +63,7 @@ function TimelineView({ caseId }: { caseId: number }) {
 
   if (loading) return <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-400" /></div>;
 
-  if (events.length === 0) return <div className="text-rmpg-500 text-xs py-8 text-center">No timeline events recorded yet.</div>;
+  if (events.length === 0) return <div className="text-fg-muted text-xs py-8 text-center">No timeline events recorded yet.</div>;
 
   return (
     <div className="space-y-1">
@@ -74,7 +74,7 @@ function TimelineView({ caseId }: { caseId: number }) {
           </span>
           <div className="flex-1 min-w-0">
             <div className="text-[11px] text-rmpg-200 truncate">{ev.summary}</div>
-            <div className="text-[9px] text-rmpg-500 font-mono">{ev.created_at}</div>
+            <div className="text-[9px] text-fg-muted font-mono">{ev.created_at}</div>
           </div>
         </div>
       ))}
@@ -95,7 +95,7 @@ function ConnectionsView({ caseId }: { caseId: number }) {
 
   if (loading) return <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-400" /></div>;
 
-  if (links.length === 0) return <div className="text-rmpg-500 text-xs py-8 text-center">No linked entities found.</div>;
+  if (links.length === 0) return <div className="text-fg-muted text-xs py-8 text-center">No linked entities found.</div>;
 
   return (
     <div className="space-y-1">
@@ -110,9 +110,9 @@ function ConnectionsView({ caseId }: { caseId: number }) {
               <div className="text-[11px] text-rmpg-200 truncate">
                 {ENTITY_TYPE_LABELS[remoteType] || remoteType} #{remoteId}
               </div>
-              <div className="text-[9px] text-rmpg-500">{link.link_category}</div>
+              <div className="text-[9px] text-fg-muted">{link.link_category}</div>
             </div>
-            <ChevronRight className="w-3 h-3 text-rmpg-600 shrink-0" />
+            <ChevronRight className="w-3 h-3 text-fg-muted shrink-0" />
           </div>
         );
       })}
@@ -144,14 +144,14 @@ function IntelligenceView({ caseId, caseNumber }: Props) {
     <div className="space-y-3">
       <div className="flex gap-2">
         <div className="flex-1 relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-fg-muted" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             placeholder="Cross-reference search..."
-            className="w-full bg-surface-sunken border border-border-default rounded pl-7 pr-2 py-1.5 text-[11px] text-rmpg-200 placeholder-rmpg-600 focus:outline-none focus:border-brand-500"
+            className="w-full bg-surface-sunken border border-border-default rounded pl-7 pr-2 py-1.5 text-[11px] text-rmpg-200 placeholder-fg-muted focus:outline-none focus:border-brand-500"
           />
         </div>
         <button onClick={handleSearch} disabled={searching}
@@ -179,7 +179,7 @@ function IntelligenceView({ caseId, caseNumber }: Props) {
             </div>
           )}
           {results.cases.length === 0 && results.persons.length === 0 && (
-            <div className="text-rmpg-500 text-xs py-4 text-center">No results found.</div>
+            <div className="text-fg-muted text-xs py-4 text-center">No results found.</div>
           )}
         </div>
       )}
@@ -200,7 +200,7 @@ export function InvestigationTab({ caseId, caseNumber }: Props) {
             className={`flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold uppercase transition-colors
               ${viewMode === opt.key
                 ? 'text-brand-400 border-b-2 border-brand-500'
-                : 'text-rmpg-500 hover:text-rmpg-300 border-b-2 border-transparent'}`}>
+                : 'text-fg-muted hover:text-rmpg-300 border-b-2 border-transparent'}`}>
             {opt.icon}
             {opt.label}
           </button>

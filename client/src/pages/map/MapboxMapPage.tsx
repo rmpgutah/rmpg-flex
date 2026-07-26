@@ -115,6 +115,7 @@ import MapDiagnosticsOverlay from './components/MapDiagnosticsOverlay';
 import MapboxDispatchConnections from './components/MapboxDispatchConnections';
 import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
+import { withAlpha } from '../../utils/withAlpha';
 import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove } from './utils/mapMarkers';
 import {
   TACTICAL_SURFACE_BASE, TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
@@ -1803,7 +1804,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 >
                   <span
                     className="w-2 h-2 shrink-0"
-                    style={{ borderRadius: '50%', background: bm.color, boxShadow: `0 0 4px ${bm.color}80` }}
+                    style={{ borderRadius: '50%', background: bm.color, boxShadow: `0 0 4px ${withAlpha(bm.color, '80')}` }}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="text-[10px] font-bold text-rmpg-200 truncate">{bm.name}</div>
@@ -1838,7 +1839,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <span key={status} className="flex items-center gap-1">
                   <span
                     className="w-1.5 h-1.5"
-                    style={{ borderRadius: '50%', background: color, boxShadow: `0 0 3px ${color}80` }}
+                    style={{ borderRadius: '50%', background: color, boxShadow: `0 0 3px ${withAlpha(color, '80')}` }}
                   />
                   <span style={{ color }} className="font-semibold">{count}</span>
                   <span className="text-rmpg-500">{label}</span>
@@ -1861,7 +1862,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 style={{
                   borderRadius: '50%',
                   background: isConnected ? '#22c55e' : '#ef4444',
-                  boxShadow: `0 0 4px ${isConnected ? '#22c55e' : '#ef4444'}80`,
+                  boxShadow: `0 0 4px ${withAlpha(isConnected ? '#22c55e' : '#ef4444', '80')}`,
                 }}
               />
               <span className={isConnected ? 'text-green-500' : 'text-red-400'}>

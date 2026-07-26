@@ -36,7 +36,9 @@ html.theme-dark,
   --chart-plot-surface: #060b10;
 
   --border-default: #2a3a4d; --border-subtle: #1e2b3a; --border-strong: #3a4f66; --border-panel: #243a52;
-  --text-primary: #e6edf5; --text-secondary: #c3d0de; --text-muted: #8fa3b8;
+  --text-primary-rgb: 230 237 245; --text-primary: rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 195 208 222; --text-secondary: rgb(var(--text-secondary-rgb));
+  --text-muted-rgb: 143 163 184; --text-muted: rgb(var(--text-muted-rgb));
   --brand-gold: #d4a017; --brand-blue: #5a85b8;
   /* Record-icon tile — steel-blue accent for no-photo glyph tiles (persons/vehicles/properties/business).
      Replaces the old per-list "black box + dull initials" look with one legible, on-system blue. */
@@ -111,12 +113,41 @@ html.theme-dark,
   --brand-300-rgb: 158 169 183; --brand-400-rgb: 127 140 158; --brand-500-rgb: 102 116 134;
   --brand-600-rgb: 76 90 108;  --brand-700-rgb: 52 66 82;    --brand-800-rgb: 31 43 56;
   --brand-900-rgb: 14 22 32;
+  /* Bare aliases for the brand ramp — same defect and same fix as --rmpg-* above.
+     19 inline sites consume var(--brand-400) and 3 consume var(--brand-500) while
+     only the -rgb triples existed, so every one of those declarations was invalid
+     at computed-value time and silently inherited (the desktop taskbar/clock
+     "active" accent was indistinguishable from its inactive state). Derived from
+     the triple, never a literal, and repeated per block for the same
+     computed-value/.tactical-dark reason spelled out for --rmpg-* above. */
+  --brand-50: rgb(var(--brand-50-rgb));   --brand-100: rgb(var(--brand-100-rgb));
+  --brand-200: rgb(var(--brand-200-rgb)); --brand-300: rgb(var(--brand-300-rgb));
+  --brand-400: rgb(var(--brand-400-rgb)); --brand-500: rgb(var(--brand-500-rgb));
+  --brand-600: rgb(var(--brand-600-rgb)); --brand-700: rgb(var(--brand-700-rgb));
+  --brand-800: rgb(var(--brand-800-rgb)); --brand-900: rgb(var(--brand-900-rgb));
   --blue-50-rgb: 241 244 247; --blue-100-rgb: 217 223 230; --blue-200-rgb: 189 199 209;
   --blue-300-rgb: 161 173 187; --blue-400-rgb: 122 140 162; --blue-500-rgb: 92 110 132;
   --blue-600-rgb: 60 80 102;  --blue-700-rgb: 30 43 58;     --blue-800-rgb: 21 33 46;
   --blue-900-rgb: 13 23 34;
   --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
   --brand-gold-600-rgb: 184 136 15; --brand-gold-700-rgb: 147 108 10;
+
+  /* ── Silver accent ramp. Added to the BASE block 2026-07-25: these tokens were
+     introduced in the 2026-07-24 accent split but declared ONLY inside
+     html.theme-blue-silver, while ~22 inline sites consume them (DownloadsPage,
+     InstallGuideParts, AdminRadioTab/Settings, AdminSettingsTab). Because this
+     block's selector includes :root — the same <html> the theme class is stamped
+     on — declaring them here is what makes them resolve under EVERY theme; the
+     day and legacy-black blocks then override with values suited to their own
+     surfaces. Without a base declaration the rmpg_theme_legacy='1' kill-switch
+     silently stripped the color off all 22 sites.
+     Steel-blue-tinted to sit on night's dark steel surfaces. Every step measured
+     ≥4.5:1 (WCAG AA) on base/raised/sunken, so no step is a trap for text. */
+  --accent-silver-300: #e3e9f0; --accent-silver-300-rgb: 227 233 240;
+  --accent-silver-400: #cfd8e2; --accent-silver-400-rgb: 207 216 226;
+  --accent-silver-500: #bfcad7; --accent-silver-500-rgb: 191 202 215;
+  --accent-silver-600: #9caab9; --accent-silver-600-rgb: 156 170 185;
+  --accent-silver-700: #828fa0; --accent-silver-700-rgb: 130 143 160;
 
   /* Records chrome tokens — NIGHT (dark steel-blue) */
   --spm-chrome: #15212e; --spm-form: #0d1722; --spm-field: #101a26;
@@ -132,6 +163,44 @@ html.theme-dark,
   /* App chrome tokens — NIGHT (dark steel-blue) */
   --toolbar-gradient-start: #15212e; --toolbar-gradient-end: #1d2d3f;
   --grid-header-bg: #0a1018; --grid-row-alt: #111c28;
+  /* The other half of the grid family. `.spillman-grid` in index.css consumed these
+     four while only -header-bg/-row-alt were ever declared, so the table header text,
+     zebra striping and selected-row highlight all silently inherited. Note
+     --grid-row-even is the name index.css actually uses for the zebra row that
+     --grid-row-alt already described, so it aliases rather than duplicating a value. */
+  --grid-header-text: var(--text-secondary);
+  --grid-row-even: var(--grid-row-alt);
+  --grid-row-selected: #1b3350;
+  --grid-row-selected-border: var(--spm-select);
+  /* The "ON state" accent, as a role rather than a ramp step. Split out because a
+     single silver value cannot serve every theme: on DAY, silver-400 (#4a5561) sits
+     right next to --text-muted (#555555), so an active toggle read almost identical
+     to an inactive one. Day therefore uses its own steel accent; the dark themes
+     keep silver, per the rule that active/selected state stays silver. Every theme's
+     value is >= 4.5:1 on base/raised/sunken. */
+  --accent-active: var(--accent-silver-400);
+  /* ── Radio console theme (`--rt-*`). 161 occurrences across pages/radio/* and
+     DispatchRecordPanel consumed these while they were declared in NO stylesheet, so
+     the entire radio console rendered inherited colours. Declared as role aliases so
+     the console re-themes with the app instead of pinning its own palette.
+     Base-block only is correct AND sufficient here: these are aliases, not literals,
+     so the var() substitutes against whichever theme block won on the element. This
+     rule's selector includes .tactical-dark, so a force-dark radio panel re-declares
+     both the referenced token and the alias together and still resolves to night.
+     (Contrast with a hoisted standalone :root{} rule, which .tactical-dark would not
+     match and so could never re-substitute — that is the case the --rmpg-* note
+     above warns about.)
+     --rt-tx is the live-TRANSMIT indicator: red, per radio convention, and it drives
+     a waveform, a status dot, a border and a fill — all graphics. Its one text
+     consumer was a "quiet hours active" label, which is a state and not a
+     transmission, and now uses --accent-active. */
+  --rt-bg: var(--surface-base);
+  --rt-panel: var(--surface-raised);
+  --rt-border: var(--border-default);
+  --rt-text: var(--text-primary);
+  --rt-muted: var(--text-muted);
+  --rt-accent: var(--accent-active);
+  --rt-tx: var(--sev-critical);
   --field-label-color: #d4a017;
   /* Panel/section headers share the field-label accent in this theme, as they
      did historically. Must be defined in EVERY theme block: components consume
@@ -173,7 +242,9 @@ html.theme-light {
   --chart-plot-surface: #c9c5b8;
 
   --border-default: #9a958a; --border-subtle: #c3cdd8; --border-strong: #6f7b8a; --border-panel: #9a958a;
-  --text-primary: #1a1a1a; --text-secondary: #33312b; --text-muted: #555555;
+  --text-primary-rgb: 26 26 26; --text-primary: rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 51 49 43; --text-secondary: rgb(var(--text-secondary-rgb));
+  --text-muted-rgb: 85 85 85; --text-muted: rgb(var(--text-muted-rgb));
   --brand-gold: #936c0a; --brand-blue: #2e4a66;
   --pri-scheduled: #8a929b;
   /* Record-icon tile — day (light-grey) steel-blue on white surfaces. */
@@ -196,6 +267,12 @@ html.theme-light {
   --brand-300-rgb: 70 70 70; --brand-400-rgb: 85 85 85;  --brand-500-rgb: 100 100 100;
   --brand-600-rgb: 150 146 136; --brand-700-rgb: 214 211 200; --brand-800-rgb: 236 233 221;
   --brand-900-rgb: 247 249 251;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted. */
+  --brand-50: rgb(var(--brand-50-rgb));   --brand-100: rgb(var(--brand-100-rgb));
+  --brand-200: rgb(var(--brand-200-rgb)); --brand-300: rgb(var(--brand-300-rgb));
+  --brand-400: rgb(var(--brand-400-rgb)); --brand-500: rgb(var(--brand-500-rgb));
+  --brand-600: rgb(var(--brand-600-rgb)); --brand-700: rgb(var(--brand-700-rgb));
+  --brand-800: rgb(var(--brand-800-rgb)); --brand-900: rgb(var(--brand-900-rgb));
   /* blue token renders NEUTRAL (mirrors rmpg) — the steel accent lives in --brand-blue / --spm-* */
   --blue-50-rgb: 26 26 26;   --blue-100-rgb: 40 40 40;   --blue-200-rgb: 55 55 55;
   --blue-300-rgb: 70 70 70;  --blue-400-rgb: 85 85 85;   --blue-500-rgb: 100 100 100;
@@ -204,6 +281,17 @@ html.theme-light {
   /* gold — DAY: distinct darkening steps for hierarchy, all legible on light */
   --brand-gold-300-rgb: 176 130 30; --brand-gold-400-rgb: 160 116 18; --brand-gold-500-rgb: 147 108 10;
   --brand-gold-600-rgb: 120 88 8;   --brand-gold-700-rgb: 100 73 7;
+  /* silver — DAY: shifted into the legible-on-light range instead of inheriting
+     night's light silver, which would be near-invisible on white/#ece9dd. Keeps
+     the ramp's direction (higher index = darker), exactly as the gold ramp above
+     does for this theme. Measured ≥4.5:1 (WCAG AA) on base/raised/sunken — the
+     sunken beige #d6d3c8 is the binding constraint, so the lightest step is
+     already mid-slate. */
+  --accent-silver-300: #515c68; --accent-silver-300-rgb: 81 92 104;
+  --accent-silver-400: #4a5561; --accent-silver-400-rgb: 74 85 97;
+  --accent-silver-500: #3f4954; --accent-silver-500-rgb: 63 73 84;
+  --accent-silver-600: #343d46; --accent-silver-600-rgb: 52 61 70;
+  --accent-silver-700: #293038; --accent-silver-700-rgb: 41 48 56;
 
   /* Records chrome tokens — DAY (current light Spillman look) */
   --spm-chrome: #d6d3c8; --spm-form: #ece9dd; --spm-field: #f7f9fb;
@@ -232,6 +320,16 @@ html.theme-light {
   /* App chrome tokens — DAY (light grey Spillman) */
   --toolbar-gradient-start: #ffffff; --toolbar-gradient-end: #e8e6da;
   --grid-header-bg: #d6d3c8; --grid-row-alt: #f6f5ef;
+  --grid-header-text: var(--text-secondary);
+  --grid-row-even: var(--grid-row-alt);
+  --grid-row-selected: #cfe0f5;
+  --grid-row-selected-border: var(--spm-select);
+  /* DAY uses its own steel accent, NOT silver-400 (#4a5561): on light surfaces that
+     step lands beside --text-muted (#555555) and an active toggle became almost
+     indistinguishable from an inactive one. --brand-blue is 7.55/9.18/6.12 here and
+     is a saturated blue against a neutral grey, so the two separate by hue as well
+     as contrast. */
+  --accent-active: var(--brand-blue);
   --field-label-color: #936c0a;
   --panel-header-color: #936c0a;
   --surface-panel: #ece9dd; --surface-panel-alt: #f9f7f1; --surface-hover: #e0ddd4;
@@ -265,7 +363,9 @@ html.theme-legacy-black {
   --chart-plot-surface: #000000;
 
   --border-default: #232323; --border-subtle: #121212; --border-strong: #3a3a3a; --border-panel: #262626;
-  --text-primary: #f2f2f2; --text-secondary: #cfcfcf; --text-muted: #8a8a8a;
+  --text-primary-rgb: 242 242 242; --text-primary: rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 207 207 207; --text-secondary: rgb(var(--text-secondary-rgb));
+  --text-muted-rgb: 138 138 138; --text-muted: rgb(var(--text-muted-rgb));
   --brand-blue: #9a9a9a; --brand-gold: #d4a017;
   --pri-scheduled: #4a4a4a;
   /* Record-icon tile — legacy pure-black keeps a restrained dark steel-blue accent. */
@@ -285,12 +385,28 @@ html.theme-legacy-black {
   --brand-50-rgb: 242 242 242; --brand-100-rgb: 221 221 221; --brand-200-rgb: 191 191 191;
   --brand-300-rgb: 158 158 158; --brand-400-rgb: 127 127 127; --brand-500-rgb: 102 102 102;
   --brand-600-rgb: 76 76 76; --brand-700-rgb: 52 52 52; --brand-800-rgb: 31 31 31; --brand-900-rgb: 14 14 14;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted. */
+  --brand-50: rgb(var(--brand-50-rgb));   --brand-100: rgb(var(--brand-100-rgb));
+  --brand-200: rgb(var(--brand-200-rgb)); --brand-300: rgb(var(--brand-300-rgb));
+  --brand-400: rgb(var(--brand-400-rgb)); --brand-500: rgb(var(--brand-500-rgb));
+  --brand-600: rgb(var(--brand-600-rgb)); --brand-700: rgb(var(--brand-700-rgb));
+  --brand-800: rgb(var(--brand-800-rgb)); --brand-900: rgb(var(--brand-900-rgb));
   --blue-50-rgb: 241 241 241; --blue-100-rgb: 217 217 217; --blue-200-rgb: 189 189 189;
   /* blue-400 intentionally lighter than 300 — mirrors original tailwind.config anomaly for exact legacy restore */
   --blue-300-rgb: 161 161 161; --blue-400-rgb: 200 200 200; --blue-500-rgb: 154 154 154;
   --blue-600-rgb: 115 115 115; --blue-700-rgb: 79 79 79; --blue-800-rgb: 46 46 46; --blue-900-rgb: 20 20 20;
   --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
   --brand-gold-600-rgb: 184 136 15; --brand-gold-700-rgb: 147 108 10;
+  /* silver — LEGACY BLACK: pure neutral greys, no blue tint, because this theme is
+     a deliberate greyscale restore (its --brand-blue is #9a9a9a). This block is
+     also the one the rmpg_theme_legacy='1' kill-switch selects, i.e. the exact
+     path that exposed the missing ramp. Measured ≥4.5:1 (WCAG AA) on all three
+     surfaces. */
+  --accent-silver-300: #e8e8e8; --accent-silver-300-rgb: 232 232 232;
+  --accent-silver-400: #d4d4d4; --accent-silver-400-rgb: 212 212 212;
+  --accent-silver-500: #c4c4c4; --accent-silver-500-rgb: 196 196 196;
+  --accent-silver-600: #a1a1a1; --accent-silver-600-rgb: 161 161 161;
+  --accent-silver-700: #7d7d7d; --accent-silver-700-rgb: 125 125 125;
 
   /* Records chrome tokens — LEGACY BLACK (dark neutrals) */
   --spm-chrome: #0b0b0b; --spm-form: #000000; --spm-field: #0d0d0d;
@@ -319,6 +435,11 @@ html.theme-legacy-black {
   /* App chrome tokens — LEGACY BLACK (original pure-black) */
   --toolbar-gradient-start: #0b0b0b; --toolbar-gradient-end: #101010;
   --grid-header-bg: #050505; --grid-row-alt: #0d0d0d;
+  --grid-header-text: var(--text-secondary);
+  --grid-row-even: var(--grid-row-alt);
+  --grid-row-selected: #14202c;
+  --grid-row-selected-border: var(--spm-select);
+  --accent-active: var(--accent-silver-400);
   --field-label-color: #d4a017;
   --panel-header-color: #d4a017;
   --surface-panel: #101010; --surface-panel-alt: #0c0c0c; --surface-hover: #161616;
@@ -370,7 +491,9 @@ html.theme-blue-silver {
   --surface-header: #284a6c; --surface-header-rgb: 40 74 108;
   --surface-hover-step: #294a6b; --surface-hover-step-rgb: 41 74 107;
   --border-default: #46688c; --border-subtle: #2a4763; --border-strong: #7996b8; --border-panel: #3d5f82;
-  --text-primary: #f0f4f9; --text-secondary: #cdd8e6; --text-muted: #9bb0c7;
+  --text-primary-rgb: 240 244 249; --text-primary: rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 205 216 230; --text-secondary: rgb(var(--text-secondary-rgb));
+  --text-muted-rgb: 177 193 211; --text-muted: rgb(var(--text-muted-rgb));
   --brand-blue: #5a9ae0;
   --pri-scheduled: #63768f;
   /* Record-icon tile — a brighter blue than night's for the "silver-blue" identity. */
@@ -392,6 +515,24 @@ html.theme-blue-silver {
   --brand-300-rgb: 165 182 199; --brand-400-rgb: 134 154 175; --brand-500-rgb: 109 128 150;
   --brand-600-rgb: 82 101 122;  --brand-700-rgb: 58 78 98;    --brand-800-rgb: 38 58 78;
   --brand-900-rgb: 20 40 64;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted.
+     ⚠️ --brand-400 here resolves to #869aaf: 3.69/2.93/4.44 on base/raised/sunken
+     navy. That clears WCAG 1.4.11's 3:1 for GRAPHICS (borders, outlines, icons)
+     but not AA 4.5:1 for TEXT — and it is the worst case of the four themes
+     (night 4.77, day 4.97, legacy-black 4.92 all pass).
+     Because of that, the 8 TEXT consumers were re-pointed to --accent-silver-400
+     when these aliases were defined, in the same commit: leaving them would have
+     rendered the ON state at 2.93 against an OFF state of --text-muted at 3.81,
+     i.e. active LESS visible than inactive. Icons/borders/outlines keep
+     --brand-400 and are fine at the 3:1 graphics threshold.
+     Do NOT "fix" the text case by giving this block a literal bare value — that
+     breaks the derived-from-triple invariant accentTokens.test.ts pins, and lets
+     the bare and -rgb forms drift apart silently. */
+  --brand-50: rgb(var(--brand-50-rgb));   --brand-100: rgb(var(--brand-100-rgb));
+  --brand-200: rgb(var(--brand-200-rgb)); --brand-300: rgb(var(--brand-300-rgb));
+  --brand-400: rgb(var(--brand-400-rgb)); --brand-500: rgb(var(--brand-500-rgb));
+  --brand-600: rgb(var(--brand-600-rgb)); --brand-700: rgb(var(--brand-700-rgb));
+  --brand-800: rgb(var(--brand-800-rgb)); --brand-900: rgb(var(--brand-900-rgb));
   --blue-50-rgb: 244 247 250; --blue-100-rgb: 221 229 237; --blue-200-rgb: 195 208 219;
   --blue-300-rgb: 168 185 200; --blue-400-rgb: 129 149 171; --blue-500-rgb: 99 118 143;
   --blue-600-rgb: 68 89 113;  --blue-700-rgb: 44 79 116;    --blue-800-rgb: 34 64 95;
@@ -448,8 +589,8 @@ html.theme-blue-silver {
   /* Records chrome tokens — BLUE & SILVER */
   --spm-chrome: #1a3350; --spm-form: #142840; --spm-field: #182f4a;
   --spm-border: #46688c; --spm-field-border: #46688c; --spm-accent: #5a9ae0;
-  --spm-select: #316ac5; --spm-text: #f0f4f9; --spm-text-muted: #9bb0c7;
-  --spm-text-rgb: 240 244 249; --spm-text-muted-rgb: 155 176 199;
+  --spm-select: #316ac5; --spm-text: #f0f4f9; --spm-text-muted: #b1c1d3;
+  --spm-text-rgb: 240 244 249; --spm-text-muted-rgb: 177 193 211;
   --spm-group-head: linear-gradient(#2c4f74, #22405f);
   --spm-toolbar: linear-gradient(#2c4f74, #22405f);
   --spm-toolbar-hover: linear-gradient(#345c85, #294a6b);
@@ -459,6 +600,11 @@ html.theme-blue-silver {
   /* App chrome tokens — BLUE & SILVER */
   --toolbar-gradient-start: #1a3350; --toolbar-gradient-end: #2c4f74;
   --grid-header-bg: #10213a; --grid-row-alt: #1a3350;
+  --grid-header-text: var(--text-secondary);
+  --grid-row-even: var(--grid-row-alt);
+  --grid-row-selected: #2c5480;
+  --grid-row-selected-border: var(--spm-select);
+  --accent-active: var(--accent-silver-400);
   /* The only two gold roles in the app (per the 2026-07-24 design decision):
      field labels and section/panel headers. Everything else stays silver. Any
      gold surface NOT resolving through these two vars or the map palette is a
@@ -483,7 +629,7 @@ html.theme-blue-silver {
   /* Module-bar + bevel/titlebar — BLUE & SILVER. Derived from the navy ramp so
      the active nav tile reads as *sunken navy*, not a black hole, and panel
      title bars read as a raised navy step instead of the inherited pure black. */
-  --toolbar-nav-text: #9bb0c7;
+  --toolbar-nav-text: #b1c1d3;
   --toolbar-nav-text-hover: #f0f4f9;
   --toolbar-nav-text-active: var(--brand-blue);
   --toolbar-nav-hover: rgba(255, 255, 255, 0.06);

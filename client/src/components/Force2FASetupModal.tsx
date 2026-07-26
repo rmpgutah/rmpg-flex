@@ -153,7 +153,7 @@ export default function Force2FASetupModal() {
               className="w-full flex items-center justify-center gap-2 py-2 text-[10px] uppercase tracking-wider font-bold transition-colors"
               style={{ color: 'var(--text-muted)', background: 'transparent', border: 'none' }}
               onMouseEnter={e => (e.currentTarget.style.color = '#888888')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'var(--rmpg-500)')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
             >
               <Clock style={{ width: 12, height: 12 }} />
               Set Up Later
@@ -167,7 +167,7 @@ export default function Force2FASetupModal() {
             <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
               Step 1: Scan QR Code
             </div>
-            <p className="text-[10px] text-rmpg-500">
+            <p className="text-[10px] text-fg-muted">
               Open Google Authenticator and scan this QR code to add your account.
             </p>
 
@@ -185,7 +185,7 @@ export default function Force2FASetupModal() {
             <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#888888' }}>
               Step 2: Enter Verification Code
             </div>
-            <p className="text-[10px] text-rmpg-500">
+            <p className="text-[10px] text-fg-muted">
               Enter the 6-digit code shown in Google Authenticator.
             </p>
 
@@ -237,7 +237,7 @@ export default function Force2FASetupModal() {
               </div>
             </div>
 
-            <p className="text-[9px] text-center text-rmpg-500">
+            <p className="text-[9px] text-center text-fg-muted">
               If you lose your phone, use one of these one-time codes to log in.
               Each code can only be used once.
             </p>

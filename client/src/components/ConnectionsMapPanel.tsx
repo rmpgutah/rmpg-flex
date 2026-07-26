@@ -112,7 +112,7 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
         </div>
       )}
       {!loading && pointCount === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center text-xs text-rmpg-500">
+        <div className="absolute inset-0 flex items-center justify-center text-xs text-fg-muted">
           No geo data for this entity.
         </div>
       )}

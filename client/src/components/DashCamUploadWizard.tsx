@@ -441,14 +441,14 @@ export default function DashCamUploadWizard({
                     ? 'bg-brand-500 border-brand-400 text-rmpg-100'
                     : isDone
                     ? 'bg-brand-500/30 border-brand-500 text-brand-300'
-                    : 'bg-surface-sunken border-rmpg-600 text-rmpg-500'
+                    : 'bg-surface-sunken border-rmpg-600 text-fg-muted'
                 }`}
               >
                 {isDone ? <Check className="w-3 h-3" /> : stepNum}
               </div>
               <span
                 className={`text-[9px] font-bold uppercase tracking-wider ${
-                  isActive ? 'text-rmpg-200' : 'text-rmpg-500'
+                  isActive ? 'text-rmpg-200' : 'text-fg-muted'
                 }`}
               >
                 {label}
@@ -475,13 +475,13 @@ export default function DashCamUploadWizard({
             : 'border-rmpg-600 hover:border-brand-500'
         }`}
       >
-        <Upload className="w-8 h-8 text-rmpg-500" />
+        <Upload className="w-8 h-8 text-fg-muted" />
         <span className="text-xs text-rmpg-300">
           {files.length >= MAX_FILES
             ? `Maximum ${MAX_FILES} files reached`
             : 'Drag and drop video files here, or click to browse'}
         </span>
-        <span className="text-[9px] text-rmpg-600">MP4, MOV, AVI, WebM, MKV</span>
+        <span className="text-[9px] text-fg-muted">MP4, MOV, AVI, WebM, MKV</span>
       </div>
       <input id="ff-dashcamuploadwizard-0"
         ref={fileRef}
@@ -525,7 +525,7 @@ export default function DashCamUploadWizard({
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
-                    <Film className="w-4 h-4 text-rmpg-600" />
+                    <Film className="w-4 h-4 text-fg-muted" />
                   </div>
                 )}
               </div>
@@ -535,7 +535,7 @@ export default function DashCamUploadWizard({
                 <p className="text-[11px] text-rmpg-200 font-semibold truncate">
                   {entry.file.name}
                 </p>
-                <p className="text-[9px] text-rmpg-500">
+                <p className="text-[9px] text-fg-muted">
                   {formatSize(entry.file.size)}
                   {entry.duration != null && <> &bull; {formatDuration(entry.duration)}</>}
                 </p>
@@ -545,7 +545,7 @@ export default function DashCamUploadWizard({
               <button
                 type="button"
                 onClick={() => removeFile(entry.id)}
-                className="toolbar-btn p-1 text-rmpg-500 hover:text-red-400"
+                className="toolbar-btn p-1 text-fg-muted hover:text-red-400"
                 title="Remove file"
               >
                 <X className="w-3.5 h-3.5" />
@@ -604,14 +604,14 @@ export default function DashCamUploadWizard({
                     <img src={entry.thumbnailUrl} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <Film className="w-3 h-3 text-rmpg-600" />
+                      <Film className="w-3 h-3 text-fg-muted" />
                     </div>
                   )}
                 </div>
                 <span className="text-[11px] text-rmpg-200 font-semibold min-w-0 truncate flex-1 text-left">
                   {entry.file.name}
                 </span>
-                <span className="text-[9px] text-rmpg-500 flex-shrink-0">
+                <span className="text-[9px] text-fg-muted flex-shrink-0">
                   {formatSize(entry.file.size)}
                 </span>
               </button>
@@ -838,7 +838,7 @@ export default function DashCamUploadWizard({
                     <img src={entry.thumbnailUrl} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <Film className="w-3 h-3 text-rmpg-600" />
+                      <Film className="w-3 h-3 text-fg-muted" />
                     </div>
                   )}
                 </div>
@@ -846,7 +846,7 @@ export default function DashCamUploadWizard({
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <p className="text-[11px] text-rmpg-200 font-semibold truncate">{entry.title}</p>
-                  <div className="flex items-center gap-2 text-[9px] text-rmpg-500">
+                  <div className="flex items-center gap-2 text-[9px] text-fg-muted">
                     {vehicle && <span>#{vehicle.vehicle_number}</span>}
                     {unit && <span className="text-brand-400 font-mono">{unit.call_sign}</span>}
                     <span className="capitalize">{entry.classification}</span>
@@ -872,7 +872,7 @@ export default function DashCamUploadWizard({
                 {/* Status indicator */}
                 <div className="flex-shrink-0 w-8 flex items-center justify-center">
                   {!state || state.status === 'queued' ? (
-                    <span className="text-[9px] text-rmpg-500 font-mono">QUEUE</span>
+                    <span className="text-[9px] text-fg-muted font-mono">QUEUE</span>
                   ) : state.status === 'uploading' ? (
                     <div className="flex items-center gap-1">
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400" />

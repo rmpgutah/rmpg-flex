@@ -98,7 +98,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
             className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
             style={{
               borderBottom: activeTab === tab.id ? '2px solid #d4a017' : '2px solid transparent',
-              color: activeTab === tab.id ? '#d4a017' : 'var(--rmpg-500)',
+              color: activeTab === tab.id ? '#d4a017' : 'var(--text-muted)',
               background: activeTab === tab.id ? 'var(--surface-base)' : 'transparent',
             }}
           >
@@ -120,7 +120,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Address or place..."
                 className="flex-1 px-2 py-1 text-[11px] border border-border-subtle outline-none"
-                style={{ background: 'var(--surface-overlay)', color: 'var(--rmpg-300)', borderRadius: 2 }}
+                style={{ background: 'var(--surface-overlay)', color: 'var(--text-secondary)', borderRadius: 2 }}
               />
               <button
                 type="submit"
@@ -140,7 +140,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                     type="button"
                     onClick={() => handleGeocodeSelect(s)}
                     className="w-full text-left px-2 py-1.5 text-[10px] hover:bg-surface-raised border border-transparent hover:border-rmpg-700 transition-colors"
-                    style={{ borderRadius: 2, color: 'var(--rmpg-400)' }}
+                    style={{ borderRadius: 2, color: 'var(--text-secondary)' }}
                   >
                     <div className="font-semibold text-rmpg-200 text-[11px]">{s.text}</div>
                     <div className="truncate">{s.place_name}</div>
@@ -238,7 +238,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                   onChange={(e) => setIsoLng(e.target.value)}
                   placeholder="Longitude"
                   className="flex-1 px-2 py-1 text-[10px] border border-border-subtle outline-none"
-                  style={{ background: 'var(--surface-overlay)', color: 'var(--rmpg-300)', borderRadius: 2 }}
+                  style={{ background: 'var(--surface-overlay)', color: 'var(--text-secondary)', borderRadius: 2 }}
                 />
                 <input id="ff-dispatchtoolpanel-2"
                   type="text"
@@ -246,7 +246,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                   onChange={(e) => setIsoLat(e.target.value)}
                   placeholder="Latitude"
                   className="flex-1 px-2 py-1 text-[10px] border border-border-subtle outline-none"
-                  style={{ background: 'var(--surface-overlay)', color: 'var(--rmpg-300)', borderRadius: 2 }}
+                  style={{ background: 'var(--surface-overlay)', color: 'var(--text-secondary)', borderRadius: 2 }}
                 />
               </div>
 
@@ -262,7 +262,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                     style={{
                       borderRadius: 2,
                       borderColor: isoMinutes.includes(min) ? '#d4a017' : '#3a3a3a',
-                      color: isoMinutes.includes(min) ? '#d4a017' : 'var(--rmpg-500)',
+                      color: isoMinutes.includes(min) ? '#d4a017' : 'var(--text-muted)',
                       background: isoMinutes.includes(min) ? '#1a1a0d' : '#0a0a0a',
                     }}
                   >

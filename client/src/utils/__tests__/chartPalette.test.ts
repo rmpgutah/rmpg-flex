@@ -10,8 +10,8 @@ describe('chartPalette', () => {
   });
 
   it('resolves a theme variable when set', () => {
-    document.documentElement.style.setProperty('--text-muted', '#9bb0c7');
-    expect(resolveThemeColor('--text-muted', '#000')).toBe('#9bb0c7');
+    document.documentElement.style.setProperty('--text-muted', '#b1c1d3');
+    expect(resolveThemeColor('--text-muted', '#000')).toBe('#b1c1d3');
   });
 
   it('falls back when the variable is unset', () => {

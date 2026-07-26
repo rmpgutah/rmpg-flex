@@ -20,7 +20,7 @@ export default function DesktopClockWidget() {
     <div className="p-3" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-default)', width: 200 }}>
       <div className="text-[20px] font-mono" style={{ color: 'var(--text-primary)' }}>{time}</div>
       <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{date}</div>
-      <div className="mt-2 text-[10px] font-semibold" style={{ color: active ? 'var(--brand-400)' : 'var(--text-muted)' }}>
+      <div className="mt-2 text-[10px] font-semibold" style={{ color: active ? 'var(--accent-active)' : 'var(--text-muted)' }}>
         {active === null ? '…' : active ? `On Duty since ${safeTimeStr(clockIn, '')}` : 'Off Duty'}
       </div>
     </div>

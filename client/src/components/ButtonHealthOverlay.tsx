@@ -17,6 +17,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { auditButtonHealth, type ButtonHealthReport } from '../utils/buttonHealthAudit';
+import { withAlpha } from '../utils/withAlpha';
 
 const HIGHLIGHT_ID = 'rmpg-btn-audit-highlights';
 
@@ -38,7 +39,7 @@ function drawHighlights(report: ButtonHealthReport) {
     box.style.cssText =
       `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;` +
       `border:2px solid ${color};box-shadow:0 0 0 1px rgba(0,0,0,0.6);` +
-      `background:${color}1a;border-radius:2px;`;
+      `background:${withAlpha(color, '1a')};border-radius:2px;`;
     layer.appendChild(box);
   }
   document.body.appendChild(layer);
@@ -88,7 +89,7 @@ export default function ButtonHealthOverlay() {
     overflow: 'auto',
     zIndex: 2147483647,
     background: 'var(--surface-base)',
-    color: 'var(--rmpg-200)',
+    color: 'var(--text-primary)',
     border: '1px solid #d4a017',
     borderRadius: 2,
     boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
@@ -141,7 +142,7 @@ export default function ButtonHealthOverlay() {
 
       {report && (
         <div style={{ padding: '8px 10px' }}>
-          <div style={{ marginBottom: 6, color: 'var(--rmpg-400)' }}>
+          <div style={{ marginBottom: 6, color: 'var(--text-secondary)' }}>
             {report.url} · {report.viewport[0]}×{report.viewport[1]}
           </div>
           <div style={{ marginBottom: 8 }}>
@@ -154,7 +155,7 @@ export default function ButtonHealthOverlay() {
             <div style={{ color: '#22c55e' }}>✓ All buttons fully clickable on this screen.</div>
           ) : (
             <>
-              <div style={{ color: 'var(--rmpg-400)', margin: '6px 0 4px' }}>Top click-stealers:</div>
+              <div style={{ color: 'var(--text-secondary)', margin: '6px 0 4px' }}>Top click-stealers:</div>
               <ul style={{ margin: '0 0 8px', paddingLeft: 16 }}>
                 {report.interceptorTally.slice(0, 5).map(([sig, n]) => (
                   <li key={sig}>
@@ -162,7 +163,7 @@ export default function ButtonHealthOverlay() {
                   </li>
                 ))}
               </ul>
-              <div style={{ color: 'var(--rmpg-400)', margin: '6px 0 4px' }}>Offenders:</div>
+              <div style={{ color: 'var(--text-secondary)', margin: '6px 0 4px' }}>Offenders:</div>
               {report.entries.map((e, i) => (
                 <div
                   key={i}
@@ -196,7 +197,7 @@ export default function ButtonHealthOverlay() {
 
 const btnStyle: React.CSSProperties = {
   background: 'var(--border-panel)',
-  color: 'var(--rmpg-200)',
+  color: 'var(--text-primary)',
   border: '1px solid var(--border-panel)',
   borderRadius: 2,
   padding: '2px 8px',

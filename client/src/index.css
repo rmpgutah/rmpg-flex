@@ -1252,7 +1252,7 @@ body.fx-noise::after {
   }
   .btn-primary:hover:not(:disabled) {
     background: var(--rmpg-500);
-    border-color: var(--rmpg-500);
+    border-color: var(--text-muted);
   }
 
   .btn-secondary {
@@ -3331,6 +3331,12 @@ html.hide-status-bar .status-bar { display: none !important; }
     --surface-sunken-rgb: 255 255 255 !important;
     --surface-overlay-rgb: 255 255 255 !important;
     --surface-deep-rgb: 255 255 255 !important;
+
+    /* Text channels — dark ink on paper. Mirrors the --text-* hex overrides
+       above; without these, every text-fg-* label prints its SCREEN value. */
+    --text-primary-rgb: 17 17 17 !important;
+    --text-secondary-rgb: 51 51 51 !important;
+    --text-muted-rgb: 102 102 102 !important;
 
     /* rmpg scale — INVERTED: low index = dark ink, high index = white/near-white paper */
     --rmpg-50-rgb: 20 20 20 !important;

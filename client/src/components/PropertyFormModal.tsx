@@ -171,7 +171,7 @@ export default function PropertyFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<PropertyFormData>({
-    storageKey: 'rmpg_property_form',
+    storageKey: `rmpg_property_form_${editingProperty?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });
@@ -768,7 +768,7 @@ export default function PropertyFormModal({
             onChange={handleChange}
             maxLength={5000}
           />
-          <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.post_orders.length}/5000</div>
+          <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.post_orders.length}/5000</div>
         </FormField>
       </FormSection>
 
@@ -785,7 +785,7 @@ export default function PropertyFormModal({
               onChange={handleChange}
               maxLength={3000}
             />
-            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.hazard_notes.length}/3000</div>
+            <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.hazard_notes.length}/3000</div>
           </FormField>
           <FormField label="Utility Shutoffs">
             <RichTextArea

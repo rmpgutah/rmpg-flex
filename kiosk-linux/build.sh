@@ -119,6 +119,50 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+# ── Concurrent-build guard (2026-07-25) ──────────────────────────────────────
+#
+# BUILDROOT_VOLUME and BUILD_OUTPUT_VOLUME default to FIXED names, and this repo
+# is worked on through many git worktrees at once. Two worktrees running
+# build.sh therefore share one Buildroot source tree and one output tree by
+# default — a warning that was already in this file, but only as prose.
+#
+# What that actually does was measured on 2026-07-25, when a build in the
+# warrant-tab worktree overlapped one here:
+#
+#   - target/ ended up holding the OTHER worktree overlay, so the image carried
+#     the wrong /etc/rmpg-os-version
+#   - gzip compressed images/rootfs.cpio while the other build was still writing
+#     it, emitting only "file size changed while zipping" and producing a
+#     rootfs.cpio.gz that decompressed to 218 MB of a 651 MB archive: 1329 of
+#     11063 entries, ending mid usr/lib
+#
+# That last one is the dangerous one. A truncated initramfs is a valid gzip file
+# of the right general size that passes `gzip -t`, so nothing downstream notices
+# — it just panics at boot, on a terminal in a vehicle, after an OTA update.
+#
+# A running build is exactly a running container holding the volume, so ask
+# Docker rather than maintaining a lock file with its own staleness problems.
+CONCURRENT="$(docker ps --filter volume="$BUILD_OUTPUT_VOLUME" --format '{{.ID}} {{.Image}}' 2>/dev/null || true)"
+if [ -n "$CONCURRENT" ]; then
+  echo "ERROR: another container is already using the build-output volume '$BUILD_OUTPUT_VOLUME':" >&2
+  echo "$CONCURRENT" | sed 's/^/  /' >&2
+  cat >&2 <<'CONCURRENTHELP'
+
+Two builds sharing one output volume corrupt each other. The damage is quiet:
+the losing build can emit a TRUNCATED rootfs.cpio.gz that still passes gzip -t
+and only fails as a kernel panic at boot.
+
+Either wait for that build to finish, or give this one its own volumes:
+
+  BUILDROOT_VOLUME=kiosk-src-$(basename "$PWD") \
+  BUILD_OUTPUT_VOLUME=kiosk-out-$(basename "$PWD") ./build.sh
+
+Note a fresh output volume means a full from-scratch build (WebKitGTK alone is
+roughly an hour), so waiting is usually the cheaper option.
+CONCURRENTHELP
+  exit 1
+fi
+
 echo "Building the Buildroot build-environment image ($IMAGE_TAG) ..."
 docker build ${DOCKER_NETWORK_ARGS[@]+"${DOCKER_NETWORK_ARGS[@]}"} -t "$IMAGE_TAG" "$SCRIPT_DIR/docker"
 
@@ -794,6 +838,72 @@ LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0*.{ucode,pnvm}" "$LINUX_FW_MK"
       echo "Desktop symbols verified present in .config."
     fi
 
+    # ── Kernel/BusyBox config-fragment staleness gate ────────────────────────
+    # (2026-07-25, second FZ-55 audit pass.) Buildroot tracks the config symbol
+    # that LISTS the fragment paths, but nothing watches the CONTENTS of the
+    # fragment files. Once linux/.stamp_configured exists, editing a fragment
+    # changes nothing: merge_config.sh is never re-run, the kernel .config keeps
+    # its old contents, and `make` happily rebuilds and reports success.
+    #
+    # This is not hypothetical. The entire 2026-07-25 FZ-55 hardware audit
+    # (PR #3023 — Bluetooth, TPM, webcam, SD reader, USB4, WWAN, Wacom pen) was
+    # committed, built, and shipped WITHOUT REACHING THE KERNEL AT ALL. Verified
+    # by reading the built .config rather than the fragments: every symbol the
+    # audit added read "not set", while symbols from fragments that predated the
+    # last reconfigure were correctly =y. There was no error anywhere — the
+    # image just quietly lacked half its hardware support.
+    #
+    # Hashing the fragment contents and forcing a reconfigure on change is the
+    # cheap fix. `<pkg>-reconfigure` re-runs the configure step (which is where
+    # merge_config.sh lives) and rebuilds incrementally — for the kernel that is
+    # minutes, not the hour a dirclean would cost.
+    FRAGMENT_HASH_FILE=/build-output/.rmpg-config-fragment-hashes
+    fragment_hash() {
+      # $1 = the .config variable holding a space-separated path list.
+      # Missing files are tolerated: sha256sum reports them on stderr and the
+      # differing hash forces a reconfigure, which is the safe direction.
+      local files
+      files="$(sed -n "s/^$1=\"\(.*\)\"$/\1/p" /build-output/.config)"
+      [ -n "$files" ] || return 0
+      # shellcheck disable=SC2086
+      cat $files 2>/dev/null | sha256sum | cut -d" " -f1
+    }
+    kernel_frag_hash="$(fragment_hash BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES)"
+    busybox_frag_hash="$(fragment_hash BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES)"
+    new_hashes="linux $kernel_frag_hash
+busybox $busybox_frag_hash"
+
+    for entry in "linux $kernel_frag_hash" "busybox $busybox_frag_hash"; do
+      pkg="${entry%% *}"
+      hash="${entry##* }"
+      [ -n "$hash" ] || continue
+      # Only meaningful if the package has already been configured once; on a
+      # fresh build the first configure picks the fragments up anyway.
+      ls /build-output/build/$pkg-*/.stamp_configured >/dev/null 2>&1 || continue
+      if ! grep -qx "$pkg $hash" "$FRAGMENT_HASH_FILE" 2>/dev/null; then
+        echo "Config fragments for [$pkg] changed since it was last configured — forcing reconfigure ..."
+        echo "  (without this the edit silently would not reach the build; see the comment above)"
+        # Repeated reconfigure cycles can leave the kernel host-tool objects in a
+        # half-built state: scripts/kconfig/*.o present with their fixdep .d files
+        # gone, which fails the very next configure with
+        #   fixdep: error opening file: scripts/kconfig/.confdata.o.d
+        # and reads as kernel-source corruption rather than as leftover state.
+        # Observed for real while developing this gate. Removing the host objects
+        # costs seconds and makes the reconfigure self-healing; the alternative a
+        # reader reaches for is linux-dirclean, which recompiles the whole kernel.
+        # linux-[0-9]* rather than linux-* on purpose: the latter also matches
+        # linux-headers-<ver>, a different package this has no business touching.
+        if [ "$pkg" = linux ]; then
+          rm -f /build-output/build/linux-[0-9]*/scripts/kconfig/*.o \
+                /build-output/build/linux-[0-9]*/scripts/kconfig/.*.o.d \
+                /build-output/build/linux-[0-9]*/scripts/basic/*.o \
+                /build-output/build/linux-[0-9]*/scripts/basic/.*.o.d 2>/dev/null || true
+        fi
+        make -C /build-output "$pkg-reconfigure"
+      fi
+    done
+    printf "%s\n" "$new_hashes" > "$FRAGMENT_HASH_FILE"
+
     # Buildroot only auto-applies package patches on a fresh source extract —
     # when a patch block above just wrote a NEW patch file, force that
     # package to re-extract/rebuild so an incremental run actually picks it
@@ -831,6 +941,14 @@ LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0*.{ucode,pnvm}" "$LINUX_FW_MK"
     # invisible: the taskbar logs "idle lock armed at 600s" and then every poll
     # fails with `Xlib: extension "MIT-SCREEN-SAVER" missing`, so the terminal
     # never locks while appearing to be configured to.
+    # grub2:builtin-modules — (2026-07-25) BR2_TARGET_GRUB2_BUILTIN_MODULES_EFI
+    # gained search_fs_file and chain, without which the no-USB install cannot
+    # locate its own volume and cannot chainload back into Windows. That variable
+    # is consumed while LINKING grubx64.efi, and Buildroot will not relink it just
+    # because the value changed — the package stamp already exists — so the new
+    # modules would silently not be in the shipped binary. The entry name carries
+    # the reason because this list is tracked BY NAME in the marker file.
+    #
     # linux-firmware:fz55 — the FZ-55 hardware audit added
     # BR2_PACKAGE_LINUX_FIRMWARE_I915 (i915 DMC blobs, required for display
     # power management on Mk2/Mk3) and patched linux-firmware.mk to also glob
@@ -840,10 +958,26 @@ LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0*.{ucode,pnvm}" "$LINUX_FW_MK"
     # firmware files despite both symbols being =y in .config. Verified by
     # listing target/lib/firmware rather than trusting the build exit code.
     #
+    # (This entry also explains an oddity seen from the other side of the same
+    # week: a build in this worktree DID come out with the 33 i915 DMC blobs
+    # present, because a build in another worktree had already forced
+    # linux-firmware to re-extract in the SHARED Docker volume. Same symbol, same
+    # config, different outcome depending on what another checkout had done —
+    # exactly the reason both this list and the post-build gates exist.)
+    #
     # alsa-utils:amixer — same class. amixer is a per-command sub-option that
     # was not previously requested, so the already-built package had no reason
     # to rebuild and amixer stayed absent from the image.
-    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses xserver_xorg-server xserver_xorg-server:screensaver linux-firmware:fz55 alsa-utils:amixer"
+    #
+    # linux-firmware:ibt — second FZ-55 audit pass added
+    # BR2_PACKAGE_LINUX_FIRMWARE_IBT (Intel Bluetooth blobs). Same class again:
+    # linux-firmware was already built, so the new option changed nothing and
+    # the rootfs still had no /lib/firmware/intel directory at all. A NEW marker
+    # name is required — linux-firmware:fz55 is already recorded as done, so
+    # reusing it would skip the rebuild. This entry is also what re-runs the
+    # target install, which is what restores the i915 GuC/HuC blobs the Mk3 GPU
+    # needs; the post-build gate asserts both actually landed.
+    DESKTOP_STALE_PKGS="mesa3d cairo libepoxy pango libgtk3 ncurses xserver_xorg-server xserver_xorg-server:screensaver linux-firmware:fz55 alsa-utils:amixer linux-firmware:ibt"
     if [ "${KIOSK_LINUX_DESKTOP:-1}" != "0" ]; then
       # The marker is a LIST of packages already reconfigured, not a single
       # all-or-nothing flag. The first version of this was a bare touch file,
@@ -868,16 +1002,329 @@ LINUX_FIRMWARE_FILES += iwlwifi-ty-a0-gf-a0*.{ucode,pnvm}" "$LINUX_FW_MK"
       done
     fi
 
+    # ── FZ-55 kernel-symbol gate (2026-07-25) ────────────────────────────────
+    # The same "silently dropped symbol" hazard the desktop check above guards
+    # against exists one layer down, in the KERNEL config, and is worse there
+    # because the failure only appears on real hardware:
+    # scripts/kconfig/merge_config.sh applies our fragments over the expanded
+    # x86_64 defconfig and, when the dependencies of a requested symbol are not
+    # met,
+    # it prints a warning and CARRIES ON — leaving the symbol absent from
+    # .config entirely rather than "=n". Two real instances found in the
+    # shipped 1.3.0 image by auditing its generated .config:
+    #
+    #   - CONFIG_I2C_DESIGNWARE_PLATFORM was absent, not disabled, because
+    #     `depends on (ACPI && COMMON_CLK)` was unmet (COMMON_CLK unset). The
+    #     FZ-55 touchscreen bus therefore had no driver, with nothing in any
+    #     log pointing at the cause.
+    #   - CONFIG_X86_PKG_TEMP_THERMAL was =m in an initramfs image that never
+    #     loads modules, so thermal protection was inert while every grep for
+    #     "is not set" reported it as enabled.
+    #
+    # NOTE: no apostrophes anywhere in this block. It lives inside a
+    # `bash -c '...'` string, and an apostrophe surrounded by whitespace closes
+    # that quote, splits the argument, and TRUNCATES the container script at
+    # that point — while `bash -n` still reports the file as valid, because an
+    # even number of apostrophes re-balances the quoting. That is why other
+    # comments here read "the guest own log" rather than the natural phrasing.
+    #
+    # `linux-configure` stops after the kernel config+configure step, so this
+    # asserts on the REAL generated .config for pennies of build time, before
+    # the ~15 minute compile — and long before a boot log on hardware nobody
+    # has in front of them. Keep this list in sync with
+    # configs/kernel-fz55.fragment.
+    # Force the kernel fragments to be re-merged on EVERY run.
+    #
+    # In theory this is unnecessary: pkg-kconfig.mk:158 declares
+    # .stamp_dotconfig as depending on LINUX_KCONFIG_FRAGMENT_FILES, so editing
+    # a fragment should make it stale and trigger a re-merge. In practice that
+    # did NOT fire on 2026-07-25 — a run whose fragment was 16 minutes newer
+    # than the stamp regenerated the stamp and still produced a .config with
+    # none of the new symbols in it, and removing the stamp by hand merged them
+    # correctly on the very next attempt with no other change. The fragments
+    # reach the container through a Colima virtiofs bind mount, which is the
+    # same layer that already broke POSIX directory permissions badly enough to
+    # move this whole build into named volumes, so its timestamp semantics are
+    # not something to stake a release on.
+    #
+    # Removing the stamp costs about two seconds: merge_config.sh re-runs, and
+    # if the resulting .config is byte-identical then make has nothing to
+    # rebuild anyway. Cheap and deterministic beats subtle and occasionally
+    # silent — the failure mode being avoided is a build that reports success
+    # while shipping a kernel that quietly ignored the config change.
+    # Gated on a CHECKSUM of the fragments rather than done unconditionally.
+    # Removing the stamp costs about two seconds by itself, but it makes the
+    # kernel .config regenerate, which makes Buildroot re-run the configure step,
+    # which triggers a full ~10-15 minute kernel recompile — on EVERY build, even
+    # one that only edited a shell script in the overlay. Measured on 2026-07-25
+    # when a pack-only rebuild spent that time in arch/x86/boot/compressed.
+    #
+    # The checksum lives in the output volume beside the build it describes, so
+    # the compare is against what this tree actually last built from.
+    # ⚠️ The checksum is NOT sufficient on its own, and the reason is subtle.
+    # It answers "did MY fragments change", when what actually matters is "does
+    # the current .config reflect my fragments". Those differ whenever something
+    # else rewrites the .config — which is routine here, because another worktree
+    # building in this shared volume regenerates it from ITS fragments.
+    #
+    # Observed 2026-07-25: the checksum matched, the re-merge was skipped, and the
+    # .config in the volume held another worktree config carrying 2 of 4 probe
+    # symbols. The symbol gate correctly refused the build, but as a hard failure
+    # for a condition that is trivially recoverable.
+    #
+    # So the gate below is a RETRY LOOP: if the audit fails on the fast path,
+    # force the re-merge and audit again before giving up. The fast path stays
+    # fast (no needless 15-minute kernel rebuild) and a clobbered .config heals
+    # itself instead of stopping the build.
+    LINUX_BUILD_DIR="$(ls -d /build-output/build/linux-[0-9]* 2>/dev/null | head -1)"
+    FRAGMENT_SUM_FILE=/build-output/.rmpg-kernel-fragment-sum
+    FRAGMENT_SUM="$(cat /kiosk-linux/configs/kernel-*.fragment 2>/dev/null | sha256sum | cut -d" " -f1)"
+    FORCE_REMERGE=0
+    if [ -n "$LINUX_BUILD_DIR" ] && [ -f "$LINUX_BUILD_DIR/.stamp_dotconfig" ]; then
+      if [ "$FRAGMENT_SUM" != "$(cat "$FRAGMENT_SUM_FILE" 2>/dev/null)" ]; then
+        echo "Kernel fragments changed since the last successful build — will force a re-merge."
+        FORCE_REMERGE=1
+      else
+        echo "Kernel fragments unchanged (sha256 matches) — trying the fast path first."
+      fi
+    fi
+    # The checksum is written only after the gate passes, so a failed build never
+    # records its fragments as successfully applied.
+
+  CONFIG_ATTEMPT=1
+  while : ; do
+    if [ "$FORCE_REMERGE" = "1" ] && [ -n "$LINUX_BUILD_DIR" ]; then
+      echo "Forcing a kernel fragment re-merge (removing $LINUX_BUILD_DIR/.stamp_dotconfig) ..."
+      rm -f "$LINUX_BUILD_DIR/.stamp_dotconfig"
+    fi
+
+    echo "Configuring the kernel and verifying FZ-55 symbols survived merge_config (attempt $CONFIG_ATTEMPT) ..."
+    make -C /build-output linux-configure
+
+    KCONFIG_FILE="$(ls -d /build-output/build/linux-[0-9]*/.config 2>/dev/null | head -1)"
+    if [ -z "$KCONFIG_FILE" ]; then
+      echo "ERROR: could not locate the generated kernel .config under /build-output/build/linux-*/" >&2
+      exit 1
+    fi
+    echo "Auditing $KCONFIG_FILE"
+
+    # Grouped by the failure each one prevents, so a future failure message
+    # says WHY the symbol matters instead of just naming it.
+    FZ55_REQUIRED_KSYMS="
+      CONFIG_COMMON_CLK:touchscreen-bus-gate
+      CONFIG_MFD_INTEL_LPSS_PCI:touchscreen-bus
+      CONFIG_MFD_INTEL_LPSS_ACPI:touchscreen-bus
+      CONFIG_I2C_DESIGNWARE_PLATFORM:touchscreen-bus
+      CONFIG_I2C_HID_ACPI:touchscreen-transport
+      CONFIG_PINCTRL:digitizer-gpio-irq-gate
+      CONFIG_PINCTRL_CANNONLAKE:digitizer-gpio-irq-mk1
+      CONFIG_PINCTRL_ALDERLAKE:digitizer-gpio-irq-mk3
+      CONFIG_X86_PKG_TEMP_THERMAL:thermal-trip-source
+      CONFIG_SENSORS_CORETEMP:thermal-telemetry
+      CONFIG_INTEL_IDLE:battery-runtime-and-heat
+      CONFIG_ITCO_WDT:hang-recovery
+      CONFIG_DRM_SIMPLEDRM:no-black-brick-fallback
+      CONFIG_SYSFB_SIMPLEFB:no-black-brick-fallback
+      CONFIG_PANASONIC_LAPTOP:brightness-hotkeys
+      CONFIG_SND_HDA_CODEC_REALTEK:audio-codec-parser
+      CONFIG_EFIVAR_FS:read-own-boot-entries
+      CONFIG_NTFS3_FS:ota-on-no-usb-install
+      CONFIG_DRM_I915:fz55-graphics
+      CONFIG_E1000E:fz55-wired-net
+      CONFIG_IWLWIFI:fz55-wifi
+      CONFIG_BLK_DEV_NVME:fz55-storage
+    "
+    ksym_failed=0
+    for entry in $FZ55_REQUIRED_KSYMS; do
+      sym="${entry%%:*}"
+      why="${entry#*:}"
+      if ! grep -q "^${sym}=y$" "$KCONFIG_FILE"; then
+        actual="$(grep -E "^${sym}=|^# ${sym} is not set" "$KCONFIG_FILE" || true)"
+        if [ -z "$actual" ]; then
+          actual="ABSENT from .config — its dependencies are unmet, so merge_config.sh dropped it"
+        fi
+        echo "ERROR: $sym is not =y (needed for: $why)" >&2
+        echo "       $actual" >&2
+        ksym_failed=1
+      fi
+    done
+    if [ "$ksym_failed" -eq 0 ]; then
+      break
+    fi
+
+    # Failed. If the fast path was taken, the overwhelmingly likely cause is a
+    # .config written by something other than this tree, so re-merge and re-check
+    # once rather than failing a build over a recoverable state.
+    if [ "$CONFIG_ATTEMPT" -eq 1 ] && [ "$FORCE_REMERGE" = "0" ]; then
+      echo "" >&2
+      echo "Symbols missing on the fast path — the .config in this volume does not" >&2
+      echo "reflect these fragments (another build in the shared volume regenerates" >&2
+      echo "it from ITS fragments). Forcing a re-merge and re-checking ..." >&2
+      FORCE_REMERGE=1
+      CONFIG_ATTEMPT=2
+      continue
+    fi
+
+    echo "" >&2
+    echo "One or more FZ-55 kernel symbols did not reach the generated .config," >&2
+    echo "even after a forced fragment re-merge. This is a REAL config problem." >&2
+    echo "An =m value is ALSO a failure here: this image is an initramfs with no" >&2
+    echo "module loading in its init path, so a module is built and never loaded." >&2
+    echo "Check the dependencies of the symbols listed above against the kernel" >&2
+    echo "source in /build-output/build/linux-*/ — merge_config.sh drops a symbol" >&2
+    echo "whose deps are unmet and leaves NO trace of it in .config." >&2
+    exit 1
+  done
+  echo "FZ-55 kernel symbols verified =y in the generated .config (after $CONFIG_ATTEMPT config attempt(s))."
+
+    # Record the fragment checksum only now: if the gate above had failed, the
+    # next run must re-merge and re-check rather than trusting a config that was
+    # never accepted.
+    printf "%s\n" "$FRAGMENT_SUM" > "$FRAGMENT_SUM_FILE"
+
     echo "Building (this takes a while on first run) ..."
     make -C /build-output
 
     echo "Build complete inside the volume:"
     ls -la /build-output/images/bzImage /build-output/images/rootfs.cpio.gz
 
+    # ── FZ-55 hardware-enablement gate ───────────────────────────────────────
+    # (2026-07-25, second audit pass.) Everything in this project that has ever
+    # silently failed has failed the same way: a config edit that never reached
+    # the artifact, with a green build. The staleness gate earlier in this
+    # script prevents the known cause; this checks the RESULT, which is what
+    # actually matters and which no amount of upstream-mechanism reasoning can
+    # substitute for.
+    #
+    # Two independent things get asserted against the real built artifacts:
+    #   1. kernel symbols  — read from the built .config, not from the fragments
+    #   2. firmware blobs  — read from the target rootfs, not from Buildroot .config
+    #
+    # (2) is not redundant with (1). The shipped image was found carrying i915
+    # DMC blobs but zero GuC/HuC despite BR2_PACKAGE_LINUX_FIRMWARE_I915=y and a
+    # complete br-firmware.tar — the target install and the images install
+    # disagreed by 88 files. Only listing the rootfs catches that.
+    KBUILD_CONFIG="$(ls -d /build-output/build/linux-*/.config 2>/dev/null | head -1)"
+    if [ -z "$KBUILD_CONFIG" ]; then
+      echo "ERROR: no built kernel .config found — cannot verify FZ-55 enablement." >&2
+      exit 1
+    fi
+
+    # Kernel symbols. Each is something the terminal cannot do without, and each
+    # maps to a device the Panasonic factory driver inventory proves is
+    # present on at least one FZ-55 generation. Kept as the UNION across
+    # mk1/mk2/mk3 deliberately: the exact fleet model mix is not yet recorded
+    # (see docs/panasonic-fz55-os-build-requirements.md section 9), and a driver
+    # that finds no device costs kilobytes while a missing one costs a field
+    # failure that looks like broken hardware.
+    fz55_missing=""
+    for sym in CONFIG_DRM_I915 CONFIG_E1000E CONFIG_R8169 CONFIG_USB_RTL8152 \
+               CONFIG_IWLWIFI CONFIG_IWLMVM CONFIG_BT_HCIBTUSB CONFIG_BT_INTEL \
+               CONFIG_I2C_HID_ACPI CONFIG_I2C_DESIGNWARE_PLATFORM \
+               CONFIG_MFD_INTEL_LPSS_PCI CONFIG_MFD_INTEL_LPSS_ACPI \
+               CONFIG_PINCTRL_INTEL CONFIG_PINCTRL_ALDERLAKE \
+               CONFIG_HID_MULTITOUCH CONFIG_ACPI_BATTERY CONFIG_ACPI_AC \
+               CONFIG_TCG_CRB CONFIG_MMC_SDHCI_PCI CONFIG_USB_VIDEO_CLASS \
+               CONFIG_INTEL_HID_EVENT CONFIG_INT340X_THERMAL CONFIG_BLK_DEV_NVME \
+               CONFIG_SND_HDA_INTEL CONFIG_USB_XHCI_HCD; do
+      grep -q "^${sym}=y" "$KBUILD_CONFIG" || fz55_missing="$fz55_missing $sym"
+    done
+
+    # Firmware blobs, checked as globs against the target rootfs. Rationale for
+    # each family:
+    #   i915/*_dmc_*   display power management (Mk2/Mk3) — flicker + battery
+    #   i915/adlp_guc  Raptor/Alder Lake-P: i915 in 6.6 turns GuC submission ON
+    #                  BY DEFAULT for this platform (uc_expand_default_options()
+    #                  in drivers/gpu/drm/i915/gt/uc/intel_uc.c falls through to
+    #                  ENABLE_GUC_LOAD_HUC|ENABLE_GUC_SUBMISSION — only TGL and
+    #                  RKL are excluded). A missing GuC blob on a Mk3 is a GPU
+    #                  that fails to initialise, i.e. a black screen.
+    #   intel/ibt-*    Intel Bluetooth; without it the radio stays in bootloader
+    #   iwlwifi-*      Wi-Fi, incl. the ty-a0-gf-a0 AX211 variant this script patches in
+    fw_missing=""
+    for glob in "i915/*_dmc_*.bin" "i915/adlp_guc_*.bin" "i915/tgl_dmc_*.bin" \
+                "intel/ibt-*.sfi" "iwlwifi-so-a0-gf-a0-*.ucode" \
+                "iwlwifi-ty-a0-gf-a0-*.ucode" "iwlwifi-QuZ-a0-*.ucode"; do
+      # shellcheck disable=SC2086
+      ls /build-output/target/lib/firmware/$glob >/dev/null 2>&1 \
+        || fw_missing="$fw_missing $glob"
+    done
+
+    if [ -n "$fz55_missing" ] || [ -n "$fw_missing" ]; then
+      echo "" >&2
+      echo "ERROR: the built image is missing FZ-55 hardware enablement." >&2
+      [ -n "$fz55_missing" ] && echo "  kernel symbols not =y in the BUILT .config:$fz55_missing" >&2
+      [ -n "$fw_missing" ]   && echo "  firmware absent from the target rootfs:$fw_missing" >&2
+      echo "" >&2
+      echo "  This is almost always a stale incremental build, not a bad config:" >&2
+      echo "  Buildroot does not notice edits to kernel config fragments or to" >&2
+      echo "  linux-firmware package options once a package is already built." >&2
+      echo "  Force the relevant package to redo its work, then re-run ./build.sh:" >&2
+      echo "    make -C /build-output linux-reconfigure        # missing kernel symbols" >&2
+      echo "    make -C /build-output linux-firmware-dirclean  # missing firmware blobs" >&2
+      echo "  (run those inside the build container; note that a kernel symbol can also" >&2
+      echo "   be absent because its dependencies are unmet — check the Kconfig depends" >&2
+      echo "   line before assuming staleness.)" >&2
+      exit 1
+    fi
+    echo "FZ-55 enablement verified in the built kernel and rootfs."
+
     echo "Copying final images out to the host-visible output/ directory ..."
     mkdir -p /kiosk-linux/output/images
     cp /build-output/images/bzImage /build-output/images/rootfs.cpio.gz /kiosk-linux/output/images/
-  '
+  ' || {
+  # ── Name the concurrent-build cause on failure (2026-07-25) ────────────────
+  #
+  # `set -e` would otherwise abort here with only Buildroot output on screen, and
+  # the symptom of a mid-build collision looks nothing like its cause. Observed
+  # three times in one day; the third read:
+  #
+  #   /bin/sh: 1: scripts/basic/fixdep: Permission denied
+  #   make[5]: *** [net/netfilter/nf_nat_masquerade.o] Error 126
+  #
+  # fixdep is a host helper the kernel build execs for EVERY object file. It had
+  # compiled fine and hundreds of objects had already used it — then a build in
+  # another worktree, sharing this same Docker volume, replaced it mid-run. Two
+  # random object files failed with an exec error while the config was perfectly
+  # valid, which sends you looking at Kconfig for a problem that is not there.
+  #
+  # The guard at the top of this script only checks at START, so a build that
+  # begins after ours cannot be refused. This turns the aftermath into a
+  # diagnosis instead of a mystery.
+  BUILD_RC=$?
+  CONCURRENT_NOW="$(docker ps --filter volume="$BUILD_OUTPUT_VOLUME" --format '{{.ID}} {{.Image}}' 2>/dev/null || true)"
+  echo "" >&2
+  echo "ERROR: the Buildroot container exited non-zero (rc=$BUILD_RC)." >&2
+  if [ -n "$CONCURRENT_NOW" ]; then
+    echo "" >&2
+    echo "⚠  ANOTHER BUILD IS USING THE SAME VOLUME RIGHT NOW:" >&2
+    echo "$CONCURRENT_NOW" | sed 's/^/     /' >&2
+    echo "" >&2
+    echo "   That is very likely the cause, NOT your config. The signature is a file" >&2
+    echo "   that existed moments ago going missing or unusable mid-build, because the" >&2
+    echo "   other build is writing the same tree. Both of these were seen for real:" >&2
+    echo "     scripts/basic/fixdep: Permission denied        (then 'Error 126')" >&2
+    echo "     ld: cannot find scripts/kconfig/confdata.o: No such file or directory" >&2
+    echo "   The second one happened one line after that object compiled successfully." >&2
+    echo "   Do not go looking through Kconfig for either of them." >&2
+    echo "   Wait for that build to finish and re-run. Separate volumes are the other" >&2
+    echo "   option, but CHECK FREE SPACE FIRST — the output tree is ~32 GB, and on" >&2
+    echo "   2026-07-25 the Colima VM had only 19 GB free, so a second tree could not" >&2
+    echo "   have fitted even from scratch:" >&2
+    echo "     docker run --rm -v $BUILD_OUTPUT_VOLUME:/out alpine df -h /out" >&2
+    echo "     BUILDROOT_VOLUME=kiosk-src-mine BUILD_OUTPUT_VOLUME=kiosk-out-mine ./build.sh" >&2
+    echo "   (a fresh output volume also means a full from-scratch build, ~1-2h, and" >&2
+    echo "    WebKitGTK needs a Colima VM of 16 GiB RAM or more to compile at all)" >&2
+    echo "   In practice, on one machine, coordinating with the other build is cheaper" >&2
+    echo "   than isolating from it." >&2
+  else
+    echo "  No other container is holding the volume now, so this is more likely a" >&2
+    echo "  real build failure — but note a colliding build may have already exited." >&2
+    echo "  An 'Error 126' or 'Permission denied' on a script under scripts/ is a" >&2
+    echo "  collision signature regardless of what docker ps says at this moment." >&2
+  fi
+  exit "$BUILD_RC"
+}
 
 ls -la "$OUTPUT_DIR/images/bzImage" "$OUTPUT_DIR/images/rootfs.cpio.gz" 2>/dev/null || {
   echo "ERROR: expected output images not found in $OUTPUT_DIR/images/ — build likely failed partway; check the make output above." >&2

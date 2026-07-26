@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Minus, Award, Target, Shield, Activity, BarChart3 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from './PanelTitleBar';
+import { withAlpha } from '../utils/withAlpha';
 
 interface MetricDetail {
   score: number;
@@ -117,7 +118,7 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
               className="flex items-center justify-center font-bold"
               style={{
                 fontFamily: 'monospace', fontSize: 48, lineHeight: 1,
-                color: GRADE_COLORS[data.grade], textShadow: `0 0 12px ${GRADE_COLORS[data.grade]}40`,
+                color: GRADE_COLORS[data.grade], textShadow: `0 0 12px ${withAlpha(GRADE_COLORS[data.grade], '40')}`,
                 minWidth: 64,
               }}
             >
@@ -137,7 +138,7 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
                 style={{
                   position: 'relative', width: 56, height: 56, borderRadius: '50%',
                   background: 'var(--surface-overlay)', fontFamily: 'monospace', fontSize: 18,
-                  fontWeight: 700, color: 'var(--rmpg-200)',
+                  fontWeight: 700, color: 'var(--text-primary)',
                 }}
               >
                 {pct}

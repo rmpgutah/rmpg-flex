@@ -395,7 +395,7 @@ function TableEditor<T extends Record<string, any>>({
       </div>
       <div className="overflow-x-auto"><table className="w-full border-collapse">
         <thead>
-          <tr className="text-rmpg-500 uppercase text-[10px]">
+          <tr className="text-fg-muted uppercase text-[10px]">
             {field.columns.map((c) => (
               <th key={c.key} className="text-left border-b border-border-default py-1">{c.header}</th>
             ))}
@@ -405,7 +405,7 @@ function TableEditor<T extends Record<string, any>>({
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={field.columns.length + 1} className="text-rmpg-500 italic py-1">
+              <td colSpan={field.columns.length + 1} className="text-fg-muted italic py-1">
                 No rows
               </td>
             </tr>
@@ -447,7 +447,7 @@ function SignaturePlaceholder<T>({ field }: { field: SignatureField<T> }) {
   return (
     <div className="block mb-2 text-xs">
       <span className="block text-rmpg-400 uppercase mb-1">{field.label}</span>
-      <div className="w-full bg-surface-overlay border border-dashed border-rmpg-700 p-2 text-rmpg-500 italic">
+      <div className="w-full bg-surface-overlay border border-dashed border-rmpg-700 p-2 text-fg-muted italic">
         Signature editor coming soon
       </div>
     </div>

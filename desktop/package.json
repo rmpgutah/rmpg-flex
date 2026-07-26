@@ -31,6 +31,9 @@
     "files": [
       "main.js",
       "preload.js",
+      "kioskShell.js",
+      "kioskEscapePreload.js",
+      "kioskEscape.html",
       "updater.js",
       "localDb.js",
       "connectivityMonitor.js",

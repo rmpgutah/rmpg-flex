@@ -112,7 +112,7 @@ export default function ServeSkipTracePanel({
           </div>
           <button type="button"
             onClick={onClose}
-            className="p-1 text-rmpg-500 hover:text-rmpg-100 transition-colors rounded-[2px] hover:bg-surface-raised focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+            className="p-1 text-fg-muted hover:text-rmpg-100 transition-colors rounded-[2px] hover:bg-surface-raised focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
             aria-label="Close skip trace panel"
           >
             <X size={16} />
@@ -129,7 +129,7 @@ export default function ServeSkipTracePanel({
                 type="text"
                 value={searchName}
                 onChange={e => setSearchName(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 placeholder-rmpg-600 focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 placeholder-fg-muted focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                 placeholder="Recipient name"
               />
             </div>
@@ -139,14 +139,14 @@ export default function ServeSkipTracePanel({
                 type="text"
                 value={searchAddress}
                 onChange={e => setSearchAddress(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 placeholder-rmpg-600 focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 placeholder-fg-muted focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                 placeholder="Last known address"
               />
             </div>
             <button type="button"
               onClick={runLookup}
               disabled={loading || !searchName.trim()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-[#888888] hover:bg-[#888888]/80 disabled:bg-rmpg-700 disabled:text-rmpg-500 text-rmpg-100 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-[#888888] hover:bg-[#888888]/80 disabled:bg-rmpg-700 disabled:text-fg-muted text-rmpg-100 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
             >
               {loading ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -155,7 +155,7 @@ export default function ServeSkipTracePanel({
               )}
               {loading ? 'Running Lookup...' : 'Run Lookup'}
             </button>
-            <p className="text-[10px] text-rmpg-500 text-center">
+            <p className="text-[10px] text-fg-muted text-center">
               Logs a manual search attempt — no automated vendor lookup is wired up yet
             </p>
           </div>
@@ -197,9 +197,9 @@ export default function ServeSkipTracePanel({
                         <span className="text-rmpg-300">
                           {safeDateStr(trace.created_at)}
                         </span>
-                        <span className="text-rmpg-500">{trace.search_type}</span>
+                        <span className="text-fg-muted">{trace.search_type}</span>
                       </div>
-                      <p className="text-rmpg-500 mt-0.5">
+                      <p className="text-fg-muted mt-0.5">
                         {trace.addresses_found?.length || 0} address(es) found
                       </p>
                     </div>

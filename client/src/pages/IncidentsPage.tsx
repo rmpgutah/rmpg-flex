@@ -1999,7 +1999,7 @@ export default function IncidentsPage() {
                 <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)' }}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? 'var(--sev-critical)' : offense.offense_level === 'misdemeanor' ? 'var(--sev-warn)' : 'var(--rmpg-500)' }}>
+                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? 'var(--sev-critical)' : offense.offense_level === 'misdemeanor' ? 'var(--sev-warn)' : 'var(--text-muted)' }}>
                         {offense.offense_code}
                       </span>
                       <span className="text-xs text-rmpg-100 font-medium truncate">{offense.description}</span>
@@ -2130,8 +2130,13 @@ export default function IncidentsPage() {
                 // PR #1605 / SW v1029 — chart-code 16-entity palette stays
                 // hex because --sev-* can't differentiate that many types).
                 // Two parallel maps because the original `color + '20'` hex-
-                // opacity trick doesn't work on `var(--…)` references — we
-                // need to drive alpha tints from the *-rgb companion tokens.
+                // opacity trick doesn't work on `var(--…)` references.
+                // NOTE: new code should not reach for the `*-rgb` companion
+                // tokens this comment used to recommend — use
+                // `withAlpha(color, '20')` from utils/withAlpha.ts, which emits
+                // color-mix() for tokens and plain hex concat for raw hex. The
+                // parallel maps below are left as-is because they already
+                // render correctly; collapsing them is a separate cleanup.
                 const typeColors: Record<string, string> = {
                   incident: 'var(--spm-text-muted)',
                   call: 'var(--sev-ok)',
@@ -2148,7 +2153,7 @@ export default function IncidentsPage() {
                   citation: 'var(--sev-warn-rgb)',
                   arrest: 'var(--pink-400-rgb, 236 72 153)',
                 };
-                const fg = typeColors[link.linked_type] || 'var(--rmpg-500)';
+                const fg = typeColors[link.linked_type] || 'var(--text-muted)';
                 const rgb = typeColorRgb[link.linked_type] || 'var(--rmpg-500-rgb)';
                 const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
                 return (

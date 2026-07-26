@@ -110,7 +110,7 @@ export default function TrespassOrdersPage() {
     clearDraft: clearFormDraft,
     snapshot: snapshotForm,
   } = useFormDraft<typeof EMPTY_FORM>({
-    storageKey: 'rmpg_trespass_order_form',
+    storageKey: `rmpg_trespass_order_form_${editingOrder?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: formOpen,
   });
@@ -765,7 +765,7 @@ export default function TrespassOrdersPage() {
                   </>
                 )}
                 {canManage && (selectedOrder.status === 'expired' || selectedOrder.status === 'served') && (
-                  <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'var(--rmpg-400)', minHeight: isMobile ? 48 : undefined }}>
+                  <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'var(--text-secondary)', minHeight: isMobile ? 48 : undefined }}>
                     <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Renew
                   </button>
                 )}

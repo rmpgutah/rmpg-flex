@@ -40,7 +40,7 @@ export default function TimeEntryEditModal({
     signalSaved,
     snapshot,
   } = useFormDraft<{ clockIn: string; clockOut: string; startMi: string; endMi: string; reason: string }>({
-    storageKey: 'rmpg_personnel_time_entry_form',
+    storageKey: `rmpg_personnel_time_entry_form_${entry?.id ?? 'new'}`,
     defaultValue: { clockIn: '', clockOut: '', startMi: '', endMi: '', reason: '' },
     isActive: isOpen,
   });

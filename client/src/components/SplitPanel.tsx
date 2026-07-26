@@ -129,7 +129,7 @@ export default function SplitPanel({
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
                 background: mobileTab === 'left' ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
-                color: mobileTab === 'left' ? '#fff' : 'var(--rmpg-500)',
+                color: mobileTab === 'left' ? '#fff' : 'var(--text-muted)',
                 borderBottom: mobileTab === 'left' ? '2px solid #888888' : '2px solid transparent',
               }}
             >
@@ -140,7 +140,7 @@ export default function SplitPanel({
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
                 background: mobileTab === 'right' ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
-                color: mobileTab === 'right' ? '#fff' : 'var(--rmpg-500)',
+                color: mobileTab === 'right' ? '#fff' : 'var(--text-muted)',
                 borderBottom: mobileTab === 'right' ? '2px solid #888888' : '2px solid transparent',
               }}
             >

@@ -131,7 +131,7 @@ export default function PremiseAlertModal() {
                 <div className="flex items-center gap-1 text-[10px] text-rmpg-300">
                   <MapPin className="w-3 h-3" />
                   <span>{a.address}</span>
-                  <span className="text-rmpg-500">· {a.distance_meters}m from call</span>
+                  <span className="text-fg-muted">· {a.distance_meters}m from call</span>
                 </div>
                 {a.description && (
                   <div className="text-xs text-rmpg-100 whitespace-pre-wrap">

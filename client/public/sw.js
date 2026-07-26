@@ -162,6 +162,17 @@ async function trimCache(cacheName, maxEntries) {
   }
 }
 
+// Cache a response and run eviction, used as a fire-and-forget side effect
+// alongside the returned network/cache response in every strategy branch
+// below. Single .catch() prevents Cache API failures (QuotaExceededError,
+// Safari private-browsing storage restrictions) from surfacing as unhandled
+// promise rejections in the SW console.
+function cachePut(cacheName, request, response) {
+  caches.open(cacheName)
+    .then((cache) => cache.put(request, response).then(() => trimCache(cacheName, MAX_CACHE_ENTRIES)))
+    .catch(() => {});
+}
+
 // Install — pre-cache core shell, immediately activate
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -255,11 +266,7 @@ self.addEventListener('fetch', (event) => {
       fetch(event.request)
         .then((response) => {
           if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, clone);
-              trimCache(CACHE_NAME, MAX_CACHE_ENTRIES);
-            });
+            cachePut(CACHE_NAME, event.request, response.clone());
           }
           return response;
         })
@@ -304,11 +311,7 @@ self.addEventListener('fetch', (event) => {
                 return new Response('', { status: 404, statusText: 'Stale chunk (HTML fallback)' });
               }
               if (response.ok) {
-                const clone = response.clone();
-                caches.open(CACHE_NAME).then((cache) => {
-                  cache.put(event.request, clone);
-                  trimCache(CACHE_NAME, MAX_CACHE_ENTRIES);
-                });
+                cachePut(CACHE_NAME, event.request, response.clone());
               }
               return response;
             })
@@ -331,11 +334,7 @@ self.addEventListener('fetch', (event) => {
             );
           }
           if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, clone);
-              trimCache(CACHE_NAME, MAX_CACHE_ENTRIES);
-            });
+            cachePut(CACHE_NAME, event.request, response.clone());
           }
           return response;
         })
@@ -351,11 +350,7 @@ self.addEventListener('fetch', (event) => {
       return fetch(event.request)
         .then((response) => {
           if (response.ok && url.pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)$/)) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, clone);
-              trimCache(CACHE_NAME, MAX_CACHE_ENTRIES);
-            });
+            cachePut(CACHE_NAME, event.request, response.clone());
           }
           return response;
         })

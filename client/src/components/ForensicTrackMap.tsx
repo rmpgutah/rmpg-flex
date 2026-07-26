@@ -156,9 +156,9 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
     <div className="relative w-full border border-border-default bg-surface-overlay" style={{ height }}>
       <div ref={containerRef} className="absolute inset-0" />
       {!loaded && !error && (
-        <div className="absolute inset-0 flex items-center justify-center text-rmpg-500 text-[11px] gap-1"><Loader2 className="w-3 h-3 animate-spin" /> map…</div>
+        <div className="absolute inset-0 flex items-center justify-center text-fg-muted text-[11px] gap-1"><Loader2 className="w-3 h-3 animate-spin" /> map…</div>
       )}
-      {error && <div className="absolute inset-0 flex items-center justify-center text-rmpg-500 text-[10px] px-2 text-center">{error}</div>}
+      {error && <div className="absolute inset-0 flex items-center justify-center text-fg-muted text-[10px] px-2 text-center">{error}</div>}
     </div>
   );
 }

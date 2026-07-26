@@ -31,6 +31,7 @@ import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { openForensicCasePdf } from '../utils/forensicCasePdf';
 import { computePayloadHash } from '../utils/pdfIntegrity';
 import { toDisplayLabel } from '../utils/formatters';
+import { withAlpha } from '../utils/withAlpha';
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -60,9 +61,9 @@ const PRIORITIES = [
 ] as const;
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string; nextAction: string }> = {
-  submitted: { label: 'Submitted', color: 'var(--rmpg-400)', bgColor: 'bg-surface-sunken/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
+  submitted: { label: 'Submitted', color: 'var(--text-secondary)', bgColor: 'bg-surface-sunken/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
   intake: { label: 'Intake', color: 'var(--sev-special-soft)', bgColor: 'bg-purple-900/20', nextAction: 'Evidence is being cataloged and checked in' },
-  assigned: { label: 'Assigned', color: 'var(--rmpg-400)', bgColor: 'bg-surface-sunken/20', nextAction: 'Examiner is preparing to begin analysis' },
+  assigned: { label: 'Assigned', color: 'var(--text-secondary)', bgColor: 'bg-surface-sunken/20', nextAction: 'Examiner is preparing to begin analysis' },
   in_progress: { label: 'In Progress', color: 'var(--sev-warn-soft)', bgColor: 'bg-amber-900/20', nextAction: 'Analysis is underway — check back for updates' },
   analysis_complete: { label: 'Analysis Complete', color: 'var(--sev-ok-soft)', bgColor: 'bg-emerald-900/20', nextAction: 'Results are available — report being drafted' },
   report_draft: { label: 'Report Draft', color: 'var(--sev-ok-soft)', bgColor: 'bg-lime-900/20', nextAction: 'Report is being reviewed before finalization' },
@@ -1056,8 +1057,8 @@ export default function ForensicLabPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-brand-400">{selectedCase.lab_number || selectedCase.lab_case_number || `FC-${selectedCase.id}`}</span>
-              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: sc.color + '15', color: sc.color, borderColor: sc.color + '40' }}>{sc.label}</span>
-              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: pc.color + '15', color: pc.color, borderColor: pc.color + '40' }}>{pc.label}</span>
+              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: withAlpha(sc.color, '15'), color: sc.color, borderColor: withAlpha(sc.color, '40') }}>{sc.label}</span>
+              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: withAlpha(pc.color, '15'), color: pc.color, borderColor: withAlpha(pc.color, '40') }}>{pc.label}</span>
               {overdue && <span className="text-[9px] px-1.5 py-0.5 bg-red-900/30 text-red-400 font-bold border border-red-700/50 animate-pulse">OVERDUE</span>}
             </div>
             <div className="text-sm font-semibold text-rmpg-100 truncate">{selectedCase.title}</div>
@@ -1314,7 +1315,9 @@ export default function ForensicLabPage() {
                 const custodyLog = meta.custody_log || [];
                 const CUSTODY_ACTIONS = ['received', 'transferred', 'stored', 'analyzed', 'returned'] as const;
                 const actionColors: Record<string, string> = {
-                  received: 'var(--text-muted)', transferred: 'var(--sev-warn)', stored: 'var(--sev-special-soft)', analyzed: 'var(--sev-ok-soft)', returned: 'var(--rmpg-500)',
+                  // `returned` must not reuse --text-muted: it is `received`'s color, and
+                  // the two are opposite ends of a custody transfer.
+                  received: 'var(--text-muted)', transferred: 'var(--sev-warn)', stored: 'var(--sev-special-soft)', analyzed: 'var(--sev-ok-soft)', returned: 'var(--text-secondary)',
                 };
                 return (
                   <div className="panel-beveled bg-surface-sunken p-3 space-y-3">
@@ -1347,14 +1350,14 @@ export default function ForensicLabPage() {
                           {custodyLog.map((ev, i) => (
                             <div key={ev.id} className="flex gap-3 relative">
                               <div className="w-3 h-3 rounded-full border-2 flex-shrink-0 mt-0.5 z-10" style={{
-                                borderColor: actionColors[ev.action] || 'var(--rmpg-500)',
-                                backgroundColor: i === 0 ? (actionColors[ev.action] || 'var(--rmpg-500)') : 'var(--surface-overlay)',
+                                borderColor: actionColors[ev.action] || 'var(--text-muted)',
+                                backgroundColor: i === 0 ? (actionColors[ev.action] || 'var(--text-muted)') : 'var(--surface-overlay)',
                               }} />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm" style={{
-                                    backgroundColor: (actionColors[ev.action] || 'var(--rmpg-500)') + '20',
-                                    color: actionColors[ev.action] || 'var(--rmpg-500)',
+                                    backgroundColor: withAlpha(actionColors[ev.action] || 'var(--text-muted)', '20'),
+                                    color: actionColors[ev.action] || 'var(--text-muted)',
                                   }}>{toDisplayLabel(ev.action)}</span>
                                   <span className="text-[10px] text-rmpg-300">
                                     <span className="text-rmpg-200 font-semibold">{ev.from_person}</span>
@@ -1484,11 +1487,11 @@ export default function ForensicLabPage() {
                   {selectedCase.exhibits.map(ex => {
                     const exStatus = ex.status === 'complete' ? { color: 'var(--sev-ok)', icon: CheckCircle } :
                       ex.status === 'examining' ? { color: 'var(--sev-warn)', icon: Activity } :
-                      { color: 'var(--rmpg-400)', icon: Package };
+                      { color: 'var(--text-secondary)', icon: Package };
                     return (
                       <div key={ex.id} className="panel-beveled bg-surface-sunken p-3 border-l-[3px]" style={{ borderLeftColor: exStatus.color }}>
                         <div className="flex items-start gap-2">
-                          <div className="w-8 h-8 rounded-sm flex items-center justify-center text-sm font-bold font-mono" style={{ backgroundColor: exStatus.color + '20', color: exStatus.color }}>
+                          <div className="w-8 h-8 rounded-sm flex items-center justify-center text-sm font-bold font-mono" style={{ backgroundColor: withAlpha(exStatus.color, '20'), color: exStatus.color }}>
                             {ex.exhibit_number}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -2497,8 +2500,8 @@ export default function ForensicLabPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-[10px] font-mono text-brand-400">{c.lab_number || c.lab_case_number || `FC-${c.id}`}</span>
-                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: sc.color + '15', color: sc.color, borderColor: sc.color + '40' }}>{sc.label}</span>
-                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: pc.color + '15', color: pc.color, borderColor: pc.color + '40' }}>{pc.label}</span>
+                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: withAlpha(sc.color, '15'), color: sc.color, borderColor: withAlpha(sc.color, '40') }}>{sc.label}</span>
+                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: withAlpha(pc.color, '15'), color: pc.color, borderColor: withAlpha(pc.color, '40') }}>{pc.label}</span>
                             {overdue && <span className="text-[8px] px-1 py-0.5 bg-red-900/30 text-red-400 font-bold border border-red-700/50 animate-pulse">OVERDUE</span>}
                           </div>
                           <div className="text-xs font-semibold text-rmpg-200 truncate">{c.title}</div>

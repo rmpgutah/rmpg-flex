@@ -585,7 +585,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               {user.badge_number && <span className="mr-2">{user.badge_number}</span>}
               <span className="uppercase">{toDisplayLabel(user.role)}</span>
             </div>
-            <div className="text-[10px] text-rmpg-500">
+            <div className="text-[10px] text-fg-muted">
               {user.email}
             </div>
           </div>
@@ -601,7 +601,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 onClick={() => setActiveTab(tab.id)}
                 className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors"
                 style={{
-                  color: activeTab === tab.id ? '#ffffff' : 'var(--rmpg-500)',
+                  color: activeTab === tab.id ? '#ffffff' : 'var(--text-muted)',
                   borderBottom: activeTab === tab.id ? '2px solid #888888' : '2px solid transparent',
                   background: activeTab === tab.id ? 'rgba(136, 136, 136, 0.08)' : 'transparent',
                 }}
@@ -746,7 +746,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       }}
                     >
                       <Upload style={{ width: 16, height: 16, margin: '0 auto 4px', color: 'var(--text-muted)' }} />
-                      <div className="text-[10px] text-rmpg-500">
+                      <div className="text-[10px] text-fg-muted">
                         {imageUploading ? 'Uploading...' : 'Drop image here or click to browse'}
                       </div>
                       <div className="text-[9px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
@@ -757,7 +757,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <button type="button"
                         onClick={handleRemoveProfileImage}
                         disabled={imageUploading}
-                                                className="flex items-center gap-1 text-[10px] px-2 py-1 hover:text-red-400 transition-colors text-rmpg-500"
+                                                className="flex items-center gap-1 text-[10px] px-2 py-1 hover:text-red-400 transition-colors text-fg-muted"
                       >
                         <Trash2 style={{ width: 10, height: 10 }} />
                         Remove photo
@@ -811,7 +811,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <button
                     type="button"
                     onClick={() => setShowCurrentPw(!showCurrentPw)}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted"
                   >
                     {showCurrentPw ? <EyeOff style={{ width: 13, height: 13 }} /> : <Eye style={{ width: 13, height: 13 }} />}
                   </button>
@@ -829,7 +829,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <button
                     type="button"
                     onClick={() => setShowNewPw(!showNewPw)}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted"
                   >
                     {showNewPw ? <EyeOff style={{ width: 13, height: 13 }} /> : <Eye style={{ width: 13, height: 13 }} />}
                   </button>
@@ -879,7 +879,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
           {activeTab === 'preferences' && (
             <>
               {!prefsLoaded ? (
-                <div className="text-xs text-center py-4 text-rmpg-500">Loading preferences...</div>
+                <div className="text-xs text-center py-4 text-fg-muted">Loading preferences...</div>
               ) : prefs ? (
                 <>
                   {/* Notification Preferences */}
@@ -909,7 +909,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                                 onChange={e => setPrefs({ ...prefs, [`notify_${key}_inapp`]: e.target.checked ? 1 : 0 })}
                                 className="w-3 h-3"
                               />
-                              <span className="text-[9px] text-rmpg-500">In-App</span>
+                              <span className="text-[9px] text-fg-muted">In-App</span>
                             </label>
                             <label className="flex items-center gap-1 cursor-pointer">
                               <input id="ff-userprofilemodal-9"
@@ -918,7 +918,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                                 onChange={e => setPrefs({ ...prefs, [`notify_${key}_email`]: e.target.checked ? 1 : 0 })}
                                 className="w-3 h-3"
                               />
-                              <span className="text-[9px] text-rmpg-500">Email</span>
+                              <span className="text-[9px] text-fg-muted">Email</span>
                             </label>
                           </div>
                         </div>
@@ -1025,7 +1025,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                             onChange={e => setPrefs({ ...prefs, font_scale: parseFloat(e.target.value) })}
                             className="w-24 h-1"
                           />
-                          <span className="text-[10px] font-mono w-8 text-right text-rmpg-500">
+                          <span className="text-[10px] font-mono w-8 text-right text-fg-muted">
                             {(prefs.font_scale * 100).toFixed(0)}%
                           </span>
                         </div>
@@ -1112,7 +1112,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                           setPrefsMsg({ type: 'error', text: 'Failed to reset preferences.' });
                         }
                       }}
-                                            className="flex items-center gap-1 text-[10px] px-2 py-1 transition-colors text-rmpg-500"
+                                            className="flex items-center gap-1 text-[10px] px-2 py-1 transition-colors text-fg-muted"
                     >
                       <RotateCcw style={{ width: 10, height: 10 }} />
                       Reset to Defaults
@@ -1144,7 +1144,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   </div>
                 </>
               ) : (
-                <div className="text-xs text-center py-4 text-rmpg-500">Failed to load preferences</div>
+                <div className="text-xs text-center py-4 text-fg-muted">Failed to load preferences</div>
               )}
             </>
           )}
@@ -1155,7 +1155,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 Active Sessions
               </div>
               {sessions.length === 0 ? (
-                <div className="text-xs text-center py-4 text-rmpg-500">No active sessions</div>
+                <div className="text-xs text-center py-4 text-fg-muted">No active sessions</div>
               ) : (
                 <div className="space-y-2">
                   {sessions.map((session: any) => (
@@ -1168,10 +1168,10 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         <div className="text-[11px] text-rmpg-100 font-mono">
                           {session.ip_address}
                         </div>
-                        <div className="text-[9px] text-rmpg-500">
+                        <div className="text-[9px] text-fg-muted">
                           {session.user_agent?.substring(0, 60)}...
                         </div>
-                        <div className="text-[9px] text-rmpg-500">
+                        <div className="text-[9px] text-fg-muted">
                           Last used: {(session.last_used_at || session.created_at) ? parseTimestamp(session.last_used_at || session.created_at).toLocaleString() : 'N/A'}
                         </div>
                       </div>
@@ -1205,7 +1205,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         <div className="flex items-center gap-2 text-[11px]">
                           <span className="led-dot led-green" />
                           <span style={{ color: '#22c55e' }}>2FA is enabled</span>
-                          <span className="text-[9px] ml-auto font-mono text-rmpg-500">
+                          <span className="text-[9px] ml-auto font-mono text-fg-muted">
                             {tfaStatus.backupCodesRemaining} backup codes left
                           </span>
                         </div>
@@ -1255,7 +1255,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                             {sqConfigured ? 'Recovery questions are set up' : 'Recovery questions are not set up'}
                           </span>
                         </div>
-                        <p className="text-[9px] text-rmpg-500">
+                        <p className="text-[9px] text-fg-muted">
                           {sqConfigured
                             ? 'Answering these lets you reset your password from the login screen without an administrator.'
                             : 'Without these, "Forgot password?" cannot recover your account — an administrator must reset it manually.'}

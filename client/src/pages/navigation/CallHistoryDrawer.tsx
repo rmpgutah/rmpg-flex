@@ -19,6 +19,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 
 import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
+import { withAlpha } from '../../utils/withAlpha';
 interface RawCall {
   id: number;
   call_number: string;
@@ -213,7 +214,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
               className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide border"
               style={{
                 borderRadius: 2,
-                color: winKey === w.key ? '#0a0a0a' : 'var(--rmpg-400)',
+                color: winKey === w.key ? '#0a0a0a' : 'var(--text-secondary)',
                 background: winKey === w.key ? 'var(--brand-gold)' : 'transparent',
                 borderColor: winKey === w.key ? 'var(--brand-gold)' : '#2e2e2e',
               }}
@@ -279,7 +280,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
                   </span>
                 )}
                 <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1" title={c.incident_type}>{c.incident_type?.replace(/_/g, ' ')}</span>
-                <span className="text-[8px] font-bold uppercase px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: STATUS_COLOR[c.status] || '#888', background: `${STATUS_COLOR[c.status] || '#888'}22` }}>{formatEnumValue(c.status)}</span>
+                <span className="text-[8px] font-bold uppercase px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: STATUS_COLOR[c.status] || '#888', background: withAlpha(STATUS_COLOR[c.status] || '#888', '22') }}>{formatEnumValue(c.status)}</span>
                 <span className="text-[8px] font-mono text-rmpg-600 shrink-0">{fmtDateShort(c.dispatched_at || c.created_at)}</span>
               </div>
 
@@ -288,8 +289,8 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
                 {stages.map((s, i) => (
                   <div key={s.k} className="flex items-center flex-1 min-w-0">
                     <div className="flex flex-col items-center flex-1 min-w-0">
-                      <span className="text-[7px] uppercase tracking-wider leading-none" style={{ color: s.t ? 'var(--brand-gold)' : 'var(--rmpg-700)' }}>{s.k}</span>
-                      <span className="text-[8px] font-mono leading-tight" style={{ color: s.t ? 'var(--rmpg-300)' : 'var(--rmpg-700)' }}>{s.t || '··'}</span>
+                      <span className="text-[7px] uppercase tracking-wider leading-none" style={{ color: s.t ? 'var(--brand-gold)' : 'var(--text-muted)' }}>{s.k}</span>
+                      <span className="text-[8px] font-mono leading-tight" style={{ color: s.t ? 'var(--text-secondary)' : 'var(--text-muted)' }}>{s.t || '··'}</span>
                     </div>
                     {i < stages.length - 1 && <div className="h-px w-2 shrink-0" style={{ background: stages[i + 1].t ? '#d4a01755' : 'var(--border-subtle)' }} />}
                   </div>

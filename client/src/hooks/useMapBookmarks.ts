@@ -9,6 +9,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { escapeHtml } from '../utils/sanitize';
+import { withAlpha } from '../utils/withAlpha';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ export function useMapBookmarks(
         background:${bm.color};border:2px solid #fff;
         display:flex;align-items:center;justify-content:center;
         font-size:10px;cursor:pointer;color:#fff;font-weight:700;
-        box-shadow:0 0 8px ${bm.color}80;
+        box-shadow:0 0 8px ${withAlpha(bm.color, '80')};
       `;
       el.textContent = '★';
       el.title = bm.name;

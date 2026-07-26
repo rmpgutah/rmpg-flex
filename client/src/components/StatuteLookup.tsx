@@ -218,7 +218,7 @@ export default function StatuteLookup({
                   className={`flex-shrink-0 px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors ${
                     activeState === st
                       ? 'bg-brand-900/40 text-brand-300 border-b-2 border-brand-500'
-                      : 'text-rmpg-500 hover:text-rmpg-200 hover:bg-rmpg-700/30'
+                      : 'text-fg-muted hover:text-rmpg-200 hover:bg-rmpg-700/30'
                   }`}
                 >
                   {st === 'ALL' ? 'All' : st}
@@ -309,7 +309,7 @@ export default function StatuteLookup({
                               e.stopPropagation();
                               setShowDefinition(showDefinition === s.id ? null : s.id);
                             }}
-                            className="ml-auto p-0.5 text-rmpg-500 hover:text-brand-400 transition-colors"
+                            className="ml-auto p-0.5 text-fg-muted hover:text-brand-400 transition-colors"
                             title="View law reference"
                           >
                             <BookOpen className="w-3 h-3" />
@@ -318,7 +318,7 @@ export default function StatuteLookup({
                       </div>
                       <p className="text-xs text-rmpg-200 mt-0.5">{s.short_title}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-rmpg-500 truncate">{s.subcategory}</span>
+                        <span className="text-[10px] text-fg-muted truncate">{s.subcategory}</span>
                         {s.citation_fine != null && s.citation_fine > 0 && (
                           <span className="text-[9px] font-mono font-bold text-green-400 bg-green-900/30 border border-green-700/40 px-1 py-0">
                             ${s.citation_fine}

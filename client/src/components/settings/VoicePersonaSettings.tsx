@@ -50,7 +50,7 @@ export default function VoicePersonaSettings() {
             style={{
               background: 'var(--surface-overlay)',
               border: '1px solid var(--border-subtle)',
-              color: 'var(--rmpg-300)',
+              color: 'var(--text-secondary)',
               borderRadius: 2,
             }}
           >
@@ -153,7 +153,7 @@ export default function VoicePersonaSettings() {
           className="flex items-center justify-between"
           style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '10px 12px' }}
         >
-          <span className="text-[11px]" style={{ color: 'var(--rmpg-300)' }}>
+          <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
             Proactive coaching + event announcements
           </span>
           <button
@@ -172,7 +172,7 @@ export default function VoicePersonaSettings() {
             {persona.brainEnabled ? 'Enabled' : 'Disabled'}
           </button>
         </div>
-        <p className="text-[10px] mt-1 text-rmpg-500">
+        <p className="text-[10px] mt-1 text-fg-muted">
           When off, no coaching or event-driven speech. New calls & alerts still announce as usual.
         </p>
       </div>

@@ -180,7 +180,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
             className="px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100"
             aria-label="Filter from date"
           />
-          <span className="text-rmpg-500 text-xs">to</span>
+          <span className="text-fg-muted text-xs">to</span>
           <input
             type="date"
             value={dateTo}
@@ -233,7 +233,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                     stroke="var(--border-default)" strokeWidth={1.5} strokeDasharray="4,3"
                   />
                   {e.label && (
-                    <text x={mx} y={my - 4} textAnchor="middle" fontSize={7} fill="var(--rmpg-500)" fontFamily="monospace">
+                    <text x={mx} y={my - 4} textAnchor="middle" fontSize={7} fill="var(--text-muted)" fontFamily="monospace">
                       <title>{sentence}</title>
                       {e.label}
                     </text>
@@ -276,7 +276,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   {/* Label below */}
                   <text
                     x={n.x} y={n.y + r + 10} textAnchor="middle"
-                    fontSize={8} fill="var(--rmpg-300)" fontFamily="monospace"
+                    fontSize={8} fill="var(--text-secondary)" fontFamily="monospace"
                   >
                     {n.label.length > 18 ? n.label.slice(0, 16) + '…' : n.label}
                   </text>
@@ -284,7 +284,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   {n.subLabel && (
                     <text
                       x={n.x} y={n.y + r + 19} textAnchor="middle"
-                      fontSize={6} fill="var(--rmpg-500)" fontFamily="monospace"
+                      fontSize={6} fill="var(--text-muted)" fontFamily="monospace"
                     >
                       {n.subLabel}
                     </text>

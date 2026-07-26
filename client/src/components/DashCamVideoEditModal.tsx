@@ -59,7 +59,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
     clearDraft,
     snapshot,
   } = useFormDraft<DashCamVideoEditData>({
-    storageKey: 'rmpg_dashcam_video_edit_form',
+    storageKey: `rmpg_dashcam_video_edit_form_${video?.id ?? 'new'}`,
     defaultValue: EMPTY,
     isActive: isOpen,
   });
@@ -211,11 +211,11 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
           placeholder="Optional notes about this footage..."
           maxLength={3000}
         />
-        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
+        <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.notes.length}/3000</div>
       </div>
 
       {/* Info note */}
-      <p className="text-[10px] text-rmpg-500 italic">
+      <p className="text-[10px] text-fg-muted italic">
         Metadata changes are reflected in the live HUD overlay during playback.
       </p>
     </FormModal>

@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { withAlpha } from '../../../utils/withAlpha';
 
 interface Breadcrumb {
   id: number;
@@ -180,7 +181,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
                   </td>
                   <td className="px-2 py-1">
                     <span className="text-[8px] font-bold uppercase px-1 py-0.5" style={{
-                      color: bc.unit_status === 'available' ? '#22c55e' : bc.unit_status === 'enroute' ? '#888888' : 'var(--rmpg-400)',
+                      color: bc.unit_status === 'available' ? '#22c55e' : bc.unit_status === 'enroute' ? '#888888' : 'var(--text-secondary)',
                     }}>
                       {bc.unit_status || '-'}
                     </span>
@@ -217,7 +218,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
                       <div className="text-[8px] text-rmpg-500">{formatDate(ev.event_timestamp)}</div>
                     </td>
                     <td className="px-2 py-1">
-                      <span className="flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5" style={{ color, background: color + '15', border: `1px solid ${color}30` }}>
+                      <span className="flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5" style={{ color, background: withAlpha(color, '15'), border: `1px solid ${withAlpha(color, '30')}` }}>
                         {icon}
                         {ev.event_type.replace(/_/g, ' ').toUpperCase()}
                       </span>

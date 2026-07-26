@@ -14,6 +14,7 @@ import { useToast } from '../../components/ToastProvider';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 import { parseTimestamp } from '../../utils/dateUtils';
+import { withAlpha } from '../../utils/withAlpha';
 
 interface OfficerCompliance {
   user_id: number;
@@ -267,11 +268,11 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
                 <td className="px-3 py-2 text-rmpg-400 font-mono">{o.badge_number || '—'}</td>
                 <td className="px-3 py-2 text-rmpg-400">{toDisplayLabel(o.role)}</td>
                 <td className="px-3 py-2 text-center font-mono text-rmpg-300">{o.completed}/{o.required}</td>
-                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? '#ef4444' : 'var(--rmpg-500)' }}>
+                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? '#ef4444' : 'var(--text-muted)' }}>
                   {o.overdue}
                 </td>
                 <td className="px-3 py-2">
-                  <span className="text-[8px] font-bold uppercase px-1.5 py-0.5" style={{ background: `${statusColor}22`, color: statusColor, border: `1px solid ${statusColor}44` }}>
+                  <span className="text-[8px] font-bold uppercase px-1.5 py-0.5" style={{ background: withAlpha(statusColor, '22'), color: statusColor, border: `1px solid ${withAlpha(statusColor, '44')}` }}>
                     {statusLabel}
                   </span>
                 </td>

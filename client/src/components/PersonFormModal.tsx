@@ -243,7 +243,7 @@ export default function PersonFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<PersonFormData>({
-    storageKey: 'rmpg_person_form',
+    storageKey: `rmpg_person_form_${editingPerson?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });
@@ -892,37 +892,6 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          {/* Law Enforcement IDs */}
-          <div className="border-t border-rmpg-600 pt-3 mt-3">
-            <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 block">Law Enforcement Identifiers</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">NCIC Number</label>
-                <input name="ncic_number" type="text" className="input-dark mt-1" value={form.ncic_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">SOR Number</label>
-                <input name="sor_number" type="text" className="input-dark mt-1" placeholder="Sex Offender Registry #" value={form.sor_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">FBI Number</label>
-                <input name="fbi_number" type="text" className="input-dark mt-1" value={form.fbi_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">State ID Number</label>
-                <input name="state_id_number" type="text" className="input-dark mt-1" value={form.state_id_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Passport Number</label>
-                <input name="passport_number" type="text" className="input-dark mt-1" value={form.passport_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Passport Country</label>
-                <input name="passport_country" type="text" className="input-dark mt-1" placeholder="Issuing country" value={form.passport_country} onChange={handleChange} />
-              </div>
-            </div>
-          </div>
-
           {/* ID Image Upload */}
           <div className="border-t border-rmpg-600 pt-3 mt-3">
             <label htmlFor="ff-personformmodal-0" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 block">ID Photo / Image</label>
@@ -953,7 +922,7 @@ export default function PersonFormModal({
                     </button>
                   </>
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-rmpg-500">
+                  <div className="w-full h-full flex flex-col items-center justify-center text-fg-muted">
                     <CreditCard className="w-8 h-8 mb-1" />
                     <span className="text-[9px]">No Image</span>
                   </div>
@@ -969,7 +938,7 @@ export default function PersonFormModal({
                   <Upload className="w-3 h-3" />
                   {form.id_image_url || idImageFile ? 'Replace Image' : 'Upload ID Image'}
                 </button>
-                <p className="text-[9px] text-rmpg-500 mt-1.5">Accepted: JPEG, PNG, GIF, WebP. Max 50MB.</p>
+                <p className="text-[9px] text-fg-muted mt-1.5">Accepted: JPEG, PNG, GIF, WebP. Max 50MB.</p>
                 {idImageFile && (
                   <p className="text-[9px] text-green-400 mt-0.5">{idImageFile.name} ({(idImageFile.size / 1024).toFixed(0)} KB)</p>
                 )}
@@ -982,13 +951,13 @@ export default function PersonFormModal({
                 )}
                 {/* Fallback: manual URL entry */}
                 <div className="mt-2">
-                  <label className="text-[9px] text-rmpg-500 uppercase font-semibold">Or enter image URL directly</label>
+                  <label className="text-[9px] text-fg-muted uppercase font-semibold">Or enter image URL directly</label>
                   <input name="id_image_url" type="text" className="input-dark mt-0.5 text-xs" placeholder="https://..." value={form.id_image_url} onChange={handleChange} />
                 </div>
                 {/* Separate face/mugshot photo. id_image_url is the
                     scanned ID document; photo_url is the subject's face. */}
                 <div className="mt-2">
-                  <label className="text-[9px] text-rmpg-500 uppercase font-semibold">Face Photo / Mugshot URL</label>
+                  <label className="text-[9px] text-fg-muted uppercase font-semibold">Face Photo / Mugshot URL</label>
                   <input name="photo_url" type="text" className="input-dark mt-0.5 text-xs" placeholder="https://..." value={form.photo_url} onChange={handleChange} />
                 </div>
               </div>

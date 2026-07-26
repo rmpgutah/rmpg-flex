@@ -169,7 +169,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       case 'P1': return '#ef4444';
       case 'P2': return '#f97316';
       case 'P3': return '#eab308';
-      default: return 'var(--rmpg-500)';
+      default: return 'var(--text-muted)';
     }
   };
 
@@ -189,7 +189,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           </span>
         </div>
         {onClose && (
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100">
+          <button type="button" onClick={onClose} className="text-fg-muted hover:text-rmpg-100">
             <X style={{ width: 12, height: 12 }} />
           </button>
         )}
@@ -255,13 +255,13 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       {/* On-file occupants (individual records cross-referenced by address) */}
       {occupants.length > 0 && (
         <div className="premise-call-list">
-          <div className="px-2 pt-1 text-[8px] font-bold uppercase tracking-wide text-rmpg-500">
+          <div className="px-2 pt-1 text-[8px] font-bold uppercase tracking-wide text-fg-muted">
             On File At Address — {occupants.length} Individual{occupants.length !== 1 ? 's' : ''}
           </div>
           {occupants.slice(0, compact ? 4 : 15).map((o) => (
             <div key={o.id} className="premise-call-item flex items-center gap-1.5" style={o.caution ? { borderLeft: '2px solid #ef4444' } : undefined}>
               <span className="text-[10px] font-semibold" style={{ color: o.caution ? '#ff6b6b' : '#cccccc' }}>{o.name}</span>
-              {o.dob && <span className="text-[9px] text-rmpg-500">DOB {o.dob}</span>}
+              {o.dob && <span className="text-[9px] text-fg-muted">DOB {o.dob}</span>}
               {o.active_warrants > 0 && (
                 <span className="text-[8px] font-black px-1 py-px" style={{ background: '#991b1b', color: '#fff' }}>
                   {o.active_warrants} WARRANT{o.active_warrants > 1 ? 'S' : ''}
@@ -302,7 +302,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
                 {formatIncidentType(call.incident_type)}
               </span>
             </div>
-            <div className="flex items-center gap-2 text-[9px] text-rmpg-500">
+            <div className="flex items-center gap-2 text-[9px] text-fg-muted">
               <Clock style={{ width: 9, height: 9 }} />
               <span>{safeDateStr(call.created_at)}</span>
               {call.disposition && <span>• {toDisplayLabel(call.disposition)}</span>}
@@ -312,7 +312,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           </div>
         ))}
         {data.total > (compact ? 3 : 10) && (
-          <div className="text-[9px] text-rmpg-500 text-center py-1">
+          <div className="text-[9px] text-fg-muted text-center py-1">
             + {data.total - (compact ? 3 : 10)} more prior calls
           </div>
         )}

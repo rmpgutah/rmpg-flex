@@ -21,6 +21,7 @@ import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { apiFetch } from '../hooks/useApi';
 import { speak } from '../utils/edgeTTS';
+import { withAlpha } from '../utils/withAlpha';
 import ManeuverArrow from './ManeuverArrow';
 import type { CallForService, Unit } from '../types';
 
@@ -86,7 +87,7 @@ export function buildCallMarker(label: string, priority?: string): HTMLElement {
     padding:2px 4px;border:1.5px solid ${CALL_MARKER_INK};
     white-space:nowrap;font-family:'JetBrains Mono',monospace;
     letter-spacing:0.03em;border-radius:1px;
-    box-shadow:0 0 8px ${color}50;
+    box-shadow:0 0 8px ${withAlpha(color, '50')};
   `;
   tag.textContent = label;
 
@@ -487,7 +488,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   if (isAuthError) {
     return (
       <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-base)' }}>
-        <span className="text-[9px] text-rmpg-500">{error}</span>
+        <span className="text-[9px] text-fg-muted">{error}</span>
       </div>
     );
   }
@@ -587,7 +588,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 6,
           borderLeft: '2px solid #22c55e',
         }}>
-          <span style={{ fontSize: 8, color: 'var(--rmpg-400)', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+          <span style={{ fontSize: 8, color: 'var(--text-secondary)', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
           <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
@@ -630,7 +631,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               {activeRoute.steps[0].instruction}
             </span>
             {activeRoute.steps[0].distanceMeters > 0 && (
-              <span style={{ fontSize: 11, color: 'var(--rmpg-400)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 700, whiteSpace: 'nowrap' }}>
                 {activeRoute.steps[0].distanceText}
               </span>
             )}
@@ -666,7 +667,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.9)', border: `1px solid ${STATUS_COLORS.warning}55`,
+            background: 'rgba(0,0,0,0.9)', border: `1px solid ${withAlpha(STATUS_COLORS.warning, '55')}`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
             borderRadius: 2,
           }}>
@@ -685,7 +686,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.85)', border: `1px solid ${STATUS_COLORS.caution}40`,
+            background: 'rgba(0,0,0,0.85)', border: `1px solid ${withAlpha(STATUS_COLORS.caution, '40')}`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
             borderRadius: 2,
           }}>

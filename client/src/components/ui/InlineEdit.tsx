@@ -75,7 +75,7 @@ export default function InlineEdit({
         className={`cursor-pointer hover:bg-brand-500/10 px-1 py-0.5 rounded-sm border border-transparent hover:border-brand-500/30 transition-all ${displayClassName}`}
         title="Click to edit"
       >
-        {value || <span className="text-rmpg-600 italic">{placeholder}</span>}
+        {value || <span className="text-fg-muted italic">{placeholder}</span>}
       </span>
     );
   }

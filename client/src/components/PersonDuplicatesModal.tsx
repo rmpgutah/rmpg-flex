@@ -101,7 +101,7 @@ export default function PersonDuplicatesModal({ isOpen, onClose, onMergeComplete
                   <div className="text-[9px] text-rmpg-400">ID #{p.id1} {p.dob1 && `• DOB: ${p.dob1}`}</div>
                 </div>
 
-                <ChevronRight className="w-3 h-3 text-rmpg-500 flex-shrink-0" />
+                <ChevronRight className="w-3 h-3 text-fg-muted flex-shrink-0" />
 
                 {/* Person B */}
                 <div className="flex-1 min-w-0">

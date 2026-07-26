@@ -96,7 +96,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
           <div className="flex items-end justify-between gap-1">
             <span
               className="text-base leading-none tracking-[0.18em] font-semibold"
-              style={{ color: cap.alerted ? '#fca5a5' : band === 'high' ? '#fff' : 'var(--rmpg-200)' }}>
+              style={{ color: cap.alerted ? '#fca5a5' : band === 'high' ? '#fff' : 'var(--text-primary)' }}>
               {displayPlate || '—'}
             </span>
             <TrustBadge trust={trust} />

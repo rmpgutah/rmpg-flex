@@ -185,8 +185,8 @@ export default function PttController() {
   if (!active || resolvedChannelId == null) return null;
 
   // ── HUD state → color + label ──
-  let bg = 'var(--surface-overlay)', border = 'var(--border-default)', dot = 'var(--rmpg-500)', label = 'STANDBY', Icon = Radio;
-  if (!voice.supported) { label = 'NO MIC'; dot = 'var(--rmpg-500)'; Icon = MicOff; }
+  let bg = 'var(--surface-overlay)', border = 'var(--border-default)', dot = 'var(--text-muted)', label = 'STANDBY', Icon = Radio;
+  if (!voice.supported) { label = 'NO MIC'; dot = 'var(--text-muted)'; Icon = MicOff; }
   else if (voice.transmitting) { bg = '#3a0d0d'; border = '#ef4444'; dot = '#ef4444'; label = 'ON AIR'; Icon = Mic; }
   else if (voice.activeSpeaker) { bg = '#0d2a14'; border = '#22c55e'; dot = '#22c55e'; label = `RX · ${voice.activeSpeaker.label}`; Icon = RadioTower; }
   else if (voice.busy) { bg = '#2a220a'; border = '#d4a017'; dot = '#d4a017'; label = 'CHANNEL BUSY'; Icon = Radio; }

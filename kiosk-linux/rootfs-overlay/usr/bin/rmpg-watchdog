@@ -1,0 +1,200 @@
+#!/bin/sh
+# /usr/bin/rmpg-watchdog — hardware watchdog feeder gated on session health.
+#
+# ── WHAT THIS ADDS THAT A/B SLOTS DO NOT ─────────────────────────────────────
+#
+# The A/B slots recover from a bad IMAGE: three failed boots and the terminal
+# returns to the previous version. Nothing recovered from a LIVE HANG. A kernel
+# lockup, a wedged X server, or a GPU that stopped servicing requests left the
+# terminal dark and unrecoverable until somebody drove to the vehicle and held
+# the power button — and in a patrol car that is the moment an officer needs
+# dispatch most.
+#
+# The Intel TCO watchdog is present on every PCH the FZ-55 ships (enabled
+# 2026-07-25 as CONFIG_ITCO_WDT; it was not built before). Opening
+# /dev/watchdog arms it; the hardware resets the machine if it is not written to
+# within the driver timeout. So the design is inverted from a keepalive: this
+# process does not prove itself alive, it proves the SESSION is alive, and
+# stops feeding the moment it cannot.
+#
+# ── WHY GATE ON HEALTH RATHER THAN JUST PETTING ──────────────────────────────
+#
+# A feeder that pets unconditionally only catches a total kernel lockup. The
+# far more common field failure is a live kernel with a dead user session: X
+# still has the DRM master and the display, so the screen shows a frozen
+# desktop, while nothing responds to touch. To the officer that is identical to
+# a crash. Probing that X actually SERVICES a request is what distinguishes
+# "frozen" from "idle", and it is why the probe is a real round trip rather
+# than a process-alive check.
+#
+# ── DELIBERATE CONSEQUENCE ───────────────────────────────────────────────────
+#
+# If the session never becomes healthy, this reboots the terminal, which
+# increments the A/B failed-boot counter. Three of those and the slot rolls
+# back. That chaining is intentional: it converts a hang, which the A/B design
+# could not see, into a countable failed boot that it can. If BOTH slots hang
+# the terminal reboots repeatedly — no worse than sitting dark, and it keeps
+# trying rather than requiring a site visit.
+#
+#   RMPG_WATCHDOG_DEVICE      /dev/watchdog
+#   RMPG_WATCHDOG_INTERVAL    seconds between feeds (10)
+#   RMPG_WATCHDOG_GRACE       seconds to allow the session to come up (300)
+#   RMPG_WATCHDOG_PROBE_WAIT  seconds to allow one X round trip (10)
+#   RMPG_WATCHDOG_DISABLE=1   do not arm at all (bring-up and debugging)
+set -u
+
+DEVICE="${RMPG_WATCHDOG_DEVICE:-/dev/watchdog}"
+INTERVAL="${RMPG_WATCHDOG_INTERVAL:-10}"
+GRACE="${RMPG_WATCHDOG_GRACE:-300}"
+PROBE_WAIT="${RMPG_WATCHDOG_PROBE_WAIT:-10}"
+DESKTOP_LOG=/tmp/rmpg-desktop.log
+
+log() { echo "KIOSK_LINUX_WATCHDOG $*"; logger -t rmpg-watchdog "$*" 2>/dev/null; }
+
+if [ "${RMPG_WATCHDOG_DISABLE:-0}" = "1" ]; then
+    log "DISABLED by RMPG_WATCHDOG_DISABLE=1 — this terminal will NOT self-recover from a hang"
+    exit 0
+fi
+
+if [ ! -c "$DEVICE" ]; then
+    # QEMU without a watchdog device, or a machine whose PCH the driver does not
+    # recognise. Not fatal, but it does mean no hang protection, so say so
+    # rather than exiting silently.
+    log "NO_DEVICE ($DEVICE absent — no hardware hang protection on this unit)"
+    exit 0
+fi
+
+# Checked BEFORE the exec below, because a failed redirection on `exec` with no
+# command may terminate a non-interactive POSIX shell outright rather than
+# returning non-zero — so the `if ! exec` further down cannot be relied on to
+# report its own failure, and this daemon is started in the background where a
+# silent death looks exactly like a healthy armed watchdog.
+#
+# Deliberately not probed by opening the device: opening /dev/watchdog IS what
+# arms the timer, so a test-open would start the countdown before the startup
+# grace period is in place.
+if [ ! -w "$DEVICE" ]; then
+    log "NOT_WRITABLE ($DEVICE exists but is not writable — no hang protection)"
+    exit 0
+fi
+
+# ── Health probe ─────────────────────────────────────────────────────────────
+# Bounded round trip to the X server. `timeout` is not relied on: whether that
+# BusyBox applet is compiled in is a build-config detail, and a missing applet
+# here would make every probe fail and reboot a healthy terminal. Backgrounding
+# with an explicit bounded wait needs nothing beyond kill and sleep.
+x_responds() {
+    [ -x /usr/bin/xdpyinfo ] || return 0   # cannot probe; do not punish the unit
+    xdpyinfo -display :0 >/dev/null 2>&1 &
+    probe_pid=$!
+    waited=0
+    while [ "$waited" -lt "$PROBE_WAIT" ]; do
+        kill -0 "$probe_pid" 2>/dev/null || break
+        sleep 1
+        waited=$((waited + 1))
+    done
+    if kill -0 "$probe_pid" 2>/dev/null; then
+        # Still running past the deadline: X accepted the connection but never
+        # answered. This is the frozen-desktop case, and it is exactly what a
+        # process-alive check would have called healthy.
+        kill -9 "$probe_pid" 2>/dev/null
+        wait "$probe_pid" 2>/dev/null
+        return 1
+    fi
+    wait "$probe_pid" 2>/dev/null
+    return $?
+}
+
+session_healthy() {
+    # Console-fallback mode is a healthy terminal: no X, but cog is serving
+    # dispatch on DRM directly, which is what the officer actually needs.
+    if pgrep -f "cog --platform=drm" >/dev/null 2>&1; then
+        return 0
+    fi
+    # An X session must both exist and answer.
+    if pgrep -x Xorg >/dev/null 2>&1 || pgrep -x X >/dev/null 2>&1; then
+        x_responds && return 0
+        return 1
+    fi
+    return 1
+}
+
+# ── Arm ──────────────────────────────────────────────────────────────────────
+# Held open for the life of the process: closing the descriptor without writing
+# the magic V disarms on some drivers and is a reset trigger on others, so the
+# lifetime is managed explicitly instead.
+if ! exec 3>"$DEVICE"; then
+    log "ARM_FAILED (could not open $DEVICE)"
+    exit 0
+fi
+log "ARMED via $DEVICE (feed every ${INTERVAL}s, ${GRACE}s startup grace)"
+
+feed() { echo 1 >&3 2>/dev/null; }
+
+# Disarm cleanly on a deliberate shutdown or reboot. CONFIG_WATCHDOG_NOWAYOUT
+# is deliberately NOT set in the kernel precisely so this works: writing V
+# tells the driver this was an orderly stop, so a clean `reboot` — including the
+# one rmpg-update triggers to apply an OS update — cannot be mistaken for a
+# hang and reset the machine mid-flash.
+disarm() {
+    log "disarming on signal"
+    echo V >&3 2>/dev/null
+    exec 3>&-
+    exit 0
+}
+trap disarm TERM INT QUIT
+
+# ── Startup grace ────────────────────────────────────────────────────────────
+# Keep feeding unconditionally until the session comes up. A cold boot on real
+# hardware legitimately takes far longer than the driver timeout, and resetting
+# a terminal that is merely still booting would be a self-inflicted outage.
+waited=0
+while [ "$waited" -lt "$GRACE" ]; do
+    feed
+    if session_healthy; then
+        log "session healthy after ${waited}s — switching to health-gated feeding"
+        break
+    fi
+    sleep "$INTERVAL"
+    waited=$((waited + INTERVAL))
+done
+
+if [ "$waited" -ge "$GRACE" ]; then
+    # Never came up. Stop feeding and let the hardware reset, which registers as
+    # a failed boot and feeds the A/B rollback counter.
+    log "UNHEALTHY_AT_STARTUP (no working session within ${GRACE}s) — releasing the watchdog so the hardware resets this terminal"
+    if [ -f "$DESKTOP_LOG" ]; then
+        log "last lines of $DESKTOP_LOG follow, so the reset is diagnosable after the fact:"
+        tail -15 "$DESKTOP_LOG" 2>/dev/null
+    fi
+    exec 3>&-
+    exit 1
+fi
+
+# ── Steady state ─────────────────────────────────────────────────────────────
+# One bad probe does not reset a terminal. A single missed X round trip is a
+# realistic hiccup under heavy load — a large PDF rendering, a map tile burst —
+# and rebooting a working dispatch terminal because of one slow reply would do
+# more harm than the hang this protects against. Consecutive failures are what
+# indicate a genuine wedge.
+FAIL_LIMIT="${RMPG_WATCHDOG_FAIL_LIMIT:-3}"
+fails=0
+while true; do
+    if session_healthy; then
+        [ "$fails" -gt 0 ] && log "session recovered after $fails consecutive failed probe(s)"
+        fails=0
+        feed
+    else
+        fails=$((fails + 1))
+        log "PROBE_FAILED $fails/$FAIL_LIMIT (session not responding)"
+        if [ "$fails" -lt "$FAIL_LIMIT" ]; then
+            # Still feeding while we decide, so a transient stall does not reset.
+            feed
+        else
+            log "UNHEALTHY (${FAIL_LIMIT} consecutive failed probes) — releasing the watchdog so the hardware resets this terminal"
+            exec 3>&-
+            exit 1
+        fi
+    fi
+    sleep "$INTERVAL"
+done

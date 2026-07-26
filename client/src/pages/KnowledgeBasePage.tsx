@@ -368,7 +368,7 @@ export default function KnowledgeBasePage() {
             className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide border"
             style={{
               borderRadius: 2,
-              color: typeFilter === null ? 'var(--surface-base)' : 'var(--rmpg-400)',
+              color: typeFilter === null ? 'var(--surface-base)' : 'var(--text-secondary)',
               background: typeFilter === null ? 'var(--brand-500)' : 'transparent',
               borderColor: typeFilter === null ? 'var(--brand-500)' : 'var(--border-default)',
             }}
@@ -377,7 +377,7 @@ export default function KnowledgeBasePage() {
           </button>
           {typeCounts.map(({ type, count }) => {
             const active = typeFilter === type;
-            const color = KB_TYPE_META[type]?.color || 'var(--rmpg-400)';
+            const color = KB_TYPE_META[type]?.color || 'var(--text-secondary)';
             return (
               <button
                 key={type} type="button" onClick={() => setTypeFilter(active ? null : type)}
@@ -495,7 +495,7 @@ export default function KnowledgeBasePage() {
 
         {shown.map((r, idx) => {
           const Icon = iconFor(r.type);
-          const color = KB_TYPE_META[r.type]?.color || 'var(--rmpg-400)';
+          const color = KB_TYPE_META[r.type]?.color || 'var(--text-secondary)';
           const isSelected = idx === selectedIndex;
           return (
             <button

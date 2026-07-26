@@ -159,7 +159,7 @@ export default function WarrantPicker({
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
-        <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" />
+        <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-fg-muted pointer-events-none" />
         <input
           id={id}
           ref={inputRef}
@@ -181,7 +181,7 @@ export default function WarrantPicker({
           aria-activedescendant={activeDescendantId ?? undefined}
         />
         {showClear && !disabled && (
-          <button type="button" onClick={clear} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-rmpg-500 hover:text-rmpg-100" aria-label="Clear selection">
+          <button type="button" onClick={clear} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-rmpg-100" aria-label="Clear selection">
             <X className="w-3 h-3" />
           </button>
         )}
@@ -206,10 +206,10 @@ export default function WarrantPicker({
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-mono font-semibold text-[var(--brand-gold)]">
                     {w.warrant_number || `Warrant #${w.id}`}
-                    {w.type && <span className="ml-2 text-rmpg-500">[{w.type}]</span>}
+                    {w.type && <span className="ml-2 text-fg-muted">[{w.type}]</span>}
                   </div>
                   {name && <div className="text-[10px] text-rmpg-300 mt-0.5 truncate">{name}</div>}
-                  {w.charge_description && <div className="text-[10px] text-rmpg-500 mt-0.5 truncate">{w.charge_description}</div>}
+                  {w.charge_description && <div className="text-[10px] text-fg-muted mt-0.5 truncate">{w.charge_description}</div>}
                 </div>
               </button>
             );

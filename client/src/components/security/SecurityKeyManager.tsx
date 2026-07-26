@@ -156,7 +156,7 @@ export default function SecurityKeyManager() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-4">
-        <RefreshCw className="w-4 h-4 animate-spin text-rmpg-500" />
+        <RefreshCw className="w-4 h-4 animate-spin text-fg-muted" />
       </div>
     );
   }
@@ -207,7 +207,7 @@ export default function SecurityKeyManager() {
                   {cred.name}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5">
-                  <span className="text-[9px] font-mono text-rmpg-500">
+                  <span className="text-[9px] font-mono text-fg-muted">
                     {transportLabel(cred.transports)}
                   </span>
                   <span className="text-[9px]" style={{ color: 'var(--text-muted)' }}>
@@ -226,7 +226,7 @@ export default function SecurityKeyManager() {
                 onClick={() => handleRevoke(cred.id)}
                 disabled={revoking === cred.id}
                 className="toolbar-btn flex items-center gap-1 text-[9px]"
-                style={{ color: revoking === cred.id ? 'var(--rmpg-500)' : '#ef4444' }}
+                style={{ color: revoking === cred.id ? 'var(--text-muted)' : '#ef4444' }}
                 title="Remove key"
               >
                 <Trash2 className="w-3 h-3" />
@@ -237,7 +237,7 @@ export default function SecurityKeyManager() {
       ) : (
         <div className="text-center py-4">
           <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
-          <p className="text-[10px] text-rmpg-500">No security keys registered</p>
+          <p className="text-[10px] text-fg-muted">No security keys registered</p>
           <p className="text-[9px] mt-1" style={{ color: 'var(--text-muted)' }}>
             Register a YubiKey, Touch ID, or Windows Hello to use as 2FA
           </p>
@@ -279,7 +279,7 @@ export default function SecurityKeyManager() {
               setShowNameInput(false);
               setNewKeyName('');
             }}
-                        className="toolbar-btn h-8 px-2 text-[10px] text-rmpg-500"
+                        className="toolbar-btn h-8 px-2 text-[10px] text-fg-muted"
           >
             Cancel
           </button>

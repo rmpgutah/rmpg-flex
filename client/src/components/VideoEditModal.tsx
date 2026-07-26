@@ -61,7 +61,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
     clearDraft,
     snapshot,
   } = useFormDraft<BodyCamVideoEditData>({
-    storageKey: 'rmpg_video_edit_form',
+    storageKey: `rmpg_video_edit_form_${video?.id ?? 'new'}`,
     defaultValue: EMPTY,
     isActive: isOpen,
   });
@@ -181,7 +181,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
 
       {/* Overlay info */}
       {video?.overlay_status === 'complete' && (
-        <p className="text-[10px] text-rmpg-500 italic">
+        <p className="text-[10px] text-fg-muted italic">
           Changing classification, case number, or recorded date will automatically re-burn the video overlay.
         </p>
       )}

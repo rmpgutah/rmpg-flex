@@ -123,7 +123,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
                 Enable Two-Factor Authentication
               </h3>
-              <p className="text-[10px] mt-0.5 text-rmpg-500">
+              <p className="text-[10px] mt-0.5 text-fg-muted">
                 Add an extra layer of security to your account
               </p>
             </div>
@@ -289,7 +289,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
             Setup Complete
           </h3>
-          <p className="text-[10px] text-rmpg-500">
+          <p className="text-[10px] text-fg-muted">
             Your account is now protected with two-factor authentication.
           </p>
         </div>

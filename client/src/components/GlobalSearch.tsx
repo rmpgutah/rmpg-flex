@@ -154,7 +154,7 @@ export const GlobalSearch: React.FC = () => {
             onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKeyDown}
             placeholder="Search by call #, name, plate, warrant #, badge, statute…"
             aria-label="Search all records" autoComplete="off"
-            className="flex-1 bg-transparent text-sm text-rmpg-100 placeholder-rmpg-500 outline-none"
+            className="flex-1 bg-transparent text-sm text-rmpg-100 placeholder-fg-muted outline-none"
           />
           <div className="flex items-center gap-2 text-xs text-rmpg-400">
             <kbd className="px-2 py-1 bg-rmpg-700 border border-rmpg-600"><Command className="w-3 h-3 inline" />K</kbd>
@@ -173,10 +173,10 @@ export const GlobalSearch: React.FC = () => {
             </div>
           )}
           {!query.trim() && recent.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-rmpg-500 text-center px-6">
+            <div className="flex flex-col items-center justify-center py-12 text-fg-muted text-center px-6">
               <BookOpen className="w-10 h-10 mb-3 opacity-40" />
               <p className="text-sm">Search the entire system by what you see —</p>
-              <p className="text-xs text-rmpg-600 mt-1">call numbers, names, plates, warrant &amp; citation numbers, badges, unit call signs, statute cites.</p>
+              <p className="text-xs text-fg-muted mt-1">call numbers, names, plates, warrant &amp; citation numbers, badges, unit call signs, statute cites.</p>
             </div>
           )}
           {query.trim() && !isLoading && results.length === 0 && (
@@ -190,7 +190,7 @@ export const GlobalSearch: React.FC = () => {
                 const Icon = iconFor(type);
                 return (
                   <div key={type} className="mb-4 last:mb-0">
-                    <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium" style={{ color: KB_TYPE_META[type]?.color || 'var(--rmpg-400)' }}>
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium" style={{ color: KB_TYPE_META[type]?.color || 'var(--text-secondary)' }}>
                       <Icon className="w-3 h-3" /> {kbTypeLabel(type).toUpperCase()}
                     </div>
                     {list.map((r) => { flatIdx += 1; const idx = flatIdx; return (
@@ -203,7 +203,7 @@ export const GlobalSearch: React.FC = () => {
           )}
         </div>
 
-        <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-600 text-[10px] text-rmpg-600">
+        <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-600 text-[10px] text-fg-muted">
           <span>↑↓ navigate • Enter open • Esc close</span>
           <span className="flex items-center gap-3">
             {query.trim() && (
@@ -226,7 +226,7 @@ export const GlobalSearch: React.FC = () => {
 
 const ResultItem: React.FC<{ result: KbResult; isSelected: boolean; onClick: () => void }> = ({ result, isSelected, onClick }) => {
   const Icon = iconFor(result.type);
-  const color = KB_TYPE_META[result.type]?.color || 'var(--rmpg-400)';
+  const color = KB_TYPE_META[result.type]?.color || 'var(--text-secondary)';
   const sub = [result.title, result.subtitle].filter(Boolean).join(' · ');
   return (
     <button type="button"

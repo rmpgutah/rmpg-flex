@@ -189,7 +189,7 @@ export default function AndroidUpdateChecker() {
                 v{updateInfo.currentVersion}
               </div>
             </div>
-            <div className="text-rmpg-500 text-lg">&rarr;</div>
+            <div className="text-fg-muted text-lg">&rarr;</div>
             <div className="text-center">
               <div className="text-[10px] text-green-400 uppercase tracking-wider mb-0.5">
                 Latest

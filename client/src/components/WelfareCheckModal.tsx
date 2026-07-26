@@ -152,7 +152,7 @@ export default function WelfareCheckModal() {
           </button>
         </div>
 
-        <div className="text-[9px] text-rmpg-500 text-center uppercase tracking-wider">
+        <div className="text-[9px] text-fg-muted text-center uppercase tracking-wider">
           CODE 4 = on-scene safe · NEED HELP = emergency broadcast · SNOOZE = reset timer
         </div>
       </div>

@@ -23,3 +23,21 @@ CONFIG_NC=y
 # failure even on success.
 CONFIG_NC_EXTRA=y
 CONFIG_NC_110_COMPAT=y
+
+# ntpd — the client half only. Added 2026-07-25 after the completeness audit
+# found the image had no way to set its clock at all: whatever the RTC said at
+# power-on stood for the rest of the shift, with no correction ever.
+#
+# That is not a cosmetic problem on this terminal. TLS certificate validity and
+# JWT exp/nbf are both checked against system time, so a drifted clock takes
+# rmpgutah.us offline and logs officers out — and reports itself as neither.
+# See the timezone block in configs/desktop.fragment for the display half.
+#
+# FEATURE_NTPD_SERVER is deliberately left off: a patrol terminal is a time
+# CLIENT, and serving NTP would be an unnecessary listening socket on a machine
+# that rides public networks. FEATURE_NTPD_CONF (parse /etc/ntp.conf) is also
+# off — the servers are passed on the command line by S98kiosk-timesync, which
+# keeps the configuration in one reviewable place instead of two.
+CONFIG_NTPD=y
+# CONFIG_FEATURE_NTPD_SERVER is not set
+# CONFIG_FEATURE_NTPD_CONF is not set

@@ -27,7 +27,7 @@ const EMPTY_FORM: TaskFormData = {
 
 export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError, canEscalatePriority = true }: TaskFormModalProps) {
   const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<TaskFormData>({
-    storageKey: 'rmpg_task_form', defaultValue: EMPTY_FORM, isActive: isOpen,
+    storageKey: `rmpg_task_form_${editingRecord?.id ?? 'new'}`, defaultValue: EMPTY_FORM, isActive: isOpen,
   });
 
   useEffect(() => {

@@ -20,6 +20,7 @@ import { getMapboxToken } from '../utils/mapboxApiKey';
 import { injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { UNIT_STATUS_HEX, priorityHex, CALL_MARKER_INK } from '../utils/statusColors';
+import { withAlpha } from '../utils/withAlpha';
 import IconButton from './IconButton';
 import type { CallForService, Unit, UnitStatus } from '../types';
 
@@ -64,7 +65,7 @@ export function buildCallMarkerEl(label: string, priority?: string): HTMLElement
     padding:2px 4px;border:1.5px solid ${CALL_MARKER_INK};
     white-space:nowrap;font-family:'JetBrains Mono',monospace;
     letter-spacing:0.03em;border-radius:1px;
-    box-shadow:0 0 8px ${color}50;
+    box-shadow:0 0 8px ${withAlpha(color, '50')};
   `;
   tag.textContent = label;
 
@@ -91,7 +92,7 @@ function buildUnitMarkerEl(callSign: string, status?: UnitStatus): HTMLElement {
   const photoFrame = document.createElement('div');
   photoFrame.style.cssText = `
     width:40px;height:40px;border-radius:4px;overflow:hidden;
-    border:3px solid ${color};box-shadow:0 0 6px ${color}80;
+    border:3px solid ${color};box-shadow:0 0 6px ${withAlpha(color, '80')};
     background:#0a0a0a;
   `;
   const img = document.createElement('img');

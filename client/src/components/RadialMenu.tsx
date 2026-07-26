@@ -5,6 +5,7 @@ import {
   Radio, AlertTriangle, StickyNote, Shield, MapPin,
   Camera, CheckCircle, UserPlus, X, Zap,
 } from 'lucide-react';
+import { withAlpha } from '../utils/withAlpha';
 
 interface RadialMenuProps {
   onStatusChange?: () => void;
@@ -178,7 +179,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
             strokeWidth="1"
             className="hover:brightness-150 transition-all"
             style={{ filter: 'brightness(1)' }}
-            onMouseEnter={(e) => { (e.target as SVGPathElement).style.fill = `${seg.color}30`; }}
+            onMouseEnter={(e) => { (e.target as SVGPathElement).style.fill = withAlpha(seg.color, '30'); }}
             onMouseLeave={(e) => { (e.target as SVGPathElement).style.fill = 'rgba(20,30,43,0.95)'; }}
           />
           <foreignObject x={iconX - 8} y={iconY - 8} width={16} height={16} style={{ pointerEvents: 'none' }}>
@@ -256,7 +257,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
         <div className="fixed bottom-36 right-4 z-50 w-72 p-3 bg-surface-raised border border-rmpg-600 shadow-xl">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-rmpg-300 uppercase">Quick Shift Note</span>
-            <button onClick={() => setShowNote(false)} className="text-rmpg-500 hover:text-rmpg-300">
+            <button onClick={() => setShowNote(false)} className="text-fg-muted hover:text-rmpg-300">
               <X style={{ width: 12, height: 12 }} />
             </button>
           </div>

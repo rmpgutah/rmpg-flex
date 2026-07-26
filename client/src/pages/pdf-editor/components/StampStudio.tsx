@@ -453,7 +453,12 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
                       <input id="ff-stampstudio-ink" type="color" value={tpl.ink}
                         onChange={(e) => setTpl({ ...tpl, ink: e.target.value })}
                         className="w-8 h-7 bg-transparent border border-border-default rounded-[2px] cursor-pointer" />
-                      {['#c0392b', 'var(--surface-base)', '#1a3a5c', '#d4a017', '#1f8b4c'].map((c) => (
+                      {/* Literal hex only — tpl.ink feeds Canvas 2D (ctx.fillStyle) and an
+                          <input type="color">, neither of which resolves var(). Canvas
+                          silently keeps its previous color and the input sanitizes to
+                          #000000, so a CSS var here renders black while the swatch button
+                          itself (real CSS) still looks correct. */}
+                      {['#c0392b', '#0a0a0a', '#1a3a5c', '#d4a017', '#1f8b4c'].map((c) => (
                         <button key={c} type="button" aria-label={`Ink ${c}`} onClick={() => setTpl({ ...tpl, ink: c })}
                           className="w-5 h-5 rounded-full border border-border-subtle" style={{ background: c }} />
                       ))}

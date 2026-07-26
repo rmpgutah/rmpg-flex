@@ -28,7 +28,7 @@ function FormField({ label, required = false, hint, children, className = '' }: 
         {required && <span className="ml-0.5" style={{ color: '#f87171' }}>*</span>}
       </label>
       {children}
-      {hint && <p className="mt-0.5 text-[9px] text-rmpg-500 leading-snug">{hint}</p>}
+      {hint && <p className="mt-0.5 text-[9px] text-fg-muted leading-snug">{hint}</p>}
     </div>
   );
 }

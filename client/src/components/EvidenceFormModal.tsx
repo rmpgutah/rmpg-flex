@@ -117,7 +117,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
     clearDraft,
     snapshot,
   } = useFormDraft<EvidenceFormData>({
-    storageKey: 'rmpg_evidence_form',
+    storageKey: `rmpg_evidence_form_${editingEvidence?.id ?? 'new'}`,
     defaultValue: { ...EMPTY_FORM },
     isActive: isOpen,
   });
@@ -412,7 +412,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
 
           <FormField label="Notes">
             <RichTextArea className="textarea-dark text-xs" rows={2} placeholder="Additional notes..." value={form.notes} onChange={(e) => updateField('notes', e.target.value)} maxLength={3000} />
-            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
+            <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.notes.length}/3000</div>
           </FormField>
         </div>
       )}
@@ -509,28 +509,28 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
                   <div className="bg-surface-sunken p-2 rounded-sm">
                     <Hash className="w-3 h-3 mx-auto mb-1 text-rmpg-400" />
                     <div className="text-sm font-bold text-rmpg-100">{(editingEvidence as any).hash_count || 0}</div>
-                    <div className="text-[9px] text-rmpg-500 uppercase">Hashes</div>
+                    <div className="text-[9px] text-fg-muted uppercase">Hashes</div>
                   </div>
                   <div className="bg-surface-sunken p-2 rounded-sm">
                     <Shield className="w-3 h-3 mx-auto mb-1 text-rmpg-400" />
                     <div className="text-sm font-bold text-rmpg-100">{(editingEvidence as any).flagged_hash_count || 0}</div>
-                    <div className="text-[9px] text-rmpg-500 uppercase">Flagged</div>
+                    <div className="text-[9px] text-fg-muted uppercase">Flagged</div>
                   </div>
                   <div className="bg-surface-sunken p-2 rounded-sm">
                     <Microscope className="w-3 h-3 mx-auto mb-1 text-rmpg-400" />
                     <div className="text-sm font-bold text-rmpg-100">{(editingEvidence as any).iped_processed ? 'Yes' : 'No'}</div>
-                    <div className="text-[9px] text-rmpg-500 uppercase">IPED Processed</div>
+                    <div className="text-[9px] text-fg-muted uppercase">IPED Processed</div>
                   </div>
                 </div>
 
-                <div className="text-[9px] text-rmpg-500 bg-surface-sunken p-2 rounded-sm leading-relaxed">
+                <div className="text-[9px] text-fg-muted bg-surface-sunken p-2 rounded-sm leading-relaxed">
                   Hash computation and IPED processing are available in the evidence detail view.
                   Open this evidence record and use the "Digital Forensics" section to compute hashes
                   or run IPED analysis on attached files.
                 </div>
               </>
             ) : (
-              <div className="text-[9px] text-rmpg-500 bg-surface-sunken p-2 rounded-sm leading-relaxed">
+              <div className="text-[9px] text-fg-muted bg-surface-sunken p-2 rounded-sm leading-relaxed">
                 Digital forensics features (hash computation, IPED processing, hash set matching)
                 become available after the evidence record is created and files are attached.
                 Save this evidence record first, then use the detail view to run forensic analysis.

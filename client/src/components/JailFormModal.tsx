@@ -45,7 +45,9 @@ export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting,
   // to the legacy global key when there's no user (login screen,
   // etc.) so we never lose existing drafts during the rollout.
   const { user } = useAuth();
-  const draftKey = user?.id ? `rmpg_jail_form_${user.id}` : 'rmpg_jail_form';
+  const draftKey = user?.id
+    ? `rmpg_jail_form_${user.id}_${editingRecord?.id ?? 'new'}`
+    : `rmpg_jail_form_${editingRecord?.id ?? 'new'}`;
   const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<JailFormData>({
     storageKey: draftKey, defaultValue: EMPTY_FORM, isActive: isOpen,
   });
@@ -200,7 +202,7 @@ export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting,
       {activeSection === 'notes' && (
         <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
           <textarea name="notes" rows={6} className="input-dark mt-1" value={form.notes} onChange={handleChange} maxLength={5000} />
-          <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
+          <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.notes.length}/5000</div>
         </div>
       )}
     </FormModal>

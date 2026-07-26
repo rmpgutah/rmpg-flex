@@ -126,6 +126,28 @@ BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_6E=y
 BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_QUZ=y
 BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_8265=y
 
+# ── Intel graphics firmware (DMC) ────────────────────────────────────────────
+# (2026-07-25) i915 does basic modesetting with no firmware, which is why
+# bring-up never needed this. What it CANNOT do without DMC (the display
+# microcontroller blob) is enter display power states: runtime suspend of the
+# display engine is explicitly gated on a working DMC in i915's own
+# intel_dmc.c, so a unit without it runs the display engine at full power for
+# the whole shift. On a battery-powered terminal in a hot cabin that shows up
+# as both shorter runtime and more heat — the two things this pass is about.
+#
+# Symbol name verified against the pinned Buildroot 2024.02.9 checkout
+# (package/linux-firmware/Config.in:27 — BR2_PACKAGE_LINUX_FIRMWARE_I915; note
+# it is NOT under the INTEL_* naming the neighbouring ethernet entries use).
+#
+# ⚠️ This package installs the WHOLE i915 firmware directory: 26.9 MB, of which
+# 25 MB is GuC/HuC for GPU command submission and media offload that Gen9.5
+# does not use by default and this image never enables. All 30 DMC blobs
+# together are 888 KB. scripts/prune-firmware.sh therefore keeps every *_dmc*
+# blob and drops GuC/HuC — generation-proof (no guessing which FZ-55 revision
+# is in front of you) and it keeps 25 MB off a rootfs whose OTA payload is
+# already too large to upload in one PUT.
+BR2_PACKAGE_LINUX_FIRMWARE_I915=y
+
 # ── Power management (battery indicator) ─────────────────────────────────────
 # acpid delivers lid/power-button events. The taskbar battery gauge itself
 # reads /sys/class/power_supply directly rather than going through upower —
@@ -133,6 +155,39 @@ BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_8265=y
 # FZ-55's dual batteries (BAT0 + BAT1) as on a machine with none (QEMU
 # reports no power supply at all, and the indicator simply hides).
 BR2_PACKAGE_ACPID=y
+
+# ── Clock: timezone data and time synchronisation ────────────────────────────
+# (2026-07-25 completeness audit.) The built image had NO timezone database at
+# all — /usr/share/zoneinfo was empty, /etc/localtime and /etc/TZ absent — and
+# nothing anywhere that could set the clock. Three consequences, none of which
+# announce themselves as a clock problem:
+#
+#   1. Every displayed time was wrong by the UTC offset. WebKit resolves local
+#      time through libc, which with no zoneinfo falls back to UTC — so a
+#      Denver dispatcher reads call and evidence times 6-7 hours off. The API
+#      correctly stores UTC (that is the house rule), which is exactly what
+#      makes the client-side conversion the thing that has to work.
+#   2. TLS fails on a skewed clock. Certificate validity is checked against
+#      system time, so a terminal whose RTC has drifted far enough simply
+#      cannot load rmpgutah.us — presenting as "the app is down", not as a
+#      clock fault.
+#   3. JWT auth breaks the same way: `jose` validates exp/nbf against local
+#      time, so skew logs officers out mid-shift or accepts stale tokens.
+#
+# Root is an initramfs, so image size is resident RAM on every terminal. The
+# full "default" zone set costs ~5.5 MB on glibc for zones this fleet will
+# never use, so only the two regions this fleet needs are compiled.
+#
+# ⚠️ BR2_TARGET_TZ_ZONELIST takes tzdata SOURCE FILE names, not zone names.
+# Setting it to "America/Denver Etc/UTC" — which is what it looks like it wants
+# — fails the build with `zic: Can't open America/Denver`. The valid values are
+# the region files in the tzdata tarball: northamerica, etcetera, europe, ...
+#   northamerica -> contains America/Denver (verified in host-tzdata-2024a)
+#   etcetera     -> contains Etc/UTC, kept so logs can be read in UTC
+# BR2_TARGET_LOCALTIME, by contrast, DOES take a zone name.
+BR2_TARGET_TZ_INFO=y
+BR2_TARGET_TZ_ZONELIST="northamerica etcetera"
+BR2_TARGET_LOCALTIME="America/Denver"
 
 # ── Fonts ────────────────────────────────────────────────────────────────────
 # Liberation is metric-compatible with Arial/Times/Courier, so pages and
@@ -194,3 +249,13 @@ BR2_PACKAGE_ALSA_LIB=y
 # Bluetooth barcode scanner or headset is unusable even though the hardware is
 # fully enabled.
 BR2_PACKAGE_BLUEZ5_UTILS=y
+
+# Intel Bluetooth firmware (intel/ibt-*.sfi + .ddc). Added 2026-07-25 in the
+# second audit pass, after listing the built rootfs showed no /lib/firmware/intel
+# directory existed at all — see the CORRECTION block in
+# configs/kernel-bluetooth.fragment for why the first pass wrongly concluded the
+# iwlwifi blobs covered this. Buildroot's help text for this option names only
+# older parts (3160/7260/7265/8260/8265), which is misleading: the option globs
+# the whole intel/ibt-* set, which is what AX201 and AX211 also load from.
+# Without it BLUEZ5_UTILS and the whole kernel BT stack are inert.
+BR2_PACKAGE_LINUX_FIRMWARE_IBT=y

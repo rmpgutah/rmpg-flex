@@ -170,7 +170,7 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
         <div className="flex items-center gap-2">
           <FileSpreadsheet className="w-4 h-4 text-amber-400" />
           <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Bulk Defendant Table</h3>
-          <span className="text-[10px] text-rmpg-500">{validRowCount} valid row{validRowCount === 1 ? '' : 's'}</span>
+          <span className="text-[10px] text-fg-muted">{validRowCount} valid row{validRowCount === 1 ? '' : 's'}</span>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={addRow} className="toolbar-btn text-[9px]" title="Add a blank row"><Plus className="w-3 h-3" /> Add Row</button>
@@ -213,7 +213,7 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
               const isBiz = r.kind === 'business' || !!r.businessName.trim();
               return (
                 <tr key={idx} className="border-b border-border-default">
-                  <td className="px-1.5 py-1 text-rmpg-500 align-top">{idx + 1}</td>
+                  <td className="px-1.5 py-1 text-fg-muted align-top">{idx + 1}</td>
                   {(['firstName', 'middleName', 'lastName', 'dob', 'sex', 'address', 'contractId', 'businessName'] as const).map((field) => (
                     <td key={field} className="px-0 py-0 align-top">
                       <input id="ff-bulkdefendanttable-0"
@@ -293,7 +293,7 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
       )}
 
       <div className="flex items-center justify-between gap-2 pt-1">
-        <p className="text-[9px] text-rmpg-500">
+        <p className="text-[9px] text-fg-muted">
           {validRowCount > 0 ? `Submitting will create ${validRowCount} dispatch CFS row${validRowCount === 1 ? '' : 's'}. PDFs can be attached individually after.` : 'Add row data to enable submit.'}
         </p>
         <button
