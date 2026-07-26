@@ -19,11 +19,9 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { UNIT_STATUS_HEX, PRIORITY_HEX } from '../utils/statusColors';
+import { UNIT_STATUS_HEX, priorityHex } from '../utils/statusColors';
 import IconButton from './IconButton';
 import type { CallForService, Unit, UnitStatus } from '../types';
-
-const MINI_PRIORITY_COLORS: Record<string, string> = PRIORITY_HEX;
 
 // `call.assigned_units` can arrive as id strings/numbers OR as full unit
 // objects (the call-detail endpoint returns objects). Normalize to a Set of
@@ -53,7 +51,7 @@ const BACKOFF_BASE_MS = 3_000;
 
 /** Build a call marker DOM element with priority-colored badge */
 function buildCallMarkerEl(label: string, priority?: string): HTMLElement {
-  const color = MINI_PRIORITY_COLORS[priority || ''] || '#ef4444';
+  const color = priorityHex(priority);
   const el = document.createElement('div');
   el.style.cssText = `
     display:flex;flex-direction:column;align-items:center;

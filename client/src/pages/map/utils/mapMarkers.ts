@@ -1,5 +1,5 @@
 import type { MapUnit as Unit, ActiveCall } from './mapConstants';
-import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, priorityHex } from './mapConstants';
+import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, priorityHex } from './mapConstants';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { formatEnumValue } from '../../../utils/formatters';
 import { escapeHtml } from '../../../utils/sanitize';
@@ -244,7 +244,7 @@ export function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
 
 /** Build HTML popup for a call. */
 export function buildCallPopupHtml(call: ActiveCall, queued: boolean = false): string {
-  const color = PRIORITY_COLORS[call.priority] || '#888888';
+  const color = priorityHex(call.priority);
   const flags = HAZARD_FLAGS
     .filter(f => (call as any)[f.key])
     .map(f => `<span style="background:${f.color}22;color:${f.color};padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:3px;">${f.label}</span>`)

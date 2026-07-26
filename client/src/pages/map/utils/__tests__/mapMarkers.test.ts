@@ -148,6 +148,16 @@ describe('map priority palette', () => {
   });
 });
 
+describe('call popup priority color', () => {
+  it('uses the real priority color, not the gray fallback', () => {
+    // buildCallPopupHtml had the same 'P1'-keyed lookup against a bare-number
+    // priority that buildCallMarkerEl did, so it always emitted #888888.
+    const html = buildCallPopupHtml(call);
+    expect(html).toContain(PRIORITY_HEX.P1);
+    expect(html).not.toContain('#888888');
+  });
+});
+
 describe('shouldAnimateMarkerMove', () => {
   it('animates a normal short move (under the jump threshold)', () => {
     // ~100m apart — a plausible move within one ~5s poll interval.

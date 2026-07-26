@@ -9,7 +9,7 @@
 import { Shield, AlertTriangle, Locate, PanelLeftOpen, PanelLeftClose, RefreshCw, Crosshair } from 'lucide-react';
 import RmpgLogo from '../../../components/RmpgLogo';
 import IconButton from '../../../components/IconButton';
-import { UNIT_STATUS_COLORS, PRIORITY_COLORS } from '../utils/mapConstants';
+import { UNIT_STATUS_COLORS, priorityHex } from '../utils/mapConstants';
 import { HAZARD_FLAGS } from '../utils/mapMarkers';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 
@@ -145,7 +145,7 @@ export default function MapRosterDock({
               <div className="px-3 py-6 text-center text-rmpg-500 text-xs">No active calls</div>
             )}
             {calls.map((call) => {
-              const color = PRIORITY_COLORS[call.priority] || '#888888';
+              const color = priorityHex(call.priority);
               const hasGps = call.latitude != null && call.longitude != null;
               const hasFlags = HAZARD_FLAGS.some((f) => call[f.key]);
               return (
