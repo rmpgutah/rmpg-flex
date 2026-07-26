@@ -1,0 +1,78 @@
+import { describe, it, expect, vi } from 'vitest';
+import { buildDockSections, findUnboundLayers, type LayerBindingMap } from '../useLayerBindings';
+import { MAP_LAYER_REGISTRY, LEFT_DOCK_GROUPS, RIGHT_DOCK_GROUPS } from '../../config/layerRegistry';
+
+function allBindings(): LayerBindingMap {
+  const map: LayerBindingMap = {};
+  for (const layer of MAP_LAYER_REGISTRY) {
+    map[layer.id] = { active: false, onToggle: vi.fn() };
+  }
+  return map;
+}
+
+describe('buildDockSections', () => {
+  it('emits one section per requested group, in order', () => {
+    const sections = buildDockSections(LEFT_DOCK_GROUPS, allBindings());
+    expect(sections.map((s) => s.title)).toEqual(LEFT_DOCK_GROUPS);
+  });
+
+  it('places every registry entry into exactly one dock section', () => {
+    const bindings = allBindings();
+    const all = [
+      ...buildDockSections(LEFT_DOCK_GROUPS, bindings),
+      ...buildDockSections(RIGHT_DOCK_GROUPS, bindings),
+    ];
+    const ids = all.flatMap((s) => s.items.map((i) => i.id));
+    expect(ids.sort()).toEqual(MAP_LAYER_REGISTRY.map((l) => l.id).sort());
+  });
+
+  it('carries icon, color, and description through from the registry', () => {
+    const [section] = buildDockSections(['Live Conditions'], allBindings());
+    const traffic = section.items.find((i) => i.id === 'traffic')!;
+    expect(traffic.icon).toBeTruthy();
+    expect(traffic.color).toBe('var(--sev-ok)');
+    expect(traffic.description).toBe('Real-time congestion');
+  });
+
+  it('lets a binding override the label for computed-label layers', () => {
+    const bindings = allBindings();
+    bindings.heatmap = { ...bindings.heatmap, label: 'Crime Heatmap (Live)' };
+    const [section] = buildDockSections(['Historical Analysis'], bindings);
+    expect(section.items.find((i) => i.id === 'heatmap')!.label).toBe('Crime Heatmap (Live)');
+  });
+
+  it('falls back to the registry label when no override is supplied', () => {
+    const [section] = buildDockSections(['Historical Analysis'], allBindings());
+    expect(section.items.find((i) => i.id === 'heatmap')!.label).toBe('Crime Heatmap');
+  });
+
+  it('omits a layer that has no binding rather than rendering a dead toggle', () => {
+    const bindings = allBindings();
+    delete bindings.traffic;
+    const [section] = buildDockSections(['Live Conditions'], bindings);
+    expect(section.items.some((i) => i.id === 'traffic')).toBe(false);
+  });
+
+  it('keeps Live Conditions non-collapsible so safety toggles stay visible', () => {
+    const [section] = buildDockSections(['Live Conditions'], allBindings());
+    expect(section.collapsible).toBe(false);
+  });
+});
+
+describe('findUnboundLayers', () => {
+  it('reports nothing when every registry entry is bound', () => {
+    expect(findUnboundLayers(allBindings())).toEqual({ missingBinding: [], unknownBinding: [] });
+  });
+
+  it('reports a registry entry that the page forgot to bind', () => {
+    const bindings = allBindings();
+    delete bindings.traffic;
+    expect(findUnboundLayers(bindings).missingBinding).toContain('traffic');
+  });
+
+  it('reports a binding whose id is not in the registry', () => {
+    const bindings = allBindings();
+    bindings['ghost-layer'] = { active: false, onToggle: vi.fn() };
+    expect(findUnboundLayers(bindings).unknownBinding).toContain('ghost-layer');
+  });
+});
