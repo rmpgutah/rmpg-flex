@@ -392,7 +392,7 @@ html.theme-blue-silver {
   --surface-header: #284a6c; --surface-header-rgb: 40 74 108;
   --surface-hover-step: #294a6b; --surface-hover-step-rgb: 41 74 107;
   --border-default: #46688c; --border-subtle: #2a4763; --border-strong: #7996b8; --border-panel: #3d5f82;
-  --text-primary: #f0f4f9; --text-secondary: #cdd8e6; --text-muted: #9bb0c7;
+  --text-primary: #f0f4f9; --text-secondary: #cdd8e6; --text-muted: #b1c1d3;
   --brand-blue: #5a9ae0;
   --pri-scheduled: #63768f;
   /* Record-icon tile — a brighter blue than night's for the "silver-blue" identity. */
