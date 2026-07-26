@@ -13,9 +13,21 @@ Concretely, as measured in the current tree:
   orchestrates ~60 hooks. Roughly 120 of those lines are the same
   `{ id, label, active, onToggle }` object literal retyped across ten separate
   section arrays.
-- **43 layer toggles** live in 10 dock sections (Live Conditions, Units & Calls,
+- **55 layer toggles** live in 10 dock sections (Live Conditions, Units & Calls,
   Historical Analysis, Administrative Boundaries, Risk & Coverage, Terrain & 3D,
   Dispatch Tools, Measurement & Marking, Drawing & Tracking, Diagnostics).
+  **46 are hand-written literals; 9 are generated at runtime** — the Administrative
+  Boundaries section is `.map()`ed from `HIERARCHY_CONFIGS` (3 entries, in
+  [`useDistrictHierarchyLayers.ts:33`](../../../client/src/hooks/useDistrictHierarchyLayers.ts:33))
+  and `GEO_LAYER_CONFIGS` (6 entries, in
+  [`useGeoJsonLayers.ts`](../../../client/src/hooks/useGeoJsonLayers.ts)), producing ids of
+  the form `district-<id>` and `geo-<id>`.
+- **Three labels are computed, not static:** `Crime Heatmap (Live|Historical)`,
+  `Projection: <mode>`, and `Atmosphere: <preset>` interpolate live state into the
+  label text.
+- Four toggles hardcode `#d4a017`, which CLAUDE.md **bans** in the blue-silver block:
+  it fails WCAG AA on navy (4.50 / 3.57 / 5.41) and is the worst match to
+  `--sev-warn #f59e0b`, making decorative gold confusable with a real alert.
 - Toggles render as a 6 px colored dot plus a text label
   ([`DockSection.tsx`](../../../client/src/pages/map/components/DockSection.tsx)).
   **There are no per-layer icons anywhere.**
@@ -73,7 +85,7 @@ breakpoint side effect.
 ```ts
 export interface MapLayerDef {
   id: string;                 // stable id, matches the page's toggle binding
-  label: string;
+  label: string;              // may be overridden per-render by a binding
   icon: LucideIcon;
   group: MapLayerGroup;       // one of the 10 existing section titles
   colorVar: string;           // CSS variable name, never a literal hex
@@ -83,10 +95,20 @@ export interface MapLayerDef {
 }
 ```
 
-`MapboxMapPage` continues to own *state* — `active`, `onToggle`, `loading`, `error` —
-and binds it to registry entries through a `useLayerBindings()` adapter that produces
-the `DockToggleItem[]` the renderers already consume. Presentation metadata moves out
-of the page; behavior stays in it.
+**Dynamic entries.** The registry is not purely static. The Administrative Boundaries
+group's 9 entries are derived at module load from the same `HIERARCHY_CONFIGS` and
+`GEO_LAYER_CONFIGS` arrays the page already consumes, so the registry cannot drift from
+them. Only presentation metadata absent from those configs — icon and `colorVar` — is
+supplied by the registry, keyed by config id.
+
+**Label overrides.** Three toggles interpolate live state into their label. A binding
+may therefore supply an optional `label` that wins over the registry's static one; the
+registry value remains the fallback and the searchable/canonical name.
+
+`MapboxMapPage` continues to own *state* — `active`, `onToggle`, `loading`, `error`,
+and any label override — and binds it to registry entries through a `useLayerBindings()`
+adapter that produces the `DockToggleItem[]` the renderers already consume. Presentation
+metadata moves out of the page; behavior stays in it.
 
 Three renderers over one source: `MapLeftDock` (desktop), `MapBottomTray` (mobile), and
 the new active-layers summary. `UnifiedMapLegend` becomes a fourth in PR 4.
@@ -121,19 +143,30 @@ sizing implementation instead of diverging.
 
 No visible feature change. This is the enabling refactor.
 
-- Extract all 43 toggles into `layerRegistry.ts`; `MapboxMapPage` sheds ~120 lines.
-- Add `MapDensityContext` + `useMapDensity()` + persistence via `mapPreferences.ts`.
+- Extract all 55 toggles into `layerRegistry.ts` — 46 static entries plus the 9
+  derived Administrative Boundaries entries; `MapboxMapPage` sheds ~120 lines.
+- Add `MapDensityContext` + `useMapDensity()`, persisted through the existing generic
+  `loadMapPref` / `saveMapPref` helpers in `mapPreferences.ts` (no new storage
+  plumbing needed).
 - Rewrite `DockToggleRow`: leading lucide icon, density-aware sizing, `role="switch"`
   with `aria-checked`, and a real `focus-visible` ring.
-- Route `#0d1520` (`mapMarkers.ts`) and the `#ef4444` `--sev-critical` fallback through
-  theme variables.
-- Audit every `map.addSource` / `map.addLayer` under `client/src/pages/map/` for
-  style-reload re-add safety via the existing `safeAddSource` helper; fix any that
-  drop their layer on basemap change.
+- Replace every raw hex in the toggle data with a theme variable, including the four
+  banned `#d4a017` uses. Route `#0d1520` (`mapMarkers.ts`) and the `#ef4444`
+  `--sev-critical` fallback through theme variables.
 
 **Tests:** registry↔page completeness (every bound toggle id resolves to exactly one
-registry entry; every entry has an icon and a `colorVar`); density hook resolution and
-override precedence; `DockToggleRow` switch semantics and focus behavior.
+registry entry; every entry has an icon and a `colorVar`); a guard that no registry
+entry carries a literal hex; density hook resolution and override precedence;
+`DockToggleRow` switch semantics and focus behavior.
+
+### PR 1b — Style-reload safety audit *(independent; can land before or after PR 1)*
+
+There are **37** `map.addSource` call sites across the map tree and only 17 files use
+the `whenStyleReady` guard from
+[`safeAddSource.ts`](../../../client/src/pages/map/utils/safeAddSource.ts). Auditing all
+37 is its own reviewable unit of work and was deliberately split out of PR 1 — bundling
+a 37-site audit into the registry refactor would make the registry diff unreviewable.
+Each fix re-adds sources in their original order to preserve z-order.
 
 ### PR 2 — Findability
 
@@ -170,7 +203,7 @@ override precedence; `DockToggleRow` switch semantics and focus behavior.
 
 | Risk | Mitigation |
 |---|---|
-| The 43-toggle registry extraction is a hand-written 1:1 mapping and could silently drop or mis-bind a layer. | Keep the extraction mechanical (no behavior edits in the same commit) and gate it with the completeness test, landing in the same PR. |
+| The 55-toggle registry extraction is a hand-written 1:1 mapping and could silently drop or mis-bind a layer — most acutely the 9 runtime-derived boundary entries. | Keep the extraction mechanical (no behavior edits in the same commit); derive the boundary entries from the same config arrays the page uses so they cannot drift; gate with the completeness test, landing in the same PR. |
 | Density changes could regress the dispatcher's information density. | `compact` remains the desktop default and matches current sizing exactly; `touch` is additive. |
 | Theme-variable routing could hit a variable that is undefined in one of the four theme blocks, silently dropping the color. | Follow the existing `accentTokens.test.ts` theme-block-completeness pattern for any new variable. |
 | A style-reload fix could change layer z-order. | Audit only; each fix re-adds in the original order and is verified in the browser preview. |
