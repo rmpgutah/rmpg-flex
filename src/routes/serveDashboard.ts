@@ -10,7 +10,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 import { toDenverWallClock } from '../utils/denverTime';
 
 const sd = new Hono<Env>();
@@ -556,10 +556,14 @@ sd.post('/bulk-reassign', async (c) => {
   if (!target) return c.json({ error: 'Target server not found or not assignable' }, 400);
 
   // Find the queue entries that own these attempts
-  const attemptRows = await query<{ id: number; serve_queue_id: number; officer_id: number | null }>(
+  // Chunked: D1 caps a query at 100 bound parameters, so a bulk reassign of
+  // 100+ attempts would have been rejected at bind time and 500'd. `attemptIds`
+  // comes straight from the request body with no upper bound.
+  const attemptIds = body.attemptIds.map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  const attemptRows = await queryInChunks<{ id: number; serve_queue_id: number; officer_id: number | null }>(
     db,
-    `SELECT id, serve_queue_id, officer_id FROM serve_attempts WHERE id IN (${body.attemptIds.map(() => '?').join(',')})`,
-    ...body.attemptIds,
+    attemptIds,
+    (ph) => `SELECT id, serve_queue_id, officer_id FROM serve_attempts WHERE id IN (${ph})`,
   );
 
   // Optionally filter by fromServerId
