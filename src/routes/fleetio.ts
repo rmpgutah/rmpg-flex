@@ -23,7 +23,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, chunkBindings } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { configFromEnv, createVehicle, listAllVehicles, listAllFuelEntries, createVendor, createPart, ping } from '../utils/fleetio/client';
 import { FLEETIO_LINK_RESOURCE, RMPG_TABLE_TO_KIND, acceptedLinkResources } from '../utils/fleetio/resources';
@@ -195,29 +195,65 @@ fleetio.get('/conflicts', async (c) => {
   const id = c.req.query('id');
   const ids = c.req.query('ids');
 
-  let sql = `SELECT id, rmpg_table, rmpg_id, field, local_value, remote_value, resolution, created_at
-             FROM fleetio_conflicts WHERE resolved_at IS NULL`;
-  const bindings: unknown[] = [];
+  const select = `SELECT id, rmpg_table, rmpg_id, field, local_value, remote_value, resolution, created_at
+                  FROM fleetio_conflicts WHERE resolved_at IS NULL`;
+  const RESULT_LIMIT = 50;
 
-  if (table) {
-    sql += ' AND rmpg_table = ?';
-    bindings.push(table);
-  }
-  if (id) {
-    sql += ' AND rmpg_id = ?';
-    bindings.push(parseInt(id, 10));
-  } else if (ids) {
-    const parsed = ids.split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0);
-    if (parsed.length > 0) {
-      sql += ` AND rmpg_id IN (${parsed.map(() => '?').join(',')})`;
-      bindings.push(...parsed);
-    }
+  // ── Single-id and no-filter forms: one query, bounded bindings ──
+  if (!ids || id) {
+    let sql = select;
+    const bindings: unknown[] = [];
+    if (table) { sql += ' AND rmpg_table = ?'; bindings.push(table); }
+    if (id) { sql += ' AND rmpg_id = ?'; bindings.push(parseInt(id, 10)); }
+    sql += ` ORDER BY id DESC LIMIT ${RESULT_LIMIT}`;
+    const rows = await query<Record<string, unknown>>(db, sql, ...bindings);
+    return c.json({ conflicts: rows, count: rows.length });
   }
 
-  sql += ' ORDER BY id DESC LIMIT 50';
+  // ── Multi-id form: MUST be chunked ──
+  // 🔴 D1 caps a query at 100 BOUND PARAMETERS
+  // (developers.cloudflare.com/d1/platform/limits). This route built one
+  // `rmpg_id IN (?,?,…)` list sized by however many rows the caller was
+  // rendering, so the query's shape grew with the dataset: FleetFuelTab asking
+  // about 109 fuel rows sent 110 bindings (1 table + 109 ids), D1 rejected the
+  // statement before executing it, and the request 500'd. Observed live
+  // 2026-07-26 — four retries, then the conflict badges silently never loaded.
+  // It never reached `error_log` either, because D1 rejects at bind time inside
+  // query() rather than throwing from the route body into the global onError.
+  //
+  // Chunk size comes from chunkBindings (src/utils/db.ts), which owns the cap —
+  // `reservedBindings` accounts for the optional `table` filter so the IN-list
+  // can never squeeze it out of the budget.
+  const parsed = Array.from(new Set(
+    ids.split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0),
+  ));
+  if (parsed.length === 0) {
+    return c.json({ conflicts: [], count: 0 });
+  }
 
-  const rows = await query<Record<string, unknown>>(db, sql, ...bindings);
-  return c.json({ conflicts: rows, count: rows.length });
+  const chunks = chunkBindings(parsed, table ? 1 : 0);
+
+  const results = await Promise.all(chunks.map((chunk) => {
+    let sql = select;
+    const bindings: unknown[] = [];
+    if (table) { sql += ' AND rmpg_table = ?'; bindings.push(table); }
+    sql += ` AND rmpg_id IN (${chunk.map(() => '?').join(',')})`;
+    bindings.push(...chunk);
+    // Per-chunk LIMIT matches the overall one: no single chunk can contribute
+    // more rows than the caller will ever be shown, but the merge below is what
+    // actually enforces the response size.
+    sql += ` ORDER BY id DESC LIMIT ${RESULT_LIMIT}`;
+    return query<Record<string, unknown>>(db, sql, ...bindings);
+  }));
+
+  // Merge, then re-sort and truncate globally — a per-chunk limit alone would
+  // bias the result toward whichever chunk happened to be queried, so the
+  // ordering contract (newest first) has to be re-established after the merge.
+  const merged = results.flat()
+    .sort((a, b) => Number(b.id) - Number(a.id))
+    .slice(0, RESULT_LIMIT);
+
+  return c.json({ conflicts: merged, count: merged.length });
 });
 
 /** Resolve a single conflict by id with a chosen resolution.
