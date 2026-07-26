@@ -657,6 +657,7 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //
   //   PR 0 (nothing migrated)     11114
   //   after PR 7 (tier-2 residue)  6318
+  //   after CSP/SW fix pass       11098
   //
   // placeholder-rmpg-300|400 is 0 today; the pattern includes it so a future one
   // trips the guard rather than slipping in.
