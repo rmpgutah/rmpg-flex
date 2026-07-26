@@ -563,14 +563,12 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
         + 'start (so that https:// survives), so this one legitimately still counts. jsPDF '
         + 'takes literal colours and the file is classifier-excluded either way.',
     },
-    'utils/withAlpha.ts': {
-      count: 6,
-      why: 'all six are JSDoc examples quoting the broken form this module exists to fix '
-        + '(`var(--rmpg-500)22`, and the two offending call sites it names). Same case as '
-        + 'the theme-palettes.css pin above. #3037 and #3038 landed independently and this '
-        + 'scan does not blank comments, so main was red on their intersection.',
-    },
   };
+  // NOTE: 'utils/withAlpha.ts' was pinned at 6 — JSDoc examples quoting the broken
+  // form that module exists to fix. Those examples have since been rewritten and the
+  // file is at 0, so the pin was dropped rather than left to rot. The
+  // "pins only files that still contain an occurrence" test below is what surfaced
+  // it; a one-directional floor would have kept passing on a stale entry forever.
 
   // Matches the bare ramp reference with or without a fallback — `var(--rmpg-500)`
   // and `var(--rmpg-600, #1e4a7a)` both count. The `[,)]` tail is what keeps the
@@ -657,7 +655,12 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //
   // placeholder-rmpg-300|400 is 0 today; the pattern includes it so a future one
   // trips the guard rather than slipping in.
-  const PIN = 11114;
+  // 11114 -> 11113: #3044 (QR/stamp) landed a second `text-xs text-rmpg-300` body
+  // paragraph in PatrolPage's checkpoint-token modal, pushing the count to 11115 and
+  // turning main red. Both branches of that ternary are 12px explanatory copy at
+  // 3.77:1, below AA, so both were re-pointed at text-fg-muted rather than raising
+  // the cap. Net -1 against the original pin.
+  const PIN = 11113;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
