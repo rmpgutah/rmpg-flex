@@ -135,8 +135,12 @@ describe('no new dead CSS variables', () => {
     // Grid tokens referenced by a table skin that never shipped its palette.
     '--grid-header-text', '--grid-row-even', '--grid-row-selected',
     '--grid-row-selected-border',
-    // Typo for --sev-warn at NavigationPage.tsx.
-    '--sev-warning',
+    // NOTE: '--sev-warning' was removed from this list once its sole consumer
+    // (NavigationPage.tsx's crime-layer toggle) was corrected to --sev-warn. It
+    // was a typo, never a real token, so it could never become *defined* — the
+    // "already fixed" test below would never have evicted it. Entries whose last
+    // consumer is gone have to be pulled out by hand, or the list rots exactly
+    // the way that test's comment warns about.
   ]);
 
   // Set at runtime via element.style.setProperty(), so they never appear in CSS.
