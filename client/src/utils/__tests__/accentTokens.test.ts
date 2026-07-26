@@ -5,6 +5,32 @@ import { resolve, join } from 'node:path';
 const SRC_DIR = resolve(__dirname, '../..');
 const css = readFileSync(resolve(SRC_DIR, 'styles/theme-palettes.css'), 'utf8');
 
+function stripComments(text: string): string {
+  // Block comments first: their CONTINUATION lines do not start with a comment
+  // marker, so a purely line-based filter leaks illustrative `var(--x)` examples.
+  // Only treat "//" as a comment at line start, so URLs (https://) survive.
+  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+}
+
+function walk(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name !== '__tests__' && entry.name !== 'node_modules') walk(full, out);
+    } else if (/\.(tsx?|css)$/.test(entry.name)) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+/** Custom properties declared anywhere in a chunk of CSS text. */
+function declaredIn(text: string): Set<string> {
+  const names = new Set<string>();
+  for (const m of text.matchAll(/(--[A-Za-z0-9-]+)\s*:/g)) names.add(m[1]);
+  return names;
+}
+
 function blueSilverBlock(): string {
   const start = css.indexOf('html.theme-blue-silver {');
   expect(start).toBeGreaterThan(-1);
@@ -130,17 +156,16 @@ describe('no new dead CSS variables', () => {
     '--amber-400', '--amber-500', '--amber-500-rgb', '--green-400', '--green-500',
     '--green-500-rgb', '--orange-400', '--orange-500-rgb', '--purple-400',
     '--purple-500-rgb', '--red-400', '--red-500-rgb',
-    // Undefined brand ramp steps (--brand-400 alone has 19 consumers).
-    '--brand-400', '--brand-500',
     // Grid tokens referenced by a table skin that never shipped its palette.
     '--grid-header-text', '--grid-row-even', '--grid-row-selected',
     '--grid-row-selected-border',
     // NOTE: '--sev-warning' was removed from this list once its sole consumer
     // (NavigationPage.tsx's crime-layer toggle) was corrected to --sev-warn. It
     // was a typo, never a real token, so it could never become *defined* — the
-    // "already fixed" test below would never have evicted it. Entries whose last
-    // consumer is gone have to be pulled out by hand, or the list rots exactly
-    // the way that test's comment warns about.
+    // "already fixed" test below could not have evicted it on the defined-ness
+    // check alone. That test now ALSO fails when an entry loses its last
+    // consumer, so this class of rot is caught mechanically rather than needing
+    // to be pulled out by hand.
   ]);
 
   // Set at runtime via element.style.setProperty(), so they never appear in CSS.
@@ -148,25 +173,6 @@ describe('no new dead CSS variables', () => {
     '--crt-scanline-alpha', '--crt-vignette-alpha', '--user-font-scale',
     '--writer-font', '--writer-line-height', '--writer-measure', '--writer-size',
   ]);
-
-  function stripComments(text: string): string {
-    // Block comments first: their CONTINUATION lines do not start with a comment
-    // marker, so a purely line-based filter leaks illustrative `var(--x)` examples.
-    // Only treat "//" as a comment at line start, so URLs (https://) survive.
-    return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  }
-
-  function walk(dir: string, out: string[] = []): string[] {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name !== '__tests__' && entry.name !== 'node_modules') walk(full, out);
-      } else if (/\.(tsx?|css)$/.test(entry.name)) {
-        out.push(full);
-      }
-    }
-    return out;
-  }
 
   it('every var(--x) consumed without a fallback is defined somewhere', () => {
     const files = walk(SRC_DIR);
@@ -200,16 +206,132 @@ describe('no new dead CSS variables', () => {
   });
 
   it('does not carry allowlist entries that are already fixed', () => {
-    // Keeps the ratchet honest: once a dead var is defined, it must leave the
-    // allowlist, otherwise the list rots into a permanent excuse.
+    // Keeps the ratchet honest in BOTH directions -- a dead var leaves the debt
+    // list either by being defined or by losing its last consumer, and an entry
+    // that outlives its reason rots into a permanent excuse. --sev-warning was
+    // exactly the second case: a typo for --sev-warn with one consumer, so fixing
+    // the call site leaves nothing for the allowlist to excuse.
+    const files = walk(SRC_DIR);
+
     const defined = new Set<string>();
-    for (const file of walk(SRC_DIR)) {
+    for (const file of files) {
       if (!file.endsWith('.css')) continue;
-      for (const m of readFileSync(file, 'utf8').matchAll(/(--[A-Za-z0-9-]+)\s*:/g)) {
-        defined.add(m[1]);
+      for (const name of declaredIn(readFileSync(file, 'utf8'))) defined.add(name);
+    }
+
+    const referenced = new Set<string>();
+    for (const file of files) {
+      const text = stripComments(readFileSync(file, 'utf8'));
+      for (const m of text.matchAll(/var\(\s*(--[A-Za-z0-9-]+)\s*\)/g)) referenced.add(m[1]);
+    }
+
+    expect({
+      nowDefined: [...KNOWN_DEAD].filter((v) => defined.has(v)),
+      noLongerReferenced: [...KNOWN_DEAD].filter((v) => !referenced.has(v)),
+    }).toEqual({ nowDefined: [], noLongerReferenced: [] });
+  });
+});
+
+describe('palette vars resolve under every theme', () => {
+  // The ratchet above asks only "is this var declared SOMEWHERE". A var declared
+  // in exactly one theme block passes that check and still renders nothing under
+  // the other themes -- var() that resolves to nothing makes the whole declaration
+  // invalid at computed-value time, so the element silently inherits its parent
+  // color. tsc, vitest and vite build are all blind to it.
+  //
+  // That is how --accent-silver-* shipped blue-silver-only while /downloads, the
+  // install guide and the radio admin tabs consumed it: latent while Blue & Silver
+  // is the default, but rmpg_theme_legacy='1' is a no-deploy escape hatch that
+  // exposes it instantly.
+  //
+  // WHY THE RULE IS "declared in the BASE block", not "declared in all four".
+  // The blocks are not peers. The night block's selector is
+  // `:root, html.theme-dark, .tactical-dark`, and :root IS <html> -- the same
+  // element the theme class is stamped on (theme.ts applyThemePreference +
+  // the pre-paint boot script both use document.documentElement). So :root matches
+  // under EVERY theme and the night block is the base layer; day / legacy-black /
+  // blue-silver are higher-specificity overrides on that same element, winning
+  // only for the vars they redeclare.
+  //
+  // Consequences, both load-bearing:
+  //   - Base membership is SUFFICIENT. --stat-accent-* lives only in the night
+  //     block and resolves fine everywhere (those semantic status hues are
+  //     deliberately theme-invariant). Demanding four copies would be pure noise.
+  //   - Base membership is NECESSARY. A var in day + legacy-black + blue-silver
+  //     but not base is still absent under plain html.theme-dark, so "declared in
+  //     three of four blocks" is not a safe shape either.
+  //
+  // Scope: bare var(--x) reached from ts/tsx -- the inline-style sites. Two
+  // deliberate exclusions:
+  //   - Vars declared in NO block are the ratchet's business, not this test's.
+  //   - var(--x, fallback) renders the fallback, degrading to theme-blind rather
+  //     than invisible. A lesser defect, tracked separately.
+  const OVERRIDE_ONLY_BY_DESIGN = new Set<string>([
+    // Add a var here ONLY with the reason it may skip the base layer. Empty on
+    // purpose: any palette var reachable from an inline style must resolve under
+    // every theme, or opting out of Blue & Silver strips the color right off it.
+  ]);
+
+  const BASE_BLOCK = 'night';
+  const blockVars = new Map<string, Set<string>>(
+    PALETTE_BLOCKS.map((b) => [b.name, declaredIn(paletteBlockBody(b.marker))]),
+  );
+  const baseVars = blockVars.get(BASE_BLOCK)!;
+  const paletteUniverse = new Set([...blockVars.values()].flatMap((s) => [...s]));
+
+  it('parses all four blocks and finds a real palette in each', () => {
+    // Guards the guard: a marker drifting out of sync with the CSS would empty
+    // paletteUniverse and make the assertion below vacuously pass.
+    expect(blockVars.size).toBe(4);
+    for (const [name, vars] of blockVars) {
+      expect(vars.size, `${name} block looks empty -- marker drifted?`).toBeGreaterThan(40);
+    }
+    expect(baseVars.has('--surface-base')).toBe(true);
+    expect(baseVars.has('--sev-warn')).toBe(true);
+  });
+
+  it('pins the base block to the selector that matches every theme', () => {
+    // If someone splits :root off the night selector, base membership stops
+    // implying "resolves everywhere" and this suite's whole premise breaks.
+    const start = css.indexOf(PALETTE_BLOCKS.find((b) => b.name === BASE_BLOCK)!.marker);
+    const selector = css.slice(start, css.indexOf('{', start));
+    expect(selector).toMatch(/:root\s*,/);
+    expect(selector).toContain('html.theme-dark');
+    expect(selector).toContain('.tactical-dark');
+  });
+
+  it('declares every inline-style palette var in the base theme block', () => {
+    const tsFiles = walk(SRC_DIR).filter((f) => /\.tsx?$/.test(f));
+    expect(tsFiles.length).toBeGreaterThan(100);
+
+    const offenders: Record<string, { declaredOnlyIn: string[]; sample: string[] }> = {};
+    for (const file of tsFiles) {
+      const text = stripComments(readFileSync(file, 'utf8'));
+      for (const m of text.matchAll(/var\(\s*(--[A-Za-z0-9-]+)\s*\)/g)) {
+        const name = m[1];
+        if (!paletteUniverse.has(name)) continue;
+        if (baseVars.has(name) || OVERRIDE_ONLY_BY_DESIGN.has(name)) continue;
+
+        const rel = file.slice(SRC_DIR.length + 1);
+        offenders[name] ??= {
+          declaredOnlyIn: PALETTE_BLOCKS.filter((b) => blockVars.get(b.name)!.has(name)).map(
+            (b) => b.name,
+          ),
+          sample: [],
+        };
+        if (offenders[name].sample.length < 4 && !offenders[name].sample.includes(rel)) {
+          offenders[name].sample.push(rel);
+        }
       }
     }
-    expect([...KNOWN_DEAD].filter((v) => defined.has(v))).toEqual([]);
+
+    expect(offenders).toEqual({});
+  });
+
+  it('does not carry exceptions for vars that already reach the base block', () => {
+    // Same honesty check the ratchet uses: an exception that stops being needed
+    // must leave the list, or the list rots into a standing excuse.
+    expect([...OVERRIDE_ONLY_BY_DESIGN].filter((name) => baseVars.has(name))).toEqual([]);
   });
 });
 
