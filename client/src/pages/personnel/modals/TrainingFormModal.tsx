@@ -68,7 +68,7 @@ export default function TrainingFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<TrainingFormData>({
-    storageKey: 'rmpg_personnel_training_form',
+    storageKey: `rmpg_personnel_training_form_${initialData?.id ?? 'new'}`,
     defaultValue: EMPTY,
     isActive: isOpen,
   });

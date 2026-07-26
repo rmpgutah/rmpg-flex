@@ -67,7 +67,7 @@ export default function DashCameraFormModal({
   isOpen, onClose, onSubmit, isSubmitting, vehicles, initialData, mode = 'create',
 }: Props) {
   const { form, setForm, isDirty, wasRestored, clearDraft, snapshot } = useFormDraft<DashCameraFormData>({
-    storageKey: 'rmpg_dashcam_form',
+    storageKey: `rmpg_dashcam_form_${initialData?.id ?? 'new'}`,
     defaultValue: EMPTY,
     isActive: isOpen,
   });

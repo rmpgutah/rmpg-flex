@@ -211,7 +211,7 @@ export default function ServePage() {
     clearDraft: clearFormDraft,
     snapshot: snapshotForm,
   } = useFormDraft<typeof EMPTY_FORM>({
-    storageKey: 'rmpg_serve_job_form',
+    storageKey: `rmpg_serve_job_form_${editJob?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: createJobOpen,
   });

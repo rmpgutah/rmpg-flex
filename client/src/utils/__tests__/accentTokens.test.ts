@@ -452,6 +452,11 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
       count: 1,
       why: 'inside a comment; jsPDF takes literal colours and the file is classifier-excluded',
     },
+    'utils/withAlpha.ts': {
+      count: 6,
+      why: 'all inside the JSDoc documenting the exact bare-ramp bug this helper fixes '
+        + '(the two shipped var(--rmpg-500) call sites it references, plus @example lines)',
+    },
   };
 
   // Matches the bare ramp reference with or without a fallback — `var(--rmpg-500)`

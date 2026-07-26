@@ -144,7 +144,7 @@ export default function ClientFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<ClientFormData>({
-    storageKey: 'rmpg_client_form',
+    storageKey: `rmpg_client_form_${editingClient?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });

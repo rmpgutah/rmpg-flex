@@ -243,7 +243,7 @@ export default function PersonFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<PersonFormData>({
-    storageKey: 'rmpg_person_form',
+    storageKey: `rmpg_person_form_${editingPerson?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });
@@ -889,37 +889,6 @@ export default function PersonFormModal({
               <FormField label="Passport Country">
                 <input name="passport_country" type="text" className="input-dark mt-1" placeholder="Issuing country" value={form.passport_country} onChange={handleChange} />
               </FormField>
-            </div>
-          </div>
-
-          {/* Law Enforcement IDs */}
-          <div className="border-t border-rmpg-600 pt-3 mt-3">
-            <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 block">Law Enforcement Identifiers</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">NCIC Number</label>
-                <input name="ncic_number" type="text" className="input-dark mt-1" value={form.ncic_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">SOR Number</label>
-                <input name="sor_number" type="text" className="input-dark mt-1" placeholder="Sex Offender Registry #" value={form.sor_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">FBI Number</label>
-                <input name="fbi_number" type="text" className="input-dark mt-1" value={form.fbi_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">State ID Number</label>
-                <input name="state_id_number" type="text" className="input-dark mt-1" value={form.state_id_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Passport Number</label>
-                <input name="passport_number" type="text" className="input-dark mt-1" value={form.passport_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Passport Country</label>
-                <input name="passport_country" type="text" className="input-dark mt-1" placeholder="Issuing country" value={form.passport_country} onChange={handleChange} />
-              </div>
             </div>
           </div>
 

@@ -160,7 +160,7 @@ export default function UserFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<UserFormData>({
-    storageKey: 'rmpg_user_form',
+    storageKey: `rmpg_user_form_${editingUser?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });

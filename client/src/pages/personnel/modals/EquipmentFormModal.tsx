@@ -89,8 +89,8 @@ export default function EquipmentFormModal({
   // (see PersonnelPage tabKey); the form draft now matches.
   const { user } = useAuth();
   const draftKey = user?.id
-    ? `rmpg_personnel_equipment_form_${user.id}`
-    : 'rmpg_personnel_equipment_form';
+    ? `rmpg_personnel_equipment_form_${user.id}_${initialData?.id ?? 'new'}`
+    : `rmpg_personnel_equipment_form_${initialData?.id ?? 'new'}`;
 
   const {
     form,

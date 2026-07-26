@@ -538,7 +538,9 @@ export default function WarrantsPage() {
   // scoped key. (Same pattern DlSearchPage.tsx ships.) A one-shot effect
   // removes the legacy unscoped key on hydrate so stale per-machine drafts
   // can't leak into the next officer's New-Warrant flow.
-  const warrantFormStorageKey = user?.id ? `rmpg_warrant_form:${user.id}` : 'rmpg_warrant_form';
+  const warrantFormStorageKey = user?.id
+    ? `rmpg_warrant_form:${user.id}_${editingWarrant?.id ?? 'new'}`
+    : `rmpg_warrant_form_${editingWarrant?.id ?? 'new'}`;
   useEffect(() => {
     if (!user?.id) return;
     try { localStorage.removeItem('rmpg_warrant_form'); } catch { /* storage unavailable */ }

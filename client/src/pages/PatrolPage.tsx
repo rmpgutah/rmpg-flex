@@ -342,7 +342,7 @@ const PatrolPage: React.FC = () => {
     clearDraft: clearFormDraft,
     snapshot: snapshotForm,
   } = useFormDraft<typeof EMPTY_CHECKPOINT_FORM>({
-    storageKey: 'rmpg_checkpoint_form',
+    storageKey: `rmpg_checkpoint_form_${editingCheckpoint?.id ?? 'new'}`,
     defaultValue: EMPTY_CHECKPOINT_FORM,
     isActive: showCheckpointModal,
   });
