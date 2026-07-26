@@ -529,8 +529,8 @@ export default function DownloadsPage() {
                 onClick={() => setActiveTab(p)}
                 className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors"
                 style={{
-                  color: activeTab === p ? 'var(--accent-silver-400)' : 'var(--text-muted)',
-                  borderBottom: activeTab === p ? '2px solid var(--accent-silver-400)' : '2px solid transparent',
+                  color: activeTab === p ? 'var(--accent-active)' : 'var(--text-muted)',
+                  borderBottom: activeTab === p ? '2px solid var(--accent-active)' : '2px solid transparent',
                 }}
               >
                 {PLATFORM_CONFIG[p].label}
