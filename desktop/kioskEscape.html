@@ -17,28 +17,13 @@
   <div id="error"></div>
   <button id="submit">Exit Kiosk Mode</button>
   <script>
-    const submitEl = document.getElementById('submit');
-    submitEl.addEventListener('click', async () => {
+    document.getElementById('submit').addEventListener('click', async () => {
       const username = document.getElementById('username').value;
       const password = document.getElementById('password').value;
       const errorEl = document.getElementById('error');
       errorEl.textContent = '';
-      submitEl.disabled = true;
-      try {
-        // ipcRenderer.invoke REJECTS when the main-process handler throws —
-        // which is exactly what the IPC sender guard does for an untrusted
-        // frame. Without this catch the rejection was swallowed by the async
-        // listener and the operator saw the button do nothing at all, on a
-        // machine with no other way out. Always surface something.
-        const result = await window.kioskEscape.attempt(username, password);
-        if (!result || !result.ok) {
-          errorEl.textContent = (result && result.error) || 'Unexpected response from the app.';
-        }
-      } catch (err) {
-        errorEl.textContent = `Could not reach the app: ${err && err.message ? err.message : String(err)}`;
-      } finally {
-        submitEl.disabled = false;
-      }
+      const result = await window.kioskEscape.attempt(username, password);
+      if (!result.ok) errorEl.textContent = result.error;
     });
   </script>
 </body>

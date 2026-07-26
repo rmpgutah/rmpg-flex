@@ -9,7 +9,7 @@
 const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage, powerMonitor, screen, globalShortcut, clipboard } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
-const { createIpcGuards, createLocalFileIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry, validateKioskEscapeCredentials } = require('./security/ipcGuard');
+const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry, validateKioskEscapeCredentials } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { hardenGuestWebPreferences, shouldAllowGuestNavigation, isCompanyBrowserRoleAllowed } = require('./security/webviewHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
@@ -19,7 +19,7 @@ const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLog
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
 const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, restoreWindowBounds, saveWindowBounds } = require('./windowManager');
-const { buildShellRegistryValue, MAX_BOOT_FAILURES, resetBootAttemptState, nextBootAttemptState, shouldSelfRevert, KIOSK_ESCAPE_ACCELERATORS, selectEscapeAccelerator, shouldUseKioskChrome, shouldRelaunchOnAllWindowsClosed, validateEscapeLoginResponse } = require('./kioskShell');
+const { buildShellRegistryValue, MAX_BOOT_FAILURES, resetBootAttemptState, nextBootAttemptState, shouldSelfRevert, validateEscapeLoginResponse } = require('./kioskShell');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -852,83 +852,30 @@ async function createMainWindow() {
   // the shell key is reverted back to explorer.exe so the machine never
   // gets stuck showing a black kiosk screen with no way back in.
   const isKioskShell = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
-  // Module-level flag consulted by the 'window-all-closed' handler below.
-  // Set from isKioskShell — "did Windows launch this process as the login
-  // shell" — and NOT from useKioskChrome, which answers a different question
-  // (see shouldUseKioskChrome / shouldRelaunchOnAllWindowsClosed in
-  // kioskShell.js). Tying it to useKioskChrome meant every path that fell
-  // back to a normal window while the registry still pointed here — a failed
-  // self-revert, an unavailable escape accelerator — also silently opted out
-  // of relaunch-on-close, i.e. exited and left the session with no shell.
-  isRunningAsKioskShell = isKioskShell;
   let kioskBootState = null;
-  let kioskRevertSucceeded = false;
   if (isKioskShell) {
     kioskBootState = nextBootAttemptState(getConfig('kiosk_boot_attempts'));
     setConfig('kiosk_boot_attempts', kioskBootState);
     if (shouldSelfRevert(kioskBootState)) {
       console.error(`[KIOSK] ${MAX_BOOT_FAILURES} consecutive failed boots — self-reverting shell to explorer.exe`);
-      const revert = await runElevatedRegistryWrite('"explorer.exe"');
-      kioskRevertSucceeded = revert.ok;
-      if (revert.ok) {
-        setConfig('kiosk_shell_enabled', false);
-        setConfig('kiosk_boot_attempts', resetBootAttemptState());
-        dialog.showErrorBox(
-          'RMPG Flex Kiosk Mode Disabled',
-          `Kiosk Mode failed to start ${MAX_BOOT_FAILURES} times in a row and has been automatically disabled. Windows will use its normal desktop from now on.`
-        );
-      } else {
-        // The elevated write did NOT land — most commonly because the
-        // operator dismissed the UAC prompt. The Winlogon shell key still
-        // points at this app, so kiosk_shell_enabled and the boot counter
-        // are deliberately left ALONE: clearing them here would tell the
-        // next boot "kiosk is off" while Windows still starts us as the
-        // shell, which drops the escape hotkey and turns the next window
-        // close into a black screen. Leaving the counter above the limit
-        // means the next boot retries this revert.
-        console.error('[KIOSK] self-revert failed, shell key unchanged:', revert.error);
-        dialog.showErrorBox(
-          'RMPG Flex Kiosk Mode Could Not Be Disabled',
-          `Kiosk Mode failed to start ${MAX_BOOT_FAILURES} times in a row, but the Windows shell setting could not be restored (${revert.error}).\n\n`
-            + 'This computer is still set to start RMPG Flex instead of the normal desktop. Approve the Windows permission prompt on the next attempt, '
-            + `or press ${KIOSK_ESCAPE_ACCELERATORS[0]} to exit Kiosk Mode now.`
-        );
-      }
-      // Fall through to a window either way — do not exit, so the operator
-      // still gets a usable app window this run.
-    }
-  }
-
-  // ─── Escape hatch shortcut (registered BEFORE entering kiosk chrome) ──
-  // Ordering matters: never enter a mode the operator cannot leave. If no
-  // accelerator can be claimed, useKioskChrome below stays false and this
-  // launch renders as a normal window instead of a frameless kiosk with no
-  // way out. globalShortcut.register returns false when another process
-  // already owns the combination — the return value was previously ignored.
-  let kioskEscapeAccelerator = null;
-  if (isKioskShell && !kioskRevertSucceeded) {
-    kioskEscapeAccelerator = selectEscapeAccelerator(
-      KIOSK_ESCAPE_ACCELERATORS,
-      (accelerator) => globalShortcut.register(accelerator, () => openKioskEscapeWindow())
-    );
-    if (kioskEscapeAccelerator) {
-      console.log(`[KIOSK] escape hatch bound to ${kioskEscapeAccelerator}`);
-    } else {
-      console.error('[KIOSK] no escape accelerator available — refusing to enter kiosk chrome');
+      await runElevatedRegistryWrite('"explorer.exe"');
+      setConfig('kiosk_shell_enabled', false);
+      setConfig('kiosk_boot_attempts', resetBootAttemptState());
       dialog.showErrorBox(
-        'RMPG Flex Kiosk Mode Not Started',
-        'Kiosk Mode could not reserve a keyboard shortcut for its exit prompt, because another program on this computer is already using all of them:\n\n'
-          + `${KIOSK_ESCAPE_ACCELERATORS.join('\n')}\n\n`
-          + 'RMPG Flex has started in a normal window instead so you are not locked in. Close the other program and restart, or disable Kiosk Mode in Settings.'
+        'RMPG Flex Kiosk Mode Disabled',
+        `Kiosk Mode failed to start ${MAX_BOOT_FAILURES} times in a row and has been automatically disabled. Windows will use its normal desktop from now on.`
       );
+      // Fall through to the normal (non-kiosk) window below — do not exit,
+      // so the operator still gets a usable app window this run.
     }
   }
-
-  const useKioskChrome = shouldUseKioskChrome({
-    isKioskShell,
-    revertSucceeded: kioskRevertSucceeded,
-    escapeAcceleratorRegistered: kioskEscapeAccelerator !== null,
-  });
+  const useKioskChrome = isKioskShell && !shouldSelfRevert(kioskBootState);
+  // Module-level flag consulted by the 'window-all-closed' handler below —
+  // deliberately reflects useKioskChrome (post self-revert), not the raw
+  // isKioskShell/getConfig read, so a session that just self-reverted due to
+  // repeated boot failures is correctly treated as NOT running as the shell
+  // and won't relaunch itself back into the broken state.
+  isRunningAsKioskShell = useKioskChrome;
 
   mainWindow = new BrowserWindow({
     ...(useKioskChrome
@@ -1143,9 +1090,14 @@ async function createMainWindow() {
   mainWindow.on('resize', debouncedSaveWindowBounds);
   mainWindow.on('move', debouncedSaveWindowBounds);
 
-  // NOTE: the kiosk escape-hatch global shortcut is registered near the TOP
-  // of this function, before the BrowserWindow is constructed — its success
-  // is a precondition for useKioskChrome, so it cannot be deferred to here.
+  // Kiosk mode has no window chrome/taskbar to exit through, so a
+  // global shortcut is the only way an operator can reach the escape
+  // hatch (see openKioskEscapeWindow below).
+  if (useKioskChrome) {
+    globalShortcut.register('Ctrl+Alt+Shift+F12', () => {
+      openKioskEscapeWindow();
+    });
+  }
 }
 
 // ─── IPC Handlers ───────────────────────────────────────────
@@ -1678,10 +1630,6 @@ guardedHandle('device:set-kiosk-shell', async (event, enabled) => {
     // Windows shows the native UAC consent prompt.
     const result = await runElevatedRegistryWrite(shellValue);
     if (!result.ok) {
-      // Un-latch the deliberate-revert flag set above: the registry write
-      // failed, so the shell key still points at this app and a subsequent
-      // window-all-closed must still relaunch rather than exit.
-      if (!enabled) kioskDeliberatelyReverting = false;
       logSecurityAuditEvent('device:set-kiosk-shell', 'error', { enabled, error: result.error });
       return result;
     }
@@ -1735,15 +1683,6 @@ guardedHandle('device:kiosk-shell-state', () => {
 let kioskEscapeWindow = null;
 const kioskEscapeRateLimiter = createRateLimiter(5, 60_000); // 5 attempts/minute
 
-// kioskEscape.html is loaded with loadFile(), so its frame URL is
-// file:///…/kioskEscape.html — host "" — which the remote-origin guard
-// (createIpcGuards, bound to TRUSTED_HOST) can never match. Registering
-// kiosk:attempt-escape through guardedHandle therefore rejected EVERY call
-// from the escape window, silently disabling the only way out of kiosk mode.
-// It gets the local-file guard instead, allow-listing exactly this one page.
-const KIOSK_ESCAPE_PAGE_PATH = path.join(__dirname, 'kioskEscape.html');
-const { guardedHandle: guardedLocalFileHandle } = createLocalFileIpcGuards(ipcMain, [KIOSK_ESCAPE_PAGE_PATH]);
-
 function openKioskEscapeWindow() {
   if (kioskEscapeWindow) { kioskEscapeWindow.focus(); return; }
   kioskEscapeWindow = new BrowserWindow({
@@ -1758,11 +1697,11 @@ function openKioskEscapeWindow() {
     }),
   });
   kioskEscapeWindow.setMenu(null);
-  kioskEscapeWindow.loadFile(KIOSK_ESCAPE_PAGE_PATH);
+  kioskEscapeWindow.loadFile(path.join(__dirname, 'kioskEscape.html'));
   kioskEscapeWindow.on('closed', () => { kioskEscapeWindow = null; });
 }
 
-guardedLocalFileHandle('kiosk:attempt-escape', async (event, username, password) => {
+guardedHandle('kiosk:attempt-escape', async (event, username, password) => {
   const rateCheck = kioskEscapeRateLimiter.checkRateLimit('kiosk:attempt-escape');
   if (!rateCheck.ok) {
     logSecurityAuditEvent('kiosk:attempt-escape', 'denied', { reason: 'rate_limited' });
@@ -1804,17 +1743,7 @@ guardedLocalFileHandle('kiosk:attempt-escape', async (event, username, password)
     // definition near the top of this file. Set before the registry write
     // so window-all-closed never mistakes this for an unexpected exit.
     kioskDeliberatelyReverting = true;
-    const revert = await runElevatedRegistryWrite('"explorer.exe"');
-    if (!revert.ok) {
-      // The elevated write did not land (usually a dismissed UAC prompt), so
-      // the Winlogon shell key still points at this app. Un-latch the
-      // deliberate-revert flag: leaving it set would make the next
-      // window-all-closed exit for real and strand the machine with no
-      // shell. Report the failure instead of the success this used to claim.
-      kioskDeliberatelyReverting = false;
-      logSecurityAuditEvent('kiosk:attempt-escape', 'error', { reason: 'registry_revert_failed', error: revert.error });
-      return { ok: false, error: `Could not restore the Windows desktop shell: ${revert.error}. Approve the Windows permission prompt and try again.` };
-    }
+    await runElevatedRegistryWrite('"explorer.exe"');
     setConfig('kiosk_shell_enabled', false);
     setConfig('kiosk_boot_attempts', resetBootAttemptState());
     kioskEscapeWindow?.close();
@@ -4288,10 +4217,7 @@ app.on('window-all-closed', () => {
     // self-revert boot-failure counter in createMainWindow (shouldSelfRevert/
     // MAX_BOOT_FAILURES) still increments and will flip kiosk_shell_enabled
     // off and fall back to explorer.exe after enough consecutive failures.
-    if (shouldRelaunchOnAllWindowsClosed({
-      isKioskShell: isRunningAsKioskShell,
-      deliberatelyReverting: kioskDeliberatelyReverting,
-    })) {
+    if (isRunningAsKioskShell && !kioskDeliberatelyReverting) {
       isQuitting = true;
       app.relaunch();
       app.exit(0);
