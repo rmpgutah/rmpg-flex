@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
+import { useNavigate } from 'react-router-dom';
 import RichTextArea from '../../components/RichTextArea';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
@@ -47,6 +48,23 @@ import type {
 // ============================================================
 
 type ModalMode = 'none' | 'new_vehicle' | 'edit_vehicle' | 'log_maintenance' | 'edit_maintenance' | 'log_fuel' | 'edit_fuel' | 'new_inspection' | 'edit_inspection';
+type FleetViewMode = 'dashboard' | 'analysis' | 'work_orders' | 'vendors' | 'service';
+
+// Fleet-wide views. Rendered as a real tablist — the previous version had
+// no tab semantics and hardcoded a banned legacy gold literal (fails AA in
+// the blue-silver theme and is confusable with --sev-warn).
+const FLEET_VIEWS: { id: FleetViewMode; label: string; icon?: typeof FileText }[] = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'analysis', label: 'Analysis Reports', icon: FileText },
+  { id: 'work_orders', label: 'Work Orders' },
+  { id: 'vendors', label: 'Vendors' },
+  { id: 'service', label: 'Service' },
+];
+
+// Explicit page size for the vehicle list request. Without this the Worker
+// applied its own default (200 rows) and the client silently dropped any
+// vehicles past that cap — see vehicleTotal/fetchVehicles below.
+const FLEET_PAGE_SIZE = 500;
 
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e', maintenance: '#f59e0b',
@@ -96,7 +114,30 @@ const timeAgo = (date: string): string => {
   return `${days}d ago`;
 };
 
+// Pre-trip checklist items. Extracted from the JSX so each checkbox can
+// derive a unique DOM id from its key — the inline version hardcoded one
+// literal id inside a .map(), producing ten duplicate ids.
+const PRETRIP_ITEMS: { key: string; label: string }[] = [
+  { key: 'lights_ok', label: 'Lights & Signals' },
+  { key: 'brakes_ok', label: 'Brakes' },
+  { key: 'radio_ok', label: 'Radio/Comms' },
+  { key: 'mdt_ok', label: 'MDT/Computer' },
+  { key: 'camera_ok', label: 'Dash Camera' },
+  { key: 'tires_ok', label: 'Tires' },
+  { key: 'fluids_ok', label: 'Fluids (Oil/Coolant)' },
+  { key: 'exterior_ok', label: 'Exterior Condition' },
+  { key: 'interior_ok', label: 'Interior Condition' },
+  { key: 'emergency_equipment_ok', label: 'Emergency Equipment' },
+];
+
+// A pre-trip is "answered" once any item is failed or a note is typed —
+// all-pass with no note is the untouched default and is safe to discard.
+const PRETRIP_DEFAULTS = PRETRIP_ITEMS.reduce<Record<string, boolean>>(
+  (acc, i) => { acc[i.key] = true; return acc; }, {},
+);
+
 export default function FleetPage() {
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { user } = useAuth();
@@ -108,6 +149,9 @@ export default function FleetPage() {
 
   // Core state
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
+  // Server-reported total. The list is a page, not necessarily the whole
+  // fleet — without this the client silently dropped rows past the cap.
+  const [vehicleTotal, setVehicleTotal] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
   const [detail, setDetail] = useState<FleetVehicle | null>(null);
   const [maintenance, setMaintenance] = useState<FleetMaintenance[]>([]);
@@ -126,8 +170,21 @@ export default function FleetPage() {
   // Tab & modal state
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics', 'dashcam', 'fuel_cards'] as const);
   // Top-level view mode when no vehicle is selected: dashboard (default) or analysis forms
-  const [viewMode, setViewMode] = useState<'dashboard' | 'analysis' | 'work_orders' | 'vendors' | 'service'>('dashboard');
+  // Persisted with the same mechanism as activeTab — the two mode
+  // mechanisms behaving differently is what produced this page's tab bugs.
+  const [viewMode, setViewMode] = usePersistedTab(
+    'rmpg_fleet_view_mode',
+    'dashboard' as FleetViewMode,
+    ['dashboard', 'analysis', 'work_orders', 'vendors', 'service'] as const,
+  );
   const [workOrdersVehicleFilter, setWorkOrdersVehicleFilter] = useState<number | null>(null);
+  // Focus-follows-selection for the fleet-wide view tablist (WAI-ARIA tab
+  // pattern). Only the keyboard handler flips this ref before changing
+  // viewMode, so the effect below moves DOM focus ONLY for arrow/Home/End
+  // navigation — never on click (handled separately) and never on mount or
+  // on a reload that restores the persisted view (ref starts false and the
+  // effect no-ops on that first render).
+  const pendingTabFocusRef = useRef(false);
   const [modal, setModal] = useState<ModalMode>('none');
   // Editing state — tracks which record is being edited. Declared here
   // (rather than further down with the other editing/delete state) because
@@ -191,6 +248,7 @@ export default function FleetPage() {
 
   // ── Feature 16/19/20: Pre-trip, vehicle swaps, cost-per-mile ──
   const [costPerMile, setCostPerMile] = useState<any>(null);
+  const [costPerMileLoading, setCostPerMileLoading] = useState(false);
 
   // ── GPS mileage (from dispatch breadcrumbs) ──────────────────
   const [gpsMileage, setGpsMileage] = useState<any>(null);
@@ -242,19 +300,29 @@ export default function FleetPage() {
   const [costSummary, setCostSummary] = useState<FleetCostSummary | null>(null);
   const [pretripHistory, setPretripHistory] = useState<any[]>([]);
   const [showPretripModal, setShowPretripModal] = useState(false);
-  const [pretripForm, setPretripForm] = useState({
-    lights_ok: true, brakes_ok: true, radio_ok: true, mdt_ok: true, camera_ok: true,
-    tires_ok: true, fluids_ok: true, exterior_ok: true, interior_ok: true, emergency_equipment_ok: true,
+  // Derived from PRETRIP_ITEMS, not hand-listed: a key present in the item list
+  // but missing here would render as undefined — an unchecked box reading as FAIL —
+  // with no type error, since access goes through (pretripForm as any)[item.key].
+  const [pretripForm, setPretripForm] = useState<Record<string, boolean | string> & { notes: string }>({
+    ...PRETRIP_DEFAULTS,
     notes: '',
   });
   const [pretripSaving, setPretripSaving] = useState(false);
 
   const loadCostPerMile = useCallback(async (vehicleId: string | number) => {
+    setCostPerMileLoading(true);
     try {
       const data = await apiFetch<any>(`/fleet/cost-per-mile/${vehicleId}`);
       setCostPerMile(data);
-    } catch { setCostPerMile(null); }
-  }, []);
+    } catch (err) {
+      // Previously swallowed to null, which made a failed click
+      // indistinguishable from a dead button.
+      setCostPerMile(null);
+      addToast(err instanceof Error ? `Failed to load cost per mile: ${err.message}` : 'Failed to load cost per mile', 'error');
+    } finally {
+      setCostPerMileLoading(false);
+    }
+  }, [addToast]);
 
   const selectedVehicle = detail; // alias for clarity
 
@@ -267,10 +335,36 @@ export default function FleetPage() {
         body: JSON.stringify({ vehicle_id: detail.id, ...pretripForm }),
       });
       addToast(result.overall_pass ? 'Pre-trip PASSED' : 'Pre-trip FAILED - check items', result.overall_pass ? 'success' : 'error');
+      setPretripForm({ ...PRETRIP_DEFAULTS, notes: '' } as typeof pretripForm);
       setShowPretripModal(false);
     } catch (err: any) { addToast(err?.message || 'Failed to submit pre-trip', 'error'); }
     finally { setPretripSaving(false); }
   }, [detail, pretripForm, addToast]);
+
+  const pretripTitleId = useId();
+  const pretripFirstItemRef = useRef<HTMLInputElement | null>(null);
+  // The reset-on-vehicle-change effect must not run on mount, or it
+  // clobbers the tab usePersistedTab just restored — which made that
+  // persistence dead code. Track the last selected (non-null) vehicle id
+  // instead of a simple mount flag: selectedId starts null, so the OLD
+  // "first effect run" guard consumed itself on mount (null selection)
+  // and treated the operator's actual first vehicle click (null -> A) as
+  // "not mount", clobbering the restored tab back to 'overview'.
+  const lastVehicleIdRef = useRef<string | number | null>(null);
+  const skipNextLazyLoadRef = useRef(false);
+  const pretripDirty = PRETRIP_ITEMS.some((it) => !(pretripForm as any)[it.key])
+    || pretripForm.notes.trim() !== '';
+
+  const closePretrip = useCallback(() => {
+    if (pretripSaving) return;
+    if (pretripDirty && !window.confirm('Discard this pre-trip checklist?')) return;
+    setPretripForm({ ...PRETRIP_DEFAULTS, notes: '' } as typeof pretripForm);
+    setShowPretripModal(false);
+  }, [pretripDirty, pretripSaving]);
+
+  useEffect(() => {
+    if (showPretripModal) pretripFirstItemRef.current?.focus();
+  }, [showPretripModal]);
 
   // Snapshot form as clean baseline after modal opens and form is populated
   useEffect(() => {
@@ -280,14 +374,30 @@ export default function FleetPage() {
   // Combined dirty state for any open form
   const isDirtyAny = v.isDirty || m.isDirty || f.isDirty || i.isDirty;
 
+  // Move DOM focus to the newly-active fleet view tab, but only when the
+  // change was driven by the tablist's own keyboard handler (which sets
+  // pendingTabFocusRef before calling setViewMode). Click already focuses
+  // its own button naturally via the browser, and mount/restore-from-storage
+  // never set the ref, so this effect no-ops on both of those paths.
+  useEffect(() => {
+    if (!pendingTabFocusRef.current) return;
+    pendingTabFocusRef.current = false;
+    document.getElementById(`fleet-view-tab-${viewMode}`)?.focus();
+  }, [viewMode]);
+
   // ----------------------------------------------------------
   // Data fetching
   // ----------------------------------------------------------
 
   const fetchVehicles = useCallback(async (options?: { silent?: boolean }) => {
     try {
-      const resp = await apiFetch<{ data: FleetVehicle[]; pagination: any }>(`/fleet?archived=${showArchived}`);
-      setVehicles(Array.isArray(resp) ? resp : resp.data || []);
+      const resp = await apiFetch<{ data: FleetVehicle[]; pagination?: { total?: number } }>(
+        `/fleet?archived=${showArchived}&per_page=${FLEET_PAGE_SIZE}`,
+      );
+      const rows = Array.isArray(resp) ? resp : resp.data || [];
+      setVehicles(rows);
+      const total = Array.isArray(resp) ? rows.length : resp.pagination?.total;
+      setVehicleTotal(typeof total === 'number' ? total : rows.length);
     } catch (err) {
       if (!options?.silent) addToast('Failed to load fleet vehicles', 'error');
     }
@@ -316,7 +426,20 @@ export default function FleetPage() {
 
   // Reset tab when selecting different vehicle
   useEffect(() => {
-    setActiveTab('overview');
+    if (selectedId != null && lastVehicleIdRef.current != null && selectedId !== lastVehicleIdRef.current) {
+      setActiveTab('overview');
+      // setActiveTab won't be reflected in `activeTab` until the next render,
+      // but the lazy-load effect below runs in this SAME commit (it's
+      // declared after this effect, so hook-order guarantees it runs right
+      // after) and would otherwise read the stale (pre-reset) tab, firing a
+      // fetch for the wrong tab against the just-selected vehicle. Skip that
+      // one run — the lazy-load effect re-fires anyway once activeTab
+      // actually flips to 'overview' (its own dependency changed).
+      skipNextLazyLoadRef.current = true;
+    }
+    if (selectedId != null) {
+      lastVehicleIdRef.current = selectedId;
+    }
     setFuelLogs([]);
     setFuelSummary(null);
     setInspections([]);
@@ -335,11 +458,15 @@ export default function FleetPage() {
   // Lazy-load tab data
   useEffect(() => {
     if (!selectedId) return;
+    if (skipNextLazyLoadRef.current) {
+      skipNextLazyLoadRef.current = false;
+      return;
+    }
     if (activeTab === 'fuel') fetchFuelLogs(selectedId);
     if (activeTab === 'costs') { fetchCosts(selectedId); fetchFuelLogs(selectedId); }
     if (activeTab === 'inspections') fetchInspections(selectedId);
     if (activeTab === 'assignments') fetchAssignments(selectedId);
-    if (activeTab === 'analytics') fetchVehicleAnalytics();
+    if (activeTab === 'analytics') fetchVehicleAnalytics(selectedId);
     // Personnel tab renders the shared `assignments` state too — fetch both.
     if (activeTab === 'personnel') { fetchPersonnel(selectedId); fetchAssignments(selectedId); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -381,10 +508,11 @@ export default function FleetPage() {
     } catch { addToast('Failed to load assignments', 'error'); }
   };
 
-  const fetchVehicleAnalytics = async () => {
+  const fetchVehicleAnalytics = async (id: string | number, period?: string) => {
     setAnalyticsLoading(true);
     try {
-      const data = await apiFetch<FleetAnalytics>('/fleet/analytics');
+      const p = period ? `&period=${encodeURIComponent(period)}` : '';
+      const data = await apiFetch<FleetAnalytics>(`/fleet/analytics?vehicle_id=${encodeURIComponent(String(id))}${p}`);
       setAnalytics(data);
     } catch { addToast('Failed to load analytics', 'error'); }
     finally { setAnalyticsLoading(false); }
@@ -1117,14 +1245,13 @@ export default function FleetPage() {
   // Set document title
   useEffect(() => { document.title = 'Fleet Management \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // Keyboard shortcut: Escape to close the pre-trip modal (guarded when dirty)
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowPretripModal(false); }
-    };
+    if (!showPretripModal) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closePretrip(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [showPretripModal, closePretrip]);
 
   // Active save/cancel for FloatingSaveBar
   const activeSaveHandler = () => {
@@ -1191,8 +1318,8 @@ export default function FleetPage() {
               )}
               {/* Feature 20: Cost per mile button */}
               {selectedVehicle && (
-                <button type="button" className="toolbar-btn" onClick={() => loadCostPerMile(selectedVehicle.id)}>
-                  <Gauge className="w-3 h-3" /> Cost/Mi
+                <button type="button" className="toolbar-btn" disabled={costPerMileLoading} onClick={() => loadCostPerMile(selectedVehicle.id)}>
+                  <Gauge className="w-3 h-3" /> {costPerMileLoading ? 'Loading…' : 'Cost/Mi'}
                 </button>
               )}
             </>
@@ -1201,7 +1328,7 @@ export default function FleetPage() {
           <button
             type="button"
             className="toolbar-btn"
-            onClick={() => { window.location.href = '/fleet/reports'; }}
+            onClick={() => navigate('/fleet/reports')}
             title="Daily Patrol Reports Archive"
           >
             <Calendar className="w-3 h-3" /> Daily Reports
@@ -1331,6 +1458,17 @@ export default function FleetPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
+            <span
+              data-testid="vehicle-count"
+              className="flex-shrink-0 text-[9px] font-mono text-fg-muted tabular-nums"
+              title={vehicleTotal != null && vehicleTotal > vehicles.length
+                ? `The server returned only ${vehicles.length} of ${vehicleTotal} fleet vehicles. Filtering the loaded rows will not reveal the rest.`
+                : `${vehicles.length} vehicles`}
+            >
+              {vehicleTotal != null && vehicleTotal > vehicles.length
+                ? `${vehicles.length} of ${vehicleTotal}`
+                : `${vehicles.length}`}
+            </span>
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark" role="list" aria-label="Fleet vehicles">
@@ -1470,64 +1608,60 @@ export default function FleetPage() {
           {selectedId == null || !detail ? (
             // Fleet-wide: view mode toggle (dashboard vs analysis forms)
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-              <div className="flex border-b border-subtle bg-surface-sunken flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('dashboard')}
-                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
-                  style={{
-                    color: viewMode === 'dashboard' ? '#d4a017' : '#888',
-                    borderBottom: viewMode === 'dashboard' ? '2px solid #d4a017' : '2px solid transparent',
-                  }}
-                >
-                  Dashboard
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('analysis')}
-                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1"
-                  style={{
-                    color: viewMode === 'analysis' ? '#d4a017' : '#888',
-                    borderBottom: viewMode === 'analysis' ? '2px solid #d4a017' : '2px solid transparent',
-                  }}
-                >
-                  <FileText size={10} /> Analysis Reports
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setWorkOrdersVehicleFilter(null); setViewMode('work_orders'); }}
-                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
-                  style={{
-                    color: viewMode === 'work_orders' ? '#d4a017' : '#888',
-                    borderBottom: viewMode === 'work_orders' ? '2px solid #d4a017' : '2px solid transparent',
-                  }}
-                >
-                  Work Orders
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('vendors')}
-                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
-                  style={{
-                    color: viewMode === 'vendors' ? '#d4a017' : '#888',
-                    borderBottom: viewMode === 'vendors' ? '2px solid #d4a017' : '2px solid transparent',
-                  }}
-                >
-                  Vendors
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('service')}
-                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
-                  style={{
-                    color: viewMode === 'service' ? '#d4a017' : '#888',
-                    borderBottom: viewMode === 'service' ? '2px solid #d4a017' : '2px solid transparent',
-                  }}
-                >
-                  Service
-                </button>
+              <div
+                className="flex items-center border-b border-rmpg-700 bg-surface-sunken flex-shrink-0"
+                role="tablist"
+                aria-label="Fleet-wide views"
+                onKeyDown={(e) => {
+                  if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return;
+                  e.preventDefault();
+                  const idx = FLEET_VIEWS.findIndex((v) => v.id === viewMode);
+                  let next: number;
+                  if (e.key === 'ArrowRight') next = (idx + 1) % FLEET_VIEWS.length;
+                  else if (e.key === 'ArrowLeft') next = (idx - 1 + FLEET_VIEWS.length) % FLEET_VIEWS.length;
+                  else if (e.key === 'Home') next = 0;
+                  else next = FLEET_VIEWS.length - 1;
+                  const target = FLEET_VIEWS[next];
+                  // Home on the first tab (or End on the last) computes the tab we
+                  // are already on. setViewMode would bail out, the focus effect
+                  // would never run, and pendingTabFocusRef would stay set — later
+                  // stolen by an unrelated setViewMode call.
+                  if (target.id === viewMode) return;
+                  if (target.id === 'work_orders') setWorkOrdersVehicleFilter(null);
+                  pendingTabFocusRef.current = true;
+                  setViewMode(target.id);
+                }}
+              >
+                {FLEET_VIEWS.map(({ id, label, icon: Icon }) => (
+                  <button
+                    type="button"
+                    key={id}
+                    role="tab"
+                    id={`fleet-view-tab-${id}`}
+                    aria-selected={viewMode === id}
+                    aria-controls="fleet-view-panel"
+                    tabIndex={viewMode === id ? 0 : -1}
+                    onClick={() => {
+                      if (id === 'work_orders') setWorkOrdersVehicleFilter(null);
+                      setViewMode(id);
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-all duration-150 border-b-2 ${
+                      viewMode === id
+                        ? 'text-brand-gold-500 border-brand-gold-500 bg-brand-gold-500/5'
+                        : 'text-fg-muted border-transparent hover:text-rmpg-200 hover:border-rmpg-600'
+                    }`}
+                  >
+                    {Icon && <Icon size={10} />}
+                    {label}
+                  </button>
+                ))}
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto">
+              <div
+                className="flex-1 min-h-0 overflow-y-auto"
+                role="tabpanel"
+                id="fleet-view-panel"
+                aria-labelledby={`fleet-view-tab-${viewMode}`}
+              >
                 {viewMode === 'dashboard' ? (
                   <>
                     <MaintenanceMonitor onSelectVehicle={(id) => { setSelectedId(id); fetchDetail(id); }} />
@@ -1748,45 +1882,51 @@ export default function FleetPage() {
 
       {/* Feature 16: Pre-Trip Checklist Modal */}
       {showPretripModal && selectedVehicle && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 p-2" role="dialog" aria-modal="true" onClick={() => setShowPretripModal(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 rounded w-[450px] max-w-[95vw] max-h-[90vh] md:max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div
+          data-testid="pretrip-backdrop"
+          className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 p-2"
+          onClick={closePretrip}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={pretripTitleId}
+            className="bg-surface-raised border border-rmpg-600 w-[450px] max-w-[95vw] max-h-[90vh] md:max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
-              <h3 className="text-sm font-bold text-rmpg-100">Pre-Trip Inspection: {selectedVehicle.vehicle_number}</h3>
-              <button type="button" onClick={() => setShowPretripModal(false)} className="text-rmpg-400 hover:text-rmpg-100 text-lg">&times;</button>
+              <h3 id={pretripTitleId} className="text-sm font-bold text-rmpg-100">
+                Pre-Trip Inspection: {selectedVehicle.vehicle_number}
+              </h3>
+              <button type="button" onClick={closePretrip} aria-label="Close pre-trip inspection" className="text-rmpg-400 hover:text-rmpg-100 text-lg">&times;</button>
             </div>
             <div className="p-3 flex-1 overflow-auto space-y-2">
-              {[
-                { key: 'lights_ok', label: 'Lights & Signals' },
-                { key: 'brakes_ok', label: 'Brakes' },
-                { key: 'radio_ok', label: 'Radio/Comms' },
-                { key: 'mdt_ok', label: 'MDT/Computer' },
-                { key: 'camera_ok', label: 'Dash Camera' },
-                { key: 'tires_ok', label: 'Tires' },
-                { key: 'fluids_ok', label: 'Fluids (Oil/Coolant)' },
-                { key: 'exterior_ok', label: 'Exterior Condition' },
-                { key: 'interior_ok', label: 'Interior Condition' },
-                { key: 'emergency_equipment_ok', label: 'Emergency Equipment' },
-              ].map(item => (
-                <label key={item.key} className="flex items-center gap-3 p-2 min-h-[44px] bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
-                  <input id="ff-fleetpage-2"
-                    type="checkbox"
-                    checked={(pretripForm as any)[item.key]}
-                    onChange={e => setPretripForm(prev => ({ ...prev, [item.key]: e.target.checked }))}
-                    className="w-4 h-4 accent-green-500"
-                  />
-                  <span className={`text-sm ${(pretripForm as any)[item.key] ? 'text-green-300' : 'text-red-300'}`}>{item.label}</span>
-                  <span className="ml-auto text-[10px] font-mono">{(pretripForm as any)[item.key] ? 'PASS' : 'FAIL'}</span>
-                </label>
-              ))}
+              {PRETRIP_ITEMS.map((item, idx) => {
+                const inputId = `ff-pretrip-${item.key}`;
+                return (
+                  <label key={item.key} htmlFor={inputId} className="flex items-center gap-3 p-2 min-h-[44px] bg-surface-base cursor-pointer hover:bg-surface-raised">
+                    <input
+                      id={inputId}
+                      ref={idx === 0 ? pretripFirstItemRef : undefined}
+                      type="checkbox"
+                      checked={(pretripForm as any)[item.key]}
+                      onChange={(e) => setPretripForm((prev) => ({ ...prev, [item.key]: e.target.checked }))}
+                      className="w-4 h-4 accent-green-500"
+                    />
+                    <span className={`text-sm ${(pretripForm as any)[item.key] ? 'text-green-300' : 'text-red-300'}`}>{item.label}</span>
+                    <span className="ml-auto text-[10px] font-mono">{(pretripForm as any)[item.key] ? 'PASS' : 'FAIL'}</span>
+                  </label>
+                );
+              })}
               <RichTextArea
                 value={pretripForm.notes}
-                onChange={e => setPretripForm(prev => ({ ...prev, notes: e.target.value }))}
+                onChange={(e) => setPretripForm((prev) => ({ ...prev, notes: e.target.value }))}
                 className="input-dark w-full h-16 text-sm mt-2 min-h-[36px]"
                 placeholder="Notes (defects, damage, etc.)..."
               />
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button type="button" onClick={() => setShowPretripModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={closePretrip} className="toolbar-btn">Cancel</button>
               <button type="button" onClick={submitPretrip} disabled={pretripSaving} className="toolbar-btn toolbar-btn-primary print:hidden">
                 {pretripSaving ? 'Saving...' : 'Submit Pre-Trip'}
               </button>
