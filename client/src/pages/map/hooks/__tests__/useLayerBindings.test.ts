@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import { buildDockSections, findUnboundLayers, type LayerBindingMap } from '../useLayerBindings';
 import { MAP_LAYER_REGISTRY, LEFT_DOCK_GROUPS, RIGHT_DOCK_GROUPS } from '../../config/layerRegistry';
@@ -74,5 +76,31 @@ describe('findUnboundLayers', () => {
     const bindings = allBindings();
     bindings['ghost-layer'] = { active: false, onToggle: vi.fn() };
     expect(findUnboundLayers(bindings).unknownBinding).toContain('ghost-layer');
+  });
+});
+
+// Guards the one silent failure mode of this refactor: a registry entry the
+// page never binds (renders nothing, no error) or a typo'd binding key.
+// Reading the source is deliberate — mounting MapboxMapPage requires a live
+// Mapbox GL context, which is not available in jsdom.
+describe('MapboxMapPage binding coverage', () => {
+  it('binds every registry layer id', () => {
+    const src = readFileSync(
+      resolve(__dirname, '../../MapboxMapPage.tsx'),
+      'utf8',
+    );
+    const bindingBlock = src.slice(
+      src.indexOf('const layerBindings'),
+      src.indexOf('const mapLeftDockSections'),
+    );
+    expect(bindingBlock.length, 'layerBindings block not found').toBeGreaterThan(0);
+
+    const dynamic = new Set(['district-', 'geo-']);
+    const missing = MAP_LAYER_REGISTRY
+      .filter((l) => ![...dynamic].some((p) => l.id.startsWith(p)))
+      .filter((l) => !bindingBlock.includes(`'${l.id}'`) && !new RegExp(`\\b${l.id}\\s*:`).test(bindingBlock))
+      .map((l) => l.id);
+
+    expect(missing, `unbound registry layers: ${missing.join(', ')}`).toEqual([]);
   });
 });
