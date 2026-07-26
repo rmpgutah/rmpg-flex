@@ -7,7 +7,9 @@
 
 import { useState, type ReactNode } from 'react';
 import { AlertCircle, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { withAlpha } from '../../../utils/withAlpha';
+import { useMapDensity } from '../hooks/useMapDensity';
 
 export interface DockSectionProps {
   title: string;
@@ -64,37 +66,62 @@ export interface DockToggleItem {
   /** Renders a colored left-border accent so this toggle's state stays
    *  glanceable even among other rows — for safety-critical items. */
   pinned?: boolean;
+  /** Leading icon from the layer registry. Optional so a row still renders
+   *  if a caller supplies an ad-hoc item outside the registry. */
+  icon?: LucideIcon;
 }
 
 export function DockToggleRow({ item }: { item: DockToggleItem }) {
+  const { tokens } = useMapDensity();
   const dotColor = item.color ?? 'var(--brand-gold)';
   // Previously guarded with `.startsWith('#')` and fell back to the opaque
   // color, which was valid CSS but silently dropped the glow's transparency for
   // every token-valued dot. withAlpha keeps the alpha in both cases.
   const glowColor = withAlpha(dotColor, '80');
+  const Icon = item.icon;
+
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={item.active}
       onClick={item.onToggle}
       title={item.error || item.description}
-      className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] transition-colors"
+      className="w-full flex items-center gap-2 px-3 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[color:var(--accent-silver-400)]"
       style={{
+        minHeight: tokens.rowMinHeight,
+        paddingTop: tokens.rowPaddingY,
+        paddingBottom: tokens.rowPaddingY,
+        fontSize: tokens.labelSize,
         background: item.active ? 'var(--surface-raised)' : 'transparent',
         color: item.active ? 'var(--text-primary)' : 'var(--text-secondary)',
         borderLeft: item.pinned ? `3px solid ${dotColor}` : undefined,
       }}
     >
-      <span
-        className="w-1.5 h-1.5 shrink-0"
-        style={{
-          borderRadius: '50%',
-          background: item.active ? dotColor : 'var(--text-secondary)',
-          boxShadow: item.active ? `0 0 4px ${glowColor}` : 'none',
-        }}
-      />
+      {Icon ? (
+        <Icon
+          aria-hidden="true"
+          className="shrink-0"
+          style={{
+            width: tokens.iconPx,
+            height: tokens.iconPx,
+            color: item.active ? dotColor : 'var(--text-secondary)',
+            filter: item.active ? `drop-shadow(0 0 3px ${glowColor})` : undefined,
+          }}
+        />
+      ) : (
+        <span
+          className="w-1.5 h-1.5 shrink-0"
+          style={{
+            borderRadius: '50%',
+            background: item.active ? dotColor : 'var(--text-secondary)',
+            boxShadow: item.active ? `0 0 4px ${glowColor}` : 'none',
+          }}
+        />
+      )}
       <span className="flex-1 min-w-0 truncate text-left">{item.label}</span>
       {item.error ? (
-        <AlertCircle className="w-3 h-3 shrink-0" style={{ color: 'var(--sev-critical, #ef4444)' }} />
+        <AlertCircle className="w-3 h-3 shrink-0" style={{ color: 'var(--sev-critical)' }} />
       ) : (
         item.loading && <Loader2 className="w-3 h-3 shrink-0 animate-spin" style={{ color: 'var(--brand-gold)' }} />
       )}

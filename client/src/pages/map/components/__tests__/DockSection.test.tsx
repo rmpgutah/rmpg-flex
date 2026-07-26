@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Cloud } from 'lucide-react';
 import DockSection, { DockToggleRow } from '../DockSection';
+import { MapDensityProvider } from '../../hooks/useMapDensity';
 
 describe('DockSection', () => {
   it('renders children when defaultOpen is true (default)', () => {
@@ -85,5 +88,59 @@ describe('DockToggleRow', () => {
     render(<DockToggleRow item={{ id: 'traffic', label: 'Live Traffic', active: true, onToggle, color: '#22c55e' }} />);
     const row = screen.getByText('Live Traffic').closest('button')!;
     expect(row).not.toHaveStyle({ borderLeft: '3px solid #22c55e' });
+  });
+});
+
+describe('DockToggleRow accessibility and density', () => {
+  const baseItem = {
+    id: 'weather',
+    label: 'Weather Radar',
+    active: false,
+    onToggle: () => {},
+    color: 'var(--sev-info)',
+    description: 'Precipitation overlay',
+    icon: Cloud,
+  };
+
+  it('exposes switch semantics so keyboard and screen-reader users can toggle it', () => {
+    render(<DockToggleRow item={baseItem} />);
+    const row = screen.getByRole('switch', { name: /weather radar/i });
+    expect(row).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('reflects the active state in aria-checked', () => {
+    render(<DockToggleRow item={{ ...baseItem, active: true }} />);
+    expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('fires onToggle when activated', async () => {
+    const onToggle = vi.fn();
+    render(<DockToggleRow item={{ ...baseItem, onToggle }} />);
+    await userEvent.click(screen.getByRole('switch'));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders a 44px minimum row height in touch density', () => {
+    render(
+      <MapDensityProvider initialOverride="touch">
+        <DockToggleRow item={baseItem} />
+      </MapDensityProvider>,
+    );
+    expect(screen.getByRole('switch')).toHaveStyle({ minHeight: '44px' });
+  });
+
+  it('renders the compact row height by default', () => {
+    render(
+      <MapDensityProvider initialOverride="compact">
+        <DockToggleRow item={baseItem} />
+      </MapDensityProvider>,
+    );
+    expect(screen.getByRole('switch')).toHaveStyle({ minHeight: '24px' });
+  });
+
+  it('still renders when a layer has no icon', () => {
+    const { icon: _icon, ...noIcon } = baseItem;
+    render(<DockToggleRow item={noIcon} />);
+    expect(screen.getByRole('switch', { name: /weather radar/i })).toBeInTheDocument();
   });
 });
