@@ -569,11 +569,6 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
         + '(the two shipped var(--rmpg-500) call sites it references, plus @example lines)',
     },
   };
-  // NOTE: 'utils/withAlpha.ts' was pinned at 6 — JSDoc examples quoting the broken
-  // form that module exists to fix. Those examples have since been rewritten and the
-  // file is at 0, so the pin was dropped rather than left to rot. The
-  // "pins only files that still contain an occurrence" test below is what surfaced
-  // it; a one-directional floor would have kept passing on a stale entry forever.
 
   // Matches the bare ramp reference with or without a fallback — `var(--rmpg-500)`
   // and `var(--rmpg-600, #1e4a7a)` both count. The `[,)]` tail is what keeps the
@@ -660,12 +655,7 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //
   // placeholder-rmpg-300|400 is 0 today; the pattern includes it so a future one
   // trips the guard rather than slipping in.
-  // 11114 -> 11113: #3044 (QR/stamp) landed a second `text-xs text-rmpg-300` body
-  // paragraph in PatrolPage's checkpoint-token modal, pushing the count to 11115 and
-  // turning main red. Both branches of that ternary are 12px explanatory copy at
-  // 3.77:1, below AA, so both were re-pointed at text-fg-muted rather than raising
-  // the cap. Net -1 against the original pin.
-  const PIN = 11113;
+  const PIN = 11114;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

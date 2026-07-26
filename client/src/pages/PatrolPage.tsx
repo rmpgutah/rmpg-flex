@@ -1938,7 +1938,7 @@ const PatrolPage: React.FC = () => {
                     <img src={qrImageUrl} alt={`QR code for checkpoint token ${selectedQrCode}`}
                       width={200} height={200} className="block" />
                   </div>
-                  <p className="text-xs text-fg-muted mb-2">Scan this code with a QR scanner app:</p>
+                  <p className="text-xs text-rmpg-300 mb-2">Scan this code with a QR scanner app:</p>
                 </>
               ) : (
                 <>
