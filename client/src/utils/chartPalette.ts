@@ -17,7 +17,7 @@ const FALLBACKS: Record<string, string> = {
   '--sev-ok': '#22c55e',
   '--sev-warn': '#f59e0b',
   '--sev-special': '#c084fc',
-  '--text-muted': '#9bb0c7',
+  '--text-muted': '#b1c1d3',
   '--border-subtle': '#2a4763',
 };
 
@@ -31,7 +31,7 @@ export function resolveThemeColor(varName: string, fallback: string): string {
 }
 
 function themeColor(varName: string): string {
-  return resolveThemeColor(varName, FALLBACKS[varName] ?? '#9bb0c7');
+  return resolveThemeColor(varName, FALLBACKS[varName] ?? '#b1c1d3');
 }
 
 /** Categorical series palette, ordered for maximum adjacent separation.
