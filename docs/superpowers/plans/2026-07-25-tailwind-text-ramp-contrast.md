@@ -67,7 +67,7 @@ Applies to every migration task (Tasks 8–14). This is a role decision per elem
 cd client && npx tsc --noEmit && npx vitest run && npx vite build
 ```
 
-Baseline on `4b6996244c` is clean — worker typecheck 0, client typecheck 0, client vitest green. **Any failure is caused by your change.**
+Baseline on `ec6eba539c` is clean — worker typecheck 0, client typecheck 0, client vitest green. **Any failure is caused by your change.**
 
 Fresh worktree prerequisite, once:
 
@@ -104,7 +104,8 @@ The existing test pins blue-silver `surfaceBase` as `[12, 26, 43]` (`#0c1a2b`). 
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `THEME_BLOCKS` (exported const, `{ name: string; marker: string }[]`) and helpers `blockOf(marker: string): string`, `channels(block: string, name: string): [number, number, number]`, `ratio(a: number[], b: number[]): number` — Task 3 and Task 6 reuse the `channels` resolver contract (accepts either a `#rrggbb` literal or an `-rgb` triple).
+- Produces: nothing importable. All helpers are **module-local, not exported** — nothing outside this file imports from a `.test.ts`, and Tasks 3/4/5/6 append to a *different* file (`accentTokens.test.ts`). Exporting them would be dead API.
+- The `channels()` resolver contract is reused conceptually, not by import: it must accept **either** a `#rrggbb` literal **or** an `-rgb` triple, so it keeps working after Task 3 converts the bare vars to triples.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -129,7 +130,7 @@ function lum([r, g, b]: number[]): number {
   return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
 }
 
-export function ratio(a: number[], b: number[]): number {
+function ratio(a: number[], b: number[]): number {
   const L1 = lum(a);
   const L2 = lum(b);
   const [hi, lo] = L1 >= L2 ? [L1, L2] : [L2, L1];
@@ -139,14 +140,14 @@ export function ratio(a: number[], b: number[]): number {
 // The four palette blocks. Markers match the convention already used by
 // accentTokens.test.ts's `theme-block completeness` block -- ':root,' for night,
 // since ':root' is the BASE layer and the true start of that rule.
-export const THEME_BLOCKS = [
+const THEME_BLOCKS = [
   { name: 'night (:root / theme-dark / tactical-dark)', marker: ':root,' },
   { name: 'day (theme-light)', marker: 'html.theme-light {' },
   { name: 'legacy-black', marker: 'html.theme-legacy-black {' },
   { name: 'blue-silver (default)', marker: 'html.theme-blue-silver {' },
 ];
 
-export function blockOf(marker: string): string {
+function blockOf(marker: string): string {
   const start = css.indexOf(marker);
   if (start < 0) throw new Error(`theme-palettes.css: no block matching ${marker}`);
   const end = css.indexOf('\n}', start);
@@ -157,7 +158,7 @@ export function blockOf(marker: string): string {
 // Resolve a token to RGB channels. Accepts either an `-rgb` triple (preferred,
 // what Tailwind consumes) or a `#rrggbb` literal, so this survives Task 3
 // converting the bare vars over to triples.
-export function channels(block: string, name: string): [number, number, number] {
+function channels(block: string, name: string): [number, number, number] {
   const triple = block.match(
     new RegExp(`--${name}-rgb:\\s*(\\d{1,3})\\s+(\\d{1,3})\\s+(\\d{1,3})`),
   );
@@ -399,9 +400,16 @@ describe('text-role rgb triples', () => {
     } },
   ];
 
-  for (const { name, marker } of BLOCKS) {
+  // One local helper. accentTokens.test.ts already inlines this indexOf/slice
+  // pair six times; do not make it eight.
+  const bodyOf = (marker: string) => {
     const start = css.indexOf(marker);
-    const block = css.slice(start, css.indexOf('\n}', start));
+    expect(start, `no block matching ${marker}`).toBeGreaterThan(-1);
+    return css.slice(start, css.indexOf('\n}', start));
+  };
+
+  for (const { name, marker } of BLOCKS) {
+    const block = bodyOf(marker);
 
     for (const role of ['text-primary', 'text-secondary', 'text-muted']) {
       it(`${name} defines --${role}-rgb`, () => {
@@ -416,8 +424,7 @@ describe('text-role rgb triples', () => {
 
   it('carries the exact channel values, per block', () => {
     for (const { name, marker, triples } of BLOCKS) {
-      const start = css.indexOf(marker);
-      const block = css.slice(start, css.indexOf('\n}', start));
+      const block = bodyOf(marker);
       for (const [role, value] of Object.entries(triples)) {
         expect(block, `${name} --${role}-rgb`).toContain(`--${role}-rgb: ${value}`);
       }
