@@ -15,7 +15,7 @@
 // ============================================================
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst } from '../utils/db';
+import { getDb, query, queryFirst, queryInChunks } from '../utils/db';
 import { log } from '../utils/logger';
 
 const statutes = new Hono<Env>();
@@ -313,10 +313,13 @@ statutes.post('/compare', async (c) => {
     const body = await c.req.json<{ statute_ids?: number[] }>().catch(() => ({}) as { statute_ids?: number[] });
     const ids = (body.statute_ids || []).map((id) => Number(id)).filter((id: number) => Number.isFinite(id) && id > 0);
     if (ids.length < 2) return c.json({ error: 'At least 2 statute_ids are required', code: 'BAD_REQUEST' }, 400);
-    const rows = await query<Record<string, unknown>>(
+    // Chunked under D1's 100-bound-parameter cap. `statute_ids` is validated for
+    // a MINIMUM of 2 above but has no maximum, so a large compare request would
+    // have been rejected at bind time and 500'd.
+    const rows = await queryInChunks<Record<string, unknown>>(
       db,
-      `SELECT ${COLS} FROM utah_statutes WHERE id IN (${ids.map(() => '?').join(',')}) AND is_active = 1`,
-      ...ids,
+      ids,
+      (ph) => `SELECT ${COLS} FROM utah_statutes WHERE id IN (${ph}) AND is_active = 1`,
     );
     const byId = new Map(rows.map((r: Record<string, unknown>) => [r.id as number, r]));
     const ordered = ids.map((id: number) => byId.get(id)).filter((r): r is Record<string, unknown> => !!r);
