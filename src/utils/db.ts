@@ -71,6 +71,59 @@ export function chunkBindings<T>(items: readonly T[], reservedBindings = 0): T[]
   return chunks;
 }
 
+/**
+ * Run one `… IN (?,?,…)` SELECT per chunk and concatenate the rows.
+ *
+ * `buildSql` receives the placeholder string for the current chunk (e.g.
+ * `"?,?,?"`) and returns the full SQL. `leadingBindings` are parameters bound
+ * BEFORE the IN-list — they're re-bound on every chunk and counted against the
+ * cap automatically.
+ *
+ * Row ORDER across chunks is the concatenation order, NOT a global sort: if the
+ * caller needs a deterministic order it must sort the merged result itself, and
+ * if it needs a LIMIT it must apply that after merging (a per-chunk LIMIT biases
+ * the result toward whichever chunk was queried).
+ */
+export async function queryInChunks<T = unknown>(
+  db: D1Database,
+  items: readonly (string | number)[],
+  buildSql: (placeholders: string) => string,
+  leadingBindings: unknown[] = [],
+): Promise<T[]> {
+  const chunks = chunkBindings(items, leadingBindings.length);
+  if (chunks.length === 0) return [];
+  const results = await Promise.all(chunks.map((chunk) =>
+    query<T>(db, buildSql(chunk.map(() => '?').join(',')), ...leadingBindings, ...chunk),
+  ));
+  return results.flat();
+}
+
+/**
+ * Chunked counterpart of `execute` for a write whose `WHERE … IN (…)` list is
+ * caller-sized. Returns the SUMMED `meta.changes` across chunks.
+ *
+ * ⚠️ NOT atomic across chunks — each chunk is its own statement, so a failure
+ * partway through leaves earlier chunks applied. Callers that need
+ * all-or-nothing must use `db.batch()` instead. For the bulk-reassign style
+ * operations this replaces, partial application is the same exposure the
+ * single-statement version already had against a mid-query failure.
+ */
+export async function executeInChunks(
+  db: D1Database,
+  items: readonly (string | number)[],
+  buildSql: (placeholders: string) => string,
+  leadingBindings: unknown[] = [],
+): Promise<number> {
+  const chunks = chunkBindings(items, leadingBindings.length);
+  if (chunks.length === 0) return 0;
+  let changes = 0;
+  for (const chunk of chunks) {
+    const r = await execute(db, buildSql(chunk.map(() => '?').join(',')), ...leadingBindings, ...chunk);
+    changes += r.meta?.changes ?? 0;
+  }
+  return changes;
+}
+
 export async function columnExists(db: D1Database, table: string, column: string): Promise<boolean> {
   const row = await db.prepare(
     `SELECT 1 FROM pragma_table_info(?) WHERE name = ?`

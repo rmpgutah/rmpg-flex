@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { fireRule, type NotificationRuleRow } from './notificationEngine';
 import { getAnthropicKey, getClaudeModel, callClaude, diagnoseAnthropicError } from '../utils/anthropic';
 import { getOpenAiKey, getOpenAiModel, callOpenAi, diagnoseOpenAiError } from '../utils/openai';
@@ -1828,11 +1828,17 @@ admin.post('/calls/bulk-reassign', async (c) => {
     if (!ids.length || !Number.isFinite(officerId)) return c.json({ error: 'call_ids and target_officer_id are required' }, 400);
     const officer = await queryFirst<{ full_name: string | null; username: string }>(db, 'SELECT full_name, username FROM users WHERE id = ?', officerId);
     if (!officer) return c.json({ error: 'Target officer not found' }, 404);
-    const placeholders = ids.map(() => '?').join(',');
-    const r = await execute(db,
-      `UPDATE calls_for_service SET reporting_officer_id = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
-      officerId, ...ids);
-    return c.json({ updated: r.meta.changes ?? 0, target: officer.full_name || officer.username });
+    // Chunked under D1's 100-bound-parameter cap (1 leading binding for
+    // officerId + one per id). A bulk reassign of 100+ calls was rejected at
+    // bind time and 500'd. NOT atomic across chunks — see executeInChunks; the
+    // single-statement version had the same partial-failure exposure.
+    const updated = await executeInChunks(
+      db,
+      ids,
+      (ph) => `UPDATE calls_for_service SET reporting_officer_id = ?, updated_at = datetime('now') WHERE id IN (${ph})`,
+      [officerId],
+    );
+    return c.json({ updated, target: officer.full_name || officer.username });
   } catch (err) {
     console.error('POST /admin/calls/bulk-reassign failed:', err);
     return c.json({ error: 'Bulk reassign failed' }, 500);

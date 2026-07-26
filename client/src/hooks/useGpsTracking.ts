@@ -412,6 +412,15 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   /** Heartbeat restart counter — prevents infinite restart loops */
   const heartbeatRestartCountRef = useRef(0);
   const MAX_HEARTBEAT_RESTARTS = 5;
+  // True while a one-shot "restart on the next user gesture" listener is armed,
+  // so a heartbeat firing every 27s can't stack dozens of duplicate listeners.
+  const gestureRestartArmedRef = useRef(false);
+  // True from the moment a restart is DECIDED until it actually runs. The
+  // permission check below is async, so without this the interval keeps firing
+  // during the pending promise and queues a fresh restart every tick — caught
+  // by useGpsTracking.heartbeat.test.ts, which saw 71 watchPosition calls where
+  // the backoff should cap them near 20.
+  const restartPendingRef = useRef(false);
   /** GPS source for unit — 'browser' (default) or 'clearpathgps' (external tracker) */
   const gpsSourceRef = useRef<string>('browser');
   /** True once we've confirmed the host is a Toughbook (FZ-55) with a live
@@ -1240,11 +1249,72 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           // Surface the degradation to UI but keep retrying.
           setState((prev) => ({ ...prev, error: `GPS signal stale (${Math.round(staleDuration / 1000)}s) — auto-retrying…` }));
         }
-        // Clear the stale watch and restart
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-        cleanupTracking(false);
-        startTracking();
+        // One restart decision in flight at a time — see restartPendingRef.
+        if (restartPendingRef.current) return;
+
+        // Clear the stale watch and restart.
+        const doRestart = () => {
+          restartPendingRef.current = false;
+          // Both callers are async relative to this tick (a Permissions promise
+          // or a user gesture), so the hook may have unmounted in between.
+          // Restarting then would recreate a watch and heartbeat with no owner.
+          if (!mountedRef.current) return;
+          if (watchIdRef.current !== null) {
+            navigator.geolocation.clearWatch(watchIdRef.current);
+            watchIdRef.current = null;
+          }
+          cleanupTracking(false);
+          startTracking();
+        };
+
+        // ⚠️ Restart from this timer ONLY when permission is already 'granted'.
+        //
+        // This callback runs from setInterval, which carries no user-activation
+        // token. Calling watchPosition() here while permission is still 'prompt'
+        // makes Chrome log "[Violation] Only request geolocation information in
+        // response to a user gesture" AND silently withhold position callbacks —
+        // which re-triggers this very watchdog, so the hook restarts the watch
+        // forever, never gets a fix, and floods the console. Observed live
+        // 2026-07-26: paired "No position callback in 45s" + violation lines,
+        // repeating.
+        //
+        // When permission IS granted no gesture is required, so the restart is
+        // legitimate and proceeds. When it isn't, arm a one-shot gesture
+        // listener instead: the next real interaction restarts tracking with a
+        // valid activation token, and we stop burning restart attempts on calls
+        // the browser will refuse. The initial-start effect below uses the same
+        // permission-then-gesture strategy.
+        const armGestureRestart = () => {
+          // Waiting on a gesture is not "in flight" — clear the flag so a later
+          // permission grant can still be picked up by the heartbeat.
+          restartPendingRef.current = false;
+          if (gestureRestartArmedRef.current) return;
+          gestureRestartArmedRef.current = true;
+          const onGesture = () => {
+            gestureRestartArmedRef.current = false;
+            window.removeEventListener('click', onGesture);
+            window.removeEventListener('keydown', onGesture);
+            window.removeEventListener('touchstart', onGesture);
+            doRestart();
+          };
+          window.addEventListener('click', onGesture, { once: true });
+          window.addEventListener('keydown', onGesture, { once: true });
+          window.addEventListener('touchstart', onGesture, { once: true });
+        };
+
+        const permApi = (navigator as any).permissions;
+        if (permApi?.query) {
+          restartPendingRef.current = true;
+          permApi.query({ name: 'geolocation' })
+            .then((res: any) => { if (res.state === 'granted') doRestart(); else armGestureRestart(); })
+            // Permissions API present but the query failed — fall back to
+            // restarting. A missing permission state is not evidence of denial,
+            // and dropping the restart would strand a vehicle with no GPS.
+            .catch(() => doRestart());
+        } else {
+          // No Permissions API (older WebView): the pre-existing behaviour.
+          doRestart();
+        }
       }
     }, HEARTBEAT_INTERVAL);
 
