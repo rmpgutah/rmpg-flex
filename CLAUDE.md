@@ -430,13 +430,38 @@ The app's default theme is now **Blue & Silver** (`html.theme-blue-silver`) — 
 `.github/workflows/pr-tests.yml` runs on every PR + push to main:
 
 1. **`worker-typecheck`** — `npm run typecheck` (tsc on `/src/`)
-2. **`client-typecheck`** — `cd client && npx tsc --noEmit`
-3. **`client-tests`** — `cd client && npx vitest run`
-4. **`client-build`** — `cd client && npx vite build` (depends on client-typecheck)
+2. **`worker-tests`** — `npx vitest run` (the `tests/` suite)
+3. **`worker-integration-tests`** — `npm run test:worker` (Miniflare, `test-workers/`, via `vitest.workers.config.mts`)
+4. **`client-typecheck`** — `cd client && npx tsc --noEmit`
+5. **`client-tests`** — `cd client && npx vitest run`
+6. **`client-build`** — `cd client && npx vite build` (depends on client-typecheck)
 
-There is no Worker test suite yet — only typecheck. **Adding vitest for `/src/` with Miniflare is tracked as Phase 2 tech debt.** When you add a new route, prefer adding a smoke test in the same PR.
+The Worker **does** have test suites — `tests/` (Node) and `test-workers/` (Miniflare), both gated in CI. Earlier revisions of this file said "no Worker test suite yet — Miniflare is Phase 2 tech debt"; that was already stale when written, contradicted by this file's own 2026-06-24 Session Log entry. When you add a new route, prefer adding a smoke test in the same PR.
 
-`.husky/pre-push` mirrors CI locally (worker types + client types + client vitest). Bypass with `git push --no-verify` only for genuine hotfixes — CI is the next gate.
+### The two gates are NOT the same set — don't assume one covers the other
+
+`.husky/pre-push` runs **four** stages: worker types → client types → client vitest → **desktop tests**. It is *not* a mirror of CI. The sets overlap; neither contains the other:
+
+| Stage | pre-push | CI |
+|---|---|---|
+| Worker typecheck | ✅ | ✅ |
+| Client typecheck | ✅ | ✅ |
+| Client vitest | ✅ | ✅ |
+| **Desktop tests** (`cd desktop && npm test`) | ✅ | ❌ **no CI job exists** |
+| Worker vitest | ❌ | ✅ |
+| Worker integration (Miniflare) | ❌ | ✅ |
+| Client build (`vite build`) | ❌ | ✅ |
+
+**Consequence for `git push --no-verify`:** "CI is the next gate" is true for the three shared stages and **false for desktop tests** — this hook is their only gate anywhere. Bypassing is reasonable when your change doesn't touch `desktop/`; it is genuinely unsafe when it does. Check `git diff --name-only origin/main | grep ^desktop/` before deciding.
+
+**Why pre-push is slow (often 5–15 min), and it's usually not your change:** stage [4/4] rebuilds `better-sqlite3` for the Node ABI to run the desktop tests, then restores it to the Electron ABI via an EXIT trap. That's native compilation twice. If `desktop/node_modules` is absent (common in a fresh worktree) it also runs a full `npm install` whose `electron-rebuild` postinstall compiles again. Budget for it rather than assuming the hook has hung, and prefer backgrounding the push over killing it — a killed push leaves the branch unpushed while the commit exists locally.
+
+**Known fail-open in the hook (unfixed as of 2026-07-25):** the "skip when nothing to push" guard is
+`[ "$(git rev-list --count HEAD ^origin/main 2>/dev/null || echo 0)" = "0" ]`. When `origin/main` is
+not present locally, `git rev-list` errors, `|| echo 0` yields `0`, and the **entire gate silently
+skips** while printing "no commits ahead of origin/main" — so a broken ref and a legitimate no-op are
+indistinguishable. If you see that message on a branch you know has commits, the gate did not run;
+verify manually with `npm run typecheck && cd client && npx tsc --noEmit && npx vitest run`.
 
 ## Common Gotchas (CF era)
 
@@ -494,7 +519,7 @@ If you encounter any of these in code comments, docs, or older messages, **do no
 - nginx config tweaks (`/etc/nginx/sites-enabled/rmpgutah.us`, `mime.types`, `brotli.conf`) — Cloudflare handles all edge TLS / compression / caching
 - Manual `CACHE_NAME` bump in `client/public/sw.js` (VPS-era or otherwise) — the value is now auto-stamped from the git short SHA by the `stamp-sw-version` Vite plugin; source stays as the literal placeholder `'rmpg-flex-BUILD'`
 - TOTP / WebAuthn / Evidence-chain Ed25519 setup — those features were VPS-only and have not been ported to the Worker yet
-- Husky `pre-push` instructions about running 461 server tests — that gate was removed when `/server/` was quarantined
+- Husky `pre-push` instructions about running 461 server tests — that VPS-era Express suite was removed when `/server/` was quarantined. Do **not** generalize this into "pre-push runs no tests": it still runs client vitest **and desktop tests** (see "The two gates are NOT the same set" above).
 
 When in doubt: `grep` for the actual file under `/src/` or `/client/src/`. The deployed code is always the source of truth, never a comment.
 
