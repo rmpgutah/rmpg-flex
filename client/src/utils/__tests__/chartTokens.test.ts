@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { FALLBACKS } from '../chartPalette';
 
 const css = readFileSync(resolve(__dirname, '../../styles/theme-palettes.css'), 'utf8');
 
@@ -76,4 +77,23 @@ describe('chart palette tokens', () => {
       for (const d of deltas) expect(Math.abs(d), `${block.name} ΔL ${deltas}`).toBeGreaterThanOrEqual(0.06);
     });
   }
+});
+
+// ── chartPalette.ts FALLBACKS binding ───────────────────────────────────
+// FALLBACKS in chartPalette.ts duplicates the --chart-pri-1..4 and
+// --chart-plot-surface literals from html.theme-blue-silver by hand (it has
+// to — CSS custom properties aren't readable from plain TS at module scope).
+// Nothing else ties that copy to the CSS, so editing the CSS values alone
+// silently leaves the getComputedStyle-failure fallback path serving stale
+// colors. This test is that binding: it fails the moment the two drift.
+describe('chartPalette FALLBACKS mirrors html.theme-blue-silver', () => {
+  const FALLBACK_KEYS = ['--chart-pri-1', '--chart-pri-2', '--chart-pri-3', '--chart-pri-4', '--chart-plot-surface'];
+
+  it.each(FALLBACK_KEYS)('%s matches the CSS-declared value', (name) => {
+    const body = blockBody('html.theme-blue-silver {');
+    const cssValue = declared(body, name);
+    expect(cssValue, `${name} must be a literal hex in html.theme-blue-silver`).toBeTruthy();
+    expect(FALLBACKS[name], `chartPalette.ts FALLBACKS is missing ${name}`).toBeTruthy();
+    expect(FALLBACKS[name].toLowerCase(), `FALLBACKS['${name}'] (${FALLBACKS[name]}) has drifted from the CSS value (${cssValue})`).toBe(cssValue);
+  });
 });

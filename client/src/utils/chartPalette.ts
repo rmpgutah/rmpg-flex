@@ -15,7 +15,12 @@
 // Call these at RENDER time, not at module scope — a module-level constant is
 // captured before the theme class is stamped and freezes the wrong palette.
 
-const FALLBACKS: Record<string, string> = {
+// Exported (named export, same const) because chartTokens.test.ts mirrors the
+// --chart-pri-1..4 / --chart-plot-surface entries against the literal values
+// declared in theme-palettes.css's html.theme-blue-silver block — nothing else
+// binds this fallback copy to the CSS, so editing one silently leaves the
+// other stale on the getComputedStyle-failure path.
+export const FALLBACKS: Record<string, string> = {
   '--brand-blue': '#5a9ae0',
   '--accent-silver-500': '#c3ccd6',
   '--accent-gold-500': '#b8912f',

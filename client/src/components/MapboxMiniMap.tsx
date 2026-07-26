@@ -50,7 +50,7 @@ const MAX_INIT_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 3_000;
 
 /** Build a call marker DOM element with priority-colored badge */
-function buildCallMarkerEl(label: string, priority?: string): HTMLElement {
+export function buildCallMarkerEl(label: string, priority?: string): HTMLElement {
   const color = priorityHex(priority);
   const el = document.createElement('div');
   el.style.cssText = `

@@ -72,7 +72,7 @@ function formatDistance(meters: number): string {
 }
 
 /** Build a call marker DOM element with priority-colored badge */
-function buildCallMarker(label: string, priority?: string): HTMLElement {
+export function buildCallMarker(label: string, priority?: string): HTMLElement {
   const color = priorityHex(priority);
   const el = document.createElement('div');
   el.style.cssText = `
