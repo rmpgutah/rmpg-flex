@@ -1,7 +1,12 @@
 # ============================================================
-# Main Typecheck Guardrail
+# Main Post-Merge Guardrail (typecheck + client tests)
 # ============================================================
-# Fast early-warning when a merge to main breaks typecheck.
+# Fast early-warning when a merge to main breaks typecheck or the client suite.
+#
+# The workflow's `name:` still reads "Main typecheck guardrail" deliberately —
+# renaming it would orphan any branch-protection rule or dashboard that
+# references that exact string. The file name and `name:` are historical; the
+# job list below is the current scope.
 #
 # Why this exists separately from deploy.yml:
 #   - deploy.yml ALSO runs typecheck, but only after `npm ci` plus
@@ -21,6 +26,33 @@
 #     twice (TS2300 Duplicate identifier), same buried-log fate.
 #
 # Both would have been a one-click revert with this guardrail in place.
+#
+# ── Why a post-merge CLIENT TEST job lives here too (2026-07-26) ──
+# pr-tests.yml deliberately does NOT run on push:main, reasoning that the PR
+# already ran the same checks before merge. That is correct for SEQUENTIAL
+# merges and unsound for CONCURRENT ones: CI evaluates refs/pull/N/merge, so a
+# PR is only ever tested against the base as it stood at that moment. Two PRs
+# that never saw each other's tree can each be green and still produce a red
+# main.
+#
+# That is not theoretical. #3037 pinned a --rmpg-500/600 occurrence floor while
+# #3038 added utils/withAlpha.ts, whose doc comments quote var(--rmpg-500) six
+# times; the floor failed only once both had landed. In the same window #3038's
+# concat ratchet went red on three `+ '20'` sites its migration had missed,
+# because #3031 had already rewritten those exact lines. main sat red and NOTHING
+# reported it — the typecheck jobs above pass, because both were assertion
+# failures on valid, compiling code.
+#
+# It matters more than a buried log: deploy.yml runs typecheck and build but NO
+# tests, so a red suite on main still SHIPS TO PRODUCTION. Typecheck breakage
+# self-blocks the deploy; test breakage does not.
+#
+# Scoped to the CLIENT suite on purpose. Every cross-PR ratchet in this repo
+# (accentTokens, hexAlphaConcatRatchet) asserts a repo-WIDE invariant and lives
+# there, which is exactly the kind of test that fails on a combination rather
+# than on either side alone. The worker suite is per-module unit tests, already
+# run by .husky/pre-commit on every commit, and far less exposed to this class —
+# so it is left out rather than spending main's CI minutes on it.
 #
 # SECURITY NOTE: this workflow is the kind of place where injection
 # bugs hide. All user-controlled inputs (commit message, author name)
@@ -172,6 +204,90 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: '🚨 Client typecheck broke at ' + short,
+              body,
+              labels: ['ci-broken', 'urgent'],
+            });
+
+  client-tests:
+    name: Client tests (post-merge)
+    runs-on: ubuntu-latest
+    # The suite is ~460 files / ~3200 tests, around 4-5 min on a runner. 20 gives
+    # headroom without letting a hung run sit on main's queue indefinitely.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client deps
+        run: cd client && npm ci --legacy-peer-deps
+
+      - name: Client tests (vitest run)
+        id: client-tests
+        run: cd client && npx vitest run
+
+      - name: Open issue on failure
+        if: failure() && steps.client-tests.conclusion == 'failure'
+        uses: actions/github-script@v9
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const sha = process.env.COMMIT_SHA;
+            const short = sha.slice(0, 7);
+            const author = process.env.COMMIT_AUTHOR || 'unknown';
+            const title = (process.env.COMMIT_MESSAGE || '').split('\n')[0].slice(0, 120);
+            const runUrl = process.env.RUN_URL;
+
+            const body = [
+              '**Commit:** `' + sha + '`',
+              '**Title:** ' + title,
+              '**Author:** ' + author,
+              '**CI run:** ' + runUrl,
+              '',
+              '## What happened',
+              'The client vitest suite failed on `main` after this commit merged.',
+              '',
+              '**This does NOT block the deploy.** `deploy.yml` runs typecheck and the client build, but no tests — so `main` will ship to production with a failing suite. Treat this as production-affecting until triaged, unlike a typecheck break, which aborts the deploy on its own.',
+              '',
+              '## Most likely cause: two PRs that never saw each other',
+              'A green PR does not guarantee a green `main`. CI evaluates `refs/pull/N/merge`, so each PR was only ever tested against the base as it stood at that moment. Two PRs merging close together can each pass and still combine into a red `main` — this guardrail exists because that happened with #3037 + #3038.',
+              '',
+              'Check that first:',
+              '```bash',
+              'git log --oneline -8 main',
+              '```',
+              'If two recent commits touch the same area — especially a repo-wide ratchet or allowlist test — the failure is likely the COMBINATION, not either commit alone. Reverting one may not be the right fix.',
+              '',
+              '## Recommended remediation',
+              '',
+              'Reproduce locally against the same tree first:',
+              '```bash',
+              'git fetch origin main && git checkout main && git pull',
+              'cd client && npm ci --legacy-peer-deps && npx vitest run',
+              '```',
+              '',
+              'If a ratchet/allowlist test is the failure and the new entry is legitimate, pin it WITH a reason rather than loosening the assertion. If the offending commit is the most recent one (`' + short + '`) and stands alone:',
+              '```bash',
+              'git revert --no-edit ' + sha,
+              'git push origin main',
+              '```',
+              '',
+              '## Auto-close',
+              'This issue will NOT auto-close. Close it manually once `main` is green again, so the audit trail stays intact.',
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Client tests broke at ' + short,
               body,
               labels: ['ci-broken', 'urgent'],
             });
