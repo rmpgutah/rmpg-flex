@@ -20,6 +20,7 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import { useAuth } from '../context/AuthContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { parseTimestamp } from '../utils/dateUtils';
+import { withAlpha } from '../utils/withAlpha';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -1301,7 +1302,7 @@ export default function FlexCamFootagePage() {
                     {fmt(m.offset_ms!)}
                   </span>
                   <span className="text-[9px] uppercase tracking-wide font-bold px-1.5 py-0.5 border flex-shrink-0"
-                    style={{ borderColor: `${pinColor(m)}44`, color: pinColor(m), background: `${pinColor(m)}11` }}>
+                    style={{ borderColor: withAlpha(pinColor(m), '44'), color: pinColor(m), background: withAlpha(pinColor(m), '11') }}>
                     {m.severity ?? m.type ?? m.kind}
                   </span>
                   <span className="text-[10px] text-rmpg-300 flex-1 min-w-0 truncate">

@@ -7,6 +7,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { AlertCircle, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { withAlpha } from '../../../utils/withAlpha';
 
 export interface DockSectionProps {
   title: string;
@@ -67,7 +68,10 @@ export interface DockToggleItem {
 
 export function DockToggleRow({ item }: { item: DockToggleItem }) {
   const dotColor = item.color ?? 'var(--brand-gold)';
-  const glowColor = dotColor.startsWith('#') ? `${dotColor}80` : dotColor;
+  // Previously guarded with `.startsWith('#')` and fell back to the opaque
+  // color, which was valid CSS but silently dropped the glow's transparency for
+  // every token-valued dot. withAlpha keeps the alpha in both cases.
+  const glowColor = withAlpha(dotColor, '80');
   return (
     <button
       type="button"

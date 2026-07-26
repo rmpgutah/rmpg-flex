@@ -189,7 +189,7 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
                     type="button"
                     onClick={action.onClick}
                     className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-surface-hover"
-                    style={{ color: 'var(--brand-400)' }}
+                    style={{ color: 'var(--accent-silver-400)' }}
                   >
                     <action.icon className="w-3.5 h-3.5 flex-shrink-0" />
                     {action.label}

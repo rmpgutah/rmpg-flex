@@ -341,7 +341,7 @@ export default function ModuleDirectoryPage() {
               Select multiple
             </label>
             {bulkMode && bulkSelected.size > 0 && (
-              <button type="button" onClick={commitBulkPin} className="text-[10px] px-2 py-0.5" style={{ color: 'var(--brand-400)', border: '1px solid var(--border-default)' }}>
+              <button type="button" onClick={commitBulkPin} className="text-[10px] px-2 py-0.5" style={{ color: 'var(--accent-silver-400)', border: '1px solid var(--border-default)' }}>
                 Pin {bulkSelected.size} selected
               </button>
             )}

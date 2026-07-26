@@ -13,6 +13,7 @@ import { mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import LocationNoteModal from './LocationNoteModal';
 import { escapeHtml } from '../../utils/sanitize';
+import { withAlpha } from '../../utils/withAlpha';
 
 interface QueueMapItem {
   id: number;
@@ -389,7 +390,7 @@ function buildPopupHtml(item: QueueMapItem): string {
           <div style="font-weight:700;color:#e2e8f0;font-size:12px;">${escapeHtml(item.recipient_name) || '(no name)'}</div>
           <div style="color:#94a3b8;font-size:10px;">${isBusiness ? 'Business Service' : 'Individual Service'}</div>
         </div>
-        <span style="margin-left:auto;padding:1px 5px;background:${priorityColor}22;border:1px solid ${priorityColor};border-radius:2px;color:${priorityColor};font-size:9px;font-weight:700;">${priorityLabel}</span>
+        <span style="margin-left:auto;padding:1px 5px;background:${withAlpha(priorityColor, '22')};border:1px solid ${priorityColor};border-radius:2px;color:${priorityColor};font-size:9px;font-weight:700;">${priorityLabel}</span>
       </div>
       <div style="color:#94a3b8;font-size:10px;margin-bottom:2px;">${escapeHtml(item.recipient_address)}${item.recipient_city ? ', ' + escapeHtml(item.recipient_city) : ''}${item.recipient_state ? ' ' + escapeHtml(item.recipient_state) : ''}</div>
       <div style="color:#64748b;font-size:10px;">Case: ${escapeHtml(item.case_number) || '—'} · Doc: ${escapeHtml(item.document_type) || '—'}</div>

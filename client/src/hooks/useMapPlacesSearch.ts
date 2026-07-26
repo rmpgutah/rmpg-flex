@@ -9,6 +9,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { mapboxForwardGeocode, mapboxTilequery, type MapboxGeocodingResult } from '../services/mapboxApiService';
+import { withAlpha } from '../utils/withAlpha';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -108,7 +109,7 @@ export function useMapPlacesSearch(
           background:${category.color};border:2px solid #fff;
           display:flex;align-items:center;justify-content:center;
           font-size:14px;cursor:pointer;
-          box-shadow:0 0 8px ${category.color}80;
+          box-shadow:0 0 8px ${withAlpha(category.color, '80')};
         `;
         el.textContent = category.icon;
         el.title = place.name;

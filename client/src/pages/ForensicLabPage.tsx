@@ -31,6 +31,7 @@ import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { openForensicCasePdf } from '../utils/forensicCasePdf';
 import { computePayloadHash } from '../utils/pdfIntegrity';
 import { toDisplayLabel } from '../utils/formatters';
+import { withAlpha } from '../utils/withAlpha';
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -1056,8 +1057,8 @@ export default function ForensicLabPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-brand-400">{selectedCase.lab_number || selectedCase.lab_case_number || `FC-${selectedCase.id}`}</span>
-              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: sc.color + '15', color: sc.color, borderColor: sc.color + '40' }}>{sc.label}</span>
-              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: pc.color + '15', color: pc.color, borderColor: pc.color + '40' }}>{pc.label}</span>
+              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: withAlpha(sc.color, '15'), color: sc.color, borderColor: withAlpha(sc.color, '40') }}>{sc.label}</span>
+              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: withAlpha(pc.color, '15'), color: pc.color, borderColor: withAlpha(pc.color, '40') }}>{pc.label}</span>
               {overdue && <span className="text-[9px] px-1.5 py-0.5 bg-red-900/30 text-red-400 font-bold border border-red-700/50 animate-pulse">OVERDUE</span>}
             </div>
             <div className="text-sm font-semibold text-rmpg-100 truncate">{selectedCase.title}</div>
@@ -1490,7 +1491,7 @@ export default function ForensicLabPage() {
                     return (
                       <div key={ex.id} className="panel-beveled bg-surface-sunken p-3 border-l-[3px]" style={{ borderLeftColor: exStatus.color }}>
                         <div className="flex items-start gap-2">
-                          <div className="w-8 h-8 rounded-sm flex items-center justify-center text-sm font-bold font-mono" style={{ backgroundColor: exStatus.color + '20', color: exStatus.color }}>
+                          <div className="w-8 h-8 rounded-sm flex items-center justify-center text-sm font-bold font-mono" style={{ backgroundColor: withAlpha(exStatus.color, '20'), color: exStatus.color }}>
                             {ex.exhibit_number}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -2499,8 +2500,8 @@ export default function ForensicLabPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-[10px] font-mono text-brand-400">{c.lab_number || c.lab_case_number || `FC-${c.id}`}</span>
-                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: sc.color + '15', color: sc.color, borderColor: sc.color + '40' }}>{sc.label}</span>
-                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: pc.color + '15', color: pc.color, borderColor: pc.color + '40' }}>{pc.label}</span>
+                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: withAlpha(sc.color, '15'), color: sc.color, borderColor: withAlpha(sc.color, '40') }}>{sc.label}</span>
+                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: withAlpha(pc.color, '15'), color: pc.color, borderColor: withAlpha(pc.color, '40') }}>{pc.label}</span>
                             {overdue && <span className="text-[8px] px-1 py-0.5 bg-red-900/30 text-red-400 font-bold border border-red-700/50 animate-pulse">OVERDUE</span>}
                           </div>
                           <div className="text-xs font-semibold text-rmpg-200 truncate">{c.title}</div>
