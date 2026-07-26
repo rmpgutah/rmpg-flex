@@ -300,9 +300,11 @@ export default function FleetPage() {
   const [costSummary, setCostSummary] = useState<FleetCostSummary | null>(null);
   const [pretripHistory, setPretripHistory] = useState<any[]>([]);
   const [showPretripModal, setShowPretripModal] = useState(false);
-  const [pretripForm, setPretripForm] = useState({
-    lights_ok: true, brakes_ok: true, radio_ok: true, mdt_ok: true, camera_ok: true,
-    tires_ok: true, fluids_ok: true, exterior_ok: true, interior_ok: true, emergency_equipment_ok: true,
+  // Derived from PRETRIP_ITEMS, not hand-listed: a key present in the item list
+  // but missing here would render as undefined — an unchecked box reading as FAIL —
+  // with no type error, since access goes through (pretripForm as any)[item.key].
+  const [pretripForm, setPretripForm] = useState<Record<string, boolean | string> & { notes: string }>({
+    ...PRETRIP_DEFAULTS,
     notes: '',
   });
   const [pretripSaving, setPretripSaving] = useState(false);
