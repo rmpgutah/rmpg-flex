@@ -324,8 +324,13 @@ export default function FleetPage() {
   const pretripFirstItemRef = useRef<HTMLInputElement | null>(null);
   // The reset-on-vehicle-change effect must not run on mount, or it
   // clobbers the tab usePersistedTab just restored — which made that
-  // persistence dead code.
-  const didMountRef = useRef(false);
+  // persistence dead code. Track the last selected (non-null) vehicle id
+  // instead of a simple mount flag: selectedId starts null, so the OLD
+  // "first effect run" guard consumed itself on mount (null selection)
+  // and treated the operator's actual first vehicle click (null -> A) as
+  // "not mount", clobbering the restored tab back to 'overview'.
+  const lastVehicleIdRef = useRef<string | number | null>(null);
+  const skipNextLazyLoadRef = useRef(false);
   const pretripDirty = PRETRIP_ITEMS.some((it) => !(pretripForm as any)[it.key])
     || pretripForm.notes.trim() !== '';
 
@@ -395,8 +400,20 @@ export default function FleetPage() {
 
   // Reset tab when selecting different vehicle
   useEffect(() => {
-    if (didMountRef.current) setActiveTab('overview');
-    else didMountRef.current = true;
+    if (selectedId != null && lastVehicleIdRef.current != null && selectedId !== lastVehicleIdRef.current) {
+      setActiveTab('overview');
+      // setActiveTab won't be reflected in `activeTab` until the next render,
+      // but the lazy-load effect below runs in this SAME commit (it's
+      // declared after this effect, so hook-order guarantees it runs right
+      // after) and would otherwise read the stale (pre-reset) tab, firing a
+      // fetch for the wrong tab against the just-selected vehicle. Skip that
+      // one run — the lazy-load effect re-fires anyway once activeTab
+      // actually flips to 'overview' (its own dependency changed).
+      skipNextLazyLoadRef.current = true;
+    }
+    if (selectedId != null) {
+      lastVehicleIdRef.current = selectedId;
+    }
     setFuelLogs([]);
     setFuelSummary(null);
     setInspections([]);
@@ -415,6 +432,10 @@ export default function FleetPage() {
   // Lazy-load tab data
   useEffect(() => {
     if (!selectedId) return;
+    if (skipNextLazyLoadRef.current) {
+      skipNextLazyLoadRef.current = false;
+      return;
+    }
     if (activeTab === 'fuel') fetchFuelLogs(selectedId);
     if (activeTab === 'costs') { fetchCosts(selectedId); fetchFuelLogs(selectedId); }
     if (activeTab === 'inspections') fetchInspections(selectedId);

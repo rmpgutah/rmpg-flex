@@ -142,4 +142,26 @@ describe('FleetPage — tab persistence', () => {
     await waitFor(() => expect(mockedApiFetch).toHaveBeenCalledWith('/fleet/2'));
     expect(mockedApiFetch).not.toHaveBeenCalledWith(expect.stringContaining('/fleet/2/fuel?'));
   });
+
+  it('marks the restored Fuel tab active on first selection, then Overview active on switching vehicles', async () => {
+    localStorage.setItem('rmpg_fleet_tab', JSON.stringify('fuel'));
+    const user = userEvent.setup();
+    renderPage();
+
+    // First selection of the first vehicle (null -> A): the restored tab
+    // must stay active, not get clobbered back to Overview.
+    await user.click(await screen.findByText('PS-D19'));
+
+    const fuelTab = await screen.findByRole('tab', { name: 'Fuel' });
+    await waitFor(() => expect(fuelTab).toHaveAttribute('aria-selected', 'true'));
+    const overviewTabInitial = screen.getByRole('tab', { name: /overview/i });
+    expect(overviewTabInitial).toHaveAttribute('aria-selected', 'false');
+
+    // Switching to a different vehicle (A -> B) must reset to Overview.
+    await user.click(screen.getByText('PS-D20'));
+
+    const overviewTab = await screen.findByRole('tab', { name: /overview/i });
+    await waitFor(() => expect(overviewTab).toHaveAttribute('aria-selected', 'true'));
+    expect(fuelTab).toHaveAttribute('aria-selected', 'false');
+  });
 });
