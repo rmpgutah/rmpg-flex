@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import RichTextArea from '../../components/RichTextArea';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
@@ -146,6 +146,13 @@ export default function FleetPage() {
     ['dashboard', 'analysis', 'work_orders', 'vendors', 'service'] as const,
   );
   const [workOrdersVehicleFilter, setWorkOrdersVehicleFilter] = useState<number | null>(null);
+  // Focus-follows-selection for the fleet-wide view tablist (WAI-ARIA tab
+  // pattern). Only the keyboard handler flips this ref before changing
+  // viewMode, so the effect below moves DOM focus ONLY for arrow/Home/End
+  // navigation — never on click (handled separately) and never on mount or
+  // on a reload that restores the persisted view (ref starts false and the
+  // effect no-ops on that first render).
+  const pendingTabFocusRef = useRef(false);
   const [modal, setModal] = useState<ModalMode>('none');
   // Editing state — tracks which record is being edited. Declared here
   // (rather than further down with the other editing/delete state) because
@@ -297,6 +304,17 @@ export default function FleetPage() {
 
   // Combined dirty state for any open form
   const isDirtyAny = v.isDirty || m.isDirty || f.isDirty || i.isDirty;
+
+  // Move DOM focus to the newly-active fleet view tab, but only when the
+  // change was driven by the tablist's own keyboard handler (which sets
+  // pendingTabFocusRef before calling setViewMode). Click already focuses
+  // its own button naturally via the browser, and mount/restore-from-storage
+  // never set the ref, so this effect no-ops on both of those paths.
+  useEffect(() => {
+    if (!pendingTabFocusRef.current) return;
+    pendingTabFocusRef.current = false;
+    document.getElementById(`fleet-view-tab-${viewMode}`)?.focus();
+  }, [viewMode]);
 
   // ----------------------------------------------------------
   // Data fetching
@@ -1493,14 +1511,17 @@ export default function FleetPage() {
                 role="tablist"
                 aria-label="Fleet-wide views"
                 onKeyDown={(e) => {
-                  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+                  if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return;
                   e.preventDefault();
                   const idx = FLEET_VIEWS.findIndex((v) => v.id === viewMode);
-                  const next = e.key === 'ArrowRight'
-                    ? (idx + 1) % FLEET_VIEWS.length
-                    : (idx - 1 + FLEET_VIEWS.length) % FLEET_VIEWS.length;
+                  let next: number;
+                  if (e.key === 'ArrowRight') next = (idx + 1) % FLEET_VIEWS.length;
+                  else if (e.key === 'ArrowLeft') next = (idx - 1 + FLEET_VIEWS.length) % FLEET_VIEWS.length;
+                  else if (e.key === 'Home') next = 0;
+                  else next = FLEET_VIEWS.length - 1;
                   const target = FLEET_VIEWS[next];
                   if (target.id === 'work_orders') setWorkOrdersVehicleFilter(null);
+                  pendingTabFocusRef.current = true;
                   setViewMode(target.id);
                 }}
               >
