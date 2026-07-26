@@ -222,7 +222,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
                     <span className="text-red-400 font-bold uppercase">{(w.offense_level || '').replace(/_/g, ' ')}</span>
                     <span className="text-rmpg-300 ml-1">{w.charge_description}</span>
                     {w.bail_amount != null && w.bail_amount > 0 && (
-                      <span className="text-rmpg-500 ml-1">Bail: ${w.bail_amount.toLocaleString()}</span>
+                      <span className="text-fg-muted ml-1">Bail: ${w.bail_amount.toLocaleString()}</span>
                     )}
                   </div>
                 </div>
@@ -239,7 +239,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
                     </div>
                   ))}
                   {item.criminalHistory.length > 3 && (
-                    <div className="ml-4 text-rmpg-500">+ {item.criminalHistory.length - 3} more</div>
+                    <div className="ml-4 text-fg-muted">+ {item.criminalHistory.length - 3} more</div>
                   )}
                 </div>
               )}
@@ -301,7 +301,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
                   <span className="text-[9px] text-rmpg-400">Case #{hit.case_id}</span>
                 )}
                 {hit.issue_date && (
-                  <span className="text-[9px] text-rmpg-500">Issued: {hit.issue_date}</span>
+                  <span className="text-[9px] text-fg-muted">Issued: {hit.issue_date}</span>
                 )}
                 {chargeList.length > 0 && (
                   <div className="text-[9px] text-red-400/90 mt-0.5">

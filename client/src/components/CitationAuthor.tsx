@@ -918,7 +918,7 @@ export default function CitationAuthor({
 
       {/* Footer */}
       <div className={`flex items-center ${isMobile ? 'flex-col gap-2' : 'justify-end gap-3'} px-4 py-3 border-t border-rmpg-700`}>
-        <span className="text-[10px] text-rmpg-500 mr-auto">
+        <span className="text-[10px] text-fg-muted mr-auto">
           Total fine: <span className="text-[#d4a017] font-bold">${totalFineOf(violations).toFixed(2)}</span>
           {' · '}
           {violations.length} violation{violations.length === 1 ? '' : 's'}

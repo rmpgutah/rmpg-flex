@@ -65,7 +65,7 @@ export default function SearchInput({
     <div className={`relative flex items-center ${className}`}>
       <Search
         size={14}
-        className="absolute left-2.5 text-rmpg-500 pointer-events-none"
+        className="absolute left-2.5 text-fg-muted pointer-events-none"
       />
       <input id={inputId}
         ref={inputRef}
@@ -78,12 +78,12 @@ export default function SearchInput({
         aria-label={placeholder}
         autoComplete="off"
         autoFocus={autoFocus}
-        className="w-full pl-8 pr-7 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-rmpg-200 placeholder-rmpg-500 focus:outline-none focus:border-brand-600 focus:shadow-[0_0_0_1px_rgba(136,136,136,0.3)] transition-all"
+        className="w-full pl-8 pr-7 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-rmpg-200 placeholder-fg-muted focus:outline-none focus:border-brand-600 focus:shadow-[0_0_0_1px_rgba(136,136,136,0.3)] transition-all"
       />
       {localValue && (
         <button type="button"
           onClick={handleClear}
-          className="absolute right-1.5 p-0.5 text-rmpg-500 hover:text-rmpg-300 transition-colors"
+          className="absolute right-1.5 p-0.5 text-fg-muted hover:text-rmpg-300 transition-colors"
           aria-label="Clear search"
         >
           <X size={12} />

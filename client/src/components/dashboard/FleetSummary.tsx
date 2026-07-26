@@ -29,17 +29,17 @@ export default function FleetSummary({
             <div className="flex flex-col items-center p-1.5 bg-surface-sunken panel-beveled">
               <CheckCircle className="w-3.5 h-3.5 text-green-400 mb-0.5" />
               <span className="text-xs font-bold font-mono tabular-nums text-green-400">{inService}</span>
-              <span className="text-[8px] text-rmpg-500 uppercase font-bold tracking-wider">In Svc</span>
+              <span className="text-[8px] text-fg-muted uppercase font-bold tracking-wider">In Svc</span>
             </div>
             <div className="flex flex-col items-center p-1.5 bg-surface-sunken panel-beveled">
               <Clock className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
               <span className="text-xs font-bold font-mono tabular-nums text-amber-400">{inMaintenance}</span>
-              <span className="text-[8px] text-rmpg-500 uppercase font-bold tracking-wider">Maint</span>
+              <span className="text-[8px] text-fg-muted uppercase font-bold tracking-wider">Maint</span>
             </div>
             <div className="flex flex-col items-center p-1.5 bg-surface-sunken panel-beveled">
               <AlertTriangle className="w-3.5 h-3.5 text-red-400 mb-0.5" />
               <span className="text-xs font-bold font-mono tabular-nums text-red-400">{overdueService}</span>
-              <span className="text-[8px] text-rmpg-500 uppercase font-bold tracking-wider">Due</span>
+              <span className="text-[8px] text-fg-muted uppercase font-bold tracking-wider">Due</span>
             </div>
           </div>
         </div>

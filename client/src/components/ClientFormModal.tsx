@@ -350,7 +350,7 @@ export default function ClientFormModal({
               placeholder="Additional notes about this client..."
               maxLength={5000}
             />
-            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
+            <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.notes.length}/5000</div>
           </div>
         </>
       )}
@@ -526,7 +526,7 @@ export default function ClientFormModal({
               />
               <span className="text-xs text-rmpg-200">Priority Client</span>
             </label>
-            <p className="text-[9px] text-rmpg-500 mt-1">Priority clients receive expedited response and dedicated account management</p>
+            <p className="text-[9px] text-fg-muted mt-1">Priority clients receive expedited response and dedicated account management</p>
           </div>
         </>
       )}

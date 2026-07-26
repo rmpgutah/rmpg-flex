@@ -242,7 +242,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
             {/* Section label — visible only when expanded */}
             {!collapsed && (
               <div
-                                className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-[0.1em] text-rmpg-500"
+                                className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-[0.1em] text-fg-muted"
               >
                 {section.label}
               </div>

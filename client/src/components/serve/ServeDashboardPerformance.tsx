@@ -176,13 +176,13 @@ export default function ServeDashboardPerformance() {
               </div>
               {/* Day-of-week mini bar */}
               {Object.keys(scheduleAnalytics.by_day_of_week).length > 0 && (
-                <div className="text-[9px] text-rmpg-500 mb-1">By day of week</div>
+                <div className="text-[9px] text-fg-muted mb-1">By day of week</div>
               )}
               <div className="flex gap-1 mb-1 flex-wrap">
                 {Object.entries(scheduleAnalytics.by_day_of_week).map(([day, stats]) => (
                   <div key={day} className="flex-1 min-w-[36px] text-center bg-surface-base rounded-sm px-1 py-0.5 border border-rmpg-700/50">
-                    <div className="text-[8px] text-rmpg-500 font-bold uppercase">{day.slice(0, 3)}</div>
-                    <div className={`text-[10px] font-bold font-mono ${stats.total > 0 ? (stats.served / stats.total) >= 0.7 ? 'text-green-400' : (stats.served / stats.total) >= 0.4 ? 'text-amber-400' : 'text-red-400' : 'text-rmpg-500'}`}>
+                    <div className="text-[8px] text-fg-muted font-bold uppercase">{day.slice(0, 3)}</div>
+                    <div className={`text-[10px] font-bold font-mono ${stats.total > 0 ? (stats.served / stats.total) >= 0.7 ? 'text-green-400' : (stats.served / stats.total) >= 0.4 ? 'text-amber-400' : 'text-red-400' : 'text-fg-muted'}`}>
                       {stats.total > 0 ? `${Math.round((stats.served / stats.total) * 100)}%` : '—'}
                     </div>
                   </div>

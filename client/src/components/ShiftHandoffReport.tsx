@@ -130,7 +130,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
               value={noteText}
               onChange={e => setNoteText(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && addNote()}
-              className="flex-1 bg-surface-overlay border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1.5 rounded-[2px] font-mono placeholder:text-rmpg-500"
+              className="flex-1 bg-surface-overlay border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1.5 rounded-[2px] font-mono placeholder:text-fg-muted"
             />
             <button onClick={addNote} disabled={submitting || !noteText.trim()} className="toolbar-btn text-xs">
               <Plus size={13} className="mr-1 inline" />{submitting ? 'Saving...' : 'Add'}

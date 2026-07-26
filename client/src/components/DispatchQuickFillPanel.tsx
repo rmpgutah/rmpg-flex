@@ -231,7 +231,7 @@ export default function DispatchQuickFillPanel({
       {/* Search */}
       <div className="px-3 py-2 border-b border-rmpg-700 flex-shrink-0">
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-fg-muted pointer-events-none" />
           <input id="ff-dispatchquickfillpanel-0"
             type="text"
             placeholder="Search phrases..."
@@ -245,7 +245,7 @@ export default function DispatchQuickFillPanel({
       {/* Categories */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {filtered.length === 0 && (
-          <div className="px-3 py-4 text-[10px] text-rmpg-500 italic text-center">
+          <div className="px-3 py-4 text-[10px] text-fg-muted italic text-center">
             No phrases match &quot;{search}&quot;.
           </div>
         )}
@@ -266,13 +266,13 @@ export default function DispatchQuickFillPanel({
                 <span className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">
                   {cat.title}
                 </span>
-                <span className="text-[9px] text-rmpg-500">({cat.phrases.length})</span>
+                <span className="text-[9px] text-fg-muted">({cat.phrases.length})</span>
               </div>
             </button>
             {expanded[cat.id] && (
               <div className="px-2 pb-2 space-y-0.5">
                 {cat.hint && (
-                  <div className="text-[9px] text-rmpg-500 italic px-1 pb-1">{cat.hint}</div>
+                  <div className="text-[9px] text-fg-muted italic px-1 pb-1">{cat.hint}</div>
                 )}
                 {cat.phrases.map((p, idx) => (
                   <div
@@ -306,7 +306,7 @@ export default function DispatchQuickFillPanel({
       </div>
 
       {/* Footer hint */}
-      <div className="px-3 py-1.5 border-t border-rmpg-700 bg-surface-sunken text-[9px] text-rmpg-500 flex-shrink-0">
+      <div className="px-3 py-1.5 border-t border-rmpg-700 bg-surface-sunken text-[9px] text-fg-muted flex-shrink-0">
         <span className="text-brand-400">Click</span> phrase to insert ·{' '}
         <span className="text-brand-400">Copy</span> icon to clipboard ·{' '}
         <span className="font-mono text-rmpg-400">{'{slot}'}</span> are placeholders to fill in

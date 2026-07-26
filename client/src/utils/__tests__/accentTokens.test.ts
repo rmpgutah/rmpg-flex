@@ -667,7 +667,7 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // of this ratchet failed — the guard catching its own slack, which is what it
   // is for. A pin left above the real count is not harmless: it re-opens room
   // for exactly the regressions the ratchet exists to block.
-  const PIN = 11098;
+  const PIN = 10534;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

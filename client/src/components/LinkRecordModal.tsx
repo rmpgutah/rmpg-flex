@@ -163,7 +163,7 @@ export default function LinkRecordModal({
         <label htmlFor="ff-linkrecordmodal-0" className={labelClass}>Search {targetType}</label>
         <div className="relative">
           <Search
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-rmpg-500"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-muted"
             style={{ width: 13, height: 13 }}
           />
           <input id="ff-linkrecordmodal-0"
@@ -175,7 +175,7 @@ export default function LinkRecordModal({
           />
           {searching && (
             <Loader2
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 animate-spin"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-muted animate-spin"
               style={{ width: 13, height: 13 }}
             />
           )}
@@ -209,7 +209,7 @@ export default function LinkRecordModal({
                   />
                 )}
                 <span className="truncate">{result.label || result.name || result.id}</span>
-                <span className="ml-auto text-[9px] font-bold uppercase tracking-wider text-rmpg-500 bg-rmpg-700 px-1.5 py-0.5 rounded-sm">
+                <span className="ml-auto text-[9px] font-bold uppercase tracking-wider text-fg-muted bg-rmpg-700 px-1.5 py-0.5 rounded-sm">
                   {getEntityLabel(result.record_type || targetType)}
                 </span>
               </div>
@@ -220,7 +220,7 @@ export default function LinkRecordModal({
 
       {/* No results message */}
       {searchQuery.trim() && !searching && searchResults.length === 0 && (
-        <p className="text-[10px] text-rmpg-500 italic">No results found.</p>
+        <p className="text-[10px] text-fg-muted italic">No results found.</p>
       )}
 
       {/* Selected Target Display */}
@@ -233,7 +233,7 @@ export default function LinkRecordModal({
           <button
             type="button"
             onClick={() => setSelectedTarget(null)}
-            className="ml-auto text-[9px] text-rmpg-500 hover:text-rmpg-300 transition-colors"
+            className="ml-auto text-[9px] text-fg-muted hover:text-rmpg-300 transition-colors"
           >
             Clear
           </button>

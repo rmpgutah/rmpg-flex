@@ -41,7 +41,7 @@ export function RecordPhotoGallery({ recordType, recordId }: Props) {
   const categories = recordType === 'business' ? BUSINESS_CATEGORIES : PROPERTY_CATEGORIES;
 
   if (recordId == null) {
-    return <div className="text-xs text-rmpg-500">Save the record before adding photos.</div>;
+    return <div className="text-xs text-fg-muted">Save the record before adding photos.</div>;
   }
 
   const photoRows = photos.filter((p) => p.kind === 'photo');

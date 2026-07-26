@@ -431,7 +431,7 @@ export default function ServeAttemptModal({
               {i < displayStep ? <CheckCircle className="w-4 h-4" /> : i + 1}
             </div>
             <span className={`text-[10px] font-semibold transition-colors duration-200 ${
-              i <= displayStep ? 'text-rmpg-200' : 'text-rmpg-500'
+              i <= displayStep ? 'text-rmpg-200' : 'text-fg-muted'
             }`}>{label}</span>
           </div>
         </React.Fragment>
@@ -611,7 +611,7 @@ export default function ServeAttemptModal({
                 {(dispositionCode === 'PS/00.99' || failedReason === 'other') && (
                   <div className="space-y-1">
                     <label htmlFor="ff-serveattemptmodal-other-reason" className="block text-[10px] font-semibold text-rmpg-300 uppercase">
-                      Specify reason <span className="text-rmpg-500 normal-case">(prepended to notes on the notice)</span>
+                      Specify reason <span className="text-fg-muted normal-case">(prepended to notes on the notice)</span>
                     </label>
                     <input
                       id="ff-serveattemptmodal-other-reason"
@@ -628,7 +628,7 @@ export default function ServeAttemptModal({
                     failed attempts (a successful service has no next attempt). */}
                 <fieldset className="space-y-2 border border-rmpg-700 rounded-[2px] p-3">
                   <legend className="text-[10px] font-semibold text-rmpg-300 uppercase px-1">
-                    Next attempt window <span className="text-rmpg-500 normal-case">(optional — shown on the notice)</span>
+                    Next attempt window <span className="text-fg-muted normal-case">(optional — shown on the notice)</span>
                   </legend>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
@@ -997,7 +997,7 @@ export default function ServeAttemptModal({
                     <NotesField value={notes} onChange={setNotes} />
                     <div className="space-y-2">
                       <label className="block text-xs font-semibold text-rmpg-300 uppercase">
-                        Photos ({photos.length}/5) <span className="text-rmpg-500 normal-case">(optional)</span>
+                        Photos ({photos.length}/5) <span className="text-fg-muted normal-case">(optional)</span>
                       </label>
                       <label className={`flex items-center justify-center gap-2 px-3 py-2 rounded-sm border-2 border-dashed cursor-pointer transition-colors ${
                         photos.length >= 5
@@ -1138,7 +1138,7 @@ function NotesField({
     <div>
       <div className="flex items-baseline justify-between mb-1">
         <label htmlFor="ff-serveattemptmodal-notes" className="block text-xs font-semibold text-rmpg-300 uppercase">Notes</label>
-        <span className={`text-[10px] font-mono ${over ? 'text-red-400' : near ? 'text-yellow-400' : 'text-rmpg-500'}`}>
+        <span className={`text-[10px] font-mono ${over ? 'text-red-400' : near ? 'text-yellow-400' : 'text-fg-muted'}`}>
           {len} / {NOTES_CHAR_LIMIT} on notice{over ? ' — will truncate' : ''}
         </span>
       </div>
@@ -1200,7 +1200,7 @@ function PsoCodePicker({
   return (
     <fieldset className="space-y-3 border border-rmpg-700 rounded-[2px] p-3">
       <legend className="text-[10px] font-semibold text-rmpg-300 uppercase px-1">
-        Disposition code <span className="text-rmpg-500 normal-case">— structured PS code (printed on the notice)</span>
+        Disposition code <span className="text-fg-muted normal-case">— structured PS code (printed on the notice)</span>
       </legend>
 
       {/* Category row */}

@@ -66,9 +66,9 @@ export default function ColumnVisibilityToggle({ columns, onChange, className = 
             >
               {col.visible
                 ? <Eye className="w-3 h-3 text-green-400" />
-                : <EyeOff className="w-3 h-3 text-rmpg-600" />
+                : <EyeOff className="w-3 h-3 text-fg-muted" />
               }
-              <span className={col.visible ? '' : 'line-through text-rmpg-600'}>{col.label}</span>
+              <span className={col.visible ? '' : 'line-through text-fg-muted'}>{col.label}</span>
             </button>
           ))}
         </div>

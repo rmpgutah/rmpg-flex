@@ -311,7 +311,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             >
               <Star
                 style={{ width: 12, height: 12 }}
-                className={call.pinned ? 'fill-amber-400 text-amber-400' : 'text-rmpg-600'}
+                className={call.pinned ? 'fill-amber-400 text-amber-400' : 'text-fg-muted'}
               />
             </button>
           )}
@@ -498,7 +498,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
 
       {/* 40: Location with improved pin icon color — coords hidden (redundant with address) */}
       <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-1">
-        <MapPin className="w-3 h-3 flex-shrink-0 text-rmpg-500" aria-hidden="true" />
+        <MapPin className="w-3 h-3 flex-shrink-0 text-fg-muted" aria-hidden="true" />
         <div className="min-w-0 truncate">
           <span className="truncate">{formatAddressDisplay(call.location)}</span>
           {/* Enhancement 28: Show property name below address */}

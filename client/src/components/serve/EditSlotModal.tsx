@@ -26,7 +26,7 @@ const NOTIFY_OPTIONS = [
   { value: 21600, label: '6 hours' },
 ];
 
-const FIELD_LABEL = 'text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5';
+const FIELD_LABEL = 'text-[9px] text-fg-muted uppercase font-mono block mb-0.5';
 const FIELD_INPUT = 'w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500';
 
 // Rewritten as native inputs against the app's own FormModal — the previous

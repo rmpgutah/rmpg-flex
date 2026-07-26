@@ -39,7 +39,7 @@ function StatCard({ label, value, color, icon: Icon, onClick, suffix }: {
     >
       <Icon className="w-5 h-5 flex-shrink-0" style={{ color }} />
       <div className="min-w-0">
-        <div className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">{label}</div>
+        <div className="text-[9px] font-mono text-fg-muted uppercase tracking-wider">{label}</div>
         <div className="text-lg font-bold tabular-nums" style={{ color }}>{value}{suffix || ''}</div>
       </div>
     </Tag>
@@ -74,9 +74,9 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
 
         {/* Aging of open cases */}
         <div className="panel-beveled p-3">
-          <div className="text-[10px] font-mono text-rmpg-500 uppercase mb-2">Open Case Aging</div>
+          <div className="text-[10px] font-mono text-fg-secondary uppercase mb-2">Open Case Aging</div>
           {agingTotal === 0 ? (
-            <div className="text-[10px] text-rmpg-500 py-2">No open cases</div>
+            <div className="text-[10px] text-fg-muted py-2">No open cases</div>
           ) : (
             <div className="space-y-1.5">
               {agingRows.map((r) => (
@@ -94,16 +94,16 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
 
         {/* Caseload by investigator */}
         <div className="panel-beveled p-3">
-          <div className="text-[10px] font-mono text-rmpg-500 uppercase mb-2">Open Caseload by Investigator</div>
+          <div className="text-[10px] font-mono text-fg-secondary uppercase mb-2">Open Caseload by Investigator</div>
           {investigators.length === 0 ? (
-            <div className="text-[10px] text-rmpg-500 py-2">No open cases</div>
+            <div className="text-[10px] text-fg-muted py-2">No open cases</div>
           ) : (
             <div className="overflow-x-auto"><table className="w-full text-[10px]">
               <thead>
                 <tr className="border-b border-rmpg-700">
-                  <th className="text-left text-[8px] font-mono text-rmpg-500 uppercase py-[3px]">Investigator</th>
-                  <th className="text-right text-[8px] font-mono text-rmpg-500 uppercase py-[3px] w-14">Open</th>
-                  <th className="text-right text-[8px] font-mono text-rmpg-500 uppercase py-[3px] w-16">Overdue</th>
+                  <th className="text-left text-[8px] font-mono text-fg-muted uppercase py-[3px]">Investigator</th>
+                  <th className="text-right text-[8px] font-mono text-fg-muted uppercase py-[3px] w-14">Open</th>
+                  <th className="text-right text-[8px] font-mono text-fg-muted uppercase py-[3px] w-16">Overdue</th>
                 </tr>
               </thead>
               <tbody>
@@ -111,7 +111,7 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
                   <tr key={i} className="border-b border-rmpg-800 last:border-0">
                     <td className="py-[3px] text-rmpg-300">{row.investigator}</td>
                     <td className="py-[3px] text-right font-bold text-rmpg-100 tabular-nums">{row.count}</td>
-                    <td className={`py-[3px] text-right font-bold tabular-nums ${row.overdue ? 'text-red-400' : 'text-rmpg-600'}`}>{row.overdue || 0}</td>
+                    <td className={`py-[3px] text-right font-bold tabular-nums ${row.overdue ? 'text-red-400' : 'text-rmpg-100'}`}>{row.overdue || 0}</td>
                   </tr>
                 ))}
               </tbody>

@@ -146,7 +146,7 @@ export default function ForcePasswordChangeModal() {
                 <button
                   type="button"
                   onClick={() => setShowCurrentPw(!showCurrentPw)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted hover:text-rmpg-100"
                 >
                   {showCurrentPw
                     ? <EyeOff style={{ width: 14, height: 14 }} />
@@ -171,7 +171,7 @@ export default function ForcePasswordChangeModal() {
                 <button
                   type="button"
                   onClick={() => setShowNewPw(!showNewPw)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted hover:text-rmpg-100"
                 >
                   {showNewPw
                     ? <EyeOff style={{ width: 14, height: 14 }} />
@@ -203,7 +203,7 @@ export default function ForcePasswordChangeModal() {
                   ) : (
                     <AlertCircle style={{ width: 10, height: 10, color: 'var(--text-muted)', flexShrink: 0 }} />
                   )}
-                  <span className={rule.met ? 'text-green-400' : 'text-rmpg-500'}>
+                  <span className={rule.met ? 'text-green-400' : 'text-fg-muted'}>
                     {rule.label}
                   </span>
                 </div>

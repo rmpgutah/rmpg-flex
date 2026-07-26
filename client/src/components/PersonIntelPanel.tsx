@@ -319,7 +319,7 @@ export default function PersonIntelPanel() {
                                       <div className="mt-1 text-rmpg-300">
                                         {(Array.isArray(w.charges) ? w.charges : [w.charges]).map((c: string, ci: number) => (
                                           <div key={ci} className="flex items-center gap-1">
-                                            <Scale className="w-2.5 h-2.5 text-rmpg-500 shrink-0" /> {c}
+                                            <Scale className="w-2.5 h-2.5 text-fg-muted shrink-0" /> {c}
                                           </div>
                                         ))}
                                       </div>
@@ -437,7 +437,7 @@ export default function PersonIntelPanel() {
         {showDuplicates && (
           <div className="space-y-2 max-h-48 overflow-y-auto">
             {duplicates.length === 0 ? (
-              <div className="text-[10px] text-rmpg-500 text-center py-3">No duplicate persons detected</div>
+              <div className="text-[10px] text-fg-muted text-center py-3">No duplicate persons detected</div>
             ) : (
               duplicates.map((d: any, idx: number) => (
                 <div key={idx} className="text-xs p-2 bg-amber-950/20 border border-amber-700/30 rounded-sm">
@@ -445,14 +445,14 @@ export default function PersonIntelPanel() {
                     <div>
                       <span className="text-rmpg-100 font-bold">#{d.id1}</span>
                       <span className="text-rmpg-300 ml-1">{d.first_name1} {d.last_name1}</span>
-                      {d.dob1 && <span className="text-rmpg-500 ml-1">({d.dob1})</span>}
+                      {d.dob1 && <span className="text-fg-muted ml-1">({d.dob1})</span>}
                     </div>
                     <span className="text-amber-400 text-[9px] font-bold">POSSIBLE DUPLICATE</span>
                   </div>
                   <div className="mt-1">
                     <span className="text-rmpg-100 font-bold">#{d.id2}</span>
                     <span className="text-rmpg-300 ml-1">{d.first_name2} {d.last_name2}</span>
-                    {d.dob2 && <span className="text-rmpg-500 ml-1">({d.dob2})</span>}
+                    {d.dob2 && <span className="text-fg-muted ml-1">({d.dob2})</span>}
                   </div>
                   <div className="flex gap-2 mt-2">
                     <button type="button"

@@ -71,7 +71,7 @@ export default function RunCardPreview({ incidentType, onCardLoaded }: Props) {
 
   if (loading) {
     return (
-      <div className="text-[10px] text-rmpg-500 uppercase tracking-wider px-2 py-1">
+      <div className="text-[10px] text-fg-muted uppercase tracking-wider px-2 py-1">
         Loading run card…
       </div>
     );

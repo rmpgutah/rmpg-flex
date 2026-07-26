@@ -117,7 +117,7 @@ export default function DuplicateCandidatesModal({
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">{renderRow(c)}</div>
-                        <span className="text-[10px] text-rmpg-500 font-mono whitespace-nowrap">#{c.id}</span>
+                        <span className="text-[10px] text-fg-muted font-mono whitespace-nowrap">#{c.id}</span>
                       </div>
                     </button>
                   </li>

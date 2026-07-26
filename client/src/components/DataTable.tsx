@@ -244,7 +244,7 @@ function DataTable<T>({
                   aria-selected={isSelected || undefined}
                 >
                   {showRowNumbers && (
-                    <td className={`${cellPadding} text-rmpg-500 text-center tabular-nums font-mono text-[10px]`}>{idx + 1}</td>
+                    <td className={`${cellPadding} text-fg-muted text-center tabular-nums font-mono text-[10px]`}>{idx + 1}</td>
                   )}
                   {columns.map((col) => (
                     <td

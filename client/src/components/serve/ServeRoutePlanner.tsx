@@ -192,7 +192,7 @@ function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
     rush: 'bg-red-900/40 text-red-400 border-red-700/50',
     high: 'bg-orange-900/40 text-orange-400 border-orange-700/50',
     normal: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
-    low: 'bg-rmpg-800/30 text-rmpg-500 border-rmpg-700/30',
+    low: 'bg-rmpg-800/30 text-fg-muted border-rmpg-700/30',
   };
   return <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono uppercase ${colors[p] || colors.normal}`}>{p}</span>;
 }
@@ -621,7 +621,7 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-2">
             <Route size={16} className="text-[#d4a017]" />
             <h2 className="text-sm font-semibold text-rmpg-100 tracking-wider">ROUTE PLANNER</h2>
-            <span className="text-[11px] text-rmpg-500 ml-2">{selectedCount} of {stops.length} stops selected</span>
+            <span className="text-[11px] text-fg-muted ml-2">{selectedCount} of {stops.length} stops selected</span>
             {totalDistance > 0 && (
               <span className="text-[10px] text-rmpg-400 ml-2 pl-2 border-l border-rmpg-700 font-mono">
                 {totalDistance.toFixed(1)} mi · {Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m
@@ -669,21 +669,21 @@ export default function ServeRoutePlanner({
               {stops.map((stop, idx) => (
                 <div key={stop.job.id} className={`flex items-center gap-2 px-3 py-2 border-b border-border-default transition-colors ${stop.selected ? 'bg-surface-base' : 'opacity-50'}`}>
                   <button type="button" onClick={() => toggleStop(idx)} className="flex-shrink-0 p-0.5">
-                    {stop.selected ? <CheckSquare size={16} className="text-brand-400" /> : <Square size={16} className="text-rmpg-600" />}
+                    {stop.selected ? <CheckSquare size={16} className="text-brand-400" /> : <Square size={16} className="text-fg-muted" />}
                   </button>
                   <span className="w-5 text-xs font-mono font-bold text-rmpg-300 flex-shrink-0">{idx + 1}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium text-rmpg-100 truncate">{stop.job.recipient_name}</div>
-                    <div className="text-[10px] text-rmpg-500 truncate">{stop.job.recipient_address || 'No address'}</div>
+                    <div className="text-[10px] text-fg-muted truncate">{stop.job.recipient_address || 'No address'}</div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <PriorityBadge p={stop.job.priority} />
                     <TimeWindowBadge tw={stop.job.time_window} />
                     <div className="flex flex-col gap-0.5 ml-1">
-                      <button type="button" onClick={() => moveStop(idx, -1)} disabled={idx === 0} className="text-rmpg-500 hover:text-rmpg-100 disabled:opacity-30">
+                      <button type="button" onClick={() => moveStop(idx, -1)} disabled={idx === 0} className="text-fg-muted hover:text-rmpg-100 disabled:opacity-30">
                         <ChevronUp size={10} />
                       </button>
-                      <button type="button" onClick={() => moveStop(idx, 1)} disabled={idx === stops.length - 1} className="text-rmpg-500 hover:text-rmpg-100 disabled:opacity-30">
+                      <button type="button" onClick={() => moveStop(idx, 1)} disabled={idx === stops.length - 1} className="text-fg-muted hover:text-rmpg-100 disabled:opacity-30">
                         <ChevronDown size={10} />
                       </button>
                     </div>
@@ -693,10 +693,10 @@ export default function ServeRoutePlanner({
             </div>
 
             <div className="px-4 py-3 border-t border-rmpg-700 bg-surface-sunken space-y-2">
-              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><MapPin size={12} /> Distance:</span><span className="text-rmpg-100 font-mono">{totalDistance.toFixed(1)} mi</span></div>
-              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><Clock size={12} /> Est. Time:</span><span className="text-rmpg-100 font-mono">{Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m</span></div>
-              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-rmpg-100 font-mono">${fuelCost.toFixed(2)}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><Gauge size={12} /> Efficiency:</span><span className="text-rmpg-100 font-mono">{totalDistance > 0 ? `${(selectedCount / totalDistance).toFixed(1)} stops/mi` : '\u2014'}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><MapPin size={12} /> Distance:</span><span className="text-rmpg-100 font-mono">{totalDistance.toFixed(1)} mi</span></div>
+              <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><Clock size={12} /> Est. Time:</span><span className="text-rmpg-100 font-mono">{Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m</span></div>
+              <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-rmpg-100 font-mono">${fuelCost.toFixed(2)}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><Gauge size={12} /> Efficiency:</span><span className="text-rmpg-100 font-mono">{totalDistance > 0 ? `${(selectedCount / totalDistance).toFixed(1)} stops/mi` : '\u2014'}</span></div>
 
               <div className="flex gap-2 pt-1">
                 <button type="button" onClick={handleApplyAndClose} className="toolbar-btn toolbar-btn-primary text-xs px-4 py-2 flex-1 justify-center">

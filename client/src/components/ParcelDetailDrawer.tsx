@@ -61,7 +61,7 @@ export function ParcelDetailDrawer({ parcelNumber }: Props) {
                 <tbody>
                   {Object.entries(FIELD_LABELS).map(([key, label]) => (
                     <tr key={key}>
-                      <td className="text-rmpg-500 pr-2 align-top">{label}</td>
+                      <td className="text-fg-muted pr-2 align-top">{label}</td>
                       <td className="text-rmpg-200">{fmtValue(parcel[key])}</td>
                     </tr>
                   ))}
@@ -76,7 +76,7 @@ export function ParcelDetailDrawer({ parcelNumber }: Props) {
                     <tbody>
                       {Object.entries(parcel.raw_data_json).map(([k, v]) => (
                         <tr key={k}>
-                          <td className="text-rmpg-500 pr-2 align-top">{k}</td>
+                          <td className="text-fg-muted pr-2 align-top">{k}</td>
                           <td className="text-rmpg-200">{fmtValue(v)}</td>
                         </tr>
                       ))}

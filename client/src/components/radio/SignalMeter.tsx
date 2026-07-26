@@ -56,16 +56,16 @@ export default function SignalMeter({
 
       {/* Numeric stats */}
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-        <div className="font-mono text-[8px] text-rmpg-500">
+        <div className="font-mono text-[8px] text-fg-muted">
           Latency: <span className="text-[#888888]">{latencyMs}ms</span>
         </div>
-        <div className="font-mono text-[8px] text-rmpg-500">
+        <div className="font-mono text-[8px] text-fg-muted">
           Loss: <span className="text-[#888888]">{packetLoss}%</span>
         </div>
-        <div className="font-mono text-[8px] text-rmpg-500">
+        <div className="font-mono text-[8px] text-fg-muted">
           TX: <span className="text-[#888888]">{throughputUp} B/s</span>
         </div>
-        <div className="font-mono text-[8px] text-rmpg-500">
+        <div className="font-mono text-[8px] text-fg-muted">
           RX: <span className="text-[#888888]">{throughputDown} B/s</span>
         </div>
       </div>

@@ -166,7 +166,7 @@ export default function MobileCardList<T>({
               value={searchValue}
               onChange={(e) => handleSearch(e.target.value)}
               placeholder={searchPlaceholder}
-              className="flex-1 bg-transparent text-sm text-rmpg-200 placeholder:text-rmpg-500 outline-none font-mono"
+              className="flex-1 bg-transparent text-sm text-rmpg-200 placeholder:text-fg-muted outline-none font-mono"
               style={{ minHeight: 40 }}
             />
             {searchValue && (
