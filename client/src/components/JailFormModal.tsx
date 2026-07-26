@@ -45,7 +45,9 @@ export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting,
   // to the legacy global key when there's no user (login screen,
   // etc.) so we never lose existing drafts during the rollout.
   const { user } = useAuth();
-  const draftKey = user?.id ? `rmpg_jail_form_${user.id}` : 'rmpg_jail_form';
+  const draftKey = user?.id
+    ? `rmpg_jail_form_${user.id}_${editingRecord?.id ?? 'new'}`
+    : `rmpg_jail_form_${editingRecord?.id ?? 'new'}`;
   const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<JailFormData>({
     storageKey: draftKey, defaultValue: EMPTY_FORM, isActive: isOpen,
   });

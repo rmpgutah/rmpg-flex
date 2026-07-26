@@ -171,7 +171,7 @@ export default function PropertyFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<PropertyFormData>({
-    storageKey: 'rmpg_property_form',
+    storageKey: `rmpg_property_form_${editingProperty?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });

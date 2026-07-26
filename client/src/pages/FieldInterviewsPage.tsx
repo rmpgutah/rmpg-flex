@@ -140,7 +140,7 @@ export default function FieldInterviewsPage() {
     clearDraft: clearFormDraft,
     snapshot: snapshotForm,
   } = useFormDraft<typeof EMPTY_FORM>({
-    storageKey: 'rmpg_fi_form',
+    storageKey: `rmpg_fi_form_${editingFi?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: formOpen,
   });

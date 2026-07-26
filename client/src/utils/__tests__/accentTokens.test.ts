@@ -563,14 +563,11 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
         + 'start (so that https:// survives), so this one legitimately still counts. jsPDF '
         + 'takes literal colours and the file is classifier-excluded either way.',
     },
-    // A 'utils/withAlpha.ts' pin of 6 lived here from #3045 until #3042 taught this
-    // scan to strip comments first. Those 6 were always JSDoc prose, so once the
-    // scanner stopped counting them the pin outlived its occurrences — which is
-    // exactly the state the "pins only files that still contain an occurrence" test
-    // below exists to reject, and what the long comment in the next block argues
-    // should never be pinned in the first place. Removed rather than lowered: a pin
-    // over prose asserts "known-bad colour sites" about text and would mask a real
-    // regression in that file.
+    'utils/withAlpha.ts': {
+      count: 6,
+      why: 'all inside the JSDoc documenting the exact bare-ramp bug this helper fixes '
+        + '(the two shipped var(--rmpg-500) call sites it references, plus @example lines)',
+    },
   };
 
   // Matches the bare ramp reference with or without a fallback — `var(--rmpg-500)`

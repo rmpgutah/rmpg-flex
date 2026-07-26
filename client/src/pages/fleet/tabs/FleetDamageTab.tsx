@@ -41,6 +41,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
   const [reports, setReports] = useState<DamageReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const {
     form,
     setForm,
@@ -49,7 +50,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
     clearDraft,
     snapshot,
   } = useFormDraft({
-    storageKey: 'rmpg_fleet_damage_form',
+    storageKey: `rmpg_fleet_damage_form_${editingId ?? 'new'}`,
     defaultValue: {
       damage_date: localToday(), damage_type: '', location_on_vehicle: '',
       severity: 'minor', description: '', repair_estimate: '',
@@ -57,7 +58,6 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
     isActive: showForm,
   });
   const [submitting, setSubmitting] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);

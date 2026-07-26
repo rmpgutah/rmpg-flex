@@ -51,7 +51,7 @@ export default function DeploymentFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<DeploymentFormData>({
-    storageKey: 'rmpg_personnel_deployment_form',
+    storageKey: `rmpg_personnel_deployment_form_${initialData?.id ?? 'new'}`,
     defaultValue: EMPTY,
     isActive: isOpen,
   });

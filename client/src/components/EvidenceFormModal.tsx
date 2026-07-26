@@ -117,7 +117,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
     clearDraft,
     snapshot,
   } = useFormDraft<EvidenceFormData>({
-    storageKey: 'rmpg_evidence_form',
+    storageKey: `rmpg_evidence_form_${editingEvidence?.id ?? 'new'}`,
     defaultValue: { ...EMPTY_FORM },
     isActive: isOpen,
   });

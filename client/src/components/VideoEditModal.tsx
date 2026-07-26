@@ -61,7 +61,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
     clearDraft,
     snapshot,
   } = useFormDraft<BodyCamVideoEditData>({
-    storageKey: 'rmpg_video_edit_form',
+    storageKey: `rmpg_video_edit_form_${video?.id ?? 'new'}`,
     defaultValue: EMPTY,
     isActive: isOpen,
   });

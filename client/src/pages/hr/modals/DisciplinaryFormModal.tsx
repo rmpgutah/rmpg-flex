@@ -56,7 +56,7 @@ export default function DisciplinaryFormModal({
     clearDraft,
     snapshot,
   } = useFormDraft<typeof EMPTY_FORM>({
-    storageKey: 'rmpg_hr_disciplinary_form',
+    storageKey: `rmpg_hr_disciplinary_form_${editRecord?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });

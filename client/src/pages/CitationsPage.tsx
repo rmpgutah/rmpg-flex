@@ -414,7 +414,7 @@ export default function CitationsPage() {
     clearDraft: clearFormDraft,
     snapshot: snapshotForm,
   } = useFormDraft<CitationForm>({
-    storageKey: 'rmpg_citation_form',
+    storageKey: `rmpg_citation_form_${mode === 'edit' ? (selectedCitation?.id ?? 'new') : 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: mode !== 'list',
   });

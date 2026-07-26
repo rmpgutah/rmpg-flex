@@ -66,7 +66,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
     clearDraft,
     snapshot,
   } = useFormDraft<typeof EMPTY_FORM>({
-    storageKey: 'rmpg_hr_grievance_modal_form',
+    storageKey: `rmpg_hr_grievance_modal_form_${grievance?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: true,
   });

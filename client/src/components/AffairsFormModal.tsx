@@ -27,7 +27,7 @@ const EMPTY_FORM: AffairsFormData = {
 
 export default function AffairsFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError }: AffairsFormModalProps) {
   const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<AffairsFormData>({
-    storageKey: 'rmpg_affairs_form', defaultValue: EMPTY_FORM, isActive: isOpen,
+    storageKey: `rmpg_affairs_form_${editingRecord?.id ?? 'new'}`, defaultValue: EMPTY_FORM, isActive: isOpen,
   });
 
   useEffect(() => {

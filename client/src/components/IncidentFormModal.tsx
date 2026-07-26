@@ -376,7 +376,7 @@ export default function IncidentFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<IncidentFormData>({
-    storageKey: 'rmpg_incident_form',
+    storageKey: `rmpg_incident_form_${editingIncident?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });
