@@ -526,6 +526,13 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
       count: 1,
       why: 'inside a comment; jsPDF takes literal colours and the file is classifier-excluded',
     },
+    'utils/withAlpha.ts': {
+      count: 6,
+      why: 'all six are JSDoc examples quoting the broken form this module exists to fix '
+        + '(`var(--rmpg-500)22`, and the two offending call sites it names). Same case as '
+        + 'the theme-palettes.css pin above. #3037 and #3038 landed independently and this '
+        + 'scan does not blank comments, so main was red on their intersection.',
+    },
   };
 
   // Matches the bare ramp reference with or without a fallback — `var(--rmpg-500)`
