@@ -1892,6 +1892,21 @@ export interface FleetAnalytics {
   oldest_vehicle_year?: number | null;
   avg_daily_miles?: number;
   top_issues?: Array<{ type: string; count: number; total_cost: number }>;
+  /**
+   * What this payload actually describes. Optional because Pages and the
+   * Worker deploy independently and can be briefly mismatched — a missing
+   * value is treated as 'fleet', which is the pre-scoping behavior.
+   */
+  scope?: 'vehicle' | 'fleet';
+  /** Block names that are fleet-only and must be hidden in vehicle scope. */
+  omitted_for_vehicle_scope?: string[];
+  /** Fleet baseline for the comparison band; null/absent when fleet-wide. */
+  fleet_comparison?: {
+    avg_mileage: number;
+    avg_mpg: number | null;
+    total_maintenance_cost: number;
+    total_fuel_cost: number;
+  } | null;
 }
 
 export interface FleetServiceAlert {

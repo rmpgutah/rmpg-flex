@@ -390,7 +390,15 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
     utilization = { assigned: 0, unassigned: 0, rate: 0 },
     daily_usage = [], maintenance_forecast = [], oldest_vehicle_year = null, avg_daily_miles = null,
     top_issues = [],
+    scope = 'fleet',
+    omitted_for_vehicle_scope = [],
+    fleet_comparison = null,
   } = analytics || {};
+
+  // A card named by the server as fleet-only is hidden outright — an empty
+  // chart reads as "no data for this vehicle", which is a different and
+  // false claim.
+  const isOmitted = (block: string) => omitted_for_vehicle_scope.includes(block);
 
   const totalCosts = (fleet_summary.total_maintenance_cost || 0) + (fleet_summary.total_fuel_cost || 0);
   const complianceRate = service_compliance?.rate ?? 100;
@@ -406,6 +414,41 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
   return (
     <div className="p-4 space-y-3">
+      <div
+        data-testid="analytics-scope-banner"
+        className="px-3 py-1.5 text-[9px] uppercase tracking-wider font-semibold text-fg-secondary border-b border-rmpg-700 bg-surface-sunken"
+      >
+        {scope === 'vehicle' ? 'Scope: this vehicle' : 'Scope: fleet-wide'}
+      </div>
+
+      {fleet_comparison && (
+        <div
+          data-testid="fleet-comparison"
+          className="px-3 py-1.5 flex items-center gap-4 text-[10px] font-mono border-b border-rmpg-700 bg-surface-sunken"
+        >
+          <span className="text-fg-muted uppercase tracking-wider text-[9px]">Fleet avg</span>
+          <span className="text-fg-secondary">
+            MPG <strong className="text-rmpg-100 tabular-nums">
+              {fleet_comparison.avg_mpg != null ? fleet_comparison.avg_mpg.toFixed(1) : '--'}
+            </strong>
+          </span>
+          <span className="text-fg-secondary">
+            Miles <strong className="text-rmpg-100 tabular-nums">
+              {Math.round(fleet_comparison.avg_mileage).toLocaleString()}
+            </strong>
+          </span>
+          <span className="text-fg-secondary">
+            Maint <strong className="text-rmpg-100 tabular-nums">
+              ${Math.round(fleet_comparison.total_maintenance_cost).toLocaleString()}
+            </strong>
+          </span>
+          <span className="text-fg-secondary">
+            Fuel <strong className="text-rmpg-100 tabular-nums">
+              ${Math.round(fleet_comparison.total_fuel_cost).toLocaleString()}
+            </strong>
+          </span>
+        </div>
+      )}
 
       {/* Period Filter */}
       <div className="flex items-center gap-1.5">
@@ -458,7 +501,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Service Compliance */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
+        {!isOmitted('service_compliance') && (
+        <div data-testid="card-service_compliance" className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Wrench className="w-3 h-3 text-accent-silver-500" />
             <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Service Compliance</span>
@@ -471,6 +515,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             {service_compliance ? `${service_compliance.compliant} ok / ${service_compliance.overdue} overdue` : '--'}
           </div>
         </div>
+        )}
 
         {/* Inspection Pass Rate */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
@@ -536,7 +581,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 3: Top Vehicles by Cost + Service Alerts */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Top Vehicles by Cost */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
+        {!isOmitted('cost_per_mile_ranking') && (
+        <div data-testid="card-cost_per_mile_ranking" className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <TrendingUp className="w-3 h-3" /> Top Vehicles by Cost
           </h4>
@@ -571,6 +617,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <div className="h-[120px] flex items-center justify-center text-[10px] text-rmpg-500">No cost data available</div>
           )}
         </div>
+        )}
 
         {/* Service Alerts */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
@@ -646,7 +693,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Fleet Status (Donut) */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
+        {!isOmitted('status_breakdown') && (
+        <div data-testid="card-status_breakdown" className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Car className="w-3 h-3" /> Fleet Status
           </h4>
@@ -692,6 +740,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <div className="h-[180px] flex items-center justify-center text-[10px] text-rmpg-500">No data</div>
           )}
         </div>
+        )}
       </div>
 
       {/* ROW 5: Daily Fleet Utilization + Maintenance Forecast */}
@@ -823,7 +872,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Oldest Vehicle */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
+        {!isOmitted('oldest_vehicle_year') && (
+        <div data-testid="card-oldest_vehicle_year" className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Calendar className="w-3 h-3 text-accent-silver-500" />
             <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Oldest Vehicle</span>
@@ -833,9 +883,11 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           </div>
           <div className="text-[8px] text-rmpg-400 mt-1">Model year (non-retired)</div>
         </div>
+        )}
 
         {/* Fleet Utilization */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
+        {!isOmitted('utilization') && (
+        <div data-testid="card-utilization" className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Activity className="w-3 h-3 text-accent-silver-500" />
             <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Fleet Utilization</span>
@@ -860,6 +912,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* ROW 7: Combined Cost Trend (Full Width) */}

@@ -339,7 +339,7 @@ export default function FleetPage() {
     if (activeTab === 'costs') { fetchCosts(selectedId); fetchFuelLogs(selectedId); }
     if (activeTab === 'inspections') fetchInspections(selectedId);
     if (activeTab === 'assignments') fetchAssignments(selectedId);
-    if (activeTab === 'analytics') fetchVehicleAnalytics();
+    if (activeTab === 'analytics') fetchVehicleAnalytics(selectedId);
     // Personnel tab renders the shared `assignments` state too — fetch both.
     if (activeTab === 'personnel') { fetchPersonnel(selectedId); fetchAssignments(selectedId); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -381,10 +381,10 @@ export default function FleetPage() {
     } catch { addToast('Failed to load assignments', 'error'); }
   };
 
-  const fetchVehicleAnalytics = async () => {
+  const fetchVehicleAnalytics = async (id: string | number) => {
     setAnalyticsLoading(true);
     try {
-      const data = await apiFetch<FleetAnalytics>('/fleet/analytics');
+      const data = await apiFetch<FleetAnalytics>(`/fleet/analytics?vehicle_id=${encodeURIComponent(String(id))}`);
       setAnalytics(data);
     } catch { addToast('Failed to load analytics', 'error'); }
     finally { setAnalyticsLoading(false); }
