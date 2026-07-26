@@ -335,6 +335,80 @@ describe('palette vars resolve under every theme', () => {
   });
 });
 
+describe('text-role rgb triples', () => {
+  // Tailwind consumes rgb(var(--x-rgb) / <alpha-value>). A missing triple in
+  // ANY block makes text-fg-* resolve to nothing there. Same failure mode the
+  // bare --rmpg-* aliases had before #3029.
+  // All four blocks must redeclare these. That is NOT the general rule -- ':root'
+  // is the base layer, so a base-only var resolves everywhere and an
+  // "all four blocks" assertion false-positives on theme-invariant tokens like
+  // --stat-accent-* (see #3032's spec). It holds HERE because --text-* carries a
+  // different value per theme (#e6edf5 / #1a1a1a / #f2f2f2 / #f0f4f9), so
+  // base-only membership would leave three themes with the night value.
+  const BLOCKS = [
+    { name: 'night', marker: ':root,', triples: {
+      'text-primary': '230 237 245',
+      'text-secondary': '195 208 222',
+      'text-muted': '143 163 184',
+    } },
+    { name: 'day', marker: 'html.theme-light {', triples: {
+      'text-primary': '26 26 26',
+      'text-secondary': '51 49 43',
+      'text-muted': '85 85 85',
+    } },
+    { name: 'legacy-black', marker: 'html.theme-legacy-black {', triples: {
+      'text-primary': '242 242 242',
+      'text-secondary': '207 207 207',
+      'text-muted': '138 138 138',
+    } },
+    { name: 'blue-silver', marker: 'html.theme-blue-silver {', triples: {
+      'text-primary': '240 244 249',
+      'text-secondary': '205 216 230',
+      'text-muted': '177 193 211',
+    } },
+  ];
+
+  // One local helper. accentTokens.test.ts already inlines this indexOf/slice
+  // pair six times; do not make it eight.
+  const bodyOf = (marker: string) => {
+    const start = css.indexOf(marker);
+    expect(start, `no block matching ${marker}`).toBeGreaterThan(-1);
+    return css.slice(start, css.indexOf('\n}', start));
+  };
+
+  for (const { name, marker } of BLOCKS) {
+    const block = bodyOf(marker);
+
+    for (const role of ['text-primary', 'text-secondary', 'text-muted']) {
+      it(`${name} defines --${role}-rgb`, () => {
+        expect(block).toMatch(new RegExp(`--${role}-rgb:\\s*\\d+ \\d+ \\d+`));
+      });
+
+      it(`${name} re-points --${role} at its own triple`, () => {
+        expect(block).toContain(`--${role}: rgb(var(--${role}-rgb))`);
+      });
+    }
+  }
+
+  it('carries the exact channel values, per block', () => {
+    for (const { name, marker, triples } of BLOCKS) {
+      const block = bodyOf(marker);
+      for (const [role, value] of Object.entries(triples)) {
+        expect(block, `${name} --${role}-rgb`).toContain(`--${role}-rgb: ${value}`);
+      }
+    }
+  });
+
+  it('repeats the triples per block rather than hoisting them', () => {
+    // .tactical-dark is a DESCENDANT that re-declares triples to force night on
+    // map / MDT / dashcam. A hoisted :root alias substitutes at computed-value
+    // time on the root element and the substituted result inherits, so a
+    // descendant could never override it. Proven in-browser during #3029.
+    const count = (css.match(/--text-muted-rgb:/g) ?? []).length;
+    expect(count).toBe(4);
+  });
+});
+
 describe('the --rmpg-* ramp is never used as a text colour', () => {
   // Defining the bare aliases fixed the "renders as inherited white" bug, but it
   // also made a WRONG colour renderable. The ramp encodes SURFACE ELEVATION and
