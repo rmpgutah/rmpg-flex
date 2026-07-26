@@ -1100,7 +1100,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   // Behavior only. Presentation (label, icon, color, description, pinned,
   // grouping) now lives in config/layerRegistry.ts. Keys MUST match registry ids;
-  // useLayerBindings.findUnboundLayers() is the test-time guard against a typo.
+  // the source-scanning coverage test in useLayerBindings.test.ts
+  // ('MapboxMapPage binding coverage') is the real guard against a typo'd key —
+  // findUnboundLayers() itself is only exercised against synthetic maps in tests.
   const layerBindings = useMemo<LayerBindingMap>(() => ({
     // ── Live Conditions ──
     traffic: { active: traffic.enabled, onToggle: traffic.toggle },

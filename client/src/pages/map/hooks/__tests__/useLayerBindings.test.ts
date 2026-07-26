@@ -103,4 +103,34 @@ describe('MapboxMapPage binding coverage', () => {
 
     expect(missing, `unbound registry layers: ${missing.join(', ')}`).toEqual([]);
   });
+
+  it('spreads district hierarchy configs into district-${cfg.id} bindings', () => {
+    const src = readFileSync(
+      resolve(__dirname, '../../MapboxMapPage.tsx'),
+      'utf8',
+    );
+    const bindingBlock = src.slice(
+      src.indexOf('const layerBindings'),
+      src.indexOf('const mapLeftDockSections'),
+    );
+    expect(
+      bindingBlock,
+      'district-${cfg.id} spread (districtHierarchy.hierarchyConfigs) is missing from layerBindings — the Administrative Boundaries dock section will be missing its district toggles',
+    ).toContain('`district-${cfg.id}`');
+  });
+
+  it('spreads geoJsonLayers configs into geo-${cfg.id} bindings', () => {
+    const src = readFileSync(
+      resolve(__dirname, '../../MapboxMapPage.tsx'),
+      'utf8',
+    );
+    const bindingBlock = src.slice(
+      src.indexOf('const layerBindings'),
+      src.indexOf('const mapLeftDockSections'),
+    );
+    expect(
+      bindingBlock,
+      'geo-${cfg.id} spread (geoJsonLayers.configs) is missing from layerBindings — the Administrative Boundaries dock section will be missing its GeoJSON layer toggles',
+    ).toContain('`geo-${cfg.id}`');
+  });
 });
