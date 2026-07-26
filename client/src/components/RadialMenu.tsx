@@ -5,6 +5,7 @@ import {
   Radio, AlertTriangle, StickyNote, Shield, MapPin,
   Camera, CheckCircle, UserPlus, X, Zap,
 } from 'lucide-react';
+import { withAlpha } from '../utils/withAlpha';
 
 interface RadialMenuProps {
   onStatusChange?: () => void;
@@ -178,7 +179,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
             strokeWidth="1"
             className="hover:brightness-150 transition-all"
             style={{ filter: 'brightness(1)' }}
-            onMouseEnter={(e) => { (e.target as SVGPathElement).style.fill = `${seg.color}30`; }}
+            onMouseEnter={(e) => { (e.target as SVGPathElement).style.fill = withAlpha(seg.color, '30'); }}
             onMouseLeave={(e) => { (e.target as SVGPathElement).style.fill = 'rgba(20,30,43,0.95)'; }}
           />
           <foreignObject x={iconX - 8} y={iconY - 8} width={16} height={16} style={{ pointerEvents: 'none' }}>

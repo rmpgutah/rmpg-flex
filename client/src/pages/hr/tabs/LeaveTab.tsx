@@ -19,6 +19,7 @@ import type { LeaveRequest, LeaveBalance } from '../../../types';
 import LeaveRequestModal, { type LeaveFormData } from '../modals/LeaveRequestModal';
 import ExportButton from '../../../components/ExportButton';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { withAlpha } from '../../../utils/withAlpha';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-medium uppercase tracking-wide"
-      style={{ backgroundColor: color + '22', color, border: `1px solid ${color}44` }}
+      style={{ backgroundColor: withAlpha(color, '22'), color, border: `1px solid ${withAlpha(color, '44')}` }}
     >
       {status}
     </span>

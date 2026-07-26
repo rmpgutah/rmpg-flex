@@ -12,6 +12,7 @@ import IconButton from '../../../components/IconButton';
 import { UNIT_STATUS_COLORS, PRIORITY_COLORS } from '../utils/mapConstants';
 import { HAZARD_FLAGS } from '../utils/mapMarkers';
 import { formatIncidentType } from '../../../utils/caseNumbers';
+import { withAlpha } from '../../../utils/withAlpha';
 
 export interface RosterUnit {
   id: number;
@@ -123,7 +124,7 @@ export default function MapRosterDock({
                   className={`w-full text-left px-3 py-1.5 transition-colors ${hasGps ? 'hover:bg-surface-overlay cursor-pointer' : 'opacity-50 cursor-default'}`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 shrink-0" style={{ borderRadius: '50%', background: color, boxShadow: `0 0 4px ${color}80` }} />
+                    <span className="w-2 h-2 shrink-0" style={{ borderRadius: '50%', background: color, boxShadow: `0 0 4px ${withAlpha(color, '80')}` }} />
                     <span className="text-rmpg-200 text-[11px] font-mono font-semibold">{unit.call_sign}</span>
                     <span className="text-rmpg-400 text-[10px] truncate flex-1">{unit.officer_name}</span>
                     {!hasGps && <span className="text-rmpg-500 text-[9px]">NO GPS</span>}
@@ -156,7 +157,7 @@ export default function MapRosterDock({
                   className={`w-full text-left px-3 py-1.5 transition-colors ${hasGps ? 'hover:bg-surface-overlay cursor-pointer' : 'opacity-50 cursor-default'}`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="shrink-0 text-[8px] font-bold px-1 py-px" style={{ background: `${color}22`, color, borderRadius: 2 }}>
+                    <span className="shrink-0 text-[8px] font-bold px-1 py-px" style={{ background: withAlpha(color, '22'), color, borderRadius: 2 }}>
                       P{call.priority}
                     </span>
                     <span className="text-rmpg-200 text-[11px] font-mono font-semibold">{call.call_number}</span>
@@ -166,7 +167,7 @@ export default function MapRosterDock({
                   {hasFlags && (
                     <div className="ml-4 mt-0.5 flex flex-wrap gap-0.5">
                       {HAZARD_FLAGS.filter((f) => call[f.key]).map((f) => (
-                        <span key={f.key} className="text-[7px] font-bold px-1 py-px" style={{ background: `${f.color}22`, color: f.color, borderRadius: 2 }}>
+                        <span key={f.key} className="text-[7px] font-bold px-1 py-px" style={{ background: withAlpha(f.color, '22'), color: f.color, borderRadius: 2 }}>
                           {f.label}
                         </span>
                       ))}

@@ -3,6 +3,7 @@
 import { Briefcase, AlertTriangle, CheckCircle, Clock, TrendingUp, Gauge } from 'lucide-react';
 import PanelTitleBar from './PanelTitleBar';
 import { computeSlaStatus, slaBadge, type SlaInput } from '../utils/caseSla';
+import { withAlpha } from '../utils/withAlpha';
 
 /** Compact SLA badge for case rows / detail header. Renders nothing when the
  *  case has no live deadline (closed, or no due_date/sla_hours). */
@@ -10,7 +11,7 @@ export function SlaBadge({ caseRow }: { caseRow: SlaInput }) {
   const b = slaBadge(computeSlaStatus(caseRow).state);
   if (!b) return null;
   return (
-    <span className="text-[8px] font-bold px-1 py-0.5 border whitespace-nowrap" style={{ color: b.color, borderColor: `${b.color}66` }}>
+    <span className="text-[8px] font-bold px-1 py-0.5 border whitespace-nowrap" style={{ color: b.color, borderColor: withAlpha(b.color, '66') }}>
       {b.label}
     </span>
   );

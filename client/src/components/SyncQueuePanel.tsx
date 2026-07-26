@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { parseTimestamp } from '../utils/dateUtils';
+import { withAlpha } from '../utils/withAlpha';
 
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
@@ -153,8 +154,8 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
                       className="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded-sm tracking-wider flex-shrink-0"
                       style={{
                         color: typeInfo.color,
-                        background: `${typeInfo.color}15`,
-                        border: `1px solid ${typeInfo.color}30`,
+                        background: withAlpha(typeInfo.color, '15'),
+                        border: `1px solid ${withAlpha(typeInfo.color, '30')}`,
                       }}
                     >
                       {typeInfo.label}

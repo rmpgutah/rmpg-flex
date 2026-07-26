@@ -52,11 +52,18 @@ describe('DockToggleRow', () => {
     expect(dot).toHaveStyle({ background: 'var(--brand-gold)' });
   });
 
-  it('produces a valid (non-concatenated) box-shadow when falling back to the var() default color', () => {
+  it('keeps the glow translucent when falling back to the var() default color', () => {
+    // Previously asserted the bare token ('0 0 4px var(--brand-gold)'). That was
+    // valid CSS but silently DISCARDED the 0x80 alpha, so the fallback dot
+    // rendered a solid glow instead of a 50% one. withAlpha now routes tokens
+    // through color-mix(), which preserves the alpha. See
+    // docs/superpowers/specs/2026-07-25-hex-alpha-concat-fix-design.md.
     const onToggle = vi.fn();
     render(<DockToggleRow item={{ id: 'x', label: 'X', active: true, onToggle }} />);
     const dot = screen.getByText('X').closest('button')!.querySelector('span');
-    expect(dot).toHaveStyle({ boxShadow: '0 0 4px var(--brand-gold)' });
+    expect(dot).toHaveStyle({
+      boxShadow: '0 0 4px color-mix(in srgb, var(--brand-gold) 50.2%, transparent)',
+    });
   });
 
   it('still applies the alpha-suffixed glow for an explicit hex color', () => {

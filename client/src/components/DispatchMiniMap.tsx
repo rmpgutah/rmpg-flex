@@ -21,6 +21,7 @@ import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { apiFetch } from '../hooks/useApi';
 import { speak } from '../utils/edgeTTS';
+import { withAlpha } from '../utils/withAlpha';
 import ManeuverArrow from './ManeuverArrow';
 import type { CallForService, Unit } from '../types';
 
@@ -88,7 +89,7 @@ function buildCallMarker(label: string, priority?: string): HTMLElement {
     padding:2px 4px;border:1.5px solid rgba(255,255,255,0.9);
     white-space:nowrap;font-family:'JetBrains Mono',monospace;
     letter-spacing:0.03em;border-radius:1px;
-    box-shadow:0 0 8px ${color}50;
+    box-shadow:0 0 8px ${withAlpha(color, '50')};
   `;
   tag.textContent = label;
 
@@ -668,7 +669,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.9)', border: `1px solid ${STATUS_COLORS.warning}55`,
+            background: 'rgba(0,0,0,0.9)', border: `1px solid ${withAlpha(STATUS_COLORS.warning, '55')}`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
             borderRadius: 2,
           }}>
@@ -687,7 +688,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.85)', border: `1px solid ${STATUS_COLORS.caution}40`,
+            background: 'rgba(0,0,0,0.85)', border: `1px solid ${withAlpha(STATUS_COLORS.caution, '40')}`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
             borderRadius: 2,
           }}>

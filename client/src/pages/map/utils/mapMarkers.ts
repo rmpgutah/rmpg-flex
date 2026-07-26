@@ -5,6 +5,7 @@ import { formatEnumValue } from '../../../utils/formatters';
 import { escapeHtml } from '../../../utils/sanitize';
 import { getGpsStaleness } from '../../../utils/gpsStaleness';
 import { haversineDistance } from '../../../utils/unitRecommendation';
+import { withAlpha } from '../../../utils/withAlpha';
 import {
   TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
   TACTICAL_TEXT_PRIMARY, TACTICAL_TEXT_DIM,
@@ -99,7 +100,7 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
     display:flex;align-items:center;justify-content:center;
     background:${color};
     border:2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? '#0d1520' : ringColor};
-    box-shadow:0 0 8px ${ringColor}b3;
+    box-shadow:0 0 8px ${withAlpha(ringColor, 'b3')};
   `;
   badge.innerHTML = UNIT_GLYPH_SVG;
   // Rotate the whole badge to point in the direction of travel. Only applied
@@ -134,7 +135,7 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
       position:absolute;top:50%;left:50%;
       width:${pixelRadius * 2}px;height:${pixelRadius * 2}px;
       margin-left:-${pixelRadius}px;margin-top:${marginTop}px;
-      border-radius:50%;background:${color}22;border:1px solid ${color}55;
+      border-radius:50%;background:${withAlpha(color, '22')};border:1px solid ${withAlpha(color, '55')};
       pointer-events:none;z-index:-1;
     `;
     inner.appendChild(ring);
@@ -164,7 +165,7 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
   if (badge) {
     badge.style.background = color;
     badge.style.border = `2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? '#0d1520' : ringColor}`;
-    badge.style.boxShadow = `0 0 8px ${ringColor}b3`;
+    badge.style.boxShadow = `0 0 8px ${withAlpha(ringColor, 'b3')}`;
     badge.style.transform = (unit.gps_heading != null && Number.isFinite(unit.gps_heading)) ? `rotate(${unit.gps_heading}deg)` : '';
   }
 
@@ -188,7 +189,7 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
       position:absolute;top:50%;left:50%;
       width:${pixelRadius * 2}px;height:${pixelRadius * 2}px;
       margin-left:-${pixelRadius}px;margin-top:${marginTop}px;
-      border-radius:50%;background:${color}22;border:1px solid ${color}55;
+      border-radius:50%;background:${withAlpha(color, '22')};border:1px solid ${withAlpha(color, '55')};
       pointer-events:none;z-index:-1;
     `;
     inner.appendChild(ring);
@@ -226,7 +227,7 @@ export function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
     background:${color};border:2px solid ${color};
     transform:rotate(45deg);border-radius:2px;
     display:flex;align-items:center;justify-content:center;
-    cursor:pointer;box-shadow:0 0 8px ${color}99;
+    cursor:pointer;box-shadow:0 0 8px ${withAlpha(color, '99')};
   `;
   const inner = document.createElement('span');
   inner.style.cssText = `transform:rotate(-45deg);font-size:8px;font-weight:700;color:#fff;font-family:ui-monospace,monospace;`;
@@ -241,7 +242,7 @@ export function buildCallPopupHtml(call: ActiveCall, queued: boolean = false): s
   const color = PRIORITY_COLORS[call.priority] || '#888888';
   const flags = HAZARD_FLAGS
     .filter(f => (call as any)[f.key])
-    .map(f => `<span style="background:${f.color}22;color:${f.color};padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:3px;">${f.label}</span>`)
+    .map(f => `<span style="background:${withAlpha(f.color, '22')};color:${f.color};padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:3px;">${f.label}</span>`)
     .join('');
   const hasCoords = call.latitude != null && call.longitude != null;
   const addToRouteBtn = hasCoords

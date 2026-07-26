@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Minus, Award, Target, Shield, Activity, BarChart3 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from './PanelTitleBar';
+import { withAlpha } from '../utils/withAlpha';
 
 interface MetricDetail {
   score: number;
@@ -117,7 +118,7 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
               className="flex items-center justify-center font-bold"
               style={{
                 fontFamily: 'monospace', fontSize: 48, lineHeight: 1,
-                color: GRADE_COLORS[data.grade], textShadow: `0 0 12px ${GRADE_COLORS[data.grade]}40`,
+                color: GRADE_COLORS[data.grade], textShadow: `0 0 12px ${withAlpha(GRADE_COLORS[data.grade], '40')}`,
                 minWidth: 64,
               }}
             >

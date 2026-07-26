@@ -75,6 +75,7 @@ import ModuleDirectoryPage from './ModuleDirectoryPage';
 import { useBattery } from '../components/BatteryIndicator';
 import type { MapUnit } from './map/utils/mapConstants';
 import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml } from './map/utils/mapMarkers';
+import { withAlpha } from '../utils/withAlpha';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -2631,7 +2632,7 @@ export default function NavigationPage() {
       {navAlert && (
         <div
           className="absolute z-40 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 shadow-2xl animate-pulse"
-          style={{ top: 46, background: 'rgba(8,8,8,0.96)', border: `1px solid ${navAlert.color}`, borderRadius: 2, maxWidth: '76%', boxShadow: `0 0 16px ${navAlert.color}66` }}
+          style={{ top: 46, background: 'rgba(8,8,8,0.96)', border: `1px solid ${navAlert.color}`, borderRadius: 2, maxWidth: '76%', boxShadow: `0 0 16px ${withAlpha(navAlert.color, '66')}` }}
         >
           <AlertTriangle className="w-4 h-4 shrink-0" style={{ color: navAlert.color }} />
           <span className="text-[12px] font-bold uppercase tracking-wide truncate" style={{ color: navAlert.color }}>{navAlert.text}</span>

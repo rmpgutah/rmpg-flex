@@ -18,6 +18,7 @@ import {
 } from './hudUnits';
 import { GAUGE_R, GAUGE_CIRC, GAUGE_SWEEP, gaugeTick } from './gaugeGeometry';
 import { harshEventColor } from '../drivingScoreColor';
+import { withAlpha } from '../../../utils/withAlpha';
 
 const prefersReducedMotion = (): boolean => {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
@@ -525,7 +526,7 @@ export function HudSourceChip({ label, color, fixTick }: { label: string; color:
     return () => window.clearTimeout(t);
   }, [fixTick, reduced]);
   return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: `1px solid ${color}66`, color, borderRadius: 2 }} title="GPS source — pulses on each new fix">
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: `1px solid ${withAlpha(color, '66')}`, color, borderRadius: 2 }} title="GPS source — pulses on each new fix">
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: color, transition: 'transform 0.3s ease-out', transform: pulse ? 'scale(1.9)' : 'scale(1)' }} />
       {label}
     </span>

@@ -22,6 +22,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
 import { toDisplayLabel } from '../../utils/formatters';
+import { withAlpha } from '../../utils/withAlpha';
 
 // ── Safe Array Helper ─────────────────────────────────────────
 // Ensures a value that may be a JSON string, undefined, or already an array is always an array
@@ -9774,7 +9775,7 @@ function ThemePanel() {
             <div className="w-12 h-12 rounded-sm border border-rmpg-600" style={{ backgroundColor: accentColor }} />
             <div className="space-y-1">
               <div className="text-xs font-medium" style={{ color: accentColor }}>Accent Text</div>
-              <div className="text-[10px] px-2 py-0.5 rounded-sm border" style={{ borderColor: accentColor + '80', backgroundColor: accentColor + '1a', color: accentColor }}>
+              <div className="text-[10px] px-2 py-0.5 rounded-sm border" style={{ borderColor: withAlpha(accentColor, '80'), backgroundColor: withAlpha(accentColor, '1a'), color: accentColor }}>
                 Sample Button
               </div>
             </div>

@@ -4,12 +4,13 @@
 // ──────────────────────────────────────────────────────────────────
 import { Fragment } from 'react';
 import { Antenna, WifiOff } from 'lucide-react';
+import { withAlpha } from '../../utils/withAlpha';
 
 export function Sep() { return <span className="text-[10px] font-mono" style={{ color: 'var(--rt-muted)' }}>│</span>; }
 
 export function Banner({ icon, color, bg, children }: { icon: React.ReactNode; color: string; bg: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-2" style={{ background: bg, borderBottom: `1px solid ${color}66` }}>
+    <div className="flex items-center gap-3 px-4 py-2" style={{ background: bg, borderBottom: `1px solid ${withAlpha(color, '66')}` }}>
       {icon}
       <div className="flex-1 text-[10px] font-mono flex items-center gap-2">{children}</div>
     </div>

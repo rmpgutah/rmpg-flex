@@ -3,6 +3,8 @@
 // callers wrap the returned element in `new mapboxgl.Marker({ element })`.
 // Theme tokens mirror client/src/index.css :root (pure-black / gold Spillman).
 
+import { withAlpha } from './withAlpha';
+
 /**
  * Reject coordinates that Mapbox would happily plot but a human reading the
  * map would treat as a bug: NaN / Infinity, the exact (0, 0) no-fix signature
@@ -108,7 +110,7 @@ export function buildUnitMarker(opts: UnitMarkerOpts): HTMLElement {
     'justify-content': 'center',
     background: color,
     border: '2px solid #0d1520',
-    'box-shadow': `0 0 8px ${color}b3`,
+    'box-shadow': `0 0 8px ${withAlpha(color, 'b3')}`,
   });
   badge.innerHTML = UNIT_GLYPH_SVG;
   el.appendChild(badge);
