@@ -6,7 +6,7 @@ import { LEAVE_STATUS_COLORS } from '../../pages/hr/utils/hrConstants';
 /**
  * The bug class this helper exists to close: `${color}22` only produces valid
  * CSS when `color` is a raw 6-digit hex. Anything else — a theme variable most
- * of all — yields `var(--rmpg-500)22`, which the browser drops silently.
+ * of all — yields `var(--text-muted)22`, which the browser drops silently.
  *
  * This pattern is the invariant. No return value from withAlpha may ever match
  * it, for any input.
@@ -135,10 +135,12 @@ describe('withAlpha — the live palette regressions this closes', () => {
   });
 
   it('renders a tint for the bare var() fallbacks in PayrollTab / ForensicLabPage', () => {
-    // Both spell the fallback `(MAP[key] || 'var(--rmpg-500)') + '20'`, so the
-    // fallback itself was the broken input for any unmapped status.
-    const out = withAlpha('var(--rmpg-500)', '20');
-    expect(out).toBe('color-mix(in srgb, var(--rmpg-500) 12.55%, transparent)');
+    // Both spell the fallback `(MAP[key] || 'var(--text-muted)') + '20'`, so the
+    // fallback itself was the broken input for any unmapped status. #3031
+    // re-pointed this from a --rmpg-* step; --text-muted has NO -rgb triple,
+    // which is why only the color-mix route can repair these two sites.
+    const out = withAlpha('var(--text-muted)', '20');
+    expect(out).toBe('color-mix(in srgb, var(--text-muted) 12.55%, transparent)');
   });
 });
 

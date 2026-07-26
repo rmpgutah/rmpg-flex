@@ -3,16 +3,25 @@
  *
  * Replaces the `${color}22` / `color + '20'` idiom, which only produces valid
  * CSS when `color` is a raw 6-digit hex. When the value is a CSS variable the
- * concatenation yields `var(--rmpg-500)22` — invalid CSS — so the tint, glow,
+ * concatenation yields `var(--text-muted)22` — invalid CSS — so the tint, glow,
  * or ring silently does not render. Nothing throws; the element just loses its
  * background.
  *
- * This is a LIVE failure, not a latent contract. Two values in shipped palette
- * maps are already `var()` (both from 37a603e1fc, 2026-06-16):
- *   - `statusColors.ts` UNIT_STATUS_HEX.off_duty     → 'var(--rmpg-500)'
- *   - `hrConstants.ts`  LEAVE_STATUS_COLORS.cancelled → 'var(--rmpg-500)'
- * so off-duty unit markers currently render with no accuracy ring and no glow,
- * and cancelled-leave badges with no background tint or border.
+ * This was a LIVE failure, not a latent contract. Two values in shipped palette
+ * maps became `var()` in 37a603e1fc (2026-06-16):
+ *
+ *   - `statusColors.ts` UNIT_STATUS_HEX.off_duty      → 'var(--text-muted)'
+ *   - `hrConstants.ts`  LEAVE_STATUS_COLORS.cancelled → 'var(--text-muted)'
+ *
+ * so off-duty unit markers rendered with no accuracy ring and no glow, and
+ * cancelled-leave badges with no background tint or border.
+ *
+ * Both entries pointed at a `--rmpg-*` ramp step until #3031 re-pointed them by
+ * role. The specific token is irrelevant to the bug — ANY `var()` breaks the
+ * concat. It is very relevant to the fix, though: `--text-muted` has no `-rgb`
+ * companion triple, so the `rgb(var(--x-rgb) / a)` approach could not have
+ * repaired these two sites at all without first adding triples to all four
+ * theme blocks. `color-mix` needs nothing.
  *
  * Strategy — two paths, chosen by the shape of `color`:
  *
@@ -59,7 +68,7 @@ const TWO_DIGIT_HEX = /^[0-9a-fA-F]{2}$/;
  * Compose `color` at `alpha`, emitting valid CSS whatever shape `color` is.
  *
  * @param color Any CSS color string: raw hex (`#22c55e`), a theme variable
- *   (`var(--rmpg-500)`), `hsl(...)`, `rgb(...)`, or a named color.
+ *   (`var(--text-muted)`), `hsl(...)`, `rgb(...)`, or a named color.
  * @param alpha Either a 2-digit hex string matching the legacy suffix (`'22'`)
  *   — preferred when migrating an existing call site, since it is concatenated
  *   verbatim onto raw hex and is therefore byte-identical to the old output —
@@ -67,7 +76,7 @@ const TWO_DIGIT_HEX = /^[0-9a-fA-F]{2}$/;
  *
  * @example
  *   withAlpha('#22c55e', '80')          // '#22c55e80'
- *   withAlpha('var(--rmpg-500)', '22')  // 'color-mix(in srgb, var(--rmpg-500) 13.33%, transparent)'
+ *   withAlpha('var(--text-muted)', '22') // 'color-mix(in srgb, var(--text-muted) 13.33%, transparent)'
  *   withAlpha('var(--sev-ok)', 0.5)     // 'color-mix(in srgb, var(--sev-ok) 50%, transparent)'
  */
 export function withAlpha(color: string, alpha: number | string): string {

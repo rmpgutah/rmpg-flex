@@ -114,6 +114,18 @@ export default {
           700: 'rgb(var(--accent-silver-700-rgb) / <alpha-value>)',
         },
 
+        // ── Foreground roles ───────────────────────────────
+        // The rmpg ramp encodes surface ELEVATION and inverts between themes
+        // (blue-silver --rmpg-300 is `157 175 194`, day is `70 70 70`), so it
+        // is not a text scale. These are: they do not invert, and every step
+        // clears WCAG AA 4.5:1 on base/raised/sunken in all four blocks.
+        fg: {
+          DEFAULT: 'rgb(var(--text-primary-rgb) / <alpha-value>)',
+          primary: 'rgb(var(--text-primary-rgb) / <alpha-value>)',
+          secondary: 'rgb(var(--text-secondary-rgb) / <alpha-value>)',
+          muted: 'rgb(var(--text-muted-rgb) / <alpha-value>)',
+        },
+
         // Neutral graphite greys — no blue cast
         rmpg: {
           50:  'rgb(var(--rmpg-50-rgb) / <alpha-value>)',

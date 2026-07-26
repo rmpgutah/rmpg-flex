@@ -18,7 +18,9 @@ html.theme-dark,
   --surface-overlay: #060b10; --surface-overlay-rgb: 6 11 16;
   --surface-deep: #060b10;   --surface-deep-rgb: 6 11 16;
   --border-default: #2a3a4d; --border-subtle: #1e2b3a; --border-strong: #3a4f66; --border-panel: #243a52;
-  --text-primary: #e6edf5; --text-secondary: #c3d0de; --text-muted: #8fa3b8;
+  --text-primary-rgb: 230 237 245; --text-primary: rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 195 208 222; --text-secondary: rgb(var(--text-secondary-rgb));
+  --text-muted-rgb: 143 163 184; --text-muted: rgb(var(--text-muted-rgb));
   --brand-gold: #d4a017; --brand-blue: #5a85b8;
   /* Record-icon tile — steel-blue accent for no-photo glyph tiles (persons/vehicles/properties/business).
      Replaces the old per-list "black box + dull initials" look with one legible, on-system blue. */
@@ -215,7 +217,9 @@ html.theme-light {
   --surface-overlay: #ffffff; --surface-overlay-rgb: 255 255 255;
   --surface-deep: #c9c5b8;   --surface-deep-rgb: 201 197 184;
   --border-default: #9a958a; --border-subtle: #c3cdd8; --border-strong: #6f7b8a; --border-panel: #9a958a;
-  --text-primary: #1a1a1a; --text-secondary: #33312b; --text-muted: #555555;
+  --text-primary-rgb: 26 26 26; --text-primary: rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 51 49 43; --text-secondary: rgb(var(--text-secondary-rgb));
+  --text-muted-rgb: 85 85 85; --text-muted: rgb(var(--text-muted-rgb));
   --brand-gold: #936c0a; --brand-blue: #2e4a66;
   --pri-scheduled: #8a929b;
   /* Record-icon tile — day (light-grey) steel-blue on white surfaces. */
@@ -328,7 +332,9 @@ html.theme-legacy-black {
   --surface-overlay: #030303; --surface-overlay-rgb: 3 3 3;
   --surface-deep: #000000; --surface-deep-rgb: 0 0 0;
   --border-default: #232323; --border-subtle: #121212; --border-strong: #3a3a3a; --border-panel: #262626;
-  --text-primary: #f2f2f2; --text-secondary: #cfcfcf; --text-muted: #8a8a8a;
+  --text-primary-rgb: 242 242 242; --text-primary: rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 207 207 207; --text-secondary: rgb(var(--text-secondary-rgb));
+  --text-muted-rgb: 138 138 138; --text-muted: rgb(var(--text-muted-rgb));
   --brand-blue: #9a9a9a; --brand-gold: #d4a017;
   --pri-scheduled: #4a4a4a;
   /* Record-icon tile — legacy pure-black keeps a restrained dark steel-blue accent. */
@@ -445,7 +451,9 @@ html.theme-blue-silver {
   --surface-header: #284a6c; --surface-header-rgb: 40 74 108;
   --surface-hover-step: #294a6b; --surface-hover-step-rgb: 41 74 107;
   --border-default: #46688c; --border-subtle: #2a4763; --border-strong: #7996b8; --border-panel: #3d5f82;
-  --text-primary: #f0f4f9; --text-secondary: #cdd8e6; --text-muted: #9bb0c7;
+  --text-primary-rgb: 240 244 249; --text-primary: rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 205 216 230; --text-secondary: rgb(var(--text-secondary-rgb));
+  --text-muted-rgb: 177 193 211; --text-muted: rgb(var(--text-muted-rgb));
   --brand-blue: #5a9ae0;
   --pri-scheduled: #63768f;
   /* Record-icon tile — a brighter blue than night's for the "silver-blue" identity. */
@@ -541,8 +549,8 @@ html.theme-blue-silver {
   /* Records chrome tokens — BLUE & SILVER */
   --spm-chrome: #1a3350; --spm-form: #142840; --spm-field: #182f4a;
   --spm-border: #46688c; --spm-field-border: #46688c; --spm-accent: #5a9ae0;
-  --spm-select: #316ac5; --spm-text: #f0f4f9; --spm-text-muted: #9bb0c7;
-  --spm-text-rgb: 240 244 249; --spm-text-muted-rgb: 155 176 199;
+  --spm-select: #316ac5; --spm-text: #f0f4f9; --spm-text-muted: #b1c1d3;
+  --spm-text-rgb: 240 244 249; --spm-text-muted-rgb: 177 193 211;
   --spm-group-head: linear-gradient(#2c4f74, #22405f);
   --spm-toolbar: linear-gradient(#2c4f74, #22405f);
   --spm-toolbar-hover: linear-gradient(#345c85, #294a6b);
@@ -581,7 +589,7 @@ html.theme-blue-silver {
   /* Module-bar + bevel/titlebar — BLUE & SILVER. Derived from the navy ramp so
      the active nav tile reads as *sunken navy*, not a black hole, and panel
      title bars read as a raised navy step instead of the inherited pure black. */
-  --toolbar-nav-text: #9bb0c7;
+  --toolbar-nav-text: #b1c1d3;
   --toolbar-nav-text-hover: #f0f4f9;
   --toolbar-nav-text-active: var(--brand-blue);
   --toolbar-nav-hover: rgba(255, 255, 255, 0.06);
