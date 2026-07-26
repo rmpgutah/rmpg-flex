@@ -1619,6 +1619,11 @@ export default function FleetPage() {
                   else if (e.key === 'Home') next = 0;
                   else next = FLEET_VIEWS.length - 1;
                   const target = FLEET_VIEWS[next];
+                  // Home on the first tab (or End on the last) computes the tab we
+                  // are already on. setViewMode would bail out, the focus effect
+                  // would never run, and pendingTabFocusRef would stay set — later
+                  // stolen by an unrelated setViewMode call.
+                  if (target.id === viewMode) return;
                   if (target.id === 'work_orders') setWorkOrdersVehicleFilter(null);
                   pendingTabFocusRef.current = true;
                   setViewMode(target.id);
