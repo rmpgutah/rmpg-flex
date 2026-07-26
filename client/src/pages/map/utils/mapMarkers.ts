@@ -1,5 +1,5 @@
 import type { MapUnit as Unit, ActiveCall } from './mapConstants';
-import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS } from './mapConstants';
+import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, priorityHex } from './mapConstants';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { formatEnumValue } from '../../../utils/formatters';
 import { escapeHtml } from '../../../utils/sanitize';
@@ -9,6 +9,12 @@ import {
   TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
   TACTICAL_TEXT_PRIMARY, TACTICAL_TEXT_DIM,
 } from './tacticalPalette';
+
+/** Ink for the marker's P{n} label. The fills are light (they must clear 3:1
+ *  against the navy land), so the label is dark: with white ink the fill would
+ *  need luminance <= 0.183 for 4.5:1 text AND >= 0.245 for 3:1 vs land, which
+ *  is unsatisfiable. Measured >= 5.27:1 on every PRIORITY_HEX step. */
+export const CALL_MARKER_INK = '#0d1520';
 
 // How long a marker's CSS transform transition runs — matches the fast
 // units-poll interval (MapboxMapPage.tsx UNITS_FAST_POLL_MS) so a position
@@ -218,7 +224,7 @@ export function buildUnitPopupHtml(unit: Unit): string {
 
 /** Build HTML for a call marker element. */
 export function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
-  const color = PRIORITY_COLORS[call.priority] || '#888888';
+  const color = priorityHex(call.priority);
   const el = document.createElement('div');
   el.className = 'rmpg-mbx-call';
   el.style.cssText = `
@@ -229,7 +235,7 @@ export function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
     cursor:pointer;box-shadow:0 0 8px ${color}99;
   `;
   const inner = document.createElement('span');
-  inner.style.cssText = `transform:rotate(-45deg);font-size:8px;font-weight:700;color:#fff;font-family:ui-monospace,monospace;`;
+  inner.style.cssText = `transform:rotate(-45deg);font-size:8px;font-weight:700;color:${CALL_MARKER_INK};font-family:ui-monospace,monospace;`;
   inner.textContent = `P${call.priority}`;
   el.appendChild(inner);
   el.title = `${call.call_number} — ${formatIncidentType(call.incident_type)}`;

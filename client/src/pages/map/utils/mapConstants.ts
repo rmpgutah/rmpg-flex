@@ -3,10 +3,10 @@
 // ============================================================
 
 import type { UnitStatus } from '../../../types';
-import { UNIT_STATUS_HEX, UNIT_STATUS_ABBREV, PRIORITY_HEX } from '../../../utils/statusColors';
+import { UNIT_STATUS_HEX, UNIT_STATUS_ABBREV, PRIORITY_HEX, priorityHex } from '../../../utils/statusColors';
 
 // Re-export from consolidated source
-export { UNIT_STATUS_HEX as UNIT_STATUS_COLORS, UNIT_STATUS_ABBREV as UNIT_STATUS_LABELS, PRIORITY_HEX as PRIORITY_COLORS };
+export { UNIT_STATUS_HEX as UNIT_STATUS_COLORS, UNIT_STATUS_ABBREV as UNIT_STATUS_LABELS, PRIORITY_HEX as PRIORITY_COLORS, priorityHex };
 
 // ── Types ────────────────────────────────────────────────────
 

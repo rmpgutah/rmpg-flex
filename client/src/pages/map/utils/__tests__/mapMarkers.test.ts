@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove, computeAccuracyRingGeometry } from '../mapMarkers';
+import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove, computeAccuracyRingGeometry, CALL_MARKER_INK } from '../mapMarkers';
 import { TACTICAL_SURFACE_RAISED, TACTICAL_BRAND_GOLD, TACTICAL_TEXT_PRIMARY } from '../tacticalPalette';
 import type { MapUnit, ActiveCall } from '../mapConstants';
+import { PRIORITY_HEX, priorityHex } from '../../../../utils/statusColors';
+import { MAP_PALETTE } from '../../../../utils/mapboxBasemap';
 
 const unit: MapUnit = {
   id: 'u1', call_sign: 'A12', officer_name: 'J. Smith', status: 'available',
@@ -75,6 +77,74 @@ describe('mapMarkers', () => {
     expect(el.querySelector('[data-role="badge"]')).toBe(badgeBefore);
     expect(el.querySelector('[data-role="label"]')).toBe(labelBefore);
     expect(el.querySelector('[data-role="label"]')?.textContent).toBe('B99');
+  });
+});
+
+function srgbC(c: number) { const v = c / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+function lumOf(hex: string) {
+  const n = parseInt(hex.slice(1), 16);
+  return 0.2126 * srgbC((n >> 16) & 255) + 0.7152 * srgbC((n >> 8) & 255) + 0.0722 * srgbC(n & 255);
+}
+function ratio(a: string, b: string) {
+  const [x, y] = [lumOf(a), lumOf(b)];
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
+describe('map priority palette', () => {
+  it('is raw 6-digit hex — the ${color}NN concat contract forbids var()', () => {
+    for (const [k, v] of Object.entries(PRIORITY_HEX)) {
+      expect(v, `${k} must be raw hex`).toMatch(/^#[0-9a-f]{6}$/i);
+    }
+  });
+
+  it('clears 3:1 against the fixed map land', () => {
+    for (const [k, v] of Object.entries(PRIORITY_HEX)) {
+      expect(ratio(v, MAP_PALETTE.land), `${k} (${v}) on land`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('the P{n} ink clears 4.5:1 against every priority fill', () => {
+    for (const [k, v] of Object.entries(PRIORITY_HEX)) {
+      expect(ratio(CALL_MARKER_INK, v), `ink on ${k} (${v})`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('resolves both the "P1" and bare "1" key shapes', () => {
+    expect(priorityHex('P1')).toBe(PRIORITY_HEX.P1);
+    expect(priorityHex('1')).toBe(PRIORITY_HEX.P1);
+    expect(priorityHex(4)).toBe(PRIORITY_HEX.P4);
+    expect(priorityHex('nonsense')).toBe(PRIORITY_HEX.P4);
+  });
+
+  it('gives a call marker its real priority color, not the gray fallback', () => {
+    // Regression: PRIORITY_HEX is keyed 'P1'..'P4' but ActiveCall.priority is a
+    // bare number string ('1' in the fixture above), so the old direct lookup
+    // always missed and every marker rendered #888888.
+    //
+    // Reading it back via el.style.background doesn't work in this jsdom
+    // version: cssstyle's parser has an unrelated quirk where the `background`
+    // shorthand followed by certain longhands (border-radius, transform, ...)
+    // in one cssText string silently voids the ENTIRE inline style — true of
+    // buildCallMarkerEl's cssText regardless of this fix (reproduced with the
+    // pre-existing #888888 fallback too), so el.style.* always reads back
+    // empty here. Capture the string at assignment time instead, so the
+    // regression check isn't defeated by that environment limitation.
+    const proto = (globalThis as unknown as { CSSStyleDeclaration: { prototype: CSSStyleDeclaration } }).CSSStyleDeclaration.prototype;
+    const descriptor = Object.getOwnPropertyDescriptor(proto, 'cssText')!;
+    const captured: string[] = [];
+    Object.defineProperty(proto, 'cssText', {
+      configurable: true,
+      get: descriptor.get,
+      set(v: string) { captured.push(v); descriptor.set!.call(this, v); },
+    });
+    try {
+      buildCallMarkerEl(call);
+    } finally {
+      Object.defineProperty(proto, 'cssText', descriptor);
+    }
+    const all = captured.join('\n');
+    expect(all).toContain(`background:${PRIORITY_HEX.P1};`);
+    expect(all).not.toContain('#888888');
   });
 });
 
