@@ -23,14 +23,13 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
   Cell,
   LineChart,
   Line,
   Legend,
   AreaChart,
   Area,
+  LabelList,
 } from 'recharts';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -103,8 +102,6 @@ interface OfficerActivityData {
 // ============================================================
 // Constants
 // ============================================================
-
-const PIE_COLORS = ['var(--text-muted)', 'var(--brand-gold)', 'var(--text-muted)', '#a855f7', '#22c55e', '#22c55e', 'var(--rmpg-500)', '#ec4899', '#8b5cf6'];
 
 // Built at render time (not module scope) — the cursor fill is derived from
 // the theme-resolved gold series color, which is only correct once the theme
@@ -1207,11 +1204,20 @@ export default function ReportsPage() {
   };
 
   // Prepare chart data
-  const incidentsChartData = (incidentsData?.by_type ?? []).map((item, i) => ({
-    name: formatGroupKey(item.type),
-    value: item.count,
-    fill: PIE_COLORS[i % PIE_COLORS.length],
-  }));
+  // Sorted descending; the bar length encodes the count and the Y axis encodes
+  // the category, so color carries no information and stays constant.
+  // Beyond MAX_INCIDENT_BARS the tail folds into a visible "Other" bar rather
+  // than being silently dropped.
+  const MAX_INCIDENT_BARS = 10;
+  const incidentsSorted = [...(incidentsData?.by_type ?? [])].sort((a, b) => b.count - a.count);
+  const incidentsHead = incidentsSorted.slice(0, MAX_INCIDENT_BARS);
+  const incidentsTail = incidentsSorted.slice(MAX_INCIDENT_BARS);
+  const incidentsChartData = [
+    ...incidentsHead.map((item) => ({ name: formatGroupKey(item.type), value: item.count })),
+    ...(incidentsTail.length
+      ? [{ name: `Other (${incidentsTail.length})`, value: incidentsTail.reduce((s, i) => s + i.count, 0) }]
+      : []),
+  ];
 
   const priorityChartData = (Array.isArray(dashboardData?.callsByPriority) ? dashboardData.callsByPriority : []).map(item => ({
     priority: item.priority,
@@ -1525,35 +1531,31 @@ export default function ReportsPage() {
                     <p className="text-sm">No data for selected filters</p>
                   </div>
                 ) : (
-                <div className={isMobile ? '' : 'flex items-start gap-4'}>
-                  <ResponsiveContainer width={isMobile ? '100%' : '55%'} height={220}>
-                    <PieChart>
-                      <Pie
-                        data={incidentsChartData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={90}
-                        paddingAngle={3}
-                        dataKey="value"
-                      >
-                        {incidentsChartData.map((entry: { name: string; fill: string }) => (
-                          <Cell key={entry.name} fill={entry.fill} />
-                        ))}
-                      </Pie>
+                <div className="p-2" style={{ background: chartPlotSurface() }}>
+                  <ResponsiveContainer width="100%" height={Math.max(200, incidentsChartData.length * 26)}>
+                    <BarChart
+                      data={incidentsChartData}
+                      layout="vertical"
+                      margin={{ top: 4, right: 36, bottom: 4, left: 4 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" horizontal={false} />
+                      <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={110}
+                        tick={{ fill: 'var(--text-muted)', fontSize: 10 }}
+                      />
                       <Tooltip {...chartTooltipStyle()} />
-                    </PieChart>
+                      <Bar dataKey="value" fill={chartSeriesColors()[0]} radius={[0, 2, 2, 0]}>
+                        <LabelList
+                          dataKey="value"
+                          position="right"
+                          style={{ fill: 'var(--text-secondary)', fontSize: 10, fontFamily: 'monospace' }}
+                        />
+                      </Bar>
+                    </BarChart>
                   </ResponsiveContainer>
-                  {/* Legend */}
-                  <div className={`${isMobile ? 'mt-2' : 'mt-2 flex-1'} space-y-1.5`}>
-                    {incidentsChartData.map((entry: { name: string; value: number; fill: string }) => (
-                      <div key={entry.name} className="flex items-center gap-2 py-0.5 hover:bg-surface-raised/30 px-1 -mx-1 transition-colors rounded-sm">
-                        <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: entry.fill }} />
-                        <span className="text-[10px] text-rmpg-200 min-w-0 truncate flex-1">{entry.name}</span>
-                        <span className="text-[10px] text-rmpg-400 font-mono font-bold tabular-nums">{entry.value}</span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
                 )}
               </div>
