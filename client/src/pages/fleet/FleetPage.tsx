@@ -47,6 +47,18 @@ import type {
 // ============================================================
 
 type ModalMode = 'none' | 'new_vehicle' | 'edit_vehicle' | 'log_maintenance' | 'edit_maintenance' | 'log_fuel' | 'edit_fuel' | 'new_inspection' | 'edit_inspection';
+type FleetViewMode = 'dashboard' | 'analysis' | 'work_orders' | 'vendors' | 'service';
+
+// Fleet-wide views. Rendered as a real tablist — the previous version had
+// no tab semantics and hardcoded a banned legacy gold literal (fails AA in
+// the blue-silver theme and is confusable with --sev-warn).
+const FLEET_VIEWS: { id: FleetViewMode; label: string; icon?: typeof FileText }[] = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'analysis', label: 'Analysis Reports', icon: FileText },
+  { id: 'work_orders', label: 'Work Orders' },
+  { id: 'vendors', label: 'Vendors' },
+  { id: 'service', label: 'Service' },
+];
 
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e', maintenance: '#f59e0b',
@@ -126,7 +138,13 @@ export default function FleetPage() {
   // Tab & modal state
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics', 'dashcam', 'fuel_cards'] as const);
   // Top-level view mode when no vehicle is selected: dashboard (default) or analysis forms
-  const [viewMode, setViewMode] = useState<'dashboard' | 'analysis' | 'work_orders' | 'vendors' | 'service'>('dashboard');
+  // Persisted with the same mechanism as activeTab — the two mode
+  // mechanisms behaving differently is what produced this page's tab bugs.
+  const [viewMode, setViewMode] = usePersistedTab(
+    'rmpg_fleet_view_mode',
+    'dashboard' as FleetViewMode,
+    ['dashboard', 'analysis', 'work_orders', 'vendors', 'service'] as const,
+  );
   const [workOrdersVehicleFilter, setWorkOrdersVehicleFilter] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalMode>('none');
   // Editing state — tracks which record is being edited. Declared here
@@ -1470,64 +1488,52 @@ export default function FleetPage() {
           {selectedId == null || !detail ? (
             // Fleet-wide: view mode toggle (dashboard vs analysis forms)
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-              <div className="flex border-b border-subtle bg-surface-sunken flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('dashboard')}
-                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
-                  style={{
-                    color: viewMode === 'dashboard' ? '#d4a017' : '#888',
-                    borderBottom: viewMode === 'dashboard' ? '2px solid #d4a017' : '2px solid transparent',
-                  }}
-                >
-                  Dashboard
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('analysis')}
-                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1"
-                  style={{
-                    color: viewMode === 'analysis' ? '#d4a017' : '#888',
-                    borderBottom: viewMode === 'analysis' ? '2px solid #d4a017' : '2px solid transparent',
-                  }}
-                >
-                  <FileText size={10} /> Analysis Reports
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setWorkOrdersVehicleFilter(null); setViewMode('work_orders'); }}
-                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
-                  style={{
-                    color: viewMode === 'work_orders' ? '#d4a017' : '#888',
-                    borderBottom: viewMode === 'work_orders' ? '2px solid #d4a017' : '2px solid transparent',
-                  }}
-                >
-                  Work Orders
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('vendors')}
-                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
-                  style={{
-                    color: viewMode === 'vendors' ? '#d4a017' : '#888',
-                    borderBottom: viewMode === 'vendors' ? '2px solid #d4a017' : '2px solid transparent',
-                  }}
-                >
-                  Vendors
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('service')}
-                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
-                  style={{
-                    color: viewMode === 'service' ? '#d4a017' : '#888',
-                    borderBottom: viewMode === 'service' ? '2px solid #d4a017' : '2px solid transparent',
-                  }}
-                >
-                  Service
-                </button>
+              <div
+                className="flex items-center border-b border-rmpg-700 bg-surface-sunken flex-shrink-0"
+                role="tablist"
+                aria-label="Fleet-wide views"
+                onKeyDown={(e) => {
+                  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+                  e.preventDefault();
+                  const idx = FLEET_VIEWS.findIndex((v) => v.id === viewMode);
+                  const next = e.key === 'ArrowRight'
+                    ? (idx + 1) % FLEET_VIEWS.length
+                    : (idx - 1 + FLEET_VIEWS.length) % FLEET_VIEWS.length;
+                  const target = FLEET_VIEWS[next];
+                  if (target.id === 'work_orders') setWorkOrdersVehicleFilter(null);
+                  setViewMode(target.id);
+                }}
+              >
+                {FLEET_VIEWS.map(({ id, label, icon: Icon }) => (
+                  <button
+                    type="button"
+                    key={id}
+                    role="tab"
+                    id={`fleet-view-tab-${id}`}
+                    aria-selected={viewMode === id}
+                    aria-controls="fleet-view-panel"
+                    tabIndex={viewMode === id ? 0 : -1}
+                    onClick={() => {
+                      if (id === 'work_orders') setWorkOrdersVehicleFilter(null);
+                      setViewMode(id);
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-all duration-150 border-b-2 ${
+                      viewMode === id
+                        ? 'text-brand-gold-500 border-brand-gold-500 bg-brand-gold-500/5'
+                        : 'text-fg-muted border-transparent hover:text-rmpg-200 hover:border-rmpg-600'
+                    }`}
+                  >
+                    {Icon && <Icon size={10} />}
+                    {label}
+                  </button>
+                ))}
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto">
+              <div
+                className="flex-1 min-h-0 overflow-y-auto"
+                role="tabpanel"
+                id="fleet-view-panel"
+                aria-labelledby={`fleet-view-tab-${viewMode}`}
+              >
                 {viewMode === 'dashboard' ? (
                   <>
                     <MaintenanceMonitor onSelectVehicle={(id) => { setSelectedId(id); fetchDetail(id); }} />
