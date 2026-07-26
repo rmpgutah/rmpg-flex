@@ -99,8 +99,13 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
       source: CIRCLE_SOURCE_ID,
       paint: {
         'circle-radius': [
+          // Tolerant of both key shapes ('P1' and bare '1') — see
+          // priorityHex() in statusColors.ts. 'circle-color' above already
+          // resolves through priorityHex(c.priority), so this match must
+          // agree with it on shape or a call can render one priority's color
+          // at another priority's radius.
           'match', ['get', 'priority'],
-          'P1', 5, 'P2', 4, 'P3', 3, 2.5,
+          ['P1', '1'], 5, ['P2', '2'], 4, ['P3', '3'], 3, 2.5,
         ],
         'circle-color': ['get', 'priorityColor'],
         'circle-opacity': ['interpolate', ['linear'], ['get', 'age_hours'],

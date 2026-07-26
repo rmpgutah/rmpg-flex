@@ -1,5 +1,6 @@
 import type { MapUnit as Unit, ActiveCall } from './mapConstants';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, priorityHex } from './mapConstants';
+import { CALL_MARKER_INK } from '../../../utils/statusColors';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { formatEnumValue } from '../../../utils/formatters';
 import { escapeHtml } from '../../../utils/sanitize';
@@ -10,11 +11,11 @@ import {
   TACTICAL_TEXT_PRIMARY, TACTICAL_TEXT_DIM,
 } from './tacticalPalette';
 
-/** Ink for the marker's P{n} label. The fills are light (they must clear 3:1
- *  against the navy land), so the label is dark: with white ink the fill would
- *  need luminance <= 0.183 for 4.5:1 text AND >= 0.245 for 3:1 vs land, which
- *  is unsatisfiable. Measured >= 5.27:1 on every PRIORITY_HEX step. */
-export const CALL_MARKER_INK = '#0d1520';
+// Re-exported for call sites that already import CALL_MARKER_INK from here —
+// the canonical definition now lives in utils/statusColors.ts, right below
+// PRIORITY_HEX, since it's used by any badge filled with a PRIORITY_HEX color,
+// not just this file's map markers.
+export { CALL_MARKER_INK };
 
 // How long a marker's CSS transform transition runs — matches the fast
 // units-poll interval (MapboxMapPage.tsx UNITS_FAST_POLL_MS) so a position

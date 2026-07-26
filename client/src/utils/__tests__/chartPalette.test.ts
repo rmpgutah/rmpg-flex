@@ -52,10 +52,17 @@ describe('chart priority ramp', () => {
   it('accepts both the "P1" and bare "1" key shapes', () => {
     // The map's ActiveCall.priority is a bare number string while the typed
     // CallPriority is 'P1'. Both must resolve or markers silently go gray.
+    // Covers all four steps (not just P1/P4) so an index swap in the middle
+    // of the ramp would be caught too.
     expect(chartPriorityColor('P1')).toBe('#ff9483');
     expect(chartPriorityColor('1')).toBe('#ff9483');
     expect(chartPriorityColor(1)).toBe('#ff9483');
+    expect(chartPriorityColor('P2')).toBe('#e08355');
+    expect(chartPriorityColor('2')).toBe('#e08355');
+    expect(chartPriorityColor('P3')).toBe('#a87e5b');
+    expect(chartPriorityColor('3')).toBe('#a87e5b');
     expect(chartPriorityColor('p4')).toBe('#7e6f61');
+    expect(chartPriorityColor('4')).toBe('#7e6f61');
   });
 
   it('falls back to the most recessive step, never to a failing color', () => {

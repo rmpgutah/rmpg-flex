@@ -19,7 +19,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { UNIT_STATUS_HEX, priorityHex } from '../utils/statusColors';
+import { UNIT_STATUS_HEX, priorityHex, CALL_MARKER_INK } from '../utils/statusColors';
 import IconButton from './IconButton';
 import type { CallForService, Unit, UnitStatus } from '../types';
 
@@ -60,8 +60,8 @@ function buildCallMarkerEl(label: string, priority?: string): HTMLElement {
 
   const tag = document.createElement('div');
   tag.style.cssText = `
-    background:${color};color:#fff;font-size:7px;font-weight:900;
-    padding:2px 4px;border:1.5px solid rgba(255,255,255,0.9);
+    background:${color};color:${CALL_MARKER_INK};font-size:7px;font-weight:900;
+    padding:2px 4px;border:1.5px solid ${CALL_MARKER_INK};
     white-space:nowrap;font-family:'JetBrains Mono',monospace;
     letter-spacing:0.03em;border-radius:1px;
     box-shadow:0 0 8px ${color}50;

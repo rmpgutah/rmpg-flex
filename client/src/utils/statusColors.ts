@@ -69,10 +69,20 @@ export const PRIORITY_HEX: Record<string, string> = {
   P4: '#968778',
 };
 
-/** Look up a priority color tolerantly. The typed CallPriority is 'P1', but the
- *  map's ActiveCall carries a bare number string ('1'), and a direct
- *  PRIORITY_HEX[...] lookup on that shape silently missed and fell through to a
- *  gray fallback. Unknown input returns the most recessive step. */
+/** Ink for any badge filled with a PRIORITY_HEX color (map markers, mini-map
+ *  priority badges, etc). The fills are light (they must clear 3:1 against the
+ *  navy map land), so the label/border needs dark ink: with white ink the fill
+ *  would need luminance <= 0.183 for 4.5:1 text AND >= 0.245 for 3:1 vs land,
+ *  which is unsatisfiable. Measured >= 5.27:1 on every PRIORITY_HEX step. */
+export const CALL_MARKER_INK = '#0d1520';
+
+/** Look up a priority color tolerantly. `calls_for_service.priority` is DB-
+ *  constrained to 'P1'..'P4' (migrations/0001_initial.sql) and the dispatch
+ *  queue route passes it through verbatim, so live values are that shape and
+ *  a plain 'P1'-keyed lookup does hit. But call sites in this tree disagree
+ *  about the shape regardless — the map test fixture uses a bare '1', and
+ *  useAutoPanToP1.ts compares against '1' too — so this helper accepts both
+ *  rather than trusting either. Unknown input returns the most recessive step. */
 export function priorityHex(priority: string | number | null | undefined): string {
   const n = Number(String(priority ?? '').trim().replace(/^p/i, ''));
   return Number.isInteger(n) && n >= 1 && n <= 4 ? PRIORITY_HEX[`P${n}`] : PRIORITY_HEX.P4;

@@ -16,7 +16,7 @@ import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecov
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { buildUnitMarker, isValidLngLat, STATUS_COLORS } from '../utils/mapMarkers';
-import { priorityHex } from '../utils/statusColors';
+import { priorityHex, CALL_MARKER_INK } from '../utils/statusColors';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { apiFetch } from '../hooks/useApi';
@@ -82,8 +82,8 @@ function buildCallMarker(label: string, priority?: string): HTMLElement {
 
   const tag = document.createElement('div');
   tag.style.cssText = `
-    background:${color};color:#fff;font-size:7px;font-weight:900;
-    padding:2px 4px;border:1.5px solid rgba(255,255,255,0.9);
+    background:${color};color:${CALL_MARKER_INK};font-size:7px;font-weight:900;
+    padding:2px 4px;border:1.5px solid ${CALL_MARKER_INK};
     white-space:nowrap;font-family:'JetBrains Mono',monospace;
     letter-spacing:0.03em;border-radius:1px;
     box-shadow:0 0 8px ${color}50;

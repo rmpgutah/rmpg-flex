@@ -3311,6 +3311,7 @@ html.hide-status-bar .status-bar { display: none !important; }
     --surface-sunken: #ffffff !important;
     --surface-overlay: #ffffff !important;
     --surface-deep: #ffffff !important;
+    --chart-plot-surface: #ffffff !important;
     --border-default: #cccccc !important;
     --border-subtle: #dddddd !important;
     --border-strong: #999999 !important;

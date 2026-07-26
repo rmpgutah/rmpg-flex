@@ -45,7 +45,7 @@ import { localToday, dateToLocalYMD, parseTimestamp } from '../utils/dateUtils';
 import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { toDisplayLabel } from '../utils/formatters';
-import { chartSeriesColors, chartPriorityColor, chartPlotSurface } from '../utils/chartPalette';
+import { chartSeriesColors, chartPriorityColor } from '../utils/chartPalette';
 
 // ============================================================
 // Types
@@ -1518,7 +1518,7 @@ export default function ReportsPage() {
 
           {/* Charts Grid */}
           <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-2 gap-4'}`}>
-            {/* Incidents by Type (Pie) */}
+            {/* Incidents by Type (sorted horizontal bar) */}
             <div className="bg-surface-base panel-beveled hover:border-rmpg-600 transition-all duration-150">
               <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
                 <FileText className="w-3.5 h-3.5 text-brand-400" />
@@ -1531,7 +1531,7 @@ export default function ReportsPage() {
                     <p className="text-sm">No data for selected filters</p>
                   </div>
                 ) : (
-                <div className="p-2" style={{ background: chartPlotSurface() }}>
+                <div className="p-2" style={{ background: 'var(--chart-plot-surface)' }}>
                   <ResponsiveContainer width="100%" height={Math.max(200, incidentsChartData.length * 26)}>
                     <BarChart
                       data={incidentsChartData}
@@ -1574,7 +1574,7 @@ export default function ReportsPage() {
                   <p className="text-sm">No data for selected filters</p>
                 </div>
               ) : (
-              <div className="p-2" style={{ background: chartPlotSurface() }}>
+              <div className="p-2" style={{ background: 'var(--chart-plot-surface)' }}>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={priorityChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
@@ -1688,7 +1688,7 @@ export default function ReportsPage() {
                 <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Response Time by Priority (minutes)</h3>
               </div>
               <div className="p-4">
-              <div className="p-2" style={{ background: chartPlotSurface() }}>
+              <div className="p-2" style={{ background: 'var(--chart-plot-surface)' }}>
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={responseTimesData.byPriority.map(item => ({
                   priority: item.priority,

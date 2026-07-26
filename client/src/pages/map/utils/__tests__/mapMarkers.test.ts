@@ -90,6 +90,21 @@ function ratio(a: string, b: string) {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
+// OKLCH lightness (Ottosson) — only the L channel is needed. Copied from
+// chartTokens.test.ts's oklabL, which asserts the same ordinal-ramp property
+// for the CSS --chart-pri-* ramps; PRIORITY_HEX comes from the same
+// construction (see docs/superpowers/specs/2026-07-25-reports-chart-palette-design.md)
+// so it should hold here too. Duplicated rather than exported from production
+// code — it's a small pure test helper.
+function oklabL(hex: string) {
+  const n = parseInt(hex.slice(1), 16);
+  const [R, G, B] = [srgbC((n >> 16) & 255), srgbC((n >> 8) & 255), srgbC(n & 255)];
+  const l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B);
+  const m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B);
+  const s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B);
+  return 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
+}
+
 describe('map priority palette', () => {
   it('is raw 6-digit hex — the ${color}NN concat contract forbids var()', () => {
     for (const [k, v] of Object.entries(PRIORITY_HEX)) {
@@ -109,6 +124,15 @@ describe('map priority palette', () => {
     }
   });
 
+  it('is a monotone ordinal ramp, P1..P4 (same construction as the CSS --chart-pri-* ramps)', () => {
+    const order: Array<keyof typeof PRIORITY_HEX> = ['P1', 'P2', 'P3', 'P4'];
+    const Ls = order.map((k) => oklabL(PRIORITY_HEX[k]));
+    const deltas = Ls.slice(1).map((L, i) => L - Ls[i]);
+    // All steps move the same direction, and each gap clears the 0.06 ordinal floor.
+    expect(deltas.every((d) => d < 0) || deltas.every((d) => d > 0), `ΔL ${deltas}`).toBe(true);
+    for (const d of deltas) expect(Math.abs(d), `ΔL ${deltas}`).toBeGreaterThanOrEqual(0.06);
+  });
+
   it('resolves both the "P1" and bare "1" key shapes', () => {
     expect(priorityHex('P1')).toBe(PRIORITY_HEX.P1);
     expect(priorityHex('1')).toBe(PRIORITY_HEX.P1);
@@ -117,9 +141,14 @@ describe('map priority palette', () => {
   });
 
   it('gives a call marker its real priority color, not the gray fallback', () => {
-    // Regression: PRIORITY_HEX is keyed 'P1'..'P4' but ActiveCall.priority is a
-    // bare number string ('1' in the fixture above), so the old direct lookup
-    // always missed and every marker rendered #888888.
+    // This fixture's ActiveCall.priority is a bare number string ('1') on
+    // purpose, but that's NOT what production looks like: calls_for_service.priority
+    // is DB-constrained to 'P1'..'P4' (migrations/0001_initial.sql) and the
+    // dispatch queue route passes it through verbatim, so a plain 'P1'-keyed
+    // PRIORITY_HEX lookup hits correctly on live data. The bare '1' shape does
+    // show up elsewhere in this tree (this fixture, useAutoPanToP1.ts), so
+    // priorityHex() is tolerant of both rather than trusting either — this test
+    // guards that tolerance, not a real production miss.
     //
     // Reading it back via el.style.background doesn't work in this jsdom
     // version: cssstyle's parser has an unrelated quirk where the `background`
