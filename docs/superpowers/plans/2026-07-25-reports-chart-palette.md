@@ -12,7 +12,11 @@
 
 ## Global Constraints
 
-- **Never hardcode hex in `client/src/pages/` or `client/src/utils/chartPalette.ts`.** Colors route through CSS variables. `statusColors.ts` / `mapMarkers.ts` are the documented exception — the map concat contract requires raw hex.
+- **Never hardcode hex in `client/src/pages/`.** Colors route through CSS variables resolved at render time.
+- **Three documented exceptions, all raw hex by design — do not "fix" them into `var()`:**
+  1. `chartPalette.ts`'s `FALLBACKS` map — the existing convention in that file (`'--brand-blue': '#5a9ae0'`); it is the last-resort value when `getComputedStyle` fails, so it cannot itself be a variable.
+  2. `statusColors.ts` / `mapMarkers.ts` — the map concat contract (`${color}22`) requires literal hex.
+  3. Test files that recompute contrast — they assert against literal expected values on purpose.
 - **Every new CSS variable must exist in ALL FOUR theme blocks** of `client/src/styles/theme-palettes.css`: `:root,` (night) / `html.theme-light {` / `html.theme-legacy-black {` / `html.theme-blue-silver {`.
 - **Never put `var()` into `PRIORITY_HEX` or `UNIT_STATUS_HEX`.** `mapMarkers.ts` builds `${color}22`, `${color}55`, `${color}99`, `${color}b3`; `var(--x)22` is invalid CSS and fails silently.
 - **Do not use `--accent-silver-*` or `--accent-gold-*`** — they exist only in the blue-silver block.
