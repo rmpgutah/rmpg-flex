@@ -4573,7 +4573,15 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
 
 async function generateQrDataUrl(text: string): Promise<string | null> {
   try {
-    return await QRCode.toDataURL(text, { width: 96, margin: 0, errorCorrectionLevel: 'M' });
+    // margin MUST stay at the spec quiet zone (ISO/IEC 18004: 4 modules). This
+    // was margin: 0, which shipped a symbol with no quiet zone at all — the only
+    // light border was the 1mm white card drawn behind it at the call site, and
+    // at a 22mm render that is roughly 1.5 modules where 4 are required.
+    //
+    // width is the raster size, independent of the 22mm PDF placement. 96px over
+    // ~41 units was ~2px per module, so the image was upscaled ~5x into the page
+    // and arrived blurred; 512px keeps module edges crisp at any print size.
+    return await QRCode.toDataURL(text, { width: 512, margin: 4, errorCorrectionLevel: 'M' });
   } catch {
     return null;
   }
