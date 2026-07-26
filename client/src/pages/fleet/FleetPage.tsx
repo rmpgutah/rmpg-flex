@@ -322,6 +322,10 @@ export default function FleetPage() {
 
   const pretripTitleId = useId();
   const pretripFirstItemRef = useRef<HTMLInputElement | null>(null);
+  // The reset-on-vehicle-change effect must not run on mount, or it
+  // clobbers the tab usePersistedTab just restored — which made that
+  // persistence dead code.
+  const didMountRef = useRef(false);
   const pretripDirty = PRETRIP_ITEMS.some((it) => !(pretripForm as any)[it.key])
     || pretripForm.notes.trim() !== '';
 
@@ -391,7 +395,8 @@ export default function FleetPage() {
 
   // Reset tab when selecting different vehicle
   useEffect(() => {
-    setActiveTab('overview');
+    if (didMountRef.current) setActiveTab('overview');
+    else didMountRef.current = true;
     setFuelLogs([]);
     setFuelSummary(null);
     setInspections([]);

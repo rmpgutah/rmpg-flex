@@ -98,3 +98,48 @@ describe('FleetPage — pre-trip modal', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /pre-trip/i })).toBeNull());
   });
 });
+
+describe('FleetPage — tab persistence', () => {
+  beforeEach(() => {
+    mockedApiFetch.mockReset();
+    localStorage.clear();
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url.startsWith('/fleet?')) {
+        return Promise.resolve({ data: [VEHICLE, { ...VEHICLE, id: 2, vehicle_number: 'PS-D20' }], pagination: { total: 2 } });
+      }
+      if (url === '/fleet/1' || url === '/fleet/2') return Promise.resolve(VEHICLE);
+      if (url.startsWith('/fleet/analytics')) return Promise.resolve({ scope: 'vehicle', fleet_summary: {} });
+      if (url.startsWith('/form-drafts/')) return Promise.resolve({ data: null });
+      return Promise.resolve({ data: [] });
+    });
+  });
+
+  it('restores the persisted tab on mount instead of forcing overview', async () => {
+    localStorage.setItem('rmpg_fleet_tab', JSON.stringify('fuel'));
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText('PS-D19'));
+
+    await waitFor(() => {
+      // Note: 'fuel?' (not just 'fuel') so this doesn't false-match the
+      // unrelated '/fleet/1/fuel-efficiency' analytics call that always
+      // fires regardless of which tab is active.
+      expect(mockedApiFetch).toHaveBeenCalledWith(expect.stringContaining('/fleet/1/fuel?'));
+    });
+  });
+
+  it('still resets to overview when switching to a different vehicle', async () => {
+    localStorage.setItem('rmpg_fleet_tab', JSON.stringify('fuel'));
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText('PS-D19'));
+    await waitFor(() => expect(mockedApiFetch).toHaveBeenCalledWith(expect.stringContaining('/fleet/1/fuel?')));
+
+    mockedApiFetch.mockClear();
+    await user.click(screen.getByText('PS-D20'));
+
+    // Overview needs no per-tab fetch, so the assertion is the absence of one.
+    await waitFor(() => expect(mockedApiFetch).toHaveBeenCalledWith('/fleet/2'));
+    expect(mockedApiFetch).not.toHaveBeenCalledWith(expect.stringContaining('/fleet/2/fuel?'));
+  });
+});
