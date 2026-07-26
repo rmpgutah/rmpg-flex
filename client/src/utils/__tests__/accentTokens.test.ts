@@ -589,3 +589,25 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
     expect(stale, `these pins are obsolete and should be deleted:\n${stale.join('\n')}`).toEqual([]);
   });
 });
+
+describe('print stylesheet text channels', () => {
+  // index.css:3308 is a @media print block that flips surfaces to white and
+  // text to near-black with !important. It already overrides the five
+  // --surface-*-rgb channels because Tailwind token classes would otherwise
+  // print dark on white. The text channels need the same treatment or every
+  // text-fg-* label prints light grey on paper. This is a FIFTH theme context
+  // beyond the four palette blocks.
+  const indexCss = readFileSync(resolve(SRC_DIR, 'index.css'), 'utf8');
+
+  const EXPECTED = {
+    'text-primary': '17 17 17',
+    'text-secondary': '51 51 51',
+    'text-muted': '102 102 102',
+  };
+
+  for (const [role, value] of Object.entries(EXPECTED)) {
+    it(`overrides --${role}-rgb for print`, () => {
+      expect(indexCss).toContain(`--${role}-rgb: ${value} !important;`);
+    });
+  }
+});
