@@ -31,14 +31,14 @@ const ChartTooltip = ({ active, payload, label, formatter }: any) => {
   const display = formatter ? formatter(label, payload[0].value) : `${payload[0].value}`;
   return (
     <div style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '6px 10px', borderRadius: 2 }}>
-      <div style={{ color: 'var(--rmpg-400)', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
       <div style={{ color: 'var(--text-secondary)', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
     </div>
   );
 };
 
 /* ── Shared axis / grid props ───────────────────────────────── */
-const AXIS_STYLE = { fill: 'var(--rmpg-400)', fontSize: 9, fontFamily: 'monospace' };
+const AXIS_STYLE = { fill: 'var(--text-secondary)', fontSize: 9, fontFamily: 'monospace' };
 const GRID_PROPS = { stroke: 'var(--border-subtle)', strokeDasharray: '3 3' } as const;
 
 export default function CrimeAnalysisPage() {
@@ -245,7 +245,7 @@ export default function CrimeAnalysisPage() {
         {/* ── Summary Cards ──────────────────────────────────── */}
         <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3 mb-4`}>
           {[
-            { label: 'Total Incidents', value: totalIncidents, color: 'text-rmpg-100', spark: 'var(--rmpg-400)' },
+            { label: 'Total Incidents', value: totalIncidents, color: 'text-rmpg-100', spark: 'var(--text-secondary)' },
             { label: 'Clearance Rate', value: `${data?.clearanceRate?.rate ?? 0}%`, color: 'text-green-400', spark: 'var(--green-500, #10b981)' },
             { label: 'Avg Response', value: `${data?.responseMetrics?.[0]?.avg_minutes ?? '—'} min`, color: 'text-amber-400', spark: 'var(--amber-500, #d97706)' },
             { label: 'Repeat Offenders', value: data?.repeatOffenders?.length || 0, color: 'text-red-400', spark: 'var(--red-500, #ef4444)' },
@@ -424,7 +424,7 @@ export default function CrimeAnalysisPage() {
                     const pct = Math.min(100, ((metric.avg_minutes ?? 0) / target) * 100);
                     const overTarget = (metric.avg_minutes ?? 0) > target;
                     const barColor = overTarget ? 'var(--red-500, #ef4444)' : metric.priority === 'critical' ? 'var(--amber-500, #f59e0b)' : 'var(--green-500, #10b981)';
-                    const labelColor = metric.priority === 'critical' ? 'var(--red-400)' : metric.priority === 'high' ? 'var(--amber-400)' : 'var(--rmpg-400)';
+                    const labelColor = metric.priority === 'critical' ? 'var(--red-400)' : metric.priority === 'high' ? 'var(--amber-400)' : 'var(--text-secondary)';
                     return (
                       <div key={idx} className="px-2 py-2 panel-beveled space-y-1">
                         <div className="flex items-center justify-between">

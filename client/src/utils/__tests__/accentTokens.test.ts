@@ -135,8 +135,12 @@ describe('no new dead CSS variables', () => {
     // Grid tokens referenced by a table skin that never shipped its palette.
     '--grid-header-text', '--grid-row-even', '--grid-row-selected',
     '--grid-row-selected-border',
-    // Typo for --sev-warn at NavigationPage.tsx.
-    '--sev-warning',
+    // NOTE: '--sev-warning' was removed from this list once its sole consumer
+    // (NavigationPage.tsx's crime-layer toggle) was corrected to --sev-warn. It
+    // was a typo, never a real token, so it could never become *defined* — the
+    // "already fixed" test below would never have evicted it. Entries whose last
+    // consumer is gone have to be pulled out by hand, or the list rots exactly
+    // the way that test's comment warns about.
   ]);
 
   // Set at runtime via element.style.setProperty(), so they never appear in CSS.
@@ -206,5 +210,186 @@ describe('no new dead CSS variables', () => {
       }
     }
     expect([...KNOWN_DEAD].filter((v) => defined.has(v))).toEqual([]);
+  });
+});
+
+describe('the --rmpg-* ramp is never used as a text colour', () => {
+  // Defining the bare aliases fixed the "renders as inherited white" bug, but it
+  // also made a WRONG colour renderable. The ramp encodes SURFACE ELEVATION and
+  // inverts between themes (day: low index = dark text; dark themes: low index =
+  // light), so it only ever read correctly as text under the day theme. Measured
+  // against --surface-raised on the default blue-silver theme:
+  //
+  //   --rmpg-300  3.77:1   AA-large only
+  //   --rmpg-400  2.75:1   fails AA
+  //   --rmpg-500  1.82:1   fails badly
+  //   --rmpg-600  1.18:1   effectively invisible
+  //
+  // Use --text-primary / --text-secondary / --text-muted for any colour, all of
+  // which are theme-stable and do not invert.
+  const TEXT_CONTEXTS: Array<[string, RegExp]> = [
+    ['color:', /(?<![-\w])color:\s*['"`]?var\(\s*--rmpg-\d+\s*[,)]/],
+    ['.style.color =', /\.style\.color\s*=\s*['"`]var\(\s*--rmpg-\d+\s*[,)]/],
+    ['WebkitTextFillColor', /WebkitTextFillColor:\s*['"`]?var\(\s*--rmpg-\d+\s*[,)]/],
+    // Colour maps key by semantic ROLE, not by CSS property. These reach a
+    // `color:` downstream and are invisible to a plain `color:` scan -- worse, a
+    // neighbouring `border: string` type annotation makes an automated classifier
+    // read them as borders. Three separate passes over this ramp missed them.
+    ['text: role key', /(?<![-\w])text:\s*['"`]var\(\s*--rmpg-\d+\s*[,)]/],
+  ];
+
+  function walkSrc(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== '__tests__' && entry.name !== 'node_modules') walkSrc(full, out);
+      } else if (/\.(tsx?|css)$/.test(entry.name)) {
+        out.push(full);
+      }
+    }
+    return out;
+  }
+
+  // Blank comment bodies, preserving newlines so line numbers stay correct.
+  // Documentation legitimately quotes the broken form as an example -- the palette
+  // file's own alias comment does exactly that -- and must not trip the guard.
+  // String literals are neutralised FIRST: `input.accept = 'image/*'` would
+  // otherwise open a bogus block comment and swallow real code, hiding violations.
+  function blankComments(src: string): string {
+    const noStrings = src.replace(
+      /(["'`])(?:\\.|(?!\1)[^\\\n])*\1/g,
+      (m) => m[0] + m.slice(1, -1).replace(/./g, '') + m[0],
+    );
+    const blanked = noStrings
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+      .replace(/(^|[^:])\/\/[^\n]*/g, (m, p) => p + m.slice(p.length).replace(/./g, ' '));
+    return [...src].map((ch, i) => (blanked[i] === ' ' && ch !== ' ' ? ' ' : ch)).join('');
+  }
+
+  it('has no text-context var(--rmpg-N) anywhere in client/src', () => {
+    const offenders: string[] = [];
+    for (const file of walkSrc(SRC_DIR)) {
+      const raw = readFileSync(file, 'utf8');
+      blankComments(raw).split('\n').forEach((line, i) => {
+        for (const [label, re] of TEXT_CONTEXTS) {
+          if (re.test(line)) {
+            const original = raw.split('\n')[i].trim().slice(0, 90);
+            offenders.push(`${file.slice(SRC_DIR.length + 1)}:${i + 1} [${label}] ${original}`);
+          }
+        }
+      });
+    }
+    expect(offenders, `Use a --text-* token instead:\n${offenders.join('\n')}`).toEqual([]);
+  });
+});
+
+describe('bare --rmpg-500/600 occurrence ratchet', () => {
+  // The TEXT_CONTEXTS scan above is shape-based, so it only catches the spellings
+  // someone thought to enumerate. Measured against the seven shapes this ramp
+  // actually appears in, it catches two: the direct `color: 'var(--rmpg-N)'` form
+  // and the `.style.color =` handler. It MISSES ternaries
+  // (`color: on ? '#fff' : 'var(--rmpg-600)'`), `||` map fallbacks, SVG `fill=`,
+  // and Recharts `tick={{ fill }}`.
+  //
+  // That gap shipped a regression. #3031 re-pointed 129 of these sites; #3028
+  // independently fixed the OTHER colour on NavigationPage.tsx:2561, the crime
+  // toggle's two-colour line. The auto-merge of main into #3031 resolved that line
+  // by taking #3028's copy whole, silently discarding the contrast fix, and #3031
+  // merged 128/129. Nothing caught it: the surviving line was still valid
+  // TypeScript and valid CSS, so typecheck, tests and build all passed on the
+  // merged tree. `MERGED` read as success.
+  //
+  // This ratchet is deliberately shape-AGNOSTIC. It counts occurrences per file and
+  // pins them, so a dropped fix, a novel spelling, or a copy-paste all fail the same
+  // way, without any regex to keep in sync. Scoped to 500/600 because those two have
+  // no defensible foreground use (1.82:1 and 1.18:1 on --surface-raised) while the
+  // lighter steps are legitimately used for chart gradients and graphics.
+  //
+  // Adding a site is allowed — pin it here WITH a reason. An unexplained bump is the
+  // thing this is meant to stop.
+  const PINNED: Record<string, { count: number; why: string }> = {
+    'index.css': {
+      count: 1,
+      why: '.btn-primary:hover background — a surface use, and a var() so it still re-themes',
+    },
+    'pages/CrimeAnalysisPage.tsx': {
+      count: 1,
+      why: 'SVG <stop stopColor> gradient — a chart graphic, and carries a hex fallback',
+    },
+    'pages/ReportsPage.tsx': {
+      count: 2,
+      why: 'PIE_COLORS[6] + PRIORITY_COLORS.P4 — categorical palette. PRIORITY_COLORS.P3 is '
+        + 'already --text-muted, so matching it would render two CAD priority levels '
+        + 'identically. Tracked as its own design task.',
+    },
+    'styles/theme-palettes.css': {
+      count: 1,
+      why: 'the alias comment quotes the bare form as documentation',
+    },
+    'utils/pdfGenerator.ts': {
+      count: 1,
+      why: 'inside a comment; jsPDF takes literal colours and the file is classifier-excluded',
+    },
+  };
+
+  // Matches the bare ramp reference with or without a fallback — `var(--rmpg-500)`
+  // and `var(--rmpg-600, #1e4a7a)` both count. The `[,)]` tail is what keeps the
+  // `-rgb` triples (`var(--rmpg-500-rgb)`) from matching.
+  const BARE_RAMP = /var\(\s*--rmpg-(?:500|600)\s*[,)]/g;
+
+  function collect(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== '__tests__' && entry.name !== 'node_modules') collect(full, out);
+      } else if (/\.(tsx?|css)$/.test(entry.name)) {
+        out.push(full);
+      }
+    }
+    return out;
+  }
+
+  it('has no unpinned bare --rmpg-500/600 occurrence in client/src', () => {
+    const actual: Record<string, number> = {};
+    for (const file of collect(SRC_DIR)) {
+      const n = (readFileSync(file, 'utf8').match(BARE_RAMP) ?? []).length;
+      if (n > 0) actual[file.slice(SRC_DIR.length + 1).replace(/\\/g, '/')] = n;
+    }
+
+    const expected: Record<string, number> = {};
+    for (const [path, { count }] of Object.entries(PINNED)) expected[path] = count;
+
+    const notes: string[] = [];
+    for (const path of new Set([...Object.keys(actual), ...Object.keys(expected)])) {
+      const now = actual[path] ?? 0;
+      const pin = expected[path] ?? 0;
+      if (now === pin) continue;
+      notes.push(
+        now > pin
+          ? `  ${path}: ${pin} pinned -> ${now} found. A bare --rmpg-500/600 was ADDED, or a `
+            + `merge dropped a fix on a line another branch also touched. Re-point it at a `
+            + `--text-* token, or pin it here with a reason if it is genuinely a surface/graphic.`
+          : `  ${path}: ${pin} pinned -> ${now} found. One was FIXED — lower the pin (or drop the `
+            + `entry) so the ratchet stays tight.`,
+      );
+    }
+
+    expect(actual, `bare --rmpg-500/600 drifted from its pinned floor:\n${notes.join('\n')}`)
+      .toEqual(expected);
+  });
+
+  it('pins only files that still contain an occurrence', () => {
+    // A deleted pinned file is a stale pin, not a crash — read defensively so the
+    // failure names the obsolete entry instead of surfacing a bare ENOENT.
+    const stale = Object.keys(PINNED).filter((p) => {
+      let src: string;
+      try {
+        src = readFileSync(resolve(SRC_DIR, p), 'utf8');
+      } catch {
+        return true;
+      }
+      return !(src.match(BARE_RAMP) ?? []).length;
+    });
+    expect(stale, `these pins are obsolete and should be deleted:\n${stale.join('\n')}`).toEqual([]);
   });
 });

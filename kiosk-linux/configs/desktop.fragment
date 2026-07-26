@@ -126,6 +126,28 @@ BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_6E=y
 BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_QUZ=y
 BR2_PACKAGE_LINUX_FIRMWARE_IWLWIFI_8265=y
 
+# ── Intel graphics firmware (DMC) ────────────────────────────────────────────
+# (2026-07-25) i915 does basic modesetting with no firmware, which is why
+# bring-up never needed this. What it CANNOT do without DMC (the display
+# microcontroller blob) is enter display power states: runtime suspend of the
+# display engine is explicitly gated on a working DMC in i915's own
+# intel_dmc.c, so a unit without it runs the display engine at full power for
+# the whole shift. On a battery-powered terminal in a hot cabin that shows up
+# as both shorter runtime and more heat — the two things this pass is about.
+#
+# Symbol name verified against the pinned Buildroot 2024.02.9 checkout
+# (package/linux-firmware/Config.in:27 — BR2_PACKAGE_LINUX_FIRMWARE_I915; note
+# it is NOT under the INTEL_* naming the neighbouring ethernet entries use).
+#
+# ⚠️ This package installs the WHOLE i915 firmware directory: 26.9 MB, of which
+# 25 MB is GuC/HuC for GPU command submission and media offload that Gen9.5
+# does not use by default and this image never enables. All 30 DMC blobs
+# together are 888 KB. scripts/prune-firmware.sh therefore keeps every *_dmc*
+# blob and drops GuC/HuC — generation-proof (no guessing which FZ-55 revision
+# is in front of you) and it keeps 25 MB off a rootfs whose OTA payload is
+# already too large to upload in one PUT.
+BR2_PACKAGE_LINUX_FIRMWARE_I915=y
+
 # ── Power management (battery indicator) ─────────────────────────────────────
 # acpid delivers lid/power-button events. The taskbar battery gauge itself
 # reads /sys/class/power_supply directly rather than going through upower —
@@ -194,3 +216,13 @@ BR2_PACKAGE_ALSA_LIB=y
 # Bluetooth barcode scanner or headset is unusable even though the hardware is
 # fully enabled.
 BR2_PACKAGE_BLUEZ5_UTILS=y
+
+# Intel Bluetooth firmware (intel/ibt-*.sfi + .ddc). Added 2026-07-25 in the
+# second audit pass, after listing the built rootfs showed no /lib/firmware/intel
+# directory existed at all — see the CORRECTION block in
+# configs/kernel-bluetooth.fragment for why the first pass wrongly concluded the
+# iwlwifi blobs covered this. Buildroot's help text for this option names only
+# older parts (3160/7260/7265/8260/8265), which is misleading: the option globs
+# the whole intel/ibt-* set, which is what AX201 and AX211 also load from.
+# Without it BLUEZ5_UTILS and the whole kernel BT stack are inert.
+BR2_PACKAGE_LINUX_FIRMWARE_IBT=y

@@ -12,7 +12,7 @@ export default function DesktopOpsSummaryWidget() {
   const { badges } = useNavBadges();
   return (
     <div className="p-3" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-default)', width: 200 }}>
-      <div className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--rmpg-400)' }}>Live Ops</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>Live Ops</div>
       {ROWS.map(row => (
         <div key={row.key} className="flex items-center justify-between text-[11px] py-0.5">
           <span style={{ color: 'var(--text-muted)' }}>{row.label}</span>

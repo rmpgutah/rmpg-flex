@@ -94,7 +94,7 @@ const STATUS_COLORS: Record<string, string> = {
   open: '#888888',
   processing: '#f59e0b',
   closed: '#22c55e',
-  draft: 'var(--rmpg-500)',
+  draft: 'var(--text-muted)',
   approved: '#22c55e',
 };
 
@@ -605,14 +605,14 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 >
                   <div className="flex items-center gap-3 px-4 py-3">
                     <div className="flex-shrink-0">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[period.status] || 'var(--rmpg-500)' }} />
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[period.status] || 'var(--text-muted)' }} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-rmpg-100 truncate">{period.name}</span>
                         <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{
-                          backgroundColor: withAlpha(STATUS_COLORS[period.status] || 'var(--rmpg-500)', '20'),
-                          color: STATUS_COLORS[period.status] || 'var(--rmpg-500)'
+                          backgroundColor: (STATUS_COLORS[period.status] || 'var(--text-muted)') + '20',
+                          color: STATUS_COLORS[period.status] || 'var(--text-muted)'
                         }}>{toDisplayLabel(period.status)}</span>
                       </div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
@@ -847,8 +847,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                         <td className="px-2 py-2 text-right text-green-400 font-mono font-semibold">{formatCurrency(entry.gross_pay)}</td>
                         <td className="px-2 py-2 text-center">
                           <span className="px-1.5 py-0.5 text-[9px] rounded-full font-medium" style={{
-                            backgroundColor: withAlpha(STATUS_COLORS[entry.status] || 'var(--rmpg-500)', '20'),
-                            color: STATUS_COLORS[entry.status] || 'var(--rmpg-500)'
+                            backgroundColor: (STATUS_COLORS[entry.status] || 'var(--text-muted)') + '20',
+                            color: STATUS_COLORS[entry.status] || 'var(--text-muted)'
                           }}>{toDisplayLabel(entry.status)}</span>
                         </td>
                         <td className="px-2 py-2 text-center">

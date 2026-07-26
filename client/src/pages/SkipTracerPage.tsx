@@ -43,7 +43,7 @@ type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
 // email → sev-info (blue). The icon background derives from the theme
 // so the chip stays legible in both skins.
 const SEARCH_MODES: { id: SearchMode; label: string; icon: React.ElementType; color: string; description: string }[] = [
-  { id: 'name', label: 'By Name', icon: User, color: 'var(--rmpg-400)', description: 'Search by full name (first and last)' },
+  { id: 'name', label: 'By Name', icon: User, color: 'var(--text-secondary)', description: 'Search by full name (first and last)' },
   { id: 'address', label: 'By Address', icon: MapPin, color: 'var(--sev-ok)', description: 'Search by street address' },
   { id: 'nameaddress', label: 'Name + Address', icon: Search, color: 'var(--sev-special)', description: 'Search by name and address combined' },
   { id: 'phone', label: 'By Phone', icon: Phone, color: 'var(--sev-warn)', description: 'Reverse phone lookup' },

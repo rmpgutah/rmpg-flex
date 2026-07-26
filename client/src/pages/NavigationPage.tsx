@@ -384,7 +384,7 @@ function StatTile({ label, value, accent, dim }: { label: string; value: string;
       <div className="text-[8px] uppercase tracking-wider text-rmpg-600 leading-none truncate">{label}</div>
       <div
         className="font-mono font-bold text-[13px] leading-tight mt-0.5 truncate tabular-nums"
-        style={{ color: accent || (dim ? 'var(--rmpg-600)' : 'var(--rmpg-300)') }}
+        style={{ color: accent || (dim ? 'var(--text-muted)' : 'var(--text-secondary)') }}
       >
         {value}
       </div>
@@ -2541,7 +2541,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setAlertsOn((v) => !v)}
           className="toolbar-btn flex items-center justify-center"
-          style={{ color: alertsOn ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
+          style={{ color: alertsOn ? 'var(--brand-400)' : 'var(--text-muted)' }}
           title={alertsOn ? 'Proximity alert tones ON' : 'Proximity alert tones OFF'}
           aria-label={alertsOn ? 'Mute proximity alerts' : 'Unmute proximity alerts'}
         >
@@ -2550,7 +2550,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setSearchOpen((v) => !v)}
           className="toolbar-btn flex items-center justify-center"
-          style={{ color: searchOpen ? 'var(--brand-400)' : 'var(--rmpg-400)' }}
+          style={{ color: searchOpen ? 'var(--brand-400)' : 'var(--text-secondary)' }}
           title="Search destination"
           aria-label="Search destination"
         >
@@ -2559,7 +2559,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setCrimeOn((v) => !v)}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: crimeOn ? 'var(--sev-warning)' : 'var(--rmpg-600)' }}
+          style={{ color: crimeOn ? 'var(--sev-warn)' : 'var(--text-muted)' }}
           title={crimeOn ? 'Hide crime layer' : 'Show crime layer (SLC + RMPG)'}
           aria-label={crimeOn ? 'Hide crime layer' : 'Show crime layer'}
         >
@@ -2568,7 +2568,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setCrashOn((v) => !v)}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: crashOn ? 'var(--rmpg-200)' : 'var(--rmpg-600)' }}
+          style={{ color: crashOn ? 'var(--text-primary)' : 'var(--text-muted)' }}
           title={crashOn ? 'Hide traffic-crash layer' : 'Show SLC traffic crashes (travel hazards)'}
           aria-label={crashOn ? 'Hide traffic crashes' : 'Show traffic crashes'}
         >
@@ -2577,7 +2577,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setTrailOn((v) => !v)}
           className="toolbar-btn flex items-center justify-center"
-          style={{ color: trailOn ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
+          style={{ color: trailOn ? 'var(--brand-400)' : 'var(--text-muted)' }}
           title={trailOn ? `Hide patrol trail (${trailPtsCount} pts)` : 'Show patrol breadcrumb trail'}
           aria-label={trailOn ? 'Hide patrol trail' : 'Show patrol trail'}
         >
@@ -2586,7 +2586,7 @@ export default function NavigationPage() {
         <button
           onClick={() => { setTripOpen((v) => !v); if (!tripOpen) { setLogOpen(false); setTripsOpen(false); } }}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: tripOpen ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
+          style={{ color: tripOpen ? 'var(--brand-400)' : 'var(--text-muted)' }}
           title="Movement report (speed, g-force, driving events)"
           aria-label="Toggle movement report"
         >
@@ -2595,7 +2595,7 @@ export default function NavigationPage() {
         <button
           onClick={() => { setTripsOpen((v) => !v); if (!tripsOpen) { setTripOpen(false); setLogOpen(false); } }}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: tripsOpen ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
+          style={{ color: tripsOpen ? 'var(--brand-400)' : 'var(--text-muted)' }}
           title="Trip chain — per-trip movement reports for this unit"
           aria-label="Toggle trips drawer"
         >
@@ -2604,7 +2604,7 @@ export default function NavigationPage() {
         <button
           onClick={() => { setLogOpen((v) => !v); if (!logOpen) { setTripOpen(false); setTripsOpen(false); } }}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: logOpen ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
+          style={{ color: logOpen ? 'var(--brand-400)' : 'var(--text-muted)' }}
           title="Call history log for this unit"
           aria-label="Toggle call history log"
         >

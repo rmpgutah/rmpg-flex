@@ -16,7 +16,7 @@ export const UNIT_STATUS_HEX: Record<UnitStatus, string> = {
   enroute: '#888888',
   onscene: '#a855f7',
   busy: '#ef4444',
-  off_duty: 'var(--rmpg-500)',
+  off_duty: 'var(--text-muted)',
   out_of_service: '#991b1b',
 };
 

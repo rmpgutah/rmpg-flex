@@ -66,13 +66,17 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: 'failed', label: 'Failed' },
 ];
 
+// Terminal states (skipped/archived) sit one step dimmer than `pending` on
+// purpose: they must stay visually separable from it, and a 12px marker carries
+// a 2px white ring, so the dimmer step is still legible against the basemap.
+// Do not collapse these onto --text-muted — that renders them identical to pending.
 const MARKER_COLORS: Record<string, string> = {
   pending: 'var(--text-muted)',
   in_progress: '#eab308',
   served: '#22c55e',
   failed: '#ef4444',
-  skipped: 'var(--rmpg-500)',
-  archived: 'var(--rmpg-500)',
+  skipped: 'var(--border-strong)',
+  archived: 'var(--border-strong)',
 };
 
 const DOCUMENT_TYPES = [

@@ -68,7 +68,7 @@ export default function DesktopKioskSettings({ onClose }: { onClose: () => void 
         )}
       </div>
 
-      {error && <div style={{ color: 'var(--sev-critical, var(--rmpg-400))' }}>{error}</div>}
+      {error && <div style={{ color: 'var(--sev-critical, var(--text-secondary))' }}>{error}</div>}
 
       {confirming ? (
         <div className="space-y-2 p-3 border border-rmpg-700">

@@ -1138,7 +1138,7 @@ export default function Layout() {
                 style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : 'var(--surface-overlay)' }}
                 title={gps.isTracking ? `GPS ON — ${gps.unitCallSign || (gps.hasTakeHome ? 'Take-Home Vehicle' : 'no unit')}` : 'GPS acquiring...'}
               >
-                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : 'var(--rmpg-500)', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
+                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : 'var(--text-muted)', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
                 {gps.isTracking && <span className="led-dot led-green animate-led-blink" />}
               </div>
 
@@ -1545,7 +1545,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? 'var(--brand-blue)' : 'var(--rmpg-600)',
+                          color: isActive ? 'var(--brand-blue)' : 'var(--text-muted)',
                         }}
                       >
                         {item.shortcut}
@@ -1559,7 +1559,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: isActive ? 'var(--brand-blue)' : 'var(--rmpg-600)',
+                          color: isActive ? 'var(--brand-blue)' : 'var(--text-muted)',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}
@@ -1614,7 +1614,7 @@ export default function Layout() {
                             }}
                           >
                             {/* 11: Slightly larger child icon + semibold label for active items */}
-                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? 'var(--rmpg-400)' : 'var(--rmpg-500)', flexShrink: 0 }} />
+                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? 'var(--text-secondary)' : 'var(--text-muted)', flexShrink: 0 }} />
                             <span className={`text-[11px] ${childActive ? 'font-semibold' : 'font-medium'}`}>{child.label}</span>
                           </button>
                         );

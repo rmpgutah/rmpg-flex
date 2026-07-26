@@ -547,11 +547,11 @@ export default function HelpPage() {
               className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${!active ? 'hover:bg-surface-base' : ''}`}
               style={{
                 background: active ? 'rgba(136,136,136,0.12)' : 'transparent',
-                color: active ? 'var(--rmpg-100)' : 'var(--rmpg-400)',
-                borderLeft: active ? '3px solid var(--rmpg-400)' : '3px solid transparent',
+                color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                borderLeft: active ? '3px solid var(--text-secondary)' : '3px solid transparent',
               }}
             >
-              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? 'var(--rmpg-300)' : 'var(--rmpg-500)' }} />
+              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? 'var(--text-secondary)' : 'var(--text-muted)' }} />
               <span className="text-[11px] font-medium">{item.label}</span>
             </button>
           );

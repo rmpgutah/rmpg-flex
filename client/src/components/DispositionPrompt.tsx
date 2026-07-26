@@ -153,7 +153,7 @@ function DispositionPrompt({
           className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
           style={{
             background: selected ? '#16a34a' : 'var(--border-subtle)',
-            color: selected ? '#fff' : 'var(--rmpg-500)',
+            color: selected ? '#fff' : 'var(--text-muted)',
             border: `1px solid ${selected ? '#16a34a' : 'var(--border-default)'}`,
             cursor: selected ? 'pointer' : 'not-allowed',
             opacity: selected ? 1 : 0.6,
@@ -172,7 +172,7 @@ function DispositionPrompt({
           onChange={(e) => setCreateIncident(e.target.checked)}
           className="w-3 h-3 accent-brand-500"
         />
-        <FileText style={{ width: 10, height: 10, color: createIncident ? '#aaaaaa' : 'var(--rmpg-500)' }} />
+        <FileText style={{ width: 10, height: 10, color: createIncident ? '#aaaaaa' : 'var(--text-muted)' }} />
         <span className={`text-[10px] font-bold uppercase tracking-wider ${createIncident ? 'text-brand-400' : 'text-rmpg-500 group-hover:text-rmpg-300'}`}>
           Create Incident Report from this call
         </span>

@@ -20,28 +20,40 @@
 #   rmpg-update check      report what is available, change nothing
 #   rmpg-update apply      download + verify + stage + flip the slot
 #   rmpg-update status     what is installed and staged
+#   rmpg-update rollback   flip back to the other slot now (field recovery)
+#
+# ── 2026-07-25: this could not run on real hardware ───────────────────────────
+#
+# require_boot_mount used to be `mount -t ext2 /dev/vda1`. That device name only
+# exists under QEMU. On an FZ-55 the store is on NVMe or SATA, and on the no-USB
+# install path it is a directory on the Windows NTFS volume — so every invocation
+# of `apply` died at the first step with "boot partition not mounted", meaning
+# OTA updates were inoperative on every fielded terminal. Discovery now goes
+# through /usr/lib/rmpg/boot-store.sh, which probes for the store and handles
+# both the extlinux and GRUB-on-NTFS layouts.
 set -u
 
 MANIFEST_URL="${RMPG_UPDATE_MANIFEST:-https://api.rmpgutah.us/api/os/manifest}"
 CHANNEL="${RMPG_UPDATE_CHANNEL:-stable}"
-MOUNT_POINT=/mnt/kiosk-boot
-EXTLINUX_CONF="$MOUNT_POINT/extlinux.conf"
 VERSION_FILE=/etc/rmpg-os-version
-STATE_DIR="$MOUNT_POINT/update-state"
 LOG_TAG="rmpg-update"
+
+# Package temperature above this defers an update. The concern is not the
+# download but the reboot: a terminal already thermally saturated is one that
+# may not complete POST and re-init cleanly, and a failed boot burns an A/B
+# rollback attempt for a reason unrelated to the image. 95C is below the
+# ~100C TjMax of the FZ-55 parts, so this trips before the hardware does.
+MAX_UPDATE_TEMP_C="${RMPG_UPDATE_MAX_TEMP_C:-95}"
+
+. /usr/lib/rmpg/boot-store.sh
 
 log() { echo "[$LOG_TAG] $*"; logger -t "$LOG_TAG" "$*" 2>/dev/null; }
 die() { log "ERROR: $*"; exit 1; }
 
 installed_version() { cat "$VERSION_FILE" 2>/dev/null || echo "0.0.0"; }
 
-active_slot() {
-    grep '^DEFAULT ' "$EXTLINUX_CONF" 2>/dev/null | awk '{print $2}'
-}
-
-inactive_slot() {
-    [ "$(active_slot)" = "slot_a" ] && echo "slot_b" || echo "slot_a"
-}
+active_slot()   { rmpg_bootstore_get_slot; }
+inactive_slot() { rmpg_bootstore_other_slot; }
 
 # Semantic-version compare: is $1 strictly newer than $2? Pure shell so the
 # image needs no extra tooling.
@@ -51,18 +63,19 @@ version_gt() {
     [ "$newest" = "$1" ]
 }
 
+# Locate the persistent store and set the paths derived from it. STATE_DIR sits
+# beside the slots, so it follows the store wherever discovery found it.
 require_boot_mount() {
-    mountpoint -q "$MOUNT_POINT" 2>/dev/null && return 0
-    mkdir -p "$MOUNT_POINT"
-    mount -t ext2 /dev/vda1 "$MOUNT_POINT" 2>/dev/null \
-        || die "boot partition not mounted and could not be mounted"
+    rmpg_bootstore_find \
+        || die "no persistent boot store found — cannot stage an update (see the KIOSK_LINUX_BOOTSTORE lines above)"
+    STATE_DIR="$RMPG_BOOTSTORE_DIR/update-state"
 }
 
 # Remount read-write only for the moments we must write, then drop back. The
-# boot partition is the one thing whose corruption cannot be recovered from in
-# the field, so it spends as little time writable as possible.
-boot_rw()  { mount -o remount,rw "$MOUNT_POINT" 2>/dev/null; }
-boot_ro()  { sync; mount -o remount,ro "$MOUNT_POINT" 2>/dev/null; }
+# boot store is the one thing whose corruption cannot be recovered from in the
+# field, so it spends as little time writable as possible.
+boot_rw()  { rmpg_bootstore_rw; }
+boot_ro()  { rmpg_bootstore_ro; }
 
 fetch_manifest() {
     # -T: never hang forever on a captive portal, which is a realistic state
@@ -122,12 +135,36 @@ safe_to_update() {
     if [ "$batteries_seen" -eq 0 ]; then
         log "no battery reported by the kernel; low-battery guard did not run"
     fi
+
+    # Never while thermally saturated. Only possible to check as of 2026-07-25:
+    # CONFIG_SENSORS_CORETEMP was not enabled before, so nothing on the terminal
+    # could read its own die temperature. Reads the hottest coretemp input; a
+    # unit with no hwmon (QEMU) simply skips this.
+    #
+    # Note this guard fails OPEN for the same reason the battery one does, and
+    # deliberately so: refusing every update on a terminal that cannot report a
+    # temperature would strand exactly the units most in need of a fix.
+    hottest=0
+    for input in /sys/class/hwmon/hwmon*/temp*_input; do
+        [ -f "$input" ] || continue
+        raw="$(cat "$input" 2>/dev/null)" || continue
+        case "$raw" in ''|*[!0-9]*) continue ;; esac
+        # hwmon reports millidegrees Celsius.
+        c=$((raw / 1000))
+        [ "$c" -gt "$hottest" ] && hottest="$c"
+    done
+    if [ "$hottest" -ge "$MAX_UPDATE_TEMP_C" ]; then
+        log "deferring: die temperature ${hottest}C is at or above the ${MAX_UPDATE_TEMP_C}C update limit"
+        return 1
+    fi
+
     return 0
 }
 
 cmd_status() {
     require_boot_mount
     echo "installed version : $(installed_version)"
+    echo "boot store        : $RMPG_BOOTSTORE_KIND at $RMPG_BOOTSTORE_DIR (dev ${RMPG_BOOTSTORE_DEV:-unknown})"
     echo "active slot       : $(active_slot)"
     echo "inactive slot     : $(inactive_slot)"
     echo "channel           : $CHANNEL"
@@ -279,33 +316,35 @@ cmd_apply() {
 
     # Enough free space in the target slot before overwriting it.
     need_kb=$(( ($(stat -c %s "$tmp_kernel") + $(stat -c %s "$tmp_rootfs")) / 1024 ))
-    free_kb=$(df -k "$MOUNT_POINT" | tail -1 | awk '{print $4}')
-    slot_kb=$(du -sk "$MOUNT_POINT/$target_slot" 2>/dev/null | awk '{print $1}' || echo 0)
+    free_kb=$(df -k "$RMPG_BOOTSTORE_DIR" | tail -1 | awk '{print $4}')
+    slot_kb=$(du -sk "$RMPG_BOOTSTORE_DIR/$target_slot" 2>/dev/null | awk '{print $1}' || echo 0)
     if [ "$need_kb" -gt $((free_kb + slot_kb)) ]; then
-        die "not enough space in $MOUNT_POINT (need ${need_kb}KB, have $((free_kb + slot_kb))KB)"
+        die "not enough space in $RMPG_BOOTSTORE_DIR (need ${need_kb}KB, have $((free_kb + slot_kb))KB)"
     fi
 
-    boot_rw
-    mkdir -p "$MOUNT_POINT/$target_slot" "$STATE_DIR"
+    boot_rw || die "boot store is read-only — cannot stage (see the KIOSK_LINUX_BOOTSTORE line above)"
+    mkdir -p "$RMPG_BOOTSTORE_DIR/$target_slot" "$STATE_DIR"
 
     # Write to temp names in the slot, then rename into place. A power loss
     # mid-copy then leaves the OLD slot contents intact rather than a truncated
     # kernel that the bootloader would happily try to start.
     log "staging into $target_slot"
-    cp "$tmp_kernel" "$MOUNT_POINT/$target_slot/bzImage.new" || { boot_ro; die "copy failed"; }
-    cp "$tmp_rootfs" "$MOUNT_POINT/$target_slot/rootfs.cpio.gz.new" || { boot_ro; die "copy failed"; }
+    cp "$tmp_kernel" "$RMPG_BOOTSTORE_DIR/$target_slot/bzImage.new" || { boot_ro; die "copy failed"; }
+    cp "$tmp_rootfs" "$RMPG_BOOTSTORE_DIR/$target_slot/rootfs.cpio.gz.new" || { boot_ro; die "copy failed"; }
     sync
-    mv "$MOUNT_POINT/$target_slot/bzImage.new"        "$MOUNT_POINT/$target_slot/bzImage"
-    mv "$MOUNT_POINT/$target_slot/rootfs.cpio.gz.new" "$MOUNT_POINT/$target_slot/rootfs.cpio.gz"
+    mv "$RMPG_BOOTSTORE_DIR/$target_slot/bzImage.new"        "$RMPG_BOOTSTORE_DIR/$target_slot/bzImage"
+    mv "$RMPG_BOOTSTORE_DIR/$target_slot/rootfs.cpio.gz.new" "$RMPG_BOOTSTORE_DIR/$target_slot/rootfs.cpio.gz"
     sync
 
     # Flip the default slot LAST — this is the commit point. Everything before
-    # it is reversible by doing nothing.
+    # it is reversible by doing nothing. The write itself is staged-and-renamed
+    # inside boot-store.sh, so a power loss here cannot leave a pointer that
+    # neither bootloader can parse.
     log "pointing the bootloader at $target_slot"
-    sed -i "s/^DEFAULT .*/DEFAULT $target_slot/" "$EXTLINUX_CONF" || { boot_ro; die "could not update $EXTLINUX_CONF"; }
+    rmpg_bootstore_set_slot "$target_slot" || { boot_ro; die "could not update the slot pointer"; }
 
     # Reset the failed-boot counter so the new image gets its full 3 attempts.
-    echo "0" > "$MOUNT_POINT/boot_attempts"
+    echo "0" > "$RMPG_BOOTSTORE_DIR/boot_attempts"
     echo "$available" > "$STATE_DIR/staged_version"
     echo "$current"   > "$STATE_DIR/previous_version"
     sync
@@ -315,9 +354,46 @@ cmd_apply() {
     log "KIOSK_LINUX_UPDATE_STAGED $available (reboot to apply; rollback to $current is automatic if it fails)"
 }
 
+# Manual rollback. The automatic path (3 failed boots) only fires when a slot
+# cannot reach a healthy desktop at all. It does NOT help the case where the new
+# image boots fine but is wrong in some way an officer notices — a broken
+# printer, a regressed workflow. Before this, recovering from that meant a site
+# visit with a USB stick. Now it is one command over SSH, and because it only
+# ever moves the pointer between two slots that already exist on the device, it
+# cannot fail in a way that leaves the terminal unbootable.
+cmd_rollback() {
+    require_boot_mount
+    current="$(active_slot)"
+    other="$(inactive_slot)"
+
+    # Refuse if the other slot has no kernel: pointing the bootloader at an
+    # empty slot is precisely how you brick a terminal remotely.
+    if [ ! -f "$RMPG_BOOTSTORE_DIR/$other/bzImage" ] || \
+       [ ! -f "$RMPG_BOOTSTORE_DIR/$other/rootfs.cpio.gz" ]; then
+        die "$other is not populated (missing bzImage or rootfs.cpio.gz) — refusing to point the bootloader at it"
+    fi
+
+    prev="none recorded"
+    [ -f "$STATE_DIR/previous_version" ] && prev="$(cat "$STATE_DIR/previous_version")"
+
+    boot_rw || die "boot store is read-only — cannot roll back"
+    if rmpg_bootstore_set_slot "$other"; then
+        # Give the slot we are returning to a full set of attempts of its own.
+        echo "0" > "$RMPG_BOOTSTORE_DIR/boot_attempts"
+        rm -f "$STATE_DIR/staged_version"
+        sync
+        boot_ro
+        log "KIOSK_LINUX_UPDATE_ROLLED_BACK from $current to $other (was version $prev) — reboot to apply"
+    else
+        boot_ro
+        die "could not update the slot pointer"
+    fi
+}
+
 case "${1:-check}" in
-    check)  cmd_check ;;
-    apply)  cmd_apply ;;
-    status) cmd_status ;;
-    *) echo "usage: rmpg-update {check|apply|status}" >&2; exit 2 ;;
+    check)    cmd_check ;;
+    apply)    cmd_apply ;;
+    status)   cmd_status ;;
+    rollback) cmd_rollback ;;
+    *) echo "usage: rmpg-update {check|apply|status|rollback}" >&2; exit 2 ;;
 esac

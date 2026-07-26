@@ -165,7 +165,7 @@ export default function DesktopIconGrid({
                 className="flex items-center justify-center"
                 style={{ width: ICON_SIZE, height: ICON_SIZE, background: 'rgba(var(--rmpg-500-rgb),0.1)', border: '1px solid var(--border-subtle)' }}
               >
-                <Icon className="w-6 h-6" style={{ color: 'var(--rmpg-300)' }} />
+                <Icon className="w-6 h-6" style={{ color: 'var(--text-secondary)' }} />
               </div>
               {renamingPath === fn.path ? (
                 <input

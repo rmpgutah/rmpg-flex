@@ -8,7 +8,7 @@ Kiosk Shell Mode / UEFI Boot Splash work already shipped elsewhere in this repo.
 See [`docs/superpowers/specs/2026-07-21-kiosk-linux-base-image-design.md`](../docs/superpowers/specs/2026-07-21-kiosk-linux-base-image-design.md)
 for the full design and explicit scope decisions.
 
-## Current state (2026-07-24)
+## Current state (2026-07-25, OS 1.4.0)
 
 **The kiosk boots to a working, fully rendered RMPG Flex console.** Verified by a
 real QEMU screenshot showing the live login screen with the device panel reporting
@@ -25,18 +25,132 @@ purely additive; the same image still boots under QEMU on virtio devices.
 
 ## What this does NOT do yet
 
-- **Not yet validated on physical FZ-55 hardware** — all verification to date is
-  under the QEMU reference environment. Flash and confirm one unit before any
-  fleet rollout.
-- No Wi-Fi stack (wired ethernet only — iwlwifi needs firmware blobs and a
-  wpa_supplicant userspace this image does not carry)
-- Legacy/CSM boot only — no UEFI-native boot path yet (some late FZ-55 firmware
-  revisions have removed CSM; a UEFI build is planned)
-- No OTA update delivery — the A/B slot *mechanism* exists and self-heals a bad
-  boot, but nothing yet pushes a new image into the inactive slot
+Four entries here went stale before anyone corrected them (Wi-Fi, UEFI boot and
+OTA delivery all shipped between 2026-07-24 and 2026-07-25). Rewritten
+2026-07-25 — if you change what the image does, change this list in the same
+commit.
+
+- **Not yet validated on physical FZ-55 hardware.** Every claim about FZ-55
+  support is inference from source: the drivers are enabled, their Kconfig
+  dependencies were checked against the real `linux-6.6.63` tree, and the
+  firmware ships. None of it has met the hardware. `rmpg-hwreport` exists to
+  make that first boot produce evidence rather than an anecdote. Flash and
+  confirm one unit before any fleet rollout.
+- **Audio plays through ALSA, but not through the browser.** Superseded in part
+  on 2026-07-25: the hardware audit added `configs/kernel-audio.fragment` plus
+  `alsa-lib`/`alsa-utils`, so the card, codecs and mixer are all real now — this
+  entry previously said there was no audio userspace at all. What is still
+  missing is GStreamer in WebKitGTK, so **in-page HTML5 audio does not play**,
+  which is what Flex voice alerts and dispatch tones use. Adding it forces a
+  full WebKitGTK rebuild and 30-50 MB onto a rootfs whose OTA payload already
+  cannot finish uploading in one PUT. Verify with `speaker-test`/`aplay` before
+  concluding a unit has dead audio hardware.
+- **Wi-Fi has never associated with a real access point.** The stack is built
+  (iwlwifi + 32 firmware blobs + connman + WPA2-Enterprise) but QEMU has no
+  Wi-Fi radio, so there is nothing to test against here.
+- ~~**OTA payload publishing is blocked.**~~ **Resolved 2026-07-25** by the
+  parallel hardware-audit PR, which moved both ends to 16 MiB chunks:
+  `scripts/publish-os-release.sh` uploads parts (a re-run skips parts already
+  uploaded instead of restarting 244 MiB) and `rmpg-update` downloads and
+  verifies them individually, caching parts in `/tmp` so a retry resumes rather
+  than starting over. That matters more on the install side than the publish
+  side — a single ~250 MB GET that dies at 90% on field Wi-Fi threw the whole
+  transfer away. The single-file form is still accepted so older published
+  releases stay installable.
+- **No fleet-side device check-in.** `rmpg-hwreport` writes locally to the boot
+  store. It deliberately does NOT post anywhere: the only OS endpoints today are
+  manifest/channels/promote, and adding an unauthenticated ingest endpoint for
+  device data is not something to do casually in this codebase.
 - No connection to the existing `uefi-bootsplash/` project — that project still
   chainloads to Windows only; whether it might later chainload to this image instead
   is an undecided future integration question
+
+## FZ-55 stabilization pass (2026-07-25)
+
+Everything before this pass was about getting the image to *come up*. This pass
+is about keeping it *running* unattended in a vehicle. The work came out of a
+symbol-by-symbol audit of the shipped 1.3.0 kernel `.config` against the real
+kernel source, plus a read of every place the running system touches persistent
+storage.
+
+### The defect that mattered most
+
+`S01kiosk-boot-slot-check` and `rmpg-update` both hardcoded
+`mount -t ext2 /dev/vda1`. That is a QEMU virtio name. On an FZ-55 the store is
+`/dev/nvme0n1p1`, `/dev/sda1`, or a directory on the Windows NTFS volume, so:
+
+- the failed-boot counter never incremented, and **A/B rollback could not fire on
+  any fielded unit** — while working perfectly in every QEMU test
+- `rmpg-update` died at its first step, so **OTA was inoperative on hardware**
+
+Discovery now lives in [`rootfs-overlay/usr/lib/rmpg/boot-store.sh`](rootfs-overlay/usr/lib/rmpg/boot-store.sh),
+which probes for the store by **marker file** rather than device name, and
+handles both the extlinux (USB/disk) and GRUB-on-NTFS (no-USB) layouts.
+
+Fixing discovery exposed a second, worse bug waiting behind it: the counter
+*reset* in `S99kiosk-desktop` was `[ -w /mnt/kiosk-boot/boot_attempts ]`, which
+is false both on the NTFS layout (wrong path) and on a read-only mount. With
+discovery fixed but the reset broken, three *healthy* boots would have crossed
+the 3-strike limit and flipped the terminal between slots forever.
+
+### Kernel and firmware (`configs/kernel-fz55.fragment`)
+
+| Added | Failure it prevents |
+| --- | --- |
+| `COMMON_CLK`, `MFD_INTEL_LPSS_*`, `I2C_DESIGNWARE_PLATFORM`, `I2C_HID_ACPI` | Touchscreen dead. `I2C_DESIGNWARE_PLATFORM` was **absent** from `.config`, not disabled — its `depends on (ACPI && COMMON_CLK)` was unmet, and `merge_config.sh` drops such symbols with only a warning. |
+| `PINCTRL` + Sunrisepoint/Cannonlake/Icelake/Tigerlake/Alderlake | Digitizer interrupt unresolvable. `PINCTRL` is a menuconfig gate; while unset the entire Intel pinctrl menu was invisible. |
+| `X86_PKG_TEMP_THERMAL=y` (was `=m`) | **No thermal trip source at all.** This is an initramfs with no module loading, so `=m` shipped a driver that could never load. A dashboard-mounted unit in summer would ride into a firmware thermal shutdown with nothing logged. |
+| `SENSORS_CORETEMP`, `INTEL_IDLE` | No die-temperature telemetry; hotter idle and shorter battery runtime. |
+| `ITCO_WDT` | No recovery from a live hang (see `rmpg-watchdog`). |
+| `DRM_SIMPLEDRM` + `SYSFB_SIMPLEFB` | If i915 fails to bind, a black screen with no console — losing the one diagnostic a first hardware boot needs. |
+| `PANASONIC_LAPTOP` | Brightness keys inert. A full-brightness screen blinds a driver at night; a dimmed one is unreadable in sun. |
+| `SND_HDA_GENERIC` / `_REALTEK` / `_HDMI` | HDA bound with zero codecs: hardware present, incapable of sound. Kernel side only — see the audio note above. |
+| `EFIVAR_FS=y` (was `=m`) | Could not read its own firmware boot entries. |
+| `NTFS3_FS` | OTA impossible on the no-USB install, whose payload lives on the Windows volume. |
+| `BR2_PACKAGE_LINUX_FIRMWARE_I915` | No display power management (i915 gates display runtime-suspend on DMC). Pruned by `scripts/prune-firmware.sh` to the 888 KB of DMC blobs, dropping 25 MB of unused GuC/HuC. |
+
+`build.sh` now asserts every one of these is `=y` in the generated kernel
+`.config` (`FZ55_REQUIRED_KSYMS`) **before** the ~15 minute compile, because the
+alternative is discovering a dropped symbol on hardware nobody has in front of
+them. It also removes the linux `.stamp_dotconfig` on every run: the documented
+fragment dependency in `pkg-kconfig.mk` did not fire through Colima's virtiofs
+bind mount, producing a build that regenerated the stamp and still ignored the
+fragment.
+
+### GRUB modules for the no-USB path
+
+`search --file` needs `search_fs_file` and `chainloader` needs `chain`. Neither
+was in `BR2_TARGET_GRUB2_BUILTIN_MODULES_EFI`, and because the modules are built
+in there is no module directory on the ESP for `insmod` to fall back to — so the
+no-USB install could not locate its own volume, and the "Windows" menu entry
+could not get the officer back into Windows. Both would have appeared for the
+first time on a customer machine.
+
+### New runtime components
+
+- **`rmpg-watchdog`** — feeds the Intel TCO watchdog only while the session
+  proves healthy, via a *bounded round trip* to the X server rather than a
+  process-alive check (a frozen X still has a live process and the display).
+  A wedge becomes a reboot, which registers as a failed boot and feeds the A/B
+  counter — chaining a failure the A/B design could not see into one it can.
+  Disarms with the magic `V` on `TERM`, which is why `WATCHDOG_NOWAYOUT` is
+  deliberately left off.
+- **`rmpg-hwreport`** — enumerates what actually bound (DMI, DRM driver, DMC
+  load, input devices, both batteries, thermal, watchdog, radios, firmware load
+  failures, boot store) to the console and to `hwreports/` on the boot store, so
+  a bring-up survives the reboot as a file. Collects no serial numbers.
+- **`rmpg-update rollback`** — manual slot flip for the case automatic rollback
+  cannot see: an image that boots fine but is wrong. Refuses if the other slot
+  has no kernel, so it cannot brick a terminal remotely.
+
+### Tests added
+
+| Test | What it covers |
+| --- | --- |
+| `test/test-boot-store.sh` | 17 assertions over discovery: SATA, NVMe, NTFS, decoy partitions, missing store, both slot-pointer formats, bogus slot names, dirty-NTFS read-only. Runs on the host in about a second. Verified to go red (14 failures) when the `vda1` hardcoding is reintroduced. |
+| `test/run-qemu-nvme.sh` | Boots the real image with the disk on **NVMe or AHCI** instead of virtio, asserting the store is found on the non-virtio device, the counter increments, and it is reset on a healthy boot. This is the class of test whose absence hid the original bug. |
+| `test/assert-build-payload.sh` | Asserts the ~45 KB `bash -c` script reaches the container whole. An apostrophe in a comment inside that block splits the argument and truncates the script, and `bash -n` reports SYNTAX OK whenever the count is even. |
+| `test/lint-installer.py` | Static checks on the PowerShell installers, which have no interpreter on any development host here and are first run as Administrator on a customer machine: here-string pairing, backslash-instead-of-backtick escapes, and GRUB variables sitting in an expandable here-string. |
 
 ## Building
 

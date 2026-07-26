@@ -384,7 +384,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             const priColors: Record<string, { text: string; bg: string; border: string }> = {
               P1: { text: '#fca5a5', bg: 'rgba(220,38,38,0.3)', border: 'rgba(220,38,38,0.5)' },
               P2: { text: '#fde68a', bg: 'rgba(245,158,11,0.25)', border: 'rgba(245,158,11,0.4)' },
-              P3: { text: 'var(--rmpg-400)', bg: 'rgba(107,114,128,0.2)', border: 'rgba(107,114,128,0.35)' },
+              P3: { text: 'var(--text-secondary)', bg: 'rgba(107,114,128,0.2)', border: 'rgba(107,114,128,0.35)' },
               P4: { text: '#888888', bg: 'rgba(100,100,100,0.2)', border: 'rgba(100,100,100,0.35)' },
             };
             const c = priColors[pri] || priColors.P3;
@@ -460,7 +460,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         if ((call as any).vehicle_pursuit || (call as any).foot_pursuit) flagBadges.push({ label: 'PURSUIT', color: '#f97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.35)' });
         if ((call as any).officer_safety_caution) flagBadges.push({ label: 'SAFETY', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.35)' });
         if ((call as any).felony_in_progress) flagBadges.push({ label: 'FELONY', color: '#ef4444', bg: 'rgba(239,68,68,0.2)', border: 'rgba(239,68,68,0.5)' });
-        if ((call as any).ems_requested) flagBadges.push({ label: 'EMS', color: 'var(--rmpg-400)', bg: 'rgba(136,136,136,0.15)', border: 'rgba(136,136,136,0.35)' });
+        if ((call as any).ems_requested) flagBadges.push({ label: 'EMS', color: 'var(--text-secondary)', bg: 'rgba(136,136,136,0.15)', border: 'rgba(136,136,136,0.35)' });
         if ((call as any).injuries_reported) flagBadges.push({ label: 'INJ', color: '#fb923c', bg: 'rgba(251,146,60,0.15)', border: 'rgba(251,146,60,0.35)' });
         if (flagBadges.length === 0) return null;
         return (
