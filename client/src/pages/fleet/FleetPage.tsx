@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
 import RichTextArea from '../../components/RichTextArea';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
@@ -107,6 +107,28 @@ const timeAgo = (date: string): string => {
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
 };
+
+// Pre-trip checklist items. Extracted from the JSX so each checkbox can
+// derive a unique DOM id from its key — the inline version hardcoded one
+// literal id inside a .map(), producing ten duplicate ids.
+const PRETRIP_ITEMS: { key: string; label: string }[] = [
+  { key: 'lights_ok', label: 'Lights & Signals' },
+  { key: 'brakes_ok', label: 'Brakes' },
+  { key: 'radio_ok', label: 'Radio/Comms' },
+  { key: 'mdt_ok', label: 'MDT/Computer' },
+  { key: 'camera_ok', label: 'Dash Camera' },
+  { key: 'tires_ok', label: 'Tires' },
+  { key: 'fluids_ok', label: 'Fluids (Oil/Coolant)' },
+  { key: 'exterior_ok', label: 'Exterior Condition' },
+  { key: 'interior_ok', label: 'Interior Condition' },
+  { key: 'emergency_equipment_ok', label: 'Emergency Equipment' },
+];
+
+// A pre-trip is "answered" once any item is failed or a note is typed —
+// all-pass with no note is the untouched default and is safe to discard.
+const PRETRIP_DEFAULTS = PRETRIP_ITEMS.reduce<Record<string, boolean>>(
+  (acc, i) => { acc[i.key] = true; return acc; }, {},
+);
 
 export default function FleetPage() {
   const isMobile = useIsMobile();
@@ -292,10 +314,27 @@ export default function FleetPage() {
         body: JSON.stringify({ vehicle_id: detail.id, ...pretripForm }),
       });
       addToast(result.overall_pass ? 'Pre-trip PASSED' : 'Pre-trip FAILED - check items', result.overall_pass ? 'success' : 'error');
+      setPretripForm({ ...PRETRIP_DEFAULTS, notes: '' } as typeof pretripForm);
       setShowPretripModal(false);
     } catch (err: any) { addToast(err?.message || 'Failed to submit pre-trip', 'error'); }
     finally { setPretripSaving(false); }
   }, [detail, pretripForm, addToast]);
+
+  const pretripTitleId = useId();
+  const pretripFirstItemRef = useRef<HTMLInputElement | null>(null);
+  const pretripDirty = PRETRIP_ITEMS.some((it) => !(pretripForm as any)[it.key])
+    || pretripForm.notes.trim() !== '';
+
+  const closePretrip = useCallback(() => {
+    if (pretripSaving) return;
+    if (pretripDirty && !window.confirm('Discard this pre-trip checklist?')) return;
+    setPretripForm({ ...PRETRIP_DEFAULTS, notes: '' } as typeof pretripForm);
+    setShowPretripModal(false);
+  }, [pretripDirty, pretripSaving]);
+
+  useEffect(() => {
+    if (showPretripModal) pretripFirstItemRef.current?.focus();
+  }, [showPretripModal]);
 
   // Snapshot form as clean baseline after modal opens and form is populated
   useEffect(() => {
@@ -1153,14 +1192,13 @@ export default function FleetPage() {
   // Set document title
   useEffect(() => { document.title = 'Fleet Management \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // Keyboard shortcut: Escape to close the pre-trip modal (guarded when dirty)
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowPretripModal(false); }
-    };
+    if (!showPretripModal) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closePretrip(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [showPretripModal, closePretrip]);
 
   // Active save/cancel for FloatingSaveBar
   const activeSaveHandler = () => {
@@ -1775,45 +1813,51 @@ export default function FleetPage() {
 
       {/* Feature 16: Pre-Trip Checklist Modal */}
       {showPretripModal && selectedVehicle && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 p-2" role="dialog" aria-modal="true" onClick={() => setShowPretripModal(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 rounded w-[450px] max-w-[95vw] max-h-[90vh] md:max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div
+          data-testid="pretrip-backdrop"
+          className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 p-2"
+          onClick={closePretrip}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={pretripTitleId}
+            className="bg-surface-raised border border-rmpg-600 w-[450px] max-w-[95vw] max-h-[90vh] md:max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
-              <h3 className="text-sm font-bold text-rmpg-100">Pre-Trip Inspection: {selectedVehicle.vehicle_number}</h3>
-              <button type="button" onClick={() => setShowPretripModal(false)} className="text-rmpg-400 hover:text-rmpg-100 text-lg">&times;</button>
+              <h3 id={pretripTitleId} className="text-sm font-bold text-rmpg-100">
+                Pre-Trip Inspection: {selectedVehicle.vehicle_number}
+              </h3>
+              <button type="button" onClick={closePretrip} aria-label="Close pre-trip inspection" className="text-rmpg-400 hover:text-rmpg-100 text-lg">&times;</button>
             </div>
             <div className="p-3 flex-1 overflow-auto space-y-2">
-              {[
-                { key: 'lights_ok', label: 'Lights & Signals' },
-                { key: 'brakes_ok', label: 'Brakes' },
-                { key: 'radio_ok', label: 'Radio/Comms' },
-                { key: 'mdt_ok', label: 'MDT/Computer' },
-                { key: 'camera_ok', label: 'Dash Camera' },
-                { key: 'tires_ok', label: 'Tires' },
-                { key: 'fluids_ok', label: 'Fluids (Oil/Coolant)' },
-                { key: 'exterior_ok', label: 'Exterior Condition' },
-                { key: 'interior_ok', label: 'Interior Condition' },
-                { key: 'emergency_equipment_ok', label: 'Emergency Equipment' },
-              ].map(item => (
-                <label key={item.key} className="flex items-center gap-3 p-2 min-h-[44px] bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
-                  <input id="ff-fleetpage-2"
-                    type="checkbox"
-                    checked={(pretripForm as any)[item.key]}
-                    onChange={e => setPretripForm(prev => ({ ...prev, [item.key]: e.target.checked }))}
-                    className="w-4 h-4 accent-green-500"
-                  />
-                  <span className={`text-sm ${(pretripForm as any)[item.key] ? 'text-green-300' : 'text-red-300'}`}>{item.label}</span>
-                  <span className="ml-auto text-[10px] font-mono">{(pretripForm as any)[item.key] ? 'PASS' : 'FAIL'}</span>
-                </label>
-              ))}
+              {PRETRIP_ITEMS.map((item, idx) => {
+                const inputId = `ff-pretrip-${item.key}`;
+                return (
+                  <label key={item.key} htmlFor={inputId} className="flex items-center gap-3 p-2 min-h-[44px] bg-surface-base cursor-pointer hover:bg-surface-raised">
+                    <input
+                      id={inputId}
+                      ref={idx === 0 ? pretripFirstItemRef : undefined}
+                      type="checkbox"
+                      checked={(pretripForm as any)[item.key]}
+                      onChange={(e) => setPretripForm((prev) => ({ ...prev, [item.key]: e.target.checked }))}
+                      className="w-4 h-4 accent-green-500"
+                    />
+                    <span className={`text-sm ${(pretripForm as any)[item.key] ? 'text-green-300' : 'text-red-300'}`}>{item.label}</span>
+                    <span className="ml-auto text-[10px] font-mono">{(pretripForm as any)[item.key] ? 'PASS' : 'FAIL'}</span>
+                  </label>
+                );
+              })}
               <RichTextArea
                 value={pretripForm.notes}
-                onChange={e => setPretripForm(prev => ({ ...prev, notes: e.target.value }))}
+                onChange={(e) => setPretripForm((prev) => ({ ...prev, notes: e.target.value }))}
                 className="input-dark w-full h-16 text-sm mt-2 min-h-[36px]"
                 placeholder="Notes (defects, damage, etc.)..."
               />
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button type="button" onClick={() => setShowPretripModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={closePretrip} className="toolbar-btn">Cancel</button>
               <button type="button" onClick={submitPretrip} disabled={pretripSaving} className="toolbar-btn toolbar-btn-primary print:hidden">
                 {pretripSaving ? 'Saving...' : 'Submit Pre-Trip'}
               </button>
