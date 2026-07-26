@@ -156,6 +156,39 @@ BR2_PACKAGE_LINUX_FIRMWARE_I915=y
 # reports no power supply at all, and the indicator simply hides).
 BR2_PACKAGE_ACPID=y
 
+# ── Clock: timezone data and time synchronisation ────────────────────────────
+# (2026-07-25 completeness audit.) The built image had NO timezone database at
+# all — /usr/share/zoneinfo was empty, /etc/localtime and /etc/TZ absent — and
+# nothing anywhere that could set the clock. Three consequences, none of which
+# announce themselves as a clock problem:
+#
+#   1. Every displayed time was wrong by the UTC offset. WebKit resolves local
+#      time through libc, which with no zoneinfo falls back to UTC — so a
+#      Denver dispatcher reads call and evidence times 6-7 hours off. The API
+#      correctly stores UTC (that is the house rule), which is exactly what
+#      makes the client-side conversion the thing that has to work.
+#   2. TLS fails on a skewed clock. Certificate validity is checked against
+#      system time, so a terminal whose RTC has drifted far enough simply
+#      cannot load rmpgutah.us — presenting as "the app is down", not as a
+#      clock fault.
+#   3. JWT auth breaks the same way: `jose` validates exp/nbf against local
+#      time, so skew logs officers out mid-shift or accepts stale tokens.
+#
+# Root is an initramfs, so image size is resident RAM on every terminal. The
+# full "default" zone set costs ~5.5 MB on glibc for zones this fleet will
+# never use, so only the two regions this fleet needs are compiled.
+#
+# ⚠️ BR2_TARGET_TZ_ZONELIST takes tzdata SOURCE FILE names, not zone names.
+# Setting it to "America/Denver Etc/UTC" — which is what it looks like it wants
+# — fails the build with `zic: Can't open America/Denver`. The valid values are
+# the region files in the tzdata tarball: northamerica, etcetera, europe, ...
+#   northamerica -> contains America/Denver (verified in host-tzdata-2024a)
+#   etcetera     -> contains Etc/UTC, kept so logs can be read in UTC
+# BR2_TARGET_LOCALTIME, by contrast, DOES take a zone name.
+BR2_TARGET_TZ_INFO=y
+BR2_TARGET_TZ_ZONELIST="northamerica etcetera"
+BR2_TARGET_LOCALTIME="America/Denver"
+
 # ── Fonts ────────────────────────────────────────────────────────────────────
 # Liberation is metric-compatible with Arial/Times/Courier, so pages and
 # documents authored against the Microsoft core fonts lay out correctly — the

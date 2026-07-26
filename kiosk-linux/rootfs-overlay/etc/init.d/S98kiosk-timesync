@@ -1,0 +1,77 @@
+#!/bin/sh
+# /etc/init.d/S98kiosk-timesync
+#
+# Sets and then disciplines the system clock. Runs after S98kiosk-net-marker
+# (lexicographic within the same S98 rung: "net" < "timesync") so the network
+# is already up, and before S99kiosk-desktop so the browser's first TLS
+# handshake happens against a corrected clock rather than a drifted one.
+#
+# WHY THIS EXISTS
+# Until 2026-07-25 the image had no way to set its clock at all. Whatever the
+# RTC read at power-on stood for the whole shift. Three failures follow, and
+# none of them looks like a clock problem to the person hitting it:
+#
+#   - TLS: certificate validity is checked against system time, so a terminal
+#     far enough out simply cannot load rmpgutah.us. It reports as "the app is
+#     down".
+#   - Auth: JWTs are validated on exp/nbf, so skew logs officers out mid-shift
+#     or honours tokens that should have expired.
+#   - Records: on-device evidence photos and CAD entries carry the wrong time,
+#     which is the kind of defect that surfaces in court rather than in a log.
+#
+# NON-BLOCKING BY DESIGN. Deployment sites can be offline, and a terminal that
+# refuses to boot because it cannot reach an NTP server is far worse than one
+# that boots with a stale clock and says so — the same rule S98kiosk-net-marker
+# already follows. ntpd is started in the background and keeps retrying on its
+# own; nothing here waits on it.
+
+MARKER=/tmp/kiosk-timesync.log
+
+# Cloudflare first: the whole application already depends on Cloudflare being
+# reachable, so if time.cloudflare.com is blocked the terminal has bigger
+# problems. pool.ntp.org is the fallback for sites that allow general NTP but
+# not that host.
+NTP_SERVERS="time.cloudflare.com pool.ntp.org"
+
+# Seed the clock from the RTC before anything else. The kernel does this itself
+# when RTC_HCTOSYS is set, but stating it here makes the image independent of
+# that config staying on, and costs nothing when it is already correct.
+if [ -e /dev/rtc0 ] || [ -e /dev/rtc ]; then
+    hwclock -s -u 2>/dev/null
+fi
+
+if ! command -v ntpd >/dev/null 2>&1; then
+    echo "KIOSK_LINUX_TIMESYNC_FAILED (ntpd applet missing from busybox)" | tee "$MARKER"
+    exit 0
+fi
+
+peers=""
+for s in $NTP_SERVERS; do
+    peers="$peers -p $s"
+done
+
+# -S runs the hook on step, stratum change, and roughly every 11 minutes, which
+# is what persists a corrected time into the RTC so the NEXT boot starts right
+# even with no network. Without it a fleet that is offline at power-on would
+# re-acquire the same drift every single morning.
+#
+# Deliberately NOT -q (set once and quit): a vehicle terminal frequently boots
+# out of coverage and associates later, so the daemon has to keep trying.
+# Tested directly rather than via a later $? read: a comment or blank line
+# between the command and the test is harmless today but is exactly how that
+# check rots into always-true when someone inserts a line.
+# shellcheck disable=SC2086
+if ntpd -N $peers -S /usr/lib/rmpg/ntpd-hook >/dev/null 2>&1; then
+    # ntpd forks and returns success immediately, so this confirms it STARTED,
+    # not that it reached a peer. Whether the clock actually got set shows up
+    # in the hook firing; there is no cheap way to assert it here without
+    # blocking boot, which this script must not do.
+    echo "KIOSK_LINUX_TIMESYNC_OK (ntpd started; peers:$NTP_SERVERS)" | tee "$MARKER"
+else
+    # Started-and-failed is not fatal. The desktop still comes up, the clock is
+    # whatever the RTC said, and this line is what tells a technician why the
+    # times look wrong.
+    echo "KIOSK_LINUX_TIMESYNC_FAILED (ntpd would not start)" | tee "$MARKER"
+fi
+
+exit 0
