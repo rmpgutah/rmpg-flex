@@ -96,5 +96,6 @@ describe('FLEET_ONLY_BLOCKS', () => {
     expect(FLEET_ONLY_BLOCKS).toContain('service_compliance');
     expect(FLEET_ONLY_BLOCKS).toContain('cost_per_mile_ranking');
     expect(FLEET_ONLY_BLOCKS).toContain('fuel_economy_ranking');
+    expect(FLEET_ONLY_BLOCKS).toContain('oldest_vehicle_year');
   });
 });

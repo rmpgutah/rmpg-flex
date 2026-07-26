@@ -219,7 +219,9 @@ fleet.get('/analytics', async (c) => {
   const inspPeriod = periodMod ? `AND inspection_date >= date('now', '${periodMod}')` : '';
 
   // ?vehicle_id=N scopes every per-vehicle-meaningful block. Absent or
-  // invalid → null → fleet-wide, byte-identical to the previous behavior.
+  // invalid → null → fleet-wide, semantically identical to the previous
+  // behavior (whitespace-only text change to the interpolated SQL; no
+  // `.bind()` call is constructed at all on this path).
   const vehicleId = parseVehicleScope(c.req.query('vehicle_id'));
   const scope: 'vehicle' | 'fleet' = vehicleId == null ? 'fleet' : 'vehicle';
 
@@ -474,7 +476,10 @@ fleet.get('/analytics', async (c) => {
   ), []);
 
   // avg_daily_miles — fleet average derived from fuel-log odometer
-  // spans (matches the client's "Fleet avg from fuel logs" caption).
+  // spans (matches the client's "Fleet avg from fuel logs" caption on
+  // the fleet-wide dashboard). Scoped to one vehicle, this is that
+  // vehicle's own daily-miles rate from the same per_vehicle CTE — a
+  // meaningful per-vehicle figure, not a fleet aggregate.
   const avg_daily_miles = await safe(async () => {
     const row = await queryFirst<{ v: number | null }>(
       db,
@@ -484,10 +489,12 @@ fleet.get('/analytics', async (c) => {
                   MAX(1, julianday(MAX(fuel_date)) - julianday(MIN(fuel_date))) as daily
          FROM fleet_fuel_log
          WHERE odometer IS NOT NULL
+           ${scopeAnd('vehicle_id', vehicleId)}
          GROUP BY vehicle_id
          HAVING COUNT(*) >= 2 AND MAX(odometer) > MIN(odometer)
        )
        SELECT ROUND(AVG(daily), 1) as v FROM per_vehicle`,
+      ...scopeBinds(vehicleId),
     );
     return row?.v ?? null;
   }, null);
@@ -495,6 +502,8 @@ fleet.get('/analytics', async (c) => {
   // maintenance_forecast — per active vehicle with a known service
   // target. est_days prefers the mileage runway (miles ÷ that
   // vehicle's avg daily miles); falls back to the calendar date.
+  // Scoped to one vehicle_id, this returns just that vehicle's own
+  // forecast row rather than every active vehicle in the fleet.
   const maintenance_forecast = await safe(async () => {
     const vehicles = await query<{
       id: number; vehicle_number: string; current_mileage: number | null;
@@ -505,7 +514,9 @@ fleet.get('/analytics', async (c) => {
        FROM fleet_vehicles
        WHERE archived_at IS NULL AND status != 'retired'
          AND (next_service_due IS NOT NULL OR next_service_mileage IS NOT NULL)
+         ${scopeAnd('id', vehicleId)}
        ORDER BY vehicle_number`,
+      ...scopeBinds(vehicleId),
     );
     const dailyByVehicle = await query<{ vehicle_id: number; daily: number }>(
       db,
@@ -514,8 +525,10 @@ fleet.get('/analytics', async (c) => {
                 MAX(1, julianday(MAX(fuel_date)) - julianday(MIN(fuel_date))) as daily
        FROM fleet_fuel_log
        WHERE odometer IS NOT NULL
+         ${scopeAnd('vehicle_id', vehicleId)}
        GROUP BY vehicle_id
        HAVING COUNT(*) >= 2 AND MAX(odometer) > MIN(odometer)`,
+      ...scopeBinds(vehicleId),
     );
     const dailyMap = new Map(dailyByVehicle.map((d) => [d.vehicle_id, d.daily]));
     const today = Date.now();
@@ -541,7 +554,10 @@ fleet.get('/analytics', async (c) => {
     });
   }, []);
 
-  const oldest_vehicle_year = (await safe(() => queryFirst<{ y: number | null }>(
+  // oldest_vehicle_year — a fleet minimum; a single vehicle's own year
+  // is already on its vehicle record, not this analytics block.
+  // Fleet-only: zeroed (null) when scoped.
+  const oldest_vehicle_year = vehicleId != null ? null : (await safe(() => queryFirst<{ y: number | null }>(
     db,
     `SELECT MIN(year) as y FROM fleet_vehicles
      WHERE archived_at IS NULL AND status != 'retired' AND year IS NOT NULL`,
@@ -574,14 +590,18 @@ fleet.get('/analytics', async (c) => {
      ORDER BY cost_per_mile IS NULL, cost_per_mile DESC`,
   ), []);
 
-  // top_issues — maintenance grouped by type, period-scoped.
+  // top_issues — maintenance grouped by type, period-scoped, and (when
+  // ?vehicle_id is present) scoped to that vehicle's own maintenance
+  // history rather than the whole fleet's.
   const top_issues = await safe(() => query<{ type: string; count: number; total_cost: number }>(
     db,
     `SELECT COALESCE(type, 'other') as type, COUNT(*) as count, COALESCE(SUM(cost), 0) as total_cost
      FROM fleet_maintenance WHERE 1=1 ${maintPeriod}
+       ${scopeAnd('vehicle_id', vehicleId)}
      GROUP BY COALESCE(type, 'other')
      ORDER BY count DESC
      LIMIT 10`,
+    ...scopeBinds(vehicleId),
   ), []);
 
   return c.json({
