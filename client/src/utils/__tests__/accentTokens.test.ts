@@ -487,6 +487,13 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
       count: 1,
       why: 'inside a comment; jsPDF takes literal colours and the file is classifier-excluded',
     },
+    'utils/withAlpha.ts': {
+      count: 6,
+      why: 'doc comments only — withAlpha\'s own header and @example block quote '
+        + 'var(--rmpg-500) to explain the concat bug it exists to fix. Landed in #3038 '
+        + 'after this floor was first pinned, which is what made main red: each PR was '
+        + 'green alone and only the combination failed.',
+    },
   };
 
   // Matches the bare ramp reference with or without a fallback — `var(--rmpg-500)`
