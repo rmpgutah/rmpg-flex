@@ -34,7 +34,7 @@ interface EventRow {
 
 interface FleetTables {
   events: EventRow[];
-  links: { rmpg_table: string; rmpg_id: number; fleetio_id: number }[];
+  links: { rmpg_table: string; rmpg_id: number; fleetio_id: number; fleetio_resource?: string }[];
   fleet_vehicles: Record<number, Record<string, unknown>>;
   fleet_fuel_log: Record<number, Record<string, unknown>>;
   conflicts: { rmpg_table: string; rmpg_id: number; field: string; remote_value: string; resolution: string }[];
@@ -66,7 +66,15 @@ function makeDb(state: FleetTables) {
             return (found ?? null) as T | null;
           }
           if (/FROM fleetio_links/i.test(sql)) {
-            const [rmpgTable, rmpgId] = ctx.bindings as [string, number];
+            const rmpgTable = ctx.bindings[0] as string;
+            if (/SELECT rmpg_id/i.test(sql)) {
+              // lookupRmpgId — inverse direction: (table, ...resources, fleetio_id)
+              const fleetioId = ctx.bindings[ctx.bindings.length - 1] as number;
+              const found = state.links.find(l => l.rmpg_table === rmpgTable && l.fleetio_id === fleetioId);
+              return found ? ({ rmpg_id: found.rmpg_id } as unknown as T) : null;
+            }
+            // lookupFleetioId — (table, rmpg_id, ...resources)
+            const rmpgId = ctx.bindings[1] as number;
             const found = state.links.find(l => l.rmpg_table === rmpgTable && l.rmpg_id === rmpgId);
             return found ? ({ fleetio_id: found.fleetio_id } as unknown as T) : null;
           }
@@ -84,9 +92,17 @@ function makeDb(state: FleetTables) {
         async run() {
           calls.push(ctx);
           if (/^UPDATE fleetio_events/i.test(sql)) {
+            // Stale-claim reaper — no bindings, matches nothing in these fixtures.
+            if (ctx.bindings.length === 0) return { meta: { changes: 0, last_row_id: 0 } };
             const last = ctx.bindings[ctx.bindings.length - 1] as number;
             const ev = state.events.find(e => e.id === last);
             if (!ev) return { meta: { changes: 0, last_row_id: 0 } };
+            // Compare-and-swap claim: only a row still 'pending' can be taken.
+            if (/status='processing'/.test(sql)) {
+              if (ev.status !== 'pending') return { meta: { changes: 0, last_row_id: ev.id } };
+              ev.status = 'processing';
+              return { meta: { changes: 1, last_row_id: ev.id } };
+            }
             // Two shapes:
             //   "SET status='completed', processed_at=…, attempts=attempts+1 WHERE id = ?"
             //   "SET status = CASE WHEN attempts+1 >= ? THEN 'failed' ELSE 'pending' END, attempts = attempts+1, error = ? WHERE id = ?"
@@ -125,12 +141,18 @@ function makeDb(state: FleetTables) {
             state.fleet_fuel_log[id].__last_update_bindings = ctx.bindings;
             return { meta: { changes: 1, last_row_id: id } };
           }
+          if (/^DELETE FROM fleetio_links/i.test(sql)) {
+            const [rmpgTable, rmpgId] = ctx.bindings as [string, number];
+            const before = state.links.length;
+            state.links = state.links.filter(l => !(l.rmpg_table === rmpgTable && l.rmpg_id === rmpgId));
+            return { meta: { changes: before - state.links.length, last_row_id: 0 } };
+          }
           // recordLink helper — sync engine records a new fleetio_links row
           // after a successful create dispatch.
           if (/^INSERT OR IGNORE INTO fleetio_links/i.test(sql)) {
-            const [rmpgTable, rmpgId, , fleetioId] = ctx.bindings as [string, number, string, number];
+            const [rmpgTable, rmpgId, fleetioResource, fleetioId] = ctx.bindings as [string, number, string, number];
             const exists = state.links.some(l => l.rmpg_table === rmpgTable && l.rmpg_id === rmpgId);
-            if (!exists) state.links.push({ rmpg_table: rmpgTable, rmpg_id: rmpgId, fleetio_id: fleetioId });
+            if (!exists) state.links.push({ rmpg_table: rmpgTable, rmpg_id: rmpgId, fleetio_id: fleetioId, fleetio_resource: fleetioResource });
             return { meta: { changes: exists ? 0 : 1, last_row_id: state.links.length } };
           }
           return { meta: { changes: 0, last_row_id: 0 } };
@@ -278,10 +300,11 @@ describe('applyOutbound', () => {
 
   it('unsupported (resource, action) records a failure and moves on', async () => {
     const state: FleetTables = {
-      // fuel_entry/delete is still 501 (hard-delete semantics deferred).
-      // The previous test used work_order/update which is now implemented;
-      // any genuinely-unsupported verb works for this assertion.
-      events: [baseEvent({ resource: 'fuel_entry', action: 'delete' })],
+      // work_order/delete is the only genuinely-unsupported verb left. (This
+      // test previously used fuel_entry/delete, which is now implemented —
+      // its 501 was a live defect, not a deferral: fleet.ts has emitted
+      // 'fuel.delete' all along, so every fuel-log deletion dead-lettered.)
+      events: [baseEvent({ resource: 'work_order', action: 'delete' })],
       links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
     };
     const { db } = makeDb(state);
@@ -338,7 +361,12 @@ describe('applyOutbound', () => {
     expect(result.completed).toBe(1);
     expect(state.events[0].status).toBe('completed');
     // Link recorded so the next emit (update/delete) can find the fleetio_id.
-    expect(state.links).toEqual([{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 7777 }]);
+    // The link's `fleetio_resource` must be the CANONICAL plural form. Writing
+    // the singular 'vehicle' here is what made /pull blind to sync-created
+    // links (see src/utils/fleetio/resources.ts).
+    expect(state.links).toEqual([{
+      rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 7777, fleetio_resource: 'vehicles',
+    }]);
   });
 
   it('vehicle/create — idempotent: skips remote call if link already exists', async () => {
@@ -628,6 +656,7 @@ describe('applyOutbound', () => {
     // insert a duplicate local row for the same remote fill-up.
     expect(stateLinked.links).toContainEqual({
       rmpg_table: 'fleet_fuel_log', rmpg_id: 100, fleetio_id: 55555,
+      fleetio_resource: 'fuel_entries',
     });
 
     // Orphan case
@@ -775,7 +804,11 @@ describe('applyInbound', () => {
     direction: 'inbound',
     event_id: 'fleetio-evt-1',
     resource: 'vehicle',
-    resource_id: 42,
+    // ⚠️ INBOUND resource_id is the FLEET.IO id (see FleetioEventRow). Held
+    // deliberately distinct from the local row id (42) so any regression that
+    // reintroduces "use resource_id as the local id" fails instead of passing
+    // by coincidence.
+    resource_id: 999,
     action: 'update',
     status: 'pending',
     attempts: 0,
@@ -787,7 +820,7 @@ describe('applyInbound', () => {
   });
 
   it('returns unknown_event for an unknown event_id', async () => {
-    const state: FleetTables = { events: [], links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [] };
+    const state: FleetTables = { events: [], links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999, fleetio_resource: 'vehicles' }], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [] };
     const { db } = makeDb(state);
     const result = await applyInbound({ db }, 'nope');
     expect(result.status).toBe('unknown_event');
@@ -797,7 +830,7 @@ describe('applyInbound', () => {
     const payload = { next_service_mileage: 50000, next_service_date: '2026-12-31' };
     const state: FleetTables = {
       events: [inboundEvent({ payload_json: JSON.stringify(payload) })],
-      links: [],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999, fleetio_resource: 'vehicles' }],
       fleet_vehicles: { 42: { id: 42, updated_at: '2026-06-20T00:00:00Z' } },
       fleet_fuel_log: {}, conflicts: [],
     };
@@ -813,7 +846,7 @@ describe('applyInbound', () => {
     const payload = { vehicle_name: 'Imposter' };
     const state: FleetTables = {
       events: [inboundEvent({ payload_json: JSON.stringify(payload) })],
-      links: [],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999, fleetio_resource: 'vehicles' }],
       fleet_vehicles: { 42: { id: 42, updated_at: '2026-06-20T00:00:00Z' } },
       fleet_fuel_log: {}, conflicts: [],
     };
@@ -829,7 +862,7 @@ describe('applyInbound', () => {
     const payload = { mystery_col: 'x' };
     const state: FleetTables = {
       events: [inboundEvent({ payload_json: JSON.stringify(payload) })],
-      links: [], fleet_vehicles: { 42: { id: 42 } }, fleet_fuel_log: {}, conflicts: [],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999, fleetio_resource: 'vehicles' }], fleet_vehicles: { 42: { id: 42 } }, fleet_fuel_log: {}, conflicts: [],
     };
     const { db } = makeDb(state);
     const result = await applyInbound({ db }, 'fleetio-evt-1');
@@ -839,7 +872,7 @@ describe('applyInbound', () => {
   it('marks already-completed events as no_op', async () => {
     const state: FleetTables = {
       events: [inboundEvent({ status: 'completed', payload_json: '{}' })],
-      links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999, fleetio_resource: 'vehicles' }], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
     };
     const { db } = makeDb(state);
     const result = await applyInbound({ db }, 'fleetio-evt-1');

@@ -36,6 +36,13 @@ import type { FleetioConfig, FleetioFuelEntry } from './client';
 import type { FleetioVehicle } from './types';
 import { mapVehicleFieldsToFleetio, mapFuelEntryFieldsToFleetio, mapVendorFieldsToFleetio, mapPartFieldsToFleetio } from './seed';
 import {
+  FLEETIO_LINK_RESOURCE,
+  FLEETIO_RMPG_TABLE,
+  RMPG_TABLE_TO_KIND,
+  acceptedLinkResources,
+  type FleetioResourceKind,
+} from './resources';
+import {
   FleetioRateLimitError,
   FleetioHttpError,
   FleetioTimeoutError,
@@ -79,6 +86,7 @@ export interface FleetioAdapter {
   archiveVehicle(args: { fleetioId: number; archivedAtIso: string }): Promise<FleetioVehicle>;
   createFuelEntry(args: { payload: Record<string, unknown> }): Promise<FleetioFuelEntry>;
   updateFuelEntry(args: { fleetioId: number; payload: Record<string, unknown> }): Promise<FleetioFuelEntry>;
+  deleteFuelEntry(args: { fleetioId: number }): Promise<unknown>;
   createWorkOrder(args: { payload: Record<string, unknown> }): Promise<{ id: number; [k: string]: unknown }>;
   updateWorkOrder(args: { fleetioId: number; payload: Record<string, unknown> }): Promise<{ id: number; [k: string]: unknown }>;
   createVendor(args: { payload: Record<string, unknown> }): Promise<{ id: number; [k: string]: unknown }>;
@@ -113,6 +121,37 @@ const DEFAULT_OUTBOUND_LIMIT = 50;
 export async function applyOutbound(deps: ApplyOutboundDeps): Promise<ApplyOutboundResult> {
   const limit = deps.limit ?? DEFAULT_OUTBOUND_LIMIT;
   const result: ApplyOutboundResult = { attempted: 0, completed: 0, failed: 0, skipped: 0, errors: [] };
+
+  // ── Reap abandoned claims first ──
+  // A row claimed as 'processing' whose drain never finished — the Worker was
+  // evicted, the waitUntil budget ran out, an unhandled throw escaped — would
+  // otherwise sit in 'processing' forever: invisible to this SELECT (which only
+  // takes 'pending'), invisible to getQueueHealth (which counts 'failed' and
+  // 'pending'), and never retried. Claims older than the stale window go back
+  // to 'pending' WITHOUT touching `attempts`, since an abandoned claim is not
+  // evidence that Fleet.io rejected anything.
+  //
+  // 30 minutes = one full cron period, so a claim can only be reaped after the
+  // tick that made it has certainly ended.
+  //
+  // The age test is on `processed_at` (which the claim below stamps), NOT
+  // `created_at`. `created_at` is when the event was QUEUED — an event queued
+  // days ago and claimed one second ago would be instantly reapable, handing a
+  // concurrent drain the exact double-dispatch the claim exists to prevent. A
+  // NULL `processed_at` means the row was claimed by a pre-claim-stamp bundle,
+  // so it's reapable on sight.
+  try {
+    const reaped = await deps.db.prepare(
+      `UPDATE fleetio_events SET status='pending'
+       WHERE direction='outbound' AND status='processing'
+         AND (processed_at IS NULL OR processed_at <= datetime('now', '-30 minutes'))`,
+    ).run();
+    const n = reaped?.meta?.changes ?? 0;
+    if (n > 0) console.log(`[fleetio.sync] reaped ${n} abandoned 'processing' event(s) back to pending`);
+  } catch (err) {
+    console.error('[fleetio.sync] stale-claim reaper failed', err);
+  }
+
   let pending: FleetioEventRow[];
   try {
     const rs = await deps.db.prepare(
@@ -130,6 +169,38 @@ export async function applyOutbound(deps: ApplyOutboundDeps): Promise<ApplyOutbo
   }
 
   for (const row of pending) {
+    // ── Claim the row before dispatching ──
+    // `status='processing'` was in fleetio_events' CHECK constraint from
+    // migration 0133 but never actually used, so two overlapping drains saw the
+    // same 'pending' rows and both dispatched them. For a `create` that means a
+    // DUPLICATE remote record plus an orphaned link (INSERT OR IGNORE keeps the
+    // first id, so the second remote row is unreachable forever). Overlap is
+    // reachable in production: the drain runs on the */30 cron via waitUntil
+    // with per-event pacing, and nothing bounds it to under 30 minutes.
+    //
+    // The conditional UPDATE is the compare-and-swap — `changes === 0` means a
+    // concurrent drain claimed it first, so this one skips rather than races.
+    let claimed: boolean;
+    try {
+      // `processed_at` doubles as the claim timestamp so the reaper above can
+      // age claims out without a new column (0133's fleetio_events has no
+      // claimed_at, and `calls_for_service`-style column pressure isn't worth a
+      // migration here). It's overwritten on completion, and every reader of
+      // `processed_at` already filters on status='completed' — see
+      // /fleetio/analytics' latency query and /health's last-completed probe.
+      const claim = await deps.db.prepare(
+        `UPDATE fleetio_events SET status='processing', processed_at=datetime('now')
+         WHERE id = ? AND status='pending'`,
+      ).bind(row.id).run();
+      claimed = (claim?.meta?.changes ?? 0) > 0;
+    } catch (err) {
+      console.error('[fleetio.sync] failed to claim event', { event_id: row.event_id, err });
+      claimed = false;
+    }
+    if (!claimed) {
+      result.skipped++;
+      continue;
+    }
     result.attempted++;
     try {
       await dispatchOutbound(row, deps);
@@ -185,20 +256,79 @@ export async function applyOutbound(deps: ApplyOutboundDeps): Promise<ApplyOutbo
 
 interface FkRef { rmpgTable: string; required: boolean }
 
+// ⚠️ `rmpgTable` must match the value stored in `fleetio_links.rmpg_table`
+// EXACTLY. It previously read 'vendors' for both vendor_id entries, while every
+// vendor link is written under 'ref_vendors' (RMPG's actual vendor table — see
+// FLEETIO_RMPG_TABLE). So `lookupFleetioId(db, 'vendors', id)` never matched a
+// row, and because vendor_id is an OPTIONAL FK the field was silently DELETED
+// from the payload — meaning no outbound work order or fuel entry has ever
+// carried its vendor to Fleet.io. Sourcing the name from FLEETIO_RMPG_TABLE
+// makes that class of typo impossible.
 const OUTBOUND_FK_MAP: Record<string, Record<string, FkRef>> = {
   work_order: {
-    vehicle_id:          { rmpgTable: 'fleet_vehicles', required: true  },
-    vendor_id:           { rmpgTable: 'vendors',        required: false },
-    assigned_to_user_id: { rmpgTable: 'users',          required: false },
+    vehicle_id:          { rmpgTable: FLEETIO_RMPG_TABLE.vehicle, required: true  },
+    vendor_id:           { rmpgTable: FLEETIO_RMPG_TABLE.vendor,  required: false },
+    assigned_to_user_id: { rmpgTable: 'users',                    required: false },
   },
   fuel_entry: {
-    vehicle_id:          { rmpgTable: 'fleet_vehicles', required: true  },
-    vendor_id:           { rmpgTable: 'vendors',        required: false },
-    driver_id:           { rmpgTable: 'users',          required: false },
+    vehicle_id:          { rmpgTable: FLEETIO_RMPG_TABLE.vehicle, required: true  },
+    vendor_id:           { rmpgTable: FLEETIO_RMPG_TABLE.vendor,  required: false },
+    driver_id:           { rmpgTable: 'users',                    required: false },
   },
   // vehicle/create has no outbound FKs (fuel_type_id, tire_size_id etc.
   // are Fleet.io's own reference IDs; the seed path resolves them).
 };
+
+/**
+ * INBOUND counterpart of OUTBOUND_FK_MAP: local columns whose value is a
+ * FOREIGN KEY into an RMPG table, and which resource kind that key points at.
+ *
+ * An inbound webhook payload carries FLEET.IO ids. Both `vendor_id` (work
+ * orders, fuel entries) and `vehicle_id` are classified 'shared' in
+ * ownership.ts, so `applyInbound` used to write Fleet.io's id verbatim into a
+ * column that references `ref_vendors.id` / `fleet_vehicles.id`. The row then
+ * points at an unrelated local record (or a nonexistent one) — a silent FK
+ * corruption that no error surfaces and that reads as legitimate data
+ * downstream. Every field listed here is reverse-translated through
+ * fleetio_links before it can be applied, and DROPPED (never guessed) when no
+ * link exists.
+ */
+const INBOUND_FK_MAP: Record<string, Record<string, FleetioResourceKind>> = {
+  work_order: { vehicle_id: 'vehicle', vendor_id: 'vendor' },
+  fuel_entry: { vehicle_id: 'vehicle', vendor_id: 'vendor' },
+};
+
+export interface InboundFkTranslation {
+  /** Fields whose FK value was rewritten from a Fleet.io id to an RMPG id. */
+  translated: string[];
+  /** Fields dropped because no fleetio_links row mapped the remote id. */
+  dropped: string[];
+}
+
+/** Rewrites inbound FK values in place on `payload`, reporting what changed. */
+async function translateInboundFks(
+  db: D1Database,
+  resource: string,
+  payload: Record<string, unknown>,
+  fields: readonly string[],
+): Promise<InboundFkTranslation> {
+  const out: InboundFkTranslation = { translated: [], dropped: [] };
+  const fks = INBOUND_FK_MAP[resource];
+  if (!fks) return out;
+  for (const field of fields) {
+    const kind = fks[field];
+    if (!kind) continue;
+    const raw = payload[field];
+    if (raw == null) continue;
+    const remoteId = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isFinite(remoteId)) { out.dropped.push(field); continue; }
+    const localId = await lookupRmpgId(db, kind, remoteId);
+    if (localId == null) { out.dropped.push(field); continue; }
+    payload[field] = localId;
+    out.translated.push(field);
+  }
+  return out;
+}
 
 /** Result: `null` if a required FK can't be translated (caller should
  *  no-op the dispatch); otherwise the payload with FKs replaced. */
@@ -246,7 +376,7 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     const mapped = mapVehicleFieldsToFleetio(filteredPayload);
     if (!mapped.name) return null; // no derivable name — nothing safe to create with
     const created = await deps.adapter.createVehicle({ payload: mapped });
-    await recordLink(deps.db, 'fleet_vehicles', row.resource_id, 'vehicle', created.id, now(deps));
+    await recordLink(deps.db, FLEETIO_RMPG_TABLE.vehicle, row.resource_id, 'vehicle', created.id, now(deps));
     return created;
   }
   if (row.resource === 'vehicle' && row.action === 'update') {
@@ -270,7 +400,7 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     const translated = await translateOutboundFks(deps.db, 'fuel_entry', filteredPayload);
     if (translated == null) return null;       // parent vehicle not linked yet
     const created = await deps.adapter.createFuelEntry({ payload: mapFuelEntryFieldsToFleetio(translated) });
-    await recordLink(deps.db, 'fleet_fuel_log', row.resource_id, 'fuel_entries', created.id, now(deps));
+    await recordLink(deps.db, FLEETIO_RMPG_TABLE.fuel_entry, row.resource_id, 'fuel_entry', created.id, now(deps));
     return created;
   }
   if (row.resource === 'work_order' && row.action === 'create') {
@@ -279,7 +409,7 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     const translated = await translateOutboundFks(deps.db, 'work_order', filteredPayload);
     if (translated == null) return null;       // parent vehicle not linked yet
     const created = await deps.adapter.createWorkOrder({ payload: translated });
-    await recordLink(deps.db, 'work_orders', row.resource_id, 'work_order', created.id, now(deps));
+    await recordLink(deps.db, FLEETIO_RMPG_TABLE.work_order, row.resource_id, 'work_order', created.id, now(deps));
     return created;
   }
   if (row.resource === 'fuel_entry' && row.action === 'update') {
@@ -295,6 +425,18 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     if (translated == null) return null;
     return deps.adapter.updateFuelEntry({ fleetioId, payload: mapFuelEntryFieldsToFleetio(translated) });
   }
+  if (row.resource === 'fuel_entry' && row.action === 'delete') {
+    // src/routes/fleet.ts's `DELETE /fleet/fuel/:id` has emitted 'fuel.delete'
+    // since PR 3, but no handler existed — so every fuel-log deletion fell
+    // through to the 501 branch below, exhausted all 7 retries over ~3h,
+    // dead-lettered, and fired a `fleetio_event_dead_lettered` alert. The
+    // verbs are symmetric (both sides hard-delete), so this is a plain DELETE.
+    const fleetioId = await lookupFleetioId(deps.db, FLEETIO_RMPG_TABLE.fuel_entry, row.resource_id);
+    if (!fleetioId) return null;          // local-only entry; nothing remote to remove
+    const deleted = await deps.adapter.deleteFuelEntry({ fleetioId });
+    await dropLink(deps.db, FLEETIO_RMPG_TABLE.fuel_entry, row.resource_id);
+    return deleted;
+  }
   if (row.resource === 'work_order' && row.action === 'update') {
     const fleetioId = await lookupFleetioId(deps.db, 'work_orders', row.resource_id);
     if (!fleetioId) return null;               // parent never pushed → nothing to update
@@ -306,7 +448,7 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     const existing = await lookupFleetioId(deps.db, 'ref_vendors', row.resource_id);
     if (existing) return null;
     const created = await deps.adapter.createVendor({ payload: mapVendorFieldsToFleetio(filteredPayload) });
-    await recordLink(deps.db, 'ref_vendors', row.resource_id, 'vendor', created.id, now(deps));
+    await recordLink(deps.db, FLEETIO_RMPG_TABLE.vendor, row.resource_id, 'vendor', created.id, now(deps));
     return created;
   }
   if (row.resource === 'vendor' && row.action === 'update') {
@@ -323,7 +465,7 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     const existing = await lookupFleetioId(deps.db, 'fleet_parts', row.resource_id);
     if (existing) return null;
     const created = await deps.adapter.createPart({ payload: mapPartFieldsToFleetio(filteredPayload) });
-    await recordLink(deps.db, 'fleet_parts', row.resource_id, 'part', created.id, now(deps));
+    await recordLink(deps.db, FLEETIO_RMPG_TABLE.part, row.resource_id, 'part', created.id, now(deps));
     return created;
   }
   if (row.resource === 'part' && row.action === 'update') {
@@ -332,11 +474,15 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     return deps.adapter.updatePart({ fleetioId, payload: mapPartFieldsToFleetio(filteredPayload) });
   }
   if (row.resource === 'part' && row.action === 'delete') {
-    // Fleet.io parts support a hard DELETE (unlike vehicles/vendors). Only
-    // meaningful if the row was ever linked; otherwise it was local-only.
-    const fleetioId = await lookupFleetioId(deps.db, 'fleet_parts', row.resource_id);
+    // Fleet.io parts support a hard DELETE (unlike vehicles/vendors), and
+    // RMPG's `DELETE /fleet/parts/:id` hard-deletes locally too, so the verbs
+    // are symmetric. Only meaningful if the row was ever linked; otherwise it
+    // was local-only.
+    const fleetioId = await lookupFleetioId(deps.db, FLEETIO_RMPG_TABLE.part, row.resource_id);
     if (!fleetioId) return null;
-    return deps.adapter.deletePart({ fleetioId });
+    const deleted = await deps.adapter.deletePart({ fleetioId });
+    await dropLink(deps.db, FLEETIO_RMPG_TABLE.part, row.resource_id);
+    return deleted;
   }
   if (row.resource === 'inspection') {
     // Inspections are intentionally RMPG-only — see INSPECTION_OWNERSHIP in
@@ -346,10 +492,16 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     // completed so it stops surfacing in /admin/fleetio-health.
     return null;
   }
-  // Genuinely unsupported (fuel_entry/delete, work_order/delete, etc.). The
-  // hard-delete verbs are deferred because the semantics differ between
-  // systems — RMPG soft-deletes via archived_at while Fleet.io has discrete
-  // DELETE endpoints — and we don't want to silently destroy data either way.
+  // Genuinely unsupported — today that's work_order/delete only. No RMPG route
+  // emits it (workOrders.ts emits create/update/close), so reaching this branch
+  // means a new emit site was added without a matching dispatch handler. Left
+  // deliberately unimplemented rather than guessed: RMPG closes work orders
+  // instead of deleting them, so there's no verified symmetric verb to pick.
+  //
+  // ⚠️ Every emit kind in events.ts's EMIT_KIND_TO_RESOURCE must have a branch
+  // above. A missing one isn't inert — it throws 501, burns all 7 retries over
+  // ~3h, dead-letters, and pages an operator. That's exactly what fuel/delete
+  // did for weeks before its handler was added.
   throw new FleetioHttpError(
     `Unsupported outbound (${row.resource}/${row.action}) — sync handler not yet implemented`,
     501,
@@ -358,12 +510,16 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
 
 /** `INSERT OR IGNORE` — duplicate (rmpg_table, rmpg_id) shouldn't ever
  *  happen given the existing-link guards above, but being idempotent is
- *  cheap insurance against a concurrent emit race. */
+ *  cheap insurance against a concurrent emit race.
+ *
+ *  `fleetioResource` is always taken from FLEETIO_LINK_RESOURCE (never a
+ *  hand-written string) — see src/utils/fleetio/resources.ts for why the value
+ *  is load-bearing rather than descriptive. */
 async function recordLink(
   db: D1Database,
   rmpgTable: string,
   rmpgId: number | null,
-  fleetioResource: string,
+  kind: FleetioResourceKind,
   fleetioId: number,
   nowDate: Date,
 ): Promise<void> {
@@ -373,19 +529,77 @@ async function recordLink(
     `INSERT OR IGNORE INTO fleetio_links
        (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(rmpgTable, rmpgId, fleetioResource, fleetioId, iso, iso, iso).run();
+  ).bind(rmpgTable, rmpgId, FLEETIO_LINK_RESOURCE[kind], fleetioId, iso, iso, iso).run();
+}
+
+/** Drop the link row after the remote record is genuinely gone (hard delete),
+ *  so a stale mapping can't make a later event PATCH a record that no longer
+ *  exists — Fleet.io answers that with a 404, which the queue treats as a real
+ *  failure and dead-letters. Archive verbs deliberately KEEP their link: the
+ *  remote row still exists and may be restored. */
+async function dropLink(db: D1Database, rmpgTable: string, rmpgId: number | null): Promise<void> {
+  if (rmpgId == null) return;
+  try {
+    await db.prepare(`DELETE FROM fleetio_links WHERE rmpg_table = ? AND rmpg_id = ?`)
+      .bind(rmpgTable, rmpgId).run();
+  } catch (err) {
+    // Non-fatal: the remote delete already succeeded, and a leftover link is
+    // recoverable. Never let this turn a completed dispatch into a retry.
+    console.error('[fleetio.sync] failed to drop link after delete', { rmpgTable, rmpgId, err });
+  }
 }
 
 function now(deps: { now?: () => Date }): Date {
   return deps.now ? deps.now() : new Date();
 }
 
+/**
+ * Resolve the Fleet.io id for an RMPG row.
+ *
+ * Filters on `fleetio_resource` as well as (rmpg_table, rmpg_id). The table
+ * alone was previously the whole key, which happened to work only because
+ * UNIQUE(rmpg_table, rmpg_id) allows exactly one link per row — but it meant a
+ * row linked under the WRONG resource spelling still resolved, hiding the
+ * 'vehicle'/'vehicles' split (see resources.ts) instead of surfacing it. The
+ * legacy singular spelling stays accepted here so links written by an older
+ * Worker bundle keep resolving until migration 0206 normalizes them.
+ */
 async function lookupFleetioId(db: D1Database, rmpgTable: string, rmpgId: number | null): Promise<number | null> {
   if (rmpgId == null) return null;
+  const kind = RMPG_TABLE_TO_KIND[rmpgTable];
+  if (!kind) {
+    // Table isn't on the sync surface — no canonical resource to filter by.
+    const row = await db.prepare(
+      `SELECT fleetio_id FROM fleetio_links WHERE rmpg_table = ? AND rmpg_id = ? LIMIT 1`,
+    ).bind(rmpgTable, rmpgId).first<{ fleetio_id: number }>();
+    return row ? row.fleetio_id : null;
+  }
+  const accepted = acceptedLinkResources(kind);
   const row = await db.prepare(
-    `SELECT fleetio_id FROM fleetio_links WHERE rmpg_table = ? AND rmpg_id = ? LIMIT 1`,
-  ).bind(rmpgTable, rmpgId).first<{ fleetio_id: number }>();
+    `SELECT fleetio_id FROM fleetio_links
+     WHERE rmpg_table = ? AND rmpg_id = ? AND fleetio_resource IN (${accepted.map(() => '?').join(',')})
+     LIMIT 1`,
+  ).bind(rmpgTable, rmpgId, ...accepted).first<{ fleetio_id: number }>();
   return row ? row.fleetio_id : null;
+}
+
+/**
+ * Inverse of `lookupFleetioId` — Fleet.io id → RMPG row id.
+ *
+ * Needed by inbound FK reverse-translation: a webhook payload's `vendor_id` is
+ * a FLEET.IO id, and writing it straight into RMPG's `vendor_id` column (which
+ * references `ref_vendors.id`) silently repoints the row at an unrelated local
+ * vendor, or at nothing at all.
+ */
+async function lookupRmpgId(db: D1Database, kind: FleetioResourceKind, fleetioId: number | null): Promise<number | null> {
+  if (fleetioId == null) return null;
+  const accepted = acceptedLinkResources(kind);
+  const row = await db.prepare(
+    `SELECT rmpg_id FROM fleetio_links
+     WHERE rmpg_table = ? AND fleetio_resource IN (${accepted.map(() => '?').join(',')}) AND fleetio_id = ?
+     LIMIT 1`,
+  ).bind(FLEETIO_RMPG_TABLE[kind], ...accepted, fleetioId).first<{ rmpg_id: number }>();
+  return row ? row.rmpg_id : null;
 }
 
 // ─── Queue health (Fleet.io reliability & observability hardening) ────
@@ -422,9 +636,8 @@ const UNHEALTHY_ALERT_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 export function isFleetioQueueUnhealthy(health: FleetioQueueHealth, nowMs: number): boolean {
   if (health.failedTotal >= UNHEALTHY_FAILED_THRESHOLD) return true;
   if (health.oldestPendingCreatedAt) {
-    const raw = health.oldestPendingCreatedAt;
-    const parsed = Date.parse(raw.includes('T') ? raw : `${raw}Z`);
-    if (Number.isFinite(parsed) && nowMs - parsed > UNHEALTHY_PENDING_AGE_MS) return true;
+    const parsed = parseD1TimestampMs(health.oldestPendingCreatedAt);
+    if (parsed !== null && nowMs - parsed > UNHEALTHY_PENDING_AGE_MS) return true;
   }
   return false;
 }
@@ -433,8 +646,8 @@ export function isFleetioQueueUnhealthy(health: FleetioQueueHealth, nowMs: numbe
  *  30-min cron tick; `lastAlertedIso` comes from fleetio_sync_state. */
 export function shouldFireUnhealthyAlert(lastAlertedIso: string | null, nowMs: number): boolean {
   if (!lastAlertedIso) return true;
-  const parsed = Date.parse(lastAlertedIso.includes('T') ? lastAlertedIso : `${lastAlertedIso}Z`);
-  return !Number.isFinite(parsed) || nowMs - parsed > UNHEALTHY_ALERT_COOLDOWN_MS;
+  const parsed = parseD1TimestampMs(lastAlertedIso);
+  return parsed === null || nowMs - parsed > UNHEALTHY_ALERT_COOLDOWN_MS;
 }
 
 // ─── applyInbound ─────────────────────────────────────────
@@ -445,12 +658,35 @@ export interface ApplyInboundDeps {
 }
 
 export interface ApplyInboundResult {
-  status: 'applied' | 'no_op' | 'failed' | 'unknown_event';
+  status: 'applied' | 'no_op' | 'failed' | 'unknown_event' | 'unlinked';
   applied_fields: string[];
   conflict_fields: string[];
   unresolved_fields: string[];
   unknown_fields: string[];
+  /** Fields skipped because their FK value couldn't be mapped from a Fleet.io
+   *  id back to an RMPG id — see INBOUND_FK_MAP. Not an error; the rest of the
+   *  payload still applies. */
+  dropped_fk_fields: string[];
+  /** The resolved LOCAL row id (`fleetio_events.resource_id` holds the Fleet.io
+   *  id on inbound rows). Null when no fleetio_links row maps the remote id. */
+  local_id: number | null;
   error?: string;
+}
+
+/** Mark an inbound event as retry-exhausted-or-pending, mirroring the outbound
+ *  accounting so both directions surface in the same health queue. */
+async function markInboundFailure(db: D1Database, row: FleetioEventRow, errMsg: string): Promise<void> {
+  try {
+    await db.prepare(
+      `UPDATE fleetio_events
+       SET status = CASE WHEN attempts + 1 >= ? THEN 'failed' ELSE 'pending' END,
+           attempts = attempts + 1,
+           error = ?
+       WHERE id = ?`,
+    ).bind(maxAttempts(), errMsg.slice(0, 1000), row.id).run();
+  } catch (err) {
+    console.error('[fleetio.sync] failed to mark inbound failure', { event_id: row.event_id, err });
+  }
 }
 
 /** Given an inbound event id, look up + apply per ownership rules.
@@ -458,6 +694,7 @@ export interface ApplyInboundResult {
 export async function applyInbound(deps: ApplyInboundDeps, eventId: string): Promise<ApplyInboundResult> {
   const empty: ApplyInboundResult = {
     status: 'no_op', applied_fields: [], conflict_fields: [], unresolved_fields: [], unknown_fields: [],
+    dropped_fk_fields: [], local_id: null,
   };
   let row: FleetioEventRow | null;
   try {
@@ -473,9 +710,66 @@ export async function applyInbound(deps: ApplyInboundDeps, eventId: string): Pro
   if (!row) return { ...empty, status: 'unknown_event' };
   if (row.status === 'completed') return { ...empty, status: 'no_op' };
 
+  // ── Resolve the LOCAL row id ──
+  // 🔴 `fleetio_events.resource_id` means different things per direction (see
+  // FleetioEventRow): the RMPG row id for outbound, but the FLEET.IO id for
+  // inbound — that's what the webhook receiver extracts from the payload
+  // (normalizeResource → norm.resource_id). Everything below this point needs
+  // the LOCAL id.
+  //
+  // Every inbound path previously used `row.resource_id` directly as the local
+  // id, so a webhook for Fleet.io vehicle 501 executed
+  // `UPDATE fleet_vehicles SET ... WHERE id = 501` — writing remote values onto
+  // whatever unrelated RMPG vehicle happens to hold id 501, and filing
+  // `fleetio_conflicts` rows against that same wrong row. Silent cross-record
+  // corruption with no error surface.
+  //
+  // No link → 'no_op'. An unlinked remote record has no local counterpart to
+  // update, and guessing (e.g. matching by VIN here) is what /pull is for.
+  const kind = RMPG_TABLE_TO_KIND[resourceToRmpgTable(row.resource)];
+  let localId: number | null = null;
+  if (kind && row.resource_id != null) {
+    try {
+      localId = await lookupRmpgId(deps.db, kind, row.resource_id);
+    } catch (err) {
+      return { ...empty, status: 'failed', error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  if (kind && row.resource_id != null && localId == null) {
+    // Remote record we've never linked. Distinct from 'no_op' so the caller can
+    // tell "nothing to do" apart from "we don't know this record" — the latter
+    // is the signal that /pull should be run to reconcile the roster. The event
+    // is still marked completed below; replaying it wouldn't create the link.
+    await deps.db.prepare(
+      `UPDATE fleetio_events SET status='completed', processed_at=datetime('now'), error=? WHERE id = ?`,
+    ).bind(`no fleetio_links row for ${row.resource} ${row.resource_id}`, row.id).run()
+      .catch((err: unknown) => console.error('[fleetio.sync] failed to mark unlinked inbound', { eventId, err }));
+    return { ...empty, status: 'unlinked' };
+  }
+
   const payload = parsePayload(row.payload_json);
   const fields = Object.keys(payload);
   const { apply, conflict, unknown } = partitionInboundFields(row.resource, fields);
+
+  // Reverse-translate FK values (Fleet.io ids → RMPG ids) BEFORE anything reads
+  // them — the conflict snapshots below and the UPDATE all consume `payload`.
+  // Untranslatable FKs are removed from the apply set entirely rather than
+  // written through: a `vendor_id` we can't map is not "no vendor", it's
+  // "unknown vendor", and writing the remote id would point the row at an
+  // arbitrary local vendor. See INBOUND_FK_MAP.
+  let fkTranslation: InboundFkTranslation = { translated: [], dropped: [] };
+  if (localId != null) {
+    try {
+      fkTranslation = await translateInboundFks(deps.db, row.resource, payload, apply);
+    } catch (err) {
+      console.error('[fleetio.sync] inbound FK translation failed', { event_id: eventId, err });
+      // Treat every mapped FK as undroppable-unknown so we can't write a
+      // remote id into a local FK column on the strength of a failed lookup.
+      fkTranslation = { translated: [], dropped: Object.keys(INBOUND_FK_MAP[row.resource] ?? {}) };
+    }
+  }
+  const droppedFks = new Set(fkTranslation.dropped);
+  const applicable = apply.filter((f) => !droppedFks.has(f));
 
   // — Conflict on rmpg-owned fields: log + (per spec) caller queues an
   //   outbound re-assertion. Logging here ONLY; the re-assertion is the
@@ -483,15 +777,15 @@ export async function applyInbound(deps: ApplyInboundDeps, eventId: string): Pro
   if (conflict.length > 0) {
     for (const field of conflict) {
       try {
-        const localValue = row.resource_id != null
-          ? await readLocalFieldValue(deps.db, row.resource, row.resource_id, field)
+        const localValue = localId != null
+          ? await readLocalFieldValue(deps.db, row.resource, localId, field)
           : null;
         await deps.db.prepare(
           `INSERT INTO fleetio_conflicts (rmpg_table, rmpg_id, field, local_value, remote_value, resolution, created_at)
            VALUES (?, ?, ?, ?, ?, 'local_wins', datetime('now'))`,
         ).bind(
           resourceToRmpgTable(row.resource),
-          row.resource_id,
+          localId,
           field,
           localValue,
           JSON.stringify(payload[field] ?? null),
@@ -506,13 +800,13 @@ export async function applyInbound(deps: ApplyInboundDeps, eventId: string): Pro
   //   based on the timestamps; conflict_window is honored here.
   const applied: string[] = [];
   const unresolved: string[] = [];
-  if (apply.length > 0 && row.resource_id != null) {
+  if (applicable.length > 0 && localId != null) {
     const setCols: string[] = [];
     const bindings: unknown[] = [];
-    const localUpdatedAt = await readLocalUpdatedAtMs(deps.db, row.resource, row.resource_id);
+    const localUpdatedAt = await readLocalUpdatedAtMs(deps.db, row.resource, localId);
     const remoteUpdatedAt = remoteUpdatedAtMs(payload);
 
-    for (const f of apply) {
+    for (const f of applicable) {
       // For shared fields, run the timestamp resolver.
       const klass = getOwnership(row.resource, f);
       if (klass === 'shared' && localUpdatedAt !== null && remoteUpdatedAt !== null) {
@@ -525,13 +819,13 @@ export async function applyInbound(deps: ApplyInboundDeps, eventId: string): Pro
           // Apply remote as default + flag the field for the badge.
           unresolved.push(f);
           try {
-            const localValue = await readLocalFieldValue(deps.db, row.resource, row.resource_id, f);
+            const localValue = await readLocalFieldValue(deps.db, row.resource, localId, f);
             await deps.db.prepare(
               `INSERT INTO fleetio_conflicts (rmpg_table, rmpg_id, field, local_value, remote_value, resolution, created_at)
                VALUES (?, ?, ?, ?, ?, 'unresolved', datetime('now'))`,
             ).bind(
               resourceToRmpgTable(row.resource),
-              row.resource_id,
+              localId,
               f,
               localValue,
               JSON.stringify(payload[f] ?? null),
@@ -547,16 +841,25 @@ export async function applyInbound(deps: ApplyInboundDeps, eventId: string): Pro
     }
     if (setCols.length > 0) {
       try {
-        bindings.push(row.resource_id);
+        bindings.push(localId);
         await deps.db.prepare(
           `UPDATE ${resourceToRmpgTable(row.resource)} SET ${setCols.join(', ')}, updated_at = datetime('now')
            WHERE id = ?`,
         ).bind(...bindings).run();
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        // Record the failure ON THE EVENT ROW. Previously this returned early
+        // and left the row in 'pending' with attempts=0 and error=NULL forever:
+        // no retry (nothing re-drives inbound events), no dead-letter, and
+        // invisible to getQueueHealth (which counts direction='outbound' only)
+        // and to the health sweep's dead-letter notifier. A failed inbound apply
+        // was a silent data-loss event.
+        await markInboundFailure(deps.db, row, errMsg);
         return {
           status: 'failed',
-          applied_fields: [], conflict_fields: conflict, unresolved_fields: unresolved, unknown_fields: unknown,
-          error: err instanceof Error ? err.message : String(err),
+          applied_fields: [], conflict_fields: conflict, unresolved_fields: unresolved,
+          unknown_fields: unknown, dropped_fk_fields: fkTranslation.dropped, local_id: localId,
+          error: errMsg,
         };
       }
     }
@@ -577,6 +880,8 @@ export async function applyInbound(deps: ApplyInboundDeps, eventId: string): Pro
     conflict_fields: conflict,
     unresolved_fields: unresolved,
     unknown_fields: unknown,
+    dropped_fk_fields: fkTranslation.dropped,
+    local_id: localId,
   };
 }
 
@@ -634,14 +939,41 @@ async function readLocalFieldValue(
   }
 }
 
+/**
+ * Parse a D1 timestamp to epoch ms, treating a missing zone as UTC.
+ *
+ * D1's `datetime('now')` yields `'YYYY-MM-DD HH:MM:SS'` — no `T`, no zone.
+ * `Date.parse` treats that form as LOCAL time per ECMA-262, so this is only
+ * accidentally correct on a Worker (whose local zone is UTC) and silently wrong
+ * anywhere else — including a developer's machine and any test run under
+ * TZ=America/Denver, where it shifts by 6–7 hours. A 7-hour skew against
+ * Fleet.io's ISO-8601 (UTC) `updated_at` makes every `shared` field resolve
+ * `local_wins`/`remote_wins` by timezone rather than by who edited last, and
+ * silently empties the 60-second unresolved window.
+ *
+ * `isFleetioQueueUnhealthy` and `shouldFireUnhealthyAlert` already normalized
+ * this way inline; centralizing it keeps the three from drifting apart.
+ */
+export function parseD1TimestampMs(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  // Already zoned (trailing Z, or a ±HH:MM offset after the time) → as-is.
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed);
+  const normalized = hasZone
+    ? trimmed.replace(' ', 'T')
+    : `${trimmed.replace(' ', 'T')}Z`;
+  const ts = Date.parse(normalized);
+  return Number.isFinite(ts) ? ts : null;
+}
+
 async function readLocalUpdatedAtMs(db: D1Database, resource: string, id: number): Promise<number | null> {
   try {
     const row = await db.prepare(
       `SELECT updated_at FROM ${resourceToRmpgTable(resource)} WHERE id = ?`,
     ).bind(id).first<{ updated_at: string | null }>();
-    if (!row || !row.updated_at) return null;
-    const ts = Date.parse(row.updated_at);
-    return Number.isFinite(ts) ? ts : null;
+    if (!row) return null;
+    return parseD1TimestampMs(row.updated_at);
   } catch {
     return null;
   }
@@ -650,8 +982,7 @@ async function readLocalUpdatedAtMs(db: D1Database, resource: string, id: number
 function remoteUpdatedAtMs(payload: Record<string, unknown>): number | null {
   const raw = payload.updated_at;
   if (typeof raw !== 'string') return null;
-  const ts = Date.parse(raw);
-  return Number.isFinite(ts) ? ts : null;
+  return parseD1TimestampMs(raw);
 }
 
 /** Inverse of `resourceToRmpgTable` — used by the conflict-resolve route to
@@ -673,7 +1004,8 @@ export function rmpgTableToResource(table: string): { resource: string; updateKi
 // Exported for tests so they don't have to re-derive these helpers.
 export const _internals = {
   parsePayload, resourceToRmpgTable, readLocalUpdatedAtMs, remoteUpdatedAtMs,
-  dispatchOutbound, lookupFleetioId, readLocalFieldValue,
+  dispatchOutbound, lookupFleetioId, lookupRmpgId, readLocalFieldValue,
+  translateInboundFks, translateOutboundFks, dropLink,
 };
 // Also re-export the error types the dispatch layer surfaces so tests can
 // instanceof-discriminate without re-importing from ./errors.

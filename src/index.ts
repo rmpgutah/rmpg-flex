@@ -352,6 +352,7 @@ export default {
             archiveVehicle: (args: { fleetioId: number; archivedAtIso: string }) => clientMod.archiveVehicle({ config, ...args }),
             createFuelEntry: (args: { payload: Record<string, unknown> }) => clientMod.createFuelEntry({ config, ...args }),
             updateFuelEntry: (args: { fleetioId: number; payload: Record<string, unknown> }) => clientMod.updateFuelEntry({ config, ...args }),
+            deleteFuelEntry: (args: { fleetioId: number }) => clientMod.deleteFuelEntry({ config, ...args }),
             createWorkOrder: (args: { payload: Record<string, unknown> }) => clientMod.createWorkOrder({ config, ...args }),
             updateWorkOrder: (args: { fleetioId: number; payload: Record<string, unknown> }) => clientMod.updateWorkOrder({ config, ...args }),
             createVendor: (args: { payload: Record<string, unknown> }) => clientMod.createVendor({ config, ...args }),
