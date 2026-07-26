@@ -611,3 +611,31 @@ describe('print stylesheet text channels', () => {
     });
   }
 });
+
+describe('fg Tailwind scale', () => {
+  // Verified at the CONFIG level, not by grepping dist/. Tailwind is
+  // content-scanned, so text-fg-muted only reaches dist/assets/*.css once a
+  // call site uses it -- and PR 0 changes zero call sites. The emitted-CSS
+  // check belongs in the first migration batch. Getting this backwards is the
+  // bg-surface-hover trap: used 14x, emitted never, silently inert.
+  const cfg = readFileSync(resolve(SRC_DIR, '../tailwind.config.js'), 'utf8');
+
+  it('binds every fg step to a text-role triple', () => {
+    for (const [step, role] of [
+      ['DEFAULT', 'text-primary'],
+      ['primary', 'text-primary'],
+      ['secondary', 'text-secondary'],
+      ['muted', 'text-muted'],
+    ]) {
+      expect(cfg).toContain(`${step}: 'rgb(var(--${role}-rgb) / <alpha-value>)'`);
+    }
+  });
+
+  it('does not collide with a fontSize key', () => {
+    // text-<key> resolves fontSize first. `label` IS a fontSize key, which is
+    // why a `label` COLOR token must never be introduced -- text-label would
+    // become ambiguous. `fg` is free.
+    const fontSizeKeys = ['micro', 'label', 'caption', 'body-sm', 'body', 'title', 'heading', 'display'];
+    expect(fontSizeKeys).not.toContain('fg');
+  });
+});
