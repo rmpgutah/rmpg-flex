@@ -33,6 +33,44 @@ export async function execute(
   return await (bindings.length > 0 ? stmt.bind(...bindings) : stmt).run();
 }
 
+/**
+ * D1 rejects any query carrying more than 100 bound parameters
+ * (https://developers.cloudflare.com/d1/platform/limits/). The rejection happens
+ * at BIND time, before execution, so it surfaces as a thrown D1_ERROR out of
+ * `query()`/`execute()` rather than as a SQL error — which means a route that
+ * doesn't wrap the call has no error to log and simply 500s.
+ *
+ * This bites any `IN (?,?,…)` list built from a caller-supplied array, because
+ * the query's SHAPE then grows with the data: it works in dev and in tests, then
+ * fails the first time real data crosses 100 rows. Observed live 2026-07-26 on
+ * `GET /api/fleetio/conflicts`, which sent 110 bindings once the fuel log held
+ * 109 rows.
+ */
+export const D1_MAX_BOUND_PARAMS = 100;
+
+/**
+ * Split `items` into groups small enough that each resulting query stays under
+ * D1's bound-parameter cap.
+ *
+ * `reservedBindings` is the count of parameters the query binds OUTSIDE the
+ * IN-list (filters, a trailing id, etc.) — pass it so the chunk size accounts
+ * for them instead of silently eating into the same budget.
+ *
+ * Returns `[]` for an empty input, so callers can short-circuit on
+ * `chunks.length === 0` rather than issuing a query guaranteed to match nothing.
+ */
+export function chunkBindings<T>(items: readonly T[], reservedBindings = 0): T[][] {
+  const budget = D1_MAX_BOUND_PARAMS - Math.max(0, reservedBindings);
+  if (budget < 1) {
+    throw new Error(
+      `chunkBindings: ${reservedBindings} reserved bindings leaves no room under D1's ${D1_MAX_BOUND_PARAMS}-parameter cap`,
+    );
+  }
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += budget) chunks.push(items.slice(i, i + budget));
+  return chunks;
+}
+
 export async function columnExists(db: D1Database, table: string, column: string): Promise<boolean> {
   const row = await db.prepare(
     `SELECT 1 FROM pragma_table_info(?) WHERE name = ?`
