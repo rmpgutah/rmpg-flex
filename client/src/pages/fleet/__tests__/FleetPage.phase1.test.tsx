@@ -165,3 +165,27 @@ describe('FleetPage — tab persistence', () => {
     expect(fuelTab).toHaveAttribute('aria-selected', 'false');
   });
 });
+
+describe('FleetPage — cost-per-mile failure is visible', () => {
+  beforeEach(() => {
+    mockedApiFetch.mockReset();
+    localStorage.clear();
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url.startsWith('/fleet?')) return Promise.resolve({ data: [VEHICLE], pagination: { total: 1 } });
+      if (url === '/fleet/1') return Promise.resolve(VEHICLE);
+      if (url.startsWith('/fleet/cost-per-mile/')) return Promise.reject(new Error('Upstream 500'));
+      if (url.startsWith('/fleet/analytics')) return Promise.resolve({ scope: 'fleet', fleet_summary: {} });
+      if (url.startsWith('/form-drafts/')) return Promise.resolve({ data: null });
+      return Promise.resolve({ data: [] });
+    });
+  });
+
+  it('toasts instead of silently doing nothing when the fetch fails', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText('PS-D19'));
+    await user.click(await screen.findByRole('button', { name: /cost\/mi/i }));
+
+    expect(await screen.findByText(/failed to load cost per mile/i)).toBeInTheDocument();
+  });
+});

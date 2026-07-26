@@ -240,6 +240,7 @@ export default function FleetPage() {
 
   // ── Feature 16/19/20: Pre-trip, vehicle swaps, cost-per-mile ──
   const [costPerMile, setCostPerMile] = useState<any>(null);
+  const [costPerMileLoading, setCostPerMileLoading] = useState(false);
 
   // ── GPS mileage (from dispatch breadcrumbs) ──────────────────
   const [gpsMileage, setGpsMileage] = useState<any>(null);
@@ -299,11 +300,19 @@ export default function FleetPage() {
   const [pretripSaving, setPretripSaving] = useState(false);
 
   const loadCostPerMile = useCallback(async (vehicleId: string | number) => {
+    setCostPerMileLoading(true);
     try {
       const data = await apiFetch<any>(`/fleet/cost-per-mile/${vehicleId}`);
       setCostPerMile(data);
-    } catch { setCostPerMile(null); }
-  }, []);
+    } catch (err) {
+      // Previously swallowed to null, which made a failed click
+      // indistinguishable from a dead button.
+      setCostPerMile(null);
+      addToast(err instanceof Error ? `Failed to load cost per mile: ${err.message}` : 'Failed to load cost per mile', 'error');
+    } finally {
+      setCostPerMileLoading(false);
+    }
+  }, [addToast]);
 
   const selectedVehicle = detail; // alias for clarity
 
@@ -1293,8 +1302,8 @@ export default function FleetPage() {
               )}
               {/* Feature 20: Cost per mile button */}
               {selectedVehicle && (
-                <button type="button" className="toolbar-btn" onClick={() => loadCostPerMile(selectedVehicle.id)}>
-                  <Gauge className="w-3 h-3" /> Cost/Mi
+                <button type="button" className="toolbar-btn" disabled={costPerMileLoading} onClick={() => loadCostPerMile(selectedVehicle.id)}>
+                  <Gauge className="w-3 h-3" /> {costPerMileLoading ? 'Loading…' : 'Cost/Mi'}
                 </button>
               )}
             </>
