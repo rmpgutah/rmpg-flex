@@ -14,6 +14,13 @@
 //        username field for password managers / the Chrome DOM warning.
 //        (The feature-flags 401 poll loop from the same log was already fixed
 //        on main by #2990 — that fix is kept as-is, not re-litigated here.)
+// v1102: Network-failure retry. Every `.catch()` in the fetch handler treated
+//        "this worker was replaced mid-request" identically to "the device is
+//        offline", so each deploy turned in-flight requests into synthetic
+//        503s (an EMPTY-BODY one for anything hitting the catch-all branch).
+//        fetchWithRetry() retries once before giving up, which separates the
+//        two cheaply: a genuinely offline device fails again immediately,
+//        a deploy-window blip succeeds on the retry.
 // v1096: Fleet v2 (FleetShell) — Page 73 of the full-app frontend pass.
 //        Added N shortcut (open New Vehicle modal when not typing),
 //        Esc cascade (closes New Vehicle modal before propagating),
@@ -173,6 +180,37 @@ function cachePut(cacheName, request, response) {
     .catch(() => {});
 }
 
+// A fetch() rejection inside the SW does NOT reliably mean the device is
+// offline. When a new worker takes over via skipWaiting() + clients.claim()
+// (see the install/activate handlers below — this app swaps immediately, so
+// it happens on EVERY deploy), requests the outgoing worker already had in
+// flight are cancelled and reject with exactly the same TypeError as a real
+// network loss. The catch branches downstream then synthesize a 503 "Offline"
+// for a device that is perfectly online, which is how a routine deploy could
+// hand the app an empty-body 503 for a page it was mid-navigation to.
+//
+// Retrying once separates the two cheaply. A genuinely offline device fails
+// again right away (DNS/connect errors are sub-second), so an officer with no
+// signal waits ~300ms longer before seeing the offline UI — while a
+// deploy-window cancellation succeeds on the second attempt.
+//
+// Safe to replay: the fetch handler only ever reaches here for GET requests
+// (the guard below returns early on any other method), and a GET Request has
+// no body to consume, so the same Request object can be re-issued.
+const RETRY_DELAY_MS = 300;
+
+function fetchWithRetry(request) {
+  return fetch(request).catch((firstErr) =>
+    new Promise((resolve, reject) => {
+      setTimeout(() => {
+        // Reject with the ORIGINAL error so downstream catch branches and any
+        // console output describe the initial failure, not the retry's.
+        fetch(request).then(resolve, () => reject(firstErr));
+      }, RETRY_DELAY_MS);
+    })
+  );
+}
+
 // Install — pre-cache core shell, immediately activate
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -263,7 +301,7 @@ self.addEventListener('fetch', (event) => {
   // Navigation requests — always network first with offline fallback
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
+      fetchWithRetry(event.request)
         .then((response) => {
           if (response.ok) {
             cachePut(CACHE_NAME, event.request, response.clone());
@@ -298,7 +336,7 @@ self.addEventListener('fetch', (event) => {
       event.respondWith(
         caches.match(event.request).then((cached) => {
           if (cached) return cached;
-          return fetch(event.request)
+          return fetchWithRetry(event.request)
             .then((response) => {
               // Poison guard: a deploy-removed chunk hash can come back as a
               // 200 text/html SPA fallback (index.html). NEVER cache or return
@@ -323,7 +361,7 @@ self.addEventListener('fetch', (event) => {
 
     // Non-hashed JS/CSS → network first
     event.respondWith(
-      fetch(event.request)
+      fetchWithRetry(event.request)
         .then((response) => {
           // Same poison guard as the hashed branch — never cache/return HTML
           // for a JS/CSS request (see v716 note).
@@ -347,7 +385,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
-      return fetch(event.request)
+      return fetchWithRetry(event.request)
         .then((response) => {
           if (response.ok && url.pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)$/)) {
             cachePut(CACHE_NAME, event.request, response.clone());
