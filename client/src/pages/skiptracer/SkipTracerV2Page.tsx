@@ -20,6 +20,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { toDisplayLabel } from '../../utils/formatters';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { withAlpha } from '../../utils/withAlpha';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -313,7 +314,7 @@ function SourceBadge({ source }: { source: string }) {
   return (
     <span
       className="inline-block text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
-      style={{ backgroundColor: color + '22', color, border: `1px solid ${color}33` }}
+      style={{ backgroundColor: withAlpha(color, '22'), color, border: `1px solid ${withAlpha(color, '33')}` }}
     >
       {source}
     </span>
@@ -377,7 +378,7 @@ function ConfidenceBadge({ score }: { score: number }) {
   const pct = Math.round(score * 100);
   const color = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
   return (
-    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm" style={{ color, backgroundColor: color + '15' }}>
+    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm" style={{ color, backgroundColor: withAlpha(color, '15') }}>
       {pct}%
     </span>
   );
@@ -903,7 +904,7 @@ export default function SkipTracerV2Page() {
               <>
                 <span
                   className="absolute right-16 top-1/2 -translate-y-1/2 text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
-                  style={{ backgroundColor: INPUT_BADGE_COLORS[inputType] + '22', color: INPUT_BADGE_COLORS[inputType] }}
+                  style={{ backgroundColor: withAlpha(INPUT_BADGE_COLORS[inputType], '22'), color: INPUT_BADGE_COLORS[inputType] }}
                 >
                   {inputType}
                 </span>
@@ -948,7 +949,7 @@ export default function SkipTracerV2Page() {
                   ? 'text-rmpg-100 shadow-sm'
                   : 'text-rmpg-500 hover:text-rmpg-400 bg-surface-sunken border border-border-subtle'
               }`}
-              style={searchEngine === eng.id ? { backgroundColor: eng.color + '33', color: eng.color, border: `1px solid ${eng.color}55` } : undefined}
+              style={searchEngine === eng.id ? { backgroundColor: withAlpha(eng.color, '33'), color: eng.color, border: `1px solid ${withAlpha(eng.color, '55')}` } : undefined}
               title={eng.desc}
             >
               {eng.label}
@@ -1039,9 +1040,9 @@ export default function SkipTracerV2Page() {
                 onClick={() => toggleCategory(cat)}
                 className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm border transition-colors"
                 style={{
-                  backgroundColor: isActive ? color + '33' : 'transparent',
+                  backgroundColor: isActive ? withAlpha(color, '33') : 'transparent',
                   color: isActive ? color : 'var(--text-muted)',
-                  borderColor: isActive ? color + '55' : 'var(--border-subtle)',
+                  borderColor: isActive ? withAlpha(color, '55') : 'var(--border-subtle)',
                 }}
               >
                 {cat}
@@ -1695,14 +1696,14 @@ export default function SkipTracerV2Page() {
                           {/* Dot on the line */}
                           <div
                             className="absolute -left-6 top-1 w-[12px] h-[12px] rounded-full border-2 flex-shrink-0"
-                            style={{ backgroundColor: color + '33', borderColor: color }}
+                            style={{ backgroundColor: withAlpha(color, '33'), borderColor: color }}
                           />
                           <div className="pb-0.5">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-[10px] font-bold text-rmpg-100">{ev.label}</span>
                               <span
                                 className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
-                                style={{ backgroundColor: color + '22', color }}
+                                style={{ backgroundColor: withAlpha(color, '22'), color }}
                               >
                                 {toDisplayLabel(ev.category)}
                               </span>
@@ -1812,7 +1813,7 @@ export default function SkipTracerV2Page() {
                     <div className="flex items-center gap-2">
                       <span
                         className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
-                        style={{ backgroundColor: INPUT_BADGE_COLORS[badgeType] + '22', color: INPUT_BADGE_COLORS[badgeType] }}
+                        style={{ backgroundColor: withAlpha(INPUT_BADGE_COLORS[badgeType], '22'), color: INPUT_BADGE_COLORS[badgeType] }}
                       >
                         {h.search_type}
                       </span>
@@ -1874,7 +1875,7 @@ export default function SkipTracerV2Page() {
                   <div className="text-[11px] font-bold text-rmpg-100">{s.displayName || s.name}</div>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5 rounded-sm"
-                      style={{ backgroundColor: categoryColor(s.category) + '22', color: categoryColor(s.category) }}
+                      style={{ backgroundColor: withAlpha(categoryColor(s.category), '22'), color: categoryColor(s.category) }}
                     >{toDisplayLabel(s.category)}</span>
                     {s.costPerLookup > 0
                       ? <span className="text-[9px] text-rmpg-500 font-mono">${s.costPerLookup.toFixed(4)}/lookup</span>

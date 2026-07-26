@@ -62,6 +62,7 @@ import CitationTracker from '../components/dashboard/CitationTracker';
 import TrainingCompliance from '../components/dashboard/TrainingCompliance';
 import AlarmStatus from '../components/dashboard/AlarmStatus';
 import IASummary from '../components/dashboard/IASummary';
+import { withAlpha } from '../utils/withAlpha';
 
 // ─── Backend Response Types ──────────────────────────────
 
@@ -1981,7 +1982,7 @@ export default function DashboardPage() {
                   <div key={z.zone} className="flex items-center gap-2 group hover:bg-surface-sunken rounded-sm px-1 py-0.5 transition-colors">
                     <span className="text-[10px] text-rmpg-300 w-28 truncate group-hover:text-rmpg-100 transition-colors" title={z.zone}>{z.zone}</span>
                     <div className="flex-1 h-2 bg-surface-sunken rounded-sm overflow-hidden border border-rmpg-800 shadow-inner">
-                      <div className="h-full transition-all duration-500 ease-out rounded-sm" style={{ width: `${Math.max(4, ratio * 100)}%`, backgroundColor: color, boxShadow: `0 0 6px ${color}55` }} />
+                      <div className="h-full transition-all duration-500 ease-out rounded-sm" style={{ width: `${Math.max(4, ratio * 100)}%`, backgroundColor: color, boxShadow: `0 0 6px ${withAlpha(color, '55')}` }} />
                     </div>
                     <span className="text-[10px] font-mono font-bold w-10 text-right tabular-nums" style={{ color }}>{z.count}</span>
                   </div>

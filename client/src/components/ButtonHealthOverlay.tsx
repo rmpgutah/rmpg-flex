@@ -17,6 +17,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { auditButtonHealth, type ButtonHealthReport } from '../utils/buttonHealthAudit';
+import { withAlpha } from '../utils/withAlpha';
 
 const HIGHLIGHT_ID = 'rmpg-btn-audit-highlights';
 
@@ -38,7 +39,7 @@ function drawHighlights(report: ButtonHealthReport) {
     box.style.cssText =
       `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;` +
       `border:2px solid ${color};box-shadow:0 0 0 1px rgba(0,0,0,0.6);` +
-      `background:${color}1a;border-radius:2px;`;
+      `background:${withAlpha(color, '1a')};border-radius:2px;`;
     layer.appendChild(box);
   }
   document.body.appendChild(layer);

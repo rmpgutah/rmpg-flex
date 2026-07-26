@@ -14,6 +14,7 @@ import type { DashCamVideo } from '../types';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { parseTimestamp } from '../utils/dateUtils';
 import { getSignedParams, buildSignedQuerySync } from '../utils/signedUrls';
+import { withAlpha } from '../utils/withAlpha';
 
 // ── GPS Track Types ─────────────────────────────────────────
 
@@ -310,7 +311,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
                   {/* Speed */}
                   <div className={`px-3 font-mono tabular-nums flex items-baseline gap-1 ${speedBg(displaySpeed)}`}>
                     <span className="text-[13px] font-black" style={{ color: spdClr }}>{displaySpeed ?? '--'}</span>
-                    <span className="text-[9px] font-bold tracking-widest" style={{ color: `${spdClr}80` }}>MPH</span>
+                    <span className="text-[9px] font-bold tracking-widest" style={{ color: withAlpha(spdClr, '80') }}>MPH</span>
                   </div>
                   {/* Coordinates + GPS LED */}
                   <div className="px-2 font-mono text-[10px] text-green-400/90 font-bold tabular-nums tracking-wide flex items-center gap-1 whitespace-nowrap">

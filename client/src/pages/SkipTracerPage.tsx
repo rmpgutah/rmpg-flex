@@ -32,6 +32,7 @@ import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
 import { safeDateStr } from '../utils/dateUtils';
 import { openSkipTracerReportPdf } from '../utils/skipTracerReportPdf';
+import { withAlpha } from '../utils/withAlpha';
 
 // Search modes
 type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
@@ -910,7 +911,7 @@ function renderArraySection(
         {title} ({items.length})
       </div>
       {items.map((item: any, idx: number) => (
-        <div key={idx} className="pl-3 border-l-2 py-1 space-y-0.5" style={{ borderColor: color + '40' }}>
+        <div key={idx} className="pl-3 border-l-2 py-1 space-y-0.5" style={{ borderColor: withAlpha(color, '40') }}>
           {typeof item === 'string' ? (
             <div className="flex items-center gap-1">
               <span className="text-[11px] text-rmpg-200 font-mono">{item}</span>

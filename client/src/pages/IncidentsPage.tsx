@@ -2130,8 +2130,13 @@ export default function IncidentsPage() {
                 // PR #1605 / SW v1029 — chart-code 16-entity palette stays
                 // hex because --sev-* can't differentiate that many types).
                 // Two parallel maps because the original `color + '20'` hex-
-                // opacity trick doesn't work on `var(--…)` references — we
-                // need to drive alpha tints from the *-rgb companion tokens.
+                // opacity trick doesn't work on `var(--…)` references.
+                // NOTE: new code should not reach for the `*-rgb` companion
+                // tokens this comment used to recommend — use
+                // `withAlpha(color, '20')` from utils/withAlpha.ts, which emits
+                // color-mix() for tokens and plain hex concat for raw hex. The
+                // parallel maps below are left as-is because they already
+                // render correctly; collapsing them is a separate cleanup.
                 const typeColors: Record<string, string> = {
                   incident: 'var(--spm-text-muted)',
                   call: 'var(--sev-ok)',

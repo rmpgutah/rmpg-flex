@@ -35,6 +35,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { toDisplayLabel } from '../utils/formatters';
 import { escapeHtml } from '../utils/sanitize';
+import { withAlpha } from '../utils/withAlpha';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -758,7 +759,7 @@ export default function RouteBuilderPage() {
                       className="text-[9px] font-mono font-bold px-1 rounded-[2px]"
                       style={{
                         color: PRIORITY_COLORS[wp.priority] || '#888',
-                        backgroundColor: `${PRIORITY_COLORS[wp.priority] || '#888'}20`,
+                        backgroundColor: withAlpha(PRIORITY_COLORS[wp.priority] || '#888', '20'),
                       }}
                     >
                       {wp.priority}

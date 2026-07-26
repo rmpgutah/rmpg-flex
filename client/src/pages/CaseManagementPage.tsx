@@ -39,6 +39,7 @@ import { CaseReadinessCard, fetchCaseCompleteness } from '../components/CaseRead
 import { downloadPdfV2 } from '../utils/pdf/v2';
 import { caseReportSchema, type CaseReportData } from '../utils/pdf/v2/forms/caseReport';
 import { getSavedViews, persistViews, upsertView, type SavedView } from '../utils/caseSavedViews';
+import { withAlpha } from '../utils/withAlpha';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-surface-sunken text-rmpg-400 border-border-default' },
@@ -370,7 +371,7 @@ function LinkedIncidentsGraph({ caseId, caseFull }: { caseId: string | number; c
               <ArrowRight className="w-3 h-3 text-rmpg-600" />
               <div
                 className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold border"
-                style={{ background: `${color}15`, borderColor: `${color}50`, color }}
+                style={{ background: withAlpha(color, '15'), borderColor: withAlpha(color, '50'), color }}
               >
                 <span className="text-[8px] font-mono opacity-70">{typeIcons[link.rel_type]}</span>
                 {link.incident_number || link.case_number || link.warrant_number || `${link.first_name || ''} ${link.last_name || ''}`.trim() || `#${link.id}`}

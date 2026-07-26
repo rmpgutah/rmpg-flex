@@ -9,6 +9,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import PanelTitleBar from './PanelTitleBar';
 import IconButton from './IconButton';
 import { useToast } from './ToastProvider';
+import { withAlpha } from '../utils/withAlpha';
 
 export interface CaseTask {
   id: number;
@@ -51,7 +52,7 @@ export function isTaskOverdue(dueDate?: string | null, status?: string): boolean
 function StatusPill({ status }: { status: string }) {
   const color = STATUS_COLOR[status] || '#888888';
   return (
-    <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border" style={{ color, borderColor: `${color}66` }}>
+    <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border" style={{ color, borderColor: withAlpha(color, '66') }}>
       {STATUS_LABEL[status] || status}
     </span>
   );
