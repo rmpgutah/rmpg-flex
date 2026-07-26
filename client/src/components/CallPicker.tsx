@@ -121,7 +121,7 @@ export default function CallPicker({
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
-        <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" />
+        <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-fg-muted pointer-events-none" />
         <input
           id={id}
           ref={inputRef}
@@ -143,7 +143,7 @@ export default function CallPicker({
           aria-activedescendant={activeDescendantId ?? undefined}
         />
         {showClear && !disabled && (
-          <button type="button" onClick={clear} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-rmpg-500 hover:text-rmpg-100" aria-label="Clear selection">
+          <button type="button" onClick={clear} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-rmpg-100" aria-label="Clear selection">
             <X className="w-3 h-3" />
           </button>
         )}
@@ -167,9 +167,9 @@ export default function CallPicker({
                   <div className="text-[10px] text-rmpg-400 mt-0.5">
                     {c.incident_type || 'Unknown type'}
                     {c.priority && <span className="ml-2">P{c.priority}</span>}
-                    {c.status && <span className="ml-2 text-rmpg-500">[{c.status.toUpperCase()}]</span>}
+                    {c.status && <span className="ml-2 text-fg-muted">[{c.status.toUpperCase()}]</span>}
                   </div>
-                  {c.location_address && <div className="text-[10px] text-rmpg-500 mt-0.5 truncate">{c.location_address}</div>}
+                  {c.location_address && <div className="text-[10px] text-fg-muted mt-0.5 truncate">{c.location_address}</div>}
                 </div>
               </button>
             );

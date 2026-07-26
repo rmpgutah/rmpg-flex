@@ -180,7 +180,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
             className="px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100"
             aria-label="Filter from date"
           />
-          <span className="text-rmpg-500 text-xs">to</span>
+          <span className="text-fg-muted text-xs">to</span>
           <input
             type="date"
             value={dateTo}

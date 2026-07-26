@@ -62,14 +62,14 @@ export function CaseRelatedSection({ caseId, related, onChanged }: {
   return (
     <div className="panel-beveled p-3">
       <div className="flex items-center justify-between mb-2">
-        <div className="text-[10px] font-mono text-rmpg-500 uppercase">Related Cases ({related.length})</div>
+        <div className="text-[10px] font-mono text-fg-secondary uppercase">Related Cases ({related.length})</div>
         <button type="button" onClick={() => setModalOpen(true)} className="toolbar-btn text-[10px]">
           <LinkIcon style={{ width: 10, height: 10 }} /> Link case
         </button>
       </div>
 
       {related.length === 0 ? (
-        <div className="text-[10px] text-rmpg-500 py-2">No related cases linked</div>
+        <div className="text-[10px] text-fg-muted py-2">No related cases linked</div>
       ) : (
         <div className="space-y-1">
           {related.map((r) => (
@@ -107,10 +107,10 @@ export function CaseRelatedSection({ caseId, related, onChanged }: {
                   <button type="button" key={r.id} onClick={() => link(r.id)}
                     className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">
                     <div className="text-[11px] font-bold text-rmpg-100">{r.case_number} — {r.title}</div>
-                    <div className="text-[9px] text-rmpg-500">{toDisplayLabel(r.status)}</div>
+                    <div className="text-[9px] text-fg-muted">{toDisplayLabel(r.status)}</div>
                   </button>
                 ))}
-                {results.length === 0 && q && !searching && <div className="text-[10px] text-rmpg-500 text-center py-4">No results</div>}
+                {results.length === 0 && q && !searching && <div className="text-[10px] text-fg-muted text-center py-4">No results</div>}
               </div>
             </div>
           </div>

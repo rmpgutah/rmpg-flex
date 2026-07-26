@@ -192,7 +192,7 @@ export default function DlScanImportModal({ isOpen, onClose, onImported }: DlSca
                'Importing to Records…'}
             </span>
           </div>
-          <button type="button" onClick={handleClose} className="p-1 text-rmpg-500 hover:text-rmpg-200 transition-colors">
+          <button type="button" onClick={handleClose} className="p-1 text-fg-muted hover:text-rmpg-200 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -287,7 +287,7 @@ export default function DlScanImportModal({ isOpen, onClose, onImported }: DlSca
                     )}
                   </div>
                   <div className="text-right">
-                    <p className="text-[9px] font-bold uppercase text-rmpg-500 tracking-wider mb-0.5">
+                    <p className="text-[9px] font-bold uppercase text-fg-muted tracking-wider mb-0.5">
                       {parsed.card_type === 'ID' ? 'State ID' : 'DL'} · {parsed.dl_state}
                     </p>
                     <p className="text-[12px] font-mono font-bold text-rmpg-100">{parsed.dl_number}</p>
@@ -339,14 +339,14 @@ export default function DlScanImportModal({ isOpen, onClose, onImported }: DlSca
                 <div className="divide-y divide-border-default/40 max-h-48 overflow-y-auto">
                   {readout.map((row, i) => (
                     <div key={i} className="flex gap-2 px-3 py-1">
-                      <span className="text-[9px] text-rmpg-500 w-28 flex-shrink-0 pt-0.5">{row.label}</span>
+                      <span className="text-[9px] text-fg-muted w-28 flex-shrink-0 pt-0.5">{row.label}</span>
                       <span className="text-[10px] text-rmpg-200 font-mono">{row.value || '—'}</span>
                     </div>
                   ))}
                 </div>
               </details>
 
-              <p className="text-[10px] text-rmpg-500">
+              <p className="text-[10px] text-fg-muted">
                 Importing will create a new person record — or link to an existing record if the DL number or name+DOB already exists in the database.
               </p>
             </div>

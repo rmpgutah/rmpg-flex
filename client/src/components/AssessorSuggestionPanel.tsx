@@ -129,7 +129,7 @@ export function AssessorSuggestionPanel({
         🏠 Salt Lake County Assessor — {parcels.length} parcel{parcels.length === 1 ? '' : 's'} match
       </div>
       {degraded && note && (
-        <div className="mb-1 text-rmpg-500 italic">⚠ {note}</div>
+        <div className="mb-1 text-fg-muted italic">⚠ {note}</div>
       )}
       <div className="space-y-1">
         {parcels.map((p) => (
@@ -201,7 +201,7 @@ export function AssessorSuggestionPanel({
                 Refresh ↺
               </button>
             )}
-            <div className="text-rmpg-500">cached</div>
+            <div className="text-fg-muted">cached</div>
           </div>
         )}
       </div>

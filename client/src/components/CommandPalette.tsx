@@ -190,20 +190,20 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Search records, run NCIC, jump to a page…"
-            className="flex-1 bg-transparent text-sm text-rmpg-100 placeholder-rmpg-500 focus:outline-none"
+            className="flex-1 bg-transparent text-sm text-rmpg-100 placeholder-fg-muted focus:outline-none"
             aria-label="Command palette query"
             autoComplete="off" spellCheck={false}
           />
-          {searching && <span className="text-[9px] font-mono text-rmpg-500 animate-pulse">SEARCHING…</span>}
-          <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-surface-sunken border border-border-default text-rmpg-500 rounded-sm">ESC</kbd>
+          {searching && <span className="text-[9px] font-mono text-fg-muted animate-pulse">SEARCHING…</span>}
+          <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-surface-sunken border border-border-default text-fg-muted rounded-sm">ESC</kbd>
         </div>
 
         {/* Results */}
         <div ref={listRef} className="max-h-[420px] overflow-y-auto scrollbar-dark">
           {items.length === 0 ? (
-            <div className="p-6 text-center text-rmpg-500 text-xs">
+            <div className="p-6 text-center text-fg-muted text-xs">
               {query.trim().length === 0
-                ? <>Type to search records, run an NCIC check, or jump to a module<div className="text-rmpg-600 mt-1">{platformMeta} toggles this palette</div></>
+                ? <>Type to search records, run an NCIC check, or jump to a module<div className="text-fg-muted mt-1">{platformMeta} toggles this palette</div></>
                 : searching ? 'Searching…' : 'No matches'}
             </div>
           ) : (
@@ -240,10 +240,10 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
                     <Icon className="w-4 h-4 flex-shrink-0" style={{ color: isActive ? '#e8b820' : '#888888' }} />
                     <span className="flex flex-col min-w-0 flex-1">
                       <span className="min-w-0 text-sm truncate" style={{ color: isActive ? '#fff' : 'var(--text-secondary)' }}>{it.label}</span>
-                      {it.sublabel && <span className="min-w-0 text-[10px] text-rmpg-500 truncate">{it.sublabel}</span>}
+                      {it.sublabel && <span className="min-w-0 text-[10px] text-fg-muted truncate">{it.sublabel}</span>}
                     </span>
                     {it.badge && (
-                      <span className="text-[9px] font-mono text-rmpg-500 ml-auto flex-shrink-0">{it.badge}</span>
+                      <span className="text-[9px] font-mono text-fg-muted ml-auto flex-shrink-0">{it.badge}</span>
                     )}
                     {isActive && <CornerDownLeft className="w-3 h-3 flex-shrink-0" style={{ color: '#d4a017' }} aria-hidden="true" />}
                   </button>
@@ -255,7 +255,7 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
         </div>
 
         {/* Footer hint */}
-        <div className="flex items-center gap-4 px-4 py-1.5 border-t border-rmpg-700 text-[9px] text-rmpg-600 font-mono">
+        <div className="flex items-center gap-4 px-4 py-1.5 border-t border-rmpg-700 text-[9px] text-fg-muted font-mono">
           <span><kbd className="text-rmpg-400">↑↓</kbd> navigate</span>
           <span><kbd className="text-rmpg-400">↵</kbd> open</span>
           <span><kbd className="text-rmpg-400">esc</kbd> close</span>

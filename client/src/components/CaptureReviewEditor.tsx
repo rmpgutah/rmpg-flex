@@ -175,7 +175,7 @@ export default function CaptureReviewEditor({
                     <li key={h.id} className="px-2 py-1 text-[10px]">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[#d4a017]">{h.user_name || 'Officer'}</span>
-                        <span className="text-rmpg-500">{String(h.created_at).slice(5, 16)}</span>
+                        <span className="text-fg-muted">{String(h.created_at).slice(5, 16)}</span>
                       </div>
                       {h.details && <div className="text-rmpg-400 mt-0.5 break-words">{h.details}</div>}
                     </li>

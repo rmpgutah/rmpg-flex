@@ -47,8 +47,8 @@ const STATUS_COLORS: Record<string, string> = {
   approved: 'text-green-400',
   served: 'text-green-400',
   cleared: 'text-green-400',
-  closed: 'text-rmpg-500',
-  voided: 'text-rmpg-600',
+  closed: 'text-fg-muted',
+  voided: 'text-fg-muted',
   open: 'text-amber-400',
   in_custody: 'text-red-400',
   released: 'text-green-400',
@@ -210,7 +210,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
             Search {TYPE_OPTIONS.find(t => t.value === linkedType)?.label || 'Record'}
           </label>
           <div className="relative mt-1">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-rmpg-500" />
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-muted" />
             <input id="ff-addlinkmodal-1"
               ref={searchRef}
               type="text"
@@ -229,7 +229,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
           {showDropdown && (
             <div className="absolute z-50 left-0 right-0 mt-1 bg-surface-sunken border border-border-default rounded-sm shadow-lg max-h-[200px] overflow-auto scrollbar-thin">
               {results.length === 0 ? (
-                <div className="px-3 py-3 text-xs text-rmpg-500 text-center">
+                <div className="px-3 py-3 text-xs text-fg-muted text-center">
                   {searchQuery.length < 2 ? 'Type at least 2 characters...' : 'No matching records found'}
                 </div>
               ) : (
@@ -243,7 +243,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs text-rmpg-200 font-mono truncate">{r.label}</span>
                       {r.status && (
-                        <span className={`text-[9px] font-semibold uppercase shrink-0 ${STATUS_COLORS[r.status] || 'text-rmpg-500'}`}>
+                        <span className={`text-[9px] font-semibold uppercase shrink-0 ${STATUS_COLORS[r.status] || 'text-fg-muted'}`}>
                           {formatEnumValue(r.status)}
                         </span>
                       )}
@@ -269,7 +269,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
                 {selected.status && <> &middot; <span className={STATUS_COLORS[selected.status] || 'text-rmpg-400'}>{formatEnumValue(selected.status)}</span></>}
               </span>
             </div>
-            <button type="button" onClick={handleClearSelection} className="text-rmpg-500 hover:text-rmpg-100 p-0.5">
+            <button type="button" onClick={handleClearSelection} className="text-fg-muted hover:text-rmpg-100 p-0.5">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
