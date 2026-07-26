@@ -291,7 +291,7 @@ export default function ModuleTileBar({
                       style={{
                         padding: '6px 12px',
                         fontSize: 12,
-                        color: childActive ? '#d1d5db' : 'var(--rmpg-400)',
+                        color: childActive ? '#d1d5db' : 'var(--text-secondary)',
                         background: childActive ? 'rgba(255,255,255,0.05)' : 'transparent',
                         borderLeft: childActive ? '2px solid #6f6f6f' : '2px solid transparent',
                         cursor: 'pointer',

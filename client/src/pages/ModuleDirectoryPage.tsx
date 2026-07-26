@@ -253,7 +253,7 @@ export default function ModuleDirectoryPage() {
               borderLeft: activeCategory === '_recent' ? '3px solid var(--border-default)' : '3px solid transparent',
             }}
           >
-            <Clock style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_recent' ? 'var(--rmpg-400)' : 'var(--text-muted)' }} />
+            <Clock style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_recent' ? 'var(--text-secondary)' : 'var(--text-muted)' }} />
             <div className="flex-1 min-w-0">
               <span className="text-[11px] font-medium block truncate">Recent</span>
               <span className="text-[8px] text-rmpg-600 font-mono">{recentFunctions.length} modules</span>
@@ -278,7 +278,7 @@ export default function ModuleDirectoryPage() {
                 borderLeft: active ? '3px solid var(--border-default)' : '3px solid transparent',
               }}
             >
-              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? 'var(--rmpg-400)' : 'var(--text-muted)' }} />
+              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? 'var(--text-secondary)' : 'var(--text-muted)' }} />
               <div className="flex-1 min-w-0">
                 <span className="text-[11px] font-medium block truncate">{cat.label}</span>
                 <span className="text-[8px] text-rmpg-600 font-mono">{cat.functions.length} functions</span>
@@ -547,7 +547,7 @@ export default function ModuleDirectoryPage() {
             type="button"
             onClick={(e) => toggleFavorite(fn.path, e)}
             className="p-1 transition-colors"
-            style={{ color: isFavorite ? 'rgb(var(--brand-400-rgb))' : 'var(--rmpg-700)' }}
+            style={{ color: isFavorite ? 'rgb(var(--brand-400-rgb))' : 'var(--text-muted)' }}
             title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
             aria-label={isFavorite ? `Remove ${fn.label} from favorites` : `Add ${fn.label} to favorites`}
           >

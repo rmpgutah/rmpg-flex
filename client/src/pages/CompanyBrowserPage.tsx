@@ -352,19 +352,19 @@ export default function CompanyBrowserPage() {
           </div>
         ))}
         <button type="button" aria-label="New tab" onClick={openNewTab} className="p-1.5">
-          <Plus className="w-3.5 h-3.5" style={{ color: 'var(--rmpg-400)' }} />
+          <Plus className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
         </button>
       </div>
 
       <div className="flex items-center gap-1 px-2 py-1" style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}>
         <button type="button" aria-label="Back" onClick={goBack} disabled={!activeTab.canGoBack} className="p-1">
-          <ArrowLeft className="w-3.5 h-3.5" style={{ color: activeTab.canGoBack ? 'var(--rmpg-400)' : 'var(--text-muted)' }} />
+          <ArrowLeft className="w-3.5 h-3.5" style={{ color: activeTab.canGoBack ? 'var(--text-secondary)' : 'var(--text-muted)' }} />
         </button>
         <button type="button" aria-label="Forward" onClick={goForward} disabled={!activeTab.canGoForward} className="p-1">
-          <ArrowRight className="w-3.5 h-3.5" style={{ color: activeTab.canGoForward ? 'var(--rmpg-400)' : 'var(--text-muted)' }} />
+          <ArrowRight className="w-3.5 h-3.5" style={{ color: activeTab.canGoForward ? 'var(--text-secondary)' : 'var(--text-muted)' }} />
         </button>
         <button type="button" aria-label="Reload" onClick={reload} className="p-1">
-          <RotateCw className="w-3.5 h-3.5" style={{ color: 'var(--rmpg-400)' }} />
+          <RotateCw className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
         </button>
         <form onSubmit={handleAddressSubmit} className="flex-1">
           <input
@@ -382,7 +382,7 @@ export default function CompanyBrowserPage() {
           <Star className="w-3.5 h-3.5" fill={isBookmarked ? 'currentColor' : 'none'} style={{ color: 'var(--brand-gold)' }} />
         </button>
         <button type="button" aria-label="History" onClick={() => setHistoryOpen(o => !o)} className="p-1">
-          <Clock className="w-3.5 h-3.5" style={{ color: 'var(--rmpg-400)' }} />
+          <Clock className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
         </button>
       </div>
 

@@ -1614,7 +1614,7 @@ export default function Layout() {
                             }}
                           >
                             {/* 11: Slightly larger child icon + semibold label for active items */}
-                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? 'var(--rmpg-400)' : 'var(--text-muted)', flexShrink: 0 }} />
+                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? 'var(--text-secondary)' : 'var(--text-muted)', flexShrink: 0 }} />
                             <span className={`text-[11px] ${childActive ? 'font-semibold' : 'font-medium'}`}>{child.label}</span>
                           </button>
                         );

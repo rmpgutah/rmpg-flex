@@ -31,7 +31,7 @@ export default function DesktopShiftTimerWidget() {
 
   return (
     <div className="p-3" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-default)', width: 200 }}>
-      <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--rmpg-400)' }}>Shift Timer</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-secondary)' }}>Shift Timer</div>
       {active === null ? (
         <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>…</div>
       ) : active ? (

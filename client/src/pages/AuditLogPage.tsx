@@ -541,7 +541,7 @@ const AuditLogPage: React.FC = () => {
           <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--border-subtle), var(--rmpg-400) 30%, var(--rmpg-400) 70%, var(--border-subtle))' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
-            <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: 'var(--rmpg-300)' }}>Audit Log</h1>
+            <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: 'var(--text-secondary)' }}>Audit Log</h1>
             <p className="text-[9px] tracking-wide" style={{ color: 'var(--text-muted)' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>

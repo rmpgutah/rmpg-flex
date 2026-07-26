@@ -69,7 +69,7 @@ const MIN_WIDTH = 480;
 const MIN_HEIGHT = 360;
 
 function sectionLabelStyle(): React.CSSProperties {
-  return { color: 'var(--rmpg-400)' };
+  return { color: 'var(--text-secondary)' };
 }
 
 export default function DesktopSettingsApp({
@@ -173,7 +173,7 @@ export default function DesktopSettingsApp({
       >
         <span className="text-[11px] font-medium" style={{ color: 'var(--text-primary)' }}>Settings</span>
         <button type="button" aria-label="Close Settings" onClick={onClose} className="p-1 hover:bg-surface-hover">
-          <X className="w-3 h-3" style={{ color: 'var(--sev-critical, var(--rmpg-400))' }} />
+          <X className="w-3 h-3" style={{ color: 'var(--sev-critical, var(--text-secondary))' }} />
         </button>
       </div>
 
@@ -205,7 +205,7 @@ export default function DesktopSettingsApp({
               className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px]"
               style={{ background: activeCategory === cat.id ? 'rgba(var(--rmpg-500-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
             >
-              <cat.icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--rmpg-400)' }} />
+              <cat.icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-secondary)' }} />
               {cat.label}
             </button>
           ))}

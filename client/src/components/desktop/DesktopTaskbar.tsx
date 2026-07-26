@@ -211,7 +211,7 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
                   className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-surface-hover"
                   style={{ color: 'var(--text-primary)' }}
                 >
-                  <fn.icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--rmpg-400)' }} />
+                  <fn.icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-secondary)' }} />
                   {fn.label}
                 </button>
               </ContextMenu>
@@ -297,10 +297,10 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
           className="p-1.5 hover:bg-surface-hover"
           style={{ border: '1px solid var(--border-subtle)' }}
         >
-          <Monitor className="w-3.5 h-3.5" style={{ color: 'var(--rmpg-400)' }} />
+          <Monitor className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
         </button>
         <div className="relative">
-          <Bell className="w-4 h-4" style={{ color: 'var(--rmpg-400)' }} />
+          <Bell className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
           {unreadCount > 0 && (
             <span
               className="absolute -top-1 -right-1 flex items-center justify-center font-bold bg-red-600 text-white"

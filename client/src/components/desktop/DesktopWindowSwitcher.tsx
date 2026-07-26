@@ -70,7 +70,7 @@ export default function DesktopWindowSwitcher() {
             }}
           >
             <div className="flex items-center justify-center" style={{ width: 32, height: 32, background: 'rgba(var(--rmpg-500-rgb),0.1)' }}>
-              {Icon && <Icon className="w-4 h-4" style={{ color: 'var(--rmpg-300)' }} />}
+              {Icon && <Icon className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />}
             </div>
             <span className="text-[10px] truncate" style={{ color: 'var(--text-primary)', maxWidth: 80 }}>{w.title}</span>
           </div>

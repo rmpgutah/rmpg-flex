@@ -589,7 +589,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 6,
           borderLeft: '2px solid #22c55e',
         }}>
-          <span style={{ fontSize: 8, color: 'var(--rmpg-400)', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+          <span style={{ fontSize: 8, color: 'var(--text-secondary)', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
           <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
@@ -632,7 +632,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               {activeRoute.steps[0].instruction}
             </span>
             {activeRoute.steps[0].distanceMeters > 0 && (
-              <span style={{ fontSize: 11, color: 'var(--rmpg-400)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 700, whiteSpace: 'nowrap' }}>
                 {activeRoute.steps[0].distanceText}
               </span>
             )}

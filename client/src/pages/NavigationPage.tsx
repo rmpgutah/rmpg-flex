@@ -383,7 +383,7 @@ function StatTile({ label, value, accent, dim }: { label: string; value: string;
       <div className="text-[8px] uppercase tracking-wider text-rmpg-600 leading-none truncate">{label}</div>
       <div
         className="font-mono font-bold text-[13px] leading-tight mt-0.5 truncate tabular-nums"
-        style={{ color: accent || (dim ? 'var(--text-muted)' : 'var(--rmpg-300)') }}
+        style={{ color: accent || (dim ? 'var(--text-muted)' : 'var(--text-secondary)') }}
       >
         {value}
       </div>
@@ -2549,7 +2549,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setSearchOpen((v) => !v)}
           className="toolbar-btn flex items-center justify-center"
-          style={{ color: searchOpen ? 'var(--brand-400)' : 'var(--rmpg-400)' }}
+          style={{ color: searchOpen ? 'var(--brand-400)' : 'var(--text-secondary)' }}
           title="Search destination"
           aria-label="Search destination"
         >
@@ -2558,7 +2558,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setCrimeOn((v) => !v)}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: crimeOn ? 'var(--sev-warn)' : 'var(--rmpg-600)' }}
+          style={{ color: crimeOn ? 'var(--sev-warn)' : 'var(--text-muted)' }}
           title={crimeOn ? 'Hide crime layer' : 'Show crime layer (SLC + RMPG)'}
           aria-label={crimeOn ? 'Hide crime layer' : 'Show crime layer'}
         >
@@ -2567,7 +2567,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setCrashOn((v) => !v)}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: crashOn ? 'var(--rmpg-200)' : 'var(--text-muted)' }}
+          style={{ color: crashOn ? 'var(--text-primary)' : 'var(--text-muted)' }}
           title={crashOn ? 'Hide traffic-crash layer' : 'Show SLC traffic crashes (travel hazards)'}
           aria-label={crashOn ? 'Hide traffic crashes' : 'Show traffic crashes'}
         >
