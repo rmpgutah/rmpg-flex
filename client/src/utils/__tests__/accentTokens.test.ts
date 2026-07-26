@@ -563,13 +563,13 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
         + 'start (so that https:// survives), so this one legitimately still counts. jsPDF '
         + 'takes literal colours and the file is classifier-excluded either way.',
     },
-    'utils/withAlpha.ts': {
-      count: 6,
-      why: 'all six are JSDoc examples quoting the broken form this module exists to fix '
-        + '(`var(--rmpg-500)22`, and the two offending call sites it names). Same case as '
-        + 'the theme-palettes.css pin above. #3037 and #3038 landed independently and this '
-        + 'scan does not blank comments, so main was red on their intersection.',
-    },
+    // NOTE: 'utils/withAlpha.ts' was pinned here at 6 by #3045 for its JSDoc examples.
+    // #3047 landed the other half of that fix concurrently — this scan now blanks
+    // comments before counting — so the pin became obsolete the moment both merged, and
+    // main went red on the *reverse* drift ("6 pinned -> 0 found"). Two correct fixes for
+    // one bug, each green on its own base. Comment-stripping is the one kept: it makes the
+    // whole class of "wrote prose about the token" impossible rather than pinning each
+    // instance, and a pin would have masked a real regression inside that file.
   };
 
   // Matches the bare ramp reference with or without a fallback — `var(--rmpg-500)`
@@ -657,7 +657,12 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //
   // placeholder-rmpg-300|400 is 0 today; the pattern includes it so a future one
   // trips the guard rather than slipping in.
-  const PIN = 11114;
+  // 11114 -> 11113: #3044 landed a NEW `text-rmpg-300` in PatrolPage.tsx (the
+  // "Enter this checkpoint token manually" line) after this pin was measured, which
+  // is exactly the drift this ratchet exists to catch. Both QR instruction
+  // paragraphs there are now text-fg-secondary, so the count fell by two from
+  // 11115 rather than merely back to the pin.
+  const PIN = 11113;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
