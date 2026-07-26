@@ -508,10 +508,11 @@ export default function FleetPage() {
     } catch { addToast('Failed to load assignments', 'error'); }
   };
 
-  const fetchVehicleAnalytics = async (id: string | number) => {
+  const fetchVehicleAnalytics = async (id: string | number, period?: string) => {
     setAnalyticsLoading(true);
     try {
-      const data = await apiFetch<FleetAnalytics>(`/fleet/analytics?vehicle_id=${encodeURIComponent(String(id))}`);
+      const p = period ? `&period=${encodeURIComponent(period)}` : '';
+      const data = await apiFetch<FleetAnalytics>(`/fleet/analytics?vehicle_id=${encodeURIComponent(String(id))}${p}`);
       setAnalytics(data);
     } catch { addToast('Failed to load analytics', 'error'); }
     finally { setAnalyticsLoading(false); }

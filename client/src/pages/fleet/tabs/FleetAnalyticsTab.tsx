@@ -400,6 +400,11 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
   // false claim.
   const isOmitted = (block: string) => omitted_for_vehicle_scope.includes(block);
 
+  // On the scoped path every value below is THIS VEHICLE's, so the labels must
+  // say so. A card captioned "fleet-wide" over a single vehicle's number is the
+  // exact defect this scope work exists to remove.
+  const isVehicleScope = scope === 'vehicle';
+
   const totalCosts = (fleet_summary.total_maintenance_cost || 0) + (fleet_summary.total_fuel_cost || 0);
   const complianceRate = service_compliance?.rate ?? 100;
   const inspPassRate = inspection_pass_rate?.rate ?? 100;
@@ -475,7 +480,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <DollarSign className="w-3 h-3 text-accent-silver-500" />
-            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Total Fleet Costs</span>
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">{isVehicleScope ? 'Total Vehicle Costs' : 'Total Fleet Costs'}</span>
             <InfoTooltip text={KPI_TOOLTIPS.total_fleet_costs} />
           </div>
           <div className="text-xl font-bold font-mono text-rmpg-100 tabular-nums">
@@ -497,7 +502,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <div className="text-xl font-bold font-mono text-rmpg-100 tabular-nums">
             {fleet_summary.avg_mpg != null ? fleet_summary.avg_mpg.toFixed(1) : '--'}
           </div>
-          <div className="text-[8px] text-rmpg-400 mt-1">Fleet-wide fuel economy</div>
+          <div className="text-[8px] text-rmpg-400 mt-1">{isVehicleScope ? "This vehicle's fuel economy" : 'Fleet-wide fuel economy'}</div>
         </div>
 
         {/* Service Compliance */}
@@ -748,7 +753,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         {/* Daily Fleet Utilization (Area Chart) */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
-            <Activity className="w-3 h-3" /> Daily Fleet Utilization
+            <Activity className="w-3 h-3" /> {isVehicleScope ? 'Daily Vehicle Utilization' : 'Daily Fleet Utilization'}
           </h4>
           {daily_usage && daily_usage.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
@@ -856,11 +861,14 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <div className="text-lg font-bold font-mono text-rmpg-100 tabular-nums">
             {avg_daily_miles != null && avg_daily_miles > 0 ? avg_daily_miles.toFixed(1) : '--'}
           </div>
-          <div className="text-[8px] text-rmpg-400 mt-1">Fleet avg from fuel logs</div>
+          <div className="text-[8px] text-rmpg-400 mt-1">{isVehicleScope ? "This vehicle's avg from fuel logs" : 'Fleet avg from fuel logs'}</div>
         </div>
 
-        {/* Total Vehicles */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
+        {/* Total Vehicles — a fleet count, not a vehicle fact. It lives inside
+            fleet_summary rather than being its own block, so FLEET_ONLY_BLOCKS
+            cannot gate it; hide it directly on the scoped path instead. */}
+        {!isVehicleScope && (
+        <div data-testid="card-total_vehicles" className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Car className="w-3 h-3 text-accent-silver-500" />
             <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Total Vehicles</span>
@@ -870,6 +878,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           </div>
           <div className="text-[8px] text-rmpg-400 mt-1">Registered in fleet</div>
         </div>
+        )}
 
         {/* Oldest Vehicle */}
         {!isOmitted('oldest_vehicle_year') && (
