@@ -449,18 +449,53 @@ describe('the --rmpg-* ramp is never used as a text colour', () => {
   // Blank comment bodies, preserving newlines so line numbers stay correct.
   // Documentation legitimately quotes the broken form as an example -- the palette
   // file's own alias comment does exactly that -- and must not trip the guard.
-  // String literals are neutralised FIRST: `input.accept = 'image/*'` would
-  // otherwise open a bogus block comment and swallow real code, hiding violations.
+  //
+  // String literals are masked FIRST, to EQUAL-LENGTH spaces, so `input.accept =
+  // 'image/*'` cannot open a bogus block comment and swallow real code. The mask is
+  // used ONLY to locate comments; the returned text keeps string contents intact,
+  // because every violation scanned for here lives inside quotes
+  // (`color: 'var(--rmpg-500)'`).
+  //
+  // Equal-length masking is load-bearing. An earlier version deleted string bodies
+  // (`.replace(/./g, '')`) and then indexed the shortened result against the
+  // original, so every offset past the first string literal was wrong: it blanked
+  // arbitrary characters out of live code and, worse, ate the leading `c` of a real
+  // `color:` so the scan silently reported clean. Blank ranges by index instead of
+  // rebuilding through a positional compare.
   function blankComments(src: string): string {
-    const noStrings = src.replace(
+    const masked = src.replace(
       /(["'`])(?:\\.|(?!\1)[^\\\n])*\1/g,
-      (m) => m[0] + m.slice(1, -1).replace(/./g, '') + m[0],
+      (m) => m[0] + m.slice(1, -1).replace(/[^\n]/g, ' ') + m[m.length - 1],
     );
-    const blanked = noStrings
-      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-      .replace(/(^|[^:])\/\/[^\n]*/g, (m, p) => p + m.slice(p.length).replace(/./g, ' '));
-    return [...src].map((ch, i) => (blanked[i] === ' ' && ch !== ' ' ? ' ' : ch)).join('');
+    const out = [...src];
+    const blank = (from: number, to: number) => {
+      for (let i = from; i < to && i < out.length; i++) if (out[i] !== '\n') out[i] = ' ';
+    };
+    for (const m of masked.matchAll(/\/\*[\s\S]*?\*\//g)) {
+      blank(m.index, m.index + m[0].length);
+    }
+    for (const m of masked.matchAll(/(^|[^:])\/\/[^\n]*/g)) {
+      blank(m.index + m[1].length, m.index + m[0].length);
+    }
+    return out.join('');
   }
+
+  it('blanks comments without corrupting code or hiding violations', () => {
+    const probe = /(?<![-\w])color:\s*['"`]?var\(\s*--rmpg-\d+\s*[,)]/;
+    // Length must be preserved, or every offset after the first string is wrong.
+    expect(blankComments(`const a = 'hi';\nconst b = 2;`)).toBe(`const a = 'hi';\nconst b = 2;`);
+    // A quoted violation AFTER a string literal is the case the old version ate.
+    expect(probe.test(blankComments(`const l = 'Downloads';\nconst s = { color: 'var(--rmpg-500)' };`))).toBe(true);
+    expect(probe.test(blankComments(`const a='x'; const b='y';\nstyle={{ color: 'var(--rmpg-600)' }}`))).toBe(true);
+    // A literal containing `/*` must not open a comment and swallow what follows.
+    expect(probe.test(blankComments(`x.accept = 'image/*';\nconst s = { color: 'var(--rmpg-500)' };`))).toBe(true);
+    // A `//` inside a string is not a comment.
+    expect(probe.test(blankComments(`const u = 'https://x.test';\nconst s = { color: 'var(--rmpg-400)' };`))).toBe(true);
+    // Real comments still get blanked, in both spellings, including trailing ones.
+    expect(probe.test(blankComments(`// color: 'var(--rmpg-500)'`))).toBe(false);
+    expect(probe.test(blankComments(`/* color: 'var(--rmpg-500)' */`))).toBe(false);
+    expect(probe.test(blankComments(`const n = 1; // color: 'var(--rmpg-500)'`))).toBe(false);
+  });
 
   it('has no text-context var(--rmpg-N) anywhere in client/src', () => {
     const offenders: string[] = [];
