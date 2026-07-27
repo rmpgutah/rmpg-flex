@@ -1022,8 +1022,8 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       // indents past it, so the call-out costs the same vertical space the
       // inline sentence did. That matters: this notice must stay on one sheet
       // of PJ-700 roll.
-      const barW = 1.2;
-      const indent = barW + 2.2;
+      const barW = 0.8;
+      const indent = barW + 2.0;
       doc.setFont(PDF_VALUE_FONT, 'bolditalic');
       doc.setFontSize(NOTICE_FONT);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1035,9 +1035,12 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
         ffw - labelW - indent - 2,
       );
       doc.text(noteLines, lx + indent + labelW, y);
+      // Bar spans the text block's own cap-height-to-baseline extent. The
+      // first pass drew it 1.2mm wide against a single 3.5mm line, which on
+      // the page read as a stray tick in the margin rather than an accent.
       const blockH = noteLines.length * 3.5;
       doc.setFillColor(...COLOR.TEXT_PRIMARY);
-      doc.rect(lx, y - 2.6, barW, blockH + 1.4, 'F');
+      doc.rect(lx, y - 2.4, barW, blockH + 0.9, 'F');
       y += blockH + 1.5;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -1083,15 +1086,45 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   }
 
   // ── Server Signature (unsworn — this is a notice, not an affidavit) ──
-  y = checkPageBreak(doc, y, SPACING.SIGNATURE_BOX_H + SPACING.LG);
+  //
+  // Reserve the certification line WITH the block: a signature that lands on
+  // its own sheet, separated from the sentence it certifies, is worse than no
+  // signature at all on a roll-printed instrument.
+  //
+  // Reserve the height ACTUALLY drawn, not the SIGNATURE_BOX_H default. That
+  // constant is 24mm, sized for the 12/8 rows a desk-printed affidavit uses;
+  // this block draws 4.5 role + 9 signature + 7 info = 20.5mm. Reserving the
+  // default forced a page break the real content did not need -- the content
+  // fit with room to spare and still landed on sheet two.
+  const SIG_ROW_H = 11;
+  const SIG_INFO_H = 7;
+  const sigBlockH = SPACING.SIGNATURE_ROLE_H + SIG_ROW_H + SIG_INFO_H;
+  y = checkPageBreak(doc, y, sigBlockH + SPACING.LG);
+
+  // Certification is worded against the ATTEMPT RECORD, not against service:
+  // this instrument exists precisely because service did NOT occur, so an
+  // affidavit-style "I certify service" line would be false on its face. It
+  // deliberately does not restate the server's name or badge either -- both
+  // print in the info row immediately below it.
+  const certification = 'I certify that the attempt(s) recorded in Article II were made as stated, and that service was not completed.';
+
   y = addSignatureBlock(doc, 'V. Process Server', lx, y, ffw, data.signature ? {
     signatureImage: data.signature,
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
+    certification,
   } : {
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
-  });
+    certification,
+  },
+  // Signature row trimmed from the 12mm default to 9mm. The default is
+  // sized for a wet signature on a full desk-printed affidavit; on this
+  // notice the row is mostly white, and the millimetres buy the
+  // certification sentence above it without touching any content. Still
+  // ample for the captured signature image, which fits to sigRowH - 3.5.
+  // Info row trimmed alongside it: three short values, one line each.
+  SIG_ROW_H, SIG_INFO_H);
   y += SPACING.SM;
 
   // ── Contact line (recipient-facing call-to-action) ──
@@ -1765,13 +1798,23 @@ function drawSubjectPanel(
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(x, y, w, boxH);
 
-  // Vertically centre the body when this panel is shorter than its pair.
-  // Forced to a common height with top-aligned content, the three-row
-  // panel showed two rows of white beneath it and read as a missing row
-  // rather than as padding.
+  // Slack handling: the two panels are drawn to a COMMON height, and the
+  // shorter one has to spend the difference somewhere.
+  //
+  // Centring the whole body (the previous approach) kept the panel from
+  // showing orphan white at the bottom, but it pushed the shorter panel's
+  // label/value grid DOWN by slack/2 -- so I(a)'s SERVICE ADDRESS row no
+  // longer sat on the same line as I(b)'s CASE NUMBER row. On a pair of
+  // panels read side by side that misalignment is the thing the eye catches.
+  //
+  // Instead: keep the body TOP-aligned so both grids start on the same
+  // baseline, and spend the slack as extra leading BETWEEN the shorter
+  // panel's rows. Both panels now start level, bottom out level, and no
+  // orphan block of white is left under either.
   const naturalH = SPACING.SECTION_HEADER_H + bodyH;
   const slack = Math.max(0, boxH - naturalH);
-  let ty = y + SPACING.SECTION_HEADER_H + pad + 2.6 + slack / 2;
+  const rowGapExtra = wrapped.length > 1 ? slack / (wrapped.length - 1) : 0;
+  let ty = y + SPACING.SECTION_HEADER_H + pad + 2.6;
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1801,7 +1844,8 @@ function drawSubjectPanel(
   // Inline label/value rows against a fixed label column. The label may
   // be clipped (fixed strings we author); the VALUE wraps, because an
   // elided address or entity name is a defect, not a layout compromise.
-  for (const r of wrapped) {
+  wrapped.forEach((r, ri) => {
+    if (ri > 0) ty += rowGapExtra;   // spend the common-height slack here
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
@@ -1820,7 +1864,7 @@ function drawSubjectPanel(
       for (const vl of r.lines) { doc.text(vl, x + pad + labelW, ty); ty += rowH; }
       if (r.lines.length > 1) ty += WRAP_CLEARANCE;
     }
-  }
+  });
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   return y + boxH;
