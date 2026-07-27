@@ -145,6 +145,59 @@ describe('WeekTimeline drag-drop wiring', () => {
   });
 });
 
+describe('WeekTimeline grid placement', () => {
+  // The drop handlers were always correct; their POSITIONS were not. Chips are
+  // definitely-positioned, and CSS Grid places definite items before auto-placed
+  // ones — so each chip shifted the auto-placed day cells one column right and
+  // the cell rendered under Wednesday was bound to Tuesday. Measured in Chrome
+  // 2026-07-26: one chip displaced 54 of 63 band cells; explicit placement
+  // brought that to 0.
+  //
+  // jsdom performs no grid layout, so this asserts the INVARIANT that prevents
+  // it — every participant carries an explicit column and row — rather than the
+  // resulting geometry.
+  const cellsOf = (c: HTMLElement) =>
+    Array.from(c.querySelectorAll<HTMLElement>('[data-testid^="band-cell-"]'));
+
+  it('gives every band cell an explicit column and row matching its day and band', () => {
+    const days = ['2026-06-21', '2026-06-22', '2026-06-23', '2026-06-24',
+                  '2026-06-25', '2026-06-26', '2026-06-27'];
+    const { container } = render(
+      <WeekTimeline anchorYmd={ANCHOR} slots={[slot()]} todayYmd={ANCHOR} onSlotDrop={vi.fn()} />,
+    );
+    const cells = cellsOf(container);
+    expect(cells).toHaveLength(63); // 7 days × 9 bands
+
+    for (const cell of cells) {
+      const [, , , ymd, bandRaw] = cell.dataset.testid!.split('-');
+      const testid = cell.dataset.testid!;
+      const band = Number(testid.slice(testid.lastIndexOf('-') + 1));
+      const date = testid.slice('band-cell-'.length, testid.lastIndexOf('-'));
+      const dayIdx = days.indexOf(date);
+      expect(dayIdx, `unexpected date ${date}`).toBeGreaterThanOrEqual(0);
+      // Column 1 is the hour-label gutter, row 1 is the day-header strip.
+      expect(cell.style.gridColumn, `column for ${testid}`).toBe(String(dayIdx + 2));
+      expect(cell.style.gridRow, `row for ${testid}`).toBe(String(band + 2));
+      void ymd; void bandRaw;
+    }
+  });
+
+  it('leaves no participant auto-placed', () => {
+    const { container } = render(
+      <WeekTimeline anchorYmd={ANCHOR} slots={[slot()]} todayYmd={ANCHOR} onSlotDrop={vi.fn()} />,
+    );
+    const grid = container.querySelector<HTMLElement>('.grid')!;
+    // `display: contents` wrappers don't participate in the grid themselves.
+    const participants = Array.from(grid.children).flatMap((child) =>
+      (child as HTMLElement).className.includes('contents')
+        ? Array.from(child.children)
+        : [child],
+    ) as HTMLElement[];
+    const autoPlaced = participants.filter((el) => !el.style.gridColumn || !el.style.gridRow);
+    expect(autoPlaced.map((el) => el.dataset.testid ?? el.className.slice(0, 40))).toEqual([]);
+  });
+});
+
 describe('MonthGrid drag-drop wiring', () => {
   it('renders draggable chips so month view has a drag SOURCE at all', () => {
     // Previously month view drew only aggregate tier badges, leaving every drop
