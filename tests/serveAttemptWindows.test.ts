@@ -34,9 +34,76 @@ describe('selectWindows precedence', () => {
   });
 
   it('uses business defaults for a confirmed business location', () => {
-    const out = selectWindows({ addressClass: 'business', clientBands: [], locationNote: null });
+    // R4: `confirmed` is now an explicit input. The test's name always said
+    // CONFIRMED; it just never had a way to say so. Same assertions.
+    const out = selectWindows({
+      addressClass: 'business', addressClassConfirmed: true,
+      clientBands: [], locationNote: null,
+    });
     expect(out.every((w) => w.authority === 'business default')).toBe(true);
     expect(out.map((w) => w.window)).toEqual(['09:30-11:30', '13:30-15:30']);
+  });
+
+  it('D-2 (R4): an UNCONFIRMED business class does NOT get business timing', () => {
+    // The failure this pins: the model emits address_class "business" at 0.55
+    // confidence for a duplex whose instructions mention a suite. Before this
+    // fix that produced weekday 09:30-11:30 + 13:30-15:30 at a RESIDENCE — no
+    // evening, no weekend, two attempts burned. Unconfirmed must fall to the
+    // wider residential set.
+    const unconfirmed = selectWindows({
+      addressClass: 'business', addressClassConfirmed: false,
+      clientBands: [], locationNote: null,
+    });
+    expect(unconfirmed.every((w) => w.authority === 'residential default')).toBe(true);
+    expect(unconfirmed.some((w) => w.window === '17:00-20:30')).toBe(true);
+    expect(unconfirmed.map((w) => w.window)).not.toContain('09:30-11:30');
+
+    // Omitting the flag entirely must behave identically — a caller that
+    // forgets it degrades in the SAFE direction, never the unsafe one.
+    const omitted = selectWindows({ addressClass: 'business', clientBands: [], locationNote: null });
+    expect(omitted).toEqual(unconfirmed);
+  });
+
+  it('R8: a location note with a start but no usable end never yields an inverted window', () => {
+    // `end` defaulted to '17:00', so { hours_start: '18:00' } produced the
+    // string '18:00-17:00'. That reached the officer AND appendAttemptSlot,
+    // which wrote window_start='18:00', window_end='17:00' onto the schedule
+    // row. Fall through to the address-class defaults instead.
+    const out = selectWindows({
+      addressClass: 'residential', addressClassConfirmed: false,
+      clientBands: [], locationNote: { hours_start: '18:00' },
+    });
+    expect(out.every((w) => w.authority === 'residential default')).toBe(true);
+    for (const w of out) {
+      const [start, end] = w.window.split('-');
+      expect(start < end).toBe(true);
+    }
+    expect(out.map((w) => w.window)).not.toContain('18:00-17:00');
+  });
+
+  it('R8: an equal start and end is rejected too (zero-length window)', () => {
+    const out = selectWindows({
+      addressClass: 'residential', clientBands: [],
+      locationNote: { hours_start: '09:00', hours_end: '09:00' },
+    });
+    expect(out.every((w) => w.authority === 'residential default')).toBe(true);
+  });
+
+  it('R8: a malformed note time falls through rather than emitting garbage', () => {
+    const out = selectWindows({
+      addressClass: 'residential', clientBands: [],
+      locationNote: { hours_start: 'morning', hours_end: 'evening' },
+    });
+    expect(out.every((w) => w.authority === 'residential default')).toBe(true);
+  });
+
+  it('R8: a WELL-FORMED note window is still honored (the guard is not over-broad)', () => {
+    const out = selectWindows({
+      addressClass: 'residential', clientBands: [],
+      locationNote: { hours_start: '08:00', cutoff_time: '15:00' },
+    });
+    expect(out.map((w) => w.window)).toEqual(['08:00-15:00']);
+    expect(out.every((w) => w.authority === 'site note')).toBe(true);
   });
 
   it('uses residential defaults for a residence', () => {

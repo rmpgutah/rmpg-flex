@@ -16,11 +16,29 @@
 //   4. the extracted address_class field
 //   5. unknown
 //
-// UNCONFIRMED NEVER YIELDS BUSINESS TIMING. `unknown` and unconfirmed
-// both fall through to residential defaults downstream, which are
-// strictly wider. Being wrong that way costs one unnecessary attempt
-// window; being wrong the other way puts a server outside a house at
-// 10:00 on a Tuesday and the service fails.
+// UNCONFIRMED NEVER YIELDS BUSINESS TIMING. This resolver still RETURNS
+// an unconfirmed `'business'` (tiers 3 and 4) because the class drives
+// WHO may accept service in the briefing's SERVICE AUTHORITY section.
+// The TIMING gate lives one layer down, in `selectWindows()`
+// (serveAttemptWindows.ts), which requires `confirmed === true` before it
+// will emit BUSINESS_DEFAULTS — so `unknown` and every unconfirmed class
+// fall through to residential defaults, which are strictly wider. Being
+// wrong that way costs one unnecessary attempt window; being wrong the
+// other way puts a server outside a house at 10:00 on a Tuesday and the
+// service fails.
+//
+// CONSEQUENCE FOR CALLERS: `AddressClassResult.confirmed` is NOT
+// diagnostic-only. It must be threaded to planAttemptWindows /
+// selectWindows as `addressClassConfirmed`, or business timing silently
+// never applies.
+//
+// A row this pipeline auto-created is NOT independent evidence: callers
+// must not set `businessRecordMatched` from a `businesses` row that
+// findOrCreateBusiness inserted (marked `notes: 'Auto-created via serve
+// intake'` / `business_type: 'process_service_recipient'`). Otherwise a
+// corporation served through its registered agent AT THE AGENT'S HOME
+// self-confirms as a business location on the second intake — exactly
+// the case D-2 exists to prevent.
 // ============================================================
 
 export type AddressClass = 'residential' | 'business' | 'unknown';

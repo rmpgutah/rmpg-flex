@@ -98,6 +98,27 @@ wrong in that direction costs an unnecessary attempt window; being wrong the oth
 server sits outside a house at 10:00 on a Tuesday. This satisfies D-2 without introducing a
 commit-blocking prompt.
 
+**Where that gate lives (decided in the PR 2 fix round).** The resolver still RETURNS an
+unconfirmed `'business'` from tiers 3–4, because the class drives WHO may lawfully accept
+service in the SERVICE AUTHORITY section — a separate concern from timing. The TIMING gate is
+enforced one layer down, in `selectWindows()` (§3.2), which requires `addressClassConfirmed ===
+true` before it will emit the business window set OR narrow the plan to weekdays. The flag is
+optional and defaults to **false**, so a caller that forgets to thread it degrades in the safe
+(residential) direction. `AddressClassResult.confirmed` is therefore load-bearing, not
+diagnostic — every planner call site must pass it.
+
+**A row this pipeline auto-created is not evidence.** `findOrCreateBusiness` inserts a
+`businesses` row for every corporate intake, stamped `notes: 'Auto-created via serve intake'` /
+`business_type: 'process_service_recipient'`. Those rows are excluded from tier 2 confirmation.
+Otherwise a corporation served through its registered agent AT THE AGENT'S HOME auto-creates a
+business row at a residential address on the first intake and self-confirms as a business
+location on the second — exactly the case D-2 exists to prevent.
+
+**The resolved class is persisted** into `parsed_data._intake.address_class` (`{klass,
+confirmed, source}`) at commit, and read back by the failed-attempt re-plan route, the cron
+auto-replan, and `/schedule/backfill` via `servePlanContext.ts` — together with the client's
+persisted hours/days/start bar, which those paths must re-apply on every re-plan.
+
 The registered-agent role is recorded separately in `registered_agent_name` /
 `registered_agent_address` and feeds the SERVICE AUTHORITY section only.
 

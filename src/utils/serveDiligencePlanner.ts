@@ -16,7 +16,7 @@
 import type { ServePriority } from './serveIntakeExtract';
 import type { TimeBand } from './serveScheduleParse';
 import type { AddressClass } from './serveAddressClass';
-import { selectWindows, type WindowAuthority } from './serveAttemptWindows';
+import { selectWindows, usesBusinessTiming, type WindowAuthority } from './serveAttemptWindows';
 import { log } from './logger';
 
 export interface AttemptWindow {
@@ -36,6 +36,11 @@ export interface PlanOptions {
    *  MUST NOT select attempt windows — addressClass does that. */
   isBusiness?: boolean;
   addressClass?: AddressClass;
+  /** D-2 (R4): business timing requires a CONFIRMED business LOCATION.
+   *  Absent/false → residential windows and all-week days, whatever
+   *  `addressClass` says. Defaults to false so a forgetful caller
+   *  degrades in the safe direction. */
+  addressClassConfirmed?: boolean;
   clientBands?: TimeBand[];
   allowedDays?: number[] | null;
   startNotBefore?: string | null;
@@ -87,25 +92,36 @@ export function planAttemptWindows(
   const days = daysUntilDeadline(nowIso, deadline);
   const { locationNote } = options;
 
-  const constrained = !!(locationNote?.hours_start || locationNote?.cutoff_time || locationNote?.days_available);
-
   const specs = selectWindows({
     addressClass: options.addressClass ?? 'unknown',
+    addressClassConfirmed: options.addressClassConfirmed,
     clientBands: options.clientBands ?? [],
     locationNote: locationNote ?? null,
   });
 
   // Allowed days: client constraint > location note > address-class default.
+  // D-2 (R4): the weekday-only narrowing is business TIMING, so it needs the
+  // same confirmation gate selectWindows() applies.
   let allowedDows: Set<number>;
+  let daysFromNote = false;
   if (options.allowedDays && options.allowedDays.length) {
     allowedDows = new Set(options.allowedDays);
   } else if (locationNote?.days_available?.length) {
     allowedDows = new Set(locationNote.days_available);
-  } else if ((options.addressClass ?? 'unknown') === 'business') {
+    daysFromNote = true;
+  } else if (usesBusinessTiming(options.addressClass ?? 'unknown', options.addressClassConfirmed)) {
     allowedDows = WEEKDAYS;
   } else {
     allowedDows = new Set([0, 1, 2, 3, 4, 5, 6]);
   }
+
+  // R7: `constrained` used to be true from the MERE PRESENCE of a location
+  // note, and the briefing then asserted "attempt windows have been adjusted
+  // to comply with these constraints" — untrue whenever client bands (which
+  // OUTRANK the site note) or the class defaults supplied the windows. It is
+  // now true only when the note actually shaped the emitted plan: either the
+  // window came from the note, or the note supplied the allowed days.
+  const constrained = daysFromNote || specs.some((s) => s.authority === 'site note');
 
   // Earliest permitted offset honours the client's start-date bar.
   // FINDING 3 FIX: the old version scanned offset 0..59 looking for the
@@ -295,6 +311,16 @@ export interface ReplanQueueCtx {
   /** @deprecated for TIMING — see PlanOptions.isBusiness (D-2). */
   isBusiness?: boolean;
   addressClass?: AddressClass;
+  /** D-2 (R4): business timing requires a confirmed business LOCATION. */
+  addressClassConfirmed?: boolean;
+  // R6: the client's dictated hours/days/start bar are persisted flat in
+  // serve_queue.parsed_data and MUST be re-applied on every re-plan. Before
+  // this fix the replan path passed none of them, so EVERY attempt after the
+  // first ignored the client's authorized hours — on the path that generates
+  // most attempts.
+  clientBands?: TimeBand[];
+  allowedDays?: number[] | null;
+  startNotBefore?: string | null;
   locationNote?: PlanOptions['locationNote'];
 }
 
@@ -322,6 +348,10 @@ export function replanAfterFailedAttempt(
   const plan = planAttemptWindows(replanStart, queue.deadline, tz, {
     isBusiness: queue.isBusiness ?? false,
     addressClass: queue.addressClass,
+    addressClassConfirmed: queue.addressClassConfirmed,
+    clientBands: queue.clientBands ?? [],
+    allowedDays: queue.allowedDays ?? null,
+    startNotBefore: queue.startNotBefore ?? null,
     locationNote: queue.locationNote ?? null,
   });
   if (!plan.length) return null;

@@ -210,8 +210,21 @@ describe('D-2: timing keys off address class, not entity type', () => {
     const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
       isBusiness: false,
       addressClass: 'business',
+      // R4: confirmation is now explicit. The test always meant CONFIRMED.
+      addressClassConfirmed: true,
     });
     expect(plan.every((w) => w.authority === 'business default')).toBe(true);
+    expect(plan.every((w) => w.weekday !== 'Saturday' && w.weekday !== 'Sunday')).toBe(true);
+  });
+
+  it('D-2 (R4): an UNCONFIRMED business class gets residential windows and all-week days', () => {
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      isBusiness: true,
+      addressClass: 'business',
+      addressClassConfirmed: false,
+    });
+    expect(plan.every((w) => w.authority === 'residential default')).toBe(true);
+    expect(plan.some((w) => w.window === '17:00-20:30')).toBe(true);
   });
 });
 
@@ -269,14 +282,14 @@ describe('client constraints', () => {
   });
 });
 
-describe('Fix round 1 — Finding 1: interim isBusiness -> addressClass mapping', () => {
-  // Finding 1b: the original version of this test passed `addressClass:
-  // 'business'` explicitly, which only re-verified selectWindows()'s own
-  // behavior (already covered by the Step-1 "confirmed business location"
-  // test) and would NOT catch someone deleting the `addressClass:` line at
-  // any of the four interim call sites — precisely the regression this is
-  // supposed to guard. Replaced with two tests that together prove the
-  // mapping is necessary AND exercise the mapping expression itself.
+describe('R6: the interim isBusiness -> addressClass mapping is superseded by the persisted class', () => {
+  // The interim mapping (`isBusiness ? 'business' : 'unknown'`) is GONE from
+  // all three replan/backfill sites — they now read the address class and the
+  // client's hours/days/start bar that commitIntake persisted into
+  // parsed_data._intake (see servePlanContext.ts). What still matters, and is
+  // pinned below, is that the planner does NOT infer business timing on its
+  // own — so those call sites genuinely have to supply the resolved class,
+  // and (per R4) its confirmation.
   it('the planner alone does NOT infer business from isBusiness with no addressClass', () => {
     // Documents WHY the interim mapping is necessary: if planAttemptWindows
     // inferred business from isBusiness on its own, the four call sites
@@ -288,23 +301,22 @@ describe('Fix round 1 — Finding 1: interim isBusiness -> addressClass mapping'
     expect(plan.every((w) => w.authority === 'residential default')).toBe(true);
   });
 
-  it('the interim mapping expression (isBusiness ? "business" : "unknown") yields business windows when threaded through', () => {
-    // This is the exact expression added at serveAutoReplan.ts,
-    // serveIntake.ts (/schedule/backfill AND the failed-attempt replan
-    // route), and serveIntakeRecords.ts (commitIntake). It cannot exercise
-    // those call sites directly without DB/route mocking infrastructure
-    // this task does not build (no real case data, no live DB) — that
-    // limitation is stated plainly rather than papered over with a test
-    // that implies call-site coverage it doesn't have. What this DOES
-    // prove: the mapping expression, applied the same way those sites
-    // apply it, produces business-only windows, so a future refactor of
-    // planAttemptWindows/selectWindows can't silently break the mapping's
-    // assumption without this test noticing.
-    const isBusiness = true;
-    const addressClass = isBusiness ? 'business' : 'unknown';
+  it('a persisted CONFIRMED business class, threaded through as the replan sites now do, yields weekday business windows', () => {
+    // This mirrors what servePlanContext.planContextFromRow() hands to
+    // planAttemptWindows at serveAutoReplan.ts, serveIntake.ts
+    // (/schedule/backfill AND the failed-attempt replan route). It cannot
+    // exercise those call sites directly without DB/route mocking
+    // infrastructure this task does not build (no real case data, no live
+    // DB) — that limitation is stated plainly rather than papered over with
+    // a test that implies call-site coverage it doesn't have. What this DOES
+    // prove: the shape those sites pass produces business-only weekday
+    // windows, so a future refactor of planAttemptWindows/selectWindows
+    // can't silently break that assumption without this test noticing.
+    const ctx = { addressClass: 'business' as const, addressClassConfirmed: true };
     const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
-      isBusiness,
-      addressClass,
+      isBusiness: true,
+      addressClass: ctx.addressClass,
+      addressClassConfirmed: ctx.addressClassConfirmed,
     });
     expect(plan.length).toBeGreaterThan(0);
     expect(plan.every((w) => w.authority === 'business default')).toBe(true);
