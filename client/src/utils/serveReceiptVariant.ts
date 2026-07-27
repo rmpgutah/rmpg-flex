@@ -40,6 +40,33 @@ export interface VariantInputs {
   authorizedAgent: boolean;
 }
 
+/**
+ * Does this party name denote a legal ENTITY rather than a human?
+ *
+ * Matters because "Are you <party>?" can never truthfully be answered yes
+ * when the party is a company. Observed live on a real service: the named
+ * party was "Chase Partners Ltd, Fontana Business Center 2, SDP REIT LLC,
+ * ISAOA" and a registered agent answered yes, producing an (Individual)
+ * form that recorded him as the party himself. The capacity line read
+ * "PARTY NAMED" and had to be corrected in pen to "Registered Agent".
+ *
+ * Suffix matching, not an exhaustive registry: a false negative just
+ * leaves the question as it is today, while a false positive on a human
+ * is essentially impossible — people are not named "Inc".
+ */
+const ENTITY_MARKERS = [
+  'llc', 'l.l.c', 'inc', 'incorporated', 'corp', 'corporation', 'ltd', 'limited',
+  'lp', 'llp', 'l.p', 'pllc', 'pc', 'company', 'co.', 'trust', 'partners',
+  'partnership', 'associates', 'holdings', 'group', 'isaoa', 'atima', 'n.a.',
+  'bank', 'foundation', 'institute', 'authority', 'district', 'university',
+];
+
+export function isEntityName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const t = ` ${name.toLowerCase().replace(/[,]/g, ' ')} `;
+  return ENTITY_MARKERS.some((m) => t.includes(` ${m} `) || t.includes(` ${m}. `));
+}
+
 export function resolveReceiptVariant(i: VariantInputs): ReceiptVariant {
   if (i.isNamedParty) return 'individual';
   // Business is checked before co-habitant: someone can both work and
@@ -143,4 +170,37 @@ export function attestationsFor(variant: ReceiptVariant, party: string): Attesta
       // deliver carries the weight instead.
       return [adult, acceptance(p), deliver(p), received, explained, truthful];
   }
+}
+
+/**
+ * Address of service as a conventional two-line block:
+ *
+ *     1234 Wisconsin Street
+ *     South Salt Lake, UT 85194
+ *
+ * NOT a comma-joined single string left to wrap wherever the column runs
+ * out. On the 2026-07-27 service that produced
+ * "1240 EAST 2100 SOUTH, SALT LAKE CITY, UT, 84106" breaking mid-city —
+ * circled with "2 lines" — and it put a comma between the state and the
+ * ZIP, which no postal or court address block does.
+ *
+ * The street stays whole on line one; city, state and ZIP travel together
+ * on line two, because that is the unit a reader scans for.
+ */
+export function formatServiceAddress(parts: {
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+}): string {
+  const street = (parts.address ?? '').trim();
+  const city = (parts.city ?? '').trim();
+  const state = (parts.state ?? '').trim();
+  const zip = (parts.zip ?? '').trim();
+
+  // "South Salt Lake, UT 85194" — comma after the city only.
+  const locality = [city, [state, zip].filter(Boolean).join(' ')]
+    .filter(Boolean).join(', ');
+
+  return [street, locality].filter(Boolean).join('\n');
 }

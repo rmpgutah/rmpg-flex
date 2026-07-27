@@ -39,7 +39,7 @@ import {
   type ReceiptOfServiceData, type ReceiptCopy,
 } from '../../utils/servePdfGenerator';
 import {
-  resolveReceiptVariant, receiptFormTitle, attestationsFor,
+  resolveReceiptVariant, receiptFormTitle, attestationsFor, formatServiceAddress,
   VARIANT_LABEL, type ReceiptVariant,
 } from '../../utils/serveReceiptVariant';
 
@@ -304,8 +304,10 @@ export default function ServeReceiptActions({
       defendantName: defendant ?? '',
       documentType: cap?.document_type ?? job.document_type ?? '',
       serviceAddress: cap?.service_address
-        || [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
-          .filter(Boolean).join(', '),
+        || formatServiceAddress({
+          address: job.recipient_address, city: job.recipient_city,
+          state: job.recipient_state, zip: job.recipient_zip,
+        }),
       premisesType: premisesType === 'business' ? 'Business' : premisesType === 'other' ? 'Other' : 'Residence',
       serverName: resolvedServer?.name ?? serverName ?? '',
       serverBadge: resolvedServer?.badge ?? serverBadge ?? '',

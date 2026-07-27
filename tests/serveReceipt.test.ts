@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   resolveReceiptVariant,
+  isEntityName,
   receiptFormTitle,
   validateReceiptSubmission,
   VARIANT_LABEL,
@@ -21,6 +22,8 @@ function submission(over: Partial<ServeReceiptSubmission> = {}): ServeReceiptSub
   return {
     variant: 'individual',
     recipient_name: 'Jane Doe',
+    recipient_phone: '(801) 555-0142',
+    recipient_email: 'jane@example.com',
     business_name: null,
     recipient_age_confirmed: 1,
     ack_received_documents: 1,
@@ -242,5 +245,69 @@ describe('officer MDT intake — variant pre-selection', () => {
     expect(officer).toBe('business');
     expect(signer).toBe('co_habitant');
     expect(officer === signer).toBe(false);
+  });
+});
+
+describe('contact details are required', () => {
+  // Operator instruction from the 2026-07-27 service: "Require subject to
+  // enter their phone number and email when entering information." A proof
+  // of service whose signer cannot be reached afterwards is hard to stand
+  // behind if the service is ever contested.
+  it('rejects a submission with no phone', () => {
+    expect(validateReceiptSubmission(submission({ recipient_phone: null })))
+      .toMatch(/phone number is required/i);
+  });
+
+  it('rejects a submission with no email', () => {
+    expect(validateReceiptSubmission(submission({ recipient_email: null })))
+      .toMatch(/email address is required/i);
+  });
+
+  it('rejects a malformed email rather than storing an unreachable address', () => {
+    for (const bad of ['notanemail', 'a@b', 'a b@c.com', '@example.com']) {
+      expect(validateReceiptSubmission(submission({ recipient_email: bad })))
+        .toMatch(/email address is required/i);
+    }
+  });
+});
+
+describe('an entity can never be the signer', () => {
+  // Found on a real service 2026-07-27: a registered agent answered "yes,
+  // I am the named party" for "Chase Partners Ltd, Fontana Business
+  // Center 2, SDP REIT LLC, ISAOA". The form printed capacity "PARTY
+  // NAMED" and had to be corrected in pen to "Registered Agent".
+  it.each([
+    'Chase Partners Ltd, Fontana Business Center 2, SDP REIT LLC, ISAOA',
+    'KPRS Construction Services, LLC',
+    'Acme Inc.',
+    'Wasatch Property Holdings, LLC',
+    'Zions Bank',
+    'The Smith Family Trust',
+  ])('recognises %s as an entity', (name) => {
+    expect(isEntityName(name)).toBe(true);
+  });
+
+  it.each(['Marcus T. Whitfield', 'Angela R. Whitfield', 'Andrew Scott Peterson', ''])(
+    'does not mistake %s for an entity', (name) => {
+      expect(isEntityName(name)).toBe(false);
+    },
+  );
+
+  it('refuses the individual variant when the party is a company', () => {
+    // The client withholds the question entirely, but the client is public
+    // and its POST body is attacker-controlled — the server decides.
+    expect(resolveReceiptVariant({
+      isNamedParty: true, premisesType: 'business',
+      residesAtAddress: false, authorizedAgent: true,
+      namedParty: 'Chase Partners Ltd, SDP REIT LLC, ISAOA',
+    })).toBe('business');
+  });
+
+  it('still allows the individual variant for a human party', () => {
+    expect(resolveReceiptVariant({
+      isNamedParty: true, premisesType: 'residence',
+      residesAtAddress: true, authorizedAgent: false,
+      namedParty: 'Andrew Scott Peterson',
+    })).toBe('individual');
   });
 });
