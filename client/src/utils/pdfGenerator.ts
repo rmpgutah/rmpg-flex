@@ -1436,6 +1436,14 @@ function getOfficerSig(): PdfSignatureData | undefined {
 
 /** Digital signature data for embedding into PDF signature blocks */
 export interface PdfSignatureData {
+  /**
+   * Short certification sentence drawn INSIDE the signature row, above the
+   * rule. A signature with nothing stated above it does not say what is being
+   * certified; drawn as a separate paragraph above the block it costs its own
+   * vertical band, which on a roll-printed instrument is the difference
+   * between one sheet and two. The row already reserves this space.
+   */
+  certification?: string;
   /** base64 PNG data URL of the handwritten signature */
   signatureImage?: string | null;
   /** Printed name to fill in */
@@ -1501,12 +1509,28 @@ export function addSignatureBlock(
   doc.setFillColor(252, 252, 252);
   doc.rect(x + 0.3, row1Y + 0.3, width - 0.6, sigRowH - 0.6, 'F');
 
+  // Certification sits at the TOP of the signature row so the reader meets the
+  // statement before the space where the name goes -- and it costs no extra
+  // vertical band, because the row is otherwise empty here.
+  if (sigData?.certification) {
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL + 0.5);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    const certLines = doc.splitTextToSize(
+      sanitizePdfText(sigData.certification, { preserveCase: true }),
+      width - SPACING.MD * 2,
+    ) as string[];
+    let cy = row1Y + 2.4;
+    for (const cl of certLines) { doc.text(cl, x + SPACING.MD, cy); cy += 2.6; }
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  }
+
   if (sigData?.signatureImage) {
     try {
       // Natural placement: preserve the pad image's aspect ratio (the old
       // code stretched it to fill the whole row — squashed/cropped look),
       // and rest it on a signature baseline like a real signed form.
-      const sigLineY = row1Y + sigRowH - 2.5;
+      const sigLineY = row1Y + sigRowH - 3.2;
       doc.setDrawColor(...COLOR.TEXT_TERTIARY);
       doc.setLineWidth(BORDER.SIGNATURE_LINE);
       doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
@@ -1524,20 +1548,34 @@ export function addSignatureBlock(
         }
       } catch { /* unknown dims — fall back to box fit */ }
       // Bottom edge sits just above the baseline (ink touches the line).
-      const imgX = x + SPACING.CONTENT_INSET + 4;
+      // Align the ink to the rule's own left edge rather than an arbitrary
+      // +4 offset, so a signed block and an unsigned one share a left edge.
+      const imgX = x + SPACING.MD + 1;
       const imgY = sigLineY - 0.5 - imgH;
       doc.addImage(sigData.signatureImage, 'PNG', imgX, imgY, imgW, imgH);
     } catch { /* skip */ }
   } else {
-    // Clean signature line — no bureaucratic X marker
-    const sigLineY = row1Y + sigRowH - 2.5;
+    // ── Unsigned: a real signature rule, captioned clear of the border ──
+    //
+    // The caption used to sit at sigLineY + 2.5, which is exactly
+    // row1Y + sigRowH -- the boundary the info row's top border is drawn on.
+    // The word SIGNATURE therefore printed ON that rule and read as a
+    // rendering fault. It is now seated ABOVE the line, in the empty space
+    // the block already has, where a caption belongs.
+    //
+    // The rule is also inset to match the info-row label column below it
+    // (SPACING.MD), so the signature line, PRINTED NAME, and the role label
+    // all share one left edge instead of three near-misses.
+    const sigLineY = row1Y + sigRowH - 3.2;
     doc.setDrawColor(...COLOR.TEXT_TERTIARY);
     doc.setLineWidth(BORDER.SIGNATURE_LINE);
     doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('SIGNATURE', x + width / 2, sigLineY + 2.5, { align: 'center' });
+    // Caption under the rule but INSIDE the row, left-aligned to the same
+    // inset as every other label in the block.
+    doc.text('SIGNATURE', x + SPACING.MD, sigLineY + 2.4);
   }
 
   // ── Info row: PRINTED NAME | BADGE NUMBER | DATE ──
