@@ -50,8 +50,8 @@ export default function RedactPatternDialog({ open, onClose, onRun, scanning }: 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-surface-base border border-border-default rounded-[2px] w-[420px] max-w-full p-4" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] w-[420px] max-w-full p-4 my-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 mb-3">
           <EyeOff className="w-4 h-4 text-[#d4a017]" />
           <div className="text-sm text-rmpg-100 font-semibold">Search & Redact</div>

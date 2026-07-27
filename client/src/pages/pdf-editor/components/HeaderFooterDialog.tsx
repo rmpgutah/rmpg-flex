@@ -29,8 +29,8 @@ export default function HeaderFooterDialog({ open, value, onClose, onApply }: Pr
   const hasAny = !!(cfg.headerLeft || cfg.headerCenter || cfg.headerRight || cfg.footerLeft || cfg.footerCenter || cfg.footerRight);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-surface-base border border-border-default rounded-[2px] w-[460px] max-w-full p-4" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] w-[460px] max-w-full p-4 my-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 mb-3">
           <Heading className="w-4 h-4 text-[#d4a017]" />
           <div className="text-sm text-rmpg-100 font-semibold">Header & Footer</div>

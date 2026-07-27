@@ -30,8 +30,8 @@ export default function DocPropertiesDialog({
   const lbl = 'text-[10px] text-rmpg-400 uppercase tracking-wide mb-1 block';
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-md bg-surface-sunken border border-rmpg-700 rounded-[2px] shadow-2xl shadow-black/70" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/70 p-4 overflow-y-auto" onMouseDown={onClose}>
+      <div className="w-full max-w-md bg-surface-sunken border border-rmpg-700 rounded-[2px] shadow-2xl shadow-black/70 my-auto" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
           <span className="flex items-center gap-1.5 text-[12px] font-semibold text-rmpg-100 uppercase tracking-wide">
             <Info className="w-3.5 h-3.5 text-accent-silver-400" /> Document Properties
