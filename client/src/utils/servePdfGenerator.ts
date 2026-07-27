@@ -20,6 +20,7 @@ import {
   setGenerationTimestamp,
   fetchPdfBranding,
   setActiveBranding,
+  getActiveBranding,
   loadPdfAssets,
   setActiveFormKey,
   setActiveCaseNumber,
@@ -1392,10 +1393,16 @@ export async function generateReceiptOfService(data: ReceiptOfServiceData): Prom
   // every other generator in the bundle — an early throw here would
   // silently un-watermark the next report the user prints.
   setConfidentialWatermarkEnabled(false);
+  const brandingBefore = getActiveBranding();
   try {
     return await renderReceiptOfService(data);
   } finally {
     setConfidentialWatermarkEnabled(true);
+    // Both are module state shared with every other generator in the
+    // bundle. Restoring the branding matters as much as the watermark:
+    // leaving a section accent set would re-shade the next report the
+    // user prints.
+    setActiveBranding(brandingBefore);
   }
 }
 
@@ -1483,7 +1490,7 @@ function drawPleadingCaption(
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text('Plaintiff / Petitioner,', lx + 8, ly + 0.8); ly += lineH + 0.8;
+  doc.text('Plaintiff / Petitioner,', parenX - 3, ly + 0.8, { align: 'right' }); ly += lineH + 0.8;
 
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
@@ -1498,7 +1505,7 @@ function drawPleadingCaption(
   // Business Center 2, SDP REIT LLC, ISAOA") and at a bare line height the
   // role label sat against the descenders above — circled as unreadable on
   // the 2026-07-27 service.
-  doc.text('Defendant / Respondent.', lx + 8, ly + 0.8);
+  doc.text('Defendant / Respondent.', parenX - 3, ly + 0.8, { align: 'right' });
 
   // ── Divider: the paren gutter, one per row ──
   doc.setFont(PDF_VALUE_FONT, 'normal');
@@ -1557,7 +1564,11 @@ function drawInstrumentTitle(
     const w = doc.getTextWidth(label) + 4;
     doc.setDrawColor(...COLOR.RULE_STRONG);
     doc.setLineWidth(BORDER.FIELD);
-    doc.rect(lx + cw - w, y - 3, w, 4.2);
+    // Centred on the title's CAP height, not its baseline. A box centred
+    // on the baseline sits visibly high against uppercase text, because
+    // the whole glyph is above it.
+    const capH = FONT.SIZE_SECTION_TITLE * 0.35;
+    doc.rect(lx + cw - w, y - capH / 2 - 2.1, w, 4.2);
     doc.text(label, lx + cw - w + 2, y);
     doc.setFontSize(FONT.SIZE_SECTION_TITLE + 1);
   }
@@ -1658,7 +1669,13 @@ function drawSubjectPanel(
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(x, y, w, boxH);
 
-  let ty = y + SPACING.SECTION_HEADER_H + pad + 2.6;
+  // Vertically centre the body when this panel is shorter than its pair.
+  // Forced to a common height with top-aligned content, the three-row
+  // panel showed two rows of white beneath it and read as a missing row
+  // rather than as padding.
+  const naturalH = SPACING.SECTION_HEADER_H + bodyH;
+  const slack = Math.max(0, boxH - naturalH);
+  let ty = y + SPACING.SECTION_HEADER_H + pad + 2.6 + slack / 2;
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1913,7 +1930,18 @@ const DENSE_THRESHOLD_MM = 52;
 
 async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF> {
   const branding = await fetchPdfBranding();
-  setActiveBranding(branding);
+  // One shade for every article bar.
+  //
+  // resolveSectionAccentColor grades a header by KEYWORD — a heuristic
+  // written for incident reports, where "SUBJECT" and "PERSON" genuinely
+  // signal a more important block. Here the articles are peers, and those
+  // words appear in Article I and Article IV by pure coincidence of legal
+  // phrasing. The result was bars alternating dark, light, light, dark
+  // down the page, implying an emphasis nobody intended.
+  //
+  // The documented branding override is the seam for exactly this. Set
+  // for the life of this document and restored by the caller's finally.
+  setActiveBranding({ ...branding, section_accent_color: '#5a5a5a' });
   await loadPdfAssets();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
