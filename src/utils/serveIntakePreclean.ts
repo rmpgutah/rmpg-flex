@@ -46,7 +46,10 @@ const WATERMARK_STAMPS = ['RUSH', 'COPY', 'FILED', 'DRAFT', 'VOID', 'SAMPLE'];
 // one A-Z letter. Inline single letters ("Apt H") are never touched.
 const ISOLATED_LETTER = /^\s*([A-Za-z])\s*$/;
 
-export function scrubWatermarkBleed(s: string): string {
+// Removes AT MOST ONE stamp's worth of isolated-letter lines per call — see
+// scrubWatermarkBleed, which loops this to a fixpoint so multiple stamps in
+// the same document (e.g. RUSH and COPY both present) are all stripped.
+function scrubOneWatermarkPass(s: string): string {
   if (!s) return '';
   const lines = s.split('\n');
 
@@ -82,6 +85,23 @@ export function scrubWatermarkBleed(s: string): string {
   }
 
   return s;
+}
+
+// A document can carry more than one stamp (e.g. a diagonal RUSH watermark
+// plus a COPY stamp), and each pass of scrubOneWatermarkPass removes at most
+// one. Loop to a fixpoint — stop as soon as a pass makes no change — so every
+// stamp present is stripped in one precleanText() call, matching the
+// idempotence this function's callers rely on (see serveIntake.ts:358/574/
+// 1188). Bounded by WATERMARK_STAMPS.length: that's the most distinct stamps
+// a single fixpoint can remove, since each pass drops exactly one.
+export function scrubWatermarkBleed(s: string): string {
+  let out = s;
+  for (let i = 0; i < WATERMARK_STAMPS.length; i++) {
+    const next = scrubOneWatermarkPass(out);
+    if (next === out) break;
+    out = next;
+  }
+  return out;
 }
 
 // Court forms use checkbox glyphs that OCR mangles into mismatched

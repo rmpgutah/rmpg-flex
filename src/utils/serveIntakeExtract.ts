@@ -1035,8 +1035,11 @@ export function scrubPartyNoise(raw: string): string {
   s = s.replace(/\b\d{1,3}(?:\s+\d{1,3}){1,}\b/g, ' ');            // line-number runs "8 9 10" (2+ only → keeps "Pizzeria 24")
   // "et al" appears in the wild as "et al", "et al.", AND "et. al." — the
   // period-after-"et" spelling is common on real captions and used to survive
-  // into `defendant` verbatim. `et\.?\s+al\.?` covers all three.
-  s = s.replace(/,?\s*(?:an\s+individual|individually|a\s+domestic[^,;]*|et\.?\s+al\.?)\b\.?/ig, ''); // trailing descriptors
+  // into `defendant` verbatim. `\bet\.?\s+al\.?` covers all three. The
+  // leading `\b` is required: without it "et" also matches mid-word (e.g.
+  // "Comet. Al Ventures" → "et. Al" inside "Comet." matches and truncates
+  // the name to "Com Ventures").
+  s = s.replace(/,?\s*(?:an\s+individual|individually|a\s+domestic[^,;]*|\bet\.?\s+al\.?)\b\.?/ig, ''); // trailing descriptors
   // Trim leftover separators — but keep a TRAILING period/hyphen: it's usually
   // part of an abbreviation ("N.A.", "Inc.", "L.L.C."), not noise.
   return s.replace(/\s{2,}/g, ' ').replace(/^[\s,;:.-]+/, '').replace(/[\s,;:]+$/, '').trim();

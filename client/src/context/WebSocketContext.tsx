@@ -117,6 +117,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const subscribersRef = useRef<Map<WSMessageType, Set<MessageHandler>>>(new Map());
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Timestamp of the most recent `new WebSocket(...)`, used to tell a socket
+  // that is legitimately still handshaking from one that has stalled.
+  const connectStartedAtRef = useRef(0);
   const reconnectDelayRef = useRef(WS_RECONNECT_DELAY);
   const retryCountRef = useRef(0);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -186,6 +189,30 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const connect = useCallback(() => {
     if (!authRef.current || !tokenRef.current) return;
 
+    // Idempotence guard. Four independent triggers call connect() — mount,
+    // window 'focus', 'online', and visibilitychange — and on a laptop waking
+    // from sleep they can all fire inside the same second. Without this, each
+    // call tore down the previous socket via the close-old-socket block below;
+    // closing one still in CONNECTING is exactly what produces Chrome's
+    // "WebSocket is closed before the connection is established" warning.
+    const existing = wsRef.current;
+    if (existing) {
+      // An OPEN socket is never replaced here. Liveness is deliberately NOT
+      // re-checked: readyState still reads OPEN on a half-open socket after a
+      // cellular hand-off, and the heartbeat's pong timeout already owns that
+      // case — it closes the socket, and onclose routes back into reconnect.
+      if (existing.readyState === WebSocket.OPEN) return;
+      // A CONNECTING socket is left to finish its handshake, but only until it
+      // goes stale — otherwise a genuinely wedged connect would block every
+      // reconnect trigger until WS_CONNECT_TIMEOUT fired on its own.
+      if (
+        existing.readyState === WebSocket.CONNECTING &&
+        Date.now() - connectStartedAtRef.current < WS_CONNECT_TIMEOUT
+      ) {
+        return;
+      }
+    }
+
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
@@ -211,6 +238,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
       const ws = new WebSocket(`${protocol}//${host}/api/ws`);
+      connectStartedAtRef.current = Date.now();
 
       connectTimeoutRef.current = setTimeout(() => {
         if (ws.readyState !== WebSocket.OPEN) {
@@ -396,36 +424,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fanInMessage]);
 
-  // Connect on login, tear down on logout. Token is read from ref so refreshes
-  // don't cause a full reconnect cycle (which was a guaranteed OFFLINE flash).
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    connect();
-    connectAlerts();
-
-    // Also probe on window focus — covers the case of multi-monitor
-    // setups where the tab was technically visible but the dispatcher
-    // had focus on another window for hours. Cheap and idempotent.
-    window.addEventListener('focus', handleVisibility);
-
-    return () => {
-      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
-      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
-      if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
-      if (offlineGraceRef.current) clearTimeout(offlineGraceRef.current);
-      if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; }
-      if (alertsReconnectRef.current) clearTimeout(alertsReconnectRef.current);
-      if (alertsHeartbeatRef.current) clearInterval(alertsHeartbeatRef.current);
-      if (alertsRef.current) { alertsRef.current.onclose = null; alertsRef.current.close(); alertsRef.current = null; }
-      setIsConnected(false);
-    };
-    // token intentionally omitted — read via tokenRef so refreshes don't
-    // tear down + reconnect (which causes an OFFLINE flash every ~15min)
-  }, [isAuthenticated, connect, connectAlerts]);
-
-  // Visibility + online recovery — separate effect so it doesn't tear down sockets
-  // handleVisibility is defined outside so both effects can use it
+  // Shared by the connect effect below (window 'focus') and the recovery effect
+  // further down ('visibilitychange'). Declared BEFORE the first effect that
+  // uses it: a useEffect deps array is evaluated during render, so naming it in
+  // the deps of an earlier effect would hit the temporal dead zone.
   const handleVisibility = useCallback(() => {
     if (document.visibilityState === 'visible' && authRef.current) {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -441,6 +443,39 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
   }, [connect, connectAlerts]);
 
+  // Connect on login, tear down on logout. Token is read from ref so refreshes
+  // don't cause a full reconnect cycle (which was a guaranteed OFFLINE flash).
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    connect();
+    connectAlerts();
+
+    // Also probe on window focus — covers the case of multi-monitor
+    // setups where the tab was technically visible but the dispatcher
+    // had focus on another window for hours. Cheap and idempotent.
+    window.addEventListener('focus', handleVisibility);
+
+    return () => {
+      // Must mirror the addEventListener above. Omitting this leaked one focus
+      // listener per effect re-run (the deps include two useCallback
+      // identities), and every leaked listener independently called connect().
+      window.removeEventListener('focus', handleVisibility);
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
+      if (offlineGraceRef.current) clearTimeout(offlineGraceRef.current);
+      if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; }
+      if (alertsReconnectRef.current) clearTimeout(alertsReconnectRef.current);
+      if (alertsHeartbeatRef.current) clearInterval(alertsHeartbeatRef.current);
+      if (alertsRef.current) { alertsRef.current.onclose = null; alertsRef.current.close(); alertsRef.current = null; }
+      setIsConnected(false);
+    };
+    // token intentionally omitted — read via tokenRef so refreshes don't
+    // tear down + reconnect (which causes an OFFLINE flash every ~15min)
+  }, [isAuthenticated, connect, connectAlerts, handleVisibility]);
+
+  // Visibility + online recovery — separate effect so it doesn't tear down sockets
   useEffect(() => {
     const handleOnline = () => {
       if (!authRef.current) return;
