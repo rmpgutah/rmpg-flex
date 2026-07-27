@@ -52,7 +52,7 @@ import {
   type PdfTextResult,
 } from '../utils/serveIntakeExtract';
 import { withTimeout, ocrImage, ocrText } from '../utils/serveIntakeOcr';
-import { estimateNeurons, FREE_NEURONS_PER_DAY } from '../utils/serveIntakeNeurons';
+import { estimateNeurons, estimatePacketNeurons, FREE_NEURONS_PER_DAY } from '../utils/serveIntakeNeurons';
 import { precleanText } from '../utils/serveIntakePreclean';
 import { arbitrateFields, reconcileIdentityConflicts, type DocCandidate, type FieldConflict } from '../utils/serveIntakeArbitrate';
 import { validateFields } from '../utils/serveIntakeValidate';
@@ -466,6 +466,13 @@ si.post('/upload', async (c) => {
     r2Key: string | null;
     ex: ExtractionResult;   // per-document field extraction
     error?: string;          // file-level (read/store) error
+    // Positive fact: true only if this doc's extraction call was actually
+    // invoked (extractFromText/ocrImage), regardless of whether it then
+    // succeeded or timed out. False for unsupported types, read/store
+    // errors, and PDFs with too little text to bother calling — those get
+    // an emptyExtraction() stand-in but never touch the model, so they must
+    // never be priced. See serveIntakeNeurons.ts PacketDocNeuronInput.
+    modelCalled: boolean;
   }
 
   const collected: Collected[] = await Promise.all(files.map(async (file): Promise<Collected> => {
@@ -479,7 +486,7 @@ si.post('/upload', async (c) => {
           .catch((e) => emptyExtraction('workers-ai-vision', e instanceof Error ? e.message : String(e)));
         const engine = ex.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
         for (const d of ex.allDates) allDates.add(d);
-        return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: engine, r2Key, ex };
+        return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: engine, r2Key, ex, modelCalled: true };
       }
 
       // PDFs: acquire text, then extract fields from THIS doc alone.
@@ -526,7 +533,12 @@ si.post('/upload', async (c) => {
         // back to the generic prompt (docType undefined) for anything that
         // doesn't clearly match one of the three conventions.
         const docFamily = familyFromFileName(file.name);
-        const ex = text.trim().length >= 20
+        // modelCalled is set true ONLY inside the branch that actually
+        // invokes extractFromText — not derived from the outcome, so a
+        // timeout/error caught below still counts as "reached the model"
+        // (real neuron cost was incurred even though the call failed).
+        const willCallModel = text.trim().length >= 20;
+        const ex = willCallModel
           ? await withTimeout(
               extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP), c.env.SERVE_INTAKE_LORA, docFamily),
               AI_TIMEOUT_MS, 'Field extraction timed out',
@@ -534,17 +546,21 @@ si.post('/upload', async (c) => {
           : emptyExtraction(EXTRACT_MODEL, 'Insufficient text to extract');
         ex.rawText = text;
         for (const d of ex.allDates) allDates.add(d);
-        return { file, text, pageCount, ocrUsed, ocrEngine, r2Key, ex };
+        return { file, text, pageCount, ocrUsed, ocrEngine, r2Key, ex, modelCalled: willCallModel };
       }
 
       return {
         file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'unsupported', r2Key,
         ex: emptyExtraction(EXTRACT_MODEL, `Unsupported type ${file.type}`),
         error: `Unsupported type ${file.type}`,
+        modelCalled: false,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'error', r2Key, ex: emptyExtraction(EXTRACT_MODEL, msg), error: msg };
+      return {
+        file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'error', r2Key,
+        ex: emptyExtraction(EXTRACT_MODEL, msg), error: msg, modelCalled: false,
+      };
     }
   }));
 
@@ -563,18 +579,32 @@ si.post('/upload', async (c) => {
   // image input given here, and guessing one would measure the wrong thing
   // — worse than omitting it. Their neuron cost still exists; it's just not
   // estimable from values already in hand, so this total is a floor, not a
-  // ceiling, for image-heavy packets.
-  let intakeNeurons = 0;
-  for (const c2 of collected) {
-    if (c2.ocrEngine === 'workers-ai-vision' || c2.ocrEngine === 'claude-vision') continue;
-    const sentChars = Math.min(c2.text.length, PER_DOC_CAP);
-    intakeNeurons += estimateNeurons(c2.ex.model, Math.ceil(sentChars / 4), 512);
-  }
+  // ceiling, for image-heavy packets — surfaced below via `vision_docs` /
+  // `partial` so the log is self-describing instead of relying on a source
+  // comment nobody watching the log can see.
+  //
+  // Documents that never reached the model (unsupported type, read/store
+  // error, insufficient text) are excluded via `modelCalled` — a positive
+  // fact set at the point of the actual call, NOT inferred from `ocrEngine`
+  // string matching. String matching only covers the engines someone
+  // remembered to list, and previously let unsupported/errored/skipped PDFs
+  // get priced at ~105 phantom neurons apiece for calls that never happened.
+  const visionDocs = collected.filter(
+    (c2) => c2.ocrEngine === 'workers-ai-vision' || c2.ocrEngine === 'claude-vision',
+  ).length;
+  const intakeNeurons = estimatePacketNeurons(collected.map((c2) => ({
+    model: c2.ex.model,
+    textLength: Math.min(c2.text.length, PER_DOC_CAP),
+    modelCalled: c2.modelCalled,
+    isVision: c2.ocrEngine === 'workers-ai-vision' || c2.ocrEngine === 'claude-vision',
+  })));
   log.info('serve-intake neurons', {
     traceId: c.get('traceId'),
     neurons: intakeNeurons,
     free_daily: FREE_NEURONS_PER_DAY,
     docs: collected.length,
+    vision_docs: visionDocs,
+    partial: visionDocs > 0,
   });
 
   // ── Cross-document arbitration ──
