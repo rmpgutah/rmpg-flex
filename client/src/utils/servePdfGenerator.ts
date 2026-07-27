@@ -701,6 +701,33 @@ export interface NoticeOfAttemptOptions {
  * which on a cross-jurisdiction serve is exactly the open question. Only a
  * real zone token suppresses the suffix.
  */
+/**
+ * Bucket an attempt time into the diligence window it falls in.
+ *
+ * Diligence on a serve job is written as time windows -- "1 attempt between
+ * 7AM and 9AM, 1 between 9AM and 7PM, 1 between 7PM and 9PM" is a live
+ * instruction on these jobs. Both the recipient and the court read the
+ * attempt table to judge whether the server actually varied the hours or
+ * knocked three times on the same afternoon, and until now that meant doing
+ * the arithmetic in your head across a column of raw clock times.
+ *
+ * Boundaries follow the common early/day/evening split. Returns '' when the
+ * time is absent or unparseable so the cell falls back to the table's
+ * empty-cell convention rather than asserting a window that was not recorded.
+ */
+export function attemptWindow(time: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec((time || '').trim());
+  if (!m) return '';
+  let h = parseInt(m[1], 10);
+  if (Number.isNaN(h)) return '';
+  // Respect a 12-hour value if one was supplied.
+  if (/\bPM\b/i.test(time) && h < 12) h += 12;
+  if (/\bAM\b/i.test(time) && h === 12) h = 0;
+  if (h < 9) return 'EARLY';
+  if (h < 19) return 'DAY';
+  return 'EVENING';
+}
+
 export function withZone(time: string): string {
   const t = (time || '').trim();
   if (!t) return '';
@@ -760,6 +787,29 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   y = drawCourtHeading(doc, y, data.courtName, data.jurisdiction);
   y = drawInstrumentTitle(doc, y, 'NOTICE OF ATTEMPT TO SERVE');
 
+  // ── Status band ──
+  // The operative fact of this instrument -- that service was ATTEMPTED and
+  // NOT completed, and how many times -- was previously something the reader
+  // had to infer by counting rows in the attempt table. On a document left at
+  // a door, read once, standing up, the headline fact belongs at the top in
+  // one line. Outlined rather than filled so it reads as a status stamp and
+  // cannot be mistaken for the tinted advisory band further down.
+  {
+    const n = data.attempts.length;
+    const bandH = 6.4;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.rect(lx, y, ffw, bandH);
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text(
+      `SERVICE NOT COMPLETED  ·  ${n} ATTEMPT${n === 1 ? '' : 'S'} MADE AT THIS ADDRESS`,
+      doc.internal.pageSize.getWidth() / 2, y + bandH / 2 + 1.5, { align: 'center' },
+    );
+    y += bandH + SPACING.SM;
+  }
+
   // ── Article I — who this concerns, and under what case ──
   // Two boxed panels, the same furniture the Civil Process Record uses for
   // I(a)/I(b). The flat label-over-rule fields these replace put the
@@ -815,13 +865,18 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   {
     const sec = openAutoSection(doc, 'II. Record of Attempt(s)', y);
     y = sec.contentY;
-    const cols = getProportionalColumns(doc, [1, 2, 1.5, 3, 3.5]);
+    // WINDOW is worth a column of its own: it is the field that shows whether
+    // the attempts were actually spread across the day, which is the whole
+    // point of a diligence requirement. Room comes out of NOTES, which is
+    // already clamped to MAX_NOTE_CHARS.
+    const cols = getProportionalColumns(doc, [0.8, 1.9, 1.5, 1.3, 2.8, 2.7]);
     const headers = [
       { label: '#', x: cols[0] },
       { label: 'DATE', x: cols[1] },
       { label: 'TIME', x: cols[2] },
-      { label: 'RESULT', x: cols[3] },
-      { label: 'NOTES', x: cols[4] },
+      { label: 'WINDOW', x: cols[3] },
+      { label: 'RESULT', x: cols[4] },
+      { label: 'NOTES', x: cols[5] },
     ];
     const shown = data.attempts.slice(-MAX_NOTICE_ATTEMPTS);
     const omitted = data.attempts.length - shown.length;
@@ -851,6 +906,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
         String(a.number),
         (sanitizePdfText(a.date || '').toUpperCase() || EMPTY),
         (withZone(sanitizePdfText(a.time || '').toUpperCase()) || EMPTY),
+        (attemptWindow(a.time || '') || EMPTY),
         sanitizePdfText(serveResultLabel(a.result)).toUpperCase(),
         noteCell,
       ];
@@ -956,18 +1012,33 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       // / WILL RETURN TUESDAY...) would force the value into ALL CAPS via
       // addFieldPair's sanitization — that conflicts with the professional
       // mixed-case body above it. Inline italic keeps the rhythm.
+      // Promoted from an inline italic sentence to an accent-barred call-out.
+      // This is the single most ACTIONABLE line on the page -- it is when the
+      // server is coming back, and it decides whether the recipient arranges
+      // delivery or gets knocked on again at an inconvenient hour. Set in the
+      // prose run it read as a footnote to the disclaimer.
+      //
+      // The accent bar is drawn in the left margin gutter and the text
+      // indents past it, so the call-out costs the same vertical space the
+      // inline sentence did. That matters: this notice must stay on one sheet
+      // of PJ-700 roll.
+      const barW = 1.2;
+      const indent = barW + 2.2;
       doc.setFont(PDF_VALUE_FONT, 'bolditalic');
       doc.setFontSize(NOTICE_FONT);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text('Next attempt:', lx, y);
+      doc.text('Next attempt:', lx + indent, y);
       const labelW = doc.getTextWidth('Next attempt: ');
       doc.setFont(PDF_VALUE_FONT, 'italic');
       const noteLines: string[] = doc.splitTextToSize(
         sanitizePdfText(data.nextAttemptNote, { preserveCase: true }),
-        ffw - labelW - 2,
+        ffw - labelW - indent - 2,
       );
-      doc.text(noteLines, lx + labelW, y);
-      y += noteLines.length * 3.5 + 1.5;
+      doc.text(noteLines, lx + indent + labelW, y);
+      const blockH = noteLines.length * 3.5;
+      doc.setFillColor(...COLOR.TEXT_PRIMARY);
+      doc.rect(lx, y - 2.6, barW, blockH + 1.4, 'F');
+      y += blockH + 1.5;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
