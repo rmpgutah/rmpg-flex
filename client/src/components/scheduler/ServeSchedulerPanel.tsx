@@ -259,7 +259,7 @@ export default function ServeSchedulerPanel() {
             slots={slots}
             todayYmd={today}
             onSlotContextMenu={handleSlotContextMenu}
-            onSlotDrop={handleSlotDrop}
+            onSlotDrop={canManage ? handleSlotDrop : undefined}
           />
         )
         : (
@@ -267,7 +267,7 @@ export default function ServeSchedulerPanel() {
             anchorYmd={today}
             slots={slots}
             todayYmd={today}
-            onSlotDrop={handleSlotDrop}
+            onSlotDrop={canManage ? handleSlotDrop : undefined}
           />
         )
       }
@@ -314,8 +314,11 @@ export default function ServeSchedulerPanel() {
         />
       )}
 
+      {/* Belt and braces: drops are already gated on canManage above, so a
+          non-manager can never reach this — but forcing an overlap is a
+          supervisor act and the server refuses it with 403 force_forbidden. */}
       <ConfirmDialog
-        isOpen={pendingOverlap !== null}
+        isOpen={canManage && pendingOverlap !== null}
         onClose={handleCancelForceMove}
         onConfirm={handleConfirmForceMove}
         title="Double-book this window?"

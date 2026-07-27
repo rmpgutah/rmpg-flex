@@ -101,13 +101,29 @@ export default function WeekTimeline({
           gridTemplateRows: `26px repeat(9, 32px)`,
         }}
       >
+        {/* ⚠️ EVERY item in this grid must carry an explicit gridColumn AND
+            gridRow. The chips below are definitely-positioned, and CSS Grid
+            places definite items BEFORE auto-placed ones regardless of DOM
+            order — so a single chip used to punch a hole that shoved the
+            auto-placed day cells one column right, cascading through every
+            following row. The cell rendered under Wednesday was then bound to
+            Tuesday, so a drop landed one day off and the server dutifully
+            stored the wrong date. Measured 2026-07-26: one chip displaced 54
+            of 63 band cells and pushed the last cell of each affected row off
+            the grid into an implicit 9th column. Do not "simplify" any of
+            these back to auto-placement. */}
+
         {/* Top-left corner */}
-        <div className="bg-surface-raised border-r border-rmpg-700" />
+        <div
+          className="bg-surface-raised border-r border-rmpg-700"
+          style={{ gridColumn: 1, gridRow: 1 }}
+        />
 
         {/* Day headers */}
-        {days.map((d) => (
+        {days.map((d, dayIdx) => (
           <div
             key={d}
+            style={{ gridColumn: dayIdx + 2, gridRow: 1 }}
             className={`text-[10px] font-semibold px-1 py-1 border-r border-rmpg-700 ${
               d === todayYmd ? 'bg-brand-500/15 text-brand-300' : 'bg-surface-raised text-rmpg-200'
             }`}
@@ -119,12 +135,17 @@ export default function WeekTimeline({
         {/* Hour labels + drop targets */}
         {HOUR_BANDS.map((label, idx) => (
           <div key={`row-${idx}`} className="contents">
-            <div className="text-[9px] text-rmpg-400 px-1 pt-0.5 border-r border-t border-rmpg-700 tabular-nums">
+            <div
+              style={{ gridColumn: 1, gridRow: idx + 2 }}
+              className="text-[9px] text-fg-muted px-1 pt-0.5 border-r border-t border-rmpg-700 tabular-nums"
+            >
               {label}
             </div>
-            {days.map((d) => (
+            {days.map((d, dayIdx) => (
               <div
                 key={`${d}-${idx}`}
+                data-testid={`band-cell-${d}-${idx}`}
+                style={{ gridColumn: dayIdx + 2, gridRow: idx + 2 }}
                 className={`border-r border-t border-rmpg-700 relative transition-colors ${
                   dragOverCell === `${d}-${idx}` ? 'bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'hover:bg-brand-400/5'
                 }`}

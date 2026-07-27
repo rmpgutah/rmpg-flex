@@ -671,7 +671,11 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // 10534 -> 10533: the chart-palette rebuild removed one text-rmpg-* site from
   // ReportsPage's incidents panel when the pie chart's legend list was replaced
   // by bar labels.
-  const PIN = 10533;
+  //
+  // 10533 -> 10532: WeekTimeline's hour-band gutter label moved from
+  // text-rmpg-400 to text-fg-muted while its grid placement was being made
+  // explicit.
+  const PIN = 10532;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
