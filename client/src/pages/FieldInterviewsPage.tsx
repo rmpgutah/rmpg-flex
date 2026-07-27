@@ -24,7 +24,7 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { isValidPlate, isValidDate } from '../utils/validate';
-import { formatDate, formatDateTime, parseTimestamp, localToday } from '../utils/dateUtils';
+import { formatDate, formatDateTime, parseTimestamp, localToday, dateToLocalYMD } from '../utils/dateUtils';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 import WarrantBadge from '../components/WarrantBadge';
 import { formatAddressDisplay } from '../utils/statusLabels';
@@ -234,7 +234,7 @@ export default function FieldInterviewsPage() {
     setEditingFi(fi);
     clearAllErrors();
     setFormData({
-      date: (fi as any).date || fi.created_at?.slice(0, 10) || localToday(),
+      date: (fi as any).date || (fi.created_at ? dateToLocalYMD(parseTimestamp(fi.created_at)) : '') || localToday(),
       subject_first_name: fi.subject_first_name || '',
       subject_last_name: fi.subject_last_name || '',
       subject_dob: fi.subject_dob || '',
