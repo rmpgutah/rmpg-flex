@@ -24,7 +24,7 @@ import {
   Flame,
 } from 'lucide-react';
 import type { ServeJob, ServeJobLinkedCall, ServeAttempt } from '../../types';
-import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
+import { safeDateStr, safeTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { formatCodeShort } from '../../constants/processServiceCodes';
 import ServeReceiptActions from './ServeReceiptActions';
 
@@ -462,6 +462,19 @@ export default React.memo(function ServeJobCard({
                   >
                     <span className="text-[10px] font-mono text-rmpg-400 flex-shrink-0 w-16">
                       {safeDateStr(attempt.attempt_at)}
+                    </span>
+                    {/* Time of day is load-bearing on serve jobs, not decoration:
+                        diligence requirements are written as time windows ("1
+                        attempt between 7AM and 9AM, 1 between 9AM and 7PM, 1
+                        between 7PM and 9PM"), so an officer reviewing prior
+                        attempts cannot tell whether the windows are covered
+                        from the date alone. Mountain Time, same as every other
+                        timestamp surface. */}
+                    <span
+                      className="text-[10px] font-mono text-fg-secondary flex-shrink-0 w-11 tabular-nums"
+                      title="Attempt time (Mountain Time)"
+                    >
+                      {safeTimeStr(attempt.attempt_at, '')}
                     </span>
                     <span className="text-[10px] font-mono text-amber-300 flex-shrink-0 w-14">
                       {formatEnumValue(attempt.attempt_type)}

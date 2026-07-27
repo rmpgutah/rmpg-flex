@@ -523,7 +523,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
     const rows = data.attempts.map(a => [
       String(a.number),
       sanitizePdfText(a.date || '').toUpperCase(),
-      sanitizePdfText(a.time || '').toUpperCase(),
+      withZone(sanitizePdfText(a.time || '').toUpperCase()),
       (a.gpsLat != null && a.gpsLng != null)
         ? `${Number(a.gpsLat).toFixed(4)}, ${Number(a.gpsLng).toFixed(4)}`
         : 'N/A',
@@ -688,6 +688,26 @@ export interface NoticeOfAttemptOptions {
   printTarget?: PrintTarget;
 }
 
+/**
+ * Stamp the display zone onto a printed attempt time.
+ *
+ * These documents are recipient- and court-facing, and a serve job routinely
+ * spans jurisdictions -- the Clough notice, for instance, is a Utah address
+ * served for a Queens County, NY case. A bare "07:35" on that page does not
+ * say whether it means Mountain or Eastern, and the reader has no way to
+ * resolve it. That ambiguity is the same one that produced the 6-hour
+ * timestamp regression this column already suffered.
+ *
+ * Applied per row rather than in the column header so a row stays unambiguous
+ * when read in isolation -- quoted into a filing, cropped, or photocopied.
+ * Empty stays empty so the caller's EMPTY placeholder still applies.
+ */
+export function withZone(time: string): string {
+  const t = (time || '').trim();
+  if (!t) return '';
+  return /\b(MT|MST|MDT|AM|PM)\b/.test(t) ? t : `${t} MT`;
+}
+
 export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options: NoticeOfAttemptOptions = {}): Promise<jsPDF> {
   const branding = await fetchPdfBranding();
   setActiveBranding(branding);
@@ -815,7 +835,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       return [
         String(a.number),
         (sanitizePdfText(a.date || '').toUpperCase() || EMPTY),
-        (sanitizePdfText(a.time || '').toUpperCase() || EMPTY),
+        (withZone(sanitizePdfText(a.time || '').toUpperCase()) || EMPTY),
         sanitizePdfText(serveResultLabel(a.result)).toUpperCase(),
         noteCell,
       ];
