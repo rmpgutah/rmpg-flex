@@ -52,6 +52,7 @@ import {
   type PdfTextResult,
 } from '../utils/serveIntakeExtract';
 import { withTimeout, ocrImage, ocrText } from '../utils/serveIntakeOcr';
+import { estimateNeurons, FREE_NEURONS_PER_DAY } from '../utils/serveIntakeNeurons';
 import { precleanText } from '../utils/serveIntakePreclean';
 import { arbitrateFields, reconcileIdentityConflicts, type DocCandidate, type FieldConflict } from '../utils/serveIntakeArbitrate';
 import { validateFields } from '../utils/serveIntakeValidate';
@@ -546,6 +547,35 @@ si.post('/upload', async (c) => {
       return { file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'error', r2Key, ex: emptyExtraction(EXTRACT_MODEL, msg), error: msg };
     }
   }));
+
+  // ── Neuron cost accounting (spec §6) ────────────────────────
+  // Estimates Workers AI Neuron consumption so the 10k/day free ceiling is
+  // observable before it's hit. Per doc, not per combined string: /upload
+  // runs one extraction call PER DOCUMENT (see the "why per-doc" note
+  // above), each capped at PER_DOC_CAP chars — so `sentChars` mirrors the
+  // exact slice handed to extractFromText, not the doc's full raw text.
+  // extraction.model is read per-doc too, since ocrText/extractFromText can
+  // fall back to a different model than the configured default.
+  //
+  // Vision docs (images) are excluded from the input-token estimate: their
+  // model input is the image itself, not text, and c2.text there holds the
+  // OCR'd OUTPUT, not what was sent in. There's no chars/4-style proxy for
+  // image input given here, and guessing one would measure the wrong thing
+  // — worse than omitting it. Their neuron cost still exists; it's just not
+  // estimable from values already in hand, so this total is a floor, not a
+  // ceiling, for image-heavy packets.
+  let intakeNeurons = 0;
+  for (const c2 of collected) {
+    if (c2.ocrEngine === 'workers-ai-vision' || c2.ocrEngine === 'claude-vision') continue;
+    const sentChars = Math.min(c2.text.length, PER_DOC_CAP);
+    intakeNeurons += estimateNeurons(c2.ex.model, Math.ceil(sentChars / 4), 512);
+  }
+  log.info('serve-intake neurons', {
+    traceId: c.get('traceId'),
+    neurons: intakeNeurons,
+    free_daily: FREE_NEURONS_PER_DAY,
+    docs: collected.length,
+  });
 
   // ── Cross-document arbitration ──
   // Was: highest-confidence value per field wins, source-blind. That lets
@@ -1073,6 +1103,20 @@ si.post('/intake', async (c) => {
 
   const combined = docs.map((d) => `--- ${d.type || 'document'} ---\n${d.text || ''}`).join('\n\n');
   const extraction = await extractFromText(c.env.AI, combined, c.env.SERVE_INTAKE_LORA);
+  // Neuron cost accounting (spec §6): `combined` is exactly the text sent to
+  // extractFromText above (no slicing/capping on this legacy route), and
+  // extraction.model is whichever model actually ran — not necessarily the
+  // configured default, since extractFromText can itself fall back. Output
+  // tokens are a fixed 512 estimate for the structured JSON field payload;
+  // Workers AI doesn't report actual usage back to this call. Pure
+  // arithmetic — no extra AI/network call.
+  log.info('serve-intake neurons', {
+    traceId: c.get('traceId'),
+    model: extraction.model,
+    neurons: estimateNeurons(extraction.model, Math.ceil(combined.length / 4), 512),
+    free_daily: FREE_NEURONS_PER_DAY,
+    docs: docs.length,
+  });
   // Same deterministic normalization the /upload path applies, so the
   // legacy single-call route produces equally clean field shapes.
   const normalized = normalizeFields(extraction.fields);
