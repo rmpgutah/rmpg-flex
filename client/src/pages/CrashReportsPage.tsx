@@ -216,8 +216,8 @@ export default function CrashReportsPage() {
 
       {/* ═══ Wizard Modal ═══ */}
       {wizardOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="bg-surface-raised border border-border-default rounded-[2px] w-full max-w-xl mx-4 shadow-lg">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto p-4">
+          <div className="bg-surface-raised border border-border-default rounded-[2px] w-full max-w-xl mx-4 shadow-lg my-auto">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle">
               <span className="text-sm font-semibold text-[color:var(--panel-header-color)]">New Crash Report</span>

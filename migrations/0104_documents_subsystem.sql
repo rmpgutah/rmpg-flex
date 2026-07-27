@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS documents (
   owner_id        INTEGER,
   owner_username  TEXT,
   revision        INTEGER NOT NULL DEFAULT 1,
-  created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT,
   finalized_at    TEXT,
   finalized_by    TEXT,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS document_revisions (
   body_format       TEXT NOT NULL DEFAULT 'markdown',
   saved_by          INTEGER,
   saved_by_username TEXT,
-  saved_at          TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  saved_at          TEXT NOT NULL DEFAULT (datetime('now')),
   change_note       TEXT,
   FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
 );
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS document_links (
   target_type  TEXT NOT NULL,
   target_id    INTEGER NOT NULL,
   linked_by    INTEGER,
-  linked_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  linked_at    TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
   UNIQUE (document_id, target_type, target_id)
 );

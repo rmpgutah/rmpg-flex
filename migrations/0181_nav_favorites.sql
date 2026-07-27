@@ -5,6 +5,6 @@ CREATE TABLE IF NOT EXISTS nav_favorites (
   lat REAL NOT NULL,
   lng REAL NOT NULL,
   address TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_nav_favorites_user ON nav_favorites(user_id);

@@ -45,14 +45,14 @@ CREATE TABLE IF NOT EXISTS forensic_cases (
   linked_case_id INTEGER REFERENCES cases(id),
   linked_incident_number TEXT,
   linked_case_number TEXT,
-  received_date TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  received_date TEXT NOT NULL DEFAULT (datetime('now')),
   due_date TEXT,
   completed_date TEXT,
   released_date TEXT,
   notes TEXT,
   created_by INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_forensic_cases_status ON forensic_cases(status);
@@ -92,8 +92,8 @@ CREATE TABLE IF NOT EXISTS forensic_exhibits (
   disposition_notes TEXT,
   photos TEXT DEFAULT '[]',                -- JSON array of attachment IDs
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(forensic_case_id, exhibit_number)
 );
 
@@ -126,8 +126,8 @@ CREATE TABLE IF NOT EXISTS forensic_analyses (
   conclusion TEXT,
   limitations TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_forensic_analyses_case ON forensic_analyses(forensic_case_id);
@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS forensic_activity_log (
   details TEXT,                            -- free-text or JSON-stringified context
   performed_by INTEGER REFERENCES users(id),
   performed_by_name TEXT,
-  performed_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  performed_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_forensic_activity_case ON forensic_activity_log(forensic_case_id);

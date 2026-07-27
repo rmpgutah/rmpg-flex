@@ -132,12 +132,12 @@ export default function BillingReviewTab() {
       {/* Void-reason inline modal — replaces window.prompt('Void reason?'). */}
       {voidChargeId != null && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4"
           style={{ background: 'rgba(0,0,0,0.55)' }}
           onClick={() => setVoidChargeId(null)}
         >
           <div
-            className="panel-beveled bg-surface-base p-4 w-[360px] space-y-3"
+            className="panel-beveled bg-surface-base p-4 w-[360px] space-y-3 my-auto"
             role="dialog"
             aria-modal="true"
             aria-labelledby="void-modal-title"

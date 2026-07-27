@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS fleet_fuel_anomalies (
   score REAL DEFAULT 0,
   details TEXT,
   reviewed INTEGER DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 252: Fuel vendor price tracking
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS fleet_fuel_vendors (
   current_price_per_gallon REAL,
   last_updated TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 255: Fuel reconciliation
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS fleet_fuel_reconciliation (
   notes TEXT,
   reconciled_by INTEGER REFERENCES users(id),
   reconciled_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 258: Alternative fuel tracking
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS fleet_alt_fuel_log (
   cost REAL,
   charge_start TEXT,
   charge_end TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 262: Fuel cost per mile ranking
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS fleet_fuel_efficiency (
   avg_mpg REAL,
   cost_per_mile REAL,
   rank INTEGER,
-  calculated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  calculated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 267: Maintenance vendor ratings
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS fleet_vendor_ratings (
   rating INTEGER CHECK(rating BETWEEN 1 AND 5),
   review_text TEXT,
   rated_by INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 268: TSB (Technical Service Bulletin) tracking
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS fleet_tsbs (
   completed_date TEXT,
   completed_by INTEGER REFERENCES users(id),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 269: Warranty claims
@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS fleet_warranty_claims (
   denial_reason TEXT,
   maintenance_id INTEGER REFERENCES fleet_maintenance(id),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 270: Service contracts
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS fleet_service_contracts (
   deductible REAL,
   status TEXT DEFAULT 'active',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 272: Parts-to-maintenance linking
@@ -157,7 +157,7 @@ CREATE TABLE IF NOT EXISTS fleet_roadside_assistance (
   cost REAL,
   driver_id INTEGER REFERENCES users(id),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 280: Maintenance bay scheduling
@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS fleet_bay_schedule (
   technician TEXT,
   status TEXT DEFAULT 'scheduled',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 281: Trade-in value estimates
@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS fleet_trade_in_estimates (
   valuation_date TEXT,
   condition_score INTEGER,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 282: Vehicle disposal/auction
@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS fleet_disposals (
   auction_house TEXT,
   lot_number TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 283: Lease management
@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS fleet_leases (
   buyout_option INTEGER DEFAULT 0,
   status TEXT DEFAULT 'active',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 287: Vehicle condition scoring
@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS fleet_condition_scores (
   scored_by INTEGER REFERENCES users(id),
   scored_date TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 289: Purchase order tracking
@@ -249,7 +249,7 @@ CREATE TABLE IF NOT EXISTS fleet_purchase_orders (
   actual_delivery TEXT,
   status TEXT DEFAULT 'ordered',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 290: Vehicle delivery checklist
@@ -262,7 +262,7 @@ CREATE TABLE IF NOT EXISTS fleet_delivery_checklists (
   inspection_date TEXT,
   passed INTEGER DEFAULT 0,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 291: FMCSA compliance
@@ -281,7 +281,7 @@ CREATE TABLE IF NOT EXISTS fleet_fmcsa_compliance (
   violations_count INTEGER DEFAULT 0,
   safety_rating TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 293: IFTA fuel tax data
@@ -294,7 +294,7 @@ CREATE TABLE IF NOT EXISTS fleet_ifta_data (
   total_miles REAL,
   total_gallons REAL,
   tax_paid REAL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 295: Safety recall completion
@@ -305,7 +305,7 @@ CREATE TABLE IF NOT EXISTS fleet_safety_recalls (
   completed_date TEXT,
   verification_method TEXT,
   documentation_url TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 298: Defect reporting
@@ -320,7 +320,7 @@ CREATE TABLE IF NOT EXISTS fleet_defect_reports (
   resolved INTEGER DEFAULT 0,
   resolved_date TEXT,
   resolution TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 300: Safety equipment inventory
@@ -334,7 +334,7 @@ CREATE TABLE IF NOT EXISTS fleet_safety_equipment (
   expiration_date TEXT,
   status TEXT DEFAULT 'good',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 302: Weight/load compliance
@@ -349,7 +349,7 @@ CREATE TABLE IF NOT EXISTS fleet_load_compliance (
   measured_weight REAL,
   compliance_status TEXT DEFAULT 'compliant',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 306: Cost center allocation
@@ -360,7 +360,7 @@ CREATE TABLE IF NOT EXISTS fleet_cost_centers (
   department TEXT,
   budget_annual REAL,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_cost_allocations (
@@ -370,7 +370,7 @@ CREATE TABLE IF NOT EXISTS fleet_cost_allocations (
   allocation_pct REAL DEFAULT 100,
   effective_date TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 308: Grant tracking
@@ -385,7 +385,7 @@ CREATE TABLE IF NOT EXISTS fleet_grants (
   purpose TEXT,
   status TEXT DEFAULT 'active',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_grant_allocations (
@@ -395,7 +395,7 @@ CREATE TABLE IF NOT EXISTS fleet_grant_allocations (
   amount_allocated REAL,
   allocation_date TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 309: Capital vs operating cost
@@ -409,7 +409,7 @@ CREATE TABLE IF NOT EXISTS fleet_capital_assets (
   depreciation_method TEXT,
   annual_depreciation REAL,
   net_book_value REAL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 319: Fleet asset register
@@ -425,7 +425,7 @@ CREATE TABLE IF NOT EXISTS fleet_asset_register (
   last_verified TEXT,
   verified_by INTEGER REFERENCES users(id),
   status TEXT DEFAULT 'active',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 321: Vehicle pool reservation
@@ -442,7 +442,7 @@ CREATE TABLE IF NOT EXISTS fleet_pool_reservations (
   checked_out TEXT,
   checked_in TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 323: Vehicle transfers
@@ -457,7 +457,7 @@ CREATE TABLE IF NOT EXISTS fleet_vehicle_transfers (
   reason TEXT,
   approved_by INTEGER REFERENCES users(id),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 333: Vehicle decals/markings
@@ -471,7 +471,7 @@ CREATE TABLE IF NOT EXISTS fleet_vehicle_decals (
   removed_date TEXT,
   status TEXT DEFAULT 'active',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 334: Equipment upfit tracking
@@ -486,7 +486,7 @@ CREATE TABLE IF NOT EXISTS fleet_upfits (
   warranty_expiry TEXT,
   status TEXT DEFAULT 'active',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 335: Vehicle detailing schedule
@@ -499,7 +499,7 @@ CREATE TABLE IF NOT EXISTS fleet_detailing_log (
   vendor TEXT,
   cost REAL,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Feature 345: Custom metrics
@@ -512,7 +512,7 @@ CREATE TABLE IF NOT EXISTS fleet_custom_metrics (
   target_value REAL,
   warning_threshold REAL,
   critical_threshold REAL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_custom_metric_values (
@@ -523,5 +523,5 @@ CREATE TABLE IF NOT EXISTS fleet_custom_metric_values (
   recorded_date TEXT,
   recorded_by INTEGER REFERENCES users(id),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

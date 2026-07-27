@@ -2842,9 +2842,9 @@ export default function IncidentsPage() {
 
       {/* Custody Transfer Modal */}
       {custodyTransfer && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setCustodyTransfer(null)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => setCustodyTransfer(null)}>
           <div
-            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
+            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw] my-auto"
             style={{ borderRadius: 2 }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -2929,7 +2929,7 @@ export default function IncidentsPage() {
 
       {/* ═══ Add Offense Modal ═══ */}
       {showAddOffenseModal && selectedIncident && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowAddOffenseModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => setShowAddOffenseModal(false)}>
           <form
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[500px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -2946,7 +2946,7 @@ export default function IncidentsPage() {
               } catch { /* error */ }
             }}
           >
-            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between my-auto">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Offense / Charge</h3>
               <IconButton onClick={() => setShowAddOffenseModal(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add offense"><X className="w-4 h-4" /></IconButton>
             </div>
@@ -2981,7 +2981,7 @@ export default function IncidentsPage() {
 
       {/* ═══ Add Officer Modal ═══ */}
       {showAddOfficerModal && selectedIncident && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }}>
           <form
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[450px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -3016,7 +3016,7 @@ export default function IncidentsPage() {
               }
             }}
           >
-            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between my-auto">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Responding Officer</h3>
               <IconButton onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add officer"><X className="w-4 h-4" /></IconButton>
             </div>
@@ -3062,7 +3062,7 @@ export default function IncidentsPage() {
 
       {/* ═══ Add Cross-Reference Link Modal ═══ */}
       {showAddLinkModal && selectedIncident && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }}>
           <form
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -3079,7 +3079,7 @@ export default function IncidentsPage() {
               } catch { /* error */ }
             }}
           >
-            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between my-auto">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Link Record</h3>
               <IconButton onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add link"><X className="w-4 h-4" /></IconButton>
             </div>

@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS users (
   phone TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive','terminated')),
   avatar_url TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS user_preferences (
@@ -43,8 +43,8 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   dispatch_show_cleared INTEGER DEFAULT 0,
   theme_preference TEXT DEFAULT 'dark',
   font_size_preference TEXT DEFAULT 'medium',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS clients (
   sla_response_minutes INTEGER DEFAULT 15,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS properties (
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS properties (
   emergency_contact TEXT,
   post_orders TEXT,
   hazard_notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (client_id) REFERENCES clients(id)
 );
 
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS calls_for_service (
   source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','servemanager','intake','other')),
   assigned_unit_ids TEXT DEFAULT '[]',
   dispatcher_id INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   dispatched_at TEXT,
   enroute_at TEXT,
   onscene_at TEXT,
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS gps_breadcrumbs (
   current_call_id INTEGER,
   current_call_number TEXT,
   current_call_type TEXT,
-  recorded_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (unit_id) REFERENCES units(id),
   FOREIGN KEY (officer_id) REFERENCES users(id)
 );
@@ -140,9 +140,9 @@ CREATE TABLE IF NOT EXISTS units (
   vehicle_id TEXT,
   capabilities TEXT DEFAULT '[]',
   current_call_id INTEGER,
-  last_status_change TEXT DEFAULT (datetime('now','localtime')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime')),
+  last_status_change TEXT DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (officer_id) REFERENCES users(id),
   FOREIGN KEY (current_call_id) REFERENCES calls_for_service(id)
 );
@@ -162,8 +162,8 @@ CREATE TABLE IF NOT EXISTS incidents (
   officer_id INTEGER NOT NULL,
   supervisor_id INTEGER,
   approved_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
   FOREIGN KEY (property_id) REFERENCES properties(id),
   FOREIGN KEY (officer_id) REFERENCES users(id),
@@ -188,7 +188,7 @@ CREATE TABLE IF NOT EXISTS persons (
   photo_url TEXT,
   flags TEXT DEFAULT '[]',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS vehicles_records (
@@ -203,7 +203,7 @@ CREATE TABLE IF NOT EXISTS vehicles_records (
   owner_person_id INTEGER,
   flags TEXT DEFAULT '[]',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (owner_person_id) REFERENCES persons(id)
 );
 
@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS bolos (
   priority TEXT DEFAULT 'P3',
   issued_by INTEGER NOT NULL,
   expires_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (issued_by) REFERENCES users(id)
 );
 
@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS messages (
   content TEXT NOT NULL,
   priority TEXT DEFAULT 'routine' CHECK(priority IN ('routine','urgent','emergency')),
   read_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (from_user_id) REFERENCES users(id),
   FOREIGN KEY (to_user_id) REFERENCES users(id)
 );
@@ -247,7 +247,7 @@ CREATE TABLE IF NOT EXISTS evidence (
   collected_by INTEGER,
   status TEXT NOT NULL DEFAULT 'received' CHECK(status IN ('received','in_storage','submitted_to_le','released','disposed')),
   chain_of_custody TEXT DEFAULT '[]',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (incident_id) REFERENCES incidents(id),
   FOREIGN KEY (collected_by) REFERENCES users(id)
 );
@@ -261,7 +261,7 @@ CREATE TABLE IF NOT EXISTS schedules (
   end_time TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','active','completed','cancelled')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (officer_id) REFERENCES users(id),
   FOREIGN KEY (property_id) REFERENCES properties(id)
 );
@@ -278,7 +278,7 @@ CREATE TABLE IF NOT EXISTS time_entries (
   break_start TEXT,
   break_minutes REAL NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','edited','on_break')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (officer_id) REFERENCES users(id),
   FOREIGN KEY (schedule_id) REFERENCES schedules(id)
 );
@@ -291,7 +291,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
   entity_id INTEGER,
   details TEXT,
   ip_address TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -304,7 +304,7 @@ CREATE TABLE IF NOT EXISTS credentials (
   expiry_date TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','expired','pending_renewal')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (officer_id) REFERENCES users(id)
 );
 
@@ -319,7 +319,7 @@ CREATE TABLE IF NOT EXISTS patrol_checkpoints (
   sequence_order INTEGER DEFAULT 0,
   scan_required_interval_minutes INTEGER NOT NULL DEFAULT 60,
   is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (property_id) REFERENCES properties(id)
 );
 
@@ -327,7 +327,7 @@ CREATE TABLE IF NOT EXISTS patrol_scans (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   checkpoint_id INTEGER NOT NULL,
   officer_id INTEGER NOT NULL,
-  scanned_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  scanned_at TEXT NOT NULL DEFAULT (datetime('now')),
   latitude REAL,
   longitude REAL,
   notes TEXT,
@@ -345,8 +345,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_agent TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
   expires_at TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  last_used_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_used_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -356,7 +356,7 @@ CREATE TABLE IF NOT EXISTS login_attempts (
   ip_address TEXT,
   success INTEGER NOT NULL DEFAULT 0,
   failure_reason TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS attachments (
@@ -370,7 +370,7 @@ CREATE TABLE IF NOT EXISTS attachments (
   entity_type TEXT,
   entity_id INTEGER,
   uploaded_by INTEGER NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (uploaded_by) REFERENCES users(id)
 );
 
@@ -381,8 +381,8 @@ CREATE TABLE IF NOT EXISTS system_config (
   category TEXT NOT NULL DEFAULT 'general',
   sort_order INTEGER NOT NULL DEFAULT 0,
   is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_system_config_key_value ON system_config(config_key, config_value);
 
@@ -401,8 +401,8 @@ CREATE TABLE IF NOT EXISTS warrants (
   issued_date TEXT,
   expiry_date TEXT,
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
@@ -414,4 +414,4 @@ CREATE TABLE IF NOT EXISTS migration_version (
 );
 
 -- Initialize migration version
-INSERT OR IGNORE INTO migration_version (id, version, last_migrated_at) VALUES (1, 1, datetime('now','localtime'));
+INSERT OR IGNORE INTO migration_version (id, version, last_migrated_at) VALUES (1, 1, datetime('now'));

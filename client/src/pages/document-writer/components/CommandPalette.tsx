@@ -83,12 +83,12 @@ export default function CommandPalette({ editor, onClose }: Props) {
     <div
       role="dialog"
       aria-label="Command palette"
-      className="fixed inset-0 z-[200] flex items-start justify-center pt-[10vh]"
+      className="fixed inset-0 z-[200] flex items-start justify-center pt-[10vh] overflow-y-auto"
       onMouseDown={onClose}
     >
       <div className="absolute inset-0 bg-black/60" />
       <div
-        className="relative w-[640px] max-w-[94vw] bg-surface-sunken border border-accent-silver-500/60 shadow-2xl flex flex-col"
+        className="relative w-[640px] max-w-[94vw] bg-surface-sunken border border-accent-silver-500/60 shadow-2xl flex flex-col my-auto"
         style={{ borderRadius: 2 }}
         onMouseDown={(e) => e.stopPropagation()}
       >

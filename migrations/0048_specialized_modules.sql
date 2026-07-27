@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS gang_intel_members (
   status        TEXT DEFAULT 'active' CHECK(status IN ('active','inactive','incarcerated','deceased')),
   threat_level  TEXT DEFAULT 'low' CHECK(threat_level IN ('low','medium','high','critical')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS gang_intel_gangs (
   threat_level  TEXT DEFAULT 'low' CHECK(threat_level IN ('low','medium','high','critical')),
   territory     TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS gang_graffiti_records (
   reported_date TEXT NOT NULL DEFAULT (date('now')),
   status        TEXT DEFAULT 'documented' CHECK(status IN ('documented','removed','investigating')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Narcotics Cases
@@ -56,21 +56,21 @@ CREATE TABLE IF NOT EXISTS narcotics_cases (
   priority      TEXT DEFAULT 'normal' CHECK(priority IN ('low','normal','high','urgent')),
   officer_id    INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
 -- Special Ops Callouts
 CREATE TABLE IF NOT EXISTS special_ops_callouts (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  date          TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  date          TEXT NOT NULL DEFAULT (datetime('now')),
   call_type     TEXT NOT NULL,
   location      TEXT,
   resolution    TEXT,
   duration_minutes INTEGER,
   team_size     INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Special Ops Equipment
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS special_ops_equipment (
   condition     TEXT DEFAULT 'ready' CHECK(condition IN ('ready','repair','retired','lost')),
   assigned_to   TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS crisis_response_incidents (
   resolved_on_scene INTEGER DEFAULT 0,
   diverted      INTEGER DEFAULT 0,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS victim_services_records (
   safety_plan   INTEGER DEFAULT 0,
   protective_order INTEGER DEFAULT 0,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS alarm_accounts (
   false_alarm_count INTEGER DEFAULT 0,
   status        TEXT DEFAULT 'active' CHECK(status IN ('active','inactive','no_response')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS accreditation_standards (
   proof_url     TEXT,
   assigned_to   INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -165,6 +165,6 @@ CREATE TABLE IF NOT EXISTS recruitment_candidates (
   stage         TEXT DEFAULT 'applied' CHECK(stage IN ('applied','screening','testing','oral_board','background','conditional_offer','academy','fto','hired','rejected','withdrawn')),
   applied_date  TEXT NOT NULL DEFAULT (date('now')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );

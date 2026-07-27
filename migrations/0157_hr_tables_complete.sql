@@ -21,8 +21,8 @@ CREATE TABLE IF NOT EXISTS hr_pay_periods (
   pay_date TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','processing','finalized','paid','closed')),
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS hr_pay_rates (
   end_date TEXT,
   notes TEXT,
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id),
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
@@ -66,8 +66,8 @@ CREATE TABLE IF NOT EXISTS hr_payroll_entries (
   notes TEXT,
   approved_by INTEGER,
   approved_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id),
   FOREIGN KEY (pay_period_id) REFERENCES hr_pay_periods(id) ON DELETE CASCADE,
   FOREIGN KEY (pay_rate_id) REFERENCES hr_pay_rates(id),
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS overtime_requests (
   reviewed_by_name TEXT,
   reviewed_at TEXT,
   review_notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (officer_id) REFERENCES users(id),
   FOREIGN KEY (reviewed_by) REFERENCES users(id)
 );
@@ -103,10 +103,10 @@ CREATE TABLE IF NOT EXISTS hr_grievances (
   priority TEXT DEFAULT 'normal',
   assigned_to INTEGER,
   resolution TEXT,
-  filed_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  filed_at TEXT NOT NULL DEFAULT (datetime('now')),
   resolved_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (officer_id) REFERENCES users(id),
   FOREIGN KEY (assigned_to) REFERENCES users(id)
 );
@@ -121,8 +121,8 @@ CREATE TABLE IF NOT EXISTS hr_documents (
   file_name TEXT,
   file_size INTEGER DEFAULT 0,
   uploaded_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (uploaded_by) REFERENCES users(id)
 );
 
@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS hr_attendance (
   reason TEXT,
   excused INTEGER DEFAULT 0,
   documented_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (officer_id) REFERENCES users(id),
   FOREIGN KEY (documented_by) REFERENCES users(id)
 );
@@ -166,8 +166,8 @@ CREATE TABLE IF NOT EXISTS hr_pips (
   milestones TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','extended','failed','cancelled')),
   outcome TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (officer_id) REFERENCES users(id),
   FOREIGN KEY (supervisor_id) REFERENCES users(id)
 );

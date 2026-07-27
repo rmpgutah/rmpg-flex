@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS email_messages (
   sent_at             TEXT,                    -- ISO8601 from sentDateTime
   folder_id           TEXT,                    -- Graph parentFolderId
   raw                 TEXT,                    -- full Graph JSON, optional
-  cached_at           TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  cached_at           TEXT NOT NULL DEFAULT (datetime('now')),
   deleted_at          TEXT                     -- soft delete via delta @removed
 );
 

@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS case_activity (
   actor_id    INTEGER,
   actor_name  TEXT,                      -- denormalized for display without a users join
   detail      TEXT,                      -- JSON blob, action-specific
-  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_case_activity_case ON case_activity(case_id, created_at);
 
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS case_tasks (
   assignee_name TEXT,
   due_date      TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT,
   completed_at  TEXT
 );
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS case_links (
   related_case_id INTEGER NOT NULL,
   link_type       TEXT NOT NULL DEFAULT 'related',  -- related / series / parent / child
   created_by      INTEGER,
-  created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (case_id, related_case_id)
 );
 CREATE INDEX IF NOT EXISTS idx_case_links_case    ON case_links(case_id);

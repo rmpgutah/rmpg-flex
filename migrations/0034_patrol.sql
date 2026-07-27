@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS patrol_checkpoints (
   scan_required_interval_minutes INTEGER NOT NULL DEFAULT 60,
   is_active INTEGER NOT NULL DEFAULT 1,
   archived_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_patrol_checkpoints_property ON patrol_checkpoints(property_id);
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS patrol_scans (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   checkpoint_id INTEGER NOT NULL REFERENCES patrol_checkpoints(id) ON DELETE CASCADE,
   officer_id INTEGER NOT NULL REFERENCES users(id),
-  scanned_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  scanned_at TEXT NOT NULL DEFAULT (datetime('now')),
   latitude REAL,
   longitude REAL,
   notes TEXT,
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS patrol_breaks (
   break_end TEXT,
   break_type TEXT NOT NULL DEFAULT 'break' CHECK(break_type IN ('break','meal','rest')),
   duration_minutes REAL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_patrol_breaks_officer ON patrol_breaks(officer_id, shift_date);
@@ -76,8 +76,8 @@ CREATE TABLE IF NOT EXISTS patrol_tour_verifications (
   notes TEXT,
   total_scans INTEGER NOT NULL DEFAULT 0,
   on_time_scans INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(officer_id, tour_date)
 );
 

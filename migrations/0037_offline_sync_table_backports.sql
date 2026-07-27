@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS clients (
   sla_response_minutes INTEGER DEFAULT 15,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   billing_email TEXT, billing_address TEXT, contract_type TEXT, contract_value REAL,
   payment_terms TEXT, auto_renew INTEGER, updated_at TEXT, client_code TEXT,
   industry TEXT, website TEXT, tax_id TEXT, payment_method TEXT,
@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS properties (
   emergency_contact TEXT,
   post_orders TEXT,
   hazard_notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   city TEXT, state TEXT, zip TEXT, access_instructions TEXT,
   is_active INTEGER NOT NULL DEFAULT 1, updated_at TEXT, notes TEXT,
   business_type TEXT, structure_type TEXT, occupancy_status TEXT, year_built TEXT,
@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS time_entries (
   break_start TEXT,
   break_minutes REAL NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','edited','on_break')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   notes TEXT, edit_reason TEXT, edited_by INTEGER, edited_at TEXT,
   FOREIGN KEY (officer_id) REFERENCES users(id)
 );
@@ -133,12 +133,12 @@ CREATE TABLE IF NOT EXISTS criminal_history (
   source TEXT,
   notes TEXT,
   created_by INTEGER,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS trespass_orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   subject_photo_url TEXT, order_number TEXT, status TEXT, person_id INTEGER,
   subject_first_name TEXT, subject_last_name TEXT, subject_dob TEXT,
   subject_description TEXT, subject_name TEXT, property_id INTEGER,

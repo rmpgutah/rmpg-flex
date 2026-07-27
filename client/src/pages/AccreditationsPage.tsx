@@ -323,8 +323,8 @@ export default function AccreditationsPage() {
 
       {/* Add Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-[#0a0a0a] border border-[#222] rounded-sm w-full max-w-lg shadow-lg">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 overflow-y-auto p-4">
+          <div className="bg-[#0a0a0a] border border-[#222] rounded-sm w-full max-w-lg shadow-lg my-auto">
             <div className="flex items-center justify-between px-4 py-2 border-b border-[#222] bg-gradient-to-r from-[#1a1a1a] to-[#242424]">
               <span className="text-[#d4a017] text-xs font-semibold">ADD ACCREDITATION</span>
               <IconButton aria-label="Close form" onClick={() => setShowForm(false)}>

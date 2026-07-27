@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS system_settings (
   max_value REAL,
   required_role TEXT DEFAULT 'admin',      -- minimum role to change this setting
   ui_order INTEGER DEFAULT 0,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 
 -- Branding & Appearance
