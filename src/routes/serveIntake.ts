@@ -1570,7 +1570,21 @@ si.patch('/schedule/:slotId', async (c) => {
   await reconcileScheduleSchema(db);
 
   const body = await c.req.json<any>().catch(() => ({}));
+  // Ordinary reschedules are open to dispatchers, but FORCING an overlap
+  // deliberately double-books an officer, so it needs supervisor or above —
+  // the same MANAGE_ROLES set the clients gate their drag handlers on. Checked
+  // separately from the route gate above so a dispatcher's normal move still
+  // succeeds and only the override is refused.
   const force = c.req.query('force') === '1';
+  if (force) {
+    const forceDenied = requireRole(c, 'admin', 'manager', 'supervisor');
+    if (forceDenied) {
+      return c.json({
+        error: 'Forcing an overlapping move requires supervisor or above',
+        code: 'force_forbidden',
+      }, 403);
+    }
+  }
   const userId = (c.get('userId') as number | undefined) ?? null;
   const ifUnmodifiedSince = c.req.header('If-Unmodified-Since') ?? body.if_unmodified_since ?? null;
 

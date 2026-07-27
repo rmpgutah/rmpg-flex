@@ -125,6 +125,7 @@ export default function WeekTimeline({
             {days.map((d) => (
               <div
                 key={`${d}-${idx}`}
+                data-testid={`band-cell-${d}-${idx}`}
                 className={`border-r border-t border-rmpg-700 relative transition-colors ${
                   dragOverCell === `${d}-${idx}` ? 'bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'hover:bg-brand-400/5'
                 }`}
