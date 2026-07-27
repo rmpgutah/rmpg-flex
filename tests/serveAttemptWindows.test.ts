@@ -48,7 +48,10 @@ describe('selectWindows precedence', () => {
   it('treats UNKNOWN as residential — the wider, safer set (D-2)', () => {
     const unknown = selectWindows({ addressClass: 'unknown', clientBands: [], locationNote: null });
     const residential = selectWindows({ addressClass: 'residential', clientBands: [], locationNote: null });
-    expect(unknown.map((w) => w.window)).toEqual(residential.map((w) => w.window));
+    // Compare full objects, not just time strings — authority attribution matters
+    expect(unknown).toEqual(residential);
+    // Explicit assertion so intent survives future refactors
+    expect(unknown.every((w) => w.authority === 'residential default')).toBe(true);
   });
 
   it('every window carries an authority string so the report can say why', () => {
