@@ -95,3 +95,27 @@ describe('modal scroll containment', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+// ── Overlay padding utilities must not be dead ──────────────
+// `.fixed.inset-0` scores 0-2-0 and beats every single-class padding utility.
+// Written bare, the iOS safe-area rule in index.css therefore killed `p-4`/`p-6`
+// on EVERY overlay in the app -- env(safe-area-inset-*) is 0px off-notch, so
+// declared padding silently became zero. Verified in production before the fix:
+// `p-4` -> 16.8px but `fixed inset-0 p-4` -> 0px. :where() drops the rule to
+// zero specificity, so utilities win while padding-less overlays still get the
+// insets.
+describe('overlay safe-area rule specificity', () => {
+  const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+
+  it('wraps the safe-area overlay selector in :where()', () => {
+    const bare = /(?<!:where\()\.fixed\.inset-0,\s*\[class\*="fixed inset-0"\]\s*\{/.test(css);
+    expect(bare).toBe(false);
+    expect(css).toContain(':where(.fixed.inset-0, [class*="fixed inset-0"])');
+  });
+
+  it('still applies the safe-area insets', () => {
+    const block = css.slice(css.indexOf(':where(.fixed.inset-0'));
+    expect(block).toContain('env(safe-area-inset-top)');
+    expect(block).toContain('env(safe-area-inset-bottom)');
+  });
+});
