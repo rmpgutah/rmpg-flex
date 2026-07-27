@@ -173,6 +173,19 @@ const DOCUMENT_TYPES = [
   { value: 'other', label: 'Other', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
 ];
 
+// Human-readable label for the per-document `ocr_engine` slug shown in the
+// "Extraction Context" panel below. Kept in sync with (but not imported
+// from, since this is a client-only display concern) the server-side
+// ENGINE_LABEL map in src/utils/serveIntakeBriefing.ts — an engine slug not
+// listed here falls back to the raw slug rather than blank text.
+const OCR_ENGINE_LABELS: Record<string, string> = {
+  'pdfjs-client': 'PDF text',
+  'workers-ai-vision': 'Vision OCR',
+  'workers-ai-tomarkdown': 'Structured PDF (Markdown)',
+  tesseract: 'Tesseract OCR',
+  pdftotext: 'pdftotext',
+};
+
 function confidenceColor(conf: number): string {
   if (conf >= 0.7) return 'text-green-400';
   if (conf >= 0.4) return 'text-amber-400';
@@ -1480,7 +1493,7 @@ export default function ServeIntakePage() {
                     {d.success !== false ? (
                       <>
                         <span className="text-rmpg-500">{(d.doc_type || 'unclassified').replace(/_/g, ' ')}</span>
-                        <span className="text-rmpg-500">{d.ocr_engine === 'pdfjs-client' ? 'PDF text' : d.ocr_engine === 'workers-ai-vision' ? 'Vision OCR' : d.ocr_engine || ''}</span>
+                        <span className="text-rmpg-500">{(d.ocr_engine && OCR_ENGINE_LABELS[d.ocr_engine]) || d.ocr_engine || ''}</span>
                         <span className={`font-bold ${confidenceColor(d.confidence ?? 0)}`}>{Math.round((d.confidence ?? 0) * 100)}%</span>
                       </>
                     ) : (
