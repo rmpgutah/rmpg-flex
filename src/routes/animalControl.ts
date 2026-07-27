@@ -11,6 +11,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { containsAnyClause } from '../utils/searchText';
 
+import { log } from '../utils/logger';
 const animalControl = new Hono<Env>();
 
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
@@ -58,6 +59,7 @@ animalControl.get('/', async (c) => {
     const total = count?.total ?? 0;
     return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/animalControl.ts' }, err);
     return c.json({ error: 'Failed to list cases' }, 500);
   }
 });
@@ -83,6 +85,7 @@ animalControl.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM animal_control_cases WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
+    log.error('POST / failed', { src: 'src/routes/animalControl.ts' }, err);
     return c.json({ error: 'Failed to create case' }, 500);
   }
 });
@@ -109,6 +112,7 @@ animalControl.put('/:id', async (c) => {
     if (!updated) return c.json({ error: 'Not found' }, 404);
     return c.json(updated);
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/animalControl.ts' }, err);
     return c.json({ error: 'Failed to update case' }, 500);
   }
 });
@@ -124,6 +128,7 @@ animalControl.delete('/:id', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/animalControl.ts' }, err);
     return c.json({ error: 'Failed to delete case' }, 500);
   }
 });

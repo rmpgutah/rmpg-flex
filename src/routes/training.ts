@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const training = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -35,6 +36,7 @@ training.get('/courses', async (c) => {
       `SELECT c.*, u.full_name as instructor_name FROM training_courses c LEFT JOIN users u ON c.instructor_id = u.id ${where} ORDER BY c.created_at DESC`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /courses failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to list courses' }, 500);
   }
 });
@@ -57,6 +59,7 @@ training.post('/courses', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM training_courses WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /courses failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to create course' }, 500);
   }
 });
@@ -77,6 +80,7 @@ training.put('/courses/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM training_courses WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /courses/:id failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to update course' }, 500);
   }
 });
@@ -92,6 +96,7 @@ training.delete('/courses/:id', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Course not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /courses/:id failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to delete course', code: 'DELETE_ERROR' }, 500);
   }
 });
@@ -117,6 +122,7 @@ training.get('/enrollments', async (c) => {
        ${where} ORDER BY e.created_at DESC`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /enrollments failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to list enrollments' }, 500);
   }
 });
@@ -139,6 +145,7 @@ training.post('/enrollments', async (c) => {
       'SELECT e.*, c.course_name FROM training_enrollments e LEFT JOIN training_courses c ON e.course_id = c.id WHERE e.id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /enrollments failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to create enrollment' }, 500);
   }
 });
@@ -159,6 +166,7 @@ training.put('/enrollments/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM training_enrollments WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /enrollments/:id failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to update enrollment' }, 500);
   }
 });
@@ -173,6 +181,7 @@ training.get('/cert-types', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM certification_types WHERE is_active = 1 ORDER BY cert_name');
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /cert-types failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to list cert types' }, 500);
   }
 });
@@ -191,6 +200,7 @@ training.post('/cert-types', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM certification_types WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /cert-types failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to create cert type' }, 500);
   }
 });
@@ -216,6 +226,7 @@ training.get('/certs', async (c) => {
        ${where} ORDER BY oc.expiration_date ASC`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /certs failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to list certifications' }, 500);
   }
 });
@@ -238,6 +249,7 @@ training.post('/certs', async (c) => {
       'SELECT oc.*, ct.cert_name FROM officer_certifications oc LEFT JOIN certification_types ct ON oc.cert_type_id = ct.id WHERE oc.id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /certs failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to record certification' }, 500);
   }
 });
@@ -261,6 +273,7 @@ training.get('/firearms', async (c) => {
        ${where} ORDER BY fq.qualification_date DESC`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /firearms failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to list firearm quals' }, 500);
   }
 });
@@ -282,6 +295,7 @@ training.post('/firearms', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM firearms_qualifications WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /firearms failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to record qualification' }, 500);
   }
 });
@@ -295,6 +309,7 @@ training.get('/stats', async (c) => {
     const expiringCerts = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM officer_certifications WHERE expiration_date >= date('now') AND expiration_date <= date('now','+30 days')"))?.count ?? 0;
     return c.json({ courses, enrollments, active_certs: activeCerts, expiring_certs: expiringCerts });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/training.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });

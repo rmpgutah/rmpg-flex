@@ -416,6 +416,7 @@ calls.get('/active', async (c) => {
     `);
     return c.json(rows);
   } catch (err) {
+    log.error('GET /active failed', { src: 'src/routes/dispatch/calls.ts' }, err);
     return c.json({ error: 'Failed to get active calls' }, 500);
   }
 });
@@ -461,6 +462,7 @@ calls.get('/export', async (c) => {
 
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=calls_export.csv' });
   } catch (err) {
+    log.error('GET /export failed', { src: 'src/routes/dispatch/calls.ts' }, err);
     return c.json({ error: 'Failed to export calls' }, 500);
   }
 });
@@ -521,6 +523,7 @@ calls.get('/check-duplicate', async (c) => {
 
     return c.json({ duplicates: all.slice(0, 15), count: all.length });
   } catch (err) {
+    log.error('GET /check-duplicate failed', { src: 'src/routes/dispatch/calls.ts' }, err);
     return c.json({ error: 'Duplicate check failed' }, 500);
   }
 });
@@ -601,6 +604,7 @@ calls.post('/archive-bulk', async (c) => {
     const archived_count = (result as any)?.meta?.changes ?? 0;
     return c.json({ archived_count });
   } catch (err) {
+    log.error('POST /archive-bulk failed', { src: 'src/routes/dispatch/calls.ts' }, err);
     return c.json({ error: 'Bulk archive failed' }, 500);
   }
 });
@@ -1093,6 +1097,7 @@ calls.post('/:id/status', async (c) => {
 
     return c.json(updated);
   } catch (err) {
+    log.error('POST /:id/status failed', { src: 'src/routes/dispatch/calls.ts' }, err);
     return c.json({ error: 'Failed to update status' }, 500);
   }
 });
@@ -1242,7 +1247,8 @@ calls.post('/:id/archive', async (c) => {
     const id = c.req.param('id');
     await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE id = ?", id);
     return c.json({ message: 'Archived' });
-  } catch (err) { return c.json({ error: 'Archive failed' }, 500); }
+  } catch (err) {
+    log.error('POST /:id/archive failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Archive failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/unarchive
@@ -1261,6 +1267,7 @@ calls.post('/:id/unarchive', async (c) => {
     }
     return c.json({ message: 'Unarchived' });
   } catch (err) {
+    log.error('POST /:id/unarchive failed', { src: 'src/routes/dispatch/calls.ts' }, err);
     return c.json({ error: 'Unarchive failed' }, 500);
   }
 });
@@ -1277,7 +1284,8 @@ calls.post('/:id/hold', async (c) => {
 // POST /dispatch/calls/:id/resume
 calls.post('/:id/resume', async (c) => {
   try { const db = getDb(c.env); await execute(db, "UPDATE calls_for_service SET status = 'pending' WHERE id = ? AND status = 'on_hold'", c.req.param('id')); return c.json({ message: 'Resumed' }); }
-  catch (err) { return c.json({ error: 'Resume failed' }, 500); }
+  catch (err) {
+    log.error('POST /:id/resume failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Resume failed' }, 500); }
 });
 
 // Columns work_orders gained in migration 0158_work_orders_scheduling.sql.
@@ -1462,7 +1470,8 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
     } catch (err) { console.error('[dispatch] premise auto-push:', err); }
 
     return c.json({ message: 'Unit assigned', assigned_unit_ids: assigned, premise_pushed });
-  } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
+  } catch (err) {
+    log.error('POST /:id/assign-unit failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Assign failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/unassign-unit
@@ -1477,7 +1486,8 @@ calls.post('/:id/unassign-unit', requireRole('dispatcher', 'supervisor', 'manage
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
     await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL WHERE id = ?", unit_id);
     return c.json({ message: 'Unit unassigned', assigned_unit_ids: assigned });
-  } catch (err) { return c.json({ error: 'Unassign failed' }, 500); }
+  } catch (err) {
+    log.error('POST /:id/unassign-unit failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Unassign failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/dispatch - Multi-unit dispatch
@@ -1505,7 +1515,8 @@ calls.post('/:id/dispatch', requireRole('dispatcher', 'supervisor', 'manager', '
     // it into dispatch state — a bare message produced a blank-id corrupted call.
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     return c.json(updated);
-  } catch (err) { return c.json({ error: 'Dispatch failed' }, 500); }
+  } catch (err) {
+    log.error('POST /:id/dispatch failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Dispatch failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/split — split a call into multiple child CFS records
@@ -1529,7 +1540,8 @@ calls.post('/:id/split', requireRole('dispatcher', 'supervisor', 'manager', 'adm
     await execute(db, 'UPDATE calls_for_service SET status = ?, notes = COALESCE(notes || char(10), \'\') || ? WHERE id = ?', 'split', `Split into ${created.length} child call(s): ${created.join(', ')}`, id);
     if (userId) await execute(db, `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'split_call', 'call', ?, ?)`, userId, id, JSON.stringify({ child_ids: created }));
     return c.json({ success: true, parent_id: id, child_ids: created });
-  } catch (err) { return c.json({ error: 'Call split failed' }, 500); }
+  } catch (err) {
+    log.error('POST /:id/split failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Call split failed' }, 500); }
 });
 
 // GET /dispatch/calls/:id/evidence-prompt — check if evidence should be collected before clearing
@@ -1556,7 +1568,8 @@ calls.post('/templates', async (c) => {
        VALUES (?,?,?,?,?,?,?,datetime('now'))`,
       body.name, body.incident_type, body.priority || 'P3', JSON.stringify(body.auto_flags || {}), body.notes || null, userId, body.is_shared ? 1 : 0);
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
-  } catch { return c.json({ error: 'Template creation failed' }, 500); }
+  } catch (err) {
+    log.error('POST /templates failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Template creation failed' }, 500); }
 });
 
 calls.delete('/templates/:id', async (c) => {
@@ -1566,7 +1579,8 @@ calls.delete('/templates/:id', async (c) => {
     const id = parseInt(c.req.param('id'), 10);
     await execute(db, 'UPDATE call_templates SET active = 0 WHERE id = ? AND owner_user_id = ?', id, userId);
     return c.json({ success: true });
-  } catch { return c.json({ error: 'Delete failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /templates/:id failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Delete failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/redispatch - Re-dispatch creates a NEW linked call

@@ -29,6 +29,7 @@ import {
 import { encryptSecret, decryptSecret } from '../utils/emailCrypto';
 import type { Bindings, Variables } from '../types';
 
+import { log } from '../utils/logger';
 const email = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // ───────── Config-key namespace (matches legacy CONFIG_KEYS exactly) ─────────
@@ -2094,6 +2095,7 @@ email.post('/block-sender', async (c) => {
       userId, address, body.reason || 'blocked',
     );
   } catch (err: unknown) {
+    log.error('POST /block-sender failed', { src: 'src/routes/email.ts' }, err);
     return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 500);
   }
   // Optionally junk the reported message right away.

@@ -17,6 +17,7 @@ import type {
 } from '@simplewebauthn/server';
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 import {
   generateTotpSecret, verifyTotpCode, buildOtpauthUrl,
   encryptTotpSecret, decryptTotpSecret,
@@ -636,6 +637,7 @@ auth.put('/password', authMiddleware, async (c) => {
     );
     return c.json({ message: 'Password updated' });
   } catch (err) {
+    log.error('PUT /password failed', { src: 'src/routes/auth.ts' }, err);
     return c.json({ error: 'Password change failed' }, 500);
   }
 });
@@ -675,6 +677,7 @@ auth.post('/change-password', authMiddleware, async (c) => {
     );
     return c.json({ message: 'Password updated' });
   } catch (err) {
+    log.error('POST /change-password failed', { src: 'src/routes/auth.ts' }, err);
     return c.json({ error: 'Password change failed' }, 500);
   }
 });
@@ -725,6 +728,7 @@ auth.post('/login/change-password', authMiddleware, async (c) => {
       user: userPayload(user),
     });
   } catch (err) {
+    log.error('POST /login/change-password failed', { src: 'src/routes/auth.ts' }, err);
     return c.json({ error: 'Password change failed' }, 500);
   }
 });
@@ -1107,6 +1111,7 @@ auth.put('/profile', authMiddleware, async (c) => {
 
     return c.json({ success: true, user: userPayload(updated), ...tokenBundle });
   } catch (err: any) {
+    log.error('PUT /profile failed', { src: 'src/routes/auth.ts' }, err);
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('UNIQUE')) {
       return c.json({ error: 'Username already taken', code: 'USERNAME_TAKEN' }, 409);
@@ -1465,7 +1470,8 @@ auth.put('/signature', authMiddleware, async (c) => {
       `UPDATE users SET digital_signature = ?, updated_at = datetime('now') WHERE id = ?`,
       signature || null, c.get('userId'));
     return c.json({ success: true });
-  } catch { return c.json({ error: 'Failed to save signature' }, 500); }
+  } catch (err) {
+    log.error('PUT /signature failed', { src: 'src/routes/auth.ts' }, err); return c.json({ error: 'Failed to save signature' }, 500); }
 });
 
 // ── 2FA / TOTP stubs (not yet ported from legacy) ─────────
@@ -1911,7 +1917,8 @@ auth.post('/security/unblock-ip', authMiddleware, async (c) => {
     const r = await execute(db,
       `DELETE FROM login_attempts WHERE ip_address = ? AND COALESCE(success, 0) = 0`, ip);
     return c.json({ success: true, cleared: r.meta.changes ?? 0 });
-  } catch { return c.json({ error: 'Failed to unblock IP' }, 500); }
+  } catch (err) {
+    log.error('POST /security/unblock-ip failed', { src: 'src/routes/auth.ts' }, err); return c.json({ error: 'Failed to unblock IP' }, 500); }
 });
 
 // GET /api/auth/security/locked-accounts — accounts currently locked out.
@@ -1948,7 +1955,8 @@ auth.post('/security/unlock-account', authMiddleware, async (c) => {
     const r = await execute(db,
       `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE username = ?`, username);
     return c.json({ success: true, cleared: r.meta.changes ?? 0 });
-  } catch { return c.json({ error: 'Failed to unlock account' }, 500); }
+  } catch (err) {
+    log.error('POST /security/unlock-account failed', { src: 'src/routes/auth.ts' }, err); return c.json({ error: 'Failed to unlock account' }, 500); }
 });
 
 // ── Account recovery (no JWT required — secured by RECOVERY_KEY env secret) ──

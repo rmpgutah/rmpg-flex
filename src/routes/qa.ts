@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const qa = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -60,6 +61,7 @@ qa.get('/reviews', async (c) => {
     const total = count?.total ?? 0;
     return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
+    log.error('GET /reviews failed', { src: 'src/routes/qa.ts' }, err);
     return c.json({ error: 'Failed to list reviews' }, 500);
   }
 });
@@ -82,6 +84,7 @@ qa.post('/reviews', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM qa_reviews WHERE id = ?', newId);
     return c.json({ data: created, review_number: reviewNumber }, 201);
   } catch (err) {
+    log.error('POST /reviews failed', { src: 'src/routes/qa.ts' }, err);
     return c.json({ error: 'Failed to create review' }, 500);
   }
 });
@@ -103,6 +106,7 @@ qa.put('/reviews/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM qa_reviews WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /reviews/:id failed', { src: 'src/routes/qa.ts' }, err);
     return c.json({ error: 'Failed to update review' }, 500);
   }
 });
@@ -119,6 +123,7 @@ qa.delete('/reviews/:id', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Review not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /reviews/:id failed', { src: 'src/routes/qa.ts' }, err);
     return c.json({ error: 'Failed to delete review', code: 'DELETE_ERROR' }, 500);
   }
 });
@@ -137,6 +142,7 @@ qa.get('/criteria', async (c) => {
       `SELECT * FROM qa_criteria WHERE ${where} ORDER BY sort_order, id`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /criteria failed', { src: 'src/routes/qa.ts' }, err);
     return c.json({ error: 'Failed to list criteria' }, 500);
   }
 });
@@ -156,6 +162,7 @@ qa.post('/criteria', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM qa_criteria WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /criteria failed', { src: 'src/routes/qa.ts' }, err);
     return c.json({ error: 'Failed to create criterion' }, 500);
   }
 });
@@ -172,6 +179,7 @@ qa.get('/reviews/:id/scores', async (c) => {
       'SELECT qs.*, qc.criterion, qc.max_points FROM qa_scores qs LEFT JOIN qa_criteria qc ON qs.criterion_id = qc.id WHERE qs.review_id = ? ORDER BY qc.sort_order', id);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /reviews/:id/scores failed', { src: 'src/routes/qa.ts' }, err);
     return c.json({ error: 'Failed to list scores' }, 500);
   }
 });
@@ -200,6 +208,7 @@ qa.post('/reviews/:id/scores', async (c) => {
     }
     return c.json({ success: true, added: scores.length, total_score: totalScore, max_possible: totalMax });
   } catch (err) {
+    log.error('POST /reviews/:id/scores failed', { src: 'src/routes/qa.ts' }, err);
     return c.json({ error: 'Failed to record scores' }, 500);
   }
 });
@@ -218,6 +227,7 @@ qa.get('/surveys', async (c) => {
       'SELECT * FROM customer_satisfaction_surveys ORDER BY submitted_at DESC LIMIT ? OFFSET ?', perPage, offset);
     return c.json({ data: rows, pagination: { page, per_page: perPage } });
   } catch (err) {
+    log.error('GET /surveys failed', { src: 'src/routes/qa.ts' }, err);
     return c.json({ error: 'Failed to list surveys' }, 500);
   }
 });
@@ -237,6 +247,7 @@ qa.post('/surveys', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM customer_satisfaction_surveys WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /surveys failed', { src: 'src/routes/qa.ts' }, err);
     return c.json({ error: 'Failed to submit survey' }, 500);
   }
 });
@@ -252,6 +263,7 @@ qa.get('/stats', async (c) => {
     const surveyCount = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM customer_satisfaction_surveys'))?.count ?? 0;
     return c.json({ total_reviews: totalReviews, avg_review_score: avgScore, avg_survey_rating: avgRating, total_surveys: surveyCount });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/qa.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const adminSettings = new Hono<Env>();
 
 // Every write below checks admin|manager, but the reads did not — so any
@@ -37,7 +38,8 @@ adminSettings.get('/', async (c) => {
       grouped[cat].push(r);
     }
     return c.json({ categories: Object.keys(grouped).sort(), settings: grouped });
-  } catch (err) { return c.json({ error: 'Failed to fetch settings' }, 500); }
+  } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/adminSettings.ts' }, err); return c.json({ error: 'Failed to fetch settings' }, 500); }
 });
 
 // GET /api/admin/settings/values — flat key-value map for runtime consumption
@@ -59,7 +61,8 @@ adminSettings.get('/values', async (c) => {
       else values[r.key] = raw;
     }
     return c.json(values);
-  } catch (err) { return c.json({ error: 'Failed to fetch setting values' }, 500); }
+  } catch (err) {
+    log.error('GET /values failed', { src: 'src/routes/adminSettings.ts' }, err); return c.json({ error: 'Failed to fetch setting values' }, 500); }
 });
 
 // GET /api/admin/settings/:key — single setting
@@ -73,7 +76,8 @@ adminSettings.get('/:key', async (c) => {
       'SELECT * FROM system_settings WHERE key = ?', key);
     if (!row) return c.json({ error: 'Setting not found' }, 404);
     return c.json(row);
-  } catch (err) { return c.json({ error: 'Failed to fetch setting' }, 500); }
+  } catch (err) {
+    log.error('GET /:key failed', { src: 'src/routes/adminSettings.ts' }, err); return c.json({ error: 'Failed to fetch setting' }, 500); }
 });
 
 // PUT /api/admin/settings/:key — update a single setting
@@ -94,7 +98,8 @@ adminSettings.put('/:key', async (c) => {
       'UPDATE system_settings SET value = ?, updated_at = datetime(\'now\') WHERE key = ?',
       String(body.value), key);
     return c.json({ success: true, key, value: String(body.value) });
-  } catch (err) { return c.json({ error: 'Failed to update setting' }, 500); }
+  } catch (err) {
+    log.error('PUT /:key failed', { src: 'src/routes/adminSettings.ts' }, err); return c.json({ error: 'Failed to update setting' }, 500); }
 });
 
 // PUT /api/admin/settings — batch update multiple settings
@@ -112,7 +117,8 @@ adminSettings.put('/', async (c) => {
     );
     await db.batch(stmts);
     return c.json({ success: true, updated: Object.keys(body).length });
-  } catch (err) { return c.json({ error: 'Failed to update settings' }, 500); }
+  } catch (err) {
+    log.error('PUT / failed', { src: 'src/routes/adminSettings.ts' }, err); return c.json({ error: 'Failed to update settings' }, 500); }
 });
 
 // POST /api/admin/settings/reset — reset all settings to defaults
@@ -123,7 +129,8 @@ adminSettings.post('/reset', async (c) => {
     const db = getDb(c.env);
     await execute(db, 'UPDATE system_settings SET value = NULL, updated_at = datetime(\'now\')');
     return c.json({ success: true, message: 'All settings reset to defaults' });
-  } catch (err) { return c.json({ error: 'Failed to reset settings' }, 500); }
+  } catch (err) {
+    log.error('POST /reset failed', { src: 'src/routes/adminSettings.ts' }, err); return c.json({ error: 'Failed to reset settings' }, 500); }
 });
 
 export default adminSettings;

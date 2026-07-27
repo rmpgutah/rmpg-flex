@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const risk = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -49,6 +50,7 @@ risk.get('/assessments', async (c) => {
       `SELECT ra.*, u.full_name as assessed_by_name FROM risk_assessments ra LEFT JOIN users u ON ra.assessed_by = u.id ${where} ORDER BY ra.created_at DESC LIMIT 200`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /assessments failed', { src: 'src/routes/risk.ts' }, err);
     return c.json({ error: 'Failed to list assessments' }, 500);
   }
 });
@@ -72,6 +74,7 @@ risk.post('/assessments', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM risk_assessments WHERE id = ?', newId);
     return c.json({ data: created, assessment_number: number }, 201);
   } catch (err) {
+    log.error('POST /assessments failed', { src: 'src/routes/risk.ts' }, err);
     return c.json({ error: 'Failed to create assessment' }, 500);
   }
 });
@@ -93,6 +96,7 @@ risk.put('/assessments/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM risk_assessments WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /assessments/:id failed', { src: 'src/routes/risk.ts' }, err);
     return c.json({ error: 'Failed to update assessment' }, 500);
   }
 });
@@ -108,6 +112,7 @@ risk.delete('/assessments/:id', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Assessment not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /assessments/:id failed', { src: 'src/routes/risk.ts' }, err);
     return c.json({ error: 'Failed to delete assessment', code: 'DELETE_ERROR' }, 500);
   }
 });
@@ -128,6 +133,7 @@ risk.get('/inspections', async (c) => {
       `SELECT si.*, u.full_name as inspector_name FROM safety_inspections si LEFT JOIN users u ON si.inspector_id = u.id ${where} ORDER BY si.inspection_date DESC LIMIT 200`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /inspections failed', { src: 'src/routes/risk.ts' }, err);
     return c.json({ error: 'Failed to list inspections' }, 500);
   }
 });
@@ -150,6 +156,7 @@ risk.post('/inspections', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM safety_inspections WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /inspections failed', { src: 'src/routes/risk.ts' }, err);
     return c.json({ error: 'Failed to create inspection' }, 500);
   }
 });
@@ -170,6 +177,7 @@ risk.put('/inspections/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM safety_inspections WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /inspections/:id failed', { src: 'src/routes/risk.ts' }, err);
     return c.json({ error: 'Failed to update inspection' }, 500);
   }
 });
@@ -190,6 +198,7 @@ risk.get('/claims', async (c) => {
       `SELECT ic.*, u.full_name as reported_by_name FROM insurance_claims ic LEFT JOIN users u ON ic.reported_by = u.id ${where} ORDER BY ic.created_at DESC LIMIT 200`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /claims failed', { src: 'src/routes/risk.ts' }, err);
     return c.json({ error: 'Failed to list claims' }, 500);
   }
 });
@@ -212,6 +221,7 @@ risk.post('/claims', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM insurance_claims WHERE id = ?', newId);
     return c.json({ data: created, claim_number: claimNumber }, 201);
   } catch (err) {
+    log.error('POST /claims failed', { src: 'src/routes/risk.ts' }, err);
     return c.json({ error: 'Failed to file claim' }, 500);
   }
 });
@@ -232,6 +242,7 @@ risk.put('/claims/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM insurance_claims WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /claims/:id failed', { src: 'src/routes/risk.ts' }, err);
     return c.json({ error: 'Failed to update claim' }, 500);
   }
 });
@@ -246,6 +257,7 @@ risk.get('/stats', async (c) => {
     const openClaims = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM insurance_claims WHERE status IN ('reported','under_review')"))?.count ?? 0;
     return c.json({ active_assessments: activeAssessments, pending_inspections: pendingInspections, open_claims: openClaims });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/risk.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });

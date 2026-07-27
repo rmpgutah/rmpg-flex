@@ -3,6 +3,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 const properties = new Hono<Env>();
 
 // GET /records/properties
@@ -19,7 +20,8 @@ properties.get('/', async (c) => {
     sql += ' ORDER BY p.name LIMIT 500';
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/properties.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // POST /records/properties — create a property.
@@ -52,7 +54,8 @@ properties.get('/export', async (c) => {
     const keys = Object.keys(rows[0] as object);
     const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=properties_export.csv' });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /export failed', { src: 'src/routes/properties.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/properties/:id

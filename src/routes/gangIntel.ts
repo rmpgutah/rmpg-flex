@@ -3,6 +3,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 
+import { log } from '../utils/logger';
 // Mirror CHECK constraints on gang_intel_members (and gang_intel_gangs.threat_level)
 // from migrations/0048_specialized_modules.sql. Keep in sync if the migration moves.
 const MEMBER_STATUSES = new Set(['active', 'inactive', 'incarcerated', 'deceased']);
@@ -42,7 +43,8 @@ gangIntel.get('/', async (c) => {
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM gang_intel_members ORDER BY created_at DESC LIMIT 200');
   return c.json(rows || []);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 gangIntel.post('/', async (c) => {
@@ -84,7 +86,8 @@ gangIntel.delete('/:id', async (c) => {
   const id = c.req.param('id');
   await execute(db, 'DELETE FROM gang_intel_members WHERE id=?', id);
   return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 gangIntel.get('/gangs', async (c) => {
@@ -92,7 +95,8 @@ gangIntel.get('/gangs', async (c) => {
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM gang_intel_gangs ORDER BY name');
   return c.json(rows || []);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /gangs failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 gangIntel.post('/gangs', async (c) => {
@@ -136,7 +140,8 @@ gangIntel.delete('/gangs/:id', async (c) => {
   const id = c.req.param('id');
   await execute(db, 'DELETE FROM gang_intel_gangs WHERE id=?', id);
   return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /gangs/:id failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 gangIntel.get('/graffiti', async (c) => {
@@ -144,7 +149,8 @@ gangIntel.get('/graffiti', async (c) => {
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM gang_graffiti_records ORDER BY created_at DESC LIMIT 200');
   return c.json(rows || []);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /graffiti failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 gangIntel.get('/stats', async (c) => {
@@ -154,7 +160,8 @@ gangIntel.get('/stats', async (c) => {
   const active = await queryFirst<{cnt:number}>(db, "SELECT COUNT(*) as cnt FROM gang_intel_members WHERE status = 'active'");
   const gangs = await queryFirst<{cnt:number}>(db, 'SELECT COUNT(*) as cnt FROM gang_intel_gangs');
   return c.json({ totalMembers: total?.cnt || 0, activeMembers: active?.cnt || 0, totalGangs: gangs?.cnt || 0 });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 export default gangIntel;

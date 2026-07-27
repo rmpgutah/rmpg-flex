@@ -75,7 +75,8 @@ records.get('/properties', async (c) => {
     sql += ' ORDER BY name LIMIT 500';
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /properties failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 const PROPERTY_WRITABLE_COLUMNS = new Set([
@@ -155,7 +156,8 @@ records.get('/properties/export', async (c): Promise<Response> => {
     const keys = ['name', 'address', 'city', 'state', 'zip', 'property_type', 'client_id', 'is_active', 'notes'];
     const csv = [keys.join(','), ...rows.map((r) => keys.map((k) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=properties_export.csv' });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /properties/export failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/properties/:id — fetch a single property.
@@ -165,7 +167,8 @@ records.get('/properties/:id', async (c): Promise<Response> => {
     const row = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', c.req.param('id'));
     if (!row) return c.json({ error: 'Not found' }, 404);
     return c.json(row);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /properties/:id failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // DELETE /records/properties/:id — hard delete + remove junction rows.
@@ -176,7 +179,8 @@ records.delete('/properties/:id', async (c): Promise<Response> => {
     await execute(db, "DELETE FROM record_links WHERE (source_type = 'property' AND source_id = ?) OR (target_type = 'property' AND target_id = ?)", id, id);
     await execute(db, 'DELETE FROM properties WHERE id = ?', id);
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /properties/:id failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // POST /records/properties/:id/archive — soft-delete.
@@ -185,7 +189,8 @@ records.post('/properties/:id/archive', async (c): Promise<Response> => {
     const db = getDb(c.env);
     await execute(db, "UPDATE properties SET archived_at = datetime('now') WHERE id = ?", c.req.param('id'));
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('POST /properties/:id/archive failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // POST /records/properties/:id/unarchive — restore.
@@ -194,7 +199,8 @@ records.post('/properties/:id/unarchive', async (c): Promise<Response> => {
     const db = getDb(c.env);
     await execute(db, 'UPDATE properties SET archived_at = NULL WHERE id = ?', c.req.param('id'));
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('POST /properties/:id/unarchive failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // All writable columns on the persons table, sourced from the legacy
@@ -494,7 +500,8 @@ records.get('/persons/search', async (c) => {
       ORDER BY last_name, first_name LIMIT 50
     `, ...mq.binds(q));
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /persons/search failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── Persons extra endpoints (must be before /:id to avoid param capture) ──
@@ -514,7 +521,8 @@ records.get('/persons/export', async (c) => {
     const keys = ['first_name','last_name','dob','gender','race','height','weight','hair_color','eye_color','address','phone','email'];
     const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=persons_export.csv' });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /persons/export failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // POST /records/persons/check-duplicates — find potential duplicate persons.
@@ -861,7 +869,8 @@ records.delete('/criminal-history/:id', async (c) => {
     if (!existing) return c.json({ error: 'Record not found' }, 404);
     await execute(db, 'DELETE FROM criminal_history WHERE id = ?', id);
     return c.json({ ok: true, id: Number(id) });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /criminal-history/:id failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/persons/:id/incidents — incidents involving this person.
@@ -906,7 +915,8 @@ records.post('/client-persons', async (c) => {
       .bind(body.person_id, body.client_id, body.relationship || null)
       .run();
     return c.json({ success: true, id: result.meta?.last_row_id });
-  } catch (err) { return c.json({ error: 'Failed to create link' }, 500); }
+  } catch (err) {
+    log.error('POST /client-persons failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed to create link' }, 500); }
 });
 
 // DELETE /records/client-persons/:linkId — remove a client-person link.
@@ -918,7 +928,8 @@ records.delete('/client-persons/:linkId', async (c) => {
     if (!existing) return c.json({ error: 'Link not found' }, 404);
     await execute(db, 'DELETE FROM client_person_links WHERE id = ?', linkId);
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed to delete link' }, 500); }
+  } catch (err) {
+    log.error('DELETE /client-persons/:linkId failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed to delete link' }, 500); }
 });
 
 // All writable columns on vehicles_records sourced from legacy addCol() calls.
@@ -988,7 +999,8 @@ records.get('/vehicles/search', async (c) => {
       ORDER BY v.plate_number LIMIT 50
     `, ...mq.binds(q));
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /vehicles/search failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/vehicles/:id — fetch a single vehicle by ID.
@@ -1119,7 +1131,8 @@ records.get('/vehicles/export', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id ORDER BY v.plate_number LIMIT 50000');
     const csv = ['plate_number,state,make,model,year,color,vin,owner_first_name,owner_last_name,notes', ...rows.map((r: any) => [r.plate_number, r.state, r.make, r.model, r.year, r.color, r.vin, r.first_name, r.last_name, r.notes].map((v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=vehicles_export.csv' });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /vehicles/export failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/vehicles/plate-lookup — quick plate check.
@@ -1229,6 +1242,7 @@ records.post('/vehicles/stolen-check', async (c) => {
       bolo_coverage: boloCoverage,
     });
   } catch (err) {
+    log.error('POST /vehicles/stolen-check failed', { src: 'src/routes/records.ts' }, err);
     // Fail HONESTLY — an error must read as "couldn't check", never as CLEAR.
     return c.json({ checked: false, stolen: false, source: 'local records', message: 'Stolen check failed — treat as UNVERIFIED, not clear', detail: (err as Error)?.message }, 500);
   }
@@ -1281,7 +1295,8 @@ records.get('/businesses', async (c) => {
     const archived = c.req.query('archived') === 'true';
     const rows = await query<Record<string, unknown>>(db, `SELECT * FROM businesses WHERE ${archived ? 'archived_at IS NOT NULL' : 'archived_at IS NULL'} ORDER BY name LIMIT 500`);
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /businesses failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/businesses/:id — fetch a single business record.
@@ -1291,7 +1306,8 @@ records.get('/businesses/:id', async (c): Promise<Response> => {
     const row = await queryFirst(db, 'SELECT * FROM businesses WHERE id = ?', c.req.param('id'));
     if (!row) return c.json({ error: 'Not found' }, 404);
     return c.json(row);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /businesses/:id failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // POST /records/businesses — create a business.
@@ -1377,7 +1393,8 @@ records.get('/evidence', async (c) => {
     sql += ' ORDER BY e.created_at DESC LIMIT 500';
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     return c.json({ data: rows, pagination: { total: rows.length, limit: 500 } });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /evidence failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/evidence/stats
@@ -1386,7 +1403,8 @@ records.get('/evidence/stats', async (c) => {
     const db = getDb(c.env);
     const row = await queryFirst<Record<string, unknown>>(db, "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'received' THEN 1 ELSE 0 END) as collected, SUM(CASE WHEN status = 'in_storage' THEN 1 ELSE 0 END) as stored, SUM(CASE WHEN status IN ('submitted_to_le','disposed','released') THEN 1 ELSE 0 END) as closed FROM evidence");
     return c.json(row || { total: 0, collected: 0, stored: 0, closed: 0 });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /evidence/stats failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/evidence/locations
@@ -1395,7 +1413,8 @@ records.get('/evidence/locations', async (c) => {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, "SELECT storage_location, COUNT(*) as count FROM evidence WHERE storage_location IS NOT NULL AND storage_location != '' GROUP BY storage_location ORDER BY count DESC");
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /evidence/locations failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/evidence/aging-report
@@ -1404,7 +1423,8 @@ records.get('/evidence/aging-report', async (c) => {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, "SELECT e.*, u.full_name as collected_by_name, julianday('now') - julianday(e.created_at) as age_days FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.status IN ('received', 'in_storage') ORDER BY e.created_at ASC LIMIT 200");
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /evidence/aging-report failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/evidence/export
@@ -1416,7 +1436,8 @@ records.get('/evidence/export', async (c) => {
     const keys = Object.keys(rows[0] as object);
     const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=evidence_export.csv' });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /evidence/export failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/evidence/:id
@@ -2274,7 +2295,8 @@ records.get('/retention/policy', async (c) => {
       schedule: RETENTION_SCHEDULE,
       report_retention_days: reportDays ? parseInt(reportDays.config_value,10)||365 : 365,
     });
-  } catch { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /retention/policy failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/records/reports/approval-queue — ReportsPage Pending Approvals tab.

@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const tasks = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -51,6 +52,7 @@ tasks.get('/', async (c) => {
     const total = count?.total ?? 0;
     return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/tasks.ts' }, err);
     return c.json({ error: 'Failed to list tasks' }, 500);
   }
 });
@@ -69,6 +71,7 @@ tasks.get('/stats', async (c) => {
     const overdue = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM task_assignments WHERE due_date < date('now') AND status NOT IN ('completed','cancelled')"))?.count ?? 0;
     return c.json({ total, pending, overdue });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/tasks.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });
@@ -84,6 +87,7 @@ tasks.get('/:id', async (c) => {
     if (!row) return c.json({ error: 'Task not found' }, 404);
     return c.json({ data: row });
   } catch (err) {
+    log.error('GET /:id failed', { src: 'src/routes/tasks.ts' }, err);
     return c.json({ error: 'Failed to get task' }, 500);
   }
 });
@@ -108,6 +112,7 @@ tasks.post('/', async (c) => {
       'SELECT t.*, to_u.full_name as assigned_to_name FROM task_assignments t LEFT JOIN users to_u ON t.assigned_to = to_u.id WHERE t.id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST / failed', { src: 'src/routes/tasks.ts' }, err);
     return c.json({ error: 'Failed to create task' }, 500);
   }
 });
@@ -132,6 +137,7 @@ tasks.put('/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM task_assignments WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/tasks.ts' }, err);
     return c.json({ error: 'Failed to update task' }, 500);
   }
 });
@@ -147,6 +153,7 @@ tasks.delete('/:id', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/tasks.ts' }, err);
     return c.json({ error: 'Failed to delete task' }, 500);
   }
 });
@@ -163,6 +170,7 @@ tasks.get('/:id/comments', async (c) => {
       'SELECT tc.*, u.full_name as user_name FROM task_comments tc LEFT JOIN users u ON tc.user_id = u.id WHERE tc.task_id = ? ORDER BY tc.created_at', id);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /:id/comments failed', { src: 'src/routes/tasks.ts' }, err);
     return c.json({ error: 'Failed to list comments' }, 500);
   }
 });
@@ -183,6 +191,7 @@ tasks.post('/:id/comments', async (c) => {
       'SELECT tc.*, u.full_name as user_name FROM task_comments tc LEFT JOIN users u ON tc.user_id = u.id WHERE tc.id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /:id/comments failed', { src: 'src/routes/tasks.ts' }, err);
     return c.json({ error: 'Failed to add comment' }, 500);
   }
 });

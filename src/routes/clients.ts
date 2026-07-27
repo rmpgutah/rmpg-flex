@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 // Clients — backed by the live `clients` table (the same one /api/admin/clients
 // reads). The page calls /api/clients directly, so these were stub-returning []
 // and the client list showed empty even though rows exist. Real CRUD now.
@@ -109,7 +110,8 @@ clients.post('/', async (c) => {
     const ph = cols.map(() => '?').join(',');
     const r = await execute(db, `INSERT INTO clients (${cols.join(',')}) VALUES (${ph})`, ...vals);
     return c.json(await queryFirst(db, 'SELECT * FROM clients WHERE id = ?', r.meta.last_row_id), 201);
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('POST / failed', { src: 'src/routes/clients.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 clients.put('/:id', async (c) => {
@@ -130,7 +132,8 @@ clients.put('/:id', async (c) => {
     vals.push(id);
     await execute(db, `UPDATE clients SET ${setCols.join(', ')} WHERE id = ?`, ...vals);
     return c.json(await queryFirst(db, 'SELECT * FROM clients WHERE id = ?', id));
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('PUT /:id failed', { src: 'src/routes/clients.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 clients.delete('/:id', async (c) => {
@@ -142,7 +145,8 @@ clients.delete('/:id', async (c) => {
     // Soft-delete: flip to inactive rather than orphaning contracts/persons.
     await execute(db, "UPDATE clients SET status = 'inactive', updated_at = datetime('now') WHERE id = ?", id);
     return c.json({ success: true });
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('DELETE /:id failed', { src: 'src/routes/clients.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 export default clients;

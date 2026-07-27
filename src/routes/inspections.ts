@@ -29,6 +29,7 @@ import { emitFleetioEvent } from '../utils/fleetio/events';
 import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 const inspections = new Hono<Env>();
 
 interface TimeEntryRow {
@@ -124,6 +125,7 @@ inspections.post('/by-token/:token', async (c) => {
       try {
         templateSchema = parseTemplateSchema(tmplRow.schema_json);
       } catch (err) {
+        log.error('POST /by-token/:token failed', { src: 'src/routes/inspections.ts' }, err);
         if (err instanceof InvalidTemplateError) {
           return c.json({ error: `Template ${templateId} has invalid schema`, code: 'TEMPLATE_INVALID_SCHEMA', detail: err.message }, 500);
         }

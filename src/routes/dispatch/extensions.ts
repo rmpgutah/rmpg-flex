@@ -642,6 +642,7 @@ bolos.get('/:id', requireRole(...READ_ROLES), async (c) => {
     if (!row) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
     return c.json(row);
   } catch (err) {
+    log.error('GET /:id failed', { src: 'src/routes/dispatch/extensions.ts' }, err);
     return c.json({ error: 'Failed to fetch BOLO', code: 'BOLO_GET_ERR' }, 500);
   }
 });
@@ -738,6 +739,7 @@ bolos.delete('/:id', requireRole(...ADMIN_ROLES), async (c) => {
     await execute(db, 'DELETE FROM bolos WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/dispatch/extensions.ts' }, err);
     return c.json({ error: 'Failed to delete BOLO', code: 'BOLO_DELETE_ERR' }, 500);
   }
 });
@@ -1383,7 +1385,8 @@ callActions.post('/:id/referrals', requireRole(...WRITE_ROLES), async (c) => {
        VALUES (?,?,?,?,'pending',?,?,datetime('now'),datetime('now'))`,
       id, body.agency_name, body.agency_case_number || null, body.referral_reason, body.follow_up_date || null, userId ?? null);
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
-  } catch { return c.json({ error: 'Referral creation failed' }, 500); }
+  } catch (err) {
+    log.error('POST /:id/referrals failed', { src: 'src/routes/dispatch/extensions.ts' }, err); return c.json({ error: 'Referral creation failed' }, 500); }
 });
 // GET /:id/referrals — list referrals for a call
 callActions.get('/:id/referrals', requireRole(...READ_ROLES), async (c) => {
@@ -1434,7 +1437,8 @@ callActions.post('/geofences', requireRole('admin', 'manager', 'supervisor'), as
        VALUES (?,?,?,'info',?,datetime('now'),datetime('now'))`,
       body.name, JSON.stringify(body.geojson), body.alert_type || 'info', userId ?? null);
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
-  } catch { return c.json({ error: 'Geofence creation failed' }, 500); }
+  } catch (err) {
+    log.error('POST /geofences failed', { src: 'src/routes/dispatch/extensions.ts' }, err); return c.json({ error: 'Geofence creation failed' }, 500); }
 });
 
 // POST /:id/transfer — move a call from one unit to another

@@ -13,6 +13,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query } from '../utils/db';
 
+import { log } from '../utils/logger';
 const announcements = new Hono<Env>();
 
 announcements.get('/', async (c) => {
@@ -42,6 +43,7 @@ announcements.get('/', async (c) => {
     });
     return c.json(visible);
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/announcements.ts' }, err);
     return c.json({ error: 'Failed to load announcements', detail: String(err) }, 500);
   }
 });

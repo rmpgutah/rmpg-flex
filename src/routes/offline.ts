@@ -40,6 +40,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query } from '../utils/db';
 
+import { log } from '../utils/logger';
 const offline = new Hono<Env>();
 
 // ─── Stubs (preserve existing client contract) ───────────────
@@ -148,6 +149,7 @@ offline.post('/sync/pull', async (c) => {
       : await query(db, sql, limit);
     return c.json({ rows, fullReplace: since === null });
   } catch (err) {
+    log.error('POST /sync/pull failed', { src: 'src/routes/offline.ts' }, err);
     const msg = err instanceof Error ? err.message : 'Query failed';
     return c.json({ error: msg }, 500);
   }

@@ -21,6 +21,7 @@ import type { Env } from '../types';
 import { getDb, queryFirst, execute } from '../utils/db';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 const cloudflare = new Hono<Env>();
 
 const CF_API = 'https://api.cloudflare.com/client/v4';
@@ -193,6 +194,7 @@ cloudflare.post('/purge-cache', async (c) => {
     if (!r.ok) return c.json({ success: false, error: r.json?.errors?.[0]?.message || `HTTP ${r.status}` }, 502);
     return c.json({ success: true });
   } catch (err) {
+    log.error('POST /purge-cache failed', { src: 'src/routes/cloudflare.ts' }, err);
     return c.json({ success: false, error: err instanceof Error ? err.message : String(err) }, 500);
   }
 });

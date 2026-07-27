@@ -42,6 +42,7 @@ import {
 } from '../utils/roboflowAlpr';
 import { readPlateCloudflare, type CloudflarePlateResult } from '../utils/cloudflarePlate';
 
+import { log } from '../utils/logger';
 const alpr = new Hono<Env>();
 
 /** Acceptance threshold (0.85). Overridable via the ALPR_ACCEPT_CONFIDENCE env. */
@@ -682,6 +683,7 @@ alpr.get('/captures', operational, async (c) => {
     }
     return c.json(rows.map(shapeCapture));
   } catch (err: any) {
+    log.error('GET /captures failed', { src: 'src/routes/alpr.ts' }, err);
     return c.json({ error: err?.message, hint: 'migration 0108/0109 may not have reached live D1' }, 500);
   }
 });

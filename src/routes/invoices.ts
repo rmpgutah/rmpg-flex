@@ -21,6 +21,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 
+import { log } from '../utils/logger';
 const invoices = new Hono<Env>();
 
 // GET /api/invoices/stats — summary tile (wrapped in { data } per the page).
@@ -161,7 +162,8 @@ invoices.get('/:id/pdf-data', async (c) => {
         },
       },
     });
-  } catch {
+  } catch (err) {
+    log.error('GET /:id/pdf-data failed', { src: 'src/routes/invoices.ts' }, err);
     return c.json({ error: 'Failed to load invoice PDF data' }, 500);
   }
 });

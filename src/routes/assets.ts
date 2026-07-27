@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const assets = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -45,6 +46,7 @@ assets.get('/inventory', async (c) => {
     const total = count?.total ?? 0;
     return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
+    log.error('GET /inventory failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to list assets' }, 500);
   }
 });
@@ -66,6 +68,7 @@ assets.post('/inventory', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM asset_inventory WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /inventory failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to create asset' }, 500);
   }
 });
@@ -87,6 +90,7 @@ assets.put('/inventory/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM asset_inventory WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /inventory/:id failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to update asset' }, 500);
   }
 });
@@ -102,6 +106,7 @@ assets.delete('/inventory/:id', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Asset not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /inventory/:id failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to delete asset', code: 'DELETE_ERROR' }, 500);
   }
 });
@@ -127,6 +132,7 @@ assets.get('/checkouts', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /checkouts failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to list checkouts' }, 500);
   }
 });
@@ -151,6 +157,7 @@ assets.post('/checkouts', async (c) => {
       'SELECT co.*, a.asset_tag FROM asset_checkouts co LEFT JOIN asset_inventory a ON co.asset_id = a.id WHERE co.id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /checkouts failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to create checkout' }, 500);
   }
 });
@@ -171,6 +178,7 @@ assets.put('/checkouts/:id/return', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM asset_checkouts WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /checkouts/:id/return failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to return asset' }, 500);
   }
 });
@@ -186,6 +194,7 @@ assets.get('/weapons', async (c) => {
       db, 'SELECT w.*, u.full_name as assigned_to_name FROM weapon_inventory w LEFT JOIN users u ON w.assigned_to = u.id ORDER BY w.created_at DESC');
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /weapons failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to list weapons' }, 500);
   }
 });
@@ -207,6 +216,7 @@ assets.post('/weapons', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM weapon_inventory WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /weapons failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to register weapon' }, 500);
   }
 });
@@ -221,6 +231,7 @@ assets.get('/ammunition', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM ammunition_inventory ORDER BY created_at DESC');
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /ammunition failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to list ammunition' }, 500);
   }
 });
@@ -241,6 +252,7 @@ assets.post('/ammunition', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM ammunition_inventory WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /ammunition failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to log ammunition' }, 500);
   }
 });
@@ -262,6 +274,7 @@ assets.put('/ammunition/:id/issue', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM ammunition_inventory WHERE id = ?', id);
     return c.json({ data: updated, issued: qty });
   } catch (err) {
+    log.error('PUT /ammunition/:id/issue failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to issue ammunition' }, 500);
   }
 });
@@ -277,6 +290,7 @@ assets.get('/k9', async (c) => {
       'SELECT k.*, u.full_name as handler_name FROM k9_records k LEFT JOIN users u ON k.handler_id = u.id ORDER BY k.created_at DESC');
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /k9 failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to list K9 records' }, 500);
   }
 });
@@ -298,6 +312,7 @@ assets.post('/k9', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM k9_records WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /k9 failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to register K9' }, 500);
   }
 });
@@ -314,6 +329,7 @@ assets.get('/stats', async (c) => {
     const activeK9 = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM k9_records WHERE status = 'active'"))?.count ?? 0;
     return c.json({ totalAssets, issuedAssets, totalWeapons, activeK9 });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/assets.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });

@@ -21,6 +21,7 @@ import { denverDateExpr, denverNowDateExpr, denverHourExpr } from '../utils/denv
 import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
 import type { Env } from '../types';
 
+import { log } from '../utils/logger';
 const reports = new Hono<Env>();
 
 const ANALYTICS_ROLES = ['admin', 'manager', 'supervisor'];
@@ -103,7 +104,8 @@ reports.get('/incidents-summary', async (c) => {
     by_status,
     by_day,
   });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /incidents-summary failed', { src: 'src/routes/reports.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/reports/crime-trends?days=90
@@ -183,7 +185,8 @@ reports.get('/crime-trends', async (c) => {
     .map(([month, count]) => ({ month, count }));
 
   return c.json({ days, trends: trendRows, monthlyTrend, top_categories });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /crime-trends failed', { src: 'src/routes/reports.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/reports/beat-activity?days=30
@@ -257,7 +260,8 @@ reports.get('/beat-activity', async (c) => {
   );
 
   return c.json({ days, beats });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /beat-activity failed', { src: 'src/routes/reports.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/reports/citation-revenue?days=30
@@ -335,7 +339,8 @@ reports.get('/citation-revenue', async (c) => {
     by_violation,
     payment_count: total?.payment_count ?? 0,
   });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /citation-revenue failed', { src: 'src/routes/reports.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/reports/schedules
@@ -416,7 +421,8 @@ reports.get('/statute-analytics', async (c) => {
   );
 
   return c.json({ days, total: total?.n ?? 0, top_statutes, by_category });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /statute-analytics failed', { src: 'src/routes/reports.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/reports/response-times?days=N

@@ -13,6 +13,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { containsAnyClause } from '../utils/searchText';
 
+import { log } from '../utils/logger';
 const tips = new Hono<Env>();
 
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
@@ -74,6 +75,7 @@ tips.get('/', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/tips.ts' }, err);
     return c.json({ error: 'Failed to list tips' }, 500);
   }
 });
@@ -86,6 +88,7 @@ tips.get('/investigators', async (c) => {
       `SELECT id, full_name as name, username FROM users WHERE role IN ('officer','supervisor','manager','admin') AND status = 'active' ORDER BY full_name`);
     return c.json(rows);
   } catch (err) {
+    log.error('GET /investigators failed', { src: 'src/routes/tips.ts' }, err);
     return c.json({ error: 'Failed to list investigators' }, 500);
   }
 });
@@ -108,6 +111,7 @@ tips.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM investigative_tips WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
+    log.error('POST / failed', { src: 'src/routes/tips.ts' }, err);
     return c.json({ error: 'Failed to create tip' }, 500);
   }
 });
@@ -129,6 +133,7 @@ tips.put('/:id/status', async (c) => {
     );
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /:id/status failed', { src: 'src/routes/tips.ts' }, err);
     return c.json({ error: 'Failed to update status' }, 500);
   }
 });
@@ -146,6 +151,7 @@ tips.put('/:id/assign', async (c) => {
       assigned_to ?? null, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /:id/assign failed', { src: 'src/routes/tips.ts' }, err);
     return c.json({ error: 'Failed to assign tip' }, 500);
   }
 });
@@ -166,6 +172,7 @@ tips.put('/:id/link-case', async (c) => {
       caseRow.id, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /:id/link-case failed', { src: 'src/routes/tips.ts' }, err);
     return c.json({ error: 'Failed to link case' }, 500);
   }
 });
