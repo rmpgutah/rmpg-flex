@@ -69,13 +69,23 @@ describe('validateFields', () => {
       expect(passes('CA', '96910')).toBe(false); // 969xx = Guam/Micronesia
     });
 
-    it('accepts Nevada ZIPs in the 889xx block', () => {
+    it('accepts only the single real 889xx Nevada ZIP, not the block', () => {
       expect(passes('NV', '88901')).toBe(true);
-      expect(passes('NV', '88999')).toBe(true);
+      expect(passes('NV', '88999')).toBe(false);
+      expect(passes('NV', '88950')).toBe(false);
     });
 
     it('rejects a ZIP just below the Nevada 889xx block', () => {
       expect(passes('NV', '88899')).toBe(false);
+    });
+
+    it('rejects a Nevada-looking ZIP in the 896xx prefix (not actually Nevada)', () => {
+      // Regression for the range-shortcut bug: `89[3-8]` wrongly matched 896.
+      expect(passes('NV', '89601')).toBe(false);
+    });
+
+    it('accepts a Nevada ZIP in the real 897xx prefix (Carson City)', () => {
+      expect(passes('NV', '89701')).toBe(true);
     });
 
     it('accepts Idaho ZIPs across the full 832-838 range', () => {

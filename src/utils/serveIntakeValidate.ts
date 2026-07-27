@@ -27,15 +27,23 @@ export interface ValidationReport {
 //
 // Audited 2026-07-26 against the real USPS 3-digit ZIP-prefix allocation
 // (Utah 840-847, California 900-961, Arizona 850-853/855-857/859-860/863-865,
-// Nevada 889-891/893-898, Idaho 832-838, Wyoming 820-831, Colorado 800-816,
-// New York 100-149, Texas 750-799 + the 885 Fort Bliss enclave). Every entry
-// below is bounded on BOTH ends — a state's real range routinely stops short
-// of (or has a gap inside) the next round number, and a merely-widened regex
-// just trades a false negative for a false positive against a neighboring
-// state's range:
+// Nevada 890/891/893/894/895/897/898 + the single-entity 88901, Idaho 832-838,
+// Wyoming 820-831, Colorado 800-816, New York 100-149, Texas 750-799 + the 885
+// Fort Bliss enclave). Every entry below is bounded on BOTH ends — a state's
+// real range routinely stops short of (or has a gap inside) the next round
+// number, and a merely-widened regex just trades a false negative for a false
+// positive against a neighboring state's range:
 //   - CA must stop at 961 (South Lake Tahoe/Redding), not extend to 96x —
 //     967-968 is Hawaii and 969 is Guam/Micronesia.
-//   - NV has a gap at 892 between the 889-891 and 893-898 blocks.
+//   - NV is NOT a contiguous 889-898 span: 892, 896, and 899 are not Nevada
+//     prefixes. Re-audited 2026-07-26 (round 3) — the prior `/^(889|89[01]|
+//     89[3-8])/` used a `89[3-8]` character-range shortcut that silently
+//     re-admitted 896 (not Nevada) alongside the real 893-895/897-898
+//     prefixes, and treated the entire 88900-88999 span as Nevada when only
+//     88901 (a Clark County single-entity assignment) actually is. Every
+//     prefix is now enumerated explicitly rather than expressed as a range,
+//     because a range shortcut is what produced this bug (and the 88x/89x
+//     ID/CO range bugs below) in the first place.
 //   - AZ has gaps at 854, 858, 861-862, and above 865 (which would otherwise
 //     collide with nothing today, but 866-869 is not AZ so isn't matched).
 //   - ID (832-838) previously used a bare `/^83/`, which also matched 830 and
@@ -46,7 +54,14 @@ const STATE_ZIP_PREFIX: Record<string, RegExp> = {
   UT: /^84[0-7]/,
   CA: /^(9[0-5]\d|96[01])/,
   AZ: /^(85[0-3]|85[5-7]|859|86[0345])/,
-  NV: /^(889|89[01]|89[3-8])/,
+  // Explicit enumeration, NOT a range: three separate review rounds on this
+  // table have each produced a range-related bug (missed CA 960-961; missed
+  // NV 889xx; then this entry's own `89[3-8]` shortcut wrongly re-admitting
+  // 896). Do not "simplify" this back to `89[0-9]` or similar — 892, 896, and
+  // 899 are specifically NOT Nevada. Real prefixes: 890/891/893/894/895/897/
+  // 898, plus the single-entity 88901 anomaly (Clark County) — the rest of
+  // 889xx (e.g. 88950, 88999) is not allocated to Nevada.
+  NV: /^(88901|890|891|893|894|895|897|898)/,
   ID: /^83[2-8]/,
   WY: /^82|^83[01]/,
   CO: /^(80\d|81[0-6])/,
