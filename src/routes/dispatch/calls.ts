@@ -885,15 +885,59 @@ calls.post('/:id/merge', async (c) => {
 // contract_manager, human_resources) erase an in-progress officer-safety call
 // by id, wiping it from every console via the broadcast below.
 calls.delete('/:id', requireRole('admin', 'manager'), async (c) => {
+  const idStr = c.req.param('id');
+  const id = Number(idStr);
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+  }
   try {
     const db = getDb(c.env);
-    const idStr = c.req.param('id');
-    const id = Number(idStr);
-    await execute(db, 'DELETE FROM calls_for_service WHERE id = ?', id);
+
+    // ── Detach dependents BEFORE the parent delete ──
+    // D1 runs with PRAGMA foreign_keys=1. Only three child tables declare
+    // ON DELETE CASCADE (calls_for_service_ext, call_businesses, case_calls);
+    // every other reference to calls_for_service(id) is a bare REFERENCES,
+    // which SQLite treats as NO ACTION — so the parent DELETE is REJECTED with
+    // "FOREIGN KEY constraint failed" the moment any of them holds a row.
+    // That is exactly what produced the DELETE /dispatch/calls/147 → 500 loop:
+    // a single call_persons row was enough, and the old blanket catch reported
+    // nothing, so the client retried a request that could never succeed.
+    //
+    // Policy, deliberately split by what the row IS:
+    //  - Pure link rows (call_persons, call_vehicles) carry no independent
+    //    record value — they only exist to tie a person/vehicle TO this call,
+    //    so they are removed with it.
+    //  - Standalone records that merely *point* at the call (incidents,
+    //    impounds, radio_transmissions, nav_trip_log) are records-management
+    //    artifacts in their own right. Deleting a CAD call must never silently
+    //    destroy an incident report or an impound; their pointer is NULLed and
+    //    the record survives.
+    //  - units are live operational state: release any unit still showing this
+    //    call as current/emergency rather than orphaning a dangling pointer
+    //    that makes the unit read as permanently busy.
+    await executeBatch(db, [
+      { sql: 'DELETE FROM call_persons WHERE call_id = ?', bindings: [id] },
+      { sql: 'DELETE FROM call_vehicles WHERE call_id = ?', bindings: [id] },
+      { sql: 'UPDATE incidents SET call_id = NULL WHERE call_id = ?', bindings: [id] },
+      { sql: 'UPDATE impounds SET call_id = NULL WHERE call_id = ?', bindings: [id] },
+      { sql: 'UPDATE radio_transmissions SET call_id = NULL WHERE call_id = ?', bindings: [id] },
+      { sql: 'UPDATE nav_trip_log SET call_id = NULL WHERE call_id = ?', bindings: [id] },
+      {
+        sql: `UPDATE units SET status = 'available', current_call_id = NULL,
+              last_status_change = datetime('now') WHERE current_call_id = ?`,
+        bindings: [id],
+      },
+      { sql: 'UPDATE units SET emergency_call_id = NULL WHERE emergency_call_id = ?', bindings: [id] },
+      { sql: 'DELETE FROM calls_for_service WHERE id = ?', bindings: [id] },
+    ]);
+
     // Emit alert for deletion
     await emitAlert(c.env, 'dispatch_update', { action: 'call_deleted', call: { id } });
     return c.json({ message: 'Call deleted' });
   } catch (err) {
+    // Never swallow this again — a bare 500 here is what made the original
+    // incident undiagnosable from the server side.
+    log.error('Failed to delete call', { route: 'DELETE /dispatch/calls/:id', callId: id }, err as Error);
     return c.json({ error: 'Failed to delete call' }, 500);
   }
 });
