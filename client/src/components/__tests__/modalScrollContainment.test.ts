@@ -1,5 +1,5 @@
 // ============================================================
-// Modal scroll containment — source-level ratchet
+// Overlay scroll containment — source-level ratchet (app-wide)
 // ============================================================
 // A modal whose content can outgrow the viewport MUST be able to scroll, or
 // its action row renders below the fold with no way to reach it. Measured in
@@ -30,7 +30,7 @@ function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const p = join(dir, entry);
     if (statSync(p).isDirectory()) walk(p, out);
-    else if (/(Modal|Dialog)\.tsx$/.test(entry)) out.push(p);
+    else if (entry.endsWith('.tsx')) out.push(p);
   }
   return out;
 }
@@ -55,8 +55,11 @@ function overlays(src: string): string[] {
 const files = walk(SRC);
 
 describe('modal scroll containment', () => {
-  it('finds modal components to check', () => {
-    expect(files.length).toBeGreaterThan(20);
+  it('finds components to check', () => {
+    // Every .tsx is scanned, not just *Modal/*Dialog -- the worst offenders
+    // were inline overlays inside big pages (CrashReportsPage, CrmPage,
+    // CourtTrackerPage), which a filename filter misses entirely.
+    expect(files.length).toBeGreaterThan(300);
   });
 
   it('never pairs overlay overflow-y-auto with items-center (clips the header)', () => {

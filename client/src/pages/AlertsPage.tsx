@@ -344,8 +344,8 @@ export default function AlertsPage() {
       />
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
-          <div className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto p-4" onClick={() => setEditingRecord(null)}>
+          <div className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full my-auto" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord && editingRecord.id > 0 ? 'Edit Template' : 'New Template'}</h3>
             <div className="space-y-3">
               <div><label htmlFor="ff-alertspage-0" className="text-[10px] text-rmpg-400 uppercase font-semibold">Name <span className="text-red-500">*</span></label>

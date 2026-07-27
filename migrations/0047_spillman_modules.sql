@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS inmates (
   marks_scars_tattoos TEXT,
   housing_unit  TEXT,
   housing_cell  TEXT,
-  booking_date  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  booking_date  TEXT NOT NULL DEFAULT (datetime('now')),
   arresting_agency TEXT,
   arresting_officer_id INTEGER,
   arrest_incident_id INTEGER,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS inmates (
   release_reason TEXT,
   notes         TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS inmate_charges (
   bond_amount   REAL,
   disposition   TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS inmate_visitors (
@@ -57,13 +57,13 @@ CREATE TABLE IF NOT EXISTS inmate_visitors (
   inmate_id     INTEGER NOT NULL,
   visitor_name  TEXT NOT NULL,
   relationship  TEXT,
-  visit_date    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  visit_date    TEXT NOT NULL DEFAULT (datetime('now')),
   visit_type    TEXT DEFAULT 'in_person' CHECK(visit_type IN ('in_person','video','phone','attorney')),
   check_in      TEXT,
   check_out     TEXT,
   officer_id    INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS inmate_property (
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS inmate_property (
   status        TEXT DEFAULT 'held' CHECK(status IN ('held','returned','transferred','destroyed')),
   returned_date TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS inmate_medical (
@@ -90,22 +90,22 @@ CREATE TABLE IF NOT EXISTS inmate_medical (
   suicide_risk  INTEGER DEFAULT 0,
   cleared_for_booking INTEGER DEFAULT 1,
   screened_by TEXT,
-  screened_date TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  screened_date TEXT NOT NULL DEFAULT (datetime('now')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS inmate_disciplinary (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   inmate_id     INTEGER NOT NULL,
   violation     TEXT NOT NULL,
-  violation_date TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  violation_date TEXT NOT NULL DEFAULT (datetime('now')),
   reported_by   INTEGER,
   sanction      TEXT,
   hearing_date  TEXT,
   hearing_outcome TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS inmate_transports (
@@ -113,13 +113,13 @@ CREATE TABLE IF NOT EXISTS inmate_transports (
   inmate_id     INTEGER NOT NULL,
   destination   TEXT NOT NULL,
   reason        TEXT,
-  depart_date   TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  depart_date   TEXT NOT NULL DEFAULT (datetime('now')),
   return_date   TEXT,
   transporting_officer_id INTEGER,
   vehicle_id    INTEGER,
   status        TEXT DEFAULT 'scheduled' CHECK(status IN ('scheduled','in_transit','completed','cancelled')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ═══════════════════════════════════════════════════════════════
@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS ia_complaints (
   discipline    TEXT,
   closed_date   TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS ia_investigations (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   complaint_id  INTEGER NOT NULL,
   investigator_id INTEGER,
-  started_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  started_at    TEXT NOT NULL DEFAULT (datetime('now')),
   completed_at  TEXT,
   summary       TEXT,
   findings      TEXT,
@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS ia_investigations (
   reviewed_by   INTEGER,
   reviewed_at   TEXT,
   status        TEXT DEFAULT 'open' CHECK(status IN ('open','in_progress','completed','reviewed')),
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS early_intervention_flags (
@@ -170,11 +170,11 @@ CREATE TABLE IF NOT EXISTS early_intervention_flags (
   trigger_value REAL,
   threshold     REAL,
   description   TEXT,
-  flagged_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  flagged_at    TEXT NOT NULL DEFAULT (datetime('now')),
   resolved_at   TEXT,
   resolution    TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ═══════════════════════════════════════════════════════════════
@@ -195,7 +195,7 @@ CREATE TABLE IF NOT EXISTS asset_inventory (
   purchase_date TEXT,
   purchase_cost REAL,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -203,14 +203,14 @@ CREATE TABLE IF NOT EXISTS asset_checkouts (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   asset_id      INTEGER NOT NULL,
   checked_out_to INTEGER NOT NULL,
-  checkout_date TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  checkout_date TEXT NOT NULL DEFAULT (datetime('now')),
   expected_return TEXT,
   actual_return TEXT,
   condition_out TEXT,
   condition_in  TEXT,
   authorized_by INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS weapon_inventory (
@@ -226,7 +226,7 @@ CREATE TABLE IF NOT EXISTS weapon_inventory (
   last_qualified TEXT,
   next_qual_due TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -243,7 +243,7 @@ CREATE TABLE IF NOT EXISTS ammunition_inventory (
   expiration_date TEXT,
   storage_location TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS k9_records (
@@ -258,7 +258,7 @@ CREATE TABLE IF NOT EXISTS k9_records (
   vet_last_visit TEXT,
   vet_next_due  TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -278,7 +278,7 @@ CREATE TABLE IF NOT EXISTS community_events (
   attendees_count INTEGER DEFAULT 0,
   status        TEXT DEFAULT 'planned' CHECK(status IN ('planned','in_progress','completed','cancelled')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS public_tips (
@@ -294,7 +294,7 @@ CREATE TABLE IF NOT EXISTS public_tips (
   status        TEXT DEFAULT 'new' CHECK(status IN ('new','assigned','under_review','actioned','closed','unfounded')),
   assigned_to   INTEGER,
   resolution    TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -310,7 +310,7 @@ CREATE TABLE IF NOT EXISTS neighborhood_watch_groups (
   next_meeting  TEXT,
   status        TEXT DEFAULT 'active' CHECK(status IN ('active','inactive')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS community_alerts (
@@ -327,7 +327,7 @@ CREATE TABLE IF NOT EXISTS community_alerts (
   sent_at       TEXT,
   expires_at    TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ═══════════════════════════════════════════════════════════════
@@ -348,7 +348,7 @@ CREATE TABLE IF NOT EXISTS task_assignments (
   linked_entity_type TEXT,
   linked_entity_id   INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -357,7 +357,7 @@ CREATE TABLE IF NOT EXISTS task_comments (
   task_id       INTEGER NOT NULL,
   user_id       INTEGER NOT NULL,
   comment_text  TEXT NOT NULL,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ═══════════════════════════════════════════════════════════════
@@ -372,7 +372,7 @@ CREATE TABLE IF NOT EXISTS notification_templates (
   channel       TEXT DEFAULT 'email' CHECK(channel IN ('email','sms','push','all')),
   category      TEXT DEFAULT 'general',
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -387,7 +387,7 @@ CREATE TABLE IF NOT EXISTS notification_batches (
   status        TEXT DEFAULT 'draft' CHECK(status IN ('draft','sending','sent','partial','failed')),
   sent_at       TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS notification_recipients (
@@ -399,7 +399,7 @@ CREATE TABLE IF NOT EXISTS notification_recipients (
   status        TEXT DEFAULT 'pending' CHECK(status IN ('pending','sent','failed')),
   sent_at       TEXT,
   error_message TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ═══════════════════════════════════════════════════════════════
@@ -418,7 +418,7 @@ CREATE TABLE IF NOT EXISTS training_courses (
   max_seats     INTEGER,
   is_mandatory  INTEGER DEFAULT 0,
   is_active     INTEGER DEFAULT 1,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS training_enrollments (
@@ -429,7 +429,7 @@ CREATE TABLE IF NOT EXISTS training_enrollments (
   score         REAL,
   completed_date TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS certification_types (
@@ -439,7 +439,7 @@ CREATE TABLE IF NOT EXISTS certification_types (
   description   TEXT,
   renewal_period_months INTEGER,
   is_active     INTEGER DEFAULT 1,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS officer_certifications (
@@ -452,7 +452,7 @@ CREATE TABLE IF NOT EXISTS officer_certifications (
   status        TEXT DEFAULT 'active' CHECK(status IN ('active','expired','revoked','pending')),
   document_url  TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS firearms_qualifications (
@@ -467,7 +467,7 @@ CREATE TABLE IF NOT EXISTS firearms_qualifications (
   range_officer_id INTEGER,
   ammo_used     INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ═══════════════════════════════════════════════════════════════
@@ -488,7 +488,7 @@ CREATE TABLE IF NOT EXISTS qa_reviews (
   review_date   TEXT,
   findings      TEXT,
   recommendations TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -501,7 +501,7 @@ CREATE TABLE IF NOT EXISTS qa_criteria (
   weight        REAL DEFAULT 1,
   is_active     INTEGER DEFAULT 1,
   sort_order    INTEGER DEFAULT 0,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS qa_scores (
@@ -510,7 +510,7 @@ CREATE TABLE IF NOT EXISTS qa_scores (
   criterion_id  INTEGER NOT NULL,
   score         REAL NOT NULL,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS customer_satisfaction_surveys (
@@ -522,7 +522,7 @@ CREATE TABLE IF NOT EXISTS customer_satisfaction_surveys (
   rating        INTEGER CHECK(rating >= 1 AND rating <= 5),
   comments      TEXT,
   would_recommend INTEGER,
-  submitted_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  submitted_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ═══════════════════════════════════════════════════════════════
@@ -542,7 +542,7 @@ CREATE TABLE IF NOT EXISTS client_contracts (
   status        TEXT DEFAULT 'active' CHECK(status IN ('draft','active','suspended','expired','terminated')),
   auto_renew    INTEGER DEFAULT 0,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -561,7 +561,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   status        TEXT DEFAULT 'draft' CHECK(status IN ('draft','sent','partial','paid','overdue','void','cancelled')),
   notes         TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -574,7 +574,7 @@ CREATE TABLE IF NOT EXISTS invoice_line_items (
   line_total    REAL DEFAULT 0,
   tax_applied   INTEGER DEFAULT 1,
   sort_order    INTEGER DEFAULT 0,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS payments (
@@ -587,7 +587,7 @@ CREATE TABLE IF NOT EXISTS payments (
   reference_number TEXT,
   notes         TEXT,
   recorded_by   INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS expense_reports (
@@ -603,7 +603,7 @@ CREATE TABLE IF NOT EXISTS expense_reports (
   approved_by   INTEGER,
   approved_at   TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ═══════════════════════════════════════════════════════════════
@@ -623,7 +623,7 @@ CREATE TABLE IF NOT EXISTS risk_assessments (
   mitigation_plan TEXT,
   review_date   TEXT,
   status        TEXT DEFAULT 'active' CHECK(status IN ('active','mitigated','accepted','closed')),
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -639,7 +639,7 @@ CREATE TABLE IF NOT EXISTS safety_inspections (
   corrective_actions TEXT,
   next_inspection_due TEXT,
   status        TEXT DEFAULT 'pending' CHECK(status IN ('pending','completed','failed','corrected')),
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS insurance_claims (
@@ -656,7 +656,7 @@ CREATE TABLE IF NOT EXISTS insurance_claims (
   settlement_amount REAL,
   status        TEXT DEFAULT 'reported' CHECK(status IN ('reported','under_review','approved','denied','settled','closed')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -674,7 +674,7 @@ CREATE TABLE IF NOT EXISTS interagency_partners (
   contact_phone TEXT,
   data_share_level TEXT DEFAULT 'none' CHECK(data_share_level IN ('none','basic','partial','full')),
   status        TEXT DEFAULT 'active' CHECK(status IN ('active','pending','suspended','inactive')),
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -690,7 +690,7 @@ CREATE TABLE IF NOT EXISTS data_share_agreements (
   signed_date   TEXT,
   status        TEXT DEFAULT 'draft' CHECK(status IN ('draft','active','expired','terminated')),
   document_url  TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -703,7 +703,7 @@ CREATE TABLE IF NOT EXISTS data_exchange_logs (
   record_count  INTEGER DEFAULT 0,
   status        TEXT DEFAULT 'success' CHECK(status IN ('success','partial','failed')),
   initiated_by  INTEGER,
-  initiated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  initiated_at  TEXT NOT NULL DEFAULT (datetime('now')),
   completed_at  TEXT,
   error_message TEXT
 );
@@ -721,7 +721,7 @@ CREATE TABLE IF NOT EXISTS geofence_zones (
   color         TEXT DEFAULT '#d4a017',
   is_active     INTEGER DEFAULT 1,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -732,7 +732,7 @@ CREATE TABLE IF NOT EXISTS crime_heatmap_data (
   incident_count INTEGER DEFAULT 0,
   crime_category TEXT,
   severity_weight REAL DEFAULT 0,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS response_time_zones (
@@ -744,5 +744,5 @@ CREATE TABLE IF NOT EXISTS response_time_zones (
   actual_avg_minutes_30d   REAL,
   beat_id       INTEGER,
   is_active     INTEGER DEFAULT 1,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );

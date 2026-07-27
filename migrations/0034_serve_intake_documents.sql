@@ -36,8 +36,8 @@ CREATE TABLE IF NOT EXISTS serve_intake_documents (
     'pending','extracting','extracted','failed','unmatched','archived'
   )),
   error_message TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_serve_intake_docs_queue ON serve_intake_documents(serve_queue_id);

@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS personnel_fitness (
   situps INTEGER,
   notes TEXT,
   recorded_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_personnel_fitness_officer ON personnel_fitness(officer_id);
 
@@ -29,6 +29,6 @@ CREATE TABLE IF NOT EXISTS personnel_commendations (
   type TEXT,
   description TEXT,
   awarded_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_personnel_commendations_officer ON personnel_commendations(officer_id);

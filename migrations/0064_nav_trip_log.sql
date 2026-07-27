@@ -49,8 +49,8 @@ CREATE TABLE IF NOT EXISTS nav_trip_log (
   -- Metadata
   device_type TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Indexes for common queries

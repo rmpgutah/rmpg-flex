@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS email_templates (
   body_html       TEXT NOT NULL DEFAULT '',
   category        TEXT,
   created_by      INTEGER,
-  created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_email_templates_category ON email_templates(category);
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS email_audit_log (
   graph_message_id    TEXT,              -- Graph "internetMessageId" or "id" if returned
   status              TEXT NOT NULL DEFAULT 'sent',  -- 'sent' | 'failed'
   error               TEXT,              -- failure detail, nullable
-  sent_at             TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  sent_at             TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_email_audit_sent_by ON email_audit_log(sent_by);

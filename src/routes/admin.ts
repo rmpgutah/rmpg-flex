@@ -310,7 +310,7 @@ admin.put('/call-templates/:id', async (c) => {
     if (body.priority !== undefined) { sets.push('priority = ?'); vals.push(body.priority); }
     if (body.description_template !== undefined) { sets.push('notes = ?'); vals.push(body.description_template); }
     if (!sets.length) return c.json({ success: true });
-    sets.push("updated_at = datetime('now','localtime')");
+    sets.push("updated_at = datetime('now')");
     vals.push(id);
     await execute(db, `UPDATE call_templates SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     return c.json({ success: true });

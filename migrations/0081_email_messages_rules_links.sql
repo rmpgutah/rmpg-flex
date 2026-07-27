@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS email_messages (
   categories TEXT,                    -- JSON array (rule tags + auto)
   received_at TEXT,
   sent_at TEXT,
-  cached_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  cached_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(owner_user_id, graph_id)
 );
 
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS email_rules (
   conditions TEXT NOT NULL,
   actions TEXT NOT NULL,
   is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   owner_user_id INTEGER,
   updated_at TEXT
 );
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS email_links (
   entity_id INTEGER,                  -- internal row id when resolvable
   entity_ref TEXT,                    -- raw matched token (call_number, plate, name)
   source TEXT NOT NULL DEFAULT 'autolinker',  -- 'autolinker' | 'manual'
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   created_by INTEGER,
   UNIQUE(message_graph_id, entity_type, entity_ref)
 );

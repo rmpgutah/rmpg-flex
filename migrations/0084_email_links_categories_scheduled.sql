@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS email_links (
   link_type       TEXT NOT NULL DEFAULT 'related',  -- related | evidence | notification | correspondence
   notes           TEXT,
   linked_by       INTEGER,
-  created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_email_links_graph_id ON email_links(email_graph_id);
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS email_categories (
   category        TEXT NOT NULL,
   confidence      REAL,
   model           TEXT,
-  categorized_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  categorized_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_email_categories_category ON email_categories(category);
@@ -60,8 +60,8 @@ CREATE TABLE IF NOT EXISTS scheduled_emails (
   last_error      TEXT,
   graph_message_id TEXT,
   sent_at         TEXT,
-  created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_scheduled_emails_status_due ON scheduled_emails(status, scheduled_for);
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS email_rule_matches (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   rule_id         INTEGER NOT NULL,
   email_graph_id  TEXT NOT NULL,
-  matched_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  matched_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_email_rule_matches_rule  ON email_rule_matches(rule_id);

@@ -1269,8 +1269,8 @@ export default function EvidencePropertyPage() {
 
       {/* ── Chain of Custody Action Modal ── */}
       {chainModalOpen && selected && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" onClick={() => setChainModalOpen(false)}>
-          <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/70 overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => setChainModalOpen(false)}>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-full max-w-md mx-4 my-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">
                 <ArrowRightLeft className="w-4 h-4 text-brand-400" />

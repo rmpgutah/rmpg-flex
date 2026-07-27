@@ -5,7 +5,7 @@
 -- NOTE: warrant_scraper_config has NO UNIQUE constraint on source_name on live
 -- D1 (verified 2026-06-02), so INSERT OR IGNORE would NOT dedupe on re-apply.
 -- We use INSERT ... SELECT ... WHERE NOT EXISTS instead for true idempotency.
--- created_at has a DEFAULT (datetime('now','localtime')); source_type/priority
+-- created_at has a DEFAULT (datetime('now')); source_type/priority
 -- are nullable but supplied here.
 
 INSERT INTO warrant_scraper_config (source_name, source_type, priority)
