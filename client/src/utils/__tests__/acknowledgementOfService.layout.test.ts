@@ -390,13 +390,43 @@ describe('the real 2026-07-27 service — long multi-entity caption', () => {
     ...over,
   }) as ReceiptOfServiceData;
 
-  it('renders without the signature being stranded from the declarations', async () => {
-    // This caption is long enough to legitimately need a second sheet.
-    // What must hold is that the declarations and the signature stay
-    // together — page two carries a complete, self-contained block.
+  it('fills the first page before continuing, rather than half-emptying it', async () => {
+    // A four-entity caption legitimately needs a second sheet. What must
+    // NOT happen is what did: reserving the whole declarations block moved
+    // all of Article IV together, leaving page one 40% white and page two
+    // carrying everything.
+    //
+    // Dense mode now tightens the layout and reserves only the tail, so
+    // page one runs full and page two is a genuine continuation. Asserted
+    // on relative weight because it is the balance that regressed, not a
+    // page count.
     const doc = await generateReceiptOfService(build2());
-    expect(doc.getNumberOfPages()).toBeLessThanOrEqual(2);
-    expect(pageWeight(doc, doc.getNumberOfPages())).toBeGreaterThan(8_000);
+    expect(doc.getNumberOfPages()).toBe(2);
+    const p1 = pageWeight(doc, 1);
+    const p2 = pageWeight(doc, 2);
+    expect(p1, 'page one should carry the bulk of the instrument').toBeGreaterThan(p2 * 2);
+  }, 30_000);
+
+  it('keeps the signature with the statements it attests to', async () => {
+    // Whatever page it lands on, the signature block must not be alone.
+    const doc = await generateReceiptOfService(build2());
+    expect(pageWeight(doc, doc.getNumberOfPages())).toBeGreaterThan(4_000);
+  }, 30_000);
+
+  it('does not go dense for an ordinary single-line caption', async () => {
+    // Density is for captions that wrap. Applying it everywhere would
+    // tighten four variations that already fit comfortably.
+    const ordinary = await generateReceiptOfService(build2({
+      defendantName: 'Marcus T. Whitfield', acceptingOnBehalfOf: 'Marcus T. Whitfield',
+      attestations: attestationsFor('business', 'Marcus T. Whitfield')
+        .map((a) => ({ id: a.id, text: a.text, accepted: true })),
+    }));
+    expect(ordinary.getNumberOfPages()).toBe(1);
+  }, 30_000);
+
+  it('embeds photographs taken at signature when supplied', async () => {
+    const withPhotos = await generateReceiptOfService(build2({ photos: [TEST_QR, TEST_QR] }));
+    expect(imageCount(withPhotos)).toBeGreaterThan(0);
   }, 30_000);
 
   it('keeps every panel value inside the sheet', async () => {
