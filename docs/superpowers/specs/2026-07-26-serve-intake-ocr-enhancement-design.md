@@ -57,10 +57,17 @@ address gets residential timing. The corporate/agent role continues to drive **w
 accept service** (URCP 4(d)(1)(E)) — that concern is separated from **when to attempt**.
 `isBusiness` must stop driving window selection.
 
-**D-3 — Model upgrade must not require new spend.** Route intake through the existing
-`callAi()` chain (Claude → OpenAI → Workers AI, with the KV cooldown breaker) instead of the
-hardcoded Workers-AI model constants, and raise the Workers-AI floor. When no paid key is
-configured the pipeline degrades to free Workers AI with no behavioural change beyond accuracy.
+**D-3 — Model upgrade must not require new spend.** Satisfied by the stack in §3.5, which is
+strictly cheaper per packet than what runs today while being materially more capable. Intake
+routes through the existing `callAi()` chain (Claude → OpenAI → Workers AI, with the KV cooldown
+breaker) so a configured paid key is still used when present, but the Workers-AI floor is raised
+enough that the free path is the intended production path, not a degraded fallback.
+
+Rejected: Google Gemini's free tier. Not on capability — enabling billing on a Google project
+deletes the free tier for that project entirely, and free-tier limits are revised without notice.
+Decisively, routing client legal process documents to a third-party API is a data-handling
+change rather than a model change. The stack in §3.5 keeps every packet inside infrastructure
+RMPG already operates.
 
 **D-4 — Phased delivery.** Four stacked PRs, each independently reviewable and gated on the
 fixture corpus.
@@ -136,6 +143,32 @@ Cross-document arbitration picks a winner by declared source precedence (Informa
 Field Sheet > Court Docket for service mechanics; Court Docket > others for case caption) and
 **retains the losing candidate** so the review UI can offer it.
 
+### 3.5 Model stack (researched 2026-07-26)
+
+Verified against the live Cloudflare catalog and pricing page, not from training data.
+
+| Layer | Model / service | Neuron cost | Rationale |
+|---|---|---|---|
+| PDF → structure | `env.AI.toMarkdown()` | **0** — the PDF path uses no model | Traverses the PDF `StructTree` (ISO 14289 / PDF-UA) to emit semantically structured Markdown, falling back to raw text extraction only when the structure tree is absent |
+| Extraction | `@cf/meta/llama-4-scout-17b-16e-instruct` | 24,545 / M in · 77,273 / M out | Natively multimodal, 10M-token context — the entire 3-document packet fits in one call, removing per-document stitching |
+| Scan OCR fallback | `@cf/moondream/moondream3.1-9B-A2B` | 27,273 / M in · 90,909 / M out | Purpose-built for OCR and structured output (added to Workers AI 2026-07-08); replaces the general-purpose `llama-3.2-11b-vision-instruct` |
+| Disagreement breaker | `@cf/mistralai/mistral-small-3.1-24b-instruct` | 31,876 / M in · 50,488 / M out | Cheapest output tier; invoked only when documents conflict (item 20) |
+
+**Cost envelope.** Workers AI includes **10,000 Neurons/day free** on both Workers Free and
+Paid. A representative packet (~8K input tokens of converted Markdown, ~1.5K output) costs
+≈312 neurons on Scout — roughly **32 packets/day at zero cost**, and higher in practice because
+only low-confidence documents escalate to a second call.
+
+**The upgrade reduces consumption.** The current text model
+(`llama-3.3-70b-instruct-fp8-fast`) bills 204,805 neurons per M output tokens against Scout's
+77,273. The same packet costs ≈520 neurons today versus ≈312 after. Capability rises and spend
+falls simultaneously; there is no cost trade to negotiate.
+
+**Structural consequence.** Because `toMarkdown` yields structured Markdown rather than
+positional text, several pre-clean heuristics in §3.4 become fallback-only — they run when
+`toMarkdown` reports no structure tree, not on every document. This is reflected in items 5
+and 6.
+
 ---
 
 ## 4. The 68 improvements
@@ -146,10 +179,10 @@ Field Sheet > Court Docket for service mechanics; Court Docket > others for case
 2. Unicode homoglyph normalizer (Cyrillic/Greek → Latin), logging every substitution.
 3. Bracket/checkbox noise repair (`[X)`, `[]`) → canonical forms.
 4. Ligature, soft-hyphen, and NBSP normalization; de-hyphenate line-broken words.
-5. Column-aware reflow so two-column Information Forms stop interleaving.
-6. Per-page text-density check routing scan-stub pages to vision OCR.
+5. Adopt `env.AI.toMarkdown()` as the PDF→text layer (§3.5) — structured, model-free, and it resolves the two-column Information Form interleave at the source. Retain the positional column-reflow heuristic as a fallback for documents with no `StructTree`.
+6. Per-page text-density check routing scan-stub pages to Moondream 3.1 vision OCR.
 7. Replace hardcoded model constants with `callAi()` (D-3).
-8. Raise the Workers-AI floor model for both text and vision paths.
+8. Raise the Workers-AI floor to Llama 4 Scout (text/multimodal) and Moondream 3.1 (scan OCR) per §3.5 — cheaper per packet than the current Llama 3.3 70B path.
 9. Document-family-specific prompts (Information Form / Field Sheet / Court Docket).
 10. Bounded second-pass critic call on low-confidence fields only.
 11. Deterministic post-validator (dates, ZIP↔state, phone, case-number shape).
@@ -246,3 +279,10 @@ Per `CLAUDE.md` the baseline is clean across all four gates, so any red is cause
   report, rather than inventing bands.
 - **New fields vs. column caps.** `serve_queue` is not near the D1 100-column cap, but the new
   fields land in `parsed_data` JSON where possible to avoid schema churn.
+- **Free-tier ceiling.** 10,000 Neurons/day caps free throughput at roughly 32 packets. Above
+  that, Workers Paid bills $0.011/1,000 Neurons — cents per packet, but it must be a conscious
+  decision rather than a surprise. PR 1 emits neuron consumption per intake to `error_log`
+  context so the ceiling is observable before it is hit.
+- **Model recency.** Moondream 3.1 reached Workers AI on 2026-07-08. It is new enough that PR 1
+  must A/B it against the incumbent `llama-3.2-11b-vision-instruct` on the fixture corpus rather
+  than adopting it on the strength of its description.
