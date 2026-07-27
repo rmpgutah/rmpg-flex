@@ -42,7 +42,7 @@
 
 import { Hono, type Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists, queryInChunks, executeInChunks } from '../utils/db';
 import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/processServiceCodes';
 import { generateServeCharges } from '../utils/serveChargeStore';
 import { syncServeCompletionToCfs } from '../utils/reversePsoSync';
@@ -97,19 +97,88 @@ sv.get('/stats/summary', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
-  const total = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM serve_queue');
-  const pending = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM serve_queue WHERE status='pending'");
-  const served = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM serve_queue WHERE status='served'");
-  const failed = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM serve_queue WHERE status='failed'");
-  const overdue = await queryFirst<{ n: number }>(
+
+  // ServePage's Stats tab renders six cards off this payload and has always
+  // sent `?date=`, but the handler never read it and never returned three of
+  // the fields the client's StatsSummary declares. The visible result was a
+  // tab where "Total Attempts" was permanently 0, "Mileage Today" and "Route
+  // Efficiency" showed "--", "Jobs Remaining" silently undercounted by every
+  // in-progress job, and the date picker did nothing. The client's `catch {}`
+  // ("stats are non-critical") meant none of that ever surfaced as an error.
+  //
+  // Dates are stored UTC-naive via datetime('now'); compare on the Mountain
+  // calendar day so a 6pm Denver service doesn't count as tomorrow.
+  const dateParam = c.req.query('date');
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(dateParam ?? '')
+    ? dateParam!
+    : new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date());
+
+  // Open-workload counts are point-in-time, not per-day: a job still pending is
+  // pending regardless of which date is being viewed, so these stay unscoped.
+  const openCounts = await queryFirst<{ pending: number; in_progress: number; overdue: number }>(
     db,
-    `SELECT COUNT(*) AS n FROM serve_queue
-       WHERE deadline IS NOT NULL AND deadline < datetime('now')
-         AND status NOT IN ('served','cancelled','failed')`,
+    `SELECT
+       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END)     AS pending,
+       SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress,
+       SUM(CASE WHEN deadline IS NOT NULL AND deadline < datetime('now')
+                 AND status NOT IN ('served','cancelled','failed') THEN 1 ELSE 0 END) AS overdue
+     FROM serve_queue`,
   );
+
+  // Outcome counts ARE per-day — they answer "what did the run accomplish on
+  // this date", which is what the cards are labelled ("Served Today").
+  const dayCounts = await queryFirst<{ served: number; failed: number }>(
+    db,
+    `SELECT
+       SUM(CASE WHEN status = 'served' THEN 1 ELSE 0 END) AS served,
+       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+     FROM serve_queue
+     WHERE closed_at IS NOT NULL AND date(closed_at) = ?`,
+    day,
+  );
+
+  const attempts = await queryFirst<{ n: number }>(
+    db,
+    'SELECT COUNT(*) AS n FROM serve_attempts WHERE date(attempt_at) = ?',
+    day,
+  );
+
+  const total = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM serve_queue');
+
+  // Planned mileage lives on serve_routes.total_distance_miles (one row per
+  // officer per day) — verified against live D1, which has no actual_mileage
+  // or planned_mileage column despite the client's field names implying both.
+  // This is what the Stats tab's "Route Efficiency" card divides by, so it is
+  // the field that actually unblocks that card.
+  //
+  // `mileage` (ACTUAL driven miles) has no serve-side source: nothing on
+  // serve_routes or serve_attempts records odometer or driven distance. It is
+  // reported as null rather than aliased to the planned figure — labelling a
+  // planned number as actual would quietly overstate reimbursable mileage on a
+  // billing surface. The card already falls back to the client's live route
+  // distance, so this stays honest instead of guessing.
+  let plannedMileage = 0;
+  if (await columnExists(db, 'serve_routes', 'total_distance_miles')) {
+    const m = await queryFirst<{ planned: number | null }>(
+      db,
+      `SELECT SUM(total_distance_miles) AS planned
+         FROM serve_routes WHERE route_date = ?`,
+      day,
+    );
+    plannedMileage = Math.round((m?.planned ?? 0) * 10) / 10;
+  }
+
   return c.json({
-    total: total?.n ?? 0, pending: pending?.n ?? 0,
-    served: served?.n ?? 0, failed: failed?.n ?? 0, overdue: overdue?.n ?? 0,
+    date: day,
+    total: total?.n ?? 0,
+    pending: openCounts?.pending ?? 0,
+    in_progress: openCounts?.in_progress ?? 0,
+    served: dayCounts?.served ?? 0,
+    failed: dayCounts?.failed ?? 0,
+    overdue: openCounts?.overdue ?? 0,
+    total_attempts: attempts?.n ?? 0,
+    mileage: null,
+    planned_mileage: plannedMileage,
   });
 });
 
@@ -550,19 +619,21 @@ sv.get('/', async (c) => {
   if (jobs.length) {
     const ids = jobs.map((j) => j.id).filter((n) => Number.isFinite(n));
     if (ids.length) {
-      const placeholders = ids.map(() => '?').join(',');
       const hasDispositionCol = await columnExists(db, 'serve_attempts', 'disposition_code');
       const attemptCols = hasDispositionCol
         ? 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.disposition_code, a.notes, a.latitude, a.longitude, a.officer_id, u.full_name AS officer_name'
         : 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.notes, a.latitude, a.longitude, a.officer_id, u.full_name AS officer_name';
-      const attempts = await query<any>(
+      // `limit` is caller-supplied and capped at 500, so `ids` routinely exceeds
+      // D1's 100-bound-parameter cap — a hand-rolled IN-list 500s the whole
+      // queue view the moment a dispatcher asks for more than 100 jobs.
+      const attempts = await queryInChunks<any>(
         db,
-        `SELECT ${attemptCols}
+        ids,
+        (placeholders) => `SELECT ${attemptCols}
            FROM serve_attempts a
            LEFT JOIN users u ON u.id = a.officer_id
           WHERE a.serve_queue_id IN (${placeholders})
           ORDER BY a.attempt_at ASC, a.id ASC`,
-        ...ids,
       );
       const byQueue = new Map<number, any[]>();
       for (const a of attempts) {
@@ -631,12 +702,21 @@ sv.put('/bulk-status', async (c) => {
   const closedAt = (status === 'served' || status === 'failed')
     ? `datetime('now')`
     : 'NULL';
-  // D1 doesn't support array bindings — use a parameterized IN clause
-  const placeholders = ids.map(() => '?').join(',');
-  await db.prepare(
-    `UPDATE serve_queue SET status = ?, closed_at = ${closedAt}
-     WHERE id IN (${placeholders})`
-  ).bind(status, ...ids).run();
+  // D1 doesn't support array bindings — use a parameterized IN clause, chunked
+  // under the 100-bound-parameter cap. `ids` comes straight from the request
+  // body (ServeBulkActions' "select all" sends the whole visible folder), and
+  // `status` is bound ahead of the list, so it must be reserved out of the
+  // budget or a 100-id batch would land at 101 parameters and throw at bind
+  // time. NOTE: chunked writes are not atomic — a mid-batch failure leaves
+  // earlier chunks committed, which is the same best-effort posture the
+  // billing call below already assumes.
+  await executeInChunks(
+    db,
+    ids,
+    (placeholders) => `UPDATE serve_queue SET status = ?, closed_at = ${closedAt}
+     WHERE id IN (${placeholders})`,
+    [status],
+  );
 
   // Bill served jobs — every other path to status='served' (single-attempt
   // logAttempt, the substitute-service shortcut) calls generateServeCharges;
@@ -652,9 +732,10 @@ sv.put('/bulk-status', async (c) => {
 
   // Fire-and-forget: sync terminal outcomes back to their originating CFS rows
   if (status === 'served' || status === 'failed') {
-    const affected = await query<{ id: number }>(
-      db, `SELECT id FROM serve_queue WHERE id IN (${placeholders}) AND call_id IS NOT NULL`,
-      ...ids,
+    const affected = await queryInChunks<{ id: number }>(
+      db,
+      ids,
+      (placeholders) => `SELECT id FROM serve_queue WHERE id IN (${placeholders}) AND call_id IS NOT NULL`,
     );
     for (const q of affected) {
       syncServeCompletionToCfs(db, q.id).catch(() => {});

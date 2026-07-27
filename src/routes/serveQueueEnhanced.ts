@@ -16,7 +16,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { toDenverWallClock } from '../utils/denverTime';
 import {
   optimizeRoute,
@@ -390,15 +390,21 @@ sqe.post('/auto-close-stale', async (c) => {
 
   let closedCount = 0;
   if (staleJobs.length > 0) {
-    const placeholders = staleJobs.map(() => '?').join(',');
-    await execute(
+    // The SELECT above is `LIMIT 500`, so this IN-list is not merely *able* to
+    // exceed D1's 100-bound-parameter cap — it is designed to fetch five times
+    // it. Any sweep finding more than 100 stale jobs threw at bind time, and
+    // because this runs from cron the throw surfaced nowhere: no rows closed,
+    // no error_log entry, and the next sweep found the same backlog.
+    // Report rows actually changed, not rows attempted. Chunked writes are not
+    // atomic, so a partial sweep is possible; `staleJobs.length` would report a
+    // clean full close either way and hide it.
+    closedCount = await executeInChunks(
       db,
-      `UPDATE serve_queue
+      staleJobs.map((j) => j.id),
+      (placeholders: string) => `UPDATE serve_queue
        SET status = 'failed', updated_at = datetime('now'), closed_at = datetime('now')
        WHERE id IN (${placeholders})`,
-      ...staleJobs.map((j) => j.id),
     );
-    closedCount = staleJobs.length;
 
     await execute(
       db,

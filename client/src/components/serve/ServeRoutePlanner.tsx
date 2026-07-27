@@ -619,7 +619,7 @@ export default function ServeRoutePlanner({
       <div className="bg-surface-base border border-rmpg-700 rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700 bg-surface-sunken">
           <div className="flex items-center gap-2">
-            <Route size={16} className="text-[#d4a017]" />
+            <Route size={16} className="text-accent-silver-400" />
             <h2 className="text-sm font-semibold text-rmpg-100 tracking-wider">ROUTE PLANNER</h2>
             <span className="text-[11px] text-fg-muted ml-2">{selectedCount} of {stops.length} stops selected</span>
             {totalDistance > 0 && (
