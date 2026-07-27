@@ -33,7 +33,7 @@ import { Check, AlertTriangle, FileText, Loader2, Download, Printer, ShieldCheck
 import SignaturePad from '../../components/SignaturePad';
 import { generateReceiptOfService, type ReceiptOfServiceData } from '../../utils/servePdfGenerator';
 import {
-  resolveReceiptVariant, receiptFormTitle, attestationsFor,
+  resolveReceiptVariant, receiptFormTitle, attestationsFor, formatServiceAddress, isEntityName,
   VARIANT_LABEL, type ReceiptVariant,
 } from '../../utils/serveReceiptVariant';
 
@@ -268,12 +268,19 @@ export default function ServeReceiptPage() {
     ? businessName.trim()
     : namedParty;
 
+  // "Are you <party>?" cannot truthfully be answered yes when the party is
+  // a company. Seen on a live service: a registered agent answered yes for
+  // "Chase Partners Ltd, ... SDP REIT LLC, ISAOA" and the form recorded him
+  // as the party himself, capacity "PARTY NAMED". The question is withheld
+  // entirely for an entity rather than left available to answer wrongly.
+  const partyIsEntity = isEntityName(namedParty);
+
   const variant: ReceiptVariant = useMemo(() => resolveReceiptVariant({
-    isNamedParty: isNamedParty === true,
+    isNamedParty: !partyIsEntity && isNamedParty === true,
     premisesType,
     residesAtAddress,
     authorizedAgent,
-  }), [isNamedParty, premisesType, residesAtAddress, authorizedAgent]);
+  }), [partyIsEntity, isNamedParty, premisesType, residesAtAddress, authorizedAgent]);
 
   // A signer who ticks "authorized to accept" at a RESIDENCE resolves to
   // the Business variation — correct, that is a registered agent working
@@ -303,6 +310,11 @@ export default function ServeReceiptPage() {
   // Skips entirely when the officer already recorded a name from an ID —
   // overwriting a name read off a driver's licence with the case caption
   // would be a downgrade in evidence quality, not a convenience.
+  // An entity can never be the signer, so the answer is settled on load.
+  useEffect(() => {
+    if (partyIsEntity) setIsNamedParty(false);
+  }, [partyIsEntity]);
+
   const officerName = ctx?.prefill?.recipient_name ?? null;
   useEffect(() => {
     if (officerName) return;
@@ -327,8 +339,13 @@ export default function ServeReceiptPage() {
   // what is missing before tapping submit rather than after.
   const missing = useMemo(() => {
     const m: string[] = [];
-    if (isNamedParty === null) m.push('Whether you are the person named');
+    if (!partyIsEntity && isNamedParty === null) m.push('Whether you are the person named');
     if (!recipientName.trim()) m.push('Your name');
+    // Both required, per operator instruction on the 2026-07-27 service.
+    // A proof of service whose signer cannot be reached afterwards is
+    // hard to stand behind if the service is ever contested.
+    if (!phone.trim()) m.push('Your phone number');
+    if (!email.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) m.push('A valid email address');
     if (variant === 'business' && !businessName.trim()) m.push('The business name');
     if (isNamedParty === false && !residesAtAddress && !authorizedAgent && premisesType !== 'other') {
       m.push('Whether you live here or are authorized to accept service');
@@ -336,7 +353,7 @@ export default function ServeReceiptPage() {
     for (const a of attestations) if (a.required && !accepted[a.id]) m.push(`“${a.text.slice(0, 48)}…”`);
     if (!signature) m.push('Your signature');
     return m;
-  }, [isNamedParty, recipientName, variant, businessName, residesAtAddress, authorizedAgent, premisesType, attestations, accepted, signature]);
+  }, [partyIsEntity, isNamedParty, recipientName, phone, email, variant, businessName, residesAtAddress, authorizedAgent, premisesType, attestations, accepted, signature]);
 
   const acceptedAttestations = useMemo(
     () => attestations.map((a) => ({ id: a.id, text: a.text, accepted: !!accepted[a.id] })),
@@ -354,8 +371,10 @@ export default function ServeReceiptPage() {
     plaintiffName: ctx?.job.plaintiff_name ?? '',
     defendantName: ctx?.job.defendant_name ?? '',
     documentType: ctx?.job.document_type ?? '',
-    serviceAddress: [ctx?.job.service_address, ctx?.job.service_city, ctx?.job.service_state, ctx?.job.service_zip]
-      .filter(Boolean).join(', '),
+    serviceAddress: formatServiceAddress({
+      address: ctx?.job.service_address, city: ctx?.job.service_city,
+      state: ctx?.job.service_state, zip: ctx?.job.service_zip,
+    }),
     premisesType,
     serverName: ctx?.server?.name ?? '',
     serverBadge: ctx?.server?.badge ?? '',
@@ -379,7 +398,10 @@ export default function ServeReceiptPage() {
       authorizedAgent, expectedDelivery]);
 
   const downloadPdf = useCallback(async (receiptId: number) => {
-    const doc = await generateReceiptOfService(buildPdfData(receiptId));
+    // Designated: this IS the subject's copy. Printed undesignated it fell
+    // back to the generic footer, which is what the operator marked up by
+    // hand as "Subject" on the 2026-07-27 service.
+    const doc = await generateReceiptOfService({ ...buildPdfData(receiptId), copy: 'subject' });
     doc.save(`acknowledgement-of-service-${ctx?.job.case_number || receiptId}.pdf`);
   }, [buildPdfData, ctx]);
 
@@ -394,7 +416,7 @@ export default function ServeReceiptPage() {
    * file in Downloads. Falls back to a download if the popup is blocked.
    */
   const printPdf = useCallback(async (receiptId: number) => {
-    const doc = await generateReceiptOfService({ ...buildPdfData(receiptId), printTarget: 'mobile' });
+    const doc = await generateReceiptOfService({ ...buildPdfData(receiptId), copy: 'subject', printTarget: 'mobile' });
     doc.autoPrint();
     const url = doc.output('bloburl') as unknown as string;
     const w = window.open(url, '_blank');
@@ -463,7 +485,7 @@ export default function ServeReceiptPage() {
       // a mail failure must never look like a failed signature.
       if (email) {
         try {
-          const doc = await generateReceiptOfService(buildPdfData(receiptId));
+          const doc = await generateReceiptOfService({ ...buildPdfData(receiptId), copy: 'subject' });
           const b64 = doc.output('datauristring').split(',')[1] ?? '';
           await fetch(`${apiBase}/email`, {
             method: 'POST',
@@ -553,9 +575,11 @@ export default function ServeReceiptPage() {
   }
 
   // ── Render: the form ───────────────────────────────────────
-  const addressLine = [ctx.job.service_address, ctx.job.service_city, ctx.job.service_state, ctx.job.service_zip]
-    .filter(Boolean).join(', ');
-  const answeredWhoIsSigning = isNamedParty !== null;
+  const addressLine = formatServiceAddress({
+    address: ctx.job.service_address, city: ctx.job.service_city,
+    state: ctx.job.service_state, zip: ctx.job.service_zip,
+  });
+  const answeredWhoIsSigning = partyIsEntity || isNamedParty !== null;
 
   return (
     <div className="min-h-screen bg-surface-base pb-32">
@@ -601,7 +625,7 @@ export default function ServeReceiptPage() {
             </div>
             <div className="col-span-2">
               <span className="field-label">Address of service</span>
-              <p className="text-rmpg-100">{addressLine || '—'}</p>
+              <p className="text-rmpg-100 whitespace-pre-line">{addressLine || '—'}</p>
             </div>
             {ctx.server?.name && (
               <div className="col-span-2">
@@ -616,13 +640,28 @@ export default function ServeReceiptPage() {
 
         {/* ── 2. Who is signing — drives the variant ──────── */}
         <Panel title="Who is signing" step={2}>
-          <YesNo
-            label={`Are you ${namedParty}?`}
-            value={isNamedParty}
-            onChange={setIsNamedParty}
-          />
+          {partyIsEntity ? (
+            // No yes/no here. The party is a company, so the only truthful
+            // answer is "no" and offering the choice invites the error this
+            // form was corrected for in pen: a registered agent recorded as
+            // the party named.
+            <div className="p-2.5 rounded-[2px] border border-rmpg-700 bg-surface-sunken">
+              <span className="field-label">Who the papers are for</span>
+              <p className="text-[13px] text-rmpg-100 leading-snug">{namedParty}</p>
+              <p className="text-[11px] text-fg-muted mt-1 leading-snug">
+                This is a business or organization, so you are accepting on its
+                behalf. Tell us your role below.
+              </p>
+            </div>
+          ) : (
+            <YesNo
+              label={`Are you ${namedParty}?`}
+              value={isNamedParty}
+              onChange={setIsNamedParty}
+            />
+          )}
 
-          {isNamedParty === false && (
+          {(partyIsEntity || isNamedParty === false) && (
             <>
               <Field label="This address is a">
                 <div className="flex gap-2">
@@ -701,7 +740,7 @@ export default function ServeReceiptPage() {
             />
           </Field>
 
-          <Field label="Phone (optional)">
+          <Field label="Phone number">
             <input
               className={inputCls}
               value={phone}
@@ -798,8 +837,14 @@ export default function ServeReceiptPage() {
               autoComplete="email"
               inputMode="email"
               placeholder="you@example.com"
+              required
             />
           </Field>
+          <p className="text-[11px] text-fg-muted leading-snug -mt-1">
+            Your phone and email are required. They are recorded with this
+            acknowledgement so you can be reached about this service, and your
+            copy is sent to the address you give.
+          </p>
 
           <p className="text-[11px] text-fg-muted leading-snug">
             Your signature, the date and time, and your device’s approximate
