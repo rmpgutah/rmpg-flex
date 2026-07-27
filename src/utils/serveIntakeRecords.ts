@@ -33,16 +33,19 @@ import { geocodeAddress } from '../routes/geocode';
 import { resolveDistrict } from './districtResolver';
 import { deriveCrossStreetFromCoords } from './crossStreet';
 import { parseLocationParts } from './parseLocationParts';
-import { buildPsoBriefing, buildOcrContext } from './serveIntakeBriefing';
+import { buildPsoBriefing, buildOcrContext, isAutoCreatedBusinessRecord } from './serveIntakeBriefing';
 import type { IntakeDocMeta, OcrContext, PropertyRecord, BusinessRecord } from './serveIntakeBriefing';
 import { createCaseWithLinks } from './caseCreate';
 import {
   planAttemptWindows, escalatePriorityForDeadline,
-  clusterByProximity, applyUrgencyTier,
+  clusterByProximity, applyUrgencyTier, daysUntilDeadline,
 } from './serveDiligencePlanner';
 import type { AttemptWindow } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
 import { findLocationNote } from './serveLocationNotes';
+import { resolveAddressClass } from './serveAddressClass';
+import { parseClientBands, parseAllowedDays } from './serveScheduleParse';
+import { scheduleFitsDeadline } from './serveAttemptWindows';
 import { log } from './logger';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 import type { FieldConflict } from './serveIntakeArbitrate';
@@ -80,6 +83,19 @@ export function normAddr(s: string | null | undefined): string {
 function normName(s: string | null | undefined): string {
   if (!s) return '';
   return s.toLowerCase().replace(/[.,]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Finding 3 FIX: whether the ACTUAL planned attempt count (not a hardcoded
+// guess at what the default "should" be) fits the days remaining before the
+// deadline. `plannedWindowCount` must be the real `attemptPlan.length` —
+// business defaults are 2 windows, residential/unknown defaults are 3, and a
+// client schedule can specify any count; guessing any single constant is
+// wrong for at least one of those cases.
+export function computeScheduleImpossible(
+  plannedWindowCount: number,
+  daysRemaining: number | null,
+): boolean {
+  return !scheduleFitsDeadline(plannedWindowCount, daysRemaining);
 }
 
 // A registered-agent string is only a real human name worth a `persons` row
@@ -563,6 +579,12 @@ export interface CommitInput {
   // Optional — single-document callers (/intake legacy path, document
   // reprocessing) have nothing to arbitrate.
   conflicts?: FieldConflict[];
+  // Cross-field validation issues (serveIntakeValidate.validateFields), e.g.
+  // ZIP↔state disagreement or a bad phone digit count. Previously these only
+  // reached log.warn, so an officer saw a confidence knocked down with no
+  // stated reason. Embedded verbatim into parsed_data._intake.validation_issues
+  // so PR 4's review UI can show the reason behind the lowered confidence.
+  validationIssues?: Array<{ field: string; severity: 'warn' | 'error'; message: string }>;
   // Operator-selected client (from the intake form's client dropdown). When
   // set, it is written directly to serve_queue.client_id and skips the
   // post-hoc name-based lookup that would otherwise resolve the contract.
@@ -690,10 +712,6 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     address: queueRow.recipient_address || null,
   });
 
-  const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline, 'America/Denver', {
-    isBusiness,
-    locationNote,
-  });
   const recipientFirst = get('recipient_first_name');
   const recipientMiddle = get('recipient_middle_name');
   const recipientLast = get('recipient_last_name');
@@ -772,7 +790,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     if (!business.created && business.id) {
       businessRecord = await queryFirst<BusinessRecord>(
         db,
-        'SELECT owner_name, owner_phone, contact_name, contact_phone, phone, notes FROM businesses WHERE id = ?',
+        'SELECT owner_name, owner_phone, contact_name, contact_phone, phone, notes, business_type FROM businesses WHERE id = ?',
         business.id,
       ) ?? null;
     }
@@ -840,6 +858,86 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     }
   }
 
+  // Address class describes the LOCATION (operator decision D-2). A
+  // registered agent at a residence gets residential windows; isBusiness
+  // no longer selects timing, only who may accept service.
+  //
+  // propertyRecordClass is left undefined: the live `properties` table
+  // (see migrations/baseline/schema.sql) has no `address_class` column —
+  // only `property_type` ('business_service'/'residential_service', set
+  // by findOrCreateProperty above), which is a different vocabulary and
+  // not what resolveAddressClass expects. Adding a real column is out of
+  // scope for this task; resolution falls through to businessRecordMatched
+  // / instructionsText / extracted / unknown instead.
+  //
+  // R5: a matched `businesses` row only CONFIRMS a business location when it
+  // is independent evidence. findOrCreateBusiness above inserts a row for
+  // every corporate intake, marked 'Auto-created via serve intake' — so a
+  // corporation served through its registered agent AT THE AGENT'S HOME
+  // auto-created a business row at that residential address on the first
+  // intake, and the second intake matched it and self-confirmed as a
+  // business location: weekday business hours at a private residence. That
+  // is precisely the registered-agent-at-a-residence case D-2 exists to
+  // prevent. Auto-created rows are excluded from confirming.
+  const businessRecordIsIndependent = !!businessRecord && !isAutoCreatedBusinessRecord(businessRecord);
+  const addressClassResult = resolveAddressClass({
+    propertyRecordClass: undefined,
+    businessRecordMatched: businessRecordIsIndependent && isBusiness,
+    instructionsText: queueRow.service_instructions || '',
+    extracted: get('address_class'),
+  });
+
+  const rawClientSchedule = get('client_attempt_schedule');
+  const rawAllowedDays = get('service_days_allowed');
+  const clientBands = parseClientBands(rawClientSchedule);
+  const allowedDays = parseAllowedDays(rawAllowedDays);
+  const startNotBefore = get('attempt_start_not_before') || null;
+
+  // R3: fail-closed only works if the failure is VISIBLE. A non-empty source
+  // string that yields no bands / a null day set means the client dictated
+  // something we could not read — which is NOT the same as the client
+  // dictating nothing, and must not silently become "defaults apply".
+  const unparsedClientSchedule = rawClientSchedule.trim() && clientBands.length === 0
+    ? rawClientSchedule.trim() : null;
+  const unparsedAllowedDays = rawAllowedDays.trim() && allowedDays === null
+    ? rawAllowedDays.trim() : null;
+  if (unparsedClientSchedule || unparsedAllowedDays) {
+    log.warn('serve-intake client schedule present but unparseable — defaults applied', {
+      client_attempt_schedule: unparsedClientSchedule,
+      service_days_allowed: unparsedAllowedDays,
+      case_number: queueRow.case_number,
+    });
+  }
+
+  const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline, 'America/Denver', {
+    isBusiness,
+    addressClass: addressClassResult.klass,
+    addressClassConfirmed: addressClassResult.confirmed,
+    clientBands,
+    allowedDays,
+    startNotBefore,
+    locationNote,
+  });
+
+  // Finding 3 FIX: `clientBands.length || 3` didn't match selectWindows'
+  // actual defaults (business → 2 windows, residential/unknown → 3), so a
+  // business job with no client schedule and 2 days remaining was wrongly
+  // flagged impossible. Use the ACTUAL planned window count instead of a
+  // hardcoded guess — see computeScheduleImpossible below.
+  const scheduleImpossible = computeScheduleImpossible(
+    attemptPlan.length,
+    daysUntilDeadline(nowIso, queueRow.deadline),
+  );
+
+  log.info('serve-intake attempt plan', {
+    address_class: addressClassResult.klass,
+    class_source: addressClassResult.source,
+    confirmed: addressClassResult.confirmed,
+    client_bands: clientBands.length,
+    authority: attemptPlan[0]?.authority ?? 'none',
+    schedule_impossible: scheduleImpossible,
+  });
+
   // ── OCR provenance context (filed on call notes + queue row) ──
   const ocrContext: OcrContext | null = input.docs?.length
     ? buildOcrContext(input.docs, fields, input.allDates ?? [], nowIso)
@@ -869,6 +967,12 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       locationNote,
       propertyRecord,
       businessRecord,
+      addressClass: addressClassResult.klass,
+      addressClassConfirmed: addressClassResult.confirmed,
+      scheduleImpossible,
+      hasClientSchedule: clientBands.length > 0,
+      unparsedClientSchedule,
+      unparsedAllowedDays,
     }, nowIso);
     // File the OCR provenance note AFTER the intake briefing so the feed
     // reads: safety → briefing → extraction context.
@@ -951,8 +1055,21 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       // json_extract(parsed_data, '$._intake.missing_critical') etc.
       _intake: {
         extracted_at: nowIso,
+        // R6: the resolved address class used to be computed here and then
+        // DISCARDED, so every downstream re-plan/backfill path fell back to
+        // the interim `isBusiness ? 'business' : 'unknown'` mapping — the
+        // exact defect this work exists to fix. Persist the full resolution
+        // (class + confirmation + source) so those paths can read the real
+        // answer. `confirmed` is load-bearing, not diagnostic: business
+        // TIMING is gated on it (D-2 / serveAttemptWindows).
+        address_class: {
+          klass: addressClassResult.klass,
+          confirmed: addressClassResult.confirmed,
+          source: addressClassResult.source,
+        },
         attempt_plan: attemptPlan,
         conflicts: input.conflicts ?? [],
+        validation_issues: input.validationIssues ?? [],
         ...(ocrContext ? {
           documents: input.docs!.map((d) => ({
             file_name: d.file_name, doc_type: d.doc_type,

@@ -32,6 +32,8 @@ import type { ExtractedField, QueueRow } from './serveIntakeExtract';
 import type { AttemptWindow } from './serveDiligencePlanner';
 import type { ServiceLocationNote } from './serveLocationNotes';
 import { noteConstraintSummary } from './serveLocationNotes';
+import type { AddressClass } from './serveAddressClass';
+import { DEFAULT_RESIDENTIAL_WINDOWS, DEFAULT_BUSINESS_WINDOWS } from './serveAttemptWindows';
 
 // ── Operator policy switches ─────────────────────────────────
 const FLAG_EVICTION = true;        // eviction / unlawful detainer → HIGH
@@ -70,6 +72,63 @@ function hazardHintText(fields: Record<string, ExtractedField>, queueRow: QueueR
 
 function hasAny(haystack: string, needles: string[]): boolean {
   return needles.some((n) => haystack.includes(n));
+}
+
+// Finding 2 FIX: a bare weekday mention or a bare digit-with-colon/am/pm
+// was too permissive — "Attorney available Monday-Friday for questions" or
+// "Hearing set for Friday, 6/20" would be printed as a verbatim client
+// ATTEMPT-TIME restriction ("Do NOT attempt outside these hours"), which is
+// a fabricated instruction the client never gave. A line only counts as a
+// restriction when it has EITHER a genuine clock-time RANGE (two distinct
+// clock values, e.g. "9AM-3:30PM" or "between 9am and 3:30pm") OR explicit
+// service/attempt language tied to timing. Mentioning a day of the week or
+// a bare date is not, by itself, evidence of an attempt-window restriction.
+//
+// R1 (fix round 2): the two predicates were combined with OR, which was the
+// whole bug. Nearly every real `service_instructions` contains the word
+// "serve", so a line like "Please serve defendant at the residence. Gate code
+// 4412." satisfied hasRestrictionLanguage() alone and was printed under
+// SERVICE WINDOWS as `__Client restriction (verbatim):__ …` followed by "Do
+// NOT attempt outside these hours" — an hours restriction containing no
+// hours, and an instruction to log a restriction that does not exist. The
+// same text was ALSO printed verbatim under CLIENT INSTRUCTIONS, so the
+// report contradicted itself. Both predicates are now REQUIRED (AND), which
+// is what the test at tests/serveIntakeBriefing.test.ts has been named for
+// all along ("paired with clock times").
+const CLOCK_VALUE_RE = /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi;
+// 'diligence' is attempt-cadence language in this domain ("Diligence is 1
+// between 6AM-9AM…") and must count, or the AND above would reject a genuine
+// client band statement that never uses the word "serve".
+const RESTRICTION_KEYWORDS = ['serve', 'service', 'attempt', 'diligence', 'do not serve', 'no service'];
+
+function hasClockTimeRange(line: string): boolean {
+  const matches = line.match(CLOCK_VALUE_RE);
+  return !!matches && matches.length >= 2;
+}
+
+function hasRestrictionLanguage(line: string): boolean {
+  const lower = line.toLowerCase();
+  return RESTRICTION_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+// D2 FIX: the client's attempt restriction is written in
+// service_instructions far more often than in notes, and notes' first
+// line is usually the OCR provenance stamp. Reading only notes[0] made
+// the report print "no client restriction" on packets whose own
+// description quoted the client's schedule.
+export function clientWindowText(queueRow: QueueRow): string | null {
+  const candidates = [queueRow.service_instructions, queueRow.notes];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    for (const line of raw.split('\n')) {
+      const t = line.trim();
+      if (!t) continue;
+      if (t.startsWith('[OCR')) continue;           // provenance stamp, not a restriction
+      if (!hasClockTimeRange(t) || !hasRestrictionLanguage(t)) continue;
+      return t;
+    }
+  }
+  return null;
 }
 
 // ── The decision point ───────────────────────────────────────
@@ -142,6 +201,20 @@ export interface BusinessRecord {
   contact_phone?: string | null;
   phone?: string | null;
   notes?: string | null;
+  business_type?: string | null;
+}
+
+// R5: findOrCreateBusiness stamps every row IT creates with these markers.
+// A row this pipeline invented is not independent evidence of anything, so it
+// must never be allowed to CONFIRM an address class. Exported so the marker
+// lives in exactly one place alongside the record shape that carries it.
+export const AUTO_CREATED_BUSINESS_NOTE = 'Auto-created via serve intake';
+export const AUTO_CREATED_BUSINESS_TYPE = 'process_service_recipient';
+
+export function isAutoCreatedBusinessRecord(b: BusinessRecord | null | undefined): boolean {
+  if (!b) return false;
+  return (b.notes || '').startsWith('Auto-created')
+    || (b.business_type || '') === AUTO_CREATED_BUSINESS_TYPE;
 }
 
 export interface BriefingInput {
@@ -155,6 +228,18 @@ export interface BriefingInput {
   locationNote?: ServiceLocationNote | null;  // system notation for this address/entity
   propertyRecord?: PropertyRecord | null;
   businessRecord?: BusinessRecord | null;
+  addressClass?: AddressClass;
+  addressClassConfirmed?: boolean;
+  scheduleImpossible?: boolean;
+  hasClientSchedule?: boolean;  // true only when the client actually dictated attempt bands
+  // R3 — fail-closed must be VISIBLE. parseClientBands()/parseAllowedDays()
+  // correctly return []/null on anything they cannot read, but that made
+  // "the client dictated nothing" indistinguishable from "the client
+  // dictated something we could not parse". The raw source strings are
+  // carried here so the report can say so (spec §6) instead of silently
+  // applying defaults over a restriction the client actually imposed.
+  unparsedClientSchedule?: string | null;
+  unparsedAllowedDays?: string | null;
 }
 
 export interface BriefingNote {
@@ -178,8 +263,11 @@ export interface PsoBriefing {
 // Utah Rules of Civil Procedure references current as of 2026.
 
 // Who may lawfully accept service, by recipient class (URCP 4(d)).
-function serviceAuthorityLines(isBusiness: boolean, hint: string): string[] {
+function serviceAuthorityLines(isBusiness: boolean, hint: string, addressClass: AddressClass): string[] {
   const lines: string[] = [];
+  if (!isBusiness && addressClass === 'business') {
+    lines.push('SERVICE AT A PLACE OF EMPLOYMENT: substitute service on a co-worker is NOT dwelling substitute service. Unless the client expressly authorizes it, the recipient must be served PERSONALLY at a business address.');
+  }
   if (isBusiness) {
     lines.push('Corporate/LLC service per URCP 4(d)(1)(E): deliver to an officer, a managing or general agent, or the registered agent. Any employee 18+ expressly authorized to accept also qualifies at the business location.');
     lines.push('If serving at a RESIDENCE: personal delivery to the registered agent or an owner/member only — a spouse or co-resident may accept ONLY if authorized or a member of the company.');
@@ -257,23 +345,118 @@ function daysUntil(deadlineIso: string, nowIso: string): number {
   return Math.ceil((dl - now) / 86_400_000);
 }
 
-// Build the full structured "INTAKE BRIEFING" note + (when triggered) a
-// distinct "OFFICER SAFETY" note. Markdown bold (**) is rendered by the
-// Notes tab's renderFormattedText, so section labels stand out.
-function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
+// ── Finding 1 FIX: reliable state-code resolution for the UIDDA check ──
+// `queueRow.jurisdiction` is a COUNTY/COURT descriptor in practice (the
+// extraction few-shot teaches 'Salt Lake', and the intake UI defaults it to
+// 'Salt Lake County, Utah') — it is NOT a state code. Comparing it directly
+// against `recipient_state` ('UT') mismatched on almost every routine
+// in-state job, telling the officer a domestic subpoena "must be
+// domesticated under UIDDA" — a fabricated legal instruction. Only trust a
+// value that is UNAMBIGUOUSLY a two-letter USPS state code; never guess by
+// parsing a county name or substring-matching court_name.
+const US_STATE_CODES = new Set([
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC',
+]);
+
+function reliableStateCode(raw: string | null): string | null {
+  const t = (raw || '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(t) && US_STATE_CODES.has(t) ? t : null;
+}
+
+// ── Finding 4 FIX: robust, confidence-aware party matching ─────────────
+// `.includes()` substring matching was wrong in BOTH directions: it false-
+// MATCHED whenever the recipient's (possibly truncated) name happened to be
+// a literal substring of a party string (e.g. "erica james".includes("eric")),
+// and it false-NON-matched on ordinary formatting variance ("SMITH, JOHN"
+// vs "JOHN SMITH"). The `target.length > 3` guard was also backwards — it
+// unconditionally branded any short name (<=3 chars) a non-party regardless
+// of evidence. Compare normalized whole-token sets instead, and require
+// EVERY recipient token to appear as a whole token in the party string —
+// a partial overlap (e.g. a surname alone appearing inside an unrelated
+// company name) must NOT count as a match. When the recipient's name
+// doesn't carry enough tokens to compare confidently, or there is no party
+// text to compare against, report 'unknown' — the caller must stay silent
+// rather than assert a status it cannot substantiate.
+function normalizeNameTokens(s: string): string[] {
+  return s.toUpperCase().replace(/[.,]/g, '').split(/\s+/).filter(Boolean);
+}
+
+export type PartyMatchStatus = 'party' | 'non-party' | 'unknown';
+
+export function recipientPartyStatus(recipientName: string, parties: Array<string | null | undefined>): PartyMatchStatus {
+  const recipientTokens = normalizeNameTokens(recipientName || '');
+  const validParties = parties.filter((p): p is string => !!(p && p.trim()));
+  // Fewer than 2 tokens (e.g. a single name, or missing entirely) isn't
+  // enough to confidently assert "not a party" — stay silent instead.
+  if (recipientTokens.length < 2 || !validParties.length) return 'unknown';
+  const recipientSet = new Set(recipientTokens);
+  for (const p of validParties) {
+    const partyTokens = normalizeNameTokens(p);
+    const partySet = new Set(partyTokens);
+    // R10: containment was DIRECTIONAL — party ⊇ recipient only. Recipient
+    // "JOHN SMITH JR" against defendant "SMITH, JOHN" failed that test (the
+    // suffix JR has no counterpart), so the report told the officer the
+    // ACTUAL defendant "is NOT a named party in this case". Accept a match
+    // in EITHER direction. The reverse direction still requires the party
+    // side to carry >= 2 tokens, so a single-token party string ("SMITH")
+    // cannot swallow an unrelated recipient.
+    if (recipientTokens.every((t) => partySet.has(t))) return 'party';
+    if (partyTokens.length >= 2 && partyTokens.every((t) => recipientSet.has(t))) return 'party';
+  }
+  return 'non-party';
+}
+
+// ── Split briefing note builders (spec §3.3) ────────────────────────────
+// Each builder owns one topical entry so the PSO reads six focused notes
+// instead of one long one. Markdown bold (**) is rendered by the Notes
+// tab's renderFormattedText, so section labels stand out. This is a MOVE
+// of the sections that used to live in a single buildBriefingNoteText —
+// content is unchanged; only the grouping and the per-note title line
+// (added so each entry is self-describing when read alone) are new.
+
+// Author: OFFICER SAFETY. Was the `if (assessment.caution)` block inside
+// the old buildPsoBriefing. Returns '' when there is no caution so the
+// caller's push() skips it — no empty "safety" entry on a baseline job.
+function buildSafetyNote(assessment: SafetyAssessment): string {
+  if (!assessment.caution) return '';
+  const high = assessment.severity === 'high';
+  const lines: string[] = [];
+  lines.push(`**OFFICER SAFETY — RISK ASSESSMENT: ${high ? 'ELEVATED' : 'BASELINE'}**`);
+  lines.push('**Indicators:**');
+  for (const r of assessment.reasons) lines.push(`• ${r}`);
+  lines.push('**Posture:**');
+  if (high) {
+    lines.push('• Two-officer response recommended. Notify dispatch on arrival and clear.');
+    lines.push('• Park short of the address; approach offset from the door, knock from the hinge side, hands free. Do not enter the residence under any circumstance.');
+    lines.push('• Position for egress before initiating contact. Disengage and re-attempt if the contact turns hostile — the paper is not worth an escalation.');
+  } else {
+    lines.push('• Single-officer standard. Notify dispatch on arrival and clear.');
+    lines.push('• Announce purpose, confirm identity, maintain reactionary gap at the door; stand offset, not square to the threshold.');
+    lines.push('• Watch for dogs, additional occupants, and vehicle movement on approach; note plates of vehicles at the address for the attempt log.');
+  }
+  if (assessment.domesticViolence) {
+    lines.push('• DV flag set: verify the protected party is not present before approach; document timing in the attempt notes.');
+  }
+  return lines.join('\n');
+}
+
+// Author: INTAKE. Sections: SERVICE PROFILE, CASE, TIMELINE, SERVICE
+// AUTHORITY, SERVICE CONSTRAINTS, PROPERTY RECORD, BUSINESS RECORD.
+function buildIntakeNote(input: BriefingInput, nowIso: string): string {
   const { fields, queueRow, isBusiness, agentName, fullLocation, docCount } = input;
   const f = (k: string) => get(fields, k);
   const hint = hazardHintText(fields, queueRow);
 
-  const hiringParty = [queueRow.client_name, queueRow.attorney_name]
-    .filter(Boolean).join(' / ');
-  const callback = f('attorney_phone');
   const caseLine = [queueRow.case_number, queueRow.court_name, queueRow.jurisdiction]
     .filter(Boolean).join(' · ');
   const parties = [queueRow.plaintiff, queueRow.defendant].filter(Boolean).join(' v. ');
 
   const lines: string[] = [];
-  lines.push('**PROCESS SERVICE — INTAKE BRIEFING** *(auto-generated)*');
+  lines.push('**PROCESS SERVICE — INTAKE PROFILE** *(auto-generated)*');
 
   lines.push('**■ SERVICE PROFILE**');
   if (isBusiness) {
@@ -289,6 +472,9 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
     lines.push(`Document class: ${queueRow.document_type || 'civil paper'} / ${f('document_subtype')}`);
   }
   lines.push(`Documents to serve: ${f('documents_to_serve') || queueRow.document_type || 'Civil paper'}  (${docCount} file${docCount === 1 ? '' : 's'} on record)`);
+  if (f('witness_fee_instrument')) {
+    lines.push(`__CARRY WITH YOU: ${f('witness_fee_instrument')}__ — a witness fee must be tendered at service. Arriving without it fails the attempt.`);
+  }
 
   if (caseLine || parties) {
     lines.push('**■ CASE**');
@@ -297,6 +483,18 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
     if (f('filing_date')) lines.push(`Filed: ${f('filing_date')}`);
     if (queueRow.deadline) lines.push(`__SERVICE DEADLINE: ${queueRow.deadline}__`);
     if (queueRow.court_date) lines.push(`Hearing date: ${queueRow.court_date} — service must be perfected with enough lead time for the recipient's appearance.`);
+
+    const target = queueRow.recipient_name || '';
+    const partyStatus = recipientPartyStatus(target, [queueRow.plaintiff, queueRow.defendant]);
+    if (partyStatus === 'non-party') {
+      lines.push(`NOTE: ${target} is NOT a named party in this case — they are a non-party recipient (typical for a subpoena). Do not discuss the case; refer questions to the issuing court or hiring attorney.`);
+    }
+
+    const courtState = reliableStateCode(queueRow.jurisdiction);
+    const serviceState = reliableStateCode(queueRow.recipient_state);
+    if (courtState && serviceState && courtState !== serviceState) {
+      lines.push(`OUT-OF-STATE PROCESS: the issuing court is in ${courtState} and service is in ${serviceState}. Under the Uniform Interstate Depositions and Discovery Act the subpoena must be domesticated in the service state — confirm with the hiring party that this has been done before attempting.`);
+    }
   }
 
   // ── TIMELINE: computed urgency for the officer reading this ───
@@ -340,7 +538,7 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
   }
 
   lines.push('**■ SERVICE AUTHORITY**');
-  for (const l of serviceAuthorityLines(isBusiness, hint)) lines.push(`• ${l}`);
+  for (const l of serviceAuthorityLines(isBusiness, hint, input.addressClass || 'unknown')) lines.push(`• ${l}`);
 
   if (input.locationNote) {
     const note = input.locationNote;
@@ -350,7 +548,23 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
     if (summary && summary !== note.note_type) {
       lines.push(`• Structured constraint: **${summary}**`);
     }
-    lines.push('• Attempt windows above have been adjusted to comply with these constraints. Any attempt outside the noted hours or days may be legally challenged — document attempts with timestamps.');
+    // R7: this used to assert compliance unconditionally, from the mere
+    // PRESENCE of a note. Client bands OUTRANK the site note and
+    // selectWindows() returns them WITHOUT intersecting it — so a note with
+    // cutoff_time 15:00 plus a client band of 18:00-21:00 printed
+    // "18:00-21:00 [client-specified]" under a sentence claiming it complied
+    // with the 15:00 cutoff, and the officer arrived at a locked gate. Only
+    // claim compliance when a window in the emitted plan actually carries
+    // `authority === 'site note'`; otherwise name the conflict, which is
+    // exactly what the officer needs to know.
+    const planAuthorities = new Set((input.attemptPlan ?? []).map((w) => w.authority));
+    if (planAuthorities.has('site note')) {
+      lines.push('• Attempt windows above have been adjusted to comply with these constraints. Any attempt outside the noted hours or days may be legally challenged — document attempts with timestamps.');
+    } else if (planAuthorities.has('client-specified')) {
+      lines.push('• __CONFLICT — READ BEFORE DEPARTING: the client-specified attempt windows above OUTRANK this site constraint and have NOT been narrowed to fit it.__ One or more planned windows may fall outside the noted hours or days. Confirm access before the attempt; if the site constraint blocks entry, do NOT attempt outside the client window — document the conflict and notify the hiring party.');
+    } else {
+      lines.push('• These constraints did NOT shape the attempt windows above (those came from the standard address-class windows). Observe the noted hours and days in the field, and document any attempt made outside them with timestamps.');
+    }
   }
 
   // ── Property / Business record enrichment ─────────────────
@@ -386,36 +600,133 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
     }
   }
 
+  return lines.join('\n');
+}
+
+// Author: DISPATCH. Section: TACTICAL APPROACH.
+function buildTacticalNote(input: BriefingInput, hint: string): string {
+  const lines: string[] = [];
+  lines.push('**PROCESS SERVICE — TACTICAL APPROACH** *(auto-generated)*');
   lines.push('**■ TACTICAL APPROACH**');
   for (const l of tacticalApproachLines(input, hint)) lines.push(`• ${l}`);
+  return lines.join('\n');
+}
+
+// Author: DISPATCH. Sections: RECOMMENDED ATTEMPT PLAN, SERVICE WINDOWS,
+// DILIGENCE STANDARD, plus the Task 6 impossible-schedule warning.
+function buildPlanNote(input: BriefingInput): string {
+  const { queueRow } = input;
+  const lines: string[] = [];
+  lines.push('**PROCESS SERVICE — ATTEMPT PLAN** *(auto-generated)*');
 
   if (input.attemptPlan?.length) {
     lines.push('**■ RECOMMENDED ATTEMPT PLAN**');
     for (const w of input.attemptPlan) {
-      lines.push(`• Attempt ${w.attempt}: ${w.weekday} ${w.date}, ${w.window}  (${w.focus})`);
+      lines.push(`• Attempt ${w.attempt}: ${w.weekday} ${w.date}, ${w.window}  (${w.focus}) [${w.authority}]`);
     }
     lines.push('• Adjust to client-specified windows and field conditions; following the plan satisfies the time-variance diligence standard.');
+    // Finding 3 FIX: only blame "the client's own attempt schedule" when the
+    // client actually dictated one — otherwise the plan's band count comes
+    // from the standard residential/business defaults, not any client
+    // instruction, and saying so would fabricate a client requirement.
+    if (input.scheduleImpossible) {
+      lines.push(input.hasClientSchedule
+        ? '__WARNING: the client\'s own attempt schedule requires more distinct days than remain before the deadline.__ Notify the hiring party — either the deadline moves or the schedule does. Do not silently attempt fewer times.'
+        : '__WARNING: the standard diligence sequence cannot fit within the days remaining before the deadline.__ Notify the hiring party — either the deadline moves or fewer attempts must be made. Do not silently attempt fewer times.');
+    }
   }
 
   // ── SERVICE WINDOWS — always present so the officer knows the answer ──
   // to "when can I go?" regardless of whether the client specified one.
+  //
+  // R2: this block used to re-derive everything from a regex over free text,
+  // ignoring the timing engine entirely. Two consequences, both shipped:
+  //   • the canonical 24-hour client schedule ('06:00-09:00;18:00-21:00')
+  //     carries no am/pm, so CLOCK_VALUE_RE never matched it — the note said
+  //     "No client restriction — standard diligence windows apply" directly
+  //     beneath three [client-specified] windows;
+  //   • the "standard" business hours it printed (09:00–11:00 / 13:00–16:00)
+  //     were not the hours the planner used (09:30-11:30 / 13:30-15:30), so
+  //     one report stated two different sets of business hours.
+  // It is now driven by the STRUCTURED signals — hasClientSchedule and the
+  // authority values actually present in attemptPlan — and the default hours
+  // are rendered from the same constants selectWindows() plans from.
   lines.push('**■ SERVICE WINDOWS**');
-  const clientWindows = (queueRow.notes || '').split('\n')[0]?.trim();
-  if (clientWindows && !clientWindows.startsWith('[OCR')) {
-    // Client imposed a specific window restriction — show verbatim so the
-    // officer has the exact language for the affidavit if challenged.
-    lines.push(`• __Client restriction (verbatim):__ ${clientWindows}`);
+  const planAuthorities = new Set((input.attemptPlan ?? []).map((w) => w.authority));
+  const clientDictated = input.hasClientSchedule === true || planAuthorities.has('client-specified');
+  const clientWindows = clientWindowText(queueRow);
+
+  const windowList = (specs: readonly { window: string; focus: string }[]) =>
+    specs.map((s) => `${s.window.replace('-', '–')} (${s.focus})`).join('; ');
+
+  if (clientDictated) {
+    lines.push('• __The client dictated the attempt hours.__ Every window above marked [client-specified] came from the client\'s own instruction — those are the authorized hours.');
+    if (clientWindows) {
+      // Verbatim source language, for the affidavit if service is challenged.
+      lines.push(`• __Client restriction (verbatim):__ ${clientWindows}`);
+    }
     lines.push('• Do NOT attempt outside these hours — off-hours service may be challenged in court. If you arrive outside the window, note "client-imposed restriction — departed without contact" in the attempt log.');
     lines.push('• Within the authorized window, vary day and time across attempts — time variance is the diligence standard even when hours are constrained.');
+  } else if (clientWindows) {
+    // Restriction language IS present in the packet, but the timing engine
+    // produced no client bands from it. Say exactly that; do not present the
+    // quoted text as if it had been applied to the plan.
+    lines.push(`• __Client timing language found in the packet (verbatim):__ ${clientWindows}`);
+    lines.push('• __This language was NOT parsed into structured attempt bands — the windows above are the standard defaults, not the client\'s.__ Read the quoted line yourself and verify with the hiring party before attempting outside the hours it states.');
   } else {
-    // No restriction: give the officer the standard-optimal windows.
-    lines.push('• No client restriction — standard diligence windows apply:');
-    lines.push('• Residential: early morning 07:00–09:00 (pre-work), midday 11:00–13:00, early evening 17:00–20:30 (post-work). Include at least one weekend attempt — residential hit rates peak Saturday 08:00–10:00.');
-    lines.push('• Business: mid-morning 09:00–11:00 and early afternoon 13:00–16:00 during posted business hours. Confirm the entity still operates at the address before tendering.');
+    lines.push('• No client restriction on file — standard diligence windows apply:');
+  }
+
+  if (!clientDictated) {
+    // Print only the window set that actually governs this job when the plan
+    // says which one it is; print both when there is no plan to read.
+    const showBusiness = planAuthorities.has('business default')
+      || (!planAuthorities.has('residential default') && !planAuthorities.has('site note'));
+    const showResidential = planAuthorities.has('residential default')
+      || (!planAuthorities.has('business default') && !planAuthorities.has('site note'));
+    if (showResidential) {
+      lines.push(`• Residential: ${windowList(DEFAULT_RESIDENTIAL_WINDOWS)}. Include at least one weekend attempt — residential hit rates peak Saturday 08:00–10:00.`);
+    }
+    if (showBusiness) {
+      lines.push(`• Business (CONFIRMED business location only): ${windowList(DEFAULT_BUSINESS_WINDOWS)} during posted business hours. Confirm the entity still operates at the address before tendering.`);
+    }
+    if (planAuthorities.has('site note')) {
+      lines.push('• The windows above came from a recorded site notation for this address — see SERVICE CONSTRAINTS in the intake note.');
+    }
+  }
+
+  // R3: a NON-EMPTY client schedule / day restriction that the parser could
+  // not read must be disclosed. Silently falling back to defaults is the
+  // fail-OPEN failure the fail-closed parsers were supposed to prevent —
+  // e.g. service_days_allowed "no service on sunday" yields a null day set,
+  // every day becomes allowed, and a Sunday attempt gets scheduled on a job
+  // where the client forbade Sunday.
+  const unparsed: string[] = [];
+  if (input.unparsedClientSchedule) unparsed.push(`attempt hours: "${input.unparsedClientSchedule}"`);
+  if (input.unparsedAllowedDays) unparsed.push(`days allowed: "${input.unparsedAllowedDays}"`);
+  if (unparsed.length) {
+    lines.push(`• __CLIENT SCHEDULE/DAY RESTRICTION PRESENT BUT COULD NOT BE PARSED — DEFAULTS APPLIED, VERIFY WITH THE HIRING PARTY.__ Unreadable value(s) — ${unparsed.join('; ')}. The plan above does NOT reflect this restriction. Do not attempt until the hiring party confirms the authorized hours and days.`);
   }
 
   lines.push('**■ DILIGENCE STANDARD**');
   for (const l of DILIGENCE_LINES) lines.push(`• ${l}`);
+
+  return lines.join('\n');
+}
+
+// Author: DISPATCH. Sections: AFFIDAVIT / DOCUMENTATION REQUIREMENTS,
+// CLIENT INSTRUCTIONS (verbatim), plus the Task 6 document checklist.
+function buildAffidavitNote(input: BriefingInput): string {
+  const { fields, queueRow } = input;
+  const f = (k: string) => get(fields, k);
+  const lines: string[] = [];
+  lines.push('**PROCESS SERVICE — AFFIDAVIT / DOCUMENTATION** *(auto-generated)*');
+
+  const docList = (f('documents_to_serve') || '').split(';').map((s) => s.trim()).filter(Boolean);
+  if (docList.length > 1) {
+    lines.push('**■ DOCUMENT CHECKLIST** — confirm every item is in the packet before departing:');
+    for (const d of docList) lines.push(`- [ ] ${d}`);
+  }
 
   lines.push('**■ AFFIDAVIT / DOCUMENTATION REQUIREMENTS**');
   for (const l of AFFIDAVIT_LINES) lines.push(`• ${l}`);
@@ -424,6 +735,19 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
     lines.push('**■ CLIENT INSTRUCTIONS (verbatim)**');
     lines.push(queueRow.service_instructions);
   }
+
+  return lines.join('\n');
+}
+
+// Author: DISPATCH. Section: CONTACTS.
+function buildContactsNote(input: BriefingInput): string {
+  const { fields, queueRow } = input;
+  const f = (k: string) => get(fields, k);
+  const hiringParty = [queueRow.client_name, queueRow.attorney_name]
+    .filter(Boolean).join(' / ');
+  const callback = f('attorney_phone');
+  const lines: string[] = [];
+  lines.push('**PROCESS SERVICE — CONTACTS** *(auto-generated)*');
 
   if (hiringParty) {
     lines.push('**■ CONTACTS**');
@@ -528,42 +852,24 @@ export function buildOcrContext(
 
 export function buildPsoBriefing(input: BriefingInput, nowIso: string): PsoBriefing {
   const assessment = assessOfficerSafety(input.fields, input.queueRow);
+  const hint = hazardHintText(input.fields, input.queueRow);
   const notes: BriefingNote[] = [];
+  // Id scheme is nowIso + a counter rather than Date.now() — Date.now()
+  // inside a loop can collide, and this function must stay deterministic
+  // for a given nowIso.
+  let seq = 0;
+  const push = (author: string, text: string) => {
+    if (!text.trim()) return;
+    notes.push({ id: `intake-${author.toLowerCase().replace(/\s+/g, '-')}-${nowIso}-${seq++}`, author, text, timestamp: nowIso });
+  };
 
   // Safety note FIRST so it sits at the top of the feed the PSO scans.
-  if (assessment.caution) {
-    const high = assessment.severity === 'high';
-    const lines: string[] = [];
-    lines.push(`**OFFICER SAFETY — RISK ASSESSMENT: ${high ? 'ELEVATED' : 'BASELINE'}**`);
-    lines.push('**Indicators:**');
-    for (const r of assessment.reasons) lines.push(`• ${r}`);
-    lines.push('**Posture:**');
-    if (high) {
-      lines.push('• Two-officer response recommended. Notify dispatch on arrival and clear.');
-      lines.push('• Park short of the address; approach offset from the door, knock from the hinge side, hands free. Do not enter the residence under any circumstance.');
-      lines.push('• Position for egress before initiating contact. Disengage and re-attempt if the contact turns hostile — the paper is not worth an escalation.');
-    } else {
-      lines.push('• Single-officer standard. Notify dispatch on arrival and clear.');
-      lines.push('• Announce purpose, confirm identity, maintain reactionary gap at the door; stand offset, not square to the threshold.');
-      lines.push('• Watch for dogs, additional occupants, and vehicle movement on approach; note plates of vehicles at the address for the attempt log.');
-    }
-    if (assessment.domesticViolence) {
-      lines.push('• DV flag set: verify the protected party is not present before approach; document timing in the attempt notes.');
-    }
-    notes.push({
-      id: `intake-safety-${Date.now()}`,
-      author: 'OFFICER SAFETY',
-      text: lines.join('\n'),
-      timestamp: nowIso,
-    });
-  }
-
-  notes.push({
-    id: `intake-brief-${Date.now() + 1}`,
-    author: 'INTAKE',
-    text: buildBriefingNoteText(input, nowIso),
-    timestamp: nowIso,
-  });
+  push('OFFICER SAFETY', buildSafetyNote(assessment));
+  push('INTAKE', buildIntakeNote(input, nowIso));
+  push('DISPATCH', buildTacticalNote(input, hint));
+  push('DISPATCH', buildPlanNote(input));
+  push('DISPATCH', buildAffidavitNote(input));
+  push('DISPATCH', buildContactsNote(input));
 
   return {
     notes,
