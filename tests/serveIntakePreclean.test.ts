@@ -48,9 +48,36 @@ describe('scrubWatermarkBleed', () => {
     expect(out).toContain('Plaintiff');
   });
 
-  it('keeps single-letter lines that are not part of a known stamp', () => {
+  it('returns input unchanged when there are too few isolated letters to form a stamp', () => {
     const input = 'Exhibit\nA\nSchedule';
     expect(scrubWatermarkBleed(input)).toContain('A');
+  });
+
+  it('keeps isolated single letters whose sequence does not match any watermark stamp', () => {
+    // Letters B, G, J, Q do not appear in any of the known stamps (RUSH, COPY,
+    // FILED, DRAFT, VOID, SAMPLE), so no stamp matcher can ever consume them.
+    // This exercises the negative path of the multiset-match logic.
+    const input = [
+      'Case File 123',
+      'B',
+      'Court XYZ',
+      'G',
+      'Plaintiff Name',
+      'J',
+      'Defendant Person',
+      'Q',
+      'Documents Listed',
+    ].join('\n');
+    const output = scrubWatermarkBleed(input);
+    expect(output).toContain('B');
+    expect(output).toContain('G');
+    expect(output).toContain('J');
+    expect(output).toContain('Q');
+    expect(output).toContain('Case File 123');
+    expect(output).toContain('Court XYZ');
+    expect(output).toContain('Plaintiff Name');
+    expect(output).toContain('Defendant Person');
+    expect(output).toContain('Documents Listed');
   });
 
   it('keeps single letters that appear inline rather than alone on a line', () => {
