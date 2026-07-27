@@ -22,8 +22,25 @@ import { precleanText } from './serveIntakePreclean';
 // fields it filled.
 // ============================================================
 
-const TEXT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast' as const;
-const VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct' as const;
+// ── Model selection ───────────────────────────────────────────
+// Catalog + neuron costs verified against the live Cloudflare pricing
+// page 2026-07-26. Llama 4 Scout bills 77,273 neurons/M output against
+// Llama 3.3 70B's 204,805 — the upgrade REDUCES spend (~312 vs ~520
+// neurons for a 3-document packet) while adding native multimodality
+// and a 10M-token context.
+//
+// ⚠️ SERVE_INTAKE_LORA is bound to TEXT_MODEL_LEGACY. A LoRA adapter
+// cannot transfer to a different base model. If the LoRA is configured,
+// selecting TEXT_MODEL_SCOUT silently drops the fine-tune — which is why
+// scripts/serve-intake-model-ab.ts must run before the default changes.
+export const TEXT_MODEL_LEGACY = '@cf/meta/llama-3.3-70b-instruct-fp8-fast' as const;
+export const TEXT_MODEL_SCOUT = '@cf/meta/llama-4-scout-17b-16e-instruct' as const;
+export const VISION_MODEL_LEGACY = '@cf/meta/llama-3.2-11b-vision-instruct' as const;
+export const VISION_MODEL_MOONDREAM = '@cf/moondream/moondream3.1-9B-A2B' as const;
+
+// Defaults stay on the incumbents until the A/B says otherwise (Task 5).
+const TEXT_MODEL = TEXT_MODEL_LEGACY;
+const VISION_MODEL = VISION_MODEL_LEGACY;
 
 // Field set sourced from the client's OcrScanResult + IntakeResult
 // shapes (client/src/pages/ServeIntakePage.tsx). Keeping the list
