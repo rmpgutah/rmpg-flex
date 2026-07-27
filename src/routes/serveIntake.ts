@@ -54,6 +54,7 @@ import {
   type PdfTextResult,
 } from '../utils/serveIntakeExtract';
 import { precleanText } from '../utils/serveIntakePreclean';
+import { validateFields } from '../utils/serveIntakeValidate';
 import { judgeMerged } from '../utils/serveIntakeJudge';
 import { parseDefendants } from '../utils/serveIntakeDefendants';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
@@ -651,12 +652,28 @@ si.post('/upload', async (c) => {
   // success card) sees clean values.
   const normalizedFields = normalizeFields(mergedFields);
 
+  // ── Deterministic cross-field validation ────────────────────────
+  // The model self-reports confidence, and it is optimistic. Check what
+  // can be checked without a model (ZIP↔state agreement, phone digit
+  // count, date sanity) and fold the result back into the score, so a
+  // field that contradicts itself can't present as high-confidence on
+  // the review screen or sail past the quality gate below.
+  const nowIso = new Date().toISOString();
+  const validation = validateFields(normalizedFields, nowIso);
+  if (validation.issues.length) {
+    log.warn('serve-intake validation issues', {
+      count: validation.issues.length,
+      issues: validation.issues.slice(0, 10),
+    });
+  }
+  const validatedFields = validation.adjusted;
+
   // ── Phase 1 Quality Gate: judge the merged result ──────────────
   const rawDocsForJudge = collected.map(c2 => ({ name: c2.file.name, text: c2.text || '' }));
   const docTypesForJudge = collected.map(c2 => c2.ex.documentType);
   const judgeResult = await judgeMerged(
     c.env,
-    normalizedFields,
+    validatedFields,
     rawDocsForJudge,
     docTypesForJudge,
   );
@@ -672,7 +689,7 @@ si.post('/upload', async (c) => {
       const overrides = JSON.parse(overridesRaw) as Record<string, string>;
       for (const [k, v] of Object.entries(overrides)) {
         if (typeof v === 'string' && v.trim()) {
-          normalizedFields[k] = { value: v.trim(), confidence: 1.0 };
+          validatedFields[k] = { value: v.trim(), confidence: 1.0 };
         }
       }
       for (const k of Object.keys(overrides)) {
@@ -784,8 +801,8 @@ si.post('/upload', async (c) => {
 
   // ── Commit the merged extraction into the full RMS record set:
   //    business / person / property / call / serve_queue + links.
-  const row = fieldsToQueueRow(normalizedFields);
-  const docSummary = buildCallDescription(row, normalizedFields, documents.length);
+  const row = fieldsToQueueRow(validatedFields);
+  const docSummary = buildCallDescription(row, validatedFields, documents.length);
   let commit: CommitResult = {
     serve_queue_id: null, person_id: null, agent_person_id: null,
     business_id: null, property_id: null, call_id: null, call_number: null,
@@ -795,7 +812,7 @@ si.post('/upload', async (c) => {
   if (row.recipient_name || row.recipient_address) {
     await reconcileScheduleSchema(db);
     commit = await commitIntake(db, {
-      fields: normalizedFields,
+      fields: validatedFields,
       queueRow: row,
       userId: user.id,
       documentSummary: docSummary,
@@ -904,7 +921,7 @@ si.post('/upload', async (c) => {
     // Legacy IntakeResult shape so the existing success card on
     // ServeIntakePage renders without any client-side branching on
     // which endpoint was hit.
-    extracted: buildExtractedBlock(normalizedFields),
+    extracted: buildExtractedBlock(validatedFields),
     confidence: bestConfidence,
     documentType: bestDocType,
     // Server-side advanced fields (the /intake legacy path can't
@@ -920,11 +937,11 @@ si.post('/upload', async (c) => {
     judge_verdicts: judgeResult.verdicts,
     quality_status: judgeResult.overall_status === 'error' ? 'needs_review' : judgeResult.overall_status,
     judge_run_id: judgeRunId,
-    defendants_detected: parseDefendants(normalizedFields.defendant?.value),
+    defendants_detected: parseDefendants(validatedFields.defendant?.value),
     merged: {
       documentType: bestDocType,
       confidence: bestConfidence,
-      fields: normalizedFields,
+      fields: validatedFields,
       allDates: [...allDates],
       queue_row: row,
     },
