@@ -50,6 +50,7 @@ import {
   applyCriticResults,
   criticExtract,
   CRITIC_TIMEOUT_MS,
+  normalizeFields,
   type ExtractionResult,
   type ExtractedField,
   type PdfTextResult,
@@ -672,9 +673,15 @@ si.post('/upload', async (c) => {
   // field sheet, inverting precedence on the modal packet. (arbitrateFields
   // also collapses court-form enum members onto court_filing as a second line
   // of defense for the ex.documentType fallback.)
+  // Normalize per-candidate BEFORE arbitration so the conflicts audit records
+  // the values that will actually be committed. Previously arbitration ran on
+  // raw model output and normalization ran once afterwards (via
+  // finalizeFields, below), so a persisted conflict could read
+  // chosen: "6/26/2026" while the row held "2026-06-26" — PR 4's resolver
+  // would show a value that disagrees with the record it is resolving.
   const docCandidates: DocCandidate[] = collected.map((c2) => ({
     docType: c2.family ?? c2.ex.documentType,
-    fields: c2.ex.fields,
+    fields: normalizeFields(c2.ex.fields),
   }));
   const arbitration = arbitrateFields(docCandidates);
   const mergedFields: Record<string, ExtractedField> = arbitration.merged;
@@ -941,6 +948,7 @@ si.post('/upload', async (c) => {
       })),
       allDates: [...allDates],
       conflicts,
+      validationIssues: validation.issues,
       env: c.env,
     });
     // Back-link the document rows to the new queue entry — and to the

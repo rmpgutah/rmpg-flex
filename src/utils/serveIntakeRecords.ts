@@ -579,6 +579,12 @@ export interface CommitInput {
   // Optional — single-document callers (/intake legacy path, document
   // reprocessing) have nothing to arbitrate.
   conflicts?: FieldConflict[];
+  // Cross-field validation issues (serveIntakeValidate.validateFields), e.g.
+  // ZIP↔state disagreement or a bad phone digit count. Previously these only
+  // reached log.warn, so an officer saw a confidence knocked down with no
+  // stated reason. Embedded verbatim into parsed_data._intake.validation_issues
+  // so PR 4's review UI can show the reason behind the lowered confidence.
+  validationIssues?: Array<{ field: string; severity: 'warn' | 'error'; message: string }>;
   // Operator-selected client (from the intake form's client dropdown). When
   // set, it is written directly to serve_queue.client_id and skips the
   // post-hoc name-based lookup that would otherwise resolve the contract.
@@ -1018,6 +1024,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
         extracted_at: nowIso,
         attempt_plan: attemptPlan,
         conflicts: input.conflicts ?? [],
+        validation_issues: input.validationIssues ?? [],
         ...(ocrContext ? {
           documents: input.docs!.map((d) => ({
             file_name: d.file_name, doc_type: d.doc_type,
