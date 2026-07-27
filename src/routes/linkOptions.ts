@@ -5,6 +5,7 @@ import type { Env } from '../types';
 import { getDb, query, execute, queryFirst } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 
+import { log } from '../utils/logger';
 const CATEGORIES = ['person_role', 'vehicle_role', 'caller_relationship', 'business_role'] as const;
 
 // Read router — mounted at /api/dispatch → GET /api/dispatch/link-options.
@@ -45,7 +46,8 @@ linkOptionsAdmin.get('/', requireRole('admin', 'manager'), async (c) => {
       db, 'SELECT * FROM link_options ORDER BY category, sort_order',
     );
     return c.json(rows);
-  } catch {
+  } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/linkOptions.ts' }, err);
     return c.json({ error: 'Failed' }, 500);
   }
 });
@@ -65,7 +67,8 @@ linkOptionsAdmin.post('/', requireRole('admin', 'manager'), async (c) => {
     const created = (result.meta?.changes ?? 0) > 0;
     const row = await queryFirst(db, 'SELECT * FROM link_options WHERE category = ? AND value = ?', b.category, b.value.trim());
     return c.json({ ...(row as Record<string, unknown>), created }, created ? 201 : 200);
-  } catch {
+  } catch (err) {
+    log.error('POST / failed', { src: 'src/routes/linkOptions.ts' }, err);
     return c.json({ error: 'Failed' }, 500);
   }
 });
@@ -86,7 +89,8 @@ linkOptionsAdmin.patch('/:id', requireRole('admin', 'manager'), async (c) => {
     await execute(db, `UPDATE link_options SET ${sets.join(', ')} WHERE id = ?`, ...params);
     const row = await queryFirst(db, 'SELECT * FROM link_options WHERE id = ?', id);
     return c.json(row);
-  } catch {
+  } catch (err) {
+    log.error('PATCH /:id failed', { src: 'src/routes/linkOptions.ts' }, err);
     return c.json({ error: 'Failed' }, 500);
   }
 });
@@ -104,7 +108,8 @@ linkOptionsAdmin.delete('/:id', requireRole('admin', 'manager'), async (c) => {
     }
     await execute(db, 'DELETE FROM link_options WHERE id = ?', id);
     return c.json({ success: true, deleted: true });
-  } catch {
+  } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/linkOptions.ts' }, err);
     return c.json({ error: 'Failed' }, 500);
   }
 });

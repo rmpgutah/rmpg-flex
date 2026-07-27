@@ -72,6 +72,7 @@ geography.get('/codes', async (c) => {
     const codes = await query<Record<string, unknown>>(db, 'SELECT * FROM dispatch_codes ORDER BY code');
     return c.json(codes);
   } catch (err) {
+    log.error('GET /codes failed', { src: 'src/routes/dispatch/geography.ts' }, err);
     return c.json({ error: 'Failed to get codes' }, 500);
   }
 });
@@ -176,6 +177,7 @@ geography.get('/districts', async (c) => {
     `);
     return c.json(rows);
   } catch (err) {
+    log.error('GET /districts failed', { src: 'src/routes/dispatch/geography.ts' }, err);
     return c.json({ error: 'Failed' }, 500);
   }
 });
@@ -328,7 +330,8 @@ for (const [path, meta] of Object.entries(GEO_TABLES)) {
       if (meta.parentCol) { cols.splice(2, 0, meta.parentCol); vals.splice(2, 0, body[meta.parentCol]); ph.splice(2, 0, '?'); }
       const result = await execute(db, `INSERT INTO ${meta.table} (${cols.join(', ')}, created_at) VALUES (${ph.join(', ')})`, ...vals);
       return c.json({ success: true, id: result.meta.last_row_id }, 201);
-    } catch (err) { return c.json({ error: 'Failed to create' }, 500); }
+    } catch (err) {
+      log.error('POST /backfill failed', { src: 'src/routes/dispatch/geography.ts' }, err); return c.json({ error: 'Failed to create' }, 500); }
   });
 
   geography.delete(`/${path}/:id`, requireRole('admin', 'manager', 'supervisor'), async (c) => {
@@ -337,7 +340,8 @@ for (const [path, meta] of Object.entries(GEO_TABLES)) {
       const id = c.req.param('id');
       await execute(db, `DELETE FROM ${meta.table} WHERE id = ?`, id);
       return c.json({ success: true });
-    } catch (err) { return c.json({ error: 'Failed to delete' }, 500); }
+    } catch (err) {
+      log.error('POST /backfill failed', { src: 'src/routes/dispatch/geography.ts' }, err); return c.json({ error: 'Failed to delete' }, 500); }
   });
 
   // PUT /:id — edit a geography row. This handler was MISSING: the Geography
@@ -365,7 +369,8 @@ for (const [path, meta] of Object.entries(GEO_TABLES)) {
       vals.push(id);
       await execute(db, `UPDATE ${meta.table} SET ${sets.join(', ')} WHERE id = ?`, ...vals);
       return c.json({ success: true });
-    } catch (err) { return c.json({ error: 'Failed to update' }, 500); }
+    } catch (err) {
+      log.error('POST /backfill failed', { src: 'src/routes/dispatch/geography.ts' }, err); return c.json({ error: 'Failed to update' }, 500); }
   });
 }
 

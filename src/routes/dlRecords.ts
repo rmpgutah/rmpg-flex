@@ -36,6 +36,7 @@ import { lookupCourtRecords } from '../utils/courtRecordsLookup';
 import { lookupFbiWanted } from '../utils/fbiWantedLookup';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 const dlRecords = new Hono<Env>();
 
 // ── Inline role gate (mirrors arrests.ts) ───────────────────
@@ -216,6 +217,7 @@ dlRecords.get('/', async (c) => {
 
     return c.json({ data: rows, total: totalRow?.cnt ?? 0, page, per_page: perPage });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ error: 'Failed to list DL records', code: 'FAILED_TO_LIST_DL' }, 500);
   }
 });
@@ -333,7 +335,8 @@ Transcribe exactly what is printed. dl_state is the issuing state's 2-letter cod
       return c.json({ success: false, error: 'Vision model returned no structured data', raw_ocr: raw.slice(0, 500) });
     }
     let parsed: Record<string, string>;
-    try { parsed = JSON.parse(jsonMatch[0]); } catch {
+    try { parsed = JSON.parse(jsonMatch[0]); } catch (err) {
+      log.error('POST /ocr-scan failed', { src: 'src/routes/dlRecords.ts' }, err);
       return c.json({ success: false, error: 'Vision output was not valid JSON', raw_ocr: raw.slice(0, 500) });
     }
     // Drop hallucinated non-string values; keep the contract flat strings.
@@ -403,6 +406,7 @@ dlRecords.post('/scan-log', async (c) => {
 
     return c.json({ success: true, id: result.meta.last_row_id });
   } catch (err) {
+    log.error('POST /scan-log failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ success: false, error: 'Failed to log scan' }, 500);
   }
 });
@@ -447,6 +451,7 @@ dlRecords.get('/scan-log', async (c) => {
     }
     return c.json({ data: rows, count: rows.length });
   } catch (err) {
+    log.error('GET /scan-log failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ data: [], count: 0, error: 'Failed to list scans' }, 500);
   }
 });
@@ -580,6 +585,7 @@ dlRecords.post('/sor/poll', async (c) => {
     const r = await runUtahSorPoll(getDb(c.env));
     return c.json(r);
   } catch (err) {
+    log.error('POST /sor/poll failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ configured: false, seen: 0, upserted: 0, error: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
@@ -983,6 +989,7 @@ dlRecords.get('/:id', async (c) => {
     );
     return c.json({ ...record, addresses });
   } catch (err) {
+    log.error('GET /:id failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ error: 'Failed to get DL record', code: 'FAILED_TO_GET_DL' }, 500);
   }
 });
@@ -1019,6 +1026,7 @@ dlRecords.put('/:id', async (c) => {
 
     return c.json({ success: true, data: updated });
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ error: 'Failed to update DL record', code: 'FAILED_TO_UPDATE_DL' }, 500);
   }
 });
@@ -1046,6 +1054,7 @@ dlRecords.delete('/:id', async (c) => {
 
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ error: 'Failed to delete DL record', code: 'FAILED_TO_DELETE_DL' }, 500);
   }
 });
@@ -1209,6 +1218,7 @@ dlRecords.post('/ocr-scan', async (c) => {
     );
     return c.json({ success: true, parsed, model: DL_VISION_MODEL });
   } catch (err) {
+    log.error('POST /ocr-scan failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({
       error: err instanceof Error ? err.message : 'DL scan failed',
       code: 'DL_OCR_FAILED',

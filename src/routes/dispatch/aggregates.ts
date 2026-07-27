@@ -67,6 +67,7 @@ aggregates.get('/', async (c) => {
       units: unitStats,
     });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/dispatch/aggregates.ts' }, err);
     return c.json({ error: 'Failed to get aggregates' }, 500);
   }
 });
@@ -86,6 +87,7 @@ aggregates.get('/disposition-stats', async (c) => {
     `);
     return c.json(rows);
   } catch (err) {
+    log.error('GET /disposition-stats failed', { src: 'src/routes/dispatch/aggregates.ts' }, err);
     return c.json({ error: 'Failed' }, 500);
   }
 });

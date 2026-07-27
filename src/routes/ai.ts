@@ -18,6 +18,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
+import { log } from '../utils/logger';
 import {
   rankUnitsForCall, suggestUnits, analyzeCall, narrativeAssist, smartSearch,
   GPS_FRESH_WINDOW_S, type RawUnit, type CallContext,
@@ -141,6 +142,7 @@ ai.put('/behavior', requireRole('admin', 'manager'), async (c) => {
     await setConfigValue(db, 'ai.behavior', JSON.stringify(body));
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /behavior failed', { src: 'src/routes/ai.ts' }, err);
     return c.json({ error: 'Failed to save behavior config' }, 500);
   }
 });
@@ -167,6 +169,7 @@ ai.put('/master-config', requireRole('admin', 'manager'), async (c) => {
     await setConfigValue(db, 'ai.master-config', JSON.stringify(merged));
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /master-config failed', { src: 'src/routes/ai.ts' }, err);
     return c.json({ error: 'Failed to save master config' }, 500);
   }
 });
@@ -186,6 +189,7 @@ ai.put('/model-params', requireRole('admin', 'manager'), async (c) => {
     await setConfigValue(db, 'ai.model-params', JSON.stringify(body));
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /model-params failed', { src: 'src/routes/ai.ts' }, err);
     return c.json({ error: 'Failed to save model params' }, 500);
   }
 });
@@ -210,6 +214,7 @@ ai.post('/presets', requireRole('admin', 'manager'), async (c) => {
       body.name.trim(), body.temperature ?? 0.7, body.maxTokens ?? 1024, body.topP ?? 0.9, body.repeatPenalty ?? 1.0, userId ?? null);
     return c.json({ success: true, id: r.meta.last_row_id });
   } catch (err) {
+    log.error('POST /presets failed', { src: 'src/routes/ai.ts' }, err);
     return c.json({ error: 'Failed to save preset' }, 500);
   }
 });
@@ -219,6 +224,7 @@ ai.delete('/presets/:id', requireRole('admin', 'manager'), async (c) => {
     await execute(db, 'DELETE FROM ai_model_presets WHERE id = ?', c.req.param('id'));
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /presets/:id failed', { src: 'src/routes/ai.ts' }, err);
     return c.json({ error: 'Failed to delete preset' }, 500);
   }
 });
@@ -242,6 +248,7 @@ ai.post('/templates', requireRole('admin', 'manager'), async (c) => {
       body.name.trim(), body.category || 'general', body.system_prompt || '', body.user_message || '', userId ?? null);
     return c.json({ success: true, id: r.meta.last_row_id });
   } catch (err) {
+    log.error('POST /templates failed', { src: 'src/routes/ai.ts' }, err);
     return c.json({ error: 'Failed to save template' }, 500);
   }
 });
@@ -258,6 +265,7 @@ ai.put('/templates/:id', requireRole('admin', 'manager'), async (c) => {
     await execute(db, `UPDATE ai_prompt_templates SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /templates/:id failed', { src: 'src/routes/ai.ts' }, err);
     return c.json({ error: 'Failed to update template' }, 500);
   }
 });
@@ -267,6 +275,7 @@ ai.delete('/templates/:id', requireRole('admin', 'manager'), async (c) => {
     await execute(db, 'DELETE FROM ai_prompt_templates WHERE id = ?', c.req.param('id'));
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /templates/:id failed', { src: 'src/routes/ai.ts' }, err);
     return c.json({ error: 'Failed to delete template' }, 500);
   }
 });

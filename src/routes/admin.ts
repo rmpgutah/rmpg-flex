@@ -8,6 +8,7 @@ import { denverNowDateExpr, denverHourExpr, denverStrftimeExpr } from '../utils/
 import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
 import { mergeDispositions, isDispositionRow, type DispositionConfigRow } from '../utils/dispositionConfig';
 
+import { log } from '../utils/logger';
 const admin = new Hono<Env>();
 
 // Admin mutations are reachable by any authenticated user once authMiddleware
@@ -91,7 +92,8 @@ admin.get('/config', async (c) => {
 
     result.dispositions = mergeDispositions(dispositionRows);
     return c.json(result);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /config failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ============================================================
@@ -131,6 +133,7 @@ admin.get('/config-items', async (c) => {
     }
     return c.json(grouped);
   } catch (err) {
+    log.error('GET /config-items failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to fetch config items', detail: (err as Error).message }, 500);
   }
 });
@@ -173,6 +176,7 @@ admin.post('/config', async (c) => {
        FROM system_config WHERE id = ?`, id);
     return c.json(row);
   } catch (err) {
+    log.error('POST /config failed', { src: 'src/routes/admin.ts' }, err);
     const msg = (err as Error).message || '';
     // Live D1 has UNIQUE(config_key, config_value); surface duplicates clearly.
     if (/UNIQUE constraint failed/i.test(msg)) {
@@ -227,6 +231,7 @@ admin.put('/config/:id', async (c) => {
        FROM system_config WHERE id = ?`, id);
     return c.json(row);
   } catch (err) {
+    log.error('PUT /config/:id failed', { src: 'src/routes/admin.ts' }, err);
     const msg = (err as Error).message || '';
     if (/UNIQUE constraint failed/i.test(msg)) {
       return c.json({ error: 'Update would produce a duplicate config_key + config_value', code: 'DUPLICATE' }, 409);
@@ -258,6 +263,7 @@ admin.delete('/config/:id', async (c) => {
     }
     return c.json({ success: true, id });
   } catch (err) {
+    log.error('DELETE /config/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to delete config', detail: (err as Error).message }, 500);
   }
 });
@@ -272,7 +278,8 @@ admin.get('/call-templates', async (c) => {
               owner_user_id, is_shared, use_count, active, created_at, updated_at
          FROM call_templates ORDER BY name`);
     return c.json(templates);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /call-templates failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 admin.post('/call-templates', async (c) => {
@@ -287,7 +294,8 @@ admin.post('/call-templates', async (c) => {
        VALUES (?, ?, ?, ?, ?)`,
       body.name, body.incident_type, body.priority || 'P3', body.description_template ?? null, userId);
     return c.json({ success: true, id: r.meta.last_row_id });
-  } catch (err) { return c.json({ error: 'Failed to create call template' }, 500); }
+  } catch (err) {
+    log.error('POST /call-templates failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed to create call template' }, 500); }
 });
 
 admin.put('/call-templates/:id', async (c) => {
@@ -306,7 +314,8 @@ admin.put('/call-templates/:id', async (c) => {
     vals.push(id);
     await execute(db, `UPDATE call_templates SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed to update call template' }, 500); }
+  } catch (err) {
+    log.error('PUT /call-templates/:id failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed to update call template' }, 500); }
 });
 
 admin.delete('/call-templates/:id', async (c) => {
@@ -314,7 +323,8 @@ admin.delete('/call-templates/:id', async (c) => {
     const db = getDb(c.env);
     await execute(db, 'DELETE FROM call_templates WHERE id = ?', c.req.param('id'));
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed to delete call template' }, 500); }
+  } catch (err) {
+    log.error('DELETE /call-templates/:id failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed to delete call template' }, 500); }
 });
 
 // ── /admin/clients — full CRUD (AdminPage, CrmPage, IncidentsPage all call this prefix) ──
@@ -346,7 +356,8 @@ admin.get('/clients', async (c) => {
       ? `SELECT ${cols} FROM clients WHERE status = ? ORDER BY name`
       : `SELECT ${cols} FROM clients ORDER BY name`;
     return c.json(status ? await query(db, sql, status) : await query(db, sql));
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /clients failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 admin.get('/clients/:id', async (c) => {
@@ -364,7 +375,8 @@ admin.get('/clients/:id', async (c) => {
     const incidents = await query(db, `SELECT id, incident_number, occurred_date, status, incident_type FROM incidents WHERE client_id = ? ORDER BY occurred_date DESC LIMIT 50`, id).catch(() => []);
     const calls = await query(db, `SELECT id, call_number, created_at, status, incident_type, priority FROM calls_for_service WHERE client_id = ? ORDER BY created_at DESC LIMIT 50`, id).catch(() => []);
     return c.json({ ...client, contracts, persons, incidents, calls });
-  } catch { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /clients/:id failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 admin.get('/clients/:id/incidents', async (c) => {
@@ -421,7 +433,8 @@ admin.post('/clients', async (c) => {
     }
     const r = await execute(db, `INSERT INTO clients (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, ...vals);
     return c.json(await queryFirst(db, 'SELECT * FROM clients WHERE id = ?', r.meta.last_row_id), 201);
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('POST /clients failed', { src: 'src/routes/admin.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 admin.put('/clients/:id', async (c) => {
@@ -442,7 +455,8 @@ admin.put('/clients/:id', async (c) => {
     vals.push(id);
     await execute(db, `UPDATE clients SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     return c.json(await queryFirst(db, 'SELECT * FROM clients WHERE id = ?', id));
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('PUT /clients/:id failed', { src: 'src/routes/admin.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 admin.delete('/clients/:id', async (c) => {
@@ -452,7 +466,8 @@ admin.delete('/clients/:id', async (c) => {
     const db = getDb(c.env);
     await execute(db, "UPDATE clients SET status = 'inactive', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
     return c.json({ success: true });
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('DELETE /clients/:id failed', { src: 'src/routes/admin.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 admin.post('/clients/:id/archive', async (c) => {
@@ -462,7 +477,8 @@ admin.post('/clients/:id/archive', async (c) => {
     const db = getDb(c.env);
     await execute(db, "UPDATE clients SET status = 'inactive', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
     return c.json({ success: true });
-  } catch (e) { return c.json({ error: 'Failed' }, 500); }
+  } catch (e) {
+    log.error('POST /clients/:id/archive failed', { src: 'src/routes/admin.ts' }, e); return c.json({ error: 'Failed' }, 500); }
 });
 
 admin.post('/clients/:id/unarchive', async (c) => {
@@ -472,7 +488,8 @@ admin.post('/clients/:id/unarchive', async (c) => {
     const db = getDb(c.env);
     await execute(db, "UPDATE clients SET status = 'active', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
     return c.json({ success: true });
-  } catch (e) { return c.json({ error: 'Failed' }, 500); }
+  } catch (e) {
+    log.error('POST /clients/:id/unarchive failed', { src: 'src/routes/admin.ts' }, e); return c.json({ error: 'Failed' }, 500); }
 });
 
 export default admin;
@@ -774,6 +791,7 @@ admin.get('/departments', async (c) => {
     );
     return c.json(rows);
   } catch (err) {
+    log.error('GET /departments failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to load departments', detail: String(err) }, 500);
   }
 });
@@ -795,6 +813,7 @@ admin.post('/departments', async (c) => {
     );
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch (err) {
+    log.error('POST /departments failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to create department', detail: String(err) }, 500);
   }
 });
@@ -814,6 +833,7 @@ admin.put('/departments/:id', async (c) => {
     await execute(db, `UPDATE departments SET ${upd.setSql} WHERE id = ?`, ...upd.values, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /departments/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to update department', detail: String(err) }, 500);
   }
 });
@@ -828,6 +848,7 @@ admin.delete('/departments/:id', async (c) => {
     await execute(db, `DELETE FROM departments WHERE id = ?`, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /departments/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to delete department', detail: String(err) }, 500);
   }
 });
@@ -843,6 +864,7 @@ admin.get('/announcements/all', async (c) => {
     );
     return c.json(rows);
   } catch (err) {
+    log.error('GET /announcements/all failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to load announcements', detail: String(err) }, 500);
   }
 });
@@ -867,6 +889,7 @@ admin.post('/announcements', async (c) => {
     );
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch (err) {
+    log.error('POST /announcements failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to create announcement', detail: String(err) }, 500);
   }
 });
@@ -884,6 +907,7 @@ admin.put('/announcements/:id', async (c) => {
     await execute(db, `UPDATE announcements SET ${upd.setSql} WHERE id = ?`, ...upd.values, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /announcements/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to update announcement', detail: String(err) }, 500);
   }
 });
@@ -898,6 +922,7 @@ admin.delete('/announcements/:id', async (c) => {
     await execute(db, `DELETE FROM announcements WHERE id = ?`, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /announcements/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to delete announcement', detail: String(err) }, 500);
   }
 });
@@ -911,6 +936,7 @@ admin.get('/notification-rules', async (c) => {
     );
     return c.json(rows);
   } catch (err) {
+    log.error('GET /notification-rules failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to load notification rules', detail: String(err) }, 500);
   }
 });
@@ -945,6 +971,7 @@ admin.post('/notification-rules', async (c) => {
     );
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch (err) {
+    log.error('POST /notification-rules failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to create rule', detail: String(err) }, 500);
   }
 });
@@ -962,6 +989,7 @@ admin.put('/notification-rules/:id', async (c) => {
     await execute(db, `UPDATE notification_rules SET ${upd.setSql} WHERE id = ?`, ...upd.values, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /notification-rules/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to update rule', detail: String(err) }, 500);
   }
 });
@@ -976,6 +1004,7 @@ admin.delete('/notification-rules/:id', async (c) => {
     await execute(db, `DELETE FROM notification_rules WHERE id = ?`, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /notification-rules/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to delete rule', detail: String(err) }, 500);
   }
 });
@@ -999,6 +1028,7 @@ admin.post('/notification-rules/:id/test', async (c) => {
     }, { testPrefix: true }, c.env);
     return c.json({ success: true, notified });
   } catch (err) {
+    log.error('POST /notification-rules/:id/test failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to send test notification', detail: String(err) }, 500);
   }
 });
@@ -1047,6 +1077,7 @@ admin.put('/maintenance-mode', async (c) => {
     }
     return c.json({ success: true, ...JSON.parse(value) });
   } catch (err) {
+    log.error('PUT /maintenance-mode failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to update maintenance mode', detail: String(err) }, 500);
   }
 });
@@ -1723,7 +1754,8 @@ admin.post('/database/analyze', async (c) => {
     const db = getDb(c.env);
     await execute(db, 'ANALYZE');
     return c.json({ success: true, message: 'ANALYZE completed' });
-  } catch (err) { return c.json({ error: 'ANALYZE failed' }, 500); }
+  } catch (err) {
+    log.error('POST /database/analyze failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'ANALYZE failed' }, 500); }
 });
 
 // D1 rejects PRAGMA integrity_check outright (SQLITE_AUTH: "not authorized") —
@@ -1753,7 +1785,8 @@ admin.post('/database/vacuum', async (c) => {
     const db = getDb(c.env);
     const before = await queryFirst<{ page_count: number }>(db, 'PRAGMA page_count');
     return c.json({ success: true, page_count: before?.page_count ?? 0, note: 'D1 manages vacuuming automatically' });
-  } catch { return c.json({ error: 'Vacuum info failed' }, 500); }
+  } catch (err) {
+    log.error('POST /database/vacuum failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Vacuum info failed' }, 500); }
 });
 
 // ── Purge endpoints ────────────────────────────────────────
@@ -1983,7 +2016,8 @@ admin.put('/system-settings', async (c) => {
         key, val);
     }
     return c.json({ success: true });
-  } catch (err: any) { return c.json({ error: err?.message || 'Failed' }, 500); }
+  } catch (err: any) {
+    log.error('PUT /system-settings failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: err?.message || 'Failed' }, 500); }
 });
 
 // ── Map config ─────────────────────────────────────────────
@@ -2048,7 +2082,8 @@ admin.put('/map-config', async (c) => {
        VALUES ('map_settings', ?, 'map_settings', 0, 1, datetime('now'), datetime('now'))`,
       JSON.stringify(merged));
     return c.json(merged);
-  } catch (err: any) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err: any) {
+    log.error('PUT /map-config failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── Impersonate (admin-only view-as) ───────────────────────
@@ -2063,7 +2098,8 @@ admin.post('/impersonate/:id', async (c) => {
       `SELECT id, username, full_name, role, badge_number, status FROM users WHERE id = ?`, user_id);
     if (!target) return c.json({ error: 'User not found' }, 404);
     return c.json({ success: true, user: target, note: 'View-only impersonation — no token issued' });
-  } catch { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('POST /impersonate/:id failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // NOTE: '/settings/reset' used to be a no-op stub here. Removed 2026-07-20 —
@@ -2117,7 +2153,8 @@ admin.post('/system/lockdown', async (c) => {
       await execute(db, `UPDATE sessions SET is_active = 0`);
     }
     return c.json({ success: true, lockdown: enabled, enabled });
-  } catch { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('POST /system/lockdown failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // DELETE /admin/system/lockdown — disable lockdown (AdminGodModeTab's toggle-off path).
@@ -2132,7 +2169,8 @@ admin.delete('/system/lockdown', async (c) => {
        VALUES ('system_lockdown', ?, datetime('now'))`,
       JSON.stringify({ enabled: false, at: new Date().toISOString() }));
     return c.json({ success: true, lockdown: false, enabled: false });
-  } catch { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /system/lockdown failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── Auth recovery ───────────────────────────────────────────

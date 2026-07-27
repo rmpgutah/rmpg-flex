@@ -14,6 +14,7 @@ import { requireRole } from '../middleware/auth';
 import { flexEvent } from '../utils/analytics';
 import type { AnalyticsEvent } from '../utils/analytics';
 
+import { log } from '../utils/logger';
 const reanalysis = new Hono<Env>();
 const adminOnly = requireRole('admin');
 
@@ -147,6 +148,7 @@ reanalysis.post('/backfill-confidence', adminOnly, async (c): Promise<Response> 
 
     return c.json({ corrected, skipped: 0, has_more: hasMore, next_cursor: lastId, job_id: jobId });
   } catch (err) {
+    log.error('POST /backfill-confidence failed', { src: 'src/routes/reanalysis.ts' }, err);
     const msg = (err as Error).message;
     await execute(db,
       `UPDATE job_runs SET status='failed', error_detail=?, finished_at=datetime('now') WHERE id=?`,
@@ -486,6 +488,7 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
       job_id: jobId,
     });
   } catch (err) {
+    log.error('POST /replay failed', { src: 'src/routes/reanalysis.ts' }, err);
     const msg = (err as Error).message;
     await execute(db,
       `UPDATE job_runs SET status='failed', error_detail=?, finished_at=datetime('now') WHERE id=?`,

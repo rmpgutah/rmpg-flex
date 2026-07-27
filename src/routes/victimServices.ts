@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const victimServices = new Hono<Env>();
 
 // victim_services_records holds victim name, phone, email, HOME ADDRESS,
@@ -29,7 +30,8 @@ victimServices.get('/victims', async (c) => {
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM victim_services_records ORDER BY created_at DESC LIMIT 200');
   return c.json(rows || []);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /victims failed', { src: 'src/routes/victimServices.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 victimServices.post('/victims', async (c) => {
@@ -45,7 +47,8 @@ victimServices.post('/victims', async (c) => {
     body.victim_name, body.case_number, body.crime_type || null, body.status || 'active', body.advocate_id || null, body.phone || null, body.email || null, body.address || null, body.safety_plan || 0, body.protective_order || 0, body.notes || null
   );
   return c.json({ success: true, id: result.meta.last_row_id });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('POST /victims failed', { src: 'src/routes/victimServices.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 victimServices.put('/victims/:id', async (c) => {
@@ -62,7 +65,8 @@ victimServices.put('/victims/:id', async (c) => {
     body.victim_name, body.case_number, body.crime_type || null, body.status || 'active', body.advocate_id || null, body.phone || null, body.email || null, body.address || null, body.safety_plan || 0, body.protective_order || 0, body.notes || null, id
   );
   return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('PUT /victims/:id failed', { src: 'src/routes/victimServices.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 victimServices.delete('/victims/:id', async (c) => {
@@ -73,7 +77,8 @@ victimServices.delete('/victims/:id', async (c) => {
   const id = c.req.param('id');
   await execute(db, 'DELETE FROM victim_services_records WHERE id=?', id);
   return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /victims/:id failed', { src: 'src/routes/victimServices.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 victimServices.get('/stats', async (c) => {
@@ -85,7 +90,8 @@ victimServices.get('/stats', async (c) => {
   const active = await queryFirst<{cnt:number}>(db, "SELECT COUNT(*) as cnt FROM victim_services_records WHERE status='active'");
   const safety = await queryFirst<{cnt:number}>(db, 'SELECT COUNT(*) as cnt FROM victim_services_records WHERE safety_plan=1');
   return c.json({ totalVictims: total?.cnt || 0, activeVictims: active?.cnt || 0, safetyPlans: safety?.cnt || 0 });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/victimServices.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 export default victimServices;

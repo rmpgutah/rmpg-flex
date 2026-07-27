@@ -12,6 +12,7 @@ import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 const jail = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -59,6 +60,7 @@ jail.get('/inmates', async (c) => {
     const total = count?.total ?? 0;
     return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
+    log.error('GET /inmates failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to list inmates', code: 'LIST_ERROR' }, 500);
   }
 });
@@ -72,6 +74,7 @@ jail.get('/inmates/:id', async (c) => {
     if (!row) return c.json({ error: 'Inmate not found', code: 'NOT_FOUND' }, 404);
     return c.json({ data: row });
   } catch (err) {
+    log.error('GET /inmates/:id failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to get inmate', code: 'GET_ERROR' }, 500);
   }
 });
@@ -156,6 +159,7 @@ jail.put('/inmates/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM inmates WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /inmates/:id failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to update inmate', code: 'UPDATE_ERROR' }, 500);
   }
 });
@@ -177,6 +181,7 @@ jail.delete('/inmates/:id', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Inmate not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /inmates/:id failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to delete inmate', code: 'DELETE_ERROR' }, 500);
   }
 });
@@ -193,6 +198,7 @@ jail.get('/inmates/:id/charges', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM inmate_charges WHERE inmate_id = ? ORDER BY id', id);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /inmates/:id/charges failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to list charges', code: 'LIST_ERROR' }, 500);
   }
 });
@@ -218,6 +224,7 @@ jail.post('/inmates/:id/charges', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM inmate_charges WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /inmates/:id/charges failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to add charge' }, 500);
   }
 });
@@ -233,6 +240,7 @@ jail.delete('/inmates/:id/charges/:chargeId', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Charge not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /inmates/:id/charges/:chargeId failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to delete charge' }, 500);
   }
 });
@@ -248,6 +256,7 @@ jail.get('/inmates/:id/visitors', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM inmate_visitors WHERE inmate_id = ? ORDER BY visit_date DESC', id);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /inmates/:id/visitors failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to list visitors' }, 500);
   }
 });
@@ -269,6 +278,7 @@ jail.post('/inmates/:id/visitors', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM inmate_visitors WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /inmates/:id/visitors failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to log visitor' }, 500);
   }
 });
@@ -284,6 +294,7 @@ jail.get('/inmates/:id/property', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM inmate_property WHERE inmate_id = ? ORDER BY id', id);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /inmates/:id/property failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to list property' }, 500);
   }
 });
@@ -305,6 +316,7 @@ jail.post('/inmates/:id/property', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM inmate_property WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /inmates/:id/property failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to add property item' }, 500);
   }
 });
@@ -320,6 +332,7 @@ jail.get('/inmates/:id/medical', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM inmate_medical WHERE inmate_id = ? ORDER BY screened_date DESC', id);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /inmates/:id/medical failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to list medical screenings' }, 500);
   }
 });
@@ -342,6 +355,7 @@ jail.post('/inmates/:id/medical', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM inmate_medical WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /inmates/:id/medical failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to record medical screening' }, 500);
   }
 });
@@ -357,6 +371,7 @@ jail.get('/inmates/:id/disciplinary', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT d.*, u.full_name as reported_by_name FROM inmate_disciplinary d LEFT JOIN users u ON d.reported_by = u.id WHERE d.inmate_id = ? ORDER BY violation_date DESC', id);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /inmates/:id/disciplinary failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to list disciplinary records' }, 500);
   }
 });
@@ -379,6 +394,7 @@ jail.post('/inmates/:id/disciplinary', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM inmate_disciplinary WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /inmates/:id/disciplinary failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to record disciplinary action' }, 500);
   }
 });
@@ -394,6 +410,7 @@ jail.get('/inmates/:id/transports', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT t.*, u.full_name as transporting_officer_name FROM inmate_transports t LEFT JOIN users u ON t.transporting_officer_id = u.id WHERE t.inmate_id = ? ORDER BY depart_date DESC', id);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /inmates/:id/transports failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to list transports' }, 500);
   }
 });
@@ -415,6 +432,7 @@ jail.post('/inmates/:id/transports', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM inmate_transports WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /inmates/:id/transports failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to schedule transport' }, 500);
   }
 });
@@ -436,6 +454,7 @@ jail.put('/inmates/:id/transports/:transportId', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM inmate_transports WHERE id = ?', tid);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /inmates/:id/transports/:transportId failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to update transport' }, 500);
   }
 });
@@ -461,6 +480,7 @@ jail.get('/housing', async (c) => {
     `);
     return c.json(rows.map((r, i) => ({ id: i + 1, name: r.housing_unit, current_count: r.current_count })));
   } catch (err) {
+    log.error('GET /housing failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to load housing board' }, 500);
   }
 });
@@ -483,6 +503,7 @@ jail.get('/stats', async (c) => {
     }
     return c.json({ total_inmates: total, by_status, by_classification });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/jail.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });

@@ -11,6 +11,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { containsAnyClause } from '../utils/searchText';
 
+import { log } from '../utils/logger';
 const pawn = new Hono<Env>();
 
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
@@ -39,6 +40,7 @@ pawn.get('/', async (c) => {
       db, `SELECT * FROM pawn_transactions WHERE ${conditions.join(' AND ')} ORDER BY transaction_date DESC LIMIT 500`, ...params);
     return c.json(rows);
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/pawn.ts' }, err);
     return c.json({ error: 'Failed to list transactions' }, 500);
   }
 });
@@ -51,6 +53,7 @@ pawn.get('/search/stolen', async (c) => {
       db, `SELECT * FROM pawn_transactions WHERE flagged_stolen = 1 ORDER BY transaction_date DESC LIMIT 200`);
     return c.json(rows);
   } catch (err) {
+    log.error('GET /search/stolen failed', { src: 'src/routes/pawn.ts' }, err);
     return c.json({ error: 'Failed to search stolen matches' }, 500);
   }
 });
@@ -80,6 +83,7 @@ pawn.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM pawn_transactions WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
+    log.error('POST / failed', { src: 'src/routes/pawn.ts' }, err);
     return c.json({ error: 'Failed to create transaction' }, 500);
   }
 });
@@ -107,6 +111,7 @@ pawn.put('/:id', async (c) => {
     if (!updated) return c.json({ error: 'Not found' }, 404);
     return c.json(updated);
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/pawn.ts' }, err);
     return c.json({ error: 'Failed to update transaction' }, 500);
   }
 });
@@ -124,6 +129,7 @@ pawn.post('/:id/flag', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM pawn_transactions WHERE id = ?', id);
     return c.json(updated);
   } catch (err) {
+    log.error('POST /:id/flag failed', { src: 'src/routes/pawn.ts' }, err);
     return c.json({ error: 'Failed to flag transaction' }, 500);
   }
 });

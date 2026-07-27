@@ -539,7 +539,8 @@ gps.get('/on-foot-segments', async (c) => {
     sql += ' ORDER BY started_at DESC LIMIT ?'; params.push(limit);
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     return c.json({ data: rows, count: rows.length });
-  } catch {
+  } catch (err) {
+    log.error('GET /on-foot-segments failed', { src: 'src/routes/dispatch/gps.ts' }, err);
     return c.json({ data: [], count: 0, error: 'Failed to list foot segments' }, 500);
   }
 });

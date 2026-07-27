@@ -20,6 +20,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const push = new Hono<Env>();
 
 push.post('/register', async (c) => {
@@ -45,6 +46,7 @@ push.post('/register', async (c) => {
     );
     return c.json({ success: true });
   } catch (err) {
+    log.error('POST /register failed', { src: 'src/routes/push.ts' }, err);
     return c.json({ error: 'Failed to register device token' }, 500);
   }
 });
@@ -60,6 +62,7 @@ push.delete('/register', async (c) => {
     await execute(db, 'DELETE FROM push_tokens WHERE device_token = ? AND user_id = ?', deviceToken, userId);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /register failed', { src: 'src/routes/push.ts' }, err);
     return c.json({ error: 'Failed to unregister device token' }, 500);
   }
 });

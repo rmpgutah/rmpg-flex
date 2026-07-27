@@ -21,6 +21,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 
+import { log } from '../utils/logger';
 const howen = new Hono<Env>();
 
 // GET /api/howen/status — device-fleet rollup tile.
@@ -114,6 +115,7 @@ howen.get('/devices/:id', async (c) => {
     if (!device) return c.json({ error: 'Device not found' }, 404);
     return c.json(device);
   } catch (err) {
+    log.error('GET /devices/:id failed', { src: 'src/routes/howen.ts' }, err);
     return c.json({ error: 'Failed to get device' }, 500);
   }
 });

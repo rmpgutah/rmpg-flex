@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const impounds = new Hono<Env>();
 
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
@@ -37,6 +38,7 @@ impounds.get('/', async (c) => {
       db, `SELECT * FROM impounds ${where} ORDER BY impound_date DESC LIMIT 500`, ...params);
     return c.json(rows);
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/impounds.ts' }, err);
     return c.json({ error: 'Failed to list impounds' }, 500);
   }
 });
@@ -49,6 +51,7 @@ impounds.get('/stats', async (c) => {
       db, 'SELECT status, COUNT(*) as count FROM impounds GROUP BY status');
     return c.json(rows);
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/impounds.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });
@@ -78,6 +81,7 @@ impounds.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM impounds WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
+    log.error('POST / failed', { src: 'src/routes/impounds.ts' }, err);
     return c.json({ error: 'Failed to create impound' }, 500);
   }
 });
@@ -106,6 +110,7 @@ impounds.put('/:id', async (c) => {
     if (!updated) return c.json({ error: 'Not found' }, 404);
     return c.json(updated);
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/impounds.ts' }, err);
     return c.json({ error: 'Failed to update impound' }, 500);
   }
 });
@@ -131,6 +136,7 @@ impounds.put('/:id/release', async (c) => {
     );
     return c.json({ days, total_fees: totalFees });
   } catch (err) {
+    log.error('PUT /:id/release failed', { src: 'src/routes/impounds.ts' }, err);
     return c.json({ error: 'Failed to release impound' }, 500);
   }
 });

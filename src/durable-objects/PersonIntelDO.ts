@@ -11,6 +11,7 @@ import { runPhase3 as executePhase3 } from '../utils/personIntel/phase3';
 import { mergeDataPoints, deriveConfidence } from '../utils/personIntel/confidence';
 import { computeRiskScore } from '../utils/personIntel/riskScore';
 
+import { log } from '../utils/logger';
 interface DOState {
   dossierId: number;
   seed: IntelSeed;
@@ -68,6 +69,7 @@ export class PersonIntelDO {
       else if (st.stage === 'phase2') await this.runPhase2(st);
       else if (st.stage === 'phase3') await this.runPhase3(st);
     } catch (e: any) {
+      log.error('handler failed', { src: 'src/durable-objects/PersonIntelDO.ts' }, e);
       await execute(this.env.DB, `UPDATE person_intelligence SET status='error', notes=? WHERE id=?`,
         [String(e?.message ?? e).slice(0, 500), st.dossierId]);
       st.stage = 'error';

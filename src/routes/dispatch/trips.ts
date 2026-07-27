@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 
+import { log } from '../../utils/logger';
 const trips = new Hono<Env>();
 
 // GET /dispatch/trips?unit_id=&call_id=&from=&to=&limit=&include_noise=
@@ -44,6 +45,7 @@ trips.get('/', async (c) => {
     const rows = await query<Record<string, unknown>>(db, sql, ...p);
     return c.json(rows);
   } catch (e) {
+    log.error('GET / failed', { src: 'src/routes/dispatch/trips.ts' }, e);
     return c.json({ error: 'Failed to list trips' }, 500);
   }
 });
@@ -56,6 +58,7 @@ trips.get('/active', async (c) => {
       `SELECT id, unit_id, officer_id, vehicle_id, trip_type, status, call_id, call_number, call_type, prev_trip_id, start_time, start_lat, start_lng, start_mileage, end_time, end_lat, end_lng, end_mileage, close_reason, distance_m, max_speed, speed_sum, fix_count, max_lat_g, harsh_accel_count, harsh_brake_count, harsh_corner_count, stop_count, anchor_lat, anchor_lng, last_move_at, last_fix_ts, prev_lat, prev_lng, prev_mph, prev_bearing, duration_s, avg_speed, created_at, updated_at FROM unit_trips WHERE status = 'active' ORDER BY unit_id, start_time DESC`);
     return c.json(rows);
   } catch (e) {
+    log.error('GET /active failed', { src: 'src/routes/dispatch/trips.ts' }, e);
     return c.json({ error: 'Failed to list active trips' }, 500);
   }
 });
@@ -87,6 +90,7 @@ trips.get('/score-trend', async (c) => {
       ...params, limit);
     return c.json(rows);
   } catch (e) {
+    log.error('GET /score-trend failed', { src: 'src/routes/dispatch/trips.ts' }, e);
     return c.json({ error: 'Failed to load score trend' }, 500);
   }
 });
@@ -104,6 +108,7 @@ trips.get('/:id', async (c) => {
       trip.id);
     return c.json({ ...trip, points });
   } catch (e) {
+    log.error('GET /:id failed', { src: 'src/routes/dispatch/trips.ts' }, e);
     return c.json({ error: 'Failed to load trip' }, 500);
   }
 });
@@ -155,6 +160,7 @@ trips.delete('/:id', async (c) => {
 
     return c.json({ success: true });
   } catch (e) {
+    log.error('DELETE /:id failed', { src: 'src/routes/dispatch/trips.ts' }, e);
     return c.json({ error: 'Failed to delete trip' }, 500);
   }
 });

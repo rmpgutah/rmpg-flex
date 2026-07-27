@@ -33,6 +33,7 @@ import { recordAudit } from '../utils/auditLog';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { containsAnyClause } from '../utils/searchText';
+import { log } from '../utils/logger';
 const cases = new Hono<Env>();
 
 // ── 2-letter case_type codes (mirrors legacy caseNumbers.ts) ──
@@ -203,6 +204,7 @@ cases.get('/stats', async (c) => {
     };
     return c.json({ data: payload, ...payload });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to get case stats', code: 'STATS_ERROR' }, 500);
   }
 });
@@ -266,6 +268,7 @@ cases.get('/', async (c) => {
       pagination: { page: pageNum, per_page: perPage, total, totalPages: perPage > 0 ? Math.ceil(total / perPage) : 0 },
     });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to list cases', code: 'LIST_ERROR' }, 500);
   }
 });
@@ -408,6 +411,7 @@ cases.get('/:id', async (c) => {
     if (!row) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
     return c.json({ data: row });
   } catch (err) {
+    log.error('GET /:id failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to get case', code: 'GET_ERROR' }, 500);
   }
 });
@@ -482,6 +486,7 @@ cases.put('/:id', async (c) => {
     await logCaseActivity(c, id, 'case.updated', { fields: Object.keys(b).filter((k) => UPDATABLE.has(k)) });
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to update case', code: 'UPDATE_ERROR' }, 500);
   }
 });
@@ -510,6 +515,7 @@ cases.put('/:id/submit-review', async (c) => {
     await logCaseActivity(c, id, 'review.submitted', { from: existing.status, to: 'under_review' });
     return c.json({ data: { id, status: 'under_review', approval_status: 'pending_review' } });
   } catch (err) {
+    log.error('PUT /:id/submit-review failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to submit case for review', code: 'SUBMIT_REVIEW_ERROR' }, 500);
   }
 });
@@ -554,6 +560,7 @@ cases.put('/:id/approve', async (c) => {
     await logCaseActivity(c, id, 'review.approved', { from: 'under_review', to: 'approved' });
     return c.json({ data: { id, status: 'approved', approval_status: 'approved' } });
   } catch (err) {
+    log.error('PUT /:id/approve failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to approve case', code: 'APPROVE_ERROR' }, 500);
   }
 });
@@ -584,6 +591,7 @@ cases.put('/:id/status', async (c) => {
     await logCaseActivity(c, id, 'status.changed', { to: status, ...(disposition ? { disposition } : {}) });
     return c.json({ data: { id, status, disposition } });
   } catch (err) {
+    log.error('PUT /:id/status failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to update case status', code: 'STATUS_UPDATE_ERROR' }, 500);
   }
 });
@@ -602,6 +610,7 @@ cases.post('/:id/archive', async (c) => {
     await logCaseActivity(c, id, 'case.archived');
     return c.json({ data: { id, archived: true } });
   } catch (err) {
+    log.error('POST /:id/archive failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to archive case', code: 'ARCHIVE_ERROR' }, 500);
   }
 });
@@ -635,6 +644,7 @@ cases.delete('/:id', async (c) => {
     } catch { /* best-effort */ }
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to delete case', code: 'DELETE_ERROR' }, 500);
   }
 });
@@ -660,6 +670,7 @@ cases.get('/:id/notes', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /:id/notes failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to get case notes', code: 'NOTES_GET_ERROR' }, 500);
   }
 });
@@ -696,6 +707,7 @@ cases.post('/:id/notes', async (c) => {
     await logCaseActivity(c, id, 'note.added', { note_type: note_type ?? 'general' });
     return c.json({ data: note }, 201);
   } catch (err) {
+    log.error('POST /:id/notes failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to add note', code: 'NOTE_POST_ERROR' }, 500);
   }
 });
@@ -748,6 +760,7 @@ cases.put('/:id/notes/:noteId', async (c) => {
     await logCaseActivity(c, caseId, 'note.updated', { note_id: noteId, pinned: body.is_pinned });
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /:id/notes/:noteId failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to update note', code: 'NOTE_PUT_ERROR' }, 500);
   }
 });
@@ -779,6 +792,7 @@ cases.delete('/:id/notes/:noteId', async (c) => {
     await logCaseActivity(c, caseId, 'note.deleted', { note_id: noteId });
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id/notes/:noteId failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to delete note', code: 'NOTE_DELETE_ERROR' }, 500);
   }
 });
@@ -841,6 +855,7 @@ cases.post('/:id/calculate-solvability', async (c) => {
     await logCaseActivity(c, id, 'solvability.calculated', { score });
     return c.json({ data: { id, score, breakdown } });
   } catch (err) {
+    log.error('POST /:id/calculate-solvability failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to calculate solvability', code: 'SOLVABILITY_ERROR' }, 500);
   }
 });
@@ -898,6 +913,7 @@ cases.get('/:id/solvability', async (c) => {
     const rating = score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low';
     return c.json({ score, rating, factors, evidence_count, witness_count, suspect_identified });
   } catch (err) {
+    log.error('GET /:id/solvability failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to analyze solvability', code: 'SOLVABILITY_GET_ERROR' }, 500);
   }
 });
@@ -937,6 +953,7 @@ cases.get('/:id/completeness', async (c) => {
     });
     return c.json(result);
   } catch (err) {
+    log.error('GET /:id/completeness failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to evaluate completeness', code: 'COMPLETENESS_ERROR' }, 500);
   }
 });
@@ -958,6 +975,7 @@ cases.get('/:id/activity', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /:id/activity failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to get case activity', code: 'ACTIVITY_GET_ERROR' }, 500);
   }
 });
@@ -983,6 +1001,7 @@ cases.get('/:id/persons', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /:id/persons failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to get case persons', code: 'PERSONS_GET_ERROR' }, 500);
   }
 });
@@ -1017,6 +1036,7 @@ cases.post('/:id/persons', async (c) => {
     if (result.meta.changes > 0) await logCaseActivity(c, id, 'link.added', { entity: 'persons', entity_id: person_id });
     return c.json({ data: link }, result.meta.changes > 0 ? 201 : 200);
   } catch (err) {
+    log.error('POST /:id/persons failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to attach person', code: 'PERSON_POST_ERROR' }, 500);
   }
 });
@@ -1039,6 +1059,7 @@ cases.put('/:id/persons/:personEntryId', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Link not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /:id/persons/:personEntryId failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to update person link', code: 'PERSON_PUT_ERROR' }, 500);
   }
 });
@@ -1061,6 +1082,7 @@ cases.delete('/:id/persons/:personEntryId', async (c) => {
     await logCaseActivity(c, caseId, 'link.removed', { entity: 'persons', entity_id: ref });
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id/persons/:personEntryId failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to remove person link', code: 'PERSON_DELETE_ERROR' }, 500);
   }
 });
@@ -1191,6 +1213,7 @@ cases.get('/tasks/mine', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /tasks/mine failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to get assigned tasks', code: 'TASKS_MINE_ERROR' }, 500);
   }
 });
@@ -1211,6 +1234,7 @@ cases.get('/:id/tasks', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /:id/tasks failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to get case tasks', code: 'TASKS_GET_ERROR' }, 500);
   }
 });
@@ -1350,6 +1374,7 @@ cases.delete('/:id/tasks/:taskId', async (c) => {
     await logCaseActivity(c, id, 'task.deleted', { task_id: taskId, title: existing?.title });
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id/tasks/:taskId failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to delete task', code: 'TASK_DELETE_ERROR' }, 500);
   }
 });
@@ -1383,6 +1408,7 @@ cases.get('/:id/related', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /:id/related failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to get related cases', code: 'RELATED_GET_ERROR' }, 500);
   }
 });
@@ -1442,6 +1468,7 @@ cases.delete('/:id/related/:relatedId', async (c) => {
     await logCaseActivity(c, id, 'case.unlinked', { related_case_id: relId });
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id/related/:relatedId failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to unlink case', code: 'CASE_UNLINK_ERROR' }, 500);
   }
 });
@@ -1496,6 +1523,7 @@ cases.get('/export/csv', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /export/csv failed', { src: 'src/routes/cases.ts' }, err);
     return c.json({ error: 'Failed to export cases', code: 'EXPORT_ERROR' }, 500);
   }
 });

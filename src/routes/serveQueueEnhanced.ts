@@ -24,6 +24,7 @@ import {
   estimateDriveTime,
 } from '../utils/serveRouteOptimizer';
 import { containsAnyClause } from '../utils/searchText';
+import { log as logger } from '../utils/logger';
 import {
   crossReferenceDefendant,
   validateCharges,
@@ -983,7 +984,8 @@ sqe.post('/route-progress', async (c) => {
       JSON.stringify(body.visited_queue_ids), body.current_lat ?? null, body.current_lng ?? null,
       body.route_id, userId);
     return c.json({ success: true });
-  } catch { return c.json({ error: 'Progress update failed' }, 500); }
+  } catch (err) {
+    logger.error('POST /route-progress failed', { src: 'src/routes/serveQueueEnhanced.ts' }, err); return c.json({ error: 'Progress update failed' }, 500); }
 });
 
 // ── POST /batch-optimize — optimize routes for all servers at once ──
@@ -1012,7 +1014,8 @@ sqe.get('/nearest-unassigned', async (c) => {
     const { getNearestUnassignedAttempt } = await import('../utils/serveRouteOptimizer');
     const result = await getNearestUnassignedAttempt(db, lat, lng, radius);
     return c.json(result);
-  } catch { return c.json({ error: 'Lookup failed' }, 500); }
+  } catch (err) {
+    logger.error('GET /nearest-unassigned failed', { src: 'src/routes/serveQueueEnhanced.ts' }, err); return c.json({ error: 'Lookup failed' }, 500); }
 });
 
 export default sqe;

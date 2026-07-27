@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const crashReports = new Hono<Env>();
 
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
@@ -59,6 +60,7 @@ crashReports.get('/', async (c) => {
       stats: { total: stats?.total ?? 0, draft: stats?.draft ?? 0, pending_review: stats?.pending_review ?? 0, filed: stats?.filed ?? 0 },
     });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/crashReports.ts' }, err);
     return c.json({ error: 'Failed to list crash reports' }, 500);
   }
 });
@@ -87,6 +89,7 @@ crashReports.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM crash_reports WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
+    log.error('POST / failed', { src: 'src/routes/crashReports.ts' }, err);
     return c.json({ error: 'Failed to create crash report' }, 500);
   }
 });
@@ -112,6 +115,7 @@ crashReports.put('/:id', async (c) => {
     if (!updated) return c.json({ error: 'Not found' }, 404);
     return c.json(updated);
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/crashReports.ts' }, err);
     return c.json({ error: 'Failed to update crash report' }, 500);
   }
 });

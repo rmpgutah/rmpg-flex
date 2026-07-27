@@ -7,6 +7,7 @@
 
 import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
 import { query, queryFirst, execute } from '../db';
+import { log } from '../../utils/logger';
 import {
   COUNTY_PARSERS, getAvailableParsers, type RosterEntry,
   openSaltLakeSession, fetchSaltLakeDetail,
@@ -145,6 +146,7 @@ export async function scrapeCounty(db: D1Database, county: string): Promise<Scra
       county, startedAt, entries.length, written);
     return { success: true, message: `Scraped ${entries.length} bookings`, found: entries.length, written };
   } catch (err) {
+    log.error('handler failed', { src: 'src/utils/jailRoster/scraper.ts' }, err);
     const errors = (cfg.consecutive_errors || 0) + 1;
     const broken = errors >= CIRCUIT_THRESHOLD ? 1 : 0;
     await execute(db,

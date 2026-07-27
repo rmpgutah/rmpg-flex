@@ -30,6 +30,7 @@ import { buildOverview } from '../utils/intelOverview';
 import { daysCutoffISO, finiteCoord, geoFeature, type GeoFeature } from '../utils/intelGeo';
 import { geocodeAddress } from './geocode';
 
+import { log } from '../utils/logger';
 const intel = new Hono<Env>();
 
 // Mirrors the connections.ts gate: everyone operational; client_viewer /
@@ -324,6 +325,7 @@ intel.get('/watchlist', operational, async (c) => {
     return c.json(await query<any>(db,
       `SELECT * FROM intel_watchlist WHERE active = 1 AND added_by = ? ORDER BY created_at DESC LIMIT 200`, userId));
   } catch (err: any) {
+    log.error('GET /watchlist failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message, hint: 'migration 0099 may not have reached live D1' }, 500);
   }
 });
@@ -440,6 +442,7 @@ intel.get('/suggestions', operational, async (c) => {
        FROM intel_link_suggestions s WHERE s.status = ? ORDER BY s.created_at DESC LIMIT 100`, status);
     return c.json(rows);
   } catch (err: any) {
+    log.error('GET /suggestions failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message, hint: 'migration 0100 may not have reached live D1' }, 500);
   }
 });
@@ -460,10 +463,12 @@ intel.post('/suggestions/:id/confirm', operational, async (c) => {
       `INSERT OR IGNORE INTO ${table} (${fk}, ${col}, role) VALUES (?, ?, 'mentioned')`,
       s.source_id, s.entity_id);
   } catch (err: any) {
+    log.error('POST /suggestions/:id/confirm failed', { src: 'src/routes/intel.ts' }, err);
     // Some junction tables lack a role column — retry without it.
     try {
       await execute(db, `INSERT OR IGNORE INTO ${table} (${fk}, ${col}) VALUES (?, ?)`, s.source_id, s.entity_id);
     } catch (e2: any) {
+      log.error('POST /suggestions/:id/confirm failed', { src: 'src/routes/intel.ts' }, e2);
       return c.json({ error: `Failed to create link: ${e2?.message}` }, 500);
     }
   }
@@ -531,6 +536,7 @@ intel.get('/sightings', operational, async (c) => {
       : await query<any>(db, `SELECT * FROM vehicle_sightings ORDER BY created_at DESC LIMIT ?`, limit);
     return c.json(rows);
   } catch (err: any) {
+    log.error('GET /sightings failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message, hint: 'migration 0100 may not have reached live D1' }, 500);
   }
 });
@@ -610,6 +616,7 @@ intel.post('/quick-capture', operational, async (c) => {
       `UPDATE field_interviews SET fi_number = 'FI-' || strftime('%Y%m%d', 'now') || '-' || id WHERE id = ? AND (fi_number IS NULL OR fi_number = '')`,
       fiId);
   } catch (err: any) {
+    log.error('POST /quick-capture failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: `FI insert failed: ${err?.message}` }, 500);
   }
 
@@ -659,6 +666,7 @@ intel.post('/recordings/start', operational, async (c) => {
       Number(b?.linked_fi_id) || null, Number(b?.linked_call_id) || null, b?.notes || null, mime);
     return c.json({ id: r.meta.last_row_id, mime });
   } catch (err: any) {
+    log.error('POST /recordings/start failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message, hint: 'migration 0102 may not have reached live D1' }, 500);
   }
 });
@@ -680,6 +688,7 @@ intel.put('/recordings/:id/chunk', operational, async (c) => {
       'UPDATE interaction_recordings SET chunk_count = MAX(chunk_count, ?) WHERE id = ?', seq + 1, id);
     return c.json({ success: true, seq });
   } catch (err: any) {
+    log.error('PUT /recordings/:id/chunk failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: `chunk store failed: ${err?.message}` }, 500);
   }
 });
@@ -708,6 +717,7 @@ intel.get('/recordings', operational, async (c) => {
       : await query<any>(db, 'SELECT * FROM interaction_recordings WHERE officer_id = ? ORDER BY created_at DESC LIMIT ?', userId, limit);
     return c.json(rows);
   } catch (err: any) {
+    log.error('GET /recordings failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message }, 500);
   }
 });
@@ -741,6 +751,7 @@ intel.get('/recordings/:id/chunk/:seq', operational, async (c) => {
     const mime = legacy.httpMetadata?.contentType || rec?.mime || 'audio/webm';
     return new Response(legacy.body, { headers: { 'content-type': mime, 'cache-control': 'private, max-age=3600' } });
   } catch (err: any) {
+    log.error('GET /recordings/:id/chunk/:seq failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message }, 500);
   }
 });
@@ -752,6 +763,7 @@ intel.get('/jail/sources', operational, async (c) => {
   try {
     return c.json(await query<any>(db, 'SELECT * FROM jail_roster_sources ORDER BY status DESC, display_name'));
   } catch (err: any) {
+    log.error('GET /jail/sources failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message, hint: 'migration 0101 may not have reached live D1' }, 500);
   }
 });
@@ -826,6 +838,7 @@ intel.get('/jail/bookings', operational, async (c) => {
       ...binds, limit);
     return c.json(rows);
   } catch (err: any) {
+    log.error('GET /jail/bookings failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message }, 500);
   }
 });

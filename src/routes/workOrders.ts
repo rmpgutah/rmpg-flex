@@ -325,6 +325,7 @@ wo.get('/status-history', async (c) => {
     );
     return c.json({ count: rows.length, data: rows });
   } catch (err) {
+    log.error('GET /status-history failed', { src: 'src/routes/workOrders.ts' }, err);
     return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500);
   }
 });
@@ -652,6 +653,7 @@ wo.get('/:id{[0-9]+}/parts', async (c) => {
     );
     return c.json({ count: rows.length, data: rows });
   } catch (err) {
+    log.error('GET /:id{[0-9]+}/parts failed', { src: 'src/routes/workOrders.ts' }, err);
     return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500);
   }
 });
@@ -706,6 +708,7 @@ wo.get('/:id{[0-9]+}/status-history', async (c) => {
     );
     return c.json({ count: rows.length, data: rows });
   } catch (err) {
+    log.error('GET /:id{[0-9]+}/status-history failed', { src: 'src/routes/workOrders.ts' }, err);
     return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500);
   }
 });

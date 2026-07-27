@@ -12,6 +12,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { testConnection, setApiKey as smSetApiKey, clearApiKey as smClearApiKey } from '../utils/serveManagerClient';
 import { pollServeManagerJobs } from '../utils/serveManagerPoller';
 
+import { log } from '../utils/logger';
 const sm = new Hono<Env>();
 
 // This router backs the ADMIN ServeManager tab, but had no role gate at all:
@@ -87,6 +88,7 @@ sm.post('/sync', async (c) => {
       jobs_synced: result.synced, attempts_synced: 0,
     });
   } catch (err) {
+    log.error('POST /sync failed', { src: 'src/routes/serveManagerRoutes.ts' }, err);
     const message = err instanceof Error ? err.message : 'Sync failed';
     if (syncId != null) {
       await execute(db,
@@ -154,7 +156,8 @@ sm.get('/jobs', async (c) => {
       data: jobs,
       pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) },
     });
-  } catch { return c.json({ data: [], pagination: { page: 1, per_page: 25, total: 0, totalPages: 0 } }, 500); }
+  } catch (err) {
+    log.error('GET /jobs failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ data: [], pagination: { page: 1, per_page: 25, total: 0, totalPages: 0 } }, 500); }
 });
 
 sm.get('/jobs/:jobId', async (c) => {
@@ -178,12 +181,14 @@ sm.put('/api-key', async (c) => {
     if (!body.api_key) return c.json({ error: 'api_key required' }, 400);
     await smSetApiKey(getDb(c.env), c.env.JWT_SECRET, body.api_key);
     return c.json({ success: true });
-  } catch { return c.json({ error: 'Failed to save key' }, 500); }
+  } catch (err) {
+    log.error('PUT /api-key failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ error: 'Failed to save key' }, 500); }
 });
 
 sm.delete('/api-key', async (c) => {
   try { await smClearApiKey(getDb(c.env)); return c.json({ success: true }); }
-  catch { return c.json({ error: 'Failed to clear key' }, 500); }
+  catch (err) {
+    log.error('DELETE /api-key failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ error: 'Failed to clear key' }, 500); }
 });
 
 sm.put('/poller/settings', async (c) => {
@@ -200,17 +205,20 @@ sm.put('/poller/settings', async (c) => {
       await execute(db, `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 0, 1, datetime('now'), datetime('now'))`, key, value);
     }
     return c.json({ success: true });
-  } catch { return c.json({ error: 'Failed to save settings' }, 500); }
+  } catch (err) {
+    log.error('PUT /poller/settings failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ error: 'Failed to save settings' }, 500); }
 });
 
 sm.post('/poller/poll-now', async (c) => {
   try { return c.json(await pollServeManagerJobs(c.env as any)); }
-  catch { return c.json({ synced: 0, callsCreated: 0, error: 'Poll failed' }, 500); }
+  catch (err) {
+    log.error('POST /poller/poll-now failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ synced: 0, callsCreated: 0, error: 'Poll failed' }, 500); }
 });
 
 sm.post('/test-connection', async (c) => {
   try { return c.json(await testConnection(getDb(c.env), c.env.JWT_SECRET)); }
-  catch { return c.json({ success: false, error: 'Connection test failed' }, 500); }
+  catch (err) {
+    log.error('POST /test-connection failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ success: false, error: 'Connection test failed' }, 500); }
 });
 
 export default sm;

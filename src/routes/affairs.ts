@@ -16,6 +16,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 const affairs = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -72,6 +73,7 @@ affairs.get('/complaints', async (c) => {
     const total = count?.total ?? 0;
     return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
+    log.error('GET /complaints failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to list complaints', code: 'LIST_ERROR' }, 500);
   }
 });
@@ -88,6 +90,7 @@ affairs.get('/complaints/:id', async (c) => {
     if (!row) return c.json({ error: 'Complaint not found' }, 404);
     return c.json({ data: row });
   } catch (err) {
+    log.error('GET /complaints/:id failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to get complaint' }, 500);
   }
 });
@@ -168,6 +171,7 @@ affairs.put('/complaints/:id', async (c) => {
     });
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /complaints/:id failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to update complaint' }, 500);
   }
 });
@@ -198,6 +202,7 @@ affairs.delete('/complaints/:id', async (c) => {
     });
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /complaints/:id failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to delete complaint' }, 500);
   }
 });
@@ -216,6 +221,7 @@ affairs.get('/complaints/:id/investigations', async (c) => {
       'SELECT i.*, u.full_name as investigator_name FROM ia_investigations i LEFT JOIN users u ON i.investigator_id = u.id WHERE i.complaint_id = ? ORDER BY i.started_at DESC', id);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /complaints/:id/investigations failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to list investigations' }, 500);
   }
 });
@@ -246,6 +252,7 @@ affairs.post('/complaints/:id/investigations', async (c) => {
     });
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /complaints/:id/investigations failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to create investigation' }, 500);
   }
 });
@@ -282,6 +289,7 @@ affairs.put('/complaints/:id/investigations/:invId', async (c) => {
     });
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /complaints/:id/investigations/:invId failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to update investigation' }, 500);
   }
 });
@@ -306,6 +314,7 @@ affairs.get('/flags', async (c) => {
       `SELECT f.*, u.full_name as officer_name FROM early_intervention_flags f LEFT JOIN users u ON f.officer_id = u.id ${where} ORDER BY f.flagged_at DESC`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /flags failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to list flags' }, 500);
   }
 });
@@ -339,6 +348,7 @@ affairs.post('/flags', async (c) => {
     });
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /flags failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to create flag' }, 500);
   }
 });
@@ -368,6 +378,7 @@ affairs.put('/flags/:id', async (c) => {
     });
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /flags/:id failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to resolve flag' }, 500);
   }
 });
@@ -384,6 +395,7 @@ affairs.get('/stats', async (c) => {
     const flags = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM early_intervention_flags WHERE resolved_at IS NULL'))?.count ?? 0;
     return c.json({ total_complaints: total, open_complaints: open, unresolved_flags: flags });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });

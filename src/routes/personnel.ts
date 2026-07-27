@@ -13,6 +13,7 @@ import { bodyCamerasRouter, bodycamVideosRouter } from './personnel/bodyCameras'
 import './personnel/bodyCameraUploads';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 const personnel = new Hono<Env>();
 
 // Sub-routers — mounted BEFORE any /:id handler below so the literal
@@ -673,7 +674,8 @@ personnel.delete('/schedules/:id', async (c) => {
     if (!existing) return c.json({ error: 'Schedule not found' }, 404);
     await execute(db, 'DELETE FROM shift_plans WHERE id = ?', id);
     return c.json({ ok: true, id });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /schedules/:id failed', { src: 'src/routes/personnel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── GET /personnel/time?start_date=...&end_date=...&officer_id=... ─
@@ -1249,7 +1251,8 @@ personnel.delete('/deployments/:id', async (c) => {
     if (!existing) return c.json({ error: 'Deployment not found' }, 404);
     await execute(db, 'DELETE FROM deployments WHERE id = ?', id);
     return c.json({ ok: true, id: Number(id) });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /deployments/:id failed', { src: 'src/routes/personnel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── GET /personnel/coverage-gaps?date=YYYY-MM-DD ──────────────────

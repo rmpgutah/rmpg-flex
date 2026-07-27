@@ -201,6 +201,7 @@ fi.get('/by-person/:personId', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /by-person/:personId failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to get FIs by person', code: 'FI_BY_PERSON_ERROR' }, 500);
   }
 });
@@ -242,6 +243,7 @@ fi.get('/by-location', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /by-location failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to query FIs by location', code: 'FI_BY_LOCATION_ERROR' }, 500);
   }
 });
@@ -286,6 +288,7 @@ fi.post('/:id/archive', async (c) => {
     await execute(db, "UPDATE field_interviews SET archived_at = datetime('now') WHERE id = ?", id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('POST /:id/archive failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to archive field interview', code: 'ARCHIVE_FI_ERROR' }, 500);
   }
 });
@@ -298,6 +301,7 @@ fi.post('/:id/unarchive', async (c) => {
     await execute(db, 'UPDATE field_interviews SET archived_at = NULL WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('POST /:id/unarchive failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to unarchive field interview', code: 'UNARCHIVE_FI_ERROR' }, 500);
   }
 });
@@ -329,6 +333,7 @@ fi.get('/:id', async (c) => {
     if (!row) return c.json({ error: 'Field interview not found', code: 'FI_NOT_FOUND' }, 404);
     return c.json({ data: row });
   } catch (err) {
+    log.error('GET /:id failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to get field interview', code: 'GET_FI_ERROR' }, 500);
   }
 });
@@ -500,6 +505,7 @@ fi.put('/:id', async (c) => {
     );
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to update field interview', code: 'UPDATE_FI_ERROR' }, 500);
   }
 });
@@ -535,6 +541,7 @@ fi.delete('/:id', async (c) => {
 
     return c.json({ success: true, deleted_fi_number: existing.fi_number });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to delete field interview', code: 'DELETE_FI_ERROR' }, 500);
   }
 });
@@ -594,6 +601,7 @@ fi.get('/export/csv', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /export/csv failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to export field interviews', code: 'FI_EXPORT_ERROR' }, 500);
   }
 });

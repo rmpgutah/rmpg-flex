@@ -127,6 +127,7 @@ units.post('/', async (c) => {
     const unit = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM units WHERE id = ?', newId);
     return c.json(unit, 201);
   } catch (err: any) {
+    log.error('POST / failed', { src: 'src/routes/dispatch/units.ts' }, err);
     if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Call sign already exists' }, 409);
     return c.json({ error: 'Failed to create unit' }, 500);
   }
@@ -272,6 +273,7 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
     await execute(db, 'DELETE FROM units WHERE id = ?', id);
     return c.json({ message: 'Unit deleted', id });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/dispatch/units.ts' }, err);
     return c.json({ error: 'Failed to delete unit' }, 500);
   }
 });
@@ -301,6 +303,7 @@ units.put('/:id/status', async (c) => {
     } catch { log.warn('Broadcast unit_status_changed failed after status update', { unitId: id }); /* non-fatal */ }
     return c.json(updated);
   } catch (err) {
+    log.error('PUT /:id/status failed', { src: 'src/routes/dispatch/units.ts' }, err);
     return c.json({ error: 'Failed to update unit status' }, 500);
   }
 });
@@ -334,6 +337,7 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
     }
     return c.json({ updated, total: unit_ids.length });
   } catch (err) {
+    log.error('POST /batch-status failed', { src: 'src/routes/dispatch/units.ts' }, err);
     return c.json({ error: 'Failed to update unit statuses' }, 500);
   }
 });

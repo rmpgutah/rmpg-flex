@@ -3,6 +3,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { denverNowDateExpr } from '../utils/denverTime';
 
+import { log } from '../utils/logger';
 // ═══════════════════════════════════════════════════════════════
 // CRM backend — leads, proposals, templates, lead-activity, tasks,
 // dashboard + reports aggregations. Backed by live D1 tables
@@ -112,7 +113,8 @@ crm.post('/tasks', async (c) => {
     const r = await execute(db, "INSERT INTO crm_tasks (client_id, lead_id, title, description, task_type, due_date, priority, status, assigned_to, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)",
       b.client_id ?? null, b.lead_id ?? null, b.title ?? null, b.description ?? null, b.task_type ?? 'follow_up', b.due_date ?? null, b.priority ?? 'normal', b.status ?? 'pending', b.assigned_to ?? null, actorId(c));
     return c.json({ id: r.meta.last_row_id }, 201);
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('POST /tasks failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 crm.put('/tasks/:id', async (c) => {
   try {
@@ -124,11 +126,13 @@ crm.put('/tasks/:id', async (c) => {
     vals.push(id);
     await execute(db, `UPDATE crm_tasks SET ${cols.join(', ')} WHERE id = ?`, ...vals);
     return c.json({ success: true });
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('PUT /tasks/:id failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 crm.delete('/tasks/:id', async (c) => {
   try { const db = getDb(c.env); await execute(db, 'DELETE FROM crm_tasks WHERE id = ?', Number(c.req.param('id'))); return c.json({ success: true }); }
-  catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  catch (e) {
+    log.error('DELETE /tasks/:id failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 crm.post('/activity', async (c) => {
@@ -137,7 +141,8 @@ crm.post('/activity', async (c) => {
     const r = await execute(db, "INSERT INTO crm_activity (client_id, lead_id, activity_type, subject, details, created_by) VALUES (?,?,?,?,?,?)",
       b.client_id ?? null, b.lead_id ?? null, b.activity_type ?? 'note', b.subject ?? null, b.details ?? null, actorId(c));
     return c.json({ id: r.meta.last_row_id }, 201);
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('POST /activity failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 crm.get('/activity/:clientId', async (c) => {
   try { const db = getDb(c.env); return c.json(await query(db, 'SELECT * FROM crm_activity WHERE client_id = ? ORDER BY created_at DESC, id DESC', Number(c.req.param('clientId')))); }
@@ -201,7 +206,8 @@ crm.post('/leads', async (c) => {
       b.latitude ?? null, b.longitude ?? null, b.estimated_value ?? null, b.permit_number ?? null, b.registration_date ?? null, b.license_number ?? null,
       b.project_type ?? null, b.property_size ?? null, b.pipeline_stage ?? 'new', b.lead_score ?? 0, b.assigned_to ?? null, b.notes ?? null, b.service_interest ?? null, b.next_follow_up ?? null);
     return c.json(await queryFirst(db, 'SELECT * FROM crm_leads WHERE id = ?', r.meta.last_row_id), 201);
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('POST /leads failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 crm.put('/leads/:id/stage', async (c) => {
@@ -214,7 +220,8 @@ crm.put('/leads/:id/stage', async (c) => {
     await execute(db, "INSERT INTO crm_lead_activity (lead_id, activity_type, subject, old_value, new_value, created_by) VALUES (?,?,?,?,?,?)",
       id, 'stage_change', 'Pipeline stage changed', prev?.pipeline_stage ?? null, stage, actorId(c));
     return c.json({ success: true });
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('PUT /leads/:id/stage failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 crm.post('/leads/:id/convert', async (c) => {
@@ -231,7 +238,8 @@ crm.post('/leads/:id/convert', async (c) => {
     await execute(db, "INSERT INTO crm_lead_activity (lead_id, activity_type, subject, new_value, created_by) VALUES (?,?,?,?,?)",
       id, 'converted', 'Lead converted to client', String(clientId), actorId(c));
     return c.json({ client_id: clientId });
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('POST /leads/:id/convert failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 crm.post('/leads/bulk-action', async (c) => {
@@ -245,7 +253,8 @@ crm.post('/leads/bulk-action', async (c) => {
     else if (b.action === 'delete') await execute(db, `DELETE FROM crm_leads WHERE id IN (${ph})`, ...ids);
     else if (b.action === 'assign') await execute(db, `UPDATE crm_leads SET assigned_to=?, updated_at=datetime('now') WHERE id IN (${ph})`, b.value ?? null, ...ids);
     return c.json({ updated: ids.length });
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('POST /leads/bulk-action failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 crm.put('/leads/:id', async (c) => {
@@ -257,7 +266,8 @@ crm.put('/leads/:id', async (c) => {
     cols.push("updated_at = datetime('now')"); vals.push(id);
     await execute(db, `UPDATE crm_leads SET ${cols.join(', ')} WHERE id = ?`, ...vals);
     return c.json(await queryFirst(db, 'SELECT * FROM crm_leads WHERE id = ?', id));
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('PUT /leads/:id failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 crm.get('/lead-activity/:leadId', async (c) => {
@@ -270,7 +280,8 @@ crm.post('/lead-activity', async (c) => {
     const r = await execute(db, "INSERT INTO crm_lead_activity (lead_id, activity_type, subject, details, created_by) VALUES (?,?,?,?,?)",
       b.lead_id, b.activity_type ?? 'note', b.subject ?? null, b.details ?? null, actorId(c));
     return c.json({ id: r.meta.last_row_id }, 201);
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('POST /lead-activity failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 // ── Proposals ────────────────────────────────────────────────────
@@ -301,7 +312,8 @@ crm.post('/proposals', async (c) => {
       b.monthly_value ?? 0, b.total_value ?? 0, b.billing_frequency ?? 'monthly', b.valid_until ?? null, b.proposed_start ?? null, b.proposed_end ?? null,
       b.contract_length_months ?? null, b.stage ?? 'draft', b.assigned_to ?? null, b.notes ?? null, actorId(c));
     return c.json(await queryFirst(db, 'SELECT * FROM crm_proposals WHERE id = ?', r.meta.last_row_id), 201);
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('POST /proposals failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 crm.put('/proposals/:id/stage', async (c) => {
@@ -315,7 +327,8 @@ crm.put('/proposals/:id/stage', async (c) => {
     await execute(db, `UPDATE crm_proposals SET stage = ?, rejection_reason = COALESCE(?, rejection_reason), updated_at = datetime('now')${extra} WHERE id = ?`,
       stage, b.rejection_reason ?? null, id);
     return c.json({ success: true });
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('PUT /proposals/:id/stage failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 crm.put('/proposals/:id', async (c) => {
@@ -327,7 +340,8 @@ crm.put('/proposals/:id', async (c) => {
     cols.push("updated_at = datetime('now')"); vals.push(id);
     await execute(db, `UPDATE crm_proposals SET ${cols.join(', ')} WHERE id = ?`, ...vals);
     return c.json(await queryFirst(db, 'SELECT * FROM crm_proposals WHERE id = ?', id));
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('PUT /proposals/:id failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 crm.get('/proposals/:id', async (c) => {

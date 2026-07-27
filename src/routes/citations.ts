@@ -16,6 +16,7 @@ import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { containsAnyClause } from '../utils/searchText';
+import { log } from '../utils/logger';
 const citations = new Hono<Env>();
 
 const VALID_TYPES = new Set(['traffic', 'criminal', 'parking', 'warning']);
@@ -105,6 +106,7 @@ citations.get('/stats', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get citation stats', code: 'STATS_ERROR' }, 500);
   }
 });
@@ -125,6 +127,7 @@ citations.get('/search', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /search failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to search citations', code: 'SEARCH_ERROR' }, 500);
   }
 });
@@ -142,6 +145,7 @@ citations.get('/person/:personId', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /person/:personId failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get citations by person', code: 'PERSON_QUERY_ERROR' }, 500);
   }
 });
@@ -183,6 +187,7 @@ citations.get('/payment-summary', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /payment-summary failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get payment summary', code: 'PAYMENT_SUMMARY_ERROR' }, 500);
   }
 });
@@ -304,6 +309,7 @@ citations.get('/:id', async (c) => {
     if (!row) return c.json({ error: 'Citation not found', code: 'NOT_FOUND' }, 404);
     return c.json({ data: row });
   } catch (err) {
+    log.error('GET /:id failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get citation', code: 'GET_ERROR' }, 500);
   }
 });
@@ -473,6 +479,7 @@ citations.put('/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM citations WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to update citation', code: 'UPDATE_ERROR' }, 500);
   }
 });
@@ -634,6 +641,7 @@ citations.get('/:id/filing', async (c) => {
     if (!row) return c.json({ data: null });
     return c.json({ data: row });
   } catch (err) {
+    log.error('GET /:id/filing failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get filing record', code: 'FILING_GET_ERROR' }, 500);
   }
 });
@@ -682,6 +690,7 @@ citations.get('/:id/copies/:kind', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /:id/copies/:kind failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to fetch copy', code: 'COPY_FETCH_ERROR' }, 500);
   }
 });
@@ -703,6 +712,7 @@ citations.delete('/:id', async (c) => {
     await execute(db, 'DELETE FROM citations WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to delete citation', code: 'DELETE_ERROR' }, 500);
   }
 });
@@ -744,6 +754,7 @@ citations.get('/:id/payments', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /:id/payments failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get payments', code: 'PAYMENTS_GET_ERROR' }, 500);
   }
 });
@@ -791,6 +802,7 @@ citations.post('/:id/payments', async (c) => {
     const payment = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM citation_payments WHERE id = ?', paymentId);
     return c.json({ data: payment }, 201);
   } catch (err) {
+    log.error('POST /:id/payments failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to record payment', code: 'PAYMENTS_POST_ERROR' }, 500);
   }
 });
@@ -811,6 +823,7 @@ citations.get('/:id/violations', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /:id/violations failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get violations', code: 'VIOLATIONS_GET_ERROR' }, 500);
   }
 });
@@ -857,6 +870,7 @@ citations.post('/:id/violations', async (c) => {
     );
     return c.json({ data: violation }, 201);
   } catch (err) {
+    log.error('POST /:id/violations failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to add violation', code: 'VIOLATION_POST_ERROR' }, 500);
   }
 });
@@ -896,6 +910,7 @@ citations.put('/:id/violations/:violationId', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM citation_violations WHERE id = ?', violationId);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /:id/violations/:violationId failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to update violation', code: 'VIOLATION_PUT_ERROR' }, 500);
   }
 });
@@ -914,6 +929,7 @@ citations.delete('/:id/violations/:violationId', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Violation not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id/violations/:violationId failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to delete violation', code: 'VIOLATION_DELETE_ERROR' }, 500);
   }
 });
@@ -979,6 +995,7 @@ citations.get('/export/csv', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /export/csv failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to export citations', code: 'EXPORT_ERROR' }, 500);
   }
 });
@@ -1031,7 +1048,8 @@ citations.post('/batch', async (c) => {
       created.push(Number(r.meta.last_row_id));
     }
     return c.json({ success: true, created: created.length, ids: created });
-  } catch { return c.json({ error: 'Batch creation failed' }, 500); }
+  } catch (err) {
+    log.error('POST /batch failed', { src: 'src/routes/citations.ts' }, err); return c.json({ error: 'Batch creation failed' }, 500); }
 });
 
 export default citations;

@@ -26,6 +26,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { containsAnyClause } from '../utils/searchText';
+import { log } from '../utils/logger';
 const forensics = new Hono<Env>();
 
 // ── Allowed-value sets (mirror migration CHECK constraints) ──
@@ -138,6 +139,7 @@ forensics.get('/stats', async (c) => {
     );
     return c.json({ total, open, byStatus, byPriority, byType });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to get forensics stats', code: 'STATS_ERROR' }, 500);
   }
 });
@@ -184,6 +186,7 @@ forensics.get('/', async (c) => {
       pagination: { page: pageNum, per_page: perPage, total, totalPages: perPage > 0 ? Math.ceil(total / perPage) : 0 },
     });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to list forensics cases', code: 'LIST_ERROR' }, 500);
   }
 });
@@ -270,6 +273,7 @@ forensics.get('/:id', async (c) => {
 
     return c.json({ data: row });
   } catch (err) {
+    log.error('GET /:id failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to get forensics case', code: 'GET_ERROR' }, 500);
   }
 });
@@ -377,6 +381,7 @@ forensics.put('/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_cases WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to update forensics case', code: 'UPDATE_ERROR' }, 500);
   }
 });
@@ -402,6 +407,7 @@ forensics.delete('/:id', async (c) => {
     await execute(db, 'DELETE FROM forensic_cases WHERE id = ?', id);
     return c.json({ success: true, deleted_lab_number: existing.lab_number });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to delete forensics case', code: 'DELETE_ERROR' }, 500);
   }
 });
@@ -422,6 +428,7 @@ forensics.get('/:caseId/exhibits', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /:caseId/exhibits failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to list exhibits', code: 'EXHIBITS_LIST_ERROR' }, 500);
   }
 });
@@ -542,6 +549,7 @@ forensics.put('/:caseId/exhibits/:exhibitId', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_exhibits WHERE id = ?', exhibitId);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /:caseId/exhibits/:exhibitId failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to update exhibit', code: 'EXHIBIT_PUT_ERROR' }, 500);
   }
 });
@@ -563,6 +571,7 @@ forensics.delete('/:caseId/exhibits/:exhibitId', async (c) => {
     await logActivity(db, caseId, 'exhibit_deleted', `Exhibit ${exhibitId} removed`, userId, user?.full_name ?? '');
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:caseId/exhibits/:exhibitId failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to delete exhibit', code: 'EXHIBIT_DELETE_ERROR' }, 500);
   }
 });
@@ -615,6 +624,7 @@ forensics.post('/:caseId/exhibits/:exhibitId/custody', async (c) => {
 
     return c.json({ data: { exhibit_id: exhibitId, chain_length: chain.length, latest: chain[chain.length - 1] } }, 201);
   } catch (err) {
+    log.error('POST /:caseId/exhibits/:exhibitId/custody failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to record custody transfer', code: 'CUSTODY_ERROR' }, 500);
   }
 });
@@ -745,6 +755,7 @@ forensics.get('/:caseId/hashes', async (c) => {
 
     return c.json({ hashes, stats: { total: hashes.length, flagged, matched } });
   } catch (err) {
+    log.error('GET /:caseId/hashes failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to get hashes', code: 'HASHES_GET_ERROR' }, 500);
   }
 });
@@ -829,6 +840,7 @@ forensics.get('/:caseId/links', async (c) => {
     );
     return c.json(rows);
   } catch (err) {
+    log.error('GET /:caseId/links failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to list links', code: 'LINKS_LIST_ERROR' }, 500);
   }
 });
@@ -902,6 +914,7 @@ forensics.delete('/:caseId/links/:linkId', async (c) => {
     await logActivity(db, caseId, 'link_removed', `Unlinked ${existing.entity_type} "${existing.entity_label}"`, userId, user?.full_name ?? '');
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:caseId/links/:linkId failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to remove link', code: 'LINK_DELETE_ERROR' }, 500);
   }
 });
@@ -927,6 +940,7 @@ forensics.get('/:caseId/analyses', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /:caseId/analyses failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to list analyses', code: 'ANALYSES_LIST_ERROR' }, 500);
   }
 });
@@ -967,6 +981,7 @@ forensics.post('/:caseId/analyses', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_analyses WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /:caseId/analyses failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to add analysis', code: 'ANALYSIS_POST_ERROR' }, 500);
   }
 });
@@ -1022,6 +1037,7 @@ forensics.put('/:caseId/analyses/:analysisId', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_analyses WHERE id = ?', analysisId);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /:caseId/analyses/:analysisId failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to update analysis', code: 'ANALYSIS_PUT_ERROR' }, 500);
   }
 });
@@ -1040,6 +1056,7 @@ forensics.delete('/:caseId/analyses/:analysisId', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Analysis not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:caseId/analyses/:analysisId failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to delete analysis', code: 'ANALYSIS_DELETE_ERROR' }, 500);
   }
 });
@@ -1066,6 +1083,7 @@ forensics.get('/:caseId/activity', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /:caseId/activity failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to get activity log', code: 'ACTIVITY_GET_ERROR' }, 500);
   }
 });
@@ -1098,6 +1116,7 @@ forensics.get('/:caseId/exhibits/:exhibitId/custody-audit', async (c) => {
     );
     return c.json({ data: { exhibit_id: exhibitId, chain_of_custody: chain, activity } });
   } catch (err) {
+    log.error('GET /:caseId/exhibits/:exhibitId/custody-audit failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to get custody audit', code: 'CUSTODY_AUDIT_ERROR' }, 500);
   }
 });
@@ -1162,6 +1181,7 @@ forensics.get('/export/csv', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /export/csv failed', { src: 'src/routes/forensics.ts' }, err);
     return c.json({ error: 'Failed to export forensics cases', code: 'EXPORT_ERROR' }, 500);
   }
 });
