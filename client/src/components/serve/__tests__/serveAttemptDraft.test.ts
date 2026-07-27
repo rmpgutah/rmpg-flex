@@ -134,3 +134,34 @@ describe('public signing surface', () => {
     expect(PAGE).toMatch(/classList\.remove\('public-form'\)/);
   });
 });
+
+describe('paper transcription', () => {
+  const ACTIONS = readFileSync(join(__dirname, '..', 'ServeReceiptActions.tsx'), 'utf8');
+
+  it('closes the dead end the paper path shipped with', () => {
+    // A blank could be printed and signed in ink with nowhere to put it.
+    // completion_channel = 'paper' existed as a column and nothing wrote it.
+    expect(ACTIONS).toMatch(/serve-receipts\/\$\{job\.id\}\/paper/);
+    expect(ACTIONS).toMatch(/They completed it on paper/);
+  });
+
+  it('requires a photograph of the signed page', () => {
+    // The wet signature is the evidence. Without the page there is only an
+    // officer's assertion that someone signed something.
+    expect(ACTIONS).toMatch(/signed_page_image: paperImage/);
+    expect(ACTIONS).toMatch(/disabled=\{busy \|\| !paperImage \|\| !paperName\.trim\(\)\}/);
+  });
+
+  it('downscales before sending rather than posting a raw phone photo', () => {
+    // Several megabytes into a database column is not storage.
+    expect(ACTIONS).toMatch(/1600 \/ Math\.max\(img\.width, img\.height\)/);
+    expect(ACTIONS).toMatch(/toDataURL\('image\/jpeg', 0\.7\)/);
+  });
+
+  it('stores the wording the paper carried, not today\'s copy', () => {
+    // The signer initialled the sheet in their hand. Re-deriving the
+    // attestations at transcription time would record them as agreeing to
+    // whatever the code says now.
+    expect(ACTIONS).toMatch(/attestations: attestationsFor\(variant/);
+  });
+});
