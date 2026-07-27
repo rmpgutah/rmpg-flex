@@ -12,10 +12,36 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { flexEvent } from '../utils/analytics';
-import type { AnalyticsEvent } from '../utils/analytics';
-
 import { log } from '../utils/logger';
+import type { AnalyticsEvent } from '../utils/analytics';
 const reanalysis = new Hono<Env>();
+
+/**
+ * Catch-handler for a replay stream that stays LOUD.
+ *
+ * Every stream here previously ended in a bare `.catch` returning []. That
+ * turned a hard schema error into an empty page: the replay reported success,
+ * advanced nothing, and looked idle. Four of the six streams named columns
+ * that do not exist on live D1 -- vehicle_sightings.unit_id, audit_log.detail,
+ * gps_breadcrumbs.created_at, citations.lat/lng -- so each threw "no such
+ * column" on EVERY invocation and the catch ate it. 254,215 rows sat
+ * unreplayed behind that silence (gps_breadcrumbs alone: 249,816).
+ *
+ * The empty-array fallback stays, so one broken stream cannot abort the whole
+ * replay. It is simply no longer silent.
+ *
+ * Returns never[] rather than being generic: TypeScript cannot infer an
+ * element type from the .catch() position, so a generic here widens every
+ * stream's rows to unknown. never[] is assignable to any array type, so each
+ * call site keeps the row type its query declared.
+ */
+function replayFail(stream: string): (err: unknown) => never[] {
+  return (err: unknown) => {
+    log.error('Analytics replay stream failed', { stream }, err as Error);
+    return [];
+  };
+}
+
 const adminOnly = requireRole('admin');
 
 // ── Schema reconciler ─────────────────────────────────────────
@@ -231,14 +257,17 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
       const rows = await query<{
         id: number; plate: string | null; state: string | null;
         confidence: number | null;
-        lat: number | null; lng: number | null; created_at: string; unit_id: number | null;
+        lat: number | null; lng: number | null; created_at: string;
       }>(db,
-        `SELECT id, plate, state, confidence, lat, lng, created_at, unit_id
+        // vehicle_sightings has no unit_id -- a sighting records who saw it
+        // (sighted_by), not which unit. Dropped from the projection; the
+        // event carries null rather than inventing a mapping.
+        `SELECT id, plate, state, confidence, lat, lng, created_at
          FROM vehicle_sightings
          WHERE id > ? AND analytics_replayed_at IS NULL
          ORDER BY id ASC LIMIT ?`,
         curSightings, limit + 1,
-      ).catch(() => []);
+      ).catch(replayFail('vehicle_sightings'));
 
       if (rows.length > limit) hasMore = true;
       const batch = rows.slice(0, limit);
@@ -253,7 +282,7 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
           trust: r.confidence,
           lat: r.lat,
           lng: r.lng,
-          unit_id: r.unit_id,
+          unit_id: null,
           capture_id: null,
           call_id: null,
           incident_id: null,
@@ -300,11 +329,12 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
         id: number; action: string; entity_type: string | null;
         entity_id: string | null; user_id: number | null; detail: string | null; created_at: string;
       }>(db,
-        `SELECT id, action, entity_type, entity_id, user_id, detail, created_at
+        // audit_log's column is `details`, not `detail`.
+        `SELECT id, action, entity_type, entity_id, user_id, details AS detail, created_at
          FROM audit_log WHERE id > ? AND analytics_replayed_at IS NULL
          ORDER BY id ASC LIMIT ?`,
         curAudit, limit + 1,
-      ).catch(() => []);
+      ).catch(replayFail('audit_log'));
 
       if (rows.length > limit) hasMore = true;
       const batch = rows.slice(0, limit);
@@ -331,11 +361,13 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
         latitude: number; longitude: number; speed: number | null;
         unit_status: string | null; created_at: string;
       }>(db,
-        `SELECT id, unit_id, officer_id, latitude, longitude, speed, unit_status, created_at
+        // gps_breadcrumbs timestamps rows `recorded_at`; no created_at here.
+        `SELECT id, unit_id, officer_id, latitude, longitude, speed, unit_status,
+                recorded_at AS created_at
          FROM gps_breadcrumbs WHERE id > ? AND analytics_replayed_at IS NULL
          ORDER BY id ASC LIMIT ?`,
         curGps, limit + 1,
-      ).catch(() => []);
+      ).catch(replayFail('gps_breadcrumbs'));
 
       if (rows.length > limit) hasMore = true;
       const batch = rows.slice(0, limit);
@@ -375,7 +407,7 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
          WHERE c.id > ? AND (e.id IS NULL OR e.analytics_replayed_at IS NULL)
          ORDER BY c.id ASC LIMIT ?`,
         curCfs, limit + 1,
-      ).catch(() => []);
+      ).catch(replayFail('calls_for_service'));
 
       if (rows.length > limit) hasMore = true;
       const batch = rows.slice(0, limit);
@@ -416,11 +448,13 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
         issuing_officer_id: number | null; fine_amount: number | null;
         lat: number | null; lng: number | null; created_at: string;
       }>(db,
-        `SELECT id, citation_number, violation, issuing_officer_id, fine_amount, lat, lng, created_at
+        // citations geocodes to latitude/longitude, not lat/lng.
+        `SELECT id, citation_number, violation, issuing_officer_id, fine_amount,
+                latitude AS lat, longitude AS lng, created_at
          FROM citations WHERE id > ? AND analytics_replayed_at IS NULL
          ORDER BY id ASC LIMIT ?`,
         curCitations, limit + 1,
-      ).catch(() => []);
+      ).catch(replayFail('citations'));
 
       if (rows.length > limit) hasMore = true;
       const batch = rows.slice(0, limit);
@@ -452,7 +486,7 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
          FROM incidents WHERE id > ? AND analytics_replayed_at IS NULL
          ORDER BY id ASC LIMIT ?`,
         curIncidents, limit + 1,
-      ).catch(() => []);
+      ).catch(replayFail('incidents'));
 
       if (rows.length > limit) hasMore = true;
       const batch = rows.slice(0, limit);
