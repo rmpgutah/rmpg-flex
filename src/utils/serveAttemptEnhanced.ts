@@ -253,8 +253,13 @@ export async function checkNcicAtAttempt(
         risk_level: string | null;
       }>(
         db,
+        // nsopw_query_cache stores QUERY responses (cache_key, raw_response,
+        // hit_offender_ids) -- it has none of these columns. The offender
+        // rows live in national_sex_offenders, which carries exactly this
+        // shape. Pointed at the cache, this threw "no such column" on every
+        // SOR screen.
         `SELECT first_name, last_name, jurisdiction, offense, risk_level
-           FROM nsopw_query_cache
+           FROM national_sex_offenders
           WHERE LOWER(last_name) = ?
             AND (? = '' OR LOWER(first_name) = ?)
           LIMIT 10`,
