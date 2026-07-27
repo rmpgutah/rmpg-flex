@@ -32,6 +32,8 @@ async function logAudit(db: ReturnType<typeof getDb>, userId: number | null, act
 
 // ── Pricing rate card ──────────────────────────────────────
 psb.get('/ps-pricing/items', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM ps_pricing_items ORDER BY sort_order, id');
   return c.json({ data: rows });
@@ -42,6 +44,8 @@ psb.get('/ps-pricing/items', async (c) => {
 // post-completion charge uses, so the estimate matches the eventual bill. Used at
 // intake to show the client what a job will cost under their contract.
 psb.get('/cost-estimate', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const num = (q: string | undefined): number | null => {
     if (q == null || q === '') return null; const n = Number(q); return Number.isFinite(n) ? n : null;
@@ -123,6 +127,8 @@ psb.delete('/ps-pricing/items/:id', async (c) => {
 
 // ── Per-contract process-service terms ─────────────────────
 psb.get('/contracts/:id/ps-terms', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
@@ -163,6 +169,8 @@ psb.put('/contracts/:id/ps-terms', async (c) => {
 
 // ── Audit history for a contract (from activity_log) ───────
 psb.get('/contracts/:id/audit', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
@@ -176,6 +184,8 @@ psb.get('/contracts/:id/audit', async (c) => {
 
 // ── Serve charges review queue ─────────────────────────────
 psb.get('/serve-charges', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const status = c.req.query('status') ?? 'pending_review';
   const charges = await query<any>(db,
