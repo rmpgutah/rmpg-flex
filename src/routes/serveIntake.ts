@@ -1618,15 +1618,30 @@ si.patch('/schedule/:slotId', async (c) => {
 
   if (!force) {
     // Pull all other slots on the candidate (officer, date) for overlap detection.
+    //
+    // `s.dismissed = 0` is load-bearing: GET /schedule hides dismissed rows
+    // (see the WHERE at the schedule listing above), so leaving them in the
+    // peer set makes a dismissed slot an INVISIBLE blocker — the operator sees
+    // an empty band, drops onto it, and gets "conflicts with another scheduled
+    // attempt" with nothing on screen that could explain it.
+    //
+    // recipient_name/case_number ride along so the 409 body can NAME the
+    // conflicting job; the client renders them in the force-overlap confirm.
     const peers = await query<{
       id: number; queue_id: number; officer_id: number | null;
       scheduled_date: string; window_start: string; window_end: string;
       updated_at: string;
+      recipient_name: string | null; case_number: string | null;
     }>(
       db,
-      `SELECT id, queue_id, officer_id, scheduled_date, window_start, window_end, updated_at
-         FROM serve_attempt_schedules
-        WHERE scheduled_date = ? AND officer_id IS ?`,
+      `SELECT s.id, s.queue_id, s.officer_id, s.scheduled_date,
+              s.window_start, s.window_end, s.updated_at,
+              q.recipient_name, q.case_number
+         FROM serve_attempt_schedules s
+         JOIN serve_queue q ON q.id = s.queue_id
+        WHERE s.dismissed = 0
+          AND s.scheduled_date = ?
+          AND s.officer_id IS ?`,
       candidateDate, candidateOfficer,
     );
     const conflicts = detectSlotOverlap(

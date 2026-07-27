@@ -92,3 +92,63 @@ export function computeChipBand(
   const rowSpan = Math.max(1, endBucket - rowStart + 1);
   return { rowStart, rowSpan };
 }
+
+// A chip's band position plus its horizontal slice of that band.
+// `lane` is 0-based; `lanes` is how many chips share the widest point of this
+// chip's overlap cluster. Renderers use width = 100/lanes %, offset = lane/lanes.
+export interface ChipLayout {
+  slot: ScheduleSlot;
+  rowStart: number;
+  rowSpan: number;
+  lane: number;
+  lanes: number;
+}
+
+// Side-by-side layout for a single day's chips.
+//
+// Overlap is now a legal state (a supervisor can force a double-book), so two
+// chips can occupy the same band. Stacking them at the same grid position would
+// render one exactly on top of the other — the lower chip becomes invisible AND
+// undraggable. Greedy interval-graph colouring instead: walk chips in band
+// order, drop each into the first lane whose previous chip has already ended,
+// and open a new lane only when none is free.
+//
+// `lanes` is computed per CLUSTER, not per day, so one 06:00–24:00 chip doesn't
+// squeeze every other chip in the day down to a sliver.
+export function layoutDayChips(daySlots: ScheduleSlot[]): ChipLayout[] {
+  const items = daySlots
+    .map((slot) => ({ slot, ...computeChipBand(slot.window_start, slot.window_end) }))
+    .sort((a, b) => a.rowStart - b.rowStart || a.slot.id - b.slot.id);
+
+  const out: ChipLayout[] = [];
+  let cluster: ChipLayout[] = [];
+  let clusterEnd = -1;
+  let laneEnds: number[] = [];
+
+  const flush = () => {
+    if (cluster.length === 0) return;
+    const lanes = Math.max(...cluster.map((c) => c.lane)) + 1;
+    for (const c of cluster) out.push({ ...c, lanes });
+    cluster = [];
+    laneEnds = [];
+    clusterEnd = -1;
+  };
+
+  for (const it of items) {
+    const end = it.rowStart + it.rowSpan;
+    // Gap since the furthest-reaching chip so far ⇒ previous cluster is closed.
+    if (cluster.length > 0 && it.rowStart >= clusterEnd) flush();
+
+    let lane = laneEnds.findIndex((laneEnd) => laneEnd <= it.rowStart);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(end);
+    } else {
+      laneEnds[lane] = end;
+    }
+    clusterEnd = Math.max(clusterEnd, end);
+    cluster.push({ slot: it.slot, rowStart: it.rowStart, rowSpan: it.rowSpan, lane, lanes: 1 });
+  }
+  flush();
+  return out;
+}

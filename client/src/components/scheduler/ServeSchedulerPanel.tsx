@@ -4,7 +4,13 @@ import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { useAuth } from '../../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
-import { describeServeScheduleError } from '../../utils/serveScheduleErrors';
+import {
+  describeConflicts,
+  describeServeScheduleError,
+  extractOverlapConflicts,
+  type ScheduleConflict,
+} from '../../utils/serveScheduleErrors';
+import ConfirmDialog from '../ConfirmDialog';
 import EditSlotModal from '../serve/EditSlotModal';
 import WeekTimeline from './WeekTimeline';
 import MonthGrid from './MonthGrid';
@@ -26,6 +32,15 @@ function todayDenver(): string {
 
 type ViewMode = 'week' | 'month';
 
+type SlotTarget = { date: string; window_start: string; window_end: string };
+
+/** A drop the server rejected as an overlap, held while the operator decides. */
+interface PendingOverlap {
+  slot: ScheduleSlot;
+  target: SlotTarget;
+  conflicts: ScheduleConflict[];
+}
+
 export default function ServeSchedulerPanel() {
   const [view, setView] = useState<ViewMode>('week');
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
@@ -34,6 +49,9 @@ export default function ServeSchedulerPanel() {
   const [error, setError] = useState<string | null>(null);
   const [backfilling, setBackfilling] = useState(false);
   const [editingSlot, setEditingSlot] = useState<ScheduleSlot | null>(null);
+  const [pendingOverlap, setPendingOverlap] = useState<PendingOverlap | null>(null);
+  const [forcing, setForcing] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
 
   const { user } = useAuth();
   const canManage = MANAGE_ROLES.has(user?.role ?? '');
@@ -72,10 +90,28 @@ export default function ServeSchedulerPanel() {
       .catch(() => { /* Edit modal still opens; officer select shows empty */ });
   }, []);
 
-  const handleSlotDrop = useCallback(async (
-    slot: ScheduleSlot,
-    target: { date: string; window_start: string; window_end: string },
+  // The PATCH endpoint reads `scheduled_date`, not `date` — sending the raw
+  // `target` object silently no-ops the date move (server falls back to the
+  // slot's current date) while still returning 200, so the chip appears to move
+  // until the next refetch snaps it back. Map the field name explicitly.
+  //
+  // `force` skips the server's overlap check (audited as
+  // `serve_schedule.force_overlap`). Without it an overlap 409 is a dead end.
+  const patchSlotMove = useCallback(async (
+    slot: ScheduleSlot, target: SlotTarget, force: boolean,
   ) => {
+    await apiFetch(`/serve-intake/schedule/${slot.id}${force ? '?force=1' : ''}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scheduled_date: target.date,
+        window_start: target.window_start,
+        window_end: target.window_end,
+      }),
+    });
+  }, []);
+
+  const handleSlotDrop = useCallback(async (slot: ScheduleSlot, target: SlotTarget) => {
     // Optimistic update.
     setSlots((prev) => prev.map((s) =>
       s.id === slot.id
@@ -83,27 +119,41 @@ export default function ServeSchedulerPanel() {
         : s,
     ));
     try {
-      // The PATCH endpoint reads `scheduled_date`, not `date` — sending the
-      // raw `target` object silently no-ops the date move (server falls back
-      // to the slot's current date) while still returning 200, so the chip
-      // appears to move until the next refetch snaps it back to where it
-      // started. Map the field name explicitly.
-      await apiFetch(`/serve-intake/schedule/${slot.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          scheduled_date: target.date,
-          window_start: target.window_start,
-          window_end: target.window_end,
-        }),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      await patchSlotMove(slot, target, false);
     } catch (e) {
-      // Revert on failure.
+      const conflicts = extractOverlapConflicts(e);
+      if (conflicts) {
+        // Leave the optimistic chip where it was dropped so the confirm has a
+        // visible subject; cancelling refetches it back to its old band.
+        setPendingOverlap({ slot, target, conflicts });
+        return;
+      }
+      // Revert on failure. A transient strip, NOT setError — the panel's
+      // render branches on `error` before the grid, so reusing it for a failed
+      // drag would replace the whole timeline with a one-line message.
       refetch();
-      // Best-effort toast — `alert` is the project's existing fallback.
-      // eslint-disable-next-line no-alert
-      alert(`Could not move attempt: ${describeServeScheduleError(e).message}`);
+      setMoveError(describeServeScheduleError(e).message);
     }
+  }, [patchSlotMove, refetch]);
+
+  const handleConfirmForceMove = useCallback(async () => {
+    if (!pendingOverlap) return;
+    const { slot, target } = pendingOverlap;
+    setForcing(true);
+    try {
+      await patchSlotMove(slot, target, true);
+    } catch (e) {
+      setMoveError(describeServeScheduleError(e).message);
+    } finally {
+      setForcing(false);
+      setPendingOverlap(null);
+      refetch();
+    }
+  }, [pendingOverlap, patchSlotMove, refetch]);
+
+  const handleCancelForceMove = useCallback(() => {
+    setPendingOverlap(null);
+    refetch(); // undo the optimistic move still on screen
   }, [refetch]);
 
   // ── EditSlotModal: full manual edit (date, window, officer, label, notify) ─
@@ -221,6 +271,21 @@ export default function ServeSchedulerPanel() {
           />
         )
       }
+      {moveError && (
+        <div
+          role="alert"
+          className="flex items-center gap-2 px-2 py-1 border-t border-red-500/40 bg-red-900/20 text-[10px] text-red-200"
+        >
+          <span className="flex-1">{moveError}</span>
+          <button
+            type="button"
+            onClick={() => setMoveError(null)}
+            className="px-1 uppercase tracking-wide hover:text-red-100"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <div className="px-2 py-1 border-t border-rmpg-700 text-[10px] text-rmpg-300 flex gap-3 items-center">
         <span>Today: <span className="text-rmpg-100 tabular-nums">{todayCount}</span></span>
         <span>
@@ -248,6 +313,19 @@ export default function ServeSchedulerPanel() {
           onClose={() => setEditingSlot(null)}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={pendingOverlap !== null}
+        onClose={handleCancelForceMove}
+        onConfirm={handleConfirmForceMove}
+        title="Double-book this window?"
+        message={pendingOverlap
+          ? `${describeConflicts(pendingOverlap.conflicts)} Moving it here schedules both at once — the move is logged as a forced overlap.`
+          : ''}
+        confirmLabel="Move anyway"
+        confirmVariant="warning"
+        isLoading={forcing}
+      />
     </div>
   );
 }

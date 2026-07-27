@@ -4,6 +4,7 @@ import {
   groupByDay,
   formatDayHeader,
   computeChipBand,
+  layoutDayChips,
   type ScheduleSlot,
 } from '../schedulerView';
 
@@ -77,5 +78,59 @@ describe('computeChipBand', () => {
 
   it('clamps a midnight-spanning window to the last visible band', () => {
     expect(computeChipBand('23:00', '23:59')).toEqual({ rowStart: 9, rowSpan: 1 });
+  });
+});
+
+describe('layoutDayChips', () => {
+  // Bands: computeChipBand maps 06:00 → row 1, 08:00 → row 2, ... 2h each.
+  const at = (id: number, start: string, end: string) =>
+    slot({ id, window_start: start, window_end: end });
+
+  it('gives a lone chip the full width', () => {
+    const [only] = layoutDayChips([at(1, '08:00', '10:00')]);
+    expect(only).toMatchObject({ rowStart: 2, rowSpan: 1, lane: 0, lanes: 1 });
+  });
+
+  it('splits two chips sharing a band into side-by-side lanes', () => {
+    const out = layoutDayChips([at(1, '08:00', '10:00'), at(2, '08:00', '10:00')]);
+    expect(out.map((c) => [c.slot.id, c.lane, c.lanes])).toEqual([
+      [1, 0, 2],
+      [2, 1, 2],
+    ]);
+  });
+
+  it('reuses a lane once the previous chip in it has ended', () => {
+    // 08–10 and 10–12 do not overlap, so both sit in lane 0 at full width.
+    const out = layoutDayChips([at(1, '08:00', '10:00'), at(2, '10:00', '12:00')]);
+    expect(out.map((c) => [c.lane, c.lanes])).toEqual([[0, 1], [0, 1]]);
+  });
+
+  it('scopes lane count to the overlap cluster, not the whole day', () => {
+    // Cluster A: two chips overlapping in the morning ⇒ 2 lanes.
+    // Cluster B: one isolated evening chip ⇒ must stay full width.
+    const out = layoutDayChips([
+      at(1, '08:00', '10:00'), at(2, '08:00', '10:00'), at(3, '20:00', '22:00'),
+    ]);
+    const byId = new Map(out.map((c) => [c.slot.id, c]));
+    expect(byId.get(1)!.lanes).toBe(2);
+    expect(byId.get(2)!.lanes).toBe(2);
+    expect(byId.get(3)!).toMatchObject({ lane: 0, lanes: 1 });
+  });
+
+  it('keeps a long chip and the chips it spans in distinct lanes', () => {
+    const out = layoutDayChips([
+      at(1, '08:00', '16:00'), at(2, '10:00', '12:00'), at(3, '12:00', '14:00'),
+    ]);
+    const byId = new Map(out.map((c) => [c.slot.id, c]));
+    expect(byId.get(1)!.lane).toBe(0);
+    // 2 and 3 don't overlap each other, so they share lane 1 — but all three
+    // belong to one cluster, so every chip is sized for 2 lanes.
+    expect(byId.get(2)!.lane).toBe(1);
+    expect(byId.get(3)!.lane).toBe(1);
+    expect(out.every((c) => c.lanes === 2)).toBe(true);
+  });
+
+  it('returns an empty layout for an empty day', () => {
+    expect(layoutDayChips([])).toEqual([]);
   });
 });
