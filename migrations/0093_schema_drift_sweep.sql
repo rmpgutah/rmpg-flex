@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS court_discovery (
   status TEXT NOT NULL DEFAULT 'pending',  -- pending | in_progress | provided | overdue | not_applicable
   notes TEXT,
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_court_discovery_due ON court_discovery(due_date);
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS policy_acknowledgements (
   acknowledged_at TEXT,
   due_date TEXT,
   status TEXT NOT NULL DEFAULT 'pending',  -- acknowledged | pending | overdue
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_policy_ack_due ON policy_acknowledgements(due_date);
 CREATE INDEX IF NOT EXISTS idx_policy_ack_user ON policy_acknowledgements(user_id);
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS config_audit_log (
   changed_by INTEGER,
   changed_by_username TEXT,
   source TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_config_audit_created ON config_audit_log(created_at);
 
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS forensic_analysis_templates (
   description TEXT,
   active INTEGER NOT NULL DEFAULT 1,
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS forensic_report_templates (
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS forensic_report_templates (
   body_template TEXT,
   active INTEGER NOT NULL DEFAULT 1,
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- audit.ts self-creates this lazily on the summarise path; created here so
@@ -153,5 +153,5 @@ CREATE TABLE IF NOT EXISTS time_entry_edits (
   old_value TEXT,
   new_value TEXT,
   reason TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

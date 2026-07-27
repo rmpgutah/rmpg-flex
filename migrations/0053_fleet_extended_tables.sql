@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS fleet_tires (
   removed_mileage INTEGER,
   cost REAL,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_damage — damage/incident records ────────────────
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS fleet_damage (
   repair_date TEXT,
   photo_urls TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_recalls — NHTSA/manufacturer recall tracking ────
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS fleet_recalls (
   remedy_date TEXT,
   status TEXT DEFAULT 'open' CHECK(status IN ('open','scheduled','remedied','closed')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_personnel_notes — officer/operator notes per vehicle ─
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS fleet_personnel_notes (
   vehicle_id INTEGER NOT NULL REFERENCES fleet_vehicles(id) ON DELETE CASCADE,
   user_id INTEGER REFERENCES users(id),
   content TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_pretrip_checklists — DVIR / pre-trip inspections ─
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS fleet_pretrip_checklists (
   emergency_equip INTEGER DEFAULT 0,
   notes TEXT,
   status TEXT DEFAULT 'completed' CHECK(status IN ('completed','failed','partial')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_parts — parts inventory management ──────────────
@@ -100,8 +100,8 @@ CREATE TABLE IF NOT EXISTS fleet_parts (
   supplier TEXT,
   compatible_vehicles TEXT,
   location TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_warranties — warranty/coverage tracking ─────────
@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS fleet_warranties (
   contact_info TEXT,
   status TEXT DEFAULT 'active' CHECK(status IN ('active','expired','claimed','void')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_depreciation — depreciation schedule ────────────
@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS fleet_depreciation (
   accumulated_depreciation REAL DEFAULT 0,
   current_book_value REAL,
   calculated_date TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_accidents — accident/incident reporting ─────────
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS fleet_accidents (
   fault_determination TEXT CHECK(fault_determination IN ('at_fault','not_at_fault','shared','pending')),
   status TEXT DEFAULT 'open' CHECK(status IN ('open','investigating','closed','litigation')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_keys — key control / tracking ───────────────────
@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS fleet_keys (
   last_checkout TEXT,
   last_return TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_key_log — key checkout/return audit trail ───────
@@ -179,7 +179,7 @@ CREATE TABLE IF NOT EXISTS fleet_key_log (
   key_id INTEGER NOT NULL REFERENCES fleet_keys(id) ON DELETE CASCADE,
   action TEXT CHECK(action IN ('checkout','return','lost','destroyed')),
   holder_name TEXT,
-  timestamp TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  timestamp TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_service_providers — vendor/shop directory ───────
@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS fleet_service_providers (
   tax_id TEXT,
   preferred INTEGER DEFAULT 0,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_fuel_cards — fuel card management ───────────────
@@ -208,7 +208,7 @@ CREATE TABLE IF NOT EXISTS fleet_fuel_cards (
   status TEXT DEFAULT 'active' CHECK(status IN ('active','suspended','cancelled','expired')),
   expiration_date TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_budgets — budget allocation / tracking ──────────
@@ -219,7 +219,7 @@ CREATE TABLE IF NOT EXISTS fleet_budgets (
   allocated_amount REAL NOT NULL,
   spent_amount REAL DEFAULT 0,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_replacement_plan — vehicle replacement schedule ─
@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS fleet_replacement_plan (
   priority TEXT DEFAULT 'medium' CHECK(priority IN ('low','medium','high','critical')),
   status TEXT DEFAULT 'planned' CHECK(status IN ('planned','budgeted','ordered','replaced','deferred')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_accessories — installed equipment / upfits ──────
@@ -250,7 +250,7 @@ CREATE TABLE IF NOT EXISTS fleet_accessories (
   warranty_expiry TEXT,
   status TEXT DEFAULT 'active' CHECK(status IN ('active','removed','damaged','replaced')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_utility_costs — recurring utility/overhead costs ─
@@ -263,7 +263,7 @@ CREATE TABLE IF NOT EXISTS fleet_utility_costs (
   due_date TEXT,
   paid INTEGER DEFAULT 0,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_telemetry — GPS/telematics data points ─────────
@@ -280,7 +280,7 @@ CREATE TABLE IF NOT EXISTS fleet_telemetry (
   odometer INTEGER,
   battery_voltage REAL,
   dtc_codes TEXT,
-  recorded_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_telemetry_vehicle_time ON fleet_telemetry(vehicle_id, recorded_at);

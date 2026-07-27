@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS fleet_pretrip_checklists (
   emergency_equip TEXT,
   notes TEXT,
   status TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_tires (
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS fleet_tires (
   notes TEXT,
   removed_date TEXT,
   removed_mileage INTEGER,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_damage (
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS fleet_damage (
   repair_date TEXT,
   photo_urls TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_recalls (
@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS fleet_recalls (
   remedy_date TEXT,
   status TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_parts (
@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS fleet_parts (
   supplier TEXT,
   compatible_vehicles TEXT,
   location TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_warranties (
@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS fleet_warranties (
   contact_info TEXT,
   status TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_keys (
@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS fleet_keys (
   last_checkout TEXT,
   last_return TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_key_log (
@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS fleet_key_log (
   action TEXT,
   holder_name TEXT,
   timestamp TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_accidents (
@@ -169,7 +169,7 @@ CREATE TABLE IF NOT EXISTS fleet_accidents (
   fault_determination TEXT,
   status TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_service_providers (
@@ -183,7 +183,7 @@ CREATE TABLE IF NOT EXISTS fleet_service_providers (
   tax_id INTEGER,
   preferred INTEGER,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_fuel_cards (
@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS fleet_fuel_cards (
   status TEXT,
   expiration_date TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_budgets (
@@ -206,7 +206,7 @@ CREATE TABLE IF NOT EXISTS fleet_budgets (
   allocated_amount REAL,
   spent_amount REAL,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_depreciation (
@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS fleet_depreciation (
   accumulated_depreciation REAL,
   current_book_value REAL,
   calculated_date TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_replacement_plan (
@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS fleet_replacement_plan (
   priority TEXT,
   status TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_fuel_vendors (
@@ -243,7 +243,7 @@ CREATE TABLE IF NOT EXISTS fleet_fuel_vendors (
   current_price_per_gallon REAL,
   last_updated TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_fuel_reconciliation (
@@ -257,7 +257,7 @@ CREATE TABLE IF NOT EXISTS fleet_fuel_reconciliation (
   notes TEXT,
   reconciled_by TEXT,
   reconciled_at TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_alt_fuel_log (
@@ -269,7 +269,7 @@ CREATE TABLE IF NOT EXISTS fleet_alt_fuel_log (
   cost REAL,
   charge_start TEXT,
   charge_end TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_vendor_ratings (
@@ -279,7 +279,7 @@ CREATE TABLE IF NOT EXISTS fleet_vendor_ratings (
   rating TEXT,
   review_text TEXT,
   rated_by REAL,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_tsbs (
@@ -297,7 +297,7 @@ CREATE TABLE IF NOT EXISTS fleet_tsbs (
   completed INTEGER DEFAULT 0,
   completed_date TEXT,
   completed_by INTEGER,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_warranty_claims (
@@ -310,7 +310,7 @@ CREATE TABLE IF NOT EXISTS fleet_warranty_claims (
   amount REAL,
   maintenance_id INTEGER,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_service_contracts (
@@ -325,7 +325,7 @@ CREATE TABLE IF NOT EXISTS fleet_service_contracts (
   annual_cost REAL,
   deductible REAL,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_maintenance_parts (
@@ -335,7 +335,7 @@ CREATE TABLE IF NOT EXISTS fleet_maintenance_parts (
   quantity INTEGER,
   unit_cost REAL,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_roadside_assistance (
@@ -350,7 +350,7 @@ CREATE TABLE IF NOT EXISTS fleet_roadside_assistance (
   cost REAL,
   driver_id INTEGER,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_bay_schedule (
@@ -362,7 +362,7 @@ CREATE TABLE IF NOT EXISTS fleet_bay_schedule (
   service_type TEXT,
   technician TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_trade_in_estimates (
@@ -373,7 +373,7 @@ CREATE TABLE IF NOT EXISTS fleet_trade_in_estimates (
   valuation_date TEXT,
   condition_score REAL,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_disposals (
@@ -386,7 +386,7 @@ CREATE TABLE IF NOT EXISTS fleet_disposals (
   auction_house TEXT,
   lot_number TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_leases (
@@ -403,7 +403,7 @@ CREATE TABLE IF NOT EXISTS fleet_leases (
   excess_mileage_rate INTEGER,
   buyout_option TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_condition_scores (
@@ -416,7 +416,7 @@ CREATE TABLE IF NOT EXISTS fleet_condition_scores (
   scored_by REAL,
   scored_date REAL,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_purchase_orders (
@@ -430,7 +430,7 @@ CREATE TABLE IF NOT EXISTS fleet_purchase_orders (
   order_date TEXT,
   expected_delivery TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_delivery_checklists (
@@ -442,7 +442,7 @@ CREATE TABLE IF NOT EXISTS fleet_delivery_checklists (
   inspection_date TEXT,
   passed INTEGER,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_fmcsa_compliance (
@@ -460,7 +460,7 @@ CREATE TABLE IF NOT EXISTS fleet_fmcsa_compliance (
   violations_count INTEGER,
   safety_rating TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_ifta_data (
@@ -472,7 +472,7 @@ CREATE TABLE IF NOT EXISTS fleet_ifta_data (
   total_miles REAL,
   total_gallons REAL,
   tax_paid REAL,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_safety_recalls (
@@ -482,7 +482,7 @@ CREATE TABLE IF NOT EXISTS fleet_safety_recalls (
   completed_date INTEGER,
   verification_method TEXT,
   documentation_url TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_defect_reports (
@@ -493,7 +493,7 @@ CREATE TABLE IF NOT EXISTS fleet_defect_reports (
   description TEXT,
   severity TEXT,
   reported_date TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_safety_equipment (
@@ -505,7 +505,7 @@ CREATE TABLE IF NOT EXISTS fleet_safety_equipment (
   next_inspection_due TEXT,
   expiration_date TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_load_compliance (
@@ -519,7 +519,7 @@ CREATE TABLE IF NOT EXISTS fleet_load_compliance (
   measured_weight REAL,
   compliance_status TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_cost_centers (
@@ -529,7 +529,7 @@ CREATE TABLE IF NOT EXISTS fleet_cost_centers (
   department TEXT,
   budget_annual REAL,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_cost_allocations (
@@ -539,7 +539,7 @@ CREATE TABLE IF NOT EXISTS fleet_cost_allocations (
   allocation_pct REAL,
   effective_date TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_grants (
@@ -552,7 +552,7 @@ CREATE TABLE IF NOT EXISTS fleet_grants (
   expiration_date TEXT,
   purpose TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_grant_allocations (
@@ -562,7 +562,7 @@ CREATE TABLE IF NOT EXISTS fleet_grant_allocations (
   amount_allocated REAL,
   allocation_date TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_capital_assets (
@@ -575,7 +575,7 @@ CREATE TABLE IF NOT EXISTS fleet_capital_assets (
   depreciation_method REAL,
   annual_depreciation REAL,
   net_book_value REAL,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_asset_register (
@@ -589,7 +589,7 @@ CREATE TABLE IF NOT EXISTS fleet_asset_register (
   physical_location TEXT,
   last_verified TEXT,
   verified_by TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_pool_reservations (
@@ -602,7 +602,7 @@ CREATE TABLE IF NOT EXISTS fleet_pool_reservations (
   destination TEXT,
   passengers INTEGER,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_vehicle_transfers (
@@ -616,7 +616,7 @@ CREATE TABLE IF NOT EXISTS fleet_vehicle_transfers (
   reason TEXT,
   approved_by TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_vehicle_decals (
@@ -627,7 +627,7 @@ CREATE TABLE IF NOT EXISTS fleet_vehicle_decals (
   location_on_vehicle TEXT,
   applied_date TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_upfits (
@@ -640,7 +640,7 @@ CREATE TABLE IF NOT EXISTS fleet_upfits (
   install_date TEXT,
   warranty_expiry TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_detailing_log (
@@ -651,7 +651,7 @@ CREATE TABLE IF NOT EXISTS fleet_detailing_log (
   vendor TEXT,
   cost REAL,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_custom_metrics (
@@ -663,7 +663,7 @@ CREATE TABLE IF NOT EXISTS fleet_custom_metrics (
   target_value REAL,
   warning_threshold TEXT,
   critical_threshold TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_custom_metric_values (
@@ -674,7 +674,7 @@ CREATE TABLE IF NOT EXISTS fleet_custom_metric_values (
   recorded_date TEXT,
   recorded_by TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_driver_certs (
@@ -686,7 +686,7 @@ CREATE TABLE IF NOT EXISTS fleet_driver_certs (
   issue_date TEXT,
   expiry_date TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_driver_incidents (
@@ -698,7 +698,7 @@ CREATE TABLE IF NOT EXISTS fleet_driver_incidents (
   description TEXT,
   severity TEXT,
   action_taken TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_driver_vehicle_training (
@@ -709,7 +709,7 @@ CREATE TABLE IF NOT EXISTS fleet_driver_vehicle_training (
   trained_date TEXT,
   trainer_id INTEGER,
   expiry_date TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_driver_feedback (
@@ -719,7 +719,7 @@ CREATE TABLE IF NOT EXISTS fleet_driver_feedback (
   rating TEXT,
   feedback_text TEXT,
   category TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_equipment_calibrations (
@@ -733,7 +733,7 @@ CREATE TABLE IF NOT EXISTS fleet_equipment_calibrations (
   passed INTEGER,
   technician TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_vehicle_theft (
@@ -744,7 +744,7 @@ CREATE TABLE IF NOT EXISTS fleet_vehicle_theft (
   police_report_number TEXT,
   insurance_claim_number TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_vehicle_specs (
@@ -757,7 +757,7 @@ CREATE TABLE IF NOT EXISTS fleet_vehicle_specs (
   equipment_package TEXT,
   ordering_code TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_procurement_orders (
@@ -772,7 +772,7 @@ CREATE TABLE IF NOT EXISTS fleet_procurement_orders (
   expected_delivery TEXT,
   approved_by TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_vendor_bids (
@@ -783,7 +783,7 @@ CREATE TABLE IF NOT EXISTS fleet_vendor_bids (
   delivery_days INTEGER,
   warranty_details TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_decommissioning (
@@ -793,7 +793,7 @@ CREATE TABLE IF NOT EXISTS fleet_decommissioning (
   reason TEXT,
   completed_by INTEGER,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_accessories (
@@ -809,7 +809,7 @@ CREATE TABLE IF NOT EXISTS fleet_accessories (
   serial_number TEXT,
   status TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_fuel_anomalies (
@@ -820,7 +820,7 @@ CREATE TABLE IF NOT EXISTS fleet_fuel_anomalies (
   detected_date TEXT,
   severity TEXT,
   details TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fleet_fuel_efficiency (
@@ -833,5 +833,5 @@ CREATE TABLE IF NOT EXISTS fleet_fuel_efficiency (
   total_miles REAL,
   mpg REAL,
   cost_per_mile REAL,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );

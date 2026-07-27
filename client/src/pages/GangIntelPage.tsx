@@ -342,12 +342,12 @@ export default function GangIntelPage() {
       {/* Member form modal */}
       {formOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4"
           style={{ background: 'rgba(0,0,0,0.70)' }}
           onClick={() => setFormOpen(false)}
         >
           <div
-            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full"
+            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full my-auto"
             style={{ borderRadius: 2 }}
             onClick={e => e.stopPropagation()}
           >

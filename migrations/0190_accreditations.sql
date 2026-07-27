@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS accreditations (
     CHECK(status IN ('active','expired','pending_renewal','revoked','suspended')),
   reminders_sent INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (officer_id) REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_accreditations_officer ON accreditations(officer_id);

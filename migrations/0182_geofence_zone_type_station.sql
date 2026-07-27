@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS geofence_zones_new (
   color         TEXT DEFAULT '#d4a017',
   is_active     INTEGER DEFAULT 1,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 
@@ -59,8 +59,8 @@ CREATE TABLE IF NOT EXISTS nav_trip_log_new (
   device_type TEXT,
   notes TEXT,
   call_id INTEGER REFERENCES calls_for_service(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 INSERT INTO nav_trip_log_new (

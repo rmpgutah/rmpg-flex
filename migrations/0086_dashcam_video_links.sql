@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS dashcam_video_links (
   entity_id INTEGER NOT NULL,
   linked_by TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_dcvl_video ON dashcam_video_links(video_id);
 CREATE INDEX IF NOT EXISTS idx_dcvl_entity ON dashcam_video_links(entity_type, entity_id);

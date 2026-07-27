@@ -1754,8 +1754,8 @@ const PatrolPage: React.FC = () => {
 
       {/* Checkpoint Modal */}
       {showCheckpointModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby={checkpointModalTitleId}>
-          <div className="panel-beveled bg-surface-base p-6 max-w-md w-full mx-4">
+        <div className="fixed inset-0 bg-black/60 flex items-start justify-center z-50 overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby={checkpointModalTitleId}>
+          <div className="panel-beveled bg-surface-base p-6 max-w-md w-full mx-4 my-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 id={checkpointModalTitleId} className="text-xl font-bold text-rmpg-100">
                 {editingCheckpoint ? 'Edit Checkpoint' : 'Create Checkpoint'}

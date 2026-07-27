@@ -428,8 +428,8 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
   ];
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <div className="bg-surface-base border border-border-subtle rounded-sm w-80 mx-4">
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true">
+      <div className="bg-surface-base border border-border-subtle rounded-sm w-80 mx-4 my-auto">
         <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
           <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><Clock className="w-4 h-4 text-brand-400" /> Schedule Send</h3>
           <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
@@ -1856,8 +1856,8 @@ function AutoReplyModal({ onClose, onSnackbar }: { onClose: () => void; onSnackb
     finally { setSaving(false); }
   };
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <div className="bg-surface-base border border-border-subtle rounded-sm w-[480px] max-w-[95vw] mx-4">
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true">
+      <div className="bg-surface-base border border-border-subtle rounded-sm w-[480px] max-w-[95vw] mx-4 my-auto">
         <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
           <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><CalendarClock className="w-4 h-4 text-brand-400" /> Automatic Replies (Out of Office)</h3>
           <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>

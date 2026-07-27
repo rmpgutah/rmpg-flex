@@ -54,8 +54,8 @@ CREATE TABLE IF NOT EXISTS serve_queue (
   )),
   attempt_count INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_serve_queue_status ON serve_queue(status);
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS serve_attempts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   serve_queue_id INTEGER NOT NULL REFERENCES serve_queue(id) ON DELETE CASCADE,
   attempt_number INTEGER NOT NULL DEFAULT 1,
-  attempt_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
   officer_id INTEGER REFERENCES users(id),
   result TEXT CHECK(result IN (
     'served','sub_served','posted','no_answer','refused',
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS serve_attempts (
   status TEXT DEFAULT 'attempted' CHECK(status IN (
     'planned','attempted','served','failed'
   )),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_serve_attempts_queue ON serve_attempts(serve_queue_id);
@@ -107,8 +107,8 @@ CREATE TABLE IF NOT EXISTS serve_routes (
   end_lat REAL,
   end_lng REAL,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_serve_routes_officer ON serve_routes(officer_id);
@@ -118,13 +118,13 @@ CREATE INDEX IF NOT EXISTS idx_serve_routes_date ON serve_routes(route_date);
 CREATE TABLE IF NOT EXISTS serve_skip_traces (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   serve_queue_id INTEGER NOT NULL REFERENCES serve_queue(id) ON DELETE CASCADE,
-  searched_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  searched_at TEXT NOT NULL DEFAULT (datetime('now')),
   search_type TEXT,                        -- 'tlo' | 'spokeo' | 'lexis' | 'manual'
   search_query TEXT,
   results_json TEXT,
   addresses_found_json TEXT DEFAULT '[]',
   searched_by INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_serve_skip_traces_queue ON serve_skip_traces(serve_queue_id);

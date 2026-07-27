@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS cases (
   narrative TEXT,
   disposition TEXT,
   disposition_date TEXT,
-  opened_date TEXT DEFAULT (datetime('now','localtime')),
+  opened_date TEXT DEFAULT (datetime('now')),
   due_date TEXT,
   deadline TEXT,                        -- legacy alias used by some clients
   sla_hours INTEGER,
@@ -65,8 +65,8 @@ CREATE TABLE IF NOT EXISTS cases (
   assigned_employees TEXT DEFAULT '[]', -- duplicated from assigned_officers in legacy
   -- Standard audit
   created_by INTEGER NOT NULL,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
   archived_at TEXT,
   FOREIGN KEY (lead_investigator_id) REFERENCES users(id),
   FOREIGN KEY (created_by) REFERENCES users(id)
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS case_notes (
   note_type TEXT DEFAULT 'general',     -- general|investigative|legal|disposition
   content TEXT NOT NULL,
   is_pinned INTEGER DEFAULT 0,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
   FOREIGN KEY (author_id) REFERENCES users(id)
 );
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS case_person_links (
   case_id INTEGER NOT NULL,
   person_id INTEGER NOT NULL,
   relationship TEXT DEFAULT 'linked',   -- linked|suspect|victim|witness|reporter|defendant|plaintiff
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   UNIQUE(case_id, person_id),
   FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
   FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE

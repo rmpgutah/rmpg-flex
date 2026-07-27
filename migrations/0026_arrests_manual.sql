@@ -71,9 +71,9 @@ CREATE TABLE IF NOT EXISTS arrest_records (
   property_inventory TEXT,            -- JSON [{id, description, category, quantity, ...}]
   miranda_data TEXT,                  -- JSON {read_at, read_by, acknowledged, witness, ...}
   -- Audit
-  fetched_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   -- Manual rows have NULL jailbase_id/source_id; SQLite UNIQUE allows
   -- multiple NULL combos so manual entries don't collide.
   UNIQUE(jailbase_id, source_id),
@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS arrest_cross_links (
   linked_id INTEGER NOT NULL,
   match_type TEXT,                    -- 'manual' | 'auto_name' | 'auto_dob' | ...
   match_confidence REAL,              -- 0..1 for auto matches; NULL for manual
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (arrest_record_id) REFERENCES arrest_records(id) ON DELETE CASCADE,
   UNIQUE(arrest_record_id, linked_type, linked_id)
 );

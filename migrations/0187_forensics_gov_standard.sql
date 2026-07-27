@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS forensic_exhibit_hashes (
   mismatch INTEGER NOT NULL DEFAULT 0,
   computed_by INTEGER REFERENCES users(id),
   computed_by_name TEXT,
-  computed_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  computed_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_forensic_exhibit_hashes_exhibit ON forensic_exhibit_hashes(exhibit_id);
 CREATE INDEX IF NOT EXISTS idx_forensic_exhibit_hashes_case ON forensic_exhibit_hashes(forensic_case_id);
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS forensic_case_entity_links (
   relationship TEXT NOT NULL DEFAULT 'related',
   linked_by INTEGER REFERENCES users(id),
   linked_by_name TEXT,
-  linked_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  linked_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(forensic_case_id, entity_type, entity_id)
 );
 CREATE INDEX IF NOT EXISTS idx_forensic_case_entity_links_case ON forensic_case_entity_links(forensic_case_id);
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS forensic_qc_checks (
   reviewer_name TEXT,
   pass INTEGER NOT NULL DEFAULT 1,
   reviewer_notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_forensic_qc_checks_case ON forensic_qc_checks(forensic_case_id);
 

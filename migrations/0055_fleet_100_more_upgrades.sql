@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS fleet_driver_certs (
   expiry_date TEXT,
   status TEXT DEFAULT 'active',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS fleet_driver_incidents (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS fleet_driver_incidents (
   severity TEXT DEFAULT 'minor',
   action_taken TEXT,
   status TEXT DEFAULT 'open',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS fleet_driver_vehicle_training (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS fleet_driver_vehicle_training (
   trainer_id INTEGER REFERENCES users(id),
   expiry_date TEXT,
   status TEXT DEFAULT 'active',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS fleet_driver_feedback (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS fleet_driver_feedback (
   rating INTEGER CHECK(rating BETWEEN 1 AND 5),
   feedback_text TEXT,
   category TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS fleet_equipment_calibrations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS fleet_equipment_calibrations (
   passed INTEGER DEFAULT 1,
   technician TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS fleet_vehicle_specs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS fleet_vehicle_specs (
   ordering_code TEXT,
   is_active INTEGER DEFAULT 1,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS fleet_procurement_orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS fleet_procurement_orders (
   status TEXT DEFAULT 'ordered',
   approved_by INTEGER REFERENCES users(id),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS fleet_vendor_bids (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS fleet_vendor_bids (
   warranty_details TEXT,
   selected INTEGER DEFAULT 0,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS fleet_decommissioning (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS fleet_decommissioning (
   disposal_method TEXT,
   completed_by INTEGER REFERENCES users(id),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS fleet_vehicle_theft (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,5 +122,5 @@ CREATE TABLE IF NOT EXISTS fleet_vehicle_theft (
   recovery_date TEXT,
   recovery_condition TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

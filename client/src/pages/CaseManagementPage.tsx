@@ -1751,8 +1751,8 @@ export default function CaseManagementPage() {
 
       {/* ── New Case Modal ── */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
-          <div className="panel-surface w-full max-w-lg mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true">
+          <div className="panel-surface w-full max-w-lg mx-4 my-auto">
             <PanelTitleBar title="New Case" icon={Plus}>
               <IconButton onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>

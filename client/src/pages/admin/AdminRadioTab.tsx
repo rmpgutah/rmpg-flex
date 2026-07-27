@@ -382,14 +382,14 @@ export default function AdminRadioTab() {
       {/* Form modal */}
       {showForm && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center p-4 animate-fade-in overflow-y-auto"
           onClick={closeForm}
           role="dialog"
           aria-modal="true"
           aria-label={editing ? 'Edit radio channel' : 'New radio channel'}
         >
           <div
-            className="bg-surface-sunken border border-rmpg-700 rounded-sm w-full max-w-md"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm w-full max-w-md my-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="border-b border-border-default px-3 py-2 flex items-center justify-between">

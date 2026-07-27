@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS citation_signatures (
   geo_lng REAL,
   refusal_reason TEXT,                 -- when method='refused'
   officer_id INTEGER,                  -- officer who initiated the sig request
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (citation_id) REFERENCES citations(id) ON DELETE CASCADE,
   FOREIGN KEY (officer_id) REFERENCES users(id)
 );
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS citation_filing (
   filed_at TEXT,
   filed_by INTEGER,
   generated_at TEXT,                   -- timestamp the 4 copies first hit R2
-  updated_at TEXT DEFAULT (datetime('now','localtime')),
+  updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (citation_id) REFERENCES citations(id) ON DELETE CASCADE,
   FOREIGN KEY (batch_id) REFERENCES citation_filing_batches(id),
   FOREIGN KEY (filed_by) REFERENCES users(id)
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS citation_filing_batches (
   tracking_number TEXT,                         -- USPS, ECF receipt, etc.
   accepted_at TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (exported_by) REFERENCES users(id)
 );
 
@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS agency_court_zones (
   plaintiff_name TEXT,                          -- 'STATE OF UTAH' or agency name
   agency_id_label TEXT,                         -- 'ORI: UT0XXXXXX' or 'License #: ...'
   include_court_caption INTEGER DEFAULT 1,
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 
 -- Workspace default seed: most RMPG zones route to the West Jordan branch

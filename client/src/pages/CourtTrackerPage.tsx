@@ -1343,8 +1343,8 @@ export default function CourtTrackerPage() {
 
       {/* New Event Modal */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="New Court Event">
-          <div className="panel-surface w-full max-w-lg mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" aria-label="New Court Event">
+          <div className="panel-surface w-full max-w-lg mx-4 my-auto">
             <PanelTitleBar title="New Court Event" icon={Plus}>
               <div className="flex items-center gap-2">
                 {formIsDirty && (
@@ -1425,8 +1425,8 @@ export default function CourtTrackerPage() {
 
       {/* Outcome Modal */}
       {outcomeOpen && selected && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Record Outcome">
-          <div className="panel-surface w-full max-w-md mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" aria-label="Record Outcome">
+          <div className="panel-surface w-full max-w-md mx-4 my-auto">
             <PanelTitleBar title="Record Outcome" icon={CheckCircle}>
               <IconButton onClick={() => setOutcomeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
@@ -1494,8 +1494,8 @@ export default function CourtTrackerPage() {
 
       {/* Feature 6: Bail/Bond Modal */}
       {bailOpen && selected && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Bail/Bond Info">
-          <div className="panel-surface w-full max-w-md mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" aria-label="Bail/Bond Info">
+          <div className="panel-surface w-full max-w-md mx-4 my-auto">
             <PanelTitleBar title="Bail / Bond Information" icon={DollarSign}>
               <IconButton onClick={() => setBailOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
@@ -1555,8 +1555,8 @@ export default function CourtTrackerPage() {
 
       {/* Feature 7: Prosecutor Contact Modal */}
       {prosecutorOpen && selected && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
-          <div className="panel-surface w-full max-w-md mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true">
+          <div className="panel-surface w-full max-w-md mx-4 my-auto">
             <PanelTitleBar title="Prosecutor Contact Info" icon={User}>
               <IconButton onClick={() => setProsecutorOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
@@ -1580,8 +1580,8 @@ export default function CourtTrackerPage() {
 
       {/* Feature 8b: Court Fees Modal */}
       {feeOpen && selected && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
-          <div className="panel-surface w-full max-w-md mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true">
+          <div className="panel-surface w-full max-w-md mx-4 my-auto">
             <PanelTitleBar title="Court Fee Tracking" icon={DollarSign}>
               <IconButton onClick={() => setFeeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>

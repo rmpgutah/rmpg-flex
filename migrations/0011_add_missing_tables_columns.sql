@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS call_visit_history (
   arrived_at TEXT,
   completed_at TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
   FOREIGN KEY (officer_id) REFERENCES users(id) ON DELETE SET NULL
 );
@@ -33,8 +33,8 @@ CREATE TABLE IF NOT EXISTS premise_alerts (
   expires_at TEXT,
   created_by INTEGER,
   active INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_premise_alerts_address ON premise_alerts(address);
 CREATE INDEX IF NOT EXISTS idx_premise_alerts_coords ON premise_alerts(latitude, longitude);
@@ -43,7 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_premise_alerts_coords ON premise_alerts(latitude,
 ALTER TABLE dispatch_sectors ADD COLUMN supervisor TEXT;
 ALTER TABLE dispatch_sectors ADD COLUMN radio_channel TEXT;
 ALTER TABLE dispatch_sectors ADD COLUMN active INTEGER DEFAULT 1;
-ALTER TABLE dispatch_sectors ADD COLUMN updated_at TEXT DEFAULT (datetime('now','localtime'));
+ALTER TABLE dispatch_sectors ADD COLUMN updated_at TEXT DEFAULT (datetime('now'));
 
 ALTER TABLE dispatch_zones ADD COLUMN zone_type TEXT;
 ALTER TABLE dispatch_zones ADD COLUMN primary_unit TEXT;
@@ -53,7 +53,7 @@ ALTER TABLE dispatch_zones ADD COLUMN hazard_notes TEXT;
 ALTER TABLE dispatch_zones ADD COLUMN population_estimate INTEGER;
 ALTER TABLE dispatch_zones ADD COLUMN sq_miles REAL;
 ALTER TABLE dispatch_zones ADD COLUMN active INTEGER DEFAULT 1;
-ALTER TABLE dispatch_zones ADD COLUMN updated_at TEXT DEFAULT (datetime('now','localtime'));
+ALTER TABLE dispatch_zones ADD COLUMN updated_at TEXT DEFAULT (datetime('now'));
 
 ALTER TABLE dispatch_beats ADD COLUMN beat_descriptor TEXT;
 ALTER TABLE dispatch_beats ADD COLUMN dispatch_code TEXT;
@@ -71,7 +71,7 @@ ALTER TABLE dispatch_beats ADD COLUMN min_lng REAL;
 ALTER TABLE dispatch_beats ADD COLUMN max_lng REAL;
 ALTER TABLE dispatch_beats ADD COLUMN notes TEXT;
 ALTER TABLE dispatch_beats ADD COLUMN active INTEGER DEFAULT 1;
-ALTER TABLE dispatch_beats ADD COLUMN updated_at TEXT DEFAULT (datetime('now','localtime'));
+ALTER TABLE dispatch_beats ADD COLUMN updated_at TEXT DEFAULT (datetime('now'));
 
 -- ── dispatch_codes — add full schema columns ──
 ALTER TABLE dispatch_codes ADD COLUMN category TEXT DEFAULT 'general';
@@ -83,7 +83,7 @@ ALTER TABLE dispatch_codes ADD COLUMN ems_needed INTEGER DEFAULT 0;
 ALTER TABLE dispatch_codes ADD COLUMN fire_needed INTEGER DEFAULT 0;
 ALTER TABLE dispatch_codes ADD COLUMN sort_order INTEGER DEFAULT 0;
 ALTER TABLE dispatch_codes ADD COLUMN active INTEGER DEFAULT 1;
-ALTER TABLE dispatch_codes ADD COLUMN updated_at TEXT DEFAULT (datetime('now','localtime'));
+ALTER TABLE dispatch_codes ADD COLUMN updated_at TEXT DEFAULT (datetime('now'));
 
 -- ── PSO columns on calls_for_service (remaining from 0009) ──
 ALTER TABLE calls_for_service ADD COLUMN pso_requestor_name TEXT;

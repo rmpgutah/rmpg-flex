@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS call_templates (
   is_shared INTEGER NOT NULL DEFAULT 0,
   use_count INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_call_templates_owner ON call_templates(owner_user_id, active);
 CREATE INDEX IF NOT EXISTS idx_call_templates_shared ON call_templates(is_shared, active);
