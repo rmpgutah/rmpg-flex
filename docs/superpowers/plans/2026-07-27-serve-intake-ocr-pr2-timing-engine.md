@@ -1496,17 +1496,23 @@ import { normalizeFields } from '../src/utils/serveIntakeExtract';
 describe('conflicts reflect POST-normalization values', () => {
   it('chosen matches what would actually be committed', () => {
     // Two documents disagree on the deadline, in different date formats.
+    // The values differ, so a conflict IS produced — assert on it
+    // unconditionally. A conditional assertion here would silently pass
+    // if arbitration stopped recording the conflict at all, which is
+    // exactly the regression this test exists to catch.
     const a = { docType: 'field_sheet', fields: normalizeFields({ service_deadline: { value: '6/26/2026', confidence: 0.8 } } as any) };
     const b = { docType: 'info_page', fields: normalizeFields({ service_deadline: { value: '6/30/2026', confidence: 0.9 } } as any) };
     const r = arbitrateFields([a, b]);
-    // Whatever wins, `chosen` must be the ISO form that lands in the DB —
-    // not the raw model string, which is what a PR 4 resolver would show.
-    expect(r.merged.service_deadline.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    // info_page outranks field_sheet for service mechanics, so it wins.
+    expect(r.merged.service_deadline.value).toBe('2026-06-30');
+
     const c = r.conflicts.find((x) => x.field === 'service_deadline');
-    if (c) {
-      expect(c.chosen).toBe(r.merged.service_deadline.value);
-      expect(c.chosen).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    }
+    expect(c).toBeDefined();
+    // `chosen` must be the ISO form that lands in the DB — not the raw
+    // model string, which is what PR 4's resolver would otherwise show.
+    expect(c!.chosen).toBe('2026-06-30');
+    expect(c!.rejected.map((x) => x.value)).toContain('2026-06-26');
   });
 });
 ```
