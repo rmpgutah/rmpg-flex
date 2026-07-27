@@ -85,3 +85,73 @@ export function arbitrateFields(candidates: DocCandidate[]): ArbitrationResult {
 
   return { merged, conflicts };
 }
+
+// ============================================================
+// Identity name-coherence reconciliation
+// ============================================================
+// arbitrateFields() above picks a winner PER FIELD independently, which
+// can stitch recipient_first_name from one document onto
+// recipient_last_name from another and invent a person who appears in
+// neither doc. src/routes/serveIntake.ts runs a separate "name-coherence
+// guard" AFTER arbitration that instead takes the WHOLE identity field
+// group from the single document with the strongest recipient signal.
+// That guard can override arbitration's per-field pick, so `conflicts`
+// has to be reconciled to match — otherwise the review UI could show a
+// `chosen` value that disagrees with what was actually written to the
+// merged field set. This is pulled out as a pure function (rather than
+// left inline in the route) so it can be unit-tested without D1/R2/AI
+// bindings.
+
+/** Minimal shape reconcileIdentityConflicts needs from a per-doc extraction result. */
+export interface IdentityWinnerDoc {
+  documentType: string;
+  fields: Record<string, ExtractedField>;
+}
+
+/**
+ * Applies the name-coherence guard's chosen document to `mergedFields`
+ * (mutated in place, matching the pre-extraction route behavior) for
+ * every field in `identityFields`, and returns a new `conflicts` array
+ * with any identity-group entries reconciled against the final chosen
+ * value. Non-identity conflicts are passed through untouched.
+ *
+ * `winnerDoc` is the document the guard selected (or null if no document
+ * had any recipient signal, in which case this is a no-op).
+ */
+export function reconcileIdentityConflicts(
+  conflicts: FieldConflict[],
+  mergedFields: Record<string, ExtractedField>,
+  docCandidates: DocCandidate[],
+  winnerDoc: IdentityWinnerDoc | null,
+  identityFields: readonly string[],
+): FieldConflict[] {
+  if (!winnerDoc) return conflicts;
+
+  let result = conflicts;
+  for (const k of identityFields) {
+    const v = winnerDoc.fields[k];
+    // Only override with a non-empty value — a blank field on the winning
+    // doc shouldn't wipe a value another doc legitimately supplied (e.g.
+    // winner has the name, a second doc has the DOB).
+    if (!v || !v.value) continue;
+
+    mergedFields[k] = v;
+
+    // Recompute against every doc's raw candidate for this field rather
+    // than just the arbitration winner, so a candidate arbitration hadn't
+    // flagged (same value, different rank) still shows up as rejected
+    // here if it disagrees. Normalize both sides (trim + lowercase)
+    // identically, or the winning value's own untrimmed form can fail
+    // its own dedup check and show up self-conflicting in `rejected`.
+    result = result.filter((cf) => cf.field !== k);
+    const chosenNormalized = v.value.trim().toLowerCase();
+    const seen = new Set<string>([chosenNormalized]);
+    const rejected = docCandidates
+      .map((dc) => ({ value: (dc.fields[k]?.value || '').trim(), source: dc.docType }))
+      .filter((e) => e.value && !seen.has(e.value.toLowerCase()) && (seen.add(e.value.toLowerCase()), true));
+    if (rejected.length) {
+      result = [...result, { field: k, chosen: v.value, chosenSource: winnerDoc.documentType, rejected }];
+    }
+  }
+  return result;
+}

@@ -54,7 +54,7 @@ import {
   type PdfTextResult,
 } from '../utils/serveIntakeExtract';
 import { precleanText } from '../utils/serveIntakePreclean';
-import { arbitrateFields, type DocCandidate, type FieldConflict } from '../utils/serveIntakeArbitrate';
+import { arbitrateFields, reconcileIdentityConflicts, type DocCandidate, type FieldConflict } from '../utils/serveIntakeArbitrate';
 import { validateFields } from '../utils/serveIntakeValidate';
 import { judgeMerged } from '../utils/serveIntakeJudge';
 import { parseDefendants } from '../utils/serveIntakeDefendants';
@@ -650,34 +650,12 @@ si.post('/upload', async (c) => {
     const s = recipientScore(c2.ex);
     if (s > bestScore) { bestScore = s; bestDoc = c2.ex; }
   }
-  if (bestDoc) {
-    for (const k of IDENTITY_GROUP) {
-      const v = bestDoc.fields[k];
-      // Only override with a non-empty value — a blank field on the
-      // winning doc shouldn't wipe a value another doc legitimately
-      // supplied (e.g. winner has the name, a second doc has the DOB).
-      if (v && v.value) {
-        mergedFields[k] = v;
-        // This guard can override arbitration's per-field pick (it selects
-        // the whole name group from one document, not per-field precedence).
-        // Reconcile `conflicts` so `chosen` always matches the final merged
-        // value instead of going stale — recompute against every doc's raw
-        // candidate for this field rather than just the arbitration winner,
-        // so a candidate arbitration hadn't flagged (same value, different
-        // rank) still shows up as rejected here if it disagrees.
-        conflicts = conflicts.filter((cf) => cf.field !== k);
-        const seen = new Set<string>([v.value.toLowerCase()]);
-        const rejected = docCandidates
-          .map((dc) => ({ value: (dc.fields[k]?.value || '').trim(), source: dc.docType }))
-          .filter((e) => e.value && !seen.has(e.value.toLowerCase()) && (seen.add(e.value.toLowerCase()), true));
-        if (rejected.length) {
-          conflicts.push({
-            field: k, chosen: v.value, chosenSource: bestDoc.documentType, rejected,
-          });
-        }
-      }
-    }
-  }
+  // This guard can override arbitration's per-field pick (it selects the
+  // whole name group from one document, not per-field precedence), so
+  // `conflicts`/`mergedFields` must be reconciled — pulled out as a pure,
+  // independently-tested function (see serveIntakeArbitrate.ts) since the
+  // rest of this handler needs D1/R2/AI bindings a unit test can't supply.
+  conflicts = reconcileIdentityConflicts(conflicts, mergedFields, docCandidates, bestDoc, IDENTITY_GROUP);
 
   // ── Deterministic field normalization ─────────────────────────
   // Enforce the shapes the prompt only *requests*: digits-only phones,
