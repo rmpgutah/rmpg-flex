@@ -31,7 +31,7 @@ import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import {
   QrCode, Printer, Loader2, X, CheckCircle2, ExternalLink,
-  ArrowLeft, AlertTriangle, FileDown,
+  ArrowLeft, AlertTriangle, FileDown, Ban,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import {
@@ -184,6 +184,10 @@ export default function ServeReceiptActions({
   // Index into RECEIPT_COPY_ORDER — which of the three copies is next.
   const [copyStep, setCopyStep] = useState(0);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const [refusing, setRefusing] = useState(false);
+  const [refusalReason, setRefusalReason] = useState('');
+  const [docsLeft, setDocsLeft] = useState(true);
+  const [refusalDone, setRefusalDone] = useState(false);
 
   // Move focus INTO the panel on open, and close on Escape.
   //
@@ -367,6 +371,37 @@ export default function ServeReceiptActions({
       setPrinting(null);
     }
   }, []);
+
+  /**
+   * Record a refusal to sign, attested by the officer.
+   *
+   * Service is complete when the papers are LEFT, refusal or not — Utah
+   * R. Civ. P. 4(d). Whether they were left is asked explicitly rather
+   * than inferred, because that is the fact a court asks about and the
+   * two outcomes are genuinely different: papers left is good service,
+   * papers retained is a failed attempt.
+   */
+  const submitRefusal = useCallback(async () => {
+    if (!refusalReason.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/serve-receipts/${job.id}/refusal`, {
+        method: 'POST',
+        body: JSON.stringify({
+          recipient_name: recipientName || null,
+          reason: refusalReason.trim(),
+          documents_left: docsLeft,
+        }),
+      });
+      setRefusalDone(true);
+      setRefusing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not record the refusal.');
+    } finally {
+      setBusy(false);
+    }
+  }, [job.id, recipientName, refusalReason, docsLeft]);
 
   if (!open) {
     return (
@@ -656,6 +691,60 @@ export default function ServeReceiptActions({
                       ))}
                   </div>
                 </details>
+              </section>
+
+              {/* ── Refusal ──
+                  A person who refuses to sign will not tap a phone either,
+                  so the officer attests to it. Before this there was no
+                  record at all and a refused service simply vanished —
+                  even though the service itself is good once the papers
+                  are left. */}
+              <section className="border-t border-rmpg-700 pt-3">
+                {refusalDone ? (
+                  <p className="text-[11px] text-sev-ok leading-snug">
+                    Refusal recorded{docsLeft ? ' — documents left, service complete.' : ' — documents retained, logged as an attempt.'}
+                  </p>
+                ) : refusing ? (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider"
+                       style={{ color: 'var(--panel-header-color)' }}>
+                      Record a refusal
+                    </p>
+                    <textarea
+                      className={`${inputCls} h-16 resize-none`}
+                      value={refusalReason}
+                      onChange={(e) => setRefusalReason(e.target.value)}
+                      placeholder="What happened, in your words. e.g. Identified himself, read the caption, declined to sign and closed the door."
+                    />
+                    <label className="flex items-start gap-2 text-[11px] text-rmpg-100">
+                      <input type="checkbox" checked={docsLeft} onChange={(e) => setDocsLeft(e.target.checked)} className="mt-0.5" />
+                      <span>
+                        I left the documents in their presence.
+                        <span className="block text-[10px] text-fg-muted">
+                          Service is complete when the papers are left, refusal or
+                          not. Unchecked, this is logged as an attempt instead.
+                        </span>
+                      </span>
+                    </label>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setRefusing(false)}
+                        className="flex-1 py-2 rounded-[2px] border border-rmpg-700 text-[12px] text-fg-secondary">
+                        Cancel
+                      </button>
+                      <button type="button" onClick={submitRefusal}
+                        disabled={busy || !refusalReason.trim()}
+                        className="flex-1 py-2 rounded-[2px] bg-sev-warn/20 border border-sev-warn text-[12px] font-semibold text-rmpg-100 disabled:opacity-40">
+                        {busy ? 'Recording…' : 'Record refusal'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setRefusing(true)}
+                    className="w-full flex items-center justify-center gap-2 py-2 text-[11px] font-semibold text-fg-secondary">
+                    <Ban className="w-3.5 h-3.5" />
+                    They refused to sign
+                  </button>
+                )}
               </section>
 
               <div className="flex items-start gap-2 p-2.5 rounded-[2px] border border-rmpg-700 bg-surface-sunken">
