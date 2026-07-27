@@ -17,6 +17,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { queryFirst } from './db';
 import { appendAttemptSlot } from './serveAttemptScheduler';
 import { planAttemptWindows } from './serveDiligencePlanner';
+import { loadPersistedPlanContext } from './servePlanContext';
 
 const COOLING_HOURS = 24;
 
@@ -65,16 +66,17 @@ export async function autoReplanAfterAttempt(
     // deadline + Denver timezone so DST is handled correctly.
     const coolingStartIso = new Date(Date.parse(nowIso) + COOLING_HOURS * 3_600_000).toISOString();
     const isBusiness = !!job.business_id;
-    // INTERIM (fixes a D-2 regression): this cron path has no resolved
-    // AddressClass, only the business_id FK. Mapping isBusiness -> 'business'
-    // and non-business -> 'unknown' (which selectWindows() also routes to
-    // residential) exactly reproduces the pre-D-2 behavior so a confirmed
-    // business keeps its weekday windows instead of falling to residential
-    // evening/pre-dawn slots. Replace with a real resolveAddressClass() call
-    // once this path has one (see project-serve-intake-ocr-enhancement plan).
+    // R6: read the address class AND the client's dictated hours/days/start
+    // bar that commitIntake persisted, instead of re-deriving an interim
+    // class from business_id and passing no client constraints at all.
+    const ctx = await loadPersistedPlanContext(db, queueId);
     const plan = planAttemptWindows(coolingStartIso, job.deadline, 'America/Denver', {
       isBusiness,
-      addressClass: isBusiness ? 'business' : 'unknown',
+      addressClass: ctx.addressClass,
+      addressClassConfirmed: ctx.addressClassConfirmed,
+      clientBands: ctx.clientBands,
+      allowedDays: ctx.allowedDays,
+      startNotBefore: ctx.startNotBefore,
       locationNote: null,
     });
     if (!plan.length) return false;

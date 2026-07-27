@@ -77,6 +77,10 @@ import {
   type AttemptWindow,
 } from '../utils/serveDiligencePlanner';
 import { persistAttemptSchedule, appendAttemptSlot } from '../utils/serveAttemptScheduler';
+import {
+  loadPersistedPlanContext, planContextFromRow,
+  PLAN_CONTEXT_COLUMNS, type PlanContextRow,
+} from '../utils/servePlanContext';
 import { broadcastAll } from './ws';
 import { recordAudit } from '../utils/auditLog';
 import { notifyServeCompletion } from '../utils/serveCompletionNotify';
@@ -1299,6 +1303,11 @@ si.post('/intake', async (c) => {
       documentSummary: buildCallDescription(row, normalized, docs.length),
       docCount: docs.length,
       env: c.env,
+      // R9: these were computed and logged two lines above but never passed,
+      // so the row persisted `validation_issues: []` while the log said
+      // otherwise — an audit-trail lie on one of the two paths most likely
+      // to HAVE issues.
+      validationIssues: intakeValidation.issues,
     });
   }
 
@@ -1462,6 +1471,10 @@ async function reprocessDocument(
       env: c.env, fields: normalized, queueRow, userId,
       documentSummary: (normalized.documents_to_serve?.value || doc.doc_type || '').trim(),
       docCount: 1,
+      // R9: same drop as the /intake path — computed + logged above, never
+      // persisted. Reprocess is the recovery path for previously-failed
+      // rows, so it is the MOST likely to carry real validation issues.
+      validationIssues: reprocessValidation.issues,
     });
     if (commit.serve_queue_id) {
       committedQueueId = commit.serve_queue_id;
@@ -1759,11 +1772,14 @@ si.post('/schedule/backfill', async (c) => {
     attempt_count: number; max_attempts: number;
     business_id: number | null; created_at: string;
     recipient_type: string | null;
-  }>(
+  } & PlanContextRow>(
     db,
+    // R6: pull the persisted address class + client constraints in the SAME
+    // query rather than one round trip per job.
     `SELECT q.id, q.deadline, q.priority, q.attempt_count, q.max_attempts,
             q.business_id, q.created_at,
-            q.parsed_data->>'recipient_type' AS recipient_type
+            q.parsed_data->>'recipient_type' AS recipient_type,
+            ${PLAN_CONTEXT_COLUMNS.replace(/parsed_data/g, 'q.parsed_data')}
      FROM serve_queue q
      WHERE q.status IN ('pending', 'in_progress')
        AND NOT EXISTS (
@@ -1786,16 +1802,17 @@ si.post('/schedule/backfill', async (c) => {
       const uploadedToday = job.created_at?.slice(0, 10) === todayYmd;
       const baseIso = uploadedToday ? job.created_at : nowIso;
 
-      // INTERIM (fixes a D-2 regression): /schedule/backfill has no resolved
-      // AddressClass, only the isBusiness derivation above. Mapping true ->
-      // 'business' and false -> 'unknown' (which selectWindows() also routes
-      // to residential) exactly reproduces the pre-D-2 behavior so a
-      // confirmed business keeps its weekday windows instead of falling to
-      // residential evening/pre-dawn slots. Replace with a real
-      // resolveAddressClass() call once this path has one.
+      // R6: use the address class + client hours/days/start bar commitIntake
+      // persisted, not an interim isBusiness mapping with no client
+      // constraints. D-2: an unconfirmed class yields residential timing.
+      const ctx = planContextFromRow(job);
       const plan = planAttemptWindows(baseIso, job.deadline ?? null, 'America/Denver', {
         isBusiness,
-        addressClass: isBusiness ? 'business' : 'unknown',
+        addressClass: ctx.addressClass,
+        addressClassConfirmed: ctx.addressClassConfirmed,
+        clientBands: ctx.clientBands,
+        allowedDays: ctx.allowedDays,
+        startNotBefore: ctx.startNotBefore,
       });
       // Trim plan to only remaining attempts and only future dates.
       const futurePlan = plan
@@ -2493,6 +2510,11 @@ si.post('/:id/attempts', async (c) => {
 
     if (q && q.attempt_count < q.max_attempts) {
       const isBusiness = (q.recipient_type ?? '').toLowerCase() === 'business';
+      // R6: read the class + the client's dictated hours/days/start bar that
+      // commitIntake persisted. Before this, EVERY attempt after the first
+      // ignored the client's authorized hours — the court-exposure case, on
+      // the path that generates most attempts.
+      const planCtx = await loadPersistedPlanContext(db, id);
 
       const next = replanAfterFailedAttempt(
         {
@@ -2507,15 +2529,11 @@ si.post('/:id/attempts', async (c) => {
           recipient_lat: q.recipient_lat,
           recipient_lng: q.recipient_lng,
           isBusiness,
-          // INTERIM (fixes a D-2 regression): this failed-attempt route has
-          // no resolved AddressClass, only recipient_type. Mapping true ->
-          // 'business' and false -> 'unknown' (which selectWindows() also
-          // routes to residential) exactly reproduces the pre-D-2 behavior
-          // so a confirmed business that fails an attempt and gets
-          // auto-replanned here keeps its weekday windows instead of
-          // falling to residential evening/pre-dawn slots. Replace with a
-          // real resolveAddressClass() call once this path has one.
-          addressClass: isBusiness ? 'business' : 'unknown',
+          addressClass: planCtx.addressClass,
+          addressClassConfirmed: planCtx.addressClassConfirmed,
+          clientBands: planCtx.clientBands,
+          allowedDays: planCtx.allowedDays,
+          startNotBefore: planCtx.startNotBefore,
         },
       );
 

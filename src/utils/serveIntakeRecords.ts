@@ -33,7 +33,7 @@ import { geocodeAddress } from '../routes/geocode';
 import { resolveDistrict } from './districtResolver';
 import { deriveCrossStreetFromCoords } from './crossStreet';
 import { parseLocationParts } from './parseLocationParts';
-import { buildPsoBriefing, buildOcrContext } from './serveIntakeBriefing';
+import { buildPsoBriefing, buildOcrContext, isAutoCreatedBusinessRecord } from './serveIntakeBriefing';
 import type { IntakeDocMeta, OcrContext, PropertyRecord, BusinessRecord } from './serveIntakeBriefing';
 import { createCaseWithLinks } from './caseCreate';
 import {
@@ -790,7 +790,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     if (!business.created && business.id) {
       businessRecord = await queryFirst<BusinessRecord>(
         db,
-        'SELECT owner_name, owner_phone, contact_name, contact_phone, phone, notes FROM businesses WHERE id = ?',
+        'SELECT owner_name, owner_phone, contact_name, contact_phone, phone, notes, business_type FROM businesses WHERE id = ?',
         business.id,
       ) ?? null;
     }
@@ -869,20 +869,50 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
   // not what resolveAddressClass expects. Adding a real column is out of
   // scope for this task; resolution falls through to businessRecordMatched
   // / instructionsText / extracted / unknown instead.
+  //
+  // R5: a matched `businesses` row only CONFIRMS a business location when it
+  // is independent evidence. findOrCreateBusiness above inserts a row for
+  // every corporate intake, marked 'Auto-created via serve intake' — so a
+  // corporation served through its registered agent AT THE AGENT'S HOME
+  // auto-created a business row at that residential address on the first
+  // intake, and the second intake matched it and self-confirmed as a
+  // business location: weekday business hours at a private residence. That
+  // is precisely the registered-agent-at-a-residence case D-2 exists to
+  // prevent. Auto-created rows are excluded from confirming.
+  const businessRecordIsIndependent = !!businessRecord && !isAutoCreatedBusinessRecord(businessRecord);
   const addressClassResult = resolveAddressClass({
     propertyRecordClass: undefined,
-    businessRecordMatched: !!businessRecord && isBusiness,
+    businessRecordMatched: businessRecordIsIndependent && isBusiness,
     instructionsText: queueRow.service_instructions || '',
     extracted: get('address_class'),
   });
 
-  const clientBands = parseClientBands(get('client_attempt_schedule'));
-  const allowedDays = parseAllowedDays(get('service_days_allowed'));
+  const rawClientSchedule = get('client_attempt_schedule');
+  const rawAllowedDays = get('service_days_allowed');
+  const clientBands = parseClientBands(rawClientSchedule);
+  const allowedDays = parseAllowedDays(rawAllowedDays);
   const startNotBefore = get('attempt_start_not_before') || null;
+
+  // R3: fail-closed only works if the failure is VISIBLE. A non-empty source
+  // string that yields no bands / a null day set means the client dictated
+  // something we could not read — which is NOT the same as the client
+  // dictating nothing, and must not silently become "defaults apply".
+  const unparsedClientSchedule = rawClientSchedule.trim() && clientBands.length === 0
+    ? rawClientSchedule.trim() : null;
+  const unparsedAllowedDays = rawAllowedDays.trim() && allowedDays === null
+    ? rawAllowedDays.trim() : null;
+  if (unparsedClientSchedule || unparsedAllowedDays) {
+    log.warn('serve-intake client schedule present but unparseable — defaults applied', {
+      client_attempt_schedule: unparsedClientSchedule,
+      service_days_allowed: unparsedAllowedDays,
+      case_number: queueRow.case_number,
+    });
+  }
 
   const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline, 'America/Denver', {
     isBusiness,
     addressClass: addressClassResult.klass,
+    addressClassConfirmed: addressClassResult.confirmed,
     clientBands,
     allowedDays,
     startNotBefore,
@@ -938,8 +968,11 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       propertyRecord,
       businessRecord,
       addressClass: addressClassResult.klass,
+      addressClassConfirmed: addressClassResult.confirmed,
       scheduleImpossible,
       hasClientSchedule: clientBands.length > 0,
+      unparsedClientSchedule,
+      unparsedAllowedDays,
     }, nowIso);
     // File the OCR provenance note AFTER the intake briefing so the feed
     // reads: safety → briefing → extraction context.
@@ -1022,6 +1055,18 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       // json_extract(parsed_data, '$._intake.missing_critical') etc.
       _intake: {
         extracted_at: nowIso,
+        // R6: the resolved address class used to be computed here and then
+        // DISCARDED, so every downstream re-plan/backfill path fell back to
+        // the interim `isBusiness ? 'business' : 'unknown'` mapping — the
+        // exact defect this work exists to fix. Persist the full resolution
+        // (class + confirmation + source) so those paths can read the real
+        // answer. `confirmed` is load-bearing, not diagnostic: business
+        // TIMING is gated on it (D-2 / serveAttemptWindows).
+        address_class: {
+          klass: addressClassResult.klass,
+          confirmed: addressClassResult.confirmed,
+          source: addressClassResult.source,
+        },
         attempt_plan: attemptPlan,
         conflicts: input.conflicts ?? [],
         validation_issues: input.validationIssues ?? [],
