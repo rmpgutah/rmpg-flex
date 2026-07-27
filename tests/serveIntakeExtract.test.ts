@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest';
 import {
   toIsoDate, normalizeBirthDate, recoverDob, normalizeState, normalizePhone,
   normalizeZip, normalizePriority, normalizeDeadline, normalizeFields,
-  fieldsToQueueRow, TARGET_FIELDS, normalizeAddressClass,
+  fieldsToQueueRow, TARGET_FIELDS, normalizeAddressClass, normalizeYesNo,
   type ExtractedField, type TargetField,
 } from '../src/utils/serveIntakeExtract';
 
@@ -203,5 +203,47 @@ describe('new timing fields flow through normalizeFields', () => {
   it('preserves the client attempt schedule verbatim', () => {
     const out = normalizeFields(fieldsFrom({ client_attempt_schedule: '06:00-09:00;09:00-18:00' }));
     expect(out.client_attempt_schedule.value).toBe('06:00-09:00;09:00-18:00');
+  });
+});
+
+describe('normalizeYesNo', () => {
+  it('maps affirmative forms to yes', () => {
+    expect(normalizeYesNo('Yes')).toBe('yes');
+    expect(normalizeYesNo('TRUE')).toBe('yes');
+    expect(normalizeYesNo('y')).toBe('yes');
+  });
+
+  it('maps negative forms to no', () => {
+    expect(normalizeYesNo('No')).toBe('no');
+    expect(normalizeYesNo('false')).toBe('no');
+  });
+
+  it('returns empty for anything ambiguous', () => {
+    expect(normalizeYesNo('maybe')).toBe('');
+    expect(normalizeYesNo('')).toBe('');
+  });
+});
+
+describe('witness fee and agent address fields', () => {
+  it('keeps the witness-fee instrument verbatim', () => {
+    const out = normalizeFields(fieldsFrom({ witness_fee_instrument: 'Check VV787 $18.50' }));
+    expect(out.witness_fee_instrument.value).toBe('Check VV787 $18.50');
+  });
+
+  it('canonicalizes the tendered flag', () => {
+    const out = normalizeFields(fieldsFrom({ witness_fee_tendered: 'TRUE' }));
+    expect(out.witness_fee_tendered.value).toBe('yes');
+  });
+
+  it('de-noises the registered agent address like other name fields', () => {
+    const out = normalizeFields(fieldsFrom({
+      registered_agent_address: '1400 West Confluence Ave Ste 310, Salt Lake City, UT 84104',
+    }));
+    expect(out.registered_agent_address.value).toContain('1400 West Confluence Ave');
+  });
+
+  it('canonicalizes the first-attempt sub-service authorization', () => {
+    const out = normalizeFields(fieldsFrom({ sub_service_authorized_first_attempt: 'yes' }));
+    expect(out.sub_service_authorized_first_attempt.value).toBe('yes');
   });
 });

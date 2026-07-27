@@ -86,6 +86,14 @@ export const TARGET_FIELDS = [
   'service_days_allowed',           // 'all' | 'weekdays' | 'friday' | 'no_sunday' | free text
   'client_attempt_schedule',        // 'HH:MM-HH:MM;HH:MM-HH:MM' verbatim bands
   'attempt_start_not_before',       // ISO date — "start attempts on or after X"
+  // ── Physical items & service authority (PR 1, 2026-07-26) ──
+  // A witness fee is a THING the server must carry. It appears inside the
+  // Documents list ("Check VV787 $18.50") and was previously invisible to
+  // the officer until they opened the packet.
+  'witness_fee_tendered',                    // yes | no | ''
+  'witness_fee_instrument',                  // verbatim, e.g. 'Check VV787 $18.50'
+  'registered_agent_address',                // distinct from recipient_address
+  'sub_service_authorized_first_attempt',    // yes | no | ''
 ] as const;
 
 export type TargetField = typeof TARGET_FIELDS[number];
@@ -196,7 +204,16 @@ TIMING & SERVICE CONSTRAINTS — read the Instructions block carefully:
 • client_attempt_schedule — when the client dictates attempt bands ("1 between 6AM-9AM,
   1 between 9AM-6PM and 1 between 6PM-9PM"), emit them as 24h ranges joined by semicolons:
   "06:00-09:00;09:00-18:00;18:00-21:00". Empty when the client dictates nothing.
-• attempt_start_not_before — "Start attempts on or after June 26" → the ISO date.`;
+• attempt_start_not_before — "Start attempts on or after June 26" → the ISO date.
+
+PHYSICAL ITEMS & SERVICE AUTHORITY:
+• witness_fee_instrument — a subpoena packet often lists a witness-fee check inside the
+  documents line ("Check VV787 $18.50"). Copy it VERBATIM. Set witness_fee_tendered='yes'
+  when such an instrument is listed, 'no' when the document says no fee is tendered, else ''.
+• registered_agent_address — the agent's service address when it differs from the entity's
+  own address (e.g. a corporate-agent service company). Empty when they are the same.
+• sub_service_authorized_first_attempt — 'yes' when the client expressly permits substitute
+  service on the FIRST attempt ("may be sub-served on the 1st attempt"), else ''.`;
 
 // Llama 3.3 70B has a 128K-token context. 24K chars (~6K tokens) was
 // far too conservative — a multi-document packet (e.g. a 47K-char court
@@ -887,6 +904,16 @@ export function normalizeAddressClass(raw: string): string {
   return 'unknown';
 }
 
+// Tri-state: 'yes' | 'no' | '' (unknown). Never guess — an unknown
+// sub-service authorization must read as unknown, not as permission.
+export function normalizeYesNo(raw: string): string {
+  const s = (raw || '').trim().toLowerCase();
+  if (!s) return '';
+  if (/^(y|yes|true|1|authorized|permitted|allowed)$/.test(s)) return 'yes';
+  if (/^(n|no|false|0|not authorized|prohibited|denied)$/.test(s)) return 'no';
+  return '';
+}
+
 // Which target fields get which normalizer. Centralized so adding a new
 // date/phone field is a one-line change, not a scattered edit.
 const PHONE_FIELDS = new Set<TargetField>(['recipient_phone', 'attorney_phone']);
@@ -900,7 +927,11 @@ const ADDRESS_CLASS_FIELDS = new Set<TargetField>(['address_class']);
 // Party / institutional name fields that get the caption de-noiser.
 const NAME_FIELDS = new Set<TargetField>([
   'plaintiff', 'defendant', 'recipient_business_name', 'registered_agent_name',
-  'court_name', 'attorney_name',
+  'court_name', 'attorney_name', 'registered_agent_address',
+]);
+// Tri-state yes/no/'' fields — see normalizeYesNo.
+const YES_NO_FIELDS = new Set<TargetField>([
+  'witness_fee_tendered', 'sub_service_authorized_first_attempt',
 ]);
 
 // Apply the deterministic normalizers across a merged field map. Returns
@@ -931,6 +962,7 @@ export function normalizeFields(
         else { next = ''; conf = 0; }   // unparseable date → drop, don't guess
       }
       else if (ADDRESS_CLASS_FIELDS.has(key)) next = normalizeAddressClass(value);
+      else if (YES_NO_FIELDS.has(key)) next = normalizeYesNo(value);
       else if (NAME_FIELDS.has(key)) {
         next = scrubPartyNoise(value);
         if (!next) conf = 0;            // scrubbed to nothing → it was all noise
