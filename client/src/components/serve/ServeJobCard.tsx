@@ -26,6 +26,7 @@ import {
 import type { ServeJob, ServeJobLinkedCall, ServeAttempt } from '../../types';
 import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
 import { formatCodeShort } from '../../constants/processServiceCodes';
+import ServeReceiptActions from './ServeReceiptActions';
 
 interface ServeJobCardProps {
   job: ServeJob;
@@ -576,6 +577,10 @@ export default React.memo(function ServeJobCard({
           <Search className="w-3 h-3" />
           Skip Trace
         </button>
+        {/* Acknowledgement of Service — QR for the subject's phone, or
+            blank paper for hand completion. Lives in the action row
+            because it is used AT the door, alongside Attempt. */}
+        <ServeReceiptActions job={job} compact />
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onFlagAddress(job.id); }}
           className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-amber-900/20"

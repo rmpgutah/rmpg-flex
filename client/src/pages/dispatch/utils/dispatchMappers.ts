@@ -237,6 +237,12 @@ export function mapDbCall(row: any): CallForService {
     updated_at: row.updated_at || '',
     // Visit history (PSO calls — attached by GET /calls/:id and redispatch)
     visit_history: row.visit_history || undefined,
+    // Linked serve job. mapDbCall builds an explicit object rather than
+    // spreading the row, so an unmapped field is DROPPED — which is why
+    // the call report's recipient QR never appeared even though both the
+    // server and the PDF generator knew about serve_queue_id. The gap was
+    // here, in the middle.
+    serve_queue_id: row.serve_queue_id ?? undefined,
     // Pinned-to-top flag (sticky at top of dispatcher's call list)
     pinned: row.pinned ? 1 : 0,
     // ── PDF-required fields (carried so PrintRecordButton spread sees them) ──

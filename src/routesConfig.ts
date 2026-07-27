@@ -179,6 +179,7 @@ import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import serveManagerRoutes from './routes/serveManagerRoutes';
+import { serveReceipt, serveReceiptAdmin } from './routes/serveReceipt';
 import stubs from './routes/stubs';
 import voicePersona from './routes/voicePersona';
 import mobileCfs, { cfsQr } from './routes/mobileCfs';
@@ -299,6 +300,17 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // a personal phone scanning a QR shown on the desktop/MDT ShiftCard.
   { prefix: '/api/inspections', router: inspections, auth: 'public',
     note: 'Token-authed: resolves the open time_entry whose qr_token matches' },
+
+  // Recipient-facing Receipt of Service + Court Document Release
+  // (/m/serve-receipt/<token>). MUST be public: the signer is a member of
+  // the public — usually the defendant — and will never have a session.
+  // The single-use token from serve_receipt_tokens IS the credential and
+  // is verified inside the route, same posture as /api/inspections and
+  // /api/mobile. Safe alongside the auth-required '/api/serve' mount:
+  // index.ts applies auth to the exact prefix and `${prefix}/*` only, and
+  // '/api/serve-receipt' matches neither.
+  { prefix: '/api/serve-receipt', router: serveReceipt, auth: 'public',
+    note: 'Token-authed recipient signature capture; token burned on signature. Migration 0207.' },
 
   // Crime layers for the NAVIGATE tactical map (SLC public data proxy + our
   // own CFS). Auth-gated like the rest of the app; /local reads our DB.
@@ -508,6 +520,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // the queue + stats + route + attempt endpoints.
   { prefix: '/api/process-server', router: serve, auth: 'required',
     note: 'Alias of /api/serve for the ServePage URL contract (legacy /api/process-server/* proxy) — same router instance' },
+  { prefix: '/api/serve-receipts', router: serveReceiptAdmin, auth: 'required',
+    note: 'Officer side of the recipient receipt: mint/reuse the printed QR token, read signed receipts, supervisor void. Public signing surface is /api/serve-receipt (singular).' },
   { prefix: '/api/serve-dashboard', router: serveDashboard, auth: 'required',
     note: 'Admin/manager/supervisor analytics & bulk-ops for the process-service queue' },
   { prefix: '/api/serve-queue', router: serveQueueEnhanced, auth: 'required',
