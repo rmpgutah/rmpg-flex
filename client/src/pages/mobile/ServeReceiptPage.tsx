@@ -32,6 +32,8 @@ import { useParams } from 'react-router-dom';
 import { Check, AlertTriangle, FileText, Loader2, Download, Printer, ShieldCheck, ScanLine } from 'lucide-react';
 import SignaturePad from '../../components/SignaturePad';
 import { enqueueSubmission, flushQueued, getQueued } from '../../utils/serveReceiptQueue';
+import { decodePdf417 } from '../../utils/pdf417Decoder';
+import { parseAamva } from '../../utils/aamvaParser';
 import { generateReceiptOfService, type ReceiptOfServiceData } from '../../utils/servePdfGenerator';
 import {
   resolveReceiptVariant, receiptFormTitle, attestationsFor, formatServiceAddress, isEntityName,
