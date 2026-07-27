@@ -8,10 +8,15 @@ function fakeAi(result: unknown) {
 }
 
 describe('extractPdfMarkdown', () => {
-  it('returns pre-cleaned markdown when toMarkdown succeeds', async () => {
+  it('reports structured when toMarkdown finds real semantic headings beyond the scaffold', async () => {
+    // Real live-endpoint shape (verified 2026-07-26): a fixed
+    // `# <name>` / `## Metadata` / `## Contents` / `### Page N` scaffold
+    // wraps EVERY conversion, but here the page content also carries its
+    // own semantic heading (`#### Recipient`) — evidence the converter
+    // actually walked the PDF's StructTree, not just flat text.
     const ai = fakeAi({
       name: 'doc.pdf', format: 'markdown', mimetype: 'application/pdf',
-      data: '## Contents\n### Page 1\nPalo Alto, СA 94304',
+      data: '# doc.pdf\n## Metadata\n- PDFFormatVersion=1.4\n## Contents\n### Page 1\n#### Recipient\nPalo Alto, СA 94304',
     });
     const out = await extractPdfMarkdown(ai, bytes, 'doc.pdf');
     expect(out.source).toBe('tomarkdown');
@@ -19,8 +24,17 @@ describe('extractPdfMarkdown', () => {
     expect(out.text).toContain('CA 94304');   // homoglyph fixed by pre-clean
   });
 
-  it('reports unstructured when toMarkdown returns no heading structure', async () => {
-    const ai = fakeAi({ name: 'doc.pdf', format: 'markdown', data: 'flat text only' });
+  it('reports unstructured when toMarkdown returns only the fixed scaffold plus flat text', async () => {
+    // Same scaffold as the live endpoint always emits — # name, ## Metadata,
+    // ## Contents, ### Page N — but the page body itself has no further
+    // heading structure, just flat text. This is what a StructTree-less
+    // fallback conversion actually looks like in prod (not the unrealistic
+    // bare 'flat text only' this test used to pass), and `structured` must
+    // come back false for it.
+    const ai = fakeAi({
+      name: 'doc.pdf', format: 'markdown',
+      data: '# doc.pdf\n## Metadata\n- PDFFormatVersion=1.4\n## Contents\n### Page 1\nflat text only, no further headings',
+    });
     const out = await extractPdfMarkdown(ai, bytes, 'doc.pdf');
     expect(out.structured).toBe(false);
   });

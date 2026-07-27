@@ -353,46 +353,49 @@ async function scanDocumentHandler(c: any): Promise<Response> {
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       let text: string;
-      if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
+      // Zero-neuron structured tier first: env.AI.toMarkdown() walks the PDF
+      // StructTree and does not interleave two-column layouts the way the
+      // client's naive positional pdfjs concatenation (item.str joined by
+      // reading order) does. Try it BEFORE the client text — pdfjs-client is
+      // exactly the two-column interleaving hazard toMarkdown exists to avoid,
+      // and any real intake form clears MIN_CLIENT_TEXT_CHARS, so putting
+      // pdfjs-client first meant toMarkdown almost never ran. Only fall
+      // through to pdfjs-client, then the container (not rolled out in prod
+      // anyway), when toMarkdown comes back empty or looks like an unreadable
+      // scan stub.
+      const md = await withTimeout(
+        extractPdfMarkdown(c.env.AI, bytes, file.name || 'doc.pdf'),
+        TOMARKDOWN_TIMEOUT_MS, 'toMarkdown timed out',
+      ).catch(() => EMPTY_PDF_TEXT);
+      if (md.text && !isScanStub(md.text, md.page_count)) {
+        text = md.text;
+        pageCount = md.page_count;
+        ocrEngine = 'workers-ai-tomarkdown';
+        log.info('scan-document: toMarkdown structured extraction used', {
+          traceId: c.get('traceId'), file: file.name, structured: md.structured,
+          chars: md.text.length, page_count: md.page_count,
+        });
+      } else if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
         text = clientText;
         ocrEngine = 'pdfjs-client';
       } else {
-        // Zero-neuron structured tier first: env.AI.toMarkdown() walks the
-        // PDF StructTree and does not interleave two-column layouts the way
-        // positional text extraction does. Only fall through to the
-        // container (not rolled out in prod anyway) when it comes back
-        // empty or looks like an unreadable scan.
-        const md = await withTimeout(
-          extractPdfMarkdown(c.env.AI, bytes, file.name || 'doc.pdf'),
-          TOMARKDOWN_TIMEOUT_MS, 'toMarkdown timed out',
-        ).catch(() => EMPTY_PDF_TEXT);
-        if (md.text && !isScanStub(md.text, md.page_count)) {
-          text = md.text;
-          pageCount = md.page_count;
-          ocrEngine = 'workers-ai-tomarkdown';
-          log.info('scan-document: toMarkdown structured extraction used', {
-            traceId: c.get('traceId'), file: file.name, structured: md.structured,
-            chars: md.text.length, page_count: md.page_count,
+        const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+        try {
+          const txt = await withTimeout(
+            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+            CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
+          );
+          text = precleanText(txt.text);
+          pageCount = txt.page_count;
+          ocrUsed = txt.ocr_used;
+          ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
+        } catch (e) {
+          log.warn('scan-document: PDF Tools container unavailable, falling back to client_text', {
+            traceId: c.get('traceId'),
+            error: e instanceof Error ? e.message : String(e),
           });
-        } else {
-          const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-          try {
-            const txt = await withTimeout(
-              extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
-              CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
-            );
-            text = precleanText(txt.text);
-            pageCount = txt.page_count;
-            ocrUsed = txt.ocr_used;
-            ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
-          } catch (e) {
-            log.warn('scan-document: PDF Tools container unavailable, falling back to client_text', {
-              traceId: c.get('traceId'),
-              error: e instanceof Error ? e.message : String(e),
-            });
-            text = clientText;
-            ocrEngine = 'container-unavailable';
-          }
+          text = clientText;
+          ocrEngine = 'container-unavailable';
         }
       }
       extraction = text.trim().length >= 20
@@ -457,12 +460,14 @@ si.post('/upload', async (c) => {
     }
   }
 
-  // Client-provided pdfjs text, keyed by filename. The browser already
-  // ran pdfjs on each PDF during drag-drop; we use that text directly
-  // for born-digital PDFs instead of round-tripping through the PDF
-  // Tools container (which is NOT rolled out in prod — deploy uses
-  // --containers-rollout=none — so a container fetch would hang).
-  // Only genuinely empty PDFs (scans) fall through to the container.
+  // Client-provided pdfjs text, keyed by filename. The browser already ran
+  // pdfjs on each PDF during drag-drop. toMarkdown (see below) is tried
+  // FIRST for every PDF — this client text is only the fallback for
+  // born-digital PDFs toMarkdown can't read, used instead of round-tripping
+  // through the PDF Tools container (which is NOT rolled out in prod —
+  // deploy uses --containers-rollout=none — so a container fetch would
+  // hang). Only PDFs that toMarkdown AND client text both fail on fall
+  // through to the container.
   const clientTextByName = new Map<string, string>();
   const clientTextRaw = form.get('client_text');
   if (typeof clientTextRaw === 'string') {
@@ -527,34 +532,34 @@ si.post('/upload', async (c) => {
         let ocrUsed = false;
         let pageCount = 0;
         const clientText = clientTextByName.get(file.name) || '';
-        if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
+        // Same zero-neuron structured tier as /scan-document: try toMarkdown
+        // BEFORE the pdfjs-client text (that positional-concatenation text is
+        // exactly the two-column interleaving hazard toMarkdown exists to
+        // avoid) and before the container round-trip.
+        const md = await withTimeout(
+          extractPdfMarkdown(c.env.AI, bytes, file.name || 'doc.pdf'),
+          TOMARKDOWN_TIMEOUT_MS, 'toMarkdown timed out',
+        ).catch(() => EMPTY_PDF_TEXT);
+        if (md.text && !isScanStub(md.text, md.page_count)) {
+          text = md.text; pageCount = md.page_count;
+          ocrEngine = 'workers-ai-tomarkdown';
+          log.info('upload: toMarkdown structured extraction used', {
+            traceId: c.get('traceId'), file: file.name, structured: md.structured,
+            chars: md.text.length, page_count: md.page_count,
+          });
+        } else if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
           text = clientText;
         } else {
-          // Same zero-neuron structured tier as /scan-document: try
-          // toMarkdown before the container round-trip.
-          const md = await withTimeout(
-            extractPdfMarkdown(c.env.AI, bytes, file.name || 'doc.pdf'),
-            TOMARKDOWN_TIMEOUT_MS, 'toMarkdown timed out',
-          ).catch(() => EMPTY_PDF_TEXT);
-          if (md.text && !isScanStub(md.text, md.page_count)) {
-            text = md.text; pageCount = md.page_count;
-            ocrEngine = 'workers-ai-tomarkdown';
-            log.info('upload: toMarkdown structured extraction used', {
-              traceId: c.get('traceId'), file: file.name, structured: md.structured,
-              chars: md.text.length, page_count: md.page_count,
-            });
-          } else {
-            const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-            try {
-              const txt = await withTimeout(
-                extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
-                CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
-              );
-              text = precleanText(txt.text); pageCount = txt.page_count; ocrUsed = txt.ocr_used;
-              ocrEngine = txt.ocr_used ? 'tesseract' : 'pdftotext';
-            } catch {
-              text = clientText; ocrEngine = 'container-unavailable';
-            }
+          const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+          try {
+            const txt = await withTimeout(
+              extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+              CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
+            );
+            text = precleanText(txt.text); pageCount = txt.page_count; ocrUsed = txt.ocr_used;
+            ocrEngine = txt.ocr_used ? 'tesseract' : 'pdftotext';
+          } catch {
+            text = clientText; ocrEngine = 'container-unavailable';
           }
         }
         const ex = text.trim().length >= 20

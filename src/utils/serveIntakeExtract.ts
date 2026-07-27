@@ -578,8 +578,35 @@ interface ConversionResult {
   error?: string;
 }
 
-// A "### Page N" or any ATX heading indicates the StructTree path ran.
-const HAS_STRUCTURE = /^#{1,6}\s+\S/m;
+// Workers AI toMarkdown() emits a FIXED scaffold around EVERY successful
+// conversion, model-free or not — verified against the live endpoint
+// 2026-07-26:
+//   # <filename>
+//   ## Metadata
+//   - PDFFormatVersion=1.4
+//   ...
+//   ## Contents
+//   ### Page 1
+//   <page text>
+// Those four heading forms (`# <name>`, `## Metadata`, `## Contents`,
+// `### Page N`) are unconditional boilerplate the converter prints
+// regardless of whether it found a real StructTree — a flat-text fallback
+// produces exactly this scaffold too. The old `HAS_STRUCTURE = /^#{1,6}\s+\S/m`
+// matched ANY ATX heading, so it matched the scaffold on every successful
+// call and `structured` was always true, unable to distinguish a genuine
+// semantic conversion from flat text wrapped in boilerplate.
+//
+// Only a heading that appears WITHIN the page content, beyond that fixed
+// scaffold, is evidence the converter actually walked the PDF's StructTree.
+const SCAFFOLD_HEADING = /^(#\s+\S.*|##\s+Metadata\s*|##\s+Contents\s*|###\s+Page\s+\d+\s*)$/;
+const ANY_HEADING = /^#{1,6}\s+\S/;
+
+function hasSemanticStructure(markdown: string): boolean {
+  return markdown.split('\n').some((rawLine) => {
+    const line = rawLine.trimEnd();
+    return ANY_HEADING.test(line) && !SCAFFOLD_HEADING.test(line);
+  });
+}
 
 // `Pick<Ai, 'toMarkdown'>` (not a hand-rolled `(files: unknown) => Promise<unknown>`
 // shape) so the real `env.AI` binding — whose `toMarkdown` is overloaded
@@ -603,7 +630,7 @@ export async function extractPdfMarkdown(
     const doc = list.find((d) => d?.name === fileName) ?? list[0];
     if (!doc || doc.format === 'error' || !doc.data) return empty;
 
-    const structured = HAS_STRUCTURE.test(doc.data);
+    const structured = hasSemanticStructure(doc.data);
     // Page count is derivable from the converter's own page headings.
     const page_count = (doc.data.match(/^#{2,4}\s+Page\s+\d+/gim) || []).length;
     return {
