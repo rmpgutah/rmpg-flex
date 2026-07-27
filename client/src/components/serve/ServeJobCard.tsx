@@ -51,7 +51,12 @@ interface ServeJobCardProps {
 
 const STATUS_COLORS: Record<string, { bg: string; glow: string; dot: string; label: string; badge: string }> = {
   pending:     { bg: 'bg-rmpg-500',              glow: 'shadow-[0_0_6px_rgba(136,136,136,0.5)]',  dot: 'bg-rmpg-400',    label: 'PENDING',     badge: 'bg-rmpg-800/60 text-rmpg-300 border-rmpg-600/50' },
-  in_progress: { bg: 'bg-amber-500 animate-pulse', glow: 'shadow-[0_0_6px_rgba(245,158,11,0.5)]', dot: 'bg-amber-400 animate-pulse', label: 'IN PROGRESS', badge: 'bg-amber-900/50 text-amber-300 border-amber-700/50' },
+  // No animate-pulse anywhere in this card. Urgency is carried by colour,
+  // the red ring and the tier badge — all of which stay. Animating them as
+  // well meant a queue where several jobs are due at once had several cards
+  // flaring in and out simultaneously, which reads as an alarm rather than
+  // a priority and is exhausting to work a shift against.
+  in_progress: { bg: 'bg-amber-500', glow: '', dot: 'bg-amber-400', label: 'IN PROGRESS', badge: 'bg-amber-900/50 text-amber-300 border-amber-700/50' },
   served:      { bg: 'bg-green-500',             glow: 'shadow-[0_0_6px_rgba(34,197,94,0.5)]',   dot: 'bg-green-400',   label: 'SERVED',      badge: 'bg-green-900/50 text-green-300 border-green-700/50' },
   failed:      { bg: 'bg-red-500',               glow: 'shadow-[0_0_6px_rgba(239,68,68,0.5)]',   dot: 'bg-red-400',     label: 'FAILED',      badge: 'bg-red-900/50 text-red-300 border-red-700/50' },
   skipped:     { bg: 'bg-rmpg-500',              glow: 'shadow-[0_0_6px_rgba(107,114,128,0.5)]', dot: 'bg-rmpg-400',    label: 'SKIPPED',     badge: 'bg-rmpg-800/60 text-rmpg-400 border-rmpg-600/50' },
@@ -169,7 +174,7 @@ export default React.memo(function ServeJobCard({
       }}
       className={`
         panel-beveled rounded-[2px] transition-all duration-150 hover:bg-surface-raised hover:shadow-md
-        ${isDueSoon && !isSelected ? 'ring-1 ring-red-500/60 animate-pulse' : ''}
+        ${isDueSoon && !isSelected ? 'ring-1 ring-red-500/60' : ''}
         ${isOverdue && !isSelected ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]' : ''}
         ${isSelected ? 'ring-1 ring-brand-400 shadow-[0_0_8px_rgba(212,160,23,0.25)]' : ''}
         ${!isDueSoon && !isOverdue && !isSelected && isCritical ? 'ring-1 ring-red-500/60' : ''}
@@ -289,7 +294,7 @@ export default React.memo(function ServeJobCard({
             const hrsLeft = Math.floor(msLeft / 3600000);
             const minsLeft = Math.floor((msLeft % 3600000) / 60000);
             return (
-              <span className="text-[8px] font-bold font-mono text-red-400 bg-red-900/40 border border-red-600/50 px-1 py-0 animate-pulse">
+              <span className="text-[8px] font-bold font-mono text-red-400 bg-red-900/40 border border-red-600/50 px-1 py-0">
                 {hrsLeft}h {minsLeft}m LEFT
               </span>
             );
@@ -306,11 +311,12 @@ export default React.memo(function ServeJobCard({
               <Bot className="w-2.5 h-2.5" />AUTO-ASSIGNED
             </span>
           )}
-          {/* Urgency tier badge — critical uses Flame + animate-pulse */}
+          {/* Urgency tier badge — critical uses a Flame icon. Static: see the
+              note on the status map above for why nothing here animates. */}
           {job.urgency_tier && job.urgency_tier !== 'normal' && (
             <span title={`Urgency: ${job.urgency_tier}`} className={`inline-flex items-center gap-0.5 text-[8px] font-bold px-1 py-0 rounded-[2px] border ${
               job.urgency_tier === 'critical'
-                ? 'text-red-300 bg-red-900/40 border-red-600/60 animate-pulse'
+                ? 'text-red-300 bg-red-900/40 border-red-600/60'
                 : 'text-amber-400 bg-amber-900/20 border-amber-600/50'
             }`}>
               {job.urgency_tier === 'critical'
