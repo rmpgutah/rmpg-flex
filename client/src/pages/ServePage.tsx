@@ -805,7 +805,11 @@ export default function ServePage() {
       attempt_number: number;
     }>(`/process-server/${attemptJob.id}/attempt`, {
       method: 'POST',
-      body: JSON.stringify(data),
+      // Stamp from the officer's own device, not the server's receipt time.
+      // toISOString() resolves the device clock through the device's timezone,
+      // so the instant is correct regardless of where the unit is; the server
+      // sanity-checks it and falls back to its own clock if it's implausible.
+      body: JSON.stringify({ attempt_at: new Date().toISOString(), ...data }),
     });
 
     // Optimistic update — move job to its new folder immediately without waiting for poll
