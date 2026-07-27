@@ -275,6 +275,18 @@ export default function ServeReceiptPage() {
     authorizedAgent,
   }), [isNamedParty, premisesType, residesAtAddress, authorizedAgent]);
 
+  // A signer who ticks "authorized to accept" at a RESIDENCE resolves to
+  // the Business variation — correct, that is a registered agent working
+  // from home, and it is the one variation carrying the agent-authority
+  // statement. But the business name field then sat empty and blocked
+  // submission, demanding an entity name a house does not have. Seed it
+  // from the party actually named in the process; the signer can correct
+  // it, and the form is fillable instead of a dead end.
+  useEffect(() => {
+    if (variant !== 'business') return;
+    setBusinessName((prev) => prev.trim() || namedParty);
+  }, [variant, namedParty]);
+
   const attestations = useMemo(
     () => attestationsFor(variant, partyLabel),
     [variant, partyLabel],

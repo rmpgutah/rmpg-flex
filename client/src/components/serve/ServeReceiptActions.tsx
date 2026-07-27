@@ -26,7 +26,8 @@
 // silently overwritten.
 // ============================================================
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import {
   QrCode, Printer, Loader2, X, CheckCircle2, ExternalLink,
@@ -66,12 +67,36 @@ export interface ServeReceiptJob {
   recipient_zip?: string | null;
 }
 
+/**
+ * Answers already given elsewhere — currently by the attempt modal, which
+ * asks who was served and their relationship before this panel is ever
+ * reached.
+ *
+ * Seeding PRE-ANSWERS the intake; it does not skip it. The attempt log
+ * does not ask whether the address is a dwelling or whether the person
+ * lives there, and those two answers are what separate a co-habitant from
+ * a substitute. Jumping straight to the QR would mean deriving a form
+ * from facts nobody established.
+ */
+export interface ServeReceiptSeed {
+  isNamedParty?: boolean | null;
+  recipientName?: string | null;
+  relationship?: string | null;
+  documents?: Array<{ title: string; copies: number }>;
+}
+
 interface Props {
   job: ServeReceiptJob;
   serverName?: string;
   serverBadge?: string;
   /** Compact renders as a single icon button for tight card footers. */
   compact?: boolean;
+  /** Pre-answer the intake from a completed attempt. */
+  seed?: ServeReceiptSeed;
+  /** Render the panel already open — used when it IS the completion step. */
+  autoOpen?: boolean;
+  /** Label for the trigger when it is not the compact card button. */
+  triggerLabel?: string;
 }
 
 type Step = 'intake' | 'handoff';
@@ -119,23 +144,27 @@ function Choice<T extends string | boolean | null>({
   );
 }
 
-export default function ServeReceiptActions({ job, serverName, serverBadge, compact }: Props) {
-  const [open, setOpen] = useState(false);
+export default function ServeReceiptActions({
+  job, serverName, serverBadge, compact, seed, autoOpen, triggerLabel,
+}: Props) {
+  const [open, setOpen] = useState(!!autoOpen);
   const [step, setStep] = useState<Step>('intake');
 
   // ── Officer intake ─────────────────────────────────────────
   // undefined = not yet answered. null is a real answer ('unsure'), so it
   // cannot double as the unanswered state — the Choice would highlight
   // Unsure on open and the officer would submit a question they never read.
-  const [isNamedParty, setIsNamedParty] = useState<boolean | null | undefined>(undefined);
+  const [isNamedParty, setIsNamedParty] = useState<boolean | null | undefined>(seed?.isNamedParty);
   const [premisesType, setPremisesType] = useState<'residence' | 'business' | 'other'>('residence');
   const [resides, setResides] = useState(false);
   const [authorized, setAuthorized] = useState(false);
-  const [recipientName, setRecipientName] = useState('');
-  const [relationship, setRelationship] = useState('');
+  const [recipientName, setRecipientName] = useState(seed?.recipientName ?? '');
+  const [relationship, setRelationship] = useState(seed?.relationship ?? '');
   const [businessName, setBusinessName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
-  const [docTitles, setDocTitles] = useState('');
+  const [docTitles, setDocTitles] = useState(
+    (seed?.documents ?? []).map((d) => d.title).join('\n'),
+  );
 
   // ── Hand-off ───────────────────────────────────────────────
   const [url, setUrl] = useState<string | null>(null);
@@ -154,6 +183,23 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
   const [printing, setPrinting] = useState<string | null>(null);
   // Index into RECEIPT_COPY_ORDER — which of the three copies is next.
   const [copyStep, setCopyStep] = useState(0);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // Move focus INTO the panel on open, and close on Escape.
+  //
+  // Without this, focus stays on the trigger button behind the overlay,
+  // so a Return keypress — routine after typing a document name on a
+  // phone keyboard — activates whichever Yes/No button still holds focus
+  // and silently resets the officer's answers. Observed live on
+  // 2026-07-27: typing into the documents box wiped the intake and
+  // reverted the derived form to (Individual).
+  useEffect(() => {
+    if (!open) return;
+    panelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
   const [error, setError] = useState<string | null>(null);
 
   const signed = receipts.filter((r) => r.status === 'signed');
@@ -332,21 +378,30 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
         aria-label={`Acknowledgement of service for ${job.recipient_name || `job ${job.id}`}`}
       >
         <QrCode className="w-3 h-3" />
-        Receipt
+        {triggerLabel ?? 'Receipt'}
       </button>
     );
   }
 
   const namedParty = job.defendant_name || job.recipient_name || 'the named party';
 
-  return (
+  // Portalled to document.body. Rendered inline it is a DOM descendant of
+  // the job card, so its clicks and keystrokes bubble into the card's own
+  // expand/select handlers even though it paints as a full-screen overlay.
+  return createPortal(
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Acknowledgement of service for ${job.recipient_name || `job ${job.id}`}`}
       className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-3"
       onClick={(e) => { e.stopPropagation(); setOpen(false); }}
     >
       <div
-        className="w-full max-w-sm bg-surface-raised border border-rmpg-700 rounded-[2px] max-h-[92vh] overflow-y-auto"
+        ref={panelRef}
+        tabIndex={-1}
+        className="w-full max-w-sm bg-surface-raised border border-rmpg-700 rounded-[2px] max-h-[92vh] overflow-y-auto focus:outline-none"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between px-3 py-2 border-b border-rmpg-700 sticky top-0 bg-surface-raised">
           <div className="flex items-center gap-2 min-w-0">
@@ -434,9 +489,13 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
           {step === 'intake' && (
             <>
               <p className="text-[11px] text-fg-secondary leading-snug">
-                Answer what you can see. These pick the right form and pre-fill
-                it — the person signing can still correct anything, because the
-                statements are theirs to make.
+                {seed
+                  ? 'Carried over from the attempt you just logged. Confirm the two '
+                    + 'address questions — the attempt log does not ask them, and they '
+                    + 'are what separate a co-habitant from a substitute.'
+                  : 'Answer what you can see. These pick the right form and pre-fill '
+                    + 'it — the person signing can still correct anything, because the '
+                    + 'statements are theirs to make.'}
               </p>
 
               <Q label={`Is the person at the door ${namedParty}?`}>
@@ -613,6 +672,7 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
