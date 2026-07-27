@@ -68,6 +68,10 @@ async function quickStatusUpdate(jobId: number, result: 'served' | 'failed'): Pr
       attempt_type: attemptType,
       result,
       address_verified: false,
+      // Device clock + device timezone = the true instant of the attempt.
+      // The server default would stamp when the POST lands, which drifts on a
+      // queued or slow submit from the field.
+      attempt_at: new Date().toISOString(),
     }),
   });
   return res?.queue_status ?? result;
