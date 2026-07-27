@@ -9,6 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { precleanText } from '../src/utils/serveIntakePreclean';
 
@@ -38,6 +39,39 @@ describe('fixture corpus integrity', () => {
   it('every fixture has an expected block', () => {
     const expected = loadExpected();
     expect(Object.keys(expected).sort()).toEqual(['business-subpoena', 'individual-employment']);
+  });
+
+  // Content ratchet — defense in depth alongside the denylist above.
+  //
+  // The denylist only catches the SPECIFIC known real names it lists. It says
+  // nothing about any other content change — including a wholesale re-paste of
+  // a different real packet that happens to avoid those particular names. This
+  // ratchet pins the exact bytes of each fixture to a hash recorded here, so
+  // ANY edit to fixture content — not just a re-paste of a known name — fails
+  // this test and forces a deliberate, reviewed update.
+  //
+  // These hashes were computed from the current fixture files on disk, not
+  // derived from re-reading the same file inside the test (which would just
+  // assert the file equals itself and prove nothing).
+  const FIXTURE_HASHES: Record<string, string> = {
+    'business-subpoena': '587a3e461084e351b574f5f8cd3eb4c5e1609859d4b9410eedebd7d9a2e7529f',
+    'individual-employment': 'aff0a7be446fb962997e62710eacddb375dd2976047d4eb9e89003653db8fccc',
+  };
+
+  it('fixture content matches its recorded hash (content ratchet)', () => {
+    for (const name of Object.keys(FIXTURE_HASHES)) {
+      const raw = readFileSync(join(FIXTURE_DIR, `${name}.txt`));
+      const actual = createHash('sha256').update(raw).digest('hex');
+      expect(
+        actual,
+        `${name}.txt content changed (hash ${actual} != recorded ${FIXTURE_HASHES[name]}). ` +
+          `If this is an intentional, reviewed edit to SYNTHETIC content, verify the new text ` +
+          `still contains no real names/case data (see the denylist test above and the README), ` +
+          `then update FIXTURE_HASHES['${name}'] in tests/serveIntakeFixtures.test.ts to the new ` +
+          `hash. If you did NOT intentionally edit this fixture, treat this failure as a real ` +
+          `packet possibly having been pasted in and stop.`
+      ).toBe(FIXTURE_HASHES[name]);
+    }
   });
 });
 
