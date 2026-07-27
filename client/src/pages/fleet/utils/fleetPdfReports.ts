@@ -8,7 +8,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
-import { parseTimestamp } from '../../../utils/dateUtils';
+import { parseTimestamp, safeDateStr } from '../../../utils/dateUtils';
 import type { FleetVehicle, FleetFuelLog, FleetFuelSummary, FleetMaintenance, FleetInspection, FleetAssignment, FleetInsurancePolicy, FleetAnalytics } from '../../../types';
 import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 
@@ -147,7 +147,7 @@ export function generateFleetMaintenanceReport(data: {
 
   for (const r of data.records) {
     if (y > pageH - 60) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'MAINTENANCE HISTORY REPORT (cont.)'); }
-    const vals = [r.performed_at?.slice(0, 10) ?? '', r.type ?? '', r.description?.slice(0, 40) ?? '', String(r.mileage_at_service ?? ''), `$${r.cost ?? 0}`, r.vendor?.slice(0, 20) ?? '', r.next_due_date?.slice(0, 10) ?? ''];
+    const vals = [safeDateStr(r.performed_at, ''), r.type ?? '', r.description?.slice(0, 40) ?? '', String(r.mileage_at_service ?? ''), `$${r.cost ?? 0}`, r.vendor?.slice(0, 20) ?? '', safeDateStr(r.next_due_date, '')];
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
     vals.forEach((val, i) => { doc.text(val, cx + 3, y + 12); cx += colW[i]; });
     y += 15; rowIdx++;
@@ -268,7 +268,7 @@ export function generateFleetLifecycleReport(data: {
   let rowIdx = 0;
   for (const r of data.maintenanceRecords) {
     if (y > pageH - 60) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'VEHICLE LIFECYCLE REPORT (cont.)'); }
-    const vals = [r.performed_at?.slice(0, 10) ?? '', r.type ?? '', (r.description ?? '').slice(0, 40), String(r.mileage_at_service ?? ''), `$${r.cost ?? 0}`, (r.vendor ?? '').slice(0, 20)];
+    const vals = [safeDateStr(r.performed_at, ''), r.type ?? '', (r.description ?? '').slice(0, 40), String(r.mileage_at_service ?? ''), `$${r.cost ?? 0}`, (r.vendor ?? '').slice(0, 20)];
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
     vals.forEach((v, i) => { doc.text(v, cx + 3, y + 12); cx += maintColW[i]; });
     y += 15; rowIdx++;

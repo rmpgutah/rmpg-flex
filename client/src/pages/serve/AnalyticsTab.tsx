@@ -5,6 +5,7 @@ import { refreshAccessToken } from '../../utils/tokenRefresh';
 import { useToast } from '../../components/ToastProvider';
 import AttemptTimelineModal from '../../components/serve/AttemptTimelineModal';
 import type { ServeJob } from '../../types';
+import { safeDateStr } from '../../utils/dateUtils';
 
 type RangeDays = 7 | 30 | 90;
 
@@ -835,7 +836,7 @@ function OfficerJobsPanel({ jobs, loading, officerId, onOpenTimeline, onBulkActi
               <td className="px-2 py-[2px] text-rmpg-300">{a.jobRecipient}</td>
               <td className="px-2 py-[2px] text-rmpg-400 tabular-nums">{a.attempt_number}</td>
               <td className="px-2 py-[2px] text-rmpg-300">{a.result}</td>
-              <td className="px-2 py-[2px] text-rmpg-500 tabular-nums">{a.attempt_at?.slice(0, 10)}</td>
+              <td className="px-2 py-[2px] text-rmpg-500 tabular-nums">{safeDateStr(a.attempt_at, "")}</td>
               <td className="px-2 py-[2px] text-right">
                 <button
                   type="button"

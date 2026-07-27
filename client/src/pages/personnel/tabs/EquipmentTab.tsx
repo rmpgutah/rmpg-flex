@@ -10,7 +10,7 @@ import {
 import { apiFetch } from '../../../hooks/useApi';
 import type { OfficerEquipment, EquipmentType } from '../../../types';
 import { EQUIPMENT_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS } from '../utils/personnelConstants';
-import { parseTimestamp } from '../../../utils/dateUtils';
+import { parseTimestamp, safeDateStr } from '../../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import { openEquipmentCustodyPdf, type CheckoutLogEntry } from '../../../utils/equipmentCustodyPdf';
@@ -348,7 +348,7 @@ export default function EquipmentTab({
                   {log.action?.toUpperCase()}
                 </span>
                 <span className="text-rmpg-200">{log.equipment_name}</span>
-                <span className="text-rmpg-500 font-mono">{log.created_at?.slice(0, 10)}</span>
+                <span className="text-rmpg-500 font-mono">{safeDateStr(log.created_at, "")}</span>
               </div>
             ))}
           </div>
