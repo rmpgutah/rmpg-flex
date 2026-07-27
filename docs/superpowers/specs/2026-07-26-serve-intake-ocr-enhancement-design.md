@@ -83,6 +83,10 @@ A single resolver produces `address_class ∈ {residential, business, unknown}` 
 
 1. **Operator confirmation at review** — explicit override on the Serve Intake page.
 2. **Existing records** — a matching `properties` / `businesses` row already classifies it.
+   **Note:** the `properties.address_class` column does not yet exist in the schema (verified across
+   `PropertyRecord` interface, the property lookup SELECT, and all migrations). This tier currently
+   receives `undefined` and never fires; resolution falls through to the next tier. Implementing this
+   tier requires adding the column and operator UI, deferred to PR 4.
 3. **Packet language** — literal `BUSINESS ADDRESS` / `place of employment` / suite-number
    patterns in the Field Sheet instructions.
 4. **Geocode POI class** — commercial vs residential parcel signal.
@@ -115,7 +119,8 @@ Every emitted window carries its authority string ("client-specified", "resident
 
 ### 3.3 Briefing decomposition
 
-`buildPsoBriefing()` returns 7 notes instead of 2. Each maps to an existing renderer badge in
+`buildPsoBriefing()` returns 6 notes instead of 2. The OCR context note is appended by
+`commitIntake`, yielding 7 topical entries on the report. Each maps to an existing renderer badge in
 `recordPdfGenerator.ts:3316` — `OFFICER SAFETY`, `INTAKE`, `DISPATCH` — so no renderer change
 is needed to *emit* them; only badge colouring is new.
 
@@ -171,6 +176,13 @@ unchanged at 7 points. The incumbent's one remaining harness miss is `defendant:
 harness grades RAW model output, so it cannot see that (see the header of
 `scripts/serve-intake-model-ab.ts`).
 
+**Post-PR-2 re-measurement (2026-07-27):** After all PR 2 changes landed, the fixture A/B was
+re-run to confirm no regression. Results: incumbent **35/36** (97%, unchanged);
+`mistral-small-3.1-24b-instruct` **29/36** (81%); `llama-4-scout-17b-16e-instruct` **28/36** (78%).
+No field regressed. Note: the harness grades raw model output before `normalizeFields` and
+`scrubPartyNoise` run, so the incumbent's single remaining miss (`et. al.` suffix) is a harness artifact,
+not a production defect.
+
 Scout's failure is not merely a lower total. It read the **ICU letterhead address**
 (`250 N Red Cliffs Dr, Saint George`) as the SERVICE address. For a process server that is a
 wrong-building dispatch — an officer sent to their own company's office instead of the
@@ -213,7 +225,7 @@ and 6.
 7. Replace hardcoded model constants with `callAi()` (D-3).
 8. ~~Raise the Workers-AI floor to Llama 4 Scout (text/multimodal) and Moondream 3.1 (scan OCR) per §3.5.~~ **SUPERSEDED by measurement.** Scout was A/B'd and rejected (26/36 vs the incumbent's 33/36, and it read the ICU letterhead as the service address); Moondream is deferred pending the vision A/B §6 requires. The text incumbent and vision incumbent both ship. See §3.5.
 9. Document-family-specific prompts (Information Form / Field Sheet / Court Docket).
-10. Bounded second-pass critic call on low-confidence fields only.
+10. Bounded second-pass critic call on low-confidence fields only. ✅
 11. Deterministic post-validator (dates, ZIP↔state, phone, case-number shape).
 12. Confidence recalibration blending self-report, validator agreement, and cross-document corroboration.
 13. New field `address_class` + `address_class_confirmed`.
@@ -227,26 +239,26 @@ and 6.
 
 ### PR 2 — Briefing intelligence & timing engine (Worker) · 20
 
-21. Single precedence function for attempt windows (§3.2).
-22. Residential defaults: 07:00–09:00 / 11:00–13:00 / 17:00–20:30 plus a weekend attempt.
-23. Business defaults: 09:30–11:30 / 13:30–15:30, weekdays, within posted hours.
-24. **`isBusiness` no longer selects windows** — timing keys off confirmed `address_class`; unconfirmed falls through to residential (D-2, §3.1).
-25. Honor `service_days_prohibited` (never schedule a forbidden Sunday).
-26. Honor `attempt_start_not_before`.
-27. Fix D1 — deadline clamp compresses within-day into distinct bands instead of stacking dates.
-28. Fix D5 — emit full weekday names.
-29. Print the authority for each window beside it.
-30. Flag explicitly when the client's own schedule cannot fit before the deadline.
-31. Fix D2 — read client windows from `service_instructions` and `notes`.
-32. Address-class-aware service authority: place-of-employment service suppresses dwelling sub-service language.
-33. Subpoena doctrine surfaces the actual witness-fee instrument from the packet.
-34. Distinguish *party to serve* from *case parties* (a subpoena recipient is typically a non-party).
-35. Out-of-state issuing court handling (UIDDA) when docket state ≠ service state.
-36. Itemize each document to be served as a server-tickable checklist.
-37. Entry 1 — OFFICER SAFETY.
-38. Entry 2 — INTAKE.
-39. Entry 3 — TACTICAL APPROACH.
-40. Entry 4 — ATTEMPT PLAN + WINDOWS + DILIGENCE.
+21. Single precedence function for attempt windows (§3.2). ✅
+22. Residential defaults: 07:00–09:00 / 11:00–13:00 / 17:00–20:30 plus a weekend attempt. ✅
+23. Business defaults: 09:30–11:30 / 13:30–15:30, weekdays, within posted hours. ✅
+24. **`isBusiness` no longer selects windows** — timing keys off confirmed `address_class`; unconfirmed falls through to residential (D-2, §3.1). ✅
+25. Honor `service_days_prohibited` (never schedule a forbidden Sunday). ✅
+26. Honor `attempt_start_not_before`. ✅
+27. Fix D1 — deadline clamp compresses within-day into distinct bands instead of stacking dates. ✅
+28. Fix D5 — emit full weekday names. ✅
+29. Print the authority for each window beside it. ✅
+30. Flag explicitly when the client's own schedule cannot fit before the deadline. ✅
+31. Fix D2 — read client windows from `service_instructions` and `notes`. ✅
+32. Address-class-aware service authority: place-of-employment service suppresses dwelling sub-service language. ✅
+33. Subpoena doctrine surfaces the actual witness-fee instrument from the packet. ✅
+34. Distinguish *party to serve* from *case parties* (a subpoena recipient is typically a non-party). ✅
+35. Out-of-state issuing court handling (UIDDA) when docket state ≠ service state. ✅
+36. Itemize each document to be served as a server-tickable checklist. ✅
+37. Entry 1 — OFFICER SAFETY. ✅
+38. Entry 2 — INTAKE. ✅
+39. Entry 3 — TACTICAL APPROACH. ✅
+40. Entry 4 — ATTEMPT PLAN + WINDOWS + DILIGENCE. ✅
 
 ### PR 3 — PDF render & visual (client) · 18
 
