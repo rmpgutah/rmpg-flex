@@ -85,6 +85,38 @@ describe('scrubWatermarkBleed', () => {
     const input = 'Apt H, Salt Lake City';
     expect(scrubWatermarkBleed(input)).toContain('Apt H');
   });
+
+  it('removes TWO interleaved stamps (RUSH and COPY) in a single call, and a second call is a no-op', () => {
+    // Regression for the non-idempotence bug: the original implementation
+    // returned on the FIRST matching stamp, so a document carrying two
+    // stamps (a diagonal RUSH watermark plus a COPY stamp) needed two
+    // precleanText() calls to fully clean — silently making the toMarkdown
+    // extraction tier (which precleans internally, i.e. two passes) diverge
+    // from the pdfjs-client/container tiers (one pass each).
+    const input = [
+      ' Case                     Plaintiff',
+      '                    R',
+      '                    C',
+      ' Court                    Defendant',
+      '                   U',
+      '                   O',
+      ' Documents   UT Subpoena',
+      '                 S',
+      '                 P',
+      '                 H',
+      '                 Y',
+    ].join('\n');
+    const once = scrubWatermarkBleed(input);
+    expect(once).not.toMatch(/^\s*[RUSHCOPY]\s*$/m);
+    expect(once).toContain('UT Subpoena');
+    expect(once).toContain('Plaintiff');
+    // A single call must remove BOTH stamps' letters, not just one.
+    for (const ch of ['R', 'U', 'S', 'H', 'C', 'O', 'P', 'Y']) {
+      expect(once).not.toMatch(new RegExp(`^\\s*${ch}\\s*$`, 'm'));
+    }
+    // Second call is a true no-op.
+    expect(scrubWatermarkBleed(once)).toBe(once);
+  });
 });
 
 describe('normalizeCheckboxes', () => {
