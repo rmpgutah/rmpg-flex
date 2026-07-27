@@ -180,23 +180,30 @@ export default function ServeAttemptModal({
     nextAttemptDate, nextAttemptStart, nextAttemptEnd, nextAttemptText, nextAttemptTextDirty,
     ageRange, height, weight, hairColor, clothing, personServedName, relationship, notes,
   } = draft;
-  const setAttemptType = (v: AttemptType | null) => setDraft({ ...draft, attemptType: v });
-  const setFailedReason = (v: FailedReason | null) => setDraft({ ...draft, failedReason: v });
-  const setCustomReason = (v: string) => setDraft({ ...draft, customReason: v });
-  const setDispositionCode = (v: string) => setDraft({ ...draft, dispositionCode: v });
-  const setNextAttemptDate = (v: string) => setDraft({ ...draft, nextAttemptDate: v });
-  const setNextAttemptStart = (v: string) => setDraft({ ...draft, nextAttemptStart: v });
-  const setNextAttemptEnd = (v: string) => setDraft({ ...draft, nextAttemptEnd: v });
-  const setNextAttemptText = (v: string) => setDraft({ ...draft, nextAttemptText: v });
-  const setNextAttemptTextDirty = (v: boolean) => setDraft({ ...draft, nextAttemptTextDirty: v });
-  const setAgeRange = (v: string) => setDraft({ ...draft, ageRange: v });
-  const setHeight = (v: string) => setDraft({ ...draft, height: v });
-  const setWeight = (v: string) => setDraft({ ...draft, weight: v });
-  const setHairColor = (v: string) => setDraft({ ...draft, hairColor: v });
-  const setClothing = (v: string) => setDraft({ ...draft, clothing: v });
-  const setPersonServedName = (v: string) => setDraft({ ...draft, personServedName: v });
-  const setRelationship = (v: string) => setDraft({ ...draft, relationship: v });
-  const setNotes = (v: string) => setDraft({ ...draft, notes: v });
+  // FUNCTIONAL updates, not `{ ...draft, x }`. Several handlers here fire
+  // TWO setters in a row (attempt type + failedReason, disposition code +
+  // failedReason). Spreading the render-closure `draft` meant the second
+  // call wrote back the first call's stale value, so the first selection
+  // silently reverted — Personal and Substitute Service could not be
+  // picked at all, and "Failed Attempt" worked only because it is the one
+  // branch that skips the second setter.
+  const setAttemptType = (v: AttemptType | null) => setDraft((prev) => ({ ...prev, attemptType: v }));
+  const setFailedReason = (v: FailedReason | null) => setDraft((prev) => ({ ...prev, failedReason: v }));
+  const setCustomReason = (v: string) => setDraft((prev) => ({ ...prev, customReason: v }));
+  const setDispositionCode = (v: string) => setDraft((prev) => ({ ...prev, dispositionCode: v }));
+  const setNextAttemptDate = (v: string) => setDraft((prev) => ({ ...prev, nextAttemptDate: v }));
+  const setNextAttemptStart = (v: string) => setDraft((prev) => ({ ...prev, nextAttemptStart: v }));
+  const setNextAttemptEnd = (v: string) => setDraft((prev) => ({ ...prev, nextAttemptEnd: v }));
+  const setNextAttemptText = (v: string) => setDraft((prev) => ({ ...prev, nextAttemptText: v }));
+  const setNextAttemptTextDirty = (v: boolean) => setDraft((prev) => ({ ...prev, nextAttemptTextDirty: v }));
+  const setAgeRange = (v: string) => setDraft((prev) => ({ ...prev, ageRange: v }));
+  const setHeight = (v: string) => setDraft((prev) => ({ ...prev, height: v }));
+  const setWeight = (v: string) => setDraft((prev) => ({ ...prev, weight: v }));
+  const setHairColor = (v: string) => setDraft((prev) => ({ ...prev, hairColor: v }));
+  const setClothing = (v: string) => setDraft((prev) => ({ ...prev, clothing: v }));
+  const setPersonServedName = (v: string) => setDraft((prev) => ({ ...prev, personServedName: v }));
+  const setRelationship = (v: string) => setDraft((prev) => ({ ...prev, relationship: v }));
+  const setNotes = (v: string) => setDraft((prev) => ({ ...prev, notes: v }));
 
   // Category the operator drilled into on the structured picker. UI-only
   // state — drives which sub-codes are listed below the category buttons.

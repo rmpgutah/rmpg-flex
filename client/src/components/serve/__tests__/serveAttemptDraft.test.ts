@@ -1,0 +1,42 @@
+// Regression: two setters in one handler must both survive.
+//
+// ServeAttemptModal derives ~17 setters from a single `draft` object.
+// They originally spread `draft` captured from the render closure, so a
+// handler calling two of them lost the first — the second wrote back the
+// PRE-click value. In the UI that meant Personal Service and Substitute
+// Service could not be selected at all (their handler calls
+// setAttemptType then setFailedReason), while "Failed Attempt" worked
+// because it is the one branch that skips the second call. Picking a
+// disposition code failed the same way.
+//
+// This pins the update SHAPE, which is what actually broke. A component
+// test would need the modal's full context (GPS, photos, API) to render.
+
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const SRC = readFileSync(join(__dirname, '..', 'ServeAttemptModal.tsx'), 'utf8');
+
+describe('ServeAttemptModal draft setters', () => {
+  it('never spreads the render-closure draft', () => {
+    const stale = SRC.match(/setDraft\(\{\s*\.\.\.draft\b/g) ?? [];
+    expect(
+      stale,
+      'setDraft({ ...draft, x }) captures the draft at render time. Two setters '
+      + 'in one handler then discard the first. Use setDraft((prev) => ({ ...prev, x })).',
+    ).toEqual([]);
+  });
+
+  it('uses functional updates for every derived setter', () => {
+    const functional = SRC.match(/setDraft\(\(prev\) => \(\{ \.\.\.prev,/g) ?? [];
+    expect(functional.length).toBeGreaterThanOrEqual(17);
+  });
+
+  it('still calls both setters when an attempt type is picked', () => {
+    // The two-setter handler is the thing that exposed the bug; if it is
+    // ever collapsed to one, this test should be revisited rather than
+    // silently passing for the wrong reason.
+    expect(SRC).toMatch(/setAttemptType\(card\.type\);\s*\n\s*if \(card\.type !== 'failed'\) setFailedReason\(null\);/);
+  });
+});

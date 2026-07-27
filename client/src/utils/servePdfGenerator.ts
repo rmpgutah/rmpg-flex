@@ -40,6 +40,7 @@ import {
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { parseTimestamp } from './dateUtils';
 
 // ── Data Interfaces ──────────────────────────────────────────
 
@@ -1325,7 +1326,14 @@ export interface ReceiptOfServiceData {
 const RECEIPT_TZ = 'America/Denver';
 
 function receiptDateParts(iso: string): { date: string; time: string } {
-  const d = iso ? new Date(iso) : new Date();
+  // parseTimestamp, NOT new Date(): signedAt arrives as a browser ISO
+  // string from the signing page, but ALSO as a naive D1 timestamp
+  // ("YYYY-MM-DD HH:MM:SS" from recipient_signed_at) when the officer
+  // reprints a signed instrument from the vehicle. new Date() reads a
+  // naive string as device-LOCAL, which would print the moment of
+  // service ~6-7h off in Mountain Time — on the one document whose
+  // whole purpose is proving when process was delivered.
+  const d = iso ? parseTimestamp(iso) : new Date();  // new-date-ok: no-arg fallback is "now"
   return {
     date: d.toLocaleDateString('en-US', {
       timeZone: RECEIPT_TZ, month: 'short', day: 'numeric', year: 'numeric',
