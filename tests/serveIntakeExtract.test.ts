@@ -15,7 +15,7 @@ import {
   toIsoDate, normalizeBirthDate, recoverDob, normalizeState, normalizePhone,
   normalizeZip, normalizePriority, normalizeDeadline, normalizeFields,
   fieldsToQueueRow, TARGET_FIELDS, normalizeAddressClass, normalizeYesNo,
-  buildFamilyPrompt, needsCriticPass,
+  buildFamilyPrompt, needsCriticPass, familyFromFileName, buildExtractionMessages,
   type ExtractedField, type TargetField,
 } from '../src/utils/serveIntakeExtract';
 
@@ -263,6 +263,41 @@ describe('buildFamilyPrompt', () => {
 
   it('returns a non-empty generic prompt for unknown families', () => {
     expect(buildFamilyPrompt('other').length).toBeGreaterThan(0);
+  });
+});
+
+describe('familyFromFileName', () => {
+  it('maps the three conventional packet file names to their family keys', () => {
+    expect(familyFromFileName('90000123 Field Sheet.pdf')).toBe('field_sheet');
+    expect(familyFromFileName('90000123 Court Docket.pdf')).toBe('court_filing');
+    expect(familyFromFileName('90000123 Information Form.pdf')).toBe('info_page');
+  });
+
+  it('is case-insensitive and tolerant of punctuation/spacing variation', () => {
+    expect(familyFromFileName('90000123_FIELD-SHEET.PDF')).toBe('field_sheet');
+    expect(familyFromFileName('90000123  field   sheet.pdf')).toBe('field_sheet');
+    expect(familyFromFileName('90000123-court_docket.pdf')).toBe('court_filing');
+    expect(familyFromFileName('90000123 info form.pdf')).toBe('info_page');
+    expect(familyFromFileName('90000123 INFORMATION-PAGE.pdf')).toBe('info_page');
+  });
+
+  it('returns undefined for unrelated or ambiguous file names', () => {
+    expect(familyFromFileName('scan001.pdf')).toBeUndefined();
+    expect(familyFromFileName('affidavit.pdf')).toBeUndefined();
+    expect(familyFromFileName('')).toBeUndefined();
+  });
+});
+
+describe('buildExtractionMessages — family prompt wiring', () => {
+  it('appends field-sheet-specific guidance to the system message only when docType is passed', () => {
+    const withFamily = buildExtractionMessages('some document text', 'field_sheet');
+    const without = buildExtractionMessages('some document text');
+    const systemWith = withFamily.find((m) => m.role === 'system')?.content ?? '';
+    const systemWithout = without.find((m) => m.role === 'system')?.content ?? '';
+    expect(systemWith).toMatch(/watermark/i);
+    expect(systemWith).toMatch(/ICU Investigations FIELD SHEET/i);
+    expect(systemWithout).not.toMatch(/watermark/i);
+    expect(systemWithout).not.toMatch(/ICU Investigations FIELD SHEET/i);
   });
 });
 

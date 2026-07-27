@@ -12,7 +12,7 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildExtractionMessages, tryParseModelJson } from '../src/utils/serveIntakeExtract';
+import { buildExtractionMessages, tryParseModelJson, familyFromFileName } from '../src/utils/serveIntakeExtract';
 
 const FIXTURE_DIR = join(process.cwd(), 'tests', 'fixtures', 'serve-intake');
 const API = `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run`;
@@ -29,12 +29,12 @@ if (!TOKEN || !process.env.CLOUDFLARE_ACCOUNT_ID) {
   process.exit(1);
 }
 
-async function runModel(model: string, text: string): Promise<Record<string, string>> {
+async function runModel(model: string, text: string, docType: string | undefined): Promise<Record<string, string>> {
   const res = await fetch(`${API}/${model}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      messages: buildExtractionMessages(text),
+      messages: buildExtractionMessages(text, docType),
       temperature: 0.1,
       max_tokens: 2048,
     }),
@@ -90,7 +90,15 @@ async function main() {
       const want = expected[name];
       if (!want) continue;
       const text = readFileSync(join(FIXTURE_DIR, file), 'utf8');
-      const got = await runModel(model, text);
+      // Matches production wiring (src/routes/serveIntake.ts): the document
+      // family is derived from the source file's own name, not guessed from
+      // content. Today's fixture names (business-subpoena.txt,
+      // individual-employment.txt) don't follow the real ICU packet naming
+      // convention, so this resolves to undefined for both — the harness
+      // still measures the untargeted prompt for now — but any fixture
+      // added later with a conventionally-named file gets the SAME family
+      // prompt production would send it, keeping this harness honest.
+      const got = await runModel(model, text, familyFromFileName(file));
       const s = scoreOne(got, want);
       hit += s.hit; total += s.total;
       console.log(`  ${name}: ${s.hit}/${s.total}`);

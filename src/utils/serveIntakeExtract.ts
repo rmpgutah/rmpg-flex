@@ -153,8 +153,11 @@ B) Court forms — Summons (e.g. CA Judicial Council SUM-100), Complaint, Civil
    attorney_name/phone.
 
 EXTRACTION RULES (learned from real packets):
-  • job_number = the ServeManager job number in the page header (the larger one).
-    client_reference = the client's own job number (smaller, secondary).
+  • job_number = the FIRST number in the page header (e.g. "Job: 90000001 (90000002)").
+    client_reference = the SECOND value, printed in parentheses right after it — the client's
+    own job number. Go by POSITION, not size: client_reference is frequently the larger number
+    and is sometimes non-numeric (an alphanumeric client code like "AZ900001E"), so never use
+    magnitude or "is it numeric" to decide which is which.
   • Recipient name: split into first / middle / last. A single middle initial
     ("John Q Sample") → middle="Q". Keep suffixes (Jr/Sr/III) with the last name.
   • DOB frequently appears as a bare date after "DOB:" OR inside a free-text
@@ -325,13 +328,18 @@ substitute-service authorization — read it in full.`,
 
   court_filing: `This is a COURT FILING (summons, subpoena, complaint, or docket).
 The caption is authoritative for case_number, court_name, plaintiff, and defendant — prefer it
-over any other document. "In the District Court of Utah, <N> Judicial District, <County> County"
-is the court_name. Do NOT treat the party being served as a case party: on a subpoena the
-recipient is usually a non-party witness.`,
+over any other document. Utah courts caption as "<Ordinal> Judicial District Court, State of
+Utah - <courthouse name>" (e.g. "Third Judicial District Court, State of Utah - Matheson") —
+capture that whole phrase as court_name verbatim; it does not name the county. Do NOT treat the
+party being served as a case party: on a subpoena the recipient is usually a non-party witness.`,
 
   info_page: `This is a ServeManager INFORMATION FORM — the authoritative operational record.
 Prefer it for recipient, service address, service instructions, job numbers, and due date.
-The JOB header carries two numbers: the larger is job_number, the second is client_reference.
+The JOB header carries two numbers: the FIRST (position, not size) is job_number; the SECOND
+— printed in parentheses right after it, e.g. "Job: 90000001 (90000002)" — is client_reference.
+Go by position, not magnitude: client_reference is often the larger number, and it is sometimes
+not numeric at all (an alphanumeric client code like "AZ900001E"), so "larger"/"numeric" is never
+a safe test — only position after the job number is reliable.
 An embedded "Imported CSV Row" JSON block, when present, is the single most reliable source.`,
 };
 
@@ -340,6 +348,28 @@ const GENERIC_FAMILY_PROMPT =
 
 export function buildFamilyPrompt(docType: string): string {
   return FAMILY_PROMPTS[docType] ?? GENERIC_FAMILY_PROMPT;
+}
+
+// ── File-name → document family ───────────────────────────────
+// Intake packets follow a fixed ICU naming convention: each file in a
+// packet is named "<job number> Field Sheet.pdf" / "<job number> Court
+// Docket.pdf" / "<job number> Information Form.pdf" (or close human-typed
+// variants — casing, spacing, punctuation all drift). Matching on a
+// distinctive substring (not exact equality) lets this survive that drift.
+// Returns undefined rather than guessing on anything that doesn't clearly
+// match one of the three known conventions — a WRONG family prompt would
+// describe the wrong layout to the model, which is worse than none.
+const FIELD_SHEET_NAME_HINT = /field[\s_-]*sheet/i;
+const COURT_FILING_NAME_HINT = /court[\s_-]*(docket|filing)|docket/i;
+const INFO_PAGE_NAME_HINT = /information[\s_-]*(form|page)|info[\s_-]*(form|page)/i;
+
+export function familyFromFileName(fileName: string): string | undefined {
+  const name = (fileName || '').trim();
+  if (!name) return undefined;
+  if (FIELD_SHEET_NAME_HINT.test(name)) return 'field_sheet';
+  if (COURT_FILING_NAME_HINT.test(name)) return 'court_filing';
+  if (INFO_PAGE_NAME_HINT.test(name)) return 'info_page';
+  return undefined;
 }
 
 // ── Bounded critic pass ───────────────────────────────────────
@@ -535,6 +565,11 @@ export async function extractFromText(
   // uses the chat template the adapter was trained on (the one emitted by
   // training/build-dataset.ts) instead of the default. Unset → stock 70B.
   lora?: string,
+  // Optional document family (see familyFromFileName / buildFamilyPrompt).
+  // Callers that can derive it from the source file name should pass it so
+  // the system prompt gets that family's specific layout guidance. Unset →
+  // behavior is byte-identical to before this parameter existed.
+  docType?: string,
 ): Promise<ExtractionResult> {
   const trimmed = rawText.trim();
   if (trimmed.length < 20) {
@@ -562,7 +597,7 @@ export async function extractFromText(
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const out = await ai.run(TEXT_MODEL, {
-        messages: buildExtractionMessages(trimmed),
+        messages: buildExtractionMessages(trimmed, docType),
         temperature: 0.1,
         max_tokens: 2048,
         // raw:true ONLY with a LoRA — the adapter's training data carries the

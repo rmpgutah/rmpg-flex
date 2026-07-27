@@ -49,6 +49,7 @@ import {
   isScanStub,
   fieldsToQueueRow,
   normalizeFields,
+  familyFromFileName,
   type ExtractionResult,
   type ExtractedField,
   type PdfTextResult,
@@ -564,9 +565,16 @@ si.post('/upload', async (c) => {
             text = clientText; ocrEngine = 'container-unavailable';
           }
         }
+        // Intake packets follow a fixed naming convention ("<job#> Field
+        // Sheet.pdf" / "Court Docket.pdf" / "Information Form.pdf") — derive
+        // the document family from the uploaded file's own name so the
+        // system prompt gets that family's layout-specific guidance. Falls
+        // back to the generic prompt (docType undefined) for anything that
+        // doesn't clearly match one of the three conventions.
+        const docFamily = familyFromFileName(file.name);
         const ex = text.trim().length >= 20
           ? await withTimeout(
-              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP), c.env.SERVE_INTAKE_LORA),
+              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP), c.env.SERVE_INTAKE_LORA, docFamily),
               AI_TIMEOUT_MS, 'Field extraction timed out',
             ).catch((e) => emptyExtraction(EXTRACT_MODEL, e instanceof Error ? e.message : String(e)))
           : emptyExtraction(EXTRACT_MODEL, 'Insufficient text to extract');
