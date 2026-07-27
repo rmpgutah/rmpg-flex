@@ -46,6 +46,10 @@ import {
   isScanStub,
   fieldsToQueueRow,
   familyFromFileName,
+  needsCriticPass,
+  applyCriticResults,
+  criticExtract,
+  CRITIC_TIMEOUT_MS,
   type ExtractionResult,
   type ExtractedField,
   type PdfTextResult,
@@ -748,7 +752,32 @@ si.post('/upload', async (c) => {
       issues: validation.issues.slice(0, 10),
     });
   }
-  const validatedFields = validation.adjusted;
+  let validatedFields = validation.adjusted;
+
+  // ── Bounded critic pass (spec item 10) ──────────────────────────
+  // Re-ask the model ONLY about the doubtful critical fields (capped at 5
+  // by needsCriticPass), so a badly-scanned packet gets a second look
+  // without doubling neuron spend on every packet. A critic failure must
+  // never fail the upload — the catch below keeps the first-pass fields,
+  // and applyCriticResults() never lets an empty critic answer overwrite
+  // a value the first pass already found.
+  const criticFields = needsCriticPass(validatedFields, validation.issues);
+  if (criticFields.length) {
+    const combinedText = collected.map((c2) => c2.text || '').filter(Boolean).join('\n\n');
+    log.info('serve-intake critic pass', { traceId: c.get('traceId'), fields: criticFields });
+    try {
+      const critic = await withTimeout(
+        criticExtract(c.env, combinedText, criticFields),
+        CRITIC_TIMEOUT_MS, 'Critic pass timed out',
+      );
+      validatedFields = finalizeFields(applyCriticResults(validatedFields, critic), nowIso).adjusted;
+    } catch (e) {
+      log.warn('serve-intake critic pass failed; keeping first-pass fields', {
+        traceId: c.get('traceId'),
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
 
   // ── Phase 1 Quality Gate: judge the merged result ──────────────
   const rawDocsForJudge = collected.map(c2 => ({ name: c2.file.name, text: c2.text || '' }));
