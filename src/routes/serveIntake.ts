@@ -46,6 +46,11 @@ import {
   isScanStub,
   fieldsToQueueRow,
   familyFromFileName,
+  needsCriticPass,
+  applyCriticResults,
+  criticExtract,
+  CRITIC_TIMEOUT_MS,
+  normalizeFields,
   type ExtractionResult,
   type ExtractedField,
   type PdfTextResult,
@@ -53,7 +58,7 @@ import {
 import { withTimeout, ocrImage, ocrText } from '../utils/serveIntakeOcr';
 import { estimateNeurons, estimatePacketNeurons, FREE_NEURONS_PER_DAY } from '../utils/serveIntakeNeurons';
 import { precleanText } from '../utils/serveIntakePreclean';
-import { arbitrateFields, reconcileIdentityConflicts, type DocCandidate, type FieldConflict } from '../utils/serveIntakeArbitrate';
+import { arbitrateFields, reconcileIdentityConflicts, type DocCandidate, type FieldConflict, type IdentityWinnerDoc } from '../utils/serveIntakeArbitrate';
 import { finalizeFields } from '../utils/serveIntakeValidate';
 import { judgeMerged } from '../utils/serveIntakeJudge';
 import { parseDefendants } from '../utils/serveIntakeDefendants';
@@ -72,6 +77,10 @@ import {
   type AttemptWindow,
 } from '../utils/serveDiligencePlanner';
 import { persistAttemptSchedule, appendAttemptSlot } from '../utils/serveAttemptScheduler';
+import {
+  loadPersistedPlanContext, planContextFromRow,
+  PLAN_CONTEXT_COLUMNS, type PlanContextRow,
+} from '../utils/servePlanContext';
 import { broadcastAll } from './ws';
 import { recordAudit } from '../utils/auditLog';
 import { notifyServeCompletion } from '../utils/serveCompletionNotify';
@@ -668,9 +677,15 @@ si.post('/upload', async (c) => {
   // field sheet, inverting precedence on the modal packet. (arbitrateFields
   // also collapses court-form enum members onto court_filing as a second line
   // of defense for the ex.documentType fallback.)
+  // Normalize per-candidate BEFORE arbitration so the conflicts audit records
+  // the values that will actually be committed. Previously arbitration ran on
+  // raw model output and normalization ran once afterwards (via
+  // finalizeFields, below), so a persisted conflict could read
+  // chosen: "6/26/2026" while the row held "2026-06-26" — PR 4's resolver
+  // would show a value that disagrees with the record it is resolving.
   const docCandidates: DocCandidate[] = collected.map((c2) => ({
     docType: c2.family ?? c2.ex.documentType,
-    fields: c2.ex.fields,
+    fields: normalizeFields(c2.ex.fields),
   }));
   const arbitration = arbitrateFields(docCandidates);
   const mergedFields: Record<string, ExtractedField> = arbitration.merged;
@@ -708,19 +723,30 @@ si.post('/upload', async (c) => {
     'recipient_type', 'recipient_first_name', 'recipient_middle_name',
     'recipient_last_name', 'recipient_business_name', 'recipient_dob',
   ] as const;
-  const recipientScore = (ex: ExtractionResult): number => {
-    const f = ex.fields;
+  // Score (and select) from the NORMALIZED docCandidates, not the raw
+  // c2.ex extraction results. Two reasons: (1) the winner's fields flow
+  // straight into reconcileIdentityConflicts as `winnerDoc`, and that
+  // function writes `winnerDoc.fields[k]` verbatim into both
+  // `mergedFields` and `conflicts[].chosen` — if that source were raw
+  // model output, an identity field the guard overrides (e.g.
+  // recipient_dob in `M/D/YYYY`) would persist a conflict whose `chosen`
+  // disagrees with the normalized value finalizeFields commits, exactly
+  // the chosen≠committed bug part (a) above exists to close, just via
+  // this second path. (2) a name field that normalizes to empty (all
+  // placeholder/noise) should score 0, not the model's optimistic
+  // confidence — docCandidates already reflects that via normalizeFields.
+  const recipientScore = (fields: Record<string, ExtractedField>): number => {
     // Weight the name-defining fields; a doc that only mentions a DOB
     // shouldn't outrank one that has the actual first+last name.
-    return (f.recipient_first_name?.value ? f.recipient_first_name.confidence : 0)
-      + (f.recipient_last_name?.value ? f.recipient_last_name.confidence : 0)
-      + (f.recipient_business_name?.value ? f.recipient_business_name.confidence : 0);
+    return (fields.recipient_first_name?.value ? fields.recipient_first_name.confidence : 0)
+      + (fields.recipient_last_name?.value ? fields.recipient_last_name.confidence : 0)
+      + (fields.recipient_business_name?.value ? fields.recipient_business_name.confidence : 0);
   };
-  let bestDoc: ExtractionResult | null = null;
+  let bestDoc: IdentityWinnerDoc | null = null;
   let bestScore = 0;
-  for (const c2 of collected) {
-    const s = recipientScore(c2.ex);
-    if (s > bestScore) { bestScore = s; bestDoc = c2.ex; }
+  for (const dc of docCandidates) {
+    const s = recipientScore(dc.fields);
+    if (s > bestScore) { bestScore = s; bestDoc = { documentType: dc.docType, fields: dc.fields }; }
   }
   // This guard can override arbitration's per-field pick (it selects the
   // whole name group from one document, not per-field precedence), so
@@ -748,7 +774,46 @@ si.post('/upload', async (c) => {
       issues: validation.issues.slice(0, 10),
     });
   }
-  const validatedFields = validation.adjusted;
+  let validatedFields = validation.adjusted;
+  // The issue set that will be PERSISTED alongside the committed record.
+  // Starts as the first-pass issues, but the critic pass below re-runs
+  // finalizeFields on its own output — if that revalidation isn't also
+  // captured here, a persisted validation_issues can go stale relative to
+  // `validatedFields`: it can show an issue the critic already resolved,
+  // or omit one the critic-adjusted revalidation newly introduced. The
+  // officer reading the reason for a lowered confidence must see the
+  // reason for the value actually on the record, not the pre-critic one.
+  let committedValidationIssues = validation.issues;
+
+  // ── Bounded critic pass (spec item 10) ──────────────────────────
+  // Re-ask the model ONLY about the doubtful critical fields (capped at 5
+  // by needsCriticPass), so a badly-scanned packet gets a second look
+  // without doubling neuron spend on every packet. A critic failure must
+  // never fail the upload — the catch below keeps the first-pass fields,
+  // and applyCriticResults() never lets an empty critic answer overwrite
+  // a value the first pass already found.
+  // needsCriticPass deliberately reads the PRE-critic `validation.issues`
+  // — that's the correct input for deciding whether to run the critic at
+  // all, a different job from explaining the committed record.
+  const criticFields = needsCriticPass(validatedFields, validation.issues);
+  if (criticFields.length) {
+    const combinedText = collected.map((c2) => c2.text || '').filter(Boolean).join('\n\n');
+    log.info('serve-intake critic pass', { traceId: c.get('traceId'), fields: criticFields });
+    try {
+      const critic = await withTimeout(
+        criticExtract(c.env, combinedText, criticFields),
+        CRITIC_TIMEOUT_MS, 'Critic pass timed out',
+      );
+      const postCritic = finalizeFields(applyCriticResults(validatedFields, critic), nowIso);
+      validatedFields = postCritic.adjusted;
+      committedValidationIssues = postCritic.issues;
+    } catch (e) {
+      log.warn('serve-intake critic pass failed; keeping first-pass fields', {
+        traceId: c.get('traceId'),
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
 
   // ── Phase 1 Quality Gate: judge the merged result ──────────────
   const rawDocsForJudge = collected.map(c2 => ({ name: c2.file.name, text: c2.text || '' }));
@@ -912,6 +977,7 @@ si.post('/upload', async (c) => {
       })),
       allDates: [...allDates],
       conflicts,
+      validationIssues: committedValidationIssues,
       env: c.env,
     });
     // Back-link the document rows to the new queue entry — and to the
@@ -1237,6 +1303,11 @@ si.post('/intake', async (c) => {
       documentSummary: buildCallDescription(row, normalized, docs.length),
       docCount: docs.length,
       env: c.env,
+      // R9: these were computed and logged two lines above but never passed,
+      // so the row persisted `validation_issues: []` while the log said
+      // otherwise — an audit-trail lie on one of the two paths most likely
+      // to HAVE issues.
+      validationIssues: intakeValidation.issues,
     });
   }
 
@@ -1400,6 +1471,10 @@ async function reprocessDocument(
       env: c.env, fields: normalized, queueRow, userId,
       documentSummary: (normalized.documents_to_serve?.value || doc.doc_type || '').trim(),
       docCount: 1,
+      // R9: same drop as the /intake path — computed + logged above, never
+      // persisted. Reprocess is the recovery path for previously-failed
+      // rows, so it is the MOST likely to carry real validation issues.
+      validationIssues: reprocessValidation.issues,
     });
     if (commit.serve_queue_id) {
       committedQueueId = commit.serve_queue_id;
@@ -1697,11 +1772,14 @@ si.post('/schedule/backfill', async (c) => {
     attempt_count: number; max_attempts: number;
     business_id: number | null; created_at: string;
     recipient_type: string | null;
-  }>(
+  } & PlanContextRow>(
     db,
+    // R6: pull the persisted address class + client constraints in the SAME
+    // query rather than one round trip per job.
     `SELECT q.id, q.deadline, q.priority, q.attempt_count, q.max_attempts,
             q.business_id, q.created_at,
-            q.parsed_data->>'recipient_type' AS recipient_type
+            q.parsed_data->>'recipient_type' AS recipient_type,
+            ${PLAN_CONTEXT_COLUMNS.replace(/parsed_data/g, 'q.parsed_data')}
      FROM serve_queue q
      WHERE q.status IN ('pending', 'in_progress')
        AND NOT EXISTS (
@@ -1724,7 +1802,18 @@ si.post('/schedule/backfill', async (c) => {
       const uploadedToday = job.created_at?.slice(0, 10) === todayYmd;
       const baseIso = uploadedToday ? job.created_at : nowIso;
 
-      const plan = planAttemptWindows(baseIso, job.deadline ?? null, 'America/Denver', { isBusiness });
+      // R6: use the address class + client hours/days/start bar commitIntake
+      // persisted, not an interim isBusiness mapping with no client
+      // constraints. D-2: an unconfirmed class yields residential timing.
+      const ctx = planContextFromRow(job);
+      const plan = planAttemptWindows(baseIso, job.deadline ?? null, 'America/Denver', {
+        isBusiness,
+        addressClass: ctx.addressClass,
+        addressClassConfirmed: ctx.addressClassConfirmed,
+        clientBands: ctx.clientBands,
+        allowedDays: ctx.allowedDays,
+        startNotBefore: ctx.startNotBefore,
+      });
       // Trim plan to only remaining attempts and only future dates.
       const futurePlan = plan
         .filter((w) => w.date >= todayYmd)
@@ -2421,6 +2510,11 @@ si.post('/:id/attempts', async (c) => {
 
     if (q && q.attempt_count < q.max_attempts) {
       const isBusiness = (q.recipient_type ?? '').toLowerCase() === 'business';
+      // R6: read the class + the client's dictated hours/days/start bar that
+      // commitIntake persisted. Before this, EVERY attempt after the first
+      // ignored the client's authorized hours — the court-exposure case, on
+      // the path that generates most attempts.
+      const planCtx = await loadPersistedPlanContext(db, id);
 
       const next = replanAfterFailedAttempt(
         {
@@ -2435,6 +2529,11 @@ si.post('/:id/attempts', async (c) => {
           recipient_lat: q.recipient_lat,
           recipient_lng: q.recipient_lng,
           isBusiness,
+          addressClass: planCtx.addressClass,
+          addressClassConfirmed: planCtx.addressClassConfirmed,
+          clientBands: planCtx.clientBands,
+          allowedDays: planCtx.allowedDays,
+          startNotBefore: planCtx.startNotBefore,
         },
       );
 

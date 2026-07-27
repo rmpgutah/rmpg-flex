@@ -67,7 +67,9 @@ export async function appendAttemptSlot(
 ): Promise<void> {
   const nowDenver = epochToLocalDenverStr(Date.parse(nowIso));
 
-  const [rawStart, rawEnd] = w.window.split('–').map((s) => s.trim());
+  // Accept ASCII hyphen (current selectWindows() output), en-dash, and
+  // em-dash (legacy planner output / historical DB rows) as the separator.
+  const [rawStart, rawEnd] = w.window.split(/[-–—]/).map((s) => s.trim());
   const windowStart = rawStart;
   const windowEnd = rawEnd || rawStart;
 

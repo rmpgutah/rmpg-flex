@@ -92,3 +92,34 @@ describe('commitIntake with defendantsSelected', () => {
     expect(db._rows.serve_queue.length).toBe(3);
   });
 });
+
+// These assert the WIRING — that commitIntake threads the extracted
+// timing fields into the planner. The planner's own behavior is covered
+// by tests/serveDiligencePlanner.test.ts.
+
+import { resolveAddressClass } from '../src/utils/serveAddressClass';
+import { parseClientBands, parseAllowedDays } from '../src/utils/serveScheduleParse';
+import { planAttemptWindows } from '../src/utils/serveDiligencePlanner';
+
+describe('commit-time timing wiring', () => {
+  it('a client schedule reaches the plan as client-specified windows', () => {
+    const bands = parseClientBands('06:00-09:00;09:00-18:00;18:00-21:00');
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      addressClass: resolveAddressClass({ extracted: 'residential' }).klass,
+      clientBands: bands,
+      allowedDays: parseAllowedDays('no_sunday'),
+    });
+    expect(plan.every((w) => w.authority === 'client-specified')).toBe(true);
+    expect(plan.every((w) => w.weekday !== 'Sunday')).toBe(true);
+  });
+
+  it('a business ENTITY served at a residence still gets residential windows', () => {
+    const klass = resolveAddressClass({ extracted: 'residential' }).klass;
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      isBusiness: true,
+      addressClass: klass,
+      clientBands: [],
+    });
+    expect(plan.some((w) => w.window === '17:00-20:30')).toBe(true);
+  });
+});

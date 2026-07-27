@@ -17,6 +17,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { queryFirst } from './db';
 import { appendAttemptSlot } from './serveAttemptScheduler';
 import { planAttemptWindows } from './serveDiligencePlanner';
+import { loadPersistedPlanContext } from './servePlanContext';
 
 const COOLING_HOURS = 24;
 
@@ -64,8 +65,18 @@ export async function autoReplanAfterAttempt(
     // Plan from the cooling window forward. planAttemptWindows uses
     // deadline + Denver timezone so DST is handled correctly.
     const coolingStartIso = new Date(Date.parse(nowIso) + COOLING_HOURS * 3_600_000).toISOString();
+    const isBusiness = !!job.business_id;
+    // R6: read the address class AND the client's dictated hours/days/start
+    // bar that commitIntake persisted, instead of re-deriving an interim
+    // class from business_id and passing no client constraints at all.
+    const ctx = await loadPersistedPlanContext(db, queueId);
     const plan = planAttemptWindows(coolingStartIso, job.deadline, 'America/Denver', {
-      isBusiness: !!job.business_id,
+      isBusiness,
+      addressClass: ctx.addressClass,
+      addressClassConfirmed: ctx.addressClassConfirmed,
+      clientBands: ctx.clientBands,
+      allowedDays: ctx.allowedDays,
+      startNotBefore: ctx.startNotBefore,
       locationNote: null,
     });
     if (!plan.length) return false;

@@ -443,6 +443,64 @@ export function needsCriticPass(
   return out;
 }
 
+// Merge a critic pass's answers back over the original field map. Only
+// fields the critic was actually asked about are eligible, and an empty
+// critic answer never destroys a value the first pass found — a second
+// opinion that says "I don't know" is not evidence the first was wrong.
+export function applyCriticResults(
+  fields: Record<string, ExtractedField>,
+  critic: Partial<Record<string, ExtractedField>>,
+): Record<string, ExtractedField> {
+  const out: Record<string, ExtractedField> = {};
+  for (const [k, v] of Object.entries(fields)) out[k] = { ...v };
+  for (const [k, v] of Object.entries(critic)) {
+    if (!v) continue;
+    if (!(k in out)) continue;                 // not a target field — ignore
+    const value = (v.value || '').trim();
+    if (!value) continue;                      // critic had nothing — keep the original
+    out[k] = { value, confidence: v.confidence ?? 0.5 };
+  }
+  return out;
+}
+
+// A SECOND look at a SHORT list of doubtful fields. Deliberately not a
+// full re-extraction: the prompt names only the requested fields, so the
+// model has one narrow job and the output is small. Cost is bounded by
+// needsCriticPass's cap (CRITIC_MAX_FIELDS), so a badly-scanned packet
+// cannot blow the 10,000-neuron/day free allocation.
+export const CRITIC_TIMEOUT_MS = 20_000;
+
+const CRITIC_SYSTEM = `You are re-checking a SMALL number of fields another extraction pass was unsure about, in a legal process-service document.
+Return STRICT JSON only — no commentary, no markdown fences — shaped exactly:
+{"<field>": {"value": "<string>", "confidence": <0..1>}, ...}
+Include ONLY the fields you were asked about.
+If you cannot find a field, return an empty string with confidence 0. NEVER guess — an empty answer leaves the first pass's value in place, which is the safe outcome.
+Dates use ISO YYYY-MM-DD. Phone numbers are digits only.`;
+
+export async function criticExtract(
+  env: { DB: D1Database; AI: Ai; KV?: KVNamespace },
+  rawText: string,
+  fieldNames: string[],
+): Promise<Partial<Record<string, ExtractedField>>> {
+  if (!fieldNames.length || !rawText.trim()) return {};
+  const asked = fieldNames.join(', ');
+  const res = await callAi(env, {
+    system: CRITIC_SYSTEM,
+    text: `Re-read the document below and report ONLY these fields: ${asked}\n\n---\n${rawText.slice(0, 24_000)}`,
+    maxTokens: 512,
+  });
+  const parsed = tryParseModelJson({ response: res.text });
+  const out: Partial<Record<string, ExtractedField>> = {};
+  for (const name of fieldNames) {
+    const v = (parsed as any)?.[name];
+    if (!v) continue;
+    const value = typeof v === 'string' ? v : String(v?.value ?? '');
+    const confidence = typeof v === 'object' && typeof v.confidence === 'number' ? v.confidence : 0.5;
+    out[name] = { value: value.trim(), confidence };
+  }
+  return out;
+}
+
 // docType is optional: extractFromText doesn't know the document's family
 // until AFTER extraction, so its call site omits it and behavior is
 // unchanged. Callers that already know the family (e.g. a future critic
