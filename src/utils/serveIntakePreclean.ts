@@ -83,3 +83,51 @@ export function scrubWatermarkBleed(s: string): string {
 
   return s;
 }
+
+// Court forms use checkbox glyphs that OCR mangles into mismatched
+// bracket pairs ("[X)", "[)"). The extraction prompt keys off "[X]" to
+// decide which party box was ticked, so canonicalizing this is a
+// correctness fix, not cosmetics.
+export function normalizeCheckboxes(s: string): string {
+  if (!s) return '';
+  return s
+    .replace(/\[\s*[xX]\s*[\])}]/g, '[X]')      // [X) [x} [ X ] → [X]
+    .replace(/\[\s*[\])}]/g, '[ ]')             // [) [} []      → [ ]
+    .replace(/\[\s{2,}\]/g, '[ ]');             // collapse padding
+}
+
+const LIGATURES: Record<string, string> = {
+  'ﬀ': 'ff', 'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬃ': 'ffi', 'ﬄ': 'ffl',
+  'ﬅ': 'st', 'ﬆ': 'st',
+};
+
+// Explicit Unicode escapes throughout — copying literal invisible/lookalike
+// characters (soft hyphen, non-breaking spaces, curly quotes) into source is
+// a silent-corruption hazard: a soft hyphen that degrades to a regular
+// hyphen would make this function delete real hyphens from addresses.
+const SOFT_HYPHEN = /\u00AD/g;                          // U+00AD SOFT HYPHEN
+const NBSP_VARIANTS = /[\u00A0\u2007\u202F]/g;         // U+00A0 NBSP, U+2007 figure space, U+202F narrow NBSP
+const SINGLE_QUOTES = /[\u2018\u2019]/g;                 // curly single quotes (U+2018/U+2019) -> ASCII apostrophe
+const DOUBLE_QUOTES = /[\u201C\u201D]/g;                 // curly double quotes (U+201C/U+201D) -> ASCII quote
+
+// A line-ending hyphen is a word break only when the next line starts
+// lowercase — "de-\ntainer" rejoins, "City-\nCounty" does not.
+export function normalizeTypography(s: string): string {
+  if (!s) return '';
+  let out = s.replace(/[ﬀ-ﬆ]/g, (ch) => LIGATURES[ch] ?? ch);
+  out = out.replace(SOFT_HYPHEN, '');                 // soft hyphen
+  out = out.replace(NBSP_VARIANTS, ' ');              // non-breaking spaces
+  out = out.replace(SINGLE_QUOTES, "'").replace(DOUBLE_QUOTES, '"');
+  out = out.replace(/-\n([a-z])/g, '$1');             // broken word → rejoin
+  out = out.replace(/-\n([A-Z])/g, '-$1');            // compound → keep hyphen
+  return out;
+}
+
+// The full pre-clean pipeline. Order matters: watermark scrub first (before
+// homoglyph mapping changes any glyphs the stamp matcher looks for),
+// homoglyphs next (so later passes see ASCII), typography before checkbox
+// repair (ligatures can sit inside a bracketed label).
+export function precleanText(s: string): string {
+  if (!s) return '';
+  return normalizeCheckboxes(normalizeTypography(normalizeHomoglyphs(scrubWatermarkBleed(s))));
+}

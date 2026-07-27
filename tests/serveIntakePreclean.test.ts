@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { normalizeHomoglyphs, scrubWatermarkBleed } from '../src/utils/serveIntakePreclean';
+import { normalizeCheckboxes, normalizeTypography, precleanText } from '../src/utils/serveIntakePreclean';
 
 describe('normalizeHomoglyphs', () => {
   it('maps Cyrillic look-alikes to Latin', () => {
@@ -83,5 +84,55 @@ describe('scrubWatermarkBleed', () => {
   it('keeps single letters that appear inline rather than alone on a line', () => {
     const input = 'Apt H, Salt Lake City';
     expect(scrubWatermarkBleed(input)).toContain('Apt H');
+  });
+});
+
+describe('normalizeCheckboxes', () => {
+  it('canonicalizes mismatched checkbox brackets', () => {
+    // Real hazard: docket OCR emitted "[X)" and "[)" for checked/unchecked.
+    expect(normalizeCheckboxes('I am [X) Plaintiff [ ) Defendant'))
+      .toBe('I am [X] Plaintiff [ ] Defendant');
+  });
+
+  it('normalizes empty double-brackets to a spaced unchecked box', () => {
+    expect(normalizeCheckboxes('[] Respondent')).toBe('[ ] Respondent');
+  });
+
+  it('accepts lowercase x as checked', () => {
+    expect(normalizeCheckboxes('[x] District')).toBe('[X] District');
+  });
+});
+
+describe('normalizeTypography', () => {
+  it('expands ligatures', () => {
+    expect(normalizeTypography('afﬁdavit of ﬂing')).toBe('affidavit of fling');
+  });
+
+  it('removes soft hyphens and normalizes non-breaking spaces', () => {
+    expect(normalizeTypography('Sub­poena Service')).toBe('Subpoena Service');
+  });
+
+  it('rejoins words broken across a line by a hyphen', () => {
+    expect(normalizeTypography('unlawful de-\ntainer')).toBe('unlawful detainer');
+  });
+
+  it('does not rejoin a genuine hyphenated compound at a line end', () => {
+    expect(normalizeTypography('Salt Lake City-\nCounty Building'))
+      .toBe('Salt Lake City-County Building');
+  });
+});
+
+describe('precleanText', () => {
+  it('applies every pass and is idempotent', () => {
+    const raw = 'Palo Alto, СA 94304\n[X) Plaintiff\nafﬁdavit';
+    const once = precleanText(raw);
+    expect(once).toContain('CA 94304');
+    expect(once).toContain('[X] Plaintiff');
+    expect(once).toContain('affidavit');
+    expect(precleanText(once)).toBe(once);
+  });
+
+  it('returns empty string for empty input', () => {
+    expect(precleanText('')).toBe('');
   });
 });
