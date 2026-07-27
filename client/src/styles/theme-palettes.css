@@ -669,3 +669,42 @@ html.theme-blue-silver {
   --spm-stat-busy:  #e24b4a;  /* busy / OOS */
   --spm-stat-xbsy:  #85b7eb;  /* extra busy */
 }
+
+/* ── Public signing surface ──────────────────────────────────
+   The Acknowledgement of Service form at /m/serve-receipt/<token> is the
+   only page in this app read by a member of the public — outdoors, on a
+   doorstep, in daylight, on their own phone, under time pressure, about
+   to sign a legal instrument.
+
+   Every other surface here is a forced-dark CAD console tuned for a
+   vehicle at night. Handing that to a stranger in direct sun to read
+   eleven-point navy-on-navy is the wrong trade, so this scope inverts to
+   a light, high-contrast palette and nothing else does.
+
+   Scoped by class, not by a theme variant: it is not a preference the
+   operator picks, it is a property of who is reading. The officer's own
+   surfaces keep the console palette on the same device, in the same
+   session, one route apart. */
+.public-form {
+  --surface-base-rgb:   248 250 252;  --surface-base:   rgb(var(--surface-base-rgb));
+  --surface-raised-rgb: 255 255 255;  --surface-raised: rgb(var(--surface-raised-rgb));
+  --surface-sunken-rgb: 241 245 249;  --surface-sunken: rgb(var(--surface-sunken-rgb));
+
+  /* #0f172a on #f8fafc — 16.8:1. Legal text a stranger must actually
+     read gets far more than the 4.5:1 floor. */
+  --text-primary-rgb:   15 23 42;     --text-primary:   rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 51 65 85;     --text-secondary: rgb(var(--text-secondary-rgb));
+  /* 7.1:1 — "muted" here still clears AAA for body text, because the
+     muted tier carries the explanatory copy under each question. */
+  --text-muted-rgb:     71 85 105;    --text-muted:     rgb(var(--text-muted-rgb));
+
+  --border-subtle-rgb:  203 213 225;  --border-subtle:  rgb(var(--border-subtle-rgb));
+  --border-strong-rgb:  100 116 139;  --border-strong:  rgb(var(--border-strong-rgb));
+
+  /* Field labels and panel headers are gold on the console. Gold on white
+     fails AA at any weight that still reads as gold, so this scope uses
+     the same slate as body text — the label already reads as a label from
+     its size and letterspacing, without needing a hue to say so. */
+  --field-label-color:  #334155;
+  --panel-header-color: #0f172a;
+}
