@@ -96,3 +96,41 @@ describe('attempt → Civil Process Record integration', () => {
     expect(ACTIONS).toMatch(/useState<Step>\('intake'\)/);
   });
 });
+
+describe('refusal path', () => {
+  const ACTIONS = readFileSync(join(__dirname, '..', 'ServeReceiptActions.tsx'), 'utf8');
+
+  it('is attested by the officer, not the recipient', () => {
+    // A person who refuses to sign will not tap a phone either. Asking the
+    // refuser to record their own refusal produces nothing at all, which
+    // is what the system did before: a refused service simply vanished.
+    expect(ACTIONS).toMatch(/serve-receipts\/\$\{job\.id\}\/refusal/);
+    expect(ACTIONS).toMatch(/They refused to sign/);
+  });
+
+  it('asks explicitly whether the documents were left', () => {
+    // Service is complete when the papers are LEFT, refusal or not
+    // (Utah R. Civ. P. 4(d)). Papers left is good service; papers retained
+    // is a failed attempt. Inferring it from the refusal would collapse
+    // two genuinely different outcomes into one.
+    expect(ACTIONS).toMatch(/documents_left: docsLeft/);
+    expect(ACTIONS).toMatch(/I left the documents in their presence/);
+  });
+
+  it('requires the officer to describe what happened', () => {
+    expect(ACTIONS).toMatch(/disabled=\{busy \|\| !refusalReason\.trim\(\)\}/);
+  });
+});
+
+describe('public signing surface', () => {
+  const PAGE = readFileSync(
+    join(__dirname, '..', '..', '..', 'pages', 'mobile', 'ServeReceiptPage.tsx'), 'utf8');
+
+  it('scopes the light palette to the route and cleans up after itself', () => {
+    // The officer's console surfaces are one route away in the same
+    // session on the same device. Leaving the class on <html> would
+    // invert the CAD console for the rest of the shift.
+    expect(PAGE).toMatch(/classList\.add\('public-form'\)/);
+    expect(PAGE).toMatch(/classList\.remove\('public-form'\)/);
+  });
+});

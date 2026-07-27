@@ -939,6 +939,108 @@ serveReceiptAdmin.post(
   },
 );
 
+/**
+ * POST /api/serve-receipts/:queueId/refusal
+ * Record that the recipient refused to sign.
+ *
+ * Attested by the OFFICER, not the recipient — a person refusing to sign
+ * will not tap a phone either, so asking the refuser to record their own
+ * refusal produces nothing. Before this there was no record at all: a
+ * refused service simply vanished, which is the worst outcome, because
+ * Utah R. Civ. P. 4(d) permits service where the papers are left in the
+ * recipient's presence after refusal. The service IS good; the paperwork
+ * just had nowhere to say so.
+ *
+ * Burns the token like a signature does. The encounter is over, and a
+ * live link afterwards invites a second, contradictory record of the
+ * same doorstep.
+ */
+serveReceiptAdmin.post(
+  '/:queueId/refusal',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  async (c) => {
+    const queueId = parseInt(c.req.param('queueId') || '', 10);
+    if (!queueId) return c.json({ error: 'Invalid serve job id' }, 400);
+
+    const body = await c.req.json<{
+      recipient_name?: string; reason?: string; documents_left?: boolean;
+      latitude?: number; longitude?: number; notes?: string;
+    }>().catch(() => null);
+    if (!body?.reason) return c.json({ error: 'A description of the refusal is required' }, 400);
+
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number; username?: string } | undefined;
+
+    const job = await queryFirst<{ id: number; recipient_name: string | null; defendant_name: string | null }>(
+      db, 'SELECT id, recipient_name, defendant_name FROM serve_queue WHERE id = ?', queueId);
+    if (!job) return c.json({ error: 'Serve job not found' }, 404);
+
+    const tok = await queryFirst<{ id: number }>(
+      db,
+      `SELECT id FROM serve_receipt_tokens
+        WHERE serve_queue_id = ? AND used_receipt_id IS NULL AND revoked_at IS NULL
+        ORDER BY id DESC LIMIT 1`,
+      queueId,
+    );
+
+    const ins = await execute(
+      db,
+      `INSERT INTO serve_receipts (
+         serve_queue_id, token_id, service_method, form_variant, form_title,
+         completion_channel, recipient_name, recipient_role,
+         sub_declined_reason, sub_defendant_name,
+         ack_received_documents, recipient_signed_at,
+         server_name, server_user_id, latitude, longitude, notes, status
+       ) VALUES (?,?, 'refused', 'refused', ?, 'officer', ?, 'refused',
+                 ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, 'signed')`,
+      queueId, tok?.id ?? null,
+      'Record of Refusal to Sign',
+      str(body.recipient_name, 200) || job.recipient_name || 'Unidentified person',
+      str(body.reason, 1000),
+      job.defendant_name,
+      // Service is complete when the papers are LEFT, refusal or not. That
+      // fact is what a court asks about, so it is recorded explicitly
+      // rather than inferred from the refusal.
+      body.documents_left === false ? 0 : 1,
+      str(user?.username, 120), user?.id ?? null,
+      Number.isFinite(Number(body.latitude)) ? Number(body.latitude) : null,
+      Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null,
+      str(body.notes, 1000),
+    );
+    const receiptId = Number(ins.meta.last_row_id);
+
+    if (tok?.id) {
+      await execute(
+        db,
+        `UPDATE serve_receipt_tokens SET used_receipt_id = ?, used_at = datetime('now')
+          WHERE id = ? AND used_receipt_id IS NULL`,
+        receiptId, tok.id,
+      ).catch(() => undefined);
+    }
+
+    if (body.documents_left !== false) {
+      await execute(
+        db,
+        `UPDATE serve_queue SET status = 'served',
+                serve_date = COALESCE(serve_date, datetime('now')), updated_at = datetime('now')
+          WHERE id = ? AND status != 'served'`,
+        queueId,
+      ).catch(() => undefined);
+    }
+
+    await recordAudit(c, {
+      action: 'SERVE_RECEIPT_REFUSAL',
+      entityType: 'serve_queue',
+      entityId: queueId,
+      details: { receipt_id: receiptId, documents_left: body.documents_left !== false },
+      actorId: user?.id ?? null,
+    }).catch(() => undefined);
+
+    log.info('Serve refusal recorded', { receiptId, queueId });
+    return c.json({ ok: true, receipt_id: receiptId }, 201);
+  },
+);
+
 /** GET /api/serve-receipts/:queueId — signed receipts for a job. */
 serveReceiptAdmin.get('/:queueId', async (c) => {
   const queueId = parseInt(c.req.param('queueId') || '', 10);

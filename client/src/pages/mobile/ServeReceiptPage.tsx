@@ -136,7 +136,7 @@ function CheckRow({
       >
         {checked && <Check size={14} className="text-rmpg-900" />}
       </span>
-      <span className="text-[13px] leading-snug text-rmpg-100">
+      <span className="text-[15px] leading-relaxed text-rmpg-100">
         {children}
         {required && <span className="text-sev-critical"> *</span>}
       </span>
@@ -248,6 +248,15 @@ export default function ServeReceiptPage() {
     })();
     return () => { cancelled = true; };
   }, [apiBase]);
+
+  // Light, high-contrast palette for this route only — see .public-form in
+  // theme-palettes.css. Applied to <html> so it reaches portalled content,
+  // and removed on unmount so the officer's console surfaces are untouched
+  // one route away in the same session.
+  useEffect(() => {
+    document.documentElement.classList.add('public-form');
+    return () => document.documentElement.classList.remove('public-form');
+  }, []);
 
   // Best-effort GPS. Never blocks the form — a denied permission is
   // routine on a stranger's phone and must not stop a valid signature.
@@ -580,7 +589,7 @@ export default function ServeReceiptPage() {
             refuse to sign because they think it concedes something; say
             plainly that it does not, before anything else is asked. */}
         <div className="mb-3 p-3 rounded-[2px] border border-brand-600 bg-surface-raised">
-          <p className="text-[13px] text-rmpg-100 leading-snug">
+          <p className="text-[15px] text-rmpg-100 leading-relaxed">
             <strong>Signing below only confirms that you received these papers.</strong>{' '}
             It is not an admission, it is not an agreement with anything the
             documents say, and it does not give up any of your rights or any
@@ -713,7 +722,7 @@ export default function ServeReceiptPage() {
           </Field>
 
           {answeredWhoIsSigning && (
-            <p className="text-[11px] text-fg-muted leading-snug">
+            <p className="text-[13px] text-fg-muted leading-relaxed">
               Based on your answers, you are signing the{' '}
               <strong className="text-rmpg-200">{formTitle}</strong>.
             </p>
@@ -723,7 +732,7 @@ export default function ServeReceiptPage() {
         {/* ── 3. Documents ────────────────────────────────── */}
         <Panel title="Documents received" step={3}>
           {Object.keys(docCopies).length === 0 ? (
-            <p className="text-[13px] text-fg-secondary">
+            <p className="text-[15px] text-fg-secondary">
               {ctx.job.document_type || 'Court documents'} — 1 set.
             </p>
           ) : (
@@ -731,7 +740,7 @@ export default function ServeReceiptPage() {
               {Object.entries(docCopies).map(([title, copies]) => (
                 <li key={title} className="flex items-center gap-3 p-2.5 rounded-[2px] bg-surface-sunken border border-rmpg-700">
                   <FileText size={16} className="shrink-0 text-fg-muted" />
-                  <span className="flex-1 text-[13px] text-rmpg-100 leading-snug break-words">{title}</span>
+                  <span className="flex-1 text-[15px] text-rmpg-100 leading-relaxed break-words">{title}</span>
                   <input
                     type="number"
                     min={1}
@@ -747,7 +756,7 @@ export default function ServeReceiptPage() {
               ))}
             </ul>
           )}
-          <p className="text-[11px] text-fg-muted">
+          <p className="text-[13px] text-fg-muted">
             If anything listed here was not handed to you, tell the process
             server before you sign.
           </p>
@@ -772,7 +781,7 @@ export default function ServeReceiptPage() {
                   {a.text}
                 </CheckRow>
               ))}
-              <p className="text-[11px] text-fg-muted">
+              <p className="text-[13px] text-fg-muted">
                 Statements marked <span className="text-sev-critical">*</span> are required.
               </p>
             </>
@@ -801,7 +810,7 @@ export default function ServeReceiptPage() {
             />
           </Field>
 
-          <p className="text-[11px] text-fg-muted leading-snug">
+          <p className="text-[13px] text-fg-muted leading-relaxed">
             Your signature, the date and time, and your device’s approximate
             location (if you allowed it) are recorded with this form.
           </p>

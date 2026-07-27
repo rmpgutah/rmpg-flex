@@ -408,8 +408,16 @@ describe('text-role rgb triples', () => {
     // map / MDT / dashcam. A hoisted :root alias substitutes at computed-value
     // time on the root element and the substituted result inherits, so a
     // descendant could never override it. Proven in-browser during #3029.
+    //
+    // 4 -> 5: .public-form joined .tactical-dark as a descendant scope that
+    // re-declares its own triples. It inverts the console palette to light,
+    // high-contrast for /m/serve-receipt — the one surface in this app read
+    // by a member of the public, outdoors, about to sign a legal
+    // instrument. This guard is a ratchet on HOISTING, not a cap on scopes:
+    // what it must never see is a triple declared once at :root and aliased
+    // everywhere, because a descendant could then never override it.
     const count = (css.match(/--text-muted-rgb:/g) ?? []).length;
-    expect(count).toBe(4);
+    expect(count).toBe(5);
   });
 });
 
