@@ -6,7 +6,7 @@ import {
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetVehicle, FleetMaintenance, FleetVehicleStatus } from '../../../types';
 import { formatMilitary, daysUntilExpiry, expiryProgress } from '../utils/fleetFormatters';
-import { parseTimestamp } from '../../../utils/dateUtils';
+import { parseTimestamp, safeDateStr } from '../../../utils/dateUtils';
 import FleetioConflictBadge from '../../../components/FleetioConflictBadge';
 import type { ConflictBadgeConflict } from '../../../components/FleetioConflictBadge';
 
@@ -425,7 +425,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
           <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
             {mileageHistory.slice(0, 10).map((m: any) => (
               <div key={m.id} className="flex justify-between text-[9px] px-2 py-1 bg-surface-sunken/50 rounded">
-                <span className="text-rmpg-400">{m.recorded_at?.slice(0, 10)}</span>
+                <span className="text-rmpg-400">{safeDateStr(m.recorded_at, "")}</span>
                 <span className="text-rmpg-300">{m.recorded_by_name || 'System'}</span>
                 <span className="font-mono text-brand-400">{m.previous_mileage?.toLocaleString()} &rarr; {m.new_mileage?.toLocaleString()}</span>
               </div>
