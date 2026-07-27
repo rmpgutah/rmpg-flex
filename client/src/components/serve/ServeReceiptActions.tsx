@@ -67,12 +67,36 @@ export interface ServeReceiptJob {
   recipient_zip?: string | null;
 }
 
+/**
+ * Answers already given elsewhere — currently by the attempt modal, which
+ * asks who was served and their relationship before this panel is ever
+ * reached.
+ *
+ * Seeding PRE-ANSWERS the intake; it does not skip it. The attempt log
+ * does not ask whether the address is a dwelling or whether the person
+ * lives there, and those two answers are what separate a co-habitant from
+ * a substitute. Jumping straight to the QR would mean deriving a form
+ * from facts nobody established.
+ */
+export interface ServeReceiptSeed {
+  isNamedParty?: boolean | null;
+  recipientName?: string | null;
+  relationship?: string | null;
+  documents?: Array<{ title: string; copies: number }>;
+}
+
 interface Props {
   job: ServeReceiptJob;
   serverName?: string;
   serverBadge?: string;
   /** Compact renders as a single icon button for tight card footers. */
   compact?: boolean;
+  /** Pre-answer the intake from a completed attempt. */
+  seed?: ServeReceiptSeed;
+  /** Render the panel already open — used when it IS the completion step. */
+  autoOpen?: boolean;
+  /** Label for the trigger when it is not the compact card button. */
+  triggerLabel?: string;
 }
 
 type Step = 'intake' | 'handoff';
@@ -120,23 +144,27 @@ function Choice<T extends string | boolean | null>({
   );
 }
 
-export default function ServeReceiptActions({ job, serverName, serverBadge, compact }: Props) {
-  const [open, setOpen] = useState(false);
+export default function ServeReceiptActions({
+  job, serverName, serverBadge, compact, seed, autoOpen, triggerLabel,
+}: Props) {
+  const [open, setOpen] = useState(!!autoOpen);
   const [step, setStep] = useState<Step>('intake');
 
   // ── Officer intake ─────────────────────────────────────────
   // undefined = not yet answered. null is a real answer ('unsure'), so it
   // cannot double as the unanswered state — the Choice would highlight
   // Unsure on open and the officer would submit a question they never read.
-  const [isNamedParty, setIsNamedParty] = useState<boolean | null | undefined>(undefined);
+  const [isNamedParty, setIsNamedParty] = useState<boolean | null | undefined>(seed?.isNamedParty);
   const [premisesType, setPremisesType] = useState<'residence' | 'business' | 'other'>('residence');
   const [resides, setResides] = useState(false);
   const [authorized, setAuthorized] = useState(false);
-  const [recipientName, setRecipientName] = useState('');
-  const [relationship, setRelationship] = useState('');
+  const [recipientName, setRecipientName] = useState(seed?.recipientName ?? '');
+  const [relationship, setRelationship] = useState(seed?.relationship ?? '');
   const [businessName, setBusinessName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
-  const [docTitles, setDocTitles] = useState('');
+  const [docTitles, setDocTitles] = useState(
+    (seed?.documents ?? []).map((d) => d.title).join('\n'),
+  );
 
   // ── Hand-off ───────────────────────────────────────────────
   const [url, setUrl] = useState<string | null>(null);
@@ -350,7 +378,7 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
         aria-label={`Acknowledgement of service for ${job.recipient_name || `job ${job.id}`}`}
       >
         <QrCode className="w-3 h-3" />
-        Receipt
+        {triggerLabel ?? 'Receipt'}
       </button>
     );
   }
@@ -461,9 +489,13 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
           {step === 'intake' && (
             <>
               <p className="text-[11px] text-fg-secondary leading-snug">
-                Answer what you can see. These pick the right form and pre-fill
-                it — the person signing can still correct anything, because the
-                statements are theirs to make.
+                {seed
+                  ? 'Carried over from the attempt you just logged. Confirm the two '
+                    + 'address questions — the attempt log does not ask them, and they '
+                    + 'are what separate a co-habitant from a substitute.'
+                  : 'Answer what you can see. These pick the right form and pre-fill '
+                    + 'it — the person signing can still correct anything, because the '
+                    + 'statements are theirs to make.'}
               </p>
 
               <Q label={`Is the person at the door ${namedParty}?`}>

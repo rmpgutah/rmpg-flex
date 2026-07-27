@@ -63,3 +63,36 @@ describe('ServeReceiptActions modal containment', () => {
     expect(ACTIONS).toMatch(/panelRef\.current\?\.focus\(\)/);
   });
 });
+
+describe('attempt → Civil Process Record integration', () => {
+  const MODAL = readFileSync(join(__dirname, '..', 'ServeAttemptModal.tsx'), 'utf8');
+  const ACTIONS = readFileSync(join(__dirname, '..', 'ServeReceiptActions.tsx'), 'utf8');
+
+  it('presents the record on the attempt completion screen', () => {
+    expect(MODAL).toMatch(/Civil Process Record/);
+    expect(MODAL).toMatch(/<ServeReceiptActions/);
+  });
+
+  it('offers it ONLY for attempts that actually delivered something', () => {
+    // A posting or a failed attempt has no recipient to sign. Offering the
+    // form there would invite a signature on a service that did not happen.
+    expect(MODAL).toMatch(/attemptType === 'personal' \|\| attemptType === 'substitute'/);
+  });
+
+  it('carries the attempt answers over rather than re-asking them', () => {
+    expect(MODAL).toMatch(/isNamedParty: attemptType === 'personal'/);
+    expect(MODAL).toMatch(/recipientName: personServedName/);
+  });
+
+  it('still asks the two questions the attempt log never captured', () => {
+    // Seeding pre-answers the intake; it must not skip it. Residency and
+    // premises type are what separate a co-habitant from a substitute, and
+    // the attempt log asks neither — deriving a form without them would be
+    // deriving it from facts nobody established.
+    expect(ACTIONS).toMatch(/seed\?\.isNamedParty/);
+    // The step always starts at intake, seeded or not. If this ever becomes
+    // conditional on `seed`, a form would be derived from residency and
+    // premises answers nobody gave.
+    expect(ACTIONS).toMatch(/useState<Step>\('intake'\)/);
+  });
+});

@@ -8,6 +8,7 @@ import SignaturePad from '../SignaturePad';
 import { apiFetch, apiPostForm } from '../../hooks/useApi';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import type { ServeJob, ServeAttemptData } from '../../types';
+import ServeReceiptActions from './ServeReceiptActions';
 import {
   PSO_CATEGORIES, codesInCategory, lookupPsoCode,
   type PsoCategory,
@@ -902,6 +903,41 @@ export default function ServeAttemptModal({
                 <h3 className="text-sm font-bold text-rmpg-100">
                   Attempt #{submitResult.attemptNumber} Recorded
                 </h3>
+                {/* ── Civil Process Record ──
+                    Presented HERE, on the completion of the attempt, rather
+                    than behind a separate button on the job card. An officer
+                    who has just recorded handing papers to someone is exactly
+                    the officer who needs the acknowledgement signed, and they
+                    are still standing at the door.
+
+                    Only for attempts that actually delivered something. A
+                    posting or a failed attempt has no recipient to sign, and
+                    offering the form there would invite a signature on a
+                    service that did not happen. */}
+                {(attemptType === 'personal' || attemptType === 'substitute') && (
+                  <div className="border border-rmpg-700 rounded-[2px] p-3 space-y-2 text-left">
+                    <p className="text-[11px] font-bold uppercase tracking-wider"
+                       style={{ color: 'var(--panel-header-color)' }}>
+                      Civil Process Record
+                    </p>
+                    <p className="text-[11px] text-fg-secondary leading-snug">
+                      Have {personServedName?.trim() || 'the recipient'} sign the
+                      Acknowledgement of Service — on their phone, or on paper.
+                      Who you served and their relationship carry over from this
+                      attempt.
+                    </p>
+                    <ServeReceiptActions
+                      job={job}
+                      triggerLabel="Acknowledgement of Service"
+                      seed={{
+                        isNamedParty: attemptType === 'personal',
+                        recipientName: personServedName?.trim() || null,
+                        relationship: relationship?.trim() || null,
+                      }}
+                    />
+                  </div>
+                )}
+
                 {submitResult.dueDiligenceComplete && (
                   <div className="bg-green-900/30 border border-green-700 rounded-sm p-3 space-y-2">
                     <p className="text-sm text-green-300 font-semibold">
