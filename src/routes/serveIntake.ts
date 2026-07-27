@@ -41,9 +41,6 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import {
   extractFromText,
-  extractFromImage,
-  extractFromImageClaude,
-  extractFromTextClaude,
   extractTextFromPdf,
   extractPdfMarkdown,
   isScanStub,
@@ -54,6 +51,7 @@ import {
   type ExtractedField,
   type PdfTextResult,
 } from '../utils/serveIntakeExtract';
+import { withTimeout, ocrImage, ocrText } from '../utils/serveIntakeOcr';
 import { precleanText } from '../utils/serveIntakePreclean';
 import { arbitrateFields, reconcileIdentityConflicts, type DocCandidate, type FieldConflict } from '../utils/serveIntakeArbitrate';
 import { validateFields } from '../utils/serveIntakeValidate';
@@ -243,63 +241,13 @@ const EMPTY_PDF_TEXT: PdfTextResult = { text: '', source: 'empty', structured: f
 // (`Extraction failed: Text extraction timed out`) was a legitimately slow
 // extraction on a large document, not a hung call, so the old ceiling was simply
 // too tight.
-const AI_TIMEOUT_MS = 45_000;
-
-// Per-attempt ceilings do NOT compose. The fallback chains below run
-// SEQUENTIALLY, so their worst case is the SUM of their legs — and Cloudflare's
-// edge abandons a request at ~100s with a 524, which would replace our clean
-// "timed out" error with an opaque edge failure and lose the message entirely.
 //
-// Rather than hand-tune each leg, every chain shares one deadline: each attempt
-// gets min(perLegCeiling, budgetRemaining). Per-attempt generosity can go up
-// without the total ever breaching the edge cutoff.
-const TOTAL_AI_BUDGET_MS = 90_000;
-
-/**
- * A shared deadline for one sequential fallback chain. Call the returned
- * function per attempt to get that attempt's timeout:
- *
- *   const leg = aiBudget();
- *   await withTimeout(first(),  leg(), 'first timed out');
- *   await withTimeout(second(), leg(), 'second timed out');  // gets what's left
- *
- * Once the budget is spent the next attempt times out immediately rather than
- * pushing the request past the edge cutoff.
- */
-function aiBudget(totalMs: number = TOTAL_AI_BUDGET_MS): (perLegMs?: number) => number {
-  const start = Date.now();
-  return (perLegMs: number = AI_TIMEOUT_MS) =>
-    Math.min(perLegMs, Math.max(0, totalMs - (Date.now() - start)));
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(label)), ms)),
-  ]);
-}
-
-// Claude-first OCR with Workers-AI fallback. Claude (extractFrom*Claude) uses the
-// SAME rich serve-doc prompt + parser, so the result shape is identical and the
-// merge/commit code is unchanged. Returns null from the Claude leg (no key / no
-// credits / error) → we transparently fall back to the free Workers-AI path.
-// extraction.model carries 'claude:…' vs the Llama id so callers can label engine.
-async function ocrImage(env: Env['Bindings'], bytes: Uint8Array, mime: string): Promise<ExtractionResult> {
-  const leg = aiBudget();
-  const claude = await withTimeout(
-    extractFromImageClaude(env, bytes, mime), leg(), 'Claude OCR timed out',
-  ).catch(() => null);
-  return claude ?? withTimeout(extractFromImage(env.AI, bytes), leg(), 'Vision OCR timed out');
-}
-async function ocrText(env: Env['Bindings'], text: string): Promise<ExtractionResult> {
-  const leg = aiBudget();
-  const claude = await withTimeout(
-    extractFromTextClaude(env, text), leg(), 'Claude text timed out',
-  ).catch(() => null);
-  return claude ?? withTimeout(
-    extractFromText(env.AI, text, env.SERVE_INTAKE_LORA), leg(), 'Text extraction timed out',
-  );
-}
+// aiBudget/withTimeout/ocrImage/ocrText now live in ../utils/serveIntakeOcr —
+// hoisted out (2026-07-26) so they're importable from plain Node vitest tests
+// without dragging in this file's @cloudflare/containers import (which needs
+// a real Workers/Miniflare runtime). AI_TIMEOUT_MS stays here too since it's
+// used directly below (not just via aiBudget's default).
+const AI_TIMEOUT_MS = 45_000;
 
 async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | null): Promise<string> {
   const ts = Date.now();
@@ -401,8 +349,13 @@ async function scanDocumentHandler(c: any): Promise<Response> {
           ocrEngine = 'container-unavailable';
         }
       }
+      // Same family-derivation as /upload — this is the pre-commit PREVIEW
+      // the officer actually reviews, so it must use the SAME prompt guidance
+      // the eventual /upload commit extraction gets. Without this, the two
+      // paths could disagree on the same document.
+      const docFamily = familyFromFileName(file.name);
       extraction = text.trim().length >= 20
-        ? await ocrText(c.env, text)
+        ? await ocrText(c.env, text, docFamily)
         : emptyExtraction('none', 'Insufficient text to extract');
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
@@ -1265,7 +1218,10 @@ async function reprocessDocument(
     }
     if (bytes) extraction = await ocrImage(c.env, bytes, doc.file_type).catch(() => null);
   } else if ((doc.raw_text || '').trim().length >= 20) {
-    extraction = await ocrText(c.env, doc.raw_text).catch(() => null);
+    // Same family derivation as /upload and /scan-document, from the
+    // originally-uploaded file name stored on the document row.
+    const docFamily = familyFromFileName(doc.file_name || '');
+    extraction = await ocrText(c.env, doc.raw_text, docFamily).catch(() => null);
   }
   if (!extraction) {
     return { success: false, documentType: doc.doc_type || 'other', confidence: 0, model: '',
