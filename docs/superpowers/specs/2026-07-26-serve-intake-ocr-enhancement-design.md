@@ -150,19 +150,48 @@ Verified against the live Cloudflare catalog and pricing page, not from training
 | Layer | Model / service | Neuron cost | Rationale |
 |---|---|---|---|
 | PDF → structure | `env.AI.toMarkdown()` | **0** — the PDF path uses no model | Traverses the PDF `StructTree` (ISO 14289 / PDF-UA) to emit semantically structured Markdown, falling back to raw text extraction only when the structure tree is absent |
-| Extraction | `@cf/meta/llama-4-scout-17b-16e-instruct` | 24,545 / M in · 77,273 / M out | Natively multimodal, 10M-token context — the entire 3-document packet fits in one call, removing per-document stitching |
-| Scan OCR fallback | `@cf/moondream/moondream3.1-9B-A2B` | 27,273 / M in · 90,909 / M out | Purpose-built for OCR and structured output (added to Workers AI 2026-07-08); replaces the general-purpose `llama-3.2-11b-vision-instruct` |
+| Extraction | **`@cf/meta/llama-3.3-70b-instruct-fp8-fast` (incumbent — RETAINED)** | 20,477 / M in · 204,805 / M out | Won the measured A/B. Llama 4 Scout was the proposed replacement and was **rejected on evidence** — see below |
+| Scan OCR fallback | `@cf/moondream/moondream3.1-9B-A2B` — **PENDING VISION A/B, DEFERRED** | 27,273 / M in · 90,909 / M out | Purpose-built for OCR and structured output (added to Workers AI 2026-07-08). §6 requires an A/B against the incumbent `llama-3.2-11b-vision-instruct` before adoption; only the three TEXT models were measured, so the incumbent vision model still ships |
 | Disagreement breaker | `@cf/mistralai/mistral-small-3.1-24b-instruct` | 31,876 / M in · 50,488 / M out | Cheapest output tier; invoked only when documents conflict (item 20) |
 
-**Cost envelope.** Workers AI includes **10,000 Neurons/day free** on both Workers Free and
-Paid. A representative packet (~8K input tokens of converted Markdown, ~1.5K output) costs
-≈312 neurons on Scout — roughly **32 packets/day at zero cost**, and higher in practice because
-only low-confidence documents escalate to a second call.
+**⚠️ The Scout migration is CLOSED, not unfinished. Do not "complete" it.**
+`scripts/serve-intake-model-ab.ts` graded all three text candidates against
+`tests/fixtures/serve-intake/expected.json` (2026-07-26):
 
-**The upgrade reduces consumption.** The current text model
-(`llama-3.3-70b-instruct-fp8-fast`) bills 204,805 neurons per M output tokens against Scout's
-77,273. The same packet costs ≈520 neurons today versus ≈312 after. Capability rises and spend
-falls simultaneously; there is no cost trade to negotiate.
+| Model | Score (at selection) | Score (after prompt fixes P1-P3) |
+|---|---|---|
+| `llama-3.3-70b-instruct-fp8-fast` (incumbent) | **33/36** | **35/36** |
+| `mistral-small-3.1-24b-instruct` | 32/36 | 33/36 |
+| `llama-4-scout-17b-16e-instruct` | 26/36 | 28/36 |
+
+The prompt fixes (few-shot `service_deadline`, the `Due:`-date rule, the `priority` enum)
+lifted every candidate and did not reorder them — the incumbent's margin over Scout is
+unchanged at 7 points. The incumbent's one remaining harness miss is `defendant:
+"NORTHGATE LOGISTICS, LLC et. al."`, which `scrubPartyNoise` strips in production; the
+harness grades RAW model output, so it cannot see that (see the header of
+`scripts/serve-intake-model-ab.ts`).
+
+Scout's failure is not merely a lower total. It read the **ICU letterhead address**
+(`250 N Red Cliffs Dr, Saint George`) as the SERVICE address. For a process server that is a
+wrong-building dispatch — an officer sent to their own company's office instead of the
+recipient's. A cheaper model that confidently emits a wrong service address is strictly worse
+than a dearer one that emits the right one, and no per-token saving buys that back. The
+pre-measurement reasoning below (multimodality, 10M context, lower output rate) was all true
+and all irrelevant once the accuracy was measured. `TEXT_MODEL_SCOUT` remains exported in
+`src/utils/serveIntakeExtract.ts` only so a future re-test has the id in hand.
+
+**Cost envelope (corrected — the incumbent was retained).** Workers AI includes
+**10,000 Neurons/day free** on both Workers Free and Paid. A representative packet (~8K input
+tokens of converted Markdown, ~1.5K output) costs **≈520 neurons** on the incumbent — roughly
+**19 packets/day at zero cost**, and somewhat higher in practice because only low-confidence
+documents escalate to a second call.
+
+An earlier revision of this section claimed ≈312 neurons/packet, ~32 packets/day, and that the
+upgrade *reduces* spend. Those figures were all conditional on adopting Scout. Since Scout was
+rejected, **per-packet cost is unchanged at ≈520 and the free-tier ceiling is ≈19 packets/day**.
+Spend does not fall; the accuracy and the `toMarkdown` zero-neuron PDF tier are what this work
+buys. `MODEL_NEURON_RATES` in `src/utils/serveIntakeNeurons.ts` already carries the correct
+rate — only this prose was wrong.
 
 **Structural consequence.** Because `toMarkdown` yields structured Markdown rather than
 positional text, several pre-clean heuristics in §3.4 become fallback-only — they run when
@@ -182,7 +211,7 @@ and 6.
 5. Adopt `env.AI.toMarkdown()` as the PDF→text layer (§3.5) — structured, model-free, and it resolves the two-column Information Form interleave at the source. Retain the positional column-reflow heuristic as a fallback for documents with no `StructTree`.
 6. Per-page text-density check routing scan-stub pages to Moondream 3.1 vision OCR.
 7. Replace hardcoded model constants with `callAi()` (D-3).
-8. Raise the Workers-AI floor to Llama 4 Scout (text/multimodal) and Moondream 3.1 (scan OCR) per §3.5 — cheaper per packet than the current Llama 3.3 70B path.
+8. ~~Raise the Workers-AI floor to Llama 4 Scout (text/multimodal) and Moondream 3.1 (scan OCR) per §3.5.~~ **SUPERSEDED by measurement.** Scout was A/B'd and rejected (26/36 vs the incumbent's 33/36, and it read the ICU letterhead as the service address); Moondream is deferred pending the vision A/B §6 requires. The text incumbent and vision incumbent both ship. See §3.5.
 9. Document-family-specific prompts (Information Form / Field Sheet / Court Docket).
 10. Bounded second-pass critic call on low-confidence fields only.
 11. Deterministic post-validator (dates, ZIP↔state, phone, case-number shape).
@@ -279,10 +308,14 @@ Per `CLAUDE.md` the baseline is clean across all four gates, so any red is cause
   report, rather than inventing bands.
 - **New fields vs. column caps.** `serve_queue` is not near the D1 100-column cap, but the new
   fields land in `parsed_data` JSON where possible to avoid schema churn.
-- **Free-tier ceiling.** 10,000 Neurons/day caps free throughput at roughly 32 packets. Above
-  that, Workers Paid bills $0.011/1,000 Neurons — cents per packet, but it must be a conscious
+- **Free-tier ceiling.** 10,000 Neurons/day caps free throughput at roughly **19 packets**
+  (≈520 neurons/packet on the retained incumbent — see the corrected cost envelope in §3.5;
+  the "32 packets" figure assumed a Scout migration that the A/B rejected). Above that,
+  Workers Paid bills $0.011/1,000 Neurons — cents per packet, but it must be a conscious
   decision rather than a surprise. PR 1 emits neuron consumption per intake to `error_log`
   context so the ceiling is observable before it is hit.
 - **Model recency.** Moondream 3.1 reached Workers AI on 2026-07-08. It is new enough that PR 1
   must A/B it against the incumbent `llama-3.2-11b-vision-instruct` on the fixture corpus rather
-  than adopting it on the strength of its description.
+  than adopting it on the strength of its description. **Status: that vision A/B has NOT been
+  run** — only the three text models were measured — so Moondream is deferred and
+  `llama-3.2-11b-vision-instruct` remains the shipped vision model.

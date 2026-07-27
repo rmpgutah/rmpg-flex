@@ -28,9 +28,12 @@ import { precleanText } from './serveIntakePreclean';
 //
 // scripts/serve-intake-model-ab.ts graded all three candidates against
 // tests/fixtures/serve-intake/expected.json:
-//   llama-3.3-70b-instruct-fp8-fast (incumbent)  33/36
-//   mistral-small-3.1-24b-instruct               32/36
-//   llama-4-scout-17b-16e-instruct               26/36
+//   llama-3.3-70b-instruct-fp8-fast (incumbent)  33/36  (35/36 after prompt fixes)
+//   mistral-small-3.1-24b-instruct               32/36  (33/36)
+//   llama-4-scout-17b-16e-instruct               26/36  (28/36)
+// The later prompt fixes lifted every candidate and reordered nothing.
+// Note the harness grades RAW model output, before normalizeFields —
+// see the header of scripts/serve-intake-model-ab.ts.
 //
 // Scout's failure is not merely "lower accuracy". It read the ICU
 // LETTERHEAD address (250 N Red Cliffs Dr, Saint George) as the SERVICE
