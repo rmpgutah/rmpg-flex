@@ -621,6 +621,8 @@ records.get('/persons/:id', async (c) => {
 // POST /persons. Returns the updated row on success.
 records.put('/persons/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM persons WHERE id = ?', id);
@@ -681,6 +683,8 @@ records.put('/persons/:id', async (c) => {
 // fails — we detect that and rebuild the FTS table before retrying.
 records.delete('/persons/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM persons WHERE id = ?', id);
@@ -1022,6 +1026,8 @@ records.get('/vehicles/:id{[0-9]+}', async (c) => {
 // PUT /records/vehicles/:id — update a vehicle.
 records.put('/vehicles/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM vehicles_records WHERE id = ?', id);
@@ -1329,6 +1335,8 @@ records.post('/businesses', async (c) => {
 // PUT /records/businesses/:id — update a business.
 records.put('/businesses/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM businesses WHERE id = ?', id);
@@ -1367,6 +1375,8 @@ records.post('/businesses/:id/unarchive', async (c) => {
 // DELETE /records/businesses/:id — hard-delete + clean its junction rows.
 records.delete('/businesses/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     await execute(db, 'DELETE FROM business_vehicles WHERE business_id = ?', id);
