@@ -101,13 +101,38 @@ export const VARIANT_LABEL: Record<ReceiptVariant, string> = {
   substitute: 'Substitute Service',
 };
 
+/**
+ * Does this party name denote a legal ENTITY rather than a human?
+ * Mirrors isEntityName in client/src/utils/serveReceiptVariant.ts.
+ *
+ * A registered agent signed a real service on 2026-07-27 answering "yes,
+ * I am the named party" for "Chase Partners Ltd, ... SDP REIT LLC,
+ * ISAOA". The client now withholds that question for an entity; the
+ * server enforces it, because the client is public and its POST body is
+ * attacker-controlled.
+ */
+const ENTITY_MARKERS = [
+  'llc', 'l.l.c', 'inc', 'incorporated', 'corp', 'corporation', 'ltd', 'limited',
+  'lp', 'llp', 'l.p', 'pllc', 'pc', 'company', 'co.', 'trust', 'partners',
+  'partnership', 'associates', 'holdings', 'group', 'isaoa', 'atima', 'n.a.',
+  'bank', 'foundation', 'institute', 'authority', 'district', 'university',
+];
+
+export function isEntityName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const t = ` ${name.toLowerCase().replace(/[,]/g, ' ')} `;
+  return ENTITY_MARKERS.some((m) => t.includes(` ${m} `) || t.includes(` ${m}. `));
+}
+
 export function resolveReceiptVariant(i: {
   isNamedParty: boolean;
   premisesType: string | null;
   residesAtAddress: boolean;
   authorizedAgent: boolean;
+  /** The party the process names, when known — an entity can never sign. */
+  namedParty?: string | null;
 }): ReceiptVariant {
-  if (i.isNamedParty) return 'individual';
+  if (i.isNamedParty && !isEntityName(i.namedParty)) return 'individual';
   if (i.premisesType === 'business' || i.authorizedAgent) return 'business';
   if (i.residesAtAddress) return 'co_habitant';
   return 'substitute';
@@ -146,6 +171,8 @@ export interface ServeReceiptPrefill {
 export interface ServeReceiptSubmission {
   variant: ReceiptVariant;
   recipient_name: string | null;
+  recipient_phone: string | null;
+  recipient_email: string | null;
   business_name: string | null;
   recipient_age_confirmed: number;
   ack_received_documents: number;
@@ -189,6 +216,13 @@ export interface ServeReceiptSubmission {
  */
 export function validateReceiptSubmission(s: ServeReceiptSubmission): string | null {
   if (!s.recipient_name) return 'Your name is required';
+  // Required per operator instruction on the 2026-07-27 service. A proof
+  // of service whose signer cannot be reached afterwards is hard to stand
+  // behind if the service is ever contested.
+  if (!s.recipient_phone) return 'A phone number is required';
+  if (!s.recipient_email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s.recipient_email)) {
+    return 'A valid email address is required';
+  }
   if (!validSignature(s.recipient_signature)) return 'A signature is required';
   if (!s.recipient_age_confirmed) return 'You must confirm you are an adult over the age of eighteen';
   if (!s.ack_received_documents) return 'You must acknowledge receiving the documents';
@@ -298,7 +332,7 @@ serveReceipt.get('/:token', async (c) => {
     plaintiff_name: string | null; defendant_name: string | null; document_type: string | null;
     recipient_name: string | null; recipient_address: string | null; recipient_city: string | null;
     recipient_state: string | null; recipient_zip: string | null; status: string | null;
-    assigned_officer_id: number | null; officer_id: number | null;
+    assigned_officer_id: number | null; officer_id: number | null; created_by: number | null;
   }>(
     db,
     `SELECT id, case_number, court_name, jurisdiction, plaintiff_name, defendant_name,
@@ -319,7 +353,7 @@ serveReceipt.get('/:token', async (c) => {
     tok.serve_queue_id,
   ).catch(() => []);
 
-  const officerId = job.assigned_officer_id ?? job.officer_id;
+  const officerId = job.assigned_officer_id ?? job.officer_id ?? job.created_by;
   // full_name is the NOT NULL column on users; first_name/last_name were
   // added later and are nullable, so preferring them leaves the process
   // server's name blank on the instrument for any account predating that
@@ -410,6 +444,7 @@ serveReceipt.post('/:token', async (c) => {
     premisesType,
     residesAtAddress: !!residesAtAddress,
     authorizedAgent: !!authorizedAgent,
+    namedParty: str(body.sub_defendant_name, 200),
   });
   const formTitle = receiptFormTitle(variant);
 
@@ -418,9 +453,13 @@ serveReceipt.post('/:token', async (c) => {
   // other variation is substitute service however it is titled.
   const method = variant === 'individual' ? 'personal' : 'substitute';
 
+  const emailTo = str(body.recipient_email, 254);
+
   const submission: ServeReceiptSubmission = {
     variant,
     recipient_name: str(body.recipient_name, 200),
+    recipient_phone: str(body.recipient_phone, 40),
+    recipient_email: emailTo,
     business_name: str(body.business_name, 200),
     recipient_age_confirmed: bool(body.recipient_age_confirmed),
     ack_received_documents: bool(body.ack_received_documents),
@@ -457,7 +496,6 @@ serveReceipt.post('/:token', async (c) => {
     copies: Number.isFinite(Number(d?.copies)) ? Math.max(1, Math.min(99, Number(d.copies))) : 1,
   }));
 
-  const emailTo = str(body.recipient_email, 254);
   const ipHash = await hashIp(ip, String(c.env.JWT_SECRET ?? 'salt'));
 
   const ins = await execute(
@@ -901,11 +939,12 @@ serveReceiptAdmin.post(
       db,
       `SELECT case_number, court_name, jurisdiction, plaintiff_name, defendant_name,
               document_type, recipient_name, recipient_address, recipient_city,
-              recipient_state, recipient_zip, assigned_officer_id, officer_id
+              recipient_state, recipient_zip, assigned_officer_id, officer_id, created_by
          FROM serve_queue WHERE id = ?`,
       queueId,
     );
-    const servingOfficerId = caption?.assigned_officer_id ?? caption?.officer_id ?? user?.id ?? null;
+    const servingOfficerId = caption?.assigned_officer_id ?? caption?.officer_id
+      ?? caption?.created_by ?? user?.id ?? null;
     const servingOfficer = servingOfficerId
       ? await queryFirst<{ full_name: string | null; first_name: string | null; last_name: string | null; badge_number: string | null }>(
           db, 'SELECT full_name, first_name, last_name, badge_number FROM users WHERE id = ?', servingOfficerId,
@@ -996,7 +1035,11 @@ serveReceiptAdmin.get('/receipt/:id/document', async (c) => {
     r.serve_queue_id,
   );
 
-  const officerId = job?.assigned_officer_id ?? job?.officer_id ?? null;
+  // created_by last: a job with no assigned officer printed a blank
+  // process-server line and "N/A" for the badge on the 2026-07-27 service,
+  // and the name had to be written in by hand. A proof of service that
+  // names no server is defective on its face.
+  const officerId = job?.assigned_officer_id ?? job?.officer_id ?? job?.created_by ?? null;
   const officer = officerId
     ? await queryFirst<{ full_name: string | null; first_name: string | null; last_name: string | null; badge_number: string | null }>(
         db, 'SELECT full_name, first_name, last_name, badge_number FROM users WHERE id = ?', officerId,

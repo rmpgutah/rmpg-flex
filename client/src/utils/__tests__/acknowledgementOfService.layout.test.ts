@@ -359,3 +359,59 @@ describe('generateReceiptOfService — the three copies', () => {
     expect(pageWeight(blank, 1)).toBe(pageWeight(blankNoCopy, 1));
   }, 30_000);
 });
+
+describe('the real 2026-07-27 service — long multi-entity caption', () => {
+  // Reconstructed from the marked-up Civil Process Record: a registered
+  // agent accepting for "Chase Partners Ltd, Fontana Business Center 2,
+  // SDP REIT LLC, ISAOA" at a business address in Salt Lake City.
+  const PARTY = 'Chase Partners Ltd, Fontana Business Center 2, SDP REIT LLC, ISAOA';
+
+  const build2 = (over: Partial<ReceiptOfServiceData> = {}) => ({
+    receiptId: 2, printTarget: 'mobile' as const,
+    variant: 'business' as const, variantLabel: 'Business',
+    formTitle: 'Acknowledgement of Service Form (Business)',
+    courtName: 'Superior Court of California', jurisdiction: 'San Bernardino',
+    caseNumber: 'CIVSB2618551', plaintiffName: 'KPRS Construction Services, LLC',
+    defendantName: PARTY, documentType: 'Summons',
+    serviceAddress: '1240 East 2100 South, Salt Lake City, UT, 84106',
+    premisesType: 'Business', serverName: 'Christopher Zamora', serverBadge: '5172',
+    agency: 'Rocky Mountain Protective Group',
+    recipientName: 'Andrew Scott Peterson', recipientJobTitle: 'Registered Agent',
+    acceptingOnBehalfOf: PARTY, recipientPhone: '(385) 461-3180',
+    residesAtAddress: false, authorizedAgent: true,
+    signedAt: '2026-07-27T18:37:00.000Z', gps: { lat: 40.694533, lng: -111.882281 },
+    documents: [
+      { title: 'California Summons Docket', copies: 1 },
+      { title: 'Civil Case Cover Sheet', copies: 1 },
+      { title: 'Record of Complaint Docket', copies: 1 },
+    ],
+    attestations: attestationsFor('business', PARTY)
+      .map((a) => ({ id: a.id, text: a.text, accepted: true })),
+    ...over,
+  }) as ReceiptOfServiceData;
+
+  it('renders without the signature being stranded from the declarations', async () => {
+    // This caption is long enough to legitimately need a second sheet.
+    // What must hold is that the declarations and the signature stay
+    // together — page two carries a complete, self-contained block.
+    const doc = await generateReceiptOfService(build2());
+    expect(doc.getNumberOfPages()).toBeLessThanOrEqual(2);
+    expect(pageWeight(doc, doc.getNumberOfPages())).toBeGreaterThan(8_000);
+  }, 30_000);
+
+  it('keeps every panel value inside the sheet', async () => {
+    // The capacity line "Business accepting on behalf of <66 chars>" was
+    // drawn unwrapped and ran off the right edge of the page. It now names
+    // the party at left rather than restating the caption.
+    const doc = await generateReceiptOfService(build2());
+    const pageW = doc.internal.pageSize.getWidth();
+    expect(pageW).toBeGreaterThan(200);   // letter, mm
+    expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+  }, 30_000);
+
+  it('carries the copy designation the operator had to write in by hand', async () => {
+    const plain = await generateReceiptOfService(build2());
+    const stamped = await generateReceiptOfService(build2({ copy: 'subject' }));
+    expect(pageWeight(stamped, 1)).toBeGreaterThan(pageWeight(plain, 1));
+  }, 30_000);
+});

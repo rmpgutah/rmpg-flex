@@ -1456,7 +1456,7 @@ function drawPleadingCaption(
   const leftRows = pLines.length + 1 + 1 + dLines.length + 1;  // + roles + "v."
   const rightRows = 2 + tLines.length + 1;
   const rows = Math.max(leftRows, rightRows);
-  const blockH = rows * lineH + 2;
+  const blockH = rows * lineH + 2 + 1.6;  // + the two role-label clearances
 
   y = checkPageBreak(doc, y, blockH + SPACING.LG);
 
@@ -1467,7 +1467,7 @@ function drawPleadingCaption(
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text('Plaintiff / Petitioner,', lx + 8, ly); ly += lineH;
+  doc.text('Plaintiff / Petitioner,', lx + 8, ly + 0.8); ly += lineH + 0.8;
 
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
@@ -1478,7 +1478,11 @@ function drawPleadingCaption(
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text('Defendant / Respondent.', lx + 8, ly);
+  // +0.8mm. A multi-defendant caption wraps ("Chase Partners Ltd, Fontana
+  // Business Center 2, SDP REIT LLC, ISAOA") and at a bare line height the
+  // role label sat against the descenders above — circled as unreadable on
+  // the 2026-07-27 service.
+  doc.text('Defendant / Respondent.', lx + 8, ly + 0.8);
 
   // ── Divider: the paren gutter, one per row ──
   doc.setFont(PDF_VALUE_FONT, 'normal');
@@ -1581,6 +1585,11 @@ function drawSubjectPanel(
 ): number {
   const pad = 1.6;
   const rowH = 2.9;
+  // Clearance ONLY after a value that wrapped. A two-line address set its
+  // continuation against the label below — circled "2 lines" on the
+  // 2026-07-27 service. Widening every row instead cost ~1mm per panel and
+  // pushed the tightest variations onto a second sheet.
+  const WRAP_CLEARANCE = 0.9;
 
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
@@ -1601,11 +1610,18 @@ function drawSubjectPanel(
       ? ['']   // a rule is drawn instead; reserve exactly one row
       : doc.splitTextToSize(sanitizePdfText(r.value || '—'), valueW) as string[],
   }));
-  const rowsH = wrapped.reduce((n, r) => n + Math.max(1, r.lines.length) * rowH, 0);
+  const rowsH = wrapped.reduce(
+    (n, r) => n + Math.max(1, r.lines.length) * rowH + (r.lines.length > 1 ? WRAP_CLEARANCE : 0), 0);
 
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
-  const bodyH = pad + nameLines.length * 3.4 + (capacity ? 2.8 : 0) + 1.4 + rowsH + pad;
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  const capLines = capacity
+    ? (doc.splitTextToSize(sanitizePdfText(capacity), w - pad * 2) as string[]).length : 0;
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_SUBHEADER);
+  const bodyH = pad + nameLines.length * 3.4 + capLines * 2.4 + (capacity ? 0.4 : 0) + 1.4 + rowsH + pad;
   const boxH = forcedH ?? (SPACING.SECTION_HEADER_H + bodyH);
   if (measureOnly) return SPACING.SECTION_HEADER_H + bodyH;
 
@@ -1636,11 +1652,16 @@ function drawSubjectPanel(
   }
 
   if (capacity) {
+    // WRAPPED. As a single doc.text this ran off the right edge of the
+    // page on a real multi-entity caption.
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text(sanitizePdfText(capacity), x + pad, ty);
-    ty += 2.8;
+    for (const cl of doc.splitTextToSize(sanitizePdfText(capacity), w - pad * 2) as string[]) {
+      doc.text(cl, x + pad, ty);
+      ty += 2.4;
+    }
+    ty += 0.4;
   }
   ty += 1.4;
 
@@ -1664,6 +1685,7 @@ function drawSubjectPanel(
       doc.setFontSize(FONT.SIZE_TABLE_BODY - 0.7);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       for (const vl of r.lines) { doc.text(vl, x + pad + labelW, ty); ty += rowH; }
+      if (r.lines.length > 1) ty += WRAP_CLEARANCE;
     }
   }
 
@@ -1906,7 +1928,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   const partyIsEntity = isBusiness;
   const partyRows: SubjectRow[] = partyIsEntity
     ? [
-        { label: 'Entity served', value: onBehalfOf },
+        // No "Entity served" row: the panel's name line IS the entity.
         { label: 'Place of service', value: data.serviceAddress },
         { label: 'Premises', value: data.premisesType || 'Business' },
         { label: 'Served via', value: 'Authorized agent' },
@@ -1958,7 +1980,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       blank ? '' : data.recipientName,
       isIndividual
         ? 'Accepted personally'
-        : `${data.variantLabel} accepting on behalf of ${onBehalfOf}`,
+        : `${data.variantLabel} accepting on behalf of the party named at left`,
       acceptorRows, undefined, true,
     );
     const panelH = Math.max(hA, hB);
@@ -1976,7 +1998,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       blank ? '' : data.recipientName,
       isIndividual
         ? 'Accepted personally'
-        : `${data.variantLabel} accepting on behalf of ${onBehalfOf}`,
+        : `${data.variantLabel} accepting on behalf of the party named at left`,
       acceptorRows, panelH,
     );
     y = Math.max(aEnd, bEnd) + SPACING.LG;
@@ -2141,9 +2163,13 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       // fact that actually matters here: it is the basis on which this
       // person was entitled to accept the papers at all.
       middleFieldLabel: isIndividual ? 'CAPACITY' : 'CAPACITY / RELATIONSHIP',
+      // "Party named" is only true when the signer IS the party — never
+      // when the process names a company. This printed "PARTY NAMED" for a
+      // registered agent on 2026-07-27 and was corrected in pen.
       badgeNumber: blank
         ? ''
-        : (isIndividual ? 'Party named' : (data.recipientJobTitle || data.recipientRelationship || data.variantLabel)),
+        : (data.recipientJobTitle || data.recipientRelationship
+          || (isIndividual ? 'Party named' : data.variantLabel)),
       date: blank ? '' : `${signedDate} ${signedTime}`,
     },
   );

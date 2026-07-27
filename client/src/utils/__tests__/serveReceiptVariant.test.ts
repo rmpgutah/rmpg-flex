@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  resolveReceiptVariant, receiptFormTitle, attestationsFor, VARIANT_LABEL,
+  resolveReceiptVariant, receiptFormTitle, attestationsFor, isEntityName, VARIANT_LABEL,
   type ReceiptVariant,
 } from '../serveReceiptVariant';
 
@@ -115,5 +115,32 @@ describe('attestationsFor', () => {
   it('marks only the optional explanation statement as non-required', () => {
     const optional = attestationsFor('co_habitant', 'John Roe').filter((a) => !a.required);
     expect(optional.map((a) => a.id)).toEqual(['explained']);
+  });
+});
+
+describe('isEntityName', () => {
+  // From a real service on 2026-07-27: a registered agent answered "yes, I
+  // am the named party" for a list of LLCs, and the form printed his
+  // capacity as "PARTY NAMED". The question is now withheld for an entity.
+  it.each([
+    'Chase Partners Ltd, Fontana Business Center 2, SDP REIT LLC, ISAOA',
+    'KPRS Construction Services, LLC',
+    'Acme Inc.',
+    'Zions Bank',
+    'The Smith Family Trust',
+    'Redwood Associates LLP',
+  ])('recognises %s', (n) => expect(isEntityName(n)).toBe(true));
+
+  it.each(['Andrew Scott Peterson', 'Marcus T. Whitfield', 'Jo Lee', '', null, undefined])(
+    'does not mistake %s for an entity', (n) => expect(isEntityName(n as string)).toBe(false),
+  );
+
+  it('matches on whole words so a person is never caught by a substring', () => {
+    // "Vincent" contains "inc"; "Lincoln" contains "inc"; "Scorpio"
+    // contains "corp". Substring matching would classify all three as
+    // companies and withhold a question the person must answer.
+    expect(isEntityName('Vincent Marsh')).toBe(false);
+    expect(isEntityName('Abraham Lincoln')).toBe(false);
+    expect(isEntityName('Corporal Dan Scorpio')).toBe(false);
   });
 });

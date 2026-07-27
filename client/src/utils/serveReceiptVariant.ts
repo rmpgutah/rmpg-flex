@@ -40,6 +40,33 @@ export interface VariantInputs {
   authorizedAgent: boolean;
 }
 
+/**
+ * Does this party name denote a legal ENTITY rather than a human?
+ *
+ * Matters because "Are you <party>?" can never truthfully be answered yes
+ * when the party is a company. Observed live on a real service: the named
+ * party was "Chase Partners Ltd, Fontana Business Center 2, SDP REIT LLC,
+ * ISAOA" and a registered agent answered yes, producing an (Individual)
+ * form that recorded him as the party himself. The capacity line read
+ * "PARTY NAMED" and had to be corrected in pen to "Registered Agent".
+ *
+ * Suffix matching, not an exhaustive registry: a false negative just
+ * leaves the question as it is today, while a false positive on a human
+ * is essentially impossible — people are not named "Inc".
+ */
+const ENTITY_MARKERS = [
+  'llc', 'l.l.c', 'inc', 'incorporated', 'corp', 'corporation', 'ltd', 'limited',
+  'lp', 'llp', 'l.p', 'pllc', 'pc', 'company', 'co.', 'trust', 'partners',
+  'partnership', 'associates', 'holdings', 'group', 'isaoa', 'atima', 'n.a.',
+  'bank', 'foundation', 'institute', 'authority', 'district', 'university',
+];
+
+export function isEntityName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const t = ` ${name.toLowerCase().replace(/[,]/g, ' ')} `;
+  return ENTITY_MARKERS.some((m) => t.includes(` ${m} `) || t.includes(` ${m}. `));
+}
+
 export function resolveReceiptVariant(i: VariantInputs): ReceiptVariant {
   if (i.isNamedParty) return 'individual';
   // Business is checked before co-habitant: someone can both work and
