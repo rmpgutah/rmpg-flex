@@ -45,11 +45,15 @@ import {
   extractFromImageClaude,
   extractFromTextClaude,
   extractTextFromPdf,
+  extractPdfMarkdown,
+  isScanStub,
   fieldsToQueueRow,
   normalizeFields,
   type ExtractionResult,
   type ExtractedField,
+  type PdfTextResult,
 } from '../utils/serveIntakeExtract';
+import { precleanText } from '../utils/serveIntakePreclean';
 import { judgeMerged } from '../utils/serveIntakeJudge';
 import { parseDefendants } from '../utils/serveIntakeDefendants';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
@@ -217,6 +221,13 @@ const MIN_CLIENT_TEXT_CHARS = 200;
 // container fetch is raced against this timeout and we fall back.
 const CONTAINER_TIMEOUT_MS = 12_000;
 
+// Ceiling on the Workers AI toMarkdown() call. It walks the PDF StructTree
+// and invokes no model, so it's normally fast — but it's still a binding
+// call, and a stalled one shouldn't hang the request. On timeout we fall
+// through to the container path exactly like a rejected/empty result.
+const TOMARKDOWN_TIMEOUT_MS = 8_000;
+const EMPTY_PDF_TEXT: PdfTextResult = { text: '', source: 'empty', structured: false, page_count: 0 };
+
 // Per-call ceiling on any single Workers AI invocation (per-doc text
 // extraction or per-image Vision). Without this a slow/stalled model
 // call hangs the whole /upload request — the original "stuck on upload"
@@ -346,23 +357,42 @@ async function scanDocumentHandler(c: any): Promise<Response> {
         text = clientText;
         ocrEngine = 'pdfjs-client';
       } else {
-        const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-        try {
-          const txt = await withTimeout(
-            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
-            CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
-          );
-          text = txt.text;
-          pageCount = txt.page_count;
-          ocrUsed = txt.ocr_used;
-          ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
-        } catch (e) {
-          log.warn('scan-document: PDF Tools container unavailable, falling back to client_text', {
-            traceId: c.get('traceId'),
-            error: e instanceof Error ? e.message : String(e),
+        // Zero-neuron structured tier first: env.AI.toMarkdown() walks the
+        // PDF StructTree and does not interleave two-column layouts the way
+        // positional text extraction does. Only fall through to the
+        // container (not rolled out in prod anyway) when it comes back
+        // empty or looks like an unreadable scan.
+        const md = await withTimeout(
+          extractPdfMarkdown(c.env.AI, bytes, file.name || 'doc.pdf'),
+          TOMARKDOWN_TIMEOUT_MS, 'toMarkdown timed out',
+        ).catch(() => EMPTY_PDF_TEXT);
+        if (md.text && !isScanStub(md.text, md.page_count)) {
+          text = md.text;
+          pageCount = md.page_count;
+          ocrEngine = 'workers-ai-tomarkdown';
+          log.info('scan-document: toMarkdown structured extraction used', {
+            traceId: c.get('traceId'), file: file.name, structured: md.structured,
+            chars: md.text.length, page_count: md.page_count,
           });
-          text = clientText;
-          ocrEngine = 'container-unavailable';
+        } else {
+          const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+          try {
+            const txt = await withTimeout(
+              extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+              CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
+            );
+            text = precleanText(txt.text);
+            pageCount = txt.page_count;
+            ocrUsed = txt.ocr_used;
+            ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
+          } catch (e) {
+            log.warn('scan-document: PDF Tools container unavailable, falling back to client_text', {
+              traceId: c.get('traceId'),
+              error: e instanceof Error ? e.message : String(e),
+            });
+            text = clientText;
+            ocrEngine = 'container-unavailable';
+          }
         }
       }
       extraction = text.trim().length >= 20
@@ -500,16 +530,31 @@ si.post('/upload', async (c) => {
         if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
           text = clientText;
         } else {
-          const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-          try {
-            const txt = await withTimeout(
-              extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
-              CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
-            );
-            text = txt.text; pageCount = txt.page_count; ocrUsed = txt.ocr_used;
-            ocrEngine = txt.ocr_used ? 'tesseract' : 'pdftotext';
-          } catch {
-            text = clientText; ocrEngine = 'container-unavailable';
+          // Same zero-neuron structured tier as /scan-document: try
+          // toMarkdown before the container round-trip.
+          const md = await withTimeout(
+            extractPdfMarkdown(c.env.AI, bytes, file.name || 'doc.pdf'),
+            TOMARKDOWN_TIMEOUT_MS, 'toMarkdown timed out',
+          ).catch(() => EMPTY_PDF_TEXT);
+          if (md.text && !isScanStub(md.text, md.page_count)) {
+            text = md.text; pageCount = md.page_count;
+            ocrEngine = 'workers-ai-tomarkdown';
+            log.info('upload: toMarkdown structured extraction used', {
+              traceId: c.get('traceId'), file: file.name, structured: md.structured,
+              chars: md.text.length, page_count: md.page_count,
+            });
+          } else {
+            const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+            try {
+              const txt = await withTimeout(
+                extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+                CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
+              );
+              text = precleanText(txt.text); pageCount = txt.page_count; ocrUsed = txt.ocr_used;
+              ocrEngine = txt.ocr_used ? 'tesseract' : 'pdftotext';
+            } catch {
+              text = clientText; ocrEngine = 'container-unavailable';
+            }
           }
         }
         const ex = text.trim().length >= 20

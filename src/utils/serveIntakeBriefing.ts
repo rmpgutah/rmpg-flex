@@ -470,6 +470,7 @@ const CRITICAL_FIELDS: Array<[key: string, label: string]> = [
 const ENGINE_LABEL: Record<string, string> = {
   'pdfjs-client': 'PDF text layer',
   'workers-ai-vision': 'Vision OCR',
+  'workers-ai-tomarkdown': 'Structured PDF (Markdown)',
   tesseract: 'Tesseract OCR',
   pdftotext: 'pdftotext',
 };

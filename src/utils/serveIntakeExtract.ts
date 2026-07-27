@@ -1,5 +1,6 @@
 import { bytesToBase64 } from './anthropic';
 import { callAi } from './callAi';
+import { precleanText } from './serveIntakePreclean';
 
 // ============================================================
 // RMPG Flex — Serve Intake structured-field extraction
@@ -549,6 +550,85 @@ export async function extractFromTextClaude(
   } catch {
     return null;
   }
+}
+
+// ── Structured PDF text via Workers AI Markdown Conversion ────
+// env.AI.toMarkdown() converts PDFs WITHOUT invoking a model: it walks
+// the PDF StructTree (ISO 14289 / PDF-UA) and emits semantic Markdown,
+// falling back to raw text extraction when no structure tree exists.
+// That means it costs ZERO neurons and — critically — it does not
+// interleave the two-column Information Form the way positional text
+// extraction does.
+//
+// Verified against the Cloudflare docs 2026-07-26. Prefer this over the
+// container /extract-text round-trip; keep the container as fallback for
+// documents toMarkdown cannot read.
+
+export interface PdfTextResult {
+  text: string;
+  source: 'tomarkdown' | 'container' | 'empty';
+  structured: boolean;     // true when the converter produced heading structure
+  page_count: number;
+}
+
+interface ConversionResult {
+  name?: string;
+  format?: 'markdown' | 'text' | 'error';
+  data?: string;
+  error?: string;
+}
+
+// A "### Page N" or any ATX heading indicates the StructTree path ran.
+const HAS_STRUCTURE = /^#{1,6}\s+\S/m;
+
+// `Pick<Ai, 'toMarkdown'>` (not a hand-rolled `(files: unknown) => Promise<unknown>`
+// shape) so the real `env.AI` binding — whose `toMarkdown` is overloaded
+// (0-arg service accessor / array-in / single-doc-in) — is structurally
+// assignable. A collapsed single-signature shape rejects `Ai` at the call
+// site because TS resolves overload assignability against the FIRST
+// matching signature, which for `toMarkdown` is the 0-arg
+// `ToMarkdownService` accessor.
+export async function extractPdfMarkdown(
+  ai: Pick<Ai, 'toMarkdown'>,
+  pdfBytes: Uint8Array,
+  fileName: string,
+): Promise<PdfTextResult> {
+  const empty: PdfTextResult = { text: '', source: 'empty', structured: false, page_count: 0 };
+  try {
+    const raw = await ai.toMarkdown({
+      name: fileName,
+      blob: new Blob([pdfBytes], { type: 'application/pdf' }),
+    });
+    const list: ConversionResult[] = Array.isArray(raw) ? raw as ConversionResult[] : [raw as ConversionResult];
+    const doc = list.find((d) => d?.name === fileName) ?? list[0];
+    if (!doc || doc.format === 'error' || !doc.data) return empty;
+
+    const structured = HAS_STRUCTURE.test(doc.data);
+    // Page count is derivable from the converter's own page headings.
+    const page_count = (doc.data.match(/^#{2,4}\s+Page\s+\d+/gim) || []).length;
+    return {
+      text: precleanText(doc.data),
+      source: 'tomarkdown',
+      structured,
+      page_count,
+    };
+  } catch {
+    // Binding unavailable or conversion blew up — the caller falls back to
+    // the container path. Never throw: a single unreadable document must
+    // not fail the whole packet.
+    return empty;
+  }
+}
+
+// A document whose text layer is a scan stub needs vision OCR. Threshold
+// is per-page so a 10-page scan isn't rescued by one page of metadata.
+const MIN_CHARS_PER_PAGE = 40;
+
+export function isScanStub(text: string, pageCount: number): boolean {
+  const len = (text || '').trim().length;
+  if (len === 0) return true;
+  const pages = Math.max(1, pageCount || 1);
+  return len / pages < MIN_CHARS_PER_PAGE;
 }
 
 // ── Container OCR helper ──────────────────────────────────────
