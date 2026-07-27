@@ -23,18 +23,37 @@ if (mapboxgl.accessToken.startsWith('sk.')) {
   mapboxgl.accessToken = '';
 }
 
-// NOTE: an earlier version of this file tried to redirect Mapbox SDK
-// telemetry POSTs (turnstile/map.load/style.load/etc.) away from
-// events.mapbox.com via `mapboxgl.config.EVENTS_URL = '/api/mapbox/events/v2'`.
-// That never worked — in mapbox-gl v3, EVENTS_URL is a read-only *getter*
-// derived from API_URL, so the assignment threw and was silently absorbed by
-// a try/catch (added on the mistaken assumption unit-test mocks were the only
-// thing that could reject it). Some operator networks block events.mapbox.com
-// (DNS sinkhole / ad blocker / corporate proxy) and the SDK's retry-on-frame
-// logic then spams the console with `net::ERR_CONNECTION_REFUSED` stack
-// traces. Since there's no supported client-side way to redirect the events
-// endpoint, the beacon is squelched at the network layer instead — see the
-// TELEMETRY_HOSTS short-circuit in public/sw.js.
+// Disable Mapbox SDK telemetry (turnstile / map.load / style.load /
+// performance beacons to events.mapbox.com).
+//
+// Some operator networks block that host (DNS sinkhole / ad blocker /
+// corporate proxy). The SDK re-queues the POST from its render loop, so a
+// blocked beacon spams the console with `net::ERR_CONNECTION_REFUSED` stack
+// traces on every frame — noise that buries real errors in a CAD console.
+//
+// Two earlier attempts are worth not repeating:
+//  1. `mapboxgl.config.EVENTS_URL = '...'` — a plain assignment. In v3
+//     EVENTS_URL is a *getter* derived from API_URL, so the write silently
+//     no-ops (it does not throw in sloppy mode, which is why the surrounding
+//     try/catch never revealed anything).
+//  2. A 204 short-circuit in the service worker's fetch handler
+//     (TELEMETRY_HOSTS in public/sw.js). Deployed, but still observed failing
+//     on live 2026-07-27 — a service worker only intercepts what it actually
+//     controls, so it is the wrong layer for a guarantee.
+//
+// Overriding the getter is the reliable fix: every telemetry path in the SDK
+// begins `if (!config.EVENTS_URL) return;`, so a null makes the request never
+// happen at all, rather than being cancelled after it is issued. Wrapped in
+// try/catch only because a test mock may define a plain, non-configurable
+// property — losing telemetry suppression must never break map init.
+try {
+  Object.defineProperty(mapboxgl.config, 'EVENTS_URL', {
+    get: () => null,
+    configurable: true,
+  });
+} catch (err) {
+  console.warn('[mapbox] Could not disable telemetry endpoint:', err);
+}
 
 // NOTE: PMTiles is NOT read client-side via addProtocol — Mapbox GL JS (unlike
 // MapLibre) has no addProtocol. The statewide overlays are served as native

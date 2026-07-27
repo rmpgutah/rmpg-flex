@@ -358,6 +358,38 @@ export default function DispatchPage() {
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
   const [reportingIssue, setReportingIssue] = useState(false);
+
+  // Generic confirm host. Six call-action buttons used to open a native
+  // window.confirm(), which BLOCKS the main thread until the operator answers
+  // — Chrome then bills the whole wait to the click handler and logs
+  // "[Violation] 'click' handler took 1683ms" (observed live 2026-07-27). That
+  // number was human reaction time, not slow code, but the blocking dialog is
+  // also unthemed and unstyleable, so these now route through ConfirmDialog.
+  // Each action keeps its OWN body verbatim in `run` — the three return-visit
+  // handlers look alike but are NOT interchangeable (two prepend a new call
+  // with [mapped, ...prev], the third replaces in place with prev.map), so
+  // they are deliberately not consolidated.
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    run: () => Promise<void>;
+  } | null>(null);
+  const [confirmRunning, setConfirmRunning] = useState(false);
+
+  const runPendingConfirm = useCallback(async () => {
+    if (!pendingConfirm) return;
+    setConfirmRunning(true);
+    try {
+      await pendingConfirm.run();
+    } finally {
+      // Always tear the dialog down, even if the action threw — every `run`
+      // body reports its own failure via addToast, so leaving the modal open
+      // would strand the operator behind a dialog with no error shown in it.
+      setConfirmRunning(false);
+      setPendingConfirm(null);
+    }
+  }, [pendingConfirm]);
   // Status-bar clock is rendered via the self-ticking <LiveClock/> component
   // (bottom bar, below). It owns its own 1s interval so the per-second tick no
   // longer re-renders this entire 6,300-line page — only the clock span.
@@ -3201,22 +3233,28 @@ export default function DispatchPage() {
                       <button type="button"
                         className="w-full mt-3 py-2.5 px-4 text-sm font-semibold rounded-sm"
                         style={{ background: 'rgb(var(--brand-gold-rgb) / 0.19)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.38)', color: 'var(--brand-gold)' }}
-                        onClick={async () => {
+                        onClick={() => {
                           const attempt = (selectedCall.pso_attempt_number || 1) + 1;
                           const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
-                          if (!window.confirm(`Schedule ${ordinal} return visit for ${selectedCall.call_number}?`)) return;
-                          try {
-                            const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/redispatch`, {
-                              method: 'POST',
-                              body: JSON.stringify({}),
-                            });
-                            if (result) {
-                              const mapped = mapDbCall(result);
-                              setCalls(prev => [mapped, ...prev]);
-                              setSelectedCall(mapped);
-                              addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
-                            }
-                          } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
+                          setPendingConfirm({
+                            title: 'Schedule Return Visit',
+                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
+                            confirmLabel: 'Schedule Visit',
+                            run: async () => {
+                              try {
+                                const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/redispatch`, {
+                                  method: 'POST',
+                                  body: JSON.stringify({}),
+                                });
+                                if (result) {
+                                  const mapped = mapDbCall(result);
+                                  setCalls(prev => [mapped, ...prev]);
+                                  setSelectedCall(mapped);
+                                  addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
+                                }
+                              } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
+                            },
+                          });
                         }}
                       >
                         <RotateCcw style={{ width: 14, height: 14, display: 'inline', marginRight: 6 }} />
@@ -3241,17 +3279,23 @@ export default function DispatchPage() {
                       <button type="button"
                         className="w-full mt-2 py-2 px-4 text-xs font-semibold rounded-sm"
                         style={{ background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
-                        onClick={async () => {
-                          if (!window.confirm(`Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`)) return;
-                          try {
-                            const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/undo-redispatch`, { method: 'POST' });
-                            if (result?.parent) {
-                              const mapped = mapDbCall(result.parent);
-                              setCalls(prev => prev.filter(c => c.id !== selectedCall.id).map(c => c.id === mapped.id ? mapped : c));
-                              setSelectedCall(mapped);
-                              addToast(`Return visit undone — restored ${mapped.call_number}`, 'success');
-                            }
-                          } catch (err: any) { addToast(`Failed to undo: ${err?.message || 'Unknown error'}`, 'error'); }
+                        onClick={() => {
+                          setPendingConfirm({
+                            title: 'Undo Return Visit',
+                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`,
+                            confirmLabel: 'Undo Visit',
+                            run: async () => {
+                              try {
+                                const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/undo-redispatch`, { method: 'POST' });
+                                if (result?.parent) {
+                                  const mapped = mapDbCall(result.parent);
+                                  setCalls(prev => prev.filter(c => c.id !== selectedCall.id).map(c => c.id === mapped.id ? mapped : c));
+                                  setSelectedCall(mapped);
+                                  addToast(`Return visit undone — restored ${mapped.call_number}`, 'success');
+                                }
+                              } catch (err: any) { addToast(`Failed to undo: ${err?.message || 'Unknown error'}`, 'error'); }
+                            },
+                          });
                         }}
                       >
                         <Undo2 style={{ width: 12, height: 12, display: 'inline', marginRight: 6 }} />
@@ -4157,22 +4201,28 @@ export default function DispatchPage() {
                       <button type="button"
                         className="toolbar-btn"
                         style={{ background: 'rgb(var(--brand-gold-rgb) / 0.15)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.31)', color: 'var(--brand-gold)' }}
-                        onClick={async () => {
+                        onClick={() => {
                           const attempt = (selectedCall.pso_attempt_number || 1) + 1;
                           const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
-                          if (!window.confirm(`Schedule ${ordinal} return visit for ${selectedCall.call_number}?`)) return;
-                          try {
-                            const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/redispatch`, {
-                              method: 'POST',
-                              body: JSON.stringify({}),
-                            });
-                            if (result) {
-                              const mapped = mapDbCall(result);
-                              setCalls(prev => [mapped, ...prev]);
-                              setSelectedCall(mapped);
-                              addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
-                            }
-                          } catch (err: any) { addToast(`Re-dispatch failed: ${err?.message || 'Unknown error'}`, 'error'); }
+                          setPendingConfirm({
+                            title: 'Schedule Return Visit',
+                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
+                            confirmLabel: 'Schedule Visit',
+                            run: async () => {
+                              try {
+                                const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/redispatch`, {
+                                  method: 'POST',
+                                  body: JSON.stringify({}),
+                                });
+                                if (result) {
+                                  const mapped = mapDbCall(result);
+                                  setCalls(prev => [mapped, ...prev]);
+                                  setSelectedCall(mapped);
+                                  addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
+                                }
+                              } catch (err: any) { addToast(`Re-dispatch failed: ${err?.message || 'Unknown error'}`, 'error'); }
+                            },
+                          });
                         }}
                         title="Schedule a return visit — creates a new linked call"
                       >
@@ -4197,17 +4247,23 @@ export default function DispatchPage() {
                       <button type="button"
                         className="toolbar-btn"
                         style={{ background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
-                        onClick={async () => {
-                          if (!window.confirm(`Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`)) return;
-                          try {
-                            const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/undo-redispatch`, { method: 'POST' });
-                            if (result?.parent) {
-                              const mapped = mapDbCall(result.parent);
-                              setCalls(prev => prev.filter(c => c.id !== selectedCall.id).map(c => c.id === mapped.id ? mapped : c));
-                              setSelectedCall(mapped);
-                              addToast(`Return visit undone — restored ${mapped.call_number}`, 'success');
-                            }
-                          } catch (err: any) { addToast(`Failed to undo: ${err?.message || 'Unknown error'}`, 'error'); }
+                        onClick={() => {
+                          setPendingConfirm({
+                            title: 'Undo Return Visit',
+                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`,
+                            confirmLabel: 'Undo Visit',
+                            run: async () => {
+                              try {
+                                const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/undo-redispatch`, { method: 'POST' });
+                                if (result?.parent) {
+                                  const mapped = mapDbCall(result.parent);
+                                  setCalls(prev => prev.filter(c => c.id !== selectedCall.id).map(c => c.id === mapped.id ? mapped : c));
+                                  setSelectedCall(mapped);
+                                  addToast(`Return visit undone — restored ${mapped.call_number}`, 'success');
+                                }
+                              } catch (err: any) { addToast(`Failed to undo: ${err?.message || 'Unknown error'}`, 'error'); }
+                            },
+                          });
                         }}
                         title="Undo this return visit and delete this call"
                       >
@@ -4248,24 +4304,30 @@ export default function DispatchPage() {
                         className="toolbar-btn"
                         style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)' }}
                         disabled={reportingIssue}
-                        onClick={async () => {
-                          if (!window.confirm(`Report a mechanical issue from Call ${selectedCall.call_number}? This will create a work order.`)) return;
-                          setReportingIssue(true);
-                          try {
-                            const result = await apiFetch<{ data: { id: number } }>(`/dispatch/calls/${selectedCall.id}/report-issue`, {
-                              method: 'POST',
-                              body: JSON.stringify({
-                                summary: `Mechanical issue reported from Call #${selectedCall.call_number}`,
-                              }),
-                            });
-                            if (result) {
-                              addToast(`Work order #${result.data?.id ?? ''} created`, 'success');
-                            }
-                          } catch (err: any) {
-                            addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
-                          } finally {
-                            setReportingIssue(false);
-                          }
+                        onClick={() => {
+                          setPendingConfirm({
+                            title: 'Report Mechanical Issue',
+                            message: `Report a mechanical issue from Call ${selectedCall.call_number}? This will create a work order.`,
+                            confirmLabel: 'Create Work Order',
+                            run: async () => {
+                              setReportingIssue(true);
+                              try {
+                                const result = await apiFetch<{ data: { id: number } }>(`/dispatch/calls/${selectedCall.id}/report-issue`, {
+                                  method: 'POST',
+                                  body: JSON.stringify({
+                                    summary: `Mechanical issue reported from Call #${selectedCall.call_number}`,
+                                  }),
+                                });
+                                if (result) {
+                                  addToast(`Work order #${result.data?.id ?? ''} created`, 'success');
+                                }
+                              } catch (err: any) {
+                                addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
+                              } finally {
+                                setReportingIssue(false);
+                              }
+                            },
+                          });
                         }}
                         title="Create a work order from this call"
                       >
@@ -5548,22 +5610,28 @@ export default function DispatchPage() {
                         <button type="button"
                           className="toolbar-btn px-2 py-0.5 text-[9px] font-semibold"
                           style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.25)', color: 'var(--brand-gold)' }}
-                          onClick={async () => {
+                          onClick={() => {
                             const attempt = (selectedCall.pso_attempt_number || 1) + 1;
                             const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
-                            if (!window.confirm(`Schedule ${ordinal} return visit for ${selectedCall.call_number}?`)) return;
-                            try {
-                              const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/redispatch`, {
-                                method: 'POST',
-                                body: JSON.stringify({}),
-                              });
-                              if (result) {
-                                const mapped = mapDbCall(result);
-                                setSelectedCall(mapped);
-                                setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
-                                addToast(`Re-dispatched — ${ordinal} visit`, 'success');
-                              }
-                            } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
+                            setPendingConfirm({
+                              title: 'Schedule Return Visit',
+                              message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
+                              confirmLabel: 'Schedule Visit',
+                              run: async () => {
+                                try {
+                                  const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/redispatch`, {
+                                    method: 'POST',
+                                    body: JSON.stringify({}),
+                                  });
+                                  if (result) {
+                                    const mapped = mapDbCall(result);
+                                    setSelectedCall(mapped);
+                                    setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
+                                    addToast(`Re-dispatched — ${ordinal} visit`, 'success');
+                                  }
+                                } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
+                              },
+                            });
                           }}
                           title="Re-dispatch this PSO call with a new visit number"
                         >
@@ -6915,6 +6983,19 @@ export default function DispatchPage() {
         confirmLabel="Delete Call"
         confirmVariant="danger"
         isLoading={isDeletingCall}
+      />
+
+      {/* Call-action confirmations (return visit / undo / report issue).
+          Replaces six blocking window.confirm() calls — see pendingConfirm. */}
+      <ConfirmDialog
+        isOpen={pendingConfirm !== null}
+        onClose={() => setPendingConfirm(null)}
+        onConfirm={runPendingConfirm}
+        title={pendingConfirm?.title || ''}
+        message={pendingConfirm?.message || ''}
+        confirmLabel={pendingConfirm?.confirmLabel || 'Confirm'}
+        confirmVariant="warning"
+        isLoading={confirmRunning}
       />
 
       {/* Floating Save Bar (visible when editing) */}
