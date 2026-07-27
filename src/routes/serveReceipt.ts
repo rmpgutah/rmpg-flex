@@ -206,7 +206,12 @@ export function validateReceiptSubmission(s: ServeReceiptSubmission): string | n
     return 'You must acknowledge that you are accepting on their behalf';
   }
   if (s.variant === 'business') {
-    if (!s.business_name) return 'The business name is required';
+    // sub_defendant_name is the entity named in the process. A signer who
+    // ticks "authorized to accept" at a RESIDENCE resolves here — a
+    // registered agent working from home — and has no separate business
+    // name to give. Falling back keeps that real case fillable; only a
+    // submission with NEITHER is genuinely incomplete.
+    if (!s.business_name && !s.sub_defendant_name) return 'The business name is required';
     if (!s.sub_resides_at_address && !s.sub_is_authorized_agent) {
       return 'You must be an employee of, or authorized to accept service at, this address';
     }

@@ -26,7 +26,8 @@
 // silently overwritten.
 // ============================================================
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import {
   QrCode, Printer, Loader2, X, CheckCircle2, ExternalLink,
@@ -154,6 +155,23 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
   const [printing, setPrinting] = useState<string | null>(null);
   // Index into RECEIPT_COPY_ORDER — which of the three copies is next.
   const [copyStep, setCopyStep] = useState(0);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // Move focus INTO the panel on open, and close on Escape.
+  //
+  // Without this, focus stays on the trigger button behind the overlay,
+  // so a Return keypress — routine after typing a document name on a
+  // phone keyboard — activates whichever Yes/No button still holds focus
+  // and silently resets the officer's answers. Observed live on
+  // 2026-07-27: typing into the documents box wiped the intake and
+  // reverted the derived form to (Individual).
+  useEffect(() => {
+    if (!open) return;
+    panelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
   const [error, setError] = useState<string | null>(null);
 
   const signed = receipts.filter((r) => r.status === 'signed');
@@ -339,14 +357,23 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
 
   const namedParty = job.defendant_name || job.recipient_name || 'the named party';
 
-  return (
+  // Portalled to document.body. Rendered inline it is a DOM descendant of
+  // the job card, so its clicks and keystrokes bubble into the card's own
+  // expand/select handlers even though it paints as a full-screen overlay.
+  return createPortal(
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Acknowledgement of service for ${job.recipient_name || `job ${job.id}`}`}
       className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-3"
       onClick={(e) => { e.stopPropagation(); setOpen(false); }}
     >
       <div
-        className="w-full max-w-sm bg-surface-raised border border-rmpg-700 rounded-[2px] max-h-[92vh] overflow-y-auto"
+        ref={panelRef}
+        tabIndex={-1}
+        className="w-full max-w-sm bg-surface-raised border border-rmpg-700 rounded-[2px] max-h-[92vh] overflow-y-auto focus:outline-none"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between px-3 py-2 border-b border-rmpg-700 sticky top-0 bg-surface-raised">
           <div className="flex items-center gap-2 min-w-0">
@@ -613,6 +640,7 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

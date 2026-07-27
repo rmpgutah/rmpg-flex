@@ -40,3 +40,26 @@ describe('ServeAttemptModal draft setters', () => {
     expect(SRC).toMatch(/setAttemptType\(card\.type\);\s*\n\s*if \(card\.type !== 'failed'\) setFailedReason\(null\);/);
   });
 });
+
+describe('ServeReceiptActions modal containment', () => {
+  // Found live 2026-07-27: the panel rendered as a DOM descendant of the
+  // job card with no dialog semantics and no focus management, so focus
+  // stayed on the trigger behind the overlay. A Return keypress — routine
+  // after typing on a phone keyboard — then activated whichever Yes/No
+  // button held focus and silently reset the officer's intake.
+  const ACTIONS = readFileSync(join(__dirname, '..', 'ServeReceiptActions.tsx'), 'utf8');
+
+  it('portals out of the job card', () => {
+    expect(ACTIONS).toMatch(/createPortal\(/);
+    expect(ACTIONS).toMatch(/document\.body,/);
+  });
+
+  it('declares dialog semantics', () => {
+    expect(ACTIONS).toMatch(/role="dialog"/);
+    expect(ACTIONS).toMatch(/aria-modal="true"/);
+  });
+
+  it('moves focus into the panel on open', () => {
+    expect(ACTIONS).toMatch(/panelRef\.current\?\.focus\(\)/);
+  });
+});

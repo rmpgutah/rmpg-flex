@@ -156,10 +156,23 @@ describe('validateReceiptSubmission — acceptance on behalf of another', () => 
       .toMatch(/resident of the address/i);
   });
 
-  it('requires a business name on the business variant', () => {
+  it('accepts a residential registered agent with no separate business name', () => {
+    // Found live 2026-07-27. Ticking "authorized to accept" at a RESIDENCE
+    // resolves to the Business variation — correct, that is a registered
+    // agent working from home — but validation then demanded a business
+    // name a house does not have and the form became unfillable. The
+    // entity named in the process stands in.
     expect(validateReceiptSubmission(cohab({
-      variant: 'business', business_name: null, sub_is_authorized_agent: 1,
-    }))).toMatch(/business name is required/i);
+      variant: 'business', business_name: null,
+      sub_defendant_name: 'John Roe', sub_is_authorized_agent: 1,
+    }))).toBeNull();
+  });
+
+  it('still rejects a business submission naming no entity at all', () => {
+    expect(validateReceiptSubmission(cohab({
+      variant: 'business', business_name: null,
+      sub_defendant_name: null, sub_is_authorized_agent: 1,
+    }))).toMatch(/intended for is required/i);
   });
 
   it('requires employment or authority on the business variant', () => {
