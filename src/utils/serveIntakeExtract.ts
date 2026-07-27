@@ -78,6 +78,14 @@ export const TARGET_FIELDS = [
   // ── Service mechanics ─────────────────────────────────────
   'process_type', 'service_windows', 'service_instructions',
   'server_name', 'priority',
+  // ── Timing & service constraints (PR 1, 2026-07-26) ───────
+  // address_class is a property of the LOCATION, never the recipient —
+  // a registered agent may sit at a residence and must then get
+  // residential attempt windows (operator decision D-2).
+  'address_class',                  // residential | business | unknown
+  'service_days_allowed',           // 'all' | 'weekdays' | 'friday' | 'no_sunday' | free text
+  'client_attempt_schedule',        // 'HH:MM-HH:MM;HH:MM-HH:MM' verbatim bands
+  'attempt_start_not_before',       // ISO date — "start attempts on or after X"
 ] as const;
 
 export type TargetField = typeof TARGET_FIELDS[number];
@@ -176,7 +184,19 @@ EXTRACTION RULES (learned from real packets):
   • If an embedded "Imported CSV Row" shows a service_city that disagrees with the
     city printed in the rendered "Recipient:" block, TRUST the rendered
     Recipient-block city — the CSV value is often a county seat, not the actual
-    municipality (e.g. CSV "Salt Lake City" vs printed "Holladay" → use Holladay).`;
+    municipality (e.g. CSV "Salt Lake City" vs printed "Holladay" → use Holladay).
+
+TIMING & SERVICE CONSTRAINTS — read the Instructions block carefully:
+• address_class — 'business' ONLY when the document says the service address is a business,
+  office, suite, or place of employment. 'residential' for a residence/abode/dwelling.
+  'unknown' otherwise. A "registered agent" mention is NOT evidence of a business address —
+  agents are frequently at residences.
+• service_days_allowed — e.g. "Service allowed 7 days a week" → 'all';
+  "NO SERVICE ON SUNDAY" → 'no_sunday'; "SERVE ON FRIDAY" → 'friday'.
+• client_attempt_schedule — when the client dictates attempt bands ("1 between 6AM-9AM,
+  1 between 9AM-6PM and 1 between 6PM-9PM"), emit them as 24h ranges joined by semicolons:
+  "06:00-09:00;09:00-18:00;18:00-21:00". Empty when the client dictates nothing.
+• attempt_start_not_before — "Start attempts on or after June 26" → the ISO date.`;
 
 // Llama 3.3 70B has a 128K-token context. 24K chars (~6K tokens) was
 // far too conservative — a multi-document packet (e.g. a 47K-char court
@@ -850,6 +870,23 @@ export function scrubPartyNoise(raw: string): string {
   return s.replace(/\s{2,}/g, ' ').replace(/^[\s,;:.-]+/, '').replace(/[\s,;:]+$/, '').trim();
 }
 
+// Address class drives which attempt-window defaults apply. Only
+// CONFIRMED business language yields 'business'; everything else falls to
+// 'unknown', which the planner treats as residential (wider windows —
+// being wrong that way costs a wasted window, not a missed service).
+const BUSINESS_HINTS = /\b(business address|place of employment|commercial|office|suite|corporate address)\b/i;
+const RESIDENTIAL_HINTS = /\b(residen\w*|abode|dwelling|home address|apartment|apt\b)/i;
+
+export function normalizeAddressClass(raw: string): string {
+  const s = (raw || '').trim();
+  if (!s) return 'unknown';
+  const lower = s.toLowerCase();
+  if (lower === 'business' || lower === 'residential' || lower === 'unknown') return lower;
+  if (BUSINESS_HINTS.test(s)) return 'business';
+  if (RESIDENTIAL_HINTS.test(s)) return 'residential';
+  return 'unknown';
+}
+
 // Which target fields get which normalizer. Centralized so adding a new
 // date/phone field is a one-line change, not a scattered edit.
 const PHONE_FIELDS = new Set<TargetField>(['recipient_phone', 'attorney_phone']);
@@ -857,7 +894,9 @@ const STATE_FIELDS = new Set<TargetField>(['recipient_state']);
 const ZIP_FIELDS = new Set<TargetField>(['recipient_zip']);
 const DATE_FIELDS = new Set<TargetField>([
   'recipient_dob', 'filing_date', 'service_deadline', 'hearing_date',
+  'attempt_start_not_before',
 ]);
+const ADDRESS_CLASS_FIELDS = new Set<TargetField>(['address_class']);
 // Party / institutional name fields that get the caption de-noiser.
 const NAME_FIELDS = new Set<TargetField>([
   'plaintiff', 'defendant', 'recipient_business_name', 'registered_agent_name',
@@ -891,6 +930,7 @@ export function normalizeFields(
         if (iso) next = iso;
         else { next = ''; conf = 0; }   // unparseable date → drop, don't guess
       }
+      else if (ADDRESS_CLASS_FIELDS.has(key)) next = normalizeAddressClass(value);
       else if (NAME_FIELDS.has(key)) {
         next = scrubPartyNoise(value);
         if (!next) conf = 0;            // scrubbed to nothing → it was all noise

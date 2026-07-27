@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest';
 import {
   toIsoDate, normalizeBirthDate, recoverDob, normalizeState, normalizePhone,
   normalizeZip, normalizePriority, normalizeDeadline, normalizeFields,
-  fieldsToQueueRow, TARGET_FIELDS,
+  fieldsToQueueRow, TARGET_FIELDS, normalizeAddressClass,
   type ExtractedField, type TargetField,
 } from '../src/utils/serveIntakeExtract';
 
@@ -157,5 +157,51 @@ describe('fieldsToQueueRow', () => {
   it('does not store a relative deadline phrase', () => {
     const row = fieldsToQueueRow(fieldsFrom({ service_deadline: '30 calendar days' }));
     expect(row.deadline).toBeNull();
+  });
+});
+
+describe('normalizeAddressClass', () => {
+  it('recognizes explicit business language', () => {
+    expect(normalizeAddressClass('BUSINESS ADDRESS')).toBe('business');
+    expect(normalizeAddressClass('place of employment')).toBe('business');
+  });
+
+  it('recognizes residential language', () => {
+    expect(normalizeAddressClass('residence')).toBe('residential');
+    expect(normalizeAddressClass('abode')).toBe('residential');
+  });
+
+  it('returns unknown for anything it cannot confirm', () => {
+    expect(normalizeAddressClass('')).toBe('unknown');
+    expect(normalizeAddressClass('see instructions')).toBe('unknown');
+  });
+
+  it('does NOT infer business from a registered-agent mention', () => {
+    // Operator decision D-2: class is a property of the LOCATION, and a
+    // registered agent may sit at a residence.
+    expect(normalizeAddressClass('registered agent')).toBe('unknown');
+  });
+});
+
+describe('new timing fields flow through normalizeFields', () => {
+  it('normalizes the start-date bar to ISO', () => {
+    const out = normalizeFields(fieldsFrom({ attempt_start_not_before: '6/26/2026' }));
+    expect(out.attempt_start_not_before.value).toBe('2026-06-26');
+  });
+
+  it('drops an unparseable start-date rather than guessing', () => {
+    const out = normalizeFields(fieldsFrom({ attempt_start_not_before: 'after the holiday' }));
+    expect(out.attempt_start_not_before.value).toBe('');
+    expect(out.attempt_start_not_before.confidence).toBe(0);
+  });
+
+  it('canonicalizes address_class', () => {
+    const out = normalizeFields(fieldsFrom({ address_class: 'BUSINESS ADDRESS' }));
+    expect(out.address_class.value).toBe('business');
+  });
+
+  it('preserves the client attempt schedule verbatim', () => {
+    const out = normalizeFields(fieldsFrom({ client_attempt_schedule: '06:00-09:00;09:00-18:00' }));
+    expect(out.client_attempt_schedule.value).toBe('06:00-09:00;09:00-18:00');
   });
 });
