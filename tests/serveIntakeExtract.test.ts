@@ -403,6 +403,11 @@ describe('normalizeFields — et al. stripping covers both spellings', () => {
     expect(normalizeFields(fieldsFrom({ defendant: 'Ethan Alvarez' })).defendant.value)
       .toBe('Ethan Alvarez');
   });
+
+  it("does not truncate a name where 'et' lands mid-word before 'Al' (regression: missing leading \\b)", () => {
+    expect(normalizeFields(fieldsFrom({ defendant: 'Comet. Al Ventures' })).defendant.value)
+      .toBe('Comet. Al Ventures');
+  });
 });
 
 // ============================================================

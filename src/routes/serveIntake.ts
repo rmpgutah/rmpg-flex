@@ -45,7 +45,6 @@ import {
   extractPdfMarkdown,
   isScanStub,
   fieldsToQueueRow,
-  normalizeFields,
   familyFromFileName,
   type ExtractionResult,
   type ExtractedField,
@@ -1206,9 +1205,20 @@ si.post('/intake', async (c) => {
     free_daily: FREE_NEURONS_PER_DAY,
     docs: docs.length,
   });
-  // Same deterministic normalization the /upload path applies, so the
-  // legacy single-call route produces equally clean field shapes.
-  const normalized = normalizeFields(extraction.fields);
+  // Same normalize+validate seam /upload and /scan-document apply, so this
+  // legacy single-call route produces equally clean field shapes AND the
+  // same cross-field validation (ZIP↔state, phone digit count, date sanity)
+  // — without this, a cross-state paste through /intake would commit at an
+  // un-penalized confidence with no validation-issue log line.
+  const intakeValidation = finalizeFields(extraction.fields, new Date().toISOString());
+  if (intakeValidation.issues.length) {
+    log.warn('serve-intake validation issues', {
+      traceId: c.get('traceId'),
+      count: intakeValidation.issues.length,
+      issues: intakeValidation.issues.slice(0, 10),
+    });
+  }
+  const normalized = intakeValidation.adjusted;
   const row = fieldsToQueueRow(normalized);
 
   let commit: CommitResult = {
@@ -1354,13 +1364,28 @@ async function reprocessDocument(
     // Same family derivation as /upload and /scan-document, from the
     // originally-uploaded file name stored on the document row.
     const docFamily = familyFromFileName(doc.file_name || '');
-    extraction = await ocrText(c.env, doc.raw_text, docFamily).catch(() => null);
+    // Rows written before precleanText existed on this path still hold raw,
+    // uncleaned OCR text — reprocess is precisely the recovery path for
+    // those rows, so it must not assume upstream cleaning already happened.
+    // precleanText is idempotent, so already-clean text is unaffected.
+    extraction = await ocrText(c.env, precleanText(doc.raw_text), docFamily).catch(() => null);
   }
   if (!extraction) {
     return { success: false, documentType: doc.doc_type || 'other', confidence: 0, model: '',
       committedQueueId: null, note: 'No image or stored text to re-extract (scanned PDF — re-upload as images)' };
   }
-  const normalized = normalizeFields(extraction.fields);
+  // Same normalize+validate seam every other entry point applies — without
+  // it, a re-extracted row would commit at an un-penalized confidence with
+  // no validation-issue log line, even though this is the exact recovery
+  // path for previously-failed rows.
+  const reprocessValidation = finalizeFields(extraction.fields, new Date().toISOString());
+  if (reprocessValidation.issues.length) {
+    log.warn('serve-intake validation issues', {
+      count: reprocessValidation.issues.length,
+      issues: reprocessValidation.issues.slice(0, 10),
+    });
+  }
+  const normalized = reprocessValidation.adjusted;
   const queueRow = fieldsToQueueRow(normalized);
   await execute(db,
     `UPDATE serve_intake_documents SET fields_json=?, confidence=?, extraction_model=?, doc_type=?,
