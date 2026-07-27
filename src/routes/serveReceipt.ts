@@ -1104,6 +1104,139 @@ serveReceiptAdmin.post(
   },
 );
 
+/**
+ * POST /api/serve-receipts/:queueId/paper
+ * Bring a hand-completed form back into the record.
+ *
+ * The paper path shipped as a dead end. An officer could print a blank,
+ * get it signed in ink, and then had nowhere to put it —
+ * completion_channel = 'paper' existed as a column and nothing ever wrote
+ * it. A signed instrument sitting in a folder in a vehicle is not a
+ * record; it is a liability with a signature on it.
+ *
+ * The wet signature is evidenced by a PHOTOGRAPH of the signed page,
+ * stored where a captured e-signature would go and distinguished by the
+ * channel — so nothing downstream mistakes a photographed page for a
+ * signature drawn on glass. The officer additionally attests, by name,
+ * that the transcription matches the paper, because they are the only
+ * person who saw both.
+ */
+serveReceiptAdmin.post(
+  '/:queueId/paper',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  async (c) => {
+    const queueId = parseInt(c.req.param('queueId') || '', 10);
+    if (!queueId) return c.json({ error: 'Invalid serve job id' }, 400);
+
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+    if (!body) return c.json({ error: 'Invalid submission' }, 400);
+
+    const db = getDb(c.env);
+    const job = await queryFirst<{ id: number; defendant_name: string | null;
+      recipient_address: string | null; recipient_city: string | null;
+      recipient_state: string | null; recipient_zip: string | null }>(
+      db,
+      `SELECT id, defendant_name, recipient_address, recipient_city,
+              recipient_state, recipient_zip FROM serve_queue WHERE id = ?`,
+      queueId,
+    );
+    if (!job) return c.json({ error: 'Serve job not found' }, 404);
+
+    const premisesType = str(body.premises_type, 30);
+    const residesAtAddress = bool(body.sub_resides_at_address);
+    const authorizedAgent = bool(body.sub_is_authorized_agent);
+    const namedParty = str(body.sub_defendant_name, 200) || job.defendant_name;
+
+    const variant = resolveReceiptVariant({
+      isNamedParty: str(body.form_variant, 30) === 'individual',
+      premisesType,
+      residesAtAddress: !!residesAtAddress,
+      authorizedAgent: !!authorizedAgent,
+      namedParty,
+    });
+
+    // The photograph of the signed page. Same size ceiling as a drawn
+    // signature — the client downscales before sending, because a raw
+    // phone photo is several megabytes and this column is not storage.
+    const pageImage = body.signed_page_image;
+    if (!validSignature(pageImage)) {
+      return c.json({ error: 'A photograph of the signed page is required' }, 400);
+    }
+
+    const attRaw = Array.isArray(body.attestations) ? body.attestations : [];
+    const attestations = attRaw.slice(0, 20).map((a: any) => ({
+      id: String(a?.id ?? '').slice(0, 40),
+      text: String(a?.text ?? '').slice(0, 600),
+      accepted: bool(a?.accepted) === 1,
+    })).filter((a) => a.id && a.text);
+
+    const docsRaw = Array.isArray(body.documents) ? body.documents : [];
+    const documents = docsRaw.slice(0, 50).map((d: any) => ({
+      title: String(d?.title ?? 'Court document').slice(0, 200),
+      copies: Number.isFinite(Number(d?.copies)) ? Math.max(1, Math.min(99, Number(d.copies))) : 1,
+    }));
+
+    const user = c.get('user') as { id: number; username?: string } | undefined;
+    const signedAt = str(body.signed_at, 40);
+
+    const ins = await execute(
+      db,
+      `INSERT INTO serve_receipts (
+         serve_queue_id, service_method, form_variant, form_title, completion_channel,
+         attestations_json, recipient_name, recipient_role, recipient_relationship,
+         recipient_phone, recipient_email, business_name, recipient_job_title,
+         recipient_age_confirmed, service_address, service_city, service_state,
+         service_zip, premises_type, documents_json, document_count,
+         sub_defendant_name, sub_resides_at_address, sub_is_authorized_agent,
+         sub_agrees_to_deliver, sub_release_acknowledged,
+         ack_received_documents, ack_information_true,
+         recipient_signature, recipient_signed_at,
+         server_name, server_user_id, notes, status
+       ) VALUES (?, ?, ?, ?, 'paper', ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?,
+                 ?, ?, ?, ?, ?, 1, 1, ?, COALESCE(?, datetime('now')), ?, ?, ?, 'signed')`,
+      queueId,
+      variant === 'individual' ? 'personal' : 'substitute',
+      variant, receiptFormTitle(variant),
+      JSON.stringify(attestations),
+      str(body.recipient_name, 200), variant, str(body.recipient_relationship, 120),
+      str(body.recipient_phone, 40), str(body.recipient_email, 254),
+      str(body.business_name, 200), str(body.recipient_job_title, 120),
+      job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip,
+      premisesType, JSON.stringify(documents), documents.length,
+      namedParty, residesAtAddress, authorizedAgent,
+      bool(body.sub_agrees_to_deliver), bool(body.sub_release_acknowledged),
+      pageImage, signedAt,
+      str(user?.username, 120), user?.id ?? null,
+      // The transcription attestation is part of the record, not a UI
+      // nicety: the officer is the only person who saw both the paper and
+      // the screen, so their name has to be attached to the claim that
+      // the two match.
+      `Transcribed from a hand-completed form by ${user?.username ?? 'unknown'}. `
+        + 'The photographed page is the signed original.',
+    );
+    const receiptId = Number(ins.meta.last_row_id);
+
+    await execute(
+      db,
+      `UPDATE serve_queue SET status = 'served',
+              serve_date = COALESCE(serve_date, ?, datetime('now')), updated_at = datetime('now')
+        WHERE id = ? AND status != 'served'`,
+      signedAt, queueId,
+    ).catch(() => undefined);
+
+    await recordAudit(c, {
+      action: 'SERVE_RECEIPT_PAPER',
+      entityType: 'serve_queue',
+      entityId: queueId,
+      details: { receipt_id: receiptId, variant },
+      actorId: user?.id ?? null,
+    }).catch(() => undefined);
+
+    log.info('Paper acknowledgement transcribed', { receiptId, queueId, variant });
+    return c.json({ ok: true, receipt_id: receiptId, form_variant: variant }, 201);
+  },
+);
+
 /** GET /api/serve-receipts/:queueId — signed receipts for a job. */
 serveReceiptAdmin.get('/:queueId', async (c) => {
   const queueId = parseInt(c.req.param('queueId') || '', 10);
