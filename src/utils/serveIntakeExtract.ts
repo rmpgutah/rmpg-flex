@@ -309,9 +309,88 @@ ${text.slice(0, MAX_PROMPT_CHARS)}
 // keeping it in one place makes that class of bug structurally impossible.
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
-export function buildExtractionMessages(rawText: string): ChatMessage[] {
+// ── Document-family prompts ───────────────────────────────────
+// One universal prompt makes the model hedge across layouts it isn't
+// looking at. A packet has three distinct document families (ServeManager
+// Information Form, ICU Field Sheet, court filing), each with its own
+// layout and its own hazards. Each gets guidance for ITS hazards.
+const FAMILY_PROMPTS: Record<string, string> = {
+  field_sheet: `This is an ICU Investigations FIELD SHEET.
+Layout: a header with Job / Party to Serve / Due date; a table of Case, Court, Plaintiff,
+Defendant; a Documents line; and a free-text Instructions block.
+HAZARD: a diagonal watermark ("RUSH") can leave stray single letters inside the table cells.
+Ignore isolated single letters that do not form a word.
+The Instructions block is the richest source of timing constraints, address class, and
+substitute-service authorization — read it in full.`,
+
+  court_filing: `This is a COURT FILING (summons, subpoena, complaint, or docket).
+The caption is authoritative for case_number, court_name, plaintiff, and defendant — prefer it
+over any other document. "In the District Court of Utah, <N> Judicial District, <County> County"
+is the court_name. Do NOT treat the party being served as a case party: on a subpoena the
+recipient is usually a non-party witness.`,
+
+  info_page: `This is a ServeManager INFORMATION FORM — the authoritative operational record.
+Prefer it for recipient, service address, service instructions, job numbers, and due date.
+The JOB header carries two numbers: the larger is job_number, the second is client_reference.
+An embedded "Imported CSV Row" JSON block, when present, is the single most reliable source.`,
+};
+
+const GENERIC_FAMILY_PROMPT =
+  'Extract every field you can locate. Return empty strings for fields not present.';
+
+export function buildFamilyPrompt(docType: string): string {
+  return FAMILY_PROMPTS[docType] ?? GENERIC_FAMILY_PROMPT;
+}
+
+// ── Bounded critic pass ───────────────────────────────────────
+// Re-asking the model about EVERY field would double neuron spend on
+// every packet. Only genuinely doubtful critical fields qualify, capped
+// so a badly-scanned document cannot blow the daily free allocation.
+const CRITIC_FIELDS: TargetField[] = [
+  'case_number', 'court_name', 'recipient_address', 'service_deadline',
+  'recipient_dob', 'recipient_phone', 'address_class',
+];
+const CRITIC_CONFIDENCE_FLOOR = 0.6;
+const CRITIC_MAX_FIELDS = 5;
+
+export function needsCriticPass(
+  fields: Record<string, ExtractedField>,
+  issues: Array<{ field: string; severity: 'warn' | 'error' }>,
+): string[] {
+  const flagged = new Set(
+    issues.filter((i) => i.severity === 'error').map((i) => i.field),
+  );
+  // Validator-flagged errors qualify even for fields outside the fixed
+  // CRITIC_FIELDS list (the validator already knows the field is wrong;
+  // that's a stronger signal than the static critical-field allowlist).
+  // Checked first, in issue order, before the low-confidence sweep, so a
+  // known-bad field never loses its slot under the cap to a merely-doubtful one.
+  const candidates: TargetField[] = [
+    ...(Array.from(flagged) as TargetField[]),
+    ...CRITIC_FIELDS.filter((f) => !flagged.has(f)),
+  ];
+  const out: string[] = [];
+  for (const f of candidates) {
+    const ef = fields[f];
+    if (!ef) continue;
+    const doubtful = !!ef.value && ef.confidence < CRITIC_CONFIDENCE_FLOOR;
+    if (doubtful || flagged.has(f)) out.push(f);
+    if (out.length >= CRITIC_MAX_FIELDS) break;
+  }
+  return out;
+}
+
+// docType is optional: extractFromText doesn't know the document's family
+// until AFTER extraction, so its call site omits it and behavior is
+// unchanged. Callers that already know the family (e.g. a future critic
+// pass re-invocation) can pass it to sharpen the system prompt for that
+// family's specific hazards.
+export function buildExtractionMessages(rawText: string, docType?: string): ChatMessage[] {
+  const system = docType
+    ? `${SYSTEM_PROMPT}\n\n${buildFamilyPrompt(docType)}`
+    : SYSTEM_PROMPT;
   return [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: system },
     { role: 'user', content: buildUserPrompt(rawText.trim()) },
   ];
 }

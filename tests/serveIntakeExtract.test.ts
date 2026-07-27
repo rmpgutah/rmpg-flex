@@ -15,6 +15,7 @@ import {
   toIsoDate, normalizeBirthDate, recoverDob, normalizeState, normalizePhone,
   normalizeZip, normalizePriority, normalizeDeadline, normalizeFields,
   fieldsToQueueRow, TARGET_FIELDS, normalizeAddressClass, normalizeYesNo,
+  buildFamilyPrompt, needsCriticPass,
   type ExtractedField, type TargetField,
 } from '../src/utils/serveIntakeExtract';
 
@@ -245,5 +246,52 @@ describe('witness fee and agent address fields', () => {
   it('canonicalizes the first-attempt sub-service authorization', () => {
     const out = normalizeFields(fieldsFrom({ sub_service_authorized_first_attempt: 'yes' }));
     expect(out.sub_service_authorized_first_attempt.value).toBe('yes');
+  });
+});
+
+describe('buildFamilyPrompt', () => {
+  it('gives the field sheet its own guidance', () => {
+    const p = buildFamilyPrompt('field_sheet');
+    expect(p).toMatch(/watermark/i);
+    expect(p).toMatch(/Instructions/);
+  });
+
+  it('gives the court filing caption guidance', () => {
+    const p = buildFamilyPrompt('court_filing');
+    expect(p).toMatch(/caption/i);
+  });
+
+  it('returns a non-empty generic prompt for unknown families', () => {
+    expect(buildFamilyPrompt('other').length).toBeGreaterThan(0);
+  });
+});
+
+describe('needsCriticPass', () => {
+  it('selects only low-confidence critical fields', () => {
+    const fields = fieldsFrom({ case_number: 'X', recipient_address: 'Y' });
+    fields.case_number.confidence = 0.3;
+    fields.recipient_address.confidence = 0.95;
+    expect(needsCriticPass(fields, [])).toEqual(['case_number']);
+  });
+
+  it('includes fields the validator flagged as errors', () => {
+    const fields = fieldsFrom({ recipient_zip: '94304' });
+    const issues = [{ field: 'recipient_zip', severity: 'error' as const, message: 'mismatch' }];
+    expect(needsCriticPass(fields, issues)).toContain('recipient_zip');
+  });
+
+  it('returns an empty list when everything is confident and clean', () => {
+    const fields = fieldsFrom({ case_number: 'X' });
+    fields.case_number.confidence = 0.95;
+    expect(needsCriticPass(fields, [])).toEqual([]);
+  });
+
+  it('never returns more than the cap, to bound neuron spend', () => {
+    const fields = fieldsFrom({
+      case_number: 'a', recipient_address: 'b', court_name: 'c',
+      service_deadline: 'd', recipient_dob: 'e', recipient_phone: 'f',
+    });
+    for (const k of Object.keys(fields)) fields[k].confidence = 0.1;
+    expect(needsCriticPass(fields, []).length).toBeLessThanOrEqual(5);
   });
 });
