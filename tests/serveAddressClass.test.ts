@@ -62,4 +62,27 @@ describe('resolveAddressClass', () => {
     expect(r.klass).toBe('unknown');
     expect(r.confirmed).toBe(false);
   });
+
+  it('pins residential-before-business ordering: dual-signal packet language resolves to residential', () => {
+    // D-2: this is the safety-critical ordering that prevents a future refactor
+    // from silently swapping the RESIDENTIAL/BUSINESS if-checks. Both signals
+    // present; residential must win.
+    const r = resolveAddressClass({
+      instructionsText: "Registered agent's home address, also filed as the business address in corporate filings.",
+    });
+    expect(r.klass).toBe('residential');
+    expect(r.source).toBe('packet_language');
+  });
+
+  it('ensures packet language beats extracted: residential text + business extraction', () => {
+    // Packet language (tier 3) outranks extracted field (tier 4).
+    // Proves that tier ordering is enforced at the resolution point.
+    const r = resolveAddressClass({
+      instructionsText: 'This is a residential address. Owner currently resides here.',
+      extracted: 'business',
+    });
+    expect(r.klass).toBe('residential');
+    expect(r.source).toBe('packet_language');
+    expect(r.confirmed).toBe(false);
+  });
 });
