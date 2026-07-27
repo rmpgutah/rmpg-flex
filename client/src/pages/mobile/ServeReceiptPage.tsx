@@ -33,7 +33,7 @@ import { Check, AlertTriangle, FileText, Loader2, Download, Printer, ShieldCheck
 import SignaturePad from '../../components/SignaturePad';
 import { generateReceiptOfService, type ReceiptOfServiceData } from '../../utils/servePdfGenerator';
 import {
-  resolveReceiptVariant, receiptFormTitle, attestationsFor, isEntityName,
+  resolveReceiptVariant, receiptFormTitle, attestationsFor, formatServiceAddress, isEntityName,
   VARIANT_LABEL, type ReceiptVariant,
 } from '../../utils/serveReceiptVariant';
 
@@ -371,8 +371,10 @@ export default function ServeReceiptPage() {
     plaintiffName: ctx?.job.plaintiff_name ?? '',
     defendantName: ctx?.job.defendant_name ?? '',
     documentType: ctx?.job.document_type ?? '',
-    serviceAddress: [ctx?.job.service_address, ctx?.job.service_city, ctx?.job.service_state, ctx?.job.service_zip]
-      .filter(Boolean).join(', '),
+    serviceAddress: formatServiceAddress({
+      address: ctx?.job.service_address, city: ctx?.job.service_city,
+      state: ctx?.job.service_state, zip: ctx?.job.service_zip,
+    }),
     premisesType,
     serverName: ctx?.server?.name ?? '',
     serverBadge: ctx?.server?.badge ?? '',
@@ -573,8 +575,10 @@ export default function ServeReceiptPage() {
   }
 
   // ── Render: the form ───────────────────────────────────────
-  const addressLine = [ctx.job.service_address, ctx.job.service_city, ctx.job.service_state, ctx.job.service_zip]
-    .filter(Boolean).join(', ');
+  const addressLine = formatServiceAddress({
+    address: ctx.job.service_address, city: ctx.job.service_city,
+    state: ctx.job.service_state, zip: ctx.job.service_zip,
+  });
   const answeredWhoIsSigning = partyIsEntity || isNamedParty !== null;
 
   return (
@@ -621,7 +625,7 @@ export default function ServeReceiptPage() {
             </div>
             <div className="col-span-2">
               <span className="field-label">Address of service</span>
-              <p className="text-rmpg-100">{addressLine || '—'}</p>
+              <p className="text-rmpg-100 whitespace-pre-line">{addressLine || '—'}</p>
             </div>
             {ctx.server?.name && (
               <div className="col-span-2">

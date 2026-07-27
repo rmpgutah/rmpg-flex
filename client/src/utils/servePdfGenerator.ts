@@ -1608,7 +1608,11 @@ function drawSubjectPanel(
     blank: !!r.blank,
     lines: r.blank
       ? ['']   // a rule is drawn instead; reserve exactly one row
-      : doc.splitTextToSize(sanitizePdfText(r.value || '—'), valueW) as string[],
+      // Split on explicit newlines FIRST. A two-line address block is
+      // authored, not incidental — wrapping it as one run would break it
+      // mid-city, which is what "2 lines" was circling.
+      : sanitizePdfText(r.value || '—').split('\n')
+          .flatMap((seg) => doc.splitTextToSize(seg, valueW) as string[]),
   }));
   const rowsH = wrapped.reduce(
     (n, r) => n + Math.max(1, r.lines.length) * rowH + (r.lines.length > 1 ? WRAP_CLEARANCE : 0), 0);
@@ -2140,7 +2144,9 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     y += 3.4;
   } else {
     y = addWrappedText(doc,
-      `Executed at ${sanitizePdfText(data.executionPlace || data.serviceAddress || 'the place of service')} `
+      // Flattened: the execution clause is a sentence, and a newline from
+      // the two-line address block would break it mid-clause.
+      `Executed at ${sanitizePdfText((data.executionPlace || data.serviceAddress || 'the place of service').replace(/\n/g, ', '))} `
       + `on ${signedDate} at ${signedTime}.`,
       lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
   }

@@ -37,6 +37,28 @@ import { log } from '../utils/logger';
 
 const PUBLIC_APP_URL = 'https://rmpgutah.us';
 
+/**
+ * Address of service as a conventional two-line block:
+ *
+ *     1234 Wisconsin Street
+ *     South Salt Lake, UT 85194
+ *
+ * Mirrors formatServiceAddress in client/src/utils/serveReceiptVariant.ts.
+ * A comma-joined single string wrapped mid-city on the 2026-07-27 service
+ * and put a comma between the state and the ZIP, which no postal or court
+ * address block does.
+ */
+function formatServiceAddress(p: {
+  address?: string | null; city?: string | null;
+  state?: string | null; zip?: string | null;
+}): string {
+  const street = (p.address ?? '').trim();
+  const locality = [(p.city ?? '').trim(),
+    [(p.state ?? '').trim(), (p.zip ?? '').trim()].filter(Boolean).join(' ')]
+    .filter(Boolean).join(', ');
+  return [street, locality].filter(Boolean).join('\n');
+}
+
 /** Default life of a printed QR. Printed sheets outlive their usefulness. */
 const DEFAULT_TOKEN_TTL_DAYS = 30;
 
@@ -965,8 +987,10 @@ serveReceiptAdmin.post(
         defendant_name: caption?.defendant_name ?? null,
         document_type: caption?.document_type ?? null,
         recipient_name: caption?.recipient_name ?? null,
-        service_address: [caption?.recipient_address, caption?.recipient_city,
-          caption?.recipient_state, caption?.recipient_zip].filter(Boolean).join(', '),
+        service_address: formatServiceAddress({
+          address: caption?.recipient_address, city: caption?.recipient_city,
+          state: caption?.recipient_state, zip: caption?.recipient_zip,
+        }),
       },
       server: {
         name: servingOfficer?.full_name
@@ -1070,8 +1094,10 @@ serveReceiptAdmin.get('/receipt/:id/document', async (c) => {
     defendantName: job?.defendant_name ?? '',
     documentType: job?.document_type ?? '',
 
-    serviceAddress: [r.service_address, r.service_city, r.service_state, r.service_zip]
-      .filter(Boolean).join(', '),
+    serviceAddress: formatServiceAddress({
+      address: r.service_address, city: r.service_city,
+      state: r.service_state, zip: r.service_zip,
+    }),
     premisesType: r.premises_type ?? '',
     serverName: officer?.full_name
       || [officer?.first_name, officer?.last_name].filter(Boolean).join(' ')

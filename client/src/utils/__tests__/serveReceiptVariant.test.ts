@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  resolveReceiptVariant, receiptFormTitle, attestationsFor, isEntityName, VARIANT_LABEL,
+  resolveReceiptVariant, receiptFormTitle, attestationsFor, isEntityName, formatServiceAddress, VARIANT_LABEL,
   type ReceiptVariant,
 } from '../serveReceiptVariant';
 
@@ -142,5 +142,39 @@ describe('isEntityName', () => {
     expect(isEntityName('Vincent Marsh')).toBe(false);
     expect(isEntityName('Abraham Lincoln')).toBe(false);
     expect(isEntityName('Corporal Dan Scorpio')).toBe(false);
+  });
+});
+
+describe('formatServiceAddress', () => {
+  // Circled "2 lines" on the 2026-07-27 service. A comma-joined single
+  // string wrapped mid-city and put a comma between the state and the ZIP.
+  it('renders the conventional two-line block', () => {
+    expect(formatServiceAddress({
+      address: '1234 Wisconsin Street', city: 'South Salt Lake', state: 'UT', zip: '85194',
+    })).toBe('1234 Wisconsin Street\nSouth Salt Lake, UT 85194');
+  });
+
+  it('puts no comma between the state and the ZIP', () => {
+    const out = formatServiceAddress({
+      address: '1240 East 2100 South', city: 'Salt Lake City', state: 'UT', zip: '84106',
+    });
+    expect(out).toContain('UT 84106');
+    expect(out).not.toContain('UT, 84106');
+  });
+
+  it('keeps the street whole on its own line', () => {
+    const [street] = formatServiceAddress({
+      address: '1240 East 2100 South', city: 'Salt Lake City', state: 'UT', zip: '84106',
+    }).split('\n');
+    expect(street).toBe('1240 East 2100 South');
+  });
+
+  it.each([
+    [{ address: '5 Elm St', city: '', state: '', zip: '' }, '5 Elm St'],
+    [{ address: '', city: 'Provo', state: 'UT', zip: '84601' }, 'Provo, UT 84601'],
+    [{ address: '5 Elm St', city: 'Provo', state: '', zip: '' }, '5 Elm St\nProvo'],
+    [{ address: '', city: '', state: '', zip: '' }, ''],
+  ])('drops missing parts without leaving stray punctuation', (parts, expected) => {
+    expect(formatServiceAddress(parts)).toBe(expected);
   });
 });
