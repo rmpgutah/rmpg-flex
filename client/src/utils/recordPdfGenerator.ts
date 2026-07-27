@@ -3429,6 +3429,10 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (resp.ok) {
         const { url } = await resp.json();
         const qr_png_base64 = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 1, scale: 6 });
+        // Last page, for the same reason as the recipient badge below:
+        // a multi-page call report would otherwise strand this badge on
+        // whatever page happened to be current.
+        doc.setPage(doc.getNumberOfPages());
         const pageW = doc.internal.pageSize.getWidth();
         const pageH = doc.internal.pageSize.getHeight();
         const qrSize = 12; // mm — compact corner badge
@@ -3455,6 +3459,55 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.text(qrCaption, qrX + qrSize / 2, qrY + qrSize + 1.8, { align: 'center' });
       }
     } catch { /* non-fatal — PDF still prints without QR */ }
+  }
+
+  // ── Recipient Receipt of Service QR ────────────────────────
+  // A SECOND, different-audience badge. The QR above is the OFFICER's
+  // (multi-scan, opens the mobile PSO status surface); this one is the
+  // RECIPIENT's — the officer shows it at the door and the person being
+  // served scans it on their own phone to sign the Receipt of Service
+  // and, for substitute service, the Court Document Release.
+  //
+  // Its token is single-use and burned on signature, which is why it
+  // cannot share the /api/cfs/:id/qr-token credential above: an officer
+  // scanning the status QR would otherwise consume the recipient's.
+  //
+  // Placed to the LEFT of the officer QR with its own caption so the two
+  // are never confused at a doorstep. Non-fatal on failure — a run sheet
+  // that prints without this badge is still a valid run sheet, and the
+  // officer can fall back to the in-app attempt modal.
+  if (isProcessServiceCall && data.serve_queue_id) {
+    try {
+      const resp = await fetch(`/api/serve-receipts/${data.serve_queue_id}/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('rmpg_token') || ''}`,
+        },
+        body: JSON.stringify({}),
+      });
+      if (resp.ok) {
+        const { url } = await resp.json();
+        const png = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 1, scale: 6 });
+        // Pin to the LAST page explicitly. jsPDF draws on whatever page
+        // is current, and by this point the report may have spilled —
+        // the badge would then sit mid-document where nobody looks for
+        // it. The run sheet is handed over at the door as a stack; the
+        // scannable face has to be the one on the bottom of it.
+        doc.setPage(doc.getNumberOfPages());
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const qrSize = 12;
+        // 4mm gap left of the officer QR, same baseline.
+        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize - 1 - qrSize - 4;
+        const qrY = pageH - 23 - qrSize;
+        doc.addImage(png, 'PNG', qrX, qrY, qrSize, qrSize);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(4.5);
+        doc.setTextColor(...COLOR.TEXT_SECONDARY);
+        doc.text('RECIPIENT: SCAN TO SIGN', qrX + qrSize / 2, qrY + qrSize + 1.8, { align: 'center' });
+      }
+    } catch { /* non-fatal — PDF still prints without the receipt QR */ }
   }
 
   // Restore default dark style + disable field numbering for any

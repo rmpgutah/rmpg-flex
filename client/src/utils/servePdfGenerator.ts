@@ -14,6 +14,7 @@ import {
   addSignatureBlock,
   addTableWithShading,
   addWrappedText,
+  setConfidentialWatermarkEnabled,
   addPageFooter,
   checkPageBreak,
   setGenerationTimestamp,
@@ -26,6 +27,7 @@ import {
   sanitizePdfText,
   finalizePoliceReport,
   resolveSectionAccentColor,
+  fitPdfText,
 } from './pdfGenerator';
 import { lookupPsoCode, formatCodeFull } from '../constants/processServiceCodes';
 import {
@@ -1182,6 +1184,1000 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
         reportDate: data.dateRange?.end || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }),
         officer: data.officerName,
         badge: data.officerBadge,
+      },
+    },
+  });
+
+  return doc;
+}
+
+
+// ============================================================
+// Acknowledgement of Service Form — four printed variations
+//
+// One generator, four titles: (Individual), (Co-Habitant), (Business),
+// (Substitute Service). The variant is resolved on the signing page by
+// resolveReceiptVariant() and arrives here already decided — this
+// function renders what was signed, it does not re-derive it.
+//
+// This is the RECIPIENT's document, not the court's. Deliberately
+// different from generateAffidavitOfService above:
+//   * The affidavit is the SERVER's sworn statement to the court, with a
+//     notary block. This is the RECIPIENT's acknowledgment, signed by
+//     them, with no notary — a notary block on a form handed to a
+//     defendant implies a solemnity it does not have.
+//   * NO CONFIDENTIAL WATERMARK. Every other generator in this file
+//     stamps one; this document is handed to a member of the public by
+//     design, so marking their own copy confidential is both wrong and
+//     intimidating.
+//
+// Attestations are printed VERBATIM from what the signer was shown
+// (serve_receipts.attestations_json), not regenerated from current
+// copy — otherwise editing the wording would silently rewrite what
+// past signers appear to have agreed to.
+//
+// Prose blocks pass preserveCase: this is read by a member of the
+// public, and the all-caps field convention used elsewhere reads as
+// shouting in a paragraph.
+// ============================================================
+
+export type ReceiptVariantKey = 'individual' | 'co_habitant' | 'business' | 'substitute';
+
+export interface ReceiptAttestationLine {
+  id: string;
+  text: string;
+  accepted: boolean;
+}
+
+export interface ReceiptOfServiceData {
+  receiptId: number;
+  /** e.g. "Acknowledgement of Service Form (Co-Habitant)". */
+  formTitle: string;
+  variant: ReceiptVariantKey;
+  variantLabel: string;
+
+  courtName: string;
+  caseNumber: string;
+  jurisdiction: string;
+  plaintiffName: string;
+  defendantName: string;
+  documentType: string;
+
+  serviceAddress: string;
+  premisesType: string;
+  serverName: string;
+  serverBadge: string;
+  agency: string;
+
+  recipientName: string;
+  recipientRelationship?: string;
+  recipientJobTitle?: string;
+  businessName?: string;
+  recipientPhone?: string;
+  /** Named individual or business the signer accepted on behalf of. */
+  acceptingOnBehalfOf?: string;
+
+  documents: Array<{ title: string; copies: number }>;
+  attestations: ReceiptAttestationLine[];
+
+  residesAtAddress: boolean;
+  authorizedAgent: boolean;
+  expectedDeliveryAt?: string;
+
+  signedAt: string;           // ISO
+  gps?: { lat: number; lng: number };
+  signature?: string;         // base64 PNG data URL
+
+  /**
+   * BLANK PAPER MODE.
+   *
+   * Renders the identical instrument with every SUBJECT-SUPPLIED value
+   * replaced by a writable rule or a pair of tick boxes, so the person
+   * being served can complete it by hand when they have no phone, no
+   * signal, or no wish to scan anything. Case and party data stay
+   * PRINTED — the officer knows those, and asking a defendant to
+   * transcribe their own case number invites errors into a legal record.
+   *
+   * Deliberately the same function rather than a separate blank-form
+   * generator: if the paper and the screen can drift, they will, and the
+   * one place that must never happen is the wording of the declarations
+   * a person signs.
+   */
+  blank?: boolean;
+
+  /**
+   * PNG data URL of the receipt QR, printed on the blank form so the
+   * subject can abandon the paper and finish on their phone at any
+   * point. Rendered client-side because Workers cannot rasterize.
+   */
+  qrDataUrl?: string;
+
+  /**
+   * Place of execution for the closing clause ("Executed at ... on ...").
+   * Defaults to the address of service, which is correct in the ordinary
+   * case; supplied separately only when the signature is taken somewhere
+   * other than where the papers were left.
+   */
+  executionPlace?: string;
+
+  /**
+   * NOTE ON WHAT IS DELIBERATELY ABSENT: there is no perjury
+   * declaration on this instrument. Utah Code section 78B-5-705 would
+   * permit an unsworn one, and it would add weight — but it directly
+   * contradicts the NOTICE paragraph this form leads with, and a
+   * perjury warning presented to a defendant at their own door is a
+   * substantive escalation, not a formatting choice. Adding it is a
+   * business and legal decision, not a layout one.
+   */
+
+  /**
+   * 'office' (default) targets a laser/inkjet. 'mobile' targets the
+   * in-vehicle Brother PJ-700 roll printer the process server carries:
+   * same letter width, but the leading edge has a mechanical dead zone,
+   * so every top-anchored element shifts down by
+   * LAYOUT.MOBILE_PRINTER_TOP_OFFSET. Applied via applyPrintTarget()
+   * BEFORE the header is drawn — topHeaderY()/topMarginY() read the tag
+   * off the doc, so tagging it afterwards silently does nothing.
+   */
+  printTarget?: PrintTarget;
+}
+
+const RECEIPT_TZ = 'America/Denver';
+
+function receiptDateParts(iso: string): { date: string; time: string } {
+  const d = iso ? new Date(iso) : new Date();
+  return {
+    date: d.toLocaleDateString('en-US', {
+      timeZone: RECEIPT_TZ, month: 'short', day: 'numeric', year: 'numeric',
+    }),
+    time: d.toLocaleTimeString('en-US', {
+      timeZone: RECEIPT_TZ, hour: '2-digit', minute: '2-digit', hour12: true,
+    }),
+  };
+}
+
+
+
+export async function generateReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF> {
+  // No CONFIDENTIAL watermark: this document is handed to the person
+  // served. try/finally because the flag is module state shared with
+  // every other generator in the bundle — an early throw here would
+  // silently un-watermark the next report the user prints.
+  setConfidentialWatermarkEnabled(false);
+  try {
+    return await renderReceiptOfService(data);
+  } finally {
+    setConfidentialWatermarkEnabled(true);
+  }
+}
+
+
+// ── Court furniture ─────────────────────────────────────────
+//
+// These helpers exist to make the instrument read as a court filing
+// rather than as a printed web form. The conventions are not decorative:
+// a clerk, an attorney, and a judge all scan a proof of service by
+// looking for specific things in specific places, and meeting that
+// expectation is what makes the document credible on sight.
+//
+// One convention is deliberately NOT met: serif type. Court filings are
+// conventionally Times New Roman, but this codebase is Arial-only by
+// standing decision (every generator calls registerArialFont, which
+// overrides helvetica/times/courier). Changing that is a repo-wide call,
+// not one to make inside a single form.
+
+/** Centred court name and jurisdiction — the traditional opening of a
+ *  filing, above the party caption. */
+function drawCourtHeading(doc: jsPDF, y: number, courtName: string, jurisdiction: string): number {
+  const cx = doc.internal.pageSize.getWidth() / 2;
+  const cw = getContentWidth(doc);
+
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_SUBHEADER);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+
+  const l1 = doc.splitTextToSize(
+    sanitizePdfText(`IN THE ${courtName || 'DISTRICT COURT'}`.toUpperCase()), cw,
+  ) as string[];
+  y = checkPageBreak(doc, y, l1.length * 3.4 + 7);
+  y += 3;
+  for (const l of l1) { doc.text(l, cx, y, { align: 'center' }); y += 3.4; }
+
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_SMALL_META);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(sanitizePdfText((jurisdiction || 'STATE OF UTAH').toUpperCase()), cx, y, { align: 'center' });
+
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return y + 2.5;
+}
+
+/**
+ * Pleading caption in the conventional form: party names stacked at the
+ * left, a column of close-parens as the divider, case information at the
+ * right.
+ *
+ * The paren column is the point. A bordered two-cell table carries the
+ * same information and reads as a form; the ")" gutter is what a lawyer
+ * recognizes without reading a word, and it is the cheapest possible
+ * signal that this document belongs in a case file.
+ */
+function drawPleadingCaption(
+  doc: jsPDF,
+  y: number,
+  opts: { plaintiff: string; defendant: string; caseNumber: string; instrumentTitle: string },
+): number {
+  const lx = getLeftX();
+  const cw = getContentWidth(doc);
+  const leftW = cw * 0.50;
+  const parenX = lx + leftW;
+  const rightX = parenX + 4;
+  const rightW = cw - leftW - 4;
+  const lineH = 3.1;
+
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  const pLines = doc.splitTextToSize(sanitizePdfText(`${opts.plaintiff || 'PLAINTIFF'},`), leftW - 4) as string[];
+  const dLines = doc.splitTextToSize(sanitizePdfText(`${opts.defendant || 'DEFENDANT'},`), leftW - 4) as string[];
+  const tLines = doc.splitTextToSize(sanitizePdfText(opts.instrumentTitle.toUpperCase()), rightW) as string[];
+
+  const leftRows = pLines.length + 1 + 1 + dLines.length + 1;  // + roles + "v."
+  const rightRows = 2 + tLines.length + 1;
+  const rows = Math.max(leftRows, rightRows);
+  const blockH = rows * lineH + 2;
+
+  y = checkPageBreak(doc, y, blockH + SPACING.LG);
+
+  // ── Left: the parties ──
+  let ly = y + lineH;
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  for (const l of pLines) { doc.text(l, lx, ly); ly += lineH; }
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text('Plaintiff / Petitioner,', lx + 8, ly); ly += lineH;
+
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.text('v.', lx + 4, ly); ly += lineH;
+
+  for (const l of dLines) { doc.text(l, lx, ly); ly += lineH; }
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text('Defendant / Respondent.', lx + 8, ly);
+
+  // ── Divider: the paren gutter, one per row ──
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  for (let i = 0; i < rows; i++) doc.text(')', parenX, y + lineH + i * lineH);
+
+  // ── Right: case number then instrument title ──
+  let ry = y + lineH;
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.text(`Case No. ${sanitizePdfText(opts.caseNumber || '—')}`, rightX, ry);
+  ry += lineH * 2;
+
+  for (const l of tLines) { doc.text(l, rightX, ry); ry += lineH; }
+
+  return y + blockH + SPACING.SM;
+}
+
+/**
+ * Centred, double-ruled instrument title.
+ *
+ * Redundant with the caption's right column by design — that redundancy
+ * is the convention. The caption identifies the filing for the docket;
+ * the centred title tells the person holding the paper what it is.
+ */
+function drawInstrumentTitle(doc: jsPDF, y: number, title: string): number {
+  const cx = doc.internal.pageSize.getWidth() / 2;
+  const lx = getLeftX();
+  const cw = getContentWidth(doc);
+
+  y = checkPageBreak(doc, y, 12);
+
+  doc.setDrawColor(...COLOR.RULE_STRONG);
+  doc.setLineWidth(BORDER.TABLE_OUTER);
+  doc.line(lx, y, lx + cw, y);
+  doc.setDrawColor(...COLOR.RULE_GOLD);
+  doc.setLineWidth(BORDER.ACCENT_HEADER);
+  doc.line(lx, y + 0.7, lx + cw, y + 0.7);
+
+  y += 4.6;
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_SECTION_TITLE + 1);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.text(sanitizePdfText(title.toUpperCase()), cx, y, { align: 'center' });
+
+  y += 1.6;
+  doc.setDrawColor(...COLOR.RULE_STRONG);
+  doc.setLineWidth(BORDER.TABLE_OUTER);
+  doc.line(lx, y, lx + cw, y);
+
+  return y + SPACING.LG;
+}
+
+interface SubjectRow {
+  label: string;
+  value: string;
+  /** Render a writable rule instead of the value (blank paper mode). */
+  blank?: boolean;
+}
+
+/**
+ * Subject panel — a person presented as a subject of record, not as a
+ * scatter of numbered fields.
+ *
+ * This is the organizing idea of the whole instrument. A proof of
+ * service is about two people: the party the process is FOR, and the
+ * person who actually took it. Everything else is circumstance. Giving
+ * each of them a titled panel with their name set large means the two
+ * questions a reader arrives with — "who was served?" and "who signed
+ * for them?" — are answered before any field is read.
+ */
+function drawSubjectPanel(
+  doc: jsPDF,
+  x: number, y: number, w: number,
+  heading: string, name: string, capacity: string,
+  rows: SubjectRow[],
+  /** Draw to this exact height instead of the measured one. Pass the
+   *  taller of a pair so the two panels align at the bottom. */
+  forcedH?: number,
+  /** Measure only — return the height without drawing anything. */
+  measureOnly = false,
+): number {
+  const pad = 1.6;
+  const rowH = 2.9;
+
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_SUBHEADER);
+  const blankName = !name;
+  const nameLines = blankName
+    ? ['']
+    : doc.splitTextToSize(sanitizePdfText(name), w - pad * 2) as string[];
+
+  // Measure wrapped values up front — a row is as tall as its value.
+  const labelW = w * 0.42;
+  const valueW = w - labelW - pad * 2;
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_TABLE_BODY - 0.7);
+  const wrapped = rows.map((r) => ({
+    label: r.label,
+    blank: !!r.blank,
+    lines: r.blank
+      ? ['']   // a rule is drawn instead; reserve exactly one row
+      : doc.splitTextToSize(sanitizePdfText(r.value || '—'), valueW) as string[],
+  }));
+  const rowsH = wrapped.reduce((n, r) => n + Math.max(1, r.lines.length) * rowH, 0);
+
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_SUBHEADER);
+  const bodyH = pad + nameLines.length * 3.4 + (capacity ? 2.8 : 0) + 1.4 + rowsH + pad;
+  const boxH = forcedH ?? (SPACING.SECTION_HEADER_H + bodyH);
+  if (measureOnly) return SPACING.SECTION_HEADER_H + bodyH;
+
+  // Heading strip — same weight as an article header so the panels read
+  // as peers of the numbered articles below, not as a callout.
+  doc.setFillColor(...resolveSectionAccentColor('routine'));
+  doc.rect(x, y, w, SPACING.SECTION_HEADER_H, 'F');
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setTextColor(255, 255, 255);
+  doc.text(sanitizePdfText(heading.toUpperCase()), x + pad, y + SPACING.SECTION_HEADER_H - 1.5);
+
+  doc.setDrawColor(...COLOR.BORDER_SECTION);
+  doc.setLineWidth(BORDER.SECTION_OUTER);
+  doc.rect(x, y, w, boxH);
+
+  let ty = y + SPACING.SECTION_HEADER_H + pad + 2.6;
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_SUBHEADER);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  if (blankName) {
+    doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
+    doc.setLineWidth(BORDER.FIELD);
+    doc.line(x + pad, ty + 0.6, x + w - pad, ty + 0.6);
+    ty += 3.4;
+  } else {
+    for (const l of nameLines) { doc.text(l, x + pad, ty); ty += 3.4; }
+  }
+
+  if (capacity) {
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text(sanitizePdfText(capacity), x + pad, ty);
+    ty += 2.8;
+  }
+  ty += 1.4;
+
+  // Inline label/value rows against a fixed label column. The label may
+  // be clipped (fixed strings we author); the VALUE wraps, because an
+  // elided address or entity name is a defect, not a layout compromise.
+  for (const r of wrapped) {
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text(fitPdfText(doc, sanitizePdfText(r.label.toUpperCase()), labelW - 1), x + pad, ty);
+
+    if (r.blank) {
+      // Writable rule, inset so a pen has somewhere to sit above it.
+      doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
+      doc.setLineWidth(BORDER.FIELD);
+      doc.line(x + pad + labelW, ty + 0.4, x + w - pad, ty + 0.4);
+      ty += rowH;
+    } else {
+      doc.setFont(PDF_VALUE_FONT, 'bold');
+      doc.setFontSize(FONT.SIZE_TABLE_BODY - 0.7);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      for (const vl of r.lines) { doc.text(vl, x + pad + labelW, ty); ty += rowH; }
+    }
+  }
+
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return y + boxH;
+}
+
+/**
+ * Baseline lead-in for a prose paragraph that starts a section.
+ *
+ * openAutoSection() returns contentY at the TOP EDGE of the content
+ * area. addFieldPair() gets away with drawing straight at it because it
+ * renders a small caps label first, whose own ascent clears the bar. A
+ * raw addWrappedText() sets its BASELINE at y, so its first line lands
+ * INSIDE the header bar and is clipped — which is exactly what the
+ * "I am an adult over the age of eighteen" statement did on the first
+ * render of every variant.
+ */
+function proseLeadIn(fontSize: number = FONT.SIZE_FIELD_VALUE): number {
+  return fontSize * 0.36 + SPACING.MD;
+}
+
+/**
+ * A numbered declaration paragraph, hanging-indent style.
+ *
+ * Replaces the `[X]` checkbox rows of the first draft. A checkbox list
+ * reads as a form someone filled in; numbered paragraphs with a hanging
+ * indent read as statements a person made — which is what these are,
+ * and what a court is used to seeing. Numbering also gives anyone
+ * disputing the service something to cite: "paragraph 3", not "the
+ * third bullet".
+ *
+ * A DECLINED statement is still printed, struck through and annotated.
+ * Silently omitting it would misrepresent the form the signer saw.
+ */
+function drawDeclaration(
+  doc: jsPDF, n: number, text: string, accepted: boolean, y: number,
+  blank = false,
+): number {
+  const lx = getLeftX();
+  const ffw = getFullFieldWidth(doc);
+  // Blank paper gets an initial box in the left gutter. Initialling each
+  // statement individually is the paper equivalent of ticking it on the
+  // phone — without it, one signature at the foot would be the only
+  // evidence the signer saw seven separate declarations.
+  const numW = blank ? 10 : 6;
+  const lineH = FONT.SIZE_FIELD_VALUE * 0.42;
+
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  const lines = doc.splitTextToSize(sanitizePdfText(text), ffw - numW) as string[];
+  y = checkPageBreak(doc, y, lines.length * lineH + 2);
+
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.text(`${n}.`, lx, y);
+
+  if (blank) {
+    doc.setDrawColor(...COLOR.BORDER_FIELD);
+    doc.setLineWidth(BORDER.CHECKBOX);
+    doc.rect(lx + 4.5, y - 2.4, 3, 3);
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL - 1.2);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.text('init.', lx + 4.4, y + 2.2);
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  }
+
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  // Ternary inside the spread loses the tuple type — bind first.
+  const bodyColor = accepted ? COLOR.TEXT_PRIMARY : COLOR.TEXT_TERTIARY;
+  doc.setTextColor(bodyColor[0], bodyColor[1], bodyColor[2]);
+  let ly = y;
+  for (const l of lines) {
+    doc.text(l, lx + numW, ly);
+    if (!accepted && !blank) {
+      // Struck through rather than dropped: the reader must be able to
+      // see WHICH statement was put to the signer and declined.
+      const w = doc.getTextWidth(l);
+      doc.setDrawColor(...COLOR.TEXT_TERTIARY);
+      doc.setLineWidth(0.2);
+      doc.line(lx + numW, ly - 0.9, lx + numW + w, ly - 0.9);
+    }
+    ly += lineH;
+  }
+
+  if (!accepted && !blank) {
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.text('[ DECLINED - NOT AFFIRMED ]', lx + numW, ly);
+    ly += lineH;
+  }
+
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return ly + (blank ? 0.2 : SPACING.SM);
+}
+
+/** Barcode form key, so a scanned instrument reports its variation. */
+const RECEIPT_FORM_KEY: Record<ReceiptVariantKey, string> = {
+  individual: 'ACK-SERVICE-IND',
+  co_habitant: 'ACK-SERVICE-COHAB',
+  business: 'ACK-SERVICE-BUS',
+  substitute: 'ACK-SERVICE-SUB',
+};
+
+/**
+ * A field the subject fills in by hand: label in the normal position, a
+ * writable rule where the value would be.
+ *
+ * addFieldPair() renders "N/A" for an empty value, which is right on a
+ * report of established fact and exactly wrong on a form someone is
+ * meant to complete — it reads as an instruction NOT to write there.
+ */
+function addWritableFieldPair(
+  doc: jsPDF, label: string, x: number, y: number, width: number,
+): number {
+  // NOT addFieldPair with a blank value: it substitutes "N/A" for an
+  // empty string, which on a form meant to be completed in ink reads as
+  // an instruction not to write there. Matches addFieldPair's geometry
+  // (2.7mm label height, 0.8mm inner pad) so blank and printed fields
+  // sit on the same grid.
+  const labelH = 2.7;
+  const innerPad = 0.8;
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(sanitizePdfText(label.toUpperCase()), x + innerPad, y + 1.8);
+
+  doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
+  doc.setLineWidth(BORDER.FIELD);
+  doc.line(x + innerPad, y + labelH + 1.6, x + width - innerPad, y + labelH + 1.6);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return y + labelH + SPACING.FIELD_ROW_ADVANCE + 0.6;
+}
+
+/**
+ * The moment of service, as printed.
+ *
+ * Empty on a BLANK form: when the officer prints one, the delivery has
+ * not happened yet, and stamping the moment of PRINTING as the moment of
+ * service would put a false fact on a legal record — the exact fact a
+ * contested service turns on. The subject writes it, or the on-screen
+ * flow captures it at signature.
+ *
+ * Exported so the rule can be asserted directly; it is not observable
+ * from the rendered PDF, whose embedded font subset defeats text search.
+ */
+export function serviceMomentFor(
+  data: Pick<ReceiptOfServiceData, 'blank' | 'signedAt'>,
+): { date: string; time: string } {
+  if (data.blank) return { date: '', time: '' };
+  return receiptDateParts(data.signedAt);
+}
+
+async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF> {
+  const branding = await fetchPdfBranding();
+  setActiveBranding(branding);
+  await loadPdfAssets();
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  // MUST precede drawNibrsHeader — the header helpers read the print
+  // target off the doc to decide their top offset.
+  applyPrintTarget(doc, data.printTarget ?? 'office');
+  registerArialFont(doc);
+  setActiveFormKey('');
+
+  const { date: signedDate, time: signedTime } = serviceMomentFor(data);
+  setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    timeZone: RECEIPT_TZ,
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }));
+
+  const isIndividual = data.variant === 'individual';
+  const isBusiness = data.variant === 'business';
+  const blank = !!data.blank;
+  const onBehalfOf = data.acceptingOnBehalfOf || data.defendantName || 'the named party';
+
+  const lx = getLeftX();
+  const rx = getRightColumnX(doc);
+  const cw = getContentWidth(doc);
+  const hfw = getHalfFieldWidth(doc);
+  const ffw = getFullFieldWidth(doc);
+
+  setActiveCaseNumber(data.caseNumber);
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: (data.agency || 'ROCKY MOUNTAIN PROTECTIVE GROUP').toUpperCase(),
+    formTitle: 'CIVIL PROCESS RECORD',
+    caseNumber: data.caseNumber,
+    // On a blank, the service date does not exist yet; leaving it empty
+    // renders a labelled but blank header cell that reads as a defect.
+    // The issue date is true, and tells an officer how stale a form in
+    // the glovebox is.
+    reportDate: signedDate || (blank ? `ISSUED ${receiptDateParts(new Date().toISOString()).date}` : ''),
+  });
+
+  // ── Docket furniture: court heading, caption, instrument title ──
+  y = drawCourtHeading(doc, y, data.courtName, data.jurisdiction);
+  y = drawPleadingCaption(doc, y, {
+    plaintiff: data.plaintiffName,
+    defendant: data.defendantName,
+    caseNumber: data.caseNumber,
+    instrumentTitle: data.formTitle,
+  });
+  y = drawInstrumentTitle(doc, y, data.formTitle);
+
+  // ── Notice to the person served ──
+  // The one paragraph a signer must read before anything is asked of
+  // them, in the identical wording used on the signing screen.
+  y = checkPageBreak(doc, y, 14);
+  y += SPACING.LG;
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  y = addWrappedText(doc,
+    'NOTICE: This instrument evidences delivery only. It is not an admission of any '
+    + 'allegation, it is not agreement with the contents of the documents delivered, and it '
+    + 'waives no right, defense, or deadline. Any time limit for responding is stated within '
+    + 'the documents themselves.',
+    lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  y += SPACING.MD;
+
+  // ── Article I — the subjects ──
+  //
+  // Two people (or a person and an entity) are what this instrument is
+  // about: the party the process is FOR, and whoever actually took it.
+  // Presenting each as a titled subject with the name set large answers
+  // the two questions a reader arrives with before any field is read.
+  //
+  // The panels are NOT symmetric, because the subjects are not the same
+  // KIND of thing. A served business needs entity facts — what it is,
+  // where it was served, who may accept for it. A served person needs
+  // residence facts. Forcing both through one field list would leave
+  // half of every panel reading "N/A".
+  const gutter = 3;
+  const panelW = (cw - gutter) / 2;
+
+  const partyIsEntity = isBusiness;
+  const partyRows: SubjectRow[] = partyIsEntity
+    ? [
+        { label: 'Entity served', value: onBehalfOf },
+        { label: 'Place of service', value: data.serviceAddress },
+        { label: 'Premises', value: data.premisesType || 'Business' },
+        { label: 'Served via', value: 'Authorized agent' },
+      ]
+    : [
+        { label: 'Place of service', value: data.serviceAddress },
+        { label: 'Premises', value: data.premisesType || 'Residence' },
+        { label: 'Served via', value: isIndividual ? 'Personal delivery' : data.variantLabel },
+      ];
+
+  // Only the ACCEPTOR's side blanks out. The party/entity panel stays
+  // printed: the officer knows the case, and asking a defendant to
+  // transcribe their own case caption invites errors into a legal record.
+  const acceptorRows: SubjectRow[] = isIndividual
+    ? [
+        { label: 'Capacity', value: 'Party named' },
+        { label: 'Telephone', value: data.recipientPhone || 'Not provided', blank },
+        { label: 'Accepted', value: `${signedDate} ${signedTime}`, blank },
+      ]
+    : [
+        { label: isBusiness ? 'Title' : 'Relationship', value: data.recipientJobTitle || data.recipientRelationship || 'Not stated', blank },
+        { label: isBusiness ? 'Employed here' : 'Resides here', value: data.residesAtAddress ? 'Yes' : 'No', blank },
+        // "Authorized" is omitted from the BLANK panel: declaration 2 is
+        // the authority statement, which the subject initials. Asking
+        // them to write Yes/No here as well means the same fact recorded
+        // twice, in two hands, with the ever-present chance they
+        // disagree — and the row it costs is what keeps the blank on one
+        // sheet of PJ-700 roll. On a completed form it stays, because
+        // there it is a rendered value, not a second question.
+        ...(blank ? [] : [{ label: 'Authorized', value: data.authorizedAgent ? 'Yes' : 'No' }]),
+        { label: 'Telephone', value: data.recipientPhone || 'Not provided', blank },
+        { label: 'Delivery by', value: data.expectedDeliveryAt || 'Promptly', blank },
+      ];
+
+  {
+    const reserve = SPACING.SECTION_HEADER_H + 26;
+    y = checkPageBreak(doc, y, reserve);
+    const startY = y;
+    const hA = drawSubjectPanel(
+      doc, lx, startY, panelW,
+      partyIsEntity ? 'I(a).  Subject of Process / Entity' : 'I(a).  Subject of Process / Party Named',
+      partyIsEntity ? onBehalfOf : (data.defendantName || onBehalfOf),
+      partyIsEntity ? 'Business entity named in the process' : 'Defendant / Respondent named in the process',
+      partyRows, undefined, true,
+    );
+    const hB = drawSubjectPanel(
+      doc, lx + panelW + gutter, startY, panelW,
+      'I(b).  Person Accepting Service',
+      blank ? '' : data.recipientName,
+      isIndividual
+        ? 'Accepted personally'
+        : `${data.variantLabel} accepting on behalf of ${onBehalfOf}`,
+      acceptorRows, undefined, true,
+    );
+    const panelH = Math.max(hA, hB);
+
+    const aEnd = drawSubjectPanel(
+      doc, lx, startY, panelW,
+      partyIsEntity ? 'I(a).  Subject of Process / Entity' : 'I(a).  Subject of Process / Party Named',
+      partyIsEntity ? onBehalfOf : (data.defendantName || onBehalfOf),
+      partyIsEntity ? 'Business entity named in the process' : 'Defendant / Respondent named in the process',
+      partyRows, panelH,
+    );
+    const bEnd = drawSubjectPanel(
+      doc, lx + panelW + gutter, startY, panelW,
+      'I(b).  Person Accepting Service',
+      blank ? '' : data.recipientName,
+      isIndividual
+        ? 'Accepted personally'
+        : `${data.variantLabel} accepting on behalf of ${onBehalfOf}`,
+      acceptorRows, panelH,
+    );
+    y = Math.max(aEnd, bEnd) + SPACING.LG;
+  }
+
+  // ── Article II — particulars of service ──
+  y = checkPageBreak(doc, y, 14);
+  { const sec = openAutoSection(doc, 'II.  Particulars of Service', y); y = sec.contentY;
+    if (blank) {
+      // One row on paper, not two. There is no geolocation to record on
+      // a hand-completed form — printing "Not captured on paper" spends
+      // a field row saying nothing — and the server's name and badge
+      // read fine together. The row this frees is what keeps a
+      // four-document blank on a single sheet of PJ-700 roll.
+      const a = addWritableFieldPair(doc, '1. Date and Time of Delivery', lx, y, hfw);
+      const b = addFieldPair(doc, '2. Process Server / Badge',
+        [data.serverName, data.serverBadge].filter(Boolean).join('  ·  '), rx, y, hfw);
+      y = Math.max(a, b);
+    } else {
+      const a = addFieldPair(doc, '1. Date and Time of Delivery', `${signedDate} at ${signedTime}`, lx, y, hfw);
+      const b = addFieldPair(doc, '2. Process Server', data.serverName, rx, y, hfw);
+      y = Math.max(a, b);
+      const c = addFieldPair(doc, '3. Badge / License No.', data.serverBadge, lx, y, hfw);
+      const d = addFieldPair(doc, '4. Geolocation at Signature',
+        data.gps ? `${data.gps.lat.toFixed(6)}, ${data.gps.lng.toFixed(6)}` : 'Not available',
+        rx, y, hfw);
+      y = Math.max(c, d);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Article III — schedule of documents ──
+  // Itemized as a table rather than a sentence: a dispute over service
+  // is almost always a dispute over WHICH papers changed hands, and a
+  // row-per-document with a copy count is what answers that.
+  y = checkPageBreak(doc, y, 26);
+  {
+    const cols = getProportionalColumns(doc, [0.10, 0.72, 0.18]);
+    const rows = (data.documents.length
+      ? data.documents
+      : [{ title: data.documentType || 'Court documents', copies: 1 }]
+    ).map((d, i) => [String(i + 1), sanitizePdfText(d.title), String(d.copies)]);
+
+    // Header bar drawn explicitly. The table helper's `sectionTitle` is
+    // consulted ONLY for its "... CONTINUED" banner on a page break, so
+    // relying on it left this article with no visible number at all.
+    doc.setFillColor(...resolveSectionAccentColor('routine'));
+    doc.rect(lx, y, cw, SPACING.SECTION_HEADER_H, 'F');
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+    doc.setTextColor(255, 255, 255);
+    doc.text('III.  SCHEDULE OF DOCUMENTS DELIVERED', lx + 1.5, y + SPACING.SECTION_HEADER_H - 1.2);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    y += SPACING.SECTION_HEADER_H;
+
+    y = addTableWithShading(
+      doc,
+      [{ label: 'No.', x: cols[0] }, { label: 'Document Delivered', x: cols[1] }, { label: 'Copies', x: cols[2] }],
+      rows, y, cols,
+      { sectionTitle: 'III.  Schedule of Documents Delivered' },
+    );
+  }
+
+  // ── Article IV — declarations ──
+  // Reserve the declarations AND the execution block as one unit.
+  //
+  // A plain checkPageBreak only guarantees the declarations START on
+  // this page — the signature then spills alone onto the next one. On a
+  // roll printer that second page is a physically separate strip of
+  // paper carrying nothing but a signature line, detached from the
+  // statements it attests to. Whatever the recipient walks away with
+  // must be self-contained, so the two move together or not at all.
+  //
+  // Measured, not guessed: splitTextToSize against the real font and
+  // width, because the statement count and their wrapped line count
+  // both vary by variant and by party-name length.
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  const declLineH = FONT.SIZE_FIELD_VALUE * 0.42;
+  // SECTION_CONTENT_PAD is NOT added — openAutoSection's contentY
+  // already sits past it, and proseLeadIn() is the extra baseline
+  // clearance measured from that point.
+  let declBlockH = SPACING.SECTION_HEADER_H + proseLeadIn() + declLineH + SPACING.LG;
+  for (const a of data.attestations) {
+    const lines = doc.splitTextToSize(sanitizePdfText(a.text), ffw - 6) as string[];
+    // `blank` forces every statement to render un-annotated, so the
+    // declined line must NOT be budgeted for — see drawDeclaration.
+    declBlockH += lines.length * declLineH + (blank ? 0.2 : SPACING.SM)
+      + (blank || a.accepted ? 0 : declLineH);
+  }
+  const footnoteH = isIndividual ? 0 : 3 * (FONT.SIZE_FOOTER_SECONDARY * 0.42) + SPACING.MD;
+  // The hand-off badge is part of the layout, not an overlay. Placing it
+  // absolutely at the page foot worked while blank forms were short and
+  // silently printed ON the signature block once they filled the sheet.
+  const handoffH = blank && data.qrDataUrl ? 7 : 0;
+  const executionH = (SPACING.XL + SPACING.MD) + declLineH + SPACING.LG
+    + SPACING.SIGNATURE_BOX_H + SPACING.XL + footnoteH + handoffH + 3;
+  y = checkPageBreak(doc, y, declBlockH + executionH);
+
+  { const sec = openAutoSection(doc, 'IV.  Declarations of the Person Accepting Service', y);
+    y = sec.contentY + proseLeadIn();
+
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+    y = addWrappedText(doc,
+      blank
+        ? 'The undersigned states as follows. Initial each statement you affirm:'
+        : `The undersigned, ${sanitizePdfText(data.recipientName)}, states as follows:`,
+      lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
+    y += SPACING.LG;
+
+    data.attestations.forEach((a, i) => {
+      y = drawDeclaration(doc, i + 1, a.text, blank ? true : a.accepted, y, blank);
+    });
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Article V — execution ──
+  // closeAutoSection() draws its gold closing rule AT the y it returns,
+  // so a single base unit of clearance put this baseline through it and
+  // the clause rendered struck out. Clear the rule, then breathe.
+  //
+  // Deliberately NOT a perjury declaration — see the note on
+  // ReceiptOfServiceData.
+  y += SPACING.XL + SPACING.MD;
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  if (blank) {
+    doc.text('Executed at', lx, y);
+    const p1 = lx + doc.getTextWidth('Executed at ') + 1;
+    const p2 = p1 + ffw * 0.46;
+    doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
+    doc.setLineWidth(BORDER.FIELD);
+    doc.line(p1, y + 0.6, p2 - 2, y + 0.6);
+    doc.text('on', p2, y);
+    const p3 = p2 + doc.getTextWidth('on ') + 1;
+    doc.line(p3, y + 0.6, lx + ffw, y + 0.6);
+    y += 3.4;
+  } else {
+    y = addWrappedText(doc,
+      `Executed at ${sanitizePdfText(data.executionPlace || data.serviceAddress || 'the place of service')} `
+      + `on ${signedDate} at ${signedTime}.`,
+      lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
+  }
+  y += SPACING.LG;
+
+  // Role label names the SIGNER, not the server. The process server's
+  // own sworn statement belongs on the affidavit filed with the court,
+  // never on the copy the recipient walks away with.
+  y = addSignatureBlock(
+    doc,
+    isIndividual
+      ? 'V.  Signature of the Party Named'
+      : `V.  Signature of the Person Accepting Service (${data.variantLabel})`,
+    lx, y, ffw,
+    {
+      ...(data.signature ? { signatureImage: data.signature } : {}),
+      printedName: blank ? '' : data.recipientName,
+      // The middle sub-field defaults to BADGE NUMBER — correct on an
+      // officer's signature, nonsense on a recipient's. Capacity is the
+      // fact that actually matters here: it is the basis on which this
+      // person was entitled to accept the papers at all.
+      middleFieldLabel: isIndividual ? 'CAPACITY' : 'CAPACITY / RELATIONSHIP',
+      badgeNumber: blank
+        ? ''
+        : (isIndividual ? 'Party named' : (data.recipientJobTitle || data.recipientRelationship || data.variantLabel)),
+      date: blank ? '' : `${signedDate} ${signedTime}`,
+    },
+  );
+
+  y += SPACING.XL;
+
+  // Authority note, set as a genuine footnote BELOW the signature. It
+  // explains the rule the variation rests on; it is not something the
+  // signer attests to, so keeping it inside Article IV both misread as
+  // a declaration and made the must-stay-together block taller.
+  const badge = blank && data.qrDataUrl ? 11 : 0;
+  const footnoteTop = y;
+  if (!isIndividual) {
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    y = addWrappedText(doc,
+      'Service upon a person other than the party named is permitted under Rule 4(d)(1) of '
+      + 'the Utah Rules of Civil Procedure where the documents are left with a person of '
+      + 'suitable age and discretion residing at the dwelling, or with an agent authorized '
+      + 'to receive service at a place of business.',
+      lx, y, ffw - (badge ? badge + 34 : 0), FONT.SIZE_FOOTER_SECONDARY, { preserveCase: true });
+    y += SPACING.MD;
+  }
+
+  // ── Hand-off badge ──
+  // The paper and the phone are the SAME instrument, not alternatives
+  // the subject must commit to up front. Someone who starts writing and
+  // then decides they would rather scan can do so at any point, and the
+  // token is identical either way — so whichever route they finish by,
+  // exactly one signed record exists.
+  if (badge) {
+    // Occupies the column the footnote just yielded, anchored to the
+    // footnote's own top edge — so it costs only the height by which it
+    // exceeds the footnote, not its full height.
+    const qrX = lx + ffw - badge;
+    doc.addImage(data.qrDataUrl as string, 'PNG', qrX, footnoteTop - 2.4, badge, badge);
+
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text('PREFER YOUR PHONE?', qrX - 2, footnoteTop + 1.2, { align: 'right' });
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('Scan to finish on-screen instead.', qrX - 2, footnoteTop + 4.2, { align: 'right' });
+    doc.text('Only one signed record is created.', qrX - 2, footnoteTop + 6.8, { align: 'right' });
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    y = Math.max(y, footnoteTop - 2.4 + badge + SPACING.MD);
+  }
+
+  // NO checkPageBreak here. The reserve above already accounted for this
+  // line, so a second break check can only do one thing: push a single
+  // 5pt sentence onto a fresh sheet all by itself.
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
+  doc.setTextColor(...COLOR.TEXT_TERTIARY);
+  doc.text(
+    blank
+      ? 'Utah R. Civ. P. 4(d)  ·  Complete in ink  ·  The process server retains the original; you keep a copy'
+      : `Instrument No. ${data.receiptId}  ·  Utah R. Civ. P. 4(d)  ·  Retain this copy for your records`,
+    doc.internal.pageSize.getWidth() / 2, y, { align: 'center' },
+  );
+
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    // audienceLabel override: the default footer tag is "INTERNAL USE
+    // ONLY", flatly contradictory on an instrument handed to the person
+    // served. Same reasoning as the suppressed CONFIDENTIAL watermark.
+    addPageFooter(doc, i, totalPages, 'serve_acknowledgement', {
+      audienceLabel: blank ? 'FORM - COMPLETE BY HAND' : 'COPY FOR THE PERSON SERVED',
+    });
+  }
+
+  finalizePoliceReport(doc, {
+    barcode: {
+      formMetadata: {
+        form: RECEIPT_FORM_KEY[data.variant],
+        caseNumber: data.caseNumber,
+        agency: 'RMPG',
+        agencyOri: 'UT0180100',
+        reportDate: signedDate,
+        officer: data.serverName,
+        badge: data.serverBadge,
       },
     },
   });

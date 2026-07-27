@@ -594,7 +594,27 @@ export function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
+// ── Confidential watermark suppression ──────────────────────
+// Defaults to ENABLED, so every existing generator keeps its current
+// output byte-for-byte. Opt OUT only for documents that are handed to a
+// member of the public by design — the recipient's Acknowledgement of
+// Service copy is the first. Stamping "CONFIDENTIAL" on a form you just
+// gave a defendant is both false and intimidating.
+//
+// It lives here rather than in the receipt generator because
+// checkPageBreak() watermarks EVERY page it creates; a caller that only
+// skips the first-page call still gets one the moment its content
+// spills to page 2 (which is exactly what the Business variant did).
+let confidentialWatermarkEnabled = true;
+
+/** Toggle the CONFIDENTIAL watermark. ALWAYS restore in a finally —
+ *  this is module state shared by every generator in the bundle. */
+export function setConfidentialWatermarkEnabled(enabled: boolean): void {
+  confidentialWatermarkEnabled = enabled;
+}
+
 export function addConfidentialWatermark(doc: jsPDF) {
+  if (!confidentialWatermarkEnabled) return;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
@@ -1395,6 +1415,14 @@ export interface PdfSignatureData {
   printedName?: string;
   /** Badge number to fill in */
   badgeNumber?: string;
+  /**
+   * Label for the middle sub-field. Defaults to 'BADGE NUMBER', which is
+   * right for every officer-signed document — and meaningless on one
+   * signed by a member of the public, where it prints as an empty cell
+   * captioned with a term that does not apply to them. Additive: omit it
+   * and output is unchanged.
+   */
+  middleFieldLabel?: string;
   /** Date string (auto-filled if omitted) */
   date?: string;
 }
@@ -1499,7 +1527,10 @@ export function addSignatureBlock(
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
   doc.text(fitPdfText(doc, 'PRINTED NAME', colW - SPACING.MD * 2), x + SPACING.MD, row2Y + 2.2);
-  doc.text(fitPdfText(doc, 'BADGE NUMBER', colW - SPACING.MD * 2), x + colW + SPACING.MD, row2Y + 2.2);
+  doc.text(
+    fitPdfText(doc, sigData?.middleFieldLabel ?? 'BADGE NUMBER', colW - SPACING.MD * 2),
+    x + colW + SPACING.MD, row2Y + 2.2,
+  );
   doc.text(fitPdfText(doc, 'DATE/TIME', colW - SPACING.MD * 2), x + colW * 2 + SPACING.MD, row2Y + 2.2);
 
   // Values — auto-fill from sigData

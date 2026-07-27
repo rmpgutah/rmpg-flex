@@ -1,0 +1,1056 @@
+// ============================================================
+// RMPG Flex — Recipient Receipt of Service + Court Document Release
+//
+// Two routers, deliberately split by audience:
+//
+//   serveReceipt      → /api/serve-receipt  (auth: 'public')
+//       The RECIPIENT's surface. Reached by scanning the QR printed on
+//       the Call for Service report / run sheet before shift initiation.
+//       The token in the URL IS the credential — there is no session and
+//       never will be one (the signer is a member of the public, often a
+//       defendant). Same posture as mobileCfs.ts, but stricter: that
+//       token is officer-facing and multi-scan; this one is BURNED on the
+//       first successful signature so a receipt cannot be re-signed.
+//
+//   serveReceiptAdmin → /api/serve-receipts (auth: 'required')
+//       The OFFICER/agency surface: mint tokens, read signed receipts,
+//       void a receipt.
+//
+// SECURITY NOTES (read before editing):
+//   * The public router returns the MINIMUM needed to sign — party names,
+//     address of service, document titles. It must never grow to return
+//     case narrative, officer notes, prior attempts, or other jobs. A
+//     defendant holds this credential.
+//   * Rate limited per-IP on both GET and POST; the token is guessable
+//     only at 2^192, but scans_used/max_scans caps abuse of a real one.
+//   * Signatures are base64 PNG data URLs (same convention as
+//     serve_attempts.signature_data), size-capped below.
+// ============================================================
+
+import { Hono } from 'hono';
+import type { Env } from '../types';
+import { getDb, query, queryFirst, execute } from '../utils/db';
+import { recordAudit } from '../utils/auditLog';
+import { requireRole } from '../middleware/auth';
+import { rateLimitAllow } from '../utils/rateLimit';
+import { log } from '../utils/logger';
+
+const PUBLIC_APP_URL = 'https://rmpgutah.us';
+
+/** Default life of a printed QR. Printed sheets outlive their usefulness. */
+const DEFAULT_TOKEN_TTL_DAYS = 30;
+
+/** Max size of a single base64 signature payload (~500 KB, matches
+ *  users.digital_signature's cap in src/routes/auth.ts). */
+const MAX_SIGNATURE_BYTES = 500_000;
+
+// ── Helpers ─────────────────────────────────────────────────
+
+function randomToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** Salted SHA-256 of the caller IP. We keep a correlator for abuse
+ *  investigation without storing a member of the public's raw IP. */
+async function hashIp(ip: string, salt: string): Promise<string> {
+  const data = new TextEncoder().encode(`${salt}:${ip}`);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+}
+
+function clientIp(c: any): string {
+  return c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+}
+
+/** Reject anything that isn't a plausibly-sized PNG data URL. */
+function validSignature(v: unknown): v is string {
+  return typeof v === 'string'
+    && v.startsWith('data:image/')
+    && v.length > 100
+    && v.length <= MAX_SIGNATURE_BYTES;
+}
+
+function bool(v: unknown): number {
+  return v === true || v === 1 || v === '1' || v === 'true' ? 1 : 0;
+}
+
+function str(v: unknown, max = 500): string | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  return s ? s.slice(0, max) : null;
+}
+
+// ── Form variants ───────────────────────────────────────────
+// One form, four printed variations. MIRRORS
+// client/src/utils/serveReceiptVariant.ts — there is no shared build
+// between /src and /client/src, so the logic is duplicated on purpose.
+// THIS COPY IS AUTHORITATIVE: the client's answer is treated as a hint
+// and re-derived here before storage, because the client is a public,
+// unauthenticated page and its POST body is fully attacker-controlled.
+// A signer could otherwise claim the (Individual) variant — which has
+// no authority attestation — while accepting on someone else's behalf.
+export type ReceiptVariant = 'individual' | 'co_habitant' | 'business' | 'substitute';
+
+export const VARIANT_LABEL: Record<ReceiptVariant, string> = {
+  individual: 'Individual',
+  co_habitant: 'Co-Habitant',
+  business: 'Business',
+  substitute: 'Substitute Service',
+};
+
+export function resolveReceiptVariant(i: {
+  isNamedParty: boolean;
+  premisesType: string | null;
+  residesAtAddress: boolean;
+  authorizedAgent: boolean;
+}): ReceiptVariant {
+  if (i.isNamedParty) return 'individual';
+  if (i.premisesType === 'business' || i.authorizedAgent) return 'business';
+  if (i.residesAtAddress) return 'co_habitant';
+  return 'substitute';
+}
+
+export function receiptFormTitle(v: ReceiptVariant): string {
+  return `Acknowledgement of Service Form (${VARIANT_LABEL[v]})`;
+}
+
+/**
+ * What the process server records on the MDT at the door, before the
+ * form is handed over in either direction.
+ *
+ * This PRE-SELECTS the variation and pre-fills the subject's form. It
+ * does not decide it. The declarations are the signer's own statements,
+ * so the signer's answers stay authoritative — where the two disagree we
+ * record the disagreement rather than overwrite it, because an officer
+ * reading a doorstep and a person describing their own household are two
+ * different kinds of evidence and a supervisor should see both.
+ */
+export interface ServeReceiptPrefill {
+  /** null = officer could not tell; the subject answers it themselves. */
+  is_named_party: boolean | null;
+  premises_type: 'residence' | 'business' | 'other';
+  resides_at_address: boolean;
+  authorized_agent: boolean;
+  recipient_name: string | null;
+  recipient_relationship: string | null;
+  business_name: string | null;
+  recipient_job_title: string | null;
+  /** What was actually handed over — the officer knows, the subject may not. */
+  documents: Array<{ title: string; copies: number }>;
+  note: string | null;
+}
+
+export interface ServeReceiptSubmission {
+  variant: ReceiptVariant;
+  recipient_name: string | null;
+  business_name: string | null;
+  recipient_age_confirmed: number;
+  ack_received_documents: number;
+  ack_information_true: number;
+  recipient_signature: unknown;
+  sub_resides_at_address: number;
+  sub_is_authorized_agent: number;
+  sub_agrees_to_deliver: number;
+  sub_release_acknowledged: number;
+  sub_defendant_name: string | null;
+}
+
+/**
+ * Gate on whether a submission is legally complete enough to record.
+ *
+ * ── THIS IS THE POLICY DECISION IN THIS FILE ────────────────
+ * Everything else here is plumbing; this function decides what RMPG is
+ * willing to put its name on. The rules below encode Utah R. Civ. P.
+ * 4(d)(1): service on someone other than the named party requires a
+ * person of suitable age and discretion who RESIDES at the dwelling —
+ * or, at a business, an agent authorized to receive service.
+ *
+ * Deliberately strict choices you may want to loosen:
+ *   - `sub_agrees_to_deliver` is REQUIRED on every non-individual
+ *     variant. The rule itself does not condition validity on the
+ *     substitute's promise; service is complete when the papers are
+ *     left. Requiring it here means a co-resident who refuses to
+ *     promise blocks the form — arguably correct for an *acknowledgment
+ *     and release* (we're documenting an undertaking, not the service
+ *     itself), but it does mean the officer falls back to a
+ *     posting/attempt record in that case.
+ *   - Age is self-attested, not verified. Tightening to require
+ *     `recipient_id_verified` would be more defensible in a contested
+ *     hearing but will stall routine serves.
+ *   - The (Substitute Service) variant does NOT require the authority
+ *     statement, because by construction the signer neither resides nor
+ *     works there — asking them to affirm it would be asking for a
+ *     false statement. The delivery undertaking carries the weight.
+ *
+ * Returns an operator-readable reason, or null when the submission passes.
+ */
+export function validateReceiptSubmission(s: ServeReceiptSubmission): string | null {
+  if (!s.recipient_name) return 'Your name is required';
+  if (!validSignature(s.recipient_signature)) return 'A signature is required';
+  if (!s.recipient_age_confirmed) return 'You must confirm you are an adult over the age of eighteen';
+  if (!s.ack_received_documents) return 'You must acknowledge receiving the documents';
+  if (!s.ack_information_true) return 'You must attest the information is true and correct';
+
+  if (s.variant === 'individual') return null;
+
+  if (!s.sub_defendant_name) {
+    return 'The individual or business the documents are intended for is required';
+  }
+  if (!s.sub_agrees_to_deliver) {
+    return 'You must agree to deliver the documents to the individual or business named';
+  }
+  if (!s.sub_release_acknowledged) {
+    return 'You must acknowledge that you are accepting on their behalf';
+  }
+  if (s.variant === 'business') {
+    if (!s.business_name) return 'The business name is required';
+    if (!s.sub_resides_at_address && !s.sub_is_authorized_agent) {
+      return 'You must be an employee of, or authorized to accept service at, this address';
+    }
+  }
+  if (s.variant === 'co_habitant' && !s.sub_resides_at_address) {
+    return 'You must be a resident of the address for service';
+  }
+  return null;
+}
+
+interface TokenRow {
+  id: number;
+  serve_queue_id: number;
+  expires_at: string | null;
+  scans_used: number;
+  max_scans: number;
+  revoked_at: string | null;
+  used_receipt_id: number | null;
+  prefill_json: string | null;
+  prefill_variant: string | null;
+}
+
+type TokenFailure = { code: string; message: string; http: 400 | 404 | 409 | 410 | 429 };
+
+/** Resolve + validate a printed token. Never distinguishes "no such
+ *  token" from "wrong token" beyond a flat 404 — no enumeration signal. */
+async function resolveToken(
+  db: D1Database,
+  token: string,
+): Promise<{ row: TokenRow } | { error: TokenFailure }> {
+  if (!token || token.length < 16 || token.length > 64) {
+    return { error: { code: 'invalid_token', message: 'This link is not valid.', http: 404 } };
+  }
+  const row = await queryFirst<TokenRow>(
+    db,
+    `SELECT id, serve_queue_id, expires_at, scans_used, max_scans, revoked_at, used_receipt_id,
+            prefill_json, prefill_variant
+       FROM serve_receipt_tokens WHERE token = ?`,
+    token,
+  );
+  if (!row) {
+    return { error: { code: 'invalid_token', message: 'This link is not valid.', http: 404 } };
+  }
+  if (row.revoked_at) {
+    return { error: { code: 'revoked', message: 'This link has been revoked. Please ask the process server for a new one.', http: 410 } };
+  }
+  if (row.used_receipt_id) {
+    return { error: { code: 'already_signed', message: 'This receipt has already been signed.', http: 409 } };
+  }
+  if (row.expires_at && Date.parse(`${row.expires_at.replace(' ', 'T')}Z`) < Date.now()) {
+    return { error: { code: 'expired', message: 'This link has expired. Please ask the process server for a new one.', http: 410 } };
+  }
+  if (row.scans_used >= row.max_scans) {
+    return { error: { code: 'scan_limit', message: 'This link has been opened too many times. Please ask the process server for a new one.', http: 410 } };
+  }
+  return { row };
+}
+
+// ============================================================
+// PUBLIC ROUTER — /api/serve-receipt
+// ============================================================
+
+export const serveReceipt = new Hono<Env>();
+
+/**
+ * GET /api/serve-receipt/:token
+ * Challenge. Returns only what the form needs to render.
+ */
+serveReceipt.get('/:token', async (c) => {
+  const ip = clientIp(c);
+  if (!(await rateLimitAllow(c.env.KV, `serve-receipt:ip:${ip}`, 60, 300))) {
+    return c.json({ ok: false, code: 'rate_limited', message: 'Too many requests. Please wait a moment.' }, 429);
+  }
+
+  const db = getDb(c.env);
+  const resolved = await resolveToken(db, c.req.param('token'));
+  if ('error' in resolved) {
+    return c.json({ ok: false, code: resolved.error.code, message: resolved.error.message }, resolved.error.http);
+  }
+  const tok = resolved.row;
+
+  const job = await queryFirst<{
+    id: number; case_number: string | null; court_name: string | null; jurisdiction: string | null;
+    plaintiff_name: string | null; defendant_name: string | null; document_type: string | null;
+    recipient_name: string | null; recipient_address: string | null; recipient_city: string | null;
+    recipient_state: string | null; recipient_zip: string | null; status: string | null;
+    assigned_officer_id: number | null; officer_id: number | null;
+  }>(
+    db,
+    `SELECT id, case_number, court_name, jurisdiction, plaintiff_name, defendant_name,
+            document_type, recipient_name, recipient_address, recipient_city,
+            recipient_state, recipient_zip, status, assigned_officer_id, officer_id
+       FROM serve_queue WHERE id = ?`,
+    tok.serve_queue_id,
+  );
+  if (!job) {
+    return c.json({ ok: false, code: 'invalid_token', message: 'This link is not valid.' }, 404);
+  }
+
+  // Document inventory — titles only, never the file contents or R2 keys.
+  const docs = await query<{ file_name: string | null; doc_type: string | null }>(
+    db,
+    `SELECT file_name, doc_type FROM serve_intake_documents
+      WHERE serve_queue_id = ? AND status != 'archived' ORDER BY id`,
+    tok.serve_queue_id,
+  ).catch(() => []);
+
+  const officerId = job.assigned_officer_id ?? job.officer_id;
+  // full_name is the NOT NULL column on users; first_name/last_name were
+  // added later and are nullable, so preferring them leaves the process
+  // server's name blank on the instrument for any account predating that
+  // migration. Prefer full_name, fall back to the parts.
+  const officer = officerId
+    ? await queryFirst<{ full_name: string | null; first_name: string | null; last_name: string | null; badge_number: string | null }>(
+        db,
+        'SELECT full_name, first_name, last_name, badge_number FROM users WHERE id = ?',
+        officerId,
+      ).catch(() => null)
+    : null;
+
+  await execute(db, 'UPDATE serve_receipt_tokens SET scans_used = scans_used + 1 WHERE id = ?', tok.id);
+
+  return c.json({
+    ok: true,
+    job: {
+      id: job.id,
+      case_number: job.case_number,
+      court_name: job.court_name,
+      jurisdiction: job.jurisdiction,
+      plaintiff_name: job.plaintiff_name,
+      defendant_name: job.defendant_name,
+      document_type: job.document_type,
+      recipient_name: job.recipient_name,
+      service_address: job.recipient_address,
+      service_city: job.recipient_city,
+      service_state: job.recipient_state,
+      service_zip: job.recipient_zip,
+    },
+    documents: docs.map((d) => ({
+      title: d.file_name || d.doc_type || 'Court document',
+      doc_type: d.doc_type,
+    })),
+    // The officer's doorstep read, so the subject's form opens with the
+    // obvious answers already filled and the document list already
+    // itemized. Every one of them stays editable: these are the
+    // signer's declarations, and a pre-answered form they cannot correct
+    // would be the officer's statement wearing the signer's signature.
+    prefill: (() => {
+      if (!tok.prefill_json) return null;
+      try {
+        return { ...JSON.parse(tok.prefill_json), variant: tok.prefill_variant ?? null };
+      } catch {
+        return null;
+      }
+    })(),
+    server: officer
+      ? {
+          name: officer.full_name
+            || [officer.first_name, officer.last_name].filter(Boolean).join(' ')
+            || null,
+          badge: officer.badge_number,
+        }
+      : null,
+    agency: 'Rocky Mountain Protective Group',
+  });
+});
+
+/**
+ * POST /api/serve-receipt/:token
+ * Submit the signed acknowledgment. Burns the token.
+ */
+serveReceipt.post('/:token', async (c) => {
+  const ip = clientIp(c);
+  if (!(await rateLimitAllow(c.env.KV, `serve-receipt-post:ip:${ip}`, 20, 300))) {
+    return c.json({ ok: false, code: 'rate_limited', message: 'Too many requests. Please wait a moment.' }, 429);
+  }
+
+  const db = getDb(c.env);
+  const resolved = await resolveToken(db, c.req.param('token'));
+  if ('error' in resolved) {
+    return c.json({ ok: false, code: resolved.error.code, message: resolved.error.message }, resolved.error.http);
+  }
+  const tok = resolved.row;
+
+  const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+  if (!body) return c.json({ ok: false, code: 'bad_request', message: 'Invalid submission.' }, 400);
+
+  // Re-derive the variant from the concrete facts rather than trusting
+  // body.form_variant. See resolveReceiptVariant's comment: the client
+  // is public and unauthenticated, so a submitted variant is a hint.
+  const premisesType = str(body.premises_type, 30);
+  const residesAtAddress = bool(body.sub_resides_at_address);
+  const authorizedAgent = bool(body.sub_is_authorized_agent);
+  const variant = resolveReceiptVariant({
+    isNamedParty: str(body.form_variant, 30) === 'individual',
+    premisesType,
+    residesAtAddress: !!residesAtAddress,
+    authorizedAgent: !!authorizedAgent,
+  });
+  const formTitle = receiptFormTitle(variant);
+
+  // Coarse legal category the rest of the serve subsystem understands.
+  // 'personal' only for the named party signing for themselves; every
+  // other variation is substitute service however it is titled.
+  const method = variant === 'individual' ? 'personal' : 'substitute';
+
+  const submission: ServeReceiptSubmission = {
+    variant,
+    recipient_name: str(body.recipient_name, 200),
+    business_name: str(body.business_name, 200),
+    recipient_age_confirmed: bool(body.recipient_age_confirmed),
+    ack_received_documents: bool(body.ack_received_documents),
+    ack_information_true: bool(body.ack_information_true),
+    recipient_signature: body.recipient_signature,
+    sub_resides_at_address: residesAtAddress,
+    sub_is_authorized_agent: authorizedAgent,
+    sub_agrees_to_deliver: bool(body.sub_agrees_to_deliver),
+    sub_release_acknowledged: bool(body.sub_release_acknowledged),
+    sub_defendant_name: str(body.sub_defendant_name, 200),
+  };
+
+  // Attestation sentences captured VERBATIM as shown to this signer.
+  // Never regenerated server-side from current copy — editing the
+  // wording later must not rewrite what past signers agreed to.
+  const attRaw = Array.isArray(body.attestations) ? body.attestations : [];
+  const attestations = attRaw.slice(0, 20).map((a: any) => ({
+    id: String(a?.id ?? '').slice(0, 40),
+    text: String(a?.text ?? '').slice(0, 600),
+    accepted: bool(a?.accepted) === 1,
+  })).filter((a) => a.id && a.text);
+
+  const invalid = validateReceiptSubmission(submission);
+  if (invalid) {
+    return c.json({ ok: false, code: 'incomplete', message: invalid }, 400);
+  }
+
+  const serverSig = validSignature(body.server_signature) ? (body.server_signature as string) : null;
+  const witnessSig = validSignature(body.witness_signature) ? (body.witness_signature as string) : null;
+
+  const docsRaw = Array.isArray(body.documents) ? body.documents : [];
+  const documents = docsRaw.slice(0, 50).map((d: any) => ({
+    title: String(d?.title ?? 'Court document').slice(0, 200),
+    copies: Number.isFinite(Number(d?.copies)) ? Math.max(1, Math.min(99, Number(d.copies))) : 1,
+  }));
+
+  const emailTo = str(body.recipient_email, 254);
+  const ipHash = await hashIp(ip, String(c.env.JWT_SECRET ?? 'salt'));
+
+  const ins = await execute(
+    db,
+    `INSERT INTO serve_receipts (
+       serve_queue_id, token_id, service_method,
+       form_variant, form_title, attestations_json,
+       recipient_name, recipient_role, recipient_relationship, recipient_phone,
+       recipient_email, recipient_description, business_name, recipient_job_title,
+       recipient_id_type, recipient_id_verified,
+       recipient_age_confirmed,
+       service_address, service_city, service_state, service_zip, premises_type,
+       documents_json, document_count,
+       sub_defendant_name, sub_resides_at_address, sub_is_authorized_agent,
+       sub_agrees_to_deliver, sub_expected_delivery_at, sub_defendant_expected_at,
+       sub_release_acknowledged, sub_declined_reason,
+       ack_received_documents, ack_notice_read, ack_information_true,
+       recipient_signature, recipient_signed_at,
+       server_signature, server_name, server_badge, witness_name, witness_signature,
+       latitude, longitude, accuracy_m, user_agent, ip_hash,
+       email_to, email_status, notes
+     ) VALUES (?,?,?, ?,?,?, ?,?,?,?, ?,?,?,?, ?,?, ?, ?,?,?,?,?, ?,?, ?,?,?, ?,?,?, ?,?, ?,?,?,
+               ?, datetime('now'), ?,?,?,?,?, ?,?,?,?,?, ?,?,?)`,
+    tok.serve_queue_id, tok.id, method,
+    variant, formTitle, JSON.stringify(attestations),
+    submission.recipient_name, variant, str(body.recipient_relationship, 120),
+    str(body.recipient_phone, 40), emailTo, str(body.recipient_description, 300),
+    submission.business_name, str(body.recipient_job_title, 120),
+    str(body.recipient_id_type, 60), bool(body.recipient_id_verified),
+    submission.recipient_age_confirmed,
+    str(body.service_address, 250), str(body.service_city, 100), str(body.service_state, 2),
+    str(body.service_zip, 10), premisesType,
+    JSON.stringify(documents), documents.length,
+    submission.sub_defendant_name, submission.sub_resides_at_address, submission.sub_is_authorized_agent,
+    submission.sub_agrees_to_deliver, str(body.sub_expected_delivery_at, 40),
+    str(body.sub_defendant_expected_at, 120),
+    submission.sub_release_acknowledged, str(body.sub_declined_reason, 500),
+    submission.ack_received_documents, bool(body.ack_notice_read), submission.ack_information_true,
+    submission.recipient_signature as string,
+    serverSig, str(body.server_name, 120), str(body.server_badge, 40),
+    str(body.witness_name, 120), witnessSig,
+    Number.isFinite(Number(body.latitude)) ? Number(body.latitude) : null,
+    Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null,
+    Number.isFinite(Number(body.accuracy_m)) ? Number(body.accuracy_m) : null,
+    str(c.req.header('user-agent'), 300), ipHash,
+    emailTo, emailTo ? 'pending' : 'not_requested', str(body.notes, 1000),
+  );
+
+  const receiptId = Number(ins.meta.last_row_id);
+
+  // Record the officer's expectation alongside the derived variation.
+  // A mismatch is NOT an error — the officer is reading a doorstep and
+  // the signer knows their own household — but it is exactly the thing
+  // worth a supervisor's eye before an affidavit is filed on it.
+  if (tok.prefill_variant) {
+    await execute(
+      db,
+      'UPDATE serve_receipts SET officer_variant = ?, variant_conflict = ? WHERE id = ?',
+      tok.prefill_variant, tok.prefill_variant === variant ? 0 : 1, receiptId,
+    ).catch(() => undefined);
+  }
+  const channel = str(body.completion_channel, 20) === 'paper' ? 'paper' : 'mobile';
+  await execute(db, 'UPDATE serve_receipts SET completion_channel = ? WHERE id = ?', channel, receiptId)
+    .catch(() => undefined);
+
+  // Burn the token. Conditional on used_receipt_id still being NULL so two
+  // concurrent submits cannot both claim it — the loser's UPDATE matches 0
+  // rows and it reports already_signed rather than double-recording.
+  const burn = await execute(
+    db,
+    `UPDATE serve_receipt_tokens
+        SET used_receipt_id = ?, used_at = datetime('now')
+      WHERE id = ? AND used_receipt_id IS NULL`,
+    receiptId, tok.id,
+  );
+  if (!burn.meta.changes) {
+    await execute(db, "UPDATE serve_receipts SET status = 'voided', void_reason = 'duplicate submission' WHERE id = ?", receiptId);
+    return c.json({ ok: false, code: 'already_signed', message: 'This receipt has already been signed.' }, 409);
+  }
+
+  // ── Auto-advance the serve job ─────────────────────────────
+  // Every variant of this form documents papers actually handed over,
+  // so all four advance the job to 'served'. There is no variant that
+  // records a non-delivery — a failed attempt is logged by the officer
+  // through ServeAttemptModal, not by a recipient signature.
+  const advances = true;
+  {
+    await execute(
+      db,
+      `UPDATE serve_queue
+          SET status = 'served', serve_date = COALESCE(serve_date, datetime('now')),
+              updated_at = datetime('now')
+        WHERE id = ? AND status != 'served'`,
+      tok.serve_queue_id,
+    );
+  }
+
+  // Attempt row, so the receipt shows up on the existing attempt timeline.
+  const nextAttempt = await queryFirst<{ n: number }>(
+    db, 'SELECT COALESCE(MAX(attempt_number), 0) + 1 AS n FROM serve_attempts WHERE serve_queue_id = ?',
+    tok.serve_queue_id,
+  );
+  const attempt = await execute(
+    db,
+    `INSERT INTO serve_attempts (
+       serve_queue_id, attempt_number, attempt_at, result, latitude, longitude,
+       notes, attempt_type, signature_data
+     ) VALUES (?, ?, datetime('now'), ?, ?, ?, ?, 'receipt', ?)`,
+    tok.serve_queue_id, nextAttempt?.n ?? 1,
+    advances ? 'served' : 'attempted',
+    Number.isFinite(Number(body.latitude)) ? Number(body.latitude) : null,
+    Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null,
+    `${formTitle} — receipt #${receiptId}, signed by ${submission.recipient_name}`,
+    submission.recipient_signature as string,
+  ).catch((err) => {
+    log.error('serve receipt: attempt row insert failed', { receiptId, queueId: tok.serve_queue_id }, err as Error);
+    return null;
+  });
+
+  if (attempt?.meta.last_row_id) {
+    await execute(db, 'UPDATE serve_receipts SET serve_attempt_id = ? WHERE id = ?',
+      Number(attempt.meta.last_row_id), receiptId).catch(() => undefined);
+  }
+
+  await recordAudit(c, {
+    action: 'SERVE_RECEIPT_SIGNED',
+    entityType: 'serve_queue',
+    entityId: tok.serve_queue_id,
+    details: { receipt_id: receiptId, form_variant: variant, service_method: method, advanced: advances },
+    actorId: null,
+  }).catch(() => undefined);
+
+  log.info('Serve receipt signed', { receiptId, queueId: tok.serve_queue_id, variant, method });
+
+  return c.json({
+    ok: true,
+    receipt_id: receiptId,
+    form_variant: variant,
+    form_title: formTitle,
+    officer_variant: tok.prefill_variant ?? null,
+    variant_conflict: !!tok.prefill_variant && tok.prefill_variant !== variant,
+    service_method: method,
+    job_advanced: advances,
+    email_status: emailTo ? 'pending' : 'not_requested',
+  }, 201);
+});
+
+/**
+ * POST /api/serve-receipt/:token/email
+ * Email the recipient their copy of the signed receipt.
+ *
+ * The PDF arrives as base64 FROM THE BROWSER because jsPDF is the only
+ * renderer we have and it is client-side — the Worker cannot rasterize
+ * one (same constraint that makes the QR PNG a client-side render).
+ *
+ * Sent from the ASSIGNED OFFICER's mailbox, not a shared one: the agency
+ * has no system mailbox configured, and a receipt arriving from the
+ * server who actually handed over the documents is what a recipient can
+ * recognize. No officer / no Graph config → 200 with a not_configured
+ * status, per the repo's unset-integration convention.
+ */
+serveReceipt.post('/:token/email', async (c) => {
+  const ip = clientIp(c);
+  if (!(await rateLimitAllow(c.env.KV, `serve-receipt-mail:ip:${ip}`, 10, 600))) {
+    return c.json({ ok: false, code: 'rate_limited' }, 429);
+  }
+
+  const db = getDb(c.env);
+  const body = await c.req.json<{ receipt_id?: number; pdf_base64?: string; filename?: string }>()
+    .catch(() => null);
+  if (!body?.receipt_id || !body.pdf_base64) {
+    return c.json({ ok: false, code: 'bad_request' }, 400);
+  }
+  if (body.pdf_base64.length > 6_000_000) {
+    return c.json({ ok: false, code: 'too_large', message: 'Receipt PDF is too large to email.' }, 413);
+  }
+
+  // The token proves the caller just signed; pairing it with receipt_id
+  // stops one token from mailing a different recipient's receipt out.
+  const receipt = await queryFirst<{
+    id: number; serve_queue_id: number; email_to: string | null;
+    recipient_name: string; form_title: string | null; email_status: string;
+  }>(
+    db,
+    `SELECT r.id, r.serve_queue_id, r.email_to, r.recipient_name, r.form_title, r.email_status
+       FROM serve_receipts r
+       JOIN serve_receipt_tokens t ON t.id = r.token_id
+      WHERE r.id = ? AND t.token = ?`,
+    body.receipt_id, c.req.param('token'),
+  );
+  if (!receipt) return c.json({ ok: false, code: 'not_found' }, 404);
+  if (!receipt.email_to) return c.json({ ok: true, status: 'not_requested' });
+  if (receipt.email_status === 'sent') return c.json({ ok: true, status: 'sent' });
+
+  const job = await queryFirst<{ case_number: string | null; assigned_officer_id: number | null; officer_id: number | null }>(
+    db,
+    'SELECT case_number, assigned_officer_id, officer_id FROM serve_queue WHERE id = ?',
+    receipt.serve_queue_id,
+  );
+  const ownerUserId = job?.assigned_officer_id ?? job?.officer_id ?? null;
+  if (!ownerUserId) {
+    await execute(db, "UPDATE serve_receipts SET email_status = 'not_configured', email_error = 'no assigned officer mailbox' WHERE id = ?", receipt.id);
+    return c.json({ ok: true, status: 'not_configured' });
+  }
+
+  const caseRef = job?.case_number ? ` — Case ${job.case_number}` : '';
+  // Title comes from the stored row, so the email names the exact
+  // variation the recipient signed — (Business), (Co-Habitant), etc.
+  const label = receipt.form_title || 'Acknowledgement of Service Form';
+
+  try {
+    const { enqueueAndSend } = await import('./email');
+    const { buildSendPayload } = await import('../utils/emailSend');
+    const result = await enqueueAndSend(c.env, ownerUserId, buildSendPayload({
+      to: receipt.email_to,
+      subject: `${label}${caseRef}`,
+      body:
+        `${receipt.recipient_name},\n\n` +
+        `Attached is your copy of the ${label.toLowerCase()} you signed today, ` +
+        `for your records.\n\n` +
+        `This message is a courtesy copy from Rocky Mountain Protective Group. ` +
+        `Please do not reply — questions about the case should go to the court ` +
+        `or the attorney of record.\n`,
+      attachments: [{
+        name: body.filename || 'acknowledgement-of-service.pdf',
+        contentType: 'application/pdf',
+        contentBytes: body.pdf_base64,
+      }],
+    } as any));
+
+    const status = result.status === 'sent' ? 'sent' : 'pending';
+    await execute(
+      db,
+      `UPDATE serve_receipts SET email_status = ?, email_error = ?,
+              email_sent_at = CASE WHEN ? = 'sent' THEN datetime('now') ELSE NULL END
+        WHERE id = ?`,
+      status, result.error ? String(result.error).slice(0, 300) : null, status, receipt.id,
+    );
+    return c.json({ ok: true, status });
+  } catch (err) {
+    log.error('Serve receipt email failed', { receiptId: receipt.id }, err as Error);
+    await execute(db, "UPDATE serve_receipts SET email_status = 'failed', email_error = ? WHERE id = ?",
+      String((err as Error)?.message ?? 'send failed').slice(0, 300), receipt.id);
+    return c.json({ ok: true, status: 'failed' });
+  }
+});
+
+/**
+ * POST /api/serve-receipt/:token/delivery
+ * Record the outcome of emailing the recipient their copy. Called by the
+ * signing page immediately after it renders the PDF (only the browser has
+ * jsPDF — the Worker cannot rasterize one), so the status column reflects
+ * what actually happened rather than an optimistic 'pending' forever.
+ */
+serveReceipt.post('/:token/delivery', async (c) => {
+  const db = getDb(c.env);
+  const body = await c.req.json<{ receipt_id?: number; status?: string; error?: string }>().catch(() => null);
+  if (!body?.receipt_id) return c.json({ ok: false, code: 'bad_request' }, 400);
+
+  const status = ['sent', 'failed', 'not_configured'].includes(String(body.status)) ? String(body.status) : 'failed';
+
+  // Bind BOTH the token and the receipt id — the token alone proves the
+  // caller signed this receipt, and the pairing stops one recipient's
+  // token from writing a delivery status onto another's receipt.
+  await execute(
+    db,
+    `UPDATE serve_receipts
+        SET email_status = ?, email_error = ?,
+            email_sent_at = CASE WHEN ? = 'sent' THEN datetime('now') ELSE email_sent_at END
+      WHERE id = ? AND token_id = (SELECT id FROM serve_receipt_tokens WHERE token = ?)`,
+    status, str(body.error, 300), status, body.receipt_id, c.req.param('token'),
+  );
+  return c.json({ ok: true });
+});
+
+// ============================================================
+// ADMIN / OFFICER ROUTER — /api/serve-receipts
+// ============================================================
+
+export const serveReceiptAdmin = new Hono<Env>();
+
+/**
+ * POST /api/serve-receipts/:queueId/token
+ * Mint the QR credential. The client renders the PNG (Workers cannot
+ * rasterize) — we return { token, url } exactly like /api/cfs/:id/qr-token.
+ */
+serveReceiptAdmin.post(
+  '/:queueId/token',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  async (c) => {
+    const queueId = parseInt(c.req.param('queueId') || '', 10);
+    if (!queueId) return c.json({ error: 'Invalid serve job id' }, 400);
+
+    const db = getDb(c.env);
+    const job = await queryFirst<{ id: number }>(db, 'SELECT id FROM serve_queue WHERE id = ?', queueId);
+    if (!job) return c.json({ error: 'Serve job not found' }, 404);
+
+    const user = c.get('user') as { id: number } | undefined;
+    const reqBody = await c.req.json<{ ttl_days?: number }>().catch(() => ({} as { ttl_days?: number }));
+    const ttlDays = Number(reqBody.ttl_days) || DEFAULT_TOKEN_TTL_DAYS;
+
+    // Reuse an unburned, unexpired token for this job rather than minting a
+    // new one per print. Reprinting a run sheet is routine; a fresh token
+    // each time would silently invalidate the copy already in the field.
+    const existing = await queryFirst<{ token: string }>(
+      db,
+      `SELECT token FROM serve_receipt_tokens
+        WHERE serve_queue_id = ? AND used_receipt_id IS NULL AND revoked_at IS NULL
+          AND (expires_at IS NULL OR expires_at > datetime('now'))
+          AND scans_used < max_scans
+        ORDER BY id DESC LIMIT 1`,
+      queueId,
+    );
+    if (existing) {
+      return c.json({ token: existing.token, url: `${PUBLIC_APP_URL}/m/serve-receipt/${existing.token}`, reused: true });
+    }
+
+    const token = randomToken();
+    await execute(
+      db,
+      `INSERT INTO serve_receipt_tokens (serve_queue_id, token, created_by, expires_at)
+       VALUES (?, ?, ?, datetime('now', ?))`,
+      queueId, token, user?.id ?? null, `+${Math.max(1, Math.min(365, ttlDays))} days`,
+    );
+
+    await recordAudit(c, {
+      action: 'SERVE_RECEIPT_TOKEN_CREATE',
+      entityType: 'serve_queue',
+      entityId: queueId,
+      details: { ttl_days: ttlDays },
+      actorId: user?.id ?? null,
+    }).catch(() => undefined);
+
+    return c.json({ token, url: `${PUBLIC_APP_URL}/m/serve-receipt/${token}`, reused: false });
+  },
+);
+
+/**
+ * POST /api/serve-receipts/:queueId/prefill
+ * Officer MDT input, recorded at the door.
+ *
+ * Attaches to the ACTIVE token rather than to serve_queue, because it
+ * describes one doorstep encounter — the same job can be attempted three
+ * times at three addresses with three different people answering, and
+ * each attempt has its own token.
+ *
+ * Mints a token if none is live, so the officer never has to think about
+ * token lifecycle: they answer the questions and get a link back.
+ */
+serveReceiptAdmin.post(
+  '/:queueId/prefill',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  async (c) => {
+    const queueId = parseInt(c.req.param('queueId') || '', 10);
+    if (!queueId) return c.json({ error: 'Invalid serve job id' }, 400);
+
+    const body = await c.req.json<Partial<ServeReceiptPrefill>>().catch(() => null);
+    if (!body) return c.json({ error: 'Invalid prefill' }, 400);
+
+    const premises = ['residence', 'business', 'other'].includes(String(body.premises_type))
+      ? body.premises_type as ServeReceiptPrefill['premises_type']
+      : 'residence';
+
+    const prefill: ServeReceiptPrefill = {
+      is_named_party: body.is_named_party === null || body.is_named_party === undefined
+        ? null
+        : !!body.is_named_party,
+      premises_type: premises,
+      resides_at_address: !!body.resides_at_address,
+      authorized_agent: !!body.authorized_agent,
+      recipient_name: str(body.recipient_name, 200),
+      recipient_relationship: str(body.recipient_relationship, 120),
+      business_name: str(body.business_name, 200),
+      recipient_job_title: str(body.recipient_job_title, 120),
+      documents: (Array.isArray(body.documents) ? body.documents : []).slice(0, 50).map((d) => ({
+        title: String(d?.title ?? 'Court document').slice(0, 200),
+        copies: Number.isFinite(Number(d?.copies)) ? Math.max(1, Math.min(99, Number(d.copies))) : 1,
+      })),
+      note: str(body.note, 500),
+    };
+
+    // The officer's read of the doorstep, as a variation. Same resolver
+    // the subject's answers go through, so the two are comparable.
+    const prefillVariant = resolveReceiptVariant({
+      isNamedParty: prefill.is_named_party === true,
+      premisesType: prefill.premises_type,
+      residesAtAddress: prefill.resides_at_address,
+      authorizedAgent: prefill.authorized_agent,
+    });
+
+    const db = getDb(c.env);
+    const job = await queryFirst<{ id: number }>(db, 'SELECT id FROM serve_queue WHERE id = ?', queueId);
+    if (!job) return c.json({ error: 'Serve job not found' }, 404);
+
+    const user = c.get('user') as { id: number } | undefined;
+    let tok = await queryFirst<{ id: number; token: string }>(
+      db,
+      `SELECT id, token FROM serve_receipt_tokens
+        WHERE serve_queue_id = ? AND used_receipt_id IS NULL AND revoked_at IS NULL
+          AND (expires_at IS NULL OR expires_at > datetime('now'))
+          AND scans_used < max_scans
+        ORDER BY id DESC LIMIT 1`,
+      queueId,
+    );
+
+    if (!tok) {
+      const token = randomToken();
+      const ins = await execute(
+        db,
+        `INSERT INTO serve_receipt_tokens (serve_queue_id, token, created_by, expires_at)
+         VALUES (?, ?, ?, datetime('now', ?))`,
+        queueId, token, user?.id ?? null, `+${DEFAULT_TOKEN_TTL_DAYS} days`,
+      );
+      tok = { id: Number(ins.meta.last_row_id), token };
+    }
+
+    await execute(
+      db,
+      `UPDATE serve_receipt_tokens
+          SET prefill_json = ?, prefill_variant = ?, prefill_by = ?, prefill_at = datetime('now')
+        WHERE id = ?`,
+      JSON.stringify(prefill), prefillVariant, user?.id ?? null, tok.id,
+    );
+
+    await recordAudit(c, {
+      action: 'SERVE_RECEIPT_PREFILL',
+      entityType: 'serve_queue',
+      entityId: queueId,
+      details: { variant: prefillVariant, premises: prefill.premises_type },
+      actorId: user?.id ?? null,
+    }).catch(() => undefined);
+
+    return c.json({
+      token: tok.token,
+      url: `${PUBLIC_APP_URL}/m/serve-receipt/${tok.token}`,
+      variant: prefillVariant,
+      form_title: receiptFormTitle(prefillVariant),
+      prefill,
+    });
+  },
+);
+
+/** GET /api/serve-receipts/:queueId — signed receipts for a job. */
+serveReceiptAdmin.get('/:queueId', async (c) => {
+  const queueId = parseInt(c.req.param('queueId') || '', 10);
+  if (!queueId) return c.json({ error: 'Invalid serve job id' }, 400);
+  const rows = await query(
+    getDb(c.env),
+    `SELECT id, created_at, service_method, recipient_name, recipient_role,
+            recipient_relationship, document_count, sub_agrees_to_deliver,
+            sub_defendant_name, sub_expected_delivery_at, status,
+            email_status, latitude, longitude
+       FROM serve_receipts WHERE serve_queue_id = ? ORDER BY created_at DESC`,
+    queueId,
+  );
+  return c.json(rows);
+});
+
+/** GET /api/serve-receipts/receipt/:id — full receipt incl. signatures. */
+serveReceiptAdmin.get('/receipt/:id', async (c) => {
+  const id = parseInt(c.req.param('id') || '', 10);
+  if (!id) return c.json({ error: 'Invalid receipt id' }, 400);
+  const row = await queryFirst(getDb(c.env), 'SELECT * FROM serve_receipts WHERE id = ?', id);
+  if (!row) return c.json({ error: 'Receipt not found' }, 404);
+  return c.json(row);
+});
+
+/**
+ * GET /api/serve-receipts/receipt/:id/document
+ * Completion output: everything needed to render the SIGNED instrument,
+ * already joined to its case.
+ *
+ * Exists so the officer can print the completed copy from the vehicle
+ * after the subject signed on their own phone — the officer's device
+ * never saw the signature or the answers, only the QR. Returning a
+ * ready-to-render payload rather than a raw row keeps the join on the
+ * server: the client would otherwise need a second call to serve_queue
+ * and would be free to disagree with the stored record about what the
+ * case caption says.
+ *
+ * Field names match ReceiptOfServiceData in
+ * client/src/utils/servePdfGenerator.ts.
+ */
+serveReceiptAdmin.get('/receipt/:id/document', async (c) => {
+  const id = parseInt(c.req.param('id') || '', 10);
+  if (!id) return c.json({ error: 'Invalid receipt id' }, 400);
+
+  const db = getDb(c.env);
+  const r = await queryFirst<Record<string, any>>(db, 'SELECT * FROM serve_receipts WHERE id = ?', id);
+  if (!r) return c.json({ error: 'Receipt not found' }, 404);
+
+  const job = await queryFirst<Record<string, any>>(
+    db,
+    `SELECT case_number, court_name, jurisdiction, plaintiff_name, defendant_name,
+            document_type, assigned_officer_id, officer_id
+       FROM serve_queue WHERE id = ?`,
+    r.serve_queue_id,
+  );
+
+  const officerId = job?.assigned_officer_id ?? job?.officer_id ?? null;
+  const officer = officerId
+    ? await queryFirst<{ full_name: string | null; first_name: string | null; last_name: string | null; badge_number: string | null }>(
+        db, 'SELECT full_name, first_name, last_name, badge_number FROM users WHERE id = ?', officerId,
+      ).catch(() => null)
+    : null;
+
+  // Stored JSON, not regenerated. The attestation wording is what the
+  // signer actually agreed to; re-deriving it from current code would
+  // silently rewrite history the moment the copy is edited.
+  let attestations: Array<{ id: string; text: string; accepted: boolean }> = [];
+  try { attestations = JSON.parse(r.attestations_json || '[]'); } catch { attestations = []; }
+  let documents: Array<{ title: string; copies: number }> = [];
+  try { documents = JSON.parse(r.documents_json || '[]'); } catch { documents = []; }
+
+  const variant = String(r.form_variant || 'individual');
+  const isIndividual = variant === 'individual';
+
+  return c.json({
+    receiptId: r.id,
+    formTitle: r.form_title || receiptFormTitle(variant as ReceiptVariant),
+    variant,
+    variantLabel: VARIANT_LABEL[variant as ReceiptVariant] ?? 'Individual',
+
+    courtName: job?.court_name ?? '',
+    caseNumber: job?.case_number ?? '',
+    jurisdiction: job?.jurisdiction ?? '',
+    plaintiffName: job?.plaintiff_name ?? '',
+    defendantName: job?.defendant_name ?? '',
+    documentType: job?.document_type ?? '',
+
+    serviceAddress: [r.service_address, r.service_city, r.service_state, r.service_zip]
+      .filter(Boolean).join(', '),
+    premisesType: r.premises_type ?? '',
+    serverName: officer?.full_name
+      || [officer?.first_name, officer?.last_name].filter(Boolean).join(' ')
+      || '',
+    serverBadge: officer?.badge_number ?? '',
+    agency: 'Rocky Mountain Protective Group',
+
+    recipientName: r.recipient_name,
+    recipientRelationship: r.recipient_relationship ?? undefined,
+    recipientJobTitle: r.recipient_job_title ?? undefined,
+    businessName: r.business_name ?? undefined,
+    recipientPhone: r.recipient_phone ?? undefined,
+    acceptingOnBehalfOf: isIndividual ? undefined : (r.sub_defendant_name ?? undefined),
+
+    documents,
+    attestations,
+
+    residesAtAddress: !!r.sub_resides_at_address,
+    authorizedAgent: !!r.sub_is_authorized_agent,
+    expectedDeliveryAt: r.sub_expected_delivery_at ?? undefined,
+
+    signedAt: r.recipient_signed_at || r.created_at,
+    gps: (r.latitude != null && r.longitude != null)
+      ? { lat: Number(r.latitude), lng: Number(r.longitude) }
+      : undefined,
+    signature: r.recipient_signature ?? undefined,
+
+    // Officer-side context, not rendered on the instrument.
+    meta: {
+      status: r.status,
+      completionChannel: r.completion_channel,
+      officerVariant: r.officer_variant,
+      variantConflict: !!r.variant_conflict,
+      emailStatus: r.email_status,
+      createdAt: r.created_at,
+    },
+  });
+});
+
+/** POST /api/serve-receipts/receipt/:id/void — supervisor correction. */
+serveReceiptAdmin.post('/receipt/:id/void', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+  const id = parseInt(c.req.param('id') || '', 10);
+  if (!id) return c.json({ error: 'Invalid receipt id' }, 400);
+  const { reason } = await c.req.json<{ reason?: string }>().catch(() => ({ reason: '' }));
+  if (!reason) return c.json({ error: 'A reason is required to void a signed receipt' }, 400);
+
+  const user = c.get('user') as { id: number } | undefined;
+  const db = getDb(c.env);
+  const r = await execute(
+    db,
+    `UPDATE serve_receipts
+        SET status = 'voided', voided_at = datetime('now'), voided_by = ?, void_reason = ?
+      WHERE id = ? AND status = 'signed'`,
+    user?.id ?? null, String(reason).slice(0, 500), id,
+  );
+  if (!r.meta.changes) return c.json({ error: 'Receipt not found or already voided' }, 404);
+
+  await recordAudit(c, {
+    action: 'SERVE_RECEIPT_VOID',
+    entityType: 'serve_receipts',
+    entityId: id,
+    details: { reason },
+    actorId: user?.id ?? null,
+  }).catch(() => undefined);
+
+  return c.json({ success: true });
+});
+
+export default serveReceipt;
