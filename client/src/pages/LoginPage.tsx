@@ -754,6 +754,29 @@ export default function LoginPage() {
                 isn't looking at two parallel forms. */}
             {isCredentialStep && !forgotPwActive && (
               <form onSubmit={showPasswordField ? handleCredentialsSubmit : handleUsernameContinue} className="space-y-3">
+                {/* The visible username input below is always rendered, so on
+                    paper this form already pairs a username with its password.
+                    Chrome still logged "Password forms should have (optionally
+                    hidden) username fields" against it, and the likeliest
+                    reason is that the visible field carries disabled={ssoChecking}
+                    during the identifier-first SSO probe — a disabled control is
+                    skipped by the password-form heuristics (and by most password
+                    managers), leaving the password field briefly unpaired.
+                    Rather than bet on that single explanation, mirror the
+                    identifier in an always-enabled off-screen field, the same
+                    pattern the password-change form below uses. No `name` here
+                    on purpose: this form submits from React state, and a second
+                    name="username" would put the value in the form payload
+                    twice. */}
+                <input
+                  type="text"
+                  autoComplete="username"
+                  value={loginUsername}
+                  readOnly
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  className="sr-only"
+                />
                 <div>
                   <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                     Username
