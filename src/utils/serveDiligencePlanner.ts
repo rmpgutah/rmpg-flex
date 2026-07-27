@@ -14,19 +14,30 @@
 // ============================================================
 
 import type { ServePriority } from './serveIntakeExtract';
+import type { TimeBand } from './serveScheduleParse';
+import type { AddressClass } from './serveAddressClass';
+import { selectWindows, type WindowAuthority } from './serveAttemptWindows';
 
 export interface AttemptWindow {
   attempt: number;            // 1-based
   date: string;               // YYYY-MM-DD (America/Denver)
-  weekday: string;            // 'Mon'..'Sun'
-  window: string;             // '17:00–20:30'
+  weekday: string;            // FULL name — 'Monday', not 'Mon' (D5)
+  window: string;             // '17:00-20:30'
   focus: string;              // why this window
+  authority: WindowAuthority; // why this band was chosen
   constrained?: boolean;      // true when a location note shaped this window
 }
 
 // Options passed in from commitIntake once entity type + location note are known.
 export interface PlanOptions {
+  /** @deprecated for TIMING. Retained because callers still pass it and
+   *  it still drives who may accept service. Per operator decision D-2 it
+   *  MUST NOT select attempt windows — addressClass does that. */
   isBusiness?: boolean;
+  addressClass?: AddressClass;
+  clientBands?: TimeBand[];
+  allowedDays?: number[] | null;
+  startNotBefore?: string | null;
   locationNote?: {
     days_available?: number[] | null;
     hours_start?: string | null;
@@ -40,9 +51,10 @@ const WEEKDAYS = new Set([1, 2, 3, 4, 5]); // Mon–Fri (0=Sun)
 
 function localParts(d: Date, tz: string): { date: string; weekday: string; dowNum: number } {
   const date = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
-  const wd = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(d);
-  const dowNum = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd);
-  return { date, weekday: wd, dowNum };
+  // 'long' — D5: the report reads "MONDAY", not "MON".
+  const weekday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(d);
+  const dowNum = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].indexOf(weekday);
+  return { date, weekday, dowNum };
 }
 
 // Whole days from now until end-of-day on the deadline (date-only ISO).
@@ -64,15 +76,6 @@ function nextAllowedDay(now: Date, minOffset: number, allowed: Set<number>, tz: 
   return minOffset;
 }
 
-// Next Saturday at least `minOffset` days out.
-function nextSaturday(now: Date, minOffset: number, tz: string): number {
-  let offset = minOffset;
-  for (let guard = 0; guard < 14; guard++, offset++) {
-    if (localParts(new Date(now.getTime() + offset * DAY_MS), tz).dowNum === 6) return offset;
-  }
-  return minOffset;
-}
-
 export function planAttemptWindows(
   nowIso: string,
   deadline: string | null,
@@ -81,112 +84,72 @@ export function planAttemptWindows(
 ): AttemptWindow[] {
   const now = new Date(nowIso);
   const days = daysUntilDeadline(nowIso, deadline);
-  const tight = days !== null && days <= 4;
-  const { isBusiness = false, locationNote } = options;
-
-  // ── Resolve allowed days ──────────────────────────────────
-  let allowedDows: Set<number>;
-  if (locationNote?.days_available && locationNote.days_available.length) {
-    allowedDows = new Set(locationNote.days_available);
-  } else if (isBusiness) {
-    allowedDows = WEEKDAYS; // businesses are weekday-only by default
-  } else {
-    allowedDows = new Set([0, 1, 2, 3, 4, 5, 6]); // residential = any day
-  }
+  const { locationNote } = options;
 
   const constrained = !!(locationNote?.hours_start || locationNote?.cutoff_time || locationNote?.days_available);
 
-  // ── Resolve attempt window strings ────────────────────────
-  // Priority: location note > entity-type defaults
-  type SlotSpec = { offset: number | 'next-sat' | 'next-weekday'; window: string; focus: string };
+  const specs = selectWindows({
+    addressClass: options.addressClass ?? 'unknown',
+    clientBands: options.clientBands ?? [],
+    locationNote: locationNote ?? null,
+  });
 
-  let slots: SlotSpec[];
-
-  if (locationNote?.hours_start) {
-    // Note-defined hours: build two windows within the allowed band.
-    const start = locationNote.hours_start;           // e.g. "08:00"
-    const end = locationNote.cutoff_time
-      || locationNote.hours_end
-      || '17:00';                                     // fall back to end-of-standard-day
-
-    // Mid-morning: 30 min after open
-    const [sh, sm] = start.split(':').map(Number);
-    const midMornH = sh;
-    const midMornEnd = `${String(Math.min(sh + 2, Number(end.split(':')[0]))).padStart(2, '0')}:00`;
-    const midMornStart = `${String(midMornH).padStart(2, '0')}:${String(sm + 30 < 60 ? sm + 30 : 0).padStart(2, '0')}`;
-    const midMornWin = `${midMornStart}–${midMornEnd}`;
-
-    // Mid-afternoon: 1.5 h before cutoff/close
-    const [eh, em] = end.split(':').map(Number);
-    const aftEndH = eh;
-    const aftEndM = em;
-    const aftStartTotalMin = (aftEndH * 60 + aftEndM) - 90;
-    const aftStartH = Math.max(sh, Math.floor(aftStartTotalMin / 60));
-    const aftStartM = aftStartTotalMin % 60;
-    const aftWin = `${String(aftStartH).padStart(2, '0')}:${String(aftStartM < 0 ? 0 : aftStartM).padStart(2, '0')}–${end}`;
-
-    slots = tight
-      ? [
-          { offset: 'next-weekday', window: midMornWin, focus: `per site: attempt within noted hours (${start}–${end})` },
-          { offset: 'next-weekday', window: aftWin, focus: 'afternoon window — vary time-of-day' },
-          { offset: 'next-weekday', window: midMornWin, focus: 'third attempt — front-load before deadline' },
-        ]
-      : [
-          { offset: 'next-weekday', window: midMornWin, focus: `per site: attempt within noted hours (${start}–${end})` },
-          { offset: 'next-weekday', window: aftWin, focus: 'afternoon window — vary time-of-day' },
-          { offset: 'next-weekday', window: midMornWin, focus: 'third attempt — per site constraints observed' },
-        ];
-
-  } else if (isBusiness) {
-    // Business defaults — no note but we know it's corporate service.
-    slots = tight
-      ? [
-          { offset: 'next-weekday', window: '09:30–11:30', focus: 'mid-morning — arrive after opening rush' },
-          { offset: 'next-weekday', window: '13:30–15:30', focus: 'early afternoon — before end-of-day cutoff' },
-          { offset: 'next-weekday', window: '09:30–11:30', focus: 'third attempt — confirm entity still at address' },
-        ]
-      : [
-          { offset: 'next-weekday', window: '09:30–11:30', focus: 'mid-morning — arrive after opening rush, registered-agent hours' },
-          { offset: 'next-weekday', window: '13:30–15:30', focus: 'early afternoon — avoid lunch gap, before end-of-day cutoff' },
-          { offset: 'next-weekday', window: '09:30–11:30', focus: 'third attempt — verify current registered agent before tendering' },
-        ];
-
+  // Allowed days: client constraint > location note > address-class default.
+  let allowedDows: Set<number>;
+  if (options.allowedDays && options.allowedDays.length) {
+    allowedDows = new Set(options.allowedDays);
+  } else if (locationNote?.days_available?.length) {
+    allowedDows = new Set(locationNote.days_available);
+  } else if ((options.addressClass ?? 'unknown') === 'business') {
+    allowedDows = WEEKDAYS;
   } else {
-    // Residential defaults — standard diligence pattern.
-    slots = tight
-      ? [
-          { offset: 0, window: '17:00–20:30', focus: 'evening — highest residential hit rate' },
-          { offset: 1, window: '07:00–09:00', focus: 'early morning — catch before work departure' },
-          { offset: 2, window: '11:00–14:00', focus: 'midday — vary the pattern' },
-        ]
-      : [
-          { offset: 1, window: '17:00–20:30', focus: 'evening — highest residential hit rate' },
-          { offset: 2, window: '07:00–09:00', focus: 'early morning — catch before work departure' },
-          { offset: 'next-sat', window: '10:00–14:00', focus: 'weekend midday — peak residential hit rate Sat 08:00–10:00' },
-        ];
+    allowedDows = new Set([0, 1, 2, 3, 4, 5, 6]);
   }
 
-  // ── Resolve offsets to concrete dates ────────────────────
-  const result: AttemptWindow[] = [];
-  let lastOffset = -1;
-
-  for (let i = 0; i < slots.length; i++) {
-    const slot = slots[i];
-    let offset: number;
-
-    if (slot.offset === 'next-sat') {
-      offset = nextSaturday(now, Math.max(3, lastOffset + 1), tz);
-    } else if (slot.offset === 'next-weekday') {
-      offset = nextAllowedDay(now, Math.max(lastOffset + 1, i === 0 ? 1 : lastOffset + 2), allowedDows, tz);
-    } else {
-      offset = slot.offset;
+  // Earliest permitted offset honours the client's start-date bar.
+  let minOffset = 0;
+  if (options.startNotBefore && /^\d{4}-\d{2}-\d{2}$/.test(options.startNotBefore)) {
+    for (let o = 0; o < 60; o++) {
+      const { date } = localParts(new Date(now.getTime() + o * DAY_MS), tz);
+      if (date >= options.startNotBefore) { minOffset = o; break; }
     }
+  }
 
-    // Clamp to deadline.
-    if (days !== null && offset > days) offset = Math.max(0, days);
+  const result: AttemptWindow[] = [];
+  const used = new Set<string>();   // `${date}|${window}` — D1 guard
+  let lastOffset = minOffset - 1;
+
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i];
+    let offset = nextAllowedDay(now, Math.max(minOffset, lastOffset + 1), allowedDows, tz);
+
+    // D1 FIX: clamping to the deadline used to pin every remaining slot to
+    // the SAME day, so attempts 2 and 3 printed on one date. Clamp, then
+    // walk back to the earliest date whose (date, band) pair is still
+    // free — distinct bands on one day are a valid tight-deadline plan;
+    // duplicate (date, band) pairs are not.
+    if (days !== null && offset > days) offset = Math.max(minOffset, days);
+
+    let key = '';
+    for (let guard = 0; guard < 30; guard++) {
+      const { date } = localParts(new Date(now.getTime() + offset * DAY_MS), tz);
+      key = `${date}|${spec.window}`;
+      if (!used.has(key)) break;
+      offset++;                       // same band already used that day → next day
+      if (days !== null && offset > days) { offset = Math.max(minOffset, days); break; }
+    }
+    used.add(key);
 
     const { date, weekday } = localParts(new Date(now.getTime() + offset * DAY_MS), tz);
-    result.push({ attempt: i + 1, date, weekday, window: slot.window, focus: slot.focus, constrained });
+    result.push({
+      attempt: i + 1,
+      date,
+      weekday,
+      window: spec.window,
+      focus: spec.focus,
+      authority: spec.authority,
+      constrained,
+    });
     lastOffset = offset;
   }
 
@@ -289,7 +252,9 @@ export interface ReplanQueueCtx {
   // (PR 2/3 dashboard panel + full-page scheduler). NOT used by this replan.
   recipient_lat: number | null;
   recipient_lng: number | null;
+  /** @deprecated for TIMING — see PlanOptions.isBusiness (D-2). */
   isBusiness?: boolean;
+  addressClass?: AddressClass;
   locationNote?: PlanOptions['locationNote'];
 }
 
@@ -316,6 +281,7 @@ export function replanAfterFailedAttempt(
 
   const plan = planAttemptWindows(replanStart, queue.deadline, tz, {
     isBusiness: queue.isBusiness ?? false,
+    addressClass: queue.addressClass,
     locationNote: queue.locationNote ?? null,
   });
   if (!plan.length) return null;
