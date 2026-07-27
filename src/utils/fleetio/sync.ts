@@ -747,7 +747,24 @@ export async function applyInbound(deps: ApplyInboundDeps, eventId: string): Pro
     return { ...empty, status: 'unlinked' };
   }
 
-  const payload = parsePayload(row.payload_json);
+  // `payload_json` on an INBOUND row is the raw webhook body (see
+  // fleetioWebhook.ts), i.e. the whole envelope normalizeResource() parses —
+  // NOT a flat field dict. Fleet.io's real shape nests the actual fields
+  // under `payload` (`{ event: 'vehicle_updated', payload: { vehicle_id, ... } }`);
+  // other emitter conventions nest under `data`. Reading Object.keys() on the
+  // envelope itself previously yielded only ['event','payload'] (or
+  // ['event_type','data']), so `partitionInboundFields` saw no real field
+  // names and every inbound update silently applied nothing — masked because
+  // this file's own tests constructed payload_json as an already-flat dict,
+  // which the real webhook receiver never produces. Unwrap the same way
+  // normalizeResource() does (data, then payload, then the envelope itself
+  // for the flat subject_type/verb variant) before extracting fields.
+  const envelope = parsePayload(row.payload_json);
+  const payload = (
+    envelope.data && typeof envelope.data === 'object' ? envelope.data
+    : envelope.payload && typeof envelope.payload === 'object' ? envelope.payload
+    : envelope
+  ) as Record<string, unknown>;
   const fields = Object.keys(payload);
   const { apply, conflict, unknown } = partitionInboundFields(row.resource, fields);
 
