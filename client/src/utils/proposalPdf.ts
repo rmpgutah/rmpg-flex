@@ -23,6 +23,8 @@ import {
   setActiveCaseNumber,
   getActiveBranding,
   loadPdfAssets,
+
+  stampGenerationTime,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
@@ -46,7 +48,7 @@ export async function generateProposalPdf(proposal: any, client: any): Promise<v
   await loadPdfAssets();
   setActiveFormKey('proposal');
   setActiveCaseNumber(proposal.proposal_number || 'PROP');
-  setGenerationTimestamp(new Date().toLocaleString());
+  stampGenerationTime();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)

@@ -9,7 +9,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
-import { parseTimestamp } from '../utils/dateUtils';
+import { parseTimestamp, safeDateStr } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 
 interface Source {
@@ -319,7 +319,7 @@ export default function JailRecordsPage() {
             <span className="text-rmpg-500 text-[9px]">{s.row_count || 0} rec</span>
             {s.last_run_at && (
               <span className="text-rmpg-500 text-[9px]" title={s.last_run_at}>
-                {fmtRelativeAge(s.last_run_at) ?? s.last_run_at.slice(0, 10)}
+                {fmtRelativeAge(s.last_run_at) ?? safeDateStr(s.last_run_at, "")}
               </span>
             )}
             <span className="text-rmpg-500 text-[9px] w-28 truncate text-right">{s.last_status || s.status}</span>

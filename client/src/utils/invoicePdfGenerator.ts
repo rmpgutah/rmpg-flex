@@ -12,6 +12,7 @@ import {
   setGenerationTimestamp, fetchPdfBranding, setActiveBranding, setActiveFormKey,
   setActiveCaseNumber, getActiveBranding, loadPdfAssets, sanitizePdfText,
   addSignatureBlock, wordWrapText,
+  stampGenerationTime,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, getContentWidth, getFullFieldWidth,
@@ -85,10 +86,7 @@ export async function generateInvoicePdf(data: InvoicePdfData, options: InvoiceP
   await loadPdfAssets();
   setActiveFormKey('invoice');
   setActiveCaseNumber(data.invoice_number);
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  }));
+  stampGenerationTime();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
