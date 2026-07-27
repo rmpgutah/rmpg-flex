@@ -2445,6 +2445,15 @@ si.post('/:id/attempts', async (c) => {
           recipient_lat: q.recipient_lat,
           recipient_lng: q.recipient_lng,
           isBusiness,
+          // INTERIM (fixes a D-2 regression): this failed-attempt route has
+          // no resolved AddressClass, only recipient_type. Mapping true ->
+          // 'business' and false -> 'unknown' (which selectWindows() also
+          // routes to residential) exactly reproduces the pre-D-2 behavior
+          // so a confirmed business that fails an attempt and gets
+          // auto-replanned here keeps its weekday windows instead of
+          // falling to residential evening/pre-dawn slots. Replace with a
+          // real resolveAddressClass() call once this path has one.
+          addressClass: isBusiness ? 'business' : 'unknown',
         },
       );
 

@@ -270,22 +270,45 @@ describe('client constraints', () => {
 });
 
 describe('Fix round 1 — Finding 1: interim isBusiness -> addressClass mapping', () => {
-  it('isBusiness: true with no addressClass still yields business windows (interim call-site mapping)', () => {
-    // Mirrors the interim `addressClass: isBusiness ? 'business' : 'unknown'`
-    // mapping applied at serveAutoReplan.ts, serveIntake.ts (/schedule/backfill),
-    // and serveIntakeRecords.ts (commitIntake) — those sites have no resolved
-    // AddressClass yet, so they derive one from isBusiness to avoid the
-    // regression where a confirmed business fell through to residential
-    // evening/pre-dawn windows. This test pins the mapping itself so a future
-    // refactor of planAttemptWindows/selectWindows can't silently re-open it.
+  // Finding 1b: the original version of this test passed `addressClass:
+  // 'business'` explicitly, which only re-verified selectWindows()'s own
+  // behavior (already covered by the Step-1 "confirmed business location"
+  // test) and would NOT catch someone deleting the `addressClass:` line at
+  // any of the four interim call sites — precisely the regression this is
+  // supposed to guard. Replaced with two tests that together prove the
+  // mapping is necessary AND exercise the mapping expression itself.
+  it('the planner alone does NOT infer business from isBusiness with no addressClass', () => {
+    // Documents WHY the interim mapping is necessary: if planAttemptWindows
+    // inferred business from isBusiness on its own, the four call sites
+    // would not need to derive addressClass at all. Pin the planner's
+    // actual (residential) behavior here so that assumption is falsifiable.
     const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
       isBusiness: true,
-      addressClass: 'business', // what the interim call-site mapping computes
+    });
+    expect(plan.every((w) => w.authority === 'residential default')).toBe(true);
+  });
+
+  it('the interim mapping expression (isBusiness ? "business" : "unknown") yields business windows when threaded through', () => {
+    // This is the exact expression added at serveAutoReplan.ts,
+    // serveIntake.ts (/schedule/backfill AND the failed-attempt replan
+    // route), and serveIntakeRecords.ts (commitIntake). It cannot exercise
+    // those call sites directly without DB/route mocking infrastructure
+    // this task does not build (no real case data, no live DB) — that
+    // limitation is stated plainly rather than papered over with a test
+    // that implies call-site coverage it doesn't have. What this DOES
+    // prove: the mapping expression, applied the same way those sites
+    // apply it, produces business-only windows, so a future refactor of
+    // planAttemptWindows/selectWindows can't silently break the mapping's
+    // assumption without this test noticing.
+    const isBusiness = true;
+    const addressClass = isBusiness ? 'business' : 'unknown';
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      isBusiness,
+      addressClass,
     });
     expect(plan.length).toBeGreaterThan(0);
     expect(plan.every((w) => w.authority === 'business default')).toBe(true);
     expect(plan.every((w) => w.window === '09:30-11:30' || w.window === '13:30-15:30')).toBe(true);
-    // Business windows are weekday-only — never Saturday/Sunday.
     expect(plan.every((w) => w.weekday !== 'Saturday' && w.weekday !== 'Sunday')).toBe(true);
   });
 });
@@ -328,5 +351,28 @@ describe('Fix round 1 — Finding 3: startNotBefore beyond the old 60-day scan b
     });
     expect(plan.length).toBeGreaterThan(0);
     expect(plan.every((w) => w.date >= farStart)).toBe(true);
+  });
+});
+
+describe('Fix round 2 — Finding 3a: unparseable startNotBefore must not crash the planner', () => {
+  it('a regex-shaped but calendar-invalid startNotBefore returns a normal plan instead of throwing', () => {
+    // '9999-99-99' matches /^\d{4}-\d{2}-\d{2}$/ (shape only) but is not a
+    // real calendar date: Date.parse('9999-99-99T00:00:00Z') is NaN. The
+    // Finding 3 walk fed that NaN into `new Date(NaN)` -> Intl.DateTimeFormat
+    // throws a RangeError, crashing planAttemptWindows entirely on a commit
+    // path. This must not throw, and must return a normal (unconstrained)
+    // plan since the malformed bar is ignored.
+    expect(() => {
+      planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+        addressClass: 'residential',
+        startNotBefore: '9999-99-99',
+      });
+    }).not.toThrow();
+
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      addressClass: 'residential',
+      startNotBefore: '9999-99-99',
+    });
+    expect(plan.length).toBe(3);
   });
 });

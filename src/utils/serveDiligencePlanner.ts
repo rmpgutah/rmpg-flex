@@ -17,6 +17,7 @@ import type { ServePriority } from './serveIntakeExtract';
 import type { TimeBand } from './serveScheduleParse';
 import type { AddressClass } from './serveAddressClass';
 import { selectWindows, type WindowAuthority } from './serveAttemptWindows';
+import { log } from './logger';
 
 export interface AttemptWindow {
   attempt: number;            // 1-based
@@ -118,12 +119,27 @@ export function planAttemptWindows(
   // monotonic in offset (dates only increase), so it always terminates —
   // the constraint can never silently vanish regardless of how far out
   // startNotBefore is.
+  // FINDING 3a FIX: the regex only checks SHAPE (\d{4}-\d{2}-\d{2}), not
+  // calendar validity — a string like '9999-99-99' matches the regex but
+  // Date.parse() returns NaN for it, which would make `o` NaN and the
+  // first localParts(new Date(NaN), tz) call THROW a RangeError (Intl
+  // rejects an invalid Date), crashing the whole planner on a commit path.
+  // Guard explicitly: an unparseable bar is treated as absent (matches the
+  // old code's silent-drop behavior for THIS specific failure mode — a
+  // malformed value, as opposed to a valid-but-far-out one, which Finding 3
+  // already fixed) but is logged so it's visible instead of silent.
   let minOffset = 0;
   if (options.startNotBefore && /^\d{4}-\d{2}-\d{2}$/.test(options.startNotBefore)) {
     const targetUtcMs = Date.parse(`${options.startNotBefore}T00:00:00Z`);
-    let o = Math.max(0, Math.floor((targetUtcMs - now.getTime()) / DAY_MS) - 2);
-    while (localParts(new Date(now.getTime() + o * DAY_MS), tz).date < options.startNotBefore) o++;
-    minOffset = o;
+    if (Number.isNaN(targetUtcMs)) {
+      log.warn('planAttemptWindows: unparseable attempt_start_not_before ignored', {
+        attempt_start_not_before: options.startNotBefore,
+      });
+    } else {
+      let o = Math.max(0, Math.floor((targetUtcMs - now.getTime()) / DAY_MS) - 2);
+      while (localParts(new Date(now.getTime() + o * DAY_MS), tz).date < options.startNotBefore) o++;
+      minOffset = o;
+    }
   }
 
   const result: AttemptWindow[] = [];
