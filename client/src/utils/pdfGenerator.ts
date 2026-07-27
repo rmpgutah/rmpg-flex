@@ -206,6 +206,33 @@ export const PRIORITY_COLORS: Record<string, { bg: [number, number, number]; tex
 export let generationTimestamp = '';
 export function setGenerationTimestamp(ts: string) { generationTimestamp = ts; }
 
+/**
+ * Stamp the document's generation time. Use this instead of hand-rolling a
+ * toLocaleString at each call site.
+ *
+ * Two things every print form needs and several were getting wrong:
+ *
+ * 1. MOUNTAIN, ALWAYS. Six generators (invoice, proposal, blank form, serve
+ *    job sheet, the serve log, and the base record path) omitted `timeZone`,
+ *    so they stamped the DEVICE's zone. On an MT Toughbook that is invisibly
+ *    fine; generated from a laptop in another zone, an invoice or proposal
+ *    prints a time that never happened here. Mountain is the canonical record
+ *    zone for this app -- see the "MT MUST BE MT" rule.
+ *
+ * 2. A ZONE LABEL. These are recipient- and court-facing documents, and a
+ *    bare "13:01:11" does not say which zone it means -- the same ambiguity
+ *    that produced the 6-hour Notice-of-Attempt regression.
+ */
+export function stampGenerationTime(now: Date = new Date()): string {
+  const ts = now.toLocaleString('en-US', {
+    timeZone: 'America/Denver',
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
+  generationTimestamp = `${ts} MT`;
+  return generationTimestamp;
+}
+
 // Section header visual style — 'dark' is the original charcoal-bar style
 // shipped across all forms; 'light' is the cream/gold banner style
 // adopted for the Person PDF (2026-05-04) at user request, modeled on
@@ -1545,11 +1572,15 @@ export function addSignatureBlock(
     const now = new Date();
     // Always render in America/Denver (MDT/MST) regardless of client OS timezone.
     // Legal documents require the correct local timestamp — UTC drift corrupts records.
-    const dateStr = sigData!.date || now.toLocaleString('en-US', {
+    // Zone-labelled: this block is signed and filed, and a bare "14:35:21"
+    // does not say which zone it means. Only the AUTO-generated value is
+    // stamped -- a caller-supplied sigData.date is left exactly as passed so
+    // it can never be double-labelled.
+    const dateStr = sigData!.date || `${now.toLocaleString('en-US', {
       timeZone: 'America/Denver',
       month: '2-digit', day: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    }).replace(', ', ' ');
+    }).replace(', ', ' ')} MT`;
     doc.text(sanitizePdfText(dateStr), x + colW * 2 + SPACING.MD, valY);
   }
 
@@ -4534,10 +4565,7 @@ export function generatePdfReport(reportType: PdfReportType, data: IncidentData,
   setActiveCaseNumber(data.incident_number);
   applyDocumentProperties(doc, reportType, data);
 
-  generationTimestamp = new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  });
+  stampGenerationTime();
 
   addConfidentialWatermark(doc);
   // @ts-expect-error jsPDF GState — safety reset after watermark

@@ -22,6 +22,7 @@ import {
   setActiveCaseNumber,
   sanitizePdfText,
   finalizePoliceReport,
+  stampGenerationTime,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
@@ -116,10 +117,7 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
   setActiveBranding(branding);
   setActiveFormKey('PS-300');
   setActiveCaseNumber(data.caseNumber || `JOB-${data.jobId}`);
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  }));
+  stampGenerationTime();
 
   const lx = getLeftX();
   const rx = getRightColumnX(doc);

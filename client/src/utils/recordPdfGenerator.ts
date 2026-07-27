@@ -23,6 +23,7 @@ import {
   displayStatus, finalizePoliceReport, setActiveSectionStyle,
   addVoidWatermark, setActiveVoidWatermark,
   type PersonIdPayload, type FormMetadataPayload,
+  stampGenerationTime,
 } from './pdfGenerator';
 import {
   computePayloadHash, setActivePayloadHash, clearActivePayloadHash,
@@ -7040,11 +7041,7 @@ export async function generateRecordPdf<T extends RecordPdfType>(
   setActiveFormKey(recordType);
 
   // Set generation timestamp
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    timeZone: 'America/Denver',
-  }));
+  stampGenerationTime();
 
   // Watermark on first page
   addConfidentialWatermark(doc);
@@ -7369,11 +7366,7 @@ export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions
   // Clear any leftover case number from a previous PDF in this session —
   // BOLO is multi-subject and uses an explicit barcode value below.
   setActiveCaseNumber('');
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    timeZone: 'America/Denver',
-  }));
+  stampGenerationTime();
 
   // Sort by severity: felony first
   const severityOrder: Record<string, number> = { felony: 0, misdemeanor: 1, infraction: 2, civil: 3 };
@@ -7615,11 +7608,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
   setActiveFormKey('warrant');
   // Clear case number — summary is agency-wide, explicit barcode below.
   setActiveCaseNumber('');
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    timeZone: 'America/Denver',
-  }));
+  stampGenerationTime();
 
   addConfidentialWatermark(doc);
   // @ts-expect-error jsPDF GState
