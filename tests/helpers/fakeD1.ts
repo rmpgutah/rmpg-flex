@@ -38,6 +38,14 @@ export function makeFakeDb(canned: { match: RegExp; rows: CannedRow[] }[]) {
       };
       return stmt;
     },
+    // Real D1Database exposes batch(); handlers that need an atomic
+    // multi-statement write (e.g. DELETE /dispatch/calls/:id detaching its
+    // FK children) call it through executeBatch(). Without this the double
+    // threw "db.batch is not a function" and the route 500'd for a reason
+    // that exists only in the fake.
+    batch(stmts: { run: () => Promise<unknown> }[]) {
+      return Promise.all(stmts.map((s) => s.run()));
+    },
   };
   return db as unknown as D1Database;
 }
@@ -61,6 +69,11 @@ export function recordingDb(canned: { match: RegExp; rows: CannedRow[] }[] = [])
         run: async () => { calls.push({ sql, args }); return { meta: { changes: 1, last_row_id: calls.length } }; },
       };
       return stmt;
+    },
+    // See makeFakeDb.batch — each statement still records through run(), so
+    // batched writes remain assertable in `calls` exactly like serial ones.
+    batch(stmts: { run: () => Promise<unknown> }[]) {
+      return Promise.all(stmts.map((s) => s.run()));
     },
   };
   return { db: db as unknown as D1Database, calls };
