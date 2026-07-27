@@ -38,13 +38,14 @@ import type { IntakeDocMeta, OcrContext, PropertyRecord, BusinessRecord } from '
 import { createCaseWithLinks } from './caseCreate';
 import {
   planAttemptWindows, escalatePriorityForDeadline,
-  clusterByProximity, applyUrgencyTier,
+  clusterByProximity, applyUrgencyTier, daysUntilDeadline,
 } from './serveDiligencePlanner';
 import type { AttemptWindow } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
 import { findLocationNote } from './serveLocationNotes';
 import { resolveAddressClass } from './serveAddressClass';
 import { parseClientBands, parseAllowedDays } from './serveScheduleParse';
+import { scheduleFitsDeadline } from './serveAttemptWindows';
 import { log } from './logger';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 import type { FieldConflict } from './serveIntakeArbitrate';
@@ -869,12 +870,18 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     locationNote,
   });
 
+  const scheduleImpossible = !scheduleFitsDeadline(
+    clientBands.length || 3,
+    daysUntilDeadline(nowIso, queueRow.deadline),
+  );
+
   log.info('serve-intake attempt plan', {
     address_class: addressClassResult.klass,
     class_source: addressClassResult.source,
     confirmed: addressClassResult.confirmed,
     client_bands: clientBands.length,
     authority: attemptPlan[0]?.authority ?? 'none',
+    schedule_impossible: scheduleImpossible,
   });
 
   // ── OCR provenance context (filed on call notes + queue row) ──
@@ -906,6 +913,8 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       locationNote,
       propertyRecord,
       businessRecord,
+      addressClass: addressClassResult.klass,
+      scheduleImpossible,
     }, nowIso);
     // File the OCR provenance note AFTER the intake briefing so the feed
     // reads: safety → briefing → extraction context.

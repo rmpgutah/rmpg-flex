@@ -32,6 +32,7 @@ import type { ExtractedField, QueueRow } from './serveIntakeExtract';
 import type { AttemptWindow } from './serveDiligencePlanner';
 import type { ServiceLocationNote } from './serveLocationNotes';
 import { noteConstraintSummary } from './serveLocationNotes';
+import type { AddressClass } from './serveAddressClass';
 
 // ── Operator policy switches ─────────────────────────────────
 const FLAG_EVICTION = true;        // eviction / unlawful detainer → HIGH
@@ -70,6 +71,26 @@ function hazardHintText(fields: Record<string, ExtractedField>, queueRow: QueueR
 
 function hasAny(haystack: string, needles: string[]): boolean {
   return needles.some((n) => haystack.includes(n));
+}
+
+// D2 FIX: the client's attempt restriction is written in
+// service_instructions far more often than in notes, and notes' first
+// line is usually the OCR provenance stamp. Reading only notes[0] made
+// the report print "no client restriction" on packets whose own
+// description quoted the client's schedule.
+export function clientWindowText(queueRow: QueueRow): string | null {
+  const candidates = [queueRow.service_instructions, queueRow.notes];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    for (const line of raw.split('\n')) {
+      const t = line.trim();
+      if (!t) continue;
+      if (t.startsWith('[OCR')) continue;           // provenance stamp, not a restriction
+      if (!/\d\s*(am|pm|:)/i.test(t) && !/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(t)) continue;
+      return t;
+    }
+  }
+  return null;
 }
 
 // ── The decision point ───────────────────────────────────────
@@ -155,6 +176,8 @@ export interface BriefingInput {
   locationNote?: ServiceLocationNote | null;  // system notation for this address/entity
   propertyRecord?: PropertyRecord | null;
   businessRecord?: BusinessRecord | null;
+  addressClass?: AddressClass;
+  scheduleImpossible?: boolean;
 }
 
 export interface BriefingNote {
@@ -178,8 +201,11 @@ export interface PsoBriefing {
 // Utah Rules of Civil Procedure references current as of 2026.
 
 // Who may lawfully accept service, by recipient class (URCP 4(d)).
-function serviceAuthorityLines(isBusiness: boolean, hint: string): string[] {
+function serviceAuthorityLines(isBusiness: boolean, hint: string, addressClass: AddressClass): string[] {
   const lines: string[] = [];
+  if (!isBusiness && addressClass === 'business') {
+    lines.push('SERVICE AT A PLACE OF EMPLOYMENT: substitute service on a co-worker is NOT dwelling substitute service. Unless the client expressly authorizes it, the recipient must be served PERSONALLY at a business address.');
+  }
   if (isBusiness) {
     lines.push('Corporate/LLC service per URCP 4(d)(1)(E): deliver to an officer, a managing or general agent, or the registered agent. Any employee 18+ expressly authorized to accept also qualifies at the business location.');
     lines.push('If serving at a RESIDENCE: personal delivery to the registered agent or an owner/member only — a spouse or co-resident may accept ONLY if authorized or a member of the company.');
@@ -289,6 +315,9 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
     lines.push(`Document class: ${queueRow.document_type || 'civil paper'} / ${f('document_subtype')}`);
   }
   lines.push(`Documents to serve: ${f('documents_to_serve') || queueRow.document_type || 'Civil paper'}  (${docCount} file${docCount === 1 ? '' : 's'} on record)`);
+  if (f('witness_fee_instrument')) {
+    lines.push(`__CARRY WITH YOU: ${f('witness_fee_instrument')}__ — a witness fee must be tendered at service. Arriving without it fails the attempt.`);
+  }
 
   if (caseLine || parties) {
     lines.push('**■ CASE**');
@@ -297,6 +326,20 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
     if (f('filing_date')) lines.push(`Filed: ${f('filing_date')}`);
     if (queueRow.deadline) lines.push(`__SERVICE DEADLINE: ${queueRow.deadline}__`);
     if (queueRow.court_date) lines.push(`Hearing date: ${queueRow.court_date} — service must be perfected with enough lead time for the recipient's appearance.`);
+
+    const target = queueRow.recipient_name || '';
+    const isCaseParty = [queueRow.plaintiff, queueRow.defendant]
+      .filter(Boolean)
+      .some((p) => (p || '').toLowerCase().includes(target.toLowerCase()) && target.length > 3);
+    if (parties && target && !isCaseParty) {
+      lines.push(`NOTE: ${target} is NOT a named party in this case — they are a non-party recipient (typical for a subpoena). Do not discuss the case; refer questions to the issuing court or hiring attorney.`);
+    }
+
+    const courtState = (queueRow.jurisdiction || '').trim().toUpperCase();
+    const serviceState = (queueRow.recipient_state || '').trim().toUpperCase();
+    if (courtState && serviceState && courtState !== serviceState) {
+      lines.push(`OUT-OF-STATE PROCESS: the issuing court is in ${courtState} and service is in ${serviceState}. Under the Uniform Interstate Depositions and Discovery Act the subpoena must be domesticated in the service state — confirm with the hiring party that this has been done before attempting.`);
+    }
   }
 
   // ── TIMELINE: computed urgency for the officer reading this ───
@@ -340,7 +383,7 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
   }
 
   lines.push('**■ SERVICE AUTHORITY**');
-  for (const l of serviceAuthorityLines(isBusiness, hint)) lines.push(`• ${l}`);
+  for (const l of serviceAuthorityLines(isBusiness, hint, input.addressClass || 'unknown')) lines.push(`• ${l}`);
 
   if (input.locationNote) {
     const note = input.locationNote;
@@ -392,16 +435,25 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
   if (input.attemptPlan?.length) {
     lines.push('**■ RECOMMENDED ATTEMPT PLAN**');
     for (const w of input.attemptPlan) {
-      lines.push(`• Attempt ${w.attempt}: ${w.weekday} ${w.date}, ${w.window}  (${w.focus})`);
+      lines.push(`• Attempt ${w.attempt}: ${w.weekday} ${w.date}, ${w.window}  (${w.focus}) [${w.authority}]`);
     }
     lines.push('• Adjust to client-specified windows and field conditions; following the plan satisfies the time-variance diligence standard.');
+    if (input.scheduleImpossible) {
+      lines.push('__WARNING: the client\'s own attempt schedule requires more distinct days than remain before the deadline.__ Notify the hiring party — either the deadline moves or the schedule does. Do not silently attempt fewer times.');
+    }
+  }
+
+  const docList = (f('documents_to_serve') || '').split(';').map((s) => s.trim()).filter(Boolean);
+  if (docList.length > 1) {
+    lines.push('**■ DOCUMENT CHECKLIST** — confirm every item is in the packet before departing:');
+    for (const d of docList) lines.push(`- [ ] ${d}`);
   }
 
   // ── SERVICE WINDOWS — always present so the officer knows the answer ──
   // to "when can I go?" regardless of whether the client specified one.
   lines.push('**■ SERVICE WINDOWS**');
-  const clientWindows = (queueRow.notes || '').split('\n')[0]?.trim();
-  if (clientWindows && !clientWindows.startsWith('[OCR')) {
+  const clientWindows = clientWindowText(queueRow);
+  if (clientWindows) {
     // Client imposed a specific window restriction — show verbatim so the
     // officer has the exact language for the affidavit if challenged.
     lines.push(`• __Client restriction (verbatim):__ ${clientWindows}`);
