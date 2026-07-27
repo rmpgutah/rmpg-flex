@@ -43,6 +43,8 @@ import {
 import type { AttemptWindow } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
 import { findLocationNote } from './serveLocationNotes';
+import { resolveAddressClass } from './serveAddressClass';
+import { parseClientBands, parseAllowedDays } from './serveScheduleParse';
 import { log } from './logger';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 import type { FieldConflict } from './serveIntakeArbitrate';
@@ -690,18 +692,6 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     address: queueRow.recipient_address || null,
   });
 
-  // INTERIM (fixes a D-2 regression): this commit path doesn't yet call
-  // resolveAddressClass() (that's Task 5). Mapping isBusiness -> 'business'
-  // and false -> 'unknown' (which selectWindows() also routes to
-  // residential) exactly reproduces the pre-D-2 behavior so a confirmed
-  // business keeps its weekday windows instead of falling to residential
-  // evening/pre-dawn slots. Task 5 replaces this with the real
-  // resolveAddressClass() result.
-  const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline, 'America/Denver', {
-    isBusiness,
-    addressClass: isBusiness ? 'business' : 'unknown',
-    locationNote,
-  });
   const recipientFirst = get('recipient_first_name');
   const recipientMiddle = get('recipient_middle_name');
   const recipientLast = get('recipient_last_name');
@@ -847,6 +837,45 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       ) ?? null;
     }
   }
+
+  // Address class describes the LOCATION (operator decision D-2). A
+  // registered agent at a residence gets residential windows; isBusiness
+  // no longer selects timing, only who may accept service.
+  //
+  // propertyRecordClass is left undefined: the live `properties` table
+  // (see migrations/baseline/schema.sql) has no `address_class` column —
+  // only `property_type` ('business_service'/'residential_service', set
+  // by findOrCreateProperty above), which is a different vocabulary and
+  // not what resolveAddressClass expects. Adding a real column is out of
+  // scope for this task; resolution falls through to businessRecordMatched
+  // / instructionsText / extracted / unknown instead.
+  const addressClassResult = resolveAddressClass({
+    propertyRecordClass: undefined,
+    businessRecordMatched: !!businessRecord && isBusiness,
+    instructionsText: queueRow.service_instructions || '',
+    extracted: get('address_class'),
+  });
+
+  const clientBands = parseClientBands(get('client_attempt_schedule'));
+  const allowedDays = parseAllowedDays(get('service_days_allowed'));
+  const startNotBefore = get('attempt_start_not_before') || null;
+
+  const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline, 'America/Denver', {
+    isBusiness,
+    addressClass: addressClassResult.klass,
+    clientBands,
+    allowedDays,
+    startNotBefore,
+    locationNote,
+  });
+
+  log.info('serve-intake attempt plan', {
+    address_class: addressClassResult.klass,
+    class_source: addressClassResult.source,
+    confirmed: addressClassResult.confirmed,
+    client_bands: clientBands.length,
+    authority: attemptPlan[0]?.authority ?? 'none',
+  });
 
   // ── OCR provenance context (filed on call notes + queue row) ──
   const ocrContext: OcrContext | null = input.docs?.length
