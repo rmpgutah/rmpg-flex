@@ -14,7 +14,8 @@ import { describe, it, expect } from 'vitest';
 import {
   toIsoDate, normalizeBirthDate, recoverDob, normalizeState, normalizePhone,
   normalizeZip, normalizePriority, normalizeDeadline, normalizeFields,
-  fieldsToQueueRow, TARGET_FIELDS,
+  fieldsToQueueRow, TARGET_FIELDS, normalizeAddressClass, normalizeYesNo,
+  buildFamilyPrompt, needsCriticPass, familyFromFileName, buildExtractionMessages,
   type ExtractedField, type TargetField,
 } from '../src/utils/serveIntakeExtract';
 
@@ -157,5 +158,276 @@ describe('fieldsToQueueRow', () => {
   it('does not store a relative deadline phrase', () => {
     const row = fieldsToQueueRow(fieldsFrom({ service_deadline: '30 calendar days' }));
     expect(row.deadline).toBeNull();
+  });
+});
+
+describe('normalizeAddressClass', () => {
+  it('recognizes explicit business language', () => {
+    expect(normalizeAddressClass('BUSINESS ADDRESS')).toBe('business');
+    expect(normalizeAddressClass('place of employment')).toBe('business');
+  });
+
+  it('recognizes residential language', () => {
+    expect(normalizeAddressClass('residence')).toBe('residential');
+    expect(normalizeAddressClass('abode')).toBe('residential');
+  });
+
+  it('returns unknown for anything it cannot confirm', () => {
+    expect(normalizeAddressClass('')).toBe('unknown');
+    expect(normalizeAddressClass('see instructions')).toBe('unknown');
+  });
+
+  it('does NOT infer business from a registered-agent mention', () => {
+    // Operator decision D-2: class is a property of the LOCATION, and a
+    // registered agent may sit at a residence.
+    expect(normalizeAddressClass('registered agent')).toBe('unknown');
+  });
+});
+
+describe('new timing fields flow through normalizeFields', () => {
+  it('normalizes the start-date bar to ISO', () => {
+    const out = normalizeFields(fieldsFrom({ attempt_start_not_before: '6/26/2026' }));
+    expect(out.attempt_start_not_before.value).toBe('2026-06-26');
+  });
+
+  it('drops an unparseable start-date rather than guessing', () => {
+    const out = normalizeFields(fieldsFrom({ attempt_start_not_before: 'after the holiday' }));
+    expect(out.attempt_start_not_before.value).toBe('');
+    expect(out.attempt_start_not_before.confidence).toBe(0);
+  });
+
+  it('canonicalizes address_class', () => {
+    const out = normalizeFields(fieldsFrom({ address_class: 'BUSINESS ADDRESS' }));
+    expect(out.address_class.value).toBe('business');
+  });
+
+  it('preserves the client attempt schedule verbatim', () => {
+    const out = normalizeFields(fieldsFrom({ client_attempt_schedule: '06:00-09:00;09:00-18:00' }));
+    expect(out.client_attempt_schedule.value).toBe('06:00-09:00;09:00-18:00');
+  });
+});
+
+describe('normalizeYesNo', () => {
+  it('maps affirmative forms to yes', () => {
+    expect(normalizeYesNo('Yes')).toBe('yes');
+    expect(normalizeYesNo('TRUE')).toBe('yes');
+    expect(normalizeYesNo('y')).toBe('yes');
+  });
+
+  it('maps negative forms to no', () => {
+    expect(normalizeYesNo('No')).toBe('no');
+    expect(normalizeYesNo('false')).toBe('no');
+  });
+
+  it('returns empty for anything ambiguous', () => {
+    expect(normalizeYesNo('maybe')).toBe('');
+    expect(normalizeYesNo('')).toBe('');
+  });
+});
+
+describe('witness fee and agent address fields', () => {
+  it('keeps the witness-fee instrument verbatim', () => {
+    const out = normalizeFields(fieldsFrom({ witness_fee_instrument: 'Check VV787 $18.50' }));
+    expect(out.witness_fee_instrument.value).toBe('Check VV787 $18.50');
+  });
+
+  it('canonicalizes the tendered flag', () => {
+    const out = normalizeFields(fieldsFrom({ witness_fee_tendered: 'TRUE' }));
+    expect(out.witness_fee_tendered.value).toBe('yes');
+  });
+
+  it('de-noises the registered agent address like other name fields', () => {
+    const out = normalizeFields(fieldsFrom({
+      registered_agent_address: '1400 West Confluence Ave Ste 310, Salt Lake City, UT 84104',
+    }));
+    expect(out.registered_agent_address.value).toContain('1400 West Confluence Ave');
+  });
+
+  it('canonicalizes the first-attempt sub-service authorization', () => {
+    const out = normalizeFields(fieldsFrom({ sub_service_authorized_first_attempt: 'yes' }));
+    expect(out.sub_service_authorized_first_attempt.value).toBe('yes');
+  });
+});
+
+describe('buildFamilyPrompt', () => {
+  it('gives the field sheet its own guidance', () => {
+    const p = buildFamilyPrompt('field_sheet');
+    expect(p).toMatch(/watermark/i);
+    expect(p).toMatch(/Instructions/);
+  });
+
+  it('gives the court filing caption guidance', () => {
+    const p = buildFamilyPrompt('court_filing');
+    expect(p).toMatch(/caption/i);
+  });
+
+  it('returns a non-empty generic prompt for unknown families', () => {
+    expect(buildFamilyPrompt('other').length).toBeGreaterThan(0);
+  });
+});
+
+describe('familyFromFileName', () => {
+  it('maps the three conventional packet file names to their family keys', () => {
+    expect(familyFromFileName('90000123 Field Sheet.pdf')).toBe('field_sheet');
+    expect(familyFromFileName('90000123 Court Docket.pdf')).toBe('court_filing');
+    expect(familyFromFileName('90000123 Information Form.pdf')).toBe('info_page');
+  });
+
+  it('is case-insensitive and tolerant of punctuation/spacing variation', () => {
+    expect(familyFromFileName('90000123_FIELD-SHEET.PDF')).toBe('field_sheet');
+    expect(familyFromFileName('90000123  field   sheet.pdf')).toBe('field_sheet');
+    expect(familyFromFileName('90000123-court_docket.pdf')).toBe('court_filing');
+    expect(familyFromFileName('90000123 info form.pdf')).toBe('info_page');
+    expect(familyFromFileName('90000123 INFORMATION-PAGE.pdf')).toBe('info_page');
+  });
+
+  it('returns undefined for unrelated or ambiguous file names', () => {
+    expect(familyFromFileName('scan001.pdf')).toBeUndefined();
+    expect(familyFromFileName('affidavit.pdf')).toBeUndefined();
+    expect(familyFromFileName('')).toBeUndefined();
+  });
+});
+
+describe('buildExtractionMessages — family prompt wiring', () => {
+  it('appends field-sheet-specific guidance to the system message only when docType is passed', () => {
+    const withFamily = buildExtractionMessages('some document text', 'field_sheet');
+    const without = buildExtractionMessages('some document text');
+    const systemWith = withFamily.find((m) => m.role === 'system')?.content ?? '';
+    const systemWithout = without.find((m) => m.role === 'system')?.content ?? '';
+    expect(systemWith).toMatch(/watermark/i);
+    expect(systemWith).toMatch(/ICU Investigations FIELD SHEET/i);
+    expect(systemWithout).not.toMatch(/watermark/i);
+    expect(systemWithout).not.toMatch(/ICU Investigations FIELD SHEET/i);
+  });
+});
+
+describe('needsCriticPass', () => {
+  it('selects only low-confidence critical fields', () => {
+    const fields = fieldsFrom({ case_number: 'X', recipient_address: 'Y' });
+    fields.case_number.confidence = 0.3;
+    fields.recipient_address.confidence = 0.95;
+    expect(needsCriticPass(fields, [])).toEqual(['case_number']);
+  });
+
+  it('includes fields the validator flagged as errors', () => {
+    const fields = fieldsFrom({ recipient_zip: '94304' });
+    const issues = [{ field: 'recipient_zip', severity: 'error' as const, message: 'mismatch' }];
+    expect(needsCriticPass(fields, issues)).toContain('recipient_zip');
+  });
+
+  it('returns an empty list when everything is confident and clean', () => {
+    const fields = fieldsFrom({ case_number: 'X' });
+    fields.case_number.confidence = 0.95;
+    expect(needsCriticPass(fields, [])).toEqual([]);
+  });
+
+  it('never returns more than the cap, to bound neuron spend', () => {
+    const fields = fieldsFrom({
+      case_number: 'a', recipient_address: 'b', court_name: 'c',
+      service_deadline: 'd', recipient_dob: 'e', recipient_phone: 'f',
+    });
+    for (const k of Object.keys(fields)) fields[k].confidence = 0.1;
+    expect(needsCriticPass(fields, []).length).toBeLessThanOrEqual(5);
+  });
+});
+
+// ============================================================
+// R5(a) — registered_agent_address must NOT get the party-name de-noiser
+// ============================================================
+describe('normalizeFields — address fields bypass scrubPartyNoise', () => {
+  it('keeps an address with two short adjacent number tokens intact', () => {
+    // scrubPartyNoise strips runs of 2+ short number tokens as California
+    // pleading margin line-numbers. On an address that rule deletes the unit
+    // number AND the house number: "Apt 5 210 Main St" → "Apt Main St", which
+    // is a wrong-building dispatch. The old fixture survived only because its
+    // house number happened to be four digits.
+    const out = normalizeFields(fieldsFrom({ registered_agent_address: 'Apt 5 210 Main St' }));
+    expect(out.registered_agent_address.value).toBe('Apt 5 210 Main St');
+  });
+
+  it('keeps a Ste + house-number address intact', () => {
+    const out = normalizeFields(fieldsFrom({ registered_agent_address: 'Ste 12 90 W Center St' }));
+    expect(out.registered_agent_address.value).toBe('Ste 12 90 W Center St');
+  });
+
+  it('still scrubs party-name noise from actual name fields', () => {
+    // The de-noiser is not weakened — it just no longer touches addresses.
+    const out = normalizeFields(fieldsFrom({ plaintiff: 'Attorney for Plaintiff Sample Bank, N.A.' }));
+    expect(out.plaintiff.value).toBe('Sample Bank, N.A.');
+  });
+});
+
+// ============================================================
+// R5(b) — spec decision D-2: unconfirmed must never yield business timing
+// ============================================================
+describe('normalizeAddressClass — residential wins a both-hints string', () => {
+  it("classifies 'HOME ADDRESS ... use the leasing office entrance' as residential", () => {
+    // Contains 'office' (a business hint) AND 'HOME ADDRESS'/'apartment'.
+    // Returning 'business' here would schedule weekday-only business windows
+    // at a residence and miss every evening and weekend attempt.
+    expect(normalizeAddressClass(
+      'SERVE AT HOME ADDRESS — apartment complex, use the leasing office entrance',
+    )).toBe('residential');
+  });
+
+  it('classifies an apartment with a suite-numbered leasing office as residential', () => {
+    expect(normalizeAddressClass('Apt 4B, leasing office Suite 100')).toBe('residential');
+  });
+
+  it('still classifies an unambiguous business address as business', () => {
+    expect(normalizeAddressClass('service at his place of employment')).toBe('business');
+    expect(normalizeAddressClass('corporate address, 5th floor')).toBe('business');
+  });
+});
+
+// ============================================================
+// P1 — "et al" appears with and without the period after "et"
+// ============================================================
+describe('normalizeFields — et al. stripping covers both spellings', () => {
+  it("strips 'et al.'", () => {
+    expect(normalizeFields(fieldsFrom({ defendant: 'John Q Sample, et al.' })).defendant.value)
+      .toBe('John Q Sample');
+  });
+
+  it("strips 'et. al.' (period after 'et' — the spelling seen on real captions)", () => {
+    expect(normalizeFields(fieldsFrom({ defendant: 'John Q Sample, et. al.' })).defendant.value)
+      .toBe('John Q Sample');
+  });
+
+  it("strips a bare 'et al' with no periods", () => {
+    expect(normalizeFields(fieldsFrom({ defendant: 'John Q Sample et al' })).defendant.value)
+      .toBe('John Q Sample');
+  });
+
+  it("does not eat a name that merely starts with 'et'", () => {
+    expect(normalizeFields(fieldsFrom({ defendant: 'Ethan Alvarez' })).defendant.value)
+      .toBe('Ethan Alvarez');
+  });
+});
+
+// ============================================================
+// P2/P3 — the one-shot and rules must TEACH service_deadline and priority
+// ============================================================
+describe('extraction prompt — service_deadline and priority are taught', () => {
+  it("the few-shot output populates service_deadline from the header due date", () => {
+    const msgs = buildExtractionMessages('irrelevant document text for prompt shape', undefined);
+    const user = msgs.find((m) => m.role === 'user')!.content;
+    // The few-shot INPUT carries a header due date of 6/15/26. Omitting
+    // service_deadline from the few-shot OUTPUT actively taught the model
+    // that a header due date does not populate it.
+    expect(user).toContain('6/15/26');
+    expect(user).toMatch(/"service_deadline":\{"value":"2026-06-15"/);
+  });
+
+  it('the extraction rules enumerate the priority values', () => {
+    const system = buildExtractionMessages('irrelevant', undefined).find((m) => m.role === 'system')!.content;
+    expect(system).toMatch(/priority/);
+    expect(system).toMatch(/'routine'/);
+    expect(system).toMatch(/'rush'/);
+    expect(system).toMatch(/'urgent'/);
+  });
+
+  it('the info_page family prompt names the JOB-header due date as the deadline', () => {
+    expect(buildFamilyPrompt('info_page')).toMatch(/service_deadline/);
   });
 });

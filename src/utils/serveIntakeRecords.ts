@@ -45,6 +45,7 @@ import { persistAttemptSchedule } from './serveAttemptScheduler';
 import { findLocationNote } from './serveLocationNotes';
 import { log } from './logger';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
+import type { FieldConflict } from './serveIntakeArbitrate';
 
 // ── Sentinel client for intake-generated properties ──────────
 // properties.client_id is NOT NULL and FKs to clients(id). Process-
@@ -556,6 +557,12 @@ export interface CommitInput {
   // parsed_data. Optional — the legacy /intake path has no per-doc metadata.
   docs?: IntakeDocMeta[];
   allDates?: string[];
+  // Cross-document arbitration output (serveIntakeArbitrate.arbitrateFields).
+  // Embedded verbatim into parsed_data._intake.conflicts so the PR 4 review
+  // UI can offer the rejected candidate instead of the value we picked.
+  // Optional — single-document callers (/intake legacy path, document
+  // reprocessing) have nothing to arbitrate.
+  conflicts?: FieldConflict[];
   // Operator-selected client (from the intake form's client dropdown). When
   // set, it is written directly to serve_queue.client_id and skips the
   // post-hoc name-based lookup that would otherwise resolve the contract.
@@ -945,6 +952,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       _intake: {
         extracted_at: nowIso,
         attempt_plan: attemptPlan,
+        conflicts: input.conflicts ?? [],
         ...(ocrContext ? {
           documents: input.docs!.map((d) => ({
             file_name: d.file_name, doc_type: d.doc_type,

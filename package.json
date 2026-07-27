@@ -32,14 +32,14 @@
     "jose": "^6.2.3",
     "mp4box": "^2.4.1",
     "pmtiles": "^4.4.1",
-    "unpdf": "^1.6.2",
+    "unpdf": "^1.8.0",
     "uuid": "^14.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.112.3",
+    "@anthropic-ai/sdk": "^0.115.0",
     "@cloudflare/vitest-pool-workers": "^0.18.8",
-    "@cloudflare/workers-types": "^5.20260719.1",
+    "@cloudflare/workers-types": "^5.20260727.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^26.1.1",
     "@types/uuid": "^10.0.0",

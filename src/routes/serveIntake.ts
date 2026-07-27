@@ -41,15 +41,21 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import {
   extractFromText,
-  extractFromImage,
-  extractFromImageClaude,
-  extractFromTextClaude,
   extractTextFromPdf,
+  extractPdfMarkdown,
+  isScanStub,
   fieldsToQueueRow,
   normalizeFields,
+  familyFromFileName,
   type ExtractionResult,
   type ExtractedField,
+  type PdfTextResult,
 } from '../utils/serveIntakeExtract';
+import { withTimeout, ocrImage, ocrText } from '../utils/serveIntakeOcr';
+import { estimateNeurons, estimatePacketNeurons, FREE_NEURONS_PER_DAY } from '../utils/serveIntakeNeurons';
+import { precleanText } from '../utils/serveIntakePreclean';
+import { arbitrateFields, reconcileIdentityConflicts, type DocCandidate, type FieldConflict } from '../utils/serveIntakeArbitrate';
+import { finalizeFields } from '../utils/serveIntakeValidate';
 import { judgeMerged } from '../utils/serveIntakeJudge';
 import { parseDefendants } from '../utils/serveIntakeDefendants';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
@@ -217,6 +223,13 @@ const MIN_CLIENT_TEXT_CHARS = 200;
 // container fetch is raced against this timeout and we fall back.
 const CONTAINER_TIMEOUT_MS = 12_000;
 
+// Ceiling on the Workers AI toMarkdown() call. It walks the PDF StructTree
+// and invokes no model, so it's normally fast — but it's still a binding
+// call, and a stalled one shouldn't hang the request. On timeout we fall
+// through to the container path exactly like a rejected/empty result.
+const TOMARKDOWN_TIMEOUT_MS = 8_000;
+const EMPTY_PDF_TEXT: PdfTextResult = { text: '', source: 'empty', structured: false, page_count: 0 };
+
 // Per-call ceiling on any single Workers AI invocation (per-doc text
 // extraction or per-image Vision). Without this a slow/stalled model
 // call hangs the whole /upload request — the original "stuck on upload"
@@ -229,63 +242,13 @@ const CONTAINER_TIMEOUT_MS = 12_000;
 // (`Extraction failed: Text extraction timed out`) was a legitimately slow
 // extraction on a large document, not a hung call, so the old ceiling was simply
 // too tight.
-const AI_TIMEOUT_MS = 45_000;
-
-// Per-attempt ceilings do NOT compose. The fallback chains below run
-// SEQUENTIALLY, so their worst case is the SUM of their legs — and Cloudflare's
-// edge abandons a request at ~100s with a 524, which would replace our clean
-// "timed out" error with an opaque edge failure and lose the message entirely.
 //
-// Rather than hand-tune each leg, every chain shares one deadline: each attempt
-// gets min(perLegCeiling, budgetRemaining). Per-attempt generosity can go up
-// without the total ever breaching the edge cutoff.
-const TOTAL_AI_BUDGET_MS = 90_000;
-
-/**
- * A shared deadline for one sequential fallback chain. Call the returned
- * function per attempt to get that attempt's timeout:
- *
- *   const leg = aiBudget();
- *   await withTimeout(first(),  leg(), 'first timed out');
- *   await withTimeout(second(), leg(), 'second timed out');  // gets what's left
- *
- * Once the budget is spent the next attempt times out immediately rather than
- * pushing the request past the edge cutoff.
- */
-function aiBudget(totalMs: number = TOTAL_AI_BUDGET_MS): (perLegMs?: number) => number {
-  const start = Date.now();
-  return (perLegMs: number = AI_TIMEOUT_MS) =>
-    Math.min(perLegMs, Math.max(0, totalMs - (Date.now() - start)));
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(label)), ms)),
-  ]);
-}
-
-// Claude-first OCR with Workers-AI fallback. Claude (extractFrom*Claude) uses the
-// SAME rich serve-doc prompt + parser, so the result shape is identical and the
-// merge/commit code is unchanged. Returns null from the Claude leg (no key / no
-// credits / error) → we transparently fall back to the free Workers-AI path.
-// extraction.model carries 'claude:…' vs the Llama id so callers can label engine.
-async function ocrImage(env: Env['Bindings'], bytes: Uint8Array, mime: string): Promise<ExtractionResult> {
-  const leg = aiBudget();
-  const claude = await withTimeout(
-    extractFromImageClaude(env, bytes, mime), leg(), 'Claude OCR timed out',
-  ).catch(() => null);
-  return claude ?? withTimeout(extractFromImage(env.AI, bytes), leg(), 'Vision OCR timed out');
-}
-async function ocrText(env: Env['Bindings'], text: string): Promise<ExtractionResult> {
-  const leg = aiBudget();
-  const claude = await withTimeout(
-    extractFromTextClaude(env, text), leg(), 'Claude text timed out',
-  ).catch(() => null);
-  return claude ?? withTimeout(
-    extractFromText(env.AI, text, env.SERVE_INTAKE_LORA), leg(), 'Text extraction timed out',
-  );
-}
+// aiBudget/withTimeout/ocrImage/ocrText now live in ../utils/serveIntakeOcr —
+// hoisted out (2026-07-26) so they're importable from plain Node vitest tests
+// without dragging in this file's @cloudflare/containers import (which needs
+// a real Workers/Miniflare runtime). AI_TIMEOUT_MS stays here too since it's
+// used directly below (not just via aiBudget's default).
+const AI_TIMEOUT_MS = 45_000;
 
 async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | null): Promise<string> {
   const ts = Date.now();
@@ -342,7 +305,29 @@ async function scanDocumentHandler(c: any): Promise<Response> {
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       let text: string;
-      if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
+      // Zero-neuron structured tier first: env.AI.toMarkdown() walks the PDF
+      // StructTree and does not interleave two-column layouts the way the
+      // client's naive positional pdfjs concatenation (item.str joined by
+      // reading order) does. Try it BEFORE the client text — pdfjs-client is
+      // exactly the two-column interleaving hazard toMarkdown exists to avoid,
+      // and any real intake form clears MIN_CLIENT_TEXT_CHARS, so putting
+      // pdfjs-client first meant toMarkdown almost never ran. Only fall
+      // through to pdfjs-client, then the container (not rolled out in prod
+      // anyway), when toMarkdown comes back empty or looks like an unreadable
+      // scan stub.
+      const md = await withTimeout(
+        extractPdfMarkdown(c.env.AI, bytes, file.name || 'doc.pdf'),
+        TOMARKDOWN_TIMEOUT_MS, 'toMarkdown timed out',
+      ).catch(() => EMPTY_PDF_TEXT);
+      if (md.text && !isScanStub(md.text, md.page_count)) {
+        text = md.text;
+        pageCount = md.page_count;
+        ocrEngine = 'workers-ai-tomarkdown';
+        log.info('scan-document: toMarkdown structured extraction used', {
+          traceId: c.get('traceId'), file: file.name, structured: md.structured,
+          chars: md.text.length, page_count: md.page_count,
+        });
+      } else if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
         text = clientText;
         ocrEngine = 'pdfjs-client';
       } else {
@@ -365,8 +350,20 @@ async function scanDocumentHandler(c: any): Promise<Response> {
           ocrEngine = 'container-unavailable';
         }
       }
+      // Single choke point for OCR-noise scrubbing — see the matching note
+      // on /upload. Applying precleanText after tier selection (rather than
+      // only on the container leg) is what keeps the pdfjs-client tier, the
+      // exact tier where the RUSH watermark and Cyrillic homoglyphs survive,
+      // from reaching the model and the state/ZIP validator uncleaned.
+      // Idempotent, so the already-cleaned toMarkdown/container text is safe.
+      text = precleanText(text);
+      // Same family-derivation as /upload — this is the pre-commit PREVIEW
+      // the officer actually reviews, so it must use the SAME prompt guidance
+      // the eventual /upload commit extraction gets. Without this, the two
+      // paths could disagree on the same document.
+      const docFamily = familyFromFileName(file.name);
       extraction = text.trim().length >= 20
-        ? await ocrText(c.env, text)
+        ? await ocrText(c.env, text, docFamily)
         : emptyExtraction('none', 'Insufficient text to extract');
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
@@ -375,11 +372,26 @@ async function scanDocumentHandler(c: any): Promise<Response> {
     return dbErrorResponse(c, err, 'Extraction failed');
   }
 
+  // This is the PREVIEW the officer reviews before committing. It must show
+  // the same values /upload will actually write — previously this returned
+  // the model's raw fields while /upload normalized+validated them, so the
+  // screen said `6/26/2026` / `Utah` / `(435) 986-1200` and the record said
+  // `2026-06-26` / `UT` / `4359861200`. Same seam, same result.
+  const previewValidation = finalizeFields(extraction.fields, new Date().toISOString());
+  if (previewValidation.issues.length) {
+    log.warn('scan-document validation issues', {
+      traceId: c.get('traceId'),
+      count: previewValidation.issues.length,
+      issues: previewValidation.issues.slice(0, 10),
+    });
+  }
+
   return c.json({
     success: extraction.success,
     documentType: extraction.documentType,
     confidence: extraction.confidence,
-    fields: extraction.fields,
+    fields: previewValidation.adjusted,
+    validationIssues: previewValidation.issues,
     rawText: extraction.rawText,
     allDates: extraction.allDates,
     pageCount,
@@ -427,12 +439,14 @@ si.post('/upload', async (c) => {
     }
   }
 
-  // Client-provided pdfjs text, keyed by filename. The browser already
-  // ran pdfjs on each PDF during drag-drop; we use that text directly
-  // for born-digital PDFs instead of round-tripping through the PDF
-  // Tools container (which is NOT rolled out in prod — deploy uses
-  // --containers-rollout=none — so a container fetch would hang).
-  // Only genuinely empty PDFs (scans) fall through to the container.
+  // Client-provided pdfjs text, keyed by filename. The browser already ran
+  // pdfjs on each PDF during drag-drop. toMarkdown (see below) is tried
+  // FIRST for every PDF — this client text is only the fallback for
+  // born-digital PDFs toMarkdown can't read, used instead of round-tripping
+  // through the PDF Tools container (which is NOT rolled out in prod —
+  // deploy uses --containers-rollout=none — so a container fetch would
+  // hang). Only PDFs that toMarkdown AND client text both fail on fall
+  // through to the container.
   const clientTextByName = new Map<string, string>();
   const clientTextRaw = form.get('client_text');
   if (typeof clientTextRaw === 'string') {
@@ -473,11 +487,34 @@ si.post('/upload', async (c) => {
     ocrEngine: string;
     r2Key: string | null;
     ex: ExtractionResult;   // per-document field extraction
+    // Packet family derived from the uploaded FILE NAME (ICU's fixed naming
+    // convention), independent of what the model guessed the document was.
+    // Arbitration ranks on this when present: the filename is the reliable
+    // signal, and the model's DOC_TYPES classification is not — it will
+    // reasonably call "Court Docket.pdf" a 'subpoena'. undefined when the
+    // name doesn't match a known convention, in which case arbitration
+    // falls back to ex.documentType.
+    family?: string;
     error?: string;          // file-level (read/store) error
+    // Positive fact: true only if this doc's extraction call was actually
+    // invoked (extractFromText/ocrImage), regardless of whether it then
+    // succeeded or timed out. False for unsupported types, read/store
+    // errors, and PDFs with too little text to bother calling — those get
+    // an emptyExtraction() stand-in but never touch the model, so they must
+    // never be priced. See serveIntakeNeurons.ts PacketDocNeuronInput.
+    modelCalled: boolean;
   }
 
   const collected: Collected[] = await Promise.all(files.map(async (file): Promise<Collected> => {
     const r2Key = await storeToR2(c.env, file, user.id).catch(() => null);
+    // Intake packets follow a fixed naming convention ("<job#> Field
+    // Sheet.pdf" / "Court Docket.pdf" / "Information Form.pdf") — derive
+    // the document family from the uploaded file's own name so the system
+    // prompt gets that family's layout-specific guidance AND arbitration
+    // ranks on the reliable signal rather than the model's guess. Falls
+    // back to undefined (generic prompt / ex.documentType) for anything
+    // that doesn't clearly match one of the three conventions.
+    const docFamily = familyFromFileName(file.name);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
 
@@ -487,7 +524,7 @@ si.post('/upload', async (c) => {
           .catch((e) => emptyExtraction('workers-ai-vision', e instanceof Error ? e.message : String(e)));
         const engine = ex.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
         for (const d of ex.allDates) allDates.add(d);
-        return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: engine, r2Key, ex };
+        return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: engine, r2Key, ex, family: docFamily, modelCalled: true };
       }
 
       // PDFs: acquire text, then extract fields from THIS doc alone.
@@ -497,7 +534,22 @@ si.post('/upload', async (c) => {
         let ocrUsed = false;
         let pageCount = 0;
         const clientText = clientTextByName.get(file.name) || '';
-        if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
+        // Same zero-neuron structured tier as /scan-document: try toMarkdown
+        // BEFORE the pdfjs-client text (that positional-concatenation text is
+        // exactly the two-column interleaving hazard toMarkdown exists to
+        // avoid) and before the container round-trip.
+        const md = await withTimeout(
+          extractPdfMarkdown(c.env.AI, bytes, file.name || 'doc.pdf'),
+          TOMARKDOWN_TIMEOUT_MS, 'toMarkdown timed out',
+        ).catch(() => EMPTY_PDF_TEXT);
+        if (md.text && !isScanStub(md.text, md.page_count)) {
+          text = md.text; pageCount = md.page_count;
+          ocrEngine = 'workers-ai-tomarkdown';
+          log.info('upload: toMarkdown structured extraction used', {
+            traceId: c.get('traceId'), file: file.name, structured: md.structured,
+            chars: md.text.length, page_count: md.page_count,
+          });
+        } else if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
           text = clientText;
         } else {
           const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
@@ -512,49 +564,136 @@ si.post('/upload', async (c) => {
             text = clientText; ocrEngine = 'container-unavailable';
           }
         }
-        const ex = text.trim().length >= 20
+        // ── Single choke point for OCR-noise scrubbing ──────────────
+        // precleanText MUST run on whichever tier won, not just on the
+        // container leg. The pdfjs-client tier is precisely where the
+        // hazard lives: positional concatenation leaves a diagonal RUSH
+        // watermark as isolated H/S/U/R lines, and homoglyph substitutions
+        // ("СA" with a Cyrillic С) survive into recipient_state, where
+        // validateFields' STATE_ZIP_PREFIX lookup then misses entirely and
+        // SILENTLY skips the ZIP↔state check. precleanText is idempotent,
+        // so applying it once here after tier selection covers every tier
+        // (including the already-cleaned container text) with no double-
+        // scrub risk, and no future tier can escape it.
+        text = precleanText(text);
+        // modelCalled is set true ONLY inside the branch that actually
+        // invokes extractFromText — not derived from the outcome, so a
+        // timeout/error caught below still counts as "reached the model"
+        // (real neuron cost was incurred even though the call failed).
+        const willCallModel = text.trim().length >= 20;
+        const ex = willCallModel
           ? await withTimeout(
-              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP), c.env.SERVE_INTAKE_LORA),
+              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP), c.env.SERVE_INTAKE_LORA, docFamily),
               AI_TIMEOUT_MS, 'Field extraction timed out',
             ).catch((e) => emptyExtraction(EXTRACT_MODEL, e instanceof Error ? e.message : String(e)))
           : emptyExtraction(EXTRACT_MODEL, 'Insufficient text to extract');
         ex.rawText = text;
         for (const d of ex.allDates) allDates.add(d);
-        return { file, text, pageCount, ocrUsed, ocrEngine, r2Key, ex };
+        return { file, text, pageCount, ocrUsed, ocrEngine, r2Key, ex, family: docFamily, modelCalled: willCallModel };
       }
 
       return {
         file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'unsupported', r2Key,
         ex: emptyExtraction(EXTRACT_MODEL, `Unsupported type ${file.type}`),
         error: `Unsupported type ${file.type}`,
+        family: docFamily,
+        modelCalled: false,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'error', r2Key, ex: emptyExtraction(EXTRACT_MODEL, msg), error: msg };
+      return {
+        file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'error', r2Key,
+        ex: emptyExtraction(EXTRACT_MODEL, msg), error: msg, family: docFamily, modelCalled: false,
+      };
     }
   }));
 
-  // ── Merge per-document fields by confidence ──
-  // Field-sheet / info-form docs (structured, recipient-dense) usually win
-  // each field; the court docket fills gaps. Highest-confidence value per
-  // field survives — so a timed-out docket simply contributes nothing
-  // rather than blanking the recipient the field sheet already provided.
-  const mergedFields: Record<string, ExtractedField> = {};
+  // ── Neuron cost accounting (spec §6) ────────────────────────
+  // Estimates Workers AI Neuron consumption so the 10k/day free ceiling is
+  // observable before it's hit. Per doc, not per combined string: /upload
+  // runs one extraction call PER DOCUMENT (see the "why per-doc" note
+  // above), each capped at PER_DOC_CAP chars — so `sentChars` mirrors the
+  // exact slice handed to extractFromText, not the doc's full raw text.
+  // extraction.model is read per-doc too, since ocrText/extractFromText can
+  // fall back to a different model than the configured default.
+  //
+  // Vision docs (images) are excluded from the input-token estimate: their
+  // model input is the image itself, not text, and c2.text there holds the
+  // OCR'd OUTPUT, not what was sent in. There's no chars/4-style proxy for
+  // image input given here, and guessing one would measure the wrong thing
+  // — worse than omitting it. Their neuron cost still exists; it's just not
+  // estimable from values already in hand, so this total is a floor, not a
+  // ceiling, for image-heavy packets — surfaced below via `vision_docs` /
+  // `partial` so the log is self-describing instead of relying on a source
+  // comment nobody watching the log can see.
+  //
+  // Documents that never reached the model (unsupported type, read/store
+  // error, insufficient text) are excluded via `modelCalled` — a positive
+  // fact set at the point of the actual call, NOT inferred from `ocrEngine`
+  // string matching. String matching only covers the engines someone
+  // remembered to list, and previously let unsupported/errored/skipped PDFs
+  // get priced at ~105 phantom neurons apiece for calls that never happened.
+  const visionDocs = collected.filter(
+    (c2) => c2.ocrEngine === 'workers-ai-vision' || c2.ocrEngine === 'claude-vision',
+  ).length;
+  const intakeNeurons = estimatePacketNeurons(collected.map((c2) => ({
+    model: c2.ex.model,
+    textLength: Math.min(c2.text.length, PER_DOC_CAP),
+    modelCalled: c2.modelCalled,
+    isVision: c2.ocrEngine === 'workers-ai-vision' || c2.ocrEngine === 'claude-vision',
+  })));
+  log.info('serve-intake neurons', {
+    traceId: c.get('traceId'),
+    neurons: intakeNeurons,
+    free_daily: FREE_NEURONS_PER_DAY,
+    docs: collected.length,
+    vision_docs: visionDocs,
+    partial: visionDocs > 0,
+  });
+
+  // ── Cross-document arbitration ──
+  // Was: highest-confidence value per field wins, source-blind. That lets
+  // a confidently-wrong value from the wrong document beat an authoritative
+  // one — the Field Sheet's Case/Court cells are frequently blank or
+  // watermark-corrupted while the Court Docket has them authoritatively,
+  // and the Information Form is the operational record for service
+  // mechanics. arbitrateFields() ranks candidates by source precedence
+  // (confidence only breaks a tie within the same rank) and RETAINS the
+  // losing candidate in `conflicts` so a human can pick it later (PR 4
+  // review UI) instead of silently discarding it.
+  //
+  // Rank on the FILENAME-derived family first. The model classifies the lead
+  // document specifically — it will reasonably call "Court Docket.pdf" a
+  // 'subpoena' — and a specific-but-correct classification that isn't one of
+  // the three packet-family names would otherwise rank 0 and lose to the
+  // field sheet, inverting precedence on the modal packet. (arbitrateFields
+  // also collapses court-form enum members onto court_filing as a second line
+  // of defense for the ex.documentType fallback.)
+  const docCandidates: DocCandidate[] = collected.map((c2) => ({
+    docType: c2.family ?? c2.ex.documentType,
+    fields: c2.ex.fields,
+  }));
+  const arbitration = arbitrateFields(docCandidates);
+  const mergedFields: Record<string, ExtractedField> = arbitration.merged;
+  let conflicts: FieldConflict[] = arbitration.conflicts;
   let bestConfidence = 0;
   let bestDocType = 'other';
   // synthetic combined.error placeholder so downstream warning logic can
   // report the most relevant extraction failure.
   let combinedError: string | null = null;
   for (const c2 of collected) {
-    for (const [k, v] of Object.entries(c2.ex.fields)) {
-      const cur = mergedFields[k];
-      if (!cur || (v.value && v.confidence > cur.confidence)) mergedFields[k] = v;
-    }
     if (c2.ex.confidence > bestConfidence) {
       bestConfidence = c2.ex.confidence;
       bestDocType = c2.ex.documentType;
     }
     if (c2.ex.error && !combinedError) combinedError = c2.ex.error;
+  }
+  if (conflicts.length) {
+    log.info('serve-intake: cross-document field conflicts arbitrated', {
+      traceId: c.get('traceId'),
+      count: conflicts.length,
+      fields: conflicts.map((cf) => cf.field),
+    });
   }
 
   // ── Name-coherence guard ──────────────────────────────────────
@@ -584,29 +723,40 @@ si.post('/upload', async (c) => {
     const s = recipientScore(c2.ex);
     if (s > bestScore) { bestScore = s; bestDoc = c2.ex; }
   }
-  if (bestDoc) {
-    for (const k of IDENTITY_GROUP) {
-      const v = bestDoc.fields[k];
-      // Only override with a non-empty value — a blank field on the
-      // winning doc shouldn't wipe a value another doc legitimately
-      // supplied (e.g. winner has the name, a second doc has the DOB).
-      if (v && v.value) mergedFields[k] = v;
-    }
-  }
+  // This guard can override arbitration's per-field pick (it selects the
+  // whole name group from one document, not per-field precedence), so
+  // `conflicts`/`mergedFields` must be reconciled — pulled out as a pure,
+  // independently-tested function (see serveIntakeArbitrate.ts) since the
+  // rest of this handler needs D1/R2/AI bindings a unit test can't supply.
+  conflicts = reconcileIdentityConflicts(conflicts, mergedFields, docCandidates, bestDoc, IDENTITY_GROUP);
 
-  // ── Deterministic field normalization ─────────────────────────
-  // Enforce the shapes the prompt only *requests*: digits-only phones,
-  // 2-letter states, 5(+4) ZIPs, ISO dates. Runs on the merged set so
-  // every downstream consumer (queue row, person/property writes, the
-  // success card) sees clean values.
-  const normalizedFields = normalizeFields(mergedFields);
+  // ── Deterministic normalization + cross-field validation ───────
+  // finalizeFields() is the ONE seam that applies both, in order:
+  //   normalize — enforce the shapes the prompt only *requests* (digits-only
+  //   phones, 2-letter states, 5(+4) ZIPs, ISO dates), so every downstream
+  //   consumer (queue row, person/property writes, the success card) sees
+  //   clean values;
+  //   validate — the model self-reports confidence and it is optimistic, so
+  //   check what can be checked without a model (ZIP↔state agreement, phone
+  //   digit count, date sanity) and fold the result back into the score.
+  // /scan-document runs the identical seam, so the preview an officer
+  // reviews and the record that commits can no longer disagree.
+  const nowIso = new Date().toISOString();
+  const validation = finalizeFields(mergedFields, nowIso);
+  if (validation.issues.length) {
+    log.warn('serve-intake validation issues', {
+      count: validation.issues.length,
+      issues: validation.issues.slice(0, 10),
+    });
+  }
+  const validatedFields = validation.adjusted;
 
   // ── Phase 1 Quality Gate: judge the merged result ──────────────
   const rawDocsForJudge = collected.map(c2 => ({ name: c2.file.name, text: c2.text || '' }));
   const docTypesForJudge = collected.map(c2 => c2.ex.documentType);
   const judgeResult = await judgeMerged(
     c.env,
-    normalizedFields,
+    validatedFields,
     rawDocsForJudge,
     docTypesForJudge,
   );
@@ -622,7 +772,7 @@ si.post('/upload', async (c) => {
       const overrides = JSON.parse(overridesRaw) as Record<string, string>;
       for (const [k, v] of Object.entries(overrides)) {
         if (typeof v === 'string' && v.trim()) {
-          normalizedFields[k] = { value: v.trim(), confidence: 1.0 };
+          validatedFields[k] = { value: v.trim(), confidence: 1.0 };
         }
       }
       for (const k of Object.keys(overrides)) {
@@ -734,8 +884,8 @@ si.post('/upload', async (c) => {
 
   // ── Commit the merged extraction into the full RMS record set:
   //    business / person / property / call / serve_queue + links.
-  const row = fieldsToQueueRow(normalizedFields);
-  const docSummary = buildCallDescription(row, normalizedFields, documents.length);
+  const row = fieldsToQueueRow(validatedFields);
+  const docSummary = buildCallDescription(row, validatedFields, documents.length);
   let commit: CommitResult = {
     serve_queue_id: null, person_id: null, agent_person_id: null,
     business_id: null, property_id: null, call_id: null, call_number: null,
@@ -745,7 +895,7 @@ si.post('/upload', async (c) => {
   if (row.recipient_name || row.recipient_address) {
     await reconcileScheduleSchema(db);
     commit = await commitIntake(db, {
-      fields: normalizedFields,
+      fields: validatedFields,
       queueRow: row,
       userId: user.id,
       documentSummary: docSummary,
@@ -762,6 +912,7 @@ si.post('/upload', async (c) => {
         success: !!d.success, page_count: d.page_count ?? null,
       })),
       allDates: [...allDates],
+      conflicts,
       env: c.env,
     });
     // Back-link the document rows to the new queue entry — and to the
@@ -854,7 +1005,7 @@ si.post('/upload', async (c) => {
     // Legacy IntakeResult shape so the existing success card on
     // ServeIntakePage renders without any client-side branching on
     // which endpoint was hit.
-    extracted: buildExtractedBlock(normalizedFields),
+    extracted: buildExtractedBlock(validatedFields),
     confidence: bestConfidence,
     documentType: bestDocType,
     // Server-side advanced fields (the /intake legacy path can't
@@ -870,11 +1021,11 @@ si.post('/upload', async (c) => {
     judge_verdicts: judgeResult.verdicts,
     quality_status: judgeResult.overall_status === 'error' ? 'needs_review' : judgeResult.overall_status,
     judge_run_id: judgeRunId,
-    defendants_detected: parseDefendants(normalizedFields.defendant?.value),
+    defendants_detected: parseDefendants(validatedFields.defendant?.value),
     merged: {
       documentType: bestDocType,
       confidence: bestConfidence,
-      fields: normalizedFields,
+      fields: validatedFields,
       allDates: [...allDates],
       queue_row: row,
     },
@@ -1030,8 +1181,31 @@ si.post('/intake', async (c) => {
   const docs: Array<{ type?: string; text?: string }> = Array.isArray(body.documents) ? body.documents : [];
   if (docs.length === 0) return c.json({ error: 'No documents in request' }, 400);
 
-  const combined = docs.map((d) => `--- ${d.type || 'document'} ---\n${d.text || ''}`).join('\n\n');
+  // This route receives browser-extracted pdfjs text — positional
+  // concatenation, the exact tier where a diagonal RUSH watermark lands as
+  // isolated single letters and where Cyrillic homoglyphs ("СA") survive
+  // into recipient_state and silently defeat validateFields' ZIP↔state
+  // check. precleanText was never applied here; it is idempotent, so
+  // scrubbing per-document before concatenation is safe regardless of what
+  // the client already did.
+  const combined = docs
+    .map((d) => `--- ${d.type || 'document'} ---\n${precleanText(d.text || '')}`)
+    .join('\n\n');
   const extraction = await extractFromText(c.env.AI, combined, c.env.SERVE_INTAKE_LORA);
+  // Neuron cost accounting (spec §6): `combined` is exactly the text sent to
+  // extractFromText above (no slicing/capping on this legacy route), and
+  // extraction.model is whichever model actually ran — not necessarily the
+  // configured default, since extractFromText can itself fall back. Output
+  // tokens are a fixed 512 estimate for the structured JSON field payload;
+  // Workers AI doesn't report actual usage back to this call. Pure
+  // arithmetic — no extra AI/network call.
+  log.info('serve-intake neurons', {
+    traceId: c.get('traceId'),
+    model: extraction.model,
+    neurons: estimateNeurons(extraction.model, Math.ceil(combined.length / 4), 512),
+    free_daily: FREE_NEURONS_PER_DAY,
+    docs: docs.length,
+  });
   // Same deterministic normalization the /upload path applies, so the
   // legacy single-call route produces equally clean field shapes.
   const normalized = normalizeFields(extraction.fields);
@@ -1177,7 +1351,10 @@ async function reprocessDocument(
     }
     if (bytes) extraction = await ocrImage(c.env, bytes, doc.file_type).catch(() => null);
   } else if ((doc.raw_text || '').trim().length >= 20) {
-    extraction = await ocrText(c.env, doc.raw_text).catch(() => null);
+    // Same family derivation as /upload and /scan-document, from the
+    // originally-uploaded file name stored on the document row.
+    const docFamily = familyFromFileName(doc.file_name || '');
+    extraction = await ocrText(c.env, doc.raw_text, docFamily).catch(() => null);
   }
   if (!extraction) {
     return { success: false, documentType: doc.doc_type || 'other', confidence: 0, model: '',
