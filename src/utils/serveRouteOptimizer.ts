@@ -108,7 +108,7 @@ export function estimateDriveTime(distanceMiles: number): number {
 
 /**
  * Compute the bounding box of all addresses currently assigned to this server.
- * Queries serve_queue where assigned_to matches the server's user id.
+ * Queries serve_queue where officer_id matches the server's user id.
  * Returns null if the server has no assigned attempts or none with valid coords.
  *
  * @param db - D1 database handle
@@ -121,9 +121,13 @@ export async function getServerWorkArea(
 ): Promise<BoundingBox | null> {
   const rows = await query<{ lat: number; lng: number }>(
     db,
-    `SELECT lat, lng FROM serve_queue
-      WHERE assigned_to = ?
-        AND lat IS NOT NULL AND lng IS NOT NULL
+    // serve_queue has no lat/lng/assigned_to. The geocoded columns are
+    // recipient_lat/recipient_lng and the assignment column is officer_id
+    // (assigned_officer_id exists but is populated on 0 of 23 live rows).
+    // Aliased so the row type and every caller stay unchanged.
+    `SELECT recipient_lat AS lat, recipient_lng AS lng FROM serve_queue
+      WHERE officer_id = ?
+        AND recipient_lat IS NOT NULL AND recipient_lng IS NOT NULL
         AND status NOT IN ('served', 'cancelled', 'failed')`,
     serverId,
   ).catch(() => []);
