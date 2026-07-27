@@ -28,6 +28,7 @@ import {
   finalizePoliceReport,
   resolveSectionAccentColor,
   fitPdfText,
+  stampGenerationTime,
 } from './pdfGenerator';
 import { lookupPsoCode, formatCodeFull } from '../constants/processServiceCodes';
 import {
@@ -302,11 +303,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    timeZone: 'America/Denver',
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  }));
+  stampGenerationTime();
 
   addConfidentialWatermark(doc);
   // @ts-expect-error jsPDF GState — safety reset after watermark
@@ -454,11 +451,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    timeZone: 'America/Denver',
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  }));
+  stampGenerationTime();
 
   addConfidentialWatermark(doc);
   // @ts-expect-error jsPDF GState — safety reset after watermark
@@ -717,11 +710,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'mobile');
   setActiveFormKey('');
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    timeZone: 'America/Denver',
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  }));
+  stampGenerationTime();
 
   // The Notice of Attempt is RECIPIENT-facing. The diagonal CONFIDENTIAL
   // watermark used on internal police forms (affidavit, service log)
@@ -1072,11 +1061,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    timeZone: 'America/Denver',
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  }));
+  stampGenerationTime();
 
   addConfidentialWatermark(doc);
   // @ts-expect-error jsPDF GState — safety reset after watermark
@@ -1878,11 +1863,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   setActiveFormKey('');
 
   const { date: signedDate, time: signedTime } = serviceMomentFor(data);
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    timeZone: RECEIPT_TZ,
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  }));
+  stampGenerationTime();
 
   const isIndividual = data.variant === 'individual';
   const isBusiness = data.variant === 'business';

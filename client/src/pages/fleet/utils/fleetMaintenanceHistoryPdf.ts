@@ -10,6 +10,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle, FleetMaintenance } from '../../../types';
+import { safeDateStr } from '../../../utils/dateUtils';
 
 interface Args {
   vehicle: FleetVehicle;
@@ -116,7 +117,7 @@ export function generateFleetMaintenanceHistoryPdf({ vehicle, records, periodLab
       drawHeader(y);
       y += 12;
     }
-    doc.text(r.performed_at ? r.performed_at.slice(0, 10) : '-', colDate, y);
+    doc.text(r.performed_at ? safeDateStr(r.performed_at, '-') : '-', colDate, y);
     doc.text((r.type || 'other').replace('_', ' '), colType, y);
     doc.text(truncate(r.description || '', 28), colDesc, y);
     doc.text(truncate(r.vendor || '-', 14), colVendor, y);

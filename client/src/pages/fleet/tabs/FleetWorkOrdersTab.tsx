@@ -6,6 +6,7 @@ import FleetioConflictBadge from '../../../components/FleetioConflictBadge';
 import type { ConflictBadgeConflict } from '../../../components/FleetioConflictBadge';
 import WorkOrderFormModal, { type WorkOrderFormVehicle } from '../modals/WorkOrderFormModal';
 import type { WorkOrder, WorkOrderStats, WorkOrderStatus } from '../../../types';
+import { safeDateStr } from '../../../utils/dateUtils';
 
 const STATUS_LABELS: Record<WorkOrderStatus, string> = {
   open: 'Open',
@@ -193,7 +194,7 @@ export default function FleetWorkOrdersTab({ initialVehicleId }: Props) {
                 <td className="px-3 py-[2px] text-[11px]">
                   <span className={`px-1.5 py-0.5 rounded-sm text-[10px] uppercase tracking-wide ${STATUS_TONES[r.status]}`}>{STATUS_LABELS[r.status]}</span>
                 </td>
-                <td className="px-3 py-[2px] text-[11px] font-mono text-rmpg-300">{r.opened_at?.slice(0, 10) ?? '—'}</td>
+                <td className="px-3 py-[2px] text-[11px] font-mono text-rmpg-300">{safeDateStr(r.opened_at)}</td>
                 <td className="px-3 py-[2px] text-[11px] text-rmpg-200 max-w-[280px] truncate" title={r.summary ?? ''}>{r.summary ?? '—'}</td>
                 <td className="px-3 py-[2px] text-[11px] text-right text-rmpg-300 font-mono">{r.est_cost != null ? `$${r.est_cost.toFixed(2)}` : '—'}</td>
                 <td className="px-3 py-[2px] text-[11px] text-right text-rmpg-100 font-mono">{r.actual_cost != null ? `$${r.actual_cost.toFixed(2)}` : '—'}</td>

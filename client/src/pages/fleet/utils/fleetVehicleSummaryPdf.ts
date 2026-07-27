@@ -12,6 +12,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle } from '../../../types';
+import { safeDateStr } from '../../../utils/dateUtils';
 
 interface CostTotals {
   fuel: number;
@@ -177,7 +178,7 @@ export function generateFleetVehicleSummaryPdf({ vehicle, assignedOfficer, assig
     y += 12;
     doc.setFont('helvetica', 'normal');
     for (const m of recentMaintenance.slice(0, 5)) {
-      doc.text(m.performed_at ? m.performed_at.slice(0, 10) : '-', marginX, y);
+      doc.text(m.performed_at ? safeDateStr(m.performed_at, '-') : '-', marginX, y);
       doc.text((m.type || 'service').replace('_', ' '), marginX + 100, y);
       doc.text(m.cost != null ? fmtCurrency(m.cost) : '-', marginX + 250, y);
       y += 11;
