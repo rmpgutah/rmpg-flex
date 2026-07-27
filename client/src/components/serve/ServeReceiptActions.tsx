@@ -136,6 +136,15 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
 
   // ── Hand-off ───────────────────────────────────────────────
   const [url, setUrl] = useState<string | null>(null);
+  // Case caption and assigned server, returned WITH the link. The card's
+  // ServeJob carries no plaintiff or defendant, so printing from card
+  // state alone would render a court caption with empty parties.
+  const [caption, setCaption] = useState<{
+    case_number: string | null; court_name: string | null; jurisdiction: string | null;
+    plaintiff_name: string | null; defendant_name: string | null;
+    document_type: string | null; recipient_name: string | null; service_address: string;
+  } | null>(null);
+  const [resolvedServer, setResolvedServer] = useState<{ name: string | null; badge: string | null } | null>(null);
   const [qrPng, setQrPng] = useState<string | null>(null);
   const [receipts, setReceipts] = useState<SignedReceipt[]>([]);
   const [busy, setBusy] = useState(false);
@@ -180,7 +189,11 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
     setBusy(true);
     setError(null);
     try {
-      const res = await apiFetch<{ token: string; url: string; variant: ReceiptVariant }>(
+      const res = await apiFetch<{
+        token: string; url: string; variant: ReceiptVariant;
+        job: NonNullable<typeof caption>;
+        server: { name: string | null; badge: string | null };
+      }>(
         `/serve-receipts/${job.id}/prefill`,
         {
           method: 'POST',
@@ -199,6 +212,8 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
         },
       );
       setUrl(res.url);
+      setCaption(res.job ?? null);
+      setResolvedServer(res.server ?? null);
       // Error correction H: scanned off a phone screen in daylight, and
       // often off a printed page that has been folded.
       setQrPng(await QRCode.toDataURL(res.url, { errorCorrectionLevel: 'H', margin: 1, scale: 8 }));
@@ -212,9 +227,14 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
       businessName, jobTitle, documents]);
 
   const buildBlank = useCallback((v: ReceiptVariant): ReceiptOfServiceData => {
+    // Server-returned caption wins over card state: the card's ServeJob
+    // has no plaintiff/defendant, and an empty court caption on a printed
+    // legal instrument is worse than no caption at all.
+    const cap = caption;
+    const defendant = cap?.defendant_name ?? job.defendant_name ?? null;
     const party = v === 'business'
-      ? (businessName || job.defendant_name || 'the business named')
-      : (job.defendant_name || job.recipient_name || 'the named party');
+      ? (businessName || defendant || 'the business named')
+      : (defendant || cap?.recipient_name || job.recipient_name || 'the named party');
     return {
       receiptId: 0,
       blank: true,
@@ -222,17 +242,18 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
       formTitle: receiptFormTitle(v),
       variant: v,
       variantLabel: VARIANT_LABEL[v],
-      courtName: job.court_name ?? '',
-      caseNumber: job.case_number ?? '',
-      jurisdiction: job.jurisdiction ?? '',
-      plaintiffName: job.plaintiff_name ?? '',
-      defendantName: job.defendant_name ?? '',
-      documentType: job.document_type ?? '',
-      serviceAddress: [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
-        .filter(Boolean).join(', '),
+      courtName: cap?.court_name ?? job.court_name ?? '',
+      caseNumber: cap?.case_number ?? job.case_number ?? '',
+      jurisdiction: cap?.jurisdiction ?? job.jurisdiction ?? '',
+      plaintiffName: cap?.plaintiff_name ?? job.plaintiff_name ?? '',
+      defendantName: defendant ?? '',
+      documentType: cap?.document_type ?? job.document_type ?? '',
+      serviceAddress: cap?.service_address
+        || [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
+          .filter(Boolean).join(', '),
       premisesType: premisesType === 'business' ? 'Business' : premisesType === 'other' ? 'Other' : 'Residence',
-      serverName: serverName ?? '',
-      serverBadge: serverBadge ?? '',
+      serverName: resolvedServer?.name ?? serverName ?? '',
+      serverBadge: resolvedServer?.badge ?? serverBadge ?? '',
       agency: 'Rocky Mountain Protective Group',
       recipientName: '',
       acceptingOnBehalfOf: v === 'individual' ? undefined : party,
@@ -242,7 +263,7 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
       residesAtAddress: false,
       authorizedAgent: false,
     };
-  }, [job, qrPng, serverName, serverBadge, premisesType, businessName, documents]);
+  }, [job, caption, resolvedServer, qrPng, serverName, serverBadge, premisesType, businessName, documents]);
 
   /**
    * autoPrint + a blob URL rather than a download: the officer is at a

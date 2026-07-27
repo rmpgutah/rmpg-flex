@@ -885,12 +885,51 @@ serveReceiptAdmin.post(
       actorId: user?.id ?? null,
     }).catch(() => undefined);
 
+    // Return the case caption and the assigned server WITH the link.
+    //
+    // The officer's card carries a ServeJob, which has no plaintiff or
+    // defendant on it — printing a blank from card state alone renders a
+    // court caption with empty parties, which is worse than no caption.
+    // Same principle as /receipt/:id/document: the join stays on the
+    // server so the printed form cannot disagree with the record.
+    const caption = await queryFirst<Record<string, any>>(
+      db,
+      `SELECT case_number, court_name, jurisdiction, plaintiff_name, defendant_name,
+              document_type, recipient_name, recipient_address, recipient_city,
+              recipient_state, recipient_zip, assigned_officer_id, officer_id
+         FROM serve_queue WHERE id = ?`,
+      queueId,
+    );
+    const servingOfficerId = caption?.assigned_officer_id ?? caption?.officer_id ?? user?.id ?? null;
+    const servingOfficer = servingOfficerId
+      ? await queryFirst<{ full_name: string | null; first_name: string | null; last_name: string | null; badge_number: string | null }>(
+          db, 'SELECT full_name, first_name, last_name, badge_number FROM users WHERE id = ?', servingOfficerId,
+        ).catch(() => null)
+      : null;
+
     return c.json({
       token: tok.token,
       url: `${PUBLIC_APP_URL}/m/serve-receipt/${tok.token}`,
       variant: prefillVariant,
       form_title: receiptFormTitle(prefillVariant),
       prefill,
+      job: {
+        case_number: caption?.case_number ?? null,
+        court_name: caption?.court_name ?? null,
+        jurisdiction: caption?.jurisdiction ?? null,
+        plaintiff_name: caption?.plaintiff_name ?? null,
+        defendant_name: caption?.defendant_name ?? null,
+        document_type: caption?.document_type ?? null,
+        recipient_name: caption?.recipient_name ?? null,
+        service_address: [caption?.recipient_address, caption?.recipient_city,
+          caption?.recipient_state, caption?.recipient_zip].filter(Boolean).join(', '),
+      },
+      server: {
+        name: servingOfficer?.full_name
+          || [servingOfficer?.first_name, servingOfficer?.last_name].filter(Boolean).join(' ')
+          || null,
+        badge: servingOfficer?.badge_number ?? null,
+      },
     });
   },
 );
