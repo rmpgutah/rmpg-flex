@@ -33,6 +33,7 @@ import type { AttemptWindow } from './serveDiligencePlanner';
 import type { ServiceLocationNote } from './serveLocationNotes';
 import { noteConstraintSummary } from './serveLocationNotes';
 import type { AddressClass } from './serveAddressClass';
+import { DEFAULT_RESIDENTIAL_WINDOWS, DEFAULT_BUSINESS_WINDOWS } from './serveAttemptWindows';
 
 // ── Operator policy switches ─────────────────────────────────
 const FLAG_EVICTION = true;        // eviction / unlawful detainer → HIGH
@@ -82,8 +83,23 @@ function hasAny(haystack: string, needles: string[]): boolean {
 // clock values, e.g. "9AM-3:30PM" or "between 9am and 3:30pm") OR explicit
 // service/attempt language tied to timing. Mentioning a day of the week or
 // a bare date is not, by itself, evidence of an attempt-window restriction.
+//
+// R1 (fix round 2): the two predicates were combined with OR, which was the
+// whole bug. Nearly every real `service_instructions` contains the word
+// "serve", so a line like "Please serve defendant at the residence. Gate code
+// 4412." satisfied hasRestrictionLanguage() alone and was printed under
+// SERVICE WINDOWS as `__Client restriction (verbatim):__ …` followed by "Do
+// NOT attempt outside these hours" — an hours restriction containing no
+// hours, and an instruction to log a restriction that does not exist. The
+// same text was ALSO printed verbatim under CLIENT INSTRUCTIONS, so the
+// report contradicted itself. Both predicates are now REQUIRED (AND), which
+// is what the test at tests/serveIntakeBriefing.test.ts has been named for
+// all along ("paired with clock times").
 const CLOCK_VALUE_RE = /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi;
-const RESTRICTION_KEYWORDS = ['serve', 'service', 'attempt', 'do not serve', 'no service'];
+// 'diligence' is attempt-cadence language in this domain ("Diligence is 1
+// between 6AM-9AM…") and must count, or the AND above would reject a genuine
+// client band statement that never uses the word "serve".
+const RESTRICTION_KEYWORDS = ['serve', 'service', 'attempt', 'diligence', 'do not serve', 'no service'];
 
 function hasClockTimeRange(line: string): boolean {
   const matches = line.match(CLOCK_VALUE_RE);
@@ -108,7 +124,7 @@ export function clientWindowText(queueRow: QueueRow): string | null {
       const t = line.trim();
       if (!t) continue;
       if (t.startsWith('[OCR')) continue;           // provenance stamp, not a restriction
-      if (!hasClockTimeRange(t) && !hasRestrictionLanguage(t)) continue;
+      if (!hasClockTimeRange(t) || !hasRestrictionLanguage(t)) continue;
       return t;
     }
   }
@@ -185,6 +201,20 @@ export interface BusinessRecord {
   contact_phone?: string | null;
   phone?: string | null;
   notes?: string | null;
+  business_type?: string | null;
+}
+
+// R5: findOrCreateBusiness stamps every row IT creates with these markers.
+// A row this pipeline invented is not independent evidence of anything, so it
+// must never be allowed to CONFIRM an address class. Exported so the marker
+// lives in exactly one place alongside the record shape that carries it.
+export const AUTO_CREATED_BUSINESS_NOTE = 'Auto-created via serve intake';
+export const AUTO_CREATED_BUSINESS_TYPE = 'process_service_recipient';
+
+export function isAutoCreatedBusinessRecord(b: BusinessRecord | null | undefined): boolean {
+  if (!b) return false;
+  return (b.notes || '').startsWith('Auto-created')
+    || (b.business_type || '') === AUTO_CREATED_BUSINESS_TYPE;
 }
 
 export interface BriefingInput {
@@ -199,8 +229,17 @@ export interface BriefingInput {
   propertyRecord?: PropertyRecord | null;
   businessRecord?: BusinessRecord | null;
   addressClass?: AddressClass;
+  addressClassConfirmed?: boolean;
   scheduleImpossible?: boolean;
   hasClientSchedule?: boolean;  // true only when the client actually dictated attempt bands
+  // R3 — fail-closed must be VISIBLE. parseClientBands()/parseAllowedDays()
+  // correctly return []/null on anything they cannot read, but that made
+  // "the client dictated nothing" indistinguishable from "the client
+  // dictated something we could not parse". The raw source strings are
+  // carried here so the report can say so (spec §6) instead of silently
+  // applying defaults over a restriction the client actually imposed.
+  unparsedClientSchedule?: string | null;
+  unparsedAllowedDays?: string | null;
 }
 
 export interface BriefingNote {
@@ -354,9 +393,19 @@ export function recipientPartyStatus(recipientName: string, parties: Array<strin
   // Fewer than 2 tokens (e.g. a single name, or missing entirely) isn't
   // enough to confidently assert "not a party" — stay silent instead.
   if (recipientTokens.length < 2 || !validParties.length) return 'unknown';
+  const recipientSet = new Set(recipientTokens);
   for (const p of validParties) {
-    const partyTokens = new Set(normalizeNameTokens(p));
-    if (recipientTokens.every((t) => partyTokens.has(t))) return 'party';
+    const partyTokens = normalizeNameTokens(p);
+    const partySet = new Set(partyTokens);
+    // R10: containment was DIRECTIONAL — party ⊇ recipient only. Recipient
+    // "JOHN SMITH JR" against defendant "SMITH, JOHN" failed that test (the
+    // suffix JR has no counterpart), so the report told the officer the
+    // ACTUAL defendant "is NOT a named party in this case". Accept a match
+    // in EITHER direction. The reverse direction still requires the party
+    // side to carry >= 2 tokens, so a single-token party string ("SMITH")
+    // cannot swallow an unrelated recipient.
+    if (recipientTokens.every((t) => partySet.has(t))) return 'party';
+    if (partyTokens.length >= 2 && partyTokens.every((t) => recipientSet.has(t))) return 'party';
   }
   return 'non-party';
 }
@@ -499,7 +548,23 @@ function buildIntakeNote(input: BriefingInput, nowIso: string): string {
     if (summary && summary !== note.note_type) {
       lines.push(`• Structured constraint: **${summary}**`);
     }
-    lines.push('• Attempt windows above have been adjusted to comply with these constraints. Any attempt outside the noted hours or days may be legally challenged — document attempts with timestamps.');
+    // R7: this used to assert compliance unconditionally, from the mere
+    // PRESENCE of a note. Client bands OUTRANK the site note and
+    // selectWindows() returns them WITHOUT intersecting it — so a note with
+    // cutoff_time 15:00 plus a client band of 18:00-21:00 printed
+    // "18:00-21:00 [client-specified]" under a sentence claiming it complied
+    // with the 15:00 cutoff, and the officer arrived at a locked gate. Only
+    // claim compliance when a window in the emitted plan actually carries
+    // `authority === 'site note'`; otherwise name the conflict, which is
+    // exactly what the officer needs to know.
+    const planAuthorities = new Set((input.attemptPlan ?? []).map((w) => w.authority));
+    if (planAuthorities.has('site note')) {
+      lines.push('• Attempt windows above have been adjusted to comply with these constraints. Any attempt outside the noted hours or days may be legally challenged — document attempts with timestamps.');
+    } else if (planAuthorities.has('client-specified')) {
+      lines.push('• __CONFLICT — READ BEFORE DEPARTING: the client-specified attempt windows above OUTRANK this site constraint and have NOT been narrowed to fit it.__ One or more planned windows may fall outside the noted hours or days. Confirm access before the attempt; if the site constraint blocks entry, do NOT attempt outside the client window — document the conflict and notify the hiring party.');
+    } else {
+      lines.push('• These constraints did NOT shape the attempt windows above (those came from the standard address-class windows). Observe the noted hours and days in the field, and document any attempt made outside them with timestamps.');
+    }
   }
 
   // ── Property / Business record enrichment ─────────────────
@@ -573,19 +638,74 @@ function buildPlanNote(input: BriefingInput): string {
 
   // ── SERVICE WINDOWS — always present so the officer knows the answer ──
   // to "when can I go?" regardless of whether the client specified one.
+  //
+  // R2: this block used to re-derive everything from a regex over free text,
+  // ignoring the timing engine entirely. Two consequences, both shipped:
+  //   • the canonical 24-hour client schedule ('06:00-09:00;18:00-21:00')
+  //     carries no am/pm, so CLOCK_VALUE_RE never matched it — the note said
+  //     "No client restriction — standard diligence windows apply" directly
+  //     beneath three [client-specified] windows;
+  //   • the "standard" business hours it printed (09:00–11:00 / 13:00–16:00)
+  //     were not the hours the planner used (09:30-11:30 / 13:30-15:30), so
+  //     one report stated two different sets of business hours.
+  // It is now driven by the STRUCTURED signals — hasClientSchedule and the
+  // authority values actually present in attemptPlan — and the default hours
+  // are rendered from the same constants selectWindows() plans from.
   lines.push('**■ SERVICE WINDOWS**');
+  const planAuthorities = new Set((input.attemptPlan ?? []).map((w) => w.authority));
+  const clientDictated = input.hasClientSchedule === true || planAuthorities.has('client-specified');
   const clientWindows = clientWindowText(queueRow);
-  if (clientWindows) {
-    // Client imposed a specific window restriction — show verbatim so the
-    // officer has the exact language for the affidavit if challenged.
-    lines.push(`• __Client restriction (verbatim):__ ${clientWindows}`);
+
+  const windowList = (specs: readonly { window: string; focus: string }[]) =>
+    specs.map((s) => `${s.window.replace('-', '–')} (${s.focus})`).join('; ');
+
+  if (clientDictated) {
+    lines.push('• __The client dictated the attempt hours.__ Every window above marked [client-specified] came from the client\'s own instruction — those are the authorized hours.');
+    if (clientWindows) {
+      // Verbatim source language, for the affidavit if service is challenged.
+      lines.push(`• __Client restriction (verbatim):__ ${clientWindows}`);
+    }
     lines.push('• Do NOT attempt outside these hours — off-hours service may be challenged in court. If you arrive outside the window, note "client-imposed restriction — departed without contact" in the attempt log.');
     lines.push('• Within the authorized window, vary day and time across attempts — time variance is the diligence standard even when hours are constrained.');
+  } else if (clientWindows) {
+    // Restriction language IS present in the packet, but the timing engine
+    // produced no client bands from it. Say exactly that; do not present the
+    // quoted text as if it had been applied to the plan.
+    lines.push(`• __Client timing language found in the packet (verbatim):__ ${clientWindows}`);
+    lines.push('• __This language was NOT parsed into structured attempt bands — the windows above are the standard defaults, not the client\'s.__ Read the quoted line yourself and verify with the hiring party before attempting outside the hours it states.');
   } else {
-    // No restriction: give the officer the standard-optimal windows.
-    lines.push('• No client restriction — standard diligence windows apply:');
-    lines.push('• Residential: early morning 07:00–09:00 (pre-work), midday 11:00–13:00, early evening 17:00–20:30 (post-work). Include at least one weekend attempt — residential hit rates peak Saturday 08:00–10:00.');
-    lines.push('• Business: mid-morning 09:00–11:00 and early afternoon 13:00–16:00 during posted business hours. Confirm the entity still operates at the address before tendering.');
+    lines.push('• No client restriction on file — standard diligence windows apply:');
+  }
+
+  if (!clientDictated) {
+    // Print only the window set that actually governs this job when the plan
+    // says which one it is; print both when there is no plan to read.
+    const showBusiness = planAuthorities.has('business default')
+      || (!planAuthorities.has('residential default') && !planAuthorities.has('site note'));
+    const showResidential = planAuthorities.has('residential default')
+      || (!planAuthorities.has('business default') && !planAuthorities.has('site note'));
+    if (showResidential) {
+      lines.push(`• Residential: ${windowList(DEFAULT_RESIDENTIAL_WINDOWS)}. Include at least one weekend attempt — residential hit rates peak Saturday 08:00–10:00.`);
+    }
+    if (showBusiness) {
+      lines.push(`• Business (CONFIRMED business location only): ${windowList(DEFAULT_BUSINESS_WINDOWS)} during posted business hours. Confirm the entity still operates at the address before tendering.`);
+    }
+    if (planAuthorities.has('site note')) {
+      lines.push('• The windows above came from a recorded site notation for this address — see SERVICE CONSTRAINTS in the intake note.');
+    }
+  }
+
+  // R3: a NON-EMPTY client schedule / day restriction that the parser could
+  // not read must be disclosed. Silently falling back to defaults is the
+  // fail-OPEN failure the fail-closed parsers were supposed to prevent —
+  // e.g. service_days_allowed "no service on sunday" yields a null day set,
+  // every day becomes allowed, and a Sunday attempt gets scheduled on a job
+  // where the client forbade Sunday.
+  const unparsed: string[] = [];
+  if (input.unparsedClientSchedule) unparsed.push(`attempt hours: "${input.unparsedClientSchedule}"`);
+  if (input.unparsedAllowedDays) unparsed.push(`days allowed: "${input.unparsedAllowedDays}"`);
+  if (unparsed.length) {
+    lines.push(`• __CLIENT SCHEDULE/DAY RESTRICTION PRESENT BUT COULD NOT BE PARSED — DEFAULTS APPLIED, VERIFY WITH THE HIRING PARTY.__ Unreadable value(s) — ${unparsed.join('; ')}. The plan above does NOT reflect this restriction. Do not attempt until the hiring party confirms the authorized hours and days.`);
   }
 
   lines.push('**■ DILIGENCE STANDARD**');

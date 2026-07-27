@@ -251,3 +251,197 @@ describe('briefing decomposition (spec §3.3)', () => {
     expect(planNote?.text).toContain('residential default');
   });
 });
+
+// ============================================================
+// Fix round 2 (whole-branch review of PR 2)
+// ============================================================
+
+// Builds a BriefingInput and returns the FULL note feed as one string, so a
+// test can assert on what the officer actually reads across all six entries.
+function fullBriefingText(overrides: Partial<BriefingInput> & { queueRow?: any }): string {
+  const input: BriefingInput = {
+    fields: {},
+    queueRow: baseRow,
+    isBusiness: false,
+    agentName: '',
+    fullLocation: '1180 E VINE ST, SALT LAKE CITY, UT 84121',
+    docCount: 1,
+    ...overrides,
+  };
+  return buildPsoBriefing(input, '2026-06-20T12:00:00Z').notes.map((n) => n.text).join('\n');
+}
+
+describe('R1: the briefing must not fabricate a client hours restriction', () => {
+  it('a routine instruction containing the word "serve" but NO clock range is not a restriction', () => {
+    // The exact production string from the review. Under the old OR this
+    // printed "__Client restriction (verbatim):__ Please serve defendant at
+    // the residence. Gate code 4412." followed by "Do NOT attempt outside
+    // these hours" — an hours restriction containing no hours, plus an
+    // instruction to log a restriction that does not exist.
+    const row = {
+      ...baseRow,
+      service_instructions: 'Please serve defendant at the residence. Gate code 4412.',
+    };
+    expect(clientWindowText(row)).toBeNull();
+  });
+
+  it('and the report does not tell the officer to log a non-existent restriction', () => {
+    const text = fullBriefingText({
+      queueRow: { ...baseRow, service_instructions: 'Please serve defendant at the residence. Gate code 4412.' },
+    });
+    expect(text).not.toContain('Client restriction (verbatim)');
+    expect(text).not.toContain('client-imposed restriction — departed without contact');
+    expect(text).toContain('No client restriction on file');
+    // The same text still appears once, under CLIENT INSTRUCTIONS — the
+    // report must not contradict itself about what it is.
+    expect(text).toContain('CLIENT INSTRUCTIONS');
+  });
+
+  it('a clock range with NO service/attempt/diligence language is also not a restriction', () => {
+    const row = { ...baseRow, service_instructions: 'Office open 9AM-5PM for document pickup' };
+    expect(clientWindowText(row)).toBeNull();
+  });
+
+  it('both signals together ARE a restriction (the AND is not over-broad)', () => {
+    const row = { ...baseRow, service_instructions: 'Do not attempt service before 8AM or after 6PM.' };
+    expect(clientWindowText(row)).toContain('8AM');
+  });
+});
+
+describe('R2: SERVICE WINDOWS is driven by the timing engine, not a regex over prose', () => {
+  it('a parsed 24-hour client schedule is never described as "no client restriction"', () => {
+    // The canonical form ('06:00-09:00;18:00-21:00') carries no am/pm, so the
+    // old prose detector never matched it — the note said "No client
+    // restriction — standard diligence windows apply" directly beneath three
+    // [client-specified] windows.
+    const text = fullBriefingText({
+      attemptPlan: [
+        { attempt: 1, date: '2026-06-21', weekday: 'Sunday', window: '06:00-09:00', focus: 'x', authority: 'client-specified' },
+        { attempt: 2, date: '2026-06-22', weekday: 'Monday', window: '18:00-21:00', focus: 'x', authority: 'client-specified' },
+      ],
+      hasClientSchedule: true,
+    });
+    expect(text).not.toContain('No client restriction');
+    expect(text).toContain('The client dictated the attempt hours');
+    expect(text).toContain('Do NOT attempt outside these hours');
+  });
+
+  it('the standard business hours it prints are the hours the planner actually uses', () => {
+    const text = fullBriefingText({
+      attemptPlan: [
+        { attempt: 1, date: '2026-06-22', weekday: 'Monday', window: '09:30-11:30', focus: 'x', authority: 'business default' },
+      ],
+    });
+    expect(text).toContain('09:30–11:30');
+    expect(text).toContain('13:30–15:30');
+    // The stale figures must be gone — one report cannot state two different
+    // sets of business hours.
+    expect(text).not.toContain('09:00–11:00');
+    expect(text).not.toContain('13:00–16:00');
+  });
+
+  it('restriction language present but NOT parsed into bands is labelled as unapplied', () => {
+    const text = fullBriefingText({
+      queueRow: { ...baseRow, service_instructions: 'Do not attempt service before 8AM or after 6PM.' },
+      hasClientSchedule: false,
+      attemptPlan: [
+        { attempt: 1, date: '2026-06-21', weekday: 'Sunday', window: '07:00-09:00', focus: 'x', authority: 'residential default' },
+      ],
+    });
+    expect(text).toContain('NOT parsed into structured attempt bands');
+    expect(text).not.toContain('No client restriction on file');
+  });
+});
+
+describe('R3: an unparseable client restriction is disclosed, not silently defaulted away', () => {
+  it('names the unreadable day restriction and tells the officer not to attempt on it', () => {
+    const text = fullBriefingText({
+      unparsedAllowedDays: 'no service on sunday',
+      attemptPlan: [
+        { attempt: 1, date: '2026-06-21', weekday: 'Sunday', window: '07:00-09:00', focus: 'x', authority: 'residential default' },
+      ],
+    });
+    expect(text).toContain('COULD NOT BE PARSED');
+    expect(text).toContain('VERIFY WITH THE HIRING PARTY');
+    expect(text).toContain('no service on sunday');
+  });
+
+  it('names an unreadable attempt-hours value too', () => {
+    const text = fullBriefingText({ unparsedClientSchedule: 'mornings only pls' });
+    expect(text).toContain('COULD NOT BE PARSED');
+    expect(text).toContain('mornings only pls');
+  });
+
+  it('says nothing when the client genuinely dictated nothing', () => {
+    expect(fullBriefingText({})).not.toContain('COULD NOT BE PARSED');
+  });
+});
+
+describe('R7: the briefing only claims site-note compliance when the plan actually applied it', () => {
+  const note = {
+    id: 1, note_text: 'Gate locked after 3pm', note_type: 'access',
+    cutoff_time: '15:00', hours_start: null, hours_end: null, days_available: null,
+  } as any;
+
+  it('does NOT claim compliance when client bands took precedence over the note', () => {
+    const text = fullBriefingText({
+      locationNote: note,
+      hasClientSchedule: true,
+      attemptPlan: [
+        { attempt: 1, date: '2026-06-22', weekday: 'Monday', window: '18:00-21:00', focus: 'x', authority: 'client-specified' },
+      ],
+    });
+    expect(text).not.toContain('have been adjusted to comply with these constraints');
+    expect(text).toContain('CONFLICT');
+    expect(text).toContain('OUTRANK');
+  });
+
+  it('does NOT claim compliance when the windows came from the class defaults', () => {
+    const text = fullBriefingText({
+      locationNote: note,
+      attemptPlan: [
+        { attempt: 1, date: '2026-06-21', weekday: 'Sunday', window: '07:00-09:00', focus: 'x', authority: 'residential default' },
+      ],
+    });
+    expect(text).not.toContain('have been adjusted to comply with these constraints');
+    expect(text).toContain('did NOT shape the attempt windows');
+  });
+
+  it('DOES claim compliance when a window actually carries the site-note authority', () => {
+    const text = fullBriefingText({
+      locationNote: note,
+      attemptPlan: [
+        { attempt: 1, date: '2026-06-22', weekday: 'Monday', window: '08:00-15:00', focus: 'x', authority: 'site note' },
+      ],
+    });
+    expect(text).toContain('have been adjusted to comply with these constraints');
+  });
+});
+
+describe('R10: party matching is bidirectional', () => {
+  it('a suffixed recipient name still matches the defendant it belongs to', () => {
+    // "JOHN SMITH JR" vs defendant "SMITH, JOHN": the suffix has no
+    // counterpart, so party-superset-of-recipient failed and the report told
+    // the officer the ACTUAL defendant was not a named party.
+    expect(recipientPartyStatus('JOHN SMITH JR', ['ACME CORP', 'SMITH, JOHN'])).toBe('party');
+    const text = intakeNoteText({
+      recipient_name: 'JOHN SMITH JR', plaintiff: 'ACME CORP', defendant: 'SMITH, JOHN',
+    });
+    expect(text).not.toContain('is NOT a named party');
+  });
+
+  it('a middle name on the recipient side does not break the match either', () => {
+    expect(recipientPartyStatus('DANA MARIE WHITFIELD', ['AVERY HOLT', 'DANA WHITFIELD'])).toBe('party');
+  });
+
+  it('a single-token party cannot swallow an unrelated recipient', () => {
+    // Reverse containment requires >= 2 party tokens, so bare "SMITH" must
+    // not match "DANA SMITHERS" — nor any two-token recipient it merely
+    // shares one token with.
+    expect(recipientPartyStatus('DANA WHITFIELD', ['WHITFIELD'])).toBe('non-party');
+  });
+
+  it('genuinely unrelated names are still non-party (the fix is not over-broad)', () => {
+    expect(recipientPartyStatus('DANA WHITFIELD', ['AVERY HOLT', 'WHITFIELD ENTERPRISES, LLC'])).toBe('non-party');
+  });
+});
