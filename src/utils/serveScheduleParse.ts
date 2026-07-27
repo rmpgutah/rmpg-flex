@@ -57,6 +57,12 @@ const DAY_NAMES: Record<string, number> = {
   thursday: 4, friday: 5, saturday: 6,
 };
 
+// A negation word anywhere in free text means the client is describing an
+// EXCLUSION ("no monday", "not sunday", "except friday"), not an inclusion.
+// We do not attempt to compute the complement — see the fail-closed note
+// below.
+const NEGATION_RE = /\b(no|not|except|excluding|never)\b/;
+
 // Returns null — NOT a default set — when the value carries no day
 // information, so the caller can distinguish "client said nothing" from
 // "client said every day".
@@ -64,11 +70,24 @@ export function parseAllowedDays(raw: string): number[] | null {
   const s = (raw || '').trim().toLowerCase();
   if (!s) return null;
   if (s === 'all' || s === '7 days a week' || s === 'any') return [...ALL_DAYS];
+  // Canonical enum token from the extractor — safe to honor exactly, unlike
+  // negation appearing in free text (handled below).
   if (s === 'no_sunday' || s === 'no sunday') return ALL_DAYS.filter((d) => d !== 0);
   if (s === 'weekdays' || s === 'weekday') return [...WEEKDAYS];
+
+  // Word-boundary match only — a day name embedded inside an unrelated word
+  // (e.g. "monday" inside "commondays") must not fabricate a restriction.
   const named = ALL_DAYS.filter((d) => {
     const name = Object.keys(DAY_NAMES).find((k) => DAY_NAMES[k] === d)!;
-    return s.includes(name);
+    return new RegExp(`\\b${name}\\b`).test(s);
   });
-  return named.length ? named : null;
+  if (named.length === 0) return null;
+
+  // FAIL CLOSED on negation: "no monday" contains the word "monday" but
+  // means the OPPOSITE of "service allowed on Monday". We cannot safely
+  // guess the complement from free text, so treat it the same as "client
+  // said nothing I can act on" rather than silently inverting intent.
+  if (NEGATION_RE.test(s)) return null;
+
+  return named;
 }

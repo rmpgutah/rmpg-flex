@@ -47,6 +47,17 @@ describe('parseClientBands', () => {
     expect(parseClientBands('mornings are best')).toEqual([]);
     expect(parseClientBands('')).toEqual([]);
   });
+
+  it('rejects clock values that fail strict HH:MM validation', () => {
+    expect(parseClientBands('24:00-25:00;11:00-13:00')).toEqual([{ start: '11:00', end: '13:00' }]);
+    expect(parseClientBands('23:60-23:59;11:00-13:00')).toEqual([{ start: '11:00', end: '13:00' }]);
+    expect(parseClientBands('9:5-10:00;11:00-13:00')).toEqual([{ start: '11:00', end: '13:00' }]);
+    expect(parseClientBands('007:00-08:00;11:00-13:00')).toEqual([{ start: '11:00', end: '13:00' }]);
+  });
+
+  it('accepts an unpadded single-digit hour and normalizes it to two digits', () => {
+    expect(parseClientBands('0:00-01:00')).toEqual([{ start: '00:00', end: '01:00' }]);
+  });
 });
 
 describe('parseAllowedDays', () => {
@@ -71,5 +82,21 @@ describe('parseAllowedDays', () => {
   it('returns null when it cannot tell — caller keeps its own default', () => {
     expect(parseAllowedDays('')).toBeNull();
     expect(parseAllowedDays('whenever')).toBeNull();
+  });
+
+  it('fails closed on a negated day name rather than inverting it', () => {
+    // "no monday" must NOT return [1] (Monday-only) — that would be the
+    // exact opposite of the client's instruction.
+    expect(parseAllowedDays('no monday')).toBeNull();
+    expect(parseAllowedDays('not sunday')).toBeNull();
+    expect(parseAllowedDays('except friday')).toBeNull();
+  });
+
+  it('still honors the canonical no_sunday enum token', () => {
+    expect(parseAllowedDays('no_sunday')).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it('does not match a day name embedded inside another word', () => {
+    expect(parseAllowedDays('commondays only')).toBeNull();
   });
 });
