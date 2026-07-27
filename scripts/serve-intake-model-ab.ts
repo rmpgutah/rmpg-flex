@@ -12,6 +12,7 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { buildExtractionMessages, tryParseModelJson } from '../src/utils/serveIntakeExtract';
 
 const FIXTURE_DIR = join(process.cwd(), 'tests', 'fixtures', 'serve-intake');
 const API = `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run`;
@@ -29,7 +30,6 @@ if (!TOKEN || !process.env.CLOUDFLARE_ACCOUNT_ID) {
 }
 
 async function runModel(model: string, text: string): Promise<Record<string, string>> {
-  const { buildExtractionMessages } = await import('../src/utils/serveIntakeExtract');
   const res = await fetch(`${API}/${model}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
@@ -45,41 +45,24 @@ async function runModel(model: string, text: string): Promise<Record<string, str
   }
   const body = await res.json() as { result?: { response?: unknown } };
   const raw = body.result?.response;
-  // Workers AI returns result.response as EITHER a string (needs parsing)
-  // or an already-parsed object, depending on the model/gateway path — the
-  // same ambiguity tryParseModelJson() in serveIntakeExtract.ts handles for
-  // production. A version of this script that assumed "always string" (via
-  // raw.indexOf('{')) threw on the object case and every candidate showed
-  // as "unparseable response" with 0/0 scores across the board — a script
-  // bug, not a model signal.
-  if (raw && typeof raw === 'object') {
-    return (raw as any).fields ?? raw;
-  }
-  if (typeof raw !== 'string') {
+  if (raw === undefined || raw === null) {
     console.error(`  ${model}: no response`);
     return {};
   }
-  // Some models (Scout, Mistral) wrap the JSON in ```/```json fences. A
-  // naive raw.slice(raw.indexOf('{')) takes everything to the END of the
-  // string, including the trailing ``` fence marker, which breaks
-  // JSON.parse — that was silently making every fenced response look
-  // "unparseable" even though the JSON itself was well-formed. Strip
-  // fences first, then fall back to a greedy {...} match (mirrors
-  // tryParseModelJson() in serveIntakeExtract.ts) so we bound the match
-  // to the actual JSON object instead of slicing to end-of-string.
-  const cleaned = raw.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
-  try {
-    return JSON.parse(cleaned).fields ?? JSON.parse(cleaned);
-  } catch { /* fall through */ }
-  const m = cleaned.match(/\{[\s\S]*\}/);
-  if (m) {
-    try {
-      const parsed = JSON.parse(m[0]);
-      return parsed.fields ?? parsed;
-    } catch { /* fall through */ }
+  // Workers AI returns result.response as EITHER a string (needs parsing,
+  // possibly ```/```json fenced) or an already-parsed object, depending on
+  // the model/gateway path. tryParseModelJson() in serveIntakeExtract.ts is
+  // the SAME parser production uses for this ambiguity — importing it here
+  // (instead of a local reimplementation) is what keeps this A/B harness
+  // measuring what actually ships. A prior local copy of this logic drifted
+  // from prod at least twice (see git history), each time silently zeroing
+  // out every candidate's score.
+  const parsed = tryParseModelJson({ response: raw });
+  if (!parsed || typeof parsed !== 'object' || Object.keys(parsed).length === 0) {
+    console.error(`  ${model}: unparseable response`);
+    return {};
   }
-  console.error(`  ${model}: unparseable response`);
-  return {};
+  return (parsed as any).fields ?? parsed;
 }
 
 function scoreOne(got: Record<string, unknown>, want: Record<string, string>) {
