@@ -85,6 +85,19 @@ function normName(s: string | null | undefined): string {
   return s.toLowerCase().replace(/[.,]/g, '').replace(/\s+/g, ' ').trim();
 }
 
+// Finding 3 FIX: whether the ACTUAL planned attempt count (not a hardcoded
+// guess at what the default "should" be) fits the days remaining before the
+// deadline. `plannedWindowCount` must be the real `attemptPlan.length` —
+// business defaults are 2 windows, residential/unknown defaults are 3, and a
+// client schedule can specify any count; guessing any single constant is
+// wrong for at least one of those cases.
+export function computeScheduleImpossible(
+  plannedWindowCount: number,
+  daysRemaining: number | null,
+): boolean {
+  return !scheduleFitsDeadline(plannedWindowCount, daysRemaining);
+}
+
 // A registered-agent string is only a real human name worth a `persons` row
 // when it (a) doesn't read as a role/department label and (b) actually has a
 // plausible two-token human name. Court packets routinely list the corporate
@@ -870,8 +883,13 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     locationNote,
   });
 
-  const scheduleImpossible = !scheduleFitsDeadline(
-    clientBands.length || 3,
+  // Finding 3 FIX: `clientBands.length || 3` didn't match selectWindows'
+  // actual defaults (business → 2 windows, residential/unknown → 3), so a
+  // business job with no client schedule and 2 days remaining was wrongly
+  // flagged impossible. Use the ACTUAL planned window count instead of a
+  // hardcoded guess — see computeScheduleImpossible below.
+  const scheduleImpossible = computeScheduleImpossible(
+    attemptPlan.length,
     daysUntilDeadline(nowIso, queueRow.deadline),
   );
 
@@ -915,6 +933,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       businessRecord,
       addressClass: addressClassResult.klass,
       scheduleImpossible,
+      hasClientSchedule: clientBands.length > 0,
     }, nowIso);
     // File the OCR provenance note AFTER the intake briefing so the feed
     // reads: safety → briefing → extraction context.

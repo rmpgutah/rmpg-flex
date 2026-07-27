@@ -73,6 +73,28 @@ function hasAny(haystack: string, needles: string[]): boolean {
   return needles.some((n) => haystack.includes(n));
 }
 
+// Finding 2 FIX: a bare weekday mention or a bare digit-with-colon/am/pm
+// was too permissive — "Attorney available Monday-Friday for questions" or
+// "Hearing set for Friday, 6/20" would be printed as a verbatim client
+// ATTEMPT-TIME restriction ("Do NOT attempt outside these hours"), which is
+// a fabricated instruction the client never gave. A line only counts as a
+// restriction when it has EITHER a genuine clock-time RANGE (two distinct
+// clock values, e.g. "9AM-3:30PM" or "between 9am and 3:30pm") OR explicit
+// service/attempt language tied to timing. Mentioning a day of the week or
+// a bare date is not, by itself, evidence of an attempt-window restriction.
+const CLOCK_VALUE_RE = /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi;
+const RESTRICTION_KEYWORDS = ['serve', 'service', 'attempt', 'do not serve', 'no service'];
+
+function hasClockTimeRange(line: string): boolean {
+  const matches = line.match(CLOCK_VALUE_RE);
+  return !!matches && matches.length >= 2;
+}
+
+function hasRestrictionLanguage(line: string): boolean {
+  const lower = line.toLowerCase();
+  return RESTRICTION_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
 // D2 FIX: the client's attempt restriction is written in
 // service_instructions far more often than in notes, and notes' first
 // line is usually the OCR provenance stamp. Reading only notes[0] made
@@ -86,7 +108,7 @@ export function clientWindowText(queueRow: QueueRow): string | null {
       const t = line.trim();
       if (!t) continue;
       if (t.startsWith('[OCR')) continue;           // provenance stamp, not a restriction
-      if (!/\d\s*(am|pm|:)/i.test(t) && !/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(t)) continue;
+      if (!hasClockTimeRange(t) && !hasRestrictionLanguage(t)) continue;
       return t;
     }
   }
@@ -178,6 +200,7 @@ export interface BriefingInput {
   businessRecord?: BusinessRecord | null;
   addressClass?: AddressClass;
   scheduleImpossible?: boolean;
+  hasClientSchedule?: boolean;  // true only when the client actually dictated attempt bands
 }
 
 export interface BriefingNote {
@@ -283,6 +306,61 @@ function daysUntil(deadlineIso: string, nowIso: string): number {
   return Math.ceil((dl - now) / 86_400_000);
 }
 
+// ── Finding 1 FIX: reliable state-code resolution for the UIDDA check ──
+// `queueRow.jurisdiction` is a COUNTY/COURT descriptor in practice (the
+// extraction few-shot teaches 'Salt Lake', and the intake UI defaults it to
+// 'Salt Lake County, Utah') — it is NOT a state code. Comparing it directly
+// against `recipient_state` ('UT') mismatched on almost every routine
+// in-state job, telling the officer a domestic subpoena "must be
+// domesticated under UIDDA" — a fabricated legal instruction. Only trust a
+// value that is UNAMBIGUOUSLY a two-letter USPS state code; never guess by
+// parsing a county name or substring-matching court_name.
+const US_STATE_CODES = new Set([
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC',
+]);
+
+function reliableStateCode(raw: string | null): string | null {
+  const t = (raw || '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(t) && US_STATE_CODES.has(t) ? t : null;
+}
+
+// ── Finding 4 FIX: robust, confidence-aware party matching ─────────────
+// `.includes()` substring matching was wrong in BOTH directions: it false-
+// MATCHED whenever the recipient's (possibly truncated) name happened to be
+// a literal substring of a party string (e.g. "erica james".includes("eric")),
+// and it false-NON-matched on ordinary formatting variance ("SMITH, JOHN"
+// vs "JOHN SMITH"). The `target.length > 3` guard was also backwards — it
+// unconditionally branded any short name (<=3 chars) a non-party regardless
+// of evidence. Compare normalized whole-token sets instead, and require
+// EVERY recipient token to appear as a whole token in the party string —
+// a partial overlap (e.g. a surname alone appearing inside an unrelated
+// company name) must NOT count as a match. When the recipient's name
+// doesn't carry enough tokens to compare confidently, or there is no party
+// text to compare against, report 'unknown' — the caller must stay silent
+// rather than assert a status it cannot substantiate.
+function normalizeNameTokens(s: string): string[] {
+  return s.toUpperCase().replace(/[.,]/g, '').split(/\s+/).filter(Boolean);
+}
+
+export type PartyMatchStatus = 'party' | 'non-party' | 'unknown';
+
+export function recipientPartyStatus(recipientName: string, parties: Array<string | null | undefined>): PartyMatchStatus {
+  const recipientTokens = normalizeNameTokens(recipientName || '');
+  const validParties = parties.filter((p): p is string => !!(p && p.trim()));
+  // Fewer than 2 tokens (e.g. a single name, or missing entirely) isn't
+  // enough to confidently assert "not a party" — stay silent instead.
+  if (recipientTokens.length < 2 || !validParties.length) return 'unknown';
+  for (const p of validParties) {
+    const partyTokens = new Set(normalizeNameTokens(p));
+    if (recipientTokens.every((t) => partyTokens.has(t))) return 'party';
+  }
+  return 'non-party';
+}
+
 // Build the full structured "INTAKE BRIEFING" note + (when triggered) a
 // distinct "OFFICER SAFETY" note. Markdown bold (**) is rendered by the
 // Notes tab's renderFormattedText, so section labels stand out.
@@ -328,15 +406,13 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
     if (queueRow.court_date) lines.push(`Hearing date: ${queueRow.court_date} — service must be perfected with enough lead time for the recipient's appearance.`);
 
     const target = queueRow.recipient_name || '';
-    const isCaseParty = [queueRow.plaintiff, queueRow.defendant]
-      .filter(Boolean)
-      .some((p) => (p || '').toLowerCase().includes(target.toLowerCase()) && target.length > 3);
-    if (parties && target && !isCaseParty) {
+    const partyStatus = recipientPartyStatus(target, [queueRow.plaintiff, queueRow.defendant]);
+    if (partyStatus === 'non-party') {
       lines.push(`NOTE: ${target} is NOT a named party in this case — they are a non-party recipient (typical for a subpoena). Do not discuss the case; refer questions to the issuing court or hiring attorney.`);
     }
 
-    const courtState = (queueRow.jurisdiction || '').trim().toUpperCase();
-    const serviceState = (queueRow.recipient_state || '').trim().toUpperCase();
+    const courtState = reliableStateCode(queueRow.jurisdiction);
+    const serviceState = reliableStateCode(queueRow.recipient_state);
     if (courtState && serviceState && courtState !== serviceState) {
       lines.push(`OUT-OF-STATE PROCESS: the issuing court is in ${courtState} and service is in ${serviceState}. Under the Uniform Interstate Depositions and Discovery Act the subpoena must be domesticated in the service state — confirm with the hiring party that this has been done before attempting.`);
     }
@@ -438,8 +514,14 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
       lines.push(`• Attempt ${w.attempt}: ${w.weekday} ${w.date}, ${w.window}  (${w.focus}) [${w.authority}]`);
     }
     lines.push('• Adjust to client-specified windows and field conditions; following the plan satisfies the time-variance diligence standard.');
+    // Finding 3 FIX: only blame "the client's own attempt schedule" when the
+    // client actually dictated one — otherwise the plan's band count comes
+    // from the standard residential/business defaults, not any client
+    // instruction, and saying so would fabricate a client requirement.
     if (input.scheduleImpossible) {
-      lines.push('__WARNING: the client\'s own attempt schedule requires more distinct days than remain before the deadline.__ Notify the hiring party — either the deadline moves or the schedule does. Do not silently attempt fewer times.');
+      lines.push(input.hasClientSchedule
+        ? '__WARNING: the client\'s own attempt schedule requires more distinct days than remain before the deadline.__ Notify the hiring party — either the deadline moves or the schedule does. Do not silently attempt fewer times.'
+        : '__WARNING: the standard diligence sequence cannot fit within the days remaining before the deadline.__ Notify the hiring party — either the deadline moves or fewer attempts must be made. Do not silently attempt fewer times.');
     }
   }
 
