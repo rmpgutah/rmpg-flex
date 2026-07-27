@@ -947,10 +947,10 @@ calls.delete('/:id', requireRole('admin', 'manager'), async (c) => {
 });
 
 // POST /dispatch/calls/:id/status - Status transition
-calls.post('/:id/status', async (c) => {
+calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = c.req.param('id') || '';
     // The clear/close flow (client handleConfirmClear) sends { status, disposition }.
     // Persist disposition alongside the status transition — dropping it left the
     // call's outcome blank and the disposition column NULL after every clear.

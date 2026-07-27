@@ -126,16 +126,30 @@ const SELF_EDITABLE: readonly string[] = [
 // resolved via a correlated subquery (one unit per officer) to avoid row
 // multiplication. ?status= drives the active/archived split (mapped to
 // users.status active|inactive). Column count (~33) is well under the D1 cap.
-personnel.get('/', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const { status, role } = c.req.query();
-    let sql = `SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name,
+// This SELECT carries home address, DOB, DL number, blood type, allergies,
+// and emergency contacts — real PII, not just roster data. Non-manager roles
+// (including the external-facing contract_manager/client_viewer) get a
+// narrow projection instead of being blocked outright, since dispatch/unit
+// lookups across the app depend on this endpoint for basic name/badge/unit
+// info. Manager-tier roles (which already administer HR data elsewhere in
+// this file) keep the full detail.
+const PERSONNEL_ROSTER_FULL_COLUMNS = `u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name,
                       u.role, u.badge_number, u.phone, u.email, u.status, u.rank, u.department,
                       u.address, u.address_2, u.city, u.state, u.zip, u.date_of_birth, u.hire_date, u.termination_date,
                       u.shift_preference, u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies,
                       u.uniform_size, u.emergency_contact_name, u.emergency_contact_phone,
-                      u.emergency_contact_relationship, u.sso_enabled, u.created_at, u.updated_at,
+                      u.emergency_contact_relationship, u.sso_enabled, u.created_at, u.updated_at`;
+const PERSONNEL_ROSTER_SUMMARY_COLUMNS = `u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name,
+                      u.role, u.badge_number, u.phone, u.email, u.status, u.rank, u.department,
+                      u.shift_preference, u.uniform_size, u.created_at, u.updated_at`;
+
+personnel.get('/', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { status, role } = c.req.query();
+    const actor = c.get('user') as { role?: string } | undefined;
+    const columns = actor?.role && MANAGER_ROLES.has(actor.role) ? PERSONNEL_ROSTER_FULL_COLUMNS : PERSONNEL_ROSTER_SUMMARY_COLUMNS;
+    let sql = `SELECT ${columns},
                       (SELECT call_sign FROM units WHERE officer_id = u.id LIMIT 1) AS unit_call_sign,
                       (SELECT status FROM units WHERE officer_id = u.id LIMIT 1) AS unit_status
                FROM users u WHERE 1=1`;

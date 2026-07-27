@@ -38,6 +38,16 @@ const sqe = new Hono<Env>();
 
 // ── Helpers ─────────────────────────────────────────────────
 
+// Only 2 of ~17 routes in this file checked role before this fix — the rest
+// checked only "is logged in," letting any authenticated user reassign any
+// serve job, bulk-fail hundreds of active jobs, or fabricate a completed
+// proof-of-service for a job they were never assigned. Mirrors serve.ts's
+// own READ/WRITE convention (client_viewer/contract_manager excluded from
+// both; officer excluded from bulk/admin-tier actions).
+const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
+const READ = [...WRITE, 'dispatcher'];
+const BULK = ['admin', 'manager', 'supervisor'];
+
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
   const user = c.get('user');
   if (!user) return 'Unauthorized — user not found on context';
@@ -53,6 +63,8 @@ const SERVICE_METHODS = new Set(['personal', 'substitute', 'posting']);
 sqe.get('/enhanced', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedEnhanced = requireRole(c, ...READ);
+  if (deniedEnhanced) return c.json({ error: deniedEnhanced }, 403);
 
   const db = getDb(c.env);
   const status = c.req.query('status');
@@ -122,6 +134,8 @@ sqe.get('/enhanced', async (c) => {
 sqe.post('/batch-reassign', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedBatchReassign = requireRole(c, ...BULK);
+  if (deniedBatchReassign) return c.json({ error: deniedBatchReassign }, 403);
 
   const body: { attempts?: Array<{ attemptId: number; newServerId: number }> } =
     await c.req.json().catch(() => ({}));
@@ -197,6 +211,8 @@ sqe.post('/batch-reassign', async (c) => {
 sqe.post('/priority-score', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedPriorityScore = requireRole(c, ...READ);
+  if (deniedPriorityScore) return c.json({ error: deniedPriorityScore }, 403);
 
   const body: { queueIds?: number[] } = await c.req.json().catch(() => ({}));
   const db = getDb(c.env);
@@ -229,6 +245,8 @@ sqe.post('/priority-score', async (c) => {
 sqe.get('/optimize-route/:serverId', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedOptimizeRouteServer = requireRole(c, ...READ);
+  if (deniedOptimizeRouteServer) return c.json({ error: deniedOptimizeRouteServer }, 403);
 
   const serverId = parseInt(c.req.param('serverId'), 10);
   if (isNaN(serverId)) return c.json({ error: 'Invalid serverId' }, 400);
@@ -273,6 +291,8 @@ sqe.get('/optimize-route/:serverId', async (c) => {
 sqe.post('/detect-duplicates', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedDetectDuplicates = requireRole(c, ...READ);
+  if (deniedDetectDuplicates) return c.json({ error: deniedDetectDuplicates }, 403);
 
   const body: {
     caseNumber?: string;
@@ -343,6 +363,8 @@ sqe.post('/detect-duplicates', async (c) => {
 sqe.post('/auto-close-stale', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedAutoCloseStale = requireRole(c, ...BULK);
+  if (deniedAutoCloseStale) return c.json({ error: deniedAutoCloseStale }, 403);
 
   const body: { days?: number } = await c.req.json().catch(() => ({}));
   const staleDays = Math.max(1, body.days || 30);
@@ -395,6 +417,8 @@ sqe.post('/auto-close-stale', async (c) => {
 sqe.get('/attempt-history/:queueId', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedAttemptHistory = requireRole(c, ...READ);
+  if (deniedAttemptHistory) return c.json({ error: deniedAttemptHistory }, 403);
 
   const queueId = parseInt(c.req.param('queueId'), 10);
   if (isNaN(queueId)) return c.json({ error: 'Invalid queueId' }, 400);
@@ -511,6 +535,8 @@ sqe.get('/attempt-history/:queueId', async (c) => {
 sqe.post('/complete-with-proof', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedCompleteWithProof = requireRole(c, ...WRITE);
+  if (deniedCompleteWithProof) return c.json({ error: deniedCompleteWithProof }, 403);
 
   const body: {
     attemptId?: number;
@@ -545,12 +571,18 @@ sqe.post('/complete-with-proof', async (c) => {
   );
   if (!attempt) return c.json({ error: 'Attempt not found' }, 404);
 
-  const queue = await queryFirst<{ id: number; status: string; attempt_count: number; max_attempts: number }>(
+  const queue = await queryFirst<{ id: number; status: string; attempt_count: number; max_attempts: number; assigned_officer_id: number | null }>(
     db,
-    'SELECT id, status, attempt_count, max_attempts FROM serve_queue WHERE id = ?',
+    'SELECT id, status, attempt_count, max_attempts, assigned_officer_id FROM serve_queue WHERE id = ?',
     attempt.serve_queue_id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
+  // Proof-of-service is a legal attestation — only the officer actually
+  // assigned to this job (or a supervisor-tier override) may file it, or any
+  // authenticated WRITE-role user could fabricate service on someone else's job.
+  if (queue.assigned_officer_id != null && queue.assigned_officer_id !== userId && requireRole(c, ...BULK)) {
+    return c.json({ error: 'Only the assigned officer or a supervisor may complete this job' }, 403);
+  }
   if (['served', 'cancelled', 'failed'].includes(queue.status)) {
     return c.json({ error: `Queue already in terminal status: ${queue.status}` }, 400);
   }
@@ -611,6 +643,8 @@ sqe.post('/complete-with-proof', async (c) => {
 sqe.get('/eta/:attemptId', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedEta = requireRole(c, ...READ);
+  if (deniedEta) return c.json({ error: deniedEta }, 403);
 
   const attemptId = parseInt(c.req.param('attemptId'), 10);
   if (isNaN(attemptId)) return c.json({ error: 'Invalid attemptId' }, 400);
@@ -687,6 +721,8 @@ sqe.get('/eta/:attemptId', async (c) => {
 sqe.post('/schedule-attempt', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedScheduleAttempt = requireRole(c, ...WRITE);
+  if (deniedScheduleAttempt) return c.json({ error: deniedScheduleAttempt }, 403);
 
   const body: {
     queueId?: number;
@@ -775,6 +811,8 @@ sqe.post('/schedule-attempt', async (c) => {
 sqe.get('/workload-summary', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedWorkloadSummary = requireRole(c, ...READ);
+  if (deniedWorkloadSummary) return c.json({ error: deniedWorkloadSummary }, 403);
 
   const db = getDb(c.env);
   const today = toDenverWallClock(new Date()).slice(0, 10);
@@ -846,6 +884,8 @@ sqe.get('/workload-summary', async (c) => {
 sqe.post('/intake-scan', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedIntakeScan = requireRole(c, ...WRITE);
+  if (deniedIntakeScan) return c.json({ error: deniedIntakeScan }, 403);
 
   const body: {
     text?: string;
@@ -948,6 +988,8 @@ sqe.get('/cross-reference/dispatch', async (c) => {
 // Accepts user's current GPS coordinates as the route origin so the
 // optimized order starts from wherever the officer actually is.
 sqe.post('/optimize-route', async (c) => {
+  const deniedOptimizeRoute = requireRole(c, ...READ);
+  if (deniedOptimizeRoute) return c.json({ error: deniedOptimizeRoute }, 403);
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
@@ -971,9 +1013,12 @@ sqe.post('/optimize-route', async (c) => {
 
 // ── POST /route-progress — update route completion progress ──
 sqe.post('/route-progress', async (c) => {
+  const deniedRouteProgress = requireRole(c, ...WRITE);
+  if (deniedRouteProgress) return c.json({ error: deniedRouteProgress }, 403);
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
+    if (!userId) return c.json({ error: 'Unauthorized' }, 401);
     const body = await c.req.json<{ route_id: number; visited_queue_ids: number[]; current_lat?: number; current_lng?: number }>();
     if (!body.route_id || !Array.isArray(body.visited_queue_ids)) {
       return c.json({ error: 'route_id and visited_queue_ids required' }, 400);
@@ -1005,6 +1050,8 @@ sqe.post('/batch-optimize', async (c) => {
 
 // ── GET /nearest-unassigned — find closest unassigned job to a location ──
 sqe.get('/nearest-unassigned', async (c) => {
+  const deniedNearestUnassigned = requireRole(c, ...READ);
+  if (deniedNearestUnassigned) return c.json({ error: deniedNearestUnassigned }, 403);
   try {
     const db = getDb(c.env);
     const lat = parseFloat(c.req.query('lat') || '');
