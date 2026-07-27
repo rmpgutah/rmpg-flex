@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS impounds (
   tow_driver TEXT,
   lot_location TEXT,
   lot_space TEXT,
-  impound_date TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  impound_date TEXT NOT NULL DEFAULT (datetime('now')),
   release_date TEXT,
   reason TEXT NOT NULL,
   authority TEXT,
@@ -39,8 +39,8 @@ CREATE TABLE IF NOT EXISTS impounds (
   days_stored INTEGER,
   released_to TEXT,
   release_notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_impounds_status ON impounds(status);
 CREATE INDEX IF NOT EXISTS idx_impounds_plate ON impounds(license_plate);
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS pawn_transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   shop_name TEXT NOT NULL,
   shop_address TEXT,
-  transaction_date TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  transaction_date TEXT NOT NULL DEFAULT (datetime('now')),
   transaction_type TEXT NOT NULL DEFAULT 'pawn' CHECK(transaction_type IN ('pawn','buy','sell')),
   item_description TEXT NOT NULL,
   item_category TEXT,
@@ -73,8 +73,8 @@ CREATE TABLE IF NOT EXISTS pawn_transactions (
   amount REAL,
   notes TEXT,
   entered_by TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_pawn_status ON pawn_transactions(status);
 CREATE INDEX IF NOT EXISTS idx_pawn_serial ON pawn_transactions(serial_number);
@@ -87,7 +87,7 @@ CREATE INDEX IF NOT EXISTS idx_pawn_seller ON pawn_transactions(seller_last_name
 CREATE TABLE IF NOT EXISTS investigative_tips (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   tracking_number TEXT NOT NULL UNIQUE,
-  received_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  received_at TEXT NOT NULL DEFAULT (datetime('now')),
   tip_type TEXT,
   description TEXT NOT NULL,
   urgency TEXT NOT NULL DEFAULT 'routine' CHECK(urgency IN ('immediate','urgent','routine')),
@@ -99,8 +99,8 @@ CREATE TABLE IF NOT EXISTS investigative_tips (
   notes TEXT,
   reviewed_at TEXT,
   reviewed_by INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_investigative_tips_status ON investigative_tips(status);
 CREATE INDEX IF NOT EXISTS idx_investigative_tips_assigned ON investigative_tips(assigned_to);
@@ -122,8 +122,8 @@ CREATE TABLE IF NOT EXISTS crash_reports (
   parties_description TEXT,
   investigating_officer TEXT,
   created_by INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_crash_reports_status ON crash_reports(status);
 CREATE INDEX IF NOT EXISTS idx_crash_reports_date ON crash_reports(crash_date);
@@ -152,8 +152,8 @@ CREATE TABLE IF NOT EXISTS animal_control_cases (
   assigned_officer_id INTEGER REFERENCES users(id),
   quarantine_start TEXT,
   quarantine_end TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_animal_control_status ON animal_control_cases(status);
 CREATE INDEX IF NOT EXISTS idx_animal_control_type ON animal_control_cases(case_type);

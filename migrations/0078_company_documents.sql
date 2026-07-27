@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS company_documents (
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_by INTEGER,
   updated_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (file_id) REFERENCES attachments(file_id) ON DELETE SET NULL
 );
 

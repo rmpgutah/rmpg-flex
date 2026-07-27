@@ -243,8 +243,8 @@ export default function SchedulerPage() {
 
       {/* Create modal */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-[460px] max-w-[92vw] bg-surface-raised border border-rmpg-700 rounded shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 overflow-y-auto p-4">
+          <div className="w-[460px] max-w-[92vw] bg-surface-raised border border-rmpg-700 rounded shadow-xl my-auto">
             <div className="flex items-center justify-between px-3 py-2 border-b border-rmpg-800">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-brand-400">New Scheduled Event</span>
               <IconButton aria-label="Close" onClick={() => setShowCreate(false)}><X className="w-4 h-4" /></IconButton>

@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS external_referrals (
   notes TEXT,
   follow_up_date TEXT,
   created_by INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_external_referrals_call ON external_referrals(call_id);
 CREATE INDEX IF NOT EXISTS idx_external_referrals_status ON external_referrals(status);
@@ -35,8 +35,8 @@ CREATE TABLE IF NOT EXISTS geofences (
   notify_roles TEXT NOT NULL DEFAULT '["admin","manager","supervisor","dispatcher"]',
   active INTEGER NOT NULL DEFAULT 1,
   created_by INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_geofences_active ON geofences(active);
 
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS bolo_resolutions (
   resolution_type TEXT NOT NULL CHECK(resolution_type IN ('apprehended','recovered','located','unfounded')),
   notes TEXT,
   resolved_by INTEGER REFERENCES users(id),
-  resolved_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  resolved_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_bolo_resolutions_bolo ON bolo_resolutions(bolo_id);
 

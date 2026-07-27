@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS integration_api_keys (
   last_used_at TEXT,
   request_count INTEGER NOT NULL DEFAULT 0,
   created_by INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_integration_api_keys_active ON integration_api_keys(is_active);

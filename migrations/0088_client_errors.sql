@@ -12,6 +12,6 @@ CREATE TABLE IF NOT EXISTS client_errors (
   component_stack TEXT,
   url TEXT,
   client_timestamp TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_client_errors_created ON client_errors(created_at);

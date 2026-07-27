@@ -651,8 +651,8 @@ export default function DailyActivityReportsPage() {
 
       {/* ── New DAR Modal ── */}
       {createFormOpen && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setCreateFormOpen(false)}>
-          <div className="panel-surface w-full max-w-md mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => setCreateFormOpen(false)}>
+          <div className="panel-surface w-full max-w-md mx-4 shadow-xl my-auto" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="New Daily Activity Report" icon={Plus}>
               <IconButton onClick={() => setCreateFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>

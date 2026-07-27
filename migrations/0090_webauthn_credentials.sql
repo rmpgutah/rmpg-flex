@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS webauthn_credentials (
   backed_up INTEGER NOT NULL DEFAULT 0,
   transports TEXT,                      -- JSON array, e.g. ["usb","nfc"]
   name TEXT NOT NULL DEFAULT 'Security Key',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   last_used_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user ON webauthn_credentials(user_id);

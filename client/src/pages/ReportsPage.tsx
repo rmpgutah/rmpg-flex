@@ -445,7 +445,7 @@ function ReportApprovalQueue({ canDelete }: { canDelete: boolean }) {
       {/* Inline return-reason modal — replaces the native window.prompt(). */}
       {returnTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4"
           role="alertdialog"
           aria-modal="true"
           aria-labelledby="return-modal-title"
@@ -453,7 +453,7 @@ function ReportApprovalQueue({ canDelete }: { canDelete: boolean }) {
         >
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
           <div
-            className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in"
+            className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in my-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div
