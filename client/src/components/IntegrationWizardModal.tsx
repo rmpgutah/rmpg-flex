@@ -211,8 +211,8 @@ export default function IntegrationWizardModal({
   const currentStepIndex = STEPS.indexOf(step);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="bg-surface-raised border border-rmpg-700/50 panel-beveled w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 overflow-y-auto p-4" onClick={onClose}>
+      <div className="bg-surface-raised border border-rmpg-700/50 panel-beveled w-full max-w-lg mx-4 my-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700/30">
           <div className="flex items-center gap-2">

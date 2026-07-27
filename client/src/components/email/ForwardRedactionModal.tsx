@@ -36,8 +36,8 @@ export default function ForwardRedactionModal({ open, preview, onConfirm, onCanc
   const uniqueTypes = [...new Set(preview.diff.map(d => d.type))];
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-      <div className="bg-[#141414] border border-[#d4a017] max-w-2xl w-full p-4 space-y-3">
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-start justify-center p-4 overflow-y-auto">
+      <div className="bg-[#141414] border border-[#d4a017] max-w-2xl w-full p-4 space-y-3 my-auto">
         <div className="text-[#d4a017] text-sm font-semibold">
           EXTERNAL FORWARD — REVIEW REDACTIONS
         </div>

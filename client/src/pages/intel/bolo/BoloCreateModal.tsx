@@ -27,8 +27,8 @@ export default function BoloCreateModal({ onClose, onCreate }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="w-full max-w-md bg-surface-overlay border border-border-subtle rounded-[2px]" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
+      <div className="w-full max-w-md bg-surface-overlay border border-border-subtle rounded-[2px] my-auto" onClick={(e) => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-border-default font-mono text-[10px] tracking-widest text-[#d4a017] uppercase">New BOLO</div>
         <div className="p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
