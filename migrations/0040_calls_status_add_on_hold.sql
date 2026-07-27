@@ -44,7 +44,7 @@ CREATE TABLE calls_for_service_new (
   source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','servemanager','intake','other')),
   assigned_unit_ids TEXT DEFAULT '[]',
   dispatcher_id INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   dispatched_at TEXT,
   enroute_at TEXT,
   onscene_at TEXT,

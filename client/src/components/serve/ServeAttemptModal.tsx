@@ -8,6 +8,7 @@ import SignaturePad from '../SignaturePad';
 import { apiFetch, apiPostForm } from '../../hooks/useApi';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import type { ServeJob, ServeAttemptData } from '../../types';
+import ServeReceiptActions from './ServeReceiptActions';
 import {
   PSO_CATEGORIES, codesInCategory, lookupPsoCode,
   type PsoCategory,
@@ -180,23 +181,30 @@ export default function ServeAttemptModal({
     nextAttemptDate, nextAttemptStart, nextAttemptEnd, nextAttemptText, nextAttemptTextDirty,
     ageRange, height, weight, hairColor, clothing, personServedName, relationship, notes,
   } = draft;
-  const setAttemptType = (v: AttemptType | null) => setDraft({ ...draft, attemptType: v });
-  const setFailedReason = (v: FailedReason | null) => setDraft({ ...draft, failedReason: v });
-  const setCustomReason = (v: string) => setDraft({ ...draft, customReason: v });
-  const setDispositionCode = (v: string) => setDraft({ ...draft, dispositionCode: v });
-  const setNextAttemptDate = (v: string) => setDraft({ ...draft, nextAttemptDate: v });
-  const setNextAttemptStart = (v: string) => setDraft({ ...draft, nextAttemptStart: v });
-  const setNextAttemptEnd = (v: string) => setDraft({ ...draft, nextAttemptEnd: v });
-  const setNextAttemptText = (v: string) => setDraft({ ...draft, nextAttemptText: v });
-  const setNextAttemptTextDirty = (v: boolean) => setDraft({ ...draft, nextAttemptTextDirty: v });
-  const setAgeRange = (v: string) => setDraft({ ...draft, ageRange: v });
-  const setHeight = (v: string) => setDraft({ ...draft, height: v });
-  const setWeight = (v: string) => setDraft({ ...draft, weight: v });
-  const setHairColor = (v: string) => setDraft({ ...draft, hairColor: v });
-  const setClothing = (v: string) => setDraft({ ...draft, clothing: v });
-  const setPersonServedName = (v: string) => setDraft({ ...draft, personServedName: v });
-  const setRelationship = (v: string) => setDraft({ ...draft, relationship: v });
-  const setNotes = (v: string) => setDraft({ ...draft, notes: v });
+  // FUNCTIONAL updates, not `{ ...draft, x }`. Several handlers here fire
+  // TWO setters in a row (attempt type + failedReason, disposition code +
+  // failedReason). Spreading the render-closure `draft` meant the second
+  // call wrote back the first call's stale value, so the first selection
+  // silently reverted — Personal and Substitute Service could not be
+  // picked at all, and "Failed Attempt" worked only because it is the one
+  // branch that skips the second setter.
+  const setAttemptType = (v: AttemptType | null) => setDraft((prev) => ({ ...prev, attemptType: v }));
+  const setFailedReason = (v: FailedReason | null) => setDraft((prev) => ({ ...prev, failedReason: v }));
+  const setCustomReason = (v: string) => setDraft((prev) => ({ ...prev, customReason: v }));
+  const setDispositionCode = (v: string) => setDraft((prev) => ({ ...prev, dispositionCode: v }));
+  const setNextAttemptDate = (v: string) => setDraft((prev) => ({ ...prev, nextAttemptDate: v }));
+  const setNextAttemptStart = (v: string) => setDraft((prev) => ({ ...prev, nextAttemptStart: v }));
+  const setNextAttemptEnd = (v: string) => setDraft((prev) => ({ ...prev, nextAttemptEnd: v }));
+  const setNextAttemptText = (v: string) => setDraft((prev) => ({ ...prev, nextAttemptText: v }));
+  const setNextAttemptTextDirty = (v: boolean) => setDraft((prev) => ({ ...prev, nextAttemptTextDirty: v }));
+  const setAgeRange = (v: string) => setDraft((prev) => ({ ...prev, ageRange: v }));
+  const setHeight = (v: string) => setDraft((prev) => ({ ...prev, height: v }));
+  const setWeight = (v: string) => setDraft((prev) => ({ ...prev, weight: v }));
+  const setHairColor = (v: string) => setDraft((prev) => ({ ...prev, hairColor: v }));
+  const setClothing = (v: string) => setDraft((prev) => ({ ...prev, clothing: v }));
+  const setPersonServedName = (v: string) => setDraft((prev) => ({ ...prev, personServedName: v }));
+  const setRelationship = (v: string) => setDraft((prev) => ({ ...prev, relationship: v }));
+  const setNotes = (v: string) => setDraft((prev) => ({ ...prev, notes: v }));
 
   // Category the operator drilled into on the structured picker. UI-only
   // state — drives which sub-codes are listed below the category buttons.
@@ -479,7 +487,7 @@ export default function ServeAttemptModal({
               <div className="flex flex-col items-center gap-3 py-8 text-rmpg-400">
                 <div className="relative">
                   <Loader2 className="w-8 h-8 animate-spin text-[#888888]" />
-                  <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-500 animate-pulse shadow-[0_0_6px_rgba(34,197,94,0.5)]" />
+                  <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-500" />
                 </div>
                 <span className="text-sm">Acquiring GPS position...</span>
               </div>
@@ -534,7 +542,7 @@ export default function ServeAttemptModal({
               <button type="button"
                 onClick={() => setStep(1)}
                 disabled={gps.loading}
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
+                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
               >
                 Confirm Location
               </button>
@@ -713,7 +721,7 @@ export default function ServeAttemptModal({
                   !attemptType
                   || (attemptType === 'failed' && !dispositionCode && !failedReason)
                 }
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
+                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
               >
                 {isFailedPath ? 'Continue' : 'Next'}
               </button>
@@ -876,7 +884,7 @@ export default function ServeAttemptModal({
               <button type="button"
                 onClick={goNext}
                 disabled={attemptType === 'substitute' && !personServedName.trim()}
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
+                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
               >
                 Next
               </button>
@@ -895,6 +903,41 @@ export default function ServeAttemptModal({
                 <h3 className="text-sm font-bold text-rmpg-100">
                   Attempt #{submitResult.attemptNumber} Recorded
                 </h3>
+                {/* ── Civil Process Record ──
+                    Presented HERE, on the completion of the attempt, rather
+                    than behind a separate button on the job card. An officer
+                    who has just recorded handing papers to someone is exactly
+                    the officer who needs the acknowledgement signed, and they
+                    are still standing at the door.
+
+                    Only for attempts that actually delivered something. A
+                    posting or a failed attempt has no recipient to sign, and
+                    offering the form there would invite a signature on a
+                    service that did not happen. */}
+                {(attemptType === 'personal' || attemptType === 'substitute') && (
+                  <div className="border border-rmpg-700 rounded-[2px] p-3 space-y-2 text-left">
+                    <p className="text-[11px] font-bold uppercase tracking-wider"
+                       style={{ color: 'var(--panel-header-color)' }}>
+                      Civil Process Record
+                    </p>
+                    <p className="text-[11px] text-fg-secondary leading-snug">
+                      Have {personServedName?.trim() || 'the recipient'} sign the
+                      Acknowledgement of Service — on their phone, or on paper.
+                      Who you served and their relationship carry over from this
+                      attempt.
+                    </p>
+                    <ServeReceiptActions
+                      job={job}
+                      triggerLabel="Acknowledgement of Service"
+                      seed={{
+                        isNamedParty: attemptType === 'personal',
+                        recipientName: personServedName?.trim() || null,
+                        relationship: relationship?.trim() || null,
+                      }}
+                    />
+                  </div>
+                )}
+
                 {submitResult.dueDiligenceComplete && (
                   <div className="bg-green-900/30 border border-green-700 rounded-sm p-3 space-y-2">
                     <p className="text-sm text-green-300 font-semibold">
@@ -1062,7 +1105,7 @@ export default function ServeAttemptModal({
                   <button type="button"
                     onClick={handleSubmit}
                     disabled={submitting}
-                    className="px-4 py-2 text-sm font-semibold bg-[#d4a017] hover:bg-[#d4a017]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-[#d4a017]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.3)]"
+                    className="px-4 py-2 text-sm font-semibold bg-[#d4a017] hover:bg-[#d4a017]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-[#d4a017]/50"
                   >
                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     {isFailedPath ? 'Record Failed Attempt' : 'Record Service'}

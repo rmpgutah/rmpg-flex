@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS email_templates (
   subject TEXT NOT NULL DEFAULT '',
   body TEXT NOT NULL DEFAULT '',
   is_system INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_email_templates_owner ON email_templates(owner_user_id);
 
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS email_scheduled (
   status TEXT NOT NULL DEFAULT 'pending',-- pending | sent | failed | cancelled
   last_error TEXT,
   sent_at TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_email_scheduled_due ON email_scheduled(status, scheduled_at);
 
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS email_snoozes (
   original_folder TEXT NOT NULL DEFAULT 'inbox',
   snooze_until TEXT NOT NULL,            -- localtime
   status TEXT NOT NULL DEFAULT 'snoozed',-- snoozed | resurfaced | cancelled
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   UNIQUE(owner_user_id, message_graph_id)
 );
 CREATE INDEX IF NOT EXISTS idx_email_snoozes_due ON email_snoozes(status, snooze_until);
@@ -55,6 +55,6 @@ CREATE TABLE IF NOT EXISTS email_blocked_senders (
   owner_user_id INTEGER NOT NULL,
   address TEXT NOT NULL,                 -- lowercased email or @domain
   reason TEXT,                           -- 'blocked' | 'junk-report' | 'phishing-report'
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   UNIQUE(owner_user_id, address)
 );

@@ -35,8 +35,8 @@ CREATE TABLE IF NOT EXISTS fleet_vehicles (
   total_maintenance_cost REAL DEFAULT 0,
   total_fuel_cost REAL DEFAULT 0,
   avg_mpg REAL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_assignments — unit-to-vehicle assignment log ─────
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS fleet_assignments (
   assigned_at TEXT,
   unassigned_at TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_maintenance — service records ────────────────────
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS fleet_maintenance (
   performed_at TEXT,
   next_due_date TEXT,
   next_due_mileage INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_fuel_log — fuel purchase records ─────────────────
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS fleet_fuel_log (
   total_cost REAL,
   odometer INTEGER,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_inspections — periodic safety/equipment checks ───
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS fleet_inspections (
   inspector_id INTEGER REFERENCES users(id),
   mileage_at_inspection INTEGER,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_insurance — policy / carrier tracking ────────────
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS fleet_insurance (
   effective_date TEXT,
   expiry_date TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── fleet_registration — DMV registration records ──────────
@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS fleet_registration (
   renewal_status TEXT DEFAULT 'current'
     CHECK(renewal_status IN ('current','pending','expired')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── dashcam_videos — recorded footage index ────────────────
@@ -136,5 +136,5 @@ CREATE TABLE IF NOT EXISTS dashcam_videos (
   file_size INTEGER,
   duration_seconds INTEGER,
   recorded_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

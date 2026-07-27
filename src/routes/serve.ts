@@ -792,6 +792,37 @@ sv.put('/:id', async (c) => {
 // Attempts — richer than the intake variant (gps + photo refs)
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Normalize a device-stamped attempt time into the naive-UTC storage format.
+ *
+ * The officer's device is the authority on WHEN an attempt happened: the
+ * column default stamps at request-receipt, which is the moment the POST
+ * reaches us, not the moment the officer stood at the door. Those diverge
+ * whenever the request is delayed — a dead zone at the address, a queued
+ * offline submit, a slow upload behind photo/signature payloads. The client
+ * sends `new Date().toISOString()`, which resolves the device clock through
+ * the device's own timezone, so the instant is already unambiguous by the
+ * time it reaches us and needs no offset math here.
+ *
+ * Returns null (→ fall back to the column default) when the value is absent,
+ * unparseable, or fails the skew guards below. A wrong clock on a Toughbook
+ * would otherwise print a false time onto a legal notice, so an implausible
+ * device stamp is discarded in favor of server time rather than trusted.
+ */
+export function deviceAttemptAt(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return null;
+  const now = Date.now();
+  // Future stamps are never legitimate — an attempt cannot happen after it is
+  // reported. Allow 5 min for benign clock drift, reject beyond that.
+  if (ms > now + 5 * 60_000) return null;
+  // A stamp older than 30 days on a fresh POST means a badly wrong clock, not
+  // a genuinely delayed sync; offline queues drain in hours, not weeks.
+  if (ms < now - 30 * 24 * 60 * 60_000) return null;
+  return new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
+}
+
 async function logAttempt(c: Context<Env>, defaultResult: string) {
   const id = parseInt(c.req.param('id') ?? '', 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
@@ -825,28 +856,37 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   const hasDispositionCol = psCode
     ? await columnExists(db, 'serve_attempts', 'disposition_code')
     : false;
+  // Device-stamped attempt time. COALESCE(?, datetime('now')) keeps the
+  // server clock as the fallback when the device sent nothing usable, so the
+  // column is never null and behavior is unchanged for older clients.
+  const stampedAt = deviceAttemptAt(body.attempt_at);
+
   const ins = hasDispositionCol
     ? await execute(
         db,
         `INSERT INTO serve_attempts (
            serve_queue_id, attempt_number, officer_id, result, disposition_code,
-           latitude, longitude, notes, attempt_type, photo_ids, signature_data
-         ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?)`,
+           latitude, longitude, notes, attempt_type, photo_ids, signature_data,
+           attempt_at
+         ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?, COALESCE(?, datetime('now')))`,
         id, nextNum, body.officer_id ?? user?.id ?? null, result, psCode,
         body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
         body.attempt_type ?? null,
         JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
+        stampedAt,
       )
     : await execute(
         db,
         `INSERT INTO serve_attempts (
            serve_queue_id, attempt_number, officer_id, result,
-           latitude, longitude, notes, attempt_type, photo_ids, signature_data
-         ) VALUES (?,?,?,?, ?,?,?,?, ?,?)`,
+           latitude, longitude, notes, attempt_type, photo_ids, signature_data,
+           attempt_at
+         ) VALUES (?,?,?,?, ?,?,?,?, ?,?, COALESCE(?, datetime('now')))`,
         id, nextNum, body.officer_id ?? user?.id ?? null, result,
         body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
         body.attempt_type ?? null,
         JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
+        stampedAt,
       );
 
   // Queue status: structured code wins (codeToQueueStatus knows whether a
@@ -935,11 +975,13 @@ sv.post('/:id/substitute-service', async (c) => {
     db,
     `INSERT INTO serve_attempts (
        serve_queue_id, attempt_number, officer_id, result,
-       latitude, longitude, notes, attempt_type, photo_ids, signature_data
-     ) VALUES (?,?,?, 'sub_served', ?,?,?, ?, ?,?)`,
+       latitude, longitude, notes, attempt_type, photo_ids, signature_data,
+       attempt_at
+     ) VALUES (?,?,?, 'sub_served', ?,?,?, ?, ?,?, COALESCE(?, datetime('now')))`,
     id, nextNum, body.officer_id ?? user?.id ?? null,
     body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
     body.attempt_type, JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
+    deviceAttemptAt(body.attempt_at),
   );
   await execute(
     db,

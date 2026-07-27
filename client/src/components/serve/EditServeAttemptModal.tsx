@@ -16,6 +16,7 @@ import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import type { ServeAttempt } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
+import { toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import {
   PSO_CATEGORIES,
   codesInCategory,
@@ -37,25 +38,17 @@ interface EditServeAttemptModalProps {
 type AttemptTypeOption = ServeAttempt['attempt_type'];
 const ATTEMPT_TYPES: AttemptTypeOption[] = ['personal', 'substitute', 'posting', 'failed'];
 
-// Convert ISO timestamp → datetime-local input value (no TZ shifting:
-// browser shows it as the wall-clock time the row was stamped with).
-function toDateTimeLocal(iso: string | null): string {
-  if (!iso) return '';
-  // Accept both "2026-06-22T10:15:00Z" and "2026-06-22 10:15:00"
-  const m = iso.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(?::(\d{2}))?/);
-  if (!m) return '';
-  return `${m[1]}T${m[2]}${m[3] ? `:${m[3]}` : ''}`;
-}
-
-// Reverse: datetime-local → ISO-ish string the server happily stores.
-// We preserve local-wall-clock (no Z) to match how attempts are logged.
-function fromDateTimeLocal(local: string): string | null {
-  if (!local) return null;
-  // Normalize to "YYYY-MM-DD HH:MM:SS"
-  const m = local.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2}))?/);
-  if (!m) return local;
-  return `${m[1]} ${m[2]}:${m[3] ?? '00'}`;
-}
+// `attempt_at` is stored as naive UTC ("YYYY-MM-DD HH:MM:SS") — the same
+// contract every other timestamp column follows, and the one parseTimestamp()
+// assumes when it appends 'Z' to a zone-less string. This modal previously
+// hand-rolled its own pair of converters that passed the browser's Mountain
+// wall-clock straight through, on the premise that "attempts are logged in
+// local time." They are not: attempts are stamped by SQLite
+// datetime('now','localtime'), and on a Cloudflare Worker 'localtime' IS UTC.
+// The mismatch silently shifted every operator-edited attempt back 6-7 hours
+// on the printed Notice of Attempt (a 07:35 MDT attempt printed as 01:35).
+// Use the canonical DST-aware helpers instead — same pair the other 15+
+// timestamp editors in the app use.
 
 interface EditAttemptForm {
   attemptAt: string;
@@ -102,7 +95,7 @@ export default function EditServeAttemptModal({
     if (!isOpen) return;
     if (!wasRestored) {
       setForm({
-        attemptAt: toDateTimeLocal(attempt.attempt_at),
+        attemptAt: toDatetimeLocalValue(attempt.attempt_at),
         attemptType: attempt.attempt_type || 'failed',
         dispositionCode: attempt.disposition_code || '',
         notes: attempt.notes || '',
@@ -129,7 +122,7 @@ export default function EditServeAttemptModal({
     setError(null);
     try {
       const body: Record<string, unknown> = {
-        attempt_at: fromDateTimeLocal(attemptAt),
+        attempt_at: mtDatetimeLocalToUtc(attemptAt) || null,
         attempt_type: attemptType,
         notes: notes.trim() || null,
       };
@@ -166,11 +159,11 @@ export default function EditServeAttemptModal({
       onClick={guardedClose}
     >
       <div
-        className="panel-beveled w-full max-w-lg rounded-[2px] bg-surface-base p-4 shadow-xl"
+        className="panel-beveled flex max-h-[90vh] w-full max-w-lg flex-col rounded-[2px] bg-surface-base p-4 shadow-xl"
         onClick={(e) => e.stopPropagation()}
         style={{ borderColor: 'var(--border-default)' }}
       >
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex shrink-0 items-center justify-between mb-3">
           <h2 id="edit-attempt-title" className="text-sm font-bold text-amber-400 uppercase tracking-wider">
             Edit Attempt #{attempt.attempt_number}
           </h2>
@@ -184,7 +177,7 @@ export default function EditServeAttemptModal({
           </button>
         </div>
 
-        <div className="space-y-3 text-xs">
+        <div className="-mr-2 flex-1 space-y-3 overflow-y-auto pr-2 text-xs scrollbar-dark">
           {wasRestored && (
             <div className="flex items-center justify-between px-2 py-1.5 rounded-[2px] border border-amber-500/30 bg-amber-950/20">
               <div className="flex items-center gap-1.5 text-[10px] text-amber-400 font-medium">
@@ -321,7 +314,7 @@ export default function EditServeAttemptModal({
           )}
         </div>
 
-        <div className="flex items-center gap-2 mt-4 pt-3 border-t border-rmpg-700/40">
+        <div className="flex shrink-0 items-center gap-2 mt-4 pt-3 border-t border-rmpg-700/40">
           {/* Delete button — left side */}
           {onDelete && (
             <div className="mr-auto">

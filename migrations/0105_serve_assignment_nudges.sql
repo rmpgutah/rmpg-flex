@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS serve_nudges (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   serve_queue_id   INTEGER NOT NULL,
   condition        TEXT NOT NULL,
-  last_notified_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  last_notified_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(serve_queue_id, condition)
 );
 CREATE INDEX IF NOT EXISTS idx_serve_nudges_job ON serve_nudges(serve_queue_id);
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS serve_nudge_settings (
   renotify_hours           INTEGER NOT NULL DEFAULT 24,
   notify_supervisor_email  INTEGER NOT NULL DEFAULT 1,
   digest_sender_user_id    INTEGER,
-  updated_at               TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
   updated_by               INTEGER
 );
 

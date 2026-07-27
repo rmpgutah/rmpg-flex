@@ -690,8 +690,8 @@ export default function CrmPage() {
 
       {/* ── Task Modal ────────────────────────────────── */}
       {showTaskModal && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowTaskModal(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => setShowTaskModal(false)}>
+          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl my-auto" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-rmpg-100">{editingTask ? 'Edit Task' : 'New Task'}</span>
               <IconButton onClick={() => setShowTaskModal(false)} className="text-rmpg-400 hover:text-rmpg-200" aria-label="Close task modal"><X className="w-3.5 h-3.5" /></IconButton>
@@ -760,8 +760,8 @@ export default function CrmPage() {
 
       {/* ── Activity Log Modal ────────────────────────── */}
       {showActivityModal && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowActivityModal(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => setShowActivityModal(false)}>
+          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-md shadow-xl my-auto" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-rmpg-100">Log Activity</span>
               <IconButton onClick={() => setShowActivityModal(false)} className="text-rmpg-400 hover:text-rmpg-200" aria-label="Close activity modal"><X className="w-3.5 h-3.5" /></IconButton>

@@ -668,10 +668,20 @@ calls.get('/:id', async (c) => {
     const visitHistory = await query<Record<string, unknown>>(db,
       'SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC, id ASC LIMIT 200', id);
 
+    // Linked serve job. CallPdfData declares `serve_queue_id` and the call
+    // report's QR gate reads it (recordPdfGenerator.ts) — but nothing ever
+    // populated it, so the recipient "scan to sign" badge never rendered on
+    // a printed run sheet. serve_queue.call_id is the link; newest job wins
+    // when a call has been redispatched.
+    const serveJob = await queryFirst<{ id: number }>(db,
+      'SELECT id FROM serve_queue WHERE call_id = ? ORDER BY id DESC LIMIT 1', id)
+      .catch(() => null);
+
     return c.json({
       ...call,
       ...(ext || {}),
       ...(joined || {}),
+      serve_queue_id: serveJob?.id ?? null,
       assigned_units: assignedUnits,
       related_incidents: incidents,
       activity,
@@ -947,10 +957,10 @@ calls.delete('/:id', requireRole('admin', 'manager'), async (c) => {
 });
 
 // POST /dispatch/calls/:id/status - Status transition
-calls.post('/:id/status', async (c) => {
+calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = c.req.param('id') || '';
     // The clear/close flow (client handleConfirmClear) sends { status, disposition }.
     // Persist disposition alongside the status transition — dropping it left the
     // call's outcome blank and the disposition column NULL after every clear.

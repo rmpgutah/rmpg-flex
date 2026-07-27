@@ -13,8 +13,18 @@ import { parseZoneFeatures, pointInAnyPolygon, diffZoneMembership } from '../../
 import { identifyBeat } from '../../utils/geofence';
 import { broadcastAll } from '../ws';
 import { rateLimitAllow } from '../../utils/rateLimit';
+import { requireRole } from '../../middleware/auth';
 
 const gps = new Hono<Env>();
+
+// Fleet-wide position/telemetry reads expose every officer's live and
+// historical location + identity — client_viewer/contract_manager (external
+// roles) must not see this, matching the READ_ROLES convention in
+// extensions.ts. Self-scoped routes (my-unit/my-vehicle) and the device
+// self-report ingest (POST /) are unaffected — they only ever return the
+// calling user's own data.
+const READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
+const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'];
 
 // Normalize a GPS point from either client format ({ lat, lng }) or
 // server-previous format ({ latitude, longitude }). Returns normalized
@@ -524,7 +534,7 @@ gps.post('/', async (c) => {
 // GET /dispatch/gps/on-foot-segments?unit_id=&officer_id=&limit=
 // Recent on-foot segments for after-action review. ended_at IS NULL
 // means the segment is still open (officer currently on foot).
-gps.get('/on-foot-segments', async (c) => {
+gps.get('/on-foot-segments', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const unitId = c.req.query('unit_id');
@@ -546,7 +556,7 @@ gps.get('/on-foot-segments', async (c) => {
 });
 
 // GET /dispatch/gps/current - Latest position per unit
-gps.get('/current', async (c) => {
+gps.get('/current', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, `
@@ -643,7 +653,7 @@ gps.get('/my-vehicle', async (c) => {
 });
 
 // GET /dispatch/gps/dwell-times — units that have been stationary for a while.
-gps.get('/dwell-times', async (c) => {
+gps.get('/dwell-times', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
@@ -660,7 +670,7 @@ gps.get('/dwell-times', async (c) => {
 });
 
 // GET /dispatch/gps/speed-zones — recent high-speed events by zone.
-gps.get('/speed-zones', async (c) => {
+gps.get('/speed-zones', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
@@ -707,7 +717,7 @@ function downsample<T>(points: T[], cap: number): T[] {
 // GET /dispatch/gps/trails?hours=N[&unit_id=] — live per-unit breadcrumb
 // trails for the map layer. Bare ARRAY (the client Array.isArray-checks the
 // response). Points come back oldest→newest (the renderer fades by index).
-gps.get('/trails', async (c) => {
+gps.get('/trails', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const hoursRaw = Number.parseInt(c.req.query('hours') ?? '8', 10);
@@ -760,7 +770,7 @@ gps.get('/trails', async (c) => {
 // replay panel. from/to are 'YYYY-MM-DD HH:MM:SS' local-style strings; the
 // breadcrumb recorded_at is UTC SQLite text, so we compare lexically — the
 // client sends a full datetime range and tolerates edge drift.
-gps.get('/history', async (c) => {
+gps.get('/history', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const unitId = c.req.query('unit_id');
@@ -797,7 +807,7 @@ gps.get('/history', async (c) => {
 // shape ({ id, call_sign }) left unit_id undefined in the picker, so the
 // replay query always fired with unit_id=undefined and found nothing.
 // Window: 30 days (the panel replays history, not just the live shift).
-gps.get('/units-with-trails', async (c) => {
+gps.get('/units-with-trails', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
@@ -816,7 +826,7 @@ gps.get('/units-with-trails', async (c) => {
 });
 
 // GET /dispatch/gps/speed-violations — recent speed violations for the map overlay.
-gps.get('/speed-violations', async (c) => {
+gps.get('/speed-violations', requireRole(...READ_ROLES), async (c) => {
   const hours = Math.min(parseInt(c.req.query('hours') || '4', 10) || 4, 72);
   try {
     const db = getDb(c.env);
@@ -837,14 +847,14 @@ gps.get('/speed-violations', async (c) => {
 });
 
 // POST /dispatch/gps/speed-violations/:id/acknowledge
-gps.post('/speed-violations/:id/acknowledge', async (c) => {
+gps.post('/speed-violations/:id/acknowledge', requireRole(...WRITE_ROLES), async (c) => {
   // Speed violations are derived from breadcrumbs, not a separate table.
   // Acknowledge is a no-op until we add a speed_violation_acks table.
   return c.json({ success: true, id: c.req.param('id') });
 });
 
 // GET /dispatch/gps/pursuit-segments — recent pursuit track segments.
-gps.get('/pursuit-segments', async (c) => {
+gps.get('/pursuit-segments', requireRole(...READ_ROLES), async (c) => {
   const hours = Math.min(parseInt(c.req.query('hours') || '4', 10) || 4, 72);
   try {
     const db = getDb(c.env);
@@ -870,7 +880,7 @@ gps.get('/pursuit-segments', async (c) => {
 });
 
 // GET /dispatch/gps/speed-heatmap — grid-aggregated speed data for map overlay.
-gps.get('/speed-heatmap', async (c) => {
+gps.get('/speed-heatmap', requireRole(...READ_ROLES), async (c) => {
   const hours = Math.min(parseInt(c.req.query('hours') || '8', 10) || 8, 72);
   try {
     const db = getDb(c.env);
@@ -892,7 +902,7 @@ gps.get('/speed-heatmap', async (c) => {
 // Classifies breadcrumbs into beats via the same R2 geofence used by dispatch
 // (identifyBeat), then aggregates. Beat lookup is a single small-table query,
 // not per-breadcrumb — only the point-in-polygon classification runs per row.
-gps.get('/zone-speed-stats', async (c) => {
+gps.get('/zone-speed-stats', requireRole(...READ_ROLES), async (c) => {
   const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '8', 10) || 8, 1), 72);
   try {
     const db = getDb(c.env);
@@ -948,7 +958,7 @@ gps.get('/zone-speed-stats', async (c) => {
 // GET /dispatch/gps/coverage-timeline?hours=N&interval=N — beat coverage
 // (unique units + avg speed) bucketed into time intervals, for the map's
 // coverage timeline panel.
-gps.get('/coverage-timeline', async (c) => {
+gps.get('/coverage-timeline', requireRole(...READ_ROLES), async (c) => {
   const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '8', 10) || 8, 1), 72);
   const intervalMin = Math.min(Math.max(parseInt(c.req.query('interval') || '30', 10) || 30, 10), 120);
   try {
@@ -1021,7 +1031,7 @@ gps.get('/coverage-timeline', async (c) => {
 //   total_distance_miles, duration_minutes, avg_speed_mph, max_speed_mph } }
 // An empty trail (no assigned units, no breadcrumbs) still returns 200 with
 // points: [] so the client can distinguish "no data" from a fetch error.
-gps.get('/call-trail/:callId', async (c) => {
+gps.get('/call-trail/:callId', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const callId = Number(c.req.param('callId'));
@@ -1096,7 +1106,7 @@ gps.get('/call-trail/:callId', async (c) => {
 });
 
 // ── GET /dispatch/gps/history-map — breadcrumb trail for a unit ─
-gps.get('/history-map', async (c) => {
+gps.get('/history-map', requireRole(...READ_ROLES), async (c) => {
   const unitId = c.req.query('unit_id');
   const hours = Math.min(72, Math.max(1, parseInt(c.req.query('hours') || '8', 10) || 8));
   if (!unitId) return c.json({ error: 'unit_id required' }, 400);

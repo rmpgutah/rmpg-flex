@@ -4477,9 +4477,18 @@ html:not(.theme-light) {
   --safe-area-right: env(safe-area-inset-right, 0px);
 }
 
-/* iOS: safe area insets for modals and fixed overlays */
+/* iOS: safe area insets for modals and fixed overlays.
+   Wrapped in :where() so this contributes ZERO specificity. Written bare, the
+   selector `.fixed.inset-0` scores 0-2-0 and beats every single-class padding
+   utility -- which silently killed `p-4`/`p-6` on EVERY overlay in the app.
+   `env(safe-area-inset-*)` resolves to 0px off-notch, so the visible result was
+   an overlay whose declared padding did nothing, verified in production:
+   `p-4` -> 16.8px, but `fixed inset-0 p-4` -> 0px.
+   With :where(), an overlay that declares no padding still gets the safe-area
+   insets (nothing else competes), and one that declares `p-4` now actually
+   gets it. Do NOT unwrap this back to a bare selector. */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .fixed.inset-0, [class*="fixed inset-0"] {
+  :where(.fixed.inset-0, [class*="fixed inset-0"]) {
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);

@@ -113,9 +113,9 @@ export default function MileagePromptModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" style={{ touchAction: 'manipulation' }} onClick={onCancel}>
+    <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-black/70 p-4 overflow-y-auto" role="dialog" aria-modal="true" style={{ touchAction: 'manipulation' }} onClick={onCancel}>
       <div
-        className="w-full max-w-[360px] border rounded-sm"
+        className="w-full max-w-[360px] border rounded-sm my-auto"
         onClick={(e) => e.stopPropagation()}
         style={{
           background: 'var(--color-rmpg-800, #141414)',

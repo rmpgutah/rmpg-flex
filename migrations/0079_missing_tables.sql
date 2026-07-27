@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS client_person_links (
   person_id INTEGER NOT NULL,
   client_id INTEGER NOT NULL,
   relationship TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (person_id) REFERENCES persons(id),
   FOREIGN KEY (client_id) REFERENCES clients(id)
 );
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS fi_vehicles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   fi_id INTEGER NOT NULL,
   vehicle_id INTEGER NOT NULL,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (fi_id) REFERENCES field_interviews(id),
   FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id)
 );
@@ -30,8 +30,8 @@ CREATE TABLE IF NOT EXISTS fleet_recurring_costs (
   date TEXT,
   frequency TEXT DEFAULT 'monthly',
   active INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
 );
 
@@ -44,8 +44,8 @@ CREATE TABLE IF NOT EXISTS notification_preferences (
   quiet_start TEXT,
   quiet_end TEXT,
   preferences TEXT DEFAULT '{}',
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -84,8 +84,8 @@ CREATE TABLE IF NOT EXISTS dv_supplements (
   protective_order_number TEXT,
   primary_aggressor_person_id INTEGER,
   created_by INTEGER,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (incident_id) REFERENCES incidents(id)
 );
 
@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS pursuit_supplements (
   review_completed_by INTEGER,
   review_completed_at TEXT,
   created_by INTEGER,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (incident_id) REFERENCES incidents(id)
 );

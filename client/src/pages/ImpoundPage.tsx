@@ -360,8 +360,8 @@ export default function ImpoundPage() {
 
       {/* ── Release Modal ── */}
       {releaseId != null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setReleaseId(null)}>
-          <div className="bg-surface-raised border border-border-default w-full max-w-md p-4 space-y-3" style={{ borderRadius: 2 }} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto p-4" onClick={() => setReleaseId(null)}>
+          <div className="bg-surface-raised border border-border-default w-full max-w-md p-4 space-y-3 my-auto" style={{ borderRadius: 2 }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-[color:var(--panel-header-color)]">Release Vehicle</h3>
               <IconButton onClick={() => setReleaseId(null)} aria-label="Close release dialog">

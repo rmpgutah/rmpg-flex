@@ -209,8 +209,8 @@ export default function TrainingManagementPage() {
 
       {/* New / Edit Course modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={closeForm}>
-          <div className="bg-surface-raised border border-rmpg-600 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto p-4" onClick={closeForm}>
+          <div className="bg-surface-raised border border-rmpg-600 p-6 max-w-lg w-full my-auto" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-rmpg-100">{editingRecord ? 'Edit Course' : 'New Course'}</h3>
               <button type="button" onClick={closeForm} className="toolbar-btn p-1" aria-label="Close">

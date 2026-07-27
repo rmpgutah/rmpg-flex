@@ -871,8 +871,8 @@ export default function CodeEnforcementPage() {
 
       {/* ── New Violation Modal ── */}
       {vFormOpen && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
-          <div className="panel-surface w-full max-w-lg mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true">
+          <div className="panel-surface w-full max-w-lg mx-4 my-auto">
             <PanelTitleBar title="New Code Violation" icon={Plus}>
               <div className="flex items-center gap-2">
                 {vFormIsDirty && (
@@ -967,8 +967,8 @@ export default function CodeEnforcementPage() {
 
       {/* ── New Tow Modal ── */}
       {tFormOpen && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
-          <div className="panel-surface w-full max-w-lg mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true">
+          <div className="panel-surface w-full max-w-lg mx-4 my-auto">
             <PanelTitleBar title="New Tow Order" icon={Truck}>
               <div className="flex items-center gap-2">
                 {tFormIsDirty && (

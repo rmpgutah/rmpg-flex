@@ -842,6 +842,30 @@ describe('applyInbound', () => {
     expect(state.events[0].status).toBe('completed');
   });
 
+  it('unwraps the real Fleet.io webhook envelope shape before applying fields', async () => {
+    // fleetioWebhook.ts stores the RAW webhook body verbatim as payload_json —
+    // Fleet.io's real shape is `{ event: 'vehicle_updated', payload: { ...fields } }`
+    // (see normalizeResource's variant 4 doc comment), NOT a flat field dict.
+    // A regression that reads Object.keys() on the envelope itself (rather than
+    // unwrapping .payload/.data first) would see only ['event','payload'] and
+    // silently apply nothing — this must fail loudly if that ever recurs.
+    const envelope = {
+      event: 'vehicle_updated',
+      payload: { vehicle_id: 999, next_service_mileage: 60000, next_service_date: '2027-01-15' },
+    };
+    const state: FleetTables = {
+      events: [inboundEvent({ payload_json: JSON.stringify(envelope) })],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999, fleetio_resource: 'vehicles' }],
+      fleet_vehicles: { 42: { id: 42, updated_at: '2026-06-20T00:00:00Z' } },
+      fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    const result = await applyInbound({ db }, 'fleetio-evt-1');
+    expect(result.status).toBe('applied');
+    expect(result.applied_fields.sort()).toEqual(['next_service_date', 'next_service_mileage']);
+    expect(state.events[0].status).toBe('completed');
+  });
+
   it('logs a conflict for an rmpg-owned field and does not apply it', async () => {
     const payload = { vehicle_name: 'Imposter' };
     const state: FleetTables = {

@@ -38,15 +38,15 @@ CREATE TABLE IF NOT EXISTS serve_queue (
   status TEXT NOT NULL DEFAULT 'pending',
   attempt_count INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS serve_attempts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   serve_queue_id INTEGER NOT NULL,
   attempt_number INTEGER NOT NULL DEFAULT 1,
-  attempt_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
   officer_id INTEGER,
   result TEXT,
   latitude REAL,
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS serve_attempts (
   planned_at TEXT,
   window TEXT,
   status TEXT DEFAULT 'attempted',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS serve_routes (
@@ -74,8 +74,8 @@ CREATE TABLE IF NOT EXISTS serve_routes (
   end_lat REAL,
   end_lng REAL,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_serve_queue_status ON serve_queue(status);

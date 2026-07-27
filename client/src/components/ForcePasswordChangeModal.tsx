@@ -95,14 +95,14 @@ export default function ForcePasswordChangeModal() {
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center"
+      className="fixed inset-0 flex items-start justify-center overflow-y-auto p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Password change required"
       style={{ background: 'rgba(0,0,0,0.90)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
       <div
-        className="w-full max-w-md mx-4 p-6 space-y-5"
+        className="w-full max-w-md mx-4 p-6 space-y-5 my-auto"
         style={{
           background: 'var(--surface-overlay)',
           border: '1px solid var(--border-default)',
