@@ -1222,6 +1222,18 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
 // shouting in a paragraph.
 // ============================================================
 
+/** Company file / person served / hiring client. */
+export type ReceiptCopy = 'company' | 'subject' | 'client';
+
+export const RECEIPT_COPY_LABEL: Record<ReceiptCopy, string> = {
+  company: 'Company Record',
+  subject: 'Subject Copy',
+  client: 'Client Copy',
+};
+
+/** Print order. The agency keeps the first sheet off the printer. */
+export const RECEIPT_COPY_ORDER: ReceiptCopy[] = ['company', 'subject', 'client'];
+
 export type ReceiptVariantKey = 'individual' | 'co_habitant' | 'business' | 'substitute';
 
 export interface ReceiptAttestationLine {
@@ -1268,6 +1280,18 @@ export interface ReceiptOfServiceData {
   signedAt: string;           // ISO
   gps?: { lat: number; lng: number };
   signature?: string;         // base64 PNG data URL
+
+  /**
+   * Which of the three copies this render is.
+   *
+   * A completed service produces three sheets off the same instrument:
+   * the agency's file copy, the copy left with the person served, and the
+   * copy that goes back to the hiring client. They are the SAME document
+   * — identical content, identical signature — distinguished only by the
+   * designation stamp and the footer, because three sheets coming off a
+   * roll printer are otherwise indistinguishable in a folder.
+   */
+  copy?: ReceiptCopy;
 
   /**
    * BLANK PAPER MODE.
@@ -1481,7 +1505,9 @@ function drawPleadingCaption(
  * is the convention. The caption identifies the filing for the docket;
  * the centred title tells the person holding the paper what it is.
  */
-function drawInstrumentTitle(doc: jsPDF, y: number, title: string): number {
+function drawInstrumentTitle(
+  doc: jsPDF, y: number, title: string, copy: ReceiptCopy | null = null,
+): number {
   const cx = doc.internal.pageSize.getWidth() / 2;
   const lx = getLeftX();
   const cw = getContentWidth(doc);
@@ -1500,6 +1526,21 @@ function drawInstrumentTitle(doc: jsPDF, y: number, title: string): number {
   doc.setFontSize(FONT.SIZE_SECTION_TITLE + 1);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.text(sanitizePdfText(title.toUpperCase()), cx, y, { align: 'center' });
+
+  // Copy designation rides the title's OWN baseline rather than claiming a
+  // row below it. The band already reserves this line, so three sheets are
+  // told apart at a glance for zero vertical cost — which matters on a
+  // layout that fits a single roll-printer sheet by ~4mm.
+  if (copy) {
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    const label = RECEIPT_COPY_LABEL[copy].toUpperCase();
+    const w = doc.getTextWidth(label) + 4;
+    doc.setDrawColor(...COLOR.RULE_STRONG);
+    doc.setLineWidth(BORDER.FIELD);
+    doc.rect(lx + cw - w, y - 3, w, 4.2);
+    doc.text(label, lx + cw - w + 2, y);
+    doc.setFontSize(FONT.SIZE_SECTION_TITLE + 1);
+  }
 
   y += 1.6;
   doc.setDrawColor(...COLOR.RULE_STRONG);
@@ -1829,7 +1870,8 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     caseNumber: data.caseNumber,
     instrumentTitle: data.formTitle,
   });
-  y = drawInstrumentTitle(doc, y, data.formTitle);
+  y = drawInstrumentTitle(doc, y, data.formTitle, blank ? null : (data.copy ?? null));
+
 
   // ── Notice to the person served ──
   // The one paragraph a signer must read before anything is asked of
@@ -2158,10 +2200,18 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
+  // Disposition line differs per copy: "retain this copy for your records"
+  // is right for the person served and simply wrong on the agency file
+  // copy or the sheet going back to the hiring client.
+  const disposition = data.copy === 'company'
+    ? 'Agency file copy - retain with the service record'
+    : data.copy === 'client'
+      ? 'Client copy - return with the proof of service'
+      : 'Retain this copy for your records';
   doc.text(
     blank
       ? 'Utah R. Civ. P. 4(d)  ·  Complete in ink  ·  The process server retains the original; you keep a copy'
-      : `Instrument No. ${data.receiptId}  ·  Utah R. Civ. P. 4(d)  ·  Retain this copy for your records`,
+      : `Instrument No. ${data.receiptId}  ·  Utah R. Civ. P. 4(d)  ·  ${disposition}`,
     doc.internal.pageSize.getWidth() / 2, y, { align: 'center' },
   );
 
@@ -2172,7 +2222,9 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     // ONLY", flatly contradictory on an instrument handed to the person
     // served. Same reasoning as the suppressed CONFIDENTIAL watermark.
     addPageFooter(doc, i, totalPages, 'serve_acknowledgement', {
-      audienceLabel: blank ? 'FORM - COMPLETE BY HAND' : 'COPY FOR THE PERSON SERVED',
+      audienceLabel: blank
+        ? 'FORM - COMPLETE BY HAND'
+        : (data.copy ? RECEIPT_COPY_LABEL[data.copy].toUpperCase() : 'COPY FOR THE PERSON SERVED'),
     });
   }
 

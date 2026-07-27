@@ -19,7 +19,8 @@
 // Hence: assert page count, not just "it rendered".
 
 import { describe, it, expect } from 'vitest';
-import { generateReceiptOfService, generateAffidavitOfService, serviceMomentFor, type ReceiptOfServiceData } from '../servePdfGenerator';
+import { generateReceiptOfService, generateAffidavitOfService, serviceMomentFor,
+  RECEIPT_COPY_ORDER, RECEIPT_COPY_LABEL, type ReceiptOfServiceData } from '../servePdfGenerator';
 import { attestationsFor, receiptFormTitle, VARIANT_LABEL, type ReceiptVariant } from '../serveReceiptVariant';
 import { addConfidentialWatermark, setConfidentialWatermarkEnabled } from '../pdfGenerator';
 import jsPDF from 'jspdf';
@@ -315,4 +316,46 @@ describe('generateReceiptOfService — blank paper mode', () => {
       expect(screen.length).toBeGreaterThan(3);
     }
   });
+});
+
+describe('generateReceiptOfService — the three copies', () => {
+  // A completed service produces three sheets off the SAME instrument:
+  // agency file, person served, hiring client. Identical content and
+  // identical signature — distinguished only by the designation stamp
+  // and the footer, because three sheets off a roll printer are
+  // otherwise indistinguishable in a folder.
+  it('orders the copies company, subject, client', () => {
+    expect(RECEIPT_COPY_ORDER).toEqual(['company', 'subject', 'client']);
+    expect(RECEIPT_COPY_ORDER.map((c) => RECEIPT_COPY_LABEL[c]))
+      .toEqual(['Company Record', 'Subject Copy', 'Client Copy']);
+  });
+
+  for (const copy of RECEIPT_COPY_ORDER) {
+    it(`${copy} copy still fits one page on the mobile printer`, async () => {
+      const doc = await generateReceiptOfService(
+        build('co_habitant', 'Marcus T. Whitfield', CASES[1].extra, { copy, printTarget: 'mobile' }),
+      );
+      expect(doc.getNumberOfPages()).toBe(1);
+    }, 30_000);
+  }
+
+  it('stamps a designation that an undesignated render does not have', async () => {
+    const stamped = await generateReceiptOfService(
+      build('individual', 'Marcus T. Whitfield', CASES[0].extra, { copy: 'client' }),
+    );
+    const plain = await generateReceiptOfService(build('individual', 'Marcus T. Whitfield', CASES[0].extra));
+    expect(pageWeight(stamped, 1)).toBeGreaterThan(pageWeight(plain, 1));
+  }, 30_000);
+
+  it('never stamps a copy designation on a BLANK form', async () => {
+    // A blank has not been signed, so there is nothing to file, hand over
+    // or return — designating it would imply a completed service.
+    const blank = await generateReceiptOfService(build('individual', 'Marcus T. Whitfield', CASES[0].extra, {
+      blank: true, recipientName: '', copy: 'company',
+    }));
+    const blankNoCopy = await generateReceiptOfService(build('individual', 'Marcus T. Whitfield', CASES[0].extra, {
+      blank: true, recipientName: '',
+    }));
+    expect(pageWeight(blank, 1)).toBe(pageWeight(blankNoCopy, 1));
+  }, 30_000);
 });

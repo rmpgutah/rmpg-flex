@@ -33,7 +33,10 @@ import {
   ArrowLeft, AlertTriangle, FileDown,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { generateReceiptOfService, type ReceiptOfServiceData } from '../../utils/servePdfGenerator';
+import {
+  generateReceiptOfService, RECEIPT_COPY_LABEL, RECEIPT_COPY_ORDER,
+  type ReceiptOfServiceData, type ReceiptCopy,
+} from '../../utils/servePdfGenerator';
 import {
   resolveReceiptVariant, receiptFormTitle, attestationsFor,
   VARIANT_LABEL, type ReceiptVariant,
@@ -149,6 +152,8 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
   const [receipts, setReceipts] = useState<SignedReceipt[]>([]);
   const [busy, setBusy] = useState(false);
   const [printing, setPrinting] = useState<string | null>(null);
+  // Index into RECEIPT_COPY_ORDER — which of the three copies is next.
+  const [copyStep, setCopyStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const signed = receipts.filter((r) => r.status === 'signed');
@@ -295,16 +300,19 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
    * case join already done, so the printed copy cannot disagree with the
    * stored record about what the caption says.
    */
-  const printSigned = useCallback(async (receiptId: number) => {
-    setPrinting(`signed-${receiptId}`);
+  const printSigned = useCallback(async (receiptId: number, copy: ReceiptCopy, index: number) => {
+    setPrinting(`signed-${copy}`);
     setError(null);
     try {
       const data = await apiFetch<ReceiptOfServiceData>(`/serve-receipts/receipt/${receiptId}/document`);
-      const doc = await generateReceiptOfService({ ...data, printTarget: 'mobile' });
+      const doc = await generateReceiptOfService({ ...data, copy, printTarget: 'mobile' });
       doc.autoPrint();
       const blobUrl = doc.output('bloburl') as unknown as string;
       const w = window.open(blobUrl, '_blank');
-      if (!w) doc.save(`acknowledgement-signed-${receiptId}.pdf`);
+      if (!w) doc.save(`acknowledgement-${copy}-${receiptId}.pdf`);
+      // Advance only on success — a failed render must not mark a copy
+      // printed and let the officer skip past it.
+      setCopyStep(index + 1);
     } catch {
       setError('Could not retrieve the signed instrument.');
     } finally {
@@ -371,22 +379,55 @@ export default function ServeReceiptActions({ job, serverName, serverBadge, comp
                   {VARIANT_LABEL[(signed[0].form_variant as ReceiptVariant) ?? 'individual']} form.
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => printSigned(signed[0].id)}
-                disabled={printing !== null}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-[2px] bg-brand-600 text-rmpg-50 text-[12px] font-semibold disabled:opacity-50"
-              >
-                {printing === `signed-${signed[0].id}`
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  : <FileDown className="w-3.5 h-3.5" />}
-                Print signed copy from the vehicle
-              </button>
-              <p className="text-[10px] text-fg-muted leading-snug">
-                Pulls the completed instrument back from the record — including
-                a signature taken on the subject’s own phone, which this device
-                never saw.
-              </p>
+              {/* Three copies, printed ONE AT A TIME in order.
+                  A browser cannot detect when a print dialog is dismissed,
+                  so chaining three automatically would fire three dialogs
+                  at once — which is exactly what must not happen when a
+                  roll printer is producing one sheet at a time. The officer
+                  advances each step instead, which also lets them tear off
+                  and set aside each copy before the next starts. */}
+              <div className="space-y-1.5">
+                {RECEIPT_COPY_ORDER.map((copy, i) => {
+                  const done = i < copyStep;
+                  const active = i === copyStep;
+                  return (
+                    <button
+                      key={copy}
+                      type="button"
+                      onClick={() => printSigned(signed[0].id, copy, i)}
+                      disabled={printing !== null || !active}
+                      className={`w-full flex items-center gap-2 py-2.5 px-3 rounded-[2px] text-[12px] font-semibold disabled:opacity-50 ${
+                        active
+                          ? 'bg-brand-600 text-rmpg-50'
+                          : 'border border-rmpg-700 text-fg-muted bg-surface-sunken'
+                      }`}
+                    >
+                      {printing === `signed-${copy}`
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : done
+                          ? <CheckCircle2 className="w-3.5 h-3.5 text-sev-ok" />
+                          : <FileDown className="w-3.5 h-3.5" />}
+                      <span className="flex-1 text-left">
+                        {i + 1}. {RECEIPT_COPY_LABEL[copy]}
+                      </span>
+                      {done && <span className="text-[10px]">printed</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {copyStep >= RECEIPT_COPY_ORDER.length ? (
+                <p className="text-[10px] text-sev-ok leading-snug">
+                  All three copies printed. Company record filed, subject copy
+                  handed over, client copy for the return.
+                </p>
+              ) : (
+                <p className="text-[10px] text-fg-muted leading-snug">
+                  Prints one at a time in order — tear off each sheet before
+                  starting the next. Pulls the completed instrument back from
+                  the record, including a signature taken on the subject’s own
+                  phone that this device never saw.
+                </p>
+              )}
             </section>
           )}
 
