@@ -361,23 +361,53 @@ export function recipientPartyStatus(recipientName: string, parties: Array<strin
   return 'non-party';
 }
 
-// Build the full structured "INTAKE BRIEFING" note + (when triggered) a
-// distinct "OFFICER SAFETY" note. Markdown bold (**) is rendered by the
-// Notes tab's renderFormattedText, so section labels stand out.
-function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
+// ── Split briefing note builders (spec §3.3) ────────────────────────────
+// Each builder owns one topical entry so the PSO reads six focused notes
+// instead of one long one. Markdown bold (**) is rendered by the Notes
+// tab's renderFormattedText, so section labels stand out. This is a MOVE
+// of the sections that used to live in a single buildBriefingNoteText —
+// content is unchanged; only the grouping and the per-note title line
+// (added so each entry is self-describing when read alone) are new.
+
+// Author: OFFICER SAFETY. Was the `if (assessment.caution)` block inside
+// the old buildPsoBriefing. Returns '' when there is no caution so the
+// caller's push() skips it — no empty "safety" entry on a baseline job.
+function buildSafetyNote(assessment: SafetyAssessment): string {
+  if (!assessment.caution) return '';
+  const high = assessment.severity === 'high';
+  const lines: string[] = [];
+  lines.push(`**OFFICER SAFETY — RISK ASSESSMENT: ${high ? 'ELEVATED' : 'BASELINE'}**`);
+  lines.push('**Indicators:**');
+  for (const r of assessment.reasons) lines.push(`• ${r}`);
+  lines.push('**Posture:**');
+  if (high) {
+    lines.push('• Two-officer response recommended. Notify dispatch on arrival and clear.');
+    lines.push('• Park short of the address; approach offset from the door, knock from the hinge side, hands free. Do not enter the residence under any circumstance.');
+    lines.push('• Position for egress before initiating contact. Disengage and re-attempt if the contact turns hostile — the paper is not worth an escalation.');
+  } else {
+    lines.push('• Single-officer standard. Notify dispatch on arrival and clear.');
+    lines.push('• Announce purpose, confirm identity, maintain reactionary gap at the door; stand offset, not square to the threshold.');
+    lines.push('• Watch for dogs, additional occupants, and vehicle movement on approach; note plates of vehicles at the address for the attempt log.');
+  }
+  if (assessment.domesticViolence) {
+    lines.push('• DV flag set: verify the protected party is not present before approach; document timing in the attempt notes.');
+  }
+  return lines.join('\n');
+}
+
+// Author: INTAKE. Sections: SERVICE PROFILE, CASE, TIMELINE, SERVICE
+// AUTHORITY, SERVICE CONSTRAINTS, PROPERTY RECORD, BUSINESS RECORD.
+function buildIntakeNote(input: BriefingInput, nowIso: string): string {
   const { fields, queueRow, isBusiness, agentName, fullLocation, docCount } = input;
   const f = (k: string) => get(fields, k);
   const hint = hazardHintText(fields, queueRow);
 
-  const hiringParty = [queueRow.client_name, queueRow.attorney_name]
-    .filter(Boolean).join(' / ');
-  const callback = f('attorney_phone');
   const caseLine = [queueRow.case_number, queueRow.court_name, queueRow.jurisdiction]
     .filter(Boolean).join(' · ');
   const parties = [queueRow.plaintiff, queueRow.defendant].filter(Boolean).join(' v. ');
 
   const lines: string[] = [];
-  lines.push('**PROCESS SERVICE — INTAKE BRIEFING** *(auto-generated)*');
+  lines.push('**PROCESS SERVICE — INTAKE PROFILE** *(auto-generated)*');
 
   lines.push('**■ SERVICE PROFILE**');
   if (isBusiness) {
@@ -505,8 +535,24 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
     }
   }
 
+  return lines.join('\n');
+}
+
+// Author: DISPATCH. Section: TACTICAL APPROACH.
+function buildTacticalNote(input: BriefingInput, hint: string): string {
+  const lines: string[] = [];
+  lines.push('**PROCESS SERVICE — TACTICAL APPROACH** *(auto-generated)*');
   lines.push('**■ TACTICAL APPROACH**');
   for (const l of tacticalApproachLines(input, hint)) lines.push(`• ${l}`);
+  return lines.join('\n');
+}
+
+// Author: DISPATCH. Sections: RECOMMENDED ATTEMPT PLAN, SERVICE WINDOWS,
+// DILIGENCE STANDARD, plus the Task 6 impossible-schedule warning.
+function buildPlanNote(input: BriefingInput): string {
+  const { queueRow } = input;
+  const lines: string[] = [];
+  lines.push('**PROCESS SERVICE — ATTEMPT PLAN** *(auto-generated)*');
 
   if (input.attemptPlan?.length) {
     lines.push('**■ RECOMMENDED ATTEMPT PLAN**');
@@ -523,12 +569,6 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
         ? '__WARNING: the client\'s own attempt schedule requires more distinct days than remain before the deadline.__ Notify the hiring party — either the deadline moves or the schedule does. Do not silently attempt fewer times.'
         : '__WARNING: the standard diligence sequence cannot fit within the days remaining before the deadline.__ Notify the hiring party — either the deadline moves or fewer attempts must be made. Do not silently attempt fewer times.');
     }
-  }
-
-  const docList = (f('documents_to_serve') || '').split(';').map((s) => s.trim()).filter(Boolean);
-  if (docList.length > 1) {
-    lines.push('**■ DOCUMENT CHECKLIST** — confirm every item is in the packet before departing:');
-    for (const d of docList) lines.push(`- [ ] ${d}`);
   }
 
   // ── SERVICE WINDOWS — always present so the officer knows the answer ──
@@ -551,6 +591,23 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
   lines.push('**■ DILIGENCE STANDARD**');
   for (const l of DILIGENCE_LINES) lines.push(`• ${l}`);
 
+  return lines.join('\n');
+}
+
+// Author: DISPATCH. Sections: AFFIDAVIT / DOCUMENTATION REQUIREMENTS,
+// CLIENT INSTRUCTIONS (verbatim), plus the Task 6 document checklist.
+function buildAffidavitNote(input: BriefingInput): string {
+  const { fields, queueRow } = input;
+  const f = (k: string) => get(fields, k);
+  const lines: string[] = [];
+  lines.push('**PROCESS SERVICE — AFFIDAVIT / DOCUMENTATION** *(auto-generated)*');
+
+  const docList = (f('documents_to_serve') || '').split(';').map((s) => s.trim()).filter(Boolean);
+  if (docList.length > 1) {
+    lines.push('**■ DOCUMENT CHECKLIST** — confirm every item is in the packet before departing:');
+    for (const d of docList) lines.push(`- [ ] ${d}`);
+  }
+
   lines.push('**■ AFFIDAVIT / DOCUMENTATION REQUIREMENTS**');
   for (const l of AFFIDAVIT_LINES) lines.push(`• ${l}`);
 
@@ -558,6 +615,19 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
     lines.push('**■ CLIENT INSTRUCTIONS (verbatim)**');
     lines.push(queueRow.service_instructions);
   }
+
+  return lines.join('\n');
+}
+
+// Author: DISPATCH. Section: CONTACTS.
+function buildContactsNote(input: BriefingInput): string {
+  const { fields, queueRow } = input;
+  const f = (k: string) => get(fields, k);
+  const hiringParty = [queueRow.client_name, queueRow.attorney_name]
+    .filter(Boolean).join(' / ');
+  const callback = f('attorney_phone');
+  const lines: string[] = [];
+  lines.push('**PROCESS SERVICE — CONTACTS** *(auto-generated)*');
 
   if (hiringParty) {
     lines.push('**■ CONTACTS**');
@@ -662,42 +732,24 @@ export function buildOcrContext(
 
 export function buildPsoBriefing(input: BriefingInput, nowIso: string): PsoBriefing {
   const assessment = assessOfficerSafety(input.fields, input.queueRow);
+  const hint = hazardHintText(input.fields, input.queueRow);
   const notes: BriefingNote[] = [];
+  // Id scheme is nowIso + a counter rather than Date.now() — Date.now()
+  // inside a loop can collide, and this function must stay deterministic
+  // for a given nowIso.
+  let seq = 0;
+  const push = (author: string, text: string) => {
+    if (!text.trim()) return;
+    notes.push({ id: `intake-${author.toLowerCase().replace(/\s+/g, '-')}-${nowIso}-${seq++}`, author, text, timestamp: nowIso });
+  };
 
   // Safety note FIRST so it sits at the top of the feed the PSO scans.
-  if (assessment.caution) {
-    const high = assessment.severity === 'high';
-    const lines: string[] = [];
-    lines.push(`**OFFICER SAFETY — RISK ASSESSMENT: ${high ? 'ELEVATED' : 'BASELINE'}**`);
-    lines.push('**Indicators:**');
-    for (const r of assessment.reasons) lines.push(`• ${r}`);
-    lines.push('**Posture:**');
-    if (high) {
-      lines.push('• Two-officer response recommended. Notify dispatch on arrival and clear.');
-      lines.push('• Park short of the address; approach offset from the door, knock from the hinge side, hands free. Do not enter the residence under any circumstance.');
-      lines.push('• Position for egress before initiating contact. Disengage and re-attempt if the contact turns hostile — the paper is not worth an escalation.');
-    } else {
-      lines.push('• Single-officer standard. Notify dispatch on arrival and clear.');
-      lines.push('• Announce purpose, confirm identity, maintain reactionary gap at the door; stand offset, not square to the threshold.');
-      lines.push('• Watch for dogs, additional occupants, and vehicle movement on approach; note plates of vehicles at the address for the attempt log.');
-    }
-    if (assessment.domesticViolence) {
-      lines.push('• DV flag set: verify the protected party is not present before approach; document timing in the attempt notes.');
-    }
-    notes.push({
-      id: `intake-safety-${Date.now()}`,
-      author: 'OFFICER SAFETY',
-      text: lines.join('\n'),
-      timestamp: nowIso,
-    });
-  }
-
-  notes.push({
-    id: `intake-brief-${Date.now() + 1}`,
-    author: 'INTAKE',
-    text: buildBriefingNoteText(input, nowIso),
-    timestamp: nowIso,
-  });
+  push('OFFICER SAFETY', buildSafetyNote(assessment));
+  push('INTAKE', buildIntakeNote(input, nowIso));
+  push('DISPATCH', buildTacticalNote(input, hint));
+  push('DISPATCH', buildPlanNote(input));
+  push('DISPATCH', buildAffidavitNote(input));
+  push('DISPATCH', buildContactsNote(input));
 
   return {
     notes,

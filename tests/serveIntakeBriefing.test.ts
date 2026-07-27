@@ -147,7 +147,10 @@ describe('Finding 3: schedule-impossible check uses the real planned window coun
       scheduleImpossible: true,
       hasClientSchedule: false,
     };
-    const text = buildPsoBriefing(input, '2026-06-20T12:00:00Z').notes.find((n) => n.author === 'INTAKE')!.text;
+    // The impossible-schedule warning lives in the ATTEMPT PLAN note
+    // (author DISPATCH) now that the briefing is split into six topical
+    // notes — check the full note feed rather than a single author.
+    const text = buildPsoBriefing(input, '2026-06-20T12:00:00Z').notes.map((n) => n.text).join('\n');
     expect(text).toContain('standard diligence sequence cannot fit');
     expect(text).not.toContain("client's own attempt schedule");
   });
@@ -166,7 +169,8 @@ describe('Finding 3: schedule-impossible check uses the real planned window coun
       scheduleImpossible: true,
       hasClientSchedule: true,
     };
-    const text = buildPsoBriefing(input, '2026-06-20T12:00:00Z').notes.find((n) => n.author === 'INTAKE')!.text;
+    // Same note-feed rationale as the previous test.
+    const text = buildPsoBriefing(input, '2026-06-20T12:00:00Z').notes.map((n) => n.text).join('\n');
     expect(text).toContain("client's own attempt schedule");
   });
 });
@@ -198,5 +202,52 @@ describe('Finding 4: recipient-vs-party matching is token-based and confidence-a
   it('stays silent (does not assert non-party) when there is not enough recipient-name evidence', () => {
     // A single-token recipient name can't be confidently compared.
     expect(recipientPartyStatus('WHITFIELD', ['AVERY HOLT', 'NORTHGATE LOGISTICS, LLC'])).toBe('unknown');
+  });
+});
+
+describe('briefing decomposition (spec §3.3)', () => {
+  const input: BriefingInput = {
+    fields: {} as any,
+    queueRow: baseRow,
+    isBusiness: false,
+    agentName: '',
+    fullLocation: '1180 E VINE ST, SALT LAKE CITY, UT 84121',
+    docCount: 3,
+    attemptPlan: [
+      { attempt: 1, date: '2026-06-27', weekday: 'Saturday', window: '07:00-09:00', focus: 'early morning', authority: 'residential default' as const },
+    ],
+  };
+
+  it('emits six notes, one per topic', () => {
+    const b = buildPsoBriefing(input, '2026-06-26T12:00:00Z');
+    expect(b.notes).toHaveLength(6);
+  });
+
+  it('the safety note comes first so it sits at the top of the feed', () => {
+    const b = buildPsoBriefing(input, '2026-06-26T12:00:00Z');
+    expect(b.notes[0].author).toBe('OFFICER SAFETY');
+  });
+
+  it('assigns the documented author tags in order', () => {
+    const b = buildPsoBriefing(input, '2026-06-26T12:00:00Z');
+    expect(b.notes.map((n) => n.author)).toEqual([
+      'OFFICER SAFETY', 'INTAKE', 'DISPATCH', 'DISPATCH', 'DISPATCH', 'DISPATCH',
+    ]);
+  });
+
+  it('every note has non-empty body text', () => {
+    const b = buildPsoBriefing(input, '2026-06-26T12:00:00Z');
+    expect(b.notes.every((n) => n.text.trim().length > 0)).toBe(true);
+  });
+
+  it('note ids are unique so the renderer cannot collapse two entries', () => {
+    const b = buildPsoBriefing(input, '2026-06-26T12:00:00Z');
+    expect(new Set(b.notes.map((n) => n.id)).size).toBe(b.notes.length);
+  });
+
+  it('the attempt-plan note carries the window authority', () => {
+    const b = buildPsoBriefing(input, '2026-06-26T12:00:00Z');
+    const planNote = b.notes.find((n) => n.text.includes('ATTEMPT PLAN') || n.text.includes('Attempt 1'));
+    expect(planNote?.text).toContain('residential default');
   });
 });
