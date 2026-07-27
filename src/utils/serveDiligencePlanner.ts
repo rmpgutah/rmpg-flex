@@ -107,12 +107,23 @@ export function planAttemptWindows(
   }
 
   // Earliest permitted offset honours the client's start-date bar.
+  // FINDING 3 FIX: the old version scanned offset 0..59 looking for the
+  // first local date >= startNotBefore, and if none of those 60 days
+  // qualified (a startNotBefore more than ~59 days out) it fell through
+  // with minOffset left at its 0 default — SILENTLY DROPPING the client's
+  // start-date bar, which is the unsafe direction (an officer could be
+  // scheduled to attempt before the client authorized any attempt at all).
+  // Estimate the offset from a UTC midnight diff, then walk forward from
+  // that estimate until the LOCAL date satisfies the bar. The walk is
+  // monotonic in offset (dates only increase), so it always terminates —
+  // the constraint can never silently vanish regardless of how far out
+  // startNotBefore is.
   let minOffset = 0;
   if (options.startNotBefore && /^\d{4}-\d{2}-\d{2}$/.test(options.startNotBefore)) {
-    for (let o = 0; o < 60; o++) {
-      const { date } = localParts(new Date(now.getTime() + o * DAY_MS), tz);
-      if (date >= options.startNotBefore) { minOffset = o; break; }
-    }
+    const targetUtcMs = Date.parse(`${options.startNotBefore}T00:00:00Z`);
+    let o = Math.max(0, Math.floor((targetUtcMs - now.getTime()) / DAY_MS) - 2);
+    while (localParts(new Date(now.getTime() + o * DAY_MS), tz).date < options.startNotBefore) o++;
+    minOffset = o;
   }
 
   const result: AttemptWindow[] = [];
@@ -125,24 +136,38 @@ export function planAttemptWindows(
 
     // D1 FIX: clamping to the deadline used to pin every remaining slot to
     // the SAME day, so attempts 2 and 3 printed on one date. Clamp, then
-    // walk back to the earliest date whose (date, band) pair is still
+    // walk forward to the earliest date whose (date, band) pair is still
     // free — distinct bands on one day are a valid tight-deadline plan;
     // duplicate (date, band) pairs are not.
     if (days !== null && offset > days) offset = Math.max(minOffset, days);
 
-    let key = '';
-    for (let guard = 0; guard < 30; guard++) {
-      const { date } = localParts(new Date(now.getTime() + offset * DAY_MS), tz);
+    // FINDING 2 FIX: the key MUST be recomputed from the current offset on
+    // every iteration, including right after a deadline clamp. The old
+    // version could clamp `offset` back down inside the guard loop and
+    // `break` without recomputing `key`, re-adding the SAME stale
+    // already-used key to `used` and pushing a duplicate (date, window)
+    // pair — reachable via duplicate clientBands entries under a tight
+    // deadline. If no free pair exists within the deadline, skip this spec
+    // rather than emit a duplicate.
+    let date = localParts(new Date(now.getTime() + offset * DAY_MS), tz).date;
+    let key = `${date}|${spec.window}`;
+    let guard = 0;
+    while (used.has(key) && guard < 30) {
+      guard++;
+      if (days !== null && offset >= days) break;   // can't advance past the deadline
+      offset++;
+      if (days !== null && offset > days) offset = days;
+      date = localParts(new Date(now.getTime() + offset * DAY_MS), tz).date;
       key = `${date}|${spec.window}`;
-      if (!used.has(key)) break;
-      offset++;                       // same band already used that day → next day
-      if (days !== null && offset > days) { offset = Math.max(minOffset, days); break; }
     }
+
+    lastOffset = offset;
+    if (used.has(key)) continue;   // no free (date, window) pair — skip, don't duplicate
     used.add(key);
 
-    const { date, weekday } = localParts(new Date(now.getTime() + offset * DAY_MS), tz);
+    const weekday = localParts(new Date(now.getTime() + offset * DAY_MS), tz).weekday;
     result.push({
-      attempt: i + 1,
+      attempt: result.length + 1,
       date,
       weekday,
       window: spec.window,
@@ -150,7 +175,6 @@ export function planAttemptWindows(
       authority: spec.authority,
       constrained,
     });
-    lastOffset = offset;
   }
 
   return result;

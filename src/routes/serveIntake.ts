@@ -1724,7 +1724,17 @@ si.post('/schedule/backfill', async (c) => {
       const uploadedToday = job.created_at?.slice(0, 10) === todayYmd;
       const baseIso = uploadedToday ? job.created_at : nowIso;
 
-      const plan = planAttemptWindows(baseIso, job.deadline ?? null, 'America/Denver', { isBusiness });
+      // INTERIM (fixes a D-2 regression): /schedule/backfill has no resolved
+      // AddressClass, only the isBusiness derivation above. Mapping true ->
+      // 'business' and false -> 'unknown' (which selectWindows() also routes
+      // to residential) exactly reproduces the pre-D-2 behavior so a
+      // confirmed business keeps its weekday windows instead of falling to
+      // residential evening/pre-dawn slots. Replace with a real
+      // resolveAddressClass() call once this path has one.
+      const plan = planAttemptWindows(baseIso, job.deadline ?? null, 'America/Denver', {
+        isBusiness,
+        addressClass: isBusiness ? 'business' : 'unknown',
+      });
       // Trim plan to only remaining attempts and only future dates.
       const futurePlan = plan
         .filter((w) => w.date >= todayYmd)

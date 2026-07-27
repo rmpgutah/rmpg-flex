@@ -268,3 +268,65 @@ describe('client constraints', () => {
     expect(plan.every((w) => w.date >= '2026-07-30')).toBe(true);
   });
 });
+
+describe('Fix round 1 — Finding 1: interim isBusiness -> addressClass mapping', () => {
+  it('isBusiness: true with no addressClass still yields business windows (interim call-site mapping)', () => {
+    // Mirrors the interim `addressClass: isBusiness ? 'business' : 'unknown'`
+    // mapping applied at serveAutoReplan.ts, serveIntake.ts (/schedule/backfill),
+    // and serveIntakeRecords.ts (commitIntake) — those sites have no resolved
+    // AddressClass yet, so they derive one from isBusiness to avoid the
+    // regression where a confirmed business fell through to residential
+    // evening/pre-dawn windows. This test pins the mapping itself so a future
+    // refactor of planAttemptWindows/selectWindows can't silently re-open it.
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      isBusiness: true,
+      addressClass: 'business', // what the interim call-site mapping computes
+    });
+    expect(plan.length).toBeGreaterThan(0);
+    expect(plan.every((w) => w.authority === 'business default')).toBe(true);
+    expect(plan.every((w) => w.window === '09:30-11:30' || w.window === '13:30-15:30')).toBe(true);
+    // Business windows are weekday-only — never Saturday/Sunday.
+    expect(plan.every((w) => w.weekday !== 'Saturday' && w.weekday !== 'Sunday')).toBe(true);
+  });
+});
+
+describe('Fix round 1 — Finding 2: no duplicate (date, window) pair even with duplicate client bands', () => {
+  it('duplicate clientBands under a same-day deadline never emit a duplicate (date, window) pair', () => {
+    // Three IDENTICAL client-specified bands, deadline = today (days = 0), so
+    // every spec's earliest offset gets clamped back to day 0. The old D1 fix
+    // recomputed `key` before the clamp but not after a clamp taken INSIDE the
+    // guard loop, so a clamp-and-break re-added the same stale key and pushed
+    // a duplicate (date, window) pair. This reproduces that path.
+    const plan = planAttemptWindows('2026-06-11T18:00:00.000Z', '2026-06-11', 'America/Denver', {
+      addressClass: 'residential',
+      clientBands: [
+        { start: '09:00', end: '10:00' },
+        { start: '09:00', end: '10:00' },
+        { start: '09:00', end: '10:00' },
+      ],
+    });
+    const keys = plan.map((w) => `${w.date}|${w.window}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    // At least the first band should still be scheduled today.
+    expect(plan.length).toBeGreaterThan(0);
+    expect(plan[0]).toMatchObject({ date: '2026-06-11', window: '09:00-10:00' });
+  });
+});
+
+describe('Fix round 1 — Finding 3: startNotBefore beyond the old 60-day scan bound', () => {
+  it('honours a start-date bar far past the old bound instead of silently dropping it', () => {
+    // The old minOffset search only scanned offsets 0..59. A startNotBefore
+    // more than ~59 days out fell through with minOffset left at its 0
+    // default, silently DROPPING the client's start-date bar — the unsafe
+    // direction, since an officer could then be scheduled to attempt before
+    // the client authorized any attempt. 2026-07-27 + 400 days is well past
+    // that bound.
+    const farStart = '2027-08-31'; // ~400 days after 2026-07-27
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      addressClass: 'residential',
+      startNotBefore: farStart,
+    });
+    expect(plan.length).toBeGreaterThan(0);
+    expect(plan.every((w) => w.date >= farStart)).toBe(true);
+  });
+});

@@ -64,8 +64,17 @@ export async function autoReplanAfterAttempt(
     // Plan from the cooling window forward. planAttemptWindows uses
     // deadline + Denver timezone so DST is handled correctly.
     const coolingStartIso = new Date(Date.parse(nowIso) + COOLING_HOURS * 3_600_000).toISOString();
+    const isBusiness = !!job.business_id;
+    // INTERIM (fixes a D-2 regression): this cron path has no resolved
+    // AddressClass, only the business_id FK. Mapping isBusiness -> 'business'
+    // and non-business -> 'unknown' (which selectWindows() also routes to
+    // residential) exactly reproduces the pre-D-2 behavior so a confirmed
+    // business keeps its weekday windows instead of falling to residential
+    // evening/pre-dawn slots. Replace with a real resolveAddressClass() call
+    // once this path has one (see project-serve-intake-ocr-enhancement plan).
     const plan = planAttemptWindows(coolingStartIso, job.deadline, 'America/Denver', {
-      isBusiness: !!job.business_id,
+      isBusiness,
+      addressClass: isBusiness ? 'business' : 'unknown',
       locationNote: null,
     });
     if (!plan.length) return false;

@@ -690,8 +690,16 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     address: queueRow.recipient_address || null,
   });
 
+  // INTERIM (fixes a D-2 regression): this commit path doesn't yet call
+  // resolveAddressClass() (that's Task 5). Mapping isBusiness -> 'business'
+  // and false -> 'unknown' (which selectWindows() also routes to
+  // residential) exactly reproduces the pre-D-2 behavior so a confirmed
+  // business keeps its weekday windows instead of falling to residential
+  // evening/pre-dawn slots. Task 5 replaces this with the real
+  // resolveAddressClass() result.
   const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline, 'America/Denver', {
     isBusiness,
+    addressClass: isBusiness ? 'business' : 'unknown',
     locationNote,
   });
   const recipientFirst = get('recipient_first_name');
