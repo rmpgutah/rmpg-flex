@@ -80,15 +80,16 @@ export async function ocrImage(env: Env['Bindings'], bytes: Uint8Array, mime: st
   ).catch(() => null);
   return claude ?? withTimeout(extractFromImage(env.AI, bytes), leg(), 'Vision OCR timed out');
 }
-// docType (see familyFromFileName / buildFamilyPrompt) is optional and only
-// reaches the Workers-AI leg (extractFromText) — extractFromTextClaude doesn't
-// accept it, matching its pre-existing signature; the Claude leg has never
-// consumed family prompts, independent of this change. Callers that omit
-// docType get byte-identical behavior to before this parameter existed.
+// docType (see familyFromFileName / buildFamilyPrompt) reaches BOTH legs. It
+// used to be passed only to the Workers-AI fallback, which meant that the
+// moment anthropic_api_key was configured the Claude leg succeeded first and
+// the family-prompt wiring became silently inert on the primary path — a
+// capability regression triggered by setting a secret. Callers that omit
+// docType still get byte-identical behavior to before this parameter existed.
 export async function ocrText(env: Env['Bindings'], text: string, docType?: string): Promise<ExtractionResult> {
   const leg = aiBudget();
   const claude = await withTimeout(
-    extractFromTextClaude(env, text), leg(), 'Claude text timed out',
+    extractFromTextClaude(env, text, docType), leg(), 'Claude text timed out',
   ).catch(() => null);
   return claude ?? withTimeout(
     extractFromText(env.AI, text, env.SERVE_INTAKE_LORA, docType), leg(), 'Text extraction timed out',

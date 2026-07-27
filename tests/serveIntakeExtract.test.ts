@@ -330,3 +330,104 @@ describe('needsCriticPass', () => {
     expect(needsCriticPass(fields, []).length).toBeLessThanOrEqual(5);
   });
 });
+
+// ============================================================
+// R5(a) — registered_agent_address must NOT get the party-name de-noiser
+// ============================================================
+describe('normalizeFields — address fields bypass scrubPartyNoise', () => {
+  it('keeps an address with two short adjacent number tokens intact', () => {
+    // scrubPartyNoise strips runs of 2+ short number tokens as California
+    // pleading margin line-numbers. On an address that rule deletes the unit
+    // number AND the house number: "Apt 5 210 Main St" → "Apt Main St", which
+    // is a wrong-building dispatch. The old fixture survived only because its
+    // house number happened to be four digits.
+    const out = normalizeFields(fieldsFrom({ registered_agent_address: 'Apt 5 210 Main St' }));
+    expect(out.registered_agent_address.value).toBe('Apt 5 210 Main St');
+  });
+
+  it('keeps a Ste + house-number address intact', () => {
+    const out = normalizeFields(fieldsFrom({ registered_agent_address: 'Ste 12 90 W Center St' }));
+    expect(out.registered_agent_address.value).toBe('Ste 12 90 W Center St');
+  });
+
+  it('still scrubs party-name noise from actual name fields', () => {
+    // The de-noiser is not weakened — it just no longer touches addresses.
+    const out = normalizeFields(fieldsFrom({ plaintiff: 'Attorney for Plaintiff Sample Bank, N.A.' }));
+    expect(out.plaintiff.value).toBe('Sample Bank, N.A.');
+  });
+});
+
+// ============================================================
+// R5(b) — spec decision D-2: unconfirmed must never yield business timing
+// ============================================================
+describe('normalizeAddressClass — residential wins a both-hints string', () => {
+  it("classifies 'HOME ADDRESS ... use the leasing office entrance' as residential", () => {
+    // Contains 'office' (a business hint) AND 'HOME ADDRESS'/'apartment'.
+    // Returning 'business' here would schedule weekday-only business windows
+    // at a residence and miss every evening and weekend attempt.
+    expect(normalizeAddressClass(
+      'SERVE AT HOME ADDRESS — apartment complex, use the leasing office entrance',
+    )).toBe('residential');
+  });
+
+  it('classifies an apartment with a suite-numbered leasing office as residential', () => {
+    expect(normalizeAddressClass('Apt 4B, leasing office Suite 100')).toBe('residential');
+  });
+
+  it('still classifies an unambiguous business address as business', () => {
+    expect(normalizeAddressClass('service at his place of employment')).toBe('business');
+    expect(normalizeAddressClass('corporate address, 5th floor')).toBe('business');
+  });
+});
+
+// ============================================================
+// P1 — "et al" appears with and without the period after "et"
+// ============================================================
+describe('normalizeFields — et al. stripping covers both spellings', () => {
+  it("strips 'et al.'", () => {
+    expect(normalizeFields(fieldsFrom({ defendant: 'John Q Sample, et al.' })).defendant.value)
+      .toBe('John Q Sample');
+  });
+
+  it("strips 'et. al.' (period after 'et' — the spelling seen on real captions)", () => {
+    expect(normalizeFields(fieldsFrom({ defendant: 'John Q Sample, et. al.' })).defendant.value)
+      .toBe('John Q Sample');
+  });
+
+  it("strips a bare 'et al' with no periods", () => {
+    expect(normalizeFields(fieldsFrom({ defendant: 'John Q Sample et al' })).defendant.value)
+      .toBe('John Q Sample');
+  });
+
+  it("does not eat a name that merely starts with 'et'", () => {
+    expect(normalizeFields(fieldsFrom({ defendant: 'Ethan Alvarez' })).defendant.value)
+      .toBe('Ethan Alvarez');
+  });
+});
+
+// ============================================================
+// P2/P3 — the one-shot and rules must TEACH service_deadline and priority
+// ============================================================
+describe('extraction prompt — service_deadline and priority are taught', () => {
+  it("the few-shot output populates service_deadline from the header due date", () => {
+    const msgs = buildExtractionMessages('irrelevant document text for prompt shape', undefined);
+    const user = msgs.find((m) => m.role === 'user')!.content;
+    // The few-shot INPUT carries a header due date of 6/15/26. Omitting
+    // service_deadline from the few-shot OUTPUT actively taught the model
+    // that a header due date does not populate it.
+    expect(user).toContain('6/15/26');
+    expect(user).toMatch(/"service_deadline":\{"value":"2026-06-15"/);
+  });
+
+  it('the extraction rules enumerate the priority values', () => {
+    const system = buildExtractionMessages('irrelevant', undefined).find((m) => m.role === 'system')!.content;
+    expect(system).toMatch(/priority/);
+    expect(system).toMatch(/'routine'/);
+    expect(system).toMatch(/'rush'/);
+    expect(system).toMatch(/'urgent'/);
+  });
+
+  it('the info_page family prompt names the JOB-header due date as the deadline', () => {
+    expect(buildFamilyPrompt('info_page')).toMatch(/service_deadline/);
+  });
+});

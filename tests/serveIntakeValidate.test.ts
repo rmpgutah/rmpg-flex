@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { validateFields } from '../src/utils/serveIntakeValidate';
-import { TARGET_FIELDS, type ExtractedField } from '../src/utils/serveIntakeExtract';
+import { validateFields, finalizeFields } from '../src/utils/serveIntakeValidate';
+import { TARGET_FIELDS, normalizeFields, type ExtractedField } from '../src/utils/serveIntakeExtract';
 
 function fieldsFrom(values: Record<string, string>, conf = 0.9): Record<string, ExtractedField> {
   const out: Record<string, ExtractedField> = {};
@@ -138,5 +138,49 @@ describe('validateFields', () => {
     it('rejects a ZIP just past the Texas main block ceiling', () => {
       expect(passes('TX', '80001')).toBe(false);
     });
+  });
+});
+
+// ============================================================
+// R4 — finalizeFields is the ONE seam every entry point uses
+// ============================================================
+// /scan-document returned the model's RAW fields while /upload committed
+// normalized + validated ones, so the officer reviewed one thing on the
+// preview screen and a different thing was saved. In this domain that is
+// not cosmetic: the reviewed value is the only human check on a service
+// address before an officer is dispatched.
+describe('finalizeFields', () => {
+  it('normalizes before validating (the pair, in order)', () => {
+    const r = finalizeFields(fieldsFrom({
+      service_deadline: '6/26/2026',
+      recipient_state: 'Utah',
+      recipient_phone: '(435) 555-0100',
+      recipient_zip: '84770-1234',
+    }), '2026-01-01T00:00:00Z');
+    expect(r.adjusted.service_deadline.value).toBe('2026-06-26');
+    expect(r.adjusted.recipient_state.value).toBe('UT');
+    expect(r.adjusted.recipient_phone.value).toBe('4355550100');
+    expect(r.adjusted.recipient_zip.value).toBe('84770-1234');
+  });
+
+  it('catches a ZIP/state mismatch that only normalization can expose', () => {
+    // "Utah" + a 94304 ZIP: validateFields' STATE_ZIP_PREFIX table is keyed
+    // by the 2-letter code, so WITHOUT the normalize step first the lookup
+    // misses and the check is silently skipped — a false clear.
+    const skipped = validateFields(fieldsFrom({ recipient_state: 'Utah', recipient_zip: '94304' }));
+    expect(skipped.issues.filter((i) => i.field === 'recipient_zip')).toHaveLength(0);
+
+    const caught = finalizeFields(fieldsFrom({ recipient_state: 'Utah', recipient_zip: '94304' }));
+    expect(caught.issues.some((i) => i.field === 'recipient_zip' && i.severity === 'error')).toBe(true);
+  });
+
+  it('produces the same result as normalize-then-validate applied by hand', () => {
+    const input = fieldsFrom({
+      recipient_state: 'Utah', recipient_zip: '84770', service_deadline: '6/26/2026',
+    });
+    const viaSeam = finalizeFields(input, '2026-01-01T00:00:00Z');
+    const byHand = validateFields(normalizeFields(input), '2026-01-01T00:00:00Z');
+    expect(viaSeam.adjusted).toEqual(byHand.adjusted);
+    expect(viaSeam.issues).toEqual(byHand.issues);
   });
 });

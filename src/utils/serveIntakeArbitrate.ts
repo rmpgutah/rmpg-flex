@@ -40,9 +40,29 @@ const CAPTION_FIELDS = new Set([
   'filing_date', 'hearing_date', 'attorney_name', 'attorney_bar_number',
 ]);
 
+// The rank tables above name exactly the three PACKET FAMILIES. But a
+// docCandidate's docType can also be one of the finer-grained members of
+// serveIntakeExtract's DOC_TYPES enum, because the model classifies the
+// lead document specifically ("Court Docket.pdf" → 'subpoena'). Without
+// this normalization those specific-and-correct classifications fall to
+// rank 0 and LOSE to the field sheet — inverting exactly the precedence
+// this module exists to enforce, on the modal packet. Every court form is
+// a court_filing for precedence purposes; being more specific must never
+// be punished.
+const COURT_FORM_TYPES = new Set([
+  'summons', 'complaint', 'subpoena', 'affidavit', 'eviction', 'restraining_order',
+]);
+
+/** Collapse a DOC_TYPES enum member onto the packet family the rank tables know. */
+export function normalizeDocFamily(docType: string): string {
+  const t = (docType || '').trim().toLowerCase();
+  if (COURT_FORM_TYPES.has(t)) return 'court_filing';
+  return t;
+}
+
 function rankFor(field: string, docType: string): number {
   const table = CAPTION_FIELDS.has(field) ? CAPTION_RANK : MECHANICS_RANK;
-  return table[docType] ?? 0;
+  return table[normalizeDocFamily(docType)] ?? 0;
 }
 
 export function arbitrateFields(candidates: DocCandidate[]): ArbitrationResult {

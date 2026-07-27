@@ -23,22 +23,38 @@ import { precleanText } from './serveIntakePreclean';
 // ============================================================
 
 // ── Model selection ───────────────────────────────────────────
-// Catalog + neuron costs verified against the live Cloudflare pricing
-// page 2026-07-26. Llama 4 Scout bills 77,273 neurons/M output against
-// Llama 3.3 70B's 204,805 — the upgrade REDUCES spend (~312 vs ~520
-// neurons for a 3-document packet) while adding native multimodality
-// and a 10M-token context.
+// ⚠️ LLAMA 4 SCOUT WAS MEASURED AND REJECTED (2026-07-26). This is a
+// SETTLED decision, not an unfinished migration — do not "complete" it.
 //
-// ⚠️ SERVE_INTAKE_LORA is bound to TEXT_MODEL_LEGACY. A LoRA adapter
-// cannot transfer to a different base model. If the LoRA is configured,
-// selecting TEXT_MODEL_SCOUT silently drops the fine-tune — which is why
-// scripts/serve-intake-model-ab.ts must run before the default changes.
+// scripts/serve-intake-model-ab.ts graded all three candidates against
+// tests/fixtures/serve-intake/expected.json:
+//   llama-3.3-70b-instruct-fp8-fast (incumbent)  33/36
+//   mistral-small-3.1-24b-instruct               32/36
+//   llama-4-scout-17b-16e-instruct               26/36
+//
+// Scout's failure is not merely "lower accuracy". It read the ICU
+// LETTERHEAD address (250 N Red Cliffs Dr, Saint George) as the SERVICE
+// address. For a process server that is a wrong-building dispatch — an
+// officer sent to their own company's office instead of the recipient.
+// A cheaper model that confidently emits a wrong service address is
+// strictly worse than a dearer one that emits the right one.
+//
+// Scout does bill less per token (77,273 neurons/M output vs 204,805),
+// but the incumbent was retained, so the packet cost stays at ~520
+// neurons — see the cost envelope in the design spec §3.5.
+//
+// (The LoRA hazard once noted here is moot: SERVE_INTAKE_LORA is
+// unconfigured, so no fine-tune is at risk either way. It is not a
+// reason to keep the incumbent; the measured accuracy is.)
 export const TEXT_MODEL_LEGACY = '@cf/meta/llama-3.3-70b-instruct-fp8-fast' as const;
 export const TEXT_MODEL_SCOUT = '@cf/meta/llama-4-scout-17b-16e-instruct' as const;
 export const VISION_MODEL_LEGACY = '@cf/meta/llama-3.2-11b-vision-instruct' as const;
+// Moondream 3.1 is a CANDIDATE only — the vision A/B the spec §6 requires
+// before adoption has not been run. Only the three text models were measured.
 export const VISION_MODEL_MOONDREAM = '@cf/moondream/moondream3.1-9B-A2B' as const;
 
-// Defaults stay on the incumbents until the A/B says otherwise (Task 5).
+// Defaults stay on the measured winners: the incumbent text model (A/B
+// above) and the incumbent vision model (no vision A/B run yet).
 const TEXT_MODEL = TEXT_MODEL_LEGACY;
 const VISION_MODEL = VISION_MODEL_LEGACY;
 
@@ -179,6 +195,13 @@ EXTRACTION RULES (learned from real packets):
   • service_deadline: ONLY a concrete calendar date (e.g. a due date). A relative
     answer window like "30 calendar days" / "21 days" is NOT a deadline — leave
     service_deadline empty (capture the phrase in service_windows if useful).
+    POSITIVE CASE: the date printed in the ServeManager / ICU JOB header — the third
+    value on the header line, and any date labeled "Due:" / "Due Date" — IS the
+    service_deadline. Emit it as ISO. A 2-digit year is 20xx ("6/15/26" → 2026-06-15).
+  • priority: one of 'routine' | 'normal' | 'rush' | 'urgent'. A "RUSH" stamp,
+    banner, or instruction anywhere on the document → 'rush'. "HOT RUSH",
+    "SAME DAY", "EMERGENCY" → 'urgent'. Explicit "routine"/"standard" →
+    'routine'. No urgency language at all → '' (do not guess).
   • Bilingual documents (English + Spanish, etc.): extract from the ENGLISH text;
     ignore the translated duplicate.
   • Multiple defendants on a court form: list them in 'defendant'; do not force a
@@ -271,6 +294,10 @@ const FEWSHOT_OUTPUT = JSON.stringify({
     client_name: { value: 'Example Collections, PLLC', confidence: 1 },
     job_number: { value: '13572468', confidence: 1 },
     client_reference: { value: '880231', confidence: 0.9 },
+    // The header's third value (6/15/26) IS the due date. Omitting this from
+    // the one-shot actively taught the model that a header due date does not
+    // populate service_deadline, and it came back empty on every fixture.
+    service_deadline: { value: '2026-06-15', confidence: 0.9 },
     server_name: { value: 'ICU Investigations, LLC', confidence: 1 },
     service_instructions: { value: 'Sub-serve on 1st attempt to any occupant 16+. Personal only at POE.', confidence: 1 },
   },
@@ -340,6 +367,9 @@ The JOB header carries two numbers: the FIRST (position, not size) is job_number
 Go by position, not magnitude: client_reference is often the larger number, and it is sometimes
 not numeric at all (an alphanumeric client code like "AZ900001E"), so "larger"/"numeric" is never
 a safe test — only position after the job number is reliable.
+The DATE in that same JOB header (the value printed after the two job numbers, and any
+"Due:" / "Due Date" / due_date field) IS service_deadline — emit it as ISO, reading a
+2-digit year as 20xx. It is a concrete calendar date, not a relative answer window.
 An embedded "Imported CSV Row" JSON block, when present, is the single most reliable source.`,
 };
 
@@ -700,15 +730,20 @@ export async function extractFromImageClaude(
 // drop-in for extractFromText that runs the SAME rich serve-doc system prompt on
 // Claude instead of Llama-70B. Returns null (not a failure result) when the key
 // is absent or the call errors, so callers fall back to the Workers-AI path.
+// `docType` is the packet family (see familyFromFileName / buildFamilyPrompt).
+// It appends the family's layout-specific guidance to the system prompt the
+// SAME way the Workers-AI leg does, so the family wiring is not silently inert
+// on the primary path the moment anthropic_api_key is set. Omitting it yields
+// the bare SYSTEM_PROMPT — byte-identical to the pre-parameter behavior.
 export async function extractFromTextClaude(
-  env: { DB: D1Database; AI: Ai }, rawText: string,
+  env: { DB: D1Database; AI: Ai }, rawText: string, docType?: string,
 ): Promise<ExtractionResult | null> {
   const trimmed = (rawText || '').trim();
   if (trimmed.length < 20) return null;
   const started = Date.now();
   try {
     const r = await callAi(env, {
-      system: SYSTEM_PROMPT,
+      system: docType ? `${SYSTEM_PROMPT}\n\n${buildFamilyPrompt(docType)}` : SYSTEM_PROMPT,
       text: `${buildUserPrompt(trimmed)}\n\nReturn ONLY the JSON object, no prose.`,
       maxTokens: 2048,
       providers: ['claude', 'openai'],
@@ -995,7 +1030,10 @@ export function scrubPartyNoise(raw: string): string {
   s = s.replace(/\bfiling\s*#?\s*\d+/ig, ' ');                     // "Filing# 237921303"
   s = s.replace(/\be-?filed\b[^,;]*?(?:\bam\b|\bpm\b|\d{4})/ig, ' '); // "E-Filed 12/17/2025 11:28:33 AM"
   s = s.replace(/\b\d{1,3}(?:\s+\d{1,3}){1,}\b/g, ' ');            // line-number runs "8 9 10" (2+ only → keeps "Pizzeria 24")
-  s = s.replace(/,?\s*(?:an\s+individual|individually|a\s+domestic[^,;]*|et\s+al\.?)\b\.?/ig, ''); // trailing descriptors
+  // "et al" appears in the wild as "et al", "et al.", AND "et. al." — the
+  // period-after-"et" spelling is common on real captions and used to survive
+  // into `defendant` verbatim. `et\.?\s+al\.?` covers all three.
+  s = s.replace(/,?\s*(?:an\s+individual|individually|a\s+domestic[^,;]*|et\.?\s+al\.?)\b\.?/ig, ''); // trailing descriptors
   // Trim leftover separators — but keep a TRAILING period/hyphen: it's usually
   // part of an abbreviation ("N.A.", "Inc.", "L.L.C."), not noise.
   return s.replace(/\s{2,}/g, ' ').replace(/^[\s,;:.-]+/, '').replace(/[\s,;:]+$/, '').trim();
@@ -1013,8 +1051,16 @@ export function normalizeAddressClass(raw: string): string {
   if (!s) return 'unknown';
   const lower = s.toLowerCase();
   if (lower === 'business' || lower === 'residential' || lower === 'unknown') return lower;
-  if (BUSINESS_HINTS.test(s)) return 'business';
+  // RESIDENTIAL IS TESTED FIRST, DELIBERATELY. Spec decision D-2: an
+  // unconfirmed address must never yield business timing. Real instructions
+  // mix both vocabularies — "SERVE AT HOME ADDRESS — apartment complex, use
+  // the leasing office entrance" contains "office" — and with business first
+  // that string returned 'business', which schedules weekday-only business
+  // windows at a residence and misses every evening and weekend attempt.
+  // Being wrong the other way costs one wasted window; being wrong this way
+  // costs the service.
   if (RESIDENTIAL_HINTS.test(s)) return 'residential';
+  if (BUSINESS_HINTS.test(s)) return 'business';
   return 'unknown';
 }
 
@@ -1039,9 +1085,15 @@ const DATE_FIELDS = new Set<TargetField>([
 ]);
 const ADDRESS_CLASS_FIELDS = new Set<TargetField>(['address_class']);
 // Party / institutional name fields that get the caption de-noiser.
+// ⚠️ ADDRESS FIELDS DO NOT BELONG HERE. scrubPartyNoise is a party-NAME
+// de-noiser; its line-number rule (`\b\d{1,3}(?:\s+\d{1,3}){1,}\b`) strips
+// any run of two or more short number tokens, which mangles a real street
+// address: "Apt 5 210 Main St" → "Apt Main St". registered_agent_address was
+// in this set and survived only because the sample's house number happened
+// to be four digits.
 const NAME_FIELDS = new Set<TargetField>([
   'plaintiff', 'defendant', 'recipient_business_name', 'registered_agent_name',
-  'court_name', 'attorney_name', 'registered_agent_address',
+  'court_name', 'attorney_name',
 ]);
 // Tri-state yes/no/'' fields — see normalizeYesNo.
 const YES_NO_FIELDS = new Set<TargetField>([

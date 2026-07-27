@@ -8,6 +8,15 @@
 // Grades each candidate model against tests/fixtures/serve-intake/expected.json
 // and prints a per-field accuracy table. The winner becomes the default in
 // serveIntakeExtract.ts — this script is the evidence for that edit.
+//
+// ⚠️ THIS GRADES RAW MODEL OUTPUT, NOT WHAT PRODUCTION COMMITS. The route
+// runs finalizeFields() (normalizeFields → validateFields) before anything is
+// written, which fixes shapes this harness scores as misses: "6/26/2026" →
+// "2026-06-26", "Utah" → "UT", "(435) 986-1200" → "4359861200", plus the
+// party-name de-noiser. So the score here is a FLOOR on end-to-end accuracy,
+// not a measurement of it. Use it to compare models against each other — that
+// comparison is fair because every candidate is graded identically — and never
+// as a claim about how often the committed record is right.
 // ============================================================
 
 import { readFileSync, readdirSync } from 'node:fs';

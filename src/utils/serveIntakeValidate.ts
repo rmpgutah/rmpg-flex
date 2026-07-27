@@ -9,7 +9,7 @@
 // Pure — no I/O, no clock read (the caller passes nowIso).
 // ============================================================
 
-import type { ExtractedField } from './serveIntakeExtract';
+import { normalizeFields, type ExtractedField } from './serveIntakeExtract';
 
 export interface ValidationIssue {
   field: string;
@@ -128,4 +128,23 @@ export function validateFields(
   }
 
   return { issues, adjusted };
+}
+
+// ── The one way to finalize an extracted field set ────────────
+// normalizeFields and validateFields are a PAIR and must never be applied
+// separately. /upload ran both before committing while /scan-document
+// returned the model's raw fields, so the officer reviewed
+// `service_deadline: "6/26/2026"` / `recipient_state: "Utah"` /
+// `recipient_phone: "(435) 986-1200"` on the preview screen and the record
+// that actually committed held `2026-06-26` / `UT` / `4359861200`. Reviewing
+// one thing and saving another is not a display quirk in this domain — the
+// reviewed value is the officer's only check on a service address.
+//
+// Every entry point (preview, commit, re-extract) goes through here so a
+// future one cannot forget half the pair.
+export function finalizeFields(
+  fields: Record<string, ExtractedField>,
+  nowIso?: string,
+): ValidationReport {
+  return validateFields(normalizeFields(fields), nowIso);
 }
