@@ -694,11 +694,16 @@ export interface NoticeOfAttemptOptions {
  * Applied per row rather than in the column header so a row stays unambiguous
  * when read in isolation -- quoted into a filing, cropped, or photocopied.
  * Empty stays empty so the caller's EMPTY placeholder still applies.
+ *
+ * AM/PM does NOT count as already-zoned. It disambiguates the HOUR, not the
+ * zone: "07:35 AM" still does not say whether that is Mountain or Eastern,
+ * which on a cross-jurisdiction serve is exactly the open question. Only a
+ * real zone token suppresses the suffix.
  */
 export function withZone(time: string): string {
   const t = (time || '').trim();
   if (!t) return '';
-  return /\b(MT|MST|MDT|AM|PM)\b/.test(t) ? t : `${t} MT`;
+  return /\b(MT|MST|MDT)\b/.test(t) ? t : `${t} MT`;
 }
 
 export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options: NoticeOfAttemptOptions = {}): Promise<jsPDF> {
@@ -735,48 +740,68 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
-    formTitle: 'NOTICE OF ATTEMPT TO SERVE',
+    formTitle: 'CIVIL PROCESS RECORD',
     caseNumber: headerRef,
     caseNumberLabel: data.agencyRefNumber ? 'AGENCY REF #' : 'CASE NUMBER',
+    // The header box is a two-row table. Passing no reportDate left the
+    // second row drawn but empty, which reads as a defect on a document
+    // handed to a stranger. The notice date belongs there anyway -- it is
+    // the same slot the Civil Process Record uses for its service date, so
+    // the two instruments now open identically.
+    reportDate: data.noticeDate,
   });
 
-  // ── Notice Date ──
-  y = checkPageBreak(doc, y, 12);
-  y = addFieldPair(doc, 'Notice Date', data.noticeDate, lx, y, hfw);
+  // ── Docket furniture: court heading, then the instrument title bar ──
+  // Matches the Civil Process Record so the two documents in a single serve
+  // file read as one instrument set. No pleading caption: the Notice has no
+  // plaintiff on record, and inventing one to fill a caption would put a
+  // party on a legal document that nobody entered.
+  y = drawCourtHeading(doc, y, data.courtName, data.jurisdiction);
+  y = drawInstrumentTitle(doc, y, 'NOTICE OF ATTEMPT TO SERVE');
 
-  // ── Recipient / Service Address ──
-  y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, 'Intended Recipient', y); y = sec.contentY;
-    y = addFieldPair(doc, '1. Recipient Name', data.recipientName, lx, y, ffw);
-    y = addFieldPair(doc, '2. Service Address', data.recipientAddress, lx, y, ffw);
-    y = addFieldPair(doc, '3. Document(s) to Serve', data.documentType, lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  // ── Article I — who this concerns, and under what case ──
+  // Two boxed panels, the same furniture the Civil Process Record uses for
+  // I(a)/I(b). The flat label-over-rule fields these replace put the
+  // recipient's name, the address, the court and the hiring party in one
+  // undifferentiated column, so nothing signalled which facts were about the
+  // READER and which were about the CASE. The box edge does that work.
+  const courtCaseDisplay = (data.caseNumber && data.caseNumber !== headerRef) ? data.caseNumber : 'N/A';
+  const hiringPartyLabel = (() => {
+    if (data.attorneyName && data.clientName) {
+      return `${data.attorneyName} (atty) for ${data.clientName}`;
+    }
+    return data.attorneyName || data.clientName || 'N/A';
+  })();
 
-  // ── Case Information ──
-  y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, 'Case Information', y); y = sec.contentY;
-    const fy1 = addFieldPair(doc, '4. Court', data.courtName, lx, y, hfw);
-    // Field 5 prints the COURT case number, never the agency ref. When
-    // operator hasn't entered a court case, render N/A — the agency CFS#
-    // already shows in the header.
-    const courtCaseDisplay = (data.caseNumber && data.caseNumber !== headerRef) ? data.caseNumber : 'N/A';
-    const fy2 = addFieldPair(doc, '5. Case Number', courtCaseDisplay, rx, y, hfw);
-    y = Math.max(fy1, fy2);
-    // Hiring Party label: when both the attorney and the client are on
-    // record, show both with role disambiguation ("Atty / Client") so the
-    // recipient can identify the originating party. Falls back to whichever
-    // single name exists, then 'N/A'.
-    const hiringPartyLabel = (() => {
-      if (data.attorneyName && data.clientName) {
-        return `${data.attorneyName} (atty) for ${data.clientName}`;
-      }
-      return data.attorneyName || data.clientName || 'N/A';
-    })();
-    const gy1 = addFieldPair(doc, '6. Jurisdiction', data.jurisdiction, lx, y, hfw);
-    const gy2 = addFieldPair(doc, '7. Hiring Party', hiringPartyLabel, rx, y, hfw);
-    y = Math.max(gy1, gy2);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  y = checkPageBreak(doc, y, 30);
+  {
+    const gutter = SPACING.MD;
+    const panelW = (getContentWidth(doc) - gutter) / 2;
+    const startY = y;
+
+    const recipientRows: SubjectRow[] = [
+      { label: 'Service address', value: data.recipientAddress },
+      { label: 'Document(s) to serve', value: data.documentType },
+    ];
+    const caseRows: SubjectRow[] = [
+      { label: 'Case number', value: courtCaseDisplay },
+      { label: 'Jurisdiction', value: data.jurisdiction },
+      { label: 'Hiring party', value: hiringPartyLabel },
+    ];
+
+    // Two passes: measure both, then redraw at a shared height so the boxes
+    // bottom out level. Same technique the Civil Process Record uses.
+    const hA = drawSubjectPanel(doc, lx, startY, panelW, 'I(a).  Intended Recipient',
+      data.recipientName, 'Person named in the process', recipientRows, undefined, true);
+    const hB = drawSubjectPanel(doc, lx + panelW + gutter, startY, panelW, 'I(b).  Case Information',
+      data.courtName, 'Court in which the matter is pending', caseRows, undefined, true);
+    const panelH = Math.max(hA, hB);
+
+    const aEnd = drawSubjectPanel(doc, lx, startY, panelW, 'I(a).  Intended Recipient',
+      data.recipientName, 'Person named in the process', recipientRows, panelH);
+    const bEnd = drawSubjectPanel(doc, lx + panelW + gutter, startY, panelW, 'I(b).  Case Information',
+      data.courtName, 'Court in which the matter is pending', caseRows, panelH);
+    y = Math.max(aEnd, bEnd) + SPACING.LG;
   }
 
   // ── Attempt Record ──
@@ -787,7 +812,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   const MAX_NOTE_CHARS = 90;
   y = checkPageBreak(doc, y, 30);
   {
-    const sec = openAutoSection(doc, 'Record of Attempt(s)', y);
+    const sec = openAutoSection(doc, 'II. Record of Attempt(s)', y);
     y = sec.contentY;
     const cols = getProportionalColumns(doc, [1, 2, 1.5, 3, 3.5]);
     const headers = [
@@ -866,7 +891,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // header isn't orphaned at the bottom of one page with content on the next.
   y = checkPageBreak(doc, y, 55);
   {
-    const sec = openAutoSection(doc, 'IMPORTANT NOTICE — ATTEMPTED SERVICE OF LEGAL DOCUMENTS', y);
+    const sec = openAutoSection(doc, 'III. Important Notice — Attempted Service of Legal Documents', y);
     y = sec.contentY + 2;
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     const contact = data.serverPhone ? ` at ${data.serverPhone}` : ' at the number on file';
@@ -955,7 +980,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // assuming it's a scam.
   y = checkPageBreak(doc, y, 30);
   {
-    const sec = openAutoSection(doc, 'What To Do Next', y);
+    const sec = openAutoSection(doc, 'IV. What To Do Next', y);
     y = sec.contentY + 2;
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     const phoneCue = data.serverPhone
@@ -987,7 +1012,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
 
   // ── Server Signature (unsworn — this is a notice, not an affidavit) ──
   y = checkPageBreak(doc, y, SPACING.SIGNATURE_BOX_H + SPACING.LG);
-  y = addSignatureBlock(doc, 'Process Server', lx, y, ffw, data.signature ? {
+  y = addSignatureBlock(doc, 'V. Process Server', lx, y, ffw, data.signature ? {
     signatureImage: data.signature,
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
@@ -1951,7 +1976,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     ? [
         { label: 'Capacity', value: 'Party named' },
         { label: 'Telephone', value: data.recipientPhone || 'Not provided', blank },
-        { label: 'Accepted', value: `${signedDate} ${signedTime}`, blank },
+        { label: 'Accepted', value: withZone(`${signedDate} ${signedTime}`), blank },
       ]
     : [
         { label: isBusiness ? 'Title' : 'Relationship', value: data.recipientJobTitle || data.recipientRelationship || 'Not stated', blank },
@@ -2023,13 +2048,21 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
         [data.serverName, data.serverBadge].filter(Boolean).join('  ·  '), rx, y, hfw);
       y = Math.max(a, b);
     } else {
-      const a = addFieldPair(doc, '1. Date and Time of Delivery', `${signedDate} at ${signedTime}`, lx, y, hfw);
+      // Column semantics: the LEFT column is the moment of delivery, the
+      // RIGHT column is who performed it. Badge previously sat beneath the
+      // date and geolocation beneath the server, so each column mixed two
+      // unrelated facts and the reader had to zig-zag. Now the badge sits
+      // under the server it identifies and the geolocation under the
+      // timestamp it corroborates -- read either column top-to-bottom and it
+      // answers one question.
+      const a = addFieldPair(doc, '1. Date and Time of Delivery',
+        withZone(`${signedDate} at ${signedTime}`), lx, y, hfw);
       const b = addFieldPair(doc, '2. Process Server', data.serverName, rx, y, hfw);
       y = Math.max(a, b);
-      const c = addFieldPair(doc, '3. Badge / License No.', data.serverBadge, lx, y, hfw);
-      const d = addFieldPair(doc, '4. Geolocation at Signature',
+      const c = addFieldPair(doc, '3. Geolocation at Signature',
         data.gps ? `${data.gps.lat.toFixed(6)}, ${data.gps.lng.toFixed(6)}` : 'Not available',
-        rx, y, hfw);
+        lx, y, hfw);
+      const d = addFieldPair(doc, '4. Badge / License No.', data.serverBadge, rx, y, hfw);
       y = Math.max(c, d);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -2041,7 +2074,10 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // row-per-document with a copy count is what answers that.
   y = checkPageBreak(doc, y, 26);
   {
-    const cols = getProportionalColumns(doc, [0.10, 0.72, 0.18]);
+    // COPIES held 18% of the width for a single digit, leaving it stranded
+    // far from the title it counts. Tightened so the document title -- the
+    // field a service dispute actually turns on -- gets the room instead.
+    const cols = getProportionalColumns(doc, [0.09, 0.79, 0.12]);
     const rows = (data.documents.length
       ? data.documents
       : [{ title: data.documentType || 'Court documents', copies: 1 }]
@@ -2055,7 +2091,18 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(255, 255, 255);
-    doc.text('III.  SCHEDULE OF DOCUMENTS DELIVERED', lx + 1.5, y + SPACING.SECTION_HEADER_H - 1.2);
+    doc.text('III. SCHEDULE OF DOCUMENTS DELIVERED', lx + 1.5, y + SPACING.SECTION_HEADER_H - 1.2);
+
+    // Totals, right-aligned in the same bar. The per-row copy count answers
+    // WHICH papers changed hands; this answers HOW MANY -- the other half of
+    // the same dispute, and the half a reader would otherwise add up by hand.
+    const docCount = rows.length;
+    const copyCount = rows.reduce((n, r) => n + (parseInt(r[2], 10) || 0), 0);
+    const totalLabel = `${docCount} DOCUMENT${docCount === 1 ? '' : 'S'}`
+      + ` · ${copyCount} COP${copyCount === 1 ? 'Y' : 'IES'}`;
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.text(totalLabel, lx + cw - 1.5, y + SPACING.SECTION_HEADER_H - 1.2, { align: 'right' });
+
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     y += SPACING.SECTION_HEADER_H;
 
@@ -2063,8 +2110,9 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       doc,
       [{ label: 'No.', x: cols[0] }, { label: 'Document Delivered', x: cols[1] }, { label: 'Copies', x: cols[2] }],
       rows, y, cols,
-      { sectionTitle: 'III.  Schedule of Documents Delivered' },
+      { sectionTitle: 'III. Schedule of Documents Delivered' },
     );
+
   }
 
   // ── Article IV — declarations ──
@@ -2148,7 +2196,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       // Flattened: the execution clause is a sentence, and a newline from
       // the two-line address block would break it mid-clause.
       `Executed at ${sanitizePdfText((data.executionPlace || data.serviceAddress || 'the place of service').replace(/\n/g, ', '))} `
-      + `on ${signedDate} at ${signedTime}.`,
+      + `on ${withZone(`${signedDate} at ${signedTime}`)}.`,
       lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
   }
   y += SPACING.LG;
@@ -2177,7 +2225,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
         ? ''
         : (data.recipientJobTitle || data.recipientRelationship
           || (isIndividual ? 'Party named' : data.variantLabel)),
-      date: blank ? '' : `${signedDate} ${signedTime}`,
+      date: blank ? '' : withZone(`${signedDate} ${signedTime}`),
     },
   );
 
