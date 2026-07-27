@@ -24,16 +24,34 @@ export interface ValidationReport {
 
 // First three ZIP digits by state — enough to catch a cross-state paste
 // without shipping a full ZIP database into the Worker bundle.
+//
+// Audited 2026-07-26 against the real USPS 3-digit ZIP-prefix allocation
+// (Utah 840-847, California 900-961, Arizona 850-853/855-857/859-860/863-865,
+// Nevada 889-891/893-898, Idaho 832-838, Wyoming 820-831, Colorado 800-816,
+// New York 100-149, Texas 750-799 + the 885 Fort Bliss enclave). Every entry
+// below is bounded on BOTH ends — a state's real range routinely stops short
+// of (or has a gap inside) the next round number, and a merely-widened regex
+// just trades a false negative for a false positive against a neighboring
+// state's range:
+//   - CA must stop at 961 (South Lake Tahoe/Redding), not extend to 96x —
+//     967-968 is Hawaii and 969 is Guam/Micronesia.
+//   - NV has a gap at 892 between the 889-891 and 893-898 blocks.
+//   - AZ has gaps at 854, 858, 861-862, and above 865 (which would otherwise
+//     collide with nothing today, but 866-869 is not AZ so isn't matched).
+//   - ID (832-838) previously used a bare `/^83/`, which also matched 830 and
+//     831 — those belong to WY (Jackson/Kemmerer), not Idaho.
+//   - CO (800-816) previously used a bare `/^81/`, which also matched 817-819
+//     — those are unassigned, not Colorado.
 const STATE_ZIP_PREFIX: Record<string, RegExp> = {
   UT: /^84[0-7]/,
-  CA: /^9[0-5]/,
-  AZ: /^85|^86/,
-  NV: /^89/,
-  ID: /^83/,
+  CA: /^(9[0-5]\d|96[01])/,
+  AZ: /^(85[0-3]|85[5-7]|859|86[0345])/,
+  NV: /^(889|89[01]|89[3-8])/,
+  ID: /^83[2-8]/,
   WY: /^82|^83[01]/,
-  CO: /^80|^81/,
+  CO: /^(80\d|81[0-6])/,
   NY: /^1[0-4]/,
-  TX: /^7[5-9]/,
+  TX: /^(7[5-9]|885)/,
 };
 
 const CONFIDENCE_PENALTY = 0.4;   // multiplicative on a failed check

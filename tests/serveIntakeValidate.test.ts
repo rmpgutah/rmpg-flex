@@ -36,11 +36,97 @@ describe('validateFields', () => {
 
   it('raises confidence on a field that passed every applicable check', () => {
     const r = validateFields(fieldsFrom({ recipient_state: 'UT', recipient_zip: '84121' }));
-    expect(r.adjusted.recipient_zip.confidence).toBeGreaterThanOrEqual(0.9);
+    // fieldsFrom defaults confidence to 0.9, so a bare >= 0.9 assertion would
+    // pass even if the reward() bonus were never applied. Pin the actual
+    // post-bonus value (0.9 * CONFIDENCE_BONUS = 0.945) so this test can fail.
+    expect(r.adjusted.recipient_zip.confidence).toBeCloseTo(0.9 * 1.05, 10);
+    expect(r.adjusted.recipient_zip.confidence).toBeGreaterThan(0.9);
   });
 
   it('reports no issues for an empty field map', () => {
     const r = validateFields(fieldsFrom({}));
     expect(r.issues).toHaveLength(0);
+  });
+
+  describe('state ZIP prefix boundaries', () => {
+    const passes = (state: string, zip: string) =>
+      validateFields(fieldsFrom({ recipient_state: state, recipient_zip: zip })).issues.some(
+        (i) => i.field === 'recipient_zip' && i.severity === 'error',
+      ) === false;
+
+    it('accepts California ZIPs up to the real 961xx ceiling (South Lake Tahoe)', () => {
+      expect(passes('CA', '96150')).toBe(true);
+      expect(passes('CA', '96162')).toBe(true);
+    });
+
+    it('accepts California ZIPs in the 960xx block (Redding)', () => {
+      expect(passes('CA', '96001')).toBe(true);
+      expect(passes('CA', '96099')).toBe(true);
+    });
+
+    it('rejects a ZIP just past the California ceiling (Hawaii territory)', () => {
+      expect(passes('CA', '96701')).toBe(false); // 967xx = Hawaii
+      expect(passes('CA', '96910')).toBe(false); // 969xx = Guam/Micronesia
+    });
+
+    it('accepts Nevada ZIPs in the 889xx block', () => {
+      expect(passes('NV', '88901')).toBe(true);
+      expect(passes('NV', '88999')).toBe(true);
+    });
+
+    it('rejects a ZIP just below the Nevada 889xx block', () => {
+      expect(passes('NV', '88899')).toBe(false);
+    });
+
+    it('accepts Idaho ZIPs across the full 832-838 range', () => {
+      expect(passes('ID', '83201')).toBe(true);
+      expect(passes('ID', '83877')).toBe(true);
+    });
+
+    it('rejects a ZIP just below the Idaho range (that block is Wyoming)', () => {
+      expect(passes('ID', '83199')).toBe(false);
+    });
+
+    it('rejects Wyoming\'s 830-831 block when misclassified as Idaho', () => {
+      expect(passes('ID', '83001')).toBe(false); // Jackson, WY
+      expect(passes('ID', '83101')).toBe(false); // Kemmerer, WY
+    });
+
+    it('accepts Wyoming ZIPs including the 830-831 block', () => {
+      expect(passes('WY', '82001')).toBe(true);
+      expect(passes('WY', '83001')).toBe(true);
+      expect(passes('WY', '83128')).toBe(true);
+    });
+
+    it('accepts Colorado ZIPs up to the real 816xx ceiling', () => {
+      expect(passes('CO', '80001')).toBe(true);
+      expect(passes('CO', '81600')).toBe(true);
+    });
+
+    it('rejects a ZIP just past the Colorado ceiling (unassigned block)', () => {
+      expect(passes('CO', '81700')).toBe(false);
+    });
+
+    it('accepts Arizona ZIPs in each real sub-block', () => {
+      expect(passes('AZ', '85001')).toBe(true); // Phoenix
+      expect(passes('AZ', '85601')).toBe(true); // Wickenburg
+      expect(passes('AZ', '85901')).toBe(true); // Casa Grande
+      expect(passes('AZ', '86301')).toBe(true); // Prescott
+    });
+
+    it('rejects Arizona ZIPs that fall inside the real gaps', () => {
+      expect(passes('AZ', '85401')).toBe(false); // 854xx gap
+      expect(passes('AZ', '86101')).toBe(false); // 861xx gap
+    });
+
+    it('accepts Texas ZIPs including the 885xx Fort Bliss enclave', () => {
+      expect(passes('TX', '75001')).toBe(true);
+      expect(passes('TX', '79901')).toBe(true);
+      expect(passes('TX', '88510')).toBe(true);
+    });
+
+    it('rejects a ZIP just past the Texas main block ceiling', () => {
+      expect(passes('TX', '80001')).toBe(false);
+    });
   });
 });
