@@ -29,9 +29,12 @@ describe('withZone', () => {
     expect(withZone('07:35 MST')).toBe('07:35 MST');
   });
 
-  it('leaves 12-hour times alone — AM/PM already disambiguates the reading', () => {
-    expect(withZone('7:35 AM')).toBe('7:35 AM');
-    expect(withZone('7:35 PM')).toBe('7:35 PM');
+  it('still stamps a 12-hour time — AM/PM fixes the hour, not the zone', () => {
+    // "07:35 AM" does not say Mountain or Eastern. On a Utah address served
+    // for a Queens County case that is precisely the open question, so the
+    // meridiem is not a substitute for the zone.
+    expect(withZone('7:35 AM')).toBe('7:35 AM MT');
+    expect(withZone('7:35 PM')).toBe('7:35 PM MT');
   });
 
   it('trims incidental whitespace', () => {

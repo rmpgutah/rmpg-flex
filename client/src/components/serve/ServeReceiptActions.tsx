@@ -31,7 +31,7 @@ import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import {
   QrCode, Printer, Loader2, X, CheckCircle2, ExternalLink,
-  ArrowLeft, AlertTriangle, FileDown, Ban,
+  ArrowLeft, AlertTriangle, FileDown, Ban, Camera,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import {
@@ -188,6 +188,13 @@ export default function ServeReceiptActions({
   const [refusalReason, setRefusalReason] = useState('');
   const [docsLeft, setDocsLeft] = useState(true);
   const [refusalDone, setRefusalDone] = useState(false);
+  const [paperMode, setPaperMode] = useState(false);
+  const [paperImage, setPaperImage] = useState<string | null>(null);
+  const [paperName, setPaperName] = useState('');
+  const [paperRelationship, setPaperRelationship] = useState('');
+  const [paperPhone, setPaperPhone] = useState('');
+  const [paperEmail, setPaperEmail] = useState('');
+  const [paperDone, setPaperDone] = useState(false);
 
   // Move focus INTO the panel on open, and close on Escape.
   //
@@ -402,6 +409,70 @@ export default function ServeReceiptActions({
       setBusy(false);
     }
   }, [job.id, recipientName, refusalReason, docsLeft]);
+
+  /**
+   * Downscale the photographed page before it leaves the device.
+   *
+   * A raw phone photo is several megabytes and this is going into a
+   * database column, not object storage. 1600px on the long edge at 0.7
+   * JPEG keeps a signature and printed body text plainly legible while
+   * landing inside the same 500KB ceiling a drawn signature has.
+   */
+  const readPageImage = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        setPaperImage(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const submitPaper = useCallback(async () => {
+    if (!paperImage || !paperName.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/serve-receipts/${job.id}/paper`, {
+        method: 'POST',
+        body: JSON.stringify({
+          form_variant: variant,
+          premises_type: premisesType,
+          sub_resides_at_address: resides,
+          sub_is_authorized_agent: authorized,
+          sub_defendant_name: job.defendant_name,
+          sub_agrees_to_deliver: variant !== 'individual',
+          sub_release_acknowledged: variant !== 'individual',
+          recipient_name: paperName.trim(),
+          recipient_relationship: paperRelationship || null,
+          recipient_phone: paperPhone || null,
+          recipient_email: paperEmail || null,
+          business_name: businessName || null,
+          recipient_job_title: jobTitle || null,
+          documents,
+          // The wording the paper carried, so the stored attestations match
+          // the sheet the person actually initialled rather than today's copy.
+          attestations: attestationsFor(variant, job.defendant_name || 'the named party')
+            .map((a) => ({ id: a.id, text: a.text, accepted: true })),
+          signed_page_image: paperImage,
+        }),
+      });
+      setPaperDone(true);
+      setPaperMode(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not record the paper form.');
+    } finally {
+      setBusy(false);
+    }
+  }, [job, variant, premisesType, resides, authorized, paperImage, paperName,
+      paperRelationship, paperPhone, paperEmail, businessName, jobTitle, documents]);
 
   if (!open) {
     return (
@@ -691,6 +762,69 @@ export default function ServeReceiptActions({
                       ))}
                   </div>
                 </details>
+              </section>
+
+              {/* ── Paper form completed by hand ──
+                  This path shipped as a dead end: a blank could be
+                  printed and signed in ink with nowhere to put it. A
+                  signed instrument sitting in a folder in a vehicle is
+                  not a record. */}
+              <section className="border-t border-rmpg-700 pt-3">
+                {paperDone ? (
+                  <p className="text-[11px] text-sev-ok leading-snug">
+                    Paper form recorded. The photographed page is stored as the
+                    signed original.
+                  </p>
+                ) : paperMode ? (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider"
+                       style={{ color: 'var(--panel-header-color)' }}>
+                      Record a hand-completed form
+                    </p>
+                    <label className="block">
+                      <span className="text-[10px] text-fg-muted">Photograph the signed page</span>
+                      <input
+                        type="file" accept="image/*" capture="environment"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) readPageImage(f); }}
+                        className="w-full text-[11px] text-fg-secondary mt-1"
+                      />
+                    </label>
+                    {paperImage && (
+                      <img src={paperImage} alt="Signed page" className="w-full rounded-[2px] border border-rmpg-700" />
+                    )}
+                    <input className={inputCls} value={paperName} onChange={(e) => setPaperName(e.target.value)}
+                      placeholder="Name as signed on the paper" />
+                    <input className={inputCls} value={paperRelationship} onChange={(e) => setPaperRelationship(e.target.value)}
+                      placeholder="Relationship or title, as written" />
+                    <div className="flex gap-2">
+                      <input className={inputCls} value={paperPhone} onChange={(e) => setPaperPhone(e.target.value)}
+                        placeholder="Phone" inputMode="tel" />
+                      <input className={inputCls} value={paperEmail} onChange={(e) => setPaperEmail(e.target.value)}
+                        placeholder="Email" inputMode="email" />
+                    </div>
+                    <p className="text-[10px] text-fg-muted leading-snug">
+                      Transcribe what the paper says, not what you remember. Your
+                      name is attached to the record as the person who saw both.
+                    </p>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setPaperMode(false)}
+                        className="flex-1 py-2 rounded-[2px] border border-rmpg-700 text-[12px] text-fg-secondary">
+                        Cancel
+                      </button>
+                      <button type="button" onClick={submitPaper}
+                        disabled={busy || !paperImage || !paperName.trim()}
+                        className="flex-1 py-2 rounded-[2px] bg-brand-600 text-rmpg-50 text-[12px] font-semibold disabled:opacity-40">
+                        {busy ? 'Recording…' : 'Record paper form'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setPaperMode(true)}
+                    className="w-full flex items-center justify-center gap-2 py-2 text-[11px] font-semibold text-fg-secondary">
+                    <Camera className="w-3.5 h-3.5" />
+                    They completed it on paper
+                  </button>
+                )}
               </section>
 
               {/* ── Refusal ──

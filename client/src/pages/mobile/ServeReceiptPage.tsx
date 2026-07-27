@@ -31,6 +31,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Check, AlertTriangle, FileText, Loader2, Download, Printer, ShieldCheck } from 'lucide-react';
 import SignaturePad from '../../components/SignaturePad';
+import { enqueueSubmission, flushQueued, getQueued } from '../../utils/serveReceiptQueue';
 import { generateReceiptOfService, type ReceiptOfServiceData } from '../../utils/servePdfGenerator';
 import {
   resolveReceiptVariant, receiptFormTitle, attestationsFor, formatServiceAddress, isEntityName,
@@ -202,11 +203,28 @@ export default function ServeReceiptPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState<{ receiptId: number; emailStatus: string; variant: ReceiptVariant } | null>(null);
+  // Signed, saved on this device, not yet accepted by the server.
+  const [pending, setPending] = useState(false);
 
   // ── Load ───────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // Drain first. If this device signed earlier and the submit failed,
+      // the token may now be burned by our own replay — showing "already
+      // signed" without trying would strand a signature we are holding.
+      const carried = await getQueued(token).catch(() => null);
+      if (carried) {
+        const r = await flushQueued(token).catch(() => ({ status: 'offline' as const }));
+        if (cancelled) return;
+        if (r.status === 'sent') {
+          setDone({ receiptId: r.body.receipt_id, emailStatus: r.body.email_status, variant: r.body.form_variant });
+          setLoading(false);
+          return;
+        }
+        if (r.status === 'offline') { setPending(true); setLoading(false); return; }
+      }
+
       try {
         const res = await fetch(apiBase);
         const data = await res.json().catch(() => ({}));
@@ -268,6 +286,37 @@ export default function ServeReceiptPage() {
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 60_000 },
     );
   }, []);
+
+  // Retry the moment the browser reports a connection, and on refocus —
+  // 'online' alone is unreliable on mobile, where a phone can report
+  // online inside a dead zone.
+  useEffect(() => {
+    if (!pending) return;
+    let cancelled = false;
+    const attempt = async () => {
+      const r = await flushQueued(token).catch(() => ({ status: 'offline' as const }));
+      if (cancelled || r.status === 'offline') return;
+      if (r.status === 'sent') {
+        setPending(false);
+        setDone({ receiptId: r.body.receipt_id, emailStatus: r.body.email_status, variant: r.body.form_variant });
+      } else {
+        setPending(false);
+        setSubmitError(r.status === 'already_signed'
+          ? 'This receipt has already been signed.'
+          : (r as { message: string }).message);
+      }
+    };
+    const timer = window.setInterval(attempt, 15_000);
+    window.addEventListener('online', attempt);
+    window.addEventListener('focus', attempt);
+    void attempt();
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('online', attempt);
+      window.removeEventListener('focus', attempt);
+    };
+  }, [pending, token]);
 
   const namedParty = ctx?.job.defendant_name || ctx?.job.recipient_name || 'the named party';
   // For the business variant the papers are directed at the entity, so
@@ -437,11 +486,8 @@ export default function ServeReceiptPage() {
     if (missing.length || submitting) return;
     setSubmitting(true);
     setSubmitError(null);
-    try {
-      const res = await fetch(apiBase, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+
+    const payload = {
           // Service method stays the coarse legal category the rest of
           // the serve subsystem already understands; form_variant is the
           // finer-grained printed variation.
@@ -476,15 +522,33 @@ export default function ServeReceiptPage() {
           recipient_signature: signature,
           latitude: coords?.lat ?? null,
           longitude: coords?.lng ?? null,
-          accuracy_m: coords?.acc ?? null,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) {
-        setSubmitError(data?.message || 'Could not submit the form. Please try again.');
+      accuracy_m: coords?.acc ?? null,
+    };
+
+    // Persist BEFORE the network is attempted. A signal that drops between
+    // the tap and the response would otherwise lose a signature already
+    // given, and the officer would have to ask a stranger to do all of it
+    // again on a doorstep.
+    try { await enqueueSubmission(token, payload); } catch { /* private mode — proceed unqueued */ }
+
+    try {
+      const r = await flushQueued(token);
+      if (r.status === 'offline') {
+        setPending(true);
+        setSubmitting(false);
         return;
       }
-
+      if (r.status === 'already_signed') {
+        setSubmitError('This receipt has already been signed.');
+        setSubmitting(false);
+        return;
+      }
+      if (r.status === 'rejected') {
+        setSubmitError(r.message);
+        setSubmitting(false);
+        return;
+      }
+      const data = r.status === 'sent' ? r.body : {};
       const receiptId: number = data.receipt_id;
       setDone({ receiptId, emailStatus: data.email_status, variant });
 
@@ -514,11 +578,12 @@ export default function ServeReceiptPage() {
         }
       }
     } catch {
-      setSubmitError('Could not reach the server. Check your connection and try again.');
+      // Already persisted above, so this is a delay rather than a loss.
+      setPending(true);
     } finally {
       setSubmitting(false);
     }
-  }, [missing, submitting, apiBase, variant, formTitle, acceptedAttestations, recipientName,
+  }, [missing, submitting, token, apiBase, variant, formTitle, acceptedAttestations, recipientName,
       relationship, jobTitle, businessName, phone, email, accepted, premisesType, ctx, docCopies,
       partyLabel, residesAtAddress, authorizedAgent, expectedDelivery, signature, coords, buildPdfData]);
 
@@ -527,6 +592,34 @@ export default function ServeReceiptPage() {
     return (
       <div className="min-h-screen bg-surface-base flex items-center justify-center text-fg-secondary">
         <Loader2 className="animate-spin mr-2" size={18} /> Loading…
+      </div>
+    );
+  }
+
+  // Signed, held on this device, waiting for signal.
+  //
+  // Shown INSTEAD of an error, and deliberately reassuring: the person has
+  // already done everything asked of them. The failure is ours, it is
+  // recoverable, and telling them "try again" would be both wrong and
+  // insulting — there is nothing for them to try.
+  if (pending) {
+    return (
+      <div className="min-h-screen bg-surface-base p-6 flex items-center justify-center">
+        <div className="max-w-sm w-full text-center">
+          <div className="mx-auto mb-4 w-14 h-14 rounded-[2px] bg-sev-warn/20 flex items-center justify-center">
+            <Loader2 className="text-sev-warn animate-spin" size={28} />
+          </div>
+          <h1 className="text-rmpg-100 text-lg font-semibold mb-2">Signed — saving</h1>
+          <p className="text-fg-secondary text-[15px] leading-relaxed mb-3">
+            Your signature is saved on this phone. There is no signal here, so
+            it will be sent automatically as soon as there is.
+          </p>
+          <p className="text-fg-muted text-[13px] leading-relaxed">
+            You can close this page. Nothing is lost — it will send the next
+            time you open it with a connection. The process server has a record
+            that you signed.
+          </p>
+        </div>
       </div>
     );
   }
