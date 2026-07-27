@@ -7,6 +7,8 @@
 // separately and the two must agree.
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   resolveReceiptVariant,
   isEntityName,
@@ -309,5 +311,67 @@ describe('an entity can never be the signer', () => {
       residesAtAddress: true, authorizedAgent: false,
       namedParty: 'Andrew Scott Peterson',
     })).toBe('individual');
+  });
+});
+
+describe('signature payload hardening', () => {
+  // `data:image/*` treated an SVG as a signature. SVG can carry script,
+  // and this value is rendered back into an officer's DOM and embedded in
+  // a PDF — the permissive test was a stored-XSS vector wearing a
+  // signature's clothes.
+  const ok = `data:image/png;base64,${'A'.repeat(200)}`;
+
+  it('accepts a real PNG signature', () => {
+    expect(validateReceiptSubmission(submission({ recipient_signature: ok }))).toBeNull();
+  });
+
+  it('accepts JPEG, which the typed-signature path can produce', () => {
+    expect(validateReceiptSubmission(submission({
+      recipient_signature: `data:image/jpeg;base64,${'A'.repeat(200)}`,
+    }))).toBeNull();
+  });
+
+  it.each([
+    ['svg', `data:image/svg+xml;base64,${'A'.repeat(200)}`],
+    ['svg with inline script', 'data:image/svg+xml,<svg onload="alert(1)">' + 'x'.repeat(200)],
+    ['gif', `data:image/gif;base64,${'A'.repeat(200)}`],
+    ['html masquerading', `data:text/html;base64,${'A'.repeat(200)}`],
+    ['non-base64 body', `data:image/png;base64,${'<'.repeat(200)}`],
+  ])('rejects %s', (_label, value) => {
+    expect(validateReceiptSubmission(submission({ recipient_signature: value })))
+      .toMatch(/signature is required/i);
+  });
+});
+
+describe('every officer-side route is gated', () => {
+  // src/middleware/auth.ts carries readOnlyRoleGuard as a default-deny
+  // backstop for MUTATIONS — its own comment notes that a handler which
+  // forgets requireRole is "open to every authenticated role". Reads have
+  // no such backstop, which is precisely how GET /receipt/:id and
+  // /receipt/:id/document shipped ungated, returning a member of the
+  // public's signature image, phone, email and physical description to
+  // any account with a login, client_viewer included.
+  //
+  // A ratchet rather than a test of one route: the failure mode is a
+  // FUTURE route added without a gate, and that is what this catches.
+  const SRC = readFileSync(join(__dirname, '..', 'src', 'routes', 'serveReceipt.ts'), 'utf8');
+
+  it('declares requireRole on every serveReceiptAdmin handler', () => {
+    // Three lines of lookahead: the multi-line form puts the path on line
+    // two and requireRole on line three.
+    const handlers = SRC.match(/serveReceiptAdmin\.(get|post|put|delete)\((?:[^\n]*\n){0,2}[^\n]*/g) ?? [];
+    expect(handlers.length).toBeGreaterThan(4);
+    const ungated = handlers.filter((h) => !h.includes('requireRole') && !h.includes('RECEIPT_READ_ROLES'));
+    expect(
+      ungated,
+      'every officer-side route must name the roles that may reach it — reads '
+      + 'have no default-deny backstop, only mutations do',
+    ).toEqual([]);
+  });
+
+  it('does not let a read-only client role reach a signature', () => {
+    expect(SRC).toMatch(/RECEIPT_READ_ROLES/);
+    const decl = SRC.slice(SRC.indexOf('const RECEIPT_READ_ROLES'), SRC.indexOf('const RECEIPT_READ_ROLES') + 200);
+    expect(decl).not.toContain('client_viewer');
   });
 });
