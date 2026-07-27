@@ -1287,6 +1287,17 @@ export interface ReceiptOfServiceData {
   signature?: string;         // base64 PNG data URL
 
   /**
+   * Photographs taken at the moment of signature — the door, the
+   * premises, the person if they consented.
+   *
+   * A proof of service is testimony about a place and a moment. A photo of
+   * the door taken as it was signed answers "were you actually there?"
+   * better than a coordinate pair does, and it is the question a contested
+   * service turns on. Base64 data URIs, already downscaled by the caller.
+   */
+  photos?: string[];
+
+  /**
    * Which of the three copies this render is.
    *
    * A completed service produces three sheets off the same instrument:
@@ -1850,6 +1861,56 @@ export function serviceMomentFor(
   return receiptDateParts(data.signedAt);
 }
 
+/**
+ * Does the defendant caption wrap?
+ *
+ * The honest predictor of overflow. A first attempt keyed on declaration
+ * height, which measures ~40mm whether the defendant is "Jo Lee" or
+ * "Chase Partners Ltd, Fontana Business Center 2, SDP REIT LLC, ISAOA" —
+ * the party name is substituted into only two statements. What actually
+ * grows is everything ABOVE: the caption wraps to a second line and both
+ * subject panels carry the same name.
+ */
+function captionWraps(doc: jsPDF, defendant: string): boolean {
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  const captionCol = getContentWidth(doc) * 0.50 - 4;
+  return (doc.splitTextToSize(sanitizePdfText(`${defendant},`), captionCol) as string[]).length > 1;
+}
+
+/**
+ * Estimated height of the declarations, in mm, before anything is drawn.
+ *
+ * The only part of this instrument whose height genuinely varies is the
+ * declarations, because the party name is substituted into two of them.
+ * A one-word defendant gives seven single-line statements; "Chase
+ * Partners Ltd, Fontana Business Center 2, SDP REIT LLC, ISAOA" wraps
+ * two of them to three lines each and adds ~25mm.
+ *
+ * Measuring it first is what lets the renderer decide to be dense BEFORE
+ * it starts drawing, rather than discovering the overflow at the
+ * signature block when it is too late to do anything but break the page.
+ */
+function measureDeclarations(
+  doc: jsPDF, attestations: ReceiptAttestationLine[], width: number, blank: boolean,
+): number {
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  const lineH = FONT.SIZE_FIELD_VALUE * 0.42;
+  return attestations.reduce((n, a) => {
+    const lines = doc.splitTextToSize(sanitizePdfText(a.text), width - (blank ? 10 : 6)) as string[];
+    return n + lines.length * lineH + (blank ? 0.2 : SPACING.SM)
+      + (blank || a.accepted ? 0 : lineH);
+  }, 0);
+}
+
+/**
+ * Declarations tall enough that the instrument will not fit a sheet at
+ * normal spacing. Measured against what the four standard variations
+ * produce (~40mm); past this the page needs to be denser.
+ */
+const DENSE_THRESHOLD_MM = 52;
+
 async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF> {
   const branding = await fetchPdfBranding();
   setActiveBranding(branding);
@@ -1875,6 +1936,15 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   const cw = getContentWidth(doc);
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
+
+  // Measure before drawing. When a long multi-entity caption inflates the
+  // declarations, the page tightens rather than spilling — the reader
+  // gets a denser single sheet instead of a second one carrying a
+  // signature away from most of the form.
+  const dense = !data.photos?.length
+    && (captionWraps(doc, data.defendantName || '')
+      || measureDeclarations(doc, data.attestations, ffw, blank) > DENSE_THRESHOLD_MM);
+  const gap = (normal: number) => (dense ? normal * 0.5 : normal);
 
   setActiveCaseNumber(data.caseNumber);
   let y = drawNibrsHeader(doc, {
@@ -1904,7 +1974,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // The one paragraph a signer must read before anything is asked of
   // them, in the identical wording used on the signing screen.
   y = checkPageBreak(doc, y, 14);
-  y += SPACING.LG;
+  y += gap(SPACING.LG);
   doc.setFont(PDF_VALUE_FONT, 'bold');
   y = addWrappedText(doc,
     'NOTICE: This instrument evidences delivery only. It is not an admission of any '
@@ -1913,7 +1983,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     + 'the documents themselves.',
     lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
   doc.setFont(PDF_VALUE_FONT, 'normal');
-  y += SPACING.MD;
+  y += gap(SPACING.MD);
 
   // ── Article I — the subjects ──
   //
@@ -2006,7 +2076,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
         : `${data.variantLabel} accepting on behalf of the party named at left`,
       acceptorRows, panelH,
     );
-    y = Math.max(aEnd, bEnd) + SPACING.LG;
+    y = Math.max(aEnd, bEnd) + gap(SPACING.LG);
   }
 
   // ── Article II — particulars of service ──
@@ -2022,6 +2092,17 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       const b = addFieldPair(doc, '2. Process Server / Badge',
         [data.serverName, data.serverBadge].filter(Boolean).join('  ·  '), rx, y, hfw);
       y = Math.max(a, b);
+    } else if (dense) {
+      // One row. Server and badge read fine together, and the geolocation
+      // rides with them rather than claiming a row of its own — the row
+      // this frees is what keeps a long-caption instrument on one sheet.
+      const a = addFieldPair(doc, '1. Date and Time of Delivery', `${signedDate} at ${signedTime}`, lx, y, hfw);
+      const b = addFieldPair(doc, '2. Process Server / Badge',
+        [data.serverName, data.serverBadge].filter(Boolean).join('  ·  '), rx, y, hfw);
+      y = Math.max(a, b);
+      y = addFieldPair(doc, '3. Geolocation at Signature',
+        data.gps ? `${data.gps.lat.toFixed(6)}, ${data.gps.lng.toFixed(6)}` : 'Not available',
+        lx, y, ffw);
     } else {
       const a = addFieldPair(doc, '1. Date and Time of Delivery', `${signedDate} at ${signedTime}`, lx, y, hfw);
       const b = addFieldPair(doc, '2. Process Server', data.serverName, rx, y, hfw);
@@ -2086,6 +2167,10 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // SECTION_CONTENT_PAD is NOT added — openAutoSection's contentY
   // already sits past it, and proseLeadIn() is the extra baseline
   // clearance measured from that point.
+  const declH = (a: ReceiptAttestationLine) =>
+    (doc.splitTextToSize(sanitizePdfText(a.text), ffw - (blank ? 10 : 6)) as string[]).length * declLineH
+    + (blank ? 0.2 : SPACING.SM) + (blank || a.accepted ? 0 : declLineH);
+
   let declBlockH = SPACING.SECTION_HEADER_H + proseLeadIn() + declLineH + SPACING.LG;
   for (const a of data.attestations) {
     const lines = doc.splitTextToSize(sanitizePdfText(a.text), ffw - 6) as string[];
@@ -2101,7 +2186,20 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   const handoffH = blank && data.qrDataUrl ? 7 : 0;
   const executionH = (SPACING.XL + SPACING.MD) + declLineH + SPACING.LG
     + SPACING.SIGNATURE_BOX_H + SPACING.XL + footnoteH + handoffH + 3;
-  y = checkPageBreak(doc, y, declBlockH + executionH);
+  // Dense only: reserve the TAIL, not the whole block.
+  //
+  // Reserving every declaration plus the signature moves all of Article IV
+  // together — correct when it fits, and the reason page one sat 40% empty
+  // when it does not. Keeping just the last statements with the signature
+  // is the ordinary answer to a widow. Scoped to dense because an earlier
+  // attempt applied it everywhere and regressed all four standard
+  // variations; here the only cases affected are ones already spilling.
+  if (dense) {
+    const tailH = data.attestations.slice(-2).reduce((n, a) => n + declH(a), 0);
+    y = checkPageBreak(doc, y, Math.min(declBlockH, 34) + tailH + executionH);
+  } else {
+    y = checkPageBreak(doc, y, declBlockH + executionH);
+  }
 
   { const sec = openAutoSection(doc, 'IV.  Declarations of the Person Accepting Service', y);
     y = sec.contentY + proseLeadIn();
@@ -2113,11 +2211,47 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
         ? 'The undersigned states as follows. Initial each statement you affirm:'
         : `The undersigned, ${sanitizePdfText(data.recipientName)}, states as follows:`,
       lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
-    y += SPACING.LG;
+    y += gap(SPACING.LG);
 
     data.attestations.forEach((a, i) => {
+      // Before the first tail statement, reserve the tail AND the whole
+      // execution block so the signature can never be split from what it
+      // attests to.
+      if (dense && i === data.attestations.length - 2) {
+        const tailH = data.attestations.slice(-2).reduce((n, x) => n + declH(x), 0);
+        y = checkPageBreak(doc, y, tailH + executionH);
+      }
       y = drawDeclaration(doc, i + 1, a.text, blank ? true : a.accepted, y, blank);
     });
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Photographs ──
+  // Placed after the schedule and before the declarations, so the page
+  // reads chronologically: what was delivered, what it looked like, what
+  // the recipient then stated. Never on a blank — there is nothing to
+  // photograph before the encounter has happened.
+  if (!blank && Array.isArray(data.photos) && data.photos.length > 0) {
+    y = checkPageBreak(doc, y, 34);
+    const sec = openAutoSection(doc, 'III(b).  Photographs at Signature', y);
+    y = sec.contentY + SPACING.MD;
+    // Two across. Bigger than a thumbnail so a door number is readable;
+    // small enough that three photos do not claim a page of their own.
+    const gap = 3;
+    const w = (ffw - gap) / 2;
+    const h = w * 0.62;
+    let px = lx;
+    for (let i = 0; i < Math.min(data.photos.length, 4); i++) {
+      if (i > 0 && i % 2 === 0) { y += h + gap; px = lx; }
+      try {
+        doc.addImage(data.photos[i], 'JPEG', px, y, w, h);
+        doc.setDrawColor(...COLOR.BORDER_FIELD);
+        doc.setLineWidth(BORDER.IMAGE_FRAME);
+        doc.rect(px, y, w, h);
+      } catch { /* a corrupt frame must never cost the instrument */ }
+      px += w + gap;
+    }
+    y += h + SPACING.MD;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2128,7 +2262,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   //
   // Deliberately NOT a perjury declaration — see the note on
   // ReceiptOfServiceData.
-  y += SPACING.XL + SPACING.MD;
+  y += gap(SPACING.XL) + SPACING.MD;
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -2263,6 +2397,14 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
 
   finalizePoliceReport(doc, {
     barcode: {
+      // Scan-to-retrieve. A filed paper copy is otherwise a dead end: a
+      // clerk holding it has a case number and a name and no way back to
+      // the signed record, the GPS, or the attestation wording. The
+      // instrument number is what makes the paper a pointer.
+      //
+      // Only on a SIGNED instrument. A blank has no record to retrieve,
+      // and a barcode resolving to nothing is worse than none at all.
+      ...(blank || !data.receiptId ? {} : { value: `RMPG-AOS:${data.receiptId}` }),
       formMetadata: {
         form: RECEIPT_FORM_KEY[data.variant],
         caseNumber: data.caseNumber,
