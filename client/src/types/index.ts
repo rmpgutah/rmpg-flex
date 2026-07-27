@@ -383,6 +383,8 @@ export interface CallForService {
   risk_score?: number;
   // Visit history (PSO calls)
   visit_history?: VisitHistory[];
+  /** Linked serve_queue job — gates the recipient "scan to sign" QR on the call report. */
+  serve_queue_id?: number | null;
   // Pinned-to-top flag (dispatcher sticky)
   pinned?: number | boolean;
 }
