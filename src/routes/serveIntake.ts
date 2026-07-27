@@ -58,7 +58,7 @@ import {
 import { withTimeout, ocrImage, ocrText } from '../utils/serveIntakeOcr';
 import { estimateNeurons, estimatePacketNeurons, FREE_NEURONS_PER_DAY } from '../utils/serveIntakeNeurons';
 import { precleanText } from '../utils/serveIntakePreclean';
-import { arbitrateFields, reconcileIdentityConflicts, type DocCandidate, type FieldConflict } from '../utils/serveIntakeArbitrate';
+import { arbitrateFields, reconcileIdentityConflicts, type DocCandidate, type FieldConflict, type IdentityWinnerDoc } from '../utils/serveIntakeArbitrate';
 import { finalizeFields } from '../utils/serveIntakeValidate';
 import { judgeMerged } from '../utils/serveIntakeJudge';
 import { parseDefendants } from '../utils/serveIntakeDefendants';
@@ -719,19 +719,30 @@ si.post('/upload', async (c) => {
     'recipient_type', 'recipient_first_name', 'recipient_middle_name',
     'recipient_last_name', 'recipient_business_name', 'recipient_dob',
   ] as const;
-  const recipientScore = (ex: ExtractionResult): number => {
-    const f = ex.fields;
+  // Score (and select) from the NORMALIZED docCandidates, not the raw
+  // c2.ex extraction results. Two reasons: (1) the winner's fields flow
+  // straight into reconcileIdentityConflicts as `winnerDoc`, and that
+  // function writes `winnerDoc.fields[k]` verbatim into both
+  // `mergedFields` and `conflicts[].chosen` — if that source were raw
+  // model output, an identity field the guard overrides (e.g.
+  // recipient_dob in `M/D/YYYY`) would persist a conflict whose `chosen`
+  // disagrees with the normalized value finalizeFields commits, exactly
+  // the chosen≠committed bug part (a) above exists to close, just via
+  // this second path. (2) a name field that normalizes to empty (all
+  // placeholder/noise) should score 0, not the model's optimistic
+  // confidence — docCandidates already reflects that via normalizeFields.
+  const recipientScore = (fields: Record<string, ExtractedField>): number => {
     // Weight the name-defining fields; a doc that only mentions a DOB
     // shouldn't outrank one that has the actual first+last name.
-    return (f.recipient_first_name?.value ? f.recipient_first_name.confidence : 0)
-      + (f.recipient_last_name?.value ? f.recipient_last_name.confidence : 0)
-      + (f.recipient_business_name?.value ? f.recipient_business_name.confidence : 0);
+    return (fields.recipient_first_name?.value ? fields.recipient_first_name.confidence : 0)
+      + (fields.recipient_last_name?.value ? fields.recipient_last_name.confidence : 0)
+      + (fields.recipient_business_name?.value ? fields.recipient_business_name.confidence : 0);
   };
-  let bestDoc: ExtractionResult | null = null;
+  let bestDoc: IdentityWinnerDoc | null = null;
   let bestScore = 0;
-  for (const c2 of collected) {
-    const s = recipientScore(c2.ex);
-    if (s > bestScore) { bestScore = s; bestDoc = c2.ex; }
+  for (const dc of docCandidates) {
+    const s = recipientScore(dc.fields);
+    if (s > bestScore) { bestScore = s; bestDoc = { documentType: dc.docType, fields: dc.fields }; }
   }
   // This guard can override arbitration's per-field pick (it selects the
   // whole name group from one document, not per-field precedence), so
@@ -760,6 +771,15 @@ si.post('/upload', async (c) => {
     });
   }
   let validatedFields = validation.adjusted;
+  // The issue set that will be PERSISTED alongside the committed record.
+  // Starts as the first-pass issues, but the critic pass below re-runs
+  // finalizeFields on its own output — if that revalidation isn't also
+  // captured here, a persisted validation_issues can go stale relative to
+  // `validatedFields`: it can show an issue the critic already resolved,
+  // or omit one the critic-adjusted revalidation newly introduced. The
+  // officer reading the reason for a lowered confidence must see the
+  // reason for the value actually on the record, not the pre-critic one.
+  let committedValidationIssues = validation.issues;
 
   // ── Bounded critic pass (spec item 10) ──────────────────────────
   // Re-ask the model ONLY about the doubtful critical fields (capped at 5
@@ -768,6 +788,9 @@ si.post('/upload', async (c) => {
   // never fail the upload — the catch below keeps the first-pass fields,
   // and applyCriticResults() never lets an empty critic answer overwrite
   // a value the first pass already found.
+  // needsCriticPass deliberately reads the PRE-critic `validation.issues`
+  // — that's the correct input for deciding whether to run the critic at
+  // all, a different job from explaining the committed record.
   const criticFields = needsCriticPass(validatedFields, validation.issues);
   if (criticFields.length) {
     const combinedText = collected.map((c2) => c2.text || '').filter(Boolean).join('\n\n');
@@ -777,7 +800,9 @@ si.post('/upload', async (c) => {
         criticExtract(c.env, combinedText, criticFields),
         CRITIC_TIMEOUT_MS, 'Critic pass timed out',
       );
-      validatedFields = finalizeFields(applyCriticResults(validatedFields, critic), nowIso).adjusted;
+      const postCritic = finalizeFields(applyCriticResults(validatedFields, critic), nowIso);
+      validatedFields = postCritic.adjusted;
+      committedValidationIssues = postCritic.issues;
     } catch (e) {
       log.warn('serve-intake critic pass failed; keeping first-pass fields', {
         traceId: c.get('traceId'),
@@ -948,7 +973,7 @@ si.post('/upload', async (c) => {
       })),
       allDates: [...allDates],
       conflicts,
-      validationIssues: validation.issues,
+      validationIssues: committedValidationIssues,
       env: c.env,
     });
     // Back-link the document rows to the new queue entry — and to the

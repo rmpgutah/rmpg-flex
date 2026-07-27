@@ -275,3 +275,46 @@ describe('conflicts reflect POST-normalization values', () => {
     expect(c!.rejected.map((x) => x.value)).toContain('2026-06-26');
   });
 });
+
+describe('reconcileIdentityConflicts — the name-coherence guard must also see normalized values', () => {
+  it('an identity field the guard overrides persists the NORMALIZED (committed) form, not raw model output', () => {
+    // Raw model output for two documents that disagree on the recipient's
+    // DOB, in the same M/D/YYYY shape the extractor actually returns.
+    const rawCandidates = [
+      { docType: 'field_sheet', fields: { recipient_last_name: f('SMITH'), recipient_dob: f('6/26/1980') } },
+      { docType: 'court_filing', fields: { recipient_last_name: f('SMYTHE', 0.95), recipient_dob: f('6/30/1980', 0.95) } },
+    ];
+    // Mirrors src/routes/serveIntake.ts's `docCandidates`: every candidate
+    // is normalized BEFORE arbitration and BEFORE the name-coherence guard
+    // ever sees it — this is what the guard's `winnerDoc` must be built
+    // from too, not the raw `rawCandidates` above.
+    const docCandidates: DocCandidate[] = rawCandidates.map((c) => ({
+      docType: c.docType,
+      fields: normalizeFields(c.fields),
+    }));
+    const arbitration = arbitrateFields(docCandidates);
+
+    // The guard decided court_filing has the strongest recipient signal
+    // (higher confidence on both name-defining fields) and selects the
+    // WHOLE identity group from it — mirroring serveIntake.ts's `bestDoc`,
+    // which is now built from the already-normalized `docCandidates`
+    // entry (index 1), not from raw `rawCandidates[1].fields`.
+    const winnerDoc = { documentType: 'court_filing', fields: docCandidates[1].fields };
+    const merged = { ...arbitration.merged };
+    const conflicts = reconcileIdentityConflicts(
+      arbitration.conflicts, merged, docCandidates, winnerDoc, IDENTITY_GROUP,
+    );
+
+    const conflict = conflicts.find((x) => x.field === 'recipient_dob');
+    expect(conflict).toBeDefined();
+    // Must be the normalized ISO form finalizeFields will (idempotently)
+    // commit downstream — not the raw "6/30/1980" the model produced.
+    // Regression source: serveIntake.ts previously built `bestDoc` (the
+    // winnerDoc feeding this function) from raw c2.ex fields instead of
+    // the normalized docCandidates, so `chosen` here would read the raw
+    // string while the actual committed row held the ISO date.
+    expect(conflict!.chosen).toBe('1980-06-30');
+    expect(conflict!.rejected.map((x) => x.value)).toContain('1980-06-26');
+    expect(merged.recipient_dob.value).toBe('1980-06-30');
+  });
+});
