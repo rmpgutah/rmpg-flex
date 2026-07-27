@@ -159,11 +159,11 @@ export default function EditServeAttemptModal({
       onClick={guardedClose}
     >
       <div
-        className="panel-beveled w-full max-w-lg rounded-[2px] bg-surface-base p-4 shadow-xl"
+        className="panel-beveled flex max-h-[90vh] w-full max-w-lg flex-col rounded-[2px] bg-surface-base p-4 shadow-xl"
         onClick={(e) => e.stopPropagation()}
         style={{ borderColor: 'var(--border-default)' }}
       >
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex shrink-0 items-center justify-between mb-3">
           <h2 id="edit-attempt-title" className="text-sm font-bold text-amber-400 uppercase tracking-wider">
             Edit Attempt #{attempt.attempt_number}
           </h2>
@@ -177,7 +177,7 @@ export default function EditServeAttemptModal({
           </button>
         </div>
 
-        <div className="space-y-3 text-xs">
+        <div className="-mr-2 flex-1 space-y-3 overflow-y-auto pr-2 text-xs scrollbar-dark">
           {wasRestored && (
             <div className="flex items-center justify-between px-2 py-1.5 rounded-[2px] border border-amber-500/30 bg-amber-950/20">
               <div className="flex items-center gap-1.5 text-[10px] text-amber-400 font-medium">
@@ -314,7 +314,7 @@ export default function EditServeAttemptModal({
           )}
         </div>
 
-        <div className="flex items-center gap-2 mt-4 pt-3 border-t border-rmpg-700/40">
+        <div className="flex shrink-0 items-center gap-2 mt-4 pt-3 border-t border-rmpg-700/40">
           {/* Delete button — left side */}
           {onDelete && (
             <div className="mr-auto">

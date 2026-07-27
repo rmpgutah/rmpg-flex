@@ -88,3 +88,43 @@ describe('EditServeAttemptModal — attempt_at timezone round-trip', () => {
     expect(savedBody().attempt_at).toBe('2026-07-27 13:35:00');
   });
 });
+
+// ── Scroll containment ──────────────────────────────────────
+// The modal previously had no height cap and no scroll container, so on a
+// 600px-tall screen (Toughbook landscape, phone) the footer rendered 138px
+// BELOW the viewport with a non-scrollable body -- the officer could open the
+// modal, edit the timestamp, and have no reachable Save button. Verified in a
+// real layout engine; jsdom has no layout, so these assert the structure that
+// produces the behavior rather than measured geometry.
+describe('EditServeAttemptModal — scroll containment', () => {
+  beforeEach(() => {
+    apiFetchMock.mockClear();
+    localStorage.clear();
+  });
+
+  it('caps the panel height and lays it out as a flex column', () => {
+    renderModal();
+    const panel = document.querySelector('.panel-beveled') as HTMLElement;
+    expect(panel).toBeTruthy();
+    expect(panel.className).toContain('max-h-[90vh]');
+    expect(panel.className).toContain('flex-col');
+  });
+
+  it('gives the body its own scroll container so the footer stays reachable', () => {
+    renderModal();
+    const panel = document.querySelector('.panel-beveled') as HTMLElement;
+    const scroller = panel.querySelector('.overflow-y-auto') as HTMLElement;
+    expect(scroller).toBeTruthy();
+    // The timestamp field must live INSIDE the scrolling region, not above it.
+    expect(scroller.querySelector('#edit-attempt-at')).toBeTruthy();
+    expect(scroller.className).toContain('flex-1');
+  });
+
+  it('keeps the action row out of the scrolling region', () => {
+    renderModal();
+    const save = screen.getByRole('button', { name: /save/i });
+    const footer = save.parentElement as HTMLElement;
+    expect(footer.className).toContain('shrink-0');
+    expect(footer.closest('.overflow-y-auto')).toBeNull();
+  });
+});
