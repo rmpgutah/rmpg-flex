@@ -77,10 +77,24 @@ function randomToken(): string {
 
 /** Salted SHA-256 of the caller IP. We keep a correlator for abuse
  *  investigation without storing a member of the public's raw IP. */
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Salted, VERSIONED hash of the caller IP.
+ *
+ * The salt is JWT_SECRET, which can be rotated. Two hashes computed under
+ * different salts are not comparable, and without a marker that difference
+ * is invisible: an investigator would simply see records that never
+ * correlate and conclude the addresses differed. The 4-hex salt
+ * fingerprint prefix makes a rotation obvious at a glance instead.
+ */
 async function hashIp(ip: string, salt: string): Promise<string> {
-  const data = new TextEncoder().encode(`${salt}:${ip}`);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+  const saltId = (await sha256Hex(salt)).slice(0, 4);
+  const body = (await sha256Hex(`${salt}:${ip}`)).slice(0, 28);
+  return `${saltId}:${body}`;
 }
 
 function clientIp(c: any): string {
@@ -89,8 +103,12 @@ function clientIp(c: any): string {
 
 /** Reject anything that isn't a plausibly-sized PNG data URL. */
 function validSignature(v: unknown): v is string {
+  // PNG and JPEG only, not `data:image/*`. SVG is an image by that test
+  // and can carry script; this value is rendered back into an officer's
+  // DOM and embedded in a PDF, so the permissive form was a stored-XSS
+  // vector wearing a signature's clothes.
   return typeof v === 'string'
-    && v.startsWith('data:image/')
+    && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(v)
     && v.length > 100
     && v.length <= MAX_SIGNATURE_BYTES;
 }
@@ -388,7 +406,11 @@ serveReceipt.get('/:token', async (c) => {
       ).catch(() => null)
     : null;
 
-  await execute(db, 'UPDATE serve_receipt_tokens SET scans_used = scans_used + 1 WHERE id = ?', tok.id);
+  // NOT incremented here. This counter caps ABUSE of a real token, and a
+  // page load is not abuse — a subject on a flaky doorstep connection who
+  // reloads ten times would otherwise destroy their own link permanently,
+  // with no way to tell them why. Counting is done on SUBMISSION, which is
+  // the action worth capping.
 
   return c.json({
     ok: true,
@@ -445,8 +467,16 @@ serveReceipt.post('/:token', async (c) => {
     return c.json({ ok: false, code: 'rate_limited', message: 'Too many requests. Please wait a moment.' }, 429);
   }
 
+  // Per-TOKEN as well as per-IP. The IP bucket alone is defeated by
+  // rotating addresses, and the thing worth protecting is one job's
+  // signing link, not one network's fair share.
+  const tokenParam = c.req.param('token');
+  if (!(await rateLimitAllow(c.env.KV, `serve-receipt-post:tok:${tokenParam}`, 10, 600))) {
+    return c.json({ ok: false, code: 'rate_limited', message: 'Too many attempts on this link.' }, 429);
+  }
+
   const db = getDb(c.env);
-  const resolved = await resolveToken(db, c.req.param('token'));
+  const resolved = await resolveToken(db, tokenParam);
   if ('error' in resolved) {
     return c.json({ ok: false, code: resolved.error.code, message: resolved.error.message }, resolved.error.http);
   }
@@ -567,6 +597,11 @@ serveReceipt.post('/:token', async (c) => {
   );
 
   const receiptId = Number(ins.meta.last_row_id);
+
+  // Submissions are what the cap is for. Recorded before the burn so a
+  // rejected attempt still counts against a token being hammered.
+  await execute(db, 'UPDATE serve_receipt_tokens SET scans_used = scans_used + 1 WHERE id = ?', tok.id)
+    .catch(() => undefined);
 
   // Record the officer's expectation alongside the derived variation.
   // A mismatch is NOT an error — the officer is reading a doorstep and
@@ -1237,8 +1272,19 @@ serveReceiptAdmin.post(
   },
 );
 
+/**
+ * Roles that may read a signed acknowledgement.
+ *
+ * Deliberately NOT the same set that may mint a token. Minting is a
+ * doorstep action; reading returns a member of the public's signature
+ * image, phone, email and physical description. `client_viewer` — a
+ * hiring client with a login — was able to pull all of it, because these
+ * two routes were the only ones in this file written without a gate.
+ */
+const RECEIPT_READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
+
 /** GET /api/serve-receipts/:queueId — signed receipts for a job. */
-serveReceiptAdmin.get('/:queueId', async (c) => {
+serveReceiptAdmin.get('/:queueId', requireRole(...RECEIPT_READ_ROLES), async (c) => {
   const queueId = parseInt(c.req.param('queueId') || '', 10);
   if (!queueId) return c.json({ error: 'Invalid serve job id' }, 400);
   const rows = await query(
@@ -1254,7 +1300,7 @@ serveReceiptAdmin.get('/:queueId', async (c) => {
 });
 
 /** GET /api/serve-receipts/receipt/:id — full receipt incl. signatures. */
-serveReceiptAdmin.get('/receipt/:id', async (c) => {
+serveReceiptAdmin.get('/receipt/:id', requireRole(...RECEIPT_READ_ROLES), async (c) => {
   const id = parseInt(c.req.param('id') || '', 10);
   if (!id) return c.json({ error: 'Invalid receipt id' }, 400);
   const row = await queryFirst(getDb(c.env), 'SELECT * FROM serve_receipts WHERE id = ?', id);
@@ -1278,7 +1324,7 @@ serveReceiptAdmin.get('/receipt/:id', async (c) => {
  * Field names match ReceiptOfServiceData in
  * client/src/utils/servePdfGenerator.ts.
  */
-serveReceiptAdmin.get('/receipt/:id/document', async (c) => {
+serveReceiptAdmin.get('/receipt/:id/document', requireRole(...RECEIPT_READ_ROLES), async (c) => {
   const id = parseInt(c.req.param('id') || '', 10);
   if (!id) return c.json({ error: 'Invalid receipt id' }, 400);
 
