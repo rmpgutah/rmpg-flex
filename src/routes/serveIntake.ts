@@ -54,6 +54,7 @@ import {
   type PdfTextResult,
 } from '../utils/serveIntakeExtract';
 import { precleanText } from '../utils/serveIntakePreclean';
+import { arbitrateFields, type DocCandidate, type FieldConflict } from '../utils/serveIntakeArbitrate';
 import { validateFields } from '../utils/serveIntakeValidate';
 import { judgeMerged } from '../utils/serveIntakeJudge';
 import { parseDefendants } from '../utils/serveIntakeDefendants';
@@ -585,27 +586,41 @@ si.post('/upload', async (c) => {
     }
   }));
 
-  // ── Merge per-document fields by confidence ──
-  // Field-sheet / info-form docs (structured, recipient-dense) usually win
-  // each field; the court docket fills gaps. Highest-confidence value per
-  // field survives — so a timed-out docket simply contributes nothing
-  // rather than blanking the recipient the field sheet already provided.
-  const mergedFields: Record<string, ExtractedField> = {};
+  // ── Cross-document arbitration ──
+  // Was: highest-confidence value per field wins, source-blind. That lets
+  // a confidently-wrong value from the wrong document beat an authoritative
+  // one — the Field Sheet's Case/Court cells are frequently blank or
+  // watermark-corrupted while the Court Docket has them authoritatively,
+  // and the Information Form is the operational record for service
+  // mechanics. arbitrateFields() ranks candidates by source precedence
+  // (confidence only breaks a tie within the same rank) and RETAINS the
+  // losing candidate in `conflicts` so a human can pick it later (PR 4
+  // review UI) instead of silently discarding it.
+  const docCandidates: DocCandidate[] = collected.map((c2) => ({
+    docType: c2.ex.documentType,
+    fields: c2.ex.fields,
+  }));
+  const arbitration = arbitrateFields(docCandidates);
+  const mergedFields: Record<string, ExtractedField> = arbitration.merged;
+  let conflicts: FieldConflict[] = arbitration.conflicts;
   let bestConfidence = 0;
   let bestDocType = 'other';
   // synthetic combined.error placeholder so downstream warning logic can
   // report the most relevant extraction failure.
   let combinedError: string | null = null;
   for (const c2 of collected) {
-    for (const [k, v] of Object.entries(c2.ex.fields)) {
-      const cur = mergedFields[k];
-      if (!cur || (v.value && v.confidence > cur.confidence)) mergedFields[k] = v;
-    }
     if (c2.ex.confidence > bestConfidence) {
       bestConfidence = c2.ex.confidence;
       bestDocType = c2.ex.documentType;
     }
     if (c2.ex.error && !combinedError) combinedError = c2.ex.error;
+  }
+  if (conflicts.length) {
+    log.info('serve-intake: cross-document field conflicts arbitrated', {
+      traceId: c.get('traceId'),
+      count: conflicts.length,
+      fields: conflicts.map((cf) => cf.field),
+    });
   }
 
   // ── Name-coherence guard ──────────────────────────────────────
@@ -641,7 +656,26 @@ si.post('/upload', async (c) => {
       // Only override with a non-empty value — a blank field on the
       // winning doc shouldn't wipe a value another doc legitimately
       // supplied (e.g. winner has the name, a second doc has the DOB).
-      if (v && v.value) mergedFields[k] = v;
+      if (v && v.value) {
+        mergedFields[k] = v;
+        // This guard can override arbitration's per-field pick (it selects
+        // the whole name group from one document, not per-field precedence).
+        // Reconcile `conflicts` so `chosen` always matches the final merged
+        // value instead of going stale — recompute against every doc's raw
+        // candidate for this field rather than just the arbitration winner,
+        // so a candidate arbitration hadn't flagged (same value, different
+        // rank) still shows up as rejected here if it disagrees.
+        conflicts = conflicts.filter((cf) => cf.field !== k);
+        const seen = new Set<string>([v.value.toLowerCase()]);
+        const rejected = docCandidates
+          .map((dc) => ({ value: (dc.fields[k]?.value || '').trim(), source: dc.docType }))
+          .filter((e) => e.value && !seen.has(e.value.toLowerCase()) && (seen.add(e.value.toLowerCase()), true));
+        if (rejected.length) {
+          conflicts.push({
+            field: k, chosen: v.value, chosenSource: bestDoc.documentType, rejected,
+          });
+        }
+      }
     }
   }
 
@@ -829,6 +863,7 @@ si.post('/upload', async (c) => {
         success: !!d.success, page_count: d.page_count ?? null,
       })),
       allDates: [...allDates],
+      conflicts,
       env: c.env,
     });
     // Back-link the document rows to the new queue entry — and to the
