@@ -35,7 +35,10 @@ export default function AssignTab() {
       : 'var(--text-secondary)';
 
   return (
-    <div className="p-4 grid grid-cols-[200px_1fr] gap-4">
+    // Needs its own scroller — ServePage's tab wrapper is `flex-1
+    // overflow-hidden`, so a tab without one is clipped at the pane height with
+    // no scrollbar. The unassigned-pool table is the part that grows here.
+    <div className="h-full overflow-y-auto p-4 grid grid-cols-[200px_1fr] gap-4 content-start scrollbar-dark">
       <div>
         <div className="text-[9px] font-semibold text-fg-muted uppercase mb-1">Officers</div>
         {/* These rows carried no font-size class at all, so they inherited the
