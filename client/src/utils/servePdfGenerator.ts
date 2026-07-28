@@ -398,32 +398,27 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   });
   y = drawInstrumentTitle(doc, y, INSTRUMENT_TITLE);
 
-  // ── Court Information ──
-  y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, art('Court Information'), y); y = sec.contentY;
-    y = addFieldPair(doc, '1. Court Name', data.courtName, lx, y, ffw);
-    const fy1 = addFieldPair(doc, '2. Case Number', data.caseNumber, lx, y, hfw);
-    const fy2 = addFieldPair(doc, '3. Jurisdiction', data.jurisdiction, rx, y, hfw);
-    y = Math.max(fy1, fy2);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  // Court, case number and jurisdiction are carried by the court heading and
+  // the pleading caption above. The old COURT INFORMATION section restated
+  // all three a third time, immediately beneath them -- the non-service
+  // affidavit dropped it for the same reason when it was reformatted.
 
   // ── Server Information ──
   y = checkPageBreak(doc, y, 15);
   { const sec = openAutoSection(doc, art('Server Information'), y); y = sec.contentY;
-    const fy1 = addFieldPair(doc, '4. Server Name', data.serverName, lx, y, hfw);
-    const fy2 = addFieldPair(doc, '5. Badge / License #', data.serverBadge, rx, y, hfw);
+    const fy1 = addFieldPair(doc, '1. Server Name', data.serverName, lx, y, hfw);
+    const fy2 = addFieldPair(doc, '2. Badge / License #', data.serverBadge, rx, y, hfw);
     y = Math.max(fy1, fy2);
-    y = addFieldPair(doc, '6. Company', data.serverCompany, lx, y, ffw);
+    y = addFieldPair(doc, '3. Company', data.serverCompany, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Recipient Information ──
   y = checkPageBreak(doc, y, 15);
   { const sec = openAutoSection(doc, art('Recipient Information'), y); y = sec.contentY;
-    y = addFieldPair(doc, '7. Recipient Name', data.recipientName, lx, y, ffw);
-    y = addFieldPair(doc, '8. Address', data.recipientAddress, lx, y, ffw);
-    y = addFieldPair(doc, '9. Document Type Served', data.documentType, lx, y, ffw);
+    y = addFieldPair(doc, '4. Recipient Name', data.recipientName, lx, y, ffw);
+    y = addFieldPair(doc, '5. Address', data.recipientAddress, lx, y, ffw);
+    y = addFieldPair(doc, '6. Document Type Served', data.documentType, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -433,14 +428,17 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
     : 'Posting';
   y = checkPageBreak(doc, y, 15);
   { const sec = openAutoSection(doc, art('Service Details'), y); y = sec.contentY;
-    const fy1 = addFieldPair(doc, '10. Date of Service', data.serviceDate, lx, y, hfw);
-    const fy2 = addFieldPair(doc, '11. Time', data.serviceTime, rx, y, hfw);
+    const fy1 = addFieldPair(doc, '7. Date of Service', data.serviceDate, lx, y, hfw);
+    // Zone-labelled like every other time on these instruments. This is the
+    // moment service was effected -- the single most consequential timestamp
+    // on the document -- and it was the only one still printing bare.
+    const fy2 = addFieldPair(doc, '8. Time', withZone(data.serviceTime || ''), rx, y, hfw);
     y = Math.max(fy1, fy2);
-    const fy3 = addFieldPair(doc, '12. Method', methodLabel, lx, y, hfw);
+    const fy3 = addFieldPair(doc, '9. Method', methodLabel, lx, y, hfw);
     const gpsText = (data.gpsLat != null && data.gpsLng != null)
       ? `${Number(data.gpsLat).toFixed(6)}, ${Number(data.gpsLng).toFixed(6)}`
       : 'N/A';
-    const fy4 = addFieldPair(doc, '13. GPS', gpsText, rx, y, hfw);
+    const fy4 = addFieldPair(doc, '10. GPS', gpsText, rx, y, hfw);
     y = Math.max(fy3, fy4);
     if (data.serviceMethod === 'substitute' && data.substituteInfo) {
       const fy5 = addFieldPair(doc, '14. Substitute Name', data.substituteInfo.name, lx, y, hfw);
@@ -465,16 +463,27 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   const certification =
     'I declare under penalty of perjury that the foregoing is true and correct.';
 
+  // The signature block's DATE/TIME column printed a bare date. On an
+  // affidavit the attested moment is a date AND a time, and it carries a zone
+  // like every other timestamp on the instrument.
+  const serviceMoment = data.serviceTime
+    ? withZone(`${data.serviceDate} ${data.serviceTime}`)
+    : data.serviceDate;
+
   y = addSignatureBlock(doc, art('Process Server'), getRailX(), y, getRailWidth(doc), data.signature ? {
     signatureImage: data.signature,
     certification,
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
-    date: data.serviceDate,
+    date: serviceMoment,
   } : {
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
-    date: data.serviceDate,
+    date: serviceMoment,
+    // Was omitted here, so an UNSIGNED affidavit -- the one printed for wet
+    // signature, i.e. the common case -- rendered an empty box stating
+    // nothing, while the signed variant carried the declaration.
+    certification,
   });
   y += SPACING.SECTION_GAP;
 
@@ -990,6 +999,8 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // Non-Service carries the full history) and clamp note length.
   const MAX_NOTICE_ATTEMPTS = 6;
   const MAX_NOTE_CHARS = 90;
+  /** Combined note+GPS budget for a row that carries coordinates. */
+  const GPS_ROW_NOTE_CHARS = 58;
   y = checkPageBreak(doc, y, 30);
   {
     const sec = openAutoSection(doc, 'II. Record of Attempt(s)', y);
@@ -1027,10 +1038,24 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       const note = sanitizePdfText(a.notes || '');
       const gps = fmtGps(a.gpsLat, a.gpsLng);
       if (gps) anyGps = true;
+      // Budget the note against the GPS suffix rather than clamping it in
+      // isolation. Clamped to a flat MAX_NOTE_CHARS and THEN having ~25
+      // characters of coordinates appended, every row overflowed to an extra
+      // line -- and half of live attempts carry GPS, so a three-attempt job
+      // with coordinates printed on TWO sheets of PJ-700 roll. The second
+      // sheet is the one that gets lost at the door.
+      // When coordinates are present the whole cell is budgeted DOWN, not just
+      // rebalanced: the coordinate token cannot break, so it forces an early
+      // wrap and costs a full extra line per row no matter how the characters
+      // are divided. Half of live attempts carry GPS, so this is the common
+      // case, not the edge one.
+      const gpsSuffix = gps ? ` · GPS ${gps}` : '';
+      const cellBudget = gps ? GPS_ROW_NOTE_CHARS : MAX_NOTE_CHARS;
+      const noteBudget = Math.max(12, cellBudget - gpsSuffix.length);
       const noteCore = note
-        ? (note.length > MAX_NOTE_CHARS ? `${note.slice(0, MAX_NOTE_CHARS - 1)}…` : note).toUpperCase()
+        ? (note.length > noteBudget ? `${note.slice(0, Math.max(1, noteBudget - 1))}…` : note).toUpperCase()
         : '';
-      const noteCell = [noteCore, gps && `GPS ${gps}`].filter(Boolean).join(' · ') || EMPTY;
+      const noteCell = `${noteCore}${gpsSuffix}` || EMPTY;
       return [
         String(a.number),
         (sanitizePdfText(a.date || '').toUpperCase() || EMPTY),
@@ -1051,16 +1076,13 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       );
       y += 5;
     }
-    if (anyGps) {
-      doc.setFont(PDF_VALUE_FONT, 'italic');
-      doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text(
-        'GPS coordinates recorded on-scene for legal verification (WGS-84, decimal degrees).',
-        lx, y + 3,
-      );
-      y += 5;
-    }
+    // The standalone "GPS coordinates recorded on-scene for legal
+    // verification (WGS-84, decimal degrees)" footnote is gone. It was
+    // boilerplate explaining a format that is self-evident from the values,
+    // it cost 5mm on an instrument that must fit ONE sheet, and the
+    // coordinates themselves -- the substantive fact -- are unchanged in the
+    // rows above.
+    void anyGps;
     y += SPACING.SM;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     // Extra clearance before the next section's header bar — the table's own
