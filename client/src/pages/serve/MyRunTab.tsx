@@ -367,15 +367,53 @@ function ProgressBar({ served, total }: { served: number; total: number }) {
 
 // ─── Completion Banner ────────────────────────────────────────────────────────
 
+/**
+ * Tone for the end-of-run banner.
+ *
+ * The banner used to be unconditionally green + Trophy + "Run Complete!" — it
+ * computed `successRate` purely to print it and never let it affect the
+ * styling. On the live board that produced a gold trophy and a green
+ * celebration over "0/1 served (0% success rate)", where the single job was a
+ * non-service. Congratulating an officer for a shift that served nobody is
+ * both wrong and quietly corrosive to how much the banner is trusted.
+ *
+ * TODO(chris): pick the thresholds and tone. This is a domain call, not a
+ * styling one — in process serving a documented non-service can be a
+ * legitimate, diligent, billable outcome, so a low served-rate is not
+ * automatically a bad run. Return a tone per rate; the banner reads it below.
+ *
+ * Something like:
+ *   if (rate >= 80) return { icon: Trophy,      accent: 'green',  title: 'Run Complete!' };
+ *   if (rate >= 40) return { icon: CheckCircle, accent: 'silver', title: 'Run Complete' };
+ *   return              { icon: ClipboardCheck, accent: 'silver', title: 'Run Closed Out' };
+ *
+ * Constraints: accent must be 'green' | 'silver' | 'amber' only — red is
+ * reserved for CAD safety severity and a slow serve day is not a safety event.
+ * Avoid amber unless you want overdue-style urgency at end of shift.
+ */
+function runTone(_successRate: number): { accent: 'green' | 'silver' | 'amber'; title: string } {
+  // Interim neutral default so the banner never celebrates a 0% run while the
+  // real thresholds are being decided.
+  return { accent: 'silver', title: 'Run Complete' };
+}
+
+const TONE_STYLES: Record<'green' | 'silver' | 'amber', { wrap: string; icon: string; title: string }> = {
+  green:  { wrap: 'border-green-500/40 bg-green-900/15',                              icon: 'text-green-400',         title: 'text-green-400' },
+  silver: { wrap: 'border-accent-silver-500/40 bg-accent-silver-500/10',              icon: 'text-accent-silver-300', title: 'text-accent-silver-300' },
+  amber:  { wrap: 'border-amber-500/40 bg-amber-900/15',                              icon: 'text-amber-400',         title: 'text-amber-400' },
+};
+
 function CompletionBanner({ startedAt, served, total }: { startedAt: number | null; served: number; total: number }) {
   const successRate = total > 0 ? Math.round((served / total) * 100) : 0;
   const elapsed = startedAt ? Date.now() - startedAt : null;
+  const tone = runTone(successRate);
+  const styles = TONE_STYLES[tone.accent];
 
   return (
-    <div className="mx-3 mb-3 px-4 py-3 rounded-[2px] border border-green-500/40 bg-green-900/15 flex items-start gap-3">
-      <Trophy size={18} className="text-green-400 flex-shrink-0 mt-0.5" aria-hidden />
+    <div className={`mx-3 mb-3 px-4 py-3 rounded-[2px] border flex items-start gap-3 ${styles.wrap}`}>
+      <Trophy size={18} className={`${styles.icon} flex-shrink-0 mt-0.5`} aria-hidden />
       <div>
-        <div className="text-[12px] font-bold text-green-400 mb-0.5">Run Complete!</div>
+        <div className={`text-[12px] font-bold mb-0.5 ${styles.title}`}>{tone.title}</div>
         <div className="text-[11px] text-rmpg-300">
           {served}/{total} served ({successRate}% success rate)
           {elapsed && elapsed > 0 && ` · ${fmtDuration(elapsed)} total`}

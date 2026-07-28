@@ -107,7 +107,7 @@ export default function ServeSkipTracePanel({
         {/* ─── Header ─────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
           <div className="flex items-center gap-2">
-            <Search size={16} className="text-[#d4a017]" />
+            <Search size={16} className="text-accent-silver-400" />
             <h2 className="text-sm font-semibold text-rmpg-100 tracking-wide">Skip Trace Lookup</h2>
           </div>
           <button type="button"
@@ -170,7 +170,7 @@ export default function ServeSkipTracePanel({
 
           {/* Notice (search logged, no automated vendor lookup available) */}
           {notice && (
-            <div className="flex items-center gap-2 px-3 py-2 text-sm text-[#d4a017] bg-[#d4a017]/10 border border-[#d4a017]/30 rounded-sm">
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-accent-silver-300 bg-accent-silver-400/10 border border-accent-silver-400/30 rounded-sm">
               <CheckCircle2 size={14} />
               <span>{notice}</span>
             </div>
@@ -184,7 +184,7 @@ export default function ServeSkipTracePanel({
                 className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-rmpg-400 hover:text-rmpg-300 bg-surface-sunken transition-all duration-150 hover:bg-surface-base"
                 aria-expanded={historyOpen}
               >
-                <span className="font-semibold uppercase tracking-wider text-[#d4a017]">
+                <span className="font-semibold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
                   Previous Lookups ({priorTraces.length})
                 </span>
                 {historyOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
