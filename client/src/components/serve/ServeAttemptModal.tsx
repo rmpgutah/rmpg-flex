@@ -433,7 +433,7 @@ export default function ServeAttemptModal({
               i < displayStep
                 ? 'bg-green-600 border-green-500 text-rmpg-100 shadow-[0_0_6px_rgba(34,197,94,0.5)]'
                 : i === displayStep
-                  ? 'bg-[#d4a017] border-[#d4a017] text-rmpg-100 shadow-[0_0_6px_#d4a017]'
+                  ? 'bg-accent-silver-500 border-accent-silver-400 text-surface-base shadow-[0_0_6px_rgba(var(--accent-silver-400-rgb),0.6)]'
                   : 'bg-rmpg-700 border-rmpg-500 text-rmpg-400'
             }`}>
               {i < displayStep ? <CheckCircle className="w-4 h-4" /> : i + 1}
@@ -505,15 +505,15 @@ export default function ServeAttemptModal({
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-2">
-                    <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Latitude</div>
+                    <div className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'var(--field-label-color)' }}>Latitude</div>
                     <div className="text-sm text-rmpg-100 font-mono">{gps.latitude?.toFixed(6)}</div>
                   </div>
                   <div className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-2">
-                    <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Longitude</div>
+                    <div className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'var(--field-label-color)' }}>Longitude</div>
                     <div className="text-sm text-rmpg-100 font-mono">{gps.longitude?.toFixed(6)}</div>
                   </div>
                   <div className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-2">
-                    <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Accuracy</div>
+                    <div className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'var(--field-label-color)' }}>Accuracy</div>
                     <div className="text-sm text-rmpg-100 font-mono">{gps.accuracy}m</div>
                   </div>
                 </div>
@@ -554,7 +554,7 @@ export default function ServeAttemptModal({
       case 1:
         return (
           <div className="space-y-4 p-4">
-            <h3 className="text-sm font-bold text-[#d4a017]">Select Attempt Type</h3>
+            <h3 className="text-sm font-bold" style={{ color: 'var(--panel-header-color)' }}>Select Attempt Type</h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {typeCards.map((card) => (
@@ -569,8 +569,8 @@ export default function ServeAttemptModal({
                       card.disabled
                         ? 'opacity-40 cursor-not-allowed border-rmpg-700 bg-rmpg-800'
                         : attemptType === card.type
-                          ? 'border-[#d4a017] bg-[#d4a017]/5 shadow-[0_0_8px_rgba(212,160,23,0.15)]'
-                          : 'border-rmpg-700 bg-surface-sunken hover:border-[#d4a017] hover:bg-surface-base'
+                          ? 'border-accent-silver-400 bg-accent-silver-400/5 shadow-[0_0_8px_rgba(var(--accent-silver-400-rgb),0.15)]'
+                          : 'border-rmpg-700 bg-surface-sunken hover:border-accent-silver-400 hover:bg-surface-base'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
@@ -672,7 +672,7 @@ export default function ServeAttemptModal({
                   </div>
                   <div>
                     <label htmlFor="ff-na-text" className="block text-[10px] text-rmpg-400 uppercase mb-0.5">
-                      Notice wording {nextAttemptTextDirty && <span className="text-[#d4a017] normal-case">(edited)</span>}
+                      Notice wording {nextAttemptTextDirty && <span className="text-accent-silver-300 normal-case">(edited)</span>}
                     </label>
                     <textarea
                       id="ff-na-text"
@@ -733,7 +733,7 @@ export default function ServeAttemptModal({
       case 2:
         return (
           <div className="space-y-4 p-4 max-h-[60vh] overflow-y-auto scrollbar-dark">
-            <h3 className="text-sm font-bold text-[#d4a017]">Documentation</h3>
+            <h3 className="text-sm font-bold" style={{ color: 'var(--panel-header-color)' }}>Documentation</h3>
 
             {/* Camera input */}
             <div className="space-y-2">
@@ -962,7 +962,7 @@ export default function ServeAttemptModal({
               </div>
             ) : (
               <>
-                <h3 className="text-sm font-bold text-[#d4a017]">Review & Submit</h3>
+                <h3 className="text-sm font-bold" style={{ color: 'var(--panel-header-color)' }}>Review & Submit</h3>
 
                 {/* Summary card */}
                 <div className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-3 space-y-2 text-sm">
@@ -1105,7 +1105,7 @@ export default function ServeAttemptModal({
                   <button type="button"
                     onClick={handleSubmit}
                     disabled={submitting}
-                    className="px-4 py-2 text-sm font-semibold bg-[#d4a017] hover:bg-[#d4a017]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-[#d4a017]/50"
+                    className="px-4 py-2 text-sm font-semibold bg-accent-silver-500 hover:bg-accent-silver-400 text-surface-base rounded-[2px] disabled:opacity-40 transition-all duration-150 flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-accent-silver-300/50"
                   >
                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     {isFailedPath ? 'Record Failed Attempt' : 'Record Service'}
@@ -1230,7 +1230,7 @@ function PsoCodePicker({
   const subCodes = pickerCategory ? codesInCategory(pickerCategory) : [];
 
   const toneClass = (tone: PsoCategory['tone'], active: boolean): string => {
-    if (active) return 'border-[#d4a017] bg-[#d4a017]/10 text-rmpg-100 shadow-[0_0_6px_rgba(212,160,23,0.2)]';
+    if (active) return 'border-accent-silver-400 bg-accent-silver-400/10 text-rmpg-100 shadow-[0_0_6px_rgba(var(--accent-silver-400-rgb),0.2)]';
     switch (tone) {
       case 'success': return 'border-rmpg-700 bg-surface-sunken hover:border-green-500 text-rmpg-200';
       case 'attempt': return 'border-rmpg-700 bg-surface-sunken hover:border-yellow-500 text-rmpg-200';
@@ -1256,7 +1256,7 @@ function PsoCodePicker({
             className={`text-left p-2 rounded-[2px] border-2 transition-all duration-150 ${toneClass(cat.tone, pickerCategory === cat.code)}`}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-mono font-bold text-[#d4a017]">{cat.code}</span>
+              <span className="text-[10px] font-mono font-bold text-rmpg-100">{cat.code}</span>
               {cat.isService && <span className="text-[9px] uppercase text-green-400">Completion</span>}
             </div>
             <div className="text-xs font-semibold leading-tight">{cat.label}</div>
@@ -1268,7 +1268,7 @@ function PsoCodePicker({
       <button
         type="button"
         onClick={() => setShowAll(!showAll)}
-        className="text-[10px] uppercase tracking-wider text-rmpg-400 hover:text-[#d4a017] transition-colors"
+        className="text-[10px] uppercase tracking-wider text-rmpg-400 hover:text-accent-silver-300 transition-colors"
       >
         {showAll
           ? `Show only suggested for ${attemptType}`
@@ -1284,7 +1284,7 @@ function PsoCodePicker({
               htmlFor={`ff-psocode-${c.code}`}
               className={`flex items-start gap-2 p-1.5 rounded-[2px] cursor-pointer transition-colors ${
                 dispositionCode === c.code
-                  ? 'bg-[#d4a017]/10 border-l-2 border-[#d4a017]'
+                  ? 'bg-accent-silver-400/10 border-l-2 border-accent-silver-400'
                   : 'hover:bg-surface-raised border-l-2 border-transparent'
               }`}
             >
@@ -1295,11 +1295,11 @@ function PsoCodePicker({
                 value={c.code}
                 checked={dispositionCode === c.code}
                 onChange={() => setDispositionCode(c.code)}
-                className="mt-0.5 accent-[#d4a017]"
+                className="mt-0.5 accent-[color:var(--accent-silver-400)]"
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-[10px] font-mono font-bold text-[#d4a017]">{c.code}</span>
+                  <span className="text-[10px] font-mono font-bold text-rmpg-100">{c.code}</span>
                   <span className="text-xs font-semibold text-rmpg-100">{c.label}</span>
                 </div>
                 {c.hint && <div className="text-[10px] text-rmpg-400 italic">{c.hint}</div>}
