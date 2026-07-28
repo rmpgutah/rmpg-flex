@@ -39,6 +39,7 @@ import {
   getLeftX, getRightColumnX, getHalfFieldWidth,
   getProportionalColumns, getCapHeight,
   applyPrintTarget, type PrintTarget,
+  getRailX, getRailWidth,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
 import { registerArialFont } from './pdf/fonts/registerArial';
@@ -464,7 +465,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   const certification =
     'I declare under penalty of perjury that the foregoing is true and correct.';
 
-  y = addSignatureBlock(doc, art('Process Server'), lx, y, ffw, data.signature ? {
+  y = addSignatureBlock(doc, art('Process Server'), getRailX(), y, getRailWidth(doc), data.signature ? {
     signatureImage: data.signature,
     certification,
     printedName: data.serverName,
@@ -706,7 +707,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   const certification =
     'I declare under penalty of perjury that the foregoing is true and correct.';
 
-  y = addSignatureBlock(doc, art('Process Server'), lx, y, ffw, data.signature ? {
+  y = addSignatureBlock(doc, art('Process Server'), getRailX(), y, getRailWidth(doc), data.signature ? {
     signatureImage: data.signature,
     certification,
     printedName: data.serverName,
@@ -947,7 +948,11 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   y = checkPageBreak(doc, y, 30);
   {
     const gutter = SPACING.MD;
-    const panelW = (getContentWidth(doc) - gutter) / 2;
+    // Panels sized from the rail and drawn from the rail. Sized from
+    // getContentWidth but drawn from getLeftX, the pair ran a millimetre past
+    // the right rail every section bar sits on.
+    const railX = getRailX();
+    const panelW = (getRailWidth(doc) - gutter) / 2;
     const startY = y;
 
     const recipientRows: SubjectRow[] = [
@@ -962,15 +967,15 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
 
     // Two passes: measure both, then redraw at a shared height so the boxes
     // bottom out level. Same technique the Civil Process Record uses.
-    const hA = drawSubjectPanel(doc, lx, startY, panelW, 'I(a).  Intended Recipient',
+    const hA = drawSubjectPanel(doc, railX, startY, panelW, 'I(a).  Intended Recipient',
       data.recipientName, 'Person named in the process', recipientRows, undefined, true);
-    const hB = drawSubjectPanel(doc, lx + panelW + gutter, startY, panelW, 'I(b).  Case Information',
+    const hB = drawSubjectPanel(doc, railX + panelW + gutter, startY, panelW, 'I(b).  Case Information',
       data.courtName, 'Court in which the matter is pending', caseRows, undefined, true);
     const panelH = Math.max(hA, hB);
 
-    const aEnd = drawSubjectPanel(doc, lx, startY, panelW, 'I(a).  Intended Recipient',
+    const aEnd = drawSubjectPanel(doc, railX, startY, panelW, 'I(a).  Intended Recipient',
       data.recipientName, 'Person named in the process', recipientRows, panelH);
-    const bEnd = drawSubjectPanel(doc, lx + panelW + gutter, startY, panelW, 'I(b).  Case Information',
+    const bEnd = drawSubjectPanel(doc, railX + panelW + gutter, startY, panelW, 'I(b).  Case Information',
       data.courtName, 'Court in which the matter is pending', caseRows, panelH);
     y = Math.max(aEnd, bEnd) + SPACING.LG;
   }
@@ -1228,7 +1233,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // print in the info row immediately below it.
   const certification = 'I certify that the attempt(s) recorded in Article II were made as stated, and that service was not completed.';
 
-  y = addSignatureBlock(doc, 'V. Process Server', lx, y, ffw, data.signature ? {
+  y = addSignatureBlock(doc, 'V. Process Server', getRailX(), y, getRailWidth(doc), data.signature ? {
     signatureImage: data.signature,
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
