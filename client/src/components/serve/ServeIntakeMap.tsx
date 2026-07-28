@@ -16,6 +16,7 @@ import { escapeHtml } from '../../utils/sanitize';
 import { withAlpha } from '../../utils/withAlpha';
 import { clusterByGrid, type ClusterableItem } from '../../utils/serveMapClustering';
 import { urgencyTierForDeadline, isRiskFlagged } from '../../utils/serveMapOverlays';
+import { fetchMapboxRoute } from '../../utils/mapboxRouting';
 
 // One-time stylesheet injection for pulse-ring keyframes
 if (typeof document !== 'undefined' && !document.getElementById('srv-pulse-styles')) {
@@ -187,6 +188,12 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
   const [currentZoom, setCurrentZoom] = useState(10);
   const [noteModal, setNoteModal] = useState<{ open: boolean; noteId?: number; queueItem?: QueueMapItem }>({ open: false });
   const [trailQueueId, setTrailQueueId] = useState<number | null>(null);
+  // Single-stop drive-time preview: right-click anywhere on the map to set a
+  // simulated "current position" (no live officer position feed exists yet),
+  // then pick a job via its popup to draw a driving route + ETA between them.
+  const [previewOrigin, setPreviewOrigin] = useState<[number, number] | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<{ id: number; lng: number; lat: number } | null>(null);
+  const [previewRoute, setPreviewRoute] = useState<{ eta: string; distance: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -223,6 +230,13 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       setMapReady(true);
     });
     map.on('zoomend', () => setCurrentZoom(map.getZoom()));
+    // Right-click sets the drive-time preview origin (simulating "my current
+    // position" — there is no live officer position feed). Right-click rather
+    // than left-click so it never conflicts with marker/cluster click handlers.
+    map.on('contextmenu', (e: mapboxgl.MapMouseEvent) => {
+      e.originalEvent?.preventDefault?.();
+      setPreviewOrigin([e.lngLat.lng, e.lngLat.lat]);
+    });
     return () => {
       unregisterMapInstance(map);
       map.remove();
@@ -292,6 +306,10 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
             );
             const trailBtn = document.getElementById(`srv-popup-trail-${item.id}`);
             if (trailBtn) trailBtn.addEventListener('click', () => setTrailQueueId(item.id));
+            const previewBtn = document.getElementById(`srv-popup-preview-${item.id}`);
+            if (previewBtn) previewBtn.addEventListener('click', () =>
+              setPreviewTarget({ id: item.id, lng: item.recipient_lng!, lat: item.recipient_lat! }),
+            );
           }, 50);
         });
 
@@ -374,6 +392,69 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     return () => { cancelled = true; clearTrail(); };
   }, [trailQueueId, mapReady]);
 
+  // Draw/clear the single-stop drive-time preview route whenever both a
+  // preview origin (right-click on the map) and a target job (popup button)
+  // are set. Mirrors the attempt-trail effect above: read mapRef.current
+  // fresh inside the cleanup (not the closed-over `map`) and wrap every
+  // Mapbox call in try/catch, since the map-init effect's cleanup can null
+  // mapRef.current / tear down the style before this effect's own cleanup runs.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const sourceId = 'srv-drive-preview';
+    const layerId = 'srv-drive-preview-layer';
+
+    const clearPreview = () => {
+      const currentMap = mapRef.current;
+      if (!currentMap) return;
+      try {
+        if (currentMap.getLayer(layerId)) currentMap.removeLayer(layerId);
+        if (currentMap.getSource(sourceId)) currentMap.removeSource(sourceId);
+      } catch {
+        // non-fatal — map/style already torn down (e.g. mid-unmount)
+      }
+      setPreviewRoute(null);
+    };
+
+    if (!previewOrigin || !previewTarget) {
+      clearPreview();
+      return;
+    }
+
+    let cancelled = false;
+    fetchMapboxRoute(
+      { lng: previewOrigin[0], lat: previewOrigin[1] },
+      { lng: previewTarget.lng, lat: previewTarget.lat },
+    ).then((route) => {
+      if (cancelled || !route) return;
+      const currentMap = mapRef.current;
+      if (!currentMap) return;
+      clearPreview();
+      try {
+        currentMap.addSource(sourceId, {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates: route.geometry.map((p) => [p.lng, p.lat]) },
+          },
+        });
+        currentMap.addLayer({
+          id: layerId,
+          type: 'line',
+          source: sourceId,
+          paint: { 'line-color': '#22c55e', 'line-width': 3, 'line-opacity': 0.85 },
+        });
+        setPreviewRoute({ eta: route.eta, distance: route.distance });
+      } catch {
+        // non-fatal — map/style torn down before the fetch resolved
+      }
+    }).catch(() => { /* non-fatal — falls back to no preview */ });
+
+    return () => { cancelled = true; clearPreview(); };
+  }, [previewOrigin, previewTarget, mapReady]);
+
   const notMapped = items.filter((it) => it.recipient_lat == null || it.recipient_lng == null);
 
   return (
@@ -398,6 +479,11 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {previewRoute && (
+            <span className="text-[11px] text-green-400 px-2 py-1 bg-surface-raised border border-border-subtle rounded">
+              ETA {previewRoute.eta} · {previewRoute.distance} (right-click map to move origin)
+            </span>
+          )}
           <button
             onClick={() => setNoteModal({ open: true })}
             className="flex items-center gap-1 px-2 py-1 text-[11px] bg-surface-raised border border-border-subtle rounded text-brand-300 hover:text-brand-100"
@@ -565,6 +651,9 @@ function buildPopupHtml(item: QueueMapItem): string {
         </button>
         <button id="srv-popup-trail-${item.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">
           History
+        </button>
+        <button id="srv-popup-preview-${item.id}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:monospace;">
+          Preview drive time
         </button>
       </div>
     </div>

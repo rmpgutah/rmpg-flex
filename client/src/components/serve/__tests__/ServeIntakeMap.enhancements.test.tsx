@@ -6,6 +6,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, act } from '@testing-library/react';
 import ServeIntakeMap from '../ServeIntakeMap';
 import * as useApiModule from '../../../hooks/useApi';
+import { fetchMapboxRoute } from '../../../utils/mapboxRouting';
+
+vi.mock('../../../utils/mapboxRouting', () => ({
+  fetchMapboxRoute: vi.fn(() => Promise.resolve({
+    eta: '12 min',
+    distance: '4.2 mi',
+    durationSec: 720,
+    distanceMeters: 6760,
+    geometry: [{ lat: 40.7, lng: -111.9 }, { lat: 40.75, lng: -111.8 }],
+  })),
+}));
 
 // Track the most recently constructed mock Map instance so tests can assert
 // on addSource/addLayer/getLayer/getSource calls against it.
@@ -17,8 +28,13 @@ const markerElements: HTMLElement[] = [];
 vi.mock('../../../utils/mapboxLoader', () => ({
   mapboxgl: {
     Map: vi.fn(function () {
+      const handlers: Record<string, (e?: any) => void> = {};
       const instance = {
-        on: vi.fn((event: string, cb: () => void) => { if (event === 'load') cb(); }),
+        on: vi.fn((event: string, cb: (e?: any) => void) => {
+          handlers[event] = cb;
+          if (event === 'load') cb();
+        }),
+        __handlers: handlers,
         remove: vi.fn(),
         fitBounds: vi.fn(),
         getZoom: vi.fn(() => 10),
@@ -176,6 +192,139 @@ describe('ServeIntakeMap', () => {
     // mapRef.current before/independently of the trail effect's own cleanup.
     // Unmounting here exercises both cleanups; it must not throw even though
     // the trail-effect cleanup closure still holds a reference to the old map.
+    expect(() => unmount()).not.toThrow();
+  });
+
+  it('does not call fetchMapboxRoute until both an origin and a job are selected', () => {
+    render(<ServeIntakeMap />);
+    expect(fetchMapboxRoute).not.toHaveBeenCalled();
+  });
+
+  it('draws a drive-time preview route and shows the ETA badge once origin + target are both set', async () => {
+    vi.spyOn(useApiModule, 'apiFetch').mockImplementation((path: string) => {
+      if (path === '/serve-intake/map-items') return Promise.resolve([MOCK_QUEUE_ITEM]);
+      if (path === '/serve-intake/location-notes') return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+
+    render(<ServeIntakeMap />);
+    await waitFor(() => expect(markerElements.length).toBeGreaterThan(0));
+
+    // Right-click the map to set the preview origin (simulated position).
+    act(() => {
+      lastMapInstance.__handlers.contextmenu?.({ lngLat: { lng: -111.9, lat: 40.7 }, originalEvent: { preventDefault: vi.fn() } });
+    });
+    expect(fetchMapboxRoute).not.toHaveBeenCalled();
+
+    // Open the marker popup and click "Preview drive time" to set the target.
+    await act(async () => {
+      markerElements[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    const previewBtn = document.getElementById(`srv-popup-preview-${MOCK_QUEUE_ITEM.id}`);
+    expect(previewBtn).toBeTruthy();
+    await act(async () => {
+      previewBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    await waitFor(() => expect(fetchMapboxRoute).toHaveBeenCalledWith(
+      { lng: -111.9, lat: 40.7 },
+      { lng: MOCK_QUEUE_ITEM.recipient_lng, lat: MOCK_QUEUE_ITEM.recipient_lat },
+    ));
+    await waitFor(() => {
+      expect(lastMapInstance.addSource).toHaveBeenCalledWith(
+        'srv-drive-preview',
+        expect.objectContaining({ type: 'geojson' }),
+      );
+    });
+    expect(lastMapInstance.addLayer).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'srv-drive-preview-layer', source: 'srv-drive-preview' }),
+    );
+    await waitFor(() => expect(screen.getByText(/ETA 12 min/i)).toBeInTheDocument());
+  });
+
+  it('ignores a stale drive-time route response when the target changes before it resolves (cancellation guard)', async () => {
+    let resolveFirst: (v: any) => void = () => {};
+    const firstPromise = new Promise((resolve) => { resolveFirst = resolve; });
+    (fetchMapboxRoute as unknown as ReturnType<typeof vi.fn>)
+      .mockImplementationOnce(() => firstPromise)
+      .mockImplementationOnce(() => Promise.resolve({
+        eta: '5 min', distance: '1.1 mi', durationSec: 300, distanceMeters: 1770,
+        geometry: [{ lat: 40.7, lng: -111.9 }, { lat: 40.71, lng: -111.89 }],
+      }));
+
+    const otherItem = { ...MOCK_QUEUE_ITEM, id: 502, recipient_lat: 40.8, recipient_lng: -111.95 };
+    vi.spyOn(useApiModule, 'apiFetch').mockImplementation((path: string) => {
+      if (path === '/serve-intake/map-items') return Promise.resolve([MOCK_QUEUE_ITEM, otherItem]);
+      if (path === '/serve-intake/location-notes') return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+
+    render(<ServeIntakeMap />);
+    await waitFor(() => expect(markerElements.length).toBeGreaterThanOrEqual(2));
+
+    act(() => {
+      lastMapInstance.__handlers.contextmenu?.({ lngLat: { lng: -111.9, lat: 40.7 }, originalEvent: { preventDefault: vi.fn() } });
+    });
+
+    // Select the first target (kicks off the never-yet-resolved first fetch).
+    await act(async () => {
+      markerElements[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    document.getElementById(`srv-popup-preview-${MOCK_QUEUE_ITEM.id}`)!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Before the first fetch resolves, switch to a second target.
+    await act(async () => {
+      markerElements[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    await act(async () => {
+      document.getElementById(`srv-popup-preview-${otherItem.id}`)!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    await waitFor(() => expect(screen.getByText(/ETA 5 min/i)).toBeInTheDocument());
+
+    // Now resolve the stale first fetch — it must be ignored (cancelled).
+    await act(async () => {
+      resolveFirst({
+        eta: '99 min', distance: '50 mi', durationSec: 5940, distanceMeters: 80000,
+        geometry: [{ lat: 40.7, lng: -111.9 }, { lat: 41.0, lng: -112.0 }],
+      });
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(screen.queryByText(/ETA 99 min/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/ETA 5 min/i)).toBeInTheDocument();
+  });
+
+  it('does not throw when the component unmounts while a drive-time preview is active', async () => {
+    vi.spyOn(useApiModule, 'apiFetch').mockImplementation((path: string) => {
+      if (path === '/serve-intake/map-items') return Promise.resolve([MOCK_QUEUE_ITEM]);
+      if (path === '/serve-intake/location-notes') return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+
+    const { unmount } = render(<ServeIntakeMap />);
+    await waitFor(() => expect(markerElements.length).toBeGreaterThan(0));
+
+    act(() => {
+      lastMapInstance.__handlers.contextmenu?.({ lngLat: { lng: -111.9, lat: 40.7 }, originalEvent: { preventDefault: vi.fn() } });
+    });
+    await act(async () => {
+      markerElements[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    await act(async () => {
+      document.getElementById(`srv-popup-preview-${MOCK_QUEUE_ITEM.id}`)!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await waitFor(() => expect(lastMapInstance.addSource).toHaveBeenCalled());
+
+    // Same unmount-safety hazard as the trail-effect test above: the
+    // map-init effect's cleanup can null mapRef.current independently of
+    // this effect's own cleanup ordering.
     expect(() => unmount()).not.toThrow();
   });
 
