@@ -125,11 +125,37 @@ async function noteAttempt(entry: QueuedSubmission, error: string): Promise<void
   await activeStore().put({ ...entry, attempts: entry.attempts + 1, lastError: error });
 }
 
+/**
+ * How long a queued signature stays worth replaying.
+ *
+ * Tokens expire (30 days by default) and can be revoked. A submission
+ * that has sat longer than the token could possibly live will replay
+ * into a 410 forever, and every one of those attempts is a stranger's
+ * phone quietly waking up to POST a signature at a server that will
+ * never take it. Ten days is inside the token's life with room to spare.
+ */
+const MAX_QUEUE_AGE_MS = 10 * 24 * 60 * 60 * 1000;
+
+/**
+ * Delay before the next attempt, in ms.
+ *
+ * Exponential with a ceiling. A flat 15s interval was polling a dead
+ * network four times a minute indefinitely — on a phone, on someone
+ * else's battery, for a signature they have already given and cannot
+ * see. Backing off costs nothing: 'online' and 'focus' still fire
+ * immediately when connectivity genuinely returns, so the timer is the
+ * fallback rather than the mechanism.
+ */
+export function backoffMs(attempts: number): number {
+  return Math.min(15_000 * 2 ** Math.max(0, attempts), 10 * 60 * 1000);
+}
+
 export type FlushResult =
   | { status: 'sent'; body: any }
   | { status: 'already_signed' }
   | { status: 'rejected'; message: string }
-  | { status: 'offline' }
+  | { status: 'offline'; retryInMs: number }
+  | { status: 'expired' }
   | { status: 'nothing' };
 
 /**
@@ -151,6 +177,15 @@ export async function flushQueued(token: string): Promise<FlushResult> {
   const entry = await getQueued(token);
   if (!entry) return { status: 'nothing' };
 
+  // Past the point where the token could still be alive. Dropping it is
+  // the honest outcome: the record was never made, and pretending a
+  // months-old replay might still land keeps a phone retrying forever
+  // while telling the officer nothing.
+  if (Date.now() - entry.queuedAt > MAX_QUEUE_AGE_MS) {
+    await clearQueued(token);
+    return { status: 'expired' };
+  }
+
   let res: Response;
   try {
     res = await fetch(`/api/serve-receipt/${encodeURIComponent(token)}`, {
@@ -160,7 +195,7 @@ export async function flushQueued(token: string): Promise<FlushResult> {
     });
   } catch (err) {
     await noteAttempt(entry, err instanceof Error ? err.message : 'network');
-    return { status: 'offline' };
+    return { status: 'offline', retryInMs: backoffMs(entry.attempts) };
   }
 
   const body = await res.json().catch(() => ({} as any));
@@ -168,6 +203,14 @@ export async function flushQueued(token: string): Promise<FlushResult> {
   if (res.ok && body?.ok) {
     await clearQueued(token);
     return { status: 'sent', body };
+  }
+  // The token is gone — revoked, expired, or scan-capped. Retrying will
+  // never fix that, and it is a different outcome from "refused on the
+  // merits": nothing was wrong with the submission, it simply arrived
+  // too late to be accepted.
+  if (res.status === 410) {
+    await clearQueued(token);
+    return { status: 'expired' };
   }
   if (body?.code === 'already_signed') {
     await clearQueued(token);
@@ -177,7 +220,7 @@ export async function flushQueued(token: string): Promise<FlushResult> {
   // submission — keep it and retry. Anything else is a decision.
   if (res.status >= 500) {
     await noteAttempt(entry, `server ${res.status}`);
-    return { status: 'offline' };
+    return { status: 'offline', retryInMs: backoffMs(entry.attempts) };
   }
   await clearQueued(token);
   return { status: 'rejected', message: body?.message || 'This submission was not accepted.' };

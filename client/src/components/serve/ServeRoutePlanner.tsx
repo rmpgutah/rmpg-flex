@@ -77,8 +77,16 @@ function priorityWeight(p: ServeJob['priority']): number {
 
 // ─── Geographic Clustering for >25 Stops ────────────────────────────────
 
+// Mapbox Directions allows 25 COORDINATES per request, not 25 waypoints. The
+// first cluster also carries the officer's GPS position as its origin, so a
+// cluster may hold at most 24 stops or the request is built with 26+ points
+// and 422s. Clustering at 25 looked right and silently broke the largest runs
+// — exactly the ones that most need optimizing.
+const MAX_DIRECTIONS_COORDS = 25;
+const MAX_CLUSTER_STOPS = MAX_DIRECTIONS_COORDS - 1; // reserve one for the origin
+
 function clusterStops(stops: StopItem[]): StopItem[][] {
-  if (stops.length <= 25) return [stops];
+  if (stops.length <= MAX_CLUSTER_STOPS) return [stops];
   if (stops.length === 0) return [];
   const lats = stops.map(s => s.job.recipient_lat!);
   const lngs = stops.map(s => s.job.recipient_lng!);
@@ -92,7 +100,7 @@ function clusterStops(stops: StopItem[]): StopItem[][] {
   const result: StopItem[][] = [];
   for (const q of quadrants) {
     if (q.length === 0) continue;
-    if (q.length <= 25) result.push(q);
+    if (q.length <= MAX_CLUSTER_STOPS) result.push(q);
     else result.push(...clusterStops(q));
   }
   return result;
@@ -490,6 +498,8 @@ export default function ServeRoutePlanner({
       let totalDistM = 0;
       let totalDurS = 0;
       let allGeometries: any[] = [];
+      // Clusters that fell back to a straight-line estimate (see below).
+      let degradedClusters = 0;
       // Running position for nearest-neighbor ordering — carries from one
       // cluster's last stop into the next, same as the offline fallback.
       let runningPosition = currentLocation;
@@ -511,7 +521,15 @@ export default function ServeRoutePlanner({
           ? [currentLocation.lng, currentLocation.lat] as [number, number]
           : [cluster[0].job.recipient_lng!, cluster[0].job.recipient_lat!] as [number, number];
 
-        const waypointStops = isFirstCluster && currentLocation ? cluster : cluster.slice(1, -1);
+        // The destination is passed separately as `destCoord`, so it must NOT
+        // also appear in the waypoint list. Passing the whole cluster here
+        // repeated the final stop as two consecutive identical coordinates,
+        // producing a phantom zero-length leg — and, combined with the origin,
+        // pushed a full cluster to 27 coordinates against the Directions API's
+        // 25-coordinate ceiling, which fails the request outright.
+        const waypointStops = isFirstCluster && currentLocation
+          ? cluster.slice(0, -1)
+          : cluster.slice(1, -1);
         const waypointCoords = waypointStops.map(s => [s.job.recipient_lng!, s.job.recipient_lat!] as [number, number]);
         const destStop = cluster[cluster.length - 1];
         const destCoord: [number, number] = [destStop.job.recipient_lng!, destStop.job.recipient_lat!];
@@ -524,11 +542,33 @@ export default function ServeRoutePlanner({
         const coordStr = allCoords.map(c => c.join(',')).join(';');
         const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordStr}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
 
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Directions HTTP ${res.status}`);
-        const data = await res.json();
-        const route = data.routes?.[0];
-        if (!route) continue;
+        // A cluster that fails to route must NOT drop its stops. `newStops`
+        // below is built from allOrderedStops + the UNSELECTED stops, so any
+        // selected stop missing from allOrderedStops disappears from the
+        // planner altogether — the officer silently loses jobs from the run
+        // because a Directions call hiccuped. Degrade per-cluster instead:
+        // keep the nearest-neighbor order that was already computed for it,
+        // add the straight-line estimate, and tell the officer which part of
+        // the route is an estimate rather than driving directions.
+        let route: any = null;
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`Directions HTTP ${res.status}`);
+          const data = await res.json();
+          route = data.routes?.[0] ?? null;
+        } catch (clusterErr: any) {
+          route = null;
+        }
+
+        if (!route) {
+          degradedClusters++;
+          const est = nearestNeighborOrder(cluster, runningPosition);
+          totalDistM += est.totalDistanceMiles / 0.000621371;
+          totalDurS += est.totalDurationMinutes * 60;
+          allOrderedStops.push(...cluster);
+          runningPosition = { lat: destStop.job.recipient_lat!, lng: destStop.job.recipient_lng! };
+          continue;
+        }
 
         if (route.geometry) allGeometries.push(route.geometry);
         for (const leg of (route.legs || [])) {
@@ -571,6 +611,15 @@ export default function ServeRoutePlanner({
         ...unselected.map((s, i) => ({ ...s, order: allOrderedStops.length + i })),
       ];
       setStops(newStops);
+
+      // Never report a partly-estimated route as if it were fully routed —
+      // the distance drives the mileage figure the officer bills against.
+      if (degradedClusters > 0) {
+        setError(
+          `${degradedClusters} of ${clusters.length} route segments used a straight-line estimate `
+          + '— driving directions were unavailable for those stops.',
+        );
+      }
     } catch (err: any) {
       setError(err?.message || 'Route optimization failed');
     } finally {
@@ -619,7 +668,7 @@ export default function ServeRoutePlanner({
       <div className="bg-surface-base border border-rmpg-700 rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700 bg-surface-sunken">
           <div className="flex items-center gap-2">
-            <Route size={16} className="text-[#d4a017]" />
+            <Route size={16} className="text-accent-silver-400" />
             <h2 className="text-sm font-semibold text-rmpg-100 tracking-wider">ROUTE PLANNER</h2>
             <span className="text-[11px] text-fg-muted ml-2">{selectedCount} of {stops.length} stops selected</span>
             {totalDistance > 0 && (

@@ -9,6 +9,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { queryFirst, query, execute, executeBatch, executeInChunks } from './db';
 import { log } from './logger';
+import { denverHourExpr, denverStrftimeExpr } from './denverTime';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -1171,13 +1172,25 @@ async function computeWaitTimeForQueue(db: D1Database, queueId: number): Promise
 async function countAfterHoursAttempts(db: D1Database, queueId: number): Promise<number> {
   const row = await queryFirst<{ cnt: number }>(
     db,
+    // BILLING CORRECTNESS. attempt_at is stored UTC, so reading its hour and
+    // weekday raw asked "was this outside business hours in LONDON". On live
+    // data that flips the surcharge flag on 38 of 54 attempts -- 70% -- and
+    // in BOTH directions: a 13:00 MT attempt reads as 19:00 UTC and is
+    // wrongly surcharged, while an 07:00 MT attempt reads as 13:00 UTC and
+    // silently loses a surcharge it had earned. The weekday is wrong the same
+    // way -- a Sunday 19:00 MT attempt is Monday 01:00 UTC and stops counting
+    // as a weekend.
+    //
+    // The denver* helpers shift to Mountain wall-clock and are DST-aware.
+    // Same consolidation the 2026-07-22 UTC/DST audit applied across the rest
+    // of the Worker; the serve subsystem was missed by it.
     `SELECT COUNT(*) as cnt
      FROM serve_attempts
      WHERE serve_queue_id = ?
        AND (
-         CAST(strftime('%H', attempt_at) AS INTEGER) < 8
-         OR CAST(strftime('%H', attempt_at) AS INTEGER) >= 18
-         OR CAST(strftime('%w', attempt_at) AS INTEGER) IN (0, 6)
+         ${denverHourExpr('attempt_at')} < 8
+         OR ${denverHourExpr('attempt_at')} >= 18
+         OR ${denverStrftimeExpr('%w', 'attempt_at')} IN (0, 6)
        )`,
     queueId,
   ).catch(() => ({ cnt: 0 }));

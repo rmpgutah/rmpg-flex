@@ -76,8 +76,12 @@ export default function PerformanceTab() {
   const rateColor = (rate: number) =>
     rate >= 80 ? 'text-green-400' : rate >= 60 ? 'text-amber-400' : 'text-red-400';
 
+  // max-w-3xl capped this tab at 806px inside a 1580px pane — barely half the
+  // width — while every sibling tab (Queue, Analytics, Assign) runs full bleed.
+  // The by-officer table was the visible casualty: it wrapped and scrolled in a
+  // column of empty space. Matches AnalyticsTab's container.
   return (
-    <div className="p-4 space-y-4 max-w-3xl">
+    <div className="p-4 space-y-4">
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
