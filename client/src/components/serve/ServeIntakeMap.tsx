@@ -186,6 +186,24 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     };
   }, []);
 
+  // Fit bounds to the item set when the map first becomes ready or the
+  // underlying items change — deliberately NOT dependent on currentZoom, so
+  // zooming in on a cluster (via easeTo + zoomend) doesn't immediately snap
+  // the view back out to fit everything again.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const mappable = items.filter(
+      (it) => it.recipient_lat != null && it.recipient_lng != null,
+    );
+    if (mappable.length > 0) {
+      const bounds = new mapboxgl.LngLatBounds();
+      for (const it of mappable) bounds.extend([it.recipient_lng!, it.recipient_lat!]);
+      map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+    }
+  }, [mapReady, items]);
+
   // Plot markers when map + items are ready
   useEffect(() => {
     const map = mapRef.current;
@@ -245,13 +263,6 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
           .addTo(map);
         markersRef.current.push(marker);
       }
-    }
-
-    // Auto-fit bounds
-    if (mappable.length > 0) {
-      const bounds = new mapboxgl.LngLatBounds();
-      for (const it of mappable) bounds.extend([it.recipient_lng!, it.recipient_lat!]);
-      map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
     }
   }, [mapReady, items, onSelectQueue, currentZoom]);
 
