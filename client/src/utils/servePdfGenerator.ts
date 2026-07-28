@@ -695,11 +695,43 @@ export interface NoticeOfAttemptOptions {
  * Applied per row rather than in the column header so a row stays unambiguous
  * when read in isolation -- quoted into a filing, cropped, or photocopied.
  * Empty stays empty so the caller's EMPTY placeholder still applies.
+ *
+ * AM/PM does NOT count as already-zoned. It disambiguates the HOUR, not the
+ * zone: "07:35 AM" still does not say whether that is Mountain or Eastern,
+ * which on a cross-jurisdiction serve is exactly the open question. Only a
+ * real zone token suppresses the suffix.
  */
+/**
+ * Bucket an attempt time into the diligence window it falls in.
+ *
+ * Diligence on a serve job is written as time windows -- "1 attempt between
+ * 7AM and 9AM, 1 between 9AM and 7PM, 1 between 7PM and 9PM" is a live
+ * instruction on these jobs. Both the recipient and the court read the
+ * attempt table to judge whether the server actually varied the hours or
+ * knocked three times on the same afternoon, and until now that meant doing
+ * the arithmetic in your head across a column of raw clock times.
+ *
+ * Boundaries follow the common early/day/evening split. Returns '' when the
+ * time is absent or unparseable so the cell falls back to the table's
+ * empty-cell convention rather than asserting a window that was not recorded.
+ */
+export function attemptWindow(time: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec((time || '').trim());
+  if (!m) return '';
+  let h = parseInt(m[1], 10);
+  if (Number.isNaN(h)) return '';
+  // Respect a 12-hour value if one was supplied.
+  if (/\bPM\b/i.test(time) && h < 12) h += 12;
+  if (/\bAM\b/i.test(time) && h === 12) h = 0;
+  if (h < 9) return 'EARLY';
+  if (h < 19) return 'DAY';
+  return 'EVENING';
+}
+
 export function withZone(time: string): string {
   const t = (time || '').trim();
   if (!t) return '';
-  return /\b(MT|MST|MDT|AM|PM)\b/.test(t) ? t : `${t} MT`;
+  return /\b(MT|MST|MDT)\b/.test(t) ? t : `${t} MT`;
 }
 
 export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options: NoticeOfAttemptOptions = {}): Promise<jsPDF> {
@@ -736,48 +768,91 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
-    formTitle: 'NOTICE OF ATTEMPT TO SERVE',
+    formTitle: 'CIVIL PROCESS RECORD',
     caseNumber: headerRef,
     caseNumberLabel: data.agencyRefNumber ? 'AGENCY REF #' : 'CASE NUMBER',
+    // The header box is a two-row table. Passing no reportDate left the
+    // second row drawn but empty, which reads as a defect on a document
+    // handed to a stranger. The notice date belongs there anyway -- it is
+    // the same slot the Civil Process Record uses for its service date, so
+    // the two instruments now open identically.
+    reportDate: data.noticeDate,
   });
 
-  // ── Notice Date ──
-  y = checkPageBreak(doc, y, 12);
-  y = addFieldPair(doc, 'Notice Date', data.noticeDate, lx, y, hfw);
+  // ── Docket furniture: court heading, then the instrument title bar ──
+  // Matches the Civil Process Record so the two documents in a single serve
+  // file read as one instrument set. No pleading caption: the Notice has no
+  // plaintiff on record, and inventing one to fill a caption would put a
+  // party on a legal document that nobody entered.
+  y = drawCourtHeading(doc, y, data.courtName, data.jurisdiction);
+  y = drawInstrumentTitle(doc, y, 'NOTICE OF ATTEMPT TO SERVE');
 
-  // ── Recipient / Service Address ──
-  y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, 'Intended Recipient', y); y = sec.contentY;
-    y = addFieldPair(doc, '1. Recipient Name', data.recipientName, lx, y, ffw);
-    y = addFieldPair(doc, '2. Service Address', data.recipientAddress, lx, y, ffw);
-    y = addFieldPair(doc, '3. Document(s) to Serve', data.documentType, lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  // ── Status band ──
+  // The operative fact of this instrument -- that service was ATTEMPTED and
+  // NOT completed, and how many times -- was previously something the reader
+  // had to infer by counting rows in the attempt table. On a document left at
+  // a door, read once, standing up, the headline fact belongs at the top in
+  // one line. Outlined rather than filled so it reads as a status stamp and
+  // cannot be mistaken for the tinted advisory band further down.
+  {
+    const n = data.attempts.length;
+    const bandH = 6.4;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.rect(lx, y, ffw, bandH);
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text(
+      `SERVICE NOT COMPLETED  ·  ${n} ATTEMPT${n === 1 ? '' : 'S'} MADE AT THIS ADDRESS`,
+      doc.internal.pageSize.getWidth() / 2, y + bandH / 2 + 1.5, { align: 'center' },
+    );
+    y += bandH + SPACING.SM;
   }
 
-  // ── Case Information ──
-  y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, 'Case Information', y); y = sec.contentY;
-    const fy1 = addFieldPair(doc, '4. Court', data.courtName, lx, y, hfw);
-    // Field 5 prints the COURT case number, never the agency ref. When
-    // operator hasn't entered a court case, render N/A — the agency CFS#
-    // already shows in the header.
-    const courtCaseDisplay = (data.caseNumber && data.caseNumber !== headerRef) ? data.caseNumber : 'N/A';
-    const fy2 = addFieldPair(doc, '5. Case Number', courtCaseDisplay, rx, y, hfw);
-    y = Math.max(fy1, fy2);
-    // Hiring Party label: when both the attorney and the client are on
-    // record, show both with role disambiguation ("Atty / Client") so the
-    // recipient can identify the originating party. Falls back to whichever
-    // single name exists, then 'N/A'.
-    const hiringPartyLabel = (() => {
-      if (data.attorneyName && data.clientName) {
-        return `${data.attorneyName} (atty) for ${data.clientName}`;
-      }
-      return data.attorneyName || data.clientName || 'N/A';
-    })();
-    const gy1 = addFieldPair(doc, '6. Jurisdiction', data.jurisdiction, lx, y, hfw);
-    const gy2 = addFieldPair(doc, '7. Hiring Party', hiringPartyLabel, rx, y, hfw);
-    y = Math.max(gy1, gy2);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  // ── Article I — who this concerns, and under what case ──
+  // Two boxed panels, the same furniture the Civil Process Record uses for
+  // I(a)/I(b). The flat label-over-rule fields these replace put the
+  // recipient's name, the address, the court and the hiring party in one
+  // undifferentiated column, so nothing signalled which facts were about the
+  // READER and which were about the CASE. The box edge does that work.
+  const courtCaseDisplay = (data.caseNumber && data.caseNumber !== headerRef) ? data.caseNumber : 'N/A';
+  const hiringPartyLabel = (() => {
+    if (data.attorneyName && data.clientName) {
+      return `${data.attorneyName} (atty) for ${data.clientName}`;
+    }
+    return data.attorneyName || data.clientName || 'N/A';
+  })();
+
+  y = checkPageBreak(doc, y, 30);
+  {
+    const gutter = SPACING.MD;
+    const panelW = (getContentWidth(doc) - gutter) / 2;
+    const startY = y;
+
+    const recipientRows: SubjectRow[] = [
+      { label: 'Service address', value: data.recipientAddress },
+      { label: 'Document(s) to serve', value: data.documentType },
+    ];
+    const caseRows: SubjectRow[] = [
+      { label: 'Case number', value: courtCaseDisplay },
+      { label: 'Jurisdiction', value: data.jurisdiction },
+      { label: 'Hiring party', value: hiringPartyLabel },
+    ];
+
+    // Two passes: measure both, then redraw at a shared height so the boxes
+    // bottom out level. Same technique the Civil Process Record uses.
+    const hA = drawSubjectPanel(doc, lx, startY, panelW, 'I(a).  Intended Recipient',
+      data.recipientName, 'Person named in the process', recipientRows, undefined, true);
+    const hB = drawSubjectPanel(doc, lx + panelW + gutter, startY, panelW, 'I(b).  Case Information',
+      data.courtName, 'Court in which the matter is pending', caseRows, undefined, true);
+    const panelH = Math.max(hA, hB);
+
+    const aEnd = drawSubjectPanel(doc, lx, startY, panelW, 'I(a).  Intended Recipient',
+      data.recipientName, 'Person named in the process', recipientRows, panelH);
+    const bEnd = drawSubjectPanel(doc, lx + panelW + gutter, startY, panelW, 'I(b).  Case Information',
+      data.courtName, 'Court in which the matter is pending', caseRows, panelH);
+    y = Math.max(aEnd, bEnd) + SPACING.LG;
   }
 
   // ── Attempt Record ──
@@ -788,15 +863,20 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   const MAX_NOTE_CHARS = 90;
   y = checkPageBreak(doc, y, 30);
   {
-    const sec = openAutoSection(doc, 'Record of Attempt(s)', y);
+    const sec = openAutoSection(doc, 'II. Record of Attempt(s)', y);
     y = sec.contentY;
-    const cols = getProportionalColumns(doc, [1, 2, 1.5, 3, 3.5]);
+    // WINDOW is worth a column of its own: it is the field that shows whether
+    // the attempts were actually spread across the day, which is the whole
+    // point of a diligence requirement. Room comes out of NOTES, which is
+    // already clamped to MAX_NOTE_CHARS.
+    const cols = getProportionalColumns(doc, [0.8, 1.9, 1.5, 1.3, 2.8, 2.7]);
     const headers = [
       { label: '#', x: cols[0] },
       { label: 'DATE', x: cols[1] },
       { label: 'TIME', x: cols[2] },
-      { label: 'RESULT', x: cols[3] },
-      { label: 'NOTES', x: cols[4] },
+      { label: 'WINDOW', x: cols[3] },
+      { label: 'RESULT', x: cols[4] },
+      { label: 'NOTES', x: cols[5] },
     ];
     const shown = data.attempts.slice(-MAX_NOTICE_ATTEMPTS);
     const omitted = data.attempts.length - shown.length;
@@ -826,6 +906,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
         String(a.number),
         (sanitizePdfText(a.date || '').toUpperCase() || EMPTY),
         (withZone(sanitizePdfText(a.time || '').toUpperCase()) || EMPTY),
+        (attemptWindow(a.time || '') || EMPTY),
         sanitizePdfText(serveResultLabel(a.result)).toUpperCase(),
         noteCell,
       ];
@@ -867,7 +948,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // header isn't orphaned at the bottom of one page with content on the next.
   y = checkPageBreak(doc, y, 55);
   {
-    const sec = openAutoSection(doc, 'IMPORTANT NOTICE — ATTEMPTED SERVICE OF LEGAL DOCUMENTS', y);
+    const sec = openAutoSection(doc, 'III. Important Notice — Attempted Service of Legal Documents', y);
     y = sec.contentY + 2;
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     const contact = data.serverPhone ? ` at ${data.serverPhone}` : ' at the number on file';
@@ -931,18 +1012,36 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       // / WILL RETURN TUESDAY...) would force the value into ALL CAPS via
       // addFieldPair's sanitization — that conflicts with the professional
       // mixed-case body above it. Inline italic keeps the rhythm.
+      // Promoted from an inline italic sentence to an accent-barred call-out.
+      // This is the single most ACTIONABLE line on the page -- it is when the
+      // server is coming back, and it decides whether the recipient arranges
+      // delivery or gets knocked on again at an inconvenient hour. Set in the
+      // prose run it read as a footnote to the disclaimer.
+      //
+      // The accent bar is drawn in the left margin gutter and the text
+      // indents past it, so the call-out costs the same vertical space the
+      // inline sentence did. That matters: this notice must stay on one sheet
+      // of PJ-700 roll.
+      const barW = 0.8;
+      const indent = barW + 2.0;
       doc.setFont(PDF_VALUE_FONT, 'bolditalic');
       doc.setFontSize(NOTICE_FONT);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text('Next attempt:', lx, y);
+      doc.text('Next attempt:', lx + indent, y);
       const labelW = doc.getTextWidth('Next attempt: ');
       doc.setFont(PDF_VALUE_FONT, 'italic');
       const noteLines: string[] = doc.splitTextToSize(
         sanitizePdfText(data.nextAttemptNote, { preserveCase: true }),
-        ffw - labelW - 2,
+        ffw - labelW - indent - 2,
       );
-      doc.text(noteLines, lx + labelW, y);
-      y += noteLines.length * 3.5 + 1.5;
+      doc.text(noteLines, lx + indent + labelW, y);
+      // Bar spans the text block's own cap-height-to-baseline extent. The
+      // first pass drew it 1.2mm wide against a single 3.5mm line, which on
+      // the page read as a stray tick in the margin rather than an accent.
+      const blockH = noteLines.length * 3.5;
+      doc.setFillColor(...COLOR.TEXT_PRIMARY);
+      doc.rect(lx, y - 2.4, barW, blockH + 0.9, 'F');
+      y += blockH + 1.5;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -956,7 +1055,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // assuming it's a scam.
   y = checkPageBreak(doc, y, 30);
   {
-    const sec = openAutoSection(doc, 'What To Do Next', y);
+    const sec = openAutoSection(doc, 'IV. What To Do Next', y);
     y = sec.contentY + 2;
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     const phoneCue = data.serverPhone
@@ -987,15 +1086,45 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   }
 
   // ── Server Signature (unsworn — this is a notice, not an affidavit) ──
-  y = checkPageBreak(doc, y, SPACING.SIGNATURE_BOX_H + SPACING.LG);
-  y = addSignatureBlock(doc, 'Process Server', lx, y, ffw, data.signature ? {
+  //
+  // Reserve the certification line WITH the block: a signature that lands on
+  // its own sheet, separated from the sentence it certifies, is worse than no
+  // signature at all on a roll-printed instrument.
+  //
+  // Reserve the height ACTUALLY drawn, not the SIGNATURE_BOX_H default. That
+  // constant is 24mm, sized for the 12/8 rows a desk-printed affidavit uses;
+  // this block draws 4.5 role + 9 signature + 7 info = 20.5mm. Reserving the
+  // default forced a page break the real content did not need -- the content
+  // fit with room to spare and still landed on sheet two.
+  const SIG_ROW_H = 11;
+  const SIG_INFO_H = 7;
+  const sigBlockH = SPACING.SIGNATURE_ROLE_H + SIG_ROW_H + SIG_INFO_H;
+  y = checkPageBreak(doc, y, sigBlockH + SPACING.LG);
+
+  // Certification is worded against the ATTEMPT RECORD, not against service:
+  // this instrument exists precisely because service did NOT occur, so an
+  // affidavit-style "I certify service" line would be false on its face. It
+  // deliberately does not restate the server's name or badge either -- both
+  // print in the info row immediately below it.
+  const certification = 'I certify that the attempt(s) recorded in Article II were made as stated, and that service was not completed.';
+
+  y = addSignatureBlock(doc, 'V. Process Server', lx, y, ffw, data.signature ? {
     signatureImage: data.signature,
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
+    certification,
   } : {
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
-  });
+    certification,
+  },
+  // Signature row trimmed from the 12mm default to 9mm. The default is
+  // sized for a wet signature on a full desk-printed affidavit; on this
+  // notice the row is mostly white, and the millimetres buy the
+  // certification sentence above it without touching any content. Still
+  // ample for the captured signature image, which fits to sigRowH - 3.5.
+  // Info row trimmed alongside it: three short values, one line each.
+  SIG_ROW_H, SIG_INFO_H);
   y += SPACING.SM;
 
   // ── Contact line (recipient-facing call-to-action) ──
@@ -1669,13 +1798,23 @@ function drawSubjectPanel(
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(x, y, w, boxH);
 
-  // Vertically centre the body when this panel is shorter than its pair.
-  // Forced to a common height with top-aligned content, the three-row
-  // panel showed two rows of white beneath it and read as a missing row
-  // rather than as padding.
+  // Slack handling: the two panels are drawn to a COMMON height, and the
+  // shorter one has to spend the difference somewhere.
+  //
+  // Centring the whole body (the previous approach) kept the panel from
+  // showing orphan white at the bottom, but it pushed the shorter panel's
+  // label/value grid DOWN by slack/2 -- so I(a)'s SERVICE ADDRESS row no
+  // longer sat on the same line as I(b)'s CASE NUMBER row. On a pair of
+  // panels read side by side that misalignment is the thing the eye catches.
+  //
+  // Instead: keep the body TOP-aligned so both grids start on the same
+  // baseline, and spend the slack as extra leading BETWEEN the shorter
+  // panel's rows. Both panels now start level, bottom out level, and no
+  // orphan block of white is left under either.
   const naturalH = SPACING.SECTION_HEADER_H + bodyH;
   const slack = Math.max(0, boxH - naturalH);
-  let ty = y + SPACING.SECTION_HEADER_H + pad + 2.6 + slack / 2;
+  const rowGapExtra = wrapped.length > 1 ? slack / (wrapped.length - 1) : 0;
+  let ty = y + SPACING.SECTION_HEADER_H + pad + 2.6;
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1705,7 +1844,8 @@ function drawSubjectPanel(
   // Inline label/value rows against a fixed label column. The label may
   // be clipped (fixed strings we author); the VALUE wraps, because an
   // elided address or entity name is a defect, not a layout compromise.
-  for (const r of wrapped) {
+  wrapped.forEach((r, ri) => {
+    if (ri > 0) ty += rowGapExtra;   // spend the common-height slack here
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
@@ -1724,7 +1864,7 @@ function drawSubjectPanel(
       for (const vl of r.lines) { doc.text(vl, x + pad + labelW, ty); ty += rowH; }
       if (r.lines.length > 1) ty += WRAP_CLEARANCE;
     }
-  }
+  });
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   return y + boxH;
@@ -2049,7 +2189,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     ? [
         { label: 'Capacity', value: 'Party named' },
         { label: 'Telephone', value: data.recipientPhone || 'Not provided', blank },
-        { label: 'Accepted', value: `${signedDate} ${signedTime}`, blank },
+        { label: 'Accepted', value: withZone(`${signedDate} ${signedTime}`), blank },
       ]
     : [
         { label: isBusiness ? 'Title' : 'Relationship', value: data.recipientJobTitle || data.recipientRelationship || 'Not stated', blank },
@@ -2132,13 +2272,21 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
         data.gps ? `${data.gps.lat.toFixed(6)}, ${data.gps.lng.toFixed(6)}` : 'Not available',
         lx, y, ffw);
     } else {
-      const a = addFieldPair(doc, '1. Date and Time of Delivery', `${signedDate} at ${signedTime}`, lx, y, hfw);
+      // Column semantics: the LEFT column is the moment of delivery, the
+      // RIGHT column is who performed it. Badge previously sat beneath the
+      // date and geolocation beneath the server, so each column mixed two
+      // unrelated facts and the reader had to zig-zag. Now the badge sits
+      // under the server it identifies and the geolocation under the
+      // timestamp it corroborates -- read either column top-to-bottom and it
+      // answers one question.
+      const a = addFieldPair(doc, '1. Date and Time of Delivery',
+        withZone(`${signedDate} at ${signedTime}`), lx, y, hfw);
       const b = addFieldPair(doc, '2. Process Server', data.serverName, rx, y, hfw);
       y = Math.max(a, b);
-      const c = addFieldPair(doc, '3. Badge / License No.', data.serverBadge, lx, y, hfw);
-      const d = addFieldPair(doc, '4. Geolocation at Signature',
+      const c = addFieldPair(doc, '3. Geolocation at Signature',
         data.gps ? `${data.gps.lat.toFixed(6)}, ${data.gps.lng.toFixed(6)}` : 'Not available',
-        rx, y, hfw);
+        lx, y, hfw);
+      const d = addFieldPair(doc, '4. Badge / License No.', data.serverBadge, rx, y, hfw);
       y = Math.max(c, d);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -2150,7 +2298,10 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // row-per-document with a copy count is what answers that.
   y = checkPageBreak(doc, y, 26);
   {
-    const cols = getProportionalColumns(doc, [0.10, 0.72, 0.18]);
+    // COPIES held 18% of the width for a single digit, leaving it stranded
+    // far from the title it counts. Tightened so the document title -- the
+    // field a service dispute actually turns on -- gets the room instead.
+    const cols = getProportionalColumns(doc, [0.09, 0.79, 0.12]);
     const rows = (data.documents.length
       ? data.documents
       : [{ title: data.documentType || 'Court documents', copies: 1 }]
@@ -2164,7 +2315,18 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(255, 255, 255);
-    doc.text('III.  SCHEDULE OF DOCUMENTS DELIVERED', lx + 1.5, y + SPACING.SECTION_HEADER_H - 1.2);
+    doc.text('III. SCHEDULE OF DOCUMENTS DELIVERED', lx + 1.5, y + SPACING.SECTION_HEADER_H - 1.2);
+
+    // Totals, right-aligned in the same bar. The per-row copy count answers
+    // WHICH papers changed hands; this answers HOW MANY -- the other half of
+    // the same dispute, and the half a reader would otherwise add up by hand.
+    const docCount = rows.length;
+    const copyCount = rows.reduce((n, r) => n + (parseInt(r[2], 10) || 0), 0);
+    const totalLabel = `${docCount} DOCUMENT${docCount === 1 ? '' : 'S'}`
+      + ` · ${copyCount} COP${copyCount === 1 ? 'Y' : 'IES'}`;
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.text(totalLabel, lx + cw - 1.5, y + SPACING.SECTION_HEADER_H - 1.2, { align: 'right' });
+
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     y += SPACING.SECTION_HEADER_H;
 
@@ -2172,8 +2334,9 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       doc,
       [{ label: 'No.', x: cols[0] }, { label: 'Document Delivered', x: cols[1] }, { label: 'Copies', x: cols[2] }],
       rows, y, cols,
-      { sectionTitle: 'III.  Schedule of Documents Delivered' },
+      { sectionTitle: 'III. Schedule of Documents Delivered' },
     );
+
   }
 
   // ── Article IV — declarations ──
@@ -2310,7 +2473,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       // Flattened: the execution clause is a sentence, and a newline from
       // the two-line address block would break it mid-clause.
       `Executed at ${sanitizePdfText((data.executionPlace || data.serviceAddress || 'the place of service').replace(/\n/g, ', '))} `
-      + `on ${signedDate} at ${signedTime}.`,
+      + `on ${withZone(`${signedDate} at ${signedTime}`)}.`,
       lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
   }
   y += SPACING.LG;
@@ -2339,7 +2502,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
         ? ''
         : (data.recipientJobTitle || data.recipientRelationship
           || (isIndividual ? 'Party named' : data.variantLabel)),
-      date: blank ? '' : `${signedDate} ${signedTime}`,
+      date: blank ? '' : withZone(`${signedDate} ${signedTime}`),
     },
   );
 

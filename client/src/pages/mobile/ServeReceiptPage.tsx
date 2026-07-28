@@ -29,9 +29,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Check, AlertTriangle, FileText, Loader2, Download, Printer, ShieldCheck } from 'lucide-react';
+import { Check, AlertTriangle, FileText, Loader2, Download, Printer, ShieldCheck, ScanLine } from 'lucide-react';
 import SignaturePad from '../../components/SignaturePad';
 import { enqueueSubmission, flushQueued, getQueued } from '../../utils/serveReceiptQueue';
+import { decodePdf417 } from '../../utils/pdf417Decoder';
+import { parseAamva } from '../../utils/aamvaParser';
 import { generateReceiptOfService, type ReceiptOfServiceData } from '../../utils/servePdfGenerator';
 import {
   resolveReceiptVariant, receiptFormTitle, attestationsFor, formatServiceAddress, isEntityName,
@@ -198,6 +200,11 @@ export default function ServeReceiptPage() {
   // ── Attestations, keyed by the ids in serveReceiptVariant.ts ──
   const [accepted, setAccepted] = useState<Record<string, boolean>>({});
   const [signature, setSignature] = useState<string | null>(null);
+  // Identity read off the barcode on the back of a licence.
+  const [idScanning, setIdScanning] = useState(false);
+  const [idScanError, setIdScanError] = useState<string | null>(null);
+  const [idVerified, setIdVerified] = useState(false);
+  const [idDescription, setIdDescription] = useState('');
 
   const [coords, setCoords] = useState<{ lat: number; lng: number; acc: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -418,6 +425,50 @@ export default function ServeReceiptPage() {
     [attestations, accepted],
   );
 
+  /**
+   * Read the signer's identity from the PDF417 on the back of their
+   * licence.
+   *
+   * Optional and offered, never demanded — nobody is obliged to produce
+   * ID to accept papers, and a form that insists would stop a service
+   * that is otherwise perfectly good.
+   *
+   * When it IS offered, it changes the evidentiary weight of the whole
+   * instrument. "A man who said he was Andrew Peterson" and "Andrew Scott
+   * Peterson, DOB 1974-03-11, per Utah DL scanned at the door" are
+   * different facts, and the second is the one that survives a contested
+   * hearing. It also fills recipient_description — sex, height, weight,
+   * hair — which is the physical description an affidavit of service
+   * conventionally carries and which nobody types by hand.
+   *
+   * Parsing is local. The barcode never leaves the device: the decoded
+   * text is discarded and only the fields the form shows are kept, so a
+   * licence number and address do not enter a record that did not ask
+   * for them.
+   */
+  const scanId = useCallback(async (file: File) => {
+    setIdScanning(true);
+    setIdScanError(null);
+    try {
+      const outcome = await decodePdf417(file);
+      if (!outcome) {
+        setIdScanError('Could not read the barcode. Try again in better light, or just type your name.');
+        return;
+      }
+      const dl = parseAamva(outcome.text);
+      const full = [dl.first_name, dl.middle_name, dl.last_name, dl.suffix]
+        .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+      if (full) setRecipientName(full);
+      setIdDescription([dl.gender, dl.height, dl.weight && `${dl.weight} lbs`, dl.hair_color, dl.eye_color]
+        .filter(Boolean).join(', '));
+      setIdVerified(true);
+    } catch {
+      setIdScanError('Could not read the barcode. Try again, or just type your name.');
+    } finally {
+      setIdScanning(false);
+    }
+  }, []);
+
   const buildPdfData = useCallback((receiptId: number): ReceiptOfServiceData => ({
     receiptId,
     formTitle,
@@ -504,6 +555,9 @@ export default function ServeReceiptPage() {
           recipient_phone: phone || null,
           recipient_email: email || null,
           recipient_age_confirmed: !!accepted.adult,
+          recipient_id_type: idVerified ? 'drivers_licence_scan' : null,
+          recipient_id_verified: idVerified,
+          recipient_description: idDescription || null,
           premises_type: premisesType,
           service_address: ctx?.job.service_address ?? null,
           service_city: ctx?.job.service_city ?? null,
@@ -841,6 +895,31 @@ export default function ServeReceiptPage() {
               placeholder="First and last name"
             />
           </Field>
+
+          {/* Offered, never demanded. Nobody is obliged to produce ID to
+              accept papers, and a form that insisted would block a service
+              that is otherwise perfectly good. */}
+          {idVerified ? (
+            <p className="text-[13px] text-sev-ok leading-relaxed flex items-center gap-1.5">
+              <Check size={14} /> Identity read from your licence.
+            </p>
+          ) : (
+            <label className="block">
+              <span className="flex items-center gap-1.5 text-[13px] text-fg-secondary cursor-pointer">
+                <ScanLine size={14} />
+                {idScanning ? 'Reading…' : 'Optional: scan the barcode on the back of your licence'}
+              </span>
+              <input
+                type="file" accept="image/*" capture="environment" className="sr-only"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void scanId(f); }}
+              />
+              <span className="block text-[13px] text-fg-muted leading-relaxed mt-0.5">
+                Fills your name for you. You do not have to — you can simply
+                type it.
+              </span>
+            </label>
+          )}
+          {idScanError && <p className="text-[13px] text-sev-warn leading-relaxed">{idScanError}</p>}
 
           <Field label="Phone number">
             <input

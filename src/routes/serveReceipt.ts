@@ -77,10 +77,24 @@ function randomToken(): string {
 
 /** Salted SHA-256 of the caller IP. We keep a correlator for abuse
  *  investigation without storing a member of the public's raw IP. */
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Salted, VERSIONED hash of the caller IP.
+ *
+ * The salt is JWT_SECRET, which can be rotated. Two hashes computed under
+ * different salts are not comparable, and without a marker that difference
+ * is invisible: an investigator would simply see records that never
+ * correlate and conclude the addresses differed. The 4-hex salt
+ * fingerprint prefix makes a rotation obvious at a glance instead.
+ */
 async function hashIp(ip: string, salt: string): Promise<string> {
-  const data = new TextEncoder().encode(`${salt}:${ip}`);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+  const saltId = (await sha256Hex(salt)).slice(0, 4);
+  const body = (await sha256Hex(`${salt}:${ip}`)).slice(0, 28);
+  return `${saltId}:${body}`;
 }
 
 function clientIp(c: any): string {
@@ -89,14 +103,58 @@ function clientIp(c: any): string {
 
 /** Reject anything that isn't a plausibly-sized PNG data URL. */
 function validSignature(v: unknown): v is string {
+  // PNG and JPEG only, not `data:image/*`. SVG is an image by that test
+  // and can carry script; this value is rendered back into an officer's
+  // DOM and embedded in a PDF, so the permissive form was a stored-XSS
+  // vector wearing a signature's clothes.
   return typeof v === 'string'
-    && v.startsWith('data:image/')
+    && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(v)
     && v.length > 100
     && v.length <= MAX_SIGNATURE_BYTES;
 }
 
+/**
+ * Is this the unique-index violation from 0209 — a second signed
+ * acknowledgement for a job that already has one?
+ *
+ * Three independent write paths exist (subject's phone, transcribed
+ * paper, officer-attested refusal). The token burn stops one of them
+ * running twice; it does nothing about two DIFFERENT paths firing for
+ * the same doorstep. The database now refuses, and this turns the raw
+ * constraint error into something an officer can act on instead of a
+ * 500 they will simply retry.
+ */
+export function isDuplicateSignedReceipt(err: unknown): boolean {
+  const m = err instanceof Error ? err.message : String(err ?? '');
+  return /UNIQUE constraint failed/i.test(m) && /idx_serve_receipts_one_signed|serve_receipts/i.test(m);
+}
+
+const DUPLICATE_MESSAGE =
+  'This job already has a signed acknowledgement. Void the existing one first '
+  + 'if it was recorded in error.';
+
 function bool(v: unknown): number {
   return v === true || v === 1 || v === '1' || v === 'true' ? 1 : 0;
+}
+
+/**
+ * Serialise a bounded list to JSON, with an aggregate ceiling.
+ *
+ * Per-item caps alone leave the total unbounded: 50 documents at 200
+ * characters plus 20 attestations at 600 is 20KB of JSON in a column
+ * nothing was sizing for. Truncating the LIST rather than the string
+ * keeps the result parseable — a JSON blob cut mid-token is worse than a
+ * short one, because it fails at read time on a legal record instead of
+ * at write time where someone can see it.
+ */
+export function boundedJson<T>(items: T[], maxItems: number, maxBytes: number): string {
+  let out = items.slice(0, maxItems);
+  let json = JSON.stringify(out);
+  while (json.length > maxBytes && out.length > 1) {
+    out = out.slice(0, out.length - 1);
+    json = JSON.stringify(out);
+  }
+  return json;
 }
 
 function str(v: unknown, max = 500): string | null {
@@ -388,7 +446,11 @@ serveReceipt.get('/:token', async (c) => {
       ).catch(() => null)
     : null;
 
-  await execute(db, 'UPDATE serve_receipt_tokens SET scans_used = scans_used + 1 WHERE id = ?', tok.id);
+  // NOT incremented here. This counter caps ABUSE of a real token, and a
+  // page load is not abuse — a subject on a flaky doorstep connection who
+  // reloads ten times would otherwise destroy their own link permanently,
+  // with no way to tell them why. Counting is done on SUBMISSION, which is
+  // the action worth capping.
 
   return c.json({
     ok: true,
@@ -445,8 +507,16 @@ serveReceipt.post('/:token', async (c) => {
     return c.json({ ok: false, code: 'rate_limited', message: 'Too many requests. Please wait a moment.' }, 429);
   }
 
+  // Per-TOKEN as well as per-IP. The IP bucket alone is defeated by
+  // rotating addresses, and the thing worth protecting is one job's
+  // signing link, not one network's fair share.
+  const tokenParam = c.req.param('token');
+  if (!(await rateLimitAllow(c.env.KV, `serve-receipt-post:tok:${tokenParam}`, 10, 600))) {
+    return c.json({ ok: false, code: 'rate_limited', message: 'Too many attempts on this link.' }, 429);
+  }
+
   const db = getDb(c.env);
-  const resolved = await resolveToken(db, c.req.param('token'));
+  const resolved = await resolveToken(db, tokenParam);
   if ('error' in resolved) {
     return c.json({ ok: false, code: resolved.error.code, message: resolved.error.message }, resolved.error.http);
   }
@@ -520,10 +590,18 @@ serveReceipt.post('/:token', async (c) => {
 
   const ipHash = await hashIp(ip, String(c.env.JWT_SECRET ?? 'salt'));
 
-  const ins = await execute(
+  // The job's status BEFORE this receipt advances it, so a later void can
+  // restore what was actually there rather than guessing.
+  const priorStatus = (await queryFirst<{ status: string | null }>(
+    db, 'SELECT status FROM serve_queue WHERE id = ?', tok.serve_queue_id,
+  ).catch(() => null))?.status ?? null;
+
+  let ins;
+  try {
+    ins = await execute(
     db,
     `INSERT INTO serve_receipts (
-       serve_queue_id, token_id, service_method,
+       serve_queue_id, token_id, service_method, job_status_before,
        form_variant, form_title, attestations_json,
        recipient_name, recipient_role, recipient_relationship, recipient_phone,
        recipient_email, recipient_description, business_name, recipient_job_title,
@@ -539,10 +617,10 @@ serveReceipt.post('/:token', async (c) => {
        server_signature, server_name, server_badge, witness_name, witness_signature,
        latitude, longitude, accuracy_m, user_agent, ip_hash,
        email_to, email_status, notes
-     ) VALUES (?,?,?, ?,?,?, ?,?,?,?, ?,?,?,?, ?,?, ?, ?,?,?,?,?, ?,?, ?,?,?, ?,?,?, ?,?, ?,?,?,
+     ) VALUES (?,?,?,?, ?,?,?, ?,?,?,?, ?,?,?,?, ?,?, ?, ?,?,?,?,?, ?,?, ?,?,?, ?,?,?, ?,?, ?,?,?,
                ?, datetime('now'), ?,?,?,?,?, ?,?,?,?,?, ?,?,?)`,
-    tok.serve_queue_id, tok.id, method,
-    variant, formTitle, JSON.stringify(attestations),
+    tok.serve_queue_id, tok.id, method, priorStatus,
+    variant, formTitle, boundedJson(attestations, 20, 16_000),
     submission.recipient_name, variant, str(body.recipient_relationship, 120),
     str(body.recipient_phone, 40), emailTo, str(body.recipient_description, 300),
     submission.business_name, str(body.recipient_job_title, 120),
@@ -550,7 +628,7 @@ serveReceipt.post('/:token', async (c) => {
     submission.recipient_age_confirmed,
     str(body.service_address, 250), str(body.service_city, 100), str(body.service_state, 2),
     str(body.service_zip, 10), premisesType,
-    JSON.stringify(documents), documents.length,
+    boundedJson(documents, 50, 8_000), documents.length,
     submission.sub_defendant_name, submission.sub_resides_at_address, submission.sub_is_authorized_agent,
     submission.sub_agrees_to_deliver, str(body.sub_expected_delivery_at, 40),
     str(body.sub_defendant_expected_at, 120),
@@ -564,9 +642,20 @@ serveReceipt.post('/:token', async (c) => {
     Number.isFinite(Number(body.accuracy_m)) ? Number(body.accuracy_m) : null,
     str(c.req.header('user-agent'), 300), ipHash,
     emailTo, emailTo ? 'pending' : 'not_requested', str(body.notes, 1000),
-  );
+    );
+  } catch (err) {
+    if (isDuplicateSignedReceipt(err)) {
+      return c.json({ ok: false, code: 'already_signed', message: DUPLICATE_MESSAGE }, 409);
+    }
+    throw err;
+  }
 
   const receiptId = Number(ins.meta.last_row_id);
+
+  // Submissions are what the cap is for. Recorded before the burn so a
+  // rejected attempt still counts against a token being hammered.
+  await execute(db, 'UPDATE serve_receipt_tokens SET scans_used = scans_used + 1 WHERE id = ?', tok.id)
+    .catch(() => undefined);
 
   // Record the officer's expectation alongside the derived variation.
   // A mismatch is NOT an error — the officer is reading a doorstep and
@@ -1029,7 +1118,17 @@ serveReceiptAdmin.post(
       recipient_name?: string; reason?: string; documents_left?: boolean;
       latitude?: number; longitude?: number; notes?: string;
     }>().catch(() => null);
-    if (!body?.reason) return c.json({ error: 'A description of the refusal is required' }, 400);
+    if (!body) return c.json({ error: 'Invalid submission' }, 400);
+    // Length floor, not just presence. This is the only account of what
+    // happened at a door where nobody signed — "n" satisfies a truthiness
+    // check and tells a court nothing.
+    const reasonText = (body.reason ?? '').trim();
+    if (reasonText.length < 15) {
+      return c.json({
+        error: 'Describe what happened in a sentence — this is the only account '
+          + 'of a doorstep where nobody signed.',
+      }, 400);
+    }
 
     const db = getDb(c.env);
     const user = c.get('user') as { id: number; username?: string } | undefined;
@@ -1046,20 +1145,26 @@ serveReceiptAdmin.post(
       queueId,
     );
 
-    const ins = await execute(
+    const priorStatus = (await queryFirst<{ status: string | null }>(
+      db, 'SELECT status FROM serve_queue WHERE id = ?', queueId,
+    ).catch(() => null))?.status ?? null;
+
+    let ins;
+    try {
+      ins = await execute(
       db,
       `INSERT INTO serve_receipts (
-         serve_queue_id, token_id, service_method, form_variant, form_title,
+         serve_queue_id, token_id, service_method, form_variant, form_title, job_status_before,
          completion_channel, recipient_name, recipient_role,
          sub_declined_reason, sub_defendant_name,
          ack_received_documents, recipient_signed_at,
          server_name, server_user_id, latitude, longitude, notes, status
-       ) VALUES (?,?, 'refused', 'refused', ?, 'officer', ?, 'refused',
+       ) VALUES (?,?, 'refused', 'refused', ?, ?, 'refusal', ?, 'refused',
                  ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, 'signed')`,
       queueId, tok?.id ?? null,
-      'Record of Refusal to Sign',
+      'Record of Refusal to Sign', priorStatus,
       str(body.recipient_name, 200) || job.recipient_name || 'Unidentified person',
-      str(body.reason, 1000),
+      reasonText.slice(0, 1000),
       job.defendant_name,
       // Service is complete when the papers are LEFT, refusal or not. That
       // fact is what a court asks about, so it is recorded explicitly
@@ -1069,7 +1174,11 @@ serveReceiptAdmin.post(
       Number.isFinite(Number(body.latitude)) ? Number(body.latitude) : null,
       Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null,
       str(body.notes, 1000),
-    );
+      );
+    } catch (err) {
+      if (isDuplicateSignedReceipt(err)) return c.json({ error: DUPLICATE_MESSAGE }, 409);
+      throw err;
+    }
     const receiptId = Number(ins.meta.last_row_id);
 
     if (tok?.id) {
@@ -1104,8 +1213,161 @@ serveReceiptAdmin.post(
   },
 );
 
+/**
+ * POST /api/serve-receipts/:queueId/paper
+ * Bring a hand-completed form back into the record.
+ *
+ * The paper path shipped as a dead end. An officer could print a blank,
+ * get it signed in ink, and then had nowhere to put it —
+ * completion_channel = 'paper' existed as a column and nothing ever wrote
+ * it. A signed instrument sitting in a folder in a vehicle is not a
+ * record; it is a liability with a signature on it.
+ *
+ * The wet signature is evidenced by a PHOTOGRAPH of the signed page,
+ * stored where a captured e-signature would go and distinguished by the
+ * channel — so nothing downstream mistakes a photographed page for a
+ * signature drawn on glass. The officer additionally attests, by name,
+ * that the transcription matches the paper, because they are the only
+ * person who saw both.
+ */
+serveReceiptAdmin.post(
+  '/:queueId/paper',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  async (c) => {
+    const queueId = parseInt(c.req.param('queueId') || '', 10);
+    if (!queueId) return c.json({ error: 'Invalid serve job id' }, 400);
+
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+    if (!body) return c.json({ error: 'Invalid submission' }, 400);
+
+    const db = getDb(c.env);
+    const job = await queryFirst<{ id: number; defendant_name: string | null;
+      recipient_address: string | null; recipient_city: string | null;
+      recipient_state: string | null; recipient_zip: string | null }>(
+      db,
+      `SELECT id, defendant_name, recipient_address, recipient_city,
+              recipient_state, recipient_zip FROM serve_queue WHERE id = ?`,
+      queueId,
+    );
+    if (!job) return c.json({ error: 'Serve job not found' }, 404);
+
+    const premisesType = str(body.premises_type, 30);
+    const residesAtAddress = bool(body.sub_resides_at_address);
+    const authorizedAgent = bool(body.sub_is_authorized_agent);
+    const namedParty = str(body.sub_defendant_name, 200) || job.defendant_name;
+
+    const variant = resolveReceiptVariant({
+      isNamedParty: str(body.form_variant, 30) === 'individual',
+      premisesType,
+      residesAtAddress: !!residesAtAddress,
+      authorizedAgent: !!authorizedAgent,
+      namedParty,
+    });
+
+    // The photograph of the signed page. Same size ceiling as a drawn
+    // signature — the client downscales before sending, because a raw
+    // phone photo is several megabytes and this column is not storage.
+    const pageImage = body.signed_page_image;
+    if (!validSignature(pageImage)) {
+      return c.json({ error: 'A photograph of the signed page is required' }, 400);
+    }
+
+    const attRaw = Array.isArray(body.attestations) ? body.attestations : [];
+    const attestations = attRaw.slice(0, 20).map((a: any) => ({
+      id: String(a?.id ?? '').slice(0, 40),
+      text: String(a?.text ?? '').slice(0, 600),
+      accepted: bool(a?.accepted) === 1,
+    })).filter((a) => a.id && a.text);
+
+    const docsRaw = Array.isArray(body.documents) ? body.documents : [];
+    const documents = docsRaw.slice(0, 50).map((d: any) => ({
+      title: String(d?.title ?? 'Court document').slice(0, 200),
+      copies: Number.isFinite(Number(d?.copies)) ? Math.max(1, Math.min(99, Number(d.copies))) : 1,
+    }));
+
+    const user = c.get('user') as { id: number; username?: string } | undefined;
+    const signedAt = str(body.signed_at, 40);
+    const priorStatus = (await queryFirst<{ status: string | null }>(
+      db, 'SELECT status FROM serve_queue WHERE id = ?', queueId,
+    ).catch(() => null))?.status ?? null;
+
+    let ins;
+    try {
+      ins = await execute(
+      db,
+      `INSERT INTO serve_receipts (
+         serve_queue_id, service_method, form_variant, form_title, completion_channel, job_status_before,
+         attestations_json, recipient_name, recipient_role, recipient_relationship,
+         recipient_phone, recipient_email, business_name, recipient_job_title,
+         recipient_age_confirmed, service_address, service_city, service_state,
+         service_zip, premises_type, documents_json, document_count,
+         sub_defendant_name, sub_resides_at_address, sub_is_authorized_agent,
+         sub_agrees_to_deliver, sub_release_acknowledged,
+         ack_received_documents, ack_information_true,
+         recipient_signature, recipient_signed_at,
+         server_name, server_user_id, notes, status
+       ) VALUES (?, ?, ?, ?, 'paper', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?,
+                 ?, ?, ?, ?, ?, 1, 1, ?, COALESCE(?, datetime('now')), ?, ?, ?, 'signed')`,
+      queueId,
+      variant === 'individual' ? 'personal' : 'substitute',
+      variant, receiptFormTitle(variant), priorStatus,
+      JSON.stringify(attestations),
+      str(body.recipient_name, 200), variant, str(body.recipient_relationship, 120),
+      str(body.recipient_phone, 40), str(body.recipient_email, 254),
+      str(body.business_name, 200), str(body.recipient_job_title, 120),
+      job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip,
+      premisesType, JSON.stringify(documents), documents.length,
+      namedParty, residesAtAddress, authorizedAgent,
+      bool(body.sub_agrees_to_deliver), bool(body.sub_release_acknowledged),
+      pageImage, signedAt,
+      str(user?.username, 120), user?.id ?? null,
+      // The transcription attestation is part of the record, not a UI
+      // nicety: the officer is the only person who saw both the paper and
+      // the screen, so their name has to be attached to the claim that
+      // the two match.
+      `Transcribed from a hand-completed form by ${user?.username ?? 'unknown'}. `
+        + 'The photographed page is the signed original.',
+      );
+    } catch (err) {
+      if (isDuplicateSignedReceipt(err)) return c.json({ error: DUPLICATE_MESSAGE }, 409);
+      throw err;
+    }
+    const receiptId = Number(ins.meta.last_row_id);
+
+    await execute(
+      db,
+      `UPDATE serve_queue SET status = 'served',
+              serve_date = COALESCE(serve_date, ?, datetime('now')), updated_at = datetime('now')
+        WHERE id = ? AND status != 'served'`,
+      signedAt, queueId,
+    ).catch(() => undefined);
+
+    await recordAudit(c, {
+      action: 'SERVE_RECEIPT_PAPER',
+      entityType: 'serve_queue',
+      entityId: queueId,
+      details: { receipt_id: receiptId, variant },
+      actorId: user?.id ?? null,
+    }).catch(() => undefined);
+
+    log.info('Paper acknowledgement transcribed', { receiptId, queueId, variant });
+    return c.json({ ok: true, receipt_id: receiptId, form_variant: variant }, 201);
+  },
+);
+
+/**
+ * Roles that may read a signed acknowledgement.
+ *
+ * Deliberately NOT the same set that may mint a token. Minting is a
+ * doorstep action; reading returns a member of the public's signature
+ * image, phone, email and physical description. `client_viewer` — a
+ * hiring client with a login — was able to pull all of it, because these
+ * two routes were the only ones in this file written without a gate.
+ */
+const RECEIPT_READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
+
 /** GET /api/serve-receipts/:queueId — signed receipts for a job. */
-serveReceiptAdmin.get('/:queueId', async (c) => {
+serveReceiptAdmin.get('/:queueId', requireRole(...RECEIPT_READ_ROLES), async (c) => {
   const queueId = parseInt(c.req.param('queueId') || '', 10);
   if (!queueId) return c.json({ error: 'Invalid serve job id' }, 400);
   const rows = await query(
@@ -1121,7 +1383,7 @@ serveReceiptAdmin.get('/:queueId', async (c) => {
 });
 
 /** GET /api/serve-receipts/receipt/:id — full receipt incl. signatures. */
-serveReceiptAdmin.get('/receipt/:id', async (c) => {
+serveReceiptAdmin.get('/receipt/:id', requireRole(...RECEIPT_READ_ROLES), async (c) => {
   const id = parseInt(c.req.param('id') || '', 10);
   if (!id) return c.json({ error: 'Invalid receipt id' }, 400);
   const row = await queryFirst(getDb(c.env), 'SELECT * FROM serve_receipts WHERE id = ?', id);
@@ -1145,7 +1407,7 @@ serveReceiptAdmin.get('/receipt/:id', async (c) => {
  * Field names match ReceiptOfServiceData in
  * client/src/utils/servePdfGenerator.ts.
  */
-serveReceiptAdmin.get('/receipt/:id/document', async (c) => {
+serveReceiptAdmin.get('/receipt/:id/document', requireRole(...RECEIPT_READ_ROLES), async (c) => {
   const id = parseInt(c.req.param('id') || '', 10);
   if (!id) return c.json({ error: 'Invalid receipt id' }, 400);
 
@@ -1248,6 +1510,9 @@ serveReceiptAdmin.post('/receipt/:id/void', requireRole('admin', 'manager', 'sup
 
   const user = c.get('user') as { id: number } | undefined;
   const db = getDb(c.env);
+  const before = await queryFirst<{ serve_queue_id: number; job_status_before: string | null }>(
+    db, 'SELECT serve_queue_id, job_status_before FROM serve_receipts WHERE id = ?', id);
+
   const r = await execute(
     db,
     `UPDATE serve_receipts
@@ -1257,15 +1522,76 @@ serveReceiptAdmin.post('/receipt/:id/void', requireRole('admin', 'manager', 'sup
   );
   if (!r.meta.changes) return c.json({ error: 'Receipt not found or already voided' }, 404);
 
+  // Put the job back. Signing advanced it to 'served'; striking the only
+  // acknowledgement for it and leaving 'served' in place meant a job that
+  // still needed serving looked done, with nothing to tell the officer.
+  //
+  // Only when NO other signed receipt survives — a job legitimately
+  // holding a second, valid acknowledgement must stay served.
+  let jobReverted = false;
+  if (before?.serve_queue_id) {
+    const survivor = await queryFirst<{ n: number }>(
+      db,
+      "SELECT COUNT(*) AS n FROM serve_receipts WHERE serve_queue_id = ? AND status = 'signed'",
+      before.serve_queue_id,
+    );
+    if (!survivor?.n) {
+      // job_status_before is NULL on receipts written before 0209. Falling
+      // back to 'in_progress' is honest for those: attempts demonstrably
+      // happened, and it is the state that puts the job back in front of
+      // an officer rather than inventing a more specific claim.
+      const restore = before.job_status_before || 'in_progress';
+      const u = await execute(
+        db,
+        "UPDATE serve_queue SET status = ?, serve_date = NULL, updated_at = datetime('now') WHERE id = ?",
+        restore, before.serve_queue_id,
+      ).catch(() => null);
+      jobReverted = !!u?.meta.changes;
+    }
+  }
+
   await recordAudit(c, {
     action: 'SERVE_RECEIPT_VOID',
     entityType: 'serve_receipts',
     entityId: id,
-    details: { reason },
+    details: { reason, job_reverted: jobReverted },
     actorId: user?.id ?? null,
   }).catch(() => undefined);
 
-  return c.json({ success: true });
+  return c.json({ success: true, job_reverted: jobReverted });
 });
+
+/**
+ * Age out email deliveries that will never resolve.
+ *
+ * email_status starts 'pending' and is settled by a follow-up call from
+ * the signing page. If that page closes first — the subject walks away,
+ * the tab is killed, the browser is backgrounded and reaped — nothing
+ * ever settles it, and the record goes on claiming a delivery is in
+ * flight. Months later an officer reading "pending" has no way to know
+ * it means "never sent".
+ *
+ * 'unresolved', not 'failed'. We genuinely do not know: the mail may have
+ * gone out and only the confirmation been lost. Recording a failure we
+ * cannot demonstrate is the same class of mistake as leaving 'pending'.
+ *
+ * Called from the cron in src/index.ts. Returns the number aged out so a
+ * sudden spike is visible in the logs rather than silent.
+ */
+export async function sweepStaleReceiptEmails(env: Env['Bindings'], olderThanHours = 24): Promise<number> {
+  const r = await execute(
+    getDb(env),
+    `UPDATE serve_receipts
+        SET email_status = 'unresolved',
+            email_error = 'No delivery confirmation was received; the signing page '
+                          || 'likely closed before the copy could be sent.'
+      WHERE email_status = 'pending'
+        AND created_at < datetime('now', ?)`,
+    `-${Math.max(1, Math.min(720, olderThanHours))} hours`,
+  ).catch(() => null);
+  const n = Number(r?.meta.changes ?? 0);
+  if (n > 0) log.info('Aged out stale receipt email deliveries', { count: n, olderThanHours });
+  return n;
+}
 
 export default serveReceipt;

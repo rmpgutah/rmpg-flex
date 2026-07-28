@@ -7,6 +7,8 @@
 // separately and the two must agree.
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   resolveReceiptVariant,
   isEntityName,
@@ -309,5 +311,198 @@ describe('an entity can never be the signer', () => {
       residesAtAddress: true, authorizedAgent: false,
       namedParty: 'Andrew Scott Peterson',
     })).toBe('individual');
+  });
+});
+
+describe('signature payload hardening', () => {
+  // `data:image/*` treated an SVG as a signature. SVG can carry script,
+  // and this value is rendered back into an officer's DOM and embedded in
+  // a PDF — the permissive test was a stored-XSS vector wearing a
+  // signature's clothes.
+  const ok = `data:image/png;base64,${'A'.repeat(200)}`;
+
+  it('accepts a real PNG signature', () => {
+    expect(validateReceiptSubmission(submission({ recipient_signature: ok }))).toBeNull();
+  });
+
+  it('accepts JPEG, which the typed-signature path can produce', () => {
+    expect(validateReceiptSubmission(submission({
+      recipient_signature: `data:image/jpeg;base64,${'A'.repeat(200)}`,
+    }))).toBeNull();
+  });
+
+  it.each([
+    ['svg', `data:image/svg+xml;base64,${'A'.repeat(200)}`],
+    ['svg with inline script', 'data:image/svg+xml,<svg onload="alert(1)">' + 'x'.repeat(200)],
+    ['gif', `data:image/gif;base64,${'A'.repeat(200)}`],
+    ['html masquerading', `data:text/html;base64,${'A'.repeat(200)}`],
+    ['non-base64 body', `data:image/png;base64,${'<'.repeat(200)}`],
+  ])('rejects %s', (_label, value) => {
+    expect(validateReceiptSubmission(submission({ recipient_signature: value })))
+      .toMatch(/signature is required/i);
+  });
+});
+
+describe('every officer-side route is gated', () => {
+  // src/middleware/auth.ts carries readOnlyRoleGuard as a default-deny
+  // backstop for MUTATIONS — its own comment notes that a handler which
+  // forgets requireRole is "open to every authenticated role". Reads have
+  // no such backstop, which is precisely how GET /receipt/:id and
+  // /receipt/:id/document shipped ungated, returning a member of the
+  // public's signature image, phone, email and physical description to
+  // any account with a login, client_viewer included.
+  //
+  // A ratchet rather than a test of one route: the failure mode is a
+  // FUTURE route added without a gate, and that is what this catches.
+  const SRC = readFileSync(join(__dirname, '..', 'src', 'routes', 'serveReceipt.ts'), 'utf8');
+
+  it('declares requireRole on every serveReceiptAdmin handler', () => {
+    // Three lines of lookahead: the multi-line form puts the path on line
+    // two and requireRole on line three.
+    const handlers = SRC.match(/serveReceiptAdmin\.(get|post|put|delete)\((?:[^\n]*\n){0,2}[^\n]*/g) ?? [];
+    expect(handlers.length).toBeGreaterThan(4);
+    const ungated = handlers.filter((h) => !h.includes('requireRole') && !h.includes('RECEIPT_READ_ROLES'));
+    expect(
+      ungated,
+      'every officer-side route must name the roles that may reach it — reads '
+      + 'have no default-deny backstop, only mutations do',
+    ).toEqual([]);
+  });
+
+  it('does not let a read-only client role reach a signature', () => {
+    expect(SRC).toMatch(/RECEIPT_READ_ROLES/);
+    const decl = SRC.slice(SRC.indexOf('const RECEIPT_READ_ROLES'), SRC.indexOf('const RECEIPT_READ_ROLES') + 200);
+    expect(decl).not.toContain('client_viewer');
+  });
+});
+
+describe('integrity guards (migration 0209)', () => {
+  const SRC = readFileSync(join(__dirname, '..', 'src', 'routes', 'serveReceipt.ts'), 'utf8');
+  const MIG = readFileSync(join(__dirname, '..', 'migrations', '0209_serve_receipt_integrity.sql'), 'utf8');
+
+  it('constrains one SIGNED receipt per job, not one receipt per job', () => {
+    // Partial index. Without the WHERE clause a voided receipt would
+    // permanently poison the job — a supervisor could never record the
+    // corrected one.
+    expect(MIG).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS idx_serve_receipts_one_signed/);
+    expect(MIG).toMatch(/WHERE status = 'signed'/);
+  });
+
+  it('translates the constraint into a stated conflict on all three write paths', () => {
+    // Three independent paths — subject's phone, transcribed paper,
+    // officer-attested refusal. The token burn stops one running twice; it
+    // does nothing about two DIFFERENT paths firing for one doorstep.
+    // Without this the second returns a 500 an officer will simply retry.
+    const guards = SRC.match(/isDuplicateSignedReceipt\(err\)/g) ?? [];
+    expect(guards.length).toBe(3);
+    expect(SRC).toMatch(/code: 'already_signed'/);
+  });
+
+  it('captures the job status BEFORE the receipt advances it', () => {
+    // Restoring on void needs the status the job actually had. Guessing
+    // 'in_progress' is wrong for a job that was 'pending' when served on
+    // the first attempt, and inventing a plausible status on a legal
+    // record is worse than the bug it papers over.
+    expect(MIG).toMatch(/ADD COLUMN job_status_before TEXT/);
+    const priors = SRC.match(/priorStatus/g) ?? [];
+    expect(priors.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('reverts the job on void, but only when no signed receipt survives', () => {
+    // A job legitimately holding a second valid acknowledgement must stay
+    // served. Reverting unconditionally would be a different false fact.
+    expect(SRC).toMatch(/SELECT COUNT\(\*\) AS n FROM serve_receipts WHERE serve_queue_id = \? AND status = 'signed'/);
+    expect(SRC).toMatch(/if \(!survivor\?\.n\)/);
+    expect(SRC).toMatch(/serve_date = NULL/);
+  });
+
+  it('falls back honestly for receipts written before 0209', () => {
+    // job_status_before is NULL on those. 'in_progress' is defensible —
+    // attempts demonstrably happened — and it puts the job back in front
+    // of an officer rather than asserting something more specific.
+    expect(SRC).toMatch(/before\.job_status_before \|\| 'in_progress'/);
+  });
+});
+
+describe('isDuplicateSignedReceipt', () => {
+  it('matches the D1 unique-constraint error and not unrelated failures', async () => {
+    const { isDuplicateSignedReceipt } = await import('../src/routes/serveReceipt');
+    expect(isDuplicateSignedReceipt(new Error(
+      'D1_ERROR: UNIQUE constraint failed: index idx_serve_receipts_one_signed'))).toBe(true);
+    expect(isDuplicateSignedReceipt(new Error('UNIQUE constraint failed: serve_receipts.id'))).toBe(true);
+    // Must NOT swallow an unrelated constraint — a FK violation on another
+    // table is a real bug and has to surface, not read as "already signed".
+    expect(isDuplicateSignedReceipt(new Error('UNIQUE constraint failed: users.username'))).toBe(false);
+    expect(isDuplicateSignedReceipt(new Error('no such column: foo'))).toBe(false);
+    expect(isDuplicateSignedReceipt(null)).toBe(false);
+  });
+});
+
+describe('lifecycle hardening (migration 0210)', () => {
+  const SRC = readFileSync(join(__dirname, '..', 'src', 'routes', 'serveReceipt.ts'), 'utf8');
+  const MIG = readFileSync(join(__dirname, '..', 'migrations', '0210_serve_receipt_lifecycle.sql'), 'utf8');
+  const INDEX = readFileSync(join(__dirname, '..', 'src', 'index.ts'), 'utf8');
+
+  it('indexes the column two handlers join through', () => {
+    expect(MIG).toMatch(/CREATE INDEX IF NOT EXISTS idx_serve_receipts_token/);
+  });
+
+  it('ages a never-resolved email to unresolved, not failed', () => {
+    // We genuinely do not know: the mail may have gone and only the
+    // confirmation been lost. Recording a failure we cannot demonstrate is
+    // the same class of mistake as leaving it 'pending' forever.
+    expect(SRC).toMatch(/email_status = 'unresolved'/);
+    expect(SRC).not.toMatch(/SET email_status = 'failed'\s*$/m);
+    expect(INDEX).toMatch(/sweepStaleReceiptEmails/);
+  });
+
+  it('bounds the sweep window so a bad argument cannot wipe recent rows', () => {
+    expect(SRC).toMatch(/Math\.max\(1, Math\.min\(720, olderThanHours\)\)/);
+  });
+
+  it('names the refusal channel rather than shipping an undocumented value', () => {
+    // The documented set is mobile | paper. The refusal path introduced
+    // 'officer' without documenting it.
+    expect(SRC).toMatch(/'refusal', \?, 'refused'/);
+    expect(SRC).not.toMatch(/'officer', \?, 'refused'/);
+  });
+
+  it('requires a refusal reason that actually says something', () => {
+    // "n" satisfies a truthiness check and tells a court nothing. This is
+    // the only account of a doorstep where nobody signed.
+    expect(SRC).toMatch(/reasonText\.length < 15/);
+  });
+
+  it('truncates the JSON LIST, never the string', () => {
+    // A blob cut mid-token fails at READ time on a legal record, which is
+    // far worse than failing at write time where someone can see it.
+    expect(SRC).toMatch(/function boundedJson/);
+    expect(SRC).toMatch(/boundedJson\(documents, 50, 8_000\)/);
+    expect(SRC).toMatch(/boundedJson\(attestations, 20, 16_000\)/);
+  });
+});
+
+describe('boundedJson', () => {
+  it('always returns parseable JSON, however hard it truncates', async () => {
+    const { boundedJson } = await import('../src/routes/serveReceipt');
+    const fat = Array.from({ length: 50 }, (_, i) => ({ title: 'x'.repeat(200), copies: i }));
+    const out = boundedJson(fat, 50, 1_000);
+    expect(() => JSON.parse(out)).not.toThrow();
+    expect(out.length).toBeLessThanOrEqual(1_000);
+    expect(JSON.parse(out).length).toBeGreaterThan(0);
+  });
+
+  it('keeps everything when it already fits', async () => {
+    const { boundedJson } = await import('../src/routes/serveReceipt');
+    const small = [{ title: 'Summons', copies: 1 }, { title: 'Complaint', copies: 1 }];
+    expect(JSON.parse(boundedJson(small, 50, 8_000))).toEqual(small);
+  });
+
+  it('never returns an empty list while one item could fit', async () => {
+    // Truncating to nothing would lose the itemisation entirely — the
+    // exact thing a service dispute turns on.
+    const { boundedJson } = await import('../src/routes/serveReceipt');
+    const out = boundedJson([{ title: 'y'.repeat(5_000), copies: 1 }], 50, 100);
+    expect(JSON.parse(out).length).toBe(1);
   });
 });
