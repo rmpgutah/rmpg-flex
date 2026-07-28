@@ -1540,6 +1540,41 @@ export default function ServePage() {
           <div className="h-full flex flex-col">
             {/* Filter buttons */}
             <div className="flex items-center gap-1.5 px-3 py-2 border-b border-rmpg-700 overflow-x-auto tab-scroll">
+              {/* Search box. The filter it drives (recipient / case # / client /
+                  address, see filteredJobs) was fully implemented but had NO
+                  input bound to it anywhere — searchQuery could only ever be
+                  '' or be cleared, so that whole branch was unreachable. This
+                  is the missing surface, not new filtering logic. */}
+              <div className="relative flex-shrink-0">
+                <SearchIcon
+                  size={11}
+                  aria-hidden="true"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 text-fg-muted pointer-events-none"
+                />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search name, case #, client, address…"
+                  aria-label="Search serve jobs"
+                  className="w-56 pl-6 pr-6 py-1 text-[11px] rounded-[2px] bg-surface-sunken border border-rmpg-600 text-rmpg-100 placeholder:text-fg-muted focus:outline-none focus:ring-1 focus:ring-rmpg-400/50 focus:border-rmpg-400"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    aria-label="Clear search"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-fg-muted hover:text-rmpg-200"
+                  >
+                    <X size={11} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+              {searchQuery.trim() && (
+                <span className="text-[10px] text-fg-muted tabular-nums whitespace-nowrap flex-shrink-0">
+                  {filteredJobs.length} match{filteredJobs.length === 1 ? '' : 'es'}
+                </span>
+              )}
               {STATUS_FILTERS.map(f => (
                 <button type="button"
                   key={f.value}

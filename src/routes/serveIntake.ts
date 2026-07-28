@@ -1641,7 +1641,18 @@ si.get('/queue', async (c) => {
   await reconcileScheduleSchema(db);
   const officerParam = c.req.query('officer_id');
   const statusParam = c.req.query('status') ?? 'pending,assigned';
-  const statuses = statusParam.split(',').map((s) => s.trim()).filter(Boolean);
+  // Allowlist rather than pass the raw split through: `status` is caller-supplied
+  // and fed straight into an IN-list, so an unfiltered `?status=a,a,a,…` past 100
+  // entries throws at D1's bound-parameter cap. Constraining to the known enum
+  // bounds the list by construction and drops junk filters that could only ever
+  // match zero rows.
+  const VALID_QUEUE_STATUSES = new Set([
+    'pending', 'assigned', 'in_progress', 'served',
+    'attempted', 'failed', 'cancelled', 'archived',
+  ]);
+  const statuses = [...new Set(
+    statusParam.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+  )].filter((s) => VALID_QUEUE_STATUSES.has(s));
   if (!statuses.length) return c.json([]);
   const placeholders = statuses.map(() => '?').join(',');
 
