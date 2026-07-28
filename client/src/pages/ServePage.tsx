@@ -1011,15 +1011,28 @@ export default function ServePage() {
   const filteredJobs = useMemo(() => {
     let result = statusFilter === 'all' ? jobs : jobs.filter(j => j.status === statusFilter);
 
-    // Search filter — applies across all folders
+    // Search filter — applies across all folders.
+    //
+    // Matches the WHOLE address the card displays, not just the street line.
+    // `recipient_address` holds "5245 South College Drive"; city/state/zip are
+    // separate columns. Searching the city was therefore impossible even though
+    // the card renders "5245 South College Drive, Murray, UT, 84123" — typing
+    // "Murray" returned zero matches against text plainly on screen. Composing
+    // the same string the card builds keeps what-you-see and what-you-search
+    // identical, which is the only rule a user can predict.
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      result = result.filter(j =>
-        j.recipient_name.toLowerCase().includes(q) ||
-        (j.case_number || '').toLowerCase().includes(q) ||
-        (j.client_name || '').toLowerCase().includes(q) ||
-        (j.recipient_address || '').toLowerCase().includes(q),
-      );
+      const haystack = (j: ServeJob) => [
+        j.recipient_name,
+        j.case_number,
+        j.client_name,
+        j.recipient_address,
+        j.recipient_city,
+        j.recipient_state,
+        j.recipient_zip,
+        j.document_type,
+      ].filter(Boolean).join(' ').toLowerCase();
+      result = result.filter(j => haystack(j).includes(q));
     }
 
     // Feature 1: Sort by deadline urgency
@@ -1555,7 +1568,7 @@ export default function ServePage() {
                   type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search name, case #, client, address…"
+                  placeholder="Search name, case #, client, address, city…"
                   aria-label="Search serve jobs"
                   className="w-56 pl-6 pr-6 py-1 text-[11px] rounded-[2px] bg-surface-sunken border border-rmpg-600 text-rmpg-100 placeholder:text-fg-muted focus:outline-none focus:ring-1 focus:ring-rmpg-400/50 focus:border-rmpg-400"
                 />
@@ -1958,32 +1971,51 @@ export default function ServePage() {
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <div className="px-4 py-3 bg-surface-raised border border-rmpg-700 rounded-[2px] transition-colors hover:border-rmpg-400/30">
                 <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-1">Mileage Today</div>
+                {/* Falls back to the PLANNED distance stored on serve_routes for
+                    the day. Previously this only read `routeData` — ephemeral
+                    state set after using the Route Planner in this session — so
+                    the card showed "--" even with a saved route on the server.
+                    Verified live: 76.3 planned miles existed for the day while
+                    this rendered "--". The planned figure is labelled as such;
+                    it is not driven mileage and must not be read as billable. */}
                 <div className="text-lg font-bold text-rmpg-100 font-mono tabular-nums">
                   {routeData?.totalDistance
                     ? `${routeData.totalDistance.toFixed(1)} mi`
                     : stats?.mileage
                       ? `${stats.mileage.toFixed(1)} mi`
-                      : '--'
+                      : stats?.planned_mileage
+                        ? `${stats.planned_mileage.toFixed(1)} mi`
+                        : '--'
                   }
                 </div>
+                {!routeData?.totalDistance && !stats?.mileage && !!stats?.planned_mileage && (
+                  <div className="text-[10px] text-fg-muted mt-1">Planned — not recorded mileage</div>
+                )}
                 {routeData?.fuelCost && routeData.fuelCost > 0 && (
-                  <div className="text-[10px] text-rmpg-400 mt-1">
+                  <div className="text-[10px] text-fg-muted mt-1">
                     Fuel cost: ${routeData.fuelCost.toFixed(2)}
                   </div>
                 )}
               </div>
               <div className="px-4 py-3 bg-surface-raised border border-rmpg-700 rounded-[2px] transition-colors hover:border-rmpg-400/30">
                 <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-1">Route Efficiency</div>
+                {/* Efficiency is planned ÷ actual, so it genuinely cannot be
+                    computed without DRIVEN miles — and nothing on serve_routes
+                    or serve_attempts records an odometer, so `stats.mileage` is
+                    null by design rather than by accident. Say that, instead of
+                    rendering a bare "--" that reads like a loading failure. */}
                 <div className="text-lg font-bold text-rmpg-100 font-mono tabular-nums">
-                  {routeData && stats?.planned_mileage && stats.planned_mileage > 0
-                    ? `${Math.round((stats.planned_mileage / (routeData.totalDistance || 1)) * 100)}%`
+                  {routeData?.totalDistance && stats?.planned_mileage && stats.planned_mileage > 0
+                    ? `${Math.round((stats.planned_mileage / routeData.totalDistance) * 100)}%`
                     : '--'
                   }
                 </div>
-                {routeData && (
-                  <div className="text-[10px] text-rmpg-400 mt-1">
+                {routeData ? (
+                  <div className="text-[10px] text-fg-muted mt-1">
                     Est. drive time: {Math.floor((routeData.totalDuration || 0) / 60)}h {Math.round((routeData.totalDuration || 0) % 60)}m
                   </div>
+                ) : (
+                  <div className="text-[10px] text-fg-muted mt-1">Needs recorded mileage to compare</div>
                 )}
               </div>
             </div>

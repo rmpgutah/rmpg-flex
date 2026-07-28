@@ -51,10 +51,11 @@ function makeJob(over: Partial<ServeJob>): ServeJob {
 
 const noop = () => {};
 
-function renderCard(job: ServeJob) {
+function renderCard(job: ServeJob, isExpanded = false) {
   return render(
     <ServeJobCard
       job={job}
+      isExpanded={isExpanded}
       onAttempt={noop}
       onNavigate={noop}
       onSkipTrace={noop}
@@ -103,5 +104,40 @@ describe('ServeJobCard urgency chrome', () => {
   it('never renders a tier chip for the normal tier', () => {
     renderCard(makeJob({ status: 'pending', urgency_tier: 'normal' }));
     expect(screen.queryByText('NORMAL')).toBeNull();
+  });
+});
+
+// ── Diligence panel visibility ────────────────────────────────────────────
+// The panel was originally gated on `isOpenJob` (pending || in_progress).
+// That is backwards for the case that matters most: the Affidavit of
+// Non-Service is built from the diligence chain, and non-service jobs are
+// exactly the ones whose status is failed/attempted. On the live queue —
+// 0 pending, 0 in-progress — the gate meant the panel never rendered at all.
+describe('DiligencePanel visibility', () => {
+  const withAttempts = (status: string) =>
+    makeJob({
+      status: status as ServeJob['status'],
+      attempts: [
+        { id: 1, attempt_number: 1, attempt_at: '2026-07-20 15:00:00', result: 'no_answer' },
+        { id: 2, attempt_number: 2, attempt_at: '2026-07-22 01:00:00', result: 'no_answer' },
+      ] as unknown as ServeJob['attempts'],
+    });
+
+  it.each(['pending', 'in_progress', 'failed', 'attempted'] as const)(
+    'renders the diligence record for a %s job',
+    (status) => {
+      renderCard(withAttempts(status), true);
+      expect(screen.getByText('Diligence')).toBeTruthy();
+    },
+  );
+
+  it('hides it once the job is served — the chain is history, not evidence in progress', () => {
+    renderCard(withAttempts('served'), true);
+    expect(screen.queryByText('Diligence')).toBeNull();
+  });
+
+  it('shows nothing when there are no attempts to assess', () => {
+    renderCard(makeJob({ status: 'pending', attempts: [] }), true);
+    expect(screen.queryByText('Diligence')).toBeNull();
   });
 });

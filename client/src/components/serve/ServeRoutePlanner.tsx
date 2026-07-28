@@ -315,7 +315,14 @@ export default function ServeRoutePlanner({
         }
         if (saved.total_distance_miles) setTotalDistance(saved.total_distance_miles);
         if (saved.total_time_minutes) setTotalDuration(saved.total_time_minutes);
-      } catch {}
+      } catch {
+        // Deliberately non-fatal: a saved route that won't load must not stop
+        // the officer planning a new one. But it must not be SILENT either —
+        // the previous bare `catch {}` meant a failed load looked identical to
+        // "no route saved for today", so an officer could re-plan a run that
+        // already existed and never know the stored order had been lost.
+        if (!cancelled) setError("Couldn't load the saved route for this date — showing an unordered list.");
+      }
       setSavedRouteLoaded(true);
     })();
     return () => { cancelled = true; };

@@ -462,10 +462,15 @@ export default React.memo(function ServeJobCard({
             </div>
           )}
 
-          {/* Diligence record — sits directly above the raw timeline because
-              it is the READ of that timeline. Only shown while the job is
-              still open: once served, the chain is history, not a to-do. */}
-          {isOpenJob && job.attempts && job.attempts.length > 0 && (
+          {/* Diligence record — sits directly above the raw timeline because it
+              is the READ of that timeline.
+              Shown for every job EXCEPT a served one. The original gate was
+              `isOpenJob`, which was backwards: it hid the panel on exactly the
+              non-service jobs whose Affidavit of Non-Service is built from this
+              chain, and on the live queue (0 pending, 0 in-progress) that meant
+              it never rendered at all. Only a served job makes it moot — there
+              the chain is history, not evidence still being assembled. */}
+          {job.status !== 'served' && job.attempts && job.attempts.length > 0 && (
             <DiligencePanel attempts={job.attempts} />
           )}
 
