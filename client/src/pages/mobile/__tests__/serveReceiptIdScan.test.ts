@@ -51,3 +51,53 @@ describe('driver licence scan', () => {
     expect(PAGE).toMatch(/or just type your name/);
   });
 });
+
+describe('public surface accessibility', () => {
+  it('sets a document language for screen readers', () => {
+    // The app shell never sets lang — it is only read by staff. This page
+    // is read ALOUD to members of the public, and an unset lang makes a
+    // synthesiser guess the voice on a legal instrument.
+    expect(PAGE).toMatch(/document\.documentElement\.lang = 'en-US'/);
+  });
+
+  it('restores the prior lang on unmount', () => {
+    // The officer's console is one route away in the same session.
+    expect(PAGE).toMatch(/const priorLang = document\.documentElement\.lang/);
+    expect(PAGE).toMatch(/if \(!priorLang\) document\.documentElement\.lang = priorLang/);
+  });
+
+  it('shows progress, and announces it rather than only drawing it', () => {
+    // A form of unknown length on a doorstep is one people abandon. The
+    // bar is aria-hidden and paired with a live region, because five
+    // coloured rectangles say nothing to a screen reader.
+    expect(PAGE).toMatch(/sectionsDone/);
+    expect(PAGE).toMatch(/role="status"/);
+    expect(PAGE).toMatch(/Step \{sectionsDone\} of 5 complete/);
+  });
+
+  it('counts the read-only sections as already done', () => {
+    // Sections 1 and 3 require nothing. Starting the bar at zero would
+    // leave it motionless through the first third of the form.
+    expect(PAGE).toMatch(/const sectionsDone = 2/);
+  });
+});
+
+describe('offline capture — what the signer is told', () => {
+  it('does not claim a signature is saved when nothing is holding it', () => {
+    // Private browsing blocks the queue. Telling them it is saved would
+    // be a lie, and "try again" is the only action that can still work.
+    expect(PAGE).toMatch(/let queued = true;/);
+    expect(PAGE).toMatch(/this browser will not hold it/);
+  });
+
+  it('distinguishes an expired link from a failure they could retry', () => {
+    expect(PAGE).toMatch(/This link expired before your signature could be sent/);
+  });
+
+  it('reschedules on the delay the queue asks for', () => {
+    // A fixed tick polled a dead network four times a minute forever, on
+    // someone else's battery, for a signature they cannot see.
+    expect(PAGE).toMatch(/window\.setTimeout\(attempt, r\.retryInMs\)/);
+    expect(PAGE).not.toMatch(/setInterval\(attempt/);
+  });
+});

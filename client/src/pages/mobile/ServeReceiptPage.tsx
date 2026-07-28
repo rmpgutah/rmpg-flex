@@ -280,7 +280,16 @@ export default function ServeReceiptPage() {
   // one route away in the same session.
   useEffect(() => {
     document.documentElement.classList.add('public-form');
-    return () => document.documentElement.classList.remove('public-form');
+    // The app shell never sets lang, because it is only ever read by
+    // staff. This page is read aloud by screen readers to members of the
+    // public, and an unset lang makes a synthesiser guess the voice — on
+    // a legal instrument, mispronounced.
+    const priorLang = document.documentElement.lang;
+    if (!priorLang) document.documentElement.lang = 'en-US';
+    return () => {
+      document.documentElement.classList.remove('public-form');
+      if (!priorLang) document.documentElement.lang = priorLang;
+    };
   }, []);
 
   // Best-effort GPS. Never blocks the form — a denied permission is
@@ -300,9 +309,25 @@ export default function ServeReceiptPage() {
   useEffect(() => {
     if (!pending) return;
     let cancelled = false;
+    let timer = 0;
     const attempt = async () => {
-      const r = await flushQueued(token).catch(() => ({ status: 'offline' as const }));
-      if (cancelled || r.status === 'offline') return;
+      const r = await flushQueued(token)
+        .catch(() => ({ status: 'offline' as const, retryInMs: 60_000 }));
+      if (cancelled) return;
+      if (r.status === 'offline') {
+        // Reschedule on the delay the queue asked for. A fixed tick was
+        // polling a dead network four times a minute, indefinitely, on
+        // someone else's battery.
+        window.clearTimeout(timer);
+        timer = window.setTimeout(attempt, r.retryInMs);
+        return;
+      }
+      if (r.status === 'expired') {
+        setPending(false);
+        setSubmitError('This link expired before your signature could be sent. '
+          + 'Please ask the process server for a new one.');
+        return;
+      }
       if (r.status === 'sent') {
         setPending(false);
         setDone({ receiptId: r.body.receipt_id, emailStatus: r.body.email_status, variant: r.body.form_variant });
@@ -313,13 +338,16 @@ export default function ServeReceiptPage() {
           : (r as { message: string }).message);
       }
     };
-    const timer = window.setInterval(attempt, 15_000);
+    // 'online' and 'focus' remain the real signals — a phone reports
+    // online inside a dead zone, and a person picking the handset back up
+    // is the best predictor of connectivity there is. The timer is only
+    // the fallback.
     window.addEventListener('online', attempt);
     window.addEventListener('focus', attempt);
     void attempt();
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      window.clearTimeout(timer);
       window.removeEventListener('online', attempt);
       window.removeEventListener('focus', attempt);
     };
@@ -583,12 +611,36 @@ export default function ServeReceiptPage() {
     // the tap and the response would otherwise lose a signature already
     // given, and the officer would have to ask a stranger to do all of it
     // again on a doorstep.
-    try { await enqueueSubmission(token, payload); } catch { /* private mode — proceed unqueued */ }
+    // A persist failure is survivable but must not be silent: it means
+    // the safety net is absent, and the signer should know that before
+    // they walk away believing this is saved.
+    let queued = true;
+    try {
+      await enqueueSubmission(token, payload);
+    } catch {
+      queued = false;
+    }
 
     try {
       const r = await flushQueued(token);
       if (r.status === 'offline') {
-        setPending(true);
+        if (queued) {
+          setPending(true);
+        } else {
+          // Nothing is holding this. Telling them it is saved would be a
+          // lie, and "try again" is the only action that can still work.
+          setSubmitError(
+            'Your signature could not be sent and this browser will not hold it — '
+            + 'private browsing blocks that. Stay on this page and try again when '
+            + 'you have signal, or ask the process server for the paper form.',
+          );
+        }
+        setSubmitting(false);
+        return;
+      }
+      if (r.status === 'expired') {
+        setSubmitError('This link expired before your signature could be sent. '
+          + 'Please ask the process server for a new one.');
         setSubmitting(false);
         return;
       }
@@ -737,6 +789,14 @@ export default function ServeReceiptPage() {
   });
   const answeredWhoIsSigning = partyIsEntity || isNamedParty !== null;
 
+  // How much of the form is behind them. Sections 1 and 3 are read-only,
+  // so they count as done on arrival — claiming otherwise would show a
+  // bar that never moves for the first third of the form.
+  const sectionsDone = 2
+    + (answeredWhoIsSigning && recipientName.trim() ? 1 : 0)
+    + (attestations.filter((a) => a.required).every((a) => accepted[a.id]) ? 1 : 0)
+    + (signature ? 1 : 0);
+
   return (
     <div className="min-h-screen bg-surface-base pb-32">
       <header className="px-4 py-4 border-b border-rmpg-700 bg-surface-sunken">
@@ -753,6 +813,21 @@ export default function ServeReceiptPage() {
             </span>
           )}
         </div>
+        {/* Progress. A stranger on a doorstep has no idea how long this
+            is, and a form of unknown length is one people abandon. */}
+        <div className="flex items-center gap-1.5 mt-2" aria-hidden>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <span
+              key={n}
+              className={`h-1 flex-1 rounded-[1px] ${
+                n <= sectionsDone ? 'bg-brand-500' : 'bg-border-subtle'
+              }`}
+            />
+          ))}
+        </div>
+        <p className="sr-only" role="status">
+          Step {sectionsDone} of 5 complete.
+        </p>
       </header>
 
       <div className="p-3 max-w-lg mx-auto">
