@@ -186,6 +186,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
   const [mapReady, setMapReady] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(10);
   const [noteModal, setNoteModal] = useState<{ open: boolean; noteId?: number; queueItem?: QueueMapItem }>({ open: false });
+  const [trailQueueId, setTrailQueueId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -289,6 +290,8 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
             if (noteBtn) noteBtn.addEventListener('click', () =>
               setNoteModal({ open: true, queueItem: item }),
             );
+            const trailBtn = document.getElementById(`srv-popup-trail-${item.id}`);
+            if (trailBtn) trailBtn.addEventListener('click', () => setTrailQueueId(item.id));
           }, 50);
         });
 
@@ -308,6 +311,47 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       }
     }
   }, [mapReady, items, onSelectQueue, currentZoom]);
+
+  // Draw/clear the attempt-history trail overlay for a selected serve item.
+  // GeoJSON line source/layer (not a marker) — kept separate from the
+  // marker-plotting effect above so selecting a trail doesn't re-cluster markers.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const sourceId = 'srv-attempt-trail';
+    const layerId = 'srv-attempt-trail-layer';
+
+    const clearTrail = () => {
+      if (map.getLayer(layerId)) map.removeLayer(layerId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
+    };
+
+    if (trailQueueId == null) {
+      clearTrail();
+      return;
+    }
+
+    let cancelled = false;
+    apiFetch<{ trail: Array<{ attempt_at: string; latitude: number; longitude: number; result: string }>; polyline: [number, number][] }>(
+      `/process-server/${trailQueueId}/gps-trail`,
+    ).then((res) => {
+      if (cancelled || res.polyline.length < 2) return;
+      clearTrail();
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: res.polyline } },
+      });
+      map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        paint: { 'line-color': '#94a3b8', 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': 0.8 },
+      });
+    }).catch(() => { /* non-fatal — trail stays hidden */ });
+
+    return () => { cancelled = true; clearTrail(); };
+  }, [trailQueueId, mapReady]);
 
   const notMapped = items.filter((it) => it.recipient_lat == null || it.recipient_lng == null);
 
@@ -497,6 +541,9 @@ function buildPopupHtml(item: QueueMapItem): string {
         </button>
         <button id="srv-popup-note-${item.id}" style="flex:1;padding:3px 6px;background:rgba(212,160,23,0.15);border:1px solid rgba(212,160,23,0.4);border-radius:2px;color:#d4a017;font-size:10px;cursor:pointer;font-family:monospace;">
           ${item.location_note_id ? 'View Notation' : 'Add Notation'}
+        </button>
+        <button id="srv-popup-trail-${item.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">
+          History
         </button>
       </div>
     </div>

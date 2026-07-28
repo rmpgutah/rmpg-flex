@@ -204,6 +204,12 @@ vi.mock('../../../utils/mapboxLoader', () => {
       return this;
     }
     remove() { /* noop */ }
+    addSource() { /* noop */ }
+    addLayer() { /* noop */ }
+    getSource() { return null; }
+    getLayer() { return null; }
+    removeLayer() { /* noop */ }
+    removeSource() { /* noop */ }
   }
   class FakeMarker {
     setLngLat() { return this; }
