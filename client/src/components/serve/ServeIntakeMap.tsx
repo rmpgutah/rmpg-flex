@@ -84,13 +84,20 @@ function buildServeMarker(item: QueueMapItem): HTMLElement {
   const tier = urgencyTierForDeadline(item.deadline, Date.now());
 
   const el = document.createElement('div');
+  // Build box-shadow upfront: base glow + optional risk halo
+  // (allows safe composition of urgency ring, notation badge, and risk icon without overlap)
+  const hasRisk = isRiskFlagged(item);
+  const boxShadowValue = hasRisk
+    ? `0 0 8px ${glow}, 0 0 0 3px rgba(239,68,68,0.6)`
+    : `0 0 8px ${glow}`;
+
   el.style.cssText = `
     position:relative;
     width:28px;height:28px;
     border-radius:50%;
     background:${color};
     border:2px solid rgba(255,255,255,0.7);
-    box-shadow:0 0 8px ${glow};
+    box-shadow:${boxShadowValue};
     display:flex;align-items:center;justify-content:center;
     cursor:pointer;
     transition:transform 0.15s;
@@ -131,10 +138,11 @@ function buildServeMarker(item: QueueMapItem): HTMLElement {
   }
 
   // Officer-safety risk halo
-  if (isRiskFlagged(item)) {
-    el.style.boxShadow += ', 0 0 0 3px rgba(239,68,68,0.6)';
+  // Note: box-shadow already includes risk halo (computed upfront to avoid unsafe += on style.boxShadow).
+  // Risk icon positioned at bottom-right to avoid notation badge (top-right) and urgency ring (inset:-6px).
+  if (hasRisk) {
     const warningIcon = document.createElement('div');
-    warningIcon.style.cssText = 'position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);font-size:10px;';
+    warningIcon.style.cssText = 'position:absolute;bottom:-4px;right:-4px;font-size:10px;';
     warningIcon.textContent = '⚠';
     warningIcon.title = 'Officer safety flag';
     el.appendChild(warningIcon);
