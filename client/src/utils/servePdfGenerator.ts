@@ -509,6 +509,8 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
     if (i > 1) addConfidentialWatermark(doc);
   }
 
+  tightLayout = false;
+
   finalizePoliceReport(doc, {
     barcode: {
       formMetadata: {
@@ -749,6 +751,8 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
     addPageFooter(doc, i, totalPages, 'serve_non_service');
     if (i > 1) addConfidentialWatermark(doc);
   }
+
+  tightLayout = false;
 
   finalizePoliceReport(doc, {
     barcode: {
@@ -1287,6 +1291,8 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     // appearance on the disclaimer paragraph's first line.
   }
 
+  tightLayout = false;
+
   finalizePoliceReport(doc, {
     barcode: {
       formMetadata: {
@@ -1434,6 +1440,8 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     addPageFooter(doc, i, totalPages, 'service_log');
     if (i > 1) addConfidentialWatermark(doc);
   }
+
+  tightLayout = false;
 
   finalizePoliceReport(doc, {
     barcode: {
@@ -1802,7 +1810,7 @@ function drawInstrumentTitle(
   doc.setLineWidth(BORDER.ACCENT_HEADER);
   doc.line(lx, y + 0.7, lx + cw, y + 0.7);
 
-  y += 4.6;
+  y += tightLayout ? 4.0 : 4.6;
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE + 1);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1827,12 +1835,12 @@ function drawInstrumentTitle(
     doc.setFontSize(FONT.SIZE_SECTION_TITLE + 1);
   }
 
-  y += 1.6;
+  y += tightLayout ? 1.3 : 1.6;
   doc.setDrawColor(...COLOR.RULE_STRONG);
   doc.setLineWidth(BORDER.TABLE_OUTER);
   doc.line(lx, y, lx + cw, y);
 
-  return y + SPACING.LG;
+  return y + (tightLayout ? SPACING.MD : SPACING.LG);
 }
 
 interface SubjectRow {
@@ -1853,6 +1861,9 @@ interface SubjectRow {
  * questions a reader arrives with — "who was served?" and "who signed
  * for them?" — are answered before any field is read.
  */
+/** Set for the life of one render when the page is under fit pressure. */
+let tightLayout = false;
+
 function drawSubjectPanel(
   doc: jsPDF,
   x: number, y: number, w: number,
@@ -1864,8 +1875,8 @@ function drawSubjectPanel(
   /** Measure only — return the height without drawing anything. */
   measureOnly = false,
 ): number {
-  const pad = 1.6;
-  const rowH = 2.9;
+  const pad = tightLayout ? 1.3 : 1.6;
+  const rowH = tightLayout ? 2.6 : 2.9;
   // Clearance ONLY after a value that wrapped. A two-line address set its
   // continuation against the label below — circled "2 lines" on the
   // 2026-07-27 service. Widening every row instead cost ~1mm per panel and
@@ -2234,10 +2245,41 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // declarations, the page tightens rather than spilling — the reader
   // gets a denser single sheet instead of a second one carrying a
   // signature away from most of the form.
-  const dense = !data.photos?.length
-    && (captionWraps(doc, data.defendantName || '')
-      || measureDeclarations(doc, data.attestations, ffw, blank) > DENSE_THRESHOLD_MM);
-  const gap = (normal: number) => (dense ? normal * 0.5 : normal);
+  // ── Fit tier, decided before anything is drawn ──
+  //
+  // Three independent things inflate this instrument, and the first
+  // version of this only knew about one of them:
+  //
+  //   a wrapping caption   — a multi-entity defendant
+  //   declined statements  — each adds a struck line plus an annotation
+  //   photographs          — the largest single block on the page
+  //
+  // Photographs previously DISABLED density, which was backwards: the
+  // page that most needs compressing was the one that got none.
+  //
+  // Tiers rather than a boolean, because the three can stack. `tight`
+  // exists for the case where dense alone still overflows, and shrinks
+  // things that cost legibility — so it is entered only when the
+  // alternative is a second sheet, which costs more.
+  const declH0 = measureDeclarations(doc, data.attestations, ffw, blank);
+  const declinedCount = blank ? 0 : data.attestations.filter((a) => !a.accepted).length;
+  const photoCount = data.photos?.length ?? 0;
+  const pressure =
+    (captionWraps(doc, data.defendantName || '') ? 1 : 0)
+    + (declH0 > DENSE_THRESHOLD_MM ? 1 : 0)
+    + (declinedCount > 0 ? 1 : 0)
+    + (photoCount > 0 ? 2 : 0);   // photographs weigh double — ~40mm
+  // ANY pressure compresses hard. The four ordinary variations score
+  // zero — a single-line caption, no declines, no photographs — so they
+  // are untouched. Everything above zero was, empirically, a second
+  // sheet, and a denser page beats a detached one every time.
+  const tight = pressure >= 1;
+  const dense = pressure >= 1;
+  const gap = (normal: number) => (tight ? normal * 0.3 : dense ? normal * 0.5 : normal);
+  // Module-scoped for the panel helper, which cannot take another
+  // parameter without threading it through two call sites for nothing.
+  // Reset unconditionally at the end of this render.
+  tightLayout = tight;
 
   setActiveCaseNumber(data.caseNumber);
   let y = drawNibrsHeader(doc, {
@@ -2553,12 +2595,16 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     y = sec.contentY + SPACING.MD;
     // Two across. Bigger than a thumbnail so a door number is readable;
     // small enough that three photos do not claim a page of their own.
+    // Three across when the page is under pressure, two otherwise. A
+    // door number stays legible at either size; a second sheet does not
+    // become less annoying.
+    const across = tight ? 3 : 2;
     const gap = 3;
-    const w = (ffw - gap) / 2;
-    const h = w * 0.62;
+    const w = (ffw - gap * (across - 1)) / across;
+    const h = w * (tight ? 0.58 : 0.62);
     let px = lx;
-    for (let i = 0; i < Math.min(data.photos.length, 4); i++) {
-      if (i > 0 && i % 2 === 0) { y += h + gap; px = lx; }
+    for (let i = 0; i < Math.min(data.photos.length, across); i++) {
+      if (i > 0 && i % across === 0) { y += h + gap; px = lx; }
       try {
         doc.addImage(data.photos[i], 'JPEG', px, y, w, h);
         doc.setDrawColor(...COLOR.BORDER_FIELD);
@@ -2710,6 +2756,8 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
         : (data.copy ? RECEIPT_COPY_LABEL[data.copy].toUpperCase() : 'COPY FOR THE PERSON SERVED'),
     });
   }
+
+  tightLayout = false;
 
   finalizePoliceReport(doc, {
     barcode: {
