@@ -695,7 +695,12 @@ export function drawNibrsHeader(
         doc.setFont(FONT_FAMILY, 'bold');
         doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
         doc.setTextColor(...COLOR.TEXT_SECONDARY);
-        doc.text(row.label, boxX + 1.5, ry + rowH - 1.7);
+        // Vertically CENTRE the label in its row. Bottom-aligning was fine at
+        // the old fixed 5.2mm, but rows now stretch to fill the box, so a
+        // single-row header (the affidavits, which carry only CASE NUMBER)
+        // drew its label pinned to the bottom of a 15.6mm cell with an empty
+        // band above it -- reading as another phantom row.
+        doc.text(row.label, boxX + 1.5, ry + rowH / 2 + 0.9);
         doc.setFont(FONT_FAMILY, 'bold');
         let vSize: number = FONT.SIZE_FIELD_VALUE;
         doc.setFontSize(vSize);
@@ -706,7 +711,7 @@ export function drawNibrsHeader(
           doc.setFontSize(vSize);
         }
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
-        doc.text(row.value, boxX + labelW + 1.5, ry + rowH - 1.7);
+        doc.text(row.value, boxX + labelW + 1.5, ry + rowH / 2 + 1.1);
       });
       doc.line(boxX + labelW, y, boxX + labelW, y + boxH);
     }
