@@ -169,12 +169,26 @@ function addCenteredTitle(doc: jsPDF, title: string, y: number, fontSize = FONT.
 
 // ── Helper: Notary section ───────────────────────────────────
 
-function addNotarySection(doc: jsPDF, y: number): number {
+function addNotarySection(doc: jsPDF, y: number, heading = 'JURAT'): number {
   const cw = getContentWidth(doc);
   const lx = getLeftX();
-  const boxH = 42; // Notary section fixed height
+  // 42mm fitted the old three-bare-rules block. A real jurat carries a venue,
+  // the subscribed-and-sworn clause, a notary signature, the commission
+  // expiry and a seal box -- content that ended at ~41.8mm, so the commission
+  // label landed ON the box border and the rule struck through the Rule 4(d)
+  // citation drawn beneath it.
+  // Content measures ~42mm (venue 13 + oath 11 + signature/commission 15 +
+  // padding); 45 leaves 3mm clearance without over-reserving. At 48, plus a
+  // 10mm citation reserve, the block asked for 60mm against ~57mm of
+  // remaining page and pushed the JURAT alone onto a second sheet -- a jurat
+  // separated from the affidavit it certifies is a standard rejection reason,
+  // so the reserve has to be honest rather than generous.
+  const boxH = 45;
 
-  y = checkPageBreak(doc, y, boxH + SPACING.LG);
+  // +6 covers the single 5pt Rule 4(d) citation the callers draw immediately
+  // after this block, so the two stay together instead of the citation
+  // triggering a break of its own.
+  y = checkPageBreak(doc, y, boxH + SPACING.LG + 6);
 
   // Outer border
   doc.setDrawColor(...COLOR.BORDER_SECTION);
@@ -188,46 +202,81 @@ function addNotarySection(doc: jsPDF, y: number): number {
   const notaryAccentRgb = resolveSectionAccentColor('NOTARY PUBLIC');
   doc.setFillColor(notaryAccentRgb[0], notaryAccentRgb[1], notaryAccentRgb[2]);
   doc.rect(LAYOUT.PAGE_MARGIN, y, cw, barH, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text('NOTARY PUBLIC', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, y + (barH + getCapHeight(FONT.SIZE_SECTION_TITLE)) / 2);
+  doc.text(heading, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET,
+    y + (barH + getCapHeight(FONT.SIZE_SECTION_TITLE)) / 2);
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  let ny = y + barH + SPACING.LG + 2;
+  let ny = y + barH + SPACING.MD + 2;
 
-  // Notary lines
-  const lineX1 = lx;
-  const lineX2 = LAYOUT.PAGE_MARGIN + cw - SPACING.CONTENT_INSET;
-  const lineGap = 8; // Notary line spacing
+  // ── Venue ──
+  // A jurat is not three blank lines. It needs a VENUE (the state and county
+  // where the oath was administered), the subscribed-and-sworn clause with
+  // the date, the notary's signature, the commission expiry, and somewhere
+  // for the seal. Utah R. Civ. P. 4(d) affidavits are routinely rejected for
+  // a defective jurat, and the previous block -- NOTARY NAME / COMMISSION
+  // NUMBER / DATE on bare rules -- had no venue and no oath language at all.
+  const VEN_FONT = FONT.SIZE_FIELD_VALUE;
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(VEN_FONT);
+  const braceX = lx + 46;
+  doc.text('STATE OF UTAH', lx, ny);
+  doc.text(')', braceX, ny);
+  doc.text(') ss.', braceX, ny + 4);
+  doc.text('COUNTY OF', lx, ny + 8);
+  doc.text(')', braceX, ny + 8);
+  // Writable county rule — the county is where the oath is taken, which is
+  // not necessarily the county of service.
+  doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
+  doc.setLineWidth(BORDER.FIELD);
+  doc.line(lx + doc.getTextWidth('COUNTY OF ') + 1, ny + 8.6, braceX - 2, ny + 8.6);
+  ny += 13;
 
-  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  doc.setLineWidth(BORDER.SIGNATURE_LINE);
+  // ── Subscribed and sworn ──
+  const rule = (x1: number, x2: number, yy: number) => {
+    doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
+    doc.setLineWidth(BORDER.FIELD);
+    doc.line(x1, yy, x2, yy);
+  };
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(VEN_FONT);
+  const p1 = 'Subscribed and sworn to before me this';
+  doc.text(p1, lx, ny);
+  let cx = lx + doc.getTextWidth(p1) + 2;
+  rule(cx, cx + 12, ny + 0.6); cx += 14;                    // day
+  doc.text('day of', cx, ny); cx += doc.getTextWidth('day of') + 2;
+  rule(cx, cx + 34, ny + 0.6); cx += 36;                    // month
+  doc.text(', 20', cx, ny); cx += doc.getTextWidth(', 20') + 1;
+  rule(cx, cx + 10, ny + 0.6);                              // year
+  doc.text('.', cx + 11, ny);
+  ny += 11;
 
-  // Notary Name line
-  doc.line(lineX1, ny, lineX2, ny);
-  doc.setFont('helvetica', 'normal');
+  // ── Notary signature, commission, and seal ──
+  // Seal box on the right so the impression has a defined place to land and
+  // cannot overprint the signature -- the single most common reason a
+  // notarised affidavit comes back for correction.
+  const sealW = 44;
+  const sealX = LAYOUT.PAGE_MARGIN + cw - sealW;
+  const sigW = sealX - lx - 8;
+
+  rule(lx, lx + sigW, ny);
+  doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('NOTARY NAME', lineX1, ny + 3);
-  ny += lineGap;
+  doc.text('SIGNATURE OF NOTARY PUBLIC', lx, ny + 2.8);
 
-  // Commission # line
-  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  doc.line(lineX1, ny, lineX2, ny);
-  doc.setFont('helvetica', 'normal');
+  const commY = ny + 7.5;
+  rule(lx, lx + sigW, commY);
+  doc.text('MY COMMISSION EXPIRES', lx, commY + 2.8);
+
+  doc.setDrawColor(...COLOR.TEXT_TERTIARY);
+  doc.setLineWidth(BORDER.FIELD);
+  doc.rect(sealX, ny - 6.5, sealW, 17);
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('COMMISSION NUMBER / EXPIRATION', lineX1, ny + 3);
-  ny += lineGap;
-
-  // Date line
-  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  doc.line(lineX1, ny, lineX2, ny);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
-  doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('DATE', lineX1, ny + 3);
+  doc.text('AFFIX NOTARY SEAL', sealX + sealW / 2, ny + 2.5, { align: 'center' });
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   return y + boxH + SPACING.SECTION_GAP;
@@ -319,14 +368,38 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
-    formTitle: 'AFFIDAVIT OF SERVICE',
+    formTitle: 'CIVIL PROCESS RECORD',
     caseNumber: data.caseNumber,
     reportDate: data.serviceDate || '',
   });
 
+  const INSTRUMENT_TITLE = 'AFFIDAVIT OF SERVICE';
+
+  // Article numbers assigned as drawn -- Service Photos only renders when
+  // photos exist, so a hard-coded sequence would leave a gap on most
+  // affidavits and read as a missing article on a filed document.
+  const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+  let article = 0;
+  const art = (title: string) => `${ROMAN[article++]}. ${title}`;
+
+  // ── Docket furniture ──
+  // Same opening as the Civil Process Record so every instrument in a serve
+  // file reads as one set: family header, court heading, pleading caption,
+  // instrument title. The affidavits previously opened straight onto a flat
+  // "COURT INFORMATION" strip of label-over-rule fields, which shared no
+  // visual language with the Acknowledgement at all.
+  y = drawCourtHeading(doc, y, data.courtName, data.jurisdiction);
+  y = drawPleadingCaption(doc, y, {
+    plaintiff: (data as { plaintiffName?: string }).plaintiffName || '',
+    defendant: (data as { defendantName?: string }).defendantName || data.recipientName || '',
+    caseNumber: data.caseNumber,
+    instrumentTitle: INSTRUMENT_TITLE,
+  });
+  y = drawInstrumentTitle(doc, y, INSTRUMENT_TITLE);
+
   // ── Court Information ──
   y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, 'Court Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, art('Court Information'), y); y = sec.contentY;
     y = addFieldPair(doc, '1. Court Name', data.courtName, lx, y, ffw);
     const fy1 = addFieldPair(doc, '2. Case Number', data.caseNumber, lx, y, hfw);
     const fy2 = addFieldPair(doc, '3. Jurisdiction', data.jurisdiction, rx, y, hfw);
@@ -336,7 +409,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
 
   // ── Server Information ──
   y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, 'Server Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, art('Server Information'), y); y = sec.contentY;
     const fy1 = addFieldPair(doc, '4. Server Name', data.serverName, lx, y, hfw);
     const fy2 = addFieldPair(doc, '5. Badge / License #', data.serverBadge, rx, y, hfw);
     y = Math.max(fy1, fy2);
@@ -346,7 +419,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
 
   // ── Recipient Information ──
   y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, 'Recipient Information', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, art('Recipient Information'), y); y = sec.contentY;
     y = addFieldPair(doc, '7. Recipient Name', data.recipientName, lx, y, ffw);
     y = addFieldPair(doc, '8. Address', data.recipientAddress, lx, y, ffw);
     y = addFieldPair(doc, '9. Document Type Served', data.documentType, lx, y, ffw);
@@ -358,7 +431,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
     : data.serviceMethod === 'substitute' ? 'Substitute Service'
     : 'Posting';
   y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, 'Service Details', y); y = sec.contentY;
+  { const sec = openAutoSection(doc, art('Service Details'), y); y = sec.contentY;
     const fy1 = addFieldPair(doc, '10. Date of Service', data.serviceDate, lx, y, hfw);
     const fy2 = addFieldPair(doc, '11. Time', data.serviceTime, rx, y, hfw);
     y = Math.max(fy1, fy2);
@@ -380,7 +453,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   // ── Photos ──
   if (Array.isArray(data.photos) && data.photos.length > 0) {
     y = checkPageBreak(doc, y, 40);
-    const sec = openAutoSection(doc, 'Service Photos', y);
+    const sec = openAutoSection(doc, art('Service Photos'), y);
     y = sec.contentY;
     y = addPhotos(doc, data.photos, y);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -388,8 +461,12 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
 
   // ── Signature Block ──
   y = checkPageBreak(doc, y, SPACING.SIGNATURE_BOX_H + SPACING.LG);
-  y = addSignatureBlock(doc, 'Process Server Signature', lx, y, ffw, data.signature ? {
+  const certification =
+    'I declare under penalty of perjury that the foregoing is true and correct.';
+
+  y = addSignatureBlock(doc, art('Process Server'), lx, y, ffw, data.signature ? {
     signatureImage: data.signature,
+    certification,
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
     date: data.serviceDate,
@@ -401,10 +478,18 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   y += SPACING.SECTION_GAP;
 
   // ── Notary Section ──
-  y = addNotarySection(doc, y);
+  y = addNotarySection(doc, y, art('Jurat').toUpperCase());
 
   // ── Footer legal text ──
-  y = checkPageBreak(doc, y, 10);
+  // Reserved WITH the jurat above rather than on its own. A bare
+  // checkPageBreak here exiled this single 5pt line onto a second sheet --
+  // an otherwise blank page carrying nothing but a CONTINUED banner and one
+  // citation, on a document that is filed with a court. The jurat's own
+  // reserve already guarantees room for the block; this line rides with it.
+  //
+  // Cleared below the jurat's bottom border: at the section gap alone the
+  // baseline landed ON the rule and the citation read as struck through.
+  y += 3;
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
@@ -467,42 +552,60 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
-    formTitle: 'AFFIDAVIT OF DUE DILIGENCE / NON-SERVICE',
+    formTitle: 'CIVIL PROCESS RECORD',
     caseNumber: data.caseNumber,
   });
 
-  // ── Court Information ──
-  y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, 'Court Information', y); y = sec.contentY;
-    y = addFieldPair(doc, '1. Court Name', data.courtName, lx, y, ffw);
-    const fy1 = addFieldPair(doc, '2. Case Number', data.caseNumber, lx, y, hfw);
-    const fy2 = addFieldPair(doc, '3. Jurisdiction', data.jurisdiction, rx, y, hfw);
-    y = Math.max(fy1, fy2);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  const INSTRUMENT_TITLE = 'AFFIDAVIT OF DUE DILIGENCE / NON-SERVICE';
+
+  // Article numbers are ASSIGNED AS DRAWN, not hard-coded. Skip Trace only
+  // renders when there is skip-trace data, so a fixed sequence printed
+  // "I, II, III, V, VI" on every affidavit without it -- a gap that reads on
+  // a filed document as a missing article rather than an absent one.
+  const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+  let article = 0;
+  const art = (title: string) => `${ROMAN[article++]}. ${title}`;
+
+  // ── Docket furniture ──
+  // Same opening as the Civil Process Record so every instrument in a serve
+  // file reads as one set: family header, court heading, pleading caption,
+  // instrument title. The affidavits previously opened straight onto a flat
+  // "COURT INFORMATION" strip of label-over-rule fields, which shared no
+  // visual language with the Acknowledgement at all.
+  y = drawCourtHeading(doc, y, data.courtName, data.jurisdiction);
+  y = drawPleadingCaption(doc, y, {
+    plaintiff: (data as { plaintiffName?: string }).plaintiffName || '',
+    defendant: (data as { defendantName?: string }).defendantName || data.recipientName || '',
+    caseNumber: data.caseNumber,
+    instrumentTitle: INSTRUMENT_TITLE,
+  });
+  y = drawInstrumentTitle(doc, y, INSTRUMENT_TITLE);
+
+  // Court / case identification now lives in the caption above, so the old
+  // COURT INFORMATION section would restate it verbatim three rows running.
 
   // ── Server Information ──
   y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, 'Server Information', y); y = sec.contentY;
-    const fy1 = addFieldPair(doc, '4. Server Name', data.serverName, lx, y, hfw);
-    const fy2 = addFieldPair(doc, '5. Badge / License #', data.serverBadge, rx, y, hfw);
+  { const sec = openAutoSection(doc, art('Server Information'), y); y = sec.contentY;
+    const fy1 = addFieldPair(doc, '1. Server Name', data.serverName, lx, y, hfw);
+    const fy2 = addFieldPair(doc, '2. Badge / License #', data.serverBadge, rx, y, hfw);
     y = Math.max(fy1, fy2);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Recipient Information ──
   y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, 'Recipient Information', y); y = sec.contentY;
-    y = addFieldPair(doc, '6. Recipient Name', data.recipientName, lx, y, ffw);
-    y = addFieldPair(doc, '7. Address', data.recipientAddress, lx, y, ffw);
-    y = addFieldPair(doc, '8. Document Type', data.documentType, lx, y, ffw);
+  { const sec = openAutoSection(doc, art('Recipient Information'), y); y = sec.contentY;
+    y = addFieldPair(doc, '3. Recipient Name', data.recipientName, lx, y, ffw);
+    y = addFieldPair(doc, '4. Address', data.recipientAddress, lx, y, ffw);
+    y = addFieldPair(doc, '5. Document Type', data.documentType, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Attempt History Table ──
   y = checkPageBreak(doc, y, 30);
   {
-    const sec = openAutoSection(doc, 'Attempt History', y);
+    const sec = openAutoSection(doc, art('Attempt History'), y);
     y = sec.contentY;
 
     const cols = getProportionalColumns(doc, [1, 2, 1.5, 3, 2, 3]);
@@ -544,7 +647,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   // ── Skip Trace Summary ──
   if (Array.isArray(data.skipTraces) && data.skipTraces.length > 0) {
     y = checkPageBreak(doc, y, 30);
-    const sec = openAutoSection(doc, 'Skip Trace Summary', y);
+    const sec = openAutoSection(doc, art('Skip Trace Summary'), y);
     y = sec.contentY;
 
     for (const trace of data.skipTraces) {
@@ -576,7 +679,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   // ── Declaration ──
   y = checkPageBreak(doc, y, 30);
   {
-    const sec = openAutoSection(doc, 'Declaration', y);
+    const sec = openAutoSection(doc, art('Declaration'), y);
     // addWrappedText draws at the text BASELINE, so the first line's ascender
     // sits ~2.5mm above contentY — pad past the black header band (matches the
     // psoNoticePdfGenerator fix, commit 3c0e68f9).
@@ -596,21 +699,38 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
 
   // ── Signature Block ──
   y = checkPageBreak(doc, y, SPACING.SIGNATURE_BOX_H + SPACING.LG);
-  y = addSignatureBlock(doc, 'Process Server Signature', lx, y, ffw, data.signature ? {
+  // Certification drawn INSIDE the signature row (see addSignatureBlock):
+  // the block previously opened onto an empty ruled box with nothing stated
+  // above it. Worded against the DECLARATION this affidavit already makes,
+  // and it does not restate the name or badge printed in the row below.
+  const certification =
+    'I declare under penalty of perjury that the foregoing is true and correct.';
+
+  y = addSignatureBlock(doc, art('Process Server'), lx, y, ffw, data.signature ? {
     signatureImage: data.signature,
+    certification,
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
   } : {
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
-  });
+    certification,
+  }, 11, 7);
   y += SPACING.SECTION_GAP;
 
   // ── Notary Section ──
-  y = addNotarySection(doc, y);
+  y = addNotarySection(doc, y, art('Jurat').toUpperCase());
 
   // ── Footer legal text ──
-  y = checkPageBreak(doc, y, 10);
+  // Reserved WITH the jurat above rather than on its own. A bare
+  // checkPageBreak here exiled this single 5pt line onto a second sheet --
+  // an otherwise blank page carrying nothing but a CONTINUED banner and one
+  // citation, on a document that is filed with a court. The jurat's own
+  // reserve already guarantees room for the block; this line rides with it.
+  //
+  // Cleared below the jurat's bottom border: at the section gap alone the
+  // baseline landed ON the rule and the citation read as struck through.
+  y += 3;
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
