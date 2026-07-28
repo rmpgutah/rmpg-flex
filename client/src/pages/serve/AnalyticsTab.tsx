@@ -431,8 +431,15 @@ export default function AnalyticsTab() {
     }
   };
 
+  // h-full + overflow-y-auto is REQUIRED, not decorative. ServePage renders every
+  // tab inside `flex-1 overflow-hidden`, which gives the tab a fixed height and
+  // clips anything taller with no scrollbar and no error — measured live at
+  // clientHeight 843 vs scrollHeight 1357, i.e. 514px of this tab simply
+  // unreachable. Route and Stats already carry their own scroller; Analytics,
+  // Performance and Assign did not, so they silently truncated. Matches the
+  // `h-full overflow-y-auto ... scrollbar-dark` convention those tabs use.
   return (
-    <div className="p-4 space-y-4">
+    <div className="h-full overflow-y-auto p-4 space-y-4 scrollbar-dark">
       {/* ── Header + shared range selector ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
