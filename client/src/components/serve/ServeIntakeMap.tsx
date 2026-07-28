@@ -14,6 +14,7 @@ import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import LocationNoteModal from './LocationNoteModal';
 import { escapeHtml } from '../../utils/sanitize';
 import { withAlpha } from '../../utils/withAlpha';
+import { clusterByGrid, type ClusterableItem } from '../../utils/serveMapClustering';
 
 interface QueueMapItem {
   id: number;
@@ -110,6 +111,21 @@ function buildServeMarker(item: QueueMapItem): HTMLElement {
   return el;
 }
 
+function buildClusterMarker(cluster: { count: number; dominantPriority: string }): HTMLElement {
+  const color = PRIORITY_COLORS[cluster.dominantPriority] ?? PRIORITY_COLORS.routine;
+  const el = document.createElement('div');
+  el.style.cssText = `
+    width:34px;height:34px;border-radius:50%;
+    background:${color};border:2px solid rgba(255,255,255,0.85);
+    display:flex;align-items:center;justify-content:center;
+    font-family:monospace;font-weight:700;font-size:12px;color:#fff;
+    cursor:pointer;
+  `;
+  el.textContent = String(cluster.count);
+  el.title = `${cluster.count} serve jobs`;
+  return el;
+}
+
 interface Props {
   onSelectQueue?: (queueId: number) => void;
 }
@@ -125,6 +141,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
   const [loading, setLoading] = useState(true);
   const [geocoding, setGeocoding] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  const [currentZoom, setCurrentZoom] = useState(10);
   const [noteModal, setNoteModal] = useState<{ open: boolean; noteId?: number; queueItem?: QueueMapItem }>({ open: false });
 
   const load = useCallback(async () => {
@@ -161,6 +178,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       applyRmpgBasemap(map, { variant: 'dark' });
       setMapReady(true);
     });
+    map.on('zoomend', () => setCurrentZoom(map.getZoom()));
     return () => {
       unregisterMapInstance(map);
       map.remove();
@@ -182,30 +200,51 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       (it) => it.recipient_lat != null && it.recipient_lng != null,
     );
 
-    for (const item of mappable) {
-      const el = buildServeMarker(item);
-      const popup = new mapboxgl.Popup({ offset: 18, closeButton: true, maxWidth: '280px' })
-        .setHTML(buildPopupHtml(item));
+    const clusterInput: ClusterableItem[] = mappable.map((it) => ({
+      id: it.id,
+      lng: it.recipient_lng!,
+      lat: it.recipient_lat!,
+      priority: it.priority,
+      status: it.status,
+    }));
+    const clusters = clusterByGrid(clusterInput, currentZoom);
 
-      el.addEventListener('click', () => {
-        popupRef.current?.remove();
-        popup.addTo(map);
-        popupRef.current = popup;
-        // Wire "Open record" button inside popup
-        setTimeout(() => {
-          const btn = document.getElementById(`srv-popup-open-${item.id}`);
-          if (btn) btn.addEventListener('click', () => onSelectQueue?.(item.id));
-          const noteBtn = document.getElementById(`srv-popup-note-${item.id}`);
-          if (noteBtn) noteBtn.addEventListener('click', () =>
-            setNoteModal({ open: true, queueItem: item }),
-          );
-        }, 50);
-      });
+    for (const cluster of clusters) {
+      if (cluster.count === 1) {
+        const item = mappable.find((it) => it.id === cluster.itemIds[0])!;
+        const el = buildServeMarker(item);
+        const popup = new mapboxgl.Popup({ offset: 18, closeButton: true, maxWidth: '280px' })
+          .setHTML(buildPopupHtml(item));
 
-      const marker = new mapboxgl.Marker({ element: el })
-        .setLngLat([item.recipient_lng!, item.recipient_lat!])
-        .addTo(map);
-      markersRef.current.push(marker);
+        el.addEventListener('click', () => {
+          popupRef.current?.remove();
+          popup.addTo(map);
+          popupRef.current = popup;
+          // Wire "Open record" button inside popup
+          setTimeout(() => {
+            const btn = document.getElementById(`srv-popup-open-${item.id}`);
+            if (btn) btn.addEventListener('click', () => onSelectQueue?.(item.id));
+            const noteBtn = document.getElementById(`srv-popup-note-${item.id}`);
+            if (noteBtn) noteBtn.addEventListener('click', () =>
+              setNoteModal({ open: true, queueItem: item }),
+            );
+          }, 50);
+        });
+
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([item.recipient_lng!, item.recipient_lat!])
+          .addTo(map);
+        markersRef.current.push(marker);
+      } else {
+        const el = buildClusterMarker(cluster);
+        el.addEventListener('click', () => {
+          map.easeTo({ center: [cluster.lng, cluster.lat], zoom: currentZoom + 2 });
+        });
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([cluster.lng, cluster.lat])
+          .addTo(map);
+        markersRef.current.push(marker);
+      }
     }
 
     // Auto-fit bounds
@@ -214,7 +253,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       for (const it of mappable) bounds.extend([it.recipient_lng!, it.recipient_lat!]);
       map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
     }
-  }, [mapReady, items, onSelectQueue]);
+  }, [mapReady, items, onSelectQueue, currentZoom]);
 
   const notMapped = items.filter((it) => it.recipient_lat == null || it.recipient_lng == null);
 
