@@ -627,8 +627,16 @@ export function drawNibrsHeader(
     if (config.formNumber) rows.push({ label: 'FORM', value: config.formNumber.replace(/^form\s+/i, '') });
     if (config.reportDate) rows.push({ label: 'DATE', value: sanitizePdfText(config.reportDate) });
     if (config.caseNumber) rows.push({ label: config.caseNumberLabel || 'CASE NUMBER', value: sanitizePdfText(config.caseNumber) });
-    const rowH = 5.2;
-    const boxH = Math.max(rows.length * rowH, 15.6);
+    // The box keeps a stable overall height so the letterhead does not shift
+    // between forms carrying two rows and forms carrying three. It used to do
+    // that with a MINIMUM height while leaving rowH fixed, which drew a
+    // labelled-looking EMPTY row under the last populated one -- clearly
+    // visible on the Notice of Attempt, which has only DATE + AGENCY REF #.
+    // Stretching the rows to fill the box gets the same stable geometry with
+    // no phantom row.
+    const MIN_BOX_H = 15.6;
+    const boxH = Math.max(rows.length * 5.2, MIN_BOX_H);
+    const rowH = rows.length ? boxH / rows.length : boxH;
 
     // Agency identity stack (left).
     doc.setFont(FONT_FAMILY, 'normal');

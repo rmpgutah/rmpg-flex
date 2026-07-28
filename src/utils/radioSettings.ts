@@ -15,7 +15,7 @@
 
 import { log } from './logger';
 import type { D1Database, R2Bucket } from '@cloudflare/workers-types';
-import { query, execute } from './db';
+import { query, execute, executeInChunks } from './db';
 
 export type RespondMode = 'all' | 'addressed';
 export type HazeIntensity = 'clean' | 'light' | 'standard' | 'heavy';
@@ -324,7 +324,14 @@ export async function purgeOldRecordings(
   // Drop the R2 audio first (id→key map), then the rows.
   await Promise.allSettled(rows.map((r) => uploads.delete(`radio-audio/${r.id}.webm`)));
   const ids = rows.map((r) => r.id);
-  const placeholders = ids.map(() => '?').join(',');
-  await execute(db, `DELETE FROM radio_transmissions WHERE id IN (${placeholders})`, ...ids);
+  // batch defaults to 500 and D1 caps bound parameters at 100, so this DELETE
+  // threw on any purge with more than 100 expired transmissions. The R2 audio
+  // above was already deleted by then, which made the failure worse than a
+  // no-op: the blobs went and the rows stayed, leaving records pointing at
+  // objects that no longer exist.
+  await executeInChunks(
+    db, ids,
+    (placeholders) => `DELETE FROM radio_transmissions WHERE id IN (${placeholders})`,
+  );
   return { deleted: ids.length };
 }
