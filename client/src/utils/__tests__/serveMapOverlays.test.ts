@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { urgencyTierForDeadline } from '../serveMapOverlays';
+import { urgencyTierForDeadline, isRiskFlagged } from '../serveMapOverlays';
 
 describe('urgencyTierForDeadline', () => {
   const now = new Date('2026-07-28T12:00:00Z').getTime();
@@ -43,5 +43,23 @@ describe('urgencyTierForDeadline', () => {
   it('returns "none" when deadline is an empty string', () => {
     // Empty string is falsy, so it's treated like null/undefined
     expect(urgencyTierForDeadline('', now)).toBe('none');
+  });
+});
+
+describe('isRiskFlagged', () => {
+  it('flags urgent-priority items', () => {
+    expect(isRiskFlagged({ priority: 'urgent', location_note_text: null })).toBe(true);
+  });
+
+  it('flags a location note containing a safety keyword', () => {
+    expect(isRiskFlagged({ priority: 'normal', location_note_text: 'Officer safety: aggressive dog on premises' })).toBe(true);
+  });
+
+  it('does not flag a routine item with a benign note', () => {
+    expect(isRiskFlagged({ priority: 'routine', location_note_text: 'Best served after 5pm' })).toBe(false);
+  });
+
+  it('does not flag when there is nothing notable', () => {
+    expect(isRiskFlagged({ priority: 'normal', location_note_text: null })).toBe(false);
   });
 });

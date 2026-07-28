@@ -15,7 +15,7 @@ import LocationNoteModal from './LocationNoteModal';
 import { escapeHtml } from '../../utils/sanitize';
 import { withAlpha } from '../../utils/withAlpha';
 import { clusterByGrid, type ClusterableItem } from '../../utils/serveMapClustering';
-import { urgencyTierForDeadline } from '../../utils/serveMapOverlays';
+import { urgencyTierForDeadline, isRiskFlagged } from '../../utils/serveMapOverlays';
 
 // One-time stylesheet injection for pulse-ring keyframes
 if (typeof document !== 'undefined' && !document.getElementById('srv-pulse-styles')) {
@@ -128,6 +128,16 @@ function buildServeMarker(item: QueueMapItem): HTMLElement {
       animation:srv-pulse-${tier} 1.6s ease-out infinite;
     `;
     el.appendChild(ring);
+  }
+
+  // Officer-safety risk halo
+  if (isRiskFlagged(item)) {
+    el.style.boxShadow += ', 0 0 0 3px rgba(239,68,68,0.6)';
+    const warningIcon = document.createElement('div');
+    warningIcon.style.cssText = 'position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);font-size:10px;';
+    warningIcon.textContent = '⚠';
+    warningIcon.title = 'Officer safety flag';
+    el.appendChild(warningIcon);
   }
 
   el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; });

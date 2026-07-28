@@ -14,3 +14,11 @@ export function urgencyTierForDeadline(deadline: string | null, now: number): Ur
   if (hoursLeft <= 72) return 'warning';
   return 'none';
 }
+
+const SAFETY_KEYWORDS = ['officer safety', 'weapon', 'aggressive dog', 'hostile', 'restraining order', 'armed'];
+
+export function isRiskFlagged(item: { priority: string; location_note_text: string | null }): boolean {
+  if (item.priority === 'urgent') return true;
+  const note = (item.location_note_text || '').toLowerCase();
+  return SAFETY_KEYWORDS.some((kw) => note.includes(kw));
+}
