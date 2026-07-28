@@ -437,3 +437,72 @@ describe('isDuplicateSignedReceipt', () => {
     expect(isDuplicateSignedReceipt(null)).toBe(false);
   });
 });
+
+describe('lifecycle hardening (migration 0210)', () => {
+  const SRC = readFileSync(join(__dirname, '..', 'src', 'routes', 'serveReceipt.ts'), 'utf8');
+  const MIG = readFileSync(join(__dirname, '..', 'migrations', '0210_serve_receipt_lifecycle.sql'), 'utf8');
+  const INDEX = readFileSync(join(__dirname, '..', 'src', 'index.ts'), 'utf8');
+
+  it('indexes the column two handlers join through', () => {
+    expect(MIG).toMatch(/CREATE INDEX IF NOT EXISTS idx_serve_receipts_token/);
+  });
+
+  it('ages a never-resolved email to unresolved, not failed', () => {
+    // We genuinely do not know: the mail may have gone and only the
+    // confirmation been lost. Recording a failure we cannot demonstrate is
+    // the same class of mistake as leaving it 'pending' forever.
+    expect(SRC).toMatch(/email_status = 'unresolved'/);
+    expect(SRC).not.toMatch(/SET email_status = 'failed'\s*$/m);
+    expect(INDEX).toMatch(/sweepStaleReceiptEmails/);
+  });
+
+  it('bounds the sweep window so a bad argument cannot wipe recent rows', () => {
+    expect(SRC).toMatch(/Math\.max\(1, Math\.min\(720, olderThanHours\)\)/);
+  });
+
+  it('names the refusal channel rather than shipping an undocumented value', () => {
+    // The documented set is mobile | paper. The refusal path introduced
+    // 'officer' without documenting it.
+    expect(SRC).toMatch(/'refusal', \?, 'refused'/);
+    expect(SRC).not.toMatch(/'officer', \?, 'refused'/);
+  });
+
+  it('requires a refusal reason that actually says something', () => {
+    // "n" satisfies a truthiness check and tells a court nothing. This is
+    // the only account of a doorstep where nobody signed.
+    expect(SRC).toMatch(/reasonText\.length < 15/);
+  });
+
+  it('truncates the JSON LIST, never the string', () => {
+    // A blob cut mid-token fails at READ time on a legal record, which is
+    // far worse than failing at write time where someone can see it.
+    expect(SRC).toMatch(/function boundedJson/);
+    expect(SRC).toMatch(/boundedJson\(documents, 50, 8_000\)/);
+    expect(SRC).toMatch(/boundedJson\(attestations, 20, 16_000\)/);
+  });
+});
+
+describe('boundedJson', () => {
+  it('always returns parseable JSON, however hard it truncates', async () => {
+    const { boundedJson } = await import('../src/routes/serveReceipt');
+    const fat = Array.from({ length: 50 }, (_, i) => ({ title: 'x'.repeat(200), copies: i }));
+    const out = boundedJson(fat, 50, 1_000);
+    expect(() => JSON.parse(out)).not.toThrow();
+    expect(out.length).toBeLessThanOrEqual(1_000);
+    expect(JSON.parse(out).length).toBeGreaterThan(0);
+  });
+
+  it('keeps everything when it already fits', async () => {
+    const { boundedJson } = await import('../src/routes/serveReceipt');
+    const small = [{ title: 'Summons', copies: 1 }, { title: 'Complaint', copies: 1 }];
+    expect(JSON.parse(boundedJson(small, 50, 8_000))).toEqual(small);
+  });
+
+  it('never returns an empty list while one item could fit', async () => {
+    // Truncating to nothing would lose the itemisation entirely — the
+    // exact thing a service dispute turns on.
+    const { boundedJson } = await import('../src/routes/serveReceipt');
+    const out = boundedJson([{ title: 'y'.repeat(5_000), copies: 1 }], 50, 100);
+    expect(JSON.parse(out).length).toBe(1);
+  });
+});
