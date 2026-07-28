@@ -210,6 +210,14 @@ export default {
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     // ── Every 4 hours (UTC 00:00, 04:00, 08:00, 12:00, 16:00, 20:00) ──
     if (event.cron === '0 */4 * * *') {
+      // Acknowledgement email deliveries that never got a confirmation.
+      // Cheap, indexed, and it stops a receipt claiming a delivery is in
+      // flight months after the signing page closed.
+      ctx.waitUntil(
+        import('./routes/serveReceipt')
+          .then((m) => m.sweepStaleReceiptEmails(env))
+          .catch((err) => log.error('Stale receipt email sweep failed', {}, err as Error)),
+      );
       ctx.waitUntil(
         import('./utils/warrantSources/runScan').then((m) =>
           m.runAllSourceScans(env.DB).then((result) =>
