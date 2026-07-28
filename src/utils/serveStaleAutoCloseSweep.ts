@@ -15,7 +15,7 @@
 // ============================================================
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { query, execute } from './db';
+import { query, execute, executeInChunks } from './db';
 import { evaluateNotificationRules } from '../routes/notificationEngine';
 
 const STALE_DAYS = 30;
@@ -43,10 +43,16 @@ export async function sweepStaleServeJobs(
   if (staleJobs.length === 0) return { closed: 0 };
 
   const ids = staleJobs.map((j) => j.id);
-  const placeholders = ids.map(() => '?').join(',');
-  await execute(db,
-    `UPDATE serve_queue SET status = 'failed', updated_at = datetime('now'), closed_at = datetime('now') WHERE id IN (${placeholders})`,
-    ...ids);
+  // D1 rejects >100 bound parameters AT BIND TIME. The select above takes
+  // LIMIT 500, so this UPDATE was a guaranteed failure the first time more
+  // than 100 jobs went stale -- and it is a cron sweep, so nobody would have
+  // seen the throw. Chunked writes are not atomic, which is fine here: the
+  // status flip is idempotent and a partial run simply closes fewer jobs,
+  // with the next sweep picking up the remainder.
+  await executeInChunks(
+    db, ids,
+    (placeholders) => `UPDATE serve_queue SET status = 'failed', updated_at = datetime('now'), closed_at = datetime('now') WHERE id IN (${placeholders})`,
+  );
 
   await execute(db,
     `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (NULL, 'auto_close_stale', 'serve_queue', 0, ?)`,
