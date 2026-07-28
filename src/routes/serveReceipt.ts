@@ -137,6 +137,26 @@ function bool(v: unknown): number {
   return v === true || v === 1 || v === '1' || v === 'true' ? 1 : 0;
 }
 
+/**
+ * Serialise a bounded list to JSON, with an aggregate ceiling.
+ *
+ * Per-item caps alone leave the total unbounded: 50 documents at 200
+ * characters plus 20 attestations at 600 is 20KB of JSON in a column
+ * nothing was sizing for. Truncating the LIST rather than the string
+ * keeps the result parseable — a JSON blob cut mid-token is worse than a
+ * short one, because it fails at read time on a legal record instead of
+ * at write time where someone can see it.
+ */
+export function boundedJson<T>(items: T[], maxItems: number, maxBytes: number): string {
+  let out = items.slice(0, maxItems);
+  let json = JSON.stringify(out);
+  while (json.length > maxBytes && out.length > 1) {
+    out = out.slice(0, out.length - 1);
+    json = JSON.stringify(out);
+  }
+  return json;
+}
+
 function str(v: unknown, max = 500): string | null {
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
@@ -600,7 +620,7 @@ serveReceipt.post('/:token', async (c) => {
      ) VALUES (?,?,?,?, ?,?,?, ?,?,?,?, ?,?,?,?, ?,?, ?, ?,?,?,?,?, ?,?, ?,?,?, ?,?,?, ?,?, ?,?,?,
                ?, datetime('now'), ?,?,?,?,?, ?,?,?,?,?, ?,?,?)`,
     tok.serve_queue_id, tok.id, method, priorStatus,
-    variant, formTitle, JSON.stringify(attestations),
+    variant, formTitle, boundedJson(attestations, 20, 16_000),
     submission.recipient_name, variant, str(body.recipient_relationship, 120),
     str(body.recipient_phone, 40), emailTo, str(body.recipient_description, 300),
     submission.business_name, str(body.recipient_job_title, 120),
@@ -608,7 +628,7 @@ serveReceipt.post('/:token', async (c) => {
     submission.recipient_age_confirmed,
     str(body.service_address, 250), str(body.service_city, 100), str(body.service_state, 2),
     str(body.service_zip, 10), premisesType,
-    JSON.stringify(documents), documents.length,
+    boundedJson(documents, 50, 8_000), documents.length,
     submission.sub_defendant_name, submission.sub_resides_at_address, submission.sub_is_authorized_agent,
     submission.sub_agrees_to_deliver, str(body.sub_expected_delivery_at, 40),
     str(body.sub_defendant_expected_at, 120),
@@ -1098,7 +1118,17 @@ serveReceiptAdmin.post(
       recipient_name?: string; reason?: string; documents_left?: boolean;
       latitude?: number; longitude?: number; notes?: string;
     }>().catch(() => null);
-    if (!body?.reason) return c.json({ error: 'A description of the refusal is required' }, 400);
+    if (!body) return c.json({ error: 'Invalid submission' }, 400);
+    // Length floor, not just presence. This is the only account of what
+    // happened at a door where nobody signed — "n" satisfies a truthiness
+    // check and tells a court nothing.
+    const reasonText = (body.reason ?? '').trim();
+    if (reasonText.length < 15) {
+      return c.json({
+        error: 'Describe what happened in a sentence — this is the only account '
+          + 'of a doorstep where nobody signed.',
+      }, 400);
+    }
 
     const db = getDb(c.env);
     const user = c.get('user') as { id: number; username?: string } | undefined;
@@ -1129,12 +1159,12 @@ serveReceiptAdmin.post(
          sub_declined_reason, sub_defendant_name,
          ack_received_documents, recipient_signed_at,
          server_name, server_user_id, latitude, longitude, notes, status
-       ) VALUES (?,?, 'refused', 'refused', ?, ?, 'officer', ?, 'refused',
+       ) VALUES (?,?, 'refused', 'refused', ?, ?, 'refusal', ?, 'refused',
                  ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, 'signed')`,
       queueId, tok?.id ?? null,
       'Record of Refusal to Sign', priorStatus,
       str(body.recipient_name, 200) || job.recipient_name || 'Unidentified person',
-      str(body.reason, 1000),
+      reasonText.slice(0, 1000),
       job.defendant_name,
       // Service is complete when the papers are LEFT, refusal or not. That
       // fact is what a court asks about, so it is recorded explicitly
@@ -1530,5 +1560,38 @@ serveReceiptAdmin.post('/receipt/:id/void', requireRole('admin', 'manager', 'sup
 
   return c.json({ success: true, job_reverted: jobReverted });
 });
+
+/**
+ * Age out email deliveries that will never resolve.
+ *
+ * email_status starts 'pending' and is settled by a follow-up call from
+ * the signing page. If that page closes first — the subject walks away,
+ * the tab is killed, the browser is backgrounded and reaped — nothing
+ * ever settles it, and the record goes on claiming a delivery is in
+ * flight. Months later an officer reading "pending" has no way to know
+ * it means "never sent".
+ *
+ * 'unresolved', not 'failed'. We genuinely do not know: the mail may have
+ * gone out and only the confirmation been lost. Recording a failure we
+ * cannot demonstrate is the same class of mistake as leaving 'pending'.
+ *
+ * Called from the cron in src/index.ts. Returns the number aged out so a
+ * sudden spike is visible in the logs rather than silent.
+ */
+export async function sweepStaleReceiptEmails(env: Env['Bindings'], olderThanHours = 24): Promise<number> {
+  const r = await execute(
+    getDb(env),
+    `UPDATE serve_receipts
+        SET email_status = 'unresolved',
+            email_error = 'No delivery confirmation was received; the signing page '
+                          || 'likely closed before the copy could be sent.'
+      WHERE email_status = 'pending'
+        AND created_at < datetime('now', ?)`,
+    `-${Math.max(1, Math.min(720, olderThanHours))} hours`,
+  ).catch(() => null);
+  const n = Number(r?.meta.changes ?? 0);
+  if (n > 0) log.info('Aged out stale receipt email deliveries', { count: n, olderThanHours });
+  return n;
+}
 
 export default serveReceipt;
