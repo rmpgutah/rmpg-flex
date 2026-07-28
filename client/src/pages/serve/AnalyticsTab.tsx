@@ -6,6 +6,7 @@ import { useToast } from '../../components/ToastProvider';
 import AttemptTimelineModal from '../../components/serve/AttemptTimelineModal';
 import type { ServeJob } from '../../types';
 import { safeDateStr } from '../../utils/dateUtils';
+import ServeQueueToolsPanel from '../../components/serve/ServeQueueToolsPanel';
 
 type RangeDays = 7 | 30 | 90;
 
@@ -140,6 +141,57 @@ function rateColor(rate: number): string {
   return rate >= 80 ? 'text-green-400' : rate >= 60 ? 'text-amber-400' : 'text-red-400';
 }
 
+interface ScheduleAnalytics {
+  summary: { total_attempts: number; success_rate: number };
+  by_day_of_week: Record<string, { total: number; served: number }>;
+  by_hour: Record<string, { total: number; served: number }>;
+  /** Keyed "<dow 0-6>|<band>" — the cross-tab the grid renders. */
+  by_day_band?: Record<string, { total: number; served: number }>;
+  bands?: string[];
+  timezone?: string;
+}
+
+const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const BANDS = ['morning', 'afternoon', 'evening'] as const;
+const BAND_LABEL: Record<string, string> = {
+  morning: 'Morning (–12p)',
+  afternoon: 'Afternoon (12–5p)',
+  evening: 'Evening (5p+)',
+};
+
+/**
+ * Cell shading for the timing grid.
+ *
+ * Deliberately NOT the rateColor severity ramp: a low success rate in a given
+ * slot is not a fault condition, it is just a less productive hour, and
+ * painting a third of the grid red would read as an alarm. Uses a single
+ * green intensity ramp instead, so the eye picks the best slots by weight.
+ *
+ * Cells under `MIN_SAMPLE` attempts render as "thin" rather than coloured —
+ * one lucky serve in a slot with n=1 is 100% and would otherwise outrank a
+ * genuinely reliable slot with n=12.
+ */
+const MIN_SAMPLE = 3;
+function cellStyle(cell: { total: number; served: number } | undefined): { cls: string; title: string } {
+  if (!cell || cell.total === 0) {
+    return { cls: 'bg-surface-sunken/40 text-fg-muted border-border-subtle', title: 'No attempts' };
+  }
+  const rate = Math.round((cell.served / cell.total) * 100);
+  const base = `${cell.served}/${cell.total} served (${rate}%)`;
+  if (cell.total < MIN_SAMPLE) {
+    return {
+      cls: 'bg-surface-sunken/60 text-fg-secondary border-border-default/40 border-dashed',
+      title: `${base} — too few attempts to trust`,
+    };
+  }
+  const cls =
+    rate >= 75 ? 'bg-green-500/45 text-green-100 border-green-500/60'
+    : rate >= 50 ? 'bg-green-500/28 text-green-200 border-green-600/50'
+    : rate >= 25 ? 'bg-green-500/14 text-rmpg-200 border-border-default/50'
+    : 'bg-surface-sunken/70 text-fg-secondary border-border-default/40';
+  return { cls, title: base };
+}
+
 export default function AnalyticsTab() {
   const { addToast } = useToast();
   const [range, setRange] = useState<RangeDays>(30);
@@ -218,6 +270,24 @@ export default function AnalyticsTab() {
     }
   }, [ttsRange]);
 
+  // ── Best time to serve ────────────────────────────────────────────────────
+  // 7 days × 3 time bands. The bands match serveDiligenceChain.ts exactly, so
+  // the "vary your time-of-day" guidance on a job card and the "here's when we
+  // actually succeed" grid here speak the same language rather than two.
+  const [timing, setTiming] = useState<ScheduleAnalytics | null>(null);
+  const [timingError, setTimingError] = useState<string | null>(null);
+
+  const fetchTiming = useCallback(async () => {
+    setTimingError(null);
+    try {
+      const start = new Date(Date.now() - range * 86_400_000).toISOString().slice(0, 10);
+      const data = await apiFetch<ScheduleAnalytics>(`/process-server/schedule-analytics?start_date=${start}`);
+      setTiming(data);
+    } catch (err: any) {
+      setTimingError(err?.message || 'Failed to load timing analytics');
+    }
+  }, [range]);
+
   const fetchWeeklyTrend = useCallback(async () => {
     setWeeklyTrendError(null);
     try {
@@ -274,6 +344,7 @@ export default function AnalyticsTab() {
   useEffect(() => { fetchCountyBreakdown(); }, [fetchCountyBreakdown, refreshKey]);
   useEffect(() => { fetchTimeToServe(); }, [fetchTimeToServe, refreshKey]);
   useEffect(() => { fetchWeeklyTrend(); }, [fetchWeeklyTrend, refreshKey]);
+  useEffect(() => { fetchTiming(); }, [fetchTiming, refreshKey]);
 
   const refreshAll = () => setRefreshKey((k) => k + 1);
 
@@ -591,6 +662,77 @@ export default function AnalyticsTab() {
         {!ttsError && timeToServe && (
           <div className="text-[9px] text-rmpg-500 text-center">
             Based on {timeToServe.sample_size} successful serve(s) in the last {timeToServe.period_days} days
+          </div>
+        )}
+      </div>
+
+      <ServeQueueToolsPanel />
+
+      {/* ── Best time to serve ── */}
+      <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3 space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] text-fg-muted uppercase font-semibold tracking-wider">
+            Best Time to Serve · {range}d
+          </span>
+          <span className="text-[9px] text-fg-muted">
+            success rate by day × time-of-day (Mountain)
+          </span>
+        </div>
+        {timingError && <div className="text-[10px] text-red-400">{timingError}</div>}
+        {!timingError && timing?.by_day_band && (
+          <div className="mt-2 overflow-x-auto">
+            <table className="text-[9px] border-separate border-spacing-[2px]">
+              <thead>
+                <tr>
+                  <th className="w-24" />
+                  {DOW_SHORT.map((d, i) => (
+                    <th
+                      key={d}
+                      className={`px-2 py-[2px] font-semibold tabular-nums ${
+                        i === 0 || i === 6 ? 'text-accent-silver-300' : 'text-fg-muted'
+                      }`}
+                      title={i === 0 || i === 6 ? 'Weekend — carries extra weight in a diligence record' : undefined}
+                    >
+                      {d}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {BANDS.map((band) => (
+                  <tr key={band}>
+                    <td className="pr-2 text-right text-fg-muted whitespace-nowrap">{BAND_LABEL[band]}</td>
+                    {DOW_SHORT.map((_, dow) => {
+                      const cell = timing.by_day_band?.[`${dow}|${band}`];
+                      const { cls, title } = cellStyle(cell);
+                      return (
+                        <td key={dow} className="p-0">
+                          <div
+                            title={`${DOW_SHORT[dow]} ${BAND_LABEL[band]} — ${title}`}
+                            className={`px-2 py-[3px] text-center border rounded-[2px] tabular-nums ${cls}`}
+                          >
+                            {cell?.total ? `${Math.round((cell.served / cell.total) * 100)}%` : '·'}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="flex items-center gap-3 mt-1.5 text-[9px] text-fg-muted">
+              <span>Darker = higher success rate</span>
+              <span className="px-1 border border-dashed border-border-default/40 rounded-[2px]">dashed</span>
+              <span>= fewer than {MIN_SAMPLE} attempts, not yet meaningful</span>
+              <span className="ml-auto tabular-nums">
+                {timing.summary.total_attempts} attempts · {timing.summary.success_rate}% overall
+              </span>
+            </div>
+          </div>
+        )}
+        {!timingError && timing && !timing.by_day_band && (
+          <div className="text-[10px] text-fg-muted">
+            Timing breakdown unavailable — the API returned no day/band cross-tab.
           </div>
         )}
       </div>

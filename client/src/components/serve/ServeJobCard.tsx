@@ -27,6 +27,7 @@ import type { ServeJob, ServeJobLinkedCall, ServeAttempt } from '../../types';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { formatCodeShort } from '../../constants/processServiceCodes';
 import ServeReceiptActions from './ServeReceiptActions';
+import DiligencePanel from './DiligencePanel';
 
 interface ServeJobCardProps {
   job: ServeJob;
@@ -459,6 +460,13 @@ export default React.memo(function ServeJobCard({
               <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Instructions</span>
               <p className="text-rmpg-300 mt-0.5">{job.service_instructions}</p>
             </div>
+          )}
+
+          {/* Diligence record — sits directly above the raw timeline because
+              it is the READ of that timeline. Only shown while the job is
+              still open: once served, the chain is history, not a to-do. */}
+          {isOpenJob && job.attempts && job.attempts.length > 0 && (
+            <DiligencePanel attempts={job.attempts} />
           )}
 
           {/* Prior attempts timeline */}

@@ -371,23 +371,59 @@ sv.get('/schedule-analytics', async (c) => {
            SUM(CASE WHEN result IN ('served','sub_served') THEN 1 ELSE 0 END) AS served
     FROM serve_attempts WHERE date(attempt_at) >= ?`, startDate);
 
-  const byDow = await query<{ dow: string; total: number; served: number }>(db, `
-    SELECT strftime('%w', attempt_at) AS dow, COUNT(*) AS total,
-           SUM(CASE WHEN result IN ('served','sub_served') THEN 1 ELSE 0 END) AS served
-    FROM serve_attempts WHERE date(attempt_at) >= ? GROUP BY dow`, startDate);
-  const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const by_day_of_week: Record<string, { total: number; served: number }> = {};
-  for (const r of byDow) {
-    const name = DOW_NAMES[parseInt(r.dow, 10)] ?? r.dow;
-    by_day_of_week[name] = { total: r.total, served: r.served ?? 0 };
-  }
+  // ⚠️ Bucketing happens in the Worker, NOT in SQL. `attempt_at` is naive UTC,
+  // so `strftime('%w'/'%H', attempt_at)` — what this endpoint used to do —
+  // buckets by UTC: a 7pm MDT knock is stored 01:00 UTC the NEXT day, so it
+  // was counted as a 1am attempt on the following weekday. That systematically
+  // moved every evening attempt (the highest-yield slot) into the small hours
+  // of the wrong day, which is precisely backwards for a widget whose entire
+  // job is telling a server when to knock.
+  //
+  // A fixed SQL offset can't fix it either: Utah runs MST (UTC-7) in winter and
+  // MDT (UTC-6) in summer, so any constant is wrong for half the year. Reading
+  // through the IANA zone is the only DST-correct option.
+  const rows = await query<{ attempt_at: string; result: string }>(db, `
+    SELECT attempt_at, result FROM serve_attempts
+     WHERE date(attempt_at) >= ? AND attempt_at IS NOT NULL
+     ORDER BY attempt_at DESC LIMIT 5000`, startDate);
 
-  const byHour = await query<{ hour: string; total: number; served: number }>(db, `
-    SELECT strftime('%H', attempt_at) AS hour, COUNT(*) AS total,
-           SUM(CASE WHEN result IN ('served','sub_served') THEN 1 ELSE 0 END) AS served
-    FROM serve_attempts WHERE date(attempt_at) >= ? GROUP BY hour`, startDate);
+  const partsFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver', hour: '2-digit', hour12: false, weekday: 'short',
+  });
+  const DOW_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  // Same three bands the client's diligence model uses (serveDiligenceChain.ts),
+  // so "vary your time-of-day" and "here's when we succeed" speak one language.
+  const bandFor = (h: number) => (h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening');
+
+  const by_day_of_week: Record<string, { total: number; served: number }> = {};
   const by_hour: Record<string, { total: number; served: number }> = {};
-  for (const r of byHour) by_hour[r.hour] = { total: r.total, served: r.served ?? 0 };
+  // Cross-tab: 7 days × 3 bands. A 7×24 grid would be almost entirely empty at
+  // this volume; three bands stay populated enough to actually steer a route.
+  const by_day_band: Record<string, { total: number; served: number }> = {};
+
+  const bump = (bucket: Record<string, { total: number; served: number }>, key: string, ok: boolean) => {
+    const e = bucket[key] ?? (bucket[key] = { total: 0, served: 0 });
+    e.total++;
+    if (ok) e.served++;
+  };
+
+  for (const r of rows) {
+    // Naive UTC string -> real instant. Appending 'Z' is what makes the zone
+    // conversion below meaningful; without it the runtime reads it as local.
+    const iso = r.attempt_at.includes('T') ? r.attempt_at : r.attempt_at.replace(' ', 'T');
+    const d = new Date(iso.endsWith('Z') ? iso : `${iso}Z`);
+    if (Number.isNaN(d.getTime())) continue;
+
+    const parts = Object.fromEntries(partsFmt.formatToParts(d).map((p) => [p.type, p.value]));
+    const hour = parseInt(parts.hour, 10) % 24;
+    const dow = DOW_INDEX[parts.weekday] ?? 0;
+    const ok = r.result === 'served' || r.result === 'sub_served';
+
+    bump(by_day_of_week, DOW_NAMES[dow], ok);
+    bump(by_hour, String(hour).padStart(2, '0'), ok);
+    bump(by_day_band, `${dow}|${bandFor(hour)}`, ok);
+  }
 
   const total = totals?.total ?? 0;
   const served = totals?.served ?? 0;
@@ -398,6 +434,9 @@ sv.get('/schedule-analytics', async (c) => {
     },
     by_day_of_week,
     by_hour,
+    by_day_band,
+    bands: ['morning', 'afternoon', 'evening'],
+    timezone: 'America/Denver',
   });
 });
 
