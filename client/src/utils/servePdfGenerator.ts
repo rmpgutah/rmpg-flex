@@ -398,32 +398,27 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   });
   y = drawInstrumentTitle(doc, y, INSTRUMENT_TITLE);
 
-  // ── Court Information ──
-  y = checkPageBreak(doc, y, 15);
-  { const sec = openAutoSection(doc, art('Court Information'), y); y = sec.contentY;
-    y = addFieldPair(doc, '1. Court Name', data.courtName, lx, y, ffw);
-    const fy1 = addFieldPair(doc, '2. Case Number', data.caseNumber, lx, y, hfw);
-    const fy2 = addFieldPair(doc, '3. Jurisdiction', data.jurisdiction, rx, y, hfw);
-    y = Math.max(fy1, fy2);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  // Court, case number and jurisdiction are carried by the court heading and
+  // the pleading caption above. The old COURT INFORMATION section restated
+  // all three a third time, immediately beneath them -- the non-service
+  // affidavit dropped it for the same reason when it was reformatted.
 
   // ── Server Information ──
   y = checkPageBreak(doc, y, 15);
   { const sec = openAutoSection(doc, art('Server Information'), y); y = sec.contentY;
-    const fy1 = addFieldPair(doc, '4. Server Name', data.serverName, lx, y, hfw);
-    const fy2 = addFieldPair(doc, '5. Badge / License #', data.serverBadge, rx, y, hfw);
+    const fy1 = addFieldPair(doc, '1. Server Name', data.serverName, lx, y, hfw);
+    const fy2 = addFieldPair(doc, '2. Badge / License #', data.serverBadge, rx, y, hfw);
     y = Math.max(fy1, fy2);
-    y = addFieldPair(doc, '6. Company', data.serverCompany, lx, y, ffw);
+    y = addFieldPair(doc, '3. Company', data.serverCompany, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Recipient Information ──
   y = checkPageBreak(doc, y, 15);
   { const sec = openAutoSection(doc, art('Recipient Information'), y); y = sec.contentY;
-    y = addFieldPair(doc, '7. Recipient Name', data.recipientName, lx, y, ffw);
-    y = addFieldPair(doc, '8. Address', data.recipientAddress, lx, y, ffw);
-    y = addFieldPair(doc, '9. Document Type Served', data.documentType, lx, y, ffw);
+    y = addFieldPair(doc, '4. Recipient Name', data.recipientName, lx, y, ffw);
+    y = addFieldPair(doc, '5. Address', data.recipientAddress, lx, y, ffw);
+    y = addFieldPair(doc, '6. Document Type Served', data.documentType, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -433,14 +428,17 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
     : 'Posting';
   y = checkPageBreak(doc, y, 15);
   { const sec = openAutoSection(doc, art('Service Details'), y); y = sec.contentY;
-    const fy1 = addFieldPair(doc, '10. Date of Service', data.serviceDate, lx, y, hfw);
-    const fy2 = addFieldPair(doc, '11. Time', data.serviceTime, rx, y, hfw);
+    const fy1 = addFieldPair(doc, '7. Date of Service', data.serviceDate, lx, y, hfw);
+    // Zone-labelled like every other time on these instruments. This is the
+    // moment service was effected -- the single most consequential timestamp
+    // on the document -- and it was the only one still printing bare.
+    const fy2 = addFieldPair(doc, '8. Time', withZone(data.serviceTime || ''), rx, y, hfw);
     y = Math.max(fy1, fy2);
-    const fy3 = addFieldPair(doc, '12. Method', methodLabel, lx, y, hfw);
+    const fy3 = addFieldPair(doc, '9. Method', methodLabel, lx, y, hfw);
     const gpsText = (data.gpsLat != null && data.gpsLng != null)
       ? `${Number(data.gpsLat).toFixed(6)}, ${Number(data.gpsLng).toFixed(6)}`
       : 'N/A';
-    const fy4 = addFieldPair(doc, '13. GPS', gpsText, rx, y, hfw);
+    const fy4 = addFieldPair(doc, '10. GPS', gpsText, rx, y, hfw);
     y = Math.max(fy3, fy4);
     if (data.serviceMethod === 'substitute' && data.substituteInfo) {
       const fy5 = addFieldPair(doc, '14. Substitute Name', data.substituteInfo.name, lx, y, hfw);
@@ -465,16 +463,27 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   const certification =
     'I declare under penalty of perjury that the foregoing is true and correct.';
 
+  // The signature block's DATE/TIME column printed a bare date. On an
+  // affidavit the attested moment is a date AND a time, and it carries a zone
+  // like every other timestamp on the instrument.
+  const serviceMoment = data.serviceTime
+    ? withZone(`${data.serviceDate} ${data.serviceTime}`)
+    : data.serviceDate;
+
   y = addSignatureBlock(doc, art('Process Server'), getRailX(), y, getRailWidth(doc), data.signature ? {
     signatureImage: data.signature,
     certification,
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
-    date: data.serviceDate,
+    date: serviceMoment,
   } : {
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
-    date: data.serviceDate,
+    date: serviceMoment,
+    // Was omitted here, so an UNSIGNED affidavit -- the one printed for wet
+    // signature, i.e. the common case -- rendered an empty box stating
+    // nothing, while the signed variant carried the declaration.
+    certification,
   });
   y += SPACING.SECTION_GAP;
 
@@ -508,6 +517,8 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
     addPageFooter(doc, i, totalPages, 'serve_affidavit');
     if (i > 1) addConfidentialWatermark(doc);
   }
+
+  tightLayout = false;
 
   finalizePoliceReport(doc, {
     barcode: {
@@ -750,6 +761,8 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
     if (i > 1) addConfidentialWatermark(doc);
   }
 
+  tightLayout = false;
+
   finalizePoliceReport(doc, {
     barcode: {
       formMetadata: {
@@ -986,6 +999,8 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // Non-Service carries the full history) and clamp note length.
   const MAX_NOTICE_ATTEMPTS = 6;
   const MAX_NOTE_CHARS = 90;
+  /** Combined note+GPS budget for a row that carries coordinates. */
+  const GPS_ROW_NOTE_CHARS = 58;
   y = checkPageBreak(doc, y, 30);
   {
     const sec = openAutoSection(doc, 'II. Record of Attempt(s)', y);
@@ -1023,10 +1038,24 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       const note = sanitizePdfText(a.notes || '');
       const gps = fmtGps(a.gpsLat, a.gpsLng);
       if (gps) anyGps = true;
+      // Budget the note against the GPS suffix rather than clamping it in
+      // isolation. Clamped to a flat MAX_NOTE_CHARS and THEN having ~25
+      // characters of coordinates appended, every row overflowed to an extra
+      // line -- and half of live attempts carry GPS, so a three-attempt job
+      // with coordinates printed on TWO sheets of PJ-700 roll. The second
+      // sheet is the one that gets lost at the door.
+      // When coordinates are present the whole cell is budgeted DOWN, not just
+      // rebalanced: the coordinate token cannot break, so it forces an early
+      // wrap and costs a full extra line per row no matter how the characters
+      // are divided. Half of live attempts carry GPS, so this is the common
+      // case, not the edge one.
+      const gpsSuffix = gps ? ` · GPS ${gps}` : '';
+      const cellBudget = gps ? GPS_ROW_NOTE_CHARS : MAX_NOTE_CHARS;
+      const noteBudget = Math.max(12, cellBudget - gpsSuffix.length);
       const noteCore = note
-        ? (note.length > MAX_NOTE_CHARS ? `${note.slice(0, MAX_NOTE_CHARS - 1)}…` : note).toUpperCase()
+        ? (note.length > noteBudget ? `${note.slice(0, Math.max(1, noteBudget - 1))}…` : note).toUpperCase()
         : '';
-      const noteCell = [noteCore, gps && `GPS ${gps}`].filter(Boolean).join(' · ') || EMPTY;
+      const noteCell = `${noteCore}${gpsSuffix}` || EMPTY;
       return [
         String(a.number),
         (sanitizePdfText(a.date || '').toUpperCase() || EMPTY),
@@ -1047,16 +1076,13 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       );
       y += 5;
     }
-    if (anyGps) {
-      doc.setFont(PDF_VALUE_FONT, 'italic');
-      doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text(
-        'GPS coordinates recorded on-scene for legal verification (WGS-84, decimal degrees).',
-        lx, y + 3,
-      );
-      y += 5;
-    }
+    // The standalone "GPS coordinates recorded on-scene for legal
+    // verification (WGS-84, decimal degrees)" footnote is gone. It was
+    // boilerplate explaining a format that is self-evident from the values,
+    // it cost 5mm on an instrument that must fit ONE sheet, and the
+    // coordinates themselves -- the substantive fact -- are unchanged in the
+    // rows above.
+    void anyGps;
     y += SPACING.SM;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     // Extra clearance before the next section's header bar — the table's own
@@ -1287,6 +1313,8 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     // appearance on the disclaimer paragraph's first line.
   }
 
+  tightLayout = false;
+
   finalizePoliceReport(doc, {
     barcode: {
       formMetadata: {
@@ -1434,6 +1462,8 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     addPageFooter(doc, i, totalPages, 'service_log');
     if (i > 1) addConfidentialWatermark(doc);
   }
+
+  tightLayout = false;
 
   finalizePoliceReport(doc, {
     barcode: {
@@ -1677,8 +1707,12 @@ export async function generateReceiptOfService(data: ReceiptOfServiceData): Prom
 
 /** Centred court name and jurisdiction — the traditional opening of a
  *  filing, above the party caption. */
-function drawCourtHeading(doc: jsPDF, y: number, courtName: string, jurisdiction: string): number {
+function drawCourtHeading(
+  doc: jsPDF, y: number, courtName: string, jurisdiction: string,
+  copy: ReceiptCopy | null = null,
+): number {
   const cx = doc.internal.pageSize.getWidth() / 2;
+  const lx = getLeftX();
   const cw = getContentWidth(doc);
 
   doc.setFont(PDF_VALUE_FONT, 'bold');
@@ -1696,6 +1730,22 @@ function drawCourtHeading(doc: jsPDF, y: number, courtName: string, jurisdiction
   doc.setFontSize(FONT.SIZE_SMALL_META);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(sanitizePdfText((jurisdiction || 'STATE OF UTAH').toUpperCase()), cx, y, { align: 'center' });
+
+  // Copy designation rides the dead space beside the CENTRED court name.
+  // It had its own band, which cost 6mm; before that it was boxed on the
+  // instrument title's baseline, where a 4.2mm rectangle crossed a line
+  // the NOTICE paragraph's ascenders reach into. Here it collides with
+  // nothing and costs nothing.
+  if (copy) {
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL + 0.5);
+    const label = RECEIPT_COPY_LABEL[copy].toUpperCase();
+    const w = doc.getTextWidth(label) + 6;
+    doc.setFillColor(...COLOR.RULE_STRONG);
+    doc.rect(lx + cw - w, y - 5.4, w, 5, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.text(label, lx + cw - w + 3, y - 1.9);
+  }
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   return y + 2.5;
@@ -1786,9 +1836,7 @@ function drawPleadingCaption(
  * is the convention. The caption identifies the filing for the docket;
  * the centred title tells the person holding the paper what it is.
  */
-function drawInstrumentTitle(
-  doc: jsPDF, y: number, title: string, copy: ReceiptCopy | null = null,
-): number {
+function drawInstrumentTitle(doc: jsPDF, y: number, title: string): number {
   const cx = doc.internal.pageSize.getWidth() / 2;
   const lx = getLeftX();
   const cw = getContentWidth(doc);
@@ -1802,7 +1850,7 @@ function drawInstrumentTitle(
   doc.setLineWidth(BORDER.ACCENT_HEADER);
   doc.line(lx, y + 0.7, lx + cw, y + 0.7);
 
-  y += 4.6;
+  y += tightLayout ? 4.0 : 4.6;
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE + 1);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1812,27 +1860,12 @@ function drawInstrumentTitle(
   // row below it. The band already reserves this line, so three sheets are
   // told apart at a glance for zero vertical cost — which matters on a
   // layout that fits a single roll-printer sheet by ~4mm.
-  if (copy) {
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    const label = RECEIPT_COPY_LABEL[copy].toUpperCase();
-    const w = doc.getTextWidth(label) + 4;
-    doc.setDrawColor(...COLOR.RULE_STRONG);
-    doc.setLineWidth(BORDER.FIELD);
-    // Centred on the title's CAP height, not its baseline. A box centred
-    // on the baseline sits visibly high against uppercase text, because
-    // the whole glyph is above it.
-    const capH = FONT.SIZE_SECTION_TITLE * 0.35;
-    doc.rect(lx + cw - w, y - capH / 2 - 2.1, w, 4.2);
-    doc.text(label, lx + cw - w + 2, y);
-    doc.setFontSize(FONT.SIZE_SECTION_TITLE + 1);
-  }
-
-  y += 1.6;
+  y += tightLayout ? 1.3 : 1.6;
   doc.setDrawColor(...COLOR.RULE_STRONG);
   doc.setLineWidth(BORDER.TABLE_OUTER);
   doc.line(lx, y, lx + cw, y);
 
-  return y + SPACING.LG;
+  return y + (tightLayout ? SPACING.MD : SPACING.LG);
 }
 
 interface SubjectRow {
@@ -1853,6 +1886,9 @@ interface SubjectRow {
  * questions a reader arrives with — "who was served?" and "who signed
  * for them?" — are answered before any field is read.
  */
+/** Set for the life of one render when the page is under fit pressure. */
+let tightLayout = false;
+
 function drawSubjectPanel(
   doc: jsPDF,
   x: number, y: number, w: number,
@@ -1864,8 +1900,8 @@ function drawSubjectPanel(
   /** Measure only — return the height without drawing anything. */
   measureOnly = false,
 ): number {
-  const pad = 1.6;
-  const rowH = 2.9;
+  const pad = tightLayout ? 1.3 : 1.6;
+  const rowH = tightLayout ? 2.6 : 2.9;
   // Clearance ONLY after a value that wrapped. A two-line address set its
   // continuation against the label below — circled "2 lines" on the
   // 2026-07-27 service. Widening every row instead cost ~1mm per panel and
@@ -2234,10 +2270,53 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // declarations, the page tightens rather than spilling — the reader
   // gets a denser single sheet instead of a second one carrying a
   // signature away from most of the form.
-  const dense = !data.photos?.length
-    && (captionWraps(doc, data.defendantName || '')
-      || measureDeclarations(doc, data.attestations, ffw, blank) > DENSE_THRESHOLD_MM);
-  const gap = (normal: number) => (dense ? normal * 0.5 : normal);
+  // ── Fit tier, decided before anything is drawn ──
+  //
+  // Three independent things inflate this instrument, and the first
+  // version of this only knew about one of them:
+  //
+  //   a wrapping caption   — a multi-entity defendant
+  //   declined statements  — each adds a struck line plus an annotation
+  //   photographs          — the largest single block on the page
+  //
+  // Photographs previously DISABLED density, which was backwards: the
+  // page that most needs compressing was the one that got none.
+  //
+  // Tiers rather than a boolean, because the three can stack. `tight`
+  // exists for the case where dense alone still overflows, and shrinks
+  // things that cost legibility — so it is entered only when the
+  // alternative is a second sheet, which costs more.
+  const declH0 = measureDeclarations(doc, data.attestations, ffw, blank);
+  const declinedCount = blank ? 0 : data.attestations.filter((a) => !a.accepted).length;
+  const photoCount = data.photos?.length ?? 0;
+  const pressure =
+    (captionWraps(doc, data.defendantName || '') ? 1 : 0)
+    + (declH0 > DENSE_THRESHOLD_MM ? 1 : 0)
+    + (declinedCount > 0 ? 1 : 0)
+    + (photoCount > 0 ? 2 : 0);   // photographs weigh double — ~40mm
+  // ONE spacing scheme, for every variation and every copy.
+  //
+  // This began as tiers — normal, dense, tight — which meant the same
+  // service printed at different densities depending on how long the
+  // defendant's name happened to be. Two copies of one instrument then
+  // looked like two different documents, and every content change landed
+  // the whole set back on a knife edge measured in tenths of a
+  // millimetre.
+  //
+  // The compressed spacing is now simply the design: it is what the
+  // operator reviewed and accepted, it leaves every ordinary form real
+  // headroom rather than 0.1mm, and it means a co-habitant service and a
+  // four-entity business service are recognisably the same form.
+  //
+  // `pressure` survives for the one thing that genuinely must adapt:
+  // photographs, which are laid three-across when the page is loaded and
+  // two-across when it is not.
+  const tight = pressure >= 1;
+  const gap = (normal: number) => normal * 0.3;
+  // Module-scoped for the panel helper, which cannot take another
+  // parameter without threading it through two call sites for nothing.
+  // Reset unconditionally at the end of this render.
+  tightLayout = true;
 
   setActiveCaseNumber(data.caseNumber);
   let y = drawNibrsHeader(doc, {
@@ -2253,21 +2332,25 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   });
 
   // ── Docket furniture: court heading, caption, instrument title ──
-  y = drawCourtHeading(doc, y, data.courtName, data.jurisdiction);
+  y = drawCourtHeading(doc, y, data.courtName, data.jurisdiction,
+    blank ? null : (data.copy ?? null));
   y = drawPleadingCaption(doc, y, {
     plaintiff: data.plaintiffName,
     defendant: data.defendantName,
     caseNumber: data.caseNumber,
     instrumentTitle: data.formTitle,
   });
-  y = drawInstrumentTitle(doc, y, data.formTitle, blank ? null : (data.copy ?? null));
+  y = drawInstrumentTitle(doc, y, data.formTitle);
 
 
   // ── Notice to the person served ──
   // The one paragraph a signer must read before anything is asked of
   // them, in the identical wording used on the signing screen.
+  // The NOTICE's baseline needs to clear its own ascenders below the
+  // title rule, not merely sit a gap below it. Compressing this to a
+  // fraction of a line put the rule through the top of the text.
   y = checkPageBreak(doc, y, 14);
-  y += gap(SPACING.LG);
+  y += FONT.SIZE_FIELD_VALUE * 0.42 + gap(SPACING.MD);
   doc.setFont(PDF_VALUE_FONT, 'bold');
   y = addWrappedText(doc,
     'NOTICE: This instrument evidences delivery only. It is not an admission of any '
@@ -2300,6 +2383,9 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
         { label: 'Place of service', value: data.serviceAddress },
         { label: 'Premises', value: data.premisesType || 'Business' },
         { label: 'Served via', value: 'Authorized agent' },
+        ...(data.gps
+          ? [{ label: 'Geolocation', value: `${data.gps.lat.toFixed(5)}, ${data.gps.lng.toFixed(5)}` }]
+          : []),
       ]
     : [
         { label: 'Place of service', value: data.serviceAddress },
@@ -2385,34 +2471,23 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       const b = addFieldPair(doc, '2. Process Server / Badge',
         [data.serverName, data.serverBadge].filter(Boolean).join('  ·  '), rx, y, hfw);
       y = Math.max(a, b);
-    } else if (dense) {
-      // One row. Server and badge read fine together, and the geolocation
-      // rides with them rather than claiming a row of its own — the row
-      // this frees is what keeps a long-caption instrument on one sheet.
+    } else {
+      // One row, and it keeps the column semantics an earlier change
+      // established: the LEFT column is the moment of delivery, the RIGHT
+      // column is who performed it. Badge now sits WITH the server it
+      // identifies rather than beneath the date, and the geolocation has
+      // moved to panel I(a) beside the place it corroborates — so neither
+      // column mixes two unrelated facts.
+      //
+      // Geolocation is stated here only when there is NONE to show,
+      // because its absence is itself worth recording.
       const a = addFieldPair(doc, '1. Date and Time of Delivery', `${signedDate} at ${signedTime}`, lx, y, hfw);
       const b = addFieldPair(doc, '2. Process Server / Badge',
         [data.serverName, data.serverBadge].filter(Boolean).join('  ·  '), rx, y, hfw);
       y = Math.max(a, b);
-      y = addFieldPair(doc, '3. Geolocation at Signature',
-        data.gps ? `${data.gps.lat.toFixed(6)}, ${data.gps.lng.toFixed(6)}` : 'Not available',
-        lx, y, ffw);
-    } else {
-      // Column semantics: the LEFT column is the moment of delivery, the
-      // RIGHT column is who performed it. Badge previously sat beneath the
-      // date and geolocation beneath the server, so each column mixed two
-      // unrelated facts and the reader had to zig-zag. Now the badge sits
-      // under the server it identifies and the geolocation under the
-      // timestamp it corroborates -- read either column top-to-bottom and it
-      // answers one question.
-      const a = addFieldPair(doc, '1. Date and Time of Delivery',
-        withZone(`${signedDate} at ${signedTime}`), lx, y, hfw);
-      const b = addFieldPair(doc, '2. Process Server', data.serverName, rx, y, hfw);
-      y = Math.max(a, b);
-      const c = addFieldPair(doc, '3. Geolocation at Signature',
-        data.gps ? `${data.gps.lat.toFixed(6)}, ${data.gps.lng.toFixed(6)}` : 'Not available',
-        lx, y, hfw);
-      const d = addFieldPair(doc, '4. Badge / License No.', data.serverBadge, rx, y, hfw);
-      y = Math.max(c, d);
+      if (!data.gps) {
+        y = addFieldPair(doc, '3. Geolocation at Signature', 'Not available', lx, y, ffw);
+      }
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -2495,13 +2570,14 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     declBlockH += lines.length * declLineH + (blank ? 0.2 : SPACING.SM)
       + (blank || a.accepted ? 0 : declLineH);
   }
-  const footnoteH = isIndividual ? 0 : 3 * (FONT.SIZE_FOOTER_SECONDARY * 0.42) + SPACING.MD;
+  const footnoteH = isIndividual ? 0 : 3 * (FONT.SIZE_SMALL_META * 0.42) + SPACING.LG;
   // The hand-off badge is part of the layout, not an overlay. Placing it
   // absolutely at the page foot worked while blank forms were short and
   // silently printed ON the signature block once they filled the sheet.
   const handoffH = blank && data.qrDataUrl ? 7 : 0;
   const executionH = (SPACING.XL + SPACING.MD) + declLineH + SPACING.LG
-    + SPACING.SIGNATURE_BOX_H + SPACING.XL + footnoteH + handoffH + 3;
+    + (SPACING.SIGNATURE_BOX_H - 3)
+    + SPACING.XL + footnoteH + handoffH + 3;
   // Dense only: reserve the TAIL, not the whole block.
   //
   // Reserving every declaration plus the signature moves all of Article IV
@@ -2510,12 +2586,12 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // is the ordinary answer to a widow. Scoped to dense because an earlier
   // attempt applied it everywhere and regressed all four standard
   // variations; here the only cases affected are ones already spilling.
-  if (dense) {
-    const tailH = data.attestations.slice(-2).reduce((n, a) => n + declH(a), 0);
-    y = checkPageBreak(doc, y, Math.min(declBlockH, 34) + tailH + executionH);
-  } else {
-    y = checkPageBreak(doc, y, declBlockH + executionH);
-  }
+  // Reserve the TAIL, not the whole block. Reserving every declaration
+  // plus the signature moves all of Article IV together, which leaves a
+  // page two-thirds empty when it does not fit. Keeping just the last
+  // statements with the signature is the ordinary answer to a widow.
+  const tailH = data.attestations.slice(-2).reduce((n, a) => n + declH(a), 0);
+  y = checkPageBreak(doc, y, Math.min(declBlockH, 34) + tailH + executionH);
 
   { const sec = openAutoSection(doc, 'IV.  Declarations of the Person Accepting Service', y);
     y = sec.contentY + proseLeadIn();
@@ -2533,7 +2609,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       // Before the first tail statement, reserve the tail AND the whole
       // execution block so the signature can never be split from what it
       // attests to.
-      if (dense && i === data.attestations.length - 2) {
+      if (i === data.attestations.length - 2) {
         const tailH = data.attestations.slice(-2).reduce((n, x) => n + declH(x), 0);
         y = checkPageBreak(doc, y, tailH + executionH);
       }
@@ -2553,12 +2629,16 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     y = sec.contentY + SPACING.MD;
     // Two across. Bigger than a thumbnail so a door number is readable;
     // small enough that three photos do not claim a page of their own.
+    // Three across when the page is under pressure, two otherwise. A
+    // door number stays legible at either size; a second sheet does not
+    // become less annoying.
+    const across = tight ? 3 : 2;
     const gap = 3;
-    const w = (ffw - gap) / 2;
-    const h = w * 0.62;
+    const w = (ffw - gap * (across - 1)) / across;
+    const h = w * (tight ? 0.58 : 0.62);
     let px = lx;
-    for (let i = 0; i < Math.min(data.photos.length, 4); i++) {
-      if (i > 0 && i % 2 === 0) { y += h + gap; px = lx; }
+    for (let i = 0; i < Math.min(data.photos.length, across); i++) {
+      if (i > 0 && i % across === 0) { y += h + gap; px = lx; }
       try {
         doc.addImage(data.photos[i], 'JPEG', px, y, w, h);
         doc.setDrawColor(...COLOR.BORDER_FIELD);
@@ -2578,7 +2658,10 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   //
   // Deliberately NOT a perjury declaration — see the note on
   // ReceiptOfServiceData.
-  y += gap(SPACING.XL) + SPACING.MD;
+  // closeAutoSection draws its rule AT the y it returns. The execution
+  // clause needs a full line below it, not a compressed fraction — at
+  // tight spacing the rule sat on the clause's ascenders.
+  y += SPACING.XL + SPACING.MD;
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -2640,6 +2723,10 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   const badge = blank && data.qrDataUrl ? 11 : 0;
   const footnoteTop = y;
   if (!isIndividual) {
+    // 6pt, not 5. This is the authority the whole variation rests on, and
+    // at footer size it was the least legible text on a document people
+    // read in a hallway. It was also colliding with the instrument line
+    // below it, because neither reserved space for the other.
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
     y = addWrappedText(doc,
@@ -2647,8 +2734,8 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       + 'the Utah Rules of Civil Procedure where the documents are left with a person of '
       + 'suitable age and discretion residing at the dwelling, or with an agent authorized '
       + 'to receive service at a place of business.',
-      lx, y, ffw - (badge ? badge + 34 : 0), FONT.SIZE_FOOTER_SECONDARY, { preserveCase: true });
-    y += SPACING.MD;
+      lx, y, ffw - (badge ? badge + 34 : 0), FONT.SIZE_SMALL_META, { preserveCase: true });
+    y += SPACING.LG;
   }
 
   // ── Hand-off badge ──
@@ -2710,6 +2797,8 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
         : (data.copy ? RECEIPT_COPY_LABEL[data.copy].toUpperCase() : 'COPY FOR THE PERSON SERVED'),
     });
   }
+
+  tightLayout = false;
 
   finalizePoliceReport(doc, {
     barcode: {
