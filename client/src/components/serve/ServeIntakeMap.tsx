@@ -15,6 +15,18 @@ import LocationNoteModal from './LocationNoteModal';
 import { escapeHtml } from '../../utils/sanitize';
 import { withAlpha } from '../../utils/withAlpha';
 import { clusterByGrid, type ClusterableItem } from '../../utils/serveMapClustering';
+import { urgencyTierForDeadline } from '../../utils/serveMapOverlays';
+
+// One-time stylesheet injection for pulse-ring keyframes
+if (typeof document !== 'undefined' && !document.getElementById('srv-pulse-styles')) {
+  const style = document.createElement('style');
+  style.id = 'srv-pulse-styles';
+  style.textContent = `
+    @keyframes srv-pulse-critical { 0% { opacity:1; transform:scale(0.9);} 100% { opacity:0; transform:scale(1.6);} }
+    @keyframes srv-pulse-warning { 0% { opacity:0.7; transform:scale(0.9);} 100% { opacity:0; transform:scale(1.4);} }
+  `;
+  document.head.appendChild(style);
+}
 
 interface QueueMapItem {
   id: number;
@@ -69,6 +81,7 @@ function buildServeMarker(item: QueueMapItem): HTMLElement {
   const color = PRIORITY_COLORS[item.priority] ?? PRIORITY_COLORS.routine;
   const glow  = PRIORITY_GLOW[item.priority]  ?? PRIORITY_GLOW.routine;
   const hasNote = !!item.location_note_id;
+  const tier = urgencyTierForDeadline(item.deadline, Date.now());
 
   const el = document.createElement('div');
   el.style.cssText = `
@@ -103,6 +116,18 @@ function buildServeMarker(item: QueueMapItem): HTMLElement {
     `;
     badge.title = 'Recorded service notation — see popup';
     el.appendChild(badge);
+  }
+
+  // Deadline urgency pulse ring
+  if (tier === 'critical' || tier === 'warning') {
+    const ring = document.createElement('div');
+    const ringColor = tier === 'critical' ? '#ef4444' : '#f59e0b';
+    ring.style.cssText = `
+      position:absolute;inset:-6px;border-radius:50%;
+      border:2px solid ${ringColor};
+      animation:srv-pulse-${tier} 1.6s ease-out infinite;
+    `;
+    el.appendChild(ring);
   }
 
   el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; });
