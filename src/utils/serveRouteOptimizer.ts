@@ -10,7 +10,7 @@
 // ============================================================
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { query, queryFirst } from './db';
+import { query, queryFirst, queryInChunks } from './db';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -170,23 +170,34 @@ async function fetchStops(
 ): Promise<{ withCoords: RouteStop[]; withoutCoords: RouteStop[] }> {
   if (attemptIds.length === 0) return { withCoords: [], withoutCoords: [] };
 
-  const placeholders = attemptIds.map(() => '?').join(',');
-  const rows = await query<RouteStop>(
-    db,
-    `SELECT
+  // Caller-supplied id list: a full day's route plan can exceed D1's
+  // 100-bound-parameter cap, which throws at BIND time -- before the query
+  // runs -- so the whole route would fail to build on exactly the busy days
+  // it matters most.
+  const rows = await queryInChunks<RouteStop>(
+    db, attemptIds,
+    // Five of this query's column references did not exist on live D1, so the
+    // route optimizer's stop fetch threw "no such column" on EVERY call and
+    // the module has never produced a route. Verified against live schema:
+    //   a.queue_id     -> serve_attempts.serve_queue_id
+    //   q.lat / q.lng  -> serve_queue.recipient_lat / recipient_lng
+    //   q.address      -> serve_queue.recipient_address
+    //   q.is_business  -> no such column; derived from business_id
+    // (The bounding-box query in this same file had the same defect and was
+    // repaired separately.)
+    (placeholders) => `SELECT
         a.id AS attemptId,
-        a.queue_id AS queueId,
-        q.lat AS lat,
-        q.lng AS lng,
-        q.address AS address,
+        a.serve_queue_id AS queueId,
+        q.recipient_lat AS lat,
+        q.recipient_lng AS lng,
+        q.recipient_address AS address,
         q.defendant_name AS defendantName,
         a.attempt_number AS attemptNumber,
         q.priority AS priority,
-        q.is_business AS isBusiness
+        (q.business_id IS NOT NULL) AS isBusiness
       FROM serve_attempts a
-      JOIN serve_queue q ON q.id = a.queue_id
+      JOIN serve_queue q ON q.id = a.serve_queue_id
       WHERE a.id IN (${placeholders})`,
-    ...attemptIds,
   );
 
   const withCoords: RouteStop[] = [];
