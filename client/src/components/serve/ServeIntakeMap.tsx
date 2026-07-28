@@ -322,9 +322,24 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     const sourceId = 'srv-attempt-trail';
     const layerId = 'srv-attempt-trail-layer';
 
+    // Defensive by design: this closure's `map` is captured at effect-run
+    // time, but React runs passive-effect cleanups on unmount in the SAME
+    // top-to-bottom declaration order as the effects themselves (not
+    // reversed). The map-init effect is declared earlier in this component,
+    // so on a full unmount its cleanup (map.remove(); mapRef.current = null)
+    // can run before this effect's cleanup fires. Always read mapRef.current
+    // fresh rather than trusting the closed-over `map`, no-op if it's already
+    // null, and wrap the Mapbox calls in try/catch as a last-resort net since
+    // a torn-down style can throw from getLayer/getSource/removeLayer.
     const clearTrail = () => {
-      if (map.getLayer(layerId)) map.removeLayer(layerId);
-      if (map.getSource(sourceId)) map.removeSource(sourceId);
+      const currentMap = mapRef.current;
+      if (!currentMap) return;
+      try {
+        if (currentMap.getLayer(layerId)) currentMap.removeLayer(layerId);
+        if (currentMap.getSource(sourceId)) currentMap.removeSource(sourceId);
+      } catch {
+        // non-fatal — map/style already torn down (e.g. mid-unmount)
+      }
     };
 
     if (trailQueueId == null) {
@@ -337,17 +352,23 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       `/process-server/${trailQueueId}/gps-trail`,
     ).then((res) => {
       if (cancelled || res.polyline.length < 2) return;
+      const currentMap = mapRef.current;
+      if (!currentMap) return;
       clearTrail();
-      map.addSource(sourceId, {
-        type: 'geojson',
-        data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: res.polyline } },
-      });
-      map.addLayer({
-        id: layerId,
-        type: 'line',
-        source: sourceId,
-        paint: { 'line-color': '#94a3b8', 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': 0.8 },
-      });
+      try {
+        currentMap.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: res.polyline } },
+        });
+        currentMap.addLayer({
+          id: layerId,
+          type: 'line',
+          source: sourceId,
+          paint: { 'line-color': '#94a3b8', 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': 0.8 },
+        });
+      } catch {
+        // non-fatal — map/style torn down before the fetch resolved
+      }
     }).catch(() => { /* non-fatal — trail stays hidden */ });
 
     return () => { cancelled = true; clearTrail(); };
