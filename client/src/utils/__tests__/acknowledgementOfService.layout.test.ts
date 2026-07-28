@@ -318,6 +318,40 @@ describe('generateReceiptOfService — blank paper mode', () => {
   });
 });
 
+describe('fit tiers — an ordinary caption absorbs pressure on one sheet', () => {
+  // The three things that inflate the page, each on a NORMAL caption.
+  // Photographs previously turned compression OFF, so the page that most
+  // needed it got none.
+  it('fits a declined statement', async () => {
+    const doc = await generateReceiptOfService(
+      build('co_habitant', 'Marcus T. Whitfield', CASES[1].extra, {
+        printTarget: 'mobile',
+        attestations: attestationsFor('co_habitant', 'Marcus T. Whitfield')
+          .map((a) => ({ id: a.id, text: a.text, accepted: a.id !== 'explained' })),
+      }),
+    );
+    expect(doc.getNumberOfPages()).toBe(1);
+  }, 30_000);
+
+  it('fits two photographs', async () => {
+    const doc = await generateReceiptOfService(
+      build('individual', 'Marcus T. Whitfield', CASES[0].extra, {
+        printTarget: 'mobile', photos: [TEST_QR, TEST_QR],
+      }),
+    );
+    expect(doc.getNumberOfPages()).toBe(1);
+  }, 30_000);
+
+  it('leaves an unpressured form alone', async () => {
+    // Zero pressure must not trigger compression — the four ordinary
+    // variations already fit comfortably and should keep their spacing.
+    const doc = await generateReceiptOfService(
+      build('individual', 'Marcus T. Whitfield', CASES[0].extra, { printTarget: 'mobile' }),
+    );
+    expect(doc.getNumberOfPages()).toBe(1);
+  }, 30_000);
+});
+
 describe('generateReceiptOfService — the three copies', () => {
   // A completed service produces three sheets off the SAME instrument:
   // agency file, person served, hiring client. Identical content and
@@ -390,21 +424,29 @@ describe('the real 2026-07-27 service — long multi-entity caption', () => {
     ...over,
   }) as ReceiptOfServiceData;
 
-  it('fills the first page before continuing, rather than half-emptying it', async () => {
-    // A four-entity caption legitimately needs a second sheet. What must
-    // NOT happen is what did: reserving the whole declarations block moved
-    // all of Article IV together, leaving page one 40% white and page two
-    // carrying everything.
+  it('fits a four-entity caption on ONE sheet', async () => {
+    // This used to assert two balanced pages, because that was the best
+    // available: reserving the whole declarations block moved Article IV
+    // wholesale and left page one 40% white. The fit tiers now compress
+    // caption leading, panel padding and the title band — chrome only, no
+    // text gets smaller — and it lands on a single sheet.
     //
-    // Dense mode now tightens the layout and reserves only the tail, so
-    // page one runs full and page two is a genuine continuation. Asserted
-    // on relative weight because it is the balance that regressed, not a
-    // page count.
+    // Kept as a page-count assertion rather than a balance one: one sheet
+    // is the guarantee that matters to a process server at a door.
     const doc = await generateReceiptOfService(build2());
+    expect(doc.getNumberOfPages()).toBe(1);
+  }, 30_000);
+
+  it('still needs a second sheet when a long caption ALSO carries photographs', async () => {
+    // Honest limit. Photographs are ~40mm and the four-entity caption
+    // already lands with ~0.2mm to spare; the two together do not fit at
+    // legible type, and shrinking the declarations to force it would
+    // trade readability of the operative text for a page count.
+    //
+    // What must still hold is that the signature is not stranded.
+    const doc = await generateReceiptOfService(build2({ photos: [TEST_QR, TEST_QR] }));
     expect(doc.getNumberOfPages()).toBe(2);
-    const p1 = pageWeight(doc, 1);
-    const p2 = pageWeight(doc, 2);
-    expect(p1, 'page one should carry the bulk of the instrument').toBeGreaterThan(p2 * 2);
+    expect(pageWeight(doc, 2)).toBeGreaterThan(4_000);
   }, 30_000);
 
   it('keeps the signature with the statements it attests to', async () => {

@@ -11,6 +11,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Bindings } from '../types';
 import { query, queryFirst, execute, columnExists } from './db';
+import { denverDateExpr } from './denverTime';
 import { broadcastDispatchUpdate } from '../lib/broadcast';
 import { emitAlert } from './alertHub';
 import { log } from './logger';
@@ -883,10 +884,14 @@ export async function getAttemptAnalytics(
   // Attempts per day
   const perDay = await query<{ date: string; count: number }>(
     db,
-    `SELECT DATE(attempt_at) AS date, COUNT(*) AS count
+    // Buckets are Mountain calendar days, not UTC ones. A 19:52 MT attempt is
+    // stored 01:52 the NEXT day in UTC, so grouping raw put it in tomorrow's
+    // bucket -- 4 of 54 live attempts land on the wrong day, and near a week
+    // boundary that moves them into the wrong week entirely.
+    `SELECT ${denverDateExpr('attempt_at')} AS date, COUNT(*) AS count
        FROM serve_attempts
       WHERE attempt_at >= ? AND attempt_at <= ?
-      GROUP BY DATE(attempt_at)
+      GROUP BY ${denverDateExpr('attempt_at')}
       ORDER BY date ASC`,
     start, end,
   );
@@ -894,12 +899,12 @@ export async function getAttemptAnalytics(
   // Success rate trend (per day)
   const successRateTrend = await query<{ date: string; total: number; served: number }>(
     db,
-    `SELECT DATE(attempt_at) AS date,
+    `SELECT ${denverDateExpr('attempt_at')} AS date,
             COUNT(*) AS total,
             SUM(CASE WHEN result IN ('served','sub_served','posted') THEN 1 ELSE 0 END) AS served
        FROM serve_attempts
       WHERE attempt_at >= ? AND attempt_at <= ?
-      GROUP BY DATE(attempt_at)
+      GROUP BY ${denverDateExpr('attempt_at')}
       ORDER BY date ASC`,
     start, end,
   );
