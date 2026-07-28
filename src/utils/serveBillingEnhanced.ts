@@ -7,7 +7,8 @@
 // ============================================================
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { queryFirst, query, execute, executeBatch } from './db';
+import { queryFirst, query, execute, executeBatch, executeInChunks } from './db';
+import { log } from './logger';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -634,13 +635,18 @@ export async function getOverdueInvoices(
   // Auto-mark overdue
   const invoiceIds = rows.map((r) => r.id);
   if (invoiceIds.length > 0) {
-    const placeholders = invoiceIds.map(() => '?').join(',');
-    await execute(
-      db,
-      `UPDATE invoices SET status = 'overdue', updated_at = datetime('now')
+    // The select above has no LIMIT, so this UPDATE grew with the data and
+    // blew D1's 100-bound-parameter cap once more than 100 invoices were
+    // overdue at once. The bare catch made it silent: invoices simply never
+    // got marked overdue, and the aging report kept showing them as 'sent'.
+    // Now chunked, and a failure is logged rather than swallowed.
+    await executeInChunks(
+      db, invoiceIds,
+      (placeholders) => `UPDATE invoices SET status = 'overdue', updated_at = datetime('now')
        WHERE id IN (${placeholders}) AND status != 'overdue'`,
-      ...invoiceIds,
-    ).catch(() => {});
+    ).catch((err) => {
+      log.error('Failed to auto-mark overdue invoices', { count: invoiceIds.length }, err as Error);
+    });
   }
 
   return rows.map((r) => ({
