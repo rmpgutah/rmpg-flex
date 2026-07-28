@@ -366,11 +366,6 @@ sv.get('/schedule-analytics', async (c) => {
     : new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const db = getDb(c.env);
 
-  const totals = await queryFirst<{ total: number; served: number }>(db, `
-    SELECT COUNT(*) AS total,
-           SUM(CASE WHEN result IN ('served','sub_served') THEN 1 ELSE 0 END) AS served
-    FROM serve_attempts WHERE date(attempt_at) >= ?`, startDate);
-
   // ⚠️ Bucketing happens in the Worker, NOT in SQL. `attempt_at` is naive UTC,
   // so `strftime('%w'/'%H', attempt_at)` — what this endpoint used to do —
   // buckets by UTC: a 7pm MDT knock is stored 01:00 UTC the NEXT day, so it
@@ -382,10 +377,11 @@ sv.get('/schedule-analytics', async (c) => {
   // A fixed SQL offset can't fix it either: Utah runs MST (UTC-7) in winter and
   // MDT (UTC-6) in summer, so any constant is wrong for half the year. Reading
   // through the IANA zone is the only DST-correct option.
+  const ROW_SCAN_LIMIT = 5000;
   const rows = await query<{ attempt_at: string; result: string }>(db, `
     SELECT attempt_at, result FROM serve_attempts
      WHERE date(attempt_at) >= ? AND attempt_at IS NOT NULL
-     ORDER BY attempt_at DESC LIMIT 5000`, startDate);
+     ORDER BY attempt_at DESC LIMIT ?`, startDate, ROW_SCAN_LIMIT);
 
   const partsFmt = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Denver', hour: '2-digit', hour12: false, weekday: 'short',
@@ -425,8 +421,16 @@ sv.get('/schedule-analytics', async (c) => {
     bump(by_day_band, `${dow}|${bandFor(hour)}`, ok);
   }
 
-  const total = totals?.total ?? 0;
-  const served = totals?.served ?? 0;
+  // Summary is derived from the SAME `rows` the buckets are built from, not
+  // from a separate COUNT(*) over the whole window. A second SQL aggregate
+  // would count every attempt while the grid only reflects the first
+  // ROW_SCAN_LIMIT of them, so past that many attempts the header would claim
+  // a total the cells below could not add up to — the kind of drift that only
+  // appears once real volume arrives and is then very hard to trust or trace.
+  let total = 0;
+  let served = 0;
+  for (const b of Object.values(by_day_of_week)) { total += b.total; served += b.served; }
+
   return c.json({
     summary: {
       total_attempts: total,
@@ -437,6 +441,10 @@ sv.get('/schedule-analytics', async (c) => {
     by_day_band,
     bands: ['morning', 'afternoon', 'evening'],
     timezone: 'America/Denver',
+    // True when the window held more attempts than we scanned, so the caller
+    // can say "based on the most recent N" instead of implying completeness.
+    truncated: rows.length >= ROW_SCAN_LIMIT,
+    scanned: rows.length,
   });
 });
 

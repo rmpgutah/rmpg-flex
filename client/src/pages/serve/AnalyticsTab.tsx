@@ -149,6 +149,9 @@ interface ScheduleAnalytics {
   by_day_band?: Record<string, { total: number; served: number }>;
   bands?: string[];
   timezone?: string;
+  /** More attempts existed in the window than were scanned. */
+  truncated?: boolean;
+  scanned?: number;
 }
 
 const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -725,6 +728,7 @@ export default function AnalyticsTab() {
               <span className="px-1 border border-dashed border-border-default/40 rounded-[2px]">dashed</span>
               <span>= fewer than {MIN_SAMPLE} attempts, not yet meaningful</span>
               <span className="ml-auto tabular-nums">
+                {timing.truncated ? 'most recent ' : ''}
                 {timing.summary.total_attempts} attempts · {timing.summary.success_rate}% overall
               </span>
             </div>
