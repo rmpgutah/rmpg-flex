@@ -375,3 +375,65 @@ describe('every officer-side route is gated', () => {
     expect(decl).not.toContain('client_viewer');
   });
 });
+
+describe('integrity guards (migration 0209)', () => {
+  const SRC = readFileSync(join(__dirname, '..', 'src', 'routes', 'serveReceipt.ts'), 'utf8');
+  const MIG = readFileSync(join(__dirname, '..', 'migrations', '0209_serve_receipt_integrity.sql'), 'utf8');
+
+  it('constrains one SIGNED receipt per job, not one receipt per job', () => {
+    // Partial index. Without the WHERE clause a voided receipt would
+    // permanently poison the job — a supervisor could never record the
+    // corrected one.
+    expect(MIG).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS idx_serve_receipts_one_signed/);
+    expect(MIG).toMatch(/WHERE status = 'signed'/);
+  });
+
+  it('translates the constraint into a stated conflict on all three write paths', () => {
+    // Three independent paths — subject's phone, transcribed paper,
+    // officer-attested refusal. The token burn stops one running twice; it
+    // does nothing about two DIFFERENT paths firing for one doorstep.
+    // Without this the second returns a 500 an officer will simply retry.
+    const guards = SRC.match(/isDuplicateSignedReceipt\(err\)/g) ?? [];
+    expect(guards.length).toBe(3);
+    expect(SRC).toMatch(/code: 'already_signed'/);
+  });
+
+  it('captures the job status BEFORE the receipt advances it', () => {
+    // Restoring on void needs the status the job actually had. Guessing
+    // 'in_progress' is wrong for a job that was 'pending' when served on
+    // the first attempt, and inventing a plausible status on a legal
+    // record is worse than the bug it papers over.
+    expect(MIG).toMatch(/ADD COLUMN job_status_before TEXT/);
+    const priors = SRC.match(/priorStatus/g) ?? [];
+    expect(priors.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('reverts the job on void, but only when no signed receipt survives', () => {
+    // A job legitimately holding a second valid acknowledgement must stay
+    // served. Reverting unconditionally would be a different false fact.
+    expect(SRC).toMatch(/SELECT COUNT\(\*\) AS n FROM serve_receipts WHERE serve_queue_id = \? AND status = 'signed'/);
+    expect(SRC).toMatch(/if \(!survivor\?\.n\)/);
+    expect(SRC).toMatch(/serve_date = NULL/);
+  });
+
+  it('falls back honestly for receipts written before 0209', () => {
+    // job_status_before is NULL on those. 'in_progress' is defensible —
+    // attempts demonstrably happened — and it puts the job back in front
+    // of an officer rather than asserting something more specific.
+    expect(SRC).toMatch(/before\.job_status_before \|\| 'in_progress'/);
+  });
+});
+
+describe('isDuplicateSignedReceipt', () => {
+  it('matches the D1 unique-constraint error and not unrelated failures', async () => {
+    const { isDuplicateSignedReceipt } = await import('../src/routes/serveReceipt');
+    expect(isDuplicateSignedReceipt(new Error(
+      'D1_ERROR: UNIQUE constraint failed: index idx_serve_receipts_one_signed'))).toBe(true);
+    expect(isDuplicateSignedReceipt(new Error('UNIQUE constraint failed: serve_receipts.id'))).toBe(true);
+    // Must NOT swallow an unrelated constraint — a FK violation on another
+    // table is a real bug and has to surface, not read as "already signed".
+    expect(isDuplicateSignedReceipt(new Error('UNIQUE constraint failed: users.username'))).toBe(false);
+    expect(isDuplicateSignedReceipt(new Error('no such column: foo'))).toBe(false);
+    expect(isDuplicateSignedReceipt(null)).toBe(false);
+  });
+});
