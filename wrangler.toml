@@ -323,12 +323,6 @@ R2_ACCOUNT_ID = "5caa95c5789f4fc4ed3934b2a2c29ed4"
 # webhook receiver that needs the third one).
 FLEETIO_API_BASE = "https://secure.fleetio.com/api/v1"
 
-# ServeManager integration (Phase 1, outbound only). Base URL of the
-# ServeManager REST API. Override in dev/test via .dev.vars. Set
-# SERVEMANAGER_API_KEY via `npx wrangler secret put SERVEMANAGER_API_KEY`
-# (auth is HTTP Basic — the key is the username, password is empty).
-SERVEMANAGER_API_BASE = "https://www.servemanager.com/api"
-
 # Dialer OIDC (relying-party config for src/routes/ssoAuth.ts, mounted at
 # /api/oidc/dialer — see src/routesConfig.ts). Issuer is the dialer's
 # well-known discovery DOCUMENT URL, not a bare issuer -- the relying party
