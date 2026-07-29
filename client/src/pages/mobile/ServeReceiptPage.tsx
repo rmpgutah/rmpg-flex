@@ -27,7 +27,7 @@
 //     deliberately withholds narrative, notes, and prior attempts.
 // ============================================================
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Check, AlertTriangle, FileText, Loader2, Download, Printer, ShieldCheck, ScanLine } from 'lucide-react';
 import SignaturePad from '../../components/SignaturePad';
@@ -213,6 +213,13 @@ export default function ServeReceiptPage() {
   // Signed, saved on this device, not yet accepted by the server.
   const [pending, setPending] = useState(false);
 
+  // The fixed bottom bar's height, remeasured whenever its content changes
+  // (a long "Still needed" list grows it taller than any fixed padding
+  // reserve could predict). Body padding is set from this so the bar never
+  // overlaps content above it.
+  const footerRef = useRef<HTMLDivElement | null>(null);
+  const [footerHeight, setFooterHeight] = useState(0);
+
   // ── Load ───────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
@@ -290,6 +297,18 @@ export default function ServeReceiptPage() {
       document.documentElement.classList.remove('public-form');
       if (!priorLang) document.documentElement.lang = priorLang;
     };
+  }, []);
+
+  // Remeasure the fixed footer whenever its content resizes — the "Still
+  // needed" list grows with how many fields are still missing, so a fixed
+  // height reserve on the page body silently stops matching the footer's
+  // real height and the footer overlaps content above it.
+  useEffect(() => {
+    const el = footerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setFooterHeight(entry.contentRect.height));
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   // Best-effort GPS. Never blocks the form — a denied permission is
@@ -798,7 +817,7 @@ export default function ServeReceiptPage() {
     + (signature ? 1 : 0);
 
   return (
-    <div className="min-h-screen bg-surface-base pb-32">
+    <div className="min-h-screen bg-surface-base" style={{ paddingBottom: footerHeight }}>
       <header className="px-4 py-4 border-b border-rmpg-700 bg-surface-sunken">
         <p className="text-[10px] uppercase tracking-widest text-fg-muted">{ctx.agency}</p>
         <h1 className="text-rmpg-50 text-lg font-bold leading-tight">Acknowledgement of Service</h1>
@@ -1117,10 +1136,10 @@ export default function ServeReceiptPage() {
 
       {/* Sticky submit — the form is long and the action must never be
           more than a thumb away on a doorstep. */}
-      <div className="fixed bottom-0 inset-x-0 border-t border-rmpg-700 bg-surface-sunken p-3">
+      <div ref={footerRef} className="fixed bottom-0 inset-x-0 border-t border-rmpg-700 bg-surface-sunken p-3">
         <div className="max-w-lg mx-auto">
           {missing.length > 0 && (
-            <p className="text-[11px] text-sev-warn mb-2 leading-snug line-clamp-3">
+            <p className="text-[11px] text-sev-warn mb-2 leading-snug">
               Still needed: {missing.join(' · ')}
             </p>
           )}

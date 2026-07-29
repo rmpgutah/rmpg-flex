@@ -415,8 +415,17 @@ export default function SignaturePad({
   return (
     <div className="space-y-1">
       <label htmlFor="ff-signaturepad-0" className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
-      {/* 48: Signature pad container with top accent */}
-      <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2 inline-block" style={{ borderTop: '2px solid #888888' }}>
+      {/* 48: Signature pad container with top accent.
+          max-width (not inline-block) caps it at the pad's own size on a
+          wide screen while still letting it shrink on a narrow one — an
+          inline-block hugs its CHILD's intrinsic width, which is the fixed
+          canvas width itself, so it never shrinks and overflows any phone
+          narrower than that fixed width (e.g. a 340px pad on a 375px page
+          with 24px of padding on each side leaves only ~327px). */}
+      <div
+        className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2 w-full"
+        style={{ borderTop: '2px solid #888888', maxWidth: cW + 16 }}
+      >
         {/* 49: Mode toggle tabs with improved active state contrast */}
         <div className="flex gap-1 mb-2">
           <button
@@ -449,7 +458,7 @@ export default function SignaturePad({
             ref={canvasRef}
             aria-label="Signature drawing area"
             className="bg-white rounded-sm cursor-crosshair touch-none select-none"
-            style={{ width: cW, height: cH }}
+            style={{ width: '100%', maxWidth: cW, height: cH }}
             onPointerDown={startDraw}
             onPointerMove={draw}
             onPointerUp={endDraw}
@@ -460,7 +469,7 @@ export default function SignaturePad({
           /* Typed signature mode */
           <div
             className="bg-white rounded-sm flex flex-col items-center justify-center"
-            style={{ width: cW, height: cH }}
+            style={{ width: '100%', maxWidth: cW, height: cH }}
           >
             {/* Preview of typed signature */}
             <div className="flex-1 flex items-end justify-center w-full px-4 pb-1 overflow-hidden">

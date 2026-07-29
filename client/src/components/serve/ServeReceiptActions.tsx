@@ -769,6 +769,10 @@ export default function ServeReceiptActions({
                   printed and signed in ink with nowhere to put it. A
                   signed instrument sitting in a folder in a vehicle is
                   not a record. */}
+              {/* Mutually exclusive with the refusal section below — the two
+                  outcomes cannot both have happened, and once refusal is
+                  recorded there is no paper form to complete. */}
+              {!refusalDone && !refusing && (
               <section className="border-t border-rmpg-700 pt-3">
                 {paperDone ? (
                   <p className="text-[11px] text-sev-ok leading-snug">
@@ -820,19 +824,23 @@ export default function ServeReceiptActions({
                   </div>
                 ) : (
                   <button type="button" onClick={() => setPaperMode(true)}
-                    className="w-full flex items-center justify-center gap-2 py-2 text-[11px] font-semibold text-fg-secondary">
+                    disabled={busy || refusing}
+                    className="w-full flex items-center justify-center gap-2 py-2 text-[11px] font-semibold text-fg-secondary disabled:opacity-40">
                     <Camera className="w-3.5 h-3.5" />
                     They completed it on paper
                   </button>
                 )}
               </section>
+              )}
 
               {/* ── Refusal ──
                   A person who refuses to sign will not tap a phone either,
                   so the officer attests to it. Before this there was no
                   record at all and a refused service simply vanished —
                   even though the service itself is good once the papers
-                  are left. */}
+                  are left. Mutually exclusive with the paper section above —
+                  once a paper form is recorded, there was no refusal. */}
+              {!paperDone && !paperMode && (
               <section className="border-t border-rmpg-700 pt-3">
                 {refusalDone ? (
                   <p className="text-[11px] text-sev-ok leading-snug">
@@ -874,12 +882,14 @@ export default function ServeReceiptActions({
                   </div>
                 ) : (
                   <button type="button" onClick={() => setRefusing(true)}
-                    className="w-full flex items-center justify-center gap-2 py-2 text-[11px] font-semibold text-fg-secondary">
+                    disabled={busy || paperMode}
+                    className="w-full flex items-center justify-center gap-2 py-2 text-[11px] font-semibold text-fg-secondary disabled:opacity-40">
                     <Ban className="w-3.5 h-3.5" />
                     They refused to sign
                   </button>
                 )}
               </section>
+              )}
 
               <div className="flex items-start gap-2 p-2.5 rounded-[2px] border border-rmpg-700 bg-surface-sunken">
                 <AlertTriangle className="w-3.5 h-3.5 text-sev-warn shrink-0 mt-0.5" />
