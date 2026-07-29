@@ -1402,9 +1402,23 @@ export default function ServePage() {
           const lngLat: [number, number] = [pos.coords.longitude, pos.coords.latitude];
           bounds.extend(lngLat);
           if (!userLocationMarker) {
+            // The map can be torn down between the geolocation request and its
+            // callback — creating a marker against a dead map throws and would
+            // take the whole position handler with it.
+            const map = mapRef.current;
+            if (!map) return;
             const el = document.createElement('div');
             el.style.cssText = 'width:18px;height:18px;border-radius:50%;background:rgba(59,130,246,0.6);border:3px solid rgba(59,130,246,0.9);box-shadow:0 0 12px rgba(59,130,246,0.5);cursor:pointer;animation:pulse 2s infinite;';
-            userLocationMarker = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat(lngLat).addTo(mapRef.current!);
+            userLocationMarker = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat(lngLat).addTo(map);
+            // Register HERE, at creation. The previous code pushed the variable
+            // synchronously below — while it was still null — so markersRef got
+            // a null and the real marker was never tracked. Cleanup iterates
+            // markersRef, so every re-run of this effect stranded its user
+            // marker on the map and added another: 660 identical markers were
+            // stacked on one coordinate on the live board, which is the black
+            // blob this fixes. The `as any` cast is what let a null through the
+            // type checker.
+            markersRef.current.push(userLocationMarker);
           } else {
             userLocationMarker.setLngLat(lngLat);
           }
@@ -1412,7 +1426,6 @@ export default function ServePage() {
         };
         navigator.geolocation.getCurrentPosition(updateUserMarker, () => {}, { enableHighAccuracy: true, timeout: 10000 });
         serveGeoWatchId.current = navigator.geolocation.watchPosition(updateUserMarker, () => {}, { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 });
-        markersRef.current.push(userLocationMarker as any);
       } catch { /* geolocation unavailable */ }
     }
 
