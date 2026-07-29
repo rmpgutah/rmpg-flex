@@ -506,3 +506,57 @@ describe('boundedJson', () => {
     expect(JSON.parse(out).length).toBe(1);
   });
 });
+
+describe('correction path', () => {
+  const SRC = readFileSync(join(__dirname, '..', 'src', 'routes', 'serveReceipt.ts'), 'utf8');
+  const block = SRC.slice(SRC.indexOf("'/receipt/:id/correct'"), SRC.indexOf('/** GET /api/serve-receipts/:queueId'));
+
+  it('voids and re-issues rather than editing a signed instrument', () => {
+    // A signed instrument records what a person attested to. Silently
+    // amending it would make the signature evidence of words that were
+    // never on screen.
+    expect(block).toMatch(/status = 'voided'/);
+    expect(block).toMatch(/INSERT INTO serve_receipt_tokens/);
+    expect(block).not.toMatch(/UPDATE serve_receipts\s+SET recipient_name/);
+  });
+
+  it('requires a stated reason that survives on the record', () => {
+    expect(block).toMatch(/reasonText\.length < 10/);
+    expect(block).toMatch(/Superseded by a correction/);
+  });
+
+  it('reverts the job so the corrected service can advance it again', () => {
+    // The partial unique index from 0209 refuses a second signed receipt.
+    // Voiding first is what makes the re-issue possible at all.
+    expect(block).toMatch(/UPDATE serve_queue SET status = \?/);
+    expect(block).toMatch(/job_status_before \|\| 'in_progress'/);
+  });
+
+  it('revokes any live token before minting the replacement', () => {
+    // A stale printed QR must not compete with the correction — two live
+    // links for one job is how you get two contradictory records.
+    expect(block).toMatch(/SET revoked_at = datetime\('now'\)/);
+  });
+
+  it('is gated to the roles that may void', () => {
+    expect(block).toMatch(/requireRole\('admin', 'manager', 'supervisor'\)/);
+  });
+});
+
+describe('photograph metadata', () => {
+  it('accepts a bare string for callers with no metadata', async () => {
+    // Backwards compatible: a plain data URI still works.
+    const gen = readFileSync(
+      join(__dirname, '..', 'client', 'src', 'utils', 'servePdfGenerator.ts'), 'utf8');
+    expect(gen).toMatch(/photos\?: Array<string \| ReceiptPhoto>/);
+    expect(gen).toMatch(/typeof entry === 'string' \? \{ image: entry \}/);
+  });
+
+  it('prints the caption beneath the frame, not burned into it', async () => {
+    // A timestamp overlaid on the image is unreadable against a dark
+    // doorway and cannot be selected or searched in the filed PDF.
+    const gen = readFileSync(
+      join(__dirname, '..', 'client', 'src', 'utils', 'servePdfGenerator.ts'), 'utf8');
+    expect(gen).toMatch(/doc\.text\(fitPdfText\(doc, sanitizePdfText\(caption\), w\), px, y \+ h \+ 2\)/);
+  });
+});

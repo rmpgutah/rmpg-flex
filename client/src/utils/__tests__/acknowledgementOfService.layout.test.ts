@@ -487,3 +487,38 @@ describe('the real 2026-07-27 service — long multi-entity caption', () => {
     expect(pageWeight(stamped, 1)).toBeGreaterThan(pageWeight(plain, 1));
   }, 30_000);
 });
+
+describe('photographs carry when they were taken', () => {
+  const PARTY = 'Marcus T. Whitfield';
+  const withMeta = (over = {}) => build('individual', PARTY, CASES[0].extra, {
+    printTarget: 'mobile' as const,
+    photos: [
+      { image: TEST_QR, capturedAt: '2026-07-27T15:42:00.000Z', label: 'Front door' },
+      { image: TEST_QR, capturedAt: '2026-07-27T15:43:00.000Z', label: 'Street view' },
+    ],
+    ...over,
+  });
+
+  it('still fits one page with captioned photographs', async () => {
+    const doc = await generateReceiptOfService(withMeta());
+    expect(doc.getNumberOfPages()).toBe(1);
+  }, 30_000);
+
+  it('renders a caption that a bare data URI does not', async () => {
+    // An undated photograph shows a door — not that door at the moment of
+    // service. The caption is the difference, and opposing counsel is the
+    // one who notices.
+    const captioned = await generateReceiptOfService(withMeta());
+    const bare = await generateReceiptOfService(
+      build('individual', PARTY, CASES[0].extra, {
+        printTarget: 'mobile' as const, photos: [TEST_QR, TEST_QR],
+      }),
+    );
+    expect(pageWeight(captioned, 1)).toBeGreaterThan(pageWeight(bare, 1));
+  }, 30_000);
+
+  it('survives a photo with no metadata at all', async () => {
+    const doc = await generateReceiptOfService(withMeta({ photos: [{ image: TEST_QR }] }));
+    expect(doc.getNumberOfPages()).toBe(1);
+  }, 30_000);
+});
