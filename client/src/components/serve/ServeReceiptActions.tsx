@@ -775,7 +775,7 @@ export default function ServeReceiptActions({
                     Paper form recorded. The photographed page is stored as the
                     signed original.
                   </p>
-                ) : paperMode ? (
+                ) : refusalDone ? null : paperMode ? (
                   <div className="space-y-2">
                     <p className="text-[10px] font-bold uppercase tracking-wider"
                        style={{ color: 'var(--panel-header-color)' }}>
@@ -820,7 +820,8 @@ export default function ServeReceiptActions({
                   </div>
                 ) : (
                   <button type="button" onClick={() => setPaperMode(true)}
-                    className="w-full flex items-center justify-center gap-2 py-2 text-[11px] font-semibold text-fg-secondary">
+                    disabled={busy || refusing}
+                    className="w-full flex items-center justify-center gap-2 py-2 text-[11px] font-semibold text-fg-secondary disabled:opacity-40">
                     <Camera className="w-3.5 h-3.5" />
                     They completed it on paper
                   </button>
@@ -838,7 +839,7 @@ export default function ServeReceiptActions({
                   <p className="text-[11px] text-sev-ok leading-snug">
                     Refusal recorded{docsLeft ? ' — documents left, service complete.' : ' — documents retained, logged as an attempt.'}
                   </p>
-                ) : refusing ? (
+                ) : paperDone ? null : refusing ? (
                   <div className="space-y-2">
                     <p className="text-[10px] font-bold uppercase tracking-wider"
                        style={{ color: 'var(--panel-header-color)' }}>
@@ -874,7 +875,8 @@ export default function ServeReceiptActions({
                   </div>
                 ) : (
                   <button type="button" onClick={() => setRefusing(true)}
-                    className="w-full flex items-center justify-center gap-2 py-2 text-[11px] font-semibold text-fg-secondary">
+                    disabled={busy || paperMode}
+                    className="w-full flex items-center justify-center gap-2 py-2 text-[11px] font-semibold text-fg-secondary disabled:opacity-40">
                     <Ban className="w-3.5 h-3.5" />
                     They refused to sign
                   </button>
