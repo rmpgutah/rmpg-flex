@@ -16,7 +16,7 @@ const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosti
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput, parseWindowsTpmOutput } = require('./hardwareFz55');
+const { parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput, parseWindowsTpmOutput, classifyKeystrokeBurst } = require('./hardwareFz55');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
 const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, restoreWindowBounds, saveWindowBounds } = require('./windowManager');
@@ -1105,6 +1105,38 @@ async function createMainWindow() {
     if (!shouldAllowNavigation(url, TRUSTED_HOST)) {
       console.warn('[SECURITY] Blocked navigation to untrusted URL:', url);
       event.preventDefault();
+    }
+  });
+
+  // ─── Barcode scanner (FZ-VBR551M xPAK) ──────────────────────
+  // The barcode module is a USB HID keyboard-wedge — it "types" the scanned
+  // payload followed by Enter far faster than any human. Buffer keydowns per
+  // window and classify the burst on every Enter; a 200ms trailing gap with
+  // no Enter resets the buffer so a human pause doesn't get misread later.
+  let barcodeBuffer = [];
+  let barcodeBufferResetTimer = null;
+
+  function resetBarcodeBuffer() {
+    barcodeBuffer = [];
+    if (barcodeBufferResetTimer) {
+      clearTimeout(barcodeBufferResetTimer);
+      barcodeBufferResetTimer = null;
+    }
+  }
+
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+
+    barcodeBuffer.push({ char: input.key, timestampMs: Date.now() });
+    if (barcodeBufferResetTimer) clearTimeout(barcodeBufferResetTimer);
+    barcodeBufferResetTimer = setTimeout(resetBarcodeBuffer, 200);
+
+    if (input.key === 'Enter') {
+      const result = classifyKeystrokeBurst(barcodeBuffer);
+      resetBarcodeBuffer();
+      if (result.isScan) {
+        mainWindow.webContents.send('hardware:barcode-scanned', result.payload);
+      }
     }
   });
 

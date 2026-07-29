@@ -135,6 +135,14 @@ contextBridge.exposeInMainWorld('electron', {
   },
   getDisplays: () => ipcRenderer.invoke('device:displays'),
 
+  // Barcode scanner (FZ-VBR551M xPAK) — HID keyboard-wedge input classified
+  // in main.js and pushed here as a single scanned payload per burst.
+  onBarcodeScanned: (callback) => {
+    const handler = (_e, payload) => callback(payload);
+    ipcRenderer.on('hardware:barcode-scanned', handler);
+    return () => ipcRenderer.removeListener('hardware:barcode-scanned', handler);
+  },
+
   // Crash-safe printing — renders the page to PDF in Chromium and opens
   // it in macOS Preview. Replaces window.print(), whose native NSPrintPanel
   // segfaults the app on macOS 26 (see main.js 'print:to-pdf').
