@@ -196,11 +196,16 @@ function TimeWindowBadge({ tw }: { tw: ServeJob['time_window'] }) {
 }
 
 function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
+  // Matches the serve_queue.priority CHECK constraint (see ServeJob['priority']
+  // in types/index.ts): 'routine' | 'normal' | 'rush' | 'urgent'. The previous
+  // 'high'/'low' keys never matched real data, so 'urgent' and 'routine' both
+  // silently fell through to the 'normal' style — the two priorities officers
+  // most need to tell apart at a glance were rendered identically.
   const colors: Record<string, string> = {
-    rush: 'bg-red-900/40 text-red-400 border-red-700/50',
-    high: 'bg-orange-900/40 text-orange-400 border-orange-700/50',
+    urgent: 'bg-red-900/40 text-red-400 border-red-700/50',
+    rush: 'bg-orange-900/40 text-orange-400 border-orange-700/50',
     normal: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
-    low: 'bg-rmpg-800/30 text-fg-muted border-rmpg-700/30',
+    routine: 'bg-rmpg-800/30 text-fg-muted border-rmpg-700/30',
   };
   return <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono uppercase ${colors[p] || colors.normal}`}>{p}</span>;
 }
