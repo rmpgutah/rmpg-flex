@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Eraser, Check, X, Type, PenTool } from 'lucide-react';
+import { Eraser, Check, X, Type, PenTool, Undo2 } from 'lucide-react';
 import '../signatureFonts.css';
 
 interface SignaturePadProps {
@@ -54,6 +54,17 @@ export default function SignaturePad({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasContent, setHasContent] = useState(false);
+  // Undo stack of canvas snapshots.
+  //
+  // Data URLs, not ImageData: the backing store is RENDER_SCALE(3)x, so a
+  // 340x140 pad is 1020x420 and one ImageData snapshot is ~1.7MB. Ten of
+  // those on a phone is real memory for a feature used twice. A PNG data
+  // URL of the same frame is tens of KB.
+  //
+  // Bounded at 8 — this is "I slipped", not a document editor, and an
+  // unbounded stack on a signature pad is a leak waiting for a long
+  // signing session.
+  const [undoStack, setUndoStack] = useState<string[]>([]);
   const [showPad, setShowPad] = useState(false);
   const [mode, setMode] = useState<'draw' | 'type'>('draw');
   const [typedName, setTypedName] = useState('');
@@ -112,7 +123,37 @@ export default function SignaturePad({
     lastPointRef.current = null;
     lastMidRef.current = null;
     setHasContent(false);
+    setUndoStack([]);
   }, [cW, cH, paintBackground, prepareCtx]);
+
+  /** Snapshot BEFORE a stroke, so undo restores the state it began from. */
+  const pushUndo = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    try {
+      const snap = canvas.toDataURL('image/png');
+      setUndoStack((prev) => [...prev.slice(-7), snap]);
+    } catch { /* tainted canvas — undo is a convenience, never a blocker */ }
+  }, []);
+
+  const undo = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx || undoStack.length === 0) return;
+    const snap = undoStack[undoStack.length - 1];
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      prepareCtx(ctx);
+      lastPointRef.current = null;
+      lastMidRef.current = null;
+    };
+    img.src = snap;
+    setUndoStack((prev) => prev.slice(0, -1));
+    // Emptying the stack means we are back at the blank pad.
+    if (undoStack.length === 1) setHasContent(false);
+  }, [undoStack, prepareCtx]);
 
   useEffect(() => {
     if (showPad && mode === 'draw') {
@@ -188,6 +229,9 @@ export default function SignaturePad({
 
   const startDraw = (e: React.PointerEvent) => {
     e.preventDefault();
+    // Snapshot before the stroke lands, not after — undo has to restore
+    // the state this stroke began from.
+    pushUndo();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     setIsDrawing(true);
     movedRef.current = false;
@@ -469,6 +513,21 @@ export default function SignaturePad({
 
         {/* 50: Action buttons with improved spacing and transition effects */}
         <div className="flex items-center gap-2 mt-2 pt-2 border-t border-rmpg-700/50">
+          {/* Undo before Clear. One bad stroke destroying an otherwise
+              good signature — with Clear as the only remedy — is the
+              difference between a small annoyance and re-signing the
+              whole thing. Hidden until there is something to undo, so it
+              never adds a dead control to a pad nobody has drawn on. */}
+          {mode === 'draw' && undoStack.length > 0 && (
+            <button
+              type="button"
+              onClick={undo}
+              aria-label="Undo last stroke"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs bg-rmpg-700 text-rmpg-200 rounded-sm hover:bg-rmpg-600 transition-colors duration-150"
+            >
+              <Undo2 className="w-3 h-3" /> Undo
+            </button>
+          )}
           <button
             type="button"
             onClick={handleClear}

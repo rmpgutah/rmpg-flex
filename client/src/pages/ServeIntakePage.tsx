@@ -925,7 +925,13 @@ export default function ServeIntakePage() {
   const oversizeFiles = visibleFiles.filter(f => (f.size || 0) > MAX_UPLOAD_BYTES);
   const uploadItemCount = files.filter(f => !!f.file).length;
   const tooManyFiles = uploadItemCount > MAX_UPLOAD_FILES;
-  const blockProcessing = oversizeFiles.length > 0 || tooManyFiles;
+  // clientLoadError is part of this guard, not decoration. The 2026-06-21 audit
+  // added the state and wired it to the catch, but neither of the two things it
+  // exists for — surfacing the failure and blocking submit — was ever built, so
+  // the failure it describes stayed live: with the dropdown silently empty an
+  // operator cannot tell "no clients" from "the load broke", attaches no client,
+  // and downstream billing auto-assign has nothing to key on.
+  const blockProcessing = oversizeFiles.length > 0 || tooManyFiles || !!clientLoadError;
 
   // Degraded-engine warning: true when at least one document that finished
   // OCR fell back to the free Workers AI model instead of the configured
@@ -1190,11 +1196,27 @@ export default function ServeIntakePage() {
                 }}
                 className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
               >
-                <option value="">— {clientsLoading ? 'Loading clients…' : 'Select client (optional)'} —</option>
+                <option value="">
+                  — {clientsLoading
+                    ? 'Loading clients…'
+                    : clientLoadError
+                      ? 'Client list unavailable'
+                      : 'Select client (optional)'} —
+                </option>
                 {clients.map(cl => (
                   <option key={cl.id} value={cl.id}>{cl.name}{cl.contact_name ? ` · ${cl.contact_name}` : ''}</option>
                 ))}
               </select>
+              {/* An empty dropdown is ambiguous on its own — "no clients exist"
+                  and "the request failed" look identical. Say which, and say
+                  that submit is held, so the operator isn't left guessing why
+                  the button is disabled. */}
+              {clientLoadError && (
+                <p role="alert" className="mt-1 text-[10px] text-red-400 leading-tight">
+                  {clientLoadError} — intake is held until the client list loads,
+                  so a job cannot be filed without its client.
+                </p>
+              )}
             </div>
             {/* Case details */}
             <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Case</p>

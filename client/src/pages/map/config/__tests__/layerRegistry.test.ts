@@ -63,8 +63,8 @@ describe('MAP_LAYER_REGISTRY', () => {
     }
   });
 
-  it('contains all 55 toggles', () => {
-    expect(MAP_LAYER_REGISTRY.length).toBe(55);
+  it('contains all 56 toggles', () => {
+    expect(MAP_LAYER_REGISTRY.length).toBe(56);
   });
 
   // The six GeoJSON boundary layers (geo-*) previously all collapsed onto one
