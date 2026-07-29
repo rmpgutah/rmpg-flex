@@ -154,3 +154,58 @@ No request body — path parameter `id` only. Response codes documented: `204` (
 Both `createVendor` and `updateVendor` (`src/utils/fleetio/client.ts:685-702`) pass the mapper's output straight through as the request body with no additional field translation, so the mismatch above is the entire outbound vendor field story — there is no second mapper for vendors (unlike Vehicles, which has both `mapVehicleFieldsToFleetio` and `buildVehiclePayload`).
 
 **Delete semantics.** `dispatchOutbound`'s `vendor`/`delete` branch (`sync.ts:459-462`) calls `archiveVendor`, matching RMPG's own soft-delete semantics for vendors (`active = 0`, never a hard delete) and CLAUDE.md's documented delete-matching rule ("RMPG soft-deletes vendors → Fleet.io `POST /vendors/:id/archive`" — the CLAUDE.md text itself still says `POST`, which is the same stale verb as the code; both should say `PATCH` per the live docs fetched here). Consistent with the endpoint keeping the vendor recoverable, `dropLink` is never called on this branch (per the comment at `sync.ts:534-538`, link rows are only dropped after a genuine hard delete) — the `fleetio_links` row survives an archive, which is correct.
+
+## Parts
+
+### `POST https://secure.fleetio.com/api/parts` (Create Part)
+
+Live source: https://developer.fleetio.com/reference/create-part (fetched 2026-07-29)
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `description` | string | optional | A description of this Part. |
+| `manufacturer_part_number` | string (≤255 chars) | optional | The part number from this Part's manufacturer. |
+| `measurement_unit_id` | integer (≥1) | optional | The ID of the measurement unit. |
+| `measurement_unit_name` | string | optional | The name of the measurement unit. If it does not exist, it will be ignored. |
+| `number` | string (≤255 chars) | **required** | The part number to be used for this Part within Fleetio. Must be unique. Does not have to match the manufacturer's part number. |
+| `part_category_id` | integer (≥1) | optional | The ID of the part category. |
+| `part_category_name` | string (≤255 chars) | optional | The name of the part category. If it does not exist, it will be created. |
+| `part_manufacturer_id` | integer (≥1) | optional | The ID of the part manufacturer. |
+| `part_manufacturer_name` | string (≤255 chars) | optional | The name of the part manufacturer. If it does not exist, it will be created. |
+| `unit_cost` | number | optional | Cost per unit, interpreted as dollars (or dollars and cents). May be sent as string, integer, or float; up to 2 decimal places. |
+| `upc` | string (≤255 chars) | optional | The Universal Product Code for this Part. Must be unique. |
+| `tire_config_attributes` | object | optional | Nested tire config (aspect_ratio, rim_diameter, load_index, metric_type, width, construction, speed_rating, factory/minimum tread depth, life_expectancy). |
+| `custom_fields` | object, nullable | optional | Custom field values — see Fleet.io's Custom Fields docs. |
+| `documents_attributes` | object[] | optional | Attached documents (name, file_url, file_mime_type, file_name, file_size). |
+| `images_attributes` | object[] | optional | Attached images (same shape as documents_attributes). |
+
+### `PATCH https://secure.fleetio.com/api/parts/:id` (Update Part)
+
+Live source: https://developer.fleetio.com/reference/update-part (fetched 2026-07-29)
+
+Same body fields as Create Part above, except `number` is optional on update (all other fields identical, including type/length constraints). Path parameter `id` (string matching `^[0-9]+$`) is required.
+
+### `DELETE https://secure.fleetio.com/api/parts/:id` (Delete Part)
+
+Live source: https://developer.fleetio.com/reference/delete-part (fetched 2026-07-29)
+
+Path parameter `id` (string matching `^[0-9]+$`) is required. No request body. Response `204` on success. This is a genuine hard delete (no `/parts/:id/archive` or `/parts/archived` variant exists in the Parts section of the live docs) — confirming CLAUDE.md's Fleet.io invariants section: "RMPG hard-deletes parts and fuel entries → Fleet.io `DELETE`."
+
+### Cross-check against this codebase
+
+`mapPartFieldsToFleetio` (`src/utils/fleetio/seed.ts:111-118`) sends:
+
+| Field sent | Fleet.io field? |
+|---|---|
+| `name` | ⚠️ MISMATCH — no `name` field exists anywhere on the Part create/update schema. |
+| `part_number` | ⚠️ MISMATCH — not a Fleet.io field. Live schema uses `number` for Fleetio's own part number. |
+| `category` | ⚠️ MISMATCH — not a Fleet.io field. Live schema has `part_category_name` (or `part_category_id`), not `category`. |
+| `description` | ✅ valid |
+| `supplier` | ⚠️ MISMATCH — not a Fleet.io field. Live schema has `part_manufacturer_name` (or `part_manufacturer_id`), not `supplier`. |
+| `unit_cost` | ✅ valid |
+
+⚠️ **MISMATCH — 4 of the mapper's 6 field names don't exist on either Part endpoint.** `mapPartFieldsToFleetio` sends `name`, `part_number`, `category`, and `supplier` as top-level keys, but neither Create Part nor Update Part documents any of those names. `part_number` and `supplier` have obvious correct replacements (`number` and `part_manufacturer_name` respectively); `category` should be `part_category_name`; and `name` has no Fleet.io equivalent at all — Parts are identified by `number`, not a display name, so this key is not merely misspelled but conceptually absent from the resource. If Fleet.io silently ignores unrecognized keys (as observed for the Vendor mismatch above), every part synced through this mapper lands on Fleet.io with only its description and unit cost populated — no part number, no category, no manufacturer/supplier — while the sync reports success and the local RMPG record still has all of that data. Only `description` and `unit_cost` (2 of 6) land correctly. This is a functional data-loss bug, not just a doc-drift note, but per this task's scope it is recorded here and not fixed.
+
+`createPart` and `updatePart` (`src/utils/fleetio/client.ts:736-753`) pass the mapper's output straight through as the request body with no additional field translation, so the mismatch above is the entire outbound part field story.
+
+**Delete semantics.** `dispatchOutbound`'s `part`/`delete` branch (`sync.ts:476-482`) calls `deletePart`, which issues a real `DELETE /parts/:id` — matching RMPG's own hard-delete semantics for parts and CLAUDE.md's documented delete-matching rule ("RMPG hard-deletes parts and fuel entries → Fleet.io `DELETE`"). This asymmetry with Vendors (soft-delete/archive) is intentional and correctly implemented on both sides — no mismatch here, unlike the field-name issues above.
