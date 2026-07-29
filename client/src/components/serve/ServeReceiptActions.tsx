@@ -769,17 +769,13 @@ export default function ServeReceiptActions({
                   printed and signed in ink with nowhere to put it. A
                   signed instrument sitting in a folder in a vehicle is
                   not a record. */}
-              {/* Mutually exclusive with the refusal section below — the two
-                  outcomes cannot both have happened, and once refusal is
-                  recorded there is no paper form to complete. */}
-              {!refusalDone && !refusing && (
               <section className="border-t border-rmpg-700 pt-3">
                 {paperDone ? (
                   <p className="text-[11px] text-sev-ok leading-snug">
                     Paper form recorded. The photographed page is stored as the
                     signed original.
                   </p>
-                ) : paperMode ? (
+                ) : refusalDone ? null : paperMode ? (
                   <div className="space-y-2">
                     <p className="text-[10px] font-bold uppercase tracking-wider"
                        style={{ color: 'var(--panel-header-color)' }}>
@@ -831,22 +827,19 @@ export default function ServeReceiptActions({
                   </button>
                 )}
               </section>
-              )}
 
               {/* ── Refusal ──
                   A person who refuses to sign will not tap a phone either,
                   so the officer attests to it. Before this there was no
                   record at all and a refused service simply vanished —
                   even though the service itself is good once the papers
-                  are left. Mutually exclusive with the paper section above —
-                  once a paper form is recorded, there was no refusal. */}
-              {!paperDone && !paperMode && (
+                  are left. */}
               <section className="border-t border-rmpg-700 pt-3">
                 {refusalDone ? (
                   <p className="text-[11px] text-sev-ok leading-snug">
                     Refusal recorded{docsLeft ? ' — documents left, service complete.' : ' — documents retained, logged as an attempt.'}
                   </p>
-                ) : refusing ? (
+                ) : paperDone ? null : refusing ? (
                   <div className="space-y-2">
                     <p className="text-[10px] font-bold uppercase tracking-wider"
                        style={{ color: 'var(--panel-header-color)' }}>
@@ -889,7 +882,6 @@ export default function ServeReceiptActions({
                   </button>
                 )}
               </section>
-              )}
 
               <div className="flex items-start gap-2 p-2.5 rounded-[2px] border border-rmpg-700 bg-surface-sunken">
                 <AlertTriangle className="w-3.5 h-3.5 text-sev-warn shrink-0 mt-0.5" />
