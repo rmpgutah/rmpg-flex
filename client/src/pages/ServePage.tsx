@@ -51,6 +51,11 @@ import { parseTimestamp } from '../utils/dateUtils';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { applyRmpgBasemap, getThemeColorRgb } from '../utils/mapboxBasemap';
 import { escapeHtml } from '../utils/sanitize';
+import { clusterByGrid, type ClusterableItem } from '../utils/serveMapClustering';
+import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter, type DeadlineFilter } from '../utils/serveMapOverlays';
+import { fetchMapboxRoute } from '../utils/mapboxRouting';
+import { reverseGeocode } from '../utils/mapboxServices';
+import { exportServeMapSheet } from '../utils/serveMapExport';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -78,6 +83,70 @@ const MARKER_COLORS: Record<string, string> = {
   skipped: 'var(--border-strong)',
   archived: 'var(--border-strong)',
 };
+
+const CLUSTER_PRIORITY_COLORS: Record<string, string> = {
+  urgent: '#ef4444',
+  rush: '#f97316',
+  normal: '#3b82f6',
+  routine: '#6b7280',
+};
+
+// One-time stylesheet injection for the deadline-urgency pulse-ring animation
+// used by buildServeJobMarkerElement below.
+if (typeof document !== 'undefined' && !document.getElementById('srv-map-pulse-styles')) {
+  const style = document.createElement('style');
+  style.id = 'srv-map-pulse-styles';
+  style.textContent = `
+    @keyframes srv-map-pulse-critical { 0% { opacity:1; transform:scale(0.9);} 100% { opacity:0; transform:scale(1.6);} }
+    @keyframes srv-map-pulse-warning { 0% { opacity:0.7; transform:scale(0.9);} 100% { opacity:0; transform:scale(1.4);} }
+  `;
+  document.head.appendChild(style);
+}
+
+function buildServeJobMarkerElement(job: ServeJob, selected: boolean): HTMLElement {
+  const color = MARKER_COLORS[job.status] || MARKER_COLORS.pending;
+  const tier = urgencyTierForDeadline(job.deadline, Date.now());
+  const risk = isRiskFlagged(job);
+
+  const el = document.createElement('div');
+  const border = selected ? '3px solid #22c55e' : '2px solid #fff';
+  const boxShadow = risk
+    ? '0 1px 4px rgba(0,0,0,0.4), 0 0 0 3px rgba(239,68,68,0.6)'
+    : '0 1px 4px rgba(0,0,0,0.4)';
+  el.style.cssText = `position:relative;width:12px;height:12px;border-radius:50%;background:${color};border:${border};box-shadow:${boxShadow};cursor:pointer;`;
+
+  if (tier === 'critical' || tier === 'warning') {
+    const ring = document.createElement('div');
+    const ringColor = tier === 'critical' ? '#ef4444' : '#f59e0b';
+    ring.style.cssText = `position:absolute;inset:-6px;border-radius:50%;border:2px solid ${ringColor};animation:srv-map-pulse-${tier} 1.6s ease-out infinite;`;
+    el.appendChild(ring);
+  }
+
+  if (risk) {
+    const warningIcon = document.createElement('div');
+    warningIcon.style.cssText = 'position:absolute;bottom:-10px;right:-10px;font-size:9px;';
+    warningIcon.textContent = '⚠';
+    warningIcon.title = 'Officer safety flag';
+    el.appendChild(warningIcon);
+  }
+
+  return el;
+}
+
+function buildServeClusterMarkerElement(cluster: { count: number; dominantPriority: string }): HTMLElement {
+  const color = CLUSTER_PRIORITY_COLORS[cluster.dominantPriority] ?? CLUSTER_PRIORITY_COLORS.routine;
+  const el = document.createElement('div');
+  el.style.cssText = `
+    width:28px;height:28px;border-radius:50%;
+    background:${color};border:2px solid rgba(255,255,255,0.85);
+    display:flex;align-items:center;justify-content:center;
+    font-family:monospace;font-weight:700;font-size:11px;color:#fff;
+    cursor:pointer;
+  `;
+  el.textContent = String(cluster.count);
+  el.title = `${cluster.count} serve jobs`;
+  return el;
+}
 
 const DOCUMENT_TYPES = [
   'Summons', 'Complaint', 'Subpoena', 'Writ', 'Order', 'Notice',
@@ -571,7 +640,20 @@ export default function ServePage() {
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [serveMapRecoverNonce, setServeMapRecoverNonce] = useState(0);
   const serveMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
+  const serveMapRectangleSelectCleanupRef = useRef<(() => void) | null>(null);
   const serveGeoWatchId = useRef<number | null>(null);
+  // Grid-clustering zoom tracking, deadline filter, bulk rectangle-select,
+  // attempt-history trail, and single-stop drive-time preview state.
+  const [mapZoom, setMapZoom] = useState(11);
+  const [mapDeadlineFilter, setMapDeadlineFilter] = useState<DeadlineFilter>('all');
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<number>>(new Set());
+  const mapSelectStartRef = useRef<{ x: number; y: number } | null>(null);
+  const jobsRef = useRef<ServeJob[]>([]);
+  useEffect(() => { jobsRef.current = jobs; }, [jobs]);
+  const [trailJobId, setTrailJobId] = useState<number | null>(null);
+  const [previewOrigin, setPreviewOrigin] = useState<[number, number] | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<{ id: number; lng: number; lat: number } | null>(null);
+  const [previewRoute, setPreviewRoute] = useState<{ eta: string; distance: string } | null>(null);
 
   // ── Route state ────────────────────────────────────────────────────
   const [routeData, setRouteData] = useState<{
@@ -1087,10 +1169,59 @@ export default function ServePage() {
         center,
         zoom: 11,
         attributionControl: false,
+        // Disabled so shift-drag can be used for rectangle-select below without
+        // also triggering Mapbox's native box-zoom on the same gesture.
+        boxZoom: false,
       });
 
       map.addControl(new mapboxgl.NavigationControl(), 'top-right');
       map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
+      map.on('zoomend', () => setMapZoom(map.getZoom()));
+      // Right-click sets the drive-time preview origin (simulating "my current
+      // position" — there is no live officer position feed). Right-click rather
+      // than left-click so it never conflicts with marker/cluster click handlers.
+      map.on('contextmenu', (e: mapboxgl.MapMouseEvent) => {
+        e.originalEvent?.preventDefault?.();
+        setPreviewOrigin([e.lngLat.lng, e.lngLat.lat]);
+      });
+
+      // Shift-drag rectangle select: bulk-select job markers by drawing a box
+      // in screen space, then converting the corners to lng/lat via unproject.
+      const container = mapContainerRef.current;
+      const onMouseDown = (e: MouseEvent) => {
+        if (!e.shiftKey || !container) return;
+        const rect = container.getBoundingClientRect();
+        mapSelectStartRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      };
+      const onMouseUp = (e: MouseEvent) => {
+        if (!mapSelectStartRef.current || !container) return;
+        const start = mapSelectStartRef.current;
+        mapSelectStartRef.current = null;
+        const rect = container.getBoundingClientRect();
+        const end = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        const dragDistance = Math.hypot(end.x - start.x, end.y - start.y);
+        if (!e.shiftKey || dragDistance < 5) return;
+        const sw = map.unproject([Math.min(start.x, end.x), Math.max(start.y, end.y)]);
+        const ne = map.unproject([Math.max(start.x, end.x), Math.min(start.y, end.y)]);
+        const newlySelected = new Set<number>();
+        for (const job of jobsRef.current) {
+          if (job.recipient_lat == null || job.recipient_lng == null) continue;
+          if (job.recipient_lng >= sw.lng && job.recipient_lng <= ne.lng &&
+              job.recipient_lat >= sw.lat && job.recipient_lat <= ne.lat) {
+            newlySelected.add(job.id);
+          }
+        }
+        setSelectedJobIds(newlySelected);
+      };
+      const onMouseLeave = () => { mapSelectStartRef.current = null; };
+      container?.addEventListener('mousedown', onMouseDown);
+      container?.addEventListener('mouseup', onMouseUp);
+      container?.addEventListener('mouseleave', onMouseLeave);
+      serveMapRectangleSelectCleanupRef.current = () => {
+        container?.removeEventListener('mousedown', onMouseDown);
+        container?.removeEventListener('mouseup', onMouseUp);
+        container?.removeEventListener('mouseleave', onMouseLeave);
+      };
 
       mapRef.current = map;
       popupRef.current = new mapboxgl.Popup({ offset: 25, closeButton: false });
@@ -1101,6 +1232,7 @@ export default function ServePage() {
         label: 'ServePage',
         onRebuild: () => {
           if (serveMapRecoveryCleanupRef.current) { serveMapRecoveryCleanupRef.current(); serveMapRecoveryCleanupRef.current = null; }
+          if (serveMapRectangleSelectCleanupRef.current) { serveMapRectangleSelectCleanupRef.current(); serveMapRectangleSelectCleanupRef.current = null; }
           markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
           markersRef.current = [];
           try { popupRef.current?.remove(); } catch { /* gone */ }
@@ -1142,6 +1274,7 @@ export default function ServePage() {
   useEffect(() => () => {
     if (serveGeoWatchId.current != null) { navigator.geolocation.clearWatch(serveGeoWatchId.current); serveGeoWatchId.current = null; }
     if (serveMapRecoveryCleanupRef.current) { serveMapRecoveryCleanupRef.current(); serveMapRecoveryCleanupRef.current = null; }
+    if (serveMapRectangleSelectCleanupRef.current) { serveMapRectangleSelectCleanupRef.current(); serveMapRectangleSelectCleanupRef.current = null; }
     markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
     markersRef.current = [];
     try { popupRef.current?.remove(); } catch { /* gone */ }
@@ -1170,36 +1303,94 @@ export default function ServePage() {
     const bounds = new mapboxgl.LngLatBounds();
     let hasMarkers = false;
 
-    jobs.forEach(job => {
-      if (job.recipient_lat == null || job.recipient_lng == null) return;
-      hasMarkers = true;
-      const lngLat: [number, number] = [job.recipient_lng, job.recipient_lat];
-      bounds.extend(lngLat);
+    const mappableJobs = jobs
+      .filter((j) => j.recipient_lat != null && j.recipient_lng != null)
+      .filter((j) => matchesDeadlineFilter(j.deadline, mapDeadlineFilter, Date.now()));
 
-      const color = MARKER_COLORS[job.status] || MARKER_COLORS.pending;
-      const el = document.createElement('div');
-      el.style.cssText = `width:12px;height:12px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);cursor:pointer;`;
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
-        .setLngLat(lngLat)
-        .addTo(mapRef.current!);
+    const clusterInput: ClusterableItem[] = mappableJobs.map((j) => ({
+      id: j.id,
+      lng: j.recipient_lng!,
+      lat: j.recipient_lat!,
+      priority: j.priority,
+      status: j.status,
+    }));
+    const clusters = clusterByGrid(clusterInput, mapZoom);
 
-      // Popup on click
-      el.addEventListener('click', () => {
-        const fullAddr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
-          .filter(Boolean).join(', ');
-        if (popupRef.current) {
-          popupRef.current.setLngLat(lngLat).setHTML(`
-            <div style="color:var(--text-primary);background:var(--surface-raised);padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
-              <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${escapeHtml(job.recipient_name)}</div>
-              <div style="font-size:11px;color:var(--text-secondary);">${escapeHtml(fullAddr) || 'No address'}</div>
-              <div style="font-size:10px;color:var(--text-muted);margin-top:4px;text-transform:uppercase;">${escapeHtml(job.status.replace(/_/g, ' '))} &middot; ${escapeHtml((job.document_type || '').replace(/_/g, ' '))}</div>
-            </div>
-          `).addTo(mapRef.current!);
-        }
-      });
+    for (const cluster of clusters) {
+      if (cluster.count === 1) {
+        const job = mappableJobs.find((j) => j.id === cluster.itemIds[0])!;
+        hasMarkers = true;
+        const lngLat: [number, number] = [job.recipient_lng!, job.recipient_lat!];
+        bounds.extend(lngLat);
 
-      markersRef.current.push(marker);
-    });
+        const el = buildServeJobMarkerElement(job, selectedJobIds.has(job.id));
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'center', draggable: true })
+          .setLngLat(lngLat)
+          .addTo(mapRef.current!);
+
+        marker.on('dragend', async () => {
+          const { lng, lat } = marker.getLngLat();
+          let placeName: string | undefined;
+          try {
+            const geocodeResult = await reverseGeocode(lng, lat);
+            placeName = geocodeResult.features[0]?.place_name;
+          } catch { /* fall back to raw coordinates below */ }
+          const label = placeName || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+          const confirmed = window.confirm(`Update ${job.recipient_name}'s location to:\n${label}?`);
+          if (!confirmed) { fetchJobs(); return; }
+          try {
+            await apiFetch(`/process-server/${job.id}`, {
+              method: 'PUT',
+              body: JSON.stringify({ recipient_lat: lat, recipient_lng: lng }),
+            });
+            fetchJobs();
+          } catch {
+            window.alert('Failed to save the corrected location. Please try again.');
+            fetchJobs();
+          }
+        });
+
+        // Popup on click
+        el.addEventListener('click', () => {
+          const fullAddr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+            .filter(Boolean).join(', ');
+          if (popupRef.current) {
+            popupRef.current.setLngLat(lngLat).setHTML(`
+              <div style="color:var(--text-primary);background:var(--surface-raised);padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
+                <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${escapeHtml(job.recipient_name)}</div>
+                <div style="font-size:11px;color:var(--text-secondary);">${escapeHtml(fullAddr) || 'No address'}</div>
+                <div style="font-size:10px;color:var(--text-muted);margin-top:4px;text-transform:uppercase;">${escapeHtml(job.status.replace(/_/g, ' '))} &middot; ${escapeHtml((job.document_type || '').replace(/_/g, ' '))}</div>
+                <div style="margin-top:8px;display:flex;gap:6px;">
+                  <button id="srv-map-popup-trail-${job.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">History</button>
+                  <button id="srv-map-popup-preview-${job.id}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:monospace;">Preview drive time</button>
+                </div>
+              </div>
+            `).addTo(mapRef.current!);
+            setTimeout(() => {
+              const trailBtn = document.getElementById(`srv-map-popup-trail-${job.id}`);
+              if (trailBtn) trailBtn.addEventListener('click', () => setTrailJobId(job.id));
+              const previewBtn = document.getElementById(`srv-map-popup-preview-${job.id}`);
+              if (previewBtn) previewBtn.addEventListener('click', () =>
+                setPreviewTarget({ id: job.id, lng: job.recipient_lng!, lat: job.recipient_lat! }),
+              );
+            }, 50);
+          }
+        });
+
+        markersRef.current.push(marker);
+      } else {
+        hasMarkers = true;
+        bounds.extend([cluster.lng, cluster.lat]);
+        const el = buildServeClusterMarkerElement(cluster);
+        el.addEventListener('click', () => {
+          mapRef.current?.easeTo({ center: [cluster.lng, cluster.lat], zoom: mapZoom + 2 });
+        });
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([cluster.lng, cluster.lat])
+          .addTo(mapRef.current!);
+        markersRef.current.push(marker);
+      }
+    }
 
     // ── User location marker on the map ──
     let userLocationMarker: mapboxgl.Marker | null = null;
@@ -1255,11 +1446,136 @@ export default function ServePage() {
     if (hasMarkers && mapRef.current) {
       mapRef.current.fitBounds(bounds, { padding: 60 });
     }
-  }, [jobs, routeData]);
+  }, [jobs, routeData, mapZoom, mapDeadlineFilter, selectedJobIds, fetchJobs]);
 
   useEffect(() => {
     if (mapReady) updateMapMarkers();
   }, [mapReady, updateMapMarkers]);
+
+  // Attempt-history trail overlay. Follows the hardened cleanup pattern: read
+  // mapRef.current fresh inside the cleanup (not a closed-over `map`) and wrap
+  // every Mapbox call in try/catch, since the map-init effect's cleanup can
+  // null mapRef.current / tear down the style before this effect's own
+  // cleanup runs on unmount.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const sourceId = 'srv-map-attempt-trail';
+    const layerId = 'srv-map-attempt-trail-layer';
+
+    const clearTrail = () => {
+      const currentMap = mapRef.current;
+      if (!currentMap) return;
+      try {
+        if (currentMap.getLayer(layerId)) currentMap.removeLayer(layerId);
+        if (currentMap.getSource(sourceId)) currentMap.removeSource(sourceId);
+      } catch { /* non-fatal — map/style already torn down */ }
+    };
+
+    if (trailJobId == null) { clearTrail(); return; }
+
+    let cancelled = false;
+    apiFetch<{ trail: Array<{ attempt_at: string; latitude: number; longitude: number; result: string }>; polyline: [number, number][] }>(
+      `/process-server/${trailJobId}/gps-trail`,
+    ).then((res) => {
+      if (cancelled || res.polyline.length < 2) return;
+      const currentMap = mapRef.current;
+      if (!currentMap) return;
+      clearTrail();
+      try {
+        currentMap.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: res.polyline } },
+        });
+        currentMap.addLayer({
+          id: layerId,
+          type: 'line',
+          source: sourceId,
+          paint: { 'line-color': '#94a3b8', 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': 0.8 },
+        });
+      } catch { /* non-fatal — map/style torn down before this ran */ }
+    }).catch(() => { /* non-fatal — trail stays hidden */ });
+
+    return () => { cancelled = true; clearTrail(); };
+  }, [trailJobId, mapReady]);
+
+  // Single-stop drive-time preview. Same hardened cleanup pattern as the
+  // trail effect above.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const sourceId = 'srv-map-drive-preview';
+    const layerId = 'srv-map-drive-preview-layer';
+
+    const clearPreview = () => {
+      const currentMap = mapRef.current;
+      if (!currentMap) return;
+      try {
+        if (currentMap.getLayer(layerId)) currentMap.removeLayer(layerId);
+        if (currentMap.getSource(sourceId)) currentMap.removeSource(sourceId);
+      } catch { /* non-fatal */ }
+      setPreviewRoute(null);
+    };
+
+    if (!previewOrigin || !previewTarget) { clearPreview(); return; }
+
+    let cancelled = false;
+    fetchMapboxRoute(
+      { lng: previewOrigin[0], lat: previewOrigin[1] },
+      { lng: previewTarget.lng, lat: previewTarget.lat },
+    ).then((route) => {
+      if (cancelled || !route) return;
+      const currentMap = mapRef.current;
+      if (!currentMap) return;
+      clearPreview();
+      try {
+        currentMap.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: route.geometry.map((p) => [p.lng, p.lat]) } },
+        });
+        currentMap.addLayer({
+          id: layerId,
+          type: 'line',
+          source: sourceId,
+          paint: { 'line-color': '#22c55e', 'line-width': 3, 'line-opacity': 0.85 },
+        });
+        setPreviewRoute({ eta: route.eta, distance: route.distance });
+      } catch { /* non-fatal */ }
+    }).catch(() => { /* non-fatal — falls back to no preview */ });
+
+    return () => { cancelled = true; clearPreview(); };
+  }, [previewOrigin, previewTarget, mapReady]);
+
+  const applyMapBulkStatus = async (status: 'served' | 'failed' | 'archived') => {
+    if (selectedJobIds.size === 0) return;
+    const confirmed = window.confirm(`Set ${selectedJobIds.size} job(s) to "${status}"?`);
+    if (!confirmed) return;
+    try {
+      await apiFetch('/process-server/bulk-status', {
+        method: 'PUT',
+        body: JSON.stringify({ ids: Array.from(selectedJobIds), status }),
+      });
+      setSelectedJobIds(new Set());
+      fetchJobs();
+    } catch {
+      window.alert('Bulk update failed. Selection preserved — please try again.');
+    }
+  };
+
+  const handleMapExport = () => {
+    const filtered = jobs
+      .filter((j) => j.recipient_lat != null && j.recipient_lng != null)
+      .filter((j) => matchesDeadlineFilter(j.deadline, mapDeadlineFilter, Date.now()));
+    exportServeMapSheet(filtered.map((j) => ({
+      id: j.id,
+      recipient_name: j.recipient_name,
+      recipient_address: j.recipient_address,
+      priority: j.priority,
+      deadline: j.deadline,
+    }))).catch(() => { window.alert('Failed to export route sheet.'); });
+  };
 
   // ══════════════════════════════════════════════════════════════════════
   // Render
@@ -1596,7 +1912,7 @@ export default function ServePage() {
                   onClick={() => setStatusFilter(f.value)}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-rmpg-500/50 ${
                     statusFilter === f.value
-                      ? 'text-rmpg-100 bg-rmpg-500 border-rmpg-500 shadow-[0_0_6px_rgba(212,160,23,0.3)]'
+                      ? 'text-rmpg-100 bg-rmpg-500 border-rmpg-500 shadow-[0_0_6px_rgb(var(--accent-silver-400-rgb)/0.3)]'
                       : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-200'
                   }`}
                 >
@@ -1792,7 +2108,7 @@ export default function ServePage() {
                   {/* Progress bar */}
                   <div className="w-full h-1.5 bg-surface-overlay rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-500 ${progressPct === 100 ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.25)]' : 'bg-brand-400 shadow-[0_0_6px_var(--brand-gold-glow,rgba(212,160,23,0.25))]'}`}
+                      className={`h-full rounded-full transition-all duration-500 ${progressPct === 100 ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.25)]' : 'bg-brand-400 shadow-[0_0_6px_var(--brand-gold-glow,rgb(var(--accent-silver-400-rgb)/0.25))]'}`}
                       style={{ width: `${progressPct}%` }}
                     />
                   </div>
@@ -1908,27 +2224,69 @@ export default function ServePage() {
 
         {/* ── Map Tab ─────────────────────────────────────────────── */}
         {activeTab === 'Map' && (
-          <div className="h-full relative">
-            <div ref={mapContainerRef} className="absolute inset-0" />
-            {!mapReady && (
-              <div className="absolute inset-0 flex items-center justify-center bg-surface-sunken">
-                <div className="flex items-center gap-2 text-xs text-rmpg-400">
-                  <Loader2 size={14} className="animate-spin" />
-                  Loading map...
-                </div>
+          <div className="h-full relative flex flex-col">
+            {/* Map toolbar: deadline filter + export */}
+            <div className="flex items-center justify-between gap-2 px-2 py-1 bg-surface-raised border-b border-border-subtle flex-wrap">
+              <div className="flex items-center gap-1">
+                {(['all', 'today', 'three_days', 'week', 'overdue'] as DeadlineFilter[]).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setMapDeadlineFilter(f)}
+                    className={`px-2 py-1 text-[10px] border border-border-subtle rounded ${mapDeadlineFilter === f ? 'bg-rmpg-700 text-white' : 'bg-surface-sunken text-fg-muted'}`}
+                  >
+                    {f === 'three_days' ? '3 Days' : f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                {previewRoute && (
+                  <span className="text-[11px] text-green-400 px-2 py-1 bg-surface-sunken border border-border-subtle rounded">
+                    ETA {previewRoute.eta} · {previewRoute.distance} (right-click map to move origin)
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleMapExport}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] bg-surface-sunken border border-border-subtle rounded text-fg-secondary hover:text-rmpg-100"
+                >
+                  <Printer size={11} /> Export Sheet
+                </button>
+              </div>
+            </div>
+
+            {selectedJobIds.size > 0 && (
+              <div className="flex items-center gap-2 px-2 py-1 bg-surface-raised border-b border-border-subtle text-[11px]">
+                <span className="text-fg-secondary">{selectedJobIds.size} selected (shift-drag to reselect)</span>
+                <span className="text-fg-muted">Apply to selected:</span>
+                <button type="button" onClick={() => applyMapBulkStatus('served')} className="px-2 py-0.5 border border-border-subtle rounded text-fg-secondary hover:text-rmpg-100">Mark Served</button>
+                <button type="button" onClick={() => applyMapBulkStatus('archived')} className="px-2 py-0.5 border border-border-subtle rounded text-fg-secondary hover:text-rmpg-100">Archive</button>
+                <button type="button" onClick={() => setSelectedJobIds(new Set())} className="px-2 py-0.5 border border-border-subtle rounded text-fg-muted hover:text-fg-secondary ml-auto">Clear</button>
               </div>
             )}
 
-            {/* Navigate to Next button */}
-            {mapReady && jobs.some(j => j.status === 'pending' || j.status === 'in_progress') && (
-              <button type="button"
-                onClick={handleNavigateToNext}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-rmpg-100 bg-rmpg-500 hover:bg-rmpg-500/80 rounded-[2px] shadow-lg shadow-rmpg-500/20 border border-rmpg-500 transition-all duration-150 hover:shadow-[0_0_16px_rgba(212,160,23,0.3)] focus:outline-none focus:ring-2 focus:ring-rmpg-500/50"
-              >
-                <Navigation size={16} />
-                Navigate to Next
-              </button>
-            )}
+            <div className="flex-1 relative min-h-0">
+              <div ref={mapContainerRef} className="absolute inset-0" />
+              {!mapReady && (
+                <div className="absolute inset-0 flex items-center justify-center bg-surface-sunken">
+                  <div className="flex items-center gap-2 text-xs text-rmpg-400">
+                    <Loader2 size={14} className="animate-spin" />
+                    Loading map...
+                  </div>
+                </div>
+              )}
+
+              {/* Navigate to Next button */}
+              {mapReady && jobs.some(j => j.status === 'pending' || j.status === 'in_progress') && (
+                <button type="button"
+                  onClick={handleNavigateToNext}
+                  className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-rmpg-100 bg-rmpg-500 hover:bg-rmpg-500/80 rounded-[2px] shadow-lg shadow-rmpg-500/20 border border-rmpg-500 transition-all duration-150 hover:shadow-[0_0_16px_rgb(var(--accent-silver-400-rgb)/0.3)] focus:outline-none focus:ring-2 focus:ring-rmpg-500/50"
+                >
+                  <Navigation size={16} />
+                  Navigate to Next
+                </button>
+              )}
+            </div>
           </div>
         )}
 

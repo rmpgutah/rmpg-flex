@@ -127,9 +127,22 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
         : '00001';
       callData.call_number = `CFS${year}-${seqNum}`;
 
+      // ⚠️ created_at / updated_at are supplied by the SQL below as
+      // datetime('now') and must NOT appear here. Listing them produced:
+      //   INSERT INTO calls_for_service (…,created_at,updated_at, created_at, updated_at)
+      //   VALUES (12 placeholders, datetime('now'), datetime('now'))
+      // — 14 columns with two duplicated (a hard SQLite error on its own),
+      // 14 value expressions, and only 10 bindings supplied for 12 '?'.
+      //
+      // The statement could never succeed, and the blast radius is the whole
+      // cycle rather than the one call: the throw unwinds to the function's
+      // outer try/catch, so `synced` is discarded, the
+      // servemanager_last_poll_at watermark never advances, and the caller
+      // always sees {synced: 0, callsCreated: 0, error}. It is console-logged
+      // but never reaches error_log, so the only evidence was a line in
+      // Workers Logs saying the cycle failed.
       const colNames = ['call_number', 'incident_type', 'priority', 'status', 'source',
-        'location_address', 'latitude', 'longitude', 'description', 'caller_name',
-        'created_at', 'updated_at'];
+        'location_address', 'latitude', 'longitude', 'description', 'caller_name'];
       const values = [callData.call_number, callData.incident_type, callData.priority,
         callData.status, callData.source, callData.location_address,
         callData.latitude, callData.longitude, callData.description,
