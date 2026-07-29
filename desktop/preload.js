@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld('electron', {
   checkDiskSpace: () => ipcRenderer.invoke('sys:disk-space'),
   getNetworkInterfaces: () => ipcRenderer.invoke('sys:network-interfaces'),
   getBatteryStatus: () => ipcRenderer.invoke('sys:battery'),
+  getTpmStatus: () => ipcRenderer.invoke('sys:tpm-status'),
   getIdleTime: () => ipcRenderer.invoke('sys:idle-time'),
   restartApp: () => ipcRenderer.invoke('sys:restart'),
 
@@ -119,6 +120,8 @@ contextBridge.exposeInMainWorld('electron', {
   listVideoDevices: async () => filterVideoInputDevices(await navigator.mediaDevices.enumerateDevices()),
   getBluetoothDevices: () => ipcRenderer.invoke('device:bluetooth'),
   checkGpsHardwarePresent: () => ipcRenderer.invoke('device:gps-present'),
+  getDockState: () => ipcRenderer.invoke('device:dock-state'),
+  getWwanStatus: () => ipcRenderer.invoke('device:wwan-status'),
   setAutoLaunch: (enabled) => ipcRenderer.invoke('device:set-auto-launch', enabled),
   getAutoLaunchState: () => ipcRenderer.invoke('device:auto-launch-state'),
   setKioskShell: (enabled) => ipcRenderer.invoke('device:set-kiosk-shell', enabled),
@@ -131,6 +134,14 @@ contextBridge.exposeInMainWorld('electron', {
     return () => ipcRenderer.removeListener('device:shortcut-triggered', handler);
   },
   getDisplays: () => ipcRenderer.invoke('device:displays'),
+
+  // Barcode scanner (FZ-VBR551M xPAK) — HID keyboard-wedge input classified
+  // in main.js and pushed here as a single scanned payload per burst.
+  onBarcodeScanned: (callback) => {
+    const handler = (_e, payload) => callback(payload);
+    ipcRenderer.on('hardware:barcode-scanned', handler);
+    return () => ipcRenderer.removeListener('hardware:barcode-scanned', handler);
+  },
 
   // Crash-safe printing — renders the page to PDF in Chromium and opens
   // it in macOS Preview. Replaces window.print(), whose native NSPrintPanel
