@@ -1158,8 +1158,30 @@ export default function ServePage() {
       if (cancelled || !mapContainerRef.current) return;
 
       if (mapRef.current) {
-        updateMapMarkers();
-        return;
+        // The map is only reusable if it is still attached to the container
+        // React is currently rendering. The Map tab's JSX is conditionally
+        // mounted, so leaving the tab destroys the container div while this
+        // ref keeps pointing at a Map bound to that now-detached node.
+        // Returning to the tab renders a NEW empty container, and the old
+        // early-return skipped creation because the ref was non-null — so the
+        // map never re-attached and the tab stayed permanently blank, with no
+        // canvas and not even a "Loading map…" state. Reproduced on live:
+        // one switch away and back was enough, and no amount of returning
+        // brought it back for the rest of the session.
+        const attached = mapRef.current.getContainer?.();
+        if (attached && attached.isConnected && attached === mapContainerRef.current) {
+          updateMapMarkers();
+          return;
+        }
+        // Stale: tear the dead map down and fall through to a fresh build.
+        // Its markers and popup belonged to the detached node, so drop those
+        // handles too rather than leaving them to be "removed" from a map
+        // that no longer exists.
+        try { mapRef.current.remove(); } catch { /* already gone */ }
+        mapRef.current = null;
+        markersRef.current = [];
+        try { popupRef.current?.remove(); } catch { /* already gone */ }
+        popupRef.current = null;
       }
 
       const center: [number, number] = [-111.891, 40.7608]; // SLC default [lng, lat]
