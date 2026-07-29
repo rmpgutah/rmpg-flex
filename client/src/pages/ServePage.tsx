@@ -1322,9 +1322,6 @@ export default function ServePage() {
       routeSourceRef.current = null;
     }
 
-    const bounds = new mapboxgl.LngLatBounds();
-    let hasMarkers = false;
-
     const mappableJobs = jobs
       .filter((j) => j.recipient_lat != null && j.recipient_lng != null)
       .filter((j) => matchesDeadlineFilter(j.deadline, mapDeadlineFilter, Date.now()));
@@ -1341,9 +1338,7 @@ export default function ServePage() {
     for (const cluster of clusters) {
       if (cluster.count === 1) {
         const job = mappableJobs.find((j) => j.id === cluster.itemIds[0])!;
-        hasMarkers = true;
         const lngLat: [number, number] = [job.recipient_lng!, job.recipient_lat!];
-        bounds.extend(lngLat);
 
         const el = buildServeJobMarkerElement(job, selectedJobIds.has(job.id));
         const marker = new mapboxgl.Marker({ element: el, anchor: 'center', draggable: true })
@@ -1401,8 +1396,6 @@ export default function ServePage() {
 
         markersRef.current.push(marker);
       } else {
-        hasMarkers = true;
-        bounds.extend([cluster.lng, cluster.lat]);
         const el = buildServeClusterMarkerElement(cluster);
         el.addEventListener('click', () => {
           mapRef.current?.easeTo({ center: [cluster.lng, cluster.lat], zoom: mapZoom + 2 });
@@ -1422,7 +1415,6 @@ export default function ServePage() {
       try {
         const updateUserMarker = (pos: GeolocationPosition) => {
           const lngLat: [number, number] = [pos.coords.longitude, pos.coords.latitude];
-          bounds.extend(lngLat);
           if (!userLocationMarker) {
             // The map can be torn down between the geolocation request and its
             // callback — creating a marker against a dead map throws and would
@@ -1444,7 +1436,6 @@ export default function ServePage() {
           } else {
             userLocationMarker.setLngLat(lngLat);
           }
-          hasMarkers = true;
         };
         navigator.geolocation.getCurrentPosition(updateUserMarker, () => {}, { enableHighAccuracy: true, timeout: 10000 });
         serveGeoWatchId.current = navigator.geolocation.watchPosition(updateUserMarker, () => {}, { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 });
@@ -1477,15 +1468,34 @@ export default function ServePage() {
         });
       }
     }
-
-    if (hasMarkers && mapRef.current) {
-      mapRef.current.fitBounds(bounds, { padding: 60 });
-    }
   }, [jobs, routeData, mapZoom, mapDeadlineFilter, selectedJobIds, fetchJobs]);
 
   useEffect(() => {
     if (mapReady) updateMapMarkers();
   }, [mapReady, updateMapMarkers]);
+
+  // Fit bounds to the job set — deliberately its own effect, NOT folded into
+  // updateMapMarkers above. updateMapMarkers is keyed on mapZoom (so it can
+  // re-cluster as the user zooms), and the map's own 'zoomend' handler calls
+  // setMapZoom on every camera change, including ones fitBounds itself causes.
+  // Calling fitBounds from inside the mapZoom-keyed callback closes a loop:
+  // zoom -> setMapZoom -> updateMapMarkers -> fitBounds -> zoomend -> setMapZoom
+  // -> repeat, each pass nudging the view by a slightly different amount — the
+  // map never settles and visibly vibrates. Keying this effect on the job set
+  // instead (not mapZoom, not selectedJobIds) means fitBounds only runs when
+  // the underlying data actually changes, matching the same fix already
+  // applied to ServeIntakeMap.tsx's fit-bounds effect.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const mappable = jobs
+      .filter((j) => j.recipient_lat != null && j.recipient_lng != null)
+      .filter((j) => matchesDeadlineFilter(j.deadline, mapDeadlineFilter, Date.now()));
+    if (mappable.length === 0) return;
+    const bounds = new mapboxgl.LngLatBounds();
+    for (const j of mappable) bounds.extend([j.recipient_lng!, j.recipient_lat!]);
+    map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+  }, [mapReady, jobs, mapDeadlineFilter]);
 
   // Attempt-history trail overlay. Follows the hardened cleanup pattern: read
   // mapRef.current fresh inside the cleanup (not a closed-over `map`) and wrap
