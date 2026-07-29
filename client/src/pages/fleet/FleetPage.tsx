@@ -298,7 +298,6 @@ export default function FleetPage() {
   const [savingCost, setSavingCost] = useState(false);
   const [deletingCost, setDeletingCost] = useState<{ category: CostCategory; record: any } | null>(null);
   const [costSummary, setCostSummary] = useState<FleetCostSummary | null>(null);
-  const [pretripHistory, setPretripHistory] = useState<any[]>([]);
   const [showPretripModal, setShowPretripModal] = useState(false);
   // Derived from PRETRIP_ITEMS, not hand-listed: a key present in the item list
   // but missing here would render as undefined — an unchecked box reading as FAIL —
