@@ -189,7 +189,7 @@ Same body fields as Create Part above, except `number` is optional on update (al
 
 Live source: https://developer.fleetio.com/reference/delete-part (fetched 2026-07-29)
 
-Path parameter `id` (string matching `^[0-9]+$`) is required. No request body. Response `204` on success. This is a genuine hard delete (no `/parts/:id/archive` or `/parts/archived` variant exists in the Parts section of the live docs) — confirming CLAUDE.md's Fleet.io invariants section: "RMPG hard-deletes parts and fuel entries → Fleet.io `DELETE`."
+Path parameter `id` (string matching `^[0-9]+$`) is required. No request body. Response `204` on success. This IS a genuine hard delete on the resource it targets — but note Fleet.io's Parts API also separately exposes `PATCH /parts/:id/archive` (Archive Part), `GET /parts/archived` (List Archived Parts), and a Restore Part endpoint (confirmed live at https://developer.fleetio.com/docs/api/parts-archive, 2026-07-29) as an alternative, non-destructive way to retire a part. `DELETE /parts/:id` and the archive family are two distinct, coexisting endpoints — the hard delete is not the only option Fleet.io offers for parts, it's simply the one this codebase deliberately chooses. RMPG's own `deletePart` calls `DELETE /parts/:id`, matching RMPG's own hard-delete semantics for parts locally, and matching CLAUDE.md's documented delete-matching rule: "RMPG hard-deletes parts and fuel entries → Fleet.io `DELETE`" (as opposed to vendors, where RMPG soft-deletes and this codebase correctly reaches for the archive endpoint instead — see the Vendors section above).
 
 ### Cross-check against this codebase
 
