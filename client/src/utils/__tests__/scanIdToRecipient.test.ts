@@ -27,6 +27,12 @@ describe('aamvaToScanResultObj', () => {
     expect(out.date_of_birth).toBe('1990-05-14');
     // dl_class/restrictions/endorsements go through the describe* translators
     expect(out.dl_class).toMatch(/Class D/);
+    // Full-field-coverage additions
+    expect(out.address2).toBe('');
+    expect(out.is_real_id).toBe(true);
+    expect(out.aamva_version).toBe(9);
+    expect(out.issuer_id).toBe('636040');
+    expect(out.raw_elements).toEqual({});
   });
 
   it('leaves restrictions/endorsements empty when not encoded', () => {

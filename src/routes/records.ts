@@ -257,6 +257,11 @@ const PERSON_EXT_COLUMNS = new Set([
   'address_2', // apartment/unit number (persons at 96 cols — overflow only)
   // DL barcode fields (AAMVA PDF417 elements DCB/DCD/DBD) — mig 0155
   'dl_restrictions', 'dl_endorsements', 'dl_issue_date',
+  // Full AAMVA field coverage (mig 0211) — was parsed by the scanner but
+  // dropped on the way to D1 before this change.
+  'country', 'document_discriminator', 'is_real_id', 'is_organ_donor',
+  'under_18_until', 'under_21_until', 'aamva_version', 'issuer_id',
+  'address2', 'raw_aamva_elements',
 ]);
 const PERSON_EXT_SELECT = [...PERSON_EXT_COLUMNS].join(', ');
 
@@ -396,22 +401,41 @@ records.post('/from-dl-scan', async (c) => {
       const note = docType && docType !== 'license'
         ? `Created from ${docType.replace('_', ' ')} scan${docNumber ? ` (doc# ${docNumber}${str(scan.issuing_country) ? `, ${str(scan.issuing_country)}` : ''})` : ''}`
         : 'Created from DL scan';
+      // Booleans arrive from AamvaResult as `boolean | null`; coerce to
+      // 0/1/null explicitly rather than binding a JS boolean (D1's bind()
+      // behavior on raw booleans is not something to rely on).
+      const boolToInt = (v: unknown): number | null => (v == null ? null : (v ? 1 : 0));
+      const isVeteran = boolToInt(scan.is_veteran);
+
       const result = await execute(db, `
         INSERT INTO persons (first_name, middle_name, last_name, dob, gender, height, weight,
           eye_color, hair_color, address, city, state, zip, dl_number, dl_state,
-          dl_expiry, dl_class, flags, notes, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
+          dl_expiry, dl_class, is_veteran, flags, notes, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
         first, str(scan.middle_name), last, dob, str(scan.gender), str(scan.height),
         str(scan.weight), str(scan.eye_color), str(scan.hair_color), str(scan.address),
         str(scan.city), str(scan.state), str(scan.zip), dlNumber, str(scan.dl_state),
-        str(scan.dl_expiry), str(scan.dl_class),
+        str(scan.dl_expiry), str(scan.dl_class), isVeteran,
         JSON.stringify(['dl_scan_imported']), note);
       const newPersonId = Number(result.meta.last_row_id);
-      // Write AAMVA overflow fields (restrictions/endorsements/issue_date) to persons_ext
+      // Write every AAMVA overflow field to persons_ext — full field
+      // coverage (mig 0211), not just the restrictions/endorsements/issue_date
+      // subset from mig 0155.
       await writePersonExt(db, newPersonId, {
-        dl_restrictions: str(scan.dl_restrictions),
-        dl_endorsements: str(scan.dl_endorsements),
-        dl_issue_date:   str(scan.dl_issue_date),
+        suffix:                 str(scan.suffix),
+        dl_restrictions:        str(scan.dl_restrictions),
+        dl_endorsements:        str(scan.dl_endorsements),
+        dl_issue_date:          str(scan.dl_issue_date),
+        country:                str(scan.country),
+        document_discriminator: str(scan.document_discriminator),
+        is_real_id:             boolToInt(scan.is_real_id),
+        is_organ_donor:         boolToInt(scan.is_organ_donor),
+        under_18_until:         str(scan.under_18_until),
+        under_21_until:         str(scan.under_21_until),
+        aamva_version:          typeof scan.aamva_version === 'number' ? scan.aamva_version : null,
+        issuer_id:              str(scan.issuer_id),
+        address2:               str(scan.address2),
+        raw_aamva_elements:     scan.raw_elements ?? null,
       });
       person = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db,
         'SELECT * FROM persons WHERE id = ?', newPersonId));

@@ -17,11 +17,15 @@ export interface DlScanResultObj {
   first_name: string; middle_name: string; last_name: string; suffix: string;
   date_of_birth: string; gender: string; height: string; weight: string;
   eye_color: string; hair_color: string;
-  address: string; city: string; state: string; zip: string;
+  address: string; address2: string; city: string; state: string; zip: string;
   dl_number: string; dl_state: string; dl_class: string;
   dl_expiry: string; dl_issue_date: string;
   dl_restrictions: string; dl_endorsements: string;
   country: string; document_discriminator: string;
+  is_real_id: boolean | null; is_organ_donor: boolean | null; is_veteran: boolean | null;
+  under_18_until: string; under_21_until: string;
+  aamva_version: number; issuer_id: string;
+  raw_elements: Record<string, string>;
 }
 
 /** Build the /records/from-dl-scan `scan` payload from a parsed AAMVA barcode. */
@@ -50,6 +54,15 @@ export function aamvaToScanResultObj(parsed: AamvaResult): DlScanResultObj {
     dl_endorsements: describeEndorsements(parsed.dl_endorsements),
     country: parsed.country,
     document_discriminator: parsed.document_discriminator,
+    address2: parsed.address2,
+    is_real_id: parsed.is_real_id,
+    is_organ_donor: parsed.is_organ_donor,
+    is_veteran: parsed.is_veteran,
+    under_18_until: parsed.under_18_until,
+    under_21_until: parsed.under_21_until,
+    aamva_version: parsed.aamva_version,
+    issuer_id: parsed.issuer_id,
+    raw_elements: parsed.raw_elements,
   };
 }
 
