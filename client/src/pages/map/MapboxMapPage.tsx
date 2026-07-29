@@ -69,6 +69,7 @@ import { useMapboxSafetyZones } from '../../hooks/useMapboxSafetyZones';
 import { useMapboxHistoryCalls } from '../../hooks/useMapboxHistoryCalls';
 import { useMapboxTilequery } from '../../hooks/useMapboxTilequery';
 import { useMapboxRepeatAddresses } from '../../hooks/useMapboxRepeatAddresses';
+import { useMapboxServeJobs } from '../../hooks/useMapboxServeJobs';
 import { useMapTraffic } from '../../hooks/useMapTraffic';
 import { useMapMeasure, type MeasureMode } from '../../hooks/useMapMeasure';
 import StreetViewLightbox from './components/StreetViewLightbox';
@@ -365,6 +366,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   }, []);
   const repeatAddresses = useMapboxRepeatAddresses(mapLoaded ? mapRef.current : null);
   const [repeatAddressesEnabled, setRepeatAddressesEnabled] = useState(false);
+  const serveJobs = useMapboxServeJobs(mapLoaded ? mapRef.current : null);
+  const [serveJobsEnabled, setServeJobsEnabled] = useState(false);
   const [incidentsEnabled, setIncidentsEnabled] = useState(false);
   const [coverageGapsEnabled, setCoverageGapsEnabled] = useState(false);
   const [responseTimeEnabled, setResponseTimeEnabled] = useState(false);
@@ -451,6 +454,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     if (repeatAddressesEnabled) repeatAddresses.fetchRepeats();
     else repeatAddresses.clear();
   }, [repeatAddressesEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (serveJobsEnabled) serveJobs.fetchJobs();
+    else serveJobs.clear();
+  }, [serveJobsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1117,6 +1125,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     incidents: { active: incidentsEnabled, onToggle: () => setIncidentsEnabled((v) => !v), loading: incidentsLayer.loading, error: incidentsLayer.error },
     'repeat-addresses': { active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), loading: repeatAddresses.loading, error: repeatAddresses.error },
     selfpos: { active: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v) },
+    'serve-jobs': { active: serveJobsEnabled, onToggle: () => setServeJobsEnabled((v) => !v), loading: serveJobs.loading, error: serveJobs.error },
 
     // ── Historical Analysis ──
     heatmap: {
@@ -1200,7 +1209,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     traffic, weatherRadar, p1AudioEnabled, setP1AudioEnabled, autoPanEnabled, setAutoPanEnabled,
     geofenceAlerts, breadcrumbs, clustering, incidentsEnabled, incidentsLayer.loading,
     incidentsLayer.error, repeatAddressesEnabled, repeatAddresses.loading, repeatAddresses.error,
-    selfPosVisible, setSelfPosVisible, heatmap, populateAndToggleHeatmap, heatmapMode,
+    selfPosVisible, setSelfPosVisible, serveJobsEnabled, serveJobs.loading, serveJobs.error,
+    heatmap, populateAndToggleHeatmap, heatmapMode,
     historyCallsEnabled, historyCalls.loading, historyCalls.error, speedHeatmapEnabled,
     speedHeatmap.loading, speedHeatmap.error, speedViolationsEnabled, speedViolationsLayer.loading,
     speedViolationsLayer.error, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading,
