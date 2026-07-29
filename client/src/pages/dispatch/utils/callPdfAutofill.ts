@@ -25,11 +25,6 @@ const PSO_TYPES = new Set(['pso_client_request', 'process_service', 'civil_paper
  * Policy lives here so it's one place to revise when operators want
  * different behavior. Keep this pure (no fetches, no React state).
  *
- * TODO(operator): implement the fallback rules. Suggested starting point:
- *   - For PSO calls: if caller_* are blank, fall back to pso_requestor_*
- *   - For Process Service: if process_served_address is blank, fall back to location
- *   - Anywhere else where a blank field has a sensible derived value
- *
  * Do NOT autofill these — they require a real entry, not a guess:
  *   - process_served_to (the defendant's name — wrong fallback = perjury risk)
  *   - process_served_at / process_service_result (only true after the attempt)

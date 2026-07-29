@@ -68,6 +68,7 @@ const STATIC_LAYERS: MapLayerDef[] = [
   { id: 'incidents', label: 'Incidents', icon: AlertTriangle, group: 'Units & Calls', colorVar: 'var(--sev-critical)', description: 'RMS incident clusters' },
   { id: 'repeat-addresses', label: 'Repeat Addresses', icon: History, group: 'Units & Calls', colorVar: 'var(--sev-ok)', description: 'Locations with 3+ calls' },
   { id: 'selfpos', label: 'My Position', icon: Locate, group: 'Units & Calls', colorVar: 'var(--sev-info)', description: 'Show my own GPS position' },
+  { id: 'serve-jobs', label: 'Process Server Jobs', icon: Footprints, group: 'Units & Calls', colorVar: 'var(--sev-warn)', description: 'Active serve queue with a geocoded address' },
 
   // ── Historical Analysis ──
   { id: 'heatmap', label: 'Crime Heatmap', icon: Radar, group: 'Historical Analysis', colorVar: 'var(--sev-critical)', description: 'Incident density (H) — click label to switch Live/Historical' },
