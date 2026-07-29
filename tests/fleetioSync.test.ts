@@ -699,6 +699,50 @@ describe('applyOutbound', () => {
     expect(sentPayload).toEqual({ name: 'AutoZone' });
   });
 
+  it('vendor/delete — Fleet.io 404 (vendor already gone remotely) is treated as success, drops the stale link', async () => {
+    // Confirmed live 2026-07-29 (vendor/delete event id=13): the vendor was
+    // deleted directly in Fleet.io's UI, orphaning the fleetio_links row.
+    // Archiving an already-gone vendor can never succeed, so retrying just
+    // burns all 7 attempts and dead-letters — the 404 IS the desired end
+    // state, not a failure.
+    const state: FleetTables = {
+      events: [baseEvent({ id: 52, event_id: 'evt-vendor-del-404', resource: 'vendor', resource_id: 2, action: 'delete',
+        payload_json: JSON.stringify({ id: 2 }) })],
+      links: [{ rmpg_table: 'ref_vendors', rmpg_id: 2, fleetio_id: 14242171, fleetio_resource: 'vendors' }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const adapter = {
+      async createVehicle() { throw new Error('nu'); }, async updateVehicle() { throw new Error('nu'); },
+      async archiveVehicle() { throw new Error('nu'); }, async createFuelEntry() { throw new Error('nu'); },
+      async createWorkOrder() { throw new Error('nu'); },
+      async archiveVendor() { throw new FleetioHttpError('Fleet.io 404', 404); },
+    };
+    const { db } = makeDb(state);
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(result.completed).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(state.links.some(l => l.rmpg_table === 'ref_vendors' && l.rmpg_id === 2)).toBe(false);
+  });
+
+  it('vendor/delete — a non-404 Fleet.io error still fails and dead-letters normally', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ id: 53, event_id: 'evt-vendor-del-500', resource: 'vendor', resource_id: 3, action: 'delete',
+        payload_json: JSON.stringify({ id: 3 }), attempts: 6 })],
+      links: [{ rmpg_table: 'ref_vendors', rmpg_id: 3, fleetio_id: 9999, fleetio_resource: 'vendors' }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const adapter = {
+      async createVehicle() { throw new Error('nu'); }, async updateVehicle() { throw new Error('nu'); },
+      async archiveVehicle() { throw new Error('nu'); }, async createFuelEntry() { throw new Error('nu'); },
+      async createWorkOrder() { throw new Error('nu'); },
+      async archiveVendor() { throw new FleetioHttpError('Fleet.io 500', 500); },
+    };
+    const { db } = makeDb(state);
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(result.failed).toBe(1);
+    expect(state.links.some(l => l.rmpg_table === 'ref_vendors' && l.rmpg_id === 3)).toBe(true);
+  });
+
   it('part/create — sends only Fleet.io-mapped fields, not the raw RMPG row', async () => {
     const state: FleetTables = {
       events: [baseEvent({ id: 51, event_id: 'evt-part-create', resource: 'part', resource_id: 5, action: 'create',
