@@ -9,7 +9,6 @@ import { apiFetch } from '../../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 import { parseTimestamp, safeDateStr, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
-import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import { useToast } from '../../components/ToastProvider';
@@ -37,6 +36,7 @@ import InspectionFormModal, { type InspectionFormState, EMPTY_INSPECTION_FORM } 
 import ConfirmDialog from '../../components/ConfirmDialog';
 import ExportButton from '../../components/ExportButton';
 import MaintenanceMonitor from './components/MaintenanceMonitor';
+import { useFleetVehicles } from './hooks/useFleetVehicles';
 import type {
   FleetVehicle, FleetMaintenance, FleetVehicleStatus, FleetFuelLog,
   FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
@@ -60,11 +60,6 @@ const FLEET_VIEWS: { id: FleetViewMode; label: string; icon?: typeof FileText }[
   { id: 'vendors', label: 'Vendors' },
   { id: 'service', label: 'Service' },
 ];
-
-// Explicit page size for the vehicle list request. Without this the Worker
-// applied its own default (200 rows) and the client silently dropped any
-// vehicles past that cap — see vehicleTotal/fetchVehicles below.
-const FLEET_PAGE_SIZE = 500;
 
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e', maintenance: '#f59e0b',
@@ -148,15 +143,15 @@ export default function FleetPage() {
   const cm = useMenuActions();
 
   // Core state
-  const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
-  // Server-reported total. The list is a page, not necessarily the whole
-  // fleet — without this the client silently dropped rows past the cap.
-  const [vehicleTotal, setVehicleTotal] = useState<number | null>(null);
+  const {
+    vehicles, vehicleTotal, filtered,
+    filterStatus, setFilterStatus, searchQuery, setSearchQuery,
+    showArchived, setShowArchived,
+    statusCounts, avgMileage, refetch: fetchVehicles,
+  } = useFleetVehicles();
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
   const [detail, setDetail] = useState<FleetVehicle | null>(null);
   const [maintenance, setMaintenance] = useState<FleetMaintenance[]>([]);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
 
   // Map vehicle.id → display number (e.g. "PS-D19") for PDF report labels
   const vehicleNumberById = useMemo(() => {
@@ -237,7 +232,6 @@ export default function FleetPage() {
   const [fleetAnalyticsLoading, setFleetAnalyticsLoading] = useState(false);
 
   // Archive / Delete state
-  const [showArchived, setShowArchived] = useState(false);
   const [deletingVehicleId, setDeletingVehicleId] = useState<string | number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -388,26 +382,6 @@ export default function FleetPage() {
   // Data fetching
   // ----------------------------------------------------------
 
-  const fetchVehicles = useCallback(async (options?: { silent?: boolean }) => {
-    try {
-      const resp = await apiFetch<{ data: FleetVehicle[]; pagination?: { total?: number } }>(
-        `/fleet?archived=${showArchived}&per_page=${FLEET_PAGE_SIZE}`,
-      );
-      const rows = Array.isArray(resp) ? resp : resp.data || [];
-      setVehicles(rows);
-      const total = Array.isArray(resp) ? rows.length : resp.pagination?.total;
-      setVehicleTotal(typeof total === 'number' ? total : rows.length);
-    } catch (err) {
-      if (!options?.silent) addToast('Failed to load fleet vehicles', 'error');
-    }
-  }, [addToast, showArchived]);
-
-  useEffect(() => { fetchVehicles(); }, [fetchVehicles]);
-
-  // Live sync — auto-refresh when any device modifies fleet (silent to avoid unmounting UI)
-  const silentRefreshVehicles = useCallback(() => fetchVehicles({ silent: true }), [fetchVehicles]);
-  useLiveSync('fleet', silentRefreshVehicles);
-
   const fetchDetail = useCallback(async (id: string | number) => {
     try {
       const data = await apiFetch<FleetVehicle & { recent_maintenance?: FleetMaintenance[]; maintenance?: FleetMaintenance[] }>(`/fleet/${id}`);
@@ -537,30 +511,8 @@ export default function FleetPage() {
   };
 
   // ----------------------------------------------------------
-  // Filter logic
-  // ----------------------------------------------------------
-
-  const filtered = vehicles.filter((v) => {
-    if (filterStatus !== 'all' && v.status !== filterStatus) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const haystack = `${v.vehicle_number} ${v.make} ${v.model} ${v.plate_number} ${v.vin}`.toLowerCase();
-      if (!haystack.includes(q)) return false;
-    }
-    return true;
-  });
-
-  // ----------------------------------------------------------
   // Stats
   // ----------------------------------------------------------
-
-  const statusCounts = vehicles.reduce((acc, v) => {
-    acc[v.status] = (acc[v.status] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const totalMileage = vehicles.reduce((sum, v) => sum + (v.current_mileage || 0), 0);
-  const avgMileage = vehicles.length > 0 ? Math.round(totalMileage / vehicles.length) : 0;
 
   const needsService = vehicles.filter(v => {
     if (!v.next_service_due) return false;
