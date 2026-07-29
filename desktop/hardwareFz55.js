@@ -96,9 +96,41 @@ function parseWindowsTpmOutput(rawJsonString) {
   };
 }
 
+const BARCODE_MAX_GAP_MS = 30;
+const BARCODE_MIN_LENGTH = 3;
+
+/**
+ * Classifies a buffered run of keydown records as a barcode-scanner
+ * keyboard-wedge burst (fast, ends in Enter, at least BARCODE_MIN_LENGTH
+ * characters) vs. ordinary human typing. The FZ-55's barcode xPAK
+ * (FZ-VBR551M) emits characters far faster than any human can type, so a
+ * consistent sub-30ms inter-key gap is the distinguishing signal.
+ */
+function classifyKeystrokeBurst(records) {
+  if (!records || records.length < BARCODE_MIN_LENGTH + 1) {
+    return { isScan: false, payload: '' };
+  }
+  const last = records[records.length - 1];
+  if (last.char !== 'Enter') {
+    return { isScan: false, payload: '' };
+  }
+  const payloadRecords = records.slice(0, -1);
+  if (payloadRecords.length < BARCODE_MIN_LENGTH) {
+    return { isScan: false, payload: '' };
+  }
+  for (let i = 1; i < records.length; i++) {
+    const gap = records[i].timestampMs - records[i - 1].timestampMs;
+    if (gap > BARCODE_MAX_GAP_MS) {
+      return { isScan: false, payload: '' };
+    }
+  }
+  return { isScan: true, payload: payloadRecords.map((r) => r.char).join('') };
+}
+
 module.exports = {
   parseWindowsBatteryOutput,
   parseWindowsDockOutput,
   parseWindowsWwanOutput,
   parseWindowsTpmOutput,
+  classifyKeystrokeBurst,
 };

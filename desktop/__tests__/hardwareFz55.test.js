@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput } = require('../hardwareFz55');
-const { parseWindowsTpmOutput } = require('../hardwareFz55');
+const { parseWindowsTpmOutput, classifyKeystrokeBurst } = require('../hardwareFz55');
 
 test('parseWindowsBatteryOutput: single battery, discharging', () => {
   const raw = JSON.stringify({ DeviceID: 'Battery0', EstimatedChargeRemaining: 76, BatteryStatus: 1 });
@@ -114,4 +114,43 @@ test('parseWindowsTpmOutput: not present', () => {
 
 test('parseWindowsTpmOutput: malformed JSON returns null', () => {
   assert.equal(parseWindowsTpmOutput('garbage'), null);
+});
+
+function burst(chars, gapMs) {
+  return chars.split('').map((char, i) => ({ char, timestampMs: i * gapMs }));
+}
+
+test('classifyKeystrokeBurst: fast burst ending in Enter is a scan', () => {
+  const records = burst('ABC123', 10).concat([{ char: 'Enter', timestampMs: 60 }]);
+  assert.deepEqual(classifyKeystrokeBurst(records), { isScan: true, payload: 'ABC123' });
+});
+
+test('classifyKeystrokeBurst: slow human typing is not a scan', () => {
+  const records = burst('ABC123', 200).concat([{ char: 'Enter', timestampMs: 1200 }]);
+  assert.deepEqual(classifyKeystrokeBurst(records), { isScan: false, payload: '' });
+});
+
+test('classifyKeystrokeBurst: fast burst not ending in Enter is not a scan', () => {
+  const records = burst('ABC123', 10);
+  assert.deepEqual(classifyKeystrokeBurst(records), { isScan: false, payload: '' });
+});
+
+test('classifyKeystrokeBurst: fast but under the 3-char minimum is not a scan', () => {
+  const records = burst('AB', 10).concat([{ char: 'Enter', timestampMs: 20 }]);
+  assert.deepEqual(classifyKeystrokeBurst(records), { isScan: false, payload: '' });
+});
+
+test('classifyKeystrokeBurst: one slow gap in an otherwise-fast burst is not a scan', () => {
+  const records = [
+    { char: 'A', timestampMs: 0 },
+    { char: 'B', timestampMs: 10 },
+    { char: 'C', timestampMs: 300 },
+    { char: 'D', timestampMs: 310 },
+    { char: 'Enter', timestampMs: 320 },
+  ];
+  assert.deepEqual(classifyKeystrokeBurst(records), { isScan: false, payload: '' });
+});
+
+test('classifyKeystrokeBurst: empty input is not a scan', () => {
+  assert.deepEqual(classifyKeystrokeBurst([]), { isScan: false, payload: '' });
 });
