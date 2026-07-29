@@ -16,6 +16,7 @@ import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, us
 import { useNavigate, type NavigateFunction } from 'react-router-dom';
 import {
   CheckCircle2,
+  ClipboardCheck,
   Clock,
   Loader2,
   MapPin,
@@ -377,24 +378,46 @@ function ProgressBar({ served, total }: { served: number; total: number }) {
  * non-service. Congratulating an officer for a shift that served nobody is
  * both wrong and quietly corrosive to how much the banner is trusted.
  *
- * TODO(chris): pick the thresholds and tone. This is a domain call, not a
- * styling one — in process serving a documented non-service can be a
- * legitimate, diligent, billable outcome, so a low served-rate is not
- * automatically a bad run. Return a tone per rate; the banner reads it below.
+ * The bands below are a judgement call, made deliberately conservative:
  *
- * Something like:
- *   if (rate >= 80) return { icon: Trophy,      accent: 'green',  title: 'Run Complete!' };
- *   if (rate >= 40) return { icon: CheckCircle, accent: 'silver', title: 'Run Complete' };
- *   return              { icon: ClipboardCheck, accent: 'silver', title: 'Run Closed Out' };
+ *   • The banner only appears once EVERY active job is resolved for the day, so
+ *     the run is finished in all three cases. What varies is how much the tone
+ *     claims about it — not whether the officer is done.
+ *   • In process serving a documented non-service is a legitimate, diligent and
+ *     billable outcome. A low served-rate is therefore NOT failure, and none of
+ *     these bands scold. The worst case is neutral, never negative.
+ *   • Only the top band celebrates. A trophy that appears every day stops
+ *     meaning anything, and one that appears over 0/1 served actively teaches
+ *     officers to ignore the banner.
  *
- * Constraints: accent must be 'green' | 'silver' | 'amber' only — red is
- * reserved for CAD safety severity and a slow serve day is not a safety event.
- * Avoid amber unless you want overdue-style urgency at end of shift.
+ * Tune the two numbers here and nothing else needs to change — every consumer
+ * reads the returned tone rather than re-deriving it.
+ *
+ * Constraint enforced by the return type: accent is 'green' | 'silver' | 'amber'
+ * only. Red is reserved for CAD safety severity, and a slow serve day is not a
+ * safety event. Amber is available but unused — it reads as overdue-style
+ * urgency, which is wrong for work that is already finished.
  */
-function runTone(_successRate: number): { accent: 'green' | 'silver' | 'amber'; title: string } {
-  // Interim neutral default so the banner never celebrates a 0% run while the
-  // real thresholds are being decided.
-  return { accent: 'silver', title: 'Run Complete' };
+const RUN_TONE_CELEBRATE_AT = 80; // strong day — worth the trophy
+const RUN_TONE_NEUTRAL_AT = 40;   // ordinary day — acknowledged, not praised
+
+function runTone(successRate: number): {
+  accent: 'green' | 'silver' | 'amber';
+  title: string;
+  icon: typeof Trophy;
+} {
+  // The ICON carries as much of the message as the colour — a trophy over
+  // "Run Closed Out" would undo the whole point of the wording — so it moves
+  // with the band rather than staying pinned to Trophy.
+  if (successRate >= RUN_TONE_CELEBRATE_AT) {
+    return { accent: 'green', title: 'Run Complete!', icon: Trophy };
+  }
+  if (successRate >= RUN_TONE_NEUTRAL_AT) {
+    return { accent: 'silver', title: 'Run Complete', icon: CheckCircle2 };
+  }
+  // Below the neutral band the run still finished — say so accurately rather
+  // than congratulating. "Closed Out" states the fact without implying a win.
+  return { accent: 'silver', title: 'Run Closed Out', icon: ClipboardCheck };
 }
 
 const TONE_STYLES: Record<'green' | 'silver' | 'amber', { wrap: string; icon: string; title: string }> = {
@@ -408,10 +431,11 @@ function CompletionBanner({ startedAt, served, total }: { startedAt: number | nu
   const elapsed = startedAt ? Date.now() - startedAt : null;
   const tone = runTone(successRate);
   const styles = TONE_STYLES[tone.accent];
+  const ToneIcon = tone.icon;
 
   return (
     <div className={`mx-3 mb-3 px-4 py-3 rounded-[2px] border flex items-start gap-3 ${styles.wrap}`}>
-      <Trophy size={18} className={`${styles.icon} flex-shrink-0 mt-0.5`} aria-hidden />
+      <ToneIcon size={18} className={`${styles.icon} flex-shrink-0 mt-0.5`} aria-hidden />
       <div>
         <div className={`text-[12px] font-bold mb-0.5 ${styles.title}`}>{tone.title}</div>
         <div className="text-[11px] text-rmpg-300">
@@ -695,3 +719,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
     </div>
   );
 }
+
+// Pure tone logic + the banner, exported for unit test. Not part of the public
+// surface — MyRunTab's default export is what the app mounts.
+export const __testables = { runTone, CompletionBanner };
