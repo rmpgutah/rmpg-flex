@@ -17,6 +17,7 @@ import businessPhotos from '../src/routes/business/photos';
 import propertyPhotos from '../src/routes/property/photos';
 import workOrders from '../src/routes/workOrders';
 import serveIntake from '../src/routes/serveIntake';
+import records from '../src/routes/records';
 
 const app = new Hono<{ Bindings: Record<string, unknown>; Variables: { user: { id: number; role: string; username: string }; userId: number } }>();
 app.use('*', async (c, next) => {
@@ -38,5 +39,6 @@ app.route('/api/business-photos', businessPhotos);
 app.route('/api/property-photos', propertyPhotos);
 app.route('/api/work-orders', workOrders);
 app.route('/api/serve-intake', serveIntake);
+app.route('/api/records', records);
 
 export default app;
