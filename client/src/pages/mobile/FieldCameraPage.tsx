@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Camera, Loader2, MapPin, RefreshCw, X, Check, ScanLine, Car, AlertTriangle, Radar } from 'lucide-react';
+import { ArrowLeft, Camera, Loader2, MapPin, RefreshCw, X, Check, ScanLine, Car, AlertTriangle, Radar, IdCard } from 'lucide-react';
 import { apiPostForm, apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { downscaleImage } from '../../utils/downscaleImage';
 import { usePatrolScan } from '../../hooks/usePatrolScan';
@@ -27,6 +27,9 @@ import { PATROL_INTERVAL_MS } from '../../utils/patrolScan';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/ToastProvider';
 import TrustBadge from '../../components/TrustBadge';
+import LiveDlScanner, { type IdScanResult } from '../../components/LiveDlScanner';
+import type { AamvaResult, ScanAlert } from '../../utils/aamvaParser';
+import { aamvaToScanResultObj } from '../../utils/scanIdToRecipient';
 
 type GpsFix = { lat: number; lng: number; accuracy: number } | null;
 
@@ -132,6 +135,12 @@ export default function FieldCameraPage() {
   // ALPR "scan vehicles" mode: default on when scoped to a call, or via ?alpr=1.
   const [alprMode, setAlprMode] = useState(!!callId || searchParams.get('alpr') === '1');
   const [scan, setScan] = useState<AlprScanResult | null>(null);
+  const [idScanMode, setIdScanMode] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [idScanResult, setIdScanResult] = useState<{
+    parsed: AamvaResult; alerts: ScanAlert[]; personId: number; personCreated: boolean;
+  } | null>(null);
+  const [idScanSubmitting, setIdScanSubmitting] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -381,6 +390,31 @@ export default function FieldCameraPage() {
 
   const clearScan = useCallback(() => { setScan(null); discard(); }, [discard]);
 
+  const handleIdScanComplete = useCallback(async ({ barcodeText }: IdScanResult) => {
+    setShowScanner(false);
+    if (!barcodeText) { addToast('No barcode read — try again or use manual entry', 'error'); return; }
+    try {
+      const { parseAamva, looksLikeAamva, assessAamva } = await import('../../utils/aamvaParser');
+      if (!looksLikeAamva(barcodeText)) { addToast('Barcode did not decode as a DL/ID', 'error'); return; }
+      const parsed = parseAamva(barcodeText);
+      const alerts = assessAamva(parsed);
+      setIdScanSubmitting(true);
+      const scanPayload = aamvaToScanResultObj(parsed);
+      const resp = await apiFetch<{ personId: number; personCreated: boolean }>('/records/from-dl-scan', {
+        method: 'POST',
+        body: JSON.stringify({ scan: { ...scanPayload, aamva_raw: barcodeText } }),
+      });
+      setIdScanResult({ parsed, alerts, personId: resp.personId, personCreated: resp.personCreated });
+      addToast(resp.personCreated ? 'New person record created from scan' : 'Matched existing person record', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Scan failed to parse — try again', 'error');
+    } finally {
+      setIdScanSubmitting(false);
+    }
+  }, [addToast]);
+
+  const clearIdScan = useCallback(() => { setIdScanResult(null); }, []);
+
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col safe-pt safe-pb safe-px">
       {/* ── Top bar ── */}
@@ -420,6 +454,17 @@ export default function FieldCameraPage() {
             aria-pressed={alprMode}
           >
             <ScanLine className="w-3.5 h-3.5" /> Scan vehicles {alprMode ? 'ON' : 'OFF'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIdScanMode((m) => !m)}
+            disabled={patrolRunning}
+            className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border disabled:opacity-40 ${
+              idScanMode ? 'border-brand-400 text-brand-400 bg-surface-sunken' : 'border-border-subtle text-[#888]'
+            }`}
+            aria-pressed={idScanMode}
+          >
+            <IdCard className="w-3.5 h-3.5" /> Scan ID {idScanMode ? 'ON' : 'OFF'}
           </button>
           <button
             type="button"
@@ -653,12 +698,12 @@ export default function FieldCameraPage() {
             </button>
             <button
               type="button"
-              onClick={capture}
-              disabled={!cameraReady}
-              className="w-[72px] h-[72px] border-4 border-[#d4a017] bg-surface-raised flex items-center justify-center disabled:opacity-30"
-              aria-label="Take photo"
+              onClick={idScanMode ? () => setShowScanner(true) : capture}
+              disabled={!cameraReady && !idScanMode}
+              className="w-[72px] h-[72px] border-4 border-brand-400 bg-surface-raised flex items-center justify-center disabled:opacity-30"
+              aria-label={idScanMode ? 'Scan ID barcode' : 'Take photo'}
             >
-              <span className="w-12 h-12 bg-[#d4a017]" />
+              {idScanMode ? <IdCard className="w-8 h-8 text-brand-400" /> : <span className="w-12 h-12 bg-[#d4a017]" />}
             </button>
             {/* Spacer balances the layout so the shutter stays centered */}
             <span className="w-12" aria-hidden="true" />
@@ -674,6 +719,56 @@ export default function FieldCameraPage() {
           aria-label="Capture photo with native camera"
         />
       </div>
+      {showScanner && (
+        <LiveDlScanner
+          onComplete={handleIdScanComplete}
+          onClose={() => setShowScanner(false)}
+          onUploadInstead={() => setShowScanner(false)}
+        />
+      )}
+      {idScanResult && (
+        <div className="absolute inset-0 z-30 bg-black/92 overflow-y-auto p-3 space-y-2 safe-pt safe-pb safe-px">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-brand-400 flex items-center gap-1">
+              <IdCard className="w-4 h-4" /> {idScanResult.parsed.last_name}, {idScanResult.parsed.first_name}
+              {idScanResult.personCreated ? ' · NEW RECORD' : ' · LINKED'}
+            </span>
+            <button type="button" onClick={clearIdScan} className="text-[#888] p-1 min-w-[44px] min-h-[44px] flex items-center justify-center" aria-label="Done">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="text-xs text-fg-muted space-y-0.5">
+            <div>DOB {idScanResult.parsed.date_of_birth || '—'}</div>
+            <div>DL {idScanResult.parsed.dl_number || '—'} ({idScanResult.parsed.dl_state || '—'})</div>
+            <div>{idScanResult.parsed.address || '—'}, {idScanResult.parsed.city || '—'} {idScanResult.parsed.state || ''} {idScanResult.parsed.zip || ''}</div>
+          </div>
+          {idScanResult.alerts.map((a, i) => (
+            <div key={`${a.code}-${i}`} className={`flex items-start gap-1.5 border text-xs font-semibold px-2 py-1.5 ${
+              a.level === 'danger' ? 'bg-red-950 border-red-600 text-red-300'
+                : a.level === 'warning' ? 'bg-yellow-950/60 border-yellow-700 text-yellow-300'
+                : 'bg-surface-sunken border-border-subtle text-fg-muted'
+            }`}>
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
+              <span>{a.message}</span>
+            </div>
+          ))}
+          <button
+            type="button" onClick={() => navigate(`/records?tab=persons&personId=${idScanResult.personId}`)}
+            className="w-full py-2 text-xs font-bold uppercase tracking-wider border border-brand-400 text-brand-400 mt-1">
+            View Person Record
+          </button>
+          <button
+            type="button" onClick={clearIdScan}
+            className="w-full py-2 text-xs font-bold uppercase tracking-wider border border-border-subtle text-[#888]">
+            Scan Another
+          </button>
+        </div>
+      )}
+      {idScanSubmitting && (
+        <div className="absolute inset-0 z-30 bg-black/70 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-brand-400" />
+        </div>
+      )}
     </div>
   );
 }
