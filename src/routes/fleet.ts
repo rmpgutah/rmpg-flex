@@ -128,7 +128,7 @@ fleet.get('/', async (c) => {
     const q = c.req.query();
 
     // Pagination — default 200, cap 500 (matches FleetPage which fetches
-    // ?per_page=200 on mount and renders all in a single virtual list).
+    // ?per_page=500 on mount and renders all in a single virtual list).
     const limitRaw = Number(q.limit ?? q.per_page ?? 200);
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
     const pageRaw = Number(q.page ?? 1);
@@ -212,7 +212,9 @@ fleet.get('/analytics', async (c) => {
   // as "the stats window" in the UI, not the chart x-axis.
   const PERIODS: Record<string, string | null> = { '30d': '-30 days', '90d': '-90 days', '1y': '-12 months', 'all': null };
   const periodKey = (c.req.query('period') || '90d').toLowerCase();
-  const periodMod = PERIODS[periodKey] !== undefined ? PERIODS[periodKey] : '-90 days';
+  const periodMod = Object.prototype.hasOwnProperty.call(PERIODS, periodKey)
+    ? PERIODS[periodKey]
+    : '-90 days';
   // SQL fragments: empty string disables the filter for 'all'.
   const maintPeriod = periodMod ? `AND performed_at >= datetime('now', '${periodMod}')` : '';
   const fuelPeriod = periodMod ? `AND fuel_date >= date('now', '${periodMod}')` : '';

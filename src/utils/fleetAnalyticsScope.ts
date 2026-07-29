@@ -30,7 +30,6 @@ export const FLEET_ONLY_BLOCKS = [
   'utilization',
   'service_compliance',
   'cost_per_mile_ranking',
-  'fuel_economy_ranking',
   'oldest_vehicle_year',
 ] as const;
 

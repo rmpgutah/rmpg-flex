@@ -1,8 +1,23 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter } from '../serveMapOverlays';
 
 describe('urgencyTierForDeadline', () => {
   const now = new Date('2026-07-28T12:00:00Z').getTime();
+
+  // The unparseable-deadline case below relies on parseTimestamp's
+  // `new Date()` fallback (dateUtils.ts:153), which read the REAL clock while
+  // every assertion compares against the fixed `now` above. That made the test
+  // a time bomb: it passed until real time drifted more than 24h past
+  // 2026-07-28T12:00Z, then reported 'warning' instead of 'critical' — and it
+  // failed on main for everyone, in a file nobody had touched. Pinning the
+  // clock to `now` makes the fallback deterministic.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('returns "none" when there is no deadline', () => {
     expect(urgencyTierForDeadline(null, now)).toBe('none');
