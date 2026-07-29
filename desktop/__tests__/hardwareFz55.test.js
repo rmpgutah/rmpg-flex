@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseWindowsBatteryOutput, parseWindowsDockOutput } = require('../hardwareFz55');
+const { parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput } = require('../hardwareFz55');
 
 test('parseWindowsBatteryOutput: single battery, discharging', () => {
   const raw = JSON.stringify({ DeviceID: 'Battery0', EstimatedChargeRemaining: 76, BatteryStatus: 1 });
@@ -76,4 +76,22 @@ test('parseWindowsDockOutput: not docked when devices exist but none OK', () => 
 
 test('parseWindowsDockOutput: not docked on malformed JSON', () => {
   assert.deepEqual(parseWindowsDockOutput('garbage'), { docked: false });
+});
+
+test('parseWindowsWwanOutput: present and connected', () => {
+  const raw = JSON.stringify({ Name: 'Sierra Wireless EM7511', InterfaceDescription: 'Sierra Wireless EM7511', Status: 'Up' });
+  assert.deepEqual(parseWindowsWwanOutput(raw), { present: true, connected: true });
+});
+
+test('parseWindowsWwanOutput: present but not connected', () => {
+  const raw = JSON.stringify({ Name: 'Sierra Wireless EM7511', InterfaceDescription: 'Sierra Wireless EM7511', Status: 'Disconnected' });
+  assert.deepEqual(parseWindowsWwanOutput(raw), { present: true, connected: false });
+});
+
+test('parseWindowsWwanOutput: no WWAN adapter installed', () => {
+  assert.deepEqual(parseWindowsWwanOutput(JSON.stringify([])), { present: false, connected: false });
+});
+
+test('parseWindowsWwanOutput: malformed JSON treated as not present', () => {
+  assert.deepEqual(parseWindowsWwanOutput('garbage'), { present: false, connected: false });
 });

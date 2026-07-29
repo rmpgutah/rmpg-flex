@@ -56,7 +56,28 @@ function parseWindowsDockOutput(rawJsonString) {
   return { docked: entries.some((entry) => entry && entry.Status === 'OK') };
 }
 
+/**
+ * Parses `Get-NetAdapter | Where-Object {$_.InterfaceDescription -match
+ * 'Sierra|EM74|EM75|EM91'} | Select-Object Name, InterfaceDescription,
+ * Status | ConvertTo-Json` output. The PowerShell filter already narrows
+ * to WWAN adapters (Sierra EM7455/EM7511/EM7421/EM7595, mk3 5G EM9190), so
+ * an empty result means no WWAN module installed, and any entry present
+ * means the module is there; Status 'Up' means an active connection.
+ */
+function parseWindowsWwanOutput(rawJsonString) {
+  let parsed;
+  try {
+    parsed = JSON.parse(rawJsonString);
+  } catch {
+    return { present: false, connected: false };
+  }
+  const entries = Array.isArray(parsed) ? parsed : [parsed];
+  if (entries.length === 0) return { present: false, connected: false };
+  return { present: true, connected: entries.some((entry) => entry && entry.Status === 'Up') };
+}
+
 module.exports = {
   parseWindowsBatteryOutput,
   parseWindowsDockOutput,
+  parseWindowsWwanOutput,
 };
