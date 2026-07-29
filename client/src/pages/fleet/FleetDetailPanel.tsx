@@ -91,6 +91,7 @@ interface Props {
   assignments: FleetAssignment[];
   analytics: FleetAnalytics | null;
   analyticsLoading: boolean;
+  onAnalyticsPeriodChange?: (period: string) => void;
   personnelData: FleetPersonnelData | null;
   personnelLoading: boolean;
   activeTab: DetailTab;
@@ -279,7 +280,7 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
 
 export default function FleetDetailPanel({
   detail, maintenance, fuelLogs, fuelSummary, inspections, assignments,
-  analytics, analyticsLoading, personnelData, personnelLoading,
+  analytics, analyticsLoading, onAnalyticsPeriodChange, personnelData, personnelLoading,
   activeTab, onTabChange,
   onEditVehicle, onLogMaintenance, onLogFuel, onNewInspection,
   onEditFuel, onDeleteFuel,
@@ -576,7 +577,9 @@ export default function FleetDetailPanel({
         {activeTab === 'recalls' && <FleetRecallsTab vehicleId={detail.id} />}
         {activeTab === 'expenses' && <FleetExpensesTab vehicle={detail} canManage={['admin', 'manager', 'supervisor', 'officer'].includes(user?.role || '')} />}
         {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
-        {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
+        {activeTab === 'analytics' && (
+          <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} onPeriodChange={onAnalyticsPeriodChange} />
+        )}
         {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
         {activeTab === 'fuel_cards' && <FleetFuelCardsTab />}
       </div>
