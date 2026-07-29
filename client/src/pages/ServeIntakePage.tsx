@@ -1633,7 +1633,10 @@ export default function ServeIntakePage() {
         <LiveDlScanner
           onComplete={handleIdScanComplete}
           onClose={() => setShowIdScanner(false)}
-          onUploadInstead={() => setShowIdScanner(false)}
+          onUploadInstead={() => {
+            setShowIdScanner(false);
+            addToast('Photo-upload scanning isn\'t available on this screen — try again or use another entry method', 'error');
+          }}
         />
       )}
     </div>

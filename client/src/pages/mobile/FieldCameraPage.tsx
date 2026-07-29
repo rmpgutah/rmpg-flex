@@ -392,6 +392,7 @@ export default function FieldCameraPage() {
 
   const handleIdScanComplete = useCallback(async ({ barcodeText }: IdScanResult) => {
     setShowScanner(false);
+    startCamera(facing);
     if (!barcodeText) { addToast('No barcode read — try again or use manual entry', 'error'); return; }
     try {
       const { parseAamva, looksLikeAamva, assessAamva } = await import('../../utils/aamvaParser');
@@ -402,7 +403,7 @@ export default function FieldCameraPage() {
       const scanPayload = aamvaToScanResultObj(parsed);
       const resp = await apiFetch<{ personId: number; personCreated: boolean }>('/records/from-dl-scan', {
         method: 'POST',
-        body: JSON.stringify({ scan: { ...scanPayload, aamva_raw: barcodeText } }),
+        body: JSON.stringify({ scan: scanPayload }),
       });
       setIdScanResult({ parsed, alerts, personId: resp.personId, personCreated: resp.personCreated });
       addToast(resp.personCreated ? 'New person record created from scan' : 'Matched existing person record', 'success');
@@ -411,7 +412,7 @@ export default function FieldCameraPage() {
     } finally {
       setIdScanSubmitting(false);
     }
-  }, [addToast]);
+  }, [addToast, startCamera, facing]);
 
   const clearIdScan = useCallback(() => { setIdScanResult(null); }, []);
 
@@ -446,7 +447,11 @@ export default function FieldCameraPage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setAlprMode((m) => !m)}
+            onClick={() => setAlprMode((m) => {
+              const next = !m;
+              if (next) setIdScanMode(false);
+              return next;
+            })}
             disabled={patrolRunning}
             className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border disabled:opacity-40 ${
               alprMode ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-subtle text-[#888]'
@@ -457,7 +462,11 @@ export default function FieldCameraPage() {
           </button>
           <button
             type="button"
-            onClick={() => setIdScanMode((m) => !m)}
+            onClick={() => setIdScanMode((m) => {
+              const next = !m;
+              if (next) setAlprMode(false);
+              return next;
+            })}
             disabled={patrolRunning}
             className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border disabled:opacity-40 ${
               idScanMode ? 'border-brand-400 text-brand-400 bg-surface-sunken' : 'border-border-subtle text-[#888]'
@@ -698,7 +707,10 @@ export default function FieldCameraPage() {
             </button>
             <button
               type="button"
-              onClick={idScanMode ? () => setShowScanner(true) : capture}
+              onClick={idScanMode ? () => {
+                streamRef.current?.getTracks().forEach((t) => t.stop());
+                setShowScanner(true);
+              } : capture}
               disabled={!cameraReady && !idScanMode}
               className="w-[72px] h-[72px] border-4 border-brand-400 bg-surface-raised flex items-center justify-center disabled:opacity-30"
               aria-label={idScanMode ? 'Scan ID barcode' : 'Take photo'}
@@ -722,8 +734,12 @@ export default function FieldCameraPage() {
       {showScanner && (
         <LiveDlScanner
           onComplete={handleIdScanComplete}
-          onClose={() => setShowScanner(false)}
-          onUploadInstead={() => setShowScanner(false)}
+          onClose={() => { setShowScanner(false); startCamera(facing); }}
+          onUploadInstead={() => {
+            setShowScanner(false);
+            startCamera(facing);
+            addToast('Photo-upload scanning isn\'t available on this screen — try again or use another entry method', 'error');
+          }}
         />
       )}
       {idScanResult && (
