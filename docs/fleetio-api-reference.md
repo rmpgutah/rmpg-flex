@@ -322,7 +322,7 @@ Path parameter `id` (string matching `^[0-9]+$`) is required. No request body. T
 
 ### Cross-check against this codebase — regression check on #3162
 
-**⚠️ MISMATCH — the fix in PR #3162 is not present in this codebase.** PR #3162 ("fix(fleetio): fix both live dead-lettered outbound events") is still **open** (`state: "OPEN"`, `mergedAt: null` per `gh pr view 3162`) and this worktree's branch does not descend from it. As of the commit cross-checked here (`src/utils/fleetio/seed.ts:86-93`), `mapFuelEntryFieldsToFleetio` is still the **pre-fix** version:
+**⚠️ MISMATCH (at write-time) — the fix in PR #3162 was not present in this codebase.** *Caveat: this subsection was written while this branch predated #3162's merge. PR #3162 ("fix(fleetio): fix both live dead-lettered outbound events") has since been confirmed merged into `main` (`gh pr diff 3162 -R rmpgutah/rmpg-flex` returns the merged diff). The "not present in this codebase" framing below was accurate at the time this cross-check was written but should be re-verified once this branch syncs with `main`, which now carries the fix.* As of the commit cross-checked here (`src/utils/fleetio/seed.ts:86-93`), `mapFuelEntryFieldsToFleetio` was still the **pre-fix** version on this branch:
 
 ```ts
 export function mapFuelEntryFieldsToFleetio(payload: Record<string, unknown>): Record<string, unknown> {
@@ -343,9 +343,9 @@ export function mapFuelEntryFieldsToFleetio(payload: Record<string, unknown>): R
 | `cost` | ⚠️ MISMATCH — no `cost` field exists anywhere on the Fuel Entry create/update schema. The closest concept is `price_per_volume_unit` (a per-unit price, not a total), which this mapper never sends. |
 | — | ⚠️ MISMATCH — `meter_entry_attributes` is **required** on Create Fuel Entry and is never sent by this mapper at all. |
 
-⚠️ **MISMATCH — every `fuel_entry/create` dispatch through the code actually present in this worktree is missing a required field (`meter_entry_attributes`) and sends a nonexistent one (`cost`).** This reproduces exactly the live 422 (`fuel_entry/create` event id=9) that PR #3162's description says it fixes — the fix itself is correct in principle (confirmed below), but it has not shipped: it lives only on an unmerged branch. Until #3162 merges, every outbound fuel-entry creation from this codebase will continue to fail Fleet.io's schema validation.
+⚠️ **MISMATCH (at write-time, on this pre-merge branch) — the version of `fuel_entry/create` present here at the time of writing was missing a required field (`meter_entry_attributes`) and sent a nonexistent one (`cost`).** This reproduced exactly the live 422 (`fuel_entry/create` event id=9) that PR #3162's description says it fixes. Per the caveat above, #3162 has since merged to `main`, so this specific mismatch should no longer be reproducible once this branch is synced — re-verify against `main` rather than treating this as still-open.
 
-**The proposed fix (PR #3162 diff, not yet merged) reads:**
+**The fix, confirmed merged via `gh pr diff 3162 -R rmpgutah/rmpg-flex`, reads:**
 
 ```ts
 if (typeof payload.cost_per_gallon === 'number') out.price_per_volume_unit = payload.cost_per_gallon;
@@ -354,6 +354,8 @@ if (typeof payload.odometer === 'number') {
 }
 ```
 
-Checked against the live schema fetched above: `price_per_volume_unit` is a valid optional `float` field, and `meter_entry_attributes.value` being sent as a `String(...)` matches the live example payload, which sends `"value": "108043"` as a string, not a number — so **both of the two fields this task was asked to verify are correct** in the proposed fix. However, one gap survives even after the fix merges: `meter_entry_attributes` is **required** by Create Fuel Entry, but the proposed code only sets it `if (typeof payload.odometer === 'number')` — if a fuel entry is created without an odometer reading (`payload.odometer` is `undefined`/non-numeric), `meter_entry_attributes` is omitted entirely and the create should still 422, just via a different input shape than the one PR #3162 was written to fix. This is a narrower, unaddressed edge of the same required-field gap, not a full fix of the invariant "every Create Fuel Entry request must carry `meter_entry_attributes`."
+Checked against the live schema fetched above: `price_per_volume_unit` is a valid optional `float` field, and `meter_entry_attributes.value` being sent as a `String(...)` matches the live example payload, which sends `"value": "108043"` as a string, not a number — so **both of the two fields this task was asked to verify are correct** in the merged fix.
+
+The mapper intentionally omits `meter_entry_attributes` entirely when `payload.odometer` isn't a number, rather than fabricating a meter value — this is deliberate, tested behavior (`tests/fleetioSeed.test.ts`, merged in #3162: `'omits meter_entry_attributes when odometer is absent (Fleet.io will 422 — no valid meter value to send)'`), not an oversight, so it is **not** a code defect for Task 7 to flag as fix-needed. The one open question is a **data question, not a code question**: `meter_entry_attributes` is required by Fleet.io's Create Fuel Entry endpoint, so this known, intentional tradeoff still means any RMPG fuel-log entry that is genuinely missing an odometer reading at creation time would produce a request Fleet.io rejects with a 422 — whether that happens in practice depends on how reliably RMPG's fuel-entry capture flow records an odometer value, which is outside this doc's scope to verify.
 
 **Delete semantics.** `dispatchOutbound`'s `fuel_entry`/`delete` branch (`sync.ts:429-438`) calls `deleteFuelEntry`, issuing a real `DELETE /fuel_entries/:id` — matching RMPG's own hard-delete semantics for fuel entries and CLAUDE.md's documented delete-matching rule ("RMPG hard-deletes parts and fuel entries → Fleet.io `DELETE`"). No mismatch here.
