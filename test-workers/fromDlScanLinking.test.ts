@@ -117,8 +117,10 @@ async function resetTables() {
     id INTEGER PRIMARY KEY AUTOINCREMENT, call_number TEXT, incident_type TEXT, status TEXT, created_at TEXT
   )`);
   await execute(db, `CREATE TABLE call_persons (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, call_id INTEGER, person_id INTEGER, person_type TEXT, added_at TEXT
+    id INTEGER PRIMARY KEY AUTOINCREMENT, call_id INTEGER, person_id INTEGER, role TEXT DEFAULT 'subject',
+    added_by INTEGER, added_at TEXT
   )`);
+  await execute(db, `CREATE UNIQUE INDEX uq_call_persons_link ON call_persons(call_id, person_id, role)`);
   await execute(db, `CREATE TABLE cases (
     id INTEGER PRIMARY KEY AUTOINCREMENT, case_number TEXT, title TEXT, status TEXT DEFAULT 'open'
   )`);

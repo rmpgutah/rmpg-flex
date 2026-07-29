@@ -89,14 +89,20 @@ async function audit(
 // populate dl_records from the same scan that creates the person, instead
 // of the two write paths staying disconnected. Behavior-preserving: same
 // validation messages, same upsert semantics, same dl_addresses handling.
+// Distinguishes the two intentional input-validation checks in
+// upsertDlRecord from genuine runtime failures (bad column, constraint
+// violation, bind error). Callers should only convert THIS error type
+// into a 400 — anything else must propagate to the normal 500 path.
+export class DlRecordValidationError extends Error {}
+
 export async function upsertDlRecord(
   db: ReturnType<typeof getDb>, body: Record<string, any>,
 ): Promise<{ recordId: number; created: boolean }> {
   if (!body.dl_number || !body.dl_state) {
-    throw new Error('DL number and state are required');
+    throw new DlRecordValidationError('DL number and state are required');
   }
   if (!body.last_name || !body.first_name) {
-    throw new Error('First and last name are required');
+    throw new DlRecordValidationError('First and last name are required');
   }
 
   const fullName = `${body.first_name || ''} ${body.middle_name || ''} ${body.last_name || ''}`
@@ -195,6 +201,7 @@ dlRecords.post('/', async (c) => {
     try {
       ({ recordId, created } = await upsertDlRecord(db, b));
     } catch (validationErr: any) {
+      if (!(validationErr instanceof DlRecordValidationError)) throw validationErr;
       const code = validationErr.message.includes('name') ? 'FIRST_AND_LAST_NAME' : 'DL_NUMBER_AND_STATE';
       return c.json({ error: validationErr.message, code }, 400);
     }

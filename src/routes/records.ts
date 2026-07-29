@@ -264,7 +264,12 @@ const PERSON_EXT_COLUMNS = new Set([
   'under_18_until', 'under_21_until', 'aamva_version', 'issuer_id',
   'address2', 'raw_aamva_elements',
 ]);
-const PERSON_EXT_SELECT = [...PERSON_EXT_COLUMNS].join(', ');
+// Read projection excludes raw_aamva_elements: it's a raw barcode-element
+// dump kept for potential forensic/debugging use, not something every
+// authenticated caller (including client_viewer) should see on every
+// person read. Still fully writable via PERSON_EXT_COLUMNS above.
+const PERSON_EXT_READ_COLUMNS = [...PERSON_EXT_COLUMNS].filter(c => c !== 'raw_aamva_elements');
+const PERSON_EXT_SELECT = PERSON_EXT_READ_COLUMNS.join(', ');
 
 /** Upsert the overflow fields present in `body` into persons_ext (1:1 on
  *  person_id). No-op when the body carries none of them. */
@@ -536,9 +541,10 @@ records.post('/from-dl-scan', async (c) => {
     const callId = typeof body.call_id === 'number' ? body.call_id : null;
     if (callId) {
       try {
+        const scannerUserId = (c.get('userId') as number | null | undefined) ?? null;
         await execute(db,
-          `INSERT OR IGNORE INTO call_persons (call_id, person_id, person_type, added_at) VALUES (?, ?, 'subject', datetime('now'))`,
-          callId, personId);
+          `INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, added_at) VALUES (?, ?, 'subject', ?, datetime('now'))`,
+          callId, personId, scannerUserId);
         callLinked = true;
       } catch (err) {
         console.warn('[from-dl-scan] call_persons link failed (non-fatal):', err);
@@ -564,12 +570,27 @@ records.post('/from-dl-scan', async (c) => {
     let warrantHits: Array<Record<string, unknown>> = [];
     if (dob) {
       try {
-        await execute(db,
+        const orphaned = await query<{ id: number; warrant_number: string | null }>(db,
+          `SELECT id, warrant_number FROM warrants
+           WHERE subject_person_id IS NULL AND LOWER(status) = 'active'
+             AND LOWER(subject_first_name) = LOWER(?) AND LOWER(subject_last_name) = LOWER(?)
+             AND subject_dob = ?`,
+          first, last, dob);
+        const result = await execute(db,
           `UPDATE warrants SET subject_person_id = ?
            WHERE subject_person_id IS NULL AND LOWER(status) = 'active'
              AND LOWER(subject_first_name) = LOWER(?) AND LOWER(subject_last_name) = LOWER(?)
              AND subject_dob = ?`,
           personId, first, last, dob);
+        if ((result.meta.changes ?? 0) > 0 && orphaned.length > 0) {
+          const warrantNumbers = orphaned.map(w => w.warrant_number ?? String(w.id)).join(', ');
+          await recordAudit(c, {
+            action: 'dl_scan_warrant_backfill',
+            entityType: 'person',
+            entityId: personId,
+            details: `Linked warrant(s) ${warrantNumbers} to person ${first} ${last} (id ${personId}) via DL scan backfill`,
+          });
+        }
       } catch (err) {
         console.warn('[from-dl-scan] warrant backfill failed (non-fatal):', err);
       }
