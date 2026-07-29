@@ -3,17 +3,27 @@
 // full field persistence + auto-linking: dl_records upsert, current-call/case
 // linking, warrant backfill + surfacing, prior-call/open-case surfacing.
 //
-// Auth note: unlike alprCapture.test.ts, this suite does NOT mint a JWT.
-// test-workers/entry.ts (the shared minimal test app) injects a fixed
-// { role: 'admin' } user via middleware ahead of every mounted router —
-// real JWT verification happens in src/middleware/auth.ts, which is applied
-// per-prefix in src/index.ts and is NOT part of this test harness. Routes
-// here read c.get('user')/c.get('userId'), which the injected middleware
-// already sets, so requests are sent with no Authorization header.
+// Auth: this suite mints a real JWT via `sign()` from `hono/jwt` and sends it
+// through `Authorization: Bearer <token>`, matching test-workers/auth.test.ts's
+// `mintAccessToken` pattern. Requests go through `authedApp`, a local Hono app
+// that mirrors src/index.ts's real wiring — `authMiddleware` applied on the
+// `/api/records` prefix ahead of the actual `records` router — instead of
+// test-workers/entry.ts's shared harness, which injects a fixed
+// { role: 'admin' } user via middleware and never exercises JWT verification
+// or the authMiddleware/ROUTE_REGISTRY auth-mounting wiring. That gap matters
+// here specifically because CLAUDE.md documents auth-mounting drops as a
+// recurring bug class in this codebase (routes-config-merge-collision,
+// squash-drops-wiring-line) — a suite that never sends a token can't catch it.
 import { env } from 'cloudflare:test';
 import { describe, it, expect, beforeEach } from 'vitest';
+import { Hono } from 'hono';
+import { sign } from 'hono/jwt';
+import { authMiddleware } from '../src/middleware/auth';
 import { execute, query } from '../src/utils/db';
-import app from './entry';
+import records from '../src/routes/records';
+
+const SECRET = 'test-jwt-secret-do-not-use-in-prod';
+const authedEnv = { ...(env as unknown as Record<string, unknown>), JWT_SECRET: SECRET };
 
 // Requests go through app.request(path, init, env, executionCtx) — the 4th
 // arg is required because from-dl-scan's SOR auto-screen fires via
@@ -21,14 +31,42 @@ import app from './entry';
 // "This context has no ExecutionContext" before the handler can respond.
 const testExecutionCtx = { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext;
 
+// Mirrors src/index.ts's real per-prefix auth wiring for /api/records: apply
+// authMiddleware ahead of the actual records router, then mount it — so a
+// request must carry a valid JWT to reach the handler at all.
+const authedApp = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
+authedApp.use('/api/records', authMiddleware);
+authedApp.use('/api/records/*', authMiddleware);
+authedApp.route('/api/records', records);
+
+async function mintAccessToken(userId: number, role: string, username: string): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return sign({ sub: String(userId), user_id: userId, userId, username, role, iat: now, exp: now + 900, type: 'access' }, SECRET);
+}
+
+async function authedHeaders(): Promise<Record<string, string>> {
+  const token = await mintAccessToken(1, 'admin', 'test-admin');
+  return { 'content-type': 'application/json', authorization: `Bearer ${token}` };
+}
+
 async function resetTables() {
   const db = (env as unknown as { DB: D1Database }).DB;
   for (const t of [
     'persons_ext', 'persons', 'dl_records', 'dl_addresses', 'vehicles_records', 'properties',
     'warrants', 'call_persons', 'calls_for_service', 'case_person_links', 'case_calls', 'cases', 'clients',
+    'users',
   ]) {
     await execute(db, `DROP TABLE IF EXISTS ${t}`);
   }
+  // authMiddleware looks up the JWT's userId in `users` (id, status='active')
+  // on every request — required for the real-auth calls this suite makes.
+  await execute(db, `CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
+    full_name TEXT, role TEXT NOT NULL DEFAULT 'officer', status TEXT NOT NULL DEFAULT 'active'
+  )`);
+  await execute(db,
+    `INSERT INTO users (id, username, password_hash, full_name, role, status)
+     VALUES (1, 'test-admin', 'x', 'Test Admin', 'admin', 'active')`);
   // properties.client_id is NOT NULL + FKs to clients(id); from-dl-scan
   // creates a sentinel client row the first time a property is created from
   // a scan address (ensureScanSentinelClient), so the table must exist.
@@ -110,11 +148,11 @@ describe('POST /api/records/from-dl-scan — full field persistence + auto-linki
   beforeEach(resetTables);
 
   it('persists every AAMVA field (persons + persons_ext) and upserts dl_records', async () => {
-    const res = await app.request('/api/records/from-dl-scan', {
+    const res = await authedApp.request('/api/records/from-dl-scan', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: await authedHeaders(),
       body: JSON.stringify(scanBody()),
-    }, env as unknown as Record<string, unknown>, testExecutionCtx);
+    }, authedEnv, testExecutionCtx);
 
     expect(res.status).toBe(201);
     const body = await res.json() as any;
@@ -137,14 +175,14 @@ describe('POST /api/records/from-dl-scan — full field persistence + auto-linki
   });
 
   it('re-scanning the same DL updates dl_records instead of duplicating it', async () => {
-    await app.request('/api/records/from-dl-scan', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+    await authedApp.request('/api/records/from-dl-scan', {
+      method: 'POST', headers: await authedHeaders(),
       body: JSON.stringify(scanBody()),
-    }, env as unknown as Record<string, unknown>, testExecutionCtx);
-    const res2 = await app.request('/api/records/from-dl-scan', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+    }, authedEnv, testExecutionCtx);
+    const res2 = await authedApp.request('/api/records/from-dl-scan', {
+      method: 'POST', headers: await authedHeaders(),
       body: JSON.stringify(scanBody({ dl_class: 'C' })),
-    }, env as unknown as Record<string, unknown>, testExecutionCtx);
+    }, authedEnv, testExecutionCtx);
     const body2 = await res2.json() as any;
     expect(body2.dl_record_created).toBe(false);
 
@@ -156,10 +194,10 @@ describe('POST /api/records/from-dl-scan — full field persistence + auto-linki
   it('links the scanned subject to the current call when call_id is provided', async () => {
     const db = (env as unknown as { DB: D1Database }).DB;
     await execute(db, `INSERT INTO calls_for_service (id, call_number) VALUES (42, 'C-42')`);
-    const res = await app.request('/api/records/from-dl-scan', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+    const res = await authedApp.request('/api/records/from-dl-scan', {
+      method: 'POST', headers: await authedHeaders(),
       body: JSON.stringify({ ...scanBody(), call_id: 42 }),
-    }, env as unknown as Record<string, unknown>, testExecutionCtx);
+    }, authedEnv, testExecutionCtx);
     const body = await res.json() as any;
     expect(body.call_linked).toBe(true);
 
@@ -173,10 +211,10 @@ describe('POST /api/records/from-dl-scan — full field persistence + auto-linki
     await execute(db, `INSERT INTO calls_for_service (id, call_number) VALUES (42, 'C-42')`);
     await execute(db, `INSERT INTO cases (id, case_number) VALUES (7, 'CASE-7')`);
     await execute(db, `INSERT INTO case_calls (case_id, call_id) VALUES (7, 42)`);
-    const res = await app.request('/api/records/from-dl-scan', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+    const res = await authedApp.request('/api/records/from-dl-scan', {
+      method: 'POST', headers: await authedHeaders(),
       body: JSON.stringify({ ...scanBody(), call_id: 42 }),
-    }, env as unknown as Record<string, unknown>, testExecutionCtx);
+    }, authedEnv, testExecutionCtx);
     const body = await res.json() as any;
     expect(body.case_linked_id).toBe(7);
 
@@ -190,10 +228,10 @@ describe('POST /api/records/from-dl-scan — full field persistence + auto-linki
     await execute(db,
       `INSERT INTO warrants (warrant_number, status, subject_first_name, subject_last_name, subject_dob)
        VALUES ('W-1', 'active', 'Jane', 'Doe', '1990-05-14')`);
-    const res = await app.request('/api/records/from-dl-scan', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+    const res = await authedApp.request('/api/records/from-dl-scan', {
+      method: 'POST', headers: await authedHeaders(),
       body: JSON.stringify(scanBody()),
-    }, env as unknown as Record<string, unknown>, testExecutionCtx);
+    }, authedEnv, testExecutionCtx);
     const body = await res.json() as any;
 
     expect(body.warrant_hits.length).toBe(1);
@@ -208,20 +246,20 @@ describe('POST /api/records/from-dl-scan — full field persistence + auto-linki
     await execute(db,
       `INSERT INTO warrants (warrant_number, status, subject_first_name, subject_last_name, subject_dob)
        VALUES ('W-2', 'active', 'Jane', 'Doe', '1985-01-01')`);
-    const res = await app.request('/api/records/from-dl-scan', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+    const res = await authedApp.request('/api/records/from-dl-scan', {
+      method: 'POST', headers: await authedHeaders(),
       body: JSON.stringify(scanBody()),
-    }, env as unknown as Record<string, unknown>, testExecutionCtx);
+    }, authedEnv, testExecutionCtx);
     const body = await res.json() as any;
     expect(body.warrant_hits.length).toBe(0);
   });
 
   it('surfaces prior calls and open cases without writing new links to them', async () => {
     const db = (env as unknown as { DB: D1Database }).DB;
-    const first = await app.request('/api/records/from-dl-scan', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+    const first = await authedApp.request('/api/records/from-dl-scan', {
+      method: 'POST', headers: await authedHeaders(),
       body: JSON.stringify(scanBody()),
-    }, env as unknown as Record<string, unknown>, testExecutionCtx);
+    }, authedEnv, testExecutionCtx);
     const firstBody = await first.json() as any;
     const personId = firstBody.person.id;
 
@@ -230,10 +268,10 @@ describe('POST /api/records/from-dl-scan — full field persistence + auto-linki
     await execute(db, `INSERT INTO cases (id, case_number, status) VALUES (55, 'CASE-55', 'open')`);
     await execute(db, `INSERT INTO case_person_links (case_id, person_id) VALUES (55, ?)`, personId);
 
-    const second = await app.request('/api/records/from-dl-scan', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+    const second = await authedApp.request('/api/records/from-dl-scan', {
+      method: 'POST', headers: await authedHeaders(),
       body: JSON.stringify(scanBody()),
-    }, env as unknown as Record<string, unknown>, testExecutionCtx);
+    }, authedEnv, testExecutionCtx);
     const secondBody = await second.json() as any;
 
     expect(secondBody.prior_calls.some((c: any) => c.id === 99)).toBe(true);
@@ -241,5 +279,27 @@ describe('POST /api/records/from-dl-scan — full field persistence + auto-linki
     // Re-scanning must not create a duplicate call_persons/case_person_links row.
     const callLinks = await query<any>(db, 'SELECT * FROM call_persons WHERE call_id = 99');
     expect(callLinks.length).toBe(1);
+  });
+});
+
+describe('POST /api/records/from-dl-scan — auth wiring', () => {
+  beforeEach(resetTables);
+
+  it('rejects a request with no Authorization header with 401', async () => {
+    const res = await authedApp.request('/api/records/from-dl-scan', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(scanBody()),
+    }, authedEnv, testExecutionCtx);
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects a request with a garbage/invalid token with 401', async () => {
+    const res = await authedApp.request('/api/records/from-dl-scan', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer not-a-real-jwt' },
+      body: JSON.stringify(scanBody()),
+    }, authedEnv, testExecutionCtx);
+    expect(res.status).toBe(401);
   });
 });
