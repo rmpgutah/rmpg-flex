@@ -68,3 +68,20 @@ export function centroidForGroup(groupKey: string, items: GroupableMapItem[]): {
   );
   return { lat: sum.lat / matches.length, lng: sum.lng / matches.length };
 }
+
+export type DeadlineFilter = 'all' | 'today' | 'three_days' | 'week' | 'overdue';
+
+export function matchesDeadlineFilter(deadline: string | null, filter: DeadlineFilter, now: number): boolean {
+  if (filter === 'all') return true;
+  if (!deadline) return false;
+  const deadlineMs = parseTimestamp(deadline).getTime();
+  if (Number.isNaN(deadlineMs)) return false;
+  const hoursLeft = (deadlineMs - now) / HOUR_MS;
+  switch (filter) {
+    case 'overdue': return hoursLeft < 0;
+    case 'today': return hoursLeft >= 0 && hoursLeft <= 24;
+    case 'three_days': return hoursLeft >= 0 && hoursLeft <= 72;
+    case 'week': return hoursLeft >= 0 && hoursLeft <= 168;
+    default: return true;
+  }
+}

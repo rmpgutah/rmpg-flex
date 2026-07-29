@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { urgencyTierForDeadline, isRiskFlagged, successRateColor, centroidForGroup } from '../serveMapOverlays';
+import { urgencyTierForDeadline, isRiskFlagged, successRateColor, centroidForGroup, matchesDeadlineFilter } from '../serveMapOverlays';
 
 describe('urgencyTierForDeadline', () => {
   const now = new Date('2026-07-28T12:00:00Z').getTime();
@@ -104,5 +104,38 @@ describe('centroidForGroup', () => {
 
   it('excludes items missing coordinates even if the city matches', () => {
     expect(centroidForGroup('Sandy', items)).toEqual({ lat: 40.5, lng: -111.85 });
+  });
+});
+
+describe('matchesDeadlineFilter', () => {
+  const now = new Date('2026-07-28T12:00:00Z').getTime();
+
+  it('"all" matches everything including no deadline', () => {
+    expect(matchesDeadlineFilter(null, 'all', now)).toBe(true);
+    expect(matchesDeadlineFilter('2026-09-01T00:00:00Z', 'all', now)).toBe(true);
+  });
+
+  it('"overdue" only matches past deadlines', () => {
+    expect(matchesDeadlineFilter('2026-07-27T00:00:00Z', 'overdue', now)).toBe(true);
+    expect(matchesDeadlineFilter('2026-07-29T00:00:00Z', 'overdue', now)).toBe(false);
+  });
+
+  it('"today" matches deadlines within 24 hours', () => {
+    expect(matchesDeadlineFilter('2026-07-29T06:00:00Z', 'today', now)).toBe(true);
+    expect(matchesDeadlineFilter('2026-07-30T06:00:00Z', 'today', now)).toBe(false);
+  });
+
+  it('"three_days" matches within 72 hours', () => {
+    expect(matchesDeadlineFilter('2026-07-31T00:00:00Z', 'three_days', now)).toBe(true);
+    expect(matchesDeadlineFilter('2026-08-02T00:00:00Z', 'three_days', now)).toBe(false);
+  });
+
+  it('"week" matches within 7 days', () => {
+    expect(matchesDeadlineFilter('2026-08-03T00:00:00Z', 'week', now)).toBe(true);
+    expect(matchesDeadlineFilter('2026-08-10T00:00:00Z', 'week', now)).toBe(false);
+  });
+
+  it('no-deadline items only match "all"', () => {
+    expect(matchesDeadlineFilter(null, 'today', now)).toBe(false);
   });
 });

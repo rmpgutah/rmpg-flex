@@ -15,7 +15,7 @@ import LocationNoteModal from './LocationNoteModal';
 import { escapeHtml } from '../../utils/sanitize';
 import { withAlpha } from '../../utils/withAlpha';
 import { clusterByGrid, type ClusterableItem } from '../../utils/serveMapClustering';
-import { urgencyTierForDeadline, isRiskFlagged, successRateColor, centroidForGroup, type SuccessRateRow } from '../../utils/serveMapOverlays';
+import { urgencyTierForDeadline, isRiskFlagged, successRateColor, centroidForGroup, matchesDeadlineFilter, type SuccessRateRow, type DeadlineFilter } from '../../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../../utils/mapboxRouting';
 
 // One-time stylesheet injection for pulse-ring keyframes
@@ -186,6 +186,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
   const [geocoding, setGeocoding] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(10);
+  const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>('all');
   const [noteModal, setNoteModal] = useState<{ open: boolean; noteId?: number; queueItem?: QueueMapItem }>({ open: false });
   const [trailQueueId, setTrailQueueId] = useState<number | null>(null);
   // Single-stop drive-time preview: right-click anywhere on the map to set a
@@ -257,15 +258,15 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    const mappable = items.filter(
-      (it) => it.recipient_lat != null && it.recipient_lng != null,
-    );
+    const mappable = items
+      .filter((it) => it.recipient_lat != null && it.recipient_lng != null)
+      .filter((it) => matchesDeadlineFilter(it.deadline, deadlineFilter, Date.now()));
     if (mappable.length > 0) {
       const bounds = new mapboxgl.LngLatBounds();
       for (const it of mappable) bounds.extend([it.recipient_lng!, it.recipient_lat!]);
       map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
     }
-  }, [mapReady, items]);
+  }, [mapReady, items, deadlineFilter]);
 
   // Plot markers when map + items are ready
   useEffect(() => {
@@ -277,9 +278,9 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     markersRef.current = [];
     popupRef.current?.remove();
 
-    const mappable = items.filter(
-      (it) => it.recipient_lat != null && it.recipient_lng != null,
-    );
+    const mappable = items
+      .filter((it) => it.recipient_lat != null && it.recipient_lng != null)
+      .filter((it) => matchesDeadlineFilter(it.deadline, deadlineFilter, Date.now()));
 
     const clusterInput: ClusterableItem[] = mappable.map((it) => ({
       id: it.id,
@@ -333,7 +334,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
         markersRef.current.push(marker);
       }
     }
-  }, [mapReady, items, onSelectQueue, currentZoom]);
+  }, [mapReady, items, onSelectQueue, currentZoom, deadlineFilter]);
 
   // Draw/clear the attempt-history trail overlay for a selected serve item.
   // GeoJSON line source/layer (not a marker) — kept separate from the
@@ -561,6 +562,17 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
               ETA {previewRoute.eta} · {previewRoute.distance} (right-click map to move origin)
             </span>
           )}
+          <div className="flex items-center gap-1">
+            {(['all', 'today', 'three_days', 'week', 'overdue'] as DeadlineFilter[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setDeadlineFilter(f)}
+                className={`px-2 py-1 text-[10px] border border-border-subtle rounded ${deadlineFilter === f ? 'bg-brand-700 text-white' : 'bg-surface-raised text-brand-400'}`}
+              >
+                {f === 'three_days' ? '3 Days' : f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
           <button
             onClick={() => setShowSuccessHeatmap((v) => !v)}
             className={`flex items-center gap-1 px-2 py-1 text-[11px] border border-border-subtle rounded ${showSuccessHeatmap ? 'bg-brand-700 text-white' : 'bg-surface-raised text-brand-300'}`}
