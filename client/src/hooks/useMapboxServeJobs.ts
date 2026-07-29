@@ -125,7 +125,7 @@ export function useMapboxServeJobs(map: mapboxgl.Map | null) {
       if (!f || f.geometry.type !== 'Point') return;
       const p = f.properties || {};
       popupRef.current?.remove();
-      popupRef.current = new mapboxgl.Popup({ offset: 10, closeButton: true, className: 'mapbox-popup-dark' })
+      const popup = new mapboxgl.Popup({ offset: 10, closeButton: true, className: 'mapbox-popup-dark' })
         .setLngLat(f.geometry.coordinates as [number, number])
         .setHTML(buildDetailPopupHtml(escapeHtml(p.recipient_name || 'Serve Job'), [
           ['Case #', p.case_number],
@@ -134,8 +134,21 @@ export function useMapboxServeJobs(map: mapboxgl.Map | null) {
           ['Address', p.recipient_address],
           ['Status', p.status],
           ['Deadline', p.deadline ? formatDateTime(p.deadline) : null],
-        ]))
+        ]) + `<button data-action="open-serve-job" data-job-id="${p.id}" style="margin-top:6px;width:100%;font:10px monospace;font-weight:700;color:#f59e0b;background:transparent;border:1px solid #f59e0b;padding:3px 6px;border-radius:2px;cursor:pointer;">OPEN JOB</button>`)
         .addTo(m);
+      // Read-only until now — a dispatcher could see a pending serve job on
+      // the Map module but had no way to act on it. Deep-links to the same
+      // /serve?job_id= convention ServePage.tsx already documents (used
+      // elsewhere for auto-expanding a job's card on the Queue tab).
+      const onOpen = () => {
+        const popupEl = popup.getElement();
+        const btn = popupEl?.querySelector<HTMLButtonElement>('[data-action="open-serve-job"]');
+        btn?.addEventListener('click', () => {
+          window.open(`/serve?job_id=${encodeURIComponent(String(p.id))}`, '_blank', 'noopener');
+        });
+      };
+      popup.once('open', onOpen);
+      popupRef.current = popup;
     });
     m.on('mouseenter', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = 'pointer'; });
     m.on('mouseleave', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = ''; });
