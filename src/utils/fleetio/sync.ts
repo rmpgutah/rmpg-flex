@@ -459,7 +459,22 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
   if (row.resource === 'vendor' && row.action === 'delete') {
     const fleetioId = await lookupFleetioId(deps.db, 'ref_vendors', row.resource_id);
     if (!fleetioId) return null;
-    return deps.adapter.archiveVendor({ fleetioId });
+    try {
+      return await deps.adapter.archiveVendor({ fleetioId });
+    } catch (err) {
+      // Same reasoning as the hard-delete 404 case above: if the vendor is
+      // already gone on Fleet.io's side (deleted directly in their UI,
+      // outside RMPG's control), archiving it again can never succeed —
+      // retrying just burns all 7 attempts and dead-letters. The archived
+      // end state is unreachable either way, so treat "already gone" as
+      // "goal already met": drop the stale link and stop retrying.
+      // Confirmed live 2026-07-29 (vendor/delete event id=13, Fleet.io 404).
+      if (err instanceof FleetioHttpError && err.status === 404) {
+        await dropLink(deps.db, 'ref_vendors', row.resource_id);
+        return null;
+      }
+      throw err;
+    }
   }
   if (row.resource === 'part' && row.action === 'create') {
     const existing = await lookupFleetioId(deps.db, 'fleet_parts', row.resource_id);
