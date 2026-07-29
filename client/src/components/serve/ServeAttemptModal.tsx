@@ -243,7 +243,15 @@ export default function ServeAttemptModal({
       (err) => {
         setGps(prev => ({ ...prev, loading: false, error: err?.message || 'GPS error' }));
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+      {
+        enableHighAccuracy: true,
+        // Same tuning as useGpsTracking.ts's watchPosition config: a 15s
+        // timeout fires the error callback before a weak-signal fix can land
+        // at a doorstep/building interior, which is exactly where Process
+        // Server attempts happen. 27s gives that fix time to arrive.
+        timeout: 27000,
+        maximumAge: 3000,
+      },
     );
   }, []);
 
