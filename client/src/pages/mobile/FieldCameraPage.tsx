@@ -139,6 +139,8 @@ export default function FieldCameraPage() {
   const [showScanner, setShowScanner] = useState(false);
   const [idScanResult, setIdScanResult] = useState<{
     parsed: AamvaResult; alerts: ScanAlert[]; personId: number; personCreated: boolean;
+    warrantHits: Array<{ id: number; warrant_number: string | null; offense_description: string | null }>;
+    priorCallCount: number; openCaseCount: number;
   } | null>(null);
   const [idScanSubmitting, setIdScanSubmitting] = useState(false);
 
@@ -401,18 +403,28 @@ export default function FieldCameraPage() {
       const alerts = assessAamva(parsed);
       setIdScanSubmitting(true);
       const scanPayload = aamvaToScanResultObj(parsed);
-      const resp = await apiFetch<{ personId: number; personCreated: boolean }>('/records/from-dl-scan', {
+      const resp = await apiFetch<{
+        person: { id: number }; person_created: boolean;
+        warrant_hits: Array<{ id: number; warrant_number: string | null; offense_description: string | null }>;
+        prior_calls: unknown[]; open_cases: unknown[];
+      }>('/records/from-dl-scan', {
         method: 'POST',
-        body: JSON.stringify({ scan: scanPayload }),
+        body: JSON.stringify({ scan: scanPayload, call_id: callId ? Number(callId) : undefined }),
       });
-      setIdScanResult({ parsed, alerts, personId: resp.personId, personCreated: resp.personCreated });
-      addToast(resp.personCreated ? 'New person record created from scan' : 'Matched existing person record', 'success');
+      setIdScanResult({
+        parsed, alerts, personId: resp.person.id, personCreated: resp.person_created,
+        warrantHits: resp.warrant_hits, priorCallCount: resp.prior_calls.length, openCaseCount: resp.open_cases.length,
+      });
+      addToast(resp.person_created ? 'New person record created from scan' : 'Matched existing person record', 'success');
+      if (resp.warrant_hits.length > 0) {
+        addToast(`⚠ ${resp.warrant_hits.length} active warrant(s) found`, 'error');
+      }
     } catch (err: any) {
       addToast(err?.message || 'Scan failed to parse — try again', 'error');
     } finally {
       setIdScanSubmitting(false);
     }
-  }, [addToast, startCamera, facing]);
+  }, [addToast, startCamera, facing, callId]);
 
   const clearIdScan = useCallback(() => { setIdScanResult(null); }, []);
 
@@ -758,6 +770,19 @@ export default function FieldCameraPage() {
             <div>DL {idScanResult.parsed.dl_number || '—'} ({idScanResult.parsed.dl_state || '—'})</div>
             <div>{idScanResult.parsed.address || '—'}, {idScanResult.parsed.city || '—'} {idScanResult.parsed.state || ''} {idScanResult.parsed.zip || ''}</div>
           </div>
+          {(idScanResult.priorCallCount > 0 || idScanResult.openCaseCount > 0) && (
+            <div className="text-[10px] text-fg-muted">
+              {idScanResult.priorCallCount} prior call(s) · {idScanResult.openCaseCount} open case(s)
+            </div>
+          )}
+          {idScanResult.warrantHits.length > 0 && (
+            <div className="bg-red-950 border border-red-600 text-red-300 text-xs font-bold px-2 py-1.5 space-y-1">
+              <div className="uppercase tracking-wider">⚠ Active Warrant{idScanResult.warrantHits.length > 1 ? 's' : ''}</div>
+              {idScanResult.warrantHits.map((w) => (
+                <div key={w.id}>{w.warrant_number || `#${w.id}`} — {w.offense_description || 'no offense on file'}</div>
+              ))}
+            </div>
+          )}
           {idScanResult.alerts.map((a, i) => (
             <div key={`${a.code}-${i}`} className={`flex items-start gap-1.5 border text-xs font-semibold px-2 py-1.5 ${
               a.level === 'danger' ? 'bg-red-950 border-red-600 text-red-300'
