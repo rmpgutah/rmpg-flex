@@ -131,6 +131,31 @@ function decodesToImage(dataUri: string): boolean {
   }
 }
 
+/**
+ * Does this base64 payload actually begin a PDF?
+ *
+ * The email endpoint takes `pdf_base64` from the token holder and mails it
+ * as an attachment FROM THE ASSIGNED OFFICER'S MAILBOX. Nothing checked
+ * that the bytes were a PDF, so any 6 MB payload — HTML, a script, an
+ * executable — could leave an RMPG mailbox under an RMPG subject line,
+ * carrying whatever filename the caller chose.
+ *
+ * Header-only, like decodesToImage: the cost is constant, and the goal is
+ * to reject payloads that are not the type claimed, not to validate PDF
+ * structure. A well-formed PDF can still hold anything, which is why the
+ * per-IP rate limit stays.
+ */
+export function decodesToPdf(base64: string): boolean {
+  try {
+    const bytes = Uint8Array.from(atob(base64.slice(0, 12)), (ch) => ch.charCodeAt(0));
+    // "%PDF-" — the header every PDF opens with (ISO 32000-1 §7.5.2).
+    return bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44
+      && bytes[3] === 0x46 && bytes[4] === 0x2d;
+  } catch {
+    return false;   // not valid base64 at all
+  }
+}
+
 function validSignature(v: unknown): v is string {
   // PNG and JPEG only, not `data:image/*`. SVG is an image by that test
   // and can carry script; this value is rendered back into an officer's
@@ -827,6 +852,11 @@ serveReceipt.post('/:token/email', async (c) => {
   if (body.pdf_base64.length > 6_000_000) {
     return c.json({ ok: false, code: 'too_large', message: 'Receipt PDF is too large to email.' }, 413);
   }
+  // Size was the only gate: a 5 MB HTML file passed it as readily as a
+  // PDF, and went out as an attachment from an officer's mailbox.
+  if (!decodesToPdf(body.pdf_base64)) {
+    return c.json({ ok: false, code: 'bad_request', message: 'Attachment is not a PDF.' }, 400);
+  }
 
   // The token proves the caller just signed; pairing it with receipt_id
   // stops one token from mailing a different recipient's receipt out.
@@ -835,10 +865,15 @@ serveReceipt.post('/:token/email', async (c) => {
     recipient_name: string; form_title: string | null; email_status: string;
   }>(
     db,
+    // resolveToken cannot be reused here: by this point the token is spent
+    // (used_receipt_id is set), which it treats as a failure. But revocation
+    // still has to bite — a supervisor revoking a link after a signature
+    // means "stop acting on this", and without this clause the holder could
+    // still make an officer's mailbox send.
     `SELECT r.id, r.serve_queue_id, r.email_to, r.recipient_name, r.form_title, r.email_status
        FROM serve_receipts r
        JOIN serve_receipt_tokens t ON t.id = r.token_id
-      WHERE r.id = ? AND t.token = ?`,
+      WHERE r.id = ? AND t.token = ? AND t.revoked_at IS NULL`,
     body.receipt_id, c.req.param('token'),
   );
   if (!receipt) return c.json({ ok: false, code: 'not_found' }, 404);
@@ -906,6 +941,14 @@ serveReceipt.post('/:token/email', async (c) => {
  * what actually happened rather than an optimistic 'pending' forever.
  */
 serveReceipt.post('/:token/delivery', async (c) => {
+  // Its sibling /email is rate-limited and this was not, though both are
+  // unauthenticated and both write to D1. A signing page makes exactly one
+  // delivery call, so 10 per 10 minutes is far above any real use.
+  const ip = clientIp(c);
+  if (!(await rateLimitAllow(c.env.KV, `serve-receipt-delivery:ip:${ip}`, 10, 600))) {
+    return c.json({ ok: false, code: 'rate_limited' }, 429);
+  }
+
   const db = getDb(c.env);
   const body = await c.req.json<{ receipt_id?: number; status?: string; error?: string }>().catch(() => null);
   if (!body?.receipt_id) return c.json({ ok: false, code: 'bad_request' }, 400);
@@ -915,7 +958,7 @@ serveReceipt.post('/:token/delivery', async (c) => {
   // Bind BOTH the token and the receipt id — the token alone proves the
   // caller signed this receipt, and the pairing stops one recipient's
   // token from writing a delivery status onto another's receipt.
-  await execute(
+  const res = await execute(
     db,
     `UPDATE serve_receipts
         SET email_status = ?, email_error = ?,
@@ -923,6 +966,17 @@ serveReceipt.post('/:token/delivery', async (c) => {
       WHERE id = ? AND token_id = (SELECT id FROM serve_receipt_tokens WHERE token = ?)`,
     status, str(body.error, 300), status, body.receipt_id, c.req.param('token'),
   );
+
+  // A token/receipt pair that matches nothing used to return ok:true, so a
+  // signing page whose delivery status never landed looked identical to one
+  // that did — and the receipt sat on 'pending' forever with no signal
+  // anywhere that a write had been silently dropped.
+  if (!res.meta.changes) {
+    log.warn('Serve receipt delivery status matched no row', {
+      receiptId: body.receipt_id,
+    });
+    return c.json({ ok: false, code: 'not_found' }, 404);
+  }
   return c.json({ ok: true });
 });
 
