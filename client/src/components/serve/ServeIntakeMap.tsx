@@ -17,6 +17,7 @@ import { withAlpha } from '../../utils/withAlpha';
 import { clusterByGrid, type ClusterableItem } from '../../utils/serveMapClustering';
 import { urgencyTierForDeadline, isRiskFlagged, successRateColor, centroidForGroup, matchesDeadlineFilter, type SuccessRateRow, type DeadlineFilter } from '../../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../../utils/mapboxRouting';
+import { reverseGeocode } from '../../utils/mapboxServices';
 
 // One-time stylesheet injection for pulse-ring keyframes
 if (typeof document !== 'undefined' && !document.getElementById('srv-pulse-styles')) {
@@ -319,9 +320,28 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
           }, 50);
         });
 
-        const marker = new mapboxgl.Marker({ element: el })
+        const marker = new mapboxgl.Marker({ element: el, draggable: true })
           .setLngLat([item.recipient_lng!, item.recipient_lat!])
           .addTo(map);
+        marker.on('dragend', async () => {
+          const { lng, lat } = marker.getLngLat();
+          try {
+            const geocodeResult = await reverseGeocode(lng, lat);
+            const placeName = geocodeResult.features[0]?.place_name;
+            await apiFetch(`/process-server/${item.id}`, {
+              method: 'PUT',
+              body: JSON.stringify({ recipient_lat: lat, recipient_lng: lng }),
+            });
+            if (placeName) {
+              // eslint-disable-next-line no-console
+              console.info(`Corrected location for job ${item.id}: ${placeName}`);
+            }
+            load();
+          } catch {
+            // non-fatal — snap back by reloading, which re-renders from the last saved position
+            load();
+          }
+        });
         markersRef.current.push(marker);
       } else {
         const el = buildClusterMarker(cluster);

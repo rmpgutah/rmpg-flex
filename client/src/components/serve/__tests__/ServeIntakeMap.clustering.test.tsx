@@ -215,6 +215,8 @@ vi.mock('../../../utils/mapboxLoader', () => {
     setLngLat() { return this; }
     addTo() { return this; }
     remove() { /* noop */ }
+    on() { /* noop */ }
+    getLngLat() { return { lng: -111.9, lat: 40.7 }; }
   }
   class FakePopup {
     setHTML() { return this; }

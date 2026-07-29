@@ -7,6 +7,12 @@ import { render, screen, waitFor, cleanup, act } from '@testing-library/react';
 import ServeIntakeMap from '../ServeIntakeMap';
 import * as useApiModule from '../../../hooks/useApi';
 import { fetchMapboxRoute } from '../../../utils/mapboxRouting';
+import { reverseGeocode } from '../../../utils/mapboxServices';
+
+vi.mock('../../../utils/mapboxServices', () => ({
+  reverseGeocode: vi.fn(() => Promise.resolve({ features: [{ place_name: '123 Main St, Salt Lake City, UT' }] })),
+  forwardGeocode: vi.fn(),
+}));
 
 vi.mock('../../../utils/mapboxRouting', () => ({
   fetchMapboxRoute: vi.fn(() => Promise.resolve({
@@ -51,7 +57,13 @@ vi.mock('../../../utils/mapboxLoader', () => ({
     }),
     Marker: vi.fn(function (opts: { element: HTMLElement }) {
       if (opts?.element) markerElements.push(opts.element);
-      return { setLngLat: vi.fn().mockReturnThis(), addTo: vi.fn().mockReturnThis(), remove: vi.fn() };
+      return {
+        setLngLat: vi.fn().mockReturnThis(),
+        addTo: vi.fn().mockReturnThis(),
+        remove: vi.fn(),
+        on: vi.fn(),
+        getLngLat: vi.fn(() => ({ lng: -111.9, lat: 40.7 })),
+      };
     }),
     Popup: vi.fn(function () {
       let html = '';
@@ -326,6 +338,12 @@ describe('ServeIntakeMap', () => {
     // map-init effect's cleanup can null mapRef.current independently of
     // this effect's own cleanup ordering.
     expect(() => unmount()).not.toThrow();
+  });
+
+  it('does not call reverseGeocode until a marker is dragged', async () => {
+    render(<ServeIntakeMap />);
+    await waitFor(() => expect(screen.getByText(/no active serve orders/i)).toBeInTheDocument());
+    expect(reverseGeocode).not.toHaveBeenCalled();
   });
 
   afterEach(() => {
