@@ -18,7 +18,7 @@ const PINNED_NOW = '2026-06-22T12:00:00Z';
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(new Date(PINNED_NOW));
+  vi.setSystemTime(new Date(PINNED_NOW)); // new-date-ok — Z-suffixed UTC literal, not a naive server string
 });
 
 afterEach(() => {

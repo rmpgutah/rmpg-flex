@@ -10,7 +10,7 @@ const NOW_ISO = '2026-07-28T12:00:00Z';
 // clock needs pinning, and faking timers wholesale can deadlock unrelated code.
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(new Date(NOW_ISO));
+  vi.setSystemTime(new Date(NOW_ISO)); // new-date-ok — Z-suffixed UTC literal, not a naive server string
 });
 
 afterEach(() => {
@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe('urgencyTierForDeadline', () => {
-  const now = new Date(NOW_ISO).getTime();
+  const now = new Date(NOW_ISO).getTime(); // new-date-ok — Z-suffixed UTC literal
 
   it('returns "none" when there is no deadline', () => {
     expect(urgencyTierForDeadline(null, now)).toBe('none');
@@ -89,7 +89,7 @@ describe('isRiskFlagged', () => {
 });
 
 describe('matchesDeadlineFilter', () => {
-  const now = new Date('2026-07-28T12:00:00Z').getTime();
+  const now = new Date(NOW_ISO).getTime(); // new-date-ok — Z-suffixed UTC literal
 
   it('"all" matches everything including no deadline', () => {
     expect(matchesDeadlineFilter(null, 'all', now)).toBe(true);
