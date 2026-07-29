@@ -742,6 +742,16 @@ export async function generateServeInstructions(
   let aliases: string[] = [];
 
   if (job.recipient_person_id) {
+    // Aliases are read here rather than in a second query. The previous
+    // follow-up selected `alias_name` from serve_queue_persons — a column that
+    // table does not have (verified on live D1: it holds only id,
+    // serve_queue_id, person_id, role, created_at), so the statement threw
+    // "no such column" for every job with a linked person. Nothing calls this
+    // function yet, which is the only reason it never surfaced; the first
+    // caller would have hit it immediately.
+    //
+    // The real storage is on `persons`: `aliases` (free-text list) plus
+    // `alias_nickname`.
     const person = await queryFirst<{
       first_name: string;
       middle_name: string | null;
@@ -749,9 +759,12 @@ export async function generateServeInstructions(
       dob: string | null;
       address: string | null;
       notes: string | null;
+      aliases: string | null;
+      alias_nickname: string | null;
     }>(
       db,
-      `SELECT first_name, middle_name, last_name, dob, address, notes
+      `SELECT first_name, middle_name, last_name, dob, address, notes,
+              aliases, alias_nickname
        FROM persons WHERE id = ?`,
       job.recipient_person_id,
     );
@@ -759,19 +772,25 @@ export async function generateServeInstructions(
       defendantName = [person.first_name, person.middle_name, person.last_name]
         .filter(Boolean).join(' ');
       dob = person.dob;
-    }
-  }
 
-  // Check for aliases in serve_queue_persons
-  if (job.recipient_person_id) {
-    const aliasRows = await query<{ alias_name: string }>(
-      db,
-      `SELECT alias_name FROM serve_queue_persons
-       WHERE person_id = ? AND alias_name IS NOT NULL
-       LIMIT 5`,
-      job.recipient_person_id,
-    );
-    aliases = aliasRows.map((a) => a.alias_name).filter(Boolean);
+      // `aliases` is operator-entered free text — split on the separators a
+      // human actually types, then de-duplicate against the nickname so an
+      // alias recorded in both places is not listed twice on the instructions.
+      const fromList = (person.aliases ?? '')
+        .split(/[,;\n]/)
+        .map((a) => a.trim())
+        .filter(Boolean);
+      const nickname = (person.alias_nickname ?? '').trim();
+      const seen = new Set<string>();
+      aliases = [...fromList, ...(nickname ? [nickname] : [])]
+        .filter((a) => {
+          const key = a.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 5);
+    }
   }
 
   // Build time restrictions

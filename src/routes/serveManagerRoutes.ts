@@ -102,10 +102,22 @@ sm.post('/sync', async (c) => {
 sm.get('/sync/log', async (c) => {
   try {
     const db = getDb(c.env);
+    // sm_sync_log has NO `created_at` — its timestamps are started_at /
+    // completed_at (verified on live D1). Selecting and ordering by
+    // created_at threw "no such column" on every request, and the catch
+    // below turned that into an empty list, so the ServeManager sync history
+    // has always rendered as "no syncs yet" no matter how many ran.
     const rows = await query<Record<string, unknown>>(db,
-      'SELECT id, created_at AS started_at, status, jobs_synced, attempts_synced, error_message FROM sm_sync_log ORDER BY created_at DESC LIMIT 50');
+      `SELECT id, started_at, completed_at, sync_type, status, jobs_synced,
+              attempts_synced, error_message
+         FROM sm_sync_log ORDER BY started_at DESC LIMIT 50`);
     return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
+  } catch (err) {
+    // Keep the endpoint non-fatal, but stop it from reporting "no history"
+    // when the truth is "the query failed" — those are not the same answer.
+    log.error('GET /sync/log failed', { src: 'src/routes/serveManagerRoutes.ts' }, err as Error);
+    return c.json({ data: [], error: 'Sync log unavailable' });
+  }
 });
 
 sm.get('/poller/status', async (c) => {
