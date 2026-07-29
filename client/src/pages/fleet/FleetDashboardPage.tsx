@@ -28,6 +28,7 @@ import { getMapboxToken } from '../../utils/mapboxApiKey';
 import { injectMapboxStyles } from '../../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import { toDisplayLabel } from '../../utils/formatters';
+import { parseTimestamp } from '../../utils/dateUtils';
 
 // ------------------------------------------------------------
 // Types — mirror the JSON shapes returned by src/routes/fleetViz.ts
@@ -227,7 +228,7 @@ export default function FleetDashboardPage() {
     const now = Date.now();
     let overdue = 0, upcoming = 0, future = 0;
     for (const r of pmUpcoming) {
-      const overdueByDate = r.next_service_date ? new Date(r.next_service_date).getTime() < now : false;
+      const overdueByDate = r.next_service_date ? parseTimestamp(r.next_service_date).getTime() < now : false;
       const overdueByMiles = r.miles_to_pm != null && r.miles_to_pm < 0;
       if (overdueByDate || overdueByMiles) overdue++;
       else if (r.miles_to_pm != null && r.miles_to_pm <= 1000) upcoming++;
