@@ -1682,11 +1682,19 @@ export async function generateReceiptOfService(data: ReceiptOfServiceData): Prom
     return await renderReceiptOfService(data);
   } finally {
     setConfidentialWatermarkEnabled(true);
-    // Both are module state shared with every other generator in the
+    // All three are module state shared with every other generator in the
     // bundle. Restoring the branding matters as much as the watermark:
     // leaving a section accent set would re-shade the next report the
     // user prints.
     setActiveBranding(brandingBefore);
+    // tightLayout belongs here too. renderReceiptOfService sets it true and
+    // clears it on its LAST line, with no try/finally in between — so any
+    // throw partway through a ~470-line render left the flag stuck on for
+    // the rest of the session, and every later PDF came out compressed.
+    // The four sibling generators each defensively reset it on entry, which
+    // is the tell that the leak was already known and patched per-caller;
+    // that only ever covered those four, not anything added later.
+    tightLayout = false;
   }
 }
 
@@ -2315,7 +2323,10 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   const gap = (normal: number) => normal * 0.3;
   // Module-scoped for the panel helper, which cannot take another
   // parameter without threading it through two call sites for nothing.
-  // Reset unconditionally at the end of this render.
+  // The reset on the last line of this function is the HAPPY-PATH clear
+  // only — it is not unconditional, despite how it reads. The guarantee
+  // lives in generateReceiptOfService's finally, which is this function's
+  // sole caller; do not rely on the tail assignment alone.
   tightLayout = true;
 
   setActiveCaseNumber(data.caseNumber);
