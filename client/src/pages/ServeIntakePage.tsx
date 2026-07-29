@@ -1,6 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye, Clock, CalendarDays } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye, Clock, CalendarDays, ScanLine } from 'lucide-react';
 import ServeAttemptCalendar from '../components/serve/ServeAttemptCalendar';
+import LiveDlScanner, { type IdScanResult } from '../components/LiveDlScanner';
+import { aamvaToServeOverrides } from '../utils/scanIdToRecipient';
+import { useToast } from '../components/ToastProvider';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { apiFetch } from '../hooks/useApi';
@@ -360,6 +363,8 @@ export default function ServeIntakePage() {
   // Pre-submission field overrides: operator edits BEFORE clicking Create.
   // Keys match the server's field key names (e.g. `recipient_first_name`).
   const [editOverrides, setEditOverrides] = useState<Record<string, string>>({});
+  const [showIdScanner, setShowIdScanner] = useState(false);
+  const { addToast } = useToast();
   // Active clients for the client selector dropdown.
   const [clients, setClients] = useState<{id: number; name: string; contact_name: string | null; contact_phone: string | null}[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
@@ -908,6 +913,23 @@ export default function ServeIntakePage() {
     uploadXhrRef.current?.abort();
   }, []);
 
+  // Scan a physical DL/ID barcode to prefill recipient fields without manual
+  // typing. Only merges non-empty mapped fields into editOverrides so it
+  // never blanks a value the operator already entered/corrected.
+  const handleIdScanComplete = useCallback(async ({ barcodeText }: IdScanResult) => {
+    setShowIdScanner(false);
+    if (!barcodeText) { addToast('No barcode read — try again or enter manually', 'error'); return; }
+    try {
+      const { parseAamva, looksLikeAamva } = await import('../utils/aamvaParser');
+      if (!looksLikeAamva(barcodeText)) { addToast('Barcode did not decode as a DL/ID', 'error'); return; }
+      const parsed = parseAamva(barcodeText);
+      setEditOverrides((prev) => ({ ...prev, ...aamvaToServeOverrides(parsed) }));
+      addToast('Recipient fields filled from ID scan — review before submitting', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Scan failed to parse — enter manually', 'error');
+    }
+  }, [addToast]);
+
   const previewFields = ocrPreview?.fields
     ? Object.entries(ocrPreview.fields).filter(([, f]) => f.value && f.confidence > 0).sort((a, b) => b[1].confidence - a[1].confidence)
     : [];
@@ -1126,7 +1148,17 @@ export default function ServeIntakePage() {
               onChange={setSelectedDefendants}
             />
             {/* Recipient identity */}
-            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Recipient</p>
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Recipient</p>
+              <button
+                type="button"
+                onClick={() => setShowIdScanner(true)}
+                className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-brand-400 border border-brand-400 px-2 py-1"
+                aria-label="Scan recipient ID barcode"
+              >
+                <ScanLine className="w-3 h-3" /> Scan ID
+              </button>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
               {[
                 { key: 'recipient_first_name', label: 'First Name' },
@@ -1597,6 +1629,13 @@ export default function ServeIntakePage() {
         confirmVariant="warning"
       />
       </>}
+      {showIdScanner && (
+        <LiveDlScanner
+          onComplete={handleIdScanComplete}
+          onClose={() => setShowIdScanner(false)}
+          onUploadInstead={() => setShowIdScanner(false)}
+        />
+      )}
     </div>
   );
 }
