@@ -95,8 +95,12 @@ async function smGet(path: string, apiKey: string, params?: Record<string, strin
   const url = new URL(`${SM_BASE_URL}${path}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
 
+  // ServeManager auth is HTTP Basic — the API key is the username, password is
+  // EMPTY (https://servemanager.com/api#authentication). `X-Auth-Token` is not
+  // a header ServeManager recognizes at all; every request using it 401s with
+  // "HTTP Basic: Access denied" regardless of how valid the key is.
   const res = await fetch(url.toString(), {
-    headers: { 'X-Auth-Token': apiKey, 'Accept': 'application/json' },
+    headers: { Authorization: `Basic ${btoa(`${apiKey}:`)}`, Accept: 'application/json' },
   });
   if (!res.ok) throw new Error(`ServeManager API returned ${res.status}: ${await res.text().catch(() => '')}`);
   return res.json();
