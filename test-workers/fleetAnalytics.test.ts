@@ -136,7 +136,6 @@ describe('GET /api/fleet/analytics — scoped to a single vehicle', () => {
       utilization: { assigned: 0, unassigned: 0, rate: 0 },
       service_compliance: { compliant: 0, overdue: 0, rate: 100 },
       cost_per_mile_ranking: [],
-      fuel_economy_ranking: [],
       oldest_vehicle_year: null,
     };
     for (const name of FLEET_ONLY_BLOCKS) {
@@ -148,9 +147,16 @@ describe('GET /api/fleet/analytics — scoped to a single vehicle', () => {
   });
 
   it('scopes maintenance_forecast and avg_daily_miles to the single vehicle', async () => {
-    // Give vehicle A a service target so it shows up in the forecast.
+    // Give BOTH vehicles a service target. If maintenance_forecast were not
+    // scoped to vehicle_id, this would return 2 rows (A and B) instead of 1 —
+    // `.every(...)` is vacuously true on any array, including a wrongly-sized
+    // one, so it alone can't catch a missing scope; `toHaveLength(1)` can.
+    // B's target (30000) is picked to stay NOT service-due against B's
+    // current_mileage of 20000 (30000 > 20000), so it doesn't perturb
+    // vehicles_needing_service / service_compliance in the other tests.
     const db = (env as unknown as { DB: D1Database }).DB;
     await db.prepare(`UPDATE fleet_vehicles SET next_service_mileage = 60000 WHERE id = ?`).bind(vehicleA).run();
+    await db.prepare(`UPDATE fleet_vehicles SET next_service_mileage = 30000 WHERE id = ?`).bind(vehicleB).run();
 
     const res = await app.request(`/api/fleet/analytics?vehicle_id=${vehicleA}`, {}, env as unknown as Record<string, unknown>);
     const body = await res.json() as {
@@ -158,6 +164,7 @@ describe('GET /api/fleet/analytics — scoped to a single vehicle', () => {
       avg_daily_miles: number | null;
     };
     // Only vehicle A's forecast row — not one per active vehicle in the fleet.
+    expect(body.maintenance_forecast).toHaveLength(1);
     expect(body.maintenance_forecast.every((r) => r.id === vehicleA)).toBe(true);
     // Vehicle A's own daily-miles rate (200 miles / 10 days = 20), not a fleet blend.
     expect(body.avg_daily_miles).toBe(20);
@@ -170,5 +177,29 @@ describe('GET /api/fleet/analytics — invalid vehicle_id', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as { scope: string };
     expect(body.scope).toBe('fleet');
+  });
+});
+
+describe('GET /api/fleet/analytics — ?period= prototype-pollution guard', () => {
+  // PERIODS is a plain object literal. `PERIODS[periodKey] !== undefined`
+  // is not a membership check — `PERIODS['constructor']` and
+  // `PERIODS['__proto__']` both resolve to inherited Object.prototype
+  // values (a function, and the prototype object) rather than `undefined`,
+  // so that guard let both keys slip past the whitelist and reach the SQL
+  // date-modifier interpolation. hasOwnProperty is the real membership
+  // check; both keys must now fall back to the default 90-day window and
+  // return a normal payload rather than zeros or a 500.
+  it('falls back to the default 90-day window for ?period=__proto__', async () => {
+    const res = await app.request(`/api/fleet/analytics?vehicle_id=${vehicleA}&period=__proto__`, {}, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { fleet_summary: { total_maintenance_cost: number } };
+    expect(body.fleet_summary.total_maintenance_cost).toBe(9000);
+  });
+
+  it('falls back to the default 90-day window for ?period=constructor', async () => {
+    const res = await app.request(`/api/fleet/analytics?vehicle_id=${vehicleA}&period=constructor`, {}, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { fleet_summary: { total_maintenance_cost: number } };
+    expect(body.fleet_summary.total_maintenance_cost).toBe(9000);
   });
 });
