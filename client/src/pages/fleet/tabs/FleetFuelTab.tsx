@@ -134,12 +134,12 @@ function PriceSparkline({ logs }: { logs: FleetFuelLog[] }) {
         </div>
       </div>
       <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="overflow-visible">
-        <line x1={padding} y1={avgY} x2={padding + usableW} y2={avgY} stroke="rgba(212,160,23,0.3)" strokeWidth="0.5" strokeDasharray="3,3" />
-        <polyline points={points.join(' ')} fill="none" stroke="#d4a017" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+        <line x1={padding} y1={avgY} x2={padding + usableW} y2={avgY} stroke="rgb(var(--accent-silver-400-rgb) / 0.3)" strokeWidth="0.5" strokeDasharray="3,3" />
+        <polyline points={points.join(' ')} fill="none" stroke="var(--accent-silver-400)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
         {values.map((v, i) => {
           const x = padding + (i / (values.length - 1)) * usableW;
           const y = padding + usableH - ((v - min) / range) * usableH;
-          return <circle key={i} cx={x} cy={y} r="2" fill="#d4a017" />;
+          return <circle key={i} cx={x} cy={y} r="2" fill="var(--accent-silver-400)" />;
         })}
       </svg>
     </div>

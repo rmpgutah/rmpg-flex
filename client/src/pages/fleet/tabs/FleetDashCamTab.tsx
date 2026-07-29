@@ -31,10 +31,11 @@ export default function FleetDashCamTab({ vehicleId }: Props) {
     try {
       const [cams, vids] = await Promise.all([
         apiFetch<any[]>('/fleet/dash-cameras'),
-        apiFetch<any[]>('/fleet/dashcam-videos'),
+        // Server returns { videos, total }, not a bare array.
+        apiFetch<any[] | { videos: any[] }>('/fleet/dashcam-videos'),
       ]);
       const allCams: DashCamera[] = Array.isArray(cams) ? cams : [];
-      const allVids: DashCamVideo[] = Array.isArray(vids) ? vids : [];
+      const allVids: DashCamVideo[] = Array.isArray(vids) ? vids : vids.videos || [];
       setCameras(allCams.filter(c => String(c.vehicle_id) === String(vehicleId)));
       setVideos(allVids.filter(v => String(v.vehicle_id) === String(vehicleId)));
     } catch { /* ignore */ }
