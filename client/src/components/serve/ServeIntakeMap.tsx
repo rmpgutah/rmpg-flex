@@ -15,7 +15,7 @@ import LocationNoteModal from './LocationNoteModal';
 import { escapeHtml } from '../../utils/sanitize';
 import { withAlpha } from '../../utils/withAlpha';
 import { clusterByGrid, type ClusterableItem } from '../../utils/serveMapClustering';
-import { urgencyTierForDeadline, isRiskFlagged } from '../../utils/serveMapOverlays';
+import { urgencyTierForDeadline, isRiskFlagged, successRateColor, centroidForGroup, type SuccessRateRow } from '../../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../../utils/mapboxRouting';
 
 // One-time stylesheet injection for pulse-ring keyframes
@@ -194,6 +194,11 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
   const [previewOrigin, setPreviewOrigin] = useState<[number, number] | null>(null);
   const [previewTarget, setPreviewTarget] = useState<{ id: number; lng: number; lat: number } | null>(null);
   const [previewRoute, setPreviewRoute] = useState<{ eta: string; distance: string } | null>(null);
+  // Success-rate heatmap toggle. `/process-server/success-rates` aggregates by
+  // zip, but the mapped queue items don't carry a zip field — see
+  // `centroidForGroup` in serveMapOverlays.ts for the recipient_city substitution.
+  const [showSuccessHeatmap, setShowSuccessHeatmap] = useState(false);
+  const [successRates, setSuccessRates] = useState<SuccessRateRow[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -455,6 +460,78 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     return () => { cancelled = true; clearPreview(); };
   }, [previewOrigin, previewTarget, mapReady]);
 
+  // Load success-rate rows once when the heatmap toggle is first enabled.
+  useEffect(() => {
+    if (!showSuccessHeatmap || successRates.length > 0) return;
+    let cancelled = false;
+    apiFetch<SuccessRateRow[]>('/process-server/success-rates')
+      .then((rows) => { if (!cancelled) setSuccessRates(rows); })
+      .catch(() => { /* non-fatal — heatmap stays empty */ });
+    return () => { cancelled = true; };
+  }, [showSuccessHeatmap, successRates.length]);
+
+  // Draw/clear the success-rate heatmap overlay. Mirrors the attempt-trail and
+  // drive-preview effects above: read mapRef.current fresh inside the cleanup
+  // (not the closed-over `map`) and wrap every Mapbox call in try/catch, since
+  // the map-init effect's cleanup can null mapRef.current / tear down the style
+  // before this effect's own cleanup runs.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const sourceId = 'srv-success-heatmap';
+    const layerId = 'srv-success-heatmap-layer';
+
+    const clearHeatmap = () => {
+      const currentMap = mapRef.current;
+      if (!currentMap) return;
+      try {
+        if (currentMap.getLayer(layerId)) currentMap.removeLayer(layerId);
+        if (currentMap.getSource(sourceId)) currentMap.removeSource(sourceId);
+      } catch {
+        // non-fatal — map/style already torn down (e.g. mid-unmount)
+      }
+    };
+
+    if (!showSuccessHeatmap || successRates.length === 0) {
+      clearHeatmap();
+      return;
+    }
+
+    clearHeatmap();
+    // No zip field is available on mapped queue items — approximate each row's
+    // centroid via recipient_city as the best available grouping key (see
+    // centroidForGroup in serveMapOverlays.ts). Rows with no matching mapped
+    // items are skipped rather than plotted at a placeholder coordinate.
+    const features = successRates
+      .map((row) => {
+        const centroid = centroidForGroup(row.zip, items);
+        if (!centroid) return null;
+        return {
+          type: 'Feature' as const,
+          properties: { color: successRateColor(row), zip: row.zip },
+          geometry: { type: 'Point' as const, coordinates: [centroid.lng, centroid.lat] },
+        };
+      })
+      .filter((f): f is NonNullable<typeof f> => f != null);
+
+    if (features.length === 0) return;
+
+    try {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: layerId,
+        type: 'circle',
+        source: sourceId,
+        paint: { 'circle-radius': 40, 'circle-color': ['get', 'color'], 'circle-opacity': 0.25, 'circle-blur': 0.6 },
+      });
+    } catch {
+      // non-fatal — map/style torn down before this effect ran
+    }
+
+    return () => { clearHeatmap(); };
+  }, [showSuccessHeatmap, successRates, items, mapReady]);
+
   const notMapped = items.filter((it) => it.recipient_lat == null || it.recipient_lng == null);
 
   return (
@@ -484,6 +561,12 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
               ETA {previewRoute.eta} · {previewRoute.distance} (right-click map to move origin)
             </span>
           )}
+          <button
+            onClick={() => setShowSuccessHeatmap((v) => !v)}
+            className={`flex items-center gap-1 px-2 py-1 text-[11px] border border-border-subtle rounded ${showSuccessHeatmap ? 'bg-brand-700 text-white' : 'bg-surface-raised text-brand-300'}`}
+          >
+            Success Heatmap
+          </button>
           <button
             onClick={() => setNoteModal({ open: true })}
             className="flex items-center gap-1 px-2 py-1 text-[11px] bg-surface-raised border border-border-subtle rounded text-brand-300 hover:text-brand-100"
