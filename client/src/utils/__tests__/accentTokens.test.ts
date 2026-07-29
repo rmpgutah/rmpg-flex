@@ -771,3 +771,19 @@ describe('fg Tailwind scale', () => {
     expect(fontSizeKeys).not.toContain('fg');
   });
 });
+
+describe('public print block', () => {
+  it('is scoped so no console surface is affected', () => {
+    const printBlock = css.slice(css.indexOf('@media print'));
+    expect(printBlock).toContain('.public-form');
+    // Every selector inside must be scoped. An unscoped `body` rule here
+    // would repaint the officer's console the moment anyone prints.
+    const bare = printBlock.match(/\n\s{2}(body|section|header|\.fixed)\s*[,{]/g) ?? [];
+    expect(bare).toEqual([]);
+  });
+
+  it('does not add a text-role triple, so the hoisting ratchet is unmoved', () => {
+    const printBlock = css.slice(css.indexOf('@media print'));
+    expect(printBlock).not.toContain('--text-muted-rgb');
+  });
+});
