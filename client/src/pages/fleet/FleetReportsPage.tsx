@@ -160,7 +160,7 @@ export default function FleetReportsPage() {
                   className="w-full flex items-center justify-between px-3 py-2 hover:bg-[#1a1a1a] text-left"
                 >
                   <div className="flex items-center gap-2">
-                    {expanded ? <FolderOpen className="w-4 h-4 text-[#d4a017]" /> : <Folder className="w-4 h-4 text-[#d4a017]" />}
+                    {expanded ? <FolderOpen className="w-4 h-4 text-accent-silver-400" /> : <Folder className="w-4 h-4 text-accent-silver-400" />}
                     <span className="font-semibold text-sm">{formatMonthLabel(month)}</span>
                   </div>
                   <span className="text-[11px] text-[#888]">{days.length} {days.length === 1 ? 'day' : 'days'}</span>
@@ -189,7 +189,7 @@ export default function FleetReportsPage() {
                             className="p-1 hover:bg-[#222]"
                             title="Open PDF"
                           >
-                            <Download className="w-4 h-4 text-[#d4a017]" />
+                            <Download className="w-4 h-4 text-accent-silver-400" />
                           </IconButton>
                           {isAdmin && (
                             <IconButton

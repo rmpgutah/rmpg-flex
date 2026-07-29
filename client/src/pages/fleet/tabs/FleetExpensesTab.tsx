@@ -166,7 +166,7 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
       <div className="panel-beveled bg-surface-sunken p-3">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <DollarSign className="w-4 h-4 text-[#d4a017]" />
+            <DollarSign className="w-4 h-4 text-accent-silver-400" />
             <span className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider">Expense Summary</span>
           </div>
           <span className="text-sm font-bold text-white">{fmtCurrency(total)}</span>
@@ -189,7 +189,7 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
         {canManage && (
           <button
             onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyForm); }}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#d4a017]/20 text-[#d4a017] border border-[#d4a017]/40 hover:bg-[#d4a017]/30"
+            className="flex items-center gap-1 px-2 py-1 text-[10px] bg-accent-silver-400/20 text-accent-silver-400 border border-accent-silver-400/40 hover:bg-accent-silver-400/30"
           >
             <Plus className="w-3 h-3" /> Add Expense
           </button>
@@ -207,7 +207,7 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
       {/* Add/Edit form */}
       {showForm && (
         <div className="panel-beveled bg-surface-raised p-3 border border-[#222222] space-y-2">
-          <div className="text-[10px] font-bold text-[#d4a017] uppercase">
+          <div className="text-[10px] font-bold text-accent-silver-400 uppercase">
             {editingId ? 'Edit Expense' : 'New Expense'}
           </div>
           {error && <div className="text-[9px] text-red-400">{error}</div>}
@@ -255,7 +255,7 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
             <label className="flex items-center gap-1 text-[9px] text-rmpg-400 cursor-pointer">
               <input type="checkbox" checked={form.recurring}
                 onChange={e => setForm(f => ({ ...f, recurring: e.target.checked }))}
-                className="accent-[#d4a017]" />
+                className="accent-silver-400" />
               Recurring
             </label>
             {form.recurring && (
@@ -278,7 +278,7 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
           </div>
           <div className="flex items-center gap-2 pt-1">
             <button onClick={handleSave} disabled={saving}
-              className="px-3 py-1 text-[10px] bg-[#d4a017] text-black font-bold hover:bg-[#d4a017]/80 disabled:opacity-50">
+              className="px-3 py-1 text-[10px] bg-accent-silver-400 text-black font-bold hover:bg-accent-silver-400/80 disabled:opacity-50">
               {saving ? 'Saving...' : editingId ? 'Update' : 'Save'}
             </button>
             <button onClick={() => { setShowForm(false); setEditingId(null); setError(''); }}

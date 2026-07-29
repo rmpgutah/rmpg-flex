@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import RichTextArea from '../../components/RichTextArea';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
-  Tag, Radio, Archive, DollarSign, Fuel, Eye, Trash2, FileText,
+  Tag, Radio, Archive, DollarSign, Fuel, Eye, Trash2, FileText, LayoutDashboard,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
@@ -60,6 +60,11 @@ const FLEET_VIEWS: { id: FleetViewMode; label: string; icon?: typeof FileText }[
   { id: 'vendors', label: 'Vendors' },
   { id: 'service', label: 'Service' },
 ];
+
+// Rough patrol-fleet service-life heuristic (no per-vehicle target exists in
+// the schema) used only to color-code the utilization bar below — not a
+// retirement policy.
+const UTILIZATION_LIFETIME_MILES = 150000;
 
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e', maintenance: '#f59e0b',
@@ -1275,6 +1280,15 @@ export default function FleetPage() {
               )}
             </>
           )}
+          {/* Fleet-wide KPI/viz dashboard (PRs 7-9) */}
+          <button
+            type="button"
+            className="toolbar-btn"
+            onClick={() => navigate('/fleet/dashboard')}
+            title="Fleet Dashboard"
+          >
+            <LayoutDashboard className="w-3 h-3" /> Dashboard
+          </button>
           {/* Daily patrol reports archive — month/day tree of auto-generated PDFs */}
           <button
             type="button"
@@ -1531,13 +1545,13 @@ export default function FleetPage() {
                     <div className="mt-1.5 w-full">
                       <div className="flex justify-between text-[7px] text-rmpg-600 mb-0.5">
                         <span>UTILIZATION</span>
-                        <span className="font-mono">{Math.min(100, Math.round((v.current_mileage / 150000) * 100))}%</span>
+                        <span className="font-mono">{Math.min(100, Math.round((v.current_mileage / UTILIZATION_LIFETIME_MILES) * 100))}%</span>
                       </div>
-                      <div className="w-full h-1 bg-rmpg-700 overflow-hidden" role="progressbar" aria-valuenow={Math.min(100, Math.round((v.current_mileage / 150000) * 100))} aria-valuemin={0} aria-valuemax={100} aria-label={`Vehicle utilization: ${Math.min(100, Math.round((v.current_mileage / 150000) * 100))}%`}>
+                      <div className="w-full h-1 bg-rmpg-700 overflow-hidden" role="progressbar" aria-valuenow={Math.min(100, Math.round((v.current_mileage / UTILIZATION_LIFETIME_MILES) * 100))} aria-valuemin={0} aria-valuemax={100} aria-label={`Vehicle utilization: ${Math.min(100, Math.round((v.current_mileage / UTILIZATION_LIFETIME_MILES) * 100))}%`}>
                         <div
                           className="h-full transition-all duration-500"
                           style={{
-                            width: `${Math.min(100, (v.current_mileage / 150000) * 100)}%`,
+                            width: `${Math.min(100, (v.current_mileage / UTILIZATION_LIFETIME_MILES) * 100)}%`,
                             background: v.current_mileage < 75000 ? '#22c55e'
                               : v.current_mileage < 120000 ? '#f59e0b' : '#ef4444',
                           }}
