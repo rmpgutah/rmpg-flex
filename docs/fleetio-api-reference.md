@@ -139,7 +139,7 @@ No request body — path parameter `id` only. Response codes documented: `204` (
 
 ### Cross-check against this codebase
 
-**`mapVendorFieldsToFleetio`** (`src/utils/fleetio/seed.ts:103-109`), used by `dispatchOutbound` (`src/utils/fleetio/sync.ts:447-461`) for `vendor.create` / `vendor.update` events, sends:
+**`mapVendorFieldsToFleetio`** (`src/utils/fleetio/seed.ts:112-118`), used by `dispatchOutbound` (`src/utils/fleetio/sync.ts:447-461`) for `vendor.create` / `vendor.update` events, sends:
 
 | Field sent | Fleet.io field? |
 |---|---|
@@ -155,7 +155,7 @@ No request body — path parameter `id` only. Response codes documented: `204` (
 
 Both `createVendor` and `updateVendor` (`src/utils/fleetio/client.ts:685-702`) pass the mapper's output straight through as the request body with no additional field translation, so the mismatch above is the entire outbound vendor field story — there is no second mapper for vendors (unlike Vehicles, which has both `mapVehicleFieldsToFleetio` and `buildVehiclePayload`).
 
-**Delete semantics.** `dispatchOutbound`'s `vendor`/`delete` branch (`sync.ts:459-462`) calls `archiveVendor`, matching RMPG's own soft-delete semantics for vendors (`active = 0`, never a hard delete) and CLAUDE.md's documented delete-matching rule ("RMPG soft-deletes vendors → Fleet.io `POST /vendors/:id/archive`" — the CLAUDE.md text itself still says `POST`, which is the same stale verb as the code; both should say `PATCH` per the live docs fetched here). Consistent with the endpoint keeping the vendor recoverable, `dropLink` is never called on this branch (per the comment at `sync.ts:534-538`, link rows are only dropped after a genuine hard delete) — the `fleetio_links` row survives an archive, which is correct.
+**Delete semantics.** `dispatchOutbound`'s `vendor`/`delete` branch (`sync.ts:459-462`) calls `archiveVendor`, matching RMPG's own soft-delete semantics for vendors (`active = 0`, never a hard delete) and CLAUDE.md's documented delete-matching rule ("RMPG soft-deletes vendors → Fleet.io `POST /vendors/:id/archive`" — the CLAUDE.md text itself still says `POST`, which is the same stale verb as the code; both should say `PATCH` per the live docs fetched here). Consistent with the endpoint keeping the vendor recoverable, `dropLink` is never called on this branch (per the comment at `sync.ts:550-554`, link rows are only dropped after a genuine hard delete) — the `fleetio_links` row survives an archive, which is correct.
 
 ## Parts
 
@@ -195,7 +195,7 @@ Path parameter `id` (string matching `^[0-9]+$`) is required. No request body. R
 
 ### Cross-check against this codebase
 
-`mapPartFieldsToFleetio` (`src/utils/fleetio/seed.ts:111-118`) sends:
+`mapPartFieldsToFleetio` (`src/utils/fleetio/seed.ts:120-127`) sends:
 
 | Field sent | Fleet.io field? |
 |---|---|
@@ -210,7 +210,7 @@ Path parameter `id` (string matching `^[0-9]+$`) is required. No request body. R
 
 `createPart` and `updatePart` (`src/utils/fleetio/client.ts:736-753`) pass the mapper's output straight through as the request body with no additional field translation, so the mismatch above is the entire outbound part field story.
 
-**Delete semantics.** `dispatchOutbound`'s `part`/`delete` branch (`sync.ts:476-482`) calls `deletePart`, which issues a real `DELETE /parts/:id` — matching RMPG's own hard-delete semantics for parts and CLAUDE.md's documented delete-matching rule ("RMPG hard-deletes parts and fuel entries → Fleet.io `DELETE`"). This asymmetry with Vendors (soft-delete/archive) is intentional and correctly implemented on both sides — no mismatch here, unlike the field-name issues above.
+**Delete semantics.** `dispatchOutbound`'s `part`/`delete` branch (`sync.ts:491-500`) calls `deletePart`, which issues a real `DELETE /parts/:id` — matching RMPG's own hard-delete semantics for parts and CLAUDE.md's documented delete-matching rule ("RMPG hard-deletes parts and fuel entries → Fleet.io `DELETE`"). This asymmetry with Vendors (soft-delete/archive) is intentional and correctly implemented on both sides — no mismatch here, unlike the field-name issues above.
 
 ## Work Orders
 
@@ -281,11 +281,11 @@ Same body fields as Create Work Order above, except `issued_at`, `work_order_sta
 | `notes` | ⚠️ MISMATCH — not a Fleet.io field. Fleet.io's closest analog is `comments_attributes: [{title, comment}]`, a different shape entirely. |
 | `custom_fields_json` | ⚠️ MISMATCH — not a Fleet.io field. The correct name is `custom_fields` (a nested object, not a JSON-string-suffixed key). |
 
-⚠️ **MISMATCH — 15 of the 18 fields RMPG sends don't exist on either Work Order endpoint, and the create path is missing a required field entirely.** Only `vehicle_id`, `vendor_id`, and (conditionally) `number` land as Fleet.io recognizes them; every other column — `category_code`, `assigned_to_user_id`, `odometer_at_open`, `odometer_at_close`, `created_by`, `status`, `opened_at`, `closed_at`, `summary`, `est_cost`, `actual_cost`, `vmrs_system_code`, `vmrs_assembly_code`, `vmrs_component_code`, `notes`, `custom_fields_json` — has no matching Fleet.io key. This is strictly worse than the Vendor/Part mismatches above: `issued_at` is **required** on Create Work Order and nothing in `WORK_ORDER_OWNERSHIP` ever supplies it (RMPG sends `opened_at` instead, which Fleet.io doesn't recognize), so — unless Fleet.io defaults a missing `issued_at` server-side, which is undocumented — every outbound `work_order/create` dispatch should be rejected with a `422` rather than silently dropping fields. That would surface as a hard failure (exhausted retries → dead letter, per the `fuel.delete` precedent documented in `sync.ts`), not a silent data-loss bug like Vendors/Parts. Because work orders have no mapper to patch, fixing this requires either adding a `mapWorkOrderFieldsToFleetio` translation layer (mirroring `mapVehicleFieldsToFleetio`) or renaming the RMPG-side columns/payload keys to match Fleet.io's naming — per this task's scope, it is recorded here and not fixed.
+⚠️ **MISMATCH — 16 of the 19 fields RMPG sends don't exist on either Work Order endpoint, and the create path is missing a required field entirely.** Only `vehicle_id`, `vendor_id`, and (conditionally) `number` land as Fleet.io recognizes them; every other column — `category_code`, `assigned_to_user_id`, `odometer_at_open`, `odometer_at_close`, `created_by`, `status`, `opened_at`, `closed_at`, `summary`, `est_cost`, `actual_cost`, `vmrs_system_code`, `vmrs_assembly_code`, `vmrs_component_code`, `notes`, `custom_fields_json` — has no matching Fleet.io key. This is strictly worse than the Vendor/Part mismatches above: `issued_at` is **required** on Create Work Order and nothing in `WORK_ORDER_OWNERSHIP` ever supplies it (RMPG sends `opened_at` instead, which Fleet.io doesn't recognize), so — unless Fleet.io defaults a missing `issued_at` server-side, which is undocumented — every outbound `work_order/create` dispatch should be rejected with a `422` rather than silently dropping fields. That would surface as a hard failure (exhausted retries → dead letter, per the `fuel.delete` precedent documented in `sync.ts`), not a silent data-loss bug like Vendors/Parts. Because work orders have no mapper to patch, fixing this requires either adding a `mapWorkOrderFieldsToFleetio` translation layer (mirroring `mapVehicleFieldsToFleetio`) or renaming the RMPG-side columns/payload keys to match Fleet.io's naming — per this task's scope, it is recorded here and not fixed.
 
 Both `createWorkOrder` and `updateWorkOrder` (`src/utils/fleetio/client.ts:600-608`, `:663-670`) pass the FK-translated payload straight through as the request body with no field-name translation, so the mismatch above is the entire outbound work-order field story — work orders are the one resource in this integration where "no mapper" is not a simplification but a bug surface: nothing stands between raw RMPG column names and the Fleet.io request body.
 
-**Delete semantics.** There is no `work_order`/`delete` branch in `dispatchOutbound` — the comment at `sync.ts:495` ("Genuinely unsupported — today that's work_order/delete only. No RMPG route emits it") documents this as intentional: RMPG has no route that deletes a work order and emits `work_order.delete`, so the otherwise-required "every emit kind needs a `dispatchOutbound` branch" invariant (CLAUDE.md, Fleet.io invariants) doesn't apply here — there's no emit kind to dead-letter.
+**Delete semantics.** There is no `work_order`/`delete` branch in `dispatchOutbound` — the comment at `sync.ts:510-522` ("Genuinely unsupported — today that's work_order/delete only. No RMPG route emits it") documents this as intentional: RMPG has no route that deletes a work order and emits `work_order.delete`, so the otherwise-required "every emit kind needs a `dispatchOutbound` branch" invariant (CLAUDE.md, Fleet.io invariants) doesn't apply here — there's no emit kind to dead-letter.
 
 ## Fuel Entries
 
@@ -324,7 +324,7 @@ Path parameter `id` (string matching `^[0-9]+$`) is required. No request body. T
 
 ### Cross-check against this codebase — regression check on #3162
 
-**⚠️ MISMATCH (at write-time) — the fix in PR #3162 was not present in this codebase.** *Caveat: this subsection was written while this branch predated #3162's merge. PR #3162 ("fix(fleetio): fix both live dead-lettered outbound events") has since been confirmed merged into `main` (`gh pr diff 3162 -R rmpgutah/rmpg-flex` returns the merged diff). The "not present in this codebase" framing below was accurate at the time this cross-check was written but should be re-verified once this branch syncs with `main`, which now carries the fix.* As of the commit cross-checked here (`src/utils/fleetio/seed.ts:86-93`), `mapFuelEntryFieldsToFleetio` was still the **pre-fix** version on this branch:
+This branch has since synced with `main` (commit `c375c383b3` merged main, which carries PR #3162, "fix(fleetio): fix both live dead-lettered outbound events"). This section records that regression check historically: what the bug looked like before the fix, and confirmation that the fix is present and correct on this branch/`main` today. For context, the **pre-fix** version of `mapFuelEntryFieldsToFleetio` (as it stood before #3162 landed) looked like this:
 
 ```ts
 export function mapFuelEntryFieldsToFleetio(payload: Record<string, unknown>): Record<string, unknown> {
@@ -337,17 +337,19 @@ export function mapFuelEntryFieldsToFleetio(payload: Record<string, unknown>): R
 }
 ```
 
+Under the original bug, the field-by-field picture was:
+
 | Field sent | Fleet.io field? |
 |---|---|
 | `vehicle_id` | ✅ valid |
 | `date` | ✅ valid |
 | `us_gallons` | ✅ valid |
-| `cost` | ⚠️ MISMATCH — no `cost` field exists anywhere on the Fuel Entry create/update schema. The closest concept is `price_per_volume_unit` (a per-unit price, not a total), which this mapper never sends. |
-| — | ⚠️ MISMATCH — `meter_entry_attributes` is **required** on Create Fuel Entry and is never sent by this mapper at all. |
+| `cost` | ⚠️ no `cost` field exists anywhere on the Fuel Entry create/update schema. The closest concept is `price_per_volume_unit` (a per-unit price, not a total), which this pre-fix mapper never sent. |
+| — | ⚠️ `meter_entry_attributes` is **required** on Create Fuel Entry and was never sent by this pre-fix mapper at all. |
 
-⚠️ **MISMATCH (at write-time, on this pre-merge branch) — the version of `fuel_entry/create` present here at the time of writing was missing a required field (`meter_entry_attributes`) and sent a nonexistent one (`cost`).** This reproduced exactly the live 422 (`fuel_entry/create` event id=9) that PR #3162's description says it fixes. Per the caveat above, #3162 has since merged to `main`, so this specific mismatch should no longer be reproducible once this branch is synced — re-verify against `main` rather than treating this as still-open.
+That pre-fix version — missing the required `meter_entry_attributes` field and sending a nonexistent `cost` field — reproduced exactly the live 422 (`fuel_entry/create` event id=9) that PR #3162 fixed.
 
-**The fix, confirmed merged via `gh pr diff 3162 -R rmpgutah/rmpg-flex`, reads:**
+**The fix, confirmed merged via `gh pr diff 3162 -R rmpgutah/rmpg-flex` and present on this branch/`main` today, reads:**
 
 ```ts
 if (typeof payload.cost_per_gallon === 'number') out.price_per_volume_unit = payload.cost_per_gallon;
