@@ -209,3 +209,78 @@ Path parameter `id` (string matching `^[0-9]+$`) is required. No request body. R
 `createPart` and `updatePart` (`src/utils/fleetio/client.ts:736-753`) pass the mapper's output straight through as the request body with no additional field translation, so the mismatch above is the entire outbound part field story.
 
 **Delete semantics.** `dispatchOutbound`'s `part`/`delete` branch (`sync.ts:476-482`) calls `deletePart`, which issues a real `DELETE /parts/:id` — matching RMPG's own hard-delete semantics for parts and CLAUDE.md's documented delete-matching rule ("RMPG hard-deletes parts and fuel entries → Fleet.io `DELETE`"). This asymmetry with Vendors (soft-delete/archive) is intentional and correctly implemented on both sides — no mismatch here, unlike the field-name issues above.
+
+## Work Orders
+
+### `POST https://secure.fleetio.com/api/work_orders` (Create Work Order)
+
+Live source: https://developer.fleetio.com/reference/create-work-order (fetched 2026-07-29)
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `issued_at` | date-time | **required** | The date and time at which this Work Order was issued (ISO-8601 recommended). |
+| `started_at` | date-time | optional | The date and time at which this Work Order was started. |
+| `completed_at` | date-time | optional | The date and time at which this Work Order was completed. |
+| `work_order_status_id` | integer (≥1) | **required** | The ID of the Work Order Status. |
+| `invoice_number` | string (≤255 chars) | optional | The number of the Invoice associated with this Work Order. |
+| `vendor_id` | integer (≥1), nullable | optional | The ID of the Vendor. |
+| `vendor_name` | string (≤255 chars) | optional | The name of the Vendor associated with this Work Order. |
+| `vehicle_id` | integer (≥1) | **required** | The ID of the Vehicle. |
+| `vehicle_name` | string (≤255 chars) | optional | The name of the Vehicle associated with this Work Order. |
+| `discount_type` / `discount` / `discount_percentage` | string / float / float | optional | Discount applied to this Work Order. |
+| `parts_markup_type` / `parts_markup` / `parts_markup_percentage` | string / float / float | optional | Parts markup (Premium plan only — writable field). |
+| `labor_markup_type` / `labor_markup` / `labor_markup_percentage` | string / float / float | optional | Labor markup (Premium plan only — writable field). |
+| `tax_1_type` / `tax_1` / `tax_1_percentage`, `tax_2_type` / `tax_2` / `tax_2_percentage` | string / float / float | optional | Two independent tax slots. |
+| `issued_by_id` | integer (≥1), nullable | optional | The ID of the User who issued this Work Order. |
+| `contact_id` | integer (≥1), nullable | optional | The ID of the Contact assigned to this Work Order. |
+| `label_list` | string (≤255 chars) | optional | Comma-separated tag list. |
+| `purchase_order_number` | string | optional | The number of the associated Purchase Order. |
+| `description` | string | optional | A description of this Work Order. |
+| `number` | integer | optional | The Work Order number. Must be unique. |
+| `meter_entry_attributes` / `secondary_meter_entry_attributes` / `starting_meter_entry_attributes` / `ending_meter_entry_attributes` / `starting_secondary_meter_entry_attributes` / `ending_secondary_meter_entry_attributes` | object | optional | Meter reading sub-objects (`{value, void}`). |
+| `custom_fields` | object, nullable | optional | Custom field values — see Fleet.io's Custom Fields docs. |
+| `ending_meter_same_as_start` | boolean | optional | Use start meter for completion meter? |
+| `vmrs_repair_priority_class_id` | integer (≥1), nullable | optional | The ID of the VMRS repair priority class. |
+| `scheduled_at` / `expected_completed_at` | date-time | optional | Scheduling dates. |
+| `comments_attributes` | object[] | optional | `{title, comment}` entries. |
+| `work_order_line_items_attributes` | object[] | optional | Nested line items (labor/part/issue/service-task types, VMRS ids, costs). |
+| `work_order_sub_line_items_attributes` | object[] | optional | Nested sub-line items. |
+| `issue_ids` | integer[] | optional | Issues to add to this Work Order. |
+| `label_ids` | integer[] | optional | Labels to add to this Work Order. |
+| `documents_attributes` / `images_attributes` | object[] | optional | Attached documents / images. |
+
+### `PATCH https://secure.fleetio.com/api/work_orders/:id` (Update Work Order)
+
+Live source: https://developer.fleetio.com/reference/update-work-order (fetched 2026-07-29)
+
+Same body fields as Create Work Order above, except `issued_at`, `work_order_status_id`, and `vehicle_id` are all optional on update (every other field identical). Path parameter `id` (string matching `^[0-9]+$`) is required.
+
+### Cross-check against this codebase
+
+**Work orders have no explicit mapper** (unlike Vehicles/Vendors/Parts, each of which has a `mapXFieldsToFleetio` function). `dispatchOutbound`'s `work_order`/`create` and `work_order`/`update` branches (`src/utils/fleetio/sync.ts:406-414` and `:440-445`) build `filteredPayload` by taking the raw RMPG `work_orders` row from the emitted event (`src/routes/workOrders.ts` — `emitWorkOrderEvent(c, 'work_order.create'/'work_order.update', row, id)`, and `src/routes/dispatch/calls.ts:1379`), filtering out any field marked `'fleetio'`-owned via `outboundFieldFilter('work_order', …)` (`WORK_ORDER_OWNERSHIP` in `src/utils/fleetio/ownership.ts:105-131` marks **none** `'fleetio'`-owned, so this filter is a no-op today), running `translateOutboundFks(db, 'work_order', filteredPayload)` (rewrites `vehicle_id`/`vendor_id`/`assigned_to_user_id` from RMPG ids to Fleet.io ids, dropping the optional ones if unlinked), and sending the result straight through as the request body via `createWorkOrder`/`updateWorkOrder` (`src/utils/fleetio/client.ts:600-608`, `:663-670` — both explicitly documented as "Fleet.io work_orders shape — pass through"). So the fields that actually reach Fleet.io are exactly the RMPG `work_orders` table's own column names, listed in `WORK_ORDER_OWNERSHIP`:
+
+| RMPG field sent | Fleet.io field? |
+|---|---|
+| `vehicle_id` | ✅ valid (translated to Fleet.io id by `translateOutboundFks`) |
+| `vendor_id` | ✅ valid (translated to Fleet.io id; dropped if unlinked, which is fine since it's `NULLABLE`) |
+| `category_code` | ⚠️ MISMATCH — not a Fleet.io field. No category concept on Work Order create/update; closest analog is per-line-item VMRS classification, not a top-level code. |
+| `assigned_to_user_id` | ⚠️ MISMATCH — not a Fleet.io field. Fleet.io's closest concepts are `contact_id` (a Contact, not a User) and `issued_by_id` (a User, but semantically "who issued it," not "who's assigned"); RMPG's raw local user id is sent under neither of those names. |
+| `odometer_at_open` | ⚠️ MISMATCH — not a Fleet.io field. Fleet.io models odometer via `starting_meter_entry_attributes: {value, void}` (or the plain `meter_entry_attributes`), not a bare integer. |
+| `odometer_at_close` | ⚠️ MISMATCH — not a Fleet.io field. Fleet.io's equivalent is `ending_meter_entry_attributes: {value, void}`. |
+| `created_by` | ⚠️ MISMATCH — not a Fleet.io request field. `created_by_id` exists but only in the **response** schema (server-set, read-only) — sending it as a request field does nothing. |
+| `status` | ⚠️ MISMATCH — not a Fleet.io field. Fleet.io requires `work_order_status_id` (an **integer id**, required on create), not a string status. |
+| `number` | ⚠️ TYPE MISMATCH — `number` is a valid Fleet.io field name, but Fleet.io's create/update schema types it as `integer`; RMPG's `work_orders.number` is very likely a formatted string (the response schema itself documents `number` as `string`, i.e. Fleet.io round-trips it as a string even though the request body types it as `integer`), so this is only reliably safe for pure numeric work-order numbers. |
+| `opened_at` | ⚠️ MISMATCH — not a Fleet.io field, and this is the load-bearing one: Fleet.io's **required** create field is `issued_at`, which is never sent under any name. Every `work_order.create` dispatch is therefore missing a required field and should 422 on Fleet.io's side. |
+| `closed_at` | ⚠️ MISMATCH — not a Fleet.io field. The correct name is `completed_at`. |
+| `summary` | ⚠️ MISMATCH — not a Fleet.io field. The correct name is `description`. |
+| `est_cost` | ⚠️ MISMATCH — not a Fleet.io field. Fleet.io computes cost totals (`parts_subtotal`, `labor_subtotal`, `subtotal`, `total_amount`) from `work_order_line_items_attributes`; there is no top-level estimated-cost input. |
+| `actual_cost` | ⚠️ MISMATCH — not a Fleet.io field, same reasoning as `est_cost` — Fleet.io derives `total_amount` from line items rather than accepting a top-level actual-cost figure. |
+| `vmrs_system_code` / `vmrs_assembly_code` / `vmrs_component_code` | ⚠️ MISMATCH — not Fleet.io Work Order fields. VMRS classification on Fleet.io's side lives per-line-item (`vmrs_system_id`, `vmrs_assembly_id`, `vmrs_component_id` inside `work_order_line_items_attributes`) as integer ids, not top-level string codes. |
+| `notes` | ⚠️ MISMATCH — not a Fleet.io field. Fleet.io's closest analog is `comments_attributes: [{title, comment}]`, a different shape entirely. |
+| `custom_fields_json` | ⚠️ MISMATCH — not a Fleet.io field. The correct name is `custom_fields` (a nested object, not a JSON-string-suffixed key). |
+
+⚠️ **MISMATCH — 15 of the 18 fields RMPG sends don't exist on either Work Order endpoint, and the create path is missing a required field entirely.** Only `vehicle_id`, `vendor_id`, and (conditionally) `number` land as Fleet.io recognizes them; every other column — `category_code`, `assigned_to_user_id`, `odometer_at_open`, `odometer_at_close`, `created_by`, `status`, `opened_at`, `closed_at`, `summary`, `est_cost`, `actual_cost`, `vmrs_system_code`, `vmrs_assembly_code`, `vmrs_component_code`, `notes`, `custom_fields_json` — has no matching Fleet.io key. This is strictly worse than the Vendor/Part mismatches above: `issued_at` is **required** on Create Work Order and nothing in `WORK_ORDER_OWNERSHIP` ever supplies it (RMPG sends `opened_at` instead, which Fleet.io doesn't recognize), so — unless Fleet.io defaults a missing `issued_at` server-side, which is undocumented — every outbound `work_order/create` dispatch should be rejected with a `422` rather than silently dropping fields. That would surface as a hard failure (exhausted retries → dead letter, per the `fuel.delete` precedent documented in `sync.ts`), not a silent data-loss bug like Vendors/Parts. Because work orders have no mapper to patch, fixing this requires either adding a `mapWorkOrderFieldsToFleetio` translation layer (mirroring `mapVehicleFieldsToFleetio`) or renaming the RMPG-side columns/payload keys to match Fleet.io's naming — per this task's scope, it is recorded here and not fixed.
+
+Both `createWorkOrder` and `updateWorkOrder` (`src/utils/fleetio/client.ts:600-608`, `:663-670`) pass the FK-translated payload straight through as the request body with no field-name translation, so the mismatch above is the entire outbound work-order field story — work orders are the one resource in this integration where "no mapper" is not a simplification but a bug surface: nothing stands between raw RMPG column names and the Fleet.io request body.
+
+**Delete semantics.** There is no `work_order`/`delete` branch in `dispatchOutbound` — the comment at `sync.ts:495` ("Genuinely unsupported — today that's work_order/delete only. No RMPG route emits it") documents this as intentional: RMPG has no route that deletes a work order and emits `work_order.delete`, so the otherwise-required "every emit kind needs a `dispatchOutbound` branch" invariant (CLAUDE.md, Fleet.io invariants) doesn't apply here — there's no emit kind to dead-letter.
