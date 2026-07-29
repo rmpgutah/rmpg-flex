@@ -13,10 +13,26 @@
 // ambiguity that produced the 6-hour Notice-of-Attempt regression.
 // ============================================================
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { stampGenerationTime, generationTimestamp } from '../pdfGenerator';
+
+// Pin the wall clock. Several helpers here take an optional `now` and fall back
+// to `new Date()` / `Date.now()`, and the PDF footers stamp the real generation
+// time — so without this the assertions drift as real time advances past the
+// fixtures below. `toFake: ['Date']` deliberately leaves setTimeout/setInterval
+// real: jsPDF and jsdom rely on them, and faking them can deadlock generation.
+const PINNED_NOW = '2026-07-27T20:35:00Z';
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(PINNED_NOW));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const SRC = join(__dirname, '..', '..');
 

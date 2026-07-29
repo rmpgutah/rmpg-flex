@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   prettyCategory,
   prettyStatus,
@@ -8,6 +8,22 @@ import {
   needsAuditAlert,
   isSubMinimumHours,
 } from '../trainingCertificatePdf';
+
+// Pin the wall clock. Several helpers here take an optional `now` and fall back
+// to `new Date()` / `Date.now()`, and the PDF footers stamp the real generation
+// time — so without this the assertions drift as real time advances past the
+// fixtures below. `toFake: ['Date']` deliberately leaves setTimeout/setInterval
+// real: jsPDF and jsdom rely on them, and faking them can deadlock generation.
+const PINNED_NOW = '2026-06-22T12:00:00Z';
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(PINNED_NOW));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('prettyCategory', () => {
   it('upper-cases and underscore-strips a known category', () => {

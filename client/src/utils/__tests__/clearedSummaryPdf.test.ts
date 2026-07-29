@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   dispositionCounts,
   filterClearedInWindow,
@@ -6,6 +6,22 @@ import {
   todayMtWindow,
 } from '../clearedSummaryPdf';
 import type { CallForService } from '../../types';
+
+// Pin the wall clock. Several helpers here take an optional `now` and fall back
+// to `new Date()` / `Date.now()`, and the PDF footers stamp the real generation
+// time — so without this the assertions drift as real time advances past the
+// fixtures below. `toFake: ['Date']` deliberately leaves setTimeout/setInterval
+// real: jsPDF and jsdom rely on them, and faking them can deadlock generation.
+const PINNED_NOW = '2026-06-21T15:00:00Z';
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(PINNED_NOW));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 // Minimal Call factory — only the fields the helpers actually inspect.
 // Cast through unknown because the real CallForService has ~80 fields and we

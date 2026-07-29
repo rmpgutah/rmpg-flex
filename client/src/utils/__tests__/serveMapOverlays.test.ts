@@ -1,8 +1,24 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter } from '../serveMapOverlays';
 
+// Every fixture below is expressed relative to this instant. parseTimestamp falls
+// back to `new Date()` for unparseable input, so the real wall clock has to be
+// pinned here or those assertions silently expire as time advances past NOW.
+const NOW_ISO = '2026-07-28T12:00:00Z';
+
+// `toFake: ['Date']` deliberately leaves setTimeout/setInterval real — only the
+// clock needs pinning, and faking timers wholesale can deadlock unrelated code.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(NOW_ISO));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe('urgencyTierForDeadline', () => {
-  const now = new Date('2026-07-28T12:00:00Z').getTime();
+  const now = new Date(NOW_ISO).getTime();
 
   it('returns "none" when there is no deadline', () => {
     expect(urgencyTierForDeadline(null, now)).toBe('none');
