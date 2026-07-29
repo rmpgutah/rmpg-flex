@@ -76,8 +76,29 @@ function parseWindowsWwanOutput(rawJsonString) {
   return { present: true, connected: entries.some((entry) => entry && entry.Status === 'Up') };
 }
 
+/**
+ * Parses `Get-Tpm | Select-Object TpmPresent, TpmReady, TpmEnabled |
+ * ConvertTo-Json` output. Read-only posture reporting for the FZ-55's
+ * Secured-core PC hardware root of trust — consumed by desktop/security/
+ * as one more signal, never used to block app function.
+ */
+function parseWindowsTpmOutput(rawJsonString) {
+  let parsed;
+  try {
+    parsed = JSON.parse(rawJsonString);
+  } catch {
+    return null;
+  }
+  return {
+    present: Boolean(parsed.TpmPresent),
+    ready: Boolean(parsed.TpmReady),
+    enabled: Boolean(parsed.TpmEnabled),
+  };
+}
+
 module.exports = {
   parseWindowsBatteryOutput,
   parseWindowsDockOutput,
   parseWindowsWwanOutput,
+  parseWindowsTpmOutput,
 };

@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput } = require('../hardwareFz55');
+const { parseWindowsTpmOutput } = require('../hardwareFz55');
 
 test('parseWindowsBatteryOutput: single battery, discharging', () => {
   const raw = JSON.stringify({ DeviceID: 'Battery0', EstimatedChargeRemaining: 76, BatteryStatus: 1 });
@@ -94,4 +95,23 @@ test('parseWindowsWwanOutput: no WWAN adapter installed', () => {
 
 test('parseWindowsWwanOutput: malformed JSON treated as not present', () => {
   assert.deepEqual(parseWindowsWwanOutput('garbage'), { present: false, connected: false });
+});
+
+test('parseWindowsTpmOutput: present, ready, and enabled', () => {
+  const raw = JSON.stringify({ TpmPresent: true, TpmReady: true, TpmEnabled: true });
+  assert.deepEqual(parseWindowsTpmOutput(raw), { present: true, ready: true, enabled: true });
+});
+
+test('parseWindowsTpmOutput: present but not ready', () => {
+  const raw = JSON.stringify({ TpmPresent: true, TpmReady: false, TpmEnabled: true });
+  assert.deepEqual(parseWindowsTpmOutput(raw), { present: true, ready: false, enabled: true });
+});
+
+test('parseWindowsTpmOutput: not present', () => {
+  const raw = JSON.stringify({ TpmPresent: false, TpmReady: false, TpmEnabled: false });
+  assert.deepEqual(parseWindowsTpmOutput(raw), { present: false, ready: false, enabled: false });
+});
+
+test('parseWindowsTpmOutput: malformed JSON returns null', () => {
+  assert.equal(parseWindowsTpmOutput('garbage'), null);
 });

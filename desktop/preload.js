@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld('electron', {
   checkDiskSpace: () => ipcRenderer.invoke('sys:disk-space'),
   getNetworkInterfaces: () => ipcRenderer.invoke('sys:network-interfaces'),
   getBatteryStatus: () => ipcRenderer.invoke('sys:battery'),
+  getTpmStatus: () => ipcRenderer.invoke('sys:tpm-status'),
   getIdleTime: () => ipcRenderer.invoke('sys:idle-time'),
   restartApp: () => ipcRenderer.invoke('sys:restart'),
 
