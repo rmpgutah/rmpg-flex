@@ -188,6 +188,10 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
   const [mapReady, setMapReady] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(10);
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>('all');
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const selectStartRef = useRef<{ x: number; y: number } | null>(null);
+  const itemsRef = useRef<QueueMapItem[]>([]);
+  useEffect(() => { itemsRef.current = items; }, [items]);
   const [noteModal, setNoteModal] = useState<{ open: boolean; noteId?: number; queueItem?: QueueMapItem }>({ open: false });
   const [trailQueueId, setTrailQueueId] = useState<number | null>(null);
   // Single-stop drive-time preview: right-click anywhere on the map to set a
@@ -244,7 +248,39 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       e.originalEvent?.preventDefault?.();
       setPreviewOrigin([e.lngLat.lng, e.lngLat.lat]);
     });
+
+    // Shift-drag rectangle select: bulk-select job markers by drawing a box
+    // in screen space, then converting the corners to lng/lat via unproject.
+    const container = mapContainerRef.current;
+    const onMouseDown = (e: MouseEvent) => {
+      if (!e.shiftKey || !container) return;
+      const rect = container.getBoundingClientRect();
+      selectStartRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+    const onMouseUp = (e: MouseEvent) => {
+      if (!selectStartRef.current || !container) return;
+      const rect = container.getBoundingClientRect();
+      const end = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const start = selectStartRef.current;
+      const sw = map.unproject([Math.min(start.x, end.x), Math.max(start.y, end.y)]);
+      const ne = map.unproject([Math.max(start.x, end.x), Math.min(start.y, end.y)]);
+      const newlySelected = new Set<number>();
+      for (const it of itemsRef.current) {
+        if (it.recipient_lat == null || it.recipient_lng == null) continue;
+        if (it.recipient_lng >= sw.lng && it.recipient_lng <= ne.lng &&
+            it.recipient_lat >= sw.lat && it.recipient_lat <= ne.lat) {
+          newlySelected.add(it.id);
+        }
+      }
+      setSelectedIds(newlySelected);
+      selectStartRef.current = null;
+    };
+    container?.addEventListener('mousedown', onMouseDown);
+    container?.addEventListener('mouseup', onMouseUp);
+
     return () => {
+      container?.removeEventListener('mousedown', onMouseDown);
+      container?.removeEventListener('mouseup', onMouseUp);
       unregisterMapInstance(map);
       map.remove();
       mapRef.current = null;
@@ -555,6 +591,22 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
 
   const notMapped = items.filter((it) => it.recipient_lat == null || it.recipient_lng == null);
 
+  const applyBulkStatus = async (status: string) => {
+    if (selectedIds.size === 0) return;
+    const confirmed = window.confirm(`Set ${selectedIds.size} job(s) to "${status}"?`);
+    if (!confirmed) return;
+    try {
+      await apiFetch('/process-server/bulk-status', {
+        method: 'PUT',
+        body: JSON.stringify({ ids: Array.from(selectedIds), status }),
+      });
+      setSelectedIds(new Set());
+      load();
+    } catch {
+      // non-fatal — user can retry; selection is preserved so nothing is lost
+    }
+  };
+
   return (
     <div className="flex flex-col h-full gap-2">
       {/* Toolbar */}
@@ -614,6 +666,16 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
           </button>
         </div>
       </div>
+
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 px-2 py-1 bg-surface-raised border border-border-subtle rounded text-[11px]">
+          <span className="text-brand-300">{selectedIds.size} selected (shift-drag to reselect)</span>
+          <span className="text-brand-500">Apply to selected:</span>
+          <button onClick={() => applyBulkStatus('skipped')} className="px-2 py-0.5 border border-border-subtle rounded text-brand-300 hover:text-brand-100">Skip</button>
+          <button onClick={() => applyBulkStatus('archived')} className="px-2 py-0.5 border border-border-subtle rounded text-brand-300 hover:text-brand-100">Archive</button>
+          <button onClick={() => setSelectedIds(new Set())} className="px-2 py-0.5 border border-border-subtle rounded text-brand-500 hover:text-brand-300 ml-auto">Clear</button>
+        </div>
+      )}
 
       {/* Map canvas */}
       <div className="relative flex-1 min-h-0 rounded overflow-hidden border border-border-subtle">

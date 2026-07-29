@@ -346,6 +346,12 @@ describe('ServeIntakeMap', () => {
     expect(reverseGeocode).not.toHaveBeenCalled();
   });
 
+  it('renders no bulk-action bar when nothing is selected', async () => {
+    render(<ServeIntakeMap />);
+    await waitFor(() => expect(screen.getByText(/no active serve orders/i)).toBeInTheDocument());
+    expect(screen.queryByText(/apply to selected/i)).not.toBeInTheDocument();
+  });
+
   afterEach(() => {
     cleanup();
   });
