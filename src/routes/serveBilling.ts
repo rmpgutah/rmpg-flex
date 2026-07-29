@@ -22,6 +22,25 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
 const MANAGE = ['admin', 'manager', 'contract_manager'];
 const REVIEW = ['admin', 'manager', 'contract_manager', 'supervisor'];
 
+/**
+ * Parse a caller-supplied numeric field, or return null if it is not a finite
+ * number.
+ *
+ * This exists because `Number(x) || 0` — the idiom previously used on the
+ * pricing rate card — turns invalid input into a VALID ZERO. On a rate card
+ * that means a typo silently creates a line item that bills nothing, with a
+ * 201 and no complaint. The PUT path was worse: it had no guard at all, so a
+ * bad value bound NaN straight into D1 and destroyed a rate that had been
+ * correct.
+ *
+ * Money fields must fail loudly. Callers turn a null into a 400.
+ */
+function finiteNumber(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 async function logAudit(db: ReturnType<typeof getDb>, userId: number | null, action: string, entityType: string, entityId: number | null, details: unknown) {
   try {
     await execute(db,
@@ -73,12 +92,25 @@ psb.post('/ps-pricing/items', async (c) => {
   const db = getDb(c.env);
   const b = await c.req.json<any>();
   if (!b.code || !b.label) return c.json({ error: 'code and label required' }, 400);
+
+  // `amount` is required and must be a real number. Previously this was
+  // `Number(b.amount) || 0`, so "12.5o" or an empty object created a $0.00
+  // rate and returned 201 — the operator saw success and the item billed
+  // nothing until someone noticed the invoice was short.
+  const amount = finiteNumber(b.amount);
+  if (amount === null) return c.json({ error: 'amount must be a number', code: 'BAD_AMOUNT' }, 400);
+  if (amount < 0) return c.json({ error: 'amount cannot be negative', code: 'BAD_AMOUNT' }, 400);
+  const attemptsIncluded = b.attempts_included === undefined ? 0 : finiteNumber(b.attempts_included);
+  if (attemptsIncluded === null) return c.json({ error: 'attempts_included must be a number', code: 'BAD_INPUT' }, 400);
+  const sortOrder = b.sort_order === undefined ? 0 : finiteNumber(b.sort_order);
+  if (sortOrder === null) return c.json({ error: 'sort_order must be a number', code: 'BAD_INPUT' }, 400);
+
   const user = c.get('user') as { id: number } | undefined;
   const ins = await execute(db,
     `INSERT INTO ps_pricing_items (code, label, unit, amount, taxable, attempts_included, sort_order, updated_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    b.code, b.label, b.unit ?? 'per_serve', Number(b.amount) || 0, b.taxable ? 1 : 0,
-    Number(b.attempts_included) || 0, Number(b.sort_order) || 0, user?.id ?? null);
+    b.code, b.label, b.unit ?? 'per_serve', amount, b.taxable ? 1 : 0,
+    attemptsIncluded, sortOrder, user?.id ?? null);
   const id = Number(ins.meta.last_row_id);
   await logAudit(db, user?.id ?? null, 'create', 'ps_pricing_item', id, b);
   const created = await queryFirst(db, 'SELECT * FROM ps_pricing_items WHERE id = ?', id);
@@ -94,6 +126,31 @@ psb.put('/ps-pricing/items/:id', async (c) => {
   const before = await queryFirst<any>(db, 'SELECT * FROM ps_pricing_items WHERE id = ?', id);
   if (!before) return c.json({ error: 'Not found' }, 404);
   const b = await c.req.json<any>();
+
+  // Every numeric field here was previously an unguarded `Number(...)`, so a
+  // malformed value bound NaN directly into D1 — overwriting a rate that had
+  // been correct. A partial update must never be able to destroy the field it
+  // is not validly changing, so reject rather than coerce.
+  let amount = before.amount;
+  if (b.amount !== undefined) {
+    const parsed = finiteNumber(b.amount);
+    if (parsed === null) return c.json({ error: 'amount must be a number', code: 'BAD_AMOUNT' }, 400);
+    if (parsed < 0) return c.json({ error: 'amount cannot be negative', code: 'BAD_AMOUNT' }, 400);
+    amount = parsed;
+  }
+  let attemptsIncluded = before.attempts_included;
+  if (b.attempts_included !== undefined) {
+    const parsed = finiteNumber(b.attempts_included);
+    if (parsed === null) return c.json({ error: 'attempts_included must be a number', code: 'BAD_INPUT' }, 400);
+    attemptsIncluded = parsed;
+  }
+  let sortOrder = before.sort_order;
+  if (b.sort_order !== undefined) {
+    const parsed = finiteNumber(b.sort_order);
+    if (parsed === null) return c.json({ error: 'sort_order must be a number', code: 'BAD_INPUT' }, 400);
+    sortOrder = parsed;
+  }
+
   const user = c.get('user') as { id: number } | undefined;
   await execute(db,
     `UPDATE ps_pricing_items SET
@@ -101,11 +158,11 @@ psb.put('/ps-pricing/items/:id', async (c) => {
        updated_at = datetime('now'), updated_by = ?
      WHERE id = ?`,
     b.label ?? before.label, b.unit ?? before.unit,
-    b.amount !== undefined ? Number(b.amount) : before.amount,
+    amount,
     b.taxable !== undefined ? (b.taxable ? 1 : 0) : before.taxable,
-    b.attempts_included !== undefined ? Number(b.attempts_included) : before.attempts_included,
+    attemptsIncluded,
     b.is_active !== undefined ? (b.is_active ? 1 : 0) : before.is_active,
-    b.sort_order !== undefined ? Number(b.sort_order) : before.sort_order,
+    sortOrder,
     user?.id ?? null, id);
   await logAudit(db, user?.id ?? null, 'update', 'ps_pricing_item', id, { before, after: b });
   const after = await queryFirst(db, 'SELECT * FROM ps_pricing_items WHERE id = ?', id);
@@ -216,15 +273,42 @@ psb.put('/serve-charges/:id', async (c) => {
   const before = await queryFirst<any>(db, 'SELECT * FROM serve_charges WHERE id = ?', id);
 
   if (Array.isArray(b.lines)) {
+    // ⚠️ Validate EVERY line before touching the table. This handler deletes the
+    // existing lines and rebuilds them, so validating inside the rebuild loop is
+    // too late — the real lines are already gone by then. Combined with the old
+    // `Number(x) || 0`, a malformed payload silently replaced a priced charge
+    // with $0.00 rows and reported success.
+    const parsedLines: Array<{ pricing_code: string | null; description: string; quantity: number; unit_price: number; line_total: number; taxable: number }> = [];
+    for (const [i, l] of (b.lines as any[]).entries()) {
+      const quantity = finiteNumber(l?.quantity);
+      const unitPrice = finiteNumber(l?.unit_price);
+      if (quantity === null) {
+        return c.json({ error: `line ${i + 1}: quantity must be a number`, code: 'BAD_LINE' }, 400);
+      }
+      if (unitPrice === null) {
+        return c.json({ error: `line ${i + 1}: unit_price must be a number`, code: 'BAD_LINE' }, 400);
+      }
+      if (quantity < 0 || unitPrice < 0) {
+        return c.json({ error: `line ${i + 1}: quantity and unit_price cannot be negative`, code: 'BAD_LINE' }, 400);
+      }
+      parsedLines.push({
+        pricing_code: l?.pricing_code ?? null,
+        description: l?.description ?? '',
+        quantity,
+        unit_price: unitPrice,
+        line_total: Math.round(quantity * unitPrice * 100) / 100,
+        taxable: l?.taxable ? 1 : 0,
+      });
+    }
+
     await execute(db, 'DELETE FROM serve_charge_lines WHERE serve_charge_id = ?', id);
     let subtotal = 0;
-    for (const l of b.lines) {
-      const lineTotal = Math.round((Number(l.quantity) || 0) * (Number(l.unit_price) || 0) * 100) / 100;
-      subtotal += lineTotal;
+    for (const l of parsedLines) {
+      subtotal += l.line_total;
       await execute(db,
         `INSERT INTO serve_charge_lines (serve_charge_id, pricing_code, description, quantity, unit_price, line_total, taxable)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        id, l.pricing_code ?? null, l.description ?? '', Number(l.quantity) || 0, Number(l.unit_price) || 0, lineTotal, l.taxable ? 1 : 0);
+        id, l.pricing_code, l.description, l.quantity, l.unit_price, l.line_total, l.taxable);
     }
     await execute(db, `UPDATE serve_charges SET subtotal = ? WHERE id = ?`, Math.round(subtotal * 100) / 100, id);
   }

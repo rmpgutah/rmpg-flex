@@ -102,6 +102,35 @@ function clientIp(c: any): string {
 }
 
 /** Reject anything that isn't a plausibly-sized PNG data URL. */
+/**
+ * Does the base64 body actually decode, and does it start with a real
+ * PNG or JPEG header?
+ *
+ * The pattern test alone accepts a truncated write — a payload cut short
+ * by a dropped connection still matches `data:image/png;base64,[A-Za-z0-9+/=]+`
+ * and only fails when someone tries to PRINT the instrument, potentially
+ * years later in front of a judge. Checking the magic bytes catches it at
+ * write time, where the signer is still standing there and can sign again.
+ *
+ * Header only — decoding a 500KB payload in full on every submission to
+ * validate pixels nobody will look at is not a good trade.
+ */
+function decodesToImage(dataUri: string): boolean {
+  const comma = dataUri.indexOf(',');
+  if (comma < 0) return false;
+  const head = dataUri.slice(comma + 1, comma + 33);
+  try {
+    const bytes = Uint8Array.from(atob(head), (ch) => ch.charCodeAt(0));
+    if (bytes.length < 4) return false;
+    // PNG: 89 50 4E 47 ("\x89PNG").  JPEG: FF D8 FF.
+    const png = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+    const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    return png || jpeg;
+  } catch {
+    return false;   // not valid base64 at all
+  }
+}
+
 function validSignature(v: unknown): v is string {
   // PNG and JPEG only, not `data:image/*`. SVG is an image by that test
   // and can carry script; this value is rendered back into an officer's
@@ -110,7 +139,8 @@ function validSignature(v: unknown): v is string {
   return typeof v === 'string'
     && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(v)
     && v.length > 100
-    && v.length <= MAX_SIGNATURE_BYTES;
+    && v.length <= MAX_SIGNATURE_BYTES
+    && decodesToImage(v);
 }
 
 /**
@@ -147,6 +177,20 @@ function bool(v: unknown): number {
  * short one, because it fails at read time on a legal record instead of
  * at write time where someone can see it.
  */
+/**
+ * Check character for the scan-to-retrieve barcode.
+ *
+ * `RMPG-AOS:4471` has no redundancy, so a single misread digit resolves
+ * to a DIFFERENT REAL RECEIPT and the clerk has no way to know. A mod-36
+ * check over the digits turns that from a silent wrong answer into a
+ * refusal to resolve, which is the only acceptable failure mode when the
+ * thing being looked up is a legal record.
+ */
+export function receiptBarcodeCheck(receiptId: number): string {
+  const sum = String(receiptId).split('').reduce((n, d, i) => n + Number(d) * (i + 2), 0);
+  return (sum % 36).toString(36).toUpperCase();
+}
+
 export function boundedJson<T>(items: T[], maxItems: number, maxBytes: number): string {
   let out = items.slice(0, maxItems);
   let json = JSON.stringify(out);
@@ -1365,6 +1409,107 @@ serveReceiptAdmin.post(
  * two routes were the only ones in this file written without a gate.
  */
 const RECEIPT_READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
+
+/**
+ * POST /api/serve-receipts/receipt/:id/correct
+ * Void a signed acknowledgement and issue a fresh signing link, as one
+ * auditable action.
+ *
+ * There was no correction path at all. The token burns on signature, so a
+ * misspelt name or a wrong relationship was permanent — the officer had
+ * to void the receipt (supervisor-only), then separately mint a token,
+ * and nothing tied the two together. In practice that means small errors
+ * stayed on legal records because fixing them was harder than living with
+ * them.
+ *
+ * Deliberately NOT an edit. A signed instrument is a record of what a
+ * person attested to; silently amending it would make the signature
+ * evidence of words that were never on screen. The original is voided
+ * with a stated reason and survives in full, and the correction is a NEW
+ * signature.
+ *
+ * Same role gate as voiding, because that is what this does first.
+ */
+serveReceiptAdmin.post(
+  '/receipt/:id/correct',
+  requireRole('admin', 'manager', 'supervisor'),
+  async (c) => {
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!id) return c.json({ error: 'Invalid receipt id' }, 400);
+
+    const { reason } = await c.req.json<{ reason?: string }>().catch(() => ({ reason: '' }));
+    const reasonText = (reason ?? '').trim();
+    if (reasonText.length < 10) {
+      return c.json({
+        error: 'Say what was wrong with the original — it stays on the record '
+          + 'alongside the correction.',
+      }, 400);
+    }
+
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number } | undefined;
+
+    const original = await queryFirst<{ serve_queue_id: number; job_status_before: string | null }>(
+      db,
+      "SELECT serve_queue_id, job_status_before FROM serve_receipts WHERE id = ? AND status = 'signed'",
+      id,
+    );
+    if (!original) return c.json({ error: 'Receipt not found or already voided' }, 404);
+
+    const v = await execute(
+      db,
+      `UPDATE serve_receipts
+          SET status = 'voided', voided_at = datetime('now'), voided_by = ?,
+              void_reason = ?
+        WHERE id = ? AND status = 'signed'`,
+      user?.id ?? null, `Superseded by a correction: ${reasonText}`.slice(0, 500), id,
+    );
+    if (!v.meta.changes) return c.json({ error: 'Receipt not found or already voided' }, 404);
+
+    // Put the job back so the corrected service can advance it again. The
+    // partial unique index from 0209 would otherwise refuse the new
+    // signature while the old row still held 'signed' — voiding first is
+    // what makes the re-issue possible at all.
+    await execute(
+      db,
+      "UPDATE serve_queue SET status = ?, serve_date = NULL, updated_at = datetime('now') WHERE id = ?",
+      original.job_status_before || 'in_progress', original.serve_queue_id,
+    ).catch(() => undefined);
+
+    // Revoke any token still live for this job before minting a fresh
+    // one, so a stale printed QR cannot compete with the correction.
+    await execute(
+      db,
+      `UPDATE serve_receipt_tokens SET revoked_at = datetime('now')
+        WHERE serve_queue_id = ? AND used_receipt_id IS NULL AND revoked_at IS NULL`,
+      original.serve_queue_id,
+    ).catch(() => undefined);
+
+    const token = randomToken();
+    await execute(
+      db,
+      `INSERT INTO serve_receipt_tokens (serve_queue_id, token, created_by, expires_at)
+       VALUES (?, ?, ?, datetime('now', ?))`,
+      original.serve_queue_id, token, user?.id ?? null, `+${DEFAULT_TOKEN_TTL_DAYS} days`,
+    );
+
+    await recordAudit(c, {
+      action: 'SERVE_RECEIPT_CORRECT',
+      entityType: 'serve_queue',
+      entityId: original.serve_queue_id,
+      details: { voided_receipt_id: id, reason: reasonText },
+      actorId: user?.id ?? null,
+    }).catch(() => undefined);
+
+    log.info('Receipt superseded by correction', { voidedId: id, queueId: original.serve_queue_id });
+    return c.json({
+      ok: true,
+      voided_receipt_id: id,
+      token,
+      url: `${PUBLIC_APP_URL}/m/serve-receipt/${token}`,
+    }, 201);
+  },
+);
 
 /** GET /api/serve-receipts/:queueId — signed receipts for a job. */
 serveReceiptAdmin.get('/:queueId', requireRole(...RECEIPT_READ_ROLES), async (c) => {
