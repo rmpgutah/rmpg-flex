@@ -284,3 +284,76 @@ Same body fields as Create Work Order above, except `issued_at`, `work_order_sta
 Both `createWorkOrder` and `updateWorkOrder` (`src/utils/fleetio/client.ts:600-608`, `:663-670`) pass the FK-translated payload straight through as the request body with no field-name translation, so the mismatch above is the entire outbound work-order field story — work orders are the one resource in this integration where "no mapper" is not a simplification but a bug surface: nothing stands between raw RMPG column names and the Fleet.io request body.
 
 **Delete semantics.** There is no `work_order`/`delete` branch in `dispatchOutbound` — the comment at `sync.ts:495` ("Genuinely unsupported — today that's work_order/delete only. No RMPG route emits it") documents this as intentional: RMPG has no route that deletes a work order and emits `work_order.delete`, so the otherwise-required "every emit kind needs a `dispatchOutbound` branch" invariant (CLAUDE.md, Fleet.io invariants) doesn't apply here — there's no emit kind to dead-letter.
+
+## Fuel Entries
+
+### `POST https://secure.fleetio.com/api/fuel_entries` (Create Fuel Entry)
+
+Live source: https://developer.fleetio.com/reference/create-fuel-entry (fetched 2026-07-29)
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `vehicle_id` | Id (integer, ≥1) | **required** | The Fleetio id of the Vehicle. |
+| `vendor_id` | integer (≥1) | optional | The Fleetio id of the Vendor associated with this Fuel Entry. |
+| `fuel_type_id` | integer (≥1) | optional | The Fleetio id of the Fuel Type. |
+| `date` | date-time | **required** | ISO-8601 recommended. Example: `2023-03-14T13:46:27-06:00`. |
+| `us_gallons` | float | **required** | Fuel volume in US gallons. Only used if the Vehicle is configured for US gallons, otherwise ignored. |
+| `uk_gallons` | float | optional | Fuel volume in UK gallons. Only used if the Vehicle is configured for UK gallons. |
+| `liters` | float | optional | Fuel volume in liters. Only used if the Vehicle is configured for liters. |
+| `price_per_volume_unit` | float | optional | The unit price for the Vehicle's configured volume unit. Example: `2.98`. |
+| `meter_entry_attributes` | object | **required** | Meter reading sub-object, `{value, void}`. The live example sends `value` as a **string** (`"108043"`). |
+| `reference` | string | optional | Receipt number or other identifier. |
+| `partial` | boolean | optional | Whether this is a partial fill-up. Defaults `false`. |
+| `personal` | boolean | optional | Whether this is a personal (non-fleet) fuel purchase. Defaults `false`. |
+| `custom_fields` | object, nullable | optional | Custom field values. |
+| `documents_attributes` / `images_attributes` | object[] | optional | Attached documents / images. |
+
+Note that Fleet.io's UI marks `us_gallons` as required on the wire even though its own description says the value "will only be used if the Vehicle is configured to use US gallons" — i.e. it is a required *field*, not necessarily a required *quantity* for every vehicle's fuel-unit configuration. Treat `date` and `meter_entry_attributes` as unconditionally required; `us_gallons` as required by the schema regardless of a given vehicle's configured volume unit.
+
+### `PATCH https://secure.fleetio.com/api/fuel_entries/:id` (Update Fuel Entry)
+
+Live source: https://developer.fleetio.com/reference/update-fuel-entry (fetched 2026-07-29)
+
+Same body fields as Create Fuel Entry above, except none are required on update (including `vehicle_id`, `date`, `us_gallons`, and `meter_entry_attributes`, all optional here where they were required on create). Path parameter `id` (string matching `^[0-9]+$`) is required.
+
+### `DELETE https://secure.fleetio.com/api/fuel_entries/:id` (Delete Fuel Entry)
+
+Path parameter `id` (string matching `^[0-9]+$`) is required. No request body. This is a genuine hard delete, matching CLAUDE.md's documented delete-matching rule ("RMPG hard-deletes parts and fuel entries → Fleet.io `DELETE`").
+
+### Cross-check against this codebase — regression check on #3162
+
+**⚠️ MISMATCH — the fix in PR #3162 is not present in this codebase.** PR #3162 ("fix(fleetio): fix both live dead-lettered outbound events") is still **open** (`state: "OPEN"`, `mergedAt: null` per `gh pr view 3162`) and this worktree's branch does not descend from it. As of the commit cross-checked here (`src/utils/fleetio/seed.ts:86-93`), `mapFuelEntryFieldsToFleetio` is still the **pre-fix** version:
+
+```ts
+export function mapFuelEntryFieldsToFleetio(payload: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (payload.vehicle_id !== undefined) out.vehicle_id = payload.vehicle_id;
+  if (isNonEmptyString(payload.fuel_date)) out.date = payload.fuel_date;
+  if (typeof payload.gallons === 'number') out.us_gallons = payload.gallons;
+  if (typeof payload.total_cost === 'number') out.cost = payload.total_cost;
+  return out;
+}
+```
+
+| Field sent | Fleet.io field? |
+|---|---|
+| `vehicle_id` | ✅ valid |
+| `date` | ✅ valid |
+| `us_gallons` | ✅ valid |
+| `cost` | ⚠️ MISMATCH — no `cost` field exists anywhere on the Fuel Entry create/update schema. The closest concept is `price_per_volume_unit` (a per-unit price, not a total), which this mapper never sends. |
+| — | ⚠️ MISMATCH — `meter_entry_attributes` is **required** on Create Fuel Entry and is never sent by this mapper at all. |
+
+⚠️ **MISMATCH — every `fuel_entry/create` dispatch through the code actually present in this worktree is missing a required field (`meter_entry_attributes`) and sends a nonexistent one (`cost`).** This reproduces exactly the live 422 (`fuel_entry/create` event id=9) that PR #3162's description says it fixes — the fix itself is correct in principle (confirmed below), but it has not shipped: it lives only on an unmerged branch. Until #3162 merges, every outbound fuel-entry creation from this codebase will continue to fail Fleet.io's schema validation.
+
+**The proposed fix (PR #3162 diff, not yet merged) reads:**
+
+```ts
+if (typeof payload.cost_per_gallon === 'number') out.price_per_volume_unit = payload.cost_per_gallon;
+if (typeof payload.odometer === 'number') {
+  out.meter_entry_attributes = { value: String(payload.odometer) };
+}
+```
+
+Checked against the live schema fetched above: `price_per_volume_unit` is a valid optional `float` field, and `meter_entry_attributes.value` being sent as a `String(...)` matches the live example payload, which sends `"value": "108043"` as a string, not a number — so **both of the two fields this task was asked to verify are correct** in the proposed fix. However, one gap survives even after the fix merges: `meter_entry_attributes` is **required** by Create Fuel Entry, but the proposed code only sets it `if (typeof payload.odometer === 'number')` — if a fuel entry is created without an odometer reading (`payload.odometer` is `undefined`/non-numeric), `meter_entry_attributes` is omitted entirely and the create should still 422, just via a different input shape than the one PR #3162 was written to fix. This is a narrower, unaddressed edge of the same required-field gap, not a full fix of the invariant "every Create Fuel Entry request must carry `meter_entry_attributes`."
+
+**Delete semantics.** `dispatchOutbound`'s `fuel_entry`/`delete` branch (`sync.ts:429-438`) calls `deleteFuelEntry`, issuing a real `DELETE /fuel_entries/:id` — matching RMPG's own hard-delete semantics for fuel entries and CLAUDE.md's documented delete-matching rule ("RMPG hard-deletes parts and fuel entries → Fleet.io `DELETE`"). No mismatch here.
