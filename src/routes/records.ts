@@ -9,6 +9,7 @@ import { screenPersonForSor } from '../utils/screening/nsopwAdapter';
 import { lookupFailedCoverage, LOOKUP_OK } from '../utils/screening/coverage';
 import { log } from '../utils/logger';
 import { tryRepairAndRetry } from '../utils/repairFts';
+import { upsertDlRecord } from './dlRecords';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 const records = new Hono<Env>();
@@ -257,8 +258,18 @@ const PERSON_EXT_COLUMNS = new Set([
   'address_2', // apartment/unit number (persons at 96 cols — overflow only)
   // DL barcode fields (AAMVA PDF417 elements DCB/DCD/DBD) — mig 0155
   'dl_restrictions', 'dl_endorsements', 'dl_issue_date',
+  // Full AAMVA field coverage (mig 0211) — was parsed by the scanner but
+  // dropped on the way to D1 before this change.
+  'country', 'document_discriminator', 'is_real_id', 'is_organ_donor',
+  'under_18_until', 'under_21_until', 'aamva_version', 'issuer_id',
+  'address2', 'raw_aamva_elements',
 ]);
-const PERSON_EXT_SELECT = [...PERSON_EXT_COLUMNS].join(', ');
+// Read projection excludes raw_aamva_elements: it's a raw barcode-element
+// dump kept for potential forensic/debugging use, not something every
+// authenticated caller (including client_viewer) should see on every
+// person read. Still fully writable via PERSON_EXT_COLUMNS above.
+const PERSON_EXT_READ_COLUMNS = [...PERSON_EXT_COLUMNS].filter(c => c !== 'raw_aamva_elements');
+const PERSON_EXT_SELECT = PERSON_EXT_READ_COLUMNS.join(', ');
 
 /** Upsert the overflow fields present in `body` into persons_ext (1:1 on
  *  person_id). No-op when the body carries none of them. */
@@ -366,6 +377,7 @@ records.post('/from-dl-scan', async (c) => {
       scan?: Record<string, unknown>;
       vehicle?: Record<string, unknown>;
       create_property?: boolean;
+      call_id?: number;
     }>();
     const scan = body.scan ?? {};
     const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
@@ -396,22 +408,41 @@ records.post('/from-dl-scan', async (c) => {
       const note = docType && docType !== 'license'
         ? `Created from ${docType.replace('_', ' ')} scan${docNumber ? ` (doc# ${docNumber}${str(scan.issuing_country) ? `, ${str(scan.issuing_country)}` : ''})` : ''}`
         : 'Created from DL scan';
+      // Booleans arrive from AamvaResult as `boolean | null`; coerce to
+      // 0/1/null explicitly rather than binding a JS boolean (D1's bind()
+      // behavior on raw booleans is not something to rely on).
+      const boolToInt = (v: unknown): number | null => (v == null ? null : (v ? 1 : 0));
+      const isVeteran = boolToInt(scan.is_veteran);
+
       const result = await execute(db, `
         INSERT INTO persons (first_name, middle_name, last_name, dob, gender, height, weight,
           eye_color, hair_color, address, city, state, zip, dl_number, dl_state,
-          dl_expiry, dl_class, flags, notes, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
+          dl_expiry, dl_class, is_veteran, flags, notes, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
         first, str(scan.middle_name), last, dob, str(scan.gender), str(scan.height),
         str(scan.weight), str(scan.eye_color), str(scan.hair_color), str(scan.address),
         str(scan.city), str(scan.state), str(scan.zip), dlNumber, str(scan.dl_state),
-        str(scan.dl_expiry), str(scan.dl_class),
+        str(scan.dl_expiry), str(scan.dl_class), isVeteran,
         JSON.stringify(['dl_scan_imported']), note);
       const newPersonId = Number(result.meta.last_row_id);
-      // Write AAMVA overflow fields (restrictions/endorsements/issue_date) to persons_ext
+      // Write every AAMVA overflow field to persons_ext — full field
+      // coverage (mig 0211), not just the restrictions/endorsements/issue_date
+      // subset from mig 0155.
       await writePersonExt(db, newPersonId, {
-        dl_restrictions: str(scan.dl_restrictions),
-        dl_endorsements: str(scan.dl_endorsements),
-        dl_issue_date:   str(scan.dl_issue_date),
+        suffix:                 str(scan.suffix),
+        dl_restrictions:        str(scan.dl_restrictions),
+        dl_endorsements:        str(scan.dl_endorsements),
+        dl_issue_date:          str(scan.dl_issue_date),
+        country:                str(scan.country),
+        document_discriminator: str(scan.document_discriminator),
+        is_real_id:             boolToInt(scan.is_real_id),
+        is_organ_donor:         boolToInt(scan.is_organ_donor),
+        under_18_until:         str(scan.under_18_until),
+        under_21_until:         str(scan.under_21_until),
+        aamva_version:          typeof scan.aamva_version === 'number' ? scan.aamva_version : null,
+        issuer_id:              str(scan.issuer_id),
+        address2:               str(scan.address2),
+        raw_aamva_elements:     scan.raw_elements ?? null,
       });
       person = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db,
         'SELECT * FROM persons WHERE id = ?', newPersonId));
@@ -424,6 +455,31 @@ records.post('/from-dl-scan', async (c) => {
         screenPersonForSor(c.env, personId, { triggeredBy: 'dl_scan_create' })
           .catch((err) => console.warn('[nsopw] dl_scan screen failed:', err)),
       );
+    }
+
+    // ── DL record: upsert in the same request so a scan populates both
+    // persons and dl_records — previously two disconnected write paths. ──
+    let dlRecordId: number | null = null;
+    let dlRecordCreated = false;
+    if (dlNumber) {
+      try {
+        const dlUpsert = await upsertDlRecord(db, {
+          dl_number: dlNumber, dl_state: str(scan.dl_state),
+          dl_class: str(scan.dl_class), dl_expiry: str(scan.dl_expiry),
+          dl_issue_date: str(scan.dl_issue_date),
+          dl_restrictions: str(scan.dl_restrictions), dl_endorsements: str(scan.dl_endorsements),
+          first_name: first, middle_name: str(scan.middle_name), last_name: last, suffix: str(scan.suffix),
+          date_of_birth: dob, gender: str(scan.gender), height: str(scan.height), weight: str(scan.weight),
+          eye_color: str(scan.eye_color), hair_color: str(scan.hair_color),
+          address: str(scan.address), address2: str(scan.address2), city: str(scan.city),
+          address_state: str(scan.state), postal_code: str(scan.zip),
+          source: 'DL_SCAN',
+        });
+        dlRecordId = dlUpsert.recordId;
+        dlRecordCreated = dlUpsert.created;
+      } catch (err) {
+        console.warn('[from-dl-scan] dl_records upsert failed (non-fatal):', err);
+      }
     }
 
     // ── Vehicle: optional; reuse by plate, always (re)link to the person ──
@@ -476,10 +532,113 @@ records.post('/from-dl-scan', async (c) => {
       }
     }
 
+    // ── Current call: auto-link the scanned subject to the call the
+    // officer is scanning during, mirroring the existing ALPR call_vehicles
+    // auto-link for scanned vehicles. Best-effort — a failure here must not
+    // block person/dl_records/vehicle/property creation. ──
+    let callLinked = false;
+    let caseLinkedId: number | null = null;
+    const callId = typeof body.call_id === 'number' ? body.call_id : null;
+    if (callId) {
+      try {
+        const scannerUserId = (c.get('userId') as number | null | undefined) ?? null;
+        await execute(db,
+          `INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, added_at) VALUES (?, ?, 'subject', ?, datetime('now'))`,
+          callId, personId, scannerUserId);
+        callLinked = true;
+      } catch (err) {
+        console.warn('[from-dl-scan] call_persons link failed (non-fatal):', err);
+      }
+      try {
+        const caseRow = await queryFirst<{ case_id: number }>(db,
+          'SELECT case_id FROM case_calls WHERE call_id = ? LIMIT 1', callId);
+        if (caseRow) {
+          await execute(db,
+            `INSERT OR IGNORE INTO case_person_links (case_id, person_id, relationship) VALUES (?, ?, 'linked')`,
+            caseRow.case_id, personId);
+          caseLinkedId = caseRow.case_id;
+        }
+      } catch (err) {
+        console.warn('[from-dl-scan] case_person_links link failed (non-fatal):', err);
+      }
+    }
+
+    // ── Warrants: backfill any orphaned warrant (entered by name/DOB text
+    // only, never linked to a person row) that matches this subject, then
+    // surface every active warrant now linked to them — whether just
+    // backfilled or already linked before this scan. Best-effort. ──
+    let warrantHits: Array<Record<string, unknown>> = [];
+    if (dob) {
+      try {
+        const orphaned = await query<{ id: number; warrant_number: string | null }>(db,
+          `SELECT id, warrant_number FROM warrants
+           WHERE subject_person_id IS NULL AND LOWER(status) = 'active'
+             AND LOWER(subject_first_name) = LOWER(?) AND LOWER(subject_last_name) = LOWER(?)
+             AND subject_dob = ?`,
+          first, last, dob);
+        const result = await execute(db,
+          `UPDATE warrants SET subject_person_id = ?
+           WHERE subject_person_id IS NULL AND LOWER(status) = 'active'
+             AND LOWER(subject_first_name) = LOWER(?) AND LOWER(subject_last_name) = LOWER(?)
+             AND subject_dob = ?`,
+          personId, first, last, dob);
+        if ((result.meta.changes ?? 0) > 0 && orphaned.length > 0) {
+          const warrantNumbers = orphaned.map(w => w.warrant_number ?? String(w.id)).join(', ');
+          await recordAudit(c, {
+            action: 'dl_scan_warrant_backfill',
+            entityType: 'person',
+            entityId: personId,
+            details: `Linked warrant(s) ${warrantNumbers} to person ${first} ${last} (id ${personId}) via DL scan backfill`,
+          });
+        }
+      } catch (err) {
+        console.warn('[from-dl-scan] warrant backfill failed (non-fatal):', err);
+      }
+      try {
+        warrantHits = await query<Record<string, unknown>>(db,
+          `SELECT id, warrant_number, warrant_type, offense_description, bond_amount, issuing_agency
+           FROM warrants WHERE subject_person_id = ? AND LOWER(status) = 'active'`,
+          personId);
+      } catch (err) {
+        console.warn('[from-dl-scan] warrant hit query failed (non-fatal):', err);
+      }
+    }
+
+    // ── Prior calls / open cases: surfaced for officer awareness only —
+    // never auto-written. A scan should not assert new case involvement
+    // beyond the current call it's actually happening in (handled above). ──
+    let priorCalls: Array<Record<string, unknown>> = [];
+    let openCases: Array<Record<string, unknown>> = [];
+    try {
+      priorCalls = await query<Record<string, unknown>>(db,
+        `SELECT c.id, c.call_number, c.incident_type, c.status, c.created_at
+         FROM calls_for_service c JOIN call_persons cp ON c.id = cp.call_id
+         WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 10`,
+        personId);
+    } catch (err) {
+      console.warn('[from-dl-scan] prior calls query failed (non-fatal):', err);
+    }
+    try {
+      openCases = await query<Record<string, unknown>>(db,
+        `SELECT DISTINCT ca.id, ca.case_number, ca.title, ca.status
+         FROM cases ca JOIN case_person_links cpl ON ca.id = cpl.case_id
+         WHERE cpl.person_id = ? AND LOWER(ca.status) NOT IN ('closed', 'archived')
+         ORDER BY ca.id DESC LIMIT 10`,
+        personId);
+    } catch (err) {
+      console.warn('[from-dl-scan] open cases query failed (non-fatal):', err);
+    }
+
     return c.json({
       person, person_created: personCreated,
       vehicle, vehicle_created: vehicleCreated,
       property, property_created: propertyCreated,
+      dl_record_id: dlRecordId, dl_record_created: dlRecordCreated,
+      call_linked: callLinked,
+      case_linked_id: caseLinkedId,
+      warrant_hits: warrantHits,
+      prior_calls: priorCalls,
+      open_cases: openCases,
     }, 201);
   } catch (err) {
     console.error('POST /records/from-dl-scan failed:', err);
