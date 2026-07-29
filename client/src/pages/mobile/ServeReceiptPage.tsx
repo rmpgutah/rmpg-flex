@@ -27,7 +27,7 @@
 //     deliberately withholds narrative, notes, and prior attempts.
 // ============================================================
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Check, AlertTriangle, FileText, Loader2, Download, Printer, ShieldCheck, ScanLine } from 'lucide-react';
 import SignaturePad from '../../components/SignaturePad';
@@ -448,6 +448,23 @@ export default function ServeReceiptPage() {
     return m;
   }, [partyIsEntity, isNamedParty, recipientName, phone, email, variant, businessName, residesAtAddress, authorizedAgent, premisesType, attestations, accepted, signature]);
 
+  // The "still needed" list can run to several lines (up to 5 attestations
+  // plus name/phone/email/signature), so the fixed footer's real height
+  // varies — a static pb-* reserve either wastes space or, once the list
+  // gets long enough, lets the footer cover whatever scrolled to the
+  // bottom of the page (the "who is signing" Yes/No buttons, in practice).
+  const footerRef = useRef<HTMLDivElement | null>(null);
+  const [footerHeight, setFooterHeight] = useState(160);
+  useLayoutEffect(() => {
+    const el = footerRef.current;
+    if (!el) return;
+    const measure = () => setFooterHeight(el.getBoundingClientRect().height);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [missing]);
+
   const acceptedAttestations = useMemo(
     () => attestations.map((a) => ({ id: a.id, text: a.text, accepted: !!accepted[a.id] })),
     [attestations, accepted],
@@ -798,7 +815,7 @@ export default function ServeReceiptPage() {
     + (signature ? 1 : 0);
 
   return (
-    <div className="min-h-screen bg-surface-base pb-32">
+    <div className="min-h-screen bg-surface-base" style={{ paddingBottom: footerHeight + 16 }}>
       <header className="px-4 py-4 border-b border-rmpg-700 bg-surface-sunken">
         <p className="text-[10px] uppercase tracking-widest text-fg-muted">{ctx.agency}</p>
         <h1 className="text-rmpg-50 text-lg font-bold leading-tight">Acknowledgement of Service</h1>
@@ -1117,10 +1134,10 @@ export default function ServeReceiptPage() {
 
       {/* Sticky submit — the form is long and the action must never be
           more than a thumb away on a doorstep. */}
-      <div className="fixed bottom-0 inset-x-0 border-t border-rmpg-700 bg-surface-sunken p-3">
+      <div ref={footerRef} className="fixed bottom-0 inset-x-0 border-t border-rmpg-700 bg-surface-sunken p-3">
         <div className="max-w-lg mx-auto">
           {missing.length > 0 && (
-            <p className="text-[11px] text-sev-warn mb-2 leading-snug line-clamp-3">
+            <p className="text-[11px] text-sev-warn mb-2 leading-snug">
               Still needed: {missing.join(' · ')}
             </p>
           )}
