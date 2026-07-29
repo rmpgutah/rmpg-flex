@@ -15,6 +15,7 @@ import {
   receiptFormTitle,
   validateReceiptSubmission,
   receiptBarcodeCheck,
+  decodesToPdf,
   VARIANT_LABEL,
   type ServeReceiptSubmission,
 } from '../src/routes/serveReceipt';
@@ -599,5 +600,41 @@ describe('receiptBarcodeCheck', () => {
     // divergence stops every scanned paper copy from resolving.
     expect(PINNED_CHECKS.map(([id]) => receiptBarcodeCheck(id)))
       .toEqual(PINNED_CHECKS.map(([, check]) => check));
+  });
+});
+
+describe('decodesToPdf — the emailed attachment', () => {
+  // /:token/email takes pdf_base64 from the token holder and mails it as
+  // an attachment FROM THE ASSIGNED OFFICER'S MAILBOX. Size was the only
+  // gate, so a 5MB HTML file passed as readily as a PDF and went out under
+  // an RMPG subject line with a caller-chosen filename.
+  const b64 = (s: string) => Buffer.from(s, 'binary').toString('base64');
+
+  it('accepts what jsPDF actually produces', () => {
+    // The real client path is doc.output('datauristring').split(',')[1],
+    // whose body always begins JVBERi0 — that is '%PDF-'.
+    expect(decodesToPdf('JVBERi0xLjMKJbrfrOAKMyAwIG9iago')).toBe(true);
+  });
+
+  it('rejects HTML, which is the payload that matters', () => {
+    expect(decodesToPdf(b64('<html><body onload="…">' + 'x'.repeat(300)))).toBe(false);
+  });
+
+  it.each([
+    ['an executable', b64('MZ\x90\x00' + 'x'.repeat(100))],
+    ['a PNG renamed .pdf', b64('\x89PNG\r\n\x1a\n' + 'x'.repeat(100))],
+    ['empty', ''],
+    ['not base64 at all', '<'.repeat(40)],
+    ['a leading-space near-miss', b64(' %PDF-1.4')],
+  ])('rejects %s', (_label, payload) => {
+    expect(decodesToPdf(payload)).toBe(false);
+  });
+
+  it('reads only the header, so cost does not scale with attachment size', () => {
+    // A 6MB payload is permitted by the size gate; this must not decode it
+    // all just to learn the first five bytes.
+    const big = b64('%PDF-1.7\n' + 'A'.repeat(4_000_000));
+    expect(big.length).toBeGreaterThan(4_000_000);
+    expect(decodesToPdf(big)).toBe(true);
   });
 });
