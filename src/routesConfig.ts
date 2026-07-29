@@ -132,7 +132,6 @@ import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import fleetio from './routes/fleetio';
 import legalDataHunter from './routes/legalDataHunter';
-import servemanager from './routes/servemanager';
 import webBrowser from './routes/webBrowser';
 import documentFolders from './routes/documents/folders';
 import documentsLibrary from './routes/documents/library';
@@ -459,8 +458,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Fleet.io integration: /test-connection (any authed user), /sync-status (admin), /seed (admin). 503 when FLEETIO_API_KEY is unset.' },
   { prefix: '/api/legal-data-hunter', router: legalDataHunter, auth: 'required',
     note: 'Legal Data Hunter integration: manual, officer-initiated warrant-charge validation only. POST /validate (any authed non-client_viewer user), GET /usage (admin/manager). 200 {ok:false,code:\'not_configured\'} when LEGAL_DATA_HUNTER_API_KEY is unset.' },
-  { prefix: '/api/servemanager', router: servemanager, auth: 'required',
-    note: 'ServeManager integration (Phase 1, outbound only): /test-connection (any authed user), /sync-status (admin/manager), /seed (admin, pushes serve_queue rows lacking a servemanager_links row). 503 when SERVEMANAGER_API_KEY is unset.' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
   { prefix: '/api/forensic-lab', router: forensics, auth: 'required',
