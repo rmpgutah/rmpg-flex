@@ -1513,6 +1513,15 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
 // ============================================================
 
 /** Company file / person served / hiring client. */
+export interface ReceiptPhoto {
+  /** base64 data URI, already downscaled by the caller. */
+  image: string;
+  /** ISO instant the frame was captured. Printed beneath the photograph. */
+  capturedAt?: string;
+  /** Short caption — "Front door", "Street view". */
+  label?: string;
+}
+
 export type ReceiptCopy = 'company' | 'subject' | 'client';
 
 export const RECEIPT_COPY_LABEL: Record<ReceiptCopy, string> = {
@@ -1523,6 +1532,16 @@ export const RECEIPT_COPY_LABEL: Record<ReceiptCopy, string> = {
 
 /** Print order. The agency keeps the first sheet off the printer. */
 export const RECEIPT_COPY_ORDER: ReceiptCopy[] = ['company', 'subject', 'client'];
+
+/**
+ * Check character for the scan-to-retrieve barcode. Mirrors
+ * receiptBarcodeCheck in src/routes/serveReceipt.ts — the worker resolves
+ * what this encodes, so the two must agree exactly.
+ */
+export function receiptBarcodeCheck(receiptId: number): string {
+  const sum = String(receiptId).split('').reduce((n, d, i) => n + Number(d) * (i + 2), 0);
+  return (sum % 36).toString(36).toUpperCase();
+}
 
 export type ReceiptVariantKey = 'individual' | 'co_habitant' | 'business' | 'substitute';
 
@@ -1578,9 +1597,15 @@ export interface ReceiptOfServiceData {
    * A proof of service is testimony about a place and a moment. A photo of
    * the door taken as it was signed answers "were you actually there?"
    * better than a coordinate pair does, and it is the question a contested
-   * service turns on. Base64 data URIs, already downscaled by the caller.
+   * service turns on.
+   *
+   * Each carries WHEN it was taken, because an undated photograph proves
+   * far less than a dated one: without a timestamp it shows a door, not
+   * that door at the moment of service, and opposing counsel gets to ask
+   * when it was really taken. A plain string[] is still accepted for
+   * callers that genuinely have no metadata.
    */
-  photos?: string[];
+  photos?: Array<string | ReceiptPhoto>;
 
   /**
    * Which of the three copies this render is.
@@ -2644,21 +2669,38 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     // door number stays legible at either size; a second sheet does not
     // become less annoying.
     const across = tight ? 3 : 2;
-    const gap = 3;
-    const w = (ffw - gap * (across - 1)) / across;
+    const gapX = 3;
+    const capH = 2.6;   // caption strip under each frame
+    const w = (ffw - gapX * (across - 1)) / across;
     const h = w * (tight ? 0.58 : 0.62);
     let px = lx;
     for (let i = 0; i < Math.min(data.photos.length, across); i++) {
-      if (i > 0 && i % across === 0) { y += h + gap; px = lx; }
+      if (i > 0 && i % across === 0) { y += h + capH + gapX; px = lx; }
+      const entry = data.photos[i];
+      const photo: ReceiptPhoto = typeof entry === 'string' ? { image: entry } : entry;
       try {
-        doc.addImage(data.photos[i], 'JPEG', px, y, w, h);
+        doc.addImage(photo.image, 'JPEG', px, y, w, h);
         doc.setDrawColor(...COLOR.BORDER_FIELD);
         doc.setLineWidth(BORDER.IMAGE_FRAME);
         doc.rect(px, y, w, h);
       } catch { /* a corrupt frame must never cost the instrument */ }
-      px += w + gap;
+
+      // Caption beneath, not overlaid: a timestamp burned into the image
+      // is unreadable against a dark doorway and cannot be selected or
+      // searched in the filed PDF.
+      const when = photo.capturedAt ? receiptDateParts(photo.capturedAt) : null;
+      const caption = [photo.label, when && `${when.date} ${when.time}`]
+        .filter(Boolean).join(' — ');
+      if (caption) {
+        doc.setFont(PDF_VALUE_FONT, 'normal');
+        doc.setFontSize(FONT.SIZE_SMALL_META - 0.5);
+        doc.setTextColor(...COLOR.TEXT_TERTIARY);
+        doc.text(fitPdfText(doc, sanitizePdfText(caption), w), px, y + h + 2);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      }
+      px += w + gapX;
     }
-    y += h + SPACING.MD;
+    y += h + capH + SPACING.MD;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2820,7 +2862,14 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       //
       // Only on a SIGNED instrument. A blank has no record to retrieve,
       // and a barcode resolving to nothing is worse than none at all.
-      ...(blank || !data.receiptId ? {} : { value: `RMPG-AOS:${data.receiptId}` }),
+      // Check character appended. `RMPG-AOS:4471` has no redundancy, so a
+      // single misread digit resolves to a DIFFERENT REAL RECEIPT and the
+      // clerk has no way to know. Mod-36 over the digits turns a silent
+      // wrong answer into a refusal to resolve — the only acceptable
+      // failure mode when the thing being looked up is a legal record.
+      ...(blank || !data.receiptId
+        ? {}
+        : { value: `RMPG-AOS:${data.receiptId}-${receiptBarcodeCheck(data.receiptId)}` }),
       formMetadata: {
         form: RECEIPT_FORM_KEY[data.variant],
         caseNumber: data.caseNumber,
