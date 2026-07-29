@@ -88,7 +88,16 @@ export function mapFuelEntryFieldsToFleetio(payload: Record<string, unknown>): R
   if (payload.vehicle_id !== undefined) out.vehicle_id = payload.vehicle_id;
   if (isNonEmptyString(payload.fuel_date)) out.date = payload.fuel_date;
   if (typeof payload.gallons === 'number') out.us_gallons = payload.gallons;
-  if (typeof payload.total_cost === 'number') out.cost = payload.total_cost;
+  // Fleet.io has no `cost` field — POST /fuel_entries takes a per-unit price
+  // (`price_per_volume_unit`), not a total. `cost` was silently ignored, but
+  // `meter_entry_attributes` is REQUIRED (developer.fleetio.com/reference/
+  // create-fuel-entry, confirmed 2026-07-29) and its absence — not the bogus
+  // `cost` field — is what caused the live 422 (fuel_entry/create event
+  // id=9). Fleet.io's own example sends the meter value as a string.
+  if (typeof payload.cost_per_gallon === 'number') out.price_per_volume_unit = payload.cost_per_gallon;
+  if (typeof payload.odometer === 'number') {
+    out.meter_entry_attributes = { value: String(payload.odometer) };
+  }
   return out;
 }
 

@@ -79,18 +79,30 @@ describe('mapVehicleFieldsToFleetio', () => {
 describe('mapFuelEntryFieldsToFleetio', () => {
   it('translates RMPG fuel_log column names to Fleet.io fuel_entries field names', () => {
     expect(mapFuelEntryFieldsToFleetio({
-      vehicle_id: 42, fuel_date: '2026-07-17', gallons: 5.026, total_cost: 20,
-    })).toEqual({ vehicle_id: 42, date: '2026-07-17', us_gallons: 5.026, cost: 20 });
+      vehicle_id: 42, fuel_date: '2026-07-17', gallons: 5.026, cost_per_gallon: 3.979, odometer: 93918.8,
+    })).toEqual({
+      vehicle_id: 42, date: '2026-07-17', us_gallons: 5.026, price_per_volume_unit: 3.979,
+      meter_entry_attributes: { value: '93918.8' },
+    });
   });
 
-  it('drops RMPG-only fields with no Fleet.io equivalent (the live 422 cause)', () => {
+  it('drops RMPG-only fields with no Fleet.io equivalent, and includes the REQUIRED meter_entry_attributes (the live 422 cause)', () => {
     const mapped = mapFuelEntryFieldsToFleetio({
       id: 92, vehicle_id: 1, fuel_date: '2026-07-17', gallons: 5.026,
       cost_per_gallon: 3.979, fuel_type: 'regular', station: 'Maverik 627',
       payment_method: 'Cash', driver_name: 'X', location: 'Y', mpg: null,
-      total_cost: 20, custom_fields_json: null,
+      total_cost: 20, odometer: 93918.8, custom_fields_json: null,
     });
-    expect(mapped).toEqual({ vehicle_id: 1, date: '2026-07-17', us_gallons: 5.026, cost: 20 });
+    expect(mapped).toEqual({
+      vehicle_id: 1, date: '2026-07-17', us_gallons: 5.026, price_per_volume_unit: 3.979,
+      meter_entry_attributes: { value: '93918.8' },
+    });
+  });
+
+  it('omits meter_entry_attributes when odometer is absent (Fleet.io will 422 — no valid meter value to send)', () => {
+    expect(mapFuelEntryFieldsToFleetio({
+      vehicle_id: 42, fuel_date: '2026-07-17', gallons: 5.026,
+    })).toEqual({ vehicle_id: 42, date: '2026-07-17', us_gallons: 5.026 });
   });
 });
 
