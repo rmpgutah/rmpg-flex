@@ -62,6 +62,14 @@ describe('isRiskFlagged', () => {
   it('does not flag when there is nothing notable', () => {
     expect(isRiskFlagged({ priority: 'normal', location_note_text: null })).toBe(false);
   });
+
+  it('flags a safety keyword in service_instructions (ServeJob shape, no location_note_text)', () => {
+    expect(isRiskFlagged({ priority: 'normal', service_instructions: 'Aggressive dog on property, use caution' })).toBe(true);
+  });
+
+  it('does not flag benign service_instructions', () => {
+    expect(isRiskFlagged({ priority: 'routine', service_instructions: 'Gate code is 1234' })).toBe(false);
+  });
 });
 
 describe('matchesDeadlineFilter', () => {
