@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseWindowsBatteryOutput } = require('../hardwareFz55');
+const { parseWindowsBatteryOutput, parseWindowsDockOutput } = require('../hardwareFz55');
 
 test('parseWindowsBatteryOutput: single battery, discharging', () => {
   const raw = JSON.stringify({ DeviceID: 'Battery0', EstimatedChargeRemaining: 76, BatteryStatus: 1 });
@@ -53,4 +53,27 @@ test('parseWindowsBatteryOutput: empty array (desktop, no battery) returns null'
 
 test('parseWindowsBatteryOutput: malformed JSON returns null', () => {
   assert.equal(parseWindowsBatteryOutput('not json'), null);
+});
+
+test('parseWindowsDockOutput: docked when a DockUpDown device is OK', () => {
+  const raw = JSON.stringify({ Status: 'OK' });
+  assert.deepEqual(parseWindowsDockOutput(raw), { docked: true });
+});
+
+test('parseWindowsDockOutput: docked when multiple DockUpDown devices, one OK', () => {
+  const raw = JSON.stringify([{ Status: 'Error' }, { Status: 'OK' }]);
+  assert.deepEqual(parseWindowsDockOutput(raw), { docked: true });
+});
+
+test('parseWindowsDockOutput: not docked when no devices returned', () => {
+  assert.deepEqual(parseWindowsDockOutput(JSON.stringify([])), { docked: false });
+});
+
+test('parseWindowsDockOutput: not docked when devices exist but none OK', () => {
+  const raw = JSON.stringify([{ Status: 'Error' }]);
+  assert.deepEqual(parseWindowsDockOutput(raw), { docked: false });
+});
+
+test('parseWindowsDockOutput: not docked on malformed JSON', () => {
+  assert.deepEqual(parseWindowsDockOutput('garbage'), { docked: false });
 });

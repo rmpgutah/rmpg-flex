@@ -40,6 +40,23 @@ function parseWindowsBatteryOutput(rawJsonString) {
   return { batteries, overallPercent, charging };
 }
 
+/**
+ * Parses `Get-PnpDevice -Class DockUpDown | Select-Object Status | ConvertTo-Json`
+ * output. The 24-pin docking connector fires an ACPI DockUpDown PnP event;
+ * `docked: true` when at least one such device reports Status 'OK'.
+ */
+function parseWindowsDockOutput(rawJsonString) {
+  let parsed;
+  try {
+    parsed = JSON.parse(rawJsonString);
+  } catch {
+    return { docked: false };
+  }
+  const entries = Array.isArray(parsed) ? parsed : [parsed];
+  return { docked: entries.some((entry) => entry && entry.Status === 'OK') };
+}
+
 module.exports = {
   parseWindowsBatteryOutput,
+  parseWindowsDockOutput,
 };

@@ -119,6 +119,7 @@ contextBridge.exposeInMainWorld('electron', {
   listVideoDevices: async () => filterVideoInputDevices(await navigator.mediaDevices.enumerateDevices()),
   getBluetoothDevices: () => ipcRenderer.invoke('device:bluetooth'),
   checkGpsHardwarePresent: () => ipcRenderer.invoke('device:gps-present'),
+  getDockState: () => ipcRenderer.invoke('device:dock-state'),
   setAutoLaunch: (enabled) => ipcRenderer.invoke('device:set-auto-launch', enabled),
   getAutoLaunchState: () => ipcRenderer.invoke('device:auto-launch-state'),
   setKioskShell: (enabled) => ipcRenderer.invoke('device:set-kiosk-shell', enabled),
