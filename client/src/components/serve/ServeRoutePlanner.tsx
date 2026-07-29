@@ -8,6 +8,7 @@ import { installWebglContextRecovery } from '../../utils/webglRecovery';
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
 import { whenStyleReady } from '../../pages/map/utils/safeAddSource';
 import { apiFetch } from '../../hooks/useApi';
+import { useGpsTracking } from '../../hooks/useGpsTracking';
 import type { ServeJob } from '../../types';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
@@ -196,11 +197,16 @@ function TimeWindowBadge({ tw }: { tw: ServeJob['time_window'] }) {
 }
 
 function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
+  // Matches the serve_queue.priority CHECK constraint (see ServeJob['priority']
+  // in types/index.ts): 'routine' | 'normal' | 'rush' | 'urgent'. The previous
+  // 'high'/'low' keys never matched real data, so 'urgent' and 'routine' both
+  // silently fell through to the 'normal' style — the two priorities officers
+  // most need to tell apart at a glance were rendered identically.
   const colors: Record<string, string> = {
-    rush: 'bg-red-900/40 text-red-400 border-red-700/50',
-    high: 'bg-orange-900/40 text-orange-400 border-orange-700/50',
+    urgent: 'bg-red-900/40 text-red-400 border-red-700/50',
+    rush: 'bg-orange-900/40 text-orange-400 border-orange-700/50',
     normal: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
-    low: 'bg-rmpg-800/30 text-fg-muted border-rmpg-700/30',
+    routine: 'bg-rmpg-800/30 text-fg-muted border-rmpg-700/30',
   };
   return <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono uppercase ${colors[p] || colors.normal}`}>{p}</span>;
 }
@@ -217,9 +223,6 @@ export default function ServeRoutePlanner({
   const [mapReady, setMapReady] = useState(false);
   const [totalDistance, setTotalDistance] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
-  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
-  const gpsWatchId = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedOfficerId, setSelectedOfficerId] = useState<number>(currentUserId || 0);
   const [routeDate] = useState(() => {
@@ -255,40 +258,20 @@ export default function ServeRoutePlanner({
     setError(null);
   }, [isOpen, jobs]);
 
-  // ─── Live GPS tracking (watchPosition for real-time location) ───
-  const watchIdRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) {
-      if (gpsWatchId.current != null) { navigator.geolocation.clearWatch(gpsWatchId.current); gpsWatchId.current = null; }
-      return;
-    }
-    if (!navigator.geolocation) return;
-
-    // Initial one-shot for fast response
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        setCurrentLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setGpsAccuracy(pos.coords.accuracy || null);
-      },
-      () => {},
-      { enableHighAccuracy: true, timeout: 10000 },
-    );
-
-    // Continuous tracking while planner is open
-    gpsWatchId.current = navigator.geolocation.watchPosition(
-      pos => {
-        setCurrentLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setGpsAccuracy(pos.coords.accuracy || null);
-      },
-      () => {},
-      { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 },
-    );
-
-    return () => {
-      if (gpsWatchId.current != null) { navigator.geolocation.clearWatch(gpsWatchId.current); gpsWatchId.current = null; }
-    };
-  }, [isOpen]);
+  // ─── Live GPS tracking ───
+  // The app already runs a single mandatory, hardened location tracker
+  // app-wide (Layout mounts useGpsTracking — Toughbook internal GPS,
+  // WiFi-jump smoothing, IP fallback, heartbeat restart). This component
+  // used to spin up its OWN bare navigator.geolocation.watchPosition,
+  // duplicating the permission prompt/battery cost and getting none of
+  // that hardening — on a Toughbook it would fight the internal-GPS
+  // reader for the same COM port. Read the shared tracker instead
+  // (upload: false — Layout's instance already owns breadcrumb uploads).
+  const gps = useGpsTracking({ upload: false });
+  const currentLocation = isOpen && gps.latitude != null && gps.longitude != null
+    ? { lat: gps.latitude, lng: gps.longitude }
+    : null;
+  const gpsAccuracy = gps.accuracy;
 
   useEffect(() => {
     if (!isOpen || savedRouteLoaded) return;
