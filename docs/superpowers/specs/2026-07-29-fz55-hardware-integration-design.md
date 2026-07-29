@@ -140,5 +140,13 @@ terminated by Enter.
 - Fingerprint and smartcard xPAK modules — not confirmed in RMPG's fleet.
 - WWAN *data* control (dialing, APN config) — read-only status only; provisioning is a
   carrier/BIOS-level concern (Panasonic PC Command for PowerShell), not this app's job.
+- **`signalPercent` on the WWAN status shape.** This section originally specified
+  `{ present, connected, signalPercent: number | null }` via a best-effort second query
+  against `MSFT_NetworkAdapterSignalQuality`. The implementation shipped `{ present, connected }`
+  only — the signal-quality WMI class is unreliable across Sierra Wireless minidriver versions
+  (per this doc's own note above), and getting `present`/`connected` working correctly was
+  judged the higher-value first cut. Signal strength is a real gap for dispatchers judging
+  a patrol unit's LTE quality; add `signalPercent` as a follow-on task rather than assuming
+  it already exists.
 - Automatic UI mode-switching on dock state (vehicle/nav layout) — this design only wires
   the dock-state signal through; consuming it to change layout is a follow-on client-side task.
