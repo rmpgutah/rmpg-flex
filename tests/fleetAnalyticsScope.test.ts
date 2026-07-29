@@ -161,7 +161,9 @@ describe('FLEET_ONLY_BLOCKS', () => {
     expect(FLEET_ONLY_BLOCKS).toContain('utilization');
     expect(FLEET_ONLY_BLOCKS).toContain('service_compliance');
     expect(FLEET_ONLY_BLOCKS).toContain('cost_per_mile_ranking');
-    expect(FLEET_ONLY_BLOCKS).toContain('fuel_economy_ranking');
     expect(FLEET_ONLY_BLOCKS).toContain('oldest_vehicle_year');
+    // 'fuel_economy_ranking' is deliberately NOT in this list — the route
+    // never returns that key (it returns the properly-scoped
+    // 'fuel_economy_trend' instead), so it named a block that doesn't exist.
   });
 });

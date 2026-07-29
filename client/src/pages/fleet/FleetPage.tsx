@@ -1715,6 +1715,7 @@ export default function FleetPage() {
               assignments={assignments}
               analytics={analytics}
               analyticsLoading={analyticsLoading}
+              onAnalyticsPeriodChange={(p) => { if (selectedId) fetchVehicleAnalytics(selectedId, p); }}
               personnelData={personnelData}
               personnelLoading={personnelLoading}
               activeTab={activeTab}

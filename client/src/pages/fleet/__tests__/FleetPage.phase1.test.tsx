@@ -166,6 +166,44 @@ describe('FleetPage — tab persistence', () => {
   });
 });
 
+describe('FleetPage — per-vehicle Analytics period selector refetches', () => {
+  beforeEach(() => {
+    mockedApiFetch.mockReset();
+    localStorage.clear();
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url.startsWith('/fleet?')) return Promise.resolve({ data: [VEHICLE], pagination: { total: 1 } });
+      if (url === '/fleet/1') return Promise.resolve(VEHICLE);
+      if (url.startsWith('/fleet/analytics')) return Promise.resolve({ scope: 'vehicle', fleet_summary: {} });
+      if (url.startsWith('/form-drafts/')) return Promise.resolve({ data: null });
+      return Promise.resolve({ data: [] });
+    });
+  });
+
+  it('issues a refetch carrying BOTH vehicle_id and the newly selected period', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText('PS-D19'));
+    await user.click(await screen.findByRole('tab', { name: /analytics/i }));
+
+    await waitFor(() => {
+      expect(mockedApiFetch).toHaveBeenCalledWith(expect.stringContaining('/fleet/analytics?vehicle_id=1'));
+    });
+
+    mockedApiFetch.mockClear();
+    await user.click(await screen.findByRole('button', { name: '30D' }));
+
+    await waitFor(() => {
+      // Assert on the exact query string, not a loose substring: an
+      // '/fleet/analytics?vehicle_id=1' prefix match alone wouldn't prove
+      // period=30d was actually appended, and this program already had a
+      // sibling-request false-match bug (stringContaining('/fleet/1/fuel')
+      // also matching '/fleet/1/fuel-efficiency').
+      const calledUrls = mockedApiFetch.mock.calls.map((c) => c[0]);
+      expect(calledUrls).toContain('/fleet/analytics?vehicle_id=1&period=30d');
+    });
+  });
+});
+
 describe('FleetPage — cost-per-mile failure is visible', () => {
   beforeEach(() => {
     mockedApiFetch.mockReset();

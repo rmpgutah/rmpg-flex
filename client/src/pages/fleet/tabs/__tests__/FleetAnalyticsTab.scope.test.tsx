@@ -54,4 +54,15 @@ describe('FleetAnalyticsTab scope labelling', () => {
     }} />);
     expect(screen.queryByTestId('card-status_breakdown')).toBeNull();
   });
+
+  // Positive control for the test above: without this, `isOmitted` hardwired
+  // to always return `true` would still pass "hides a card named in
+  // omitted_for_vehicle_scope" — that test only ever asserts absence. With
+  // an empty omitted_for_vehicle_scope, the card must be PRESENT.
+  it('renders the card when it is NOT named in omitted_for_vehicle_scope', () => {
+    render(<FleetAnalyticsTab analytics={{
+      ...BASE, scope: 'vehicle', omitted_for_vehicle_scope: [],
+    }} />);
+    expect(screen.queryByTestId('card-status_breakdown')).not.toBeNull();
+  });
 });
