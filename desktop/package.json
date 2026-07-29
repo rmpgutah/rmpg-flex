@@ -42,6 +42,7 @@
       "syncManager.js",
       "internalGps.js",
       "systemInfo.js",
+      "hardwareFz55.js",
       "fileOps.js",
       "deviceInfo.js",
       "windowManager.js",

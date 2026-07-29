@@ -1468,28 +1468,33 @@ export default function ServePage() {
         });
       }
     }
-
   }, [jobs, routeData, mapZoom, mapDeadlineFilter, selectedJobIds, fetchJobs]);
 
   useEffect(() => {
     if (mapReady) updateMapMarkers();
   }, [mapReady, updateMapMarkers]);
 
-  // fitBounds lives in its own effect, deliberately NOT keyed on mapZoom.
-  // updateMapMarkers above used to call fitBounds() at its own end while also
-  // depending on mapZoom (for cluster granularity) — so a user zoom fired
-  // 'zoomend' -> setMapZoom -> new updateMapMarkers identity -> this effect
-  // re-ran -> fitBounds() -> 'zoomend' again, forever. The map only reframes
-  // here when the underlying job set or the deadline filter actually changes.
+  // Fit bounds to the job set — deliberately its own effect, NOT folded into
+  // updateMapMarkers above. updateMapMarkers is keyed on mapZoom (so it can
+  // re-cluster as the user zooms), and the map's own 'zoomend' handler calls
+  // setMapZoom on every camera change, including ones fitBounds itself causes.
+  // Calling fitBounds from inside the mapZoom-keyed callback closes a loop:
+  // zoom -> setMapZoom -> updateMapMarkers -> fitBounds -> zoomend -> setMapZoom
+  // -> repeat, each pass nudging the view by a slightly different amount — the
+  // map never settles and visibly vibrates. Keying this effect on the job set
+  // instead (not mapZoom, not selectedJobIds) means fitBounds only runs when
+  // the underlying data actually changes, matching the same fix already
+  // applied to ServeIntakeMap.tsx's fit-bounds effect.
   useEffect(() => {
-    if (!mapReady || !mapRef.current) return;
-    const mappableJobs = jobs
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const mappable = jobs
       .filter((j) => j.recipient_lat != null && j.recipient_lng != null)
       .filter((j) => matchesDeadlineFilter(j.deadline, mapDeadlineFilter, Date.now()));
-    if (mappableJobs.length === 0) return;
+    if (mappable.length === 0) return;
     const bounds = new mapboxgl.LngLatBounds();
-    mappableJobs.forEach((j) => bounds.extend([j.recipient_lng!, j.recipient_lat!]));
-    mapRef.current.fitBounds(bounds, { padding: 60 });
+    for (const j of mappable) bounds.extend([j.recipient_lng!, j.recipient_lat!]);
+    map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
   }, [mapReady, jobs, mapDeadlineFilter]);
 
   // Attempt-history trail overlay. Follows the hardened cleanup pattern: read

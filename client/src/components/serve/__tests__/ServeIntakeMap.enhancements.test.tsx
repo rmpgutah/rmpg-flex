@@ -75,6 +75,9 @@ vi.mock('../../../utils/mapboxLoader', () => ({
         on: vi.fn((event: string, cb: (...args: any[]) => void) => { handlers[event] = cb; }),
         __handlers: handlers,
         getLngLat: vi.fn(() => ({ lng: -111.9, lat: 40.7 })),
+        setPopup: vi.fn().mockReturnThis(),
+        getPopup: vi.fn(() => null),
+        getElement: vi.fn(() => opts?.element),
       };
       markerInstances.push(instance);
       return instance;
@@ -154,6 +157,47 @@ describe('ServeIntakeMap', () => {
   it('renders without crashing and loads the queue', async () => {
     render(<ServeIntakeMap />);
     await waitFor(() => expect(screen.getByText(/no active serve orders/i)).toBeInTheDocument());
+  });
+
+  it('fetches and plots dispatch units only after "Show Units" is toggled on', async () => {
+    const MOCK_UNIT = {
+      id: 'u1', call_sign: 'A-12', status: 'available' as const, officer_name: 'Officer Test',
+      latitude: 40.77, longitude: -111.9, gps_heading: null, gps_accuracy: null,
+      vehicle: '', current_call_id: null, call_number: null,
+      current_call_type: null, current_call_location: null,
+    };
+    const apiFetchSpy = vi.spyOn(useApiModule, 'apiFetch').mockImplementation((path: string) => {
+      if (path === '/serve-intake/map-items') return Promise.resolve([]);
+      if (path === '/serve-intake/location-notes') return Promise.resolve([]);
+      if (path === '/dispatch/units') return Promise.resolve([MOCK_UNIT]);
+      return Promise.resolve([]);
+    });
+
+    render(<ServeIntakeMap />);
+    await waitFor(() => expect(screen.getByText(/no active serve orders/i)).toBeInTheDocument());
+
+    // Off by default — no units poll should fire.
+    expect(apiFetchSpy).not.toHaveBeenCalledWith('/dispatch/units');
+
+    await act(async () => {
+      screen.getByRole('button', { name: /show units/i }).click();
+    });
+
+    await waitFor(() => expect(apiFetchSpy).toHaveBeenCalledWith('/dispatch/units'));
+    await waitFor(() => expect(lastMapInstance.addSource).not.toThrow);
+    // A unit marker is a plain mapboxgl.Marker with a DOM element built by
+    // buildUnitMarkerEl — assert one was created for the fetched unit.
+    await waitFor(() => expect(
+      markerElements.some((el) => el.className === 'rmpg-mbx-unit'),
+    ).toBe(true));
+
+    // Toggling back off removes the unit marker(s).
+    await act(async () => {
+      screen.getByRole('button', { name: /show units/i }).click();
+    });
+    await waitFor(() => expect(
+      markerInstances.filter((m) => m.remove.mock.calls.length > 0).length,
+    ).toBeGreaterThan(0));
   });
 
   it('draws the attempt-history trail overlay when the popup trail button is clicked', async () => {
