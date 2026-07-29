@@ -1089,3 +1089,53 @@ No behavior changes, no new features, no threshold configuration (PR 3), no URL 
 - Phase 1 test files show an **empty** diff against `origin/main`
 - All six gates green, post-rebase
 - The hazard regression test confirmed to fail when the guard is removed
+
+---
+
+## ⛔ STATUS 2026-07-29 — Tasks 3+4 are implemented but NOT mergeable
+
+Work paused after Task 4. Tasks 1 and 2 were reviewed clean and shipped separately
+(`claude/fleet-p2-hooks-1-2`). Tasks 3 and 4 are implemented and their full suite is green
+(501 files / 3764 tests, Phase 1 test files byte-identical), but a paired review found two
+blocking behavior regressions. **A green suite does not clear them — nothing in the suite counts
+HTTP requests, which is exactly why they slipped through.**
+
+Task 3 itself is clean. Both blockers are in the single lazy-load effect at the end of
+`useFleetCosts.ts`.
+
+**B1 — opening the Costs tab issues the 7-endpoint cost fetch three times instead of once.**
+The effect's deps are `[selectedId, activeTab, fetchCosts]`. `fetchCosts`'s identity chains
+through `recomputeCostSummary` → `[fuelSummary, maintenance, costPerMile]`, and both
+`costPerMile` (loaded by `fetchCosts` itself) and `fuelSummary` (loaded by `useVehicleDetail`'s
+costs branch) settle *after* the first fetch — each re-mints `fetchCosts` and re-fires the effect.
+Measured: **21 requests where the pre-refactor code sent 7.** Pre-refactor the equivalent effect
+was keyed `[selectedId, activeTab]` with an `eslint-disable`, so it fired exactly once.
+
+**B2 — switching vehicles while on the Costs tab fires seven net-new requests.**
+Pre-refactor, the skip guard suppressed the costs branch *entirely* on a vehicle switch, so a
+switch issued **zero** cost requests. Measured post-refactor: all seven `/fleet/:id/*` cost
+endpoints fire. Ids are correct and they resolve after `resetCosts()`, so this is not a
+wrong-vehicle bug on its own — but B1 widens the in-flight window enough that the previous
+vehicle's third round can land after the switch and populate cost state from it.
+
+**Suggested fix (a few lines).** Drop `fetchCosts` from that effect's dep array, restoring the
+pre-refactor `[selectedId, activeTab]` shape (the `eslint-disable` is already present), and route
+the costs branch through the existing skip guard. The cleanest way to get the guard without the
+circular dependency this plan was avoiding: have `useVehicleDetail` accept an optional
+`onLazyLoad(tab, id)` invoked from **inside** its guarded effect, and let `useFleetCosts` supply
+it. Every tab-keyed fetch then sits behind the one `skipNextLazyLoadRef`, making the invariant the
+JSDoc already asserts true of the whole page rather than of one file.
+
+**B3 (Minor).** `useFleetCosts.test.tsx` mocks `useToast` inline, producing a fresh `addToast`
+every render and an unbounded refetch loop — 638 `/loans` calls measured in a single test body,
+while the test still passed (it only awaits `costSummary != null`). A harness artifact, since the
+real `ToastProvider.addToast` is `useCallback([])`, but these are the tests that should have caught
+B1 and B2. Hoist a stable `addToast` and a module-level `maintenance` array, and **add a
+call-count assertion** — the missing assertion class here is "how many requests", not "what value".
+
+**Also note:** these reports cite ratchet 10541; the actual pin in `accentTokens.test.ts` is
+**10530** (the reports' grep included test files, which the ratchet's walker skips). Net accent
+delta across Tasks 3+4 is +2/−2 = 0, so the pin is unaffected either way.
+
+Tasks 5 (`useFleetForms`), 6 (group `FleetDetailPanel` props) and 7 (verify + PR) are **not
+started**.
