@@ -22,8 +22,7 @@ import UnsavedChangesGuard from '../../components/UnsavedChangesGuard';
 import { nowLocalISO, toDatetimeLocal } from './utils/fleetFormatters';
 import GaugeRing from './components/GaugeRing';
 import FleetDetailPanel, { type DetailTab, type CostSubTab } from './FleetDetailPanel';
-import FleetCostFormModal, { type CostCategory, type CostFormState, EMPTY_COST_FORM } from './modals/FleetCostFormModal';
-import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetOtherCost, FleetCostBudget, FleetCostSummary } from '../../types';
+import FleetCostFormModal from './modals/FleetCostFormModal';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
 import FleetAnalysisFormsTab from './tabs/FleetAnalysisFormsTab';
 import FleetVendorsTab from './tabs/FleetVendorsTab';
@@ -37,6 +36,8 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import ExportButton from '../../components/ExportButton';
 import MaintenanceMonitor from './components/MaintenanceMonitor';
 import { useFleetVehicles } from './hooks/useFleetVehicles';
+import { useVehicleDetail } from './hooks/useVehicleDetail';
+import { useFleetCosts } from './hooks/useFleetCosts';
 import type {
   FleetVehicle, FleetMaintenance, FleetVehicleStatus, FleetFuelLog,
   FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
@@ -155,8 +156,6 @@ export default function FleetPage() {
     statusCounts, avgMileage, refetch: fetchVehicles,
   } = useFleetVehicles();
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
-  const [detail, setDetail] = useState<FleetVehicle | null>(null);
-  const [maintenance, setMaintenance] = useState<FleetMaintenance[]>([]);
 
   // Map vehicle.id → display number (e.g. "PS-D19") for PDF report labels
   const vehicleNumberById = useMemo(() => {
@@ -167,8 +166,8 @@ export default function FleetPage() {
     return m;
   }, [vehicles]);
 
-  // Tab & modal state
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics', 'dashcam', 'fuel_cards'] as const);
+  // Tab & modal state. The per-vehicle detail tab (`rmpg_fleet_tab`) is owned
+  // by useVehicleDetail — it is coupled to that hook's reset/lazy-load effects.
   // Top-level view mode when no vehicle is selected: dashboard (default) or analysis forms
   // Persisted with the same mechanism as activeTab — the two mode
   // mechanisms behaving differently is what produced this page's tab bugs.
@@ -222,16 +221,6 @@ export default function FleetPage() {
   const setInspectionForm = i.setForm;
   const [saving, setSaving] = useState(false);
 
-  // New feature data
-  const [fuelLogs, setFuelLogs] = useState<FleetFuelLog[]>([]);
-  const [fuelSummary, setFuelSummary] = useState<FleetFuelSummary | null>(null);
-  const [inspections, setInspections] = useState<FleetInspection[]>([]);
-  const [assignments, setAssignments] = useState<FleetAssignment[]>([]);
-  const [analytics, setAnalytics] = useState<FleetAnalytics | null>(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [personnelData, setPersonnelData] = useState<FleetPersonnelData | null>(null);
-  const [personnelLoading, setPersonnelLoading] = useState(false);
-
   // Fleet-wide analytics for no-selection state
   const [fleetAnalytics, setFleetAnalytics] = useState<FleetAnalytics | null>(null);
   const [fleetAnalyticsLoading, setFleetAnalyticsLoading] = useState(false);
@@ -244,10 +233,6 @@ export default function FleetPage() {
   const [deletingFuel, setDeletingFuel] = useState<FleetFuelLog | null>(null);
   const [deletingMaintenance, setDeletingMaintenance] = useState<FleetMaintenance | null>(null);
   const [deletingInspection, setDeletingInspection] = useState<FleetInspection | null>(null);
-
-  // ── Feature 16/19/20: Pre-trip, vehicle swaps, cost-per-mile ──
-  const [costPerMile, setCostPerMile] = useState<any>(null);
-  const [costPerMileLoading, setCostPerMileLoading] = useState(false);
 
   // ── GPS mileage (from dispatch breadcrumbs) ──────────────────
   const [gpsMileage, setGpsMileage] = useState<any>(null);
@@ -282,21 +267,57 @@ export default function FleetPage() {
     } finally { setGpsMileageLoading(false); }
   };
 
-  // ── Cost-of-ownership state (Costs tab) ──────────────────────
-  const [loans, setLoans] = useState<FleetLoan[]>([]);
-  const [insurancePolicies, setInsurancePolicies] = useState<FleetInsurancePolicy[]>([]);
-  const [accessories, setAccessories] = useState<FleetAccessory[]>([]);
-  const [utilities, setUtilities] = useState<FleetUtilityCost[]>([]);
-  const [otherCosts, setOtherCosts] = useState<FleetOtherCost[]>([]);
-  const [costSubTab, setCostSubTab] = useState<CostSubTab>('loan');
-  const [costModalOpen, setCostModalOpen] = useState(false);
-  const [costCategory, setCostCategory] = useState<CostCategory>('loan');
-  const [costMode, setCostMode] = useState<'create' | 'edit'>('create');
-  const [costInitial, setCostInitial] = useState<CostFormState | null>(null);
-  const [editingCostId, setEditingCostId] = useState<string | number | null>(null);
-  const [savingCost, setSavingCost] = useState(false);
-  const [deletingCost, setDeletingCost] = useState<{ category: CostCategory; record: any } | null>(null);
-  const [costSummary, setCostSummary] = useState<FleetCostSummary | null>(null);
+  // Held in a ref so useVehicleDetail's reset effect can call the CURRENT
+  // useFleetCosts.resetCosts without a circular hook dependency (useFleetCosts
+  // itself needs `activeTab`, which useVehicleDetail produces).
+  const resetCostsRef = useRef<() => void>(() => {});
+
+  // Same ref bridge, same circularity, for the Costs-tab lazy load. Routing it
+  // through useVehicleDetail's ONE skip-guarded lazy-load effect (instead of a
+  // second effect keyed off activeTab inside useFleetCosts) is what keeps the
+  // "one guard for every tab-keyed fetch" invariant true of the whole page.
+  const costsLazyLoadRef = useRef<(tab: string, id: string | number) => void>(() => {});
+
+  // Cleared whenever the selected vehicle changes. Passed INTO useVehicleDetail
+  // rather than run from a second effect here, so the clear stays in the same
+  // commit as the rest of the per-vehicle reset.
+  const resetPerVehicleCostState = useCallback(() => {
+    resetCostsRef.current();
+    setGpsMileage(null);
+  }, []);
+
+  // Stable by construction — an inline arrow here would re-run the lazy-load
+  // effect every render.
+  const handleDetailLazyLoad = useCallback((tab: DetailTab, id: string | number) => {
+    costsLazyLoadRef.current(tab, id);
+  }, []);
+
+  // Selected-vehicle detail + the lazily-loaded per-tab datasets. The
+  // reset-on-vehicle-change and lazy-load effects live INSIDE this hook because
+  // their relative declaration order is load-bearing — see its JSDoc.
+  const {
+    detail, maintenance, fuelLogs, fuelSummary, inspections, assignments,
+    analytics, analyticsLoading, personnelData, personnelLoading,
+    activeTab, setActiveTab,
+    fetchDetail, fetchFuelLogs, fetchInspections, fetchAssignments,
+    fetchPersonnel, fetchVehicleAnalytics, clearDetail,
+  } = useVehicleDetail(selectedId, resetPerVehicleCostState, handleDetailLazyLoad);
+
+  // Cost-of-ownership state (Costs tab). Owns NO effect: its Costs-tab fetch is
+  // driven by useVehicleDetail's skip-guarded lazy-load effect via
+  // `onCostsLazyLoad` below — see useFleetCosts's JSDoc for why.
+  const {
+    loans, insurancePolicies, accessories, utilities, otherCosts, costSummary,
+    costSubTab, setCostSubTab,
+    costModalOpen, costCategory, costMode, costInitial, editingCostId, savingCost, deletingCost,
+    costPerMile, costPerMileLoading,
+    handleAddCost, handleEditCost, handleDeleteCost, confirmDeleteCost, cancelDeleteCost,
+    handleSaveCost, handleSaveBudgets, closeCostModal,
+    loadCostPerMile, clearCostPerMile, resetCosts, onCostsLazyLoad,
+  } = useFleetCosts(selectedId, fuelSummary, maintenance);
+  resetCostsRef.current = resetCosts;
+  costsLazyLoadRef.current = onCostsLazyLoad;
+
   const [showPretripModal, setShowPretripModal] = useState(false);
   // Derived from PRETRIP_ITEMS, not hand-listed: a key present in the item list
   // but missing here would render as undefined — an unchecked box reading as FAIL —
@@ -306,21 +327,6 @@ export default function FleetPage() {
     notes: '',
   });
   const [pretripSaving, setPretripSaving] = useState(false);
-
-  const loadCostPerMile = useCallback(async (vehicleId: string | number) => {
-    setCostPerMileLoading(true);
-    try {
-      const data = await apiFetch<any>(`/fleet/cost-per-mile/${vehicleId}`);
-      setCostPerMile(data);
-    } catch (err) {
-      // Previously swallowed to null, which made a failed click
-      // indistinguishable from a dead button.
-      setCostPerMile(null);
-      addToast(err instanceof Error ? `Failed to load cost per mile: ${err.message}` : 'Failed to load cost per mile', 'error');
-    } finally {
-      setCostPerMileLoading(false);
-    }
-  }, [addToast]);
 
   const selectedVehicle = detail; // alias for clarity
 
@@ -341,15 +347,6 @@ export default function FleetPage() {
 
   const pretripTitleId = useId();
   const pretripFirstItemRef = useRef<HTMLInputElement | null>(null);
-  // The reset-on-vehicle-change effect must not run on mount, or it
-  // clobbers the tab usePersistedTab just restored — which made that
-  // persistence dead code. Track the last selected (non-null) vehicle id
-  // instead of a simple mount flag: selectedId starts null, so the OLD
-  // "first effect run" guard consumed itself on mount (null selection)
-  // and treated the operator's actual first vehicle click (null -> A) as
-  // "not mount", clobbering the restored tab back to 'overview'.
-  const lastVehicleIdRef = useRef<string | number | null>(null);
-  const skipNextLazyLoadRef = useRef(false);
   const pretripDirty = PRETRIP_ITEMS.some((it) => !(pretripForm as any)[it.key])
     || pretripForm.notes.trim() !== '';
 
@@ -387,69 +384,12 @@ export default function FleetPage() {
   // Data fetching
   // ----------------------------------------------------------
 
-  const fetchDetail = useCallback(async (id: string | number) => {
-    try {
-      const data = await apiFetch<FleetVehicle & { recent_maintenance?: FleetMaintenance[]; maintenance?: FleetMaintenance[] }>(`/fleet/${id}`);
-      const { recent_maintenance, maintenance: maint, ...vehicle } = data;
-      setDetail(vehicle);
-      const maintList = recent_maintenance ?? maint;
-      setMaintenance(Array.isArray(maintList) ? maintList : []);
-    } catch (err) {
-      addToast('Failed to load vehicle details', 'error');
-    }
-  }, [addToast]);
-
-  useEffect(() => {
-    if (selectedId) fetchDetail(selectedId);
-  }, [selectedId, fetchDetail]);
-
-  // Reset tab when selecting different vehicle
-  useEffect(() => {
-    if (selectedId != null && lastVehicleIdRef.current != null && selectedId !== lastVehicleIdRef.current) {
-      setActiveTab('overview');
-      // setActiveTab won't be reflected in `activeTab` until the next render,
-      // but the lazy-load effect below runs in this SAME commit (it's
-      // declared after this effect, so hook-order guarantees it runs right
-      // after) and would otherwise read the stale (pre-reset) tab, firing a
-      // fetch for the wrong tab against the just-selected vehicle. Skip that
-      // one run — the lazy-load effect re-fires anyway once activeTab
-      // actually flips to 'overview' (its own dependency changed).
-      skipNextLazyLoadRef.current = true;
-    }
-    if (selectedId != null) {
-      lastVehicleIdRef.current = selectedId;
-    }
-    setFuelLogs([]);
-    setFuelSummary(null);
-    setInspections([]);
-    setAssignments([]);
-    setAnalytics(null);
-    setPersonnelData(null);
-    setLoans([]);
-    setInsurancePolicies([]);
-    setAccessories([]);
-    setUtilities([]);
-    setOtherCosts([]);
-    setCostSummary(null);
-    setGpsMileage(null);
-  }, [selectedId]);
-
-  // Lazy-load tab data
-  useEffect(() => {
-    if (!selectedId) return;
-    if (skipNextLazyLoadRef.current) {
-      skipNextLazyLoadRef.current = false;
-      return;
-    }
-    if (activeTab === 'fuel') fetchFuelLogs(selectedId);
-    if (activeTab === 'costs') { fetchCosts(selectedId); fetchFuelLogs(selectedId); }
-    if (activeTab === 'inspections') fetchInspections(selectedId);
-    if (activeTab === 'assignments') fetchAssignments(selectedId);
-    if (activeTab === 'analytics') fetchVehicleAnalytics(selectedId);
-    // Personnel tab renders the shared `assignments` state too — fetch both.
-    if (activeTab === 'personnel') { fetchPersonnel(selectedId); fetchAssignments(selectedId); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, activeTab]);
+  // Selected-vehicle detail, the persisted detail tab, its reset-on-change and
+  // the per-tab lazy loads all now live in useVehicleDetail (called above).
+  // The Costs tab's cost-category lazy load (`fetchCosts`) lives in
+  // useFleetCosts (called above); its fuel-log half stays inside
+  // useVehicleDetail's own skip-guarded lazy-load effect — see that hook's
+  // JSDoc and the comment above its Effect B for why.
 
   // Fetch fleet-wide analytics when no vehicle selected
   useEffect(() => {
@@ -458,53 +398,6 @@ export default function FleetPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
-
-  const fetchFuelLogs = async (id: string | number) => {
-    try {
-      // Request the full fuel history in one shot (per_page=10000). The
-      // server raised its cap to match so the Fuel tab shows every entry
-      // rather than a paginated slice — lets operators see lifetime
-      // consumption + every flagged fill in the period selector.
-      const data = await apiFetch<{ data: FleetFuelLog[]; summary: FleetFuelSummary }>(`/fleet/${id}/fuel?per_page=10000`);
-      setFuelLogs(Array.isArray(data?.data) ? data.data : []);
-      setFuelSummary(data.summary || null);
-    } catch { addToast('Failed to load fuel logs', 'error'); }
-  };
-
-  const fetchInspections = async (id: string | number) => {
-    try {
-      // Worker returns a bare array; older builds wrapped in { data }.
-      const data = await apiFetch<FleetInspection[] | { data: FleetInspection[] }>(`/fleet/${id}/inspections`);
-      setInspections(Array.isArray(data) ? data : data.data || []);
-    } catch { addToast('Failed to load inspections', 'error'); }
-  };
-
-  const fetchAssignments = async (id: string | number) => {
-    try {
-      // Worker returns a bare array; older builds wrapped in { data }.
-      const data = await apiFetch<FleetAssignment[] | { data: FleetAssignment[] }>(`/fleet/${id}/assignments`);
-      setAssignments(Array.isArray(data) ? data : data.data || []);
-    } catch { addToast('Failed to load assignments', 'error'); }
-  };
-
-  const fetchVehicleAnalytics = async (id: string | number, period?: string) => {
-    setAnalyticsLoading(true);
-    try {
-      const p = period ? `&period=${encodeURIComponent(period)}` : '';
-      const data = await apiFetch<FleetAnalytics>(`/fleet/analytics?vehicle_id=${encodeURIComponent(String(id))}${p}`);
-      setAnalytics(data);
-    } catch { addToast('Failed to load analytics', 'error'); }
-    finally { setAnalyticsLoading(false); }
-  };
-
-  const fetchPersonnel = async (id: string | number) => {
-    setPersonnelLoading(true);
-    try {
-      const data = await apiFetch<FleetPersonnelData>(`/fleet/${id}/personnel`);
-      setPersonnelData(data);
-    } catch { addToast('Failed to load personnel data', 'error'); }
-    finally { setPersonnelLoading(false); }
-  };
 
   const fetchFleetAnalytics = async (period?: string) => {
     setFleetAnalyticsLoading(true);
@@ -756,7 +649,7 @@ export default function FleetPage() {
       await apiFetch(`/fleet/${selectedId}/archive`, { method: 'POST' });
       addToast('Vehicle archived', 'success');
       setSelectedId(null);
-      setDetail(null);
+      clearDetail();
       fetchVehicles({ silent: true });
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to archive vehicle', 'error');
@@ -769,7 +662,7 @@ export default function FleetPage() {
       await apiFetch(`/fleet/${selectedId}/unarchive`, { method: 'POST' });
       addToast('Vehicle unarchived', 'success');
       setSelectedId(null);
-      setDetail(null);
+      clearDetail();
       fetchVehicles({ silent: true });
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to unarchive vehicle', 'error');
@@ -784,7 +677,7 @@ export default function FleetPage() {
       addToast('Vehicle deleted', 'success');
       setDeletingVehicleId(null);
       setSelectedId(null);
-      setDetail(null);
+      clearDetail();
       fetchVehicles({ silent: true });
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to delete vehicle', 'error');
@@ -845,249 +738,8 @@ export default function FleetPage() {
   };
 
   // ── Edit openers (pre-populate form with existing record data) ──
-  // ── Cost-of-ownership (Costs tab) data + handlers ────────────
-  // Endpoint suffix per category. Insurance pre-existed; loans/accessories/
-  // utilities were added this pass. GET returns a bare array per category.
-  const COST_PATH: Record<CostCategory, string> = {
-    loan: 'loans', insurance: 'insurance', accessory: 'accessories', utility: 'utilities', other: 'other-costs',
-  };
-
-  // Recompute the cost-of-ownership summary client-side from the four lists
-  // plus the fuel/maintenance totals we already have, so the TCO header
-  // reflects live edits without a dedicated summary endpoint.
-  const recomputeCostSummary = useCallback((
-    ln: FleetLoan[], ins: FleetInsurancePolicy[], acc: FleetAccessory[], util: FleetUtilityCost[],
-    others: FleetOtherCost[], budgets: FleetCostBudget[],
-    monthlyAverages?: { fuel_monthly?: unknown; maintenance_monthly?: unknown } | null,
-  ) => {
-    const num = (v: unknown): number => {
-      if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
-      if (typeof v === 'string') { const p = parseFloat(v); return Number.isFinite(p) ? p : 0; }
-      return 0;
-    };
-    // Normalize a recurring cost to a monthly figure for the commitment stats.
-    // one_time → 0 (excluded from run-rate); unknown frequency → monthly.
-    const perMonth = (amount: number, freq: unknown): number => {
-      switch (String(freq)) {
-        case 'annual': return amount / 12;
-        case 'semi_annual': return amount / 6;
-        case 'quarterly': return amount / 3;
-        case 'one_time': return 0;
-        default: return amount; // monthly
-      }
-    };
-    const fuelTotal = num(fuelSummary?.total_cost);
-    const maintTotal = maintenance.reduce((s, m) => s + num((m as any).cost), 0);
-    const loanTotal = ln.reduce((s, l) => s + num((l as any).original_amount), 0);
-    const insTotal = ins.reduce((s, p) => s + num((p as any).premium ?? (p as any).premium_amount), 0);
-    const accTotal = acc.reduce((s, a) => s + num((a as any).cost), 0);
-    const utilTotal = util.reduce((s, u) => s + num((u as any).cost_amount), 0);
-    const otherTotal = others.reduce((s, o) => s + num((o as any).amount), 0);
-    const monthlyLoan = ln.filter((l) => String((l as any).status ?? 'active') === 'active').reduce((s, l) => s + num((l as any).monthly_payment), 0);
-    const monthlyIns = ins.reduce((s, p) => s + perMonth(num((p as any).premium ?? (p as any).premium_amount), (p as any).premium_frequency), 0);
-    const monthlyUtil = util.reduce((s, u) => s + perMonth(num((u as any).cost_amount), (u as any).cost_frequency), 0);
-    const monthlyOther = others
-      .filter((o) => String((o as any).status ?? 'active') !== 'cancelled' && String((o as any).status ?? 'active') !== 'inactive')
-      .reduce((s, o) => s + perMonth(num((o as any).amount), (o as any).frequency), 0);
-    const monthlyTotal = monthlyLoan + monthlyIns + monthlyUtil + monthlyOther;
-    const totalMiles = num(costPerMile?.total_miles);
-    const lifetime = fuelTotal + maintTotal + loanTotal + insTotal + accTotal + utilTotal + otherTotal;
-
-    // Monthly "actual" per budgetable category. Recurring categories use their
-    // normalized monthly figure. Fuel/maintenance use a TRUE trailing-period
-    // monthly average from the /monthly-cost-averages endpoint (total ÷ months
-    // actually spanned), falling back to 0 when that fetch failed — never a
-    // misleading lifetime/12. Accessories are one-off purchases (lifetime).
-    // Every value is coerced through num() so a sentinel "None" can't crash it.
-    const actualByCat: Record<string, number> = {
-      loan: monthlyLoan,
-      insurance: monthlyIns,
-      utility: monthlyUtil,
-      other: monthlyOther,
-      accessory: accTotal,
-      fuel: num(monthlyAverages?.fuel_monthly),
-      maintenance: num(monthlyAverages?.maintenance_monthly),
-    };
-    const budgetMap: Record<string, { budget: number; actual: number; over: boolean }> = {};
-    for (const b of budgets) {
-      const cat = String((b as any).category ?? '');
-      const budget = num((b as any).monthly_budget);
-      const actual = Math.round((actualByCat[cat] || 0) * 100) / 100;
-      budgetMap[cat] = { budget, actual, over: actual > budget && budget > 0 };
-    }
-
-    setCostSummary({
-      total_lifetime: Math.round(lifetime * 100) / 100,
-      cost_per_mile: totalMiles > 0 ? Math.round((lifetime / totalMiles) * 1000) / 1000 : null,
-      monthly_commitment: {
-        loan: Math.round(monthlyLoan * 100) / 100,
-        insurance: Math.round(monthlyIns * 100) / 100,
-        utility: Math.round(monthlyUtil * 100) / 100,
-        other: Math.round(monthlyOther * 100) / 100,
-        total: Math.round(monthlyTotal * 100) / 100,
-      },
-      projected_annual: Math.round(monthlyTotal * 12 * 100) / 100,
-      categories: {
-        fuel: Math.round(fuelTotal * 100) / 100,
-        maintenance: Math.round(maintTotal * 100) / 100,
-        loans: Math.round(loanTotal * 100) / 100,
-        insurance: Math.round(insTotal * 100) / 100,
-        accessories: Math.round(accTotal * 100) / 100,
-        utilities: Math.round(utilTotal * 100) / 100,
-        other: Math.round(otherTotal * 100) / 100,
-      },
-      budgets: budgetMap,
-    } as FleetCostSummary);
-  }, [fuelSummary, maintenance, costPerMile]);
-
-  const fetchCosts = useCallback(async (id: string | number) => {
-    try {
-      const [ln, ins, acc, util, others, budgets, monthlyAvgs] = await Promise.all([
-        apiFetch<FleetLoan[]>(`/fleet/${id}/loans`).catch(() => []),
-        apiFetch<FleetInsurancePolicy[]>(`/fleet/${id}/insurance`).catch(() => []),
-        apiFetch<FleetAccessory[]>(`/fleet/${id}/accessories`).catch(() => []),
-        apiFetch<FleetUtilityCost[]>(`/fleet/${id}/utilities`).catch(() => []),
-        apiFetch<FleetOtherCost[]>(`/fleet/${id}/other-costs`).catch(() => []),
-        apiFetch<FleetCostBudget[]>(`/fleet/${id}/cost-budgets`).catch(() => []),
-        // True trailing-period fuel/maintenance monthly averages for Budget vs.
-        // Actual. Null on failure → recompute falls back to 0 actuals.
-        apiFetch<{ fuel_monthly?: number; maintenance_monthly?: number }>(`/fleet/${id}/monthly-cost-averages`).catch(() => null),
-      ]);
-      const lnA = Array.isArray(ln) ? ln : [];
-      const insA = Array.isArray(ins) ? ins : [];
-      const accA = Array.isArray(acc) ? acc : [];
-      const utilA = Array.isArray(util) ? util : [];
-      const otherA = Array.isArray(others) ? others : [];
-      const budgetA = Array.isArray(budgets) ? budgets : [];
-      const monthlyAvgsObj = (monthlyAvgs && typeof monthlyAvgs === 'object') ? monthlyAvgs : null;
-      setLoans(lnA); setInsurancePolicies(insA); setAccessories(accA); setUtilities(utilA);
-      setOtherCosts(otherA);
-      recomputeCostSummary(lnA, insA, accA, utilA, otherA, budgetA, monthlyAvgsObj);
-      // Cost-per-mile feeds the TCO/mile stat; fetch if not already loaded.
-      if (!costPerMile) loadCostPerMile(id);
-    } catch (err) {
-      console.error('Failed to fetch cost data:', err);
-    }
-  }, [recomputeCostSummary, costPerMile]);
-
-  // Map a saved DB record back into the modal's CostFormState for editing.
-  const costRecordToForm = (category: CostCategory, r: any): CostFormState => {
-    const s = (v: unknown) => (v == null ? '' : String(v));
-    const base = { ...EMPTY_COST_FORM, notes: s(r.notes) };
-    switch (category) {
-      case 'loan': return { ...base,
-        lender: s(r.lender), original_amount: s(r.original_amount), current_balance: s(r.current_balance),
-        monthly_payment: s(r.monthly_payment), interest_rate: s(r.interest_rate), term_months: s(r.term_months),
-        start_date: s(r.start_date), payoff_date: s(r.payoff_date), loan_status: (r.status || 'active') };
-      case 'insurance': return { ...base,
-        carrier: s(r.carrier), policy_number: s(r.policy_number), coverage_type: s(r.coverage_type),
-        premium_amount: s(r.premium ?? r.premium_amount), premium_frequency: (r.premium_frequency || 'monthly'),
-        effective_from: s(r.effective_date ?? r.effective_from), expires_at: s(r.expiry_date ?? r.expires_at),
-        deductible: s(r.deductible), liability_limit: s(r.liability_limit ?? r.coverage_amount),
-        insurance_status: (r.status || 'active') };
-      case 'accessory': return { ...base,
-        name: s(r.name), accessory_category: s(r.category), installed_date: s(r.installed_date),
-        removed_date: s(r.removed_date), cost: s(r.cost), vendor: s(r.vendor),
-        warranty_until: s(r.warranty_expiry ?? r.warranty_until), serial_number: s(r.serial_number),
-        accessory_status: (r.status || 'installed') };
-      case 'utility': return { ...base,
-        utility_category: s(r.category), provider: s(r.provider), cost_amount: s(r.cost_amount),
-        cost_frequency: (r.cost_frequency || 'monthly'), period_start: s(r.period_start), period_end: s(r.period_end) };
-      case 'other': return { ...base,
-        other_cost_type: s(r.cost_type), other_provider: s(r.provider), other_amount: s(r.amount),
-        other_frequency: (r.frequency || 'one_time'), other_incurred_date: s(r.incurred_date),
-        other_period_end: s(r.period_end), other_status: (r.status || 'active') };
-    }
-  };
-
-  // Auto-fill: seed a NEW cost entry with the "context" fields (who/how — not
-  // amounts or dates) from the most recent entry of that category, so logging
-  // a recurring cost doesn't mean re-typing the lender/carrier/provider every
-  // time. Returns null when there's no prior record (→ empty form).
-  const buildCostCarryOver = (category: CostCategory): CostFormState | null => {
-    const s = (v: unknown) => (v == null ? '' : String(v));
-    const latest = (arr: any[]): any | null => (Array.isArray(arr) && arr.length ? arr[0] : null);
-    switch (category) {
-      case 'loan': {
-        const r = latest(loans); if (!r) return null;
-        return { ...EMPTY_COST_FORM, lender: s(r.lender) };
-      }
-      case 'insurance': {
-        const r = latest(insurancePolicies); if (!r) return null;
-        return { ...EMPTY_COST_FORM, carrier: s(r.carrier), coverage_type: s(r.coverage_type),
-          premium_frequency: (r.premium_frequency || 'monthly') };
-      }
-      case 'accessory': {
-        const r = latest(accessories); if (!r) return null;
-        return { ...EMPTY_COST_FORM, accessory_category: s(r.category), vendor: s(r.vendor) };
-      }
-      case 'utility': {
-        const r = latest(utilities); if (!r) return null;
-        return { ...EMPTY_COST_FORM, utility_category: s(r.category), provider: s(r.provider),
-          cost_frequency: (r.cost_frequency || 'monthly') };
-      }
-      case 'other': {
-        const r = latest(otherCosts); if (!r) return null;
-        return { ...EMPTY_COST_FORM, other_provider: s(r.provider),
-          other_frequency: (r.frequency || 'one_time') };
-      }
-    }
-    return null;
-  };
-
-  const handleSaveBudgets = async (rows: { category: string; monthly_budget: number }[]) => {
-    if (selectedId == null) return;
-    try {
-      await apiFetch(`/fleet/${selectedId}/cost-budgets`, { method: 'PUT', body: JSON.stringify({ budgets: rows }) });
-      addToast('Budgets saved', 'success');
-      fetchCosts(selectedId);
-    } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to save budgets', 'error');
-    }
-  };
-
-  const handleAddCost = (category: CostCategory) => {
-    setCostCategory(category); setCostMode('create'); setCostInitial(buildCostCarryOver(category));
-    setEditingCostId(null); setCostModalOpen(true);
-  };
-  const handleEditCost = (category: CostCategory, record: any) => {
-    setCostCategory(category); setCostMode('edit'); setCostInitial(costRecordToForm(category, record));
-    setEditingCostId(record.id); setCostModalOpen(true);
-  };
-  const handleDeleteCost = (category: CostCategory, record: any) => {
-    setDeletingCost({ category, record });
-  };
-  const confirmDeleteCost = async () => {
-    if (!deletingCost || selectedId == null) return;
-    const { category, record } = deletingCost;
-    try {
-      await apiFetch(`/fleet/${COST_PATH[category]}/${record.id}`, { method: 'DELETE' });
-      addToast('Entry deleted', 'success');
-      setDeletingCost(null);
-      fetchCosts(selectedId);
-    } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to delete entry', 'error');
-    }
-  };
-  const handleSaveCost = async (payload: Record<string, any>) => {
-    if (selectedId == null) return;
-    setSavingCost(true);
-    try {
-      if (costMode === 'edit' && editingCostId != null) {
-        await apiFetch(`/fleet/${COST_PATH[costCategory]}/${editingCostId}`, { method: 'PUT', body: JSON.stringify(payload) });
-        addToast('Entry updated', 'success');
-      } else {
-        await apiFetch(`/fleet/${selectedId}/${COST_PATH[costCategory]}`, { method: 'POST', body: JSON.stringify(payload) });
-        addToast('Entry added', 'success');
-      }
-      setCostModalOpen(false);
-      setEditingCostId(null);
-      fetchCosts(selectedId);
-    } catch (err) {
-      // Re-throw so the modal surfaces the error inline (its submit() catches).
-      throw err instanceof Error ? err : new Error('Save failed');
-    } finally { setSavingCost(false); }
-  };
+  // Cost-of-ownership (Costs tab) data + handlers now live in useFleetCosts
+  // (called above).
 
   const openEditFuel = (log: FleetFuelLog) => {
     setFuelForm({
@@ -1279,7 +931,7 @@ export default function FleetPage() {
           </div>
           <button type="button"
             className={`toolbar-btn ${showArchived ? 'text-amber-400 border-amber-600/50' : ''}`}
-            onClick={() => { setShowArchived(!showArchived); setSelectedId(null); setDetail(null); }}
+            onClick={() => { setShowArchived(!showArchived); setSelectedId(null); clearDetail(); }}
           >
             <Archive className="w-3 h-3" /> {showArchived ? 'Viewing Archives' : 'Show Archives'}
           </button>
@@ -1697,7 +1349,7 @@ export default function FleetPage() {
           ) : (
             <>
             {isMobile && (
-              <button type="button" onClick={() => { setSelectedId(null); setDetail(null); }} className="text-rmpg-400 hover:text-rmpg-100 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken">
+              <button type="button" onClick={() => { setSelectedId(null); clearDetail(); }} className="text-rmpg-400 hover:text-rmpg-100 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken">
                 ◀ Back to Vehicles
               </button>
             )}
@@ -1706,7 +1358,7 @@ export default function FleetPage() {
               onViewAllWorkOrders={() => {
                 setWorkOrdersVehicleFilter(Number(detail.id));
                 setSelectedId(null);
-                setDetail(null);
+                clearDetail();
                 setViewMode('work_orders');
               }}
               maintenance={maintenance}
@@ -1757,7 +1409,7 @@ export default function FleetPage() {
               gpsMileageLoading={gpsMileageLoading}
               onFetchGpsMileage={fetchGpsMileage}
               onSyncGpsMileage={handleSyncGpsMileage}
-              onClose={() => { setSelectedId(null); setDetail(null); }}
+              onClose={() => { setSelectedId(null); clearDetail(); }}
             />
             </>
           )}
@@ -1822,14 +1474,14 @@ export default function FleetPage() {
         initial={costInitial}
         recordId={editingCostId}
         onSave={handleSaveCost}
-        onClose={() => { setCostModalOpen(false); setEditingCostId(null); }}
+        onClose={closeCostModal}
         saving={savingCost}
       />
 
       {/* Delete Cost Confirmation */}
       <ConfirmDialog
         isOpen={deletingCost !== null}
-        onClose={() => setDeletingCost(null)}
+        onClose={cancelDeleteCost}
         onConfirm={confirmDeleteCost}
         title="Delete Cost Entry"
         message={`Delete this ${deletingCost?.category} entry? This cannot be undone.`}
@@ -1943,7 +1595,7 @@ export default function FleetPage() {
         <div className="fixed bottom-16 right-4 left-4 md:left-auto z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-auto md:w-[300px] shadow-xl">
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-sm font-bold text-rmpg-100">Cost Analysis: {costPerMile.vehicle_number}</h4>
-            <button type="button" onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-rmpg-100">&times;</button>
+            <button type="button" onClick={clearCostPerMile} className="text-rmpg-400 hover:text-rmpg-100">&times;</button>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
