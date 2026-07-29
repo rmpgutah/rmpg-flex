@@ -1410,6 +1410,107 @@ serveReceiptAdmin.post(
  */
 const RECEIPT_READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
 
+/**
+ * POST /api/serve-receipts/receipt/:id/correct
+ * Void a signed acknowledgement and issue a fresh signing link, as one
+ * auditable action.
+ *
+ * There was no correction path at all. The token burns on signature, so a
+ * misspelt name or a wrong relationship was permanent — the officer had
+ * to void the receipt (supervisor-only), then separately mint a token,
+ * and nothing tied the two together. In practice that means small errors
+ * stayed on legal records because fixing them was harder than living with
+ * them.
+ *
+ * Deliberately NOT an edit. A signed instrument is a record of what a
+ * person attested to; silently amending it would make the signature
+ * evidence of words that were never on screen. The original is voided
+ * with a stated reason and survives in full, and the correction is a NEW
+ * signature.
+ *
+ * Same role gate as voiding, because that is what this does first.
+ */
+serveReceiptAdmin.post(
+  '/receipt/:id/correct',
+  requireRole('admin', 'manager', 'supervisor'),
+  async (c) => {
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!id) return c.json({ error: 'Invalid receipt id' }, 400);
+
+    const { reason } = await c.req.json<{ reason?: string }>().catch(() => ({ reason: '' }));
+    const reasonText = (reason ?? '').trim();
+    if (reasonText.length < 10) {
+      return c.json({
+        error: 'Say what was wrong with the original — it stays on the record '
+          + 'alongside the correction.',
+      }, 400);
+    }
+
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number } | undefined;
+
+    const original = await queryFirst<{ serve_queue_id: number; job_status_before: string | null }>(
+      db,
+      "SELECT serve_queue_id, job_status_before FROM serve_receipts WHERE id = ? AND status = 'signed'",
+      id,
+    );
+    if (!original) return c.json({ error: 'Receipt not found or already voided' }, 404);
+
+    const v = await execute(
+      db,
+      `UPDATE serve_receipts
+          SET status = 'voided', voided_at = datetime('now'), voided_by = ?,
+              void_reason = ?
+        WHERE id = ? AND status = 'signed'`,
+      user?.id ?? null, `Superseded by a correction: ${reasonText}`.slice(0, 500), id,
+    );
+    if (!v.meta.changes) return c.json({ error: 'Receipt not found or already voided' }, 404);
+
+    // Put the job back so the corrected service can advance it again. The
+    // partial unique index from 0209 would otherwise refuse the new
+    // signature while the old row still held 'signed' — voiding first is
+    // what makes the re-issue possible at all.
+    await execute(
+      db,
+      "UPDATE serve_queue SET status = ?, serve_date = NULL, updated_at = datetime('now') WHERE id = ?",
+      original.job_status_before || 'in_progress', original.serve_queue_id,
+    ).catch(() => undefined);
+
+    // Revoke any token still live for this job before minting a fresh
+    // one, so a stale printed QR cannot compete with the correction.
+    await execute(
+      db,
+      `UPDATE serve_receipt_tokens SET revoked_at = datetime('now')
+        WHERE serve_queue_id = ? AND used_receipt_id IS NULL AND revoked_at IS NULL`,
+      original.serve_queue_id,
+    ).catch(() => undefined);
+
+    const token = randomToken();
+    await execute(
+      db,
+      `INSERT INTO serve_receipt_tokens (serve_queue_id, token, created_by, expires_at)
+       VALUES (?, ?, ?, datetime('now', ?))`,
+      original.serve_queue_id, token, user?.id ?? null, `+${DEFAULT_TOKEN_TTL_DAYS} days`,
+    );
+
+    await recordAudit(c, {
+      action: 'SERVE_RECEIPT_CORRECT',
+      entityType: 'serve_queue',
+      entityId: original.serve_queue_id,
+      details: { voided_receipt_id: id, reason: reasonText },
+      actorId: user?.id ?? null,
+    }).catch(() => undefined);
+
+    log.info('Receipt superseded by correction', { voidedId: id, queueId: original.serve_queue_id });
+    return c.json({
+      ok: true,
+      voided_receipt_id: id,
+      token,
+      url: `${PUBLIC_APP_URL}/m/serve-receipt/${token}`,
+    }, 201);
+  },
+);
+
 /** GET /api/serve-receipts/:queueId — signed receipts for a job. */
 serveReceiptAdmin.get('/:queueId', requireRole(...RECEIPT_READ_ROLES), async (c) => {
   const queueId = parseInt(c.req.param('queueId') || '', 10);
