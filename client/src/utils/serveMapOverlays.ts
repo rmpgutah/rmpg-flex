@@ -23,52 +23,6 @@ export function isRiskFlagged(item: { priority: string; location_note_text: stri
   return SAFETY_KEYWORDS.some((kw) => note.includes(kw));
 }
 
-export interface SuccessRateRow {
-  zip: string;
-  served: number;
-  failed: number;
-}
-
-export function successRateColor(row: SuccessRateRow): string {
-  const total = row.served + row.failed;
-  if (total === 0) return '#6b7280';
-  const rate = row.served / total;
-  if (rate >= 0.7) return '#22c55e';
-  if (rate >= 0.4) return '#f59e0b';
-  return '#ef4444';
-}
-
-// QueueMapItem (the client's mapped-item shape) has no zip field, only
-// recipient_city/recipient_address/recipient_state. `/process-server/success-rates`
-// aggregates by zip, so there is no exact geometric match available on the client
-// without a second geocoding round-trip. As the best available substitute, group
-// mapped items by `recipient_city` and treat a SuccessRateRow's `zip` field as a
-// grouping key matched (case-insensitively) against `recipient_city`. Returns null
-// when no mapped item matches the group key, so callers can skip plotting that row
-// rather than falling back to [0,0] (Gulf of Guinea).
-export interface GroupableMapItem {
-  recipient_city: string | null;
-  recipient_lat: number | null;
-  recipient_lng: number | null;
-}
-
-export function centroidForGroup(groupKey: string, items: GroupableMapItem[]): { lat: number; lng: number } | null {
-  const key = groupKey.trim().toLowerCase();
-  if (!key) return null;
-  const matches = items.filter(
-    (it) =>
-      it.recipient_lat != null &&
-      it.recipient_lng != null &&
-      (it.recipient_city || '').trim().toLowerCase() === key,
-  );
-  if (matches.length === 0) return null;
-  const sum = matches.reduce(
-    (acc, it) => ({ lat: acc.lat + it.recipient_lat!, lng: acc.lng + it.recipient_lng! }),
-    { lat: 0, lng: 0 },
-  );
-  return { lat: sum.lat / matches.length, lng: sum.lng / matches.length };
-}
-
 export type DeadlineFilter = 'all' | 'today' | 'three_days' | 'week' | 'overdue';
 
 export function matchesDeadlineFilter(deadline: string | null, filter: DeadlineFilter, now: number): boolean {

@@ -30,6 +30,9 @@ let lastMapInstance: any = null;
 // Track marker elements keyed by insertion order so a test can simulate a
 // click on the marker for a specific queue item.
 const markerElements: HTMLElement[] = [];
+// Track marker instances (keyed by insertion order, matching markerElements)
+// so tests can trigger a marker's dragend handler and control getLngLat.
+const markerInstances: any[] = [];
 
 vi.mock('../../../utils/mapboxLoader', () => ({
   mapboxgl: {
@@ -51,19 +54,30 @@ vi.mock('../../../utils/mapboxLoader', () => ({
         getLayer: vi.fn(() => null),
         removeLayer: vi.fn(),
         removeSource: vi.fn(),
+        // The rectangle-select handler always calls unproject twice per drag —
+        // once for the SW corner, once for NE. Return a box that trivially
+        // encloses everything so tests can assert on selection without
+        // reimplementing real screen->lnglat math.
+        unproject: vi.fn()
+          .mockReturnValueOnce({ lng: -180, lat: -90 })
+          .mockReturnValueOnce({ lng: 180, lat: 90 }),
       };
       lastMapInstance = instance;
       return instance;
     }),
     Marker: vi.fn(function (opts: { element: HTMLElement }) {
       if (opts?.element) markerElements.push(opts.element);
-      return {
+      const handlers: Record<string, (...args: any[]) => void> = {};
+      const instance = {
         setLngLat: vi.fn().mockReturnThis(),
         addTo: vi.fn().mockReturnThis(),
         remove: vi.fn(),
-        on: vi.fn(),
+        on: vi.fn((event: string, cb: (...args: any[]) => void) => { handlers[event] = cb; }),
+        __handlers: handlers,
         getLngLat: vi.fn(() => ({ lng: -111.9, lat: 40.7 })),
       };
+      markerInstances.push(instance);
+      return instance;
     }),
     Popup: vi.fn(function () {
       let html = '';
@@ -129,6 +143,7 @@ describe('ServeIntakeMap', () => {
   beforeEach(() => {
     lastMapInstance = null;
     markerElements.length = 0;
+    markerInstances.length = 0;
     vi.spyOn(useApiModule, 'apiFetch').mockImplementation((path: string) => {
       if (path === '/serve-intake/map-items') return Promise.resolve([]);
       if (path === '/serve-intake/location-notes') return Promise.resolve([]);
@@ -350,6 +365,126 @@ describe('ServeIntakeMap', () => {
     render(<ServeIntakeMap />);
     await waitFor(() => expect(screen.getByText(/no active serve orders/i)).toBeInTheDocument());
     expect(screen.queryByText(/apply to selected/i)).not.toBeInTheDocument();
+  });
+
+  describe('bulk "Archive" action', () => {
+    it('sends status "archived" in the PUT body and not the removed "skipped" status', async () => {
+      const apiFetchSpy = vi.spyOn(useApiModule, 'apiFetch').mockImplementation((path: string) => {
+        if (path === '/serve-intake/map-items') return Promise.resolve([MOCK_QUEUE_ITEM]);
+        if (path === '/serve-intake/location-notes') return Promise.resolve([]);
+        if (path === '/process-server/bulk-status') return Promise.resolve({ success: true });
+        return Promise.resolve([]);
+      });
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      render(<ServeIntakeMap />);
+      await waitFor(() => expect(markerElements.length).toBeGreaterThan(0));
+
+      // Shift-drag-select the marker's job via a real drag (not a shift-click)
+      // so the mousedown/mouseup rectangle-select handlers pick it up.
+      const container = document.querySelector('.absolute.inset-0') as HTMLElement;
+      const rect = { left: 0, top: 0, right: 500, bottom: 500, width: 500, height: 500, x: 0, y: 0, toJSON: () => ({}) };
+      vi.spyOn(container, 'getBoundingClientRect').mockReturnValue(rect as DOMRect);
+      await act(async () => {
+        container.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, shiftKey: true, clientX: 0, clientY: 0 }));
+        container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, shiftKey: true, clientX: 500, clientY: 500 }));
+      });
+
+      await waitFor(() => expect(screen.getByText(/apply to selected/i)).toBeInTheDocument());
+
+      const archiveBtn = screen.getByText('Archive');
+      await act(async () => { archiveBtn.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+
+      await waitFor(() => {
+        expect(apiFetchSpy).toHaveBeenCalledWith(
+          '/process-server/bulk-status',
+          expect.objectContaining({
+            method: 'PUT',
+            body: JSON.stringify({ ids: [MOCK_QUEUE_ITEM.id], status: 'archived' }),
+          }),
+        );
+      });
+    });
+
+    it('alerts the user and preserves selection when the bulk-status request fails', async () => {
+      vi.spyOn(useApiModule, 'apiFetch').mockImplementation((path: string) => {
+        if (path === '/serve-intake/map-items') return Promise.resolve([MOCK_QUEUE_ITEM]);
+        if (path === '/serve-intake/location-notes') return Promise.resolve([]);
+        if (path === '/process-server/bulk-status') return Promise.reject(new Error('400'));
+        return Promise.resolve([]);
+      });
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+
+      render(<ServeIntakeMap />);
+      await waitFor(() => expect(markerElements.length).toBeGreaterThan(0));
+
+      const container = document.querySelector('.absolute.inset-0') as HTMLElement;
+      const rect = { left: 0, top: 0, right: 500, bottom: 500, width: 500, height: 500, x: 0, y: 0, toJSON: () => ({}) };
+      vi.spyOn(container, 'getBoundingClientRect').mockReturnValue(rect as DOMRect);
+      await act(async () => {
+        container.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, shiftKey: true, clientX: 0, clientY: 0 }));
+        container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, shiftKey: true, clientX: 500, clientY: 500 }));
+      });
+      await waitFor(() => expect(screen.getByText(/apply to selected/i)).toBeInTheDocument());
+
+      const archiveBtn = screen.getByText('Archive');
+      await act(async () => { archiveBtn.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      // Selection preserved on failure — the bulk-action bar is still shown.
+      expect(screen.getByText(/apply to selected/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('drag-to-correct-geocode confirmation', () => {
+    async function openMarkerAndDrag() {
+      vi.spyOn(useApiModule, 'apiFetch').mockImplementation((path: string) => {
+        if (path === '/serve-intake/map-items') return Promise.resolve([MOCK_QUEUE_ITEM]);
+        if (path === '/serve-intake/location-notes') return Promise.resolve([]);
+        return Promise.resolve([]);
+      });
+      render(<ServeIntakeMap />);
+      await waitFor(() => expect(markerInstances.length).toBeGreaterThan(0));
+      const marker = markerInstances[0];
+      await act(async () => {
+        await marker.__handlers.dragend?.();
+      });
+      return marker;
+    }
+
+    it('does not PUT the new coordinates when the user declines the confirmation', async () => {
+      const apiFetchSpy = vi.spyOn(useApiModule, 'apiFetch');
+      vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+      await openMarkerAndDrag();
+
+      expect(window.confirm).toHaveBeenCalled();
+      expect(apiFetchSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining(`/process-server/${MOCK_QUEUE_ITEM.id}`),
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+
+    it('PUTs the new coordinates when the user confirms', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      vi.spyOn(useApiModule, 'apiFetch').mockImplementation((path: string, opts?: any) => {
+        if (path === '/serve-intake/map-items') return Promise.resolve([MOCK_QUEUE_ITEM]);
+        if (path === '/serve-intake/location-notes') return Promise.resolve([]);
+        if (path === `/process-server/${MOCK_QUEUE_ITEM.id}` && opts?.method === 'PUT') return Promise.resolve({ success: true });
+        return Promise.resolve([]);
+      });
+
+      const apiFetchSpy = useApiModule.apiFetch as ReturnType<typeof vi.fn>;
+      await openMarkerAndDrag();
+
+      await waitFor(() => {
+        expect(apiFetchSpy).toHaveBeenCalledWith(
+          `/process-server/${MOCK_QUEUE_ITEM.id}`,
+          expect.objectContaining({ method: 'PUT' }),
+        );
+      });
+    });
   });
 
   afterEach(() => {

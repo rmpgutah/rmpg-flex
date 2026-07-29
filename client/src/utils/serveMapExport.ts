@@ -18,6 +18,10 @@ export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promi
   doc.setFont('helvetica', 'normal');
   let y = 30;
   for (const item of items) {
+    if (y > 280) {
+      doc.addPage();
+      y = 20;
+    }
     const line = `${(item.priority || 'routine').toUpperCase()} — ${item.recipient_name || '(no name)'} — ${item.recipient_address || '(no address)'}${item.deadline ? ` — due ${item.deadline}` : ''}`;
     doc.text(line, 14, y);
     y += 7;

@@ -15,7 +15,7 @@ import LocationNoteModal from './LocationNoteModal';
 import { escapeHtml } from '../../utils/sanitize';
 import { withAlpha } from '../../utils/withAlpha';
 import { clusterByGrid, type ClusterableItem } from '../../utils/serveMapClustering';
-import { urgencyTierForDeadline, isRiskFlagged, successRateColor, centroidForGroup, matchesDeadlineFilter, type SuccessRateRow, type DeadlineFilter } from '../../utils/serveMapOverlays';
+import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter, type DeadlineFilter } from '../../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../../utils/mapboxRouting';
 import { reverseGeocode } from '../../utils/mapboxServices';
 import { exportServeMapSheet } from '../../utils/serveMapExport';
@@ -79,7 +79,7 @@ const PRIORITY_GLOW: Record<string, string> = {
   routine:'rgba(107,114,128,0.2)',
 };
 
-function buildServeMarker(item: QueueMapItem): HTMLElement {
+function buildServeMarker(item: QueueMapItem, selected: boolean = false): HTMLElement {
   const isBusiness = (item.recipient_type || '').toLowerCase() === 'business';
   const color = PRIORITY_COLORS[item.priority] ?? PRIORITY_COLORS.routine;
   const glow  = PRIORITY_GLOW[item.priority]  ?? PRIORITY_GLOW.routine;
@@ -93,14 +93,19 @@ function buildServeMarker(item: QueueMapItem): HTMLElement {
   const boxShadowValue = hasRisk
     ? `0 0 8px ${glow}, 0 0 0 3px rgba(239,68,68,0.6)`
     : `0 0 8px ${glow}`;
+  // Selected markers get an extra outline ring so a bulk action's scope is
+  // visually obvious before the user confirms it.
+  const border = selected
+    ? '3px solid #22c55e'
+    : '2px solid rgba(255,255,255,0.7)';
 
   el.style.cssText = `
     position:relative;
     width:28px;height:28px;
     border-radius:50%;
     background:${color};
-    border:2px solid rgba(255,255,255,0.7);
-    box-shadow:${boxShadowValue};
+    border:${border};
+    box-shadow:${boxShadowValue}${selected ? ', 0 0 0 2px rgba(34,197,94,0.5)' : ''};
     display:flex;align-items:center;justify-content:center;
     cursor:pointer;
     transition:transform 0.15s;
@@ -201,11 +206,6 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
   const [previewOrigin, setPreviewOrigin] = useState<[number, number] | null>(null);
   const [previewTarget, setPreviewTarget] = useState<{ id: number; lng: number; lat: number } | null>(null);
   const [previewRoute, setPreviewRoute] = useState<{ eta: string; distance: string } | null>(null);
-  // Success-rate heatmap toggle. `/process-server/success-rates` aggregates by
-  // zip, but the mapped queue items don't carry a zip field — see
-  // `centroidForGroup` in serveMapOverlays.ts for the recipient_city substitution.
-  const [showSuccessHeatmap, setShowSuccessHeatmap] = useState(false);
-  const [successRates, setSuccessRates] = useState<SuccessRateRow[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -234,6 +234,9 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       center: [-111.891, 40.76],  // Salt Lake City
       zoom: 10,
       attributionControl: false,
+      // Rectangle-select below also binds shift+drag — Mapbox's built-in
+      // box-zoom (also shift+drag by default) would otherwise fight it.
+      boxZoom: false,
     });
     mapRef.current = map;
     registerMapInstance(map, MAPBOX_STYLE_DARK);
@@ -258,11 +261,21 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       const rect = container.getBoundingClientRect();
       selectStartRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
+    const MIN_DRAG_PX = 5;
     const onMouseUp = (e: MouseEvent) => {
       if (!selectStartRef.current || !container) return;
+      const start = selectStartRef.current;
+      // Clear the origin unconditionally on mouseup — a stray shift-click or a
+      // drag that started but never crossed the threshold shouldn't leave a
+      // stale origin around for a later, unrelated mouseup to pick up.
+      selectStartRef.current = null;
+      if (!e.shiftKey) return;
       const rect = container.getBoundingClientRect();
       const end = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-      const start = selectStartRef.current;
+      const dragDistance = Math.hypot(end.x - start.x, end.y - start.y);
+      // A shift-click (start≈end) computes a degenerate box that would
+      // silently clear any existing selection — require a real drag first.
+      if (dragDistance < MIN_DRAG_PX) return;
       const sw = map.unproject([Math.min(start.x, end.x), Math.max(start.y, end.y)]);
       const ne = map.unproject([Math.max(start.x, end.x), Math.min(start.y, end.y)]);
       const newlySelected = new Set<number>();
@@ -274,14 +287,19 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
         }
       }
       setSelectedIds(newlySelected);
-      selectStartRef.current = null;
     };
+    // If the pointer leaves the container before release, reset the drag
+    // origin — otherwise a later, unrelated mouseup (e.g. after re-entering
+    // the container) would compute a bogus box from a stale start point.
+    const onMouseLeave = () => { selectStartRef.current = null; };
     container?.addEventListener('mousedown', onMouseDown);
     container?.addEventListener('mouseup', onMouseUp);
+    container?.addEventListener('mouseleave', onMouseLeave);
 
     return () => {
       container?.removeEventListener('mousedown', onMouseDown);
       container?.removeEventListener('mouseup', onMouseUp);
+      container?.removeEventListener('mouseleave', onMouseLeave);
       unregisterMapInstance(map);
       map.remove();
       mapRef.current = null;
@@ -332,7 +350,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     for (const cluster of clusters) {
       if (cluster.count === 1) {
         const item = mappable.find((it) => it.id === cluster.itemIds[0])!;
-        const el = buildServeMarker(item);
+        const el = buildServeMarker(item, selectedIds.has(item.id));
         const popup = new mapboxgl.Popup({ offset: 18, closeButton: true, maxWidth: '280px' })
           .setHTML(buildPopupHtml(item));
 
@@ -362,17 +380,25 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
           .addTo(map);
         marker.on('dragend', async () => {
           const { lng, lat } = marker.getLngLat();
+          let placeName: string | undefined;
           try {
             const geocodeResult = await reverseGeocode(lng, lat);
-            const placeName = geocodeResult.features[0]?.place_name;
+            placeName = geocodeResult.features[0]?.place_name;
+          } catch {
+            // non-fatal — fall back to raw coordinates in the confirmation prompt
+          }
+          const label = placeName || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+          const confirmed = window.confirm(`Move this job's location to: ${label}?`);
+          if (!confirmed) {
+            // Snap back by reloading, which re-renders from the last saved position.
+            load();
+            return;
+          }
+          try {
             await apiFetch(`/process-server/${item.id}`, {
               method: 'PUT',
               body: JSON.stringify({ recipient_lat: lat, recipient_lng: lng }),
             });
-            if (placeName) {
-              // eslint-disable-next-line no-console
-              console.info(`Corrected location for job ${item.id}: ${placeName}`);
-            }
             load();
           } catch {
             // non-fatal — snap back by reloading, which re-renders from the last saved position
@@ -391,7 +417,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
         markersRef.current.push(marker);
       }
     }
-  }, [mapReady, items, onSelectQueue, currentZoom, deadlineFilter]);
+  }, [mapReady, items, onSelectQueue, currentZoom, deadlineFilter, selectedIds]);
 
   // Draw/clear the attempt-history trail overlay for a selected serve item.
   // GeoJSON line source/layer (not a marker) — kept separate from the
@@ -518,78 +544,6 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     return () => { cancelled = true; clearPreview(); };
   }, [previewOrigin, previewTarget, mapReady]);
 
-  // Load success-rate rows once when the heatmap toggle is first enabled.
-  useEffect(() => {
-    if (!showSuccessHeatmap || successRates.length > 0) return;
-    let cancelled = false;
-    apiFetch<SuccessRateRow[]>('/process-server/success-rates')
-      .then((rows) => { if (!cancelled) setSuccessRates(rows); })
-      .catch(() => { /* non-fatal — heatmap stays empty */ });
-    return () => { cancelled = true; };
-  }, [showSuccessHeatmap, successRates.length]);
-
-  // Draw/clear the success-rate heatmap overlay. Mirrors the attempt-trail and
-  // drive-preview effects above: read mapRef.current fresh inside the cleanup
-  // (not the closed-over `map`) and wrap every Mapbox call in try/catch, since
-  // the map-init effect's cleanup can null mapRef.current / tear down the style
-  // before this effect's own cleanup runs.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-
-    const sourceId = 'srv-success-heatmap';
-    const layerId = 'srv-success-heatmap-layer';
-
-    const clearHeatmap = () => {
-      const currentMap = mapRef.current;
-      if (!currentMap) return;
-      try {
-        if (currentMap.getLayer(layerId)) currentMap.removeLayer(layerId);
-        if (currentMap.getSource(sourceId)) currentMap.removeSource(sourceId);
-      } catch {
-        // non-fatal — map/style already torn down (e.g. mid-unmount)
-      }
-    };
-
-    if (!showSuccessHeatmap || successRates.length === 0) {
-      clearHeatmap();
-      return;
-    }
-
-    clearHeatmap();
-    // No zip field is available on mapped queue items — approximate each row's
-    // centroid via recipient_city as the best available grouping key (see
-    // centroidForGroup in serveMapOverlays.ts). Rows with no matching mapped
-    // items are skipped rather than plotted at a placeholder coordinate.
-    const features = successRates
-      .map((row) => {
-        const centroid = centroidForGroup(row.zip, items);
-        if (!centroid) return null;
-        return {
-          type: 'Feature' as const,
-          properties: { color: successRateColor(row), zip: row.zip },
-          geometry: { type: 'Point' as const, coordinates: [centroid.lng, centroid.lat] },
-        };
-      })
-      .filter((f): f is NonNullable<typeof f> => f != null);
-
-    if (features.length === 0) return;
-
-    try {
-      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-      map.addLayer({
-        id: layerId,
-        type: 'circle',
-        source: sourceId,
-        paint: { 'circle-radius': 40, 'circle-color': ['get', 'color'], 'circle-opacity': 0.25, 'circle-blur': 0.6 },
-      });
-    } catch {
-      // non-fatal — map/style torn down before this effect ran
-    }
-
-    return () => { clearHeatmap(); };
-  }, [showSuccessHeatmap, successRates, items, mapReady]);
-
   const notMapped = items.filter((it) => it.recipient_lat == null || it.recipient_lng == null);
 
   const handleExport = () => {
@@ -602,7 +556,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       recipient_address: it.recipient_address,
       priority: it.priority,
       deadline: it.deadline,
-    })));
+    }))).catch(() => { window.alert('Failed to export route sheet.'); });
   };
 
   const applyBulkStatus = async (status: string) => {
@@ -617,7 +571,10 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       setSelectedIds(new Set());
       load();
     } catch {
-      // non-fatal — user can retry; selection is preserved so nothing is lost
+      // Selection is preserved so the user can retry, but they need to know
+      // it failed — an empty catch here previously left them with no feedback
+      // and a UI that looked like nothing happened.
+      window.alert(`Failed to update ${selectedIds.size} job(s). Please try again.`);
     }
   };
 
@@ -660,12 +617,6 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
             ))}
           </div>
           <button
-            onClick={() => setShowSuccessHeatmap((v) => !v)}
-            className={`flex items-center gap-1 px-2 py-1 text-[11px] border border-border-subtle rounded ${showSuccessHeatmap ? 'bg-brand-700 text-white' : 'bg-surface-raised text-brand-300'}`}
-          >
-            Success Heatmap
-          </button>
-          <button
             onClick={() => setNoteModal({ open: true })}
             className="flex items-center gap-1 px-2 py-1 text-[11px] bg-surface-raised border border-border-subtle rounded text-brand-300 hover:text-brand-100"
           >
@@ -691,7 +642,6 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
         <div className="flex items-center gap-2 px-2 py-1 bg-surface-raised border border-border-subtle rounded text-[11px]">
           <span className="text-brand-300">{selectedIds.size} selected (shift-drag to reselect)</span>
           <span className="text-brand-500">Apply to selected:</span>
-          <button onClick={() => applyBulkStatus('skipped')} className="px-2 py-0.5 border border-border-subtle rounded text-brand-300 hover:text-brand-100">Skip</button>
           <button onClick={() => applyBulkStatus('archived')} className="px-2 py-0.5 border border-border-subtle rounded text-brand-300 hover:text-brand-100">Archive</button>
           <button onClick={() => setSelectedIds(new Set())} className="px-2 py-0.5 border border-border-subtle rounded text-brand-500 hover:text-brand-300 ml-auto">Clear</button>
         </div>
