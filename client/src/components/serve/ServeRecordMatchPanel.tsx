@@ -78,11 +78,13 @@ export default function ServeRecordMatchPanel({ address, businessName }: Props) 
 
   if (!hasPropData && !hasBizData) return null;
 
+  // Borders and the icon are structural chrome — silver, not gold. Only the
+  // panel header itself takes the gold role variable.
   return (
-    <div className="panel-beveled bg-surface-raised border border-[#d4a017]/30">
-      <div className="flex items-center gap-2 px-3 py-[5px] border-b border-[#d4a017]/20">
-        <KeyRound className="w-3 h-3 text-[#d4a017]" />
-        <span className="text-[10px] uppercase font-bold tracking-wider text-[#d4a017]">Records Match</span>
+    <div className="panel-beveled bg-surface-raised border border-accent-silver-600/30">
+      <div className="flex items-center gap-2 px-3 py-[5px] border-b border-accent-silver-600/20">
+        <KeyRound className="w-3 h-3 text-accent-silver-400" />
+        <span className="text-[10px] uppercase font-bold tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Records Match</span>
         <span className="text-[9px] text-fg-muted ml-1">— existing record found for this {hasPropData ? 'address' : 'business'}</span>
       </div>
 
@@ -98,13 +100,13 @@ export default function ServeRecordMatchPanel({ address, businessName }: Props) 
               {property.gate_code && (
                 <div className="flex items-center gap-1">
                   <span className="text-fg-muted">Gate:</span>
-                  <span className="font-mono text-[#d4a017] font-bold">{property.gate_code}</span>
+                  <span className="font-mono text-rmpg-100 font-bold">{property.gate_code}</span>
                 </div>
               )}
               {property.alarm_code && (
                 <div className="flex items-center gap-1">
                   <span className="text-fg-muted">Alarm:</span>
-                  <span className="font-mono text-[#d4a017] font-bold">{property.alarm_code}</span>
+                  <span className="font-mono text-rmpg-100 font-bold">{property.alarm_code}</span>
                   {property.alarm_company && <span className="text-fg-muted">({property.alarm_company})</span>}
                 </div>
               )}

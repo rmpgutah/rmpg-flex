@@ -683,7 +683,11 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // 10533 -> 10532: WeekTimeline's hour-band gutter label moved from
   // text-rmpg-400 to text-fg-muted while its grid placement was being made
   // explicit.
-  const PIN = 10532;
+  //
+  // 10532 -> 10530: ServePage's Mileage Today / Route Efficiency cards moved
+  // their secondary captions to text-fg-muted while those cards were being
+  // taught to fall back to the server's planned mileage.
+  const PIN = 10530;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

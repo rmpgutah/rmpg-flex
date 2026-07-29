@@ -27,6 +27,7 @@ import type { ServeJob, ServeJobLinkedCall, ServeAttempt } from '../../types';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { formatCodeShort } from '../../constants/processServiceCodes';
 import ServeReceiptActions from './ServeReceiptActions';
+import DiligencePanel from './DiligencePanel';
 
 interface ServeJobCardProps {
   job: ServeJob;
@@ -141,7 +142,18 @@ export default React.memo(function ServeJobCard({
     return parseTimestamp(job.deadline).getTime() <= Date.now();
   }, [isOpenJob, job.deadline]);
 
-  const isCritical = job.urgency_tier === 'critical';
+  // Same rule as isDueSoon/isOverdue above: urgency describes how hard a job is
+  // still pushing for attention, so it stops applying once the job is resolved.
+  // Gating only the deadline chips left every served/archived card rendering a
+  // red CRITICAL flame and a red ring — on the live queue that was *every* card
+  // in the Served folder, which trains operators to ignore the colour that is
+  // supposed to mean "act now".
+  // Carries the tier rather than a boolean so the JSX below narrows without a
+  // non-null assertion.
+  const shownUrgency = isOpenJob && job.urgency_tier && job.urgency_tier !== 'normal'
+    ? job.urgency_tier
+    : null;
+  const isCritical = isOpenJob && job.urgency_tier === 'critical';
   const statusCfg = STATUS_COLORS[job.status] ?? STATUS_COLORS.pending;
 
   const fullAddress = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
@@ -176,7 +188,7 @@ export default React.memo(function ServeJobCard({
         panel-beveled rounded-[2px] transition-all duration-150 hover:bg-surface-raised hover:shadow-md
         ${isDueSoon && !isSelected ? 'ring-1 ring-red-500/60' : ''}
         ${isOverdue && !isSelected ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]' : ''}
-        ${isSelected ? 'ring-1 ring-brand-400 shadow-[0_0_8px_rgba(212,160,23,0.25)]' : ''}
+        ${isSelected ? 'ring-1 ring-brand-400 shadow-[0_0_8px_rgb(var(--accent-silver-400-rgb)/0.25)]' : ''}
         ${!isDueSoon && !isOverdue && !isSelected && isCritical ? 'ring-1 ring-red-500/60' : ''}
       `}
       style={{ background: 'var(--surface-base)', borderColor: 'var(--border-subtle)' }}
@@ -313,16 +325,16 @@ export default React.memo(function ServeJobCard({
           )}
           {/* Urgency tier badge — critical uses a Flame icon. Static: see the
               note on the status map above for why nothing here animates. */}
-          {job.urgency_tier && job.urgency_tier !== 'normal' && (
-            <span title={`Urgency: ${job.urgency_tier}`} className={`inline-flex items-center gap-0.5 text-[8px] font-bold px-1 py-0 rounded-[2px] border ${
-              job.urgency_tier === 'critical'
+          {shownUrgency && (
+            <span title={`Urgency: ${shownUrgency}`} className={`inline-flex items-center gap-0.5 text-[8px] font-bold px-1 py-0 rounded-[2px] border ${
+              shownUrgency === 'critical'
                 ? 'text-red-300 bg-red-900/40 border-red-600/60'
                 : 'text-amber-400 bg-amber-900/20 border-amber-600/50'
             }`}>
-              {job.urgency_tier === 'critical'
+              {shownUrgency === 'critical'
                 ? <Flame className="w-2.5 h-2.5" />
                 : <AlertTriangle className="w-2.5 h-2.5" />}
-              {job.urgency_tier.toUpperCase()}
+              {shownUrgency.toUpperCase()}
             </span>
           )}
           {/* Closed chip — green-800/green-300, shown whenever closed_at is set */}
@@ -346,7 +358,7 @@ export default React.memo(function ServeJobCard({
           {linkedCall && (
             <div className="p-2 rounded-[2px] border mb-2" style={{ background: '#88888810', borderColor: '#88888830' }}>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Dispatch Link</span>
+                <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Dispatch Link</span>
                 <button type="button"
                   className="text-[10px] text-rmpg-400 hover:text-rmpg-300 underline"
                   onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${linkedCall.call_number}`, '_blank', 'noopener,noreferrer'); }}
@@ -381,7 +393,7 @@ export default React.memo(function ServeJobCard({
           )}
 
           {/* Case / court / jurisdiction */}
-          <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Case Details</span>
+          <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Case Details</span>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-rmpg-300">
             {job.case_number && (
               <div className="flex items-center gap-1">
@@ -445,15 +457,27 @@ export default React.memo(function ServeJobCard({
           {/* Service instructions */}
           {job.service_instructions && (
             <div>
-              <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Instructions</span>
+              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Instructions</span>
               <p className="text-rmpg-300 mt-0.5">{job.service_instructions}</p>
             </div>
+          )}
+
+          {/* Diligence record — sits directly above the raw timeline because it
+              is the READ of that timeline.
+              Shown for every job EXCEPT a served one. The original gate was
+              `isOpenJob`, which was backwards: it hid the panel on exactly the
+              non-service jobs whose Affidavit of Non-Service is built from this
+              chain, and on the live queue (0 pending, 0 in-progress) that meant
+              it never rendered at all. Only a served job makes it moot — there
+              the chain is history, not evidence still being assembled. */}
+          {job.status !== 'served' && job.attempts && job.attempts.length > 0 && (
+            <DiligencePanel attempts={job.attempts} />
           )}
 
           {/* Prior attempts timeline */}
           {job.attempts && job.attempts.length > 0 && (
             <div>
-              <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Prior Attempts</span>
+              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Prior Attempts</span>
               <div className="mt-1 space-y-1">
                 {job.attempts.map((attempt) => (
                   <div
@@ -541,7 +565,7 @@ export default React.memo(function ServeJobCard({
           {/* Notes */}
           {job.notes && (
             <div>
-              <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Notes</span>
+              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Notes</span>
               <p className="text-rmpg-300 mt-0.5">{job.notes}</p>
             </div>
           )}

@@ -708,15 +708,20 @@ sd.post('/bulk-status-update', async (c) => {
   const db = getDb(c.env);
   const user = c.get('user') as { id: number } | undefined;
 
-  // Update each attempt's parent queue status
-  const placeholders = body.attemptIds.map(() => '?').join(',');
-
-  // Get the queue IDs affected by these attempts
-  const affectedQueues = await query<{ serve_queue_id: number }>(
+  // Get the queue IDs affected by these attempts. `attemptIds` is unbounded
+  // request-body input — AnalyticsTab's bulk action posts every selected row —
+  // so the IN-list is chunked under D1's 100-bound-parameter cap. DISTINCT is
+  // per-chunk only, so the same queue id can come back from two chunks; dedupe
+  // in-process before building the UPDATE batch, or a job gets updated twice
+  // and inflates `updatedCount`.
+  const affectedQueueRows = await queryInChunks<{ serve_queue_id: number }>(
     db,
-    `SELECT DISTINCT serve_queue_id FROM serve_attempts WHERE id IN (${placeholders})`,
-    ...body.attemptIds,
+    body.attemptIds,
+    (placeholders) => `SELECT DISTINCT serve_queue_id FROM serve_attempts WHERE id IN (${placeholders})`,
   );
+  const affectedQueues = [...new Set(
+    affectedQueueRows.map((r) => r.serve_queue_id).filter((n) => Number.isFinite(n)),
+  )].map((serve_queue_id) => ({ serve_queue_id }));
 
   const closedAt = (body.status === 'served' || body.status === 'failed')
     ? "datetime('now')"

@@ -457,6 +457,29 @@ export function getHalfWidth(doc: jsPDF): number {
 }
 
 /** Full-width field = contentWidth minus left/right inset */
+/**
+ * The RAIL: the left edge and width that every full-bleed block on a form
+ * must share -- section header bars, boxed panels, the signature block, the
+ * jurat box, table outlines.
+ *
+ * Section bars are drawn at PAGE_MARGIN across getContentWidth (10 -> 205.9
+ * on letter). Blocks that instead used getLeftX()/getFullFieldWidth() landed
+ * at 11 -> 204.9, inset a millimetre on BOTH sides, and the I(a)/I(b) panel
+ * pair -- sized from getContentWidth but drawn from getLeftX -- OVERSHOT the
+ * right rail by a millimetre at 206.9. Side by side down a page those three
+ * different edges read as a wobbling margin.
+ *
+ * getLeftX() stays what it is: the inset for TEXT inside a block. Use these
+ * for the block itself.
+ */
+export function getRailX(): number {
+  return LAYOUT.PAGE_MARGIN;
+}
+
+export function getRailWidth(doc: jsPDF): number {
+  return getContentWidth(doc);
+}
+
 export function getFullFieldWidth(doc: jsPDF): number {
   return getContentWidth(doc) - 2 * SPACING.CONTENT_INSET;
 }

@@ -1093,15 +1093,28 @@ export default function ServePage() {
   const filteredJobs = useMemo(() => {
     let result = statusFilter === 'all' ? jobs : jobs.filter(j => j.status === statusFilter);
 
-    // Search filter — applies across all folders
+    // Search filter — applies across all folders.
+    //
+    // Matches the WHOLE address the card displays, not just the street line.
+    // `recipient_address` holds "5245 South College Drive"; city/state/zip are
+    // separate columns. Searching the city was therefore impossible even though
+    // the card renders "5245 South College Drive, Murray, UT, 84123" — typing
+    // "Murray" returned zero matches against text plainly on screen. Composing
+    // the same string the card builds keeps what-you-see and what-you-search
+    // identical, which is the only rule a user can predict.
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      result = result.filter(j =>
-        j.recipient_name.toLowerCase().includes(q) ||
-        (j.case_number || '').toLowerCase().includes(q) ||
-        (j.client_name || '').toLowerCase().includes(q) ||
-        (j.recipient_address || '').toLowerCase().includes(q),
-      );
+      const haystack = (j: ServeJob) => [
+        j.recipient_name,
+        j.case_number,
+        j.client_name,
+        j.recipient_address,
+        j.recipient_city,
+        j.recipient_state,
+        j.recipient_zip,
+        j.document_type,
+      ].filter(Boolean).join(' ').toLowerCase();
+      result = result.filter(j => haystack(j).includes(q));
     }
 
     // Feature 1: Sort by deadline urgency
@@ -1856,6 +1869,41 @@ export default function ServePage() {
           <div className="h-full flex flex-col">
             {/* Filter buttons */}
             <div className="flex items-center gap-1.5 px-3 py-2 border-b border-rmpg-700 overflow-x-auto tab-scroll">
+              {/* Search box. The filter it drives (recipient / case # / client /
+                  address, see filteredJobs) was fully implemented but had NO
+                  input bound to it anywhere — searchQuery could only ever be
+                  '' or be cleared, so that whole branch was unreachable. This
+                  is the missing surface, not new filtering logic. */}
+              <div className="relative flex-shrink-0">
+                <SearchIcon
+                  size={11}
+                  aria-hidden="true"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 text-fg-muted pointer-events-none"
+                />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search name, case #, client, address, city…"
+                  aria-label="Search serve jobs"
+                  className="w-56 pl-6 pr-6 py-1 text-[11px] rounded-[2px] bg-surface-sunken border border-rmpg-600 text-rmpg-100 placeholder:text-fg-muted focus:outline-none focus:ring-1 focus:ring-rmpg-400/50 focus:border-rmpg-400"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    aria-label="Clear search"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-fg-muted hover:text-rmpg-200"
+                  >
+                    <X size={11} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+              {searchQuery.trim() && (
+                <span className="text-[10px] text-fg-muted tabular-nums whitespace-nowrap flex-shrink-0">
+                  {filteredJobs.length} match{filteredJobs.length === 1 ? '' : 'es'}
+                </span>
+              )}
               {STATUS_FILTERS.map(f => (
                 <button type="button"
                   key={f.value}
@@ -1864,7 +1912,7 @@ export default function ServePage() {
                   onClick={() => setStatusFilter(f.value)}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-rmpg-500/50 ${
                     statusFilter === f.value
-                      ? 'text-rmpg-100 bg-rmpg-500 border-rmpg-500 shadow-[0_0_6px_rgba(212,160,23,0.3)]'
+                      ? 'text-rmpg-100 bg-rmpg-500 border-rmpg-500 shadow-[0_0_6px_rgb(var(--accent-silver-400-rgb)/0.3)]'
                       : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-200'
                   }`}
                 >
@@ -2060,7 +2108,7 @@ export default function ServePage() {
                   {/* Progress bar */}
                   <div className="w-full h-1.5 bg-surface-overlay rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-500 ${progressPct === 100 ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.25)]' : 'bg-brand-400 shadow-[0_0_6px_var(--brand-gold-glow,rgba(212,160,23,0.25))]'}`}
+                      className={`h-full rounded-full transition-all duration-500 ${progressPct === 100 ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.25)]' : 'bg-brand-400 shadow-[0_0_6px_var(--brand-gold-glow,rgb(var(--accent-silver-400-rgb)/0.25))]'}`}
                       style={{ width: `${progressPct}%` }}
                     />
                   </div>
@@ -2232,7 +2280,7 @@ export default function ServePage() {
               {mapReady && jobs.some(j => j.status === 'pending' || j.status === 'in_progress') && (
                 <button type="button"
                   onClick={handleNavigateToNext}
-                  className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-rmpg-100 bg-rmpg-500 hover:bg-rmpg-500/80 rounded-[2px] shadow-lg shadow-rmpg-500/20 border border-rmpg-500 transition-all duration-150 hover:shadow-[0_0_16px_rgba(212,160,23,0.3)] focus:outline-none focus:ring-2 focus:ring-rmpg-500/50"
+                  className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-rmpg-100 bg-rmpg-500 hover:bg-rmpg-500/80 rounded-[2px] shadow-lg shadow-rmpg-500/20 border border-rmpg-500 transition-all duration-150 hover:shadow-[0_0_16px_rgb(var(--accent-silver-400-rgb)/0.3)] focus:outline-none focus:ring-2 focus:ring-rmpg-500/50"
                 >
                   <Navigation size={16} />
                   Navigate to Next
@@ -2281,32 +2329,51 @@ export default function ServePage() {
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <div className="px-4 py-3 bg-surface-raised border border-rmpg-700 rounded-[2px] transition-colors hover:border-rmpg-400/30">
                 <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-1">Mileage Today</div>
+                {/* Falls back to the PLANNED distance stored on serve_routes for
+                    the day. Previously this only read `routeData` — ephemeral
+                    state set after using the Route Planner in this session — so
+                    the card showed "--" even with a saved route on the server.
+                    Verified live: 76.3 planned miles existed for the day while
+                    this rendered "--". The planned figure is labelled as such;
+                    it is not driven mileage and must not be read as billable. */}
                 <div className="text-lg font-bold text-rmpg-100 font-mono tabular-nums">
                   {routeData?.totalDistance
                     ? `${routeData.totalDistance.toFixed(1)} mi`
                     : stats?.mileage
                       ? `${stats.mileage.toFixed(1)} mi`
-                      : '--'
+                      : stats?.planned_mileage
+                        ? `${stats.planned_mileage.toFixed(1)} mi`
+                        : '--'
                   }
                 </div>
+                {!routeData?.totalDistance && !stats?.mileage && !!stats?.planned_mileage && (
+                  <div className="text-[10px] text-fg-muted mt-1">Planned — not recorded mileage</div>
+                )}
                 {routeData?.fuelCost && routeData.fuelCost > 0 && (
-                  <div className="text-[10px] text-rmpg-400 mt-1">
+                  <div className="text-[10px] text-fg-muted mt-1">
                     Fuel cost: ${routeData.fuelCost.toFixed(2)}
                   </div>
                 )}
               </div>
               <div className="px-4 py-3 bg-surface-raised border border-rmpg-700 rounded-[2px] transition-colors hover:border-rmpg-400/30">
                 <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-1">Route Efficiency</div>
+                {/* Efficiency is planned ÷ actual, so it genuinely cannot be
+                    computed without DRIVEN miles — and nothing on serve_routes
+                    or serve_attempts records an odometer, so `stats.mileage` is
+                    null by design rather than by accident. Say that, instead of
+                    rendering a bare "--" that reads like a loading failure. */}
                 <div className="text-lg font-bold text-rmpg-100 font-mono tabular-nums">
-                  {routeData && stats?.planned_mileage && stats.planned_mileage > 0
-                    ? `${Math.round((stats.planned_mileage / (routeData.totalDistance || 1)) * 100)}%`
+                  {routeData?.totalDistance && stats?.planned_mileage && stats.planned_mileage > 0
+                    ? `${Math.round((stats.planned_mileage / routeData.totalDistance) * 100)}%`
                     : '--'
                   }
                 </div>
-                {routeData && (
-                  <div className="text-[10px] text-rmpg-400 mt-1">
+                {routeData ? (
+                  <div className="text-[10px] text-fg-muted mt-1">
                     Est. drive time: {Math.floor((routeData.totalDuration || 0) / 60)}h {Math.round((routeData.totalDuration || 0) % 60)}m
                   </div>
+                ) : (
+                  <div className="text-[10px] text-fg-muted mt-1">Needs recorded mileage to compare</div>
                 )}
               </div>
             </div>
