@@ -16,6 +16,7 @@ const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosti
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
+const { parseWindowsBatteryOutput } = require('./hardwareFz55');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
 const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, restoreWindowBounds, saveWindowBounds } = require('./windowManager');
@@ -1368,17 +1369,35 @@ guardedHandle('sys:network-interfaces', () => {
   return formatNetworkInterfaces(require('os').networkInterfaces());
 });
 guardedHandle('sys:battery', async () => {
-  if (process.platform !== 'darwin') return null;
-  try {
-    const { execFile } = require('child_process');
-    const { promisify } = require('util');
-    const execFileAsync = promisify(execFile);
-    const { stdout } = await execFileAsync('pmset', ['-g', 'batt'], { timeout: 3000 });
-    return parsePmsetBatteryOutput(stdout);
-  } catch (err) {
-    console.error('[SYS:BATTERY] pmset failed:', err.message);
-    return null;
+  const { execFile } = require('child_process');
+  const { promisify } = require('util');
+  const execFileAsync = promisify(execFile);
+
+  if (process.platform === 'darwin') {
+    try {
+      const { stdout } = await execFileAsync('pmset', ['-g', 'batt'], { timeout: 3000 });
+      return parsePmsetBatteryOutput(stdout);
+    } catch (err) {
+      console.error('[SYS:BATTERY] pmset failed:', err.message);
+      return null;
+    }
   }
+
+  if (process.platform === 'win32') {
+    try {
+      const { stdout } = await execFileAsync(
+        'powershell.exe',
+        ['-NoProfile', '-Command', 'Get-CimInstance -ClassName Win32_Battery | Select-Object DeviceID, EstimatedChargeRemaining, BatteryStatus | ConvertTo-Json'],
+        { timeout: 3000 }
+      );
+      return parseWindowsBatteryOutput(stdout);
+    } catch (err) {
+      console.error('[SYS:BATTERY] Get-CimInstance Win32_Battery failed:', err.message);
+      return null;
+    }
+  }
+
+  return null;
 });
 guardedHandle('sys:idle-time', () => {
   return powerMonitor.getSystemIdleTime();
