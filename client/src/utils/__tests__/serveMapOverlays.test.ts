@@ -1,23 +1,31 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter } from '../serveMapOverlays';
 
-describe('urgencyTierForDeadline', () => {
-  const now = new Date('2026-07-28T12:00:00Z').getTime();
+// Every fixture below is expressed relative to this instant.
+//
+// The unparseable-deadline case relies on parseTimestamp's `new Date()` fallback
+// (dateUtils.ts:153), which read the REAL clock while every assertion compares
+// against the fixed instant below. That made the test a time bomb: it passed
+// until real time drifted more than 24h past 2026-07-28T12:00Z, then reported
+// 'warning' instead of 'critical' — and it failed on main for everyone, in a
+// file nobody had touched. Pinning the clock makes the fallback deterministic.
+const NOW_ISO = '2026-07-28T12:00:00Z';
 
-  // The unparseable-deadline case below relies on parseTimestamp's
-  // `new Date()` fallback (dateUtils.ts:153), which read the REAL clock while
-  // every assertion compares against the fixed `now` above. That made the test
-  // a time bomb: it passed until real time drifted more than 24h past
-  // 2026-07-28T12:00Z, then reported 'warning' instead of 'critical' — and it
-  // failed on main for everyone, in a file nobody had touched. Pinning the
-  // clock to `now` makes the fallback deterministic.
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(now);
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+// Pinned at file level, not per-describe: `matchesDeadlineFilter` below shares
+// the same fixture instant and the same fallback exposure.
+// `toFake: ['Date']` deliberately leaves setTimeout/setInterval real — only the
+// clock needs pinning, and faking timers wholesale can deadlock unrelated code.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(NOW_ISO)); // new-date-ok — Z-suffixed UTC literal, not a naive server string
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe('urgencyTierForDeadline', () => {
+  const now = new Date(NOW_ISO).getTime(); // new-date-ok — Z-suffixed UTC literal
 
   it('returns "none" when there is no deadline', () => {
     expect(urgencyTierForDeadline(null, now)).toBe('none');
@@ -88,7 +96,7 @@ describe('isRiskFlagged', () => {
 });
 
 describe('matchesDeadlineFilter', () => {
-  const now = new Date('2026-07-28T12:00:00Z').getTime();
+  const now = new Date(NOW_ISO).getTime(); // new-date-ok — Z-suffixed UTC literal
 
   it('"all" matches everything including no deadline', () => {
     expect(matchesDeadlineFilter(null, 'all', now)).toBe(true);
