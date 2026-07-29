@@ -703,7 +703,7 @@ export default function FieldCameraPage() {
               className="w-[72px] h-[72px] border-4 border-brand-400 bg-surface-raised flex items-center justify-center disabled:opacity-30"
               aria-label={idScanMode ? 'Scan ID barcode' : 'Take photo'}
             >
-              {idScanMode ? <IdCard className="w-8 h-8 text-brand-400" /> : <span className="w-12 h-12 bg-[#d4a017]" />}
+              {idScanMode ? <IdCard className="w-8 h-8 text-brand-400" /> : <span className="w-12 h-12 bg-brand-400" />}
             </button>
             {/* Spacer balances the layout so the shutter stays centered */}
             <span className="w-12" aria-hidden="true" />
