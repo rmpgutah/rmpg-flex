@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { MapPin, Building2, User, AlertTriangle, RefreshCw, Plus, Printer } from 'lucide-react';
+import { MapPin, Building2, User, AlertTriangle, RefreshCw, Plus, Printer, Radio } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../../utils/mapboxLoader';
@@ -19,6 +19,15 @@ import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter, type Dead
 import { fetchMapboxRoute } from '../../utils/mapboxRouting';
 import { reverseGeocode } from '../../utils/mapboxServices';
 import { exportServeMapSheet } from '../../utils/serveMapExport';
+import type { MapUnit as Unit } from '../../pages/map/utils/mapConstants';
+import {
+  buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, shouldAnimateMarkerMove,
+} from '../../pages/map/utils/mapMarkers';
+
+// Dispatch units poll — matches the Map module's UNITS_FAST_POLL_MS so a
+// server standing at a job site and a unit converging on it read as
+// similarly "live" whichever surface a dispatcher is watching.
+const UNITS_POLL_MS = 5_000;
 
 // One-time stylesheet injection for pulse-ring keyframes
 if (typeof document !== 'undefined' && !document.getElementById('srv-pulse-styles')) {
@@ -186,8 +195,11 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const unitMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
 
   const [items, setItems] = useState<QueueMapItem[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [showUnits, setShowUnits] = useState(false);
   const [notes, setNotes] = useState<LocationNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [geocoding, setGeocoding] = useState(false);
@@ -222,6 +234,25 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       setLoading(false);
     }
   }, []);
+
+  // Dispatch units overlay — opt-in via the "Show Units" toggle rather than
+  // fetched unconditionally, so a server viewing their own job board isn't
+  // paying a poll + marker-render cost they didn't ask for.
+  useEffect(() => {
+    if (!showUnits) return;
+    let cancelled = false;
+    const refreshUnits = async () => {
+      try {
+        const u = await apiFetch<Unit[]>('/dispatch/units');
+        if (!cancelled) setUnits(u);
+      } catch {
+        // non-fatal — units overlay just stays stale/empty
+      }
+    };
+    refreshUnits();
+    const t = setInterval(refreshUnits, UNITS_POLL_MS);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [showUnits]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -418,6 +449,58 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       }
     }
   }, [mapReady, items, onSelectQueue, currentZoom, deadlineFilter, selectedIds]);
+
+  // Dispatch unit markers — reuses the same buildUnitMarkerEl/applyUnitMarkerState
+  // pair the main Map module uses (mapMarkers.ts), so a unit reads identically
+  // (status color, GPS-staleness dashing, heading rotation) on either surface.
+  // Kept in its own effect from the queue-marker one above: units update on a
+  // faster poll and must never trigger a full serve-job re-cluster.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    if (!showUnits) {
+      for (const m of unitMarkersRef.current.values()) m.remove();
+      unitMarkersRef.current.clear();
+      return;
+    }
+
+    const currentIds = new Set<string>();
+    for (const unit of units) {
+      if (unit.latitude == null || unit.longitude == null) continue;
+      currentIds.add(unit.id);
+
+      const existing = unitMarkersRef.current.get(unit.id);
+      if (existing) {
+        const prevLngLat = existing.getLngLat();
+        const el = existing.getElement();
+        const innerEl = el.querySelector<HTMLElement>('[data-role="marker-inner"]') || el;
+        const animate = shouldAnimateMarkerMove(prevLngLat.lat, prevLngLat.lng, unit.latitude, unit.longitude);
+        if (!animate) innerEl.style.transitionDuration = '0ms';
+        existing.setLngLat([unit.longitude, unit.latitude]);
+        if (!animate) requestAnimationFrame(() => { innerEl.style.transitionDuration = ''; });
+        applyUnitMarkerState(el, unit);
+        const popup = existing.getPopup();
+        if (popup) popup.setHTML(buildUnitPopupHtml(unit));
+      } else {
+        const el = buildUnitMarkerEl(unit);
+        const popup = new mapboxgl.Popup({ offset: 16, closeButton: false, className: 'mapbox-popup-dark' })
+          .setHTML(buildUnitPopupHtml(unit));
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([unit.longitude, unit.latitude])
+          .setPopup(popup)
+          .addTo(map);
+        unitMarkersRef.current.set(unit.id, marker);
+      }
+    }
+
+    unitMarkersRef.current.forEach((marker, id) => {
+      if (!currentIds.has(id)) {
+        marker.remove();
+        unitMarkersRef.current.delete(id);
+      }
+    });
+  }, [units, showUnits, mapReady]);
 
   // Draw/clear the attempt-history trail overlay for a selected serve item.
   // GeoJSON line source/layer (not a marker) — kept separate from the
@@ -616,6 +699,13 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
               </button>
             ))}
           </div>
+          <button
+            onClick={() => setShowUnits((v) => !v)}
+            aria-pressed={showUnits}
+            className={`flex items-center gap-1 px-2 py-1 text-[11px] border rounded ${showUnits ? 'bg-brand-700 border-brand-700 text-white' : 'bg-surface-raised border-border-subtle text-brand-300 hover:text-brand-100'}`}
+          >
+            <Radio size={11} /> Show Units
+          </button>
           <button
             onClick={() => setNoteModal({ open: true })}
             className="flex items-center gap-1 px-2 py-1 text-[11px] bg-surface-raised border border-border-subtle rounded text-brand-300 hover:text-brand-100"
