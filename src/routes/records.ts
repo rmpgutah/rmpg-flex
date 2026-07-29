@@ -372,6 +372,7 @@ records.post('/from-dl-scan', async (c) => {
       scan?: Record<string, unknown>;
       vehicle?: Record<string, unknown>;
       create_property?: boolean;
+      call_id?: number;
     }>();
     const scan = body.scan ?? {};
     const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
@@ -526,11 +527,97 @@ records.post('/from-dl-scan', async (c) => {
       }
     }
 
+    // ── Current call: auto-link the scanned subject to the call the
+    // officer is scanning during, mirroring the existing ALPR call_vehicles
+    // auto-link for scanned vehicles. Best-effort — a failure here must not
+    // block person/dl_records/vehicle/property creation. ──
+    let callLinked = false;
+    let caseLinkedId: number | null = null;
+    const callId = typeof body.call_id === 'number' ? body.call_id : null;
+    if (callId) {
+      try {
+        await execute(db,
+          `INSERT OR IGNORE INTO call_persons (call_id, person_id, person_type, added_at) VALUES (?, ?, 'subject', datetime('now'))`,
+          callId, personId);
+        callLinked = true;
+      } catch (err) {
+        console.warn('[from-dl-scan] call_persons link failed (non-fatal):', err);
+      }
+      try {
+        const caseRow = await queryFirst<{ case_id: number }>(db,
+          'SELECT case_id FROM case_calls WHERE call_id = ? LIMIT 1', callId);
+        if (caseRow) {
+          await execute(db,
+            `INSERT OR IGNORE INTO case_person_links (case_id, person_id, relationship) VALUES (?, ?, 'linked')`,
+            caseRow.case_id, personId);
+          caseLinkedId = caseRow.case_id;
+        }
+      } catch (err) {
+        console.warn('[from-dl-scan] case_person_links link failed (non-fatal):', err);
+      }
+    }
+
+    // ── Warrants: backfill any orphaned warrant (entered by name/DOB text
+    // only, never linked to a person row) that matches this subject, then
+    // surface every active warrant now linked to them — whether just
+    // backfilled or already linked before this scan. Best-effort. ──
+    let warrantHits: Array<Record<string, unknown>> = [];
+    if (dob) {
+      try {
+        await execute(db,
+          `UPDATE warrants SET subject_person_id = ?
+           WHERE subject_person_id IS NULL AND LOWER(status) = 'active'
+             AND LOWER(subject_first_name) = LOWER(?) AND LOWER(subject_last_name) = LOWER(?)
+             AND subject_dob = ?`,
+          personId, first, last, dob);
+      } catch (err) {
+        console.warn('[from-dl-scan] warrant backfill failed (non-fatal):', err);
+      }
+      try {
+        warrantHits = await query<Record<string, unknown>>(db,
+          `SELECT id, warrant_number, warrant_type, offense_description, bond_amount, issuing_agency
+           FROM warrants WHERE subject_person_id = ? AND LOWER(status) = 'active'`,
+          personId);
+      } catch (err) {
+        console.warn('[from-dl-scan] warrant hit query failed (non-fatal):', err);
+      }
+    }
+
+    // ── Prior calls / open cases: surfaced for officer awareness only —
+    // never auto-written. A scan should not assert new case involvement
+    // beyond the current call it's actually happening in (handled above). ──
+    let priorCalls: Array<Record<string, unknown>> = [];
+    let openCases: Array<Record<string, unknown>> = [];
+    try {
+      priorCalls = await query<Record<string, unknown>>(db,
+        `SELECT c.id, c.call_number, c.incident_type, c.status, c.created_at
+         FROM calls_for_service c JOIN call_persons cp ON c.id = cp.call_id
+         WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 10`,
+        personId);
+    } catch (err) {
+      console.warn('[from-dl-scan] prior calls query failed (non-fatal):', err);
+    }
+    try {
+      openCases = await query<Record<string, unknown>>(db,
+        `SELECT DISTINCT ca.id, ca.case_number, ca.title, ca.status
+         FROM cases ca JOIN case_person_links cpl ON ca.id = cpl.case_id
+         WHERE cpl.person_id = ? AND LOWER(ca.status) NOT IN ('closed', 'archived')
+         ORDER BY ca.id DESC LIMIT 10`,
+        personId);
+    } catch (err) {
+      console.warn('[from-dl-scan] open cases query failed (non-fatal):', err);
+    }
+
     return c.json({
       person, person_created: personCreated,
       vehicle, vehicle_created: vehicleCreated,
       property, property_created: propertyCreated,
       dl_record_id: dlRecordId, dl_record_created: dlRecordCreated,
+      call_linked: callLinked,
+      case_linked_id: caseLinkedId,
+      warrant_hits: warrantHits,
+      prior_calls: priorCalls,
+      open_cases: openCases,
     }, 201);
   } catch (err) {
     console.error('POST /records/from-dl-scan failed:', err);
