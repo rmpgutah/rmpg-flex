@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { MapPin, Building2, User, AlertTriangle, RefreshCw, Plus } from 'lucide-react';
+import { MapPin, Building2, User, AlertTriangle, RefreshCw, Plus, Printer } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../../utils/mapboxLoader';
@@ -18,6 +18,7 @@ import { clusterByGrid, type ClusterableItem } from '../../utils/serveMapCluster
 import { urgencyTierForDeadline, isRiskFlagged, successRateColor, centroidForGroup, matchesDeadlineFilter, type SuccessRateRow, type DeadlineFilter } from '../../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../../utils/mapboxRouting';
 import { reverseGeocode } from '../../utils/mapboxServices';
+import { exportServeMapSheet } from '../../utils/serveMapExport';
 
 // One-time stylesheet injection for pulse-ring keyframes
 if (typeof document !== 'undefined' && !document.getElementById('srv-pulse-styles')) {
@@ -591,6 +592,19 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
 
   const notMapped = items.filter((it) => it.recipient_lat == null || it.recipient_lng == null);
 
+  const handleExport = () => {
+    const filtered = items
+      .filter((it) => it.recipient_lat != null && it.recipient_lng != null)
+      .filter((it) => matchesDeadlineFilter(it.deadline, deadlineFilter, Date.now()));
+    exportServeMapSheet(filtered.map((it) => ({
+      id: it.id,
+      recipient_name: it.recipient_name,
+      recipient_address: it.recipient_address,
+      priority: it.priority,
+      deadline: it.deadline,
+    })));
+  };
+
   const applyBulkStatus = async (status: string) => {
     if (selectedIds.size === 0) return;
     const confirmed = window.confirm(`Set ${selectedIds.size} job(s) to "${status}"?`);
@@ -663,6 +677,12 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
             className="flex items-center gap-1 px-2 py-1 text-[11px] bg-surface-raised border border-border-subtle rounded text-brand-300 hover:text-brand-100 disabled:opacity-50"
           >
             <RefreshCw size={11} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1 px-2 py-1 text-[11px] bg-surface-raised border border-border-subtle rounded text-brand-300 hover:text-brand-100"
+          >
+            <Printer size={11} /> Export Sheet
           </button>
         </div>
       </div>
