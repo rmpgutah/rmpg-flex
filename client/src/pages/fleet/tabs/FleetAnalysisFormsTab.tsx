@@ -364,7 +364,7 @@ export default function FleetAnalysisFormsTab({
     <div className="space-y-4">
       <div className="px-3 pt-3">
         <div className="flex items-center gap-2 mb-1">
-          <FileText size={14} style={{ color: '#d4a017' }} />
+          <FileText size={14} style={{ color: 'var(--accent-silver-400)' }} />
           <h2 className="text-sm font-semibold uppercase tracking-wider text-rmpg-300">
             Analysis Reports
           </h2>
@@ -376,8 +376,8 @@ export default function FleetAnalysisFormsTab({
 
       <div className="mx-3 rounded-sm border border-subtle" style={{ background: 'var(--surface-base)' }}>
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-subtle">
-          <Filter size={11} style={{ color: '#d4a017' }} />
-          <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+          <Filter size={11} style={{ color: 'var(--accent-silver-400)' }} />
+          <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--accent-silver-400)' }}>
             Report Filters
           </span>
         </div>
@@ -396,8 +396,8 @@ export default function FleetAnalysisFormsTab({
                   className="px-2 py-0.5 text-[10px] font-mono border transition-colors"
                   style={{
                     background: dateRange === r ? 'var(--surface-raised)' : 'transparent',
-                    borderColor: dateRange === r ? '#d4a017' : 'var(--border-default)',
-                    color: dateRange === r ? '#d4a017' : '#888',
+                    borderColor: dateRange === r ? 'var(--accent-silver-400)' : 'var(--border-default)',
+                    color: dateRange === r ? 'var(--accent-silver-400)' : 'var(--text-muted)',
                   }}
                 >
                   {r === '7d' ? '7 Days' : r === '30d' ? '30 Days' : r === '90d' ? '90 Days' : r === '365d' ? '1 Year' : r === 'ytd' ? 'YTD' : 'All Time'}
@@ -419,8 +419,8 @@ export default function FleetAnalysisFormsTab({
                   className="px-2 py-0.5 text-[10px] font-mono border transition-colors"
                   style={{
                     background: groupBy === g ? 'var(--surface-raised)' : 'transparent',
-                    borderColor: groupBy === g ? '#d4a017' : 'var(--border-default)',
-                    color: groupBy === g ? '#d4a017' : '#888',
+                    borderColor: groupBy === g ? 'var(--accent-silver-400)' : 'var(--border-default)',
+                    color: groupBy === g ? 'var(--accent-silver-400)' : 'var(--text-muted)',
                   }}
                 >
                   {g === 'vehicle' ? 'By Vehicle' : g === 'officer' ? 'By Officer' : 'By Type'}
@@ -454,7 +454,7 @@ export default function FleetAnalysisFormsTab({
                   type="button"
                   onClick={selectAll}
                   className="text-[9px] font-mono hover:underline"
-                  style={{ color: '#d4a017' }}
+                  style={{ color: 'var(--accent-silver-400)' }}
                 >
                   Select All
                 </button>
@@ -481,7 +481,7 @@ export default function FleetAnalysisFormsTab({
                       onChange={() => toggleVehicle(v.id)}
                       className="w-3 h-3 accent-rmpg-400"
                     />
-                    <span className="text-[10px] font-mono" style={{ color: '#d4a017' }}>{v.number}</span>
+                    <span className="text-[10px] font-mono" style={{ color: 'var(--accent-silver-400)' }}>{v.number}</span>
                     <span className="text-[9px] truncate" style={{ color: 'var(--text-muted)' }}>{v.label}</span>
                   </label>
                 );
@@ -492,7 +492,7 @@ export default function FleetAnalysisFormsTab({
       </div>
 
       <div className="mx-3">
-        <div className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#d4a017' }}>
+        <div className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--accent-silver-400)' }}>
           Available Reports
         </div>
         <div className="space-y-1.5">
@@ -508,7 +508,7 @@ export default function FleetAnalysisFormsTab({
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <Icon size={12} style={{ color: '#d4a017' }} />
+                      <Icon size={12} style={{ color: 'var(--accent-silver-400)' }} />
                       <span className="text-[11px] font-semibold text-rmpg-300">
                         {REPORT_LABELS[r]}
                       </span>
@@ -524,8 +524,8 @@ export default function FleetAnalysisFormsTab({
                     className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider border transition-colors disabled:opacity-50"
                     style={{
                       background: 'var(--surface-raised)',
-                      borderColor: '#d4a017',
-                      color: '#d4a017',
+                      borderColor: 'var(--accent-silver-400)',
+                      color: 'var(--accent-silver-400)',
                     }}
                   >
                     {isLoading ? (

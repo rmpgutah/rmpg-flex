@@ -580,7 +580,6 @@ export default function FleetDetailPanel({
         {activeTab === 'analytics' && (
           <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} onPeriodChange={onAnalyticsPeriodChange} />
         )}
-        {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
         {activeTab === 'fuel_cards' && <FleetFuelCardsTab />}
       </div>
     </div>

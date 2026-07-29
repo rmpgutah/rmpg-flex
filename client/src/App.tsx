@@ -77,6 +77,8 @@ const VerifyIdPage = lazyRetry(() => import('./pages/wallet/VerifyIdPage'));
 const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
 const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
 const FleetPage = lazyRetry(() => import('./pages/fleet'));
+const FleetDashboardPage = lazyRetry(() => import('./pages/fleet/FleetDashboardPage'));
+const FleetReportsPage = lazyRetry(() => import('./pages/fleet/FleetReportsPage'));
 const WarrantsPage = lazyRetry(() => import('./pages/WarrantsPage'));
 const CitationsPage = lazyRetry(() => import('./pages/CitationsPage'));
 const LawBookPage = lazyRetry(() => import('./pages/LawBookPage'));
@@ -580,6 +582,8 @@ function AppRoutes() {
             {/* /fleet serves the v1 tab-based UI permanently — the v2
                 Fleet.io-style shell was retired 2026-07-17 (see
                 docs/superpowers/specs/2026-07-17-fleet-v1-restoration-foundation-design.md). */}
+            <Route path="/fleet/dashboard" element={<RouteErrorBoundary><FleetDashboardPage /></RouteErrorBoundary>} />
+            <Route path="/fleet/reports" element={<RouteErrorBoundary><FleetReportsPage /></RouteErrorBoundary>} />
             <Route path="/fleet/*" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
