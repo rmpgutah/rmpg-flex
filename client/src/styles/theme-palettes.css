@@ -708,3 +708,42 @@ html.theme-blue-silver {
   --field-label-color:  #334155;
   --panel-header-color: #0f172a;
 }
+
+/* ── Printing the signing page from a browser ────────────────
+   A signer who hits Cmd-P on /m/serve-receipt got the app's dark chrome,
+   the sticky submit bar over the content, and navy backgrounds that
+   empty a colour cartridge to produce grey.
+
+   They are not meant to print this — the officer prints the instrument,
+   and there is a Download button for their copy — but people print
+   things, and what came out was unusable rather than merely imperfect.
+
+   Scoped to .public-form so no console surface is affected. */
+@media print {
+  .public-form,
+  .public-form body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  /* Panels keep their structure but lose the fills. A printed form wants
+     rules, not blocks of ink. */
+  .public-form section,
+  .public-form header {
+    background: #fff !important;
+    border-color: #999 !important;
+    break-inside: avoid;
+  }
+  /* The sticky submit bar sits over the content in print, and the action
+     it offers cannot be taken on paper. */
+  .public-form .fixed {
+    display: none !important;
+  }
+  /* Signature and checkbox state must survive: a tick rendered as a
+     background colour disappears entirely on a mono printer. */
+  .public-form [aria-pressed='true'] {
+    outline: 2px solid #000 !important;
+  }
+  .public-form img {
+    max-width: 100% !important;
+  }
+}

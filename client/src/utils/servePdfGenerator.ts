@@ -1524,6 +1524,16 @@ export const RECEIPT_COPY_LABEL: Record<ReceiptCopy, string> = {
 /** Print order. The agency keeps the first sheet off the printer. */
 export const RECEIPT_COPY_ORDER: ReceiptCopy[] = ['company', 'subject', 'client'];
 
+/**
+ * Check character for the scan-to-retrieve barcode. Mirrors
+ * receiptBarcodeCheck in src/routes/serveReceipt.ts — the worker resolves
+ * what this encodes, so the two must agree exactly.
+ */
+export function receiptBarcodeCheck(receiptId: number): string {
+  const sum = String(receiptId).split('').reduce((n, d, i) => n + Number(d) * (i + 2), 0);
+  return (sum % 36).toString(36).toUpperCase();
+}
+
 export type ReceiptVariantKey = 'individual' | 'co_habitant' | 'business' | 'substitute';
 
 export interface ReceiptAttestationLine {
@@ -2820,7 +2830,14 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       //
       // Only on a SIGNED instrument. A blank has no record to retrieve,
       // and a barcode resolving to nothing is worse than none at all.
-      ...(blank || !data.receiptId ? {} : { value: `RMPG-AOS:${data.receiptId}` }),
+      // Check character appended. `RMPG-AOS:4471` has no redundancy, so a
+      // single misread digit resolves to a DIFFERENT REAL RECEIPT and the
+      // clerk has no way to know. Mod-36 over the digits turns a silent
+      // wrong answer into a refusal to resolve — the only acceptable
+      // failure mode when the thing being looked up is a legal record.
+      ...(blank || !data.receiptId
+        ? {}
+        : { value: `RMPG-AOS:${data.receiptId}-${receiptBarcodeCheck(data.receiptId)}` }),
       formMetadata: {
         form: RECEIPT_FORM_KEY[data.variant],
         caseNumber: data.caseNumber,
