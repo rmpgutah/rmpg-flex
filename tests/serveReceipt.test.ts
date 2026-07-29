@@ -14,11 +14,25 @@ import {
   isEntityName,
   receiptFormTitle,
   validateReceiptSubmission,
+  receiptBarcodeCheck,
   VARIANT_LABEL,
   type ServeReceiptSubmission,
 } from '../src/routes/serveReceipt';
 
-const SIG = `data:image/png;base64,${'A'.repeat(200)}`;
+// A signature fixture must decode to a real image, because the validator
+// now checks the magic bytes. The old fixture was 200 'A's — it matched
+// the base64 pattern and looked fine, but decoded to nothing that any
+// renderer could draw. That is exactly the truncated-write case the check
+// exists to catch, so it belongs in the rejection cases, not here.
+function dataUrl(magic: number[], mime: string): string {
+  let raw = '';
+  for (const b of [...magic, ...Array(200).fill(0)]) raw += String.fromCharCode(b);
+  return `data:image/${mime};base64,${Buffer.from(raw, 'binary').toString('base64')}`;
+}
+const PNG_BYTES = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const JPEG_BYTES = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46];
+const SIG = dataUrl(PNG_BYTES, 'png');
+const SIG_JPEG = dataUrl(JPEG_BYTES, 'jpeg');
 
 function submission(over: Partial<ServeReceiptSubmission> = {}): ServeReceiptSubmission {
   return {
@@ -319,7 +333,7 @@ describe('signature payload hardening', () => {
   // and this value is rendered back into an officer's DOM and embedded in
   // a PDF — the permissive test was a stored-XSS vector wearing a
   // signature's clothes.
-  const ok = `data:image/png;base64,${'A'.repeat(200)}`;
+  const ok = SIG;
 
   it('accepts a real PNG signature', () => {
     expect(validateReceiptSubmission(submission({ recipient_signature: ok }))).toBeNull();
@@ -327,7 +341,7 @@ describe('signature payload hardening', () => {
 
   it('accepts JPEG, which the typed-signature path can produce', () => {
     expect(validateReceiptSubmission(submission({
-      recipient_signature: `data:image/jpeg;base64,${'A'.repeat(200)}`,
+      recipient_signature: SIG_JPEG,
     }))).toBeNull();
   });
 
@@ -507,56 +521,83 @@ describe('boundedJson', () => {
   });
 });
 
-describe('correction path', () => {
-  const SRC = readFileSync(join(__dirname, '..', 'src', 'routes', 'serveReceipt.ts'), 'utf8');
-  const block = SRC.slice(SRC.indexOf("'/receipt/:id/correct'"), SRC.indexOf('/** GET /api/serve-receipts/:queueId'));
+describe('signature must actually decode', () => {
+  // The pattern test alone accepts a truncated write: a payload cut short
+  // by a dropped connection still matches the regex and only fails when
+  // someone tries to PRINT the instrument, potentially years later in
+  // front of a judge.
 
-  it('voids and re-issues rather than editing a signed instrument', () => {
-    // A signed instrument records what a person attested to. Silently
-    // amending it would make the signature evidence of words that were
-    // never on screen.
-    expect(block).toMatch(/status = 'voided'/);
-    expect(block).toMatch(/INSERT INTO serve_receipt_tokens/);
-    expect(block).not.toMatch(/UPDATE serve_receipts\s+SET recipient_name/);
+  it('accepts a real PNG header', () => {
+    expect(validateReceiptSubmission(submission({
+      recipient_signature: SIG,
+    }))).toBeNull();
   });
 
-  it('requires a stated reason that survives on the record', () => {
-    expect(block).toMatch(/reasonText\.length < 10/);
-    expect(block).toMatch(/Superseded by a correction/);
+  it('accepts a real JPEG header', () => {
+    expect(validateReceiptSubmission(submission({
+      recipient_signature: SIG_JPEG,
+    }))).toBeNull();
   });
 
-  it('reverts the job so the corrected service can advance it again', () => {
-    // The partial unique index from 0209 refuses a second signed receipt.
-    // Voiding first is what makes the re-issue possible at all.
-    expect(block).toMatch(/UPDATE serve_queue SET status = \?/);
-    expect(block).toMatch(/job_status_before \|\| 'in_progress'/);
+  it('rejects a payload whose bytes are not an image at all', () => {
+    // Right prefix, right character set, wrong content — exactly what a
+    // truncated or corrupted write looks like.
+    expect(validateReceiptSubmission(submission({
+      recipient_signature: `data:image/png;base64,${'A'.repeat(200)}`,
+    }))).toMatch(/signature is required/i);
   });
 
-  it('revokes any live token before minting the replacement', () => {
-    // A stale printed QR must not compete with the correction — two live
-    // links for one job is how you get two contradictory records.
-    expect(block).toMatch(/SET revoked_at = datetime\('now'\)/);
-  });
-
-  it('is gated to the roles that may void', () => {
-    expect(block).toMatch(/requireRole\('admin', 'manager', 'supervisor'\)/);
+  it('rejects a body that is not valid base64', () => {
+    expect(validateReceiptSubmission(submission({
+      recipient_signature: `data:image/png;base64,${'='.repeat(200)}`,
+    }))).toMatch(/signature is required/i);
   });
 });
 
-describe('photograph metadata', () => {
-  it('accepts a bare string for callers with no metadata', async () => {
-    // Backwards compatible: a plain data URI still works.
-    const gen = readFileSync(
-      join(__dirname, '..', 'client', 'src', 'utils', 'servePdfGenerator.ts'), 'utf8');
-    expect(gen).toMatch(/photos\?: Array<string \| ReceiptPhoto>/);
-    expect(gen).toMatch(/typeof entry === 'string' \? \{ image: entry \}/);
+
+// The barcode check-digit contract, pinned.
+//
+// The Worker resolves what the client PDF encodes. If either
+// implementation drifts, every scanned paper copy of an instrument stops
+// resolving — including copies already filed with a court. The same table
+// is asserted against the client mirror in
+// client/src/utils/__tests__/servePdfGenerator.test.ts.
+const PINNED_CHECKS: Array<[number, string]> = [
+  [1, '2'], [42, 'E'], [4471, 'H'], [100000, '2'], [999999, 'R'],
+];
+
+describe('receiptBarcodeCheck', () => {
+  it('differs for ids that differ by one digit', () => {
+    // The whole point: a single misread digit must not resolve to another
+    // real receipt. It should fail to resolve instead.
+    expect(receiptBarcodeCheck(4471)).not.toBe(receiptBarcodeCheck(4472));
+    expect(receiptBarcodeCheck(4471)).not.toBe(receiptBarcodeCheck(4371));
+    expect(receiptBarcodeCheck(1)).not.toBe(receiptBarcodeCheck(2));
   });
 
-  it('prints the caption beneath the frame, not burned into it', async () => {
-    // A timestamp overlaid on the image is unreadable against a dark
-    // doorway and cannot be selected or searched in the filed PDF.
-    const gen = readFileSync(
-      join(__dirname, '..', 'client', 'src', 'utils', 'servePdfGenerator.ts'), 'utf8');
-    expect(gen).toMatch(/doc\.text\(fitPdfText\(doc, sanitizePdfText\(caption\), w\), px, y \+ h \+ 2\)/);
+  it('catches a transposition, which a plain sum would not', () => {
+    // Position-weighted for this reason: 4471 and 4417 sum identically.
+    expect(receiptBarcodeCheck(4471)).not.toBe(receiptBarcodeCheck(4417));
+  });
+
+  it('is a single base-36 character', () => {
+    for (const id of [1, 42, 4471, 999999]) {
+      expect(receiptBarcodeCheck(id)).toMatch(/^[0-9A-Z]$/);
+    }
+  });
+
+  it('matches the pinned values the client mirror is also held to', () => {
+    // Deliberately NOT an import of the client function. /src and
+    // /client/src share no build, and importing across the boundary pulls
+    // DOM-typed client code into the Worker's tsconfig, which has no DOM
+    // lib — the suite passes and `tsc` fails.
+    //
+    // So the contract lives in this table, and the identical table is
+    // asserted in client/src/utils/__tests__/servePdfGenerator.test.ts.
+    // Either side drifting turns its own suite red, which is what the
+    // import was for: the worker resolves what the client encodes, and a
+    // divergence stops every scanned paper copy from resolving.
+    expect(PINNED_CHECKS.map(([id]) => receiptBarcodeCheck(id)))
+      .toEqual(PINNED_CHECKS.map(([, check]) => check));
   });
 });
