@@ -144,7 +144,7 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps
     <div
       className={`flex items-start gap-2 px-3 py-2 rounded-[2px] border transition-all duration-150 ${
         isNext
-          ? 'border-brand-400/50 bg-brand-400/5 shadow-[0_0_8px_rgba(212,160,23,0.08)]'
+          ? 'border-brand-400/50 bg-brand-400/5 shadow-[0_0_8px_rgb(var(--accent-silver-400-rgb)/0.08)]'
           : 'border-border-default bg-surface-sunken'
       }`}
     >
@@ -190,7 +190,7 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps
             onClick={() => openNavigation(job, navigate)}
             className={`flex items-center gap-0.5 px-2 py-1 text-[10px] font-medium rounded-[2px] border transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-brand-400/40 ${
               isNext
-                ? 'text-rmpg-100 bg-brand-400/80 border-brand-400 hover:bg-brand-400 shadow-[0_0_6px_rgba(212,160,23,0.2)]'
+                ? 'text-rmpg-100 bg-brand-400/80 border-brand-400 hover:bg-brand-400 shadow-[0_0_6px_rgb(var(--accent-silver-400-rgb)/0.2)]'
                 : 'text-brand-400 border-brand-400/40 bg-transparent hover:bg-brand-400/10'
             }`}
             aria-label={`Navigate to ${job.recipient_name}`}
@@ -295,7 +295,7 @@ function NextJobCard({ job, onOptimisticUpdate, navigate }: { job: ServeJob; onO
           <button
             type="button"
             onClick={() => openNavigation(job, navigate)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-rmpg-100 bg-brand-400 hover:bg-brand-400/80 border border-brand-400 rounded-[2px] transition-all duration-150 shadow-[0_0_8px_rgba(212,160,23,0.2)] hover:shadow-[0_0_12px_rgba(212,160,23,0.35)] focus:outline-none focus:ring-2 focus:ring-brand-400/50"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-rmpg-100 bg-brand-400 hover:bg-brand-400/80 border border-brand-400 rounded-[2px] transition-all duration-150 shadow-[0_0_8px_rgb(var(--accent-silver-400-rgb)/0.2)] hover:shadow-[0_0_12px_rgb(var(--accent-silver-400-rgb)/0.35)] focus:outline-none focus:ring-2 focus:ring-brand-400/50"
             aria-label={`Navigate to ${job.recipient_name}`}
           >
             <Navigation size={12} />
@@ -356,7 +356,7 @@ function ProgressBar({ served, total }: { served: number; total: number }) {
             complete
               ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.4)]'
               : pct > 0
-                ? 'bg-brand-400 shadow-[0_0_6px_rgba(212,160,23,0.25)]'
+                ? 'bg-brand-400 shadow-[0_0_6px_rgb(var(--accent-silver-400-rgb)/0.25)]'
                 : 'bg-rmpg-700'
           }`}
           style={{ width: `${pct}%` }}

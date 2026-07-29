@@ -1596,7 +1596,7 @@ export default function ServePage() {
                   onClick={() => setStatusFilter(f.value)}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-rmpg-500/50 ${
                     statusFilter === f.value
-                      ? 'text-rmpg-100 bg-rmpg-500 border-rmpg-500 shadow-[0_0_6px_rgba(212,160,23,0.3)]'
+                      ? 'text-rmpg-100 bg-rmpg-500 border-rmpg-500 shadow-[0_0_6px_rgb(var(--accent-silver-400-rgb)/0.3)]'
                       : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-200'
                   }`}
                 >
@@ -1792,7 +1792,7 @@ export default function ServePage() {
                   {/* Progress bar */}
                   <div className="w-full h-1.5 bg-surface-overlay rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-500 ${progressPct === 100 ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.25)]' : 'bg-brand-400 shadow-[0_0_6px_var(--brand-gold-glow,rgba(212,160,23,0.25))]'}`}
+                      className={`h-full rounded-full transition-all duration-500 ${progressPct === 100 ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.25)]' : 'bg-brand-400 shadow-[0_0_6px_var(--brand-gold-glow,rgb(var(--accent-silver-400-rgb)/0.25))]'}`}
                       style={{ width: `${progressPct}%` }}
                     />
                   </div>
@@ -1923,7 +1923,7 @@ export default function ServePage() {
             {mapReady && jobs.some(j => j.status === 'pending' || j.status === 'in_progress') && (
               <button type="button"
                 onClick={handleNavigateToNext}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-rmpg-100 bg-rmpg-500 hover:bg-rmpg-500/80 rounded-[2px] shadow-lg shadow-rmpg-500/20 border border-rmpg-500 transition-all duration-150 hover:shadow-[0_0_16px_rgba(212,160,23,0.3)] focus:outline-none focus:ring-2 focus:ring-rmpg-500/50"
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-rmpg-100 bg-rmpg-500 hover:bg-rmpg-500/80 rounded-[2px] shadow-lg shadow-rmpg-500/20 border border-rmpg-500 transition-all duration-150 hover:shadow-[0_0_16px_rgb(var(--accent-silver-400-rgb)/0.3)] focus:outline-none focus:ring-2 focus:ring-rmpg-500/50"
               >
                 <Navigation size={16} />
                 Navigate to Next

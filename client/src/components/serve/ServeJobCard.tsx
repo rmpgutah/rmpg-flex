@@ -188,7 +188,7 @@ export default React.memo(function ServeJobCard({
         panel-beveled rounded-[2px] transition-all duration-150 hover:bg-surface-raised hover:shadow-md
         ${isDueSoon && !isSelected ? 'ring-1 ring-red-500/60' : ''}
         ${isOverdue && !isSelected ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]' : ''}
-        ${isSelected ? 'ring-1 ring-brand-400 shadow-[0_0_8px_rgba(212,160,23,0.25)]' : ''}
+        ${isSelected ? 'ring-1 ring-brand-400 shadow-[0_0_8px_rgb(var(--accent-silver-400-rgb)/0.25)]' : ''}
         ${!isDueSoon && !isOverdue && !isSelected && isCritical ? 'ring-1 ring-red-500/60' : ''}
       `}
       style={{ background: 'var(--surface-base)', borderColor: 'var(--border-subtle)' }}
