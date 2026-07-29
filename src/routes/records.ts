@@ -9,6 +9,7 @@ import { screenPersonForSor } from '../utils/screening/nsopwAdapter';
 import { lookupFailedCoverage, LOOKUP_OK } from '../utils/screening/coverage';
 import { log } from '../utils/logger';
 import { tryRepairAndRetry } from '../utils/repairFts';
+import { upsertDlRecord } from './dlRecords';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 const records = new Hono<Env>();
@@ -450,6 +451,31 @@ records.post('/from-dl-scan', async (c) => {
       );
     }
 
+    // ── DL record: upsert in the same request so a scan populates both
+    // persons and dl_records — previously two disconnected write paths. ──
+    let dlRecordId: number | null = null;
+    let dlRecordCreated = false;
+    if (dlNumber) {
+      try {
+        const dlUpsert = await upsertDlRecord(db, {
+          dl_number: dlNumber, dl_state: str(scan.dl_state),
+          dl_class: str(scan.dl_class), dl_expiry: str(scan.dl_expiry),
+          dl_issue_date: str(scan.dl_issue_date),
+          dl_restrictions: str(scan.dl_restrictions), dl_endorsements: str(scan.dl_endorsements),
+          first_name: first, middle_name: str(scan.middle_name), last_name: last, suffix: str(scan.suffix),
+          date_of_birth: dob, gender: str(scan.gender), height: str(scan.height), weight: str(scan.weight),
+          eye_color: str(scan.eye_color), hair_color: str(scan.hair_color),
+          address: str(scan.address), address2: str(scan.address2), city: str(scan.city),
+          address_state: str(scan.state), postal_code: str(scan.zip),
+          source: 'DL_SCAN',
+        });
+        dlRecordId = dlUpsert.recordId;
+        dlRecordCreated = dlUpsert.created;
+      } catch (err) {
+        console.warn('[from-dl-scan] dl_records upsert failed (non-fatal):', err);
+      }
+    }
+
     // ── Vehicle: optional; reuse by plate, always (re)link to the person ──
     let vehicle: Record<string, unknown> | null = null;
     let vehicleCreated = false;
@@ -504,6 +530,7 @@ records.post('/from-dl-scan', async (c) => {
       person, person_created: personCreated,
       vehicle, vehicle_created: vehicleCreated,
       property, property_created: propertyCreated,
+      dl_record_id: dlRecordId, dl_record_created: dlRecordCreated,
     }, 201);
   } catch (err) {
     console.error('POST /records/from-dl-scan failed:', err);
