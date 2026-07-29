@@ -24,13 +24,18 @@ function parseWindowsBatteryOutput(rawJsonString) {
   } catch {
     return null;
   }
-  const entries = Array.isArray(parsed) ? parsed : [parsed];
+  const entries = (Array.isArray(parsed) ? parsed : [parsed]).filter(
+    (entry) => entry && typeof entry === 'object'
+  );
   if (entries.length === 0) return null;
 
-  const batteries = entries.map((entry) => ({
-    percent: Number(entry.EstimatedChargeRemaining),
-    charging: entry.BatteryStatus === 2,
-  }));
+  const batteries = entries.map((entry) => {
+    const percent = Number(entry.EstimatedChargeRemaining);
+    return {
+      percent: Number.isFinite(percent) ? percent : 0,
+      charging: entry.BatteryStatus === 2,
+    };
+  });
 
   const overallPercent = Math.round(
     batteries.reduce((sum, b) => sum + b.percent, 0) / batteries.length
@@ -71,9 +76,11 @@ function parseWindowsWwanOutput(rawJsonString) {
   } catch {
     return { present: false, connected: false };
   }
-  const entries = Array.isArray(parsed) ? parsed : [parsed];
+  const entries = (Array.isArray(parsed) ? parsed : [parsed]).filter(
+    (entry) => entry && typeof entry === 'object'
+  );
   if (entries.length === 0) return { present: false, connected: false };
-  return { present: true, connected: entries.some((entry) => entry && entry.Status === 'Up') };
+  return { present: true, connected: entries.some((entry) => entry.Status === 'Up') };
 }
 
 /**
@@ -89,6 +96,7 @@ function parseWindowsTpmOutput(rawJsonString) {
   } catch {
     return null;
   }
+  if (!parsed || typeof parsed !== 'object') return null;
   return {
     present: Boolean(parsed.TpmPresent),
     ready: Boolean(parsed.TpmReady),
@@ -100,11 +108,32 @@ const BARCODE_MAX_GAP_MS = 30;
 const BARCODE_MIN_LENGTH = 3;
 
 /**
+ * Returns true when a `before-input-event` `input.key` value should be
+ * buffered as a candidate barcode-scan character: a single printable
+ * character, or the literal string `'Enter'` (the scan terminator).
+ * Electron's `before-input-event` fires a separate keyDown for modifier
+ * and other non-printable keys (`'Shift'`, `'Control'`, `'Alt'`, `'Dead'`,
+ * ...), where `input.key` is a multi-character name rather than the
+ * character produced — those must be filtered out before buffering, or a
+ * scanner's Shift-then-letter sequence for an uppercase character corrupts
+ * the buffered payload (e.g. 'ABC123' buffers as 'ShiftAShiftBShiftC123').
+ * Callers (main.js's before-input-event handler) MUST filter to records
+ * that pass this check before pushing them onto the buffer passed to
+ * `classifyKeystrokeBurst` — that function assumes its input is already
+ * filtered and does no filtering of its own.
+ */
+function filterPrintableKeydown(key) {
+  return key === 'Enter' || (typeof key === 'string' && key.length === 1);
+}
+
+/**
  * Classifies a buffered run of keydown records as a barcode-scanner
  * keyboard-wedge burst (fast, ends in Enter, at least BARCODE_MIN_LENGTH
  * characters) vs. ordinary human typing. The FZ-55's barcode xPAK
  * (FZ-VBR551M) emits characters far faster than any human can type, so a
- * consistent sub-30ms inter-key gap is the distinguishing signal.
+ * consistent sub-30ms inter-key gap is the distinguishing signal. Assumes
+ * `records` has already been filtered to printable-character-or-Enter
+ * entries via `filterPrintableKeydown` — it does not filter modifier keys.
  */
 function classifyKeystrokeBurst(records) {
   if (!records || records.length < BARCODE_MIN_LENGTH + 1) {
@@ -132,5 +161,6 @@ module.exports = {
   parseWindowsDockOutput,
   parseWindowsWwanOutput,
   parseWindowsTpmOutput,
+  filterPrintableKeydown,
   classifyKeystrokeBurst,
 };

@@ -16,7 +16,7 @@ const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosti
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput, parseWindowsTpmOutput, classifyKeystrokeBurst } = require('./hardwareFz55');
+const { parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput, parseWindowsTpmOutput, classifyKeystrokeBurst, filterPrintableKeydown } = require('./hardwareFz55');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
 const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, restoreWindowBounds, saveWindowBounds } = require('./windowManager');
@@ -1124,8 +1124,25 @@ async function createMainWindow() {
     }
   }
 
+  // ⚠️ PRIVACY/SECURITY TRADEOFF (accepted, not an oversight): this handler
+  // buffers up to 200ms of every keystroke typed anywhere in the main
+  // window — including password/PIN entry on the login screen — in this
+  // main-process array. It is never sent to the renderer or anywhere else
+  // unless `classifyKeystrokeBurst` flags the burst as a barcode scan,
+  // which requires uniform sub-30ms inter-key gaps that normal human
+  // typing essentially never produces (see BARCODE_MAX_GAP_MS in
+  // hardwareFz55.js). Left as a future improvement: suspending the buffer
+  // while a password-type input has focus, rather than relying solely on
+  // the speed heuristic to keep plaintext keystrokes out of the payload.
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
+    // Only buffer printable characters and the Enter terminator. Electron
+    // fires a separate keyDown for modifier/non-printable keys (input.key
+    // = 'Shift', 'Control', 'Alt', 'Dead', ...); pushing those corrupts an
+    // uppercase scan payload (a scanner sends Shift before each uppercase
+    // letter) and must not reset the trailing-gap timer either — a Shift
+    // press mid-scan should not restart the classification window.
+    if (!filterPrintableKeydown(input.key)) return;
 
     barcodeBuffer.push({ char: input.key, timestampMs: Date.now() });
     if (barcodeBufferResetTimer) clearTimeout(barcodeBufferResetTimer);

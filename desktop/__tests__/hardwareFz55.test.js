@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput } = require('../hardwareFz55');
-const { parseWindowsTpmOutput, classifyKeystrokeBurst } = require('../hardwareFz55');
+const { parseWindowsTpmOutput, classifyKeystrokeBurst, filterPrintableKeydown } = require('../hardwareFz55');
 
 test('parseWindowsBatteryOutput: single battery, discharging', () => {
   const raw = JSON.stringify({ DeviceID: 'Battery0', EstimatedChargeRemaining: 76, BatteryStatus: 1 });
@@ -56,6 +56,23 @@ test('parseWindowsBatteryOutput: malformed JSON returns null', () => {
   assert.equal(parseWindowsBatteryOutput('not json'), null);
 });
 
+test('parseWindowsBatteryOutput: JSON literal null returns null', () => {
+  assert.equal(parseWindowsBatteryOutput('null'), null);
+});
+
+test('parseWindowsBatteryOutput: entry missing EstimatedChargeRemaining does not turn overallPercent into NaN', () => {
+  const raw = JSON.stringify([
+    { DeviceID: 'Battery0', EstimatedChargeRemaining: 80, BatteryStatus: 1 },
+    { DeviceID: 'Battery1', BatteryStatus: 1 },
+  ]);
+  const result = parseWindowsBatteryOutput(raw);
+  assert.equal(Number.isNaN(result.overallPercent), false);
+  assert.deepEqual(result.batteries, [
+    { percent: 80, charging: false },
+    { percent: 0, charging: false },
+  ]);
+});
+
 test('parseWindowsDockOutput: docked when a DockUpDown device is OK', () => {
   const raw = JSON.stringify({ Status: 'OK' });
   assert.deepEqual(parseWindowsDockOutput(raw), { docked: true });
@@ -79,6 +96,10 @@ test('parseWindowsDockOutput: not docked on malformed JSON', () => {
   assert.deepEqual(parseWindowsDockOutput('garbage'), { docked: false });
 });
 
+test('parseWindowsDockOutput: JSON literal null is not docked', () => {
+  assert.deepEqual(parseWindowsDockOutput('null'), { docked: false });
+});
+
 test('parseWindowsWwanOutput: present and connected', () => {
   const raw = JSON.stringify({ Name: 'Sierra Wireless EM7511', InterfaceDescription: 'Sierra Wireless EM7511', Status: 'Up' });
   assert.deepEqual(parseWindowsWwanOutput(raw), { present: true, connected: true });
@@ -95,6 +116,10 @@ test('parseWindowsWwanOutput: no WWAN adapter installed', () => {
 
 test('parseWindowsWwanOutput: malformed JSON treated as not present', () => {
   assert.deepEqual(parseWindowsWwanOutput('garbage'), { present: false, connected: false });
+});
+
+test('parseWindowsWwanOutput: JSON literal null treated as not present', () => {
+  assert.deepEqual(parseWindowsWwanOutput('null'), { present: false, connected: false });
 });
 
 test('parseWindowsTpmOutput: present, ready, and enabled', () => {
@@ -114,6 +139,10 @@ test('parseWindowsTpmOutput: not present', () => {
 
 test('parseWindowsTpmOutput: malformed JSON returns null', () => {
   assert.equal(parseWindowsTpmOutput('garbage'), null);
+});
+
+test('parseWindowsTpmOutput: JSON literal null returns null', () => {
+  assert.equal(parseWindowsTpmOutput('null'), null);
 });
 
 function burst(chars, gapMs) {
@@ -153,4 +182,21 @@ test('classifyKeystrokeBurst: one slow gap in an otherwise-fast burst is not a s
 
 test('classifyKeystrokeBurst: empty input is not a scan', () => {
   assert.deepEqual(classifyKeystrokeBurst([]), { isScan: false, payload: '' });
+});
+
+test('filterPrintableKeydown: single printable characters are buffered', () => {
+  assert.equal(filterPrintableKeydown('A'), true);
+  assert.equal(filterPrintableKeydown('1'), true);
+  assert.equal(filterPrintableKeydown('$'), true);
+});
+
+test('filterPrintableKeydown: Enter terminator is buffered', () => {
+  assert.equal(filterPrintableKeydown('Enter'), true);
+});
+
+test('filterPrintableKeydown: modifier and non-printable keys are rejected', () => {
+  assert.equal(filterPrintableKeydown('Shift'), false);
+  assert.equal(filterPrintableKeydown('Control'), false);
+  assert.equal(filterPrintableKeydown('Alt'), false);
+  assert.equal(filterPrintableKeydown('Dead'), false);
 });
