@@ -724,22 +724,49 @@ serveReceipt.post('/:token', async (c) => {
   // Submissions are what the cap is for. Recorded before the burn so a
   // rejected attempt still counts against a token being hammered.
   await execute(db, 'UPDATE serve_receipt_tokens SET scans_used = scans_used + 1 WHERE id = ?', tok.id)
-    .catch(() => undefined);
+    .catch((err) => {
+      // Swallowed silently before. The cap is what stops a token being
+      // hammered; if the increment stops landing it stops counting, and
+      // nothing anywhere says so.
+      // log.warn takes no error argument — the message goes in the context.
+      log.warn('Receipt scan count not incremented', {
+        tokenId: tok.id,
+        receiptId,
+        err: (err as Error)?.message ?? String(err),
+      });
+    });
 
-  // Record the officer's expectation alongside the derived variation.
-  // A mismatch is NOT an error — the officer is reading a doorstep and
-  // the signer knows their own household — but it is exactly the thing
+  // Record the officer's expectation alongside the derived variation, and
+  // how the encounter was completed.
+  //
+  // A variant mismatch is NOT an error — the officer is reading a doorstep
+  // and the signer knows their own household — but it is exactly the thing
   // worth a supervisor's eye before an affidavit is filed on it.
-  if (tok.prefill_variant) {
-    await execute(
-      db,
-      'UPDATE serve_receipts SET officer_variant = ?, variant_conflict = ? WHERE id = ?',
-      tok.prefill_variant, tok.prefill_variant === variant ? 0 : 1, receiptId,
-    ).catch(() => undefined);
-  }
+  //
+  // One statement rather than three: these are all columns of the row just
+  // inserted, and as separate writes each could fail independently and
+  // silently, leaving a legally-significant record partially annotated with
+  // no trace. In particular a lost variant_conflict is a conflict nobody
+  // ever sees.
   const channel = str(body.completion_channel, 20) === 'paper' ? 'paper' : 'mobile';
-  await execute(db, 'UPDATE serve_receipts SET completion_channel = ? WHERE id = ?', channel, receiptId)
-    .catch(() => undefined);
+  await execute(
+    db,
+    `UPDATE serve_receipts
+        SET completion_channel = ?,
+            officer_variant = COALESCE(?, officer_variant),
+            variant_conflict = COALESCE(?, variant_conflict)
+      WHERE id = ?`,
+    channel,
+    tok.prefill_variant ?? null,
+    tok.prefill_variant ? (tok.prefill_variant === variant ? 0 : 1) : null,
+    receiptId,
+  ).catch((err) => {
+    log.error(
+      'Receipt annotations not recorded — completion channel and any variant conflict are missing',
+      { receiptId, channel, officerVariant: tok.prefill_variant ?? null },
+      err as Error,
+    );
+  });
 
   // Burn the token. Conditional on used_receipt_id still being NULL so two
   // concurrent submits cannot both claim it — the loser's UPDATE matches 0
@@ -1787,7 +1814,13 @@ export async function sweepStaleReceiptEmails(env: Env['Bindings'], olderThanHou
       WHERE email_status = 'pending'
         AND created_at < datetime('now', ?)`,
     `-${Math.max(1, Math.min(720, olderThanHours))} hours`,
-  ).catch(() => null);
+  ).catch((err) => {
+    // Returning 0 on failure made a broken sweep indistinguishable from a
+    // clean one, forever: the cron logs "aged out 0" either way, and rows
+    // sit on 'pending' with nobody told the sweeper never ran.
+    log.error('Stale receipt email sweep failed', { olderThanHours }, err as Error);
+    return null;
+  });
   const n = Number(r?.meta.changes ?? 0);
   if (n > 0) log.info('Aged out stale receipt email deliveries', { count: n, olderThanHours });
   return n;
