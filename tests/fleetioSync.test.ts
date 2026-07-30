@@ -441,7 +441,7 @@ describe('applyOutbound', () => {
   it('work_order/create — pushes to Fleet.io and records work_orders link', async () => {
     const state: FleetTables = {
       events: [baseEvent({ id: 15, event_id: 'evt-wo', resource: 'work_order', resource_id: 1, action: 'create',
-        payload_json: JSON.stringify({ vehicle_id: 7777, description: 'Brake job' }) })],
+        payload_json: JSON.stringify({ vehicle_id: 7777, summary: 'Brake job' }) })],
       links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 7777, fleetio_id: 99999 }], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
     };
     const { db } = makeDb(state);
@@ -453,6 +453,7 @@ describe('applyOutbound', () => {
       async createFuelEntry() { throw new Error('not used'); },
       async createWorkOrder(args: { payload: Record<string, unknown> }) {
         woCalls++;
+        // `summary` (RMPG) is mapped to Fleet.io's real field name `description`.
         expect(args.payload.description).toBe('Brake job');
         // vehicle_id must be translated to Fleet.io id (99999), not the RMPG id (7777).
         expect(args.payload.vehicle_id).toBe(99999);
@@ -511,10 +512,12 @@ describe('applyOutbound', () => {
     const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
     expect(result.completed).toBe(1);
     expect(sentPayload).not.toBeNull();
-    expect(sentPayload!.vehicle_id).toBe(99999);          // translated
-    expect(sentPayload!.summary).toBe('Tire rotation');   // preserved
+    expect(sentPayload!.vehicle_id).toBe(99999);            // translated
+    expect(sentPayload!.description).toBe('Tire rotation'); // `summary` mapped to Fleet.io's `description`
     expect(sentPayload!.vendor_id).toBeUndefined();            // dropped (no link)
-    expect(sentPayload!.assigned_to_user_id).toBeUndefined();  // dropped (no link)
+    // assigned_to_user_id has no Fleet.io equivalent at all (see mapWorkOrderFieldsToFleetio) —
+    // dropped by the mapper regardless of link state, not just because it's unlinked.
+    expect(sentPayload!.assigned_to_user_id).toBeUndefined();
   });
 
   it('fuel_entry/update — PATCHes Fleet.io when the row is linked', async () => {
@@ -589,7 +592,7 @@ describe('applyOutbound', () => {
     const r1 = await applyOutbound({ db: makeDb(linkedState).db, adapter: adapter as never, config: stubConfig });
     expect(r1.completed).toBe(1);
     expect(seen.fleetioId).toBe(8888);
-    expect(seen.payload!.summary).toBe('Updated summary');
+    expect(seen.payload!.description).toBe('Updated summary'); // `summary` mapped to Fleet.io's `description`
     expect(seen.payload!.vehicle_id).toBe(99999);
 
     // Unlinked work_order — no-op
@@ -746,7 +749,7 @@ describe('applyOutbound', () => {
   it('part/create — sends only Fleet.io-mapped fields, not the raw RMPG row', async () => {
     const state: FleetTables = {
       events: [baseEvent({ id: 51, event_id: 'evt-part-create', resource: 'part', resource_id: 5, action: 'create',
-        payload_json: JSON.stringify({ id: 5, name: 'Oil Filter', quantity_on_hand: 12, reorder_point: 3, unit_cost: 8.5 }) })],
+        payload_json: JSON.stringify({ id: 5, name: 'Oil Filter', part_number: 'PF-46', quantity_on_hand: 12, reorder_point: 3, unit_cost: 8.5 }) })],
       links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
     };
     let sentPayload: Record<string, unknown> | null = null;
@@ -761,7 +764,8 @@ describe('applyOutbound', () => {
     };
     const result = await applyOutbound({ db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
     expect(result.completed).toBe(1);
-    expect(sentPayload).toEqual({ name: 'Oil Filter', unit_cost: 8.5 });
+    // `name` has no Fleet.io equivalent (Parts are identified by `number`, not a display name) — dropped.
+    expect(sentPayload).toEqual({ number: 'PF-46', unit_cost: 8.5 });
   });
 });
 

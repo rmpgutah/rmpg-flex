@@ -34,7 +34,7 @@ import {
 } from './ownership';
 import type { FleetioConfig, FleetioFuelEntry } from './client';
 import type { FleetioVehicle } from './types';
-import { mapVehicleFieldsToFleetio, mapFuelEntryFieldsToFleetio, mapVendorFieldsToFleetio, mapPartFieldsToFleetio } from './seed';
+import { mapVehicleFieldsToFleetio, mapFuelEntryFieldsToFleetio, mapVendorFieldsToFleetio, mapPartFieldsToFleetio, mapWorkOrderFieldsToFleetio } from './seed';
 import {
   FLEETIO_LINK_RESOURCE,
   FLEETIO_RMPG_TABLE,
@@ -408,7 +408,7 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     if (existing) return null;
     const translated = await translateOutboundFks(deps.db, 'work_order', filteredPayload);
     if (translated == null) return null;       // parent vehicle not linked yet
-    const created = await deps.adapter.createWorkOrder({ payload: translated });
+    const created = await deps.adapter.createWorkOrder({ payload: mapWorkOrderFieldsToFleetio(translated) });
     await recordLink(deps.db, FLEETIO_RMPG_TABLE.work_order, row.resource_id, 'work_order', created.id, now(deps));
     return created;
   }
@@ -442,7 +442,7 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     if (!fleetioId) return null;               // parent never pushed → nothing to update
     const translated = await translateOutboundFks(deps.db, 'work_order', filteredPayload);
     if (translated == null) return null;
-    return deps.adapter.updateWorkOrder({ fleetioId, payload: translated });
+    return deps.adapter.updateWorkOrder({ fleetioId, payload: mapWorkOrderFieldsToFleetio(translated) });
   }
   if (row.resource === 'vendor' && row.action === 'create') {
     const existing = await lookupFleetioId(deps.db, 'ref_vendors', row.resource_id);

@@ -254,7 +254,10 @@ PR 4. Full spec: [`docs/superpowers/specs/2026-06-21-fleetio-integration-design.
   branch.** A missing one isn't inert — it throws 501, burns all 7 retries,
   dead-letters, and pages an operator. `fuel.delete` did exactly that for weeks.
 - **Match delete semantics per resource**: RMPG soft-deletes vendors
-  (`active=0`) → Fleet.io `POST /vendors/:id/archive`; RMPG hard-deletes parts
+  (`active=0`) → Fleet.io `PATCH /vendors/:id/archive` (verb confirmed live
+  2026-07-29 — an earlier fix corrected the path but left the verb as `POST`,
+  which 404s and was silently swallowed by the delete branch's "already
+  archived" handling); RMPG hard-deletes parts
   and fuel entries → Fleet.io `DELETE`. Never translate a soft delete into a
   hard remote one.
 - **`/pull` and `/seed` both pace at `PACE_MS` (1.2 s)** against Fleet.io's

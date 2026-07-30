@@ -101,27 +101,65 @@ export function mapFuelEntryFieldsToFleetio(payload: Record<string, unknown>): R
   return out;
 }
 
-// Vendor/part update payloads still flow through dispatchOutbound's implicit
+// Vendor/part payloads used to flow through dispatchOutbound's implicit
 // ownership-filter pass-through (VENDOR_OWNERSHIP/PART_OWNERSHIP in
-// ownership.ts). That happens to work today only because those maps were
-// hand-written with field names that already match Fleet.io's vendors/parts
-// resources — an unenforced coincidence, not a mapping. These explicit
-// allowlists close the same class of risk the vehicle/fuel_entry mappers
-// above closed: a future RMPG-only column added to ref_vendors/fleet_parts
-// can no longer silently leak into an outbound payload.
+// ownership.ts) on the (wrong) assumption that RMPG's column names already
+// matched Fleet.io's vendors/parts resources. They don't: confirmed live
+// 2026-07-29 against developer.fleetio.com/reference/create-vendor and
+// create-part — `address`/`state`/`zip`/`email` aren't Fleet.io fields at
+// all (correct names: `street_address`/`region`/`postal_code`/
+// `contact_email`), and Parts has no `name`/`part_number`/`category`/
+// `supplier` fields either (correct: `number`/`part_category_name`/
+// `part_manufacturer_name`; RMPG's `name` has no Fleet.io equivalent —
+// Parts are identified by `number`, not a display name). Both mappers were
+// silently dropping 4 of their fields on every sync.
 export function mapVendorFieldsToFleetio(payload: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const k of ['name', 'address', 'city', 'state', 'zip', 'phone', 'email'] as const) {
-    if (isNonEmptyString(payload[k])) out[k] = payload[k];
-  }
+  if (isNonEmptyString(payload.name)) out.name = payload.name;
+  if (isNonEmptyString(payload.address)) out.street_address = payload.address;
+  if (isNonEmptyString(payload.city)) out.city = payload.city;
+  if (isNonEmptyString(payload.state)) out.region = payload.state;
+  if (isNonEmptyString(payload.zip)) out.postal_code = payload.zip;
+  if (isNonEmptyString(payload.phone)) out.phone = payload.phone;
+  if (isNonEmptyString(payload.email)) out.contact_email = payload.email;
   return out;
 }
 
 export function mapPartFieldsToFleetio(payload: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const k of ['name', 'part_number', 'category', 'description', 'supplier'] as const) {
-    if (isNonEmptyString(payload[k])) out[k] = payload[k];
-  }
+  if (isNonEmptyString(payload.part_number)) out.number = payload.part_number;
+  if (isNonEmptyString(payload.category)) out.part_category_name = payload.category;
+  if (isNonEmptyString(payload.description)) out.description = payload.description;
+  if (isNonEmptyString(payload.supplier)) out.part_manufacturer_name = payload.supplier;
   if (typeof payload.unit_cost === 'number') out.unit_cost = payload.unit_cost;
+  return out;
+}
+
+// Work orders had NO mapper at all — dispatchOutbound sent the raw RMPG
+// `work_orders` row straight through. Confirmed live 2026-07-29 against
+// developer.fleetio.com/reference/create-work-order: RMPG's `opened_at`
+// isn't recognized and Fleet.io's REQUIRED create field `issued_at` was
+// never sent, so every work_order.create dispatch should 422. 16 of 19
+// RMPG columns had no Fleet.io equivalent; see docs/fleetio-api-reference.md
+// for the full field-by-field mapping this was built from. `vehicle_id`/
+// `vendor_id` are left untouched — translateOutboundFks in sync.ts already
+// rewrites their VALUE from the RMPG id to the Fleet.io id.
+export function mapWorkOrderFieldsToFleetio(payload: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (payload.vehicle_id !== undefined) out.vehicle_id = payload.vehicle_id;
+  if (payload.vendor_id !== undefined) out.vendor_id = payload.vendor_id;
+  if (isNonEmptyString(payload.opened_at)) out.issued_at = payload.opened_at;
+  if (isNonEmptyString(payload.closed_at)) out.completed_at = payload.closed_at;
+  if (isNonEmptyString(payload.summary)) out.description = payload.summary;
+  if (typeof payload.odometer_at_open === 'number') {
+    out.starting_meter_entry_attributes = { value: String(payload.odometer_at_open) };
+  }
+  if (typeof payload.odometer_at_close === 'number') {
+    out.ending_meter_entry_attributes = { value: String(payload.odometer_at_close) };
+  }
+  if (isNonEmptyString(payload.notes)) out.comments_attributes = [{ comment: payload.notes }];
+  // `status` (a string) has no Fleet.io equivalent — Fleet.io requires
+  // `work_order_status_id`, an account-specific integer id this codebase
+  // has no mapping table for yet. Deliberately dropped, not guessed.
   return out;
 }

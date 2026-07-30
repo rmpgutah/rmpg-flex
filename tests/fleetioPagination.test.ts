@@ -218,7 +218,7 @@ describe('retry safety by HTTP method', () => {
 });
 
 describe('verb correctness for archive vs destroy', () => {
-  it('archiveVendor archives (POST /vendors/:id/archive) — never DELETEs', async () => {
+  it('archiveVendor archives (PATCH /vendors/:id/archive) — never DELETEs', async () => {
     const { archiveVendor } = await import('../src/utils/fleetio/client');
     const stub = vi.fn().mockResolvedValue(jsonResp({ id: 7, name: 'Acme', archived_at: '2026-07-26T00:00:00Z' }));
 
@@ -227,9 +227,10 @@ describe('verb correctness for archive vs destroy', () => {
     const [url, init] = stub.mock.calls[0];
     // RMPG's own vendor delete is a soft delete (active = 0) because historical
     // work orders reference vendor_id — a hard remote DELETE would destroy the
-    // matching Fleet.io history.
+    // matching Fleet.io history. PATCH (not POST) confirmed live 2026-07-29
+    // against developer.fleetio.com/reference/archive-vendor.
     expect(String(url)).toBe('https://secure.fleetio.com/api/v1/vendors/7/archive');
-    expect(init.method).toBe('POST');
+    expect(init.method).toBe('PATCH');
   });
 
   it('deleteFuelEntry hard-deletes, matching RMPG\'s own hard delete', async () => {
