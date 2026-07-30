@@ -6,9 +6,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      // Straight pass-through: the Worker mounts its Hono app under the
+      // `/kimi-connect` basePath, so dev and production see identical paths.
       '/kimi-connect/api': {
         target: 'http://localhost:8787',
-        rewrite: (path) => path.replace(/^\/kimi-connect\/api/, '/api'),
       },
     },
   },

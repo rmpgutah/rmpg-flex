@@ -20,7 +20,7 @@ export function Sidebar({
       return;
     }
     try {
-      const data = await res.json<{ conversations: Conversation[] }>();
+      const data = (await res.json()) as { conversations: Conversation[] };
       setConversations(data.conversations);
       setError(null);
     } catch (err) {
@@ -39,7 +39,7 @@ export function Sidebar({
       return;
     }
     try {
-      const data = await res.json<{ conversation: Conversation }>();
+      const data = (await res.json()) as { conversation: Conversation };
       await refresh();
       onSelect(data.conversation.id);
     } catch (err) {
