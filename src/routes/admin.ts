@@ -9,6 +9,7 @@ import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
 import { mergeDispositions, isDispositionRow, type DispositionConfigRow } from '../utils/dispositionConfig';
 
 import { log } from '../utils/logger';
+import { recordAudit } from '../utils/auditLog';
 const admin = new Hono<Env>();
 
 // Admin mutations are reachable by any authenticated user once authMiddleware
@@ -625,6 +626,10 @@ admin.get('/system-health', async (c) => {
 });
 
 admin.get('/users-activity-summary', async (c) => {
+  // Per-user 7-day activity counts (AdminHealthTab) — same ungated leak as
+  // GET /users above; restrict to admin/manager.
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
@@ -1260,6 +1265,12 @@ admin.post('/third-party-keys/:key/test', async (c) => {
 // ============================================================
 
 admin.get('/users', async (c) => {
+  // Personnel roster (name, email, badge #, role) for every active user —
+  // was ungated while every other /users/:id/* endpoint in this file
+  // requires admin/manager. A client_viewer or contract_manager account
+  // could enumerate the entire org's staff directory.
+  const denied = forbidUnlessRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const role = c.req.query('role');
@@ -1357,6 +1368,7 @@ admin.post('/users/:id/reset-2fa', async (c) => {
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
     await resetUserTotp(db, id);
+    await recordAudit(c, { action: 'USER_2FA_RESET', entityType: 'user', entityId: id, details: 'Admin reset 2FA (POST /reset-2fa)' });
     return c.json({ message: '2FA has been reset. User will be prompted to set up 2FA on next login.' });
   } catch (err) {
     console.error('[Admin] reset-2fa failed:', err);
@@ -1372,6 +1384,7 @@ admin.delete('/users/:id/totp', async (c) => {
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
     await resetUserTotp(db, id);
+    await recordAudit(c, { action: 'USER_2FA_RESET', entityType: 'user', entityId: id, details: 'Admin reset 2FA (DELETE /totp)' });
     return c.json({ success: true });
   } catch (err) {
     console.error('[Admin] DELETE totp failed:', err);
@@ -1388,6 +1401,7 @@ admin.post('/users/:id/force-password-change', async (c) => {
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
     await execute(db, `UPDATE users SET must_change_password = 1, updated_at = datetime('now') WHERE id = ?`, id);
+    await recordAudit(c, { action: 'USER_FORCE_PASSWORD_CHANGE', entityType: 'user', entityId: id, details: 'Admin forced password change on next login' });
     return c.json({ message: 'User will be required to change their password on next login.' });
   } catch (err) {
     console.error('[Admin] force-password-change failed:', err);
@@ -1406,6 +1420,7 @@ admin.post('/users/:id/revoke-sessions', async (c) => {
     const result = await execute(db,
       `UPDATE sessions SET is_active = 0 WHERE user_id = ? AND COALESCE(is_active, 1) = 1`, id);
     const count = result.meta.changes ?? 0;
+    await recordAudit(c, { action: 'USER_SESSIONS_REVOKED', entityType: 'user', entityId: id, details: `Admin revoked ${count} active session${count === 1 ? '' : 's'}` });
     return c.json({ message: `${count} session${count === 1 ? '' : 's'} revoked.`, count });
   } catch (err) {
     console.error('[Admin] revoke-sessions failed:', err);
@@ -1444,6 +1459,7 @@ admin.delete('/users/:id/security-questions', async (c) => {
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
     await execute(db, 'DELETE FROM user_security_questions WHERE user_id = ?', id);
+    await recordAudit(c, { action: 'USER_SECURITY_QUESTIONS_CLEARED', entityType: 'user', entityId: id, details: 'Admin cleared security questions' });
     return c.json({ success: true });
   } catch (err) {
     console.error('[Admin] DELETE user security-questions failed:', err);
@@ -1669,6 +1685,10 @@ admin.get('/gps-health', async (c) => {
 // GET /api/admin/users/presence — minimal presence snapshot for the
 // God Mode page. Reuses the users table + a sub-query against sessions.
 admin.get('/users/presence', async (c) => {
+  // Live "who is online right now" feed for AdminGodModeTab — was ungated
+  // alongside GET /users above; same fix (admin/manager only).
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(
