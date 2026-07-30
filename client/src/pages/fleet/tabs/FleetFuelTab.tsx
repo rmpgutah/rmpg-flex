@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar, Pencil, Trash2, TrendingUp, TrendingDown, Route, FileText, AlertTriangle, User, CreditCard } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar, Pencil, Trash2, TrendingUp, TrendingDown, Route, FileText, AlertTriangle, User, CreditCard, Copy } from 'lucide-react';
 import type { FleetFuelLog, FleetFuelSummary, FuelType } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';
 import { toDisplayLabel } from '../../../utils/formatters';
@@ -179,6 +179,28 @@ function MonthlySpendBars({ logs }: { logs: FleetFuelLog[] }) {
   );
 }
 
+/**
+ * Groups fuel logs that share vehicle_id + fuel_date + total_cost — the
+ * common signature of a duplicate entry (e.g. a fuel-card import landing
+ * on top of a manual log for the same fill-up). Requires all three fields
+ * to be non-null so missing data never manufactures a false match. Returns
+ * only groups with 2+ members; single entries are never "duplicates."
+ */
+function findDuplicateGroups(logs: FleetFuelLog[]): Map<string, FleetFuelLog[]> {
+  const groups = new Map<string, FleetFuelLog[]>();
+  for (const log of logs) {
+    if (log.total_cost == null || !log.fuel_date) continue;
+    const key = `${log.vehicle_id}|${log.fuel_date}|${log.total_cost.toFixed(2)}`;
+    const g = groups.get(key) ?? [];
+    g.push(log);
+    groups.set(key, g);
+  }
+  for (const [key, g] of groups) {
+    if (g.length < 2) groups.delete(key);
+  }
+  return groups;
+}
+
 interface Props {
   fuelLogs: FleetFuelLog[];
   summary: FleetFuelSummary | null;
@@ -199,6 +221,14 @@ export default function FleetFuelTab({
 }: Props) {
   // Count flagged entries so we can label the Audit button + gate visibility
   const flaggedCount = fuelLogs.filter((l: any) => !!l.flags).length;
+
+  const duplicateGroups = useMemo(() => findDuplicateGroups(fuelLogs), [fuelLogs]);
+  const duplicateIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const g of duplicateGroups.values()) for (const l of g) s.add(String(l.id));
+    return s;
+  }, [duplicateGroups]);
+  const duplicateCount = fuelLogs.filter((l) => duplicateIds.has(String(l.id))).length;
 
   const [conflicts, setConflicts] = useState<Map<number, ConflictBadgeConflict[]>>(new Map());
   useEffect(() => {
@@ -326,6 +356,34 @@ export default function FleetFuelTab({
         </div>
       </div>
 
+      {/* Possible-duplicate banner — same vehicle + date + total cost, e.g. a
+          fuel-card import landing on top of a manual entry for the same fill-up. */}
+      {onDeleteFuel && duplicateCount > 0 && (
+        <div className="panel-beveled p-2.5 bg-amber-900/10 border border-amber-700/40 flex items-center justify-between gap-3 print:hidden">
+          <div className="flex items-center gap-2 text-[10px] text-amber-400">
+            <Copy className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>
+              <span className="font-bold">{duplicateCount} possible duplicate{duplicateCount === 1 ? '' : 's'}</span>
+              {' '}across {duplicateGroups.size} group{duplicateGroups.size === 1 ? '' : 's'} — same date + total cost.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="toolbar-btn text-amber-400 flex-shrink-0"
+            onClick={() => {
+              // Keep the oldest (lowest id) entry per group, delete the rest.
+              for (const group of duplicateGroups.values()) {
+                const [, ...extras] = [...group].sort((a, b) => Number(a.id) - Number(b.id));
+                extras.forEach((log) => onDeleteFuel(log));
+              }
+            }}
+            title="Keep the oldest entry in each duplicate group and delete the rest"
+          >
+            <Trash2 className="w-3 h-3" /> Delete Duplicates
+          </button>
+        </div>
+      )}
+
       {/* Fuel Log List */}
       {fuelLogs.length === 0 ? (
         <div className="text-center py-12 panel-beveled bg-surface-base">
@@ -383,6 +441,11 @@ export default function FleetFuelTab({
                         call out partials (they're excluded from MPG). */}
                     {(log.is_full_tank === 0 || log.is_full_tank === false) && (
                       <span className="px-1 py-0.5 text-[8px] font-bold uppercase text-amber-400 bg-amber-900/20 border border-amber-700/30">Partial</span>
+                    )}
+                    {duplicateIds.has(String(log.id)) && (
+                      <span className="flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold uppercase text-amber-400 bg-amber-900/20 border border-amber-700/30" title="Same vehicle, date, and total cost as another entry">
+                        <Copy className="w-2.5 h-2.5" /> Dup
+                      </span>
                     )}
                     {conflicts.get(Number(log.id))?.map((c) => (
                       <FleetioConflictBadge key={c.id} conflict={c} compact />

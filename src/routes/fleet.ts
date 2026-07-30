@@ -1595,6 +1595,34 @@ fleet.get('/:id/fuel', async (c) => {
   } catch (err) { console.error('GET /fleet/:id/fuel failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
+// Shared hardening for POST/PUT fuel-log bodies. Returns an error string
+// (safe to send verbatim in a 400 response) or null if the body is clean.
+// Only validates fields that are actually present — POST separately
+// requires fuel_date, and PUT allows a partial body — so this never rejects
+// an otherwise-valid partial update for omitting a field it didn't touch.
+function validateFuelBody(body: Record<string, unknown>): string | null {
+  if (Object.prototype.hasOwnProperty.call(body, 'fuel_date') && body.fuel_date != null && body.fuel_date !== '') {
+    if (typeof body.fuel_date !== 'string' || Number.isNaN(Date.parse(body.fuel_date))) {
+      return 'fuel_date must be a valid date';
+    }
+  }
+  for (const key of ['gallons', 'cost_per_gallon'] as const) {
+    if (Object.prototype.hasOwnProperty.call(body, key) && body[key] != null && body[key] !== '') {
+      const n = Number(body[key]);
+      if (!Number.isFinite(n) || n <= 0) return `${key} must be a positive number`;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'total_cost') && body.total_cost != null && body.total_cost !== '') {
+    const n = Number(body.total_cost);
+    if (!Number.isFinite(n) || n < 0) return 'total_cost must be a non-negative number';
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'odometer') && body.odometer != null && body.odometer !== '') {
+    const n = Number(body.odometer);
+    if (!Number.isFinite(n) || n < 0) return 'odometer must be a non-negative number';
+  }
+  return null;
+}
+
 // POST /:id/fuel — log fuel entry (Feature 11)
 fleet.post('/:id/fuel', async (c) => {
   try {
@@ -1605,6 +1633,8 @@ fleet.post('/:id/fuel', async (c) => {
     if (!vehicle) return c.json({ error: 'Vehicle not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.fuel_date) return c.json({ error: 'fuel_date required' }, 400);
+    const validationError = validateFuelBody(body);
+    if (validationError) return c.json({ error: validationError }, 400);
     // Client (FuelLogModal) sends odometer_reading; the column is `odometer`.
     const odometer = body.odometer ?? body.odometer_reading ?? null;
     // is_full_tank governs whether this fill resets the tank for MPG math —
@@ -1641,6 +1671,8 @@ fleet.put('/fuel/:id', async (c) => {
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM fleet_fuel_log WHERE id = ?', fuelId);
     if (!existing) return c.json({ error: 'Fuel log not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
+    const validationError = validateFuelBody(body);
+    if (validationError) return c.json({ error: validationError }, 400);
     // Client sends odometer_reading; normalize to the `odometer` column.
     if (Object.prototype.hasOwnProperty.call(body, 'odometer_reading') && !Object.prototype.hasOwnProperty.call(body, 'odometer')) {
       body.odometer = body.odometer_reading;
