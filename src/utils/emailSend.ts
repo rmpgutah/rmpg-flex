@@ -86,3 +86,23 @@ export function buildSendPayload(input: SendInput): GraphSendPayload {
     saveToSentItems: true,
   };
 }
+
+// Graph rejects inline attachments over ~4MB each and a message over
+// ~35MB total via the sendMail API. We cap well under that (25MB total)
+// so an oversized send fails fast with a clear message instead of
+// queuing into email_outbox and burning a retry cycle on a doomed Graph
+// call. atob() is available in the Workers runtime (no node:buffer).
+export const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
+export function totalAttachmentBytes(atts: SendAttachment[] | undefined): number {
+  if (!atts || !atts.length) return 0;
+  let total = 0;
+  for (const a of atts) {
+    if (!a.contentBytes) continue;
+    // base64 decoded length: 4 chars -> 3 bytes, minus padding
+    const b64 = a.contentBytes;
+    const padding = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
+    total += Math.floor((b64.length * 3) / 4) - padding;
+  }
+  return total;
+}

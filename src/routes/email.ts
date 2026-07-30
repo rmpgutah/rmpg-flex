@@ -23,11 +23,15 @@ import { Hono } from 'hono';
 import { authMiddleware, requireRole } from '../middleware/auth';
 import { getDb, queryFirst, query, execute, columnExists } from '../utils/db';
 import {
-  parseAddrList, mapAttachments, buildSendPayload,
+  parseAddrList, mapAttachments, buildSendPayload, totalAttachmentBytes, MAX_TOTAL_ATTACHMENT_BYTES,
   type SendAttachment, type SendInput,
 } from '../utils/emailSend';
 import { encryptSecret, decryptSecret } from '../utils/emailCrypto';
+import { encryptField, decryptFieldIfEncrypted, EmailFieldEncryptionError } from '../utils/emailFieldCrypto';
+import { auditEmailAction } from '../utils/emailAudit';
 import type { Bindings, Variables } from '../types';
+import type { MiddlewareHandler } from 'hono';
+import { rateLimitAllow } from '../utils/rateLimit';
 
 import { log } from '../utils/logger';
 const email = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -250,6 +254,23 @@ email.use('*', async (c, next) => {
   }
   return authMiddleware(c, next);
 });
+
+// Send-family rate limit — separate from the generic apiRateLimit (600/5min,
+// sized for read-heavy dispatch polling). A compromised session or a buggy
+// client retry loop must not be able to burn through the org's single shared
+// Graph mailbox's send quota or trip Microsoft's abuse detection.
+const EMAIL_SEND_LIMIT = 20;
+const EMAIL_SEND_WINDOW_SECONDS = 300;
+
+export const emailSendRateLimit: MiddlewareHandler<{ Bindings: Bindings; Variables: Variables }> = async (c, next) => {
+  const userId = c.get('userId') as number | undefined;
+  if (userId == null) return next();
+  const allowed = await rateLimitAllow(c.env.KV, `email-send:${userId}`, EMAIL_SEND_LIMIT, EMAIL_SEND_WINDOW_SECONDS);
+  if (!allowed) {
+    return c.json({ error: 'Too many emails sent. Slow down and try again shortly.', code: 'EMAIL_RATE_LIMITED' }, 429);
+  }
+  return next();
+};
 
 email.get('/status', async (c) => c.json(await getStatus(c.env)));
 
@@ -576,30 +597,49 @@ email.get('/messages', async (c) => {
 // ─── Cached-message search (search-as-you-type) ──────────────────
 // Searches the D1 email_messages cache (subject/from/preview LIKE).
 // Returns raw snake_case rows — EmailPage maps them to camelCase.
+
+// D1's LIKE operator silently stops matching once the pattern exceeds
+// roughly 48-50 characters — not an error, just wrong (empty) results.
+// Cap the raw query well under that so `%${q}%` (42 chars max) never
+// approaches the boundary. See project memory: D1 LIKE 50-char pattern cap.
+const MAX_EMAIL_SEARCH_QUERY_LEN = 40;
+
+export function buildSearchLikePattern(rawQuery: string): string {
+  const capped = rawQuery.slice(0, MAX_EMAIL_SEARCH_QUERY_LEN);
+  return `%${capped.replace(/[%_]/g, ' ')}%`;
+}
+
 email.get('/messages/search', async (c) => {
   const userId = c.get('userId');
   const q = (c.req.query('q') || '').trim();
   if (q.length < 2) return c.json({ results: [] });
   const folder = (c.req.query('folder') || '').trim();
-  const like = `%${q.replace(/[%_]/g, ' ')}%`;
+  const like = buildSearchLikePattern(q);
   try {
-    const params: unknown[] = [userId, like, like, like];
+    // body_preview is stored encrypted (src/utils/emailFieldCrypto.ts) and
+    // therefore cannot be LIKE-matched — search narrows to subject/sender.
+    const params: unknown[] = [userId, like, like];
     let folderClause = '';
     if (folder && folder !== 'inbox') { folderClause = 'AND folder_id = ?'; params.push(folder); }
-    const rows = await query(
+    const rows = await query<Record<string, unknown>>(
       c.env.DB,
       `SELECT graph_id, conversation_id, subject, from_address, from_name, body_preview,
               has_attachments, is_read, is_flagged, importance, received_at
          FROM email_messages
         WHERE owner_user_id = ?
-          AND (subject LIKE ? OR from_address LIKE ? OR body_preview LIKE ?)
+          AND (subject LIKE ? OR from_address LIKE ?)
           ${folderClause}
         ORDER BY received_at DESC
         LIMIT 50`,
       ...params,
     );
-    return c.json({ results: rows });
-  } catch {
+    const results = await Promise.all(rows.map(async (r) => ({
+      ...r,
+      body_preview: await decryptFieldIfEncrypted(c.env, r.body_preview as string | null),
+    })));
+    return c.json({ results });
+  } catch (err) {
+    log.error('messages search failed', { userId }, err);
     return c.json({ results: [] });
   }
 });
@@ -786,12 +826,22 @@ email.post('/messages/:id/move', async (c) => {
 
 email.delete('/messages/:id', async (c) => {
   const id = c.req.param('id');
+  const userId = c.get('userId');
+  const user = c.get('user') as { username?: string } | undefined;
   try {
     const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    if (!res.ok && res.status !== 404) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    const ok = res.ok || res.status === 404;
+    await auditEmailAction(c.env, {
+      userId, username: user?.username, action: 'delete',
+      graphMessageId: id, status: ok ? 'sent' : 'failed',
+      error: ok ? undefined : `Graph ${res.status}`,
+    });
+    if (!ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
     return c.json({ success: true });
   } catch (err: unknown) {
-    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+    const msg = err instanceof Error ? err.message : 'Failed';
+    await auditEmailAction(c.env, { userId, username: user?.username, action: 'delete', graphMessageId: id, status: 'failed', error: msg });
+    return c.json({ success: false, error: msg }, 502);
   }
 });
 
@@ -863,12 +913,29 @@ export async function enqueueAndSend(
   }
 }
 
-email.post('/send', async (c) => {
+email.post('/send', emailSendRateLimit, async (c) => {
   const userId = c.get('userId');
+  const user = c.get('user') as { username?: string } | undefined;
   const body = await c.req.json().catch(() => ({})) as SendInput;
-  if (!parseAddrList(body.to).length) return c.json({ error: 'At least one recipient required' }, 400);
+  const toAddrs = parseAddrList(body.to);
+  if (!toAddrs.length) return c.json({ error: 'At least one recipient required' }, 400);
+  const attBytes = totalAttachmentBytes(body.attachments);
+  if (attBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+    return c.json({
+      error: `Attachments total ${(attBytes / 1024 / 1024).toFixed(1)}MB, max ${MAX_TOTAL_ATTACHMENT_BYTES / 1024 / 1024}MB per message`,
+      code: 'ATTACHMENTS_TOO_LARGE',
+    }, 413);
+  }
   const payload = buildSendPayload(body);
   const r = await enqueueAndSend(c.env, userId, payload);
+  await auditEmailAction(c.env, {
+    userId, username: user?.username, action: 'send',
+    toAddresses: toAddrs.map((a) => a.emailAddress.address),
+    ccAddresses: parseAddrList(body.cc).map((a) => a.emailAddress.address),
+    subject: body.subject,
+    status: r.status === 'sent' ? 'sent' : 'queued',
+    error: r.error,
+  });
   if (r.status === 'sent') return c.json({ success: true, outboxId: r.outboxId });
   return c.json({ success: false, queued: true, outboxId: r.outboxId, error: r.error }, 202);
 });
@@ -994,17 +1061,42 @@ export async function drainEmailOutbox(env: Bindings): Promise<{ sent: number; f
   const refresh = await getCfgDecrypted(env, K.refreshToken);
   if (!refresh) return { sent: 0, failed: 0, deferred: 0 };
 
-  const rows = await query<{ id: number; payload: string; attempts: number }>(
+  const rows = await query<{ id: number; payload: string; attempts: number; owner_user_id: number }>(
     env.DB,
-    "SELECT id, payload, attempts FROM email_outbox WHERE status = 'pending' AND next_attempt_at <= datetime('now') ORDER BY id ASC LIMIT 10",
+    "SELECT id, payload, attempts, owner_user_id FROM email_outbox WHERE status = 'pending' AND next_attempt_at <= datetime('now') ORDER BY id ASC LIMIT 10",
   );
   let sent = 0, failed = 0, deferred = 0;
   const BACKOFFS = ['+1 minute', '+5 minutes', '+30 minutes', '+2 hours', '+6 hours'];
+  // Records the FINAL resolution ('sent' or 'failed') of a previously-queued
+  // send. The initial /send handler already wrote a 'queued' row; this closes
+  // it out once the retry loop actually succeeds or gives up for good.
+  const auditResolution = async (row: { id: number; payload: string; owner_user_id: number }, status: 'sent' | 'failed', error?: string) => {
+    try {
+      const p = JSON.parse(row.payload) as {
+        message?: {
+          subject?: string;
+          toRecipients?: Array<{ emailAddress?: { address?: string } }>;
+          ccRecipients?: Array<{ emailAddress?: { address?: string } }>;
+        };
+      };
+      const toAddresses = (p.message?.toRecipients || []).map((x) => x.emailAddress?.address || '').filter(Boolean);
+      const ccAddresses = (p.message?.ccRecipients || []).map((x) => x.emailAddress?.address || '').filter(Boolean);
+      const subject = p.message?.subject || '';
+      const user = await queryFirst<{ username: string | null }>(env.DB, 'SELECT username FROM users WHERE id = ?', row.owner_user_id).catch(() => null);
+      await auditEmailAction(env, {
+        userId: row.owner_user_id, username: user?.username, action: 'send',
+        toAddresses, ccAddresses, subject, status, error,
+      });
+    } catch (auditErr) {
+      log.error('Failed to write drainEmailOutbox resolution audit row', { outboxId: row.id }, auditErr);
+    }
+  };
   for (const r of rows) {
     try {
       const res = await graphFetch(env, '/me/sendMail', { method: 'POST', body: r.payload });
       if (res.ok) {
         await execute(env.DB, "UPDATE email_outbox SET status = 'sent', sent_at = datetime('now') WHERE id = ?", r.id);
+        await auditResolution(r, 'sent');
         sent++;
         continue;
       }
@@ -1013,6 +1105,7 @@ export async function drainEmailOutbox(env: Bindings): Promise<{ sent: number; f
       const err = `Graph ${res.status}: ${text.slice(0, 200)}`;
       if (attempts >= BACKOFFS.length) {
         await execute(env.DB, "UPDATE email_outbox SET status = 'failed', attempts = ?, last_error = ? WHERE id = ?", attempts, err, r.id);
+        await auditResolution(r, 'failed', err);
         failed++;
       } else {
         await execute(
@@ -1027,6 +1120,7 @@ export async function drainEmailOutbox(env: Bindings): Promise<{ sent: number; f
       const msg = err instanceof Error ? err.message : 'send failed';
       if (attempts >= BACKOFFS.length) {
         await execute(env.DB, "UPDATE email_outbox SET status = 'failed', attempts = ?, last_error = ? WHERE id = ?", attempts, msg, r.id);
+        await auditResolution(r, 'failed', msg);
         failed++;
       } else {
         await execute(
@@ -1041,18 +1135,28 @@ export async function drainEmailOutbox(env: Bindings): Promise<{ sent: number; f
   return { sent, failed, deferred };
 }
 
-email.post('/messages/:id/reply', async (c) => {
+email.post('/messages/:id/reply', emailSendRateLimit, async (c) => {
   const id = c.req.param('id');
+  const userId = c.get('userId');
+  const user = c.get('user') as { username?: string } | undefined;
   const body = await c.req.json().catch(() => ({})) as { body?: string; comment?: string };
   try {
     const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/reply`, {
       method: 'POST',
       body: JSON.stringify({ comment: body.body || body.comment || '' }),
     });
-    if (!res.ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    const ok = res.ok;
+    await auditEmailAction(c.env, {
+      userId, username: user?.username, action: 'reply',
+      graphMessageId: id, status: ok ? 'sent' : 'failed',
+      error: ok ? undefined : `Graph ${res.status}`,
+    });
+    if (!ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
     return c.json({ success: true });
   } catch (err: unknown) {
-    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+    const msg = err instanceof Error ? err.message : 'Failed';
+    await auditEmailAction(c.env, { userId, username: user?.username, action: 'reply', graphMessageId: id, status: 'failed', error: msg });
+    return c.json({ success: false, error: msg }, 502);
   }
 });
 
@@ -1341,6 +1445,7 @@ export async function runEmailPoll(env: Bindings, ctx?: ExecutionContext): Promi
       const categories = cats.size ? JSON.stringify([...cats]) : null;
 
       try {
+        const encryptedBodyPreview = m.body_preview ? await encryptField(env, m.body_preview) : m.body_preview;
         await execute(
           env.DB,
           `INSERT INTO email_messages
@@ -1352,11 +1457,11 @@ export async function runEmailPoll(env: Bindings, ctx?: ExecutionContext): Promi
              categories = COALESCE(excluded.categories, email_messages.categories),
              body_preview = excluded.body_preview`,
           ownerUserId, m.graph_id, m.conversation_id ?? null, m.subject, m.from_address, m.from_name,
-          m.to_addresses, m.cc_addresses, m.body_preview, m.has_attachments, m.is_read, m.is_flagged,
+          m.to_addresses, m.cc_addresses, encryptedBodyPreview, m.has_attachments, m.is_read, m.is_flagged,
           m.importance, categories, m.received_at ?? null, m.sent_at ?? null,
         );
         upserted++;
-      } catch { /* upsert best-effort */ }
+      } catch (err) { log.error('email_messages upsert failed', { graphId: m.graph_id }, err); }
 
       // Apply Graph-side side effects (move/markRead/flag). Fire-and-forget
       // so a single failure can't stall the poll loop.
@@ -1626,23 +1731,35 @@ email.delete('/link/:id', async (c) => {
 // ═══════════════════════════════════════════════════════════════════
 
 // ─── Reply-all / Forward ─────────────────────────────────────────
-email.post('/messages/:id/reply-all', async (c) => {
+email.post('/messages/:id/reply-all', emailSendRateLimit, async (c) => {
   const id = c.req.param('id');
+  const userId = c.get('userId');
+  const user = c.get('user') as { username?: string } | undefined;
   const body = await c.req.json().catch(() => ({})) as { body?: string; comment?: string };
   try {
     const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/replyAll`, {
       method: 'POST',
       body: JSON.stringify({ comment: body.body || body.comment || '' }),
     });
-    if (!res.ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    const ok = res.ok;
+    await auditEmailAction(c.env, {
+      userId, username: user?.username, action: 'reply_all',
+      graphMessageId: id, status: ok ? 'sent' : 'failed',
+      error: ok ? undefined : `Graph ${res.status}`,
+    });
+    if (!ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
     return c.json({ success: true });
   } catch (err: unknown) {
-    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+    const msg = err instanceof Error ? err.message : 'Failed';
+    await auditEmailAction(c.env, { userId, username: user?.username, action: 'reply_all', graphMessageId: id, status: 'failed', error: msg });
+    return c.json({ success: false, error: msg }, 502);
   }
 });
 
-email.post('/messages/:id/forward', async (c) => {
+email.post('/messages/:id/forward', emailSendRateLimit, async (c) => {
   const id = c.req.param('id');
+  const userId = c.get('userId');
+  const user = c.get('user') as { username?: string } | undefined;
   const body = await c.req.json().catch(() => ({})) as { to?: string | string[]; body?: string; comment?: string };
   const toRecipients = parseAddrList(body.to);
   if (!toRecipients.length) return c.json({ error: 'At least one recipient required' }, 400);
@@ -1651,10 +1768,23 @@ email.post('/messages/:id/forward', async (c) => {
       method: 'POST',
       body: JSON.stringify({ comment: body.body || body.comment || '', toRecipients }),
     });
-    if (!res.ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    const ok = res.ok;
+    await auditEmailAction(c.env, {
+      userId, username: user?.username, action: 'forward',
+      toAddresses: toRecipients.map((r) => r.emailAddress.address),
+      graphMessageId: id, status: ok ? 'sent' : 'failed',
+      error: ok ? undefined : `Graph ${res.status}`,
+    });
+    if (!ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
     return c.json({ success: true });
   } catch (err: unknown) {
-    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+    const msg = err instanceof Error ? err.message : 'Failed';
+    await auditEmailAction(c.env, {
+      userId, username: user?.username, action: 'forward',
+      toAddresses: toRecipients.map((r) => r.emailAddress.address),
+      graphMessageId: id, status: 'failed', error: msg,
+    });
+    return c.json({ success: false, error: msg }, 502);
   }
 });
 
@@ -2244,7 +2374,7 @@ email.delete('/templates/:id', async (c) => {
 });
 
 // ─── Schedule send (queue in D1, cron drains) ────────────────────
-email.post('/schedule', async (c) => {
+email.post('/schedule', emailSendRateLimit, async (c) => {
   const userId = c.get('userId');
   const body = await c.req.json().catch(() => ({})) as {
     to?: string | string[]; cc?: string | string[]; bcc?: string | string[];
@@ -2254,15 +2384,25 @@ email.post('/schedule', async (c) => {
   const to = parseAddrList(body.to).map((r) => r.emailAddress.address);
   if (!to.length) return c.json({ error: 'At least one recipient required' }, 400);
   if (!body.scheduledAt) return c.json({ error: 'scheduledAt required' }, 400);
+  const attBytes = totalAttachmentBytes(body.attachments);
+  if (attBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+    return c.json({
+      error: `Attachments total ${(attBytes / 1024 / 1024).toFixed(1)}MB, max ${MAX_TOTAL_ATTACHMENT_BYTES / 1024 / 1024}MB per message`,
+      code: 'ATTACHMENTS_TOO_LARGE',
+    }, 413);
+  }
   const when = body.scheduledAt.replace('T', ' ').slice(0, 19);
   const cc = parseAddrList(body.cc).map((r) => r.emailAddress.address);
   const bcc = parseAddrList(body.bcc).map((r) => r.emailAddress.address);
+  const encryptedTo = await encryptField(c.env, JSON.stringify(to));
+  const encryptedCc = cc.length ? await encryptField(c.env, JSON.stringify(cc)) : null;
+  const encryptedBody = await encryptField(c.env, body.body || '');
   const r = await execute(
     c.env.DB,
     `INSERT INTO email_scheduled (owner_user_id, to_addresses, cc_addresses, bcc_addresses, subject, body, is_html, importance, attachments, scheduled_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    userId, JSON.stringify(to), cc.length ? JSON.stringify(cc) : null, bcc.length ? JSON.stringify(bcc) : null,
-    body.subject || '', body.body || '', body.isHtml === false ? 0 : 1,
+    userId, encryptedTo, encryptedCc, bcc.length ? JSON.stringify(bcc) : null,
+    body.subject || '', encryptedBody, body.isHtml === false ? 0 : 1,
     ['low', 'normal', 'high'].includes(body.importance || '') ? body.importance : 'normal',
     body.attachments?.length ? JSON.stringify(body.attachments.slice(0, 20)) : null,
     when,
@@ -2272,12 +2412,16 @@ email.post('/schedule', async (c) => {
 
 email.get('/scheduled', async (c) => {
   const userId = c.get('userId');
-  const rows = await query(
+  const rows = await query<{ id: number; to_addresses: string; subject: string; scheduled_at: string; status: string; created_at: string }>(
     c.env.DB,
     "SELECT id, to_addresses, subject, scheduled_at, status, created_at FROM email_scheduled WHERE owner_user_id = ? AND status != 'cancelled' ORDER BY scheduled_at ASC LIMIT 100",
     userId,
   ).catch(() => []);
-  return c.json(rows);
+  const decrypted = await Promise.all(rows.map(async (row) => ({
+    ...row,
+    to_addresses: await decryptFieldIfEncrypted(c.env, row.to_addresses),
+  })));
+  return c.json(decrypted);
 });
 
 email.delete('/scheduled/:id', async (c) => {
@@ -2303,15 +2447,18 @@ export async function drainScheduledEmails(env: Bindings): Promise<number> {
   let queued = 0;
   for (const r of rows) {
     try {
+      const decryptedBody = await decryptFieldIfEncrypted(env, r.body);
+      const decryptedTo = await decryptFieldIfEncrypted(env, r.to_addresses);
+      const decryptedCc = r.cc_addresses ? await decryptFieldIfEncrypted(env, r.cc_addresses) : null;
       const parse = (s: string | null): string[] => { try { return s ? JSON.parse(s) : []; } catch { return []; } };
       const atts = ((): SendAttachment[] => { try { return r.attachments ? JSON.parse(r.attachments) : []; } catch { return []; } })();
       const attachments = mapAttachments(atts);
       const payload = {
         message: {
           subject: r.subject || '(no subject)',
-          body: { contentType: r.is_html ? 'HTML' : 'Text', content: r.body || '' },
-          toRecipients: parseAddrList(parse(r.to_addresses)),
-          ccRecipients: parseAddrList(parse(r.cc_addresses)),
+          body: { contentType: r.is_html ? 'HTML' : 'Text', content: decryptedBody || '' },
+          toRecipients: parseAddrList(parse(decryptedTo)),
+          ccRecipients: parseAddrList(parse(decryptedCc)),
           bccRecipients: parseAddrList(parse(r.bcc_addresses)),
           ...(attachments.length ? { attachments } : {}),
           importance: r.importance || 'normal',
@@ -2327,6 +2474,18 @@ export async function drainScheduledEmails(env: Bindings): Promise<number> {
       await execute(env.DB, "UPDATE email_scheduled SET status = 'sent', sent_at = datetime('now') WHERE id = ?", r.id);
       queued++;
     } catch (err: unknown) {
+      if (err instanceof EmailFieldEncryptionError) {
+        // KEK unset/bad — this is our failure, not the row's. Leave it
+        // pending so the next cron tick retries once the KEK is fixed,
+        // rather than permanently destroying a scheduled send.
+        log.error('drainScheduledEmails: KEK failure, leaving row pending for retry', { id: r.id }, err);
+        await execute(
+          env.DB,
+          "UPDATE email_scheduled SET status = 'pending' WHERE id = ?",
+          r.id,
+        ).catch(() => null);
+        continue;
+      }
       await execute(
         env.DB,
         "UPDATE email_scheduled SET status = 'failed', last_error = ? WHERE id = ?",
@@ -2460,7 +2619,7 @@ email.get('/contacts/search', async (c) => {
     }
   } catch { /* fall through to cache */ }
   try {
-    const like = `%${q.replace(/[%_]/g, ' ')}%`;
+    const like = buildSearchLikePattern(q);
     const rows = await query<{ from_address: string; from_name: string | null }>(
       c.env.DB,
       `SELECT from_address, MAX(from_name) AS from_name FROM email_messages
