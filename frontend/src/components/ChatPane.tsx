@@ -47,7 +47,7 @@ export function ChatPane({ conversationId, enableKimiK3 }: { conversationId: str
 
   useEffect(() => {
     apiFetch(`/conversations/${conversationId}`)
-      .then((res) => res.json<{ messages: Message[] }>())
+      .then((res) => res.json() as Promise<{ messages: Message[] }>)
       .then((data) => setMessages(data.messages));
     setAttachments([]);
     setToolStatus(null);
