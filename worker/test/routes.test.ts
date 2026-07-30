@@ -188,4 +188,71 @@ describe('POST /messages model allowlist (I1)', () => {
     expect(String(calledUrl)).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
     expect((calledInit as RequestInit).headers).toMatchObject({ Authorization: 'Bearer test-gemini-key' });
   });
+
+  it('routes an OpenRouter model to the OpenRouter endpoint with OPENROUTER_API_KEY', async () => {
+    const convo = await createConversation(env.DB);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}\n\n'
+              )
+            );
+            controller.close();
+          },
+        }),
+        { status: 200 }
+      )
+    );
+    const res = await app.request(
+      `http://localhost/api/conversations/${convo.id}/messages`,
+      {
+        method: 'POST',
+        headers: await authHeaders(),
+        body: JSON.stringify({ content: 'hi', model: 'nvidia/nemotron-3-ultra-550b-a55b:free' }),
+      },
+      testEnv()
+    );
+    expect(res.status).toBe(200);
+    await res.text();
+    const [calledUrl, calledInit] = fetchSpy.mock.calls[0];
+    expect(String(calledUrl)).toBe('https://openrouter.ai/api/v1/chat/completions');
+    expect((calledInit as RequestInit).headers).toMatchObject({ Authorization: 'Bearer test-key' });
+  });
+
+  it('errors without persisting when a tool_call delta arrives with no id', async () => {
+    const convo = await createConversation(env.DB);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"web_search","arguments":"{\\"query\\":\\"hi\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n'
+              )
+            );
+            controller.close();
+          },
+        }),
+        { status: 200 }
+      )
+    );
+    const res = await app.request(
+      `http://localhost/api/conversations/${convo.id}/messages`,
+      {
+        method: 'POST',
+        headers: await authHeaders(),
+        body: JSON.stringify({ content: 'hi', model: 'nvidia/nemotron-3-ultra-550b-a55b:free' }),
+      },
+      testEnv()
+    );
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain('event: error');
+    expect(text).toContain('incomplete tool call');
+    // Only the original user message — nothing corrupt was persisted.
+    expect(await getMessages(env.DB, convo.id)).toHaveLength(1);
+  });
 });
