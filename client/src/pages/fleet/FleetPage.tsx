@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import RichTextArea from '../../components/RichTextArea';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
-  Tag, Radio, Archive, DollarSign, Fuel, Eye, Trash2, FileText, LayoutDashboard,
+  Tag, Radio, Archive, DollarSign, Fuel, Eye, Trash2, FileText, LayoutDashboard, Activity,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
@@ -1298,6 +1298,20 @@ export default function FleetPage() {
           >
             <Calendar className="w-3 h-3" /> Daily Reports
           </button>
+          {/* Fleet.io sync/queue health — dead-letter counts, queue-unhealthy
+              alerts, per-resource status. Lives under /admin, separate from
+              this page; an operator hitting a silently-dropped field or a
+              dead-lettered event has no other in-context path to it. */}
+          {isAdmin && (
+            <button
+              type="button"
+              className="toolbar-btn"
+              onClick={() => navigate('/admin?tab=fleetio_health')}
+              title="Fleet.io Sync Health"
+            >
+              <Activity className="w-3 h-3" /> Sync Health
+            </button>
+          )}
           <ExportButton exportUrl="/api/fleet/export/csv" exportFilename="fleet.csv" />
           <PrintButton />
         </PanelTitleBar>

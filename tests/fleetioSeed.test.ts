@@ -8,9 +8,10 @@ describe('buildVehiclePayload', () => {
     year: 2022, make: 'Ford', model: 'Explorer', color: 'Black',
   };
 
-  it('maps every required + optional field present on the row', () => {
+  it('maps every required + optional field present on the row, incl. the required primary_meter_unit default', () => {
     expect(buildVehiclePayload(baseRow)).toEqual({
       name: 'Unit 12',
+      primary_meter_unit: 'mi',
       vin: '1HGBH41JXMN109186',
       license_plate: 'ABC123',
       year: 2022,
@@ -73,6 +74,13 @@ describe('mapVehicleFieldsToFleetio', () => {
     expect(mapVehicleFieldsToFleetio({ vehicle_number: 'U-12' }).name).toBe('U-12');
     expect(mapVehicleFieldsToFleetio({ vin: 'ABC123' }).name).toBe('VIN ABC123');
     expect(mapVehicleFieldsToFleetio({})).not.toHaveProperty('name');
+  });
+
+  it('sends the REQUIRED primary_meter_unit only when isCreate is true (never on update — see comment)', () => {
+    const payload = { vehicle_name: 'PS-D19' };
+    expect(mapVehicleFieldsToFleetio(payload, true)).toHaveProperty('primary_meter_unit', 'mi');
+    expect(mapVehicleFieldsToFleetio(payload, false)).not.toHaveProperty('primary_meter_unit');
+    expect(mapVehicleFieldsToFleetio(payload)).not.toHaveProperty('primary_meter_unit'); // default false
   });
 });
 
