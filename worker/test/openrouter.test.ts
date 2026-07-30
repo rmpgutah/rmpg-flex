@@ -1,55 +1,126 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildOpenRouterRequest, streamChatCompletion, OpenRouterError } from '../src/openrouter';
+import {
+  buildOpenRouterRequest,
+  streamChatCompletion,
+  mapMessagesToApi,
+  OpenRouterError,
+} from '../src/openrouter';
 import type { Message } from '../src/db';
 
-const sampleMessages: Message[] = [
-  { id: '1', role: 'user', content: 'Hello', model: null, created_at: 1 },
-];
+const textMessage: Message = {
+  id: '1',
+  role: 'user',
+  content: 'Hello',
+  content_type: 'text',
+  model: null,
+  tool_name: null,
+  tool_call_id: null,
+  created_at: 1,
+};
+
+const partsMessage: Message = {
+  id: '2',
+  role: 'user',
+  content: JSON.stringify([{ type: 'text', text: 'describe this' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } }]),
+  content_type: 'parts',
+  model: null,
+  tool_name: null,
+  tool_call_id: null,
+  created_at: 2,
+};
+
+const toolMessage: Message = {
+  id: '3',
+  role: 'tool',
+  content: JSON.stringify({ results: [] }),
+  content_type: 'text',
+  model: null,
+  tool_name: 'web_search',
+  tool_call_id: 'call_abc',
+  created_at: 3,
+};
+
+describe('mapMessagesToApi', () => {
+  it('maps a text message to role/content', () => {
+    expect(mapMessagesToApi([textMessage])).toEqual([{ role: 'user', content: 'Hello' }]);
+  });
+
+  it('maps a parts message by parsing its JSON content', () => {
+    const [mapped] = mapMessagesToApi([partsMessage]);
+    expect(mapped.role).toBe('user');
+    expect(mapped.content).toEqual([
+      { type: 'text', text: 'describe this' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+    ]);
+  });
+
+  it('maps a tool message to role tool with tool_call_id', () => {
+    expect(mapMessagesToApi([toolMessage])).toEqual([
+      { role: 'tool', tool_call_id: 'call_abc', content: JSON.stringify({ results: [] }) },
+    ]);
+  });
+});
 
 describe('buildOpenRouterRequest', () => {
+  const apiMessages = mapMessagesToApi([textMessage]);
+
   it('targets the OpenRouter chat completions endpoint', () => {
-    const { url } = buildOpenRouterRequest(sampleMessages, 'deepseek/deepseek-r1:free');
+    const { url } = buildOpenRouterRequest(apiMessages, 'deepseek/deepseek-r1:free');
     expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
   });
 
   it('sends the requested model and stream:true', () => {
-    const { init } = buildOpenRouterRequest(sampleMessages, 'deepseek/deepseek-r1:free');
+    const { init } = buildOpenRouterRequest(apiMessages, 'deepseek/deepseek-r1:free');
     const body = JSON.parse(init.body as string);
     expect(body.model).toBe('deepseek/deepseek-r1:free');
     expect(body.stream).toBe(true);
   });
 
-  it('maps message history to role/content pairs only', () => {
-    const { init } = buildOpenRouterRequest(sampleMessages, 'deepseek/deepseek-r1:free');
+  it('omits tools when none are provided', () => {
+    const { init } = buildOpenRouterRequest(apiMessages, 'deepseek/deepseek-r1:free');
     const body = JSON.parse(init.body as string);
-    expect(body.messages).toEqual([{ role: 'user', content: 'Hello' }]);
+    expect(body.tools).toBeUndefined();
+  });
+
+  it('includes tools and tool_choice auto when tools are provided', () => {
+    const tools = [{ type: 'function' as const, function: { name: 'web_search', description: 'search', parameters: {} } }];
+    const { init } = buildOpenRouterRequest(apiMessages, 'deepseek/deepseek-r1:free', tools);
+    const body = JSON.parse(init.body as string);
+    expect(body.tools).toEqual(tools);
+    expect(body.tool_choice).toBe('auto');
   });
 });
 
 describe('streamChatCompletion', () => {
+  const apiMessages = mapMessagesToApi([textMessage]);
+
   it('returns the response body stream on success', async () => {
     const fakeStream = new ReadableStream();
     const fetchImpl = vi.fn().mockResolvedValue(new Response(fakeStream, { status: 200 }));
-    const result = await streamChatCompletion('test-key', sampleMessages, 'deepseek/deepseek-r1:free', fetchImpl);
+    const result = await streamChatCompletion('test-key', apiMessages, 'deepseek/deepseek-r1:free', undefined, fetchImpl);
     expect(result).toBeInstanceOf(ReadableStream);
   });
 
   it('throws OpenRouterError on a non-2xx response', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('rate limited', { status: 429 }));
     await expect(
-      streamChatCompletion('test-key', sampleMessages, 'deepseek/deepseek-r1:free', fetchImpl)
+      streamChatCompletion('test-key', apiMessages, 'deepseek/deepseek-r1:free', undefined, fetchImpl)
     ).rejects.toThrow(OpenRouterError);
   });
 
-  it('throws OpenRouterError with clear message when 2xx response has no body', async () => {
-    const responseWithoutBody = new Response(null, { status: 200 });
-    const fetchImpl = vi.fn().mockResolvedValue(responseWithoutBody);
-    const error = await expect(
-      streamChatCompletion('test-key', sampleMessages, 'deepseek/deepseek-r1:free', fetchImpl)
-    ).rejects.toThrow(OpenRouterError);
-    // Verify the error message indicates this is not a normal API error
+  it('throws a distinct OpenRouterError on a 2xx response with no body', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
     await expect(
-      streamChatCompletion('test-key', sampleMessages, 'deepseek/deepseek-r1:free', fetchImpl)
-    ).rejects.toThrow('no body');
+      streamChatCompletion('test-key', apiMessages, 'deepseek/deepseek-r1:free', undefined, fetchImpl)
+    ).rejects.toThrow(/no body/);
+  });
+
+  it('passes tools through to the request when provided', async () => {
+    const fakeStream = new ReadableStream();
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(fakeStream, { status: 200 }));
+    const tools = [{ type: 'function' as const, function: { name: 'web_search', description: 'search', parameters: {} } }];
+    await streamChatCompletion('test-key', apiMessages, 'deepseek/deepseek-r1:free', tools, fetchImpl);
+    const callBody = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(callBody.tools).toEqual(tools);
   });
 });
