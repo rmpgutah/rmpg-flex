@@ -28,6 +28,8 @@ import {
 } from '../utils/emailSend';
 import { encryptSecret, decryptSecret } from '../utils/emailCrypto';
 import type { Bindings, Variables } from '../types';
+import type { MiddlewareHandler } from 'hono';
+import { rateLimitAllow } from '../utils/rateLimit';
 
 import { log } from '../utils/logger';
 const email = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -250,6 +252,23 @@ email.use('*', async (c, next) => {
   }
   return authMiddleware(c, next);
 });
+
+// Send-family rate limit — separate from the generic apiRateLimit (600/5min,
+// sized for read-heavy dispatch polling). A compromised session or a buggy
+// client retry loop must not be able to burn through the org's single shared
+// Graph mailbox's send quota or trip Microsoft's abuse detection.
+const EMAIL_SEND_LIMIT = 20;
+const EMAIL_SEND_WINDOW_SECONDS = 300;
+
+export const emailSendRateLimit: MiddlewareHandler<{ Bindings: Bindings; Variables: Variables }> = async (c, next) => {
+  const userId = c.get('userId') as number | undefined;
+  if (userId == null) return next();
+  const allowed = await rateLimitAllow(c.env.KV, `email-send:${userId}`, EMAIL_SEND_LIMIT, EMAIL_SEND_WINDOW_SECONDS);
+  if (!allowed) {
+    return c.json({ error: 'Too many emails sent. Slow down and try again shortly.', code: 'EMAIL_RATE_LIMITED' }, 429);
+  }
+  return next();
+};
 
 email.get('/status', async (c) => c.json(await getStatus(c.env)));
 
@@ -875,7 +894,7 @@ export async function enqueueAndSend(
   }
 }
 
-email.post('/send', async (c) => {
+email.post('/send', emailSendRateLimit, async (c) => {
   const userId = c.get('userId');
   const body = await c.req.json().catch(() => ({})) as SendInput;
   if (!parseAddrList(body.to).length) return c.json({ error: 'At least one recipient required' }, 400);
@@ -1053,7 +1072,7 @@ export async function drainEmailOutbox(env: Bindings): Promise<{ sent: number; f
   return { sent, failed, deferred };
 }
 
-email.post('/messages/:id/reply', async (c) => {
+email.post('/messages/:id/reply', emailSendRateLimit, async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json().catch(() => ({})) as { body?: string; comment?: string };
   try {
@@ -1638,7 +1657,7 @@ email.delete('/link/:id', async (c) => {
 // ═══════════════════════════════════════════════════════════════════
 
 // ─── Reply-all / Forward ─────────────────────────────────────────
-email.post('/messages/:id/reply-all', async (c) => {
+email.post('/messages/:id/reply-all', emailSendRateLimit, async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json().catch(() => ({})) as { body?: string; comment?: string };
   try {
@@ -1653,7 +1672,7 @@ email.post('/messages/:id/reply-all', async (c) => {
   }
 });
 
-email.post('/messages/:id/forward', async (c) => {
+email.post('/messages/:id/forward', emailSendRateLimit, async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json().catch(() => ({})) as { to?: string | string[]; body?: string; comment?: string };
   const toRecipients = parseAddrList(body.to);
