@@ -74,6 +74,12 @@ export interface FleetioVehicleCreatePayload {
   color?: string | null;
   vehicle_type_id?: number | null;
   fuel_type_id?: number | null;
+  /** Fleet.io marks this REQUIRED on create (enum km/hr/mi) — RMPG operates
+   *  US-only fleets, so this is always 'mi'. See seed.ts for why this is the
+   *  one required-on-create field that's safe to default without live
+   *  verification (the other two, vehicle_status_id/vehicle_type_id, are
+   *  Fleet.io account-specific ids RMPG has no source of truth for). */
+  primary_meter_unit?: 'mi' | 'km' | 'hr' | null;
 }
 
 /** RMPG-side fleet_vehicles row shape — only the columns seed reads. */

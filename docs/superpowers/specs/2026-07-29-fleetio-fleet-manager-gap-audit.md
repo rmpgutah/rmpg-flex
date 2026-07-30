@@ -7,7 +7,7 @@
 
 | Finding | File:line | Severity | Evidence |
 |---|---|---|---|
-| Vehicle create never sends required `vehicle_status_id`/`vehicle_type_id`/`primary_meter_unit` | `src/utils/fleetio/seed.ts` (`mapVehicleFieldsToFleetio`) | Medium — may 422 or silently rely on account defaults, unverified live | docs/fleetio-api-reference.md:85 |
+| ✅ FIXED 2026-07-30 (partial) — Vehicle create now sends `primary_meter_unit: 'mi'` (safe default, documented enum, US-only fleet). `vehicle_status_id`/`vehicle_type_id` remain unsent — deliberately not guessed at, no RMPG-side source of truth exists | `src/utils/fleetio/seed.ts` (`mapVehicleFieldsToFleetio`, `buildVehiclePayload`) | Medium — status/type ids may still 422 or silently rely on account defaults, unverified live | docs/fleetio-api-reference.md:85-86 |
 | `updateVehicle` reuses the create-shaped payload type (`primary_meter_unit`/`purchase_detail`/`specs`/`in_service_meter_value`/`out_of_service_meter_value`) instead of the PATCH-only names (`meter_unit`/`purchase_detail_attributes`/`specs_attributes`/`in_service_meter`/`out_of_service_meter`) | `src/utils/fleetio/client.ts:480-487` | Low today (latent — no mapper currently populates these fields) | docs/fleetio-api-reference.md:89 |
 | `archiveVehicle` PATCHes an undocumented `archived_at` field to `/vehicles/:id` instead of a verified archive mechanism | `src/utils/fleetio/client.ts:576-585` | High — every vehicle archive may be silently ignored | docs/fleetio-api-reference.md:91 |
 | `archiveVendor` uses `POST /vendors/:id/archive`; live docs require `PATCH` | `src/utils/fleetio/client.ts:724-728` | High — every vendor archive attempt likely 404s (also breaks retry idempotency: POST is non-retryable, PATCH is) | docs/fleetio-api-reference.md:136 |
