@@ -15,9 +15,6 @@ type Message = {
 type ModelOption = { id: string; label: string; vision: boolean; tools: boolean };
 
 const FREE_MODELS: ModelOption[] = [
-  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash (free, vision)', vision: true, tools: true },
-  { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash (free, vision)', vision: true, tools: true },
-  { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite (free, vision)', vision: true, tools: true },
   { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', label: 'Nemotron 3 Ultra 550B (free)', vision: false, tools: true },
   { id: 'nvidia/nemotron-3-super-120b-a12b:free', label: 'Nemotron 3 Super 120B (free)', vision: false, tools: true },
   { id: 'google/gemma-4-26b-a4b-it:free', label: 'Gemma 4 26B (free, vision)', vision: true, tools: true },
@@ -25,6 +22,9 @@ const FREE_MODELS: ModelOption[] = [
   { id: 'inclusionai/ling-3.0-flash:free', label: 'Ling 3.0 Flash (free)', vision: false, tools: false },
   { id: 'poolside/laguna-xs-2.1:free', label: 'Laguna XS 2.1 (free)', vision: false, tools: true },
   { id: 'cohere/north-mini-code:free', label: 'North Mini Code (free)', vision: false, tools: true },
+  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash (free, vision)', vision: true, tools: true },
+  { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash (free, vision)', vision: true, tools: true },
+  { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite (free, vision)', vision: true, tools: true },
 ];
 const KIMI_K3_MODEL: ModelOption = { id: 'moonshotai/kimi-k3', label: 'Kimi K3 (paid)', vision: true, tools: true };
 
