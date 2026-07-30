@@ -6,6 +6,7 @@ import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
 import { parseTimestamp } from '../utils/dateUtils';
 import TrustBadge from './TrustBadge';
+import CarxeLookupPanel from './CarxeLookupPanel';
 
 interface DossierPackage {
   id: number;
@@ -71,6 +72,13 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
             className="text-[#888] hover:text-rmpg-100">
             <X className="w-4 h-4" />
           </button>
+        </div>
+
+        {/* CarsXE manual lookup — this dossier is keyed by plate only (no VIN
+            is available on DossierPackage or its callers), so this uses
+            mode="plate" rather than the VIN mode suggested by the task brief. */}
+        <div className="px-3 py-2 border-b border-border-default">
+          <CarxeLookupPanel mode="plate" plate={plate} />
         </div>
 
         {/* Body */}

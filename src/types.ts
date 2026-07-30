@@ -100,6 +100,8 @@ export type Bindings = {
   TRACCAR_ENC_KEY?: string;
   ROBOFLOW_API_KEY?: string;
   ROBOFLOW_API_URL?: string;
+  CARXE_API_KEY?: string;
+  CARXE_API_BASE?: string;
   IPED_API_KEY?: string;
   EMAIL_FIELD_ENCRYPTION_KEK?: string;
   // Analytics pipeline (optional — provisioned separately)
