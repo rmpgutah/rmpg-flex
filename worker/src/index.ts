@@ -102,6 +102,7 @@ app.post('/api/conversations/:id/messages', async (c) => {
         controller.enqueue(chunk);
       },
       async flush() {
+        fullReply += decoder.decode();
         const textChunks = fullReply
           .split('\n')
           .filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]')
