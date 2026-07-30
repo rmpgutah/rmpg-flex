@@ -40,9 +40,13 @@ export async function streamChatCompletion(
     headers: { ...init.headers, Authorization: `Bearer ${apiKey}` },
   });
 
-  if (!response.ok || !response.body) {
+  if (!response.ok) {
     const text = await response.text().catch(() => 'unknown error');
     throw new OpenRouterError(response.status, text);
+  }
+
+  if (!response.body) {
+    throw new OpenRouterError(response.status, 'OpenRouter returned a 2xx response with no body');
   }
 
   return response.body;

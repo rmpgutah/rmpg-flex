@@ -40,4 +40,16 @@ describe('streamChatCompletion', () => {
       streamChatCompletion('test-key', sampleMessages, 'deepseek/deepseek-r1:free', fetchImpl)
     ).rejects.toThrow(OpenRouterError);
   });
+
+  it('throws OpenRouterError with clear message when 2xx response has no body', async () => {
+    const responseWithoutBody = new Response(null, { status: 200 });
+    const fetchImpl = vi.fn().mockResolvedValue(responseWithoutBody);
+    const error = await expect(
+      streamChatCompletion('test-key', sampleMessages, 'deepseek/deepseek-r1:free', fetchImpl)
+    ).rejects.toThrow(OpenRouterError);
+    // Verify the error message indicates this is not a normal API error
+    await expect(
+      streamChatCompletion('test-key', sampleMessages, 'deepseek/deepseek-r1:free', fetchImpl)
+    ).rejects.toThrow('no body');
+  });
 });
