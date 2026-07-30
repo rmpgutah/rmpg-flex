@@ -133,12 +133,19 @@ const SELF_EDITABLE: readonly string[] = [
 // lookups across the app depend on this endpoint for basic name/badge/unit
 // info. Manager-tier roles (which already administer HR data elsewhere in
 // this file) keep the full detail.
+// last_login_at/totp_enabled/must_change_password were historically dropped
+// from this projection even though the client (mapPersonnelToUser) always
+// expected them — every row in the Users tab list showed "NO 2FA" and a
+// blank Last Login regardless of the real value, because the roster query
+// never selected the columns the per-user Security tab (GET
+// /admin/users/:id/security) reads correctly on its own separate call.
 const PERSONNEL_ROSTER_FULL_COLUMNS = `u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name,
                       u.role, u.badge_number, u.phone, u.email, u.status, u.rank, u.department,
                       u.address, u.address_2, u.city, u.state, u.zip, u.date_of_birth, u.hire_date, u.termination_date,
                       u.shift_preference, u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies,
                       u.uniform_size, u.emergency_contact_name, u.emergency_contact_phone,
-                      u.emergency_contact_relationship, u.sso_enabled, u.created_at, u.updated_at`;
+                      u.emergency_contact_relationship, u.sso_enabled, u.created_at, u.updated_at,
+                      u.last_login_at, u.totp_enabled, u.must_change_password`;
 const PERSONNEL_ROSTER_SUMMARY_COLUMNS = `u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name,
                       u.role, u.badge_number, u.phone, u.email, u.status, u.rank, u.department,
                       u.shift_preference, u.uniform_size, u.created_at, u.updated_at`;
@@ -148,8 +155,16 @@ personnel.get('/', async (c) => {
     const db = getDb(c.env);
     const { status, role } = c.req.query();
     const actor = c.get('user') as { role?: string } | undefined;
-    const columns = actor?.role && MANAGER_ROLES.has(actor.role) ? PERSONNEL_ROSTER_FULL_COLUMNS : PERSONNEL_ROSTER_SUMMARY_COLUMNS;
+    const isManager = !!(actor?.role && MANAGER_ROLES.has(actor.role));
+    const columns = isManager ? PERSONNEL_ROSTER_FULL_COLUMNS : PERSONNEL_ROSTER_SUMMARY_COLUMNS;
+    // active_sessions only makes sense alongside the other manager-only
+    // security fields above — summary-tier callers (dispatch lookups, etc.)
+    // don't get a per-user session count either.
+    const activeSessionsExpr = isManager
+      ? `(SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND COALESCE(s.is_active, 1) = 1 AND s.expires_at > datetime('now')) AS active_sessions,`
+      : '';
     let sql = `SELECT ${columns},
+                      ${activeSessionsExpr}
                       (SELECT call_sign FROM units WHERE officer_id = u.id LIMIT 1) AS unit_call_sign,
                       (SELECT status FROM units WHERE officer_id = u.id LIMIT 1) AS unit_status
                FROM users u WHERE 1=1`;
@@ -1546,6 +1561,10 @@ personnel.post('/', async (c) => {
          FROM users WHERE id = ?`,
       newId
     );
+    await recordAudit(c, {
+      action: 'USER_CREATE', entityType: 'user', entityId: newId,
+      details: `Created user @${username} (${fullName}) with role '${role}'`,
+    });
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /personnel failed:', err);
@@ -1719,6 +1738,10 @@ personnel.post('/:id/role', async (c) => {
       'UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       newRole, targetId
     );
+    await recordAudit(c, {
+      action: 'USER_ROLE_CHANGE', entityType: 'user', entityId: targetId,
+      details: `Role changed from '${existing.role}' to '${newRole}'`,
+    });
 
     return c.json({ ok: true, id: targetId, previous_role: existing.role, role: newRole });
   } catch (err) {
@@ -1767,6 +1790,10 @@ personnel.post('/:id/reset-password', async (c) => {
        WHERE id = ?`,
       hash, targetId
     );
+    await recordAudit(c, {
+      action: 'USER_PASSWORD_RESET', entityType: 'user', entityId: targetId,
+      details: 'Password reset by admin; must_change_password set',
+    });
 
     return c.json({ ok: true, id: targetId, must_change_password: true });
   } catch (err) {
@@ -1818,6 +1845,10 @@ personnel.post('/:id/status', async (c) => {
       'UPDATE users SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       newStatus, targetId
     );
+    await recordAudit(c, {
+      action: 'USER_STATUS_CHANGE', entityType: 'user', entityId: targetId,
+      details: `Status changed from '${existing.status}' to '${newStatus}'`,
+    });
 
     return c.json({ ok: true, id: targetId, previous_status: existing.status, status: newStatus });
   } catch (err) {
@@ -1873,6 +1904,10 @@ personnel.delete('/:id', async (c) => {
        WHERE id = ?`,
       targetId
     );
+    await recordAudit(c, {
+      action: 'USER_TERMINATE', entityType: 'user', entityId: targetId,
+      details: `Terminated (previous status: '${existing.status}')`,
+    });
 
     return c.json({ ok: true, id: targetId, previous_status: existing.status, status: 'terminated' });
   } catch (err) {
