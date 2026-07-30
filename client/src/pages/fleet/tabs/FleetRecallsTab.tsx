@@ -43,7 +43,11 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
     setLoading(true);
     try {
       const params = vehicleId ? `?vehicle_id=${vehicleId}` : '';
-      try { const data = await apiFetch<any[]>(`/fleet/recalls${params}`); setRecalls(data); } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to load recalls', 'error'); }
+      // GET /fleet/recalls always returns an array server-side, but a stale
+      // cached response (service worker, edge cache) or any other unexpected
+      // 200 body would otherwise crash `recalls.filter(...)` below with
+      // "not a function" — confirmed live in production (2026-07-30).
+      try { const data = await apiFetch<any[]>(`/fleet/recalls${params}`); setRecalls(Array.isArray(data) ? data : []); } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to load recalls', 'error'); }
     } finally { setLoading(false); }
   };
 

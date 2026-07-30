@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import RichTextArea from '../../components/RichTextArea';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
-  Tag, Radio, Archive, DollarSign, Fuel, Eye, Trash2, FileText, LayoutDashboard,
+  Tag, Radio, Archive, DollarSign, Fuel, Eye, Trash2, FileText, LayoutDashboard, Activity,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
@@ -392,7 +392,8 @@ export default function FleetPage() {
       const data = await apiFetch<FleetVehicle & { recent_maintenance?: FleetMaintenance[]; maintenance?: FleetMaintenance[] }>(`/fleet/${id}`);
       const { recent_maintenance, maintenance: maint, ...vehicle } = data;
       setDetail(vehicle);
-      setMaintenance(recent_maintenance || maint || []);
+      const maintList = recent_maintenance ?? maint;
+      setMaintenance(Array.isArray(maintList) ? maintList : []);
     } catch (err) {
       addToast('Failed to load vehicle details', 'error');
     }
@@ -465,7 +466,7 @@ export default function FleetPage() {
       // rather than a paginated slice — lets operators see lifetime
       // consumption + every flagged fill in the period selector.
       const data = await apiFetch<{ data: FleetFuelLog[]; summary: FleetFuelSummary }>(`/fleet/${id}/fuel?per_page=10000`);
-      setFuelLogs(data.data || []);
+      setFuelLogs(Array.isArray(data?.data) ? data.data : []);
       setFuelSummary(data.summary || null);
     } catch { addToast('Failed to load fuel logs', 'error'); }
   };
@@ -1298,6 +1299,20 @@ export default function FleetPage() {
           >
             <Calendar className="w-3 h-3" /> Daily Reports
           </button>
+          {/* Fleet.io sync/queue health — dead-letter counts, queue-unhealthy
+              alerts, per-resource status. Lives under /admin, separate from
+              this page; an operator hitting a silently-dropped field or a
+              dead-lettered event has no other in-context path to it. */}
+          {isAdmin && (
+            <button
+              type="button"
+              className="toolbar-btn"
+              onClick={() => navigate('/admin?tab=fleetio_health')}
+              title="Fleet.io Sync Health"
+            >
+              <Activity className="w-3 h-3" /> Sync Health
+            </button>
+          )}
           <ExportButton exportUrl="/api/fleet/export/csv" exportFilename="fleet.csv" />
           <PrintButton />
         </PanelTitleBar>

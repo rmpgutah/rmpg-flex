@@ -13,7 +13,14 @@ export function buildVehiclePayload(row: RmpgFleetVehicleRow): FleetioVehicleCre
   const name = deriveName(row);
   if (!name) return null;
 
-  const payload: FleetioVehicleCreatePayload = { name };
+  // Fleet.io marks primary_meter_unit REQUIRED on create. Confirmed live
+  // 2026-07-29 (docs/fleetio-api-reference.md) that mapVehicleFieldsToFleetio
+  // and this function never sent it. Safe to default to 'mi': RMPG operates
+  // US-only fleets, and Fleet.io's own enum is km/hr/mi — no account-specific
+  // lookup needed, unlike vehicle_status_id/vehicle_type_id (also required,
+  // but Fleet.io account-configured ids RMPG's D1 has no record of — those
+  // are deliberately NOT defaulted; see the audit note on this).
+  const payload: FleetioVehicleCreatePayload = { name, primary_meter_unit: 'mi' };
 
   if (row.vin) payload.vin = row.vin;
   if (row.plate_number) payload.license_plate = row.plate_number;
@@ -52,7 +59,15 @@ function deriveName(row: RmpgFleetVehicleRow): string | null {
 // a generic Record (the parsed event payload) rather than a typed row, so
 // dispatchOutbound can reuse it for both vehicle.create and vehicle.update
 // events pulled off the queue.
-export function mapVehicleFieldsToFleetio(payload: Record<string, unknown>): Record<string, unknown> {
+//
+// `isCreate` gates `primary_meter_unit: 'mi'` (required on create, see
+// buildVehiclePayload's comment for why 'mi' is safe to default). It is
+// deliberately NOT sent on update: unlike create, an update call fires on
+// every unrelated field change (e.g. color), and forcing meter_unit on
+// every one of those risks silently overwriting a value an operator set
+// directly in Fleet.io's own UI — a real config change, not a
+// missing-required-field bug like create's.
+export function mapVehicleFieldsToFleetio(payload: Record<string, unknown>, isCreate = false): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const name = deriveNameFromRecord(payload);
   if (name) out.name = name;
@@ -62,6 +77,7 @@ export function mapVehicleFieldsToFleetio(payload: Record<string, unknown>): Rec
   if (isNonEmptyString(payload.make)) out.make = payload.make;
   if (isNonEmptyString(payload.model)) out.model = payload.model;
   if (isNonEmptyString(payload.color)) out.color = payload.color;
+  if (isCreate) out.primary_meter_unit = 'mi';
   return out;
 }
 

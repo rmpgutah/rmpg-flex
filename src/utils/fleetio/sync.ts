@@ -373,7 +373,7 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     // vehicle and orphan the original.
     const existing = await lookupFleetioId(deps.db, 'fleet_vehicles', row.resource_id);
     if (existing) return null;
-    const mapped = mapVehicleFieldsToFleetio(filteredPayload);
+    const mapped = mapVehicleFieldsToFleetio(filteredPayload, true);
     if (!mapped.name) return null; // no derivable name — nothing safe to create with
     const created = await deps.adapter.createVehicle({ payload: mapped });
     await recordLink(deps.db, FLEETIO_RMPG_TABLE.vehicle, row.resource_id, 'vehicle', created.id, now(deps));

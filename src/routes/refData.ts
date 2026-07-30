@@ -195,9 +195,27 @@ const VENDOR_KIND_CREATE = 'vendor.create';
 const VENDOR_KIND_UPDATE = 'vendor.update';
 const VENDOR_KIND_DELETE = 'vendor.delete';
 
+// Fleet.io's vendors resource caps every one of these string fields at 255
+// chars (developer.fleetio.com/reference/create-vendor, confirmed
+// 2026-07-29 — see docs/fleetio-api-reference.md). Before mapVendorFieldsToFleetio
+// was fixed to send Fleet.io's real field names, an over-length value here
+// was silently dropped along with every other field, so this constraint was
+// never actually exercised. Now that field names round-trip correctly, an
+// over-length value would 422 on sync instead — reject it here instead.
+const VENDOR_MAX_LEN = 255;
+function validateVendorBody(body: Record<string, unknown>): string | null {
+  for (const key of ['name', 'address', 'city', 'state', 'zip', 'phone', 'email'] as const) {
+    const v = body[key];
+    if (typeof v === 'string' && v.length > VENDOR_MAX_LEN) return `${key} must be ${VENDOR_MAX_LEN} characters or fewer`;
+  }
+  return null;
+}
+
 refData.post('/vendors', requireRole('admin'), async (c) => {
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   if (!body.name) return c.json({ error: 'name is required', code: 'INVALID_BODY' }, 400);
+  const validationError = validateVendorBody(body);
+  if (validationError) return c.json({ error: validationError, code: 'INVALID_BODY' }, 400);
   const db = getDb(c.env);
   const result = await execute(db,
     `INSERT INTO ref_vendors (name, kind, address, city, state, zip, phone, email, notes)
@@ -218,6 +236,8 @@ refData.put('/vendors/:id{[0-9]+}', requireRole('admin'), async (c) => {
   const existing = await queryFirst<Record<string, unknown>>(db, `SELECT * FROM ${VENDOR_TABLE} WHERE id = ?`, id);
   if (!existing) return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404);
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const validationError = validateVendorBody(body);
+  if (validationError) return c.json({ error: validationError, code: 'INVALID_BODY' }, 400);
   const editable = ['name', 'kind', 'address', 'city', 'state', 'zip', 'lat', 'lng', 'phone', 'email', 'notes', 'active'];
   const setCols: string[] = [];
   const bindings: unknown[] = [];
