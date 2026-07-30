@@ -201,6 +201,8 @@ app.post('/api/conversations/:id/messages', async (c) => {
       // Distinguishes a genuine final answer (which may legitimately be empty)
       // from exhausting the tool-iteration cap.
       let gotFinalAnswer = false;
+      // Set when the turn is aborted for a reason we already reported over SSE.
+      let aborted = false;
 
       while (iterations < 5) {
         iterations++;
@@ -208,6 +210,19 @@ app.post('/api/conversations/:id/messages', async (c) => {
         const turn = await consumeAndForward(upstream, (chunk) => writer.write(chunk));
 
         if (turn.toolCalls.length > 0 && turn.finishReason === 'tool_calls') {
+          // Not every provider populates `id`/`index` on every tool_call delta.
+          // Persisting an empty tool_call_id would durably corrupt this
+          // conversation's history (every later request replays it and the
+          // upstream API rejects it), so fail this turn transiently instead.
+          if (turn.toolCalls.some((tc) => !tc.id)) {
+            await writeSSE('error', {
+              message:
+                'Received an incomplete tool call from the model (no id) — try again or pick a different model.',
+            });
+            aborted = true;
+            break;
+          }
+
           const toolCallsPayload = turn.toolCalls.map((tc) => ({
             id: tc.id,
             type: 'function' as const,
@@ -268,7 +283,7 @@ app.post('/api/conversations/:id/messages', async (c) => {
 
       if (gotFinalAnswer) {
         await addMessage(db, { conversationId: id, role: 'assistant', content: finalText, model });
-      } else {
+      } else if (!aborted) {
         await writeSSE('error', { message: 'Tool use limit reached' });
       }
       await writer.write(encoder.encode('data: [DONE]\n\n'));
