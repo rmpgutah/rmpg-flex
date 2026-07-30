@@ -2393,12 +2393,15 @@ email.post('/schedule', emailSendRateLimit, async (c) => {
   const when = body.scheduledAt.replace('T', ' ').slice(0, 19);
   const cc = parseAddrList(body.cc).map((r) => r.emailAddress.address);
   const bcc = parseAddrList(body.bcc).map((r) => r.emailAddress.address);
+  const encryptedTo = await encryptField(c.env, JSON.stringify(to));
+  const encryptedCc = cc.length ? await encryptField(c.env, JSON.stringify(cc)) : null;
+  const encryptedBody = await encryptField(c.env, body.body || '');
   const r = await execute(
     c.env.DB,
     `INSERT INTO email_scheduled (owner_user_id, to_addresses, cc_addresses, bcc_addresses, subject, body, is_html, importance, attachments, scheduled_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    userId, JSON.stringify(to), cc.length ? JSON.stringify(cc) : null, bcc.length ? JSON.stringify(bcc) : null,
-    body.subject || '', body.body || '', body.isHtml === false ? 0 : 1,
+    userId, encryptedTo, encryptedCc, bcc.length ? JSON.stringify(bcc) : null,
+    body.subject || '', encryptedBody, body.isHtml === false ? 0 : 1,
     ['low', 'normal', 'high'].includes(body.importance || '') ? body.importance : 'normal',
     body.attachments?.length ? JSON.stringify(body.attachments.slice(0, 20)) : null,
     when,
@@ -2408,12 +2411,16 @@ email.post('/schedule', emailSendRateLimit, async (c) => {
 
 email.get('/scheduled', async (c) => {
   const userId = c.get('userId');
-  const rows = await query(
+  const rows = await query<{ id: number; to_addresses: string; subject: string; scheduled_at: string; status: string; created_at: string }>(
     c.env.DB,
     "SELECT id, to_addresses, subject, scheduled_at, status, created_at FROM email_scheduled WHERE owner_user_id = ? AND status != 'cancelled' ORDER BY scheduled_at ASC LIMIT 100",
     userId,
   ).catch(() => []);
-  return c.json(rows);
+  const decrypted = await Promise.all(rows.map(async (row) => ({
+    ...row,
+    to_addresses: await decryptFieldIfEncrypted(c.env, row.to_addresses),
+  })));
+  return c.json(decrypted);
 });
 
 email.delete('/scheduled/:id', async (c) => {
@@ -2439,15 +2446,18 @@ export async function drainScheduledEmails(env: Bindings): Promise<number> {
   let queued = 0;
   for (const r of rows) {
     try {
+      const decryptedBody = await decryptFieldIfEncrypted(env, r.body);
+      const decryptedTo = await decryptFieldIfEncrypted(env, r.to_addresses);
+      const decryptedCc = r.cc_addresses ? await decryptFieldIfEncrypted(env, r.cc_addresses) : null;
       const parse = (s: string | null): string[] => { try { return s ? JSON.parse(s) : []; } catch { return []; } };
       const atts = ((): SendAttachment[] => { try { return r.attachments ? JSON.parse(r.attachments) : []; } catch { return []; } })();
       const attachments = mapAttachments(atts);
       const payload = {
         message: {
           subject: r.subject || '(no subject)',
-          body: { contentType: r.is_html ? 'HTML' : 'Text', content: r.body || '' },
-          toRecipients: parseAddrList(parse(r.to_addresses)),
-          ccRecipients: parseAddrList(parse(r.cc_addresses)),
+          body: { contentType: r.is_html ? 'HTML' : 'Text', content: decryptedBody || '' },
+          toRecipients: parseAddrList(parse(decryptedTo)),
+          ccRecipients: parseAddrList(parse(decryptedCc)),
           bccRecipients: parseAddrList(parse(r.bcc_addresses)),
           ...(attachments.length ? { attachments } : {}),
           importance: r.importance || 'normal',
