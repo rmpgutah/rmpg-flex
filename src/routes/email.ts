@@ -27,6 +27,7 @@ import {
   type SendAttachment, type SendInput,
 } from '../utils/emailSend';
 import { encryptSecret, decryptSecret } from '../utils/emailCrypto';
+import { encryptField, decryptFieldIfEncrypted } from '../utils/emailFieldCrypto';
 import { auditEmailAction } from '../utils/emailAudit';
 import type { Bindings, Variables } from '../types';
 import type { MiddlewareHandler } from 'hono';
@@ -615,22 +616,28 @@ email.get('/messages/search', async (c) => {
   const folder = (c.req.query('folder') || '').trim();
   const like = buildSearchLikePattern(q);
   try {
-    const params: unknown[] = [userId, like, like, like];
+    // body_preview is stored encrypted (src/utils/emailFieldCrypto.ts) and
+    // therefore cannot be LIKE-matched — search narrows to subject/sender.
+    const params: unknown[] = [userId, like, like];
     let folderClause = '';
     if (folder && folder !== 'inbox') { folderClause = 'AND folder_id = ?'; params.push(folder); }
-    const rows = await query(
+    const rows = await query<Record<string, unknown>>(
       c.env.DB,
       `SELECT graph_id, conversation_id, subject, from_address, from_name, body_preview,
               has_attachments, is_read, is_flagged, importance, received_at
          FROM email_messages
         WHERE owner_user_id = ?
-          AND (subject LIKE ? OR from_address LIKE ? OR body_preview LIKE ?)
+          AND (subject LIKE ? OR from_address LIKE ?)
           ${folderClause}
         ORDER BY received_at DESC
         LIMIT 50`,
       ...params,
     );
-    return c.json({ results: rows });
+    const results = await Promise.all(rows.map(async (r) => ({
+      ...r,
+      body_preview: await decryptFieldIfEncrypted(c.env, r.body_preview as string | null),
+    })));
+    return c.json({ results });
   } catch {
     return c.json({ results: [] });
   }
@@ -1437,6 +1444,7 @@ export async function runEmailPoll(env: Bindings, ctx?: ExecutionContext): Promi
       const categories = cats.size ? JSON.stringify([...cats]) : null;
 
       try {
+        const encryptedBodyPreview = m.body_preview ? await encryptField(env, m.body_preview) : m.body_preview;
         await execute(
           env.DB,
           `INSERT INTO email_messages
@@ -1448,7 +1456,7 @@ export async function runEmailPoll(env: Bindings, ctx?: ExecutionContext): Promi
              categories = COALESCE(excluded.categories, email_messages.categories),
              body_preview = excluded.body_preview`,
           ownerUserId, m.graph_id, m.conversation_id ?? null, m.subject, m.from_address, m.from_name,
-          m.to_addresses, m.cc_addresses, m.body_preview, m.has_attachments, m.is_read, m.is_flagged,
+          m.to_addresses, m.cc_addresses, encryptedBodyPreview, m.has_attachments, m.is_read, m.is_flagged,
           m.importance, categories, m.received_at ?? null, m.sent_at ?? null,
         );
         upserted++;
