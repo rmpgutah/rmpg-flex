@@ -23,7 +23,7 @@ import { Hono } from 'hono';
 import { authMiddleware, requireRole } from '../middleware/auth';
 import { getDb, queryFirst, query, execute, columnExists } from '../utils/db';
 import {
-  parseAddrList, mapAttachments, buildSendPayload,
+  parseAddrList, mapAttachments, buildSendPayload, totalAttachmentBytes, MAX_TOTAL_ATTACHMENT_BYTES,
   type SendAttachment, type SendInput,
 } from '../utils/emailSend';
 import { encryptSecret, decryptSecret } from '../utils/emailCrypto';
@@ -911,6 +911,13 @@ email.post('/send', emailSendRateLimit, async (c) => {
   const body = await c.req.json().catch(() => ({})) as SendInput;
   const toAddrs = parseAddrList(body.to);
   if (!toAddrs.length) return c.json({ error: 'At least one recipient required' }, 400);
+  const attBytes = totalAttachmentBytes(body.attachments);
+  if (attBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+    return c.json({
+      error: `Attachments total ${(attBytes / 1024 / 1024).toFixed(1)}MB, max ${MAX_TOTAL_ATTACHMENT_BYTES / 1024 / 1024}MB per message`,
+      code: 'ATTACHMENTS_TOO_LARGE',
+    }, 413);
+  }
   const payload = buildSendPayload(body);
   const r = await enqueueAndSend(c.env, userId, payload);
   await auditEmailAction(c.env, {

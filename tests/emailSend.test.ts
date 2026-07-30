@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAddrList, mapAttachments, buildSendPayload } from '../src/utils/emailSend';
+import { parseAddrList, mapAttachments, buildSendPayload, totalAttachmentBytes, MAX_TOTAL_ATTACHMENT_BYTES } from '../src/utils/emailSend';
 
 describe('parseAddrList', () => {
   it('splits a comma/semicolon string and drops blanks/non-addresses', () => {
@@ -53,5 +53,27 @@ describe('buildSendPayload', () => {
     expect(p.message.body.contentType).toBe('Text');
     expect(p.message.attachments).toBeUndefined();
     expect(p.message.importance).toBe('normal');
+  });
+});
+
+describe('totalAttachmentBytes', () => {
+  it('returns 0 for no attachments', () => {
+    expect(totalAttachmentBytes(undefined)).toBe(0);
+    expect(totalAttachmentBytes([])).toBe(0);
+  });
+
+  it('sums decoded byte length from base64 contentBytes', () => {
+    // 'AAAA' base64-decodes to 3 raw bytes
+    const atts = [{ name: 'a', contentBytes: 'AAAA' }, { name: 'b', contentBytes: 'AAAA' }];
+    expect(totalAttachmentBytes(atts)).toBe(6);
+  });
+
+  it('ignores attachments with no contentBytes', () => {
+    const atts = [{ name: 'a' }, { name: 'b', contentBytes: 'AAAA' }];
+    expect(totalAttachmentBytes(atts)).toBe(3);
+  });
+
+  it('MAX_TOTAL_ATTACHMENT_BYTES is 25MB', () => {
+    expect(MAX_TOTAL_ATTACHMENT_BYTES).toBe(25 * 1024 * 1024);
   });
 });
