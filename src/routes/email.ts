@@ -27,6 +27,7 @@ import {
   type SendAttachment, type SendInput,
 } from '../utils/emailSend';
 import { encryptSecret, decryptSecret } from '../utils/emailCrypto';
+import { auditEmailAction } from '../utils/emailAudit';
 import type { Bindings, Variables } from '../types';
 import type { MiddlewareHandler } from 'hono';
 import { rateLimitAllow } from '../utils/rateLimit';
@@ -817,12 +818,22 @@ email.post('/messages/:id/move', async (c) => {
 
 email.delete('/messages/:id', async (c) => {
   const id = c.req.param('id');
+  const userId = c.get('userId');
+  const user = c.get('user') as { username?: string } | undefined;
   try {
     const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    if (!res.ok && res.status !== 404) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    const ok = res.ok || res.status === 404;
+    await auditEmailAction(c.env, {
+      userId, username: user?.username, action: 'delete',
+      graphMessageId: id, status: ok ? 'sent' : 'failed',
+      error: ok ? undefined : `Graph ${res.status}`,
+    });
+    if (!ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
     return c.json({ success: true });
   } catch (err: unknown) {
-    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+    const msg = err instanceof Error ? err.message : 'Failed';
+    await auditEmailAction(c.env, { userId, username: user?.username, action: 'delete', graphMessageId: id, status: 'failed', error: msg });
+    return c.json({ success: false, error: msg }, 502);
   }
 });
 
@@ -896,10 +907,20 @@ export async function enqueueAndSend(
 
 email.post('/send', emailSendRateLimit, async (c) => {
   const userId = c.get('userId');
+  const user = c.get('user') as { username?: string } | undefined;
   const body = await c.req.json().catch(() => ({})) as SendInput;
-  if (!parseAddrList(body.to).length) return c.json({ error: 'At least one recipient required' }, 400);
+  const toAddrs = parseAddrList(body.to);
+  if (!toAddrs.length) return c.json({ error: 'At least one recipient required' }, 400);
   const payload = buildSendPayload(body);
   const r = await enqueueAndSend(c.env, userId, payload);
+  await auditEmailAction(c.env, {
+    userId, username: user?.username, action: 'send',
+    toAddresses: toAddrs.map((a) => a.emailAddress.address),
+    ccAddresses: parseAddrList(body.cc).map((a) => a.emailAddress.address),
+    subject: body.subject,
+    status: r.status === 'sent' ? 'sent' : 'failed',
+    error: r.error,
+  });
   if (r.status === 'sent') return c.json({ success: true, outboxId: r.outboxId });
   return c.json({ success: false, queued: true, outboxId: r.outboxId, error: r.error }, 202);
 });
@@ -1074,16 +1095,26 @@ export async function drainEmailOutbox(env: Bindings): Promise<{ sent: number; f
 
 email.post('/messages/:id/reply', emailSendRateLimit, async (c) => {
   const id = c.req.param('id');
+  const userId = c.get('userId');
+  const user = c.get('user') as { username?: string } | undefined;
   const body = await c.req.json().catch(() => ({})) as { body?: string; comment?: string };
   try {
     const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/reply`, {
       method: 'POST',
       body: JSON.stringify({ comment: body.body || body.comment || '' }),
     });
-    if (!res.ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    const ok = res.ok;
+    await auditEmailAction(c.env, {
+      userId, username: user?.username, action: 'reply',
+      graphMessageId: id, status: ok ? 'sent' : 'failed',
+      error: ok ? undefined : `Graph ${res.status}`,
+    });
+    if (!ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
     return c.json({ success: true });
   } catch (err: unknown) {
-    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+    const msg = err instanceof Error ? err.message : 'Failed';
+    await auditEmailAction(c.env, { userId, username: user?.username, action: 'reply', graphMessageId: id, status: 'failed', error: msg });
+    return c.json({ success: false, error: msg }, 502);
   }
 });
 
@@ -1659,21 +1690,33 @@ email.delete('/link/:id', async (c) => {
 // ─── Reply-all / Forward ─────────────────────────────────────────
 email.post('/messages/:id/reply-all', emailSendRateLimit, async (c) => {
   const id = c.req.param('id');
+  const userId = c.get('userId');
+  const user = c.get('user') as { username?: string } | undefined;
   const body = await c.req.json().catch(() => ({})) as { body?: string; comment?: string };
   try {
     const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/replyAll`, {
       method: 'POST',
       body: JSON.stringify({ comment: body.body || body.comment || '' }),
     });
-    if (!res.ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    const ok = res.ok;
+    await auditEmailAction(c.env, {
+      userId, username: user?.username, action: 'reply_all',
+      graphMessageId: id, status: ok ? 'sent' : 'failed',
+      error: ok ? undefined : `Graph ${res.status}`,
+    });
+    if (!ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
     return c.json({ success: true });
   } catch (err: unknown) {
-    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+    const msg = err instanceof Error ? err.message : 'Failed';
+    await auditEmailAction(c.env, { userId, username: user?.username, action: 'reply_all', graphMessageId: id, status: 'failed', error: msg });
+    return c.json({ success: false, error: msg }, 502);
   }
 });
 
 email.post('/messages/:id/forward', emailSendRateLimit, async (c) => {
   const id = c.req.param('id');
+  const userId = c.get('userId');
+  const user = c.get('user') as { username?: string } | undefined;
   const body = await c.req.json().catch(() => ({})) as { to?: string | string[]; body?: string; comment?: string };
   const toRecipients = parseAddrList(body.to);
   if (!toRecipients.length) return c.json({ error: 'At least one recipient required' }, 400);
@@ -1682,10 +1725,23 @@ email.post('/messages/:id/forward', emailSendRateLimit, async (c) => {
       method: 'POST',
       body: JSON.stringify({ comment: body.body || body.comment || '', toRecipients }),
     });
-    if (!res.ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    const ok = res.ok;
+    await auditEmailAction(c.env, {
+      userId, username: user?.username, action: 'forward',
+      toAddresses: toRecipients.map((r) => r.emailAddress.address),
+      graphMessageId: id, status: ok ? 'sent' : 'failed',
+      error: ok ? undefined : `Graph ${res.status}`,
+    });
+    if (!ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
     return c.json({ success: true });
   } catch (err: unknown) {
-    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+    const msg = err instanceof Error ? err.message : 'Failed';
+    await auditEmailAction(c.env, {
+      userId, username: user?.username, action: 'forward',
+      toAddresses: toRecipients.map((r) => r.emailAddress.address),
+      graphMessageId: id, status: 'failed', error: msg,
+    });
+    return c.json({ success: false, error: msg }, 502);
   }
 });
 
