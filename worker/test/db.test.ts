@@ -57,4 +57,37 @@ describe('db helpers', () => {
     const messages = await getMessages(env.DB, convo.id);
     expect(messages.map((m) => m.content)).toEqual(['one', 'two']);
   });
+
+  it('addMessage defaults content_type to text and nullable tool fields to null', async () => {
+    const convo = await createConversation(env.DB);
+    await addMessage(env.DB, { conversationId: convo.id, role: 'user', content: 'hello' });
+    const messages = await getMessages(env.DB, convo.id);
+    expect(messages[0].content_type).toBe('text');
+    expect(messages[0].tool_name).toBeNull();
+    expect(messages[0].tool_call_id).toBeNull();
+  });
+
+  it('addMessage stores a tool message with tool_name and tool_call_id', async () => {
+    const convo = await createConversation(env.DB);
+    await addMessage(env.DB, {
+      conversationId: convo.id,
+      role: 'tool',
+      content: JSON.stringify({ results: [] }),
+      toolName: 'web_search',
+      toolCallId: 'call_abc123',
+    });
+    const messages = await getMessages(env.DB, convo.id);
+    expect(messages[0].role).toBe('tool');
+    expect(messages[0].tool_name).toBe('web_search');
+    expect(messages[0].tool_call_id).toBe('call_abc123');
+  });
+
+  it('addMessage stores content_type parts for structured content', async () => {
+    const convo = await createConversation(env.DB);
+    const parts = JSON.stringify([{ type: 'text', text: 'describe this' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } }]);
+    await addMessage(env.DB, { conversationId: convo.id, role: 'user', content: parts, contentType: 'parts' });
+    const messages = await getMessages(env.DB, convo.id);
+    expect(messages[0].content_type).toBe('parts');
+    expect(JSON.parse(messages[0].content)).toHaveLength(2);
+  });
 });

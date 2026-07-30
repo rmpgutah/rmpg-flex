@@ -11,8 +11,11 @@ CREATE TABLE conversations (
 CREATE TABLE messages (
   id TEXT PRIMARY KEY,
   conversation_id TEXT NOT NULL REFERENCES conversations(id),
-  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool')),
   content TEXT NOT NULL,
+  content_type TEXT NOT NULL DEFAULT 'text' CHECK (content_type IN ('text', 'parts')),
   model TEXT,
+  tool_name TEXT,
+  tool_call_id TEXT,
   created_at INTEGER NOT NULL
 );

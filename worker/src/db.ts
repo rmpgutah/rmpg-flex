@@ -7,9 +7,12 @@ export type Conversation = {
 
 export type Message = {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'tool';
   content: string;
+  content_type: 'text' | 'parts';
   model: string | null;
+  tool_name: string | null;
+  tool_call_id: string | null;
   created_at: number;
 };
 
@@ -44,7 +47,9 @@ export async function getConversation(db: D1Database, id: string): Promise<Conve
 
 export async function getMessages(db: D1Database, conversationId: string): Promise<Message[]> {
   const result = await db
-    .prepare('SELECT id, role, content, model, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC')
+    .prepare(
+      'SELECT id, role, content, content_type, model, tool_name, tool_call_id, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC'
+    )
     .bind(conversationId)
     .all<Message>();
   return result.results;
@@ -52,14 +57,35 @@ export async function getMessages(db: D1Database, conversationId: string): Promi
 
 export async function addMessage(
   db: D1Database,
-  params: { conversationId: string; role: 'user' | 'assistant'; content: string; model?: string }
+  params: {
+    conversationId: string;
+    role: 'user' | 'assistant' | 'tool';
+    content: string;
+    contentType?: 'text' | 'parts';
+    model?: string;
+    toolName?: string;
+    toolCallId?: string;
+  }
 ): Promise<void> {
   const id = newId();
   const now = Date.now();
+  const contentType = params.contentType ?? 'text';
 
   await db
-    .prepare('INSERT INTO messages (id, conversation_id, role, content, model, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(id, params.conversationId, params.role, params.content, params.model ?? null, now)
+    .prepare(
+      'INSERT INTO messages (id, conversation_id, role, content, content_type, model, tool_name, tool_call_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    )
+    .bind(
+      id,
+      params.conversationId,
+      params.role,
+      params.content,
+      contentType,
+      params.model ?? null,
+      params.toolName ?? null,
+      params.toolCallId ?? null,
+      now
+    )
     .run();
 
   const isFirstUserMessage =
