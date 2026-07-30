@@ -15,7 +15,7 @@ describe('FleetFuelTab duplicate detection', () => {
       { id: 2, vehicle_id: '5', fuel_date: '2026-07-01', total_cost: 40, gallons: 10, fuel_type: 'regular' },
       { id: 3, vehicle_id: '5', fuel_date: '2026-07-02', total_cost: 40, gallons: 10, fuel_type: 'regular' },
     ];
-    render(<FleetFuelTab fuelLogs={logs} summary={null} onAddFuel={vi.fn()} onDeleteFuel={vi.fn()} />);
+    render(<FleetFuelTab fuelLogs={logs} summary={null} onAddFuel={vi.fn()} onDeleteFuel={vi.fn()} onBulkDeleteFuel={vi.fn()} />);
     expect(screen.getAllByText('Dup')).toHaveLength(2);
     expect(screen.getByText('2 possible duplicates')).toBeInTheDocument();
   });
@@ -38,26 +38,26 @@ describe('FleetFuelTab duplicate detection', () => {
     expect(screen.queryByText('Dup')).not.toBeInTheDocument();
   });
 
-  it('"Delete Duplicates" keeps the oldest (lowest id) entry per group and deletes the rest', () => {
-    const onDeleteFuel = vi.fn();
+  it('"Delete Duplicates" calls onBulkDeleteFuel ONCE with every non-kept entry (not onDeleteFuel per-item, which only opens a confirm dialog and would batch-collapse to the last call)', () => {
+    const onBulkDeleteFuel = vi.fn();
     const logs: any[] = [
       { id: 2, vehicle_id: '5', fuel_date: '2026-07-01', total_cost: 40, gallons: 10, fuel_type: 'regular' },
       { id: 1, vehicle_id: '5', fuel_date: '2026-07-01', total_cost: 40, gallons: 10, fuel_type: 'regular' },
       { id: 3, vehicle_id: '5', fuel_date: '2026-07-01', total_cost: 40, gallons: 10, fuel_type: 'regular' },
     ];
-    render(<FleetFuelTab fuelLogs={logs} summary={null} onAddFuel={vi.fn()} onDeleteFuel={onDeleteFuel} />);
+    render(<FleetFuelTab fuelLogs={logs} summary={null} onAddFuel={vi.fn()} onDeleteFuel={vi.fn()} onBulkDeleteFuel={onBulkDeleteFuel} />);
     fireEvent.click(screen.getByRole('button', { name: /delete duplicates/i }));
-    expect(onDeleteFuel).toHaveBeenCalledTimes(2);
-    const deletedIds = onDeleteFuel.mock.calls.map((c) => c[0].id).sort();
+    expect(onBulkDeleteFuel).toHaveBeenCalledTimes(1);
+    const deletedIds = onBulkDeleteFuel.mock.calls[0][0].map((l: any) => l.id).sort();
     expect(deletedIds).toEqual([2, 3]); // id:1 (oldest) kept
   });
 
-  it('does not render the duplicate banner when onDeleteFuel is not provided', () => {
+  it('does not render the duplicate banner when onBulkDeleteFuel is not provided', () => {
     const logs: any[] = [
       { id: 1, vehicle_id: '5', fuel_date: '2026-07-01', total_cost: 40, gallons: 10, fuel_type: 'regular' },
       { id: 2, vehicle_id: '5', fuel_date: '2026-07-01', total_cost: 40, gallons: 10, fuel_type: 'regular' },
     ];
-    render(<FleetFuelTab fuelLogs={logs} summary={null} onAddFuel={vi.fn()} />);
+    render(<FleetFuelTab fuelLogs={logs} summary={null} onAddFuel={vi.fn()} onDeleteFuel={vi.fn()} />);
     expect(screen.queryByRole('button', { name: /delete duplicates/i })).not.toBeInTheDocument();
   });
 });
