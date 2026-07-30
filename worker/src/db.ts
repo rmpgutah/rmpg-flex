@@ -13,6 +13,7 @@ export type Message = {
   model: string | null;
   tool_name: string | null;
   tool_call_id: string | null;
+  tool_calls: string | null;
   created_at: number;
 };
 
@@ -48,7 +49,7 @@ export async function getConversation(db: D1Database, id: string): Promise<Conve
 export async function getMessages(db: D1Database, conversationId: string): Promise<Message[]> {
   const result = await db
     .prepare(
-      'SELECT id, role, content, content_type, model, tool_name, tool_call_id, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC'
+      'SELECT id, role, content, content_type, model, tool_name, tool_call_id, tool_calls, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC'
     )
     .bind(conversationId)
     .all<Message>();
@@ -65,6 +66,7 @@ export async function addMessage(
     model?: string;
     toolName?: string;
     toolCallId?: string;
+    toolCalls?: string;
   }
 ): Promise<void> {
   const id = newId();
@@ -73,7 +75,7 @@ export async function addMessage(
 
   await db
     .prepare(
-      'INSERT INTO messages (id, conversation_id, role, content, content_type, model, tool_name, tool_call_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO messages (id, conversation_id, role, content, content_type, model, tool_name, tool_call_id, tool_calls, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
     .bind(
       id,
@@ -84,6 +86,7 @@ export async function addMessage(
       params.model ?? null,
       params.toolName ?? null,
       params.toolCallId ?? null,
+      params.toolCalls ?? null,
       now
     )
     .run();

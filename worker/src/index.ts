@@ -22,7 +22,24 @@ export type Env = {
 
 const COOKIE_NAME = 'kimi_connect_auth';
 
-const app = new Hono<{ Bindings: Env }>();
+// Cloudflare Worker routes do NOT strip the matched path prefix: the route
+// `rmpgutah.us/kimi-connect/api/*` (see wrangler.toml) delivers the full path
+// `/kimi-connect/api/...` to the Worker. Mounting under this basePath makes the
+// route registrations below resolve to `/kimi-connect/api/...`, matching both
+// the Cloudflare route pattern and the frontend's API_BASE in production and dev.
+const app = new Hono<{ Bindings: Env }>().basePath('/kimi-connect');
+
+const FREE_MODELS = [
+  'deepseek/deepseek-r1:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'qwen/qwen-2.5-72b-instruct:free',
+] as const;
+const KIMI_K3_MODEL = 'moonshotai/kimi-k3';
+
+export function isModelAllowed(model: string, enableKimiK3: string | undefined): boolean {
+  if ((FREE_MODELS as readonly string[]).includes(model)) return true;
+  return model === KIMI_K3_MODEL && enableKimiK3 === 'true';
+}
 
 app.get('/api/health', (c) => c.json({ ok: true }));
 
@@ -132,6 +149,13 @@ app.post('/api/conversations/:id/messages', async (c) => {
   if (!conversation) return c.json({ error: 'not found' }, 404);
 
   const body = await c.req.json<{ content: string; model: string; contentType?: 'text' | 'parts' }>();
+
+  // Server-side allowlist: the frontend's disabled-option gate is trivially
+  // bypassable with a raw request, and an arbitrary model is a billing risk.
+  if (!isModelAllowed(body.model, c.env.ENABLE_KIMI_K3)) {
+    return c.json({ error: 'model not allowed' }, 400);
+  }
+
   await addMessage(c.env.DB, {
     conversationId: id,
     role: 'user',
@@ -158,6 +182,9 @@ app.post('/api/conversations/:id/messages', async (c) => {
       let apiMessages: ApiMessage[] = mapMessagesToApi(dbHistory);
       let iterations = 0;
       let finalText = '';
+      // Distinguishes a genuine final answer (which may legitimately be empty)
+      // from exhausting the tool-iteration cap.
+      let gotFinalAnswer = false;
 
       while (iterations < 5) {
         iterations++;
@@ -165,18 +192,31 @@ app.post('/api/conversations/:id/messages', async (c) => {
         const turn = await consumeAndForward(upstream, (chunk) => writer.write(chunk));
 
         if (turn.toolCalls.length > 0 && turn.finishReason === 'tool_calls') {
+          const toolCallsPayload = turn.toolCalls.map((tc) => ({
+            id: tc.id,
+            type: 'function' as const,
+            function: { name: tc.name, arguments: tc.args },
+          }));
+
           apiMessages = [
             ...apiMessages,
             {
               role: 'assistant',
               content: turn.contentText || null,
-              tool_calls: turn.toolCalls.map((tc) => ({
-                id: tc.id,
-                type: 'function',
-                function: { name: tc.name, arguments: tc.args },
-              })),
+              tool_calls: toolCallsPayload,
             },
           ];
+
+          // Persist the assistant tool_calls message BEFORE the tool result rows:
+          // without it, replayed history has role:'tool' messages with no matching
+          // preceding assistant message and OpenRouter 400s on every later turn.
+          await addMessage(db, {
+            conversationId: id,
+            role: 'assistant',
+            content: turn.contentText || '',
+            model,
+            toolCalls: JSON.stringify(toolCallsPayload),
+          });
 
           for (const tc of turn.toolCalls) {
             let query = '';
@@ -206,12 +246,13 @@ app.post('/api/conversations/:id/messages', async (c) => {
         }
 
         finalText = turn.contentText;
+        gotFinalAnswer = true;
         break;
       }
 
-      if (finalText) {
+      if (gotFinalAnswer) {
         await addMessage(db, { conversationId: id, role: 'assistant', content: finalText, model });
-      } else if (iterations >= 5) {
+      } else {
         await writeSSE('error', { message: 'Tool use limit reached' });
       }
       await writer.write(encoder.encode('data: [DONE]\n\n'));

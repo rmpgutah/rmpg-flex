@@ -65,6 +65,7 @@ describe('db helpers', () => {
     expect(messages[0].content_type).toBe('text');
     expect(messages[0].tool_name).toBeNull();
     expect(messages[0].tool_call_id).toBeNull();
+    expect(messages[0].tool_calls).toBeNull();
   });
 
   it('addMessage stores a tool message with tool_name and tool_call_id', async () => {
@@ -80,6 +81,24 @@ describe('db helpers', () => {
     expect(messages[0].role).toBe('tool');
     expect(messages[0].tool_name).toBe('web_search');
     expect(messages[0].tool_call_id).toBe('call_abc123');
+  });
+
+  it('round-trips an assistant tool_calls message through D1', async () => {
+    const convo = await createConversation(env.DB);
+    const toolCalls = JSON.stringify([
+      { id: 'call_abc123', type: 'function', function: { name: 'web_search', arguments: '{"query":"kimi"}' } },
+    ]);
+    await addMessage(env.DB, {
+      conversationId: convo.id,
+      role: 'assistant',
+      content: '',
+      model: 'deepseek/deepseek-r1:free',
+      toolCalls,
+    });
+    const messages = await getMessages(env.DB, convo.id);
+    expect(messages[0].role).toBe('assistant');
+    expect(messages[0].tool_calls).toBe(toolCalls);
+    expect(JSON.parse(messages[0].tool_calls!)[0].function.name).toBe('web_search');
   });
 
   it('addMessage stores content_type parts for structured content', async () => {

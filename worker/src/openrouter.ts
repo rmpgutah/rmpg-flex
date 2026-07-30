@@ -22,15 +22,38 @@ export type ToolDefinition = {
   function: { name: string; description: string; parameters: Record<string, unknown> };
 };
 
+function safeParseJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+function safeParseParts(raw: string): unknown {
+  const parsed = safeParseJson(raw);
+  return parsed === undefined ? raw : parsed;
+}
+
 export function mapMessagesToApi(messages: Message[]): ApiMessage[] {
   return messages.map((m) => {
     if (m.role === 'tool') {
       return { role: 'tool', tool_call_id: m.tool_call_id ?? undefined, content: m.content };
     }
-    if (m.content_type === 'parts') {
-      return { role: m.role, content: JSON.parse(m.content) };
+    const base: ApiMessage =
+      m.content_type === 'parts'
+        ? // A malformed `parts` row must not throw and kill the whole request:
+          // fall back to treating the stored content as plain text.
+          { role: m.role, content: safeParseParts(m.content) }
+        : { role: m.role, content: m.content };
+
+    if (m.role === 'assistant' && m.tool_calls) {
+      const toolCalls = safeParseJson(m.tool_calls);
+      if (Array.isArray(toolCalls)) {
+        return { ...base, tool_calls: toolCalls };
+      }
     }
-    return { role: m.role, content: m.content };
+    return base;
   });
 }
 

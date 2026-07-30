@@ -17,5 +17,9 @@ CREATE TABLE messages (
   model TEXT,
   tool_name TEXT,
   tool_call_id TEXT,
+  -- JSON-stringified OpenAI-style tool_calls array, set on assistant messages
+  -- that requested tool calls. Required so history replayed to OpenRouter has
+  -- an assistant tool_calls message preceding each role:'tool' result.
+  tool_calls TEXT,
   created_at INTEGER NOT NULL
 );

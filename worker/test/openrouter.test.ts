@@ -15,6 +15,7 @@ const textMessage: Message = {
   model: null,
   tool_name: null,
   tool_call_id: null,
+  tool_calls: null,
   created_at: 1,
 };
 
@@ -26,6 +27,7 @@ const partsMessage: Message = {
   model: null,
   tool_name: null,
   tool_call_id: null,
+  tool_calls: null,
   created_at: 2,
 };
 
@@ -37,7 +39,35 @@ const toolMessage: Message = {
   model: null,
   tool_name: 'web_search',
   tool_call_id: 'call_abc',
+  tool_calls: null,
   created_at: 3,
+};
+
+
+const assistantToolCallsMessage: Message = {
+  id: '4',
+  role: 'assistant',
+  content: '',
+  content_type: 'text',
+  model: 'deepseek/deepseek-r1:free',
+  tool_name: null,
+  tool_call_id: null,
+  tool_calls: JSON.stringify([
+    { id: 'call_abc', type: 'function', function: { name: 'web_search', arguments: '{"query":"kimi"}' } },
+  ]),
+  created_at: 4,
+};
+
+const malformedPartsMessage: Message = {
+  id: '5',
+  role: 'user',
+  content: 'not json {{{',
+  content_type: 'parts',
+  model: null,
+  tool_name: null,
+  tool_calls: null,
+  tool_call_id: null,
+  created_at: 5,
 };
 
 describe('mapMessagesToApi', () => {
@@ -52,6 +82,40 @@ describe('mapMessagesToApi', () => {
       { type: 'text', text: 'describe this' },
       { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
     ]);
+  });
+
+  it('includes tool_calls on an assistant message that requested tools', () => {
+    const [mapped] = mapMessagesToApi([assistantToolCallsMessage]);
+    expect(mapped.role).toBe('assistant');
+    expect(mapped.tool_calls).toEqual([
+      { id: 'call_abc', type: 'function', function: { name: 'web_search', arguments: '{"query":"kimi"}' } },
+    ]);
+  });
+
+  it('replays an assistant tool_calls message before its tool result', () => {
+    const mapped = mapMessagesToApi([assistantToolCallsMessage, toolMessage]);
+    expect(mapped[0].tool_calls).toBeDefined();
+    expect(mapped[1]).toEqual({
+      role: 'tool',
+      tool_call_id: 'call_abc',
+      content: JSON.stringify({ results: [] }),
+    });
+  });
+
+  it('omits tool_calls for assistant messages without any', () => {
+    const [mapped] = mapMessagesToApi([{ ...assistantToolCallsMessage, tool_calls: null }]);
+    expect(mapped.tool_calls).toBeUndefined();
+  });
+
+  it('falls back to plain text instead of throwing on malformed parts content', () => {
+    expect(() => mapMessagesToApi([malformedPartsMessage])).not.toThrow();
+    const [mapped] = mapMessagesToApi([malformedPartsMessage]);
+    expect(mapped.content).toBe('not json {{{');
+  });
+
+  it('ignores malformed tool_calls JSON rather than throwing', () => {
+    const [mapped] = mapMessagesToApi([{ ...assistantToolCallsMessage, tool_calls: 'nope {' }]);
+    expect(mapped.tool_calls).toBeUndefined();
   });
 
   it('maps a tool message to role tool with tool_call_id', () => {
