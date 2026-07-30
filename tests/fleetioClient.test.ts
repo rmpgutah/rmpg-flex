@@ -354,6 +354,21 @@ describe('archiveVehicle', () => {
   });
 });
 
+describe('archiveVendor', () => {
+  const cfg: FleetioConfig = { apiKey: 'tok_test_a', accountToken: 'acct_test_b', apiBase: 'https://example.test/api/v1' };
+
+  it('PATCHes /vendors/:id/archive with no body (live docs confirmed PATCH, not POST)', async () => {
+    let seen: { method?: string; url?: string; body?: string } = {};
+    const fetchImpl: typeof fetch = async (url, init) => {
+      seen = { method: init?.method, url: String(url), body: String(init?.body ?? '') };
+      return new Response(null, { status: 204 });
+    };
+    await archiveVendor({ config: cfg, fleetioId: 42, fetchImpl });
+    expect(seen.method).toBe('PATCH');
+    expect(seen.url).toBe('https://example.test/api/v1/vendors/42/archive');
+  });
+});
+
 describe('createWorkOrder', () => {
   const cfg: FleetioConfig = { apiKey: 'tok_test_a', accountToken: 'acct_test_b', apiBase: 'https://example.test/api/v1' };
 

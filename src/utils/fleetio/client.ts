@@ -708,22 +708,21 @@ export interface ArchiveVendorInput {
 }
 
 /**
- * `POST /vendors/:id/archive` — archive, NOT destroy.
+ * `PATCH /vendors/:id/archive` — archive, NOT destroy.
  *
- * This previously called `DELETE /vendors/:id`, contradicting both this
- * function's name and its own doc comment. Two reasons that was wrong:
- *   • Asymmetric destruction. RMPG's `DELETE /ref-data/vendors/:id` is a SOFT
- *     delete (`UPDATE ref_vendors SET active = 0`) precisely because historical
- *     work orders and fuel entries reference `vendor_id`. Translating that into
- *     a hard remote delete destroys the same history on Fleet.io's side.
- *   • Fleet.io exposes the exact matching verb — `POST /vendors/:id/archive`,
- *     with `/vendors/archived` and `POST /vendors/:id/restore` alongside it
- *     (developer.fleetio.com/docs/api/vendors, 2026-07-26) — so there was never
- *     a reason to reach for DELETE.
+ * This previously called `DELETE /vendors/:id`, then (PR #3162) `POST
+ * /vendors/:id/archive` — the path fix was right but the verb still wasn't:
+ * Fleet.io's live reference (developer.fleetio.com/reference/archive-vendor,
+ * confirmed 2026-07-29) documents this endpoint as PATCH, not POST. Every
+ * archive call was 404ing on the wrong verb, and because the vendor/delete
+ * dispatch branch in sync.ts treats a 404 as "already archived" and drops
+ * the link, the failure was silent and unrecoverable — never surfaced as a
+ * dead letter. PATCH is also retryable (POST is not, per isRetryableMethod
+ * below), restoring the normal retry budget for transient 5xxs.
  */
 export async function archiveVendor(input: ArchiveVendorInput): Promise<FleetioVendor> {
   return fleetioFetch<FleetioVendor>({
-    method: 'POST', path: `/vendors/${input.fleetioId}/archive`, config: input.config, fetchImpl: input.fetchImpl,
+    method: 'PATCH', path: `/vendors/${input.fleetioId}/archive`, config: input.config, fetchImpl: input.fetchImpl,
   });
 }
 

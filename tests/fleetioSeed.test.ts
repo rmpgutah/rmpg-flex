@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildVehiclePayload, mapVehicleFieldsToFleetio, mapFuelEntryFieldsToFleetio, mapVendorFieldsToFleetio, mapPartFieldsToFleetio } from '../src/utils/fleetio/seed';
+import { buildVehiclePayload, mapVehicleFieldsToFleetio, mapFuelEntryFieldsToFleetio, mapVendorFieldsToFleetio, mapPartFieldsToFleetio, mapWorkOrderFieldsToFleetio } from '../src/utils/fleetio/seed';
 
 describe('buildVehiclePayload', () => {
   const baseRow = {
@@ -107,13 +107,13 @@ describe('mapFuelEntryFieldsToFleetio', () => {
 });
 
 describe('mapVendorFieldsToFleetio', () => {
-  it('keeps the fields Fleet.io\'s vendors resource accepts', () => {
+  it('translates RMPG vendor field names to Fleet.io\'s real vendor field names', () => {
     expect(mapVendorFieldsToFleetio({
       name: 'AutoZone', address: '123 Main St', city: 'Salt Lake City',
       state: 'UT', zip: '84115', phone: '801-555-0100', email: 'ap@autozone.example',
     })).toEqual({
-      name: 'AutoZone', address: '123 Main St', city: 'Salt Lake City',
-      state: 'UT', zip: '84115', phone: '801-555-0100', email: 'ap@autozone.example',
+      name: 'AutoZone', street_address: '123 Main St', city: 'Salt Lake City',
+      region: 'UT', postal_code: '84115', phone: '801-555-0100', contact_email: 'ap@autozone.example',
     });
   });
 
@@ -132,14 +132,19 @@ describe('mapVendorFieldsToFleetio', () => {
 });
 
 describe('mapPartFieldsToFleetio', () => {
-  it('keeps the fields Fleet.io\'s parts resource accepts', () => {
+  it('translates RMPG part field names to Fleet.io\'s real part field names', () => {
     expect(mapPartFieldsToFleetio({
       name: 'Oil Filter', part_number: 'PF-46', category: 'Filters',
       description: 'Standard oil filter', unit_cost: 8.5, supplier: 'AutoZone',
     })).toEqual({
-      name: 'Oil Filter', part_number: 'PF-46', category: 'Filters',
-      description: 'Standard oil filter', unit_cost: 8.5, supplier: 'AutoZone',
+      number: 'PF-46', part_category_name: 'Filters',
+      description: 'Standard oil filter', unit_cost: 8.5, part_manufacturer_name: 'AutoZone',
     });
+  });
+
+  it('drops `name` — Parts have no Fleet.io name field, they\'re identified by `number`', () => {
+    const mapped = mapPartFieldsToFleetio({ name: 'Oil Filter', description: 'Standard oil filter' });
+    expect(mapped).toEqual({ description: 'Standard oil filter' });
   });
 
   it('drops RMPG-internal fleet_parts columns with no Fleet.io equivalent', () => {
@@ -147,11 +152,40 @@ describe('mapPartFieldsToFleetio', () => {
       id: 5, name: 'Oil Filter', quantity_on_hand: 12, reorder_point: 3,
       location: 'Shelf A2', compatible_vehicles: '[1,2,3]',
     });
-    expect(mapped).toEqual({ name: 'Oil Filter' });
+    expect(mapped).toEqual({});
   });
 
   it('omits empty-string and null/undefined fields', () => {
-    const mapped = mapPartFieldsToFleetio({ name: 'Oil Filter', supplier: '', unit_cost: null });
-    expect(mapped).toEqual({ name: 'Oil Filter' });
+    const mapped = mapPartFieldsToFleetio({ part_number: 'PF-46', supplier: '', unit_cost: null });
+    expect(mapped).toEqual({ number: 'PF-46' });
+  });
+});
+
+describe('mapWorkOrderFieldsToFleetio', () => {
+  it('translates RMPG work_orders field names to Fleet.io\'s real work_order field names', () => {
+    expect(mapWorkOrderFieldsToFleetio({
+      vehicle_id: 42, vendor_id: 7, opened_at: '2026-07-17T10:00:00Z', closed_at: '2026-07-18T10:00:00Z',
+      summary: 'Brake replacement', odometer_at_open: 94000, odometer_at_close: 94050, notes: 'Customer requested rush job',
+    })).toEqual({
+      vehicle_id: 42, vendor_id: 7, issued_at: '2026-07-17T10:00:00Z', completed_at: '2026-07-18T10:00:00Z',
+      description: 'Brake replacement',
+      starting_meter_entry_attributes: { value: '94000' },
+      ending_meter_entry_attributes: { value: '94050' },
+      comments_attributes: [{ comment: 'Customer requested rush job' }],
+    });
+  });
+
+  it('sends the REQUIRED issued_at field derived from opened_at (the live 422 cause)', () => {
+    const mapped = mapWorkOrderFieldsToFleetio({ vehicle_id: 1, opened_at: '2026-07-17T10:00:00Z' });
+    expect(mapped).toEqual({ vehicle_id: 1, issued_at: '2026-07-17T10:00:00Z' });
+  });
+
+  it('drops RMPG-internal work_orders columns with no Fleet.io equivalent (category_code, assigned_to_user_id, created_by, status, est_cost, actual_cost, vmrs_*_code, custom_fields_json)', () => {
+    const mapped = mapWorkOrderFieldsToFleetio({
+      id: 9, vehicle_id: 1, category_code: 'BRAKE', assigned_to_user_id: 4, created_by: 3,
+      status: 'open', est_cost: 200, actual_cost: 210, vmrs_system_code: '013', vmrs_assembly_code: '001',
+      vmrs_component_code: '002', custom_fields_json: '{}',
+    });
+    expect(mapped).toEqual({ vehicle_id: 1 });
   });
 });
