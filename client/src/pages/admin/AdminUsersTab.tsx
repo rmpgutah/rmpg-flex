@@ -22,6 +22,11 @@ import {
   Users,
   Eye,
   HelpCircle,
+  Download,
+  Copy,
+  ArrowUpDown,
+  FilterX,
+  Printer,
 } from 'lucide-react';
 import type { User, UserRole } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -136,6 +141,28 @@ export default function AdminUsersTab({
 }: AdminUsersTabProps) {
   const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
+
+  // ── List filters / sort ──
+  type StatusFilter = 'all' | UserStatus;
+  type TotpFilter = 'all' | 'enabled' | 'disabled';
+  type SortField = 'name' | 'role' | 'status' | 'last_login';
+  const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [totpFilter, setTotpFilter] = useState<TotpFilter>('all');
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setRoleFilter('all');
+    setStatusFilter('all');
+    setTotpFilter('all');
+    setSortField('name');
+    setSortDir('asc');
+  };
+  const filtersActive = !!searchQuery || roleFilter !== 'all' || statusFilter !== 'all' || totpFilter !== 'all';
   const [userDetailTab, setUserDetailTab] = useState<'profile' | 'personal' | 'credentials' | 'security' | 'activity' | 'email'>('profile');
   const [securityActionLoading, setSecurityActionLoading] = useState<string | null>(null);
   const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -308,6 +335,170 @@ export default function AdminUsersTab({
     setSecurityActionLoading(null);
   };
 
+  const filteredUsers = (Array.isArray(users) ? users : [])
+    .filter((u) => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        u.username.toLowerCase().includes(q) ||
+        `${u.first_name} ${u.last_name}`.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        (u.badge_number || '').toLowerCase().includes(q)
+      );
+    })
+    .filter((u) => roleFilter === 'all' || u.role === roleFilter)
+    .filter((u) => {
+      if (statusFilter === 'all') return true;
+      const rawStatus = ((u as any).raw_status || (u.is_active ? 'active' : 'inactive')) as UserStatus;
+      return rawStatus === statusFilter;
+    })
+    .filter((u) => {
+      if (totpFilter === 'all') return true;
+      const enabled = !!(u as any).totpEnabled;
+      return totpFilter === 'enabled' ? enabled : !enabled;
+    })
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'name') {
+        cmp = `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
+      } else if (sortField === 'role') {
+        cmp = a.role.localeCompare(b.role);
+      } else if (sortField === 'status') {
+        const sa = (a as any).raw_status || (a.is_active ? 'active' : 'inactive');
+        const sb = (b as any).raw_status || (b.is_active ? 'active' : 'inactive');
+        cmp = String(sa).localeCompare(String(sb));
+      } else if (sortField === 'last_login') {
+        const ta = parseTimestamp(a.last_login || '').getTime();
+        const tb = parseTimestamp(b.last_login || '').getTime();
+        cmp = (Number.isNaN(ta) ? 0 : ta) - (Number.isNaN(tb) ? 0 : tb);
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const allVisibleSelected = filteredUsers.length > 0 && filteredUsers.every((u) => selectedIds.has(u.id));
+  const toggleSelectAllVisible = () => {
+    setSelectedIds((prev) => {
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        filteredUsers.forEach((u) => next.delete(u.id));
+        return next;
+      }
+      const next = new Set(prev);
+      filteredUsers.forEach((u) => next.add(u.id));
+      return next;
+    });
+  };
+
+  // Bulk suspend/reactivate — runs sequentially (not Promise.all) so a
+  // rejection on one user doesn't abort the rest, and so the shared
+  // fetchUsers() refresh in onStatusChange doesn't race concurrent calls.
+  const runBulkStatusChange = async (newStatus: 'active' | 'inactive') => {
+    if (!onStatusChange || selectedIds.size === 0) return;
+    setBulkActionLoading(true);
+    let ok = 0;
+    let failed = 0;
+    for (const id of selectedIds) {
+      try {
+        await onStatusChange(id, newStatus);
+        ok += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    setBulkActionLoading(false);
+    setSelectedIds(new Set());
+    setConfirmDlg(null);
+    if (failed === 0) {
+      addToast(`${ok} user${ok === 1 ? '' : 's'} ${newStatus === 'active' ? 'reactivated' : 'suspended'}`, 'success');
+    } else {
+      addToast(`${ok} succeeded, ${failed} failed`, ok > 0 ? 'success' : 'error');
+    }
+  };
+
+  // Generic bulk runner for the single-user handlers below (reset 2FA,
+  // force password change) — same sequential-not-parallel rationale as
+  // runBulkStatusChange.
+  const runBulkAction = async (fn: (id: string) => Promise<void>, label: string) => {
+    if (selectedIds.size === 0) return;
+    setBulkActionLoading(true);
+    let ok = 0;
+    let failed = 0;
+    for (const id of selectedIds) {
+      try {
+        await fn(id);
+        ok += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    setBulkActionLoading(false);
+    setSelectedIds(new Set());
+    setConfirmDlg(null);
+    if (failed === 0) {
+      addToast(`${label} for ${ok} user${ok === 1 ? '' : 's'}`, 'success');
+    } else {
+      addToast(`${ok} succeeded, ${failed} failed`, ok > 0 ? 'success' : 'error');
+    }
+  };
+
+  const runBulkForcePasswordChange = () => runBulkAction(
+    (id) => apiFetch(`/admin/users/${id}/force-password-change`, { method: 'POST' }),
+    'Password change required',
+  );
+  const runBulkReset2FA = () => runBulkAction(
+    (id) => apiFetch(`/admin/users/${id}/reset-2fa`, { method: 'POST' }),
+    '2FA reset',
+  );
+
+  const copySelectedEmails = async () => {
+    const emails = filteredUsers.filter((u) => selectedIds.has(u.id)).map((u) => u.email).filter(Boolean);
+    if (emails.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(emails.join(', '));
+      addToast(`Copied ${emails.length} email${emails.length === 1 ? '' : 's'}`, 'success');
+    } catch {
+      addToast('Failed to copy to clipboard', 'error');
+    }
+  };
+
+  // Exports whatever is currently visible under the active search/filter,
+  // or just the selection when one exists — matches the "select all
+  // visible" semantics used elsewhere in this tab.
+  const exportUsersCsv = () => {
+    const rows = selectedIds.size > 0 ? filteredUsers.filter((u) => selectedIds.has(u.id)) : filteredUsers;
+    if (rows.length === 0) return;
+    const headers = ['First Name', 'Last Name', 'Username', 'Email', 'Role', 'Status', 'Badge #', '2FA', 'Last Login'];
+    const escapeCell = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const lines = [headers.map(escapeCell).join(',')];
+    for (const u of rows) {
+      const rawStatus = ((u as any).raw_status || (u.is_active ? 'active' : 'inactive')) as UserStatus;
+      lines.push([
+        u.first_name || '', u.last_name || '', u.username, u.email || '',
+        toDisplayLabel(u.role), STATUS_CONFIG[rawStatus]?.label || rawStatus,
+        u.badge_number || '', (u as any).totpEnabled ? 'Enabled' : 'Disabled',
+        u.last_login || u.last_login_display || '',
+      ].map((v) => escapeCell(String(v))).join(','));
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rmpg-users-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    addToast(`Exported ${rows.length} user${rows.length === 1 ? '' : 's'}`, 'success');
+  };
+
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
@@ -364,20 +555,123 @@ export default function AdminUsersTab({
           </button>
         </div>
 
+        {/* Filter / sort toolbar */}
+        <div className="px-4 py-2 flex flex-wrap items-center gap-2 border-b border-rmpg-700 flex-shrink-0 bg-surface-sunken/60 print:hidden">
+          <select id="ff-adminuserstab-rolefilter" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as any)} className="input-dark text-[10px] py-1 min-h-0" aria-label="Filter by role">
+            <option value="all">All Roles</option>
+            {ALL_ROLES.map((r) => <option key={r} value={r}>{toDisplayLabel(r)}</option>)}
+          </select>
+          <select id="ff-adminuserstab-statusfilter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className="input-dark text-[10px] py-1 min-h-0" aria-label="Filter by status">
+            <option value="all">All Statuses</option>
+            {(Object.keys(STATUS_CONFIG) as UserStatus[]).map((s) => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
+          </select>
+          <select id="ff-adminuserstab-totpfilter" value={totpFilter} onChange={(e) => setTotpFilter(e.target.value as any)} className="input-dark text-[10px] py-1 min-h-0" aria-label="Filter by 2FA status">
+            <option value="all">2FA: Any</option>
+            <option value="enabled">2FA: Enabled</option>
+            <option value="disabled">2FA: Disabled</option>
+          </select>
+          <select id="ff-adminuserstab-sortfield" value={sortField} onChange={(e) => setSortField(e.target.value as any)} className="input-dark text-[10px] py-1 min-h-0" aria-label="Sort by">
+            <option value="name">Sort: Name</option>
+            <option value="role">Sort: Role</option>
+            <option value="status">Sort: Status</option>
+            <option value="last_login">Sort: Last Login</option>
+          </select>
+          <button type="button" onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))} className="toolbar-btn text-[9px]" title={sortDir === 'asc' ? 'Ascending' : 'Descending'} aria-label="Toggle sort direction">
+            <ArrowUpDown className="w-3 h-3" /> {sortDir === 'asc' ? 'Asc' : 'Desc'}
+          </button>
+          {filtersActive && (
+            <button type="button" onClick={resetFilters} className="toolbar-btn text-[9px]" aria-label="Reset filters">
+              <FilterX className="w-3 h-3" /> Reset
+            </button>
+          )}
+          <span className="text-[9px] text-rmpg-500 ml-auto">
+            Showing {filteredUsers.length} of {users.length}
+          </span>
+          <button type="button" onClick={exportUsersCsv} className="toolbar-btn text-[9px]" title="Export visible users to CSV" aria-label="Export users to CSV">
+            <Download className="w-3 h-3" /> Export CSV
+          </button>
+        </div>
+
+        {onStatusChange && selectedIds.size > 0 && (
+          <div className="px-4 py-2 flex items-center justify-between border-b border-rmpg-700 bg-brand-900/10 flex-shrink-0">
+            <span className="text-[11px] text-rmpg-200 font-medium">{selectedIds.size} selected</span>
+            <div className="flex items-center gap-2">
+              <button type="button"
+                onClick={() => setConfirmDlg({
+                  title: 'Suspend Selected Users',
+                  message: `Suspend ${selectedIds.size} selected user${selectedIds.size === 1 ? '' : 's'}? Their active sessions will be terminated and they will be unable to log in until reactivated.`,
+                  confirmLabel: 'Suspend All',
+                  confirmVariant: 'warning',
+                  onConfirm: () => runBulkStatusChange('inactive'),
+                })}
+                disabled={bulkActionLoading}
+                className="toolbar-btn text-[9px] text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30"
+              >
+                <Ban className="w-3 h-3" /> Suspend
+              </button>
+              <button type="button"
+                onClick={() => setConfirmDlg({
+                  title: 'Reactivate Selected Users',
+                  message: `Reactivate ${selectedIds.size} selected user${selectedIds.size === 1 ? '' : 's'}? They will be able to log in again.`,
+                  confirmLabel: 'Reactivate All',
+                  confirmVariant: 'default',
+                  onConfirm: () => runBulkStatusChange('active'),
+                })}
+                disabled={bulkActionLoading}
+                className="toolbar-btn text-[9px] text-green-400 hover:text-green-300 hover:bg-green-900/30"
+              >
+                <UserCheck className="w-3 h-3" /> Reactivate
+              </button>
+              <button type="button"
+                onClick={() => setConfirmDlg({
+                  title: 'Force Password Change',
+                  message: `Require ${selectedIds.size} selected user${selectedIds.size === 1 ? '' : 's'} to change their password on next login?`,
+                  confirmLabel: 'Force Change',
+                  confirmVariant: 'warning',
+                  onConfirm: runBulkForcePasswordChange,
+                })}
+                disabled={bulkActionLoading}
+                className="toolbar-btn text-[9px]"
+              >
+                <KeyRound className="w-3 h-3" /> Force PW Change
+              </button>
+              <button type="button"
+                onClick={() => setConfirmDlg({
+                  title: 'Reset 2FA',
+                  message: `Reset two-factor authentication for ${selectedIds.size} selected user${selectedIds.size === 1 ? '' : 's'}? This action is audited.`,
+                  confirmLabel: 'Reset 2FA',
+                  confirmVariant: 'warning',
+                  onConfirm: runBulkReset2FA,
+                })}
+                disabled={bulkActionLoading}
+                className="toolbar-btn text-[9px]"
+              >
+                <ShieldOff className="w-3 h-3" /> Reset 2FA
+              </button>
+              <button type="button" onClick={copySelectedEmails} disabled={bulkActionLoading} className="toolbar-btn text-[9px]" title="Copy selected emails">
+                <Copy className="w-3 h-3" /> Copy Emails
+              </button>
+              <button type="button" onClick={() => window.print()} disabled={bulkActionLoading} className="toolbar-btn text-[9px] print:hidden" title="Print selected roster">
+                <Printer className="w-3 h-3" /> Print
+              </button>
+              <button type="button" onClick={() => setSelectedIds(new Set())} disabled={bulkActionLoading} className="toolbar-btn text-[9px]">
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
         {loadingUsers ? (
           <LoadingSpinner />
         ) : (
           <div className="flex-1 overflow-auto scrollbar-dark">
-            {(Array.isArray(users) ? users : []).filter((u) => {
-                if (!searchQuery) return true;
-                const q = searchQuery.toLowerCase();
-                return (
-                  u.username.toLowerCase().includes(q) ||
-                  `${u.first_name} ${u.last_name}`.toLowerCase().includes(q) ||
-                  u.email.toLowerCase().includes(q) ||
-                  (u.badge_number || '').toLowerCase().includes(q)
-                );
-              })
+            {onStatusChange && filteredUsers.length > 0 && (
+              <label className="flex items-center gap-2 px-4 py-1.5 border-b border-rmpg-700/60 text-[10px] text-rmpg-400 cursor-pointer select-none">
+                <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} className="accent-brand-500" aria-label="Select all visible users" />
+                Select all ({filteredUsers.length})
+              </label>
+            )}
+            {filteredUsers
               .map((user, idx) => (
                 <div
                   key={user.id}
@@ -394,6 +688,16 @@ export default function AdminUsersTab({
                   }`}
                 >
                   <div className="flex items-center gap-3">
+                    {onStatusChange && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(user.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => toggleSelected(user.id)}
+                        className="flex-shrink-0 accent-brand-500"
+                        aria-label={`Select ${user.first_name} ${user.last_name} for bulk action`}
+                      />
+                    )}
                     <div className={`flex-shrink-0 w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold select-none transition-colors ${
                       user.is_active ? 'bg-rmpg-700 border-rmpg-600 text-rmpg-300' : 'bg-rmpg-800 border-rmpg-700 text-rmpg-500 opacity-60'
                     }`} aria-hidden="true">
@@ -424,6 +728,16 @@ export default function AdminUsersTab({
                         {/* Enhancement 45: Active sessions count */}
                         {(user as any).active_sessions > 0 && (
                           <span className="text-green-400 font-mono">{(user as any).active_sessions} session{(user as any).active_sessions > 1 ? 's' : ''}</span>
+                        )}
+                        {user.last_login || user.last_login_display ? (
+                          <span title="Last login">{timeAgo(user.last_login || user.last_login_display || '')}</span>
+                        ) : (
+                          <span className="text-rmpg-600">Never logged in</span>
+                        )}
+                        {(user as any).forcePasswordChange && (
+                          <span className="inline-flex items-center gap-0.5 text-amber-400" title="Must change password on next login">
+                            <KeyRound className="w-2.5 h-2.5" />PW change pending
+                          </span>
                         )}
                       </div>
                     </div>
