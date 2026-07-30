@@ -111,9 +111,62 @@ Left plaintext: `email_messages.subject`, `from_address`, `from_name` — needed
 - No backfill of existing plaintext rows — decrypt-tolerant reads make this unnecessary; old rows age out naturally as the poller's upsert cycle touches them again (though note: the upsert only re-writes `is_read`/`is_flagged`/`categories`/`body_preview` on conflict, so `body_preview` specifically DOES get re-encrypted on the next poll touch — full text of this needs verifying against the actual `ON CONFLICT` clause when the plan is written).
 - No encryption of `email_outbox.payload` or `email_audit_log` fields in this phase — those are Phase 1 territory (already shipped) and out of scope for this pass; revisit only if a future audit flags them.
 
-## 6. Phase 3 — Per-user mailboxes (design sketch)
+## 6. Phase 3 — Per-user mailboxes
 
-New `user_graph_tokens (user_id, access_token_enc, refresh_token_enc, expires_at, scopes)`. `ensureValidToken`/`graphFetch` take a `userId` param instead of reading the single tenant grant. Poller iterates enrolled users. `email_messages` gets `owner_user_id` (already exists — poller currently writes the OAuth initiator's ID to every row; this phase makes it actually vary per real mailbox owner). Admin UI: "Connect your mailbox" enrollment per user, replacing the current single admin-configured OAuth flow (which becomes tenant-app-registration only, not the per-mailbox grant).
+**Status:** Approved 2026-07-30, ready for implementation plan.
+
+**Confirmed intent**: this is a genuine cutover from a shared departmental mailbox to personal per-officer O365 mailboxes — each user connects and sees their own inbox, not a jointly-monitored shared one. The autolinker, rules engine, and tip-line pipeline become per-user features rather than org-wide. Hard cutover, no dual-mode: a user with no personal connection sees a "Connect your mailbox" prompt instead of an inbox, not a fallback shared view.
+
+### 6.1 New table
+
+```sql
+CREATE TABLE IF NOT EXISTS user_graph_tokens (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id),
+  access_token_enc TEXT NOT NULL,
+  refresh_token_enc TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  mailbox TEXT,
+  connected_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+Encrypted via the EXISTING `src/utils/emailCrypto.ts` (`encryptSecret`/`decryptSecret`) — not Phase 2's per-value envelope crypto, which was built for bulk cached message content, not a handful of per-user auth-secret rows. This matches how the admin's Azure client secret is already encrypted today.
+
+### 6.2 Auth flow split
+
+- Azure app registration (`ms_email_client_id`/`ms_email_client_secret`/`ms_email_tenant_id` in `system_config`) stays admin-configured, org-wide, unchanged — one Azure AD app, many personal OAuth grants against it.
+- New `GET /connect/authorize` (any authenticated user, NOT admin-gated) — generates a CSRF state token, but instead of the singleton `ms_email_oauth_initiator` config key, stores the state→userId mapping keyed per-request (e.g. `system_config` row `email_connect_state_<random>` = userId, single-use, deleted on consume — same atomic compare-and-delete pattern the existing callback already uses for CSRF).
+- New `GET /connect/callback` (public, mirrors today's `/oauth/callback` exactly in structure) — consumes the state, recovers the owning userId, exchanges the code, writes `user_graph_tokens` for THAT user.
+- `DELETE /connect` — disconnect the current user's own mailbox (clears their `user_graph_tokens` row).
+- The old admin `/admin/oauth/authorize` + shared `/oauth/callback` are retired. `/admin/test-connection` changes meaning: it now validates the Azure app registration itself (client credentials grant, or a lightweight discovery call) rather than testing a live user token, since there's no longer a single admin-owned token to test.
+
+### 6.3 Core refactor: `ensureValidToken`/`graphFetch` take `userId`
+
+```ts
+async function ensureValidToken(env: Bindings, userId: number): Promise<string>
+async function graphFetch(env: Bindings, userId: number, path: string, init?: RequestInit): Promise<Response>
+```
+
+This is the largest mechanical piece of the phase — **57 existing `graphFetch` call sites** across `src/routes/email.ts` need `c.get('userId')` (route handlers) or a poller-loop `userId` variable threaded through. Grouped into implementation tasks by route category (not one diff) — see the Phase 3 implementation plan when written.
+
+### 6.4 Poller
+
+`runEmailPoll` iterates `SELECT user_id FROM user_graph_tokens`, running today's per-user logic (it already writes `owner_user_id` — this phase makes that vary for real instead of always being the one `oauthInitiator`) once per enrolled user. A single user's poll failure (expired token, Graph error) must not block others' — wrap each user's poll iteration in its own try/catch, matching the existing per-message best-effort pattern inside a single poll.
+
+### 6.5 Migration (best-effort, data-preserving)
+
+A one-time step moves the CURRENT `ms_email_access_token`/`ms_email_refresh_token`/`ms_email_mailbox` (owned by whoever is recorded in `ms_email_oauth_initiator`) into a `user_graph_tokens` row for that same user — so the person who originally set this up doesn't lose access on deploy day. Best-effort: if the initiator config is missing or the token is already expired, log and skip (nobody is worse off than a fresh "reconnect" prompt). Every other user connects fresh.
+
+### 6.6 Client changes
+
+- `EmailPage.tsx`: gate on whether the current user has a `user_graph_tokens` row (new `GET /connect/status` or extend existing `/status`). No row → "Connect your mailbox" prompt instead of the inbox.
+- `AdminEmailTab.tsx`: narrows to Azure app-registration credentials only (clientId/secret/tenantId, enable/pollInterval). Drop the shared authorize/enable-for-everyone UI — that's now per-user, done from `EmailPage.tsx` itself, not the admin tab.
+
+### 6.7 Non-goals for this phase
+
+- No migration of existing cached `email_messages`/`email_scheduled` rows to a "real" owner beyond the one best-effort migrated user — old cached mail under the previous shared identity is simply historical; it doesn't need to be reassigned.
+- No per-user rate-limit tuning — Phase 1's `emailSendRateLimit` (20/5min per user) already keys by `userId`, so it works unchanged under per-user mailboxes with no code change.
+- No UI for admins to see WHO has/hasn't connected their mailbox in this phase — worth a future addition, not blocking this cutover.
 
 ## 7. Phase 4 — CAD/RMS integration depth (design sketch)
 
