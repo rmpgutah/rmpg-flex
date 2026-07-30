@@ -7,7 +7,7 @@ function makeMemoryKv(): CarxeKvLike {
     async get(key: string) {
       return store.get(key) ?? null;
     },
-    async put(key: string, value: string) {
+    async put(key: string, value: string, opts?: { expirationTtl?: number }) {
       store.set(key, value);
     },
   };
