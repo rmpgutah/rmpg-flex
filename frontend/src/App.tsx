@@ -1,0 +1,28 @@
+import { useState } from 'react';
+import { PasswordGate } from './components/PasswordGate';
+import { Sidebar } from './components/Sidebar';
+import { ChatPane } from './components/ChatPane';
+
+const ENABLE_KIMI_K3 = false;
+
+export function App() {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  if (!authenticated) {
+    return <PasswordGate onSuccess={() => setAuthenticated(true)} />;
+  }
+
+  return (
+    <div style={{ display: 'flex' }}>
+      <Sidebar activeId={activeId} onSelect={setActiveId} />
+      <main>
+        {activeId ? (
+          <ChatPane conversationId={activeId} enableKimiK3={ENABLE_KIMI_K3} />
+        ) : (
+          'Select or start a chat'
+        )}
+      </main>
+    </div>
+  );
+}

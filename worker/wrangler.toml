@@ -1,0 +1,15 @@
+name = "kimi-connect-worker"
+main = "src/index.ts"
+compatibility_date = "2026-07-29"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kimi-connect-db"
+database_id = "REPLACE_AFTER_WRANGLER_D1_CREATE"
+
+[vars]
+ENABLE_KIMI_K3 = "false"
+
+[[routes]]
+pattern = "rmpgutah.us/kimi-connect/api/*"
+zone_name = "rmpgutah.us"
