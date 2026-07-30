@@ -16,6 +16,9 @@ function fakeDb(opts: {
   outboxRows: Array<{ id: number; payload: string; attempts: number; owner_user_id: number }>;
   configRows: Record<string, string>;
   username?: string | null;
+  // Per-user Graph tokens (Phase 3: user_graph_tokens replaces the singleton
+  // system_config access/refresh-token keys). Keyed by user_id.
+  userTokens?: Record<number, { accessToken: string; refreshToken: string; expiresAt: string; mailbox?: string | null }>;
 }) {
   const auditInserts: unknown[][] = [];
   const outboxUpdates: Array<{ sql: string; params: unknown[] }> = [];
@@ -35,6 +38,17 @@ function fakeDb(opts: {
       }
       if (sql.includes('FROM users')) {
         return opts.username !== undefined ? { username: opts.username } : null;
+      }
+      if (sql.includes('FROM user_graph_tokens')) {
+        const userId = params[0] as number;
+        const t = opts.userTokens?.[userId];
+        if (!t) return null;
+        return {
+          access_token_enc: t.accessToken,
+          refresh_token_enc: t.refreshToken,
+          expires_at: t.expiresAt,
+          mailbox: t.mailbox ?? null,
+        };
       }
       return null;
     },
@@ -90,6 +104,7 @@ describe('drainEmailOutbox — queued-then-resolved audit write', () => {
       outboxRows: [{ id: 42, payload, attempts: 1, owner_user_id: 7 }],
       configRows: BASE_CONFIG,
       username: 'jdoe',
+      userTokens: { 7: { accessToken: 'cached-access-token', refreshToken: 'refresh-token', expiresAt: FAR_FUTURE } },
     });
     fetchSpy.mockResolvedValue(new Response(null, { status: 202 }));
 
@@ -110,6 +125,7 @@ describe('drainEmailOutbox — queued-then-resolved audit write', () => {
       outboxRows: [{ id: 43, payload, attempts: 4, owner_user_id: 9 }],
       configRows: BASE_CONFIG,
       username: 'asmith',
+      userTokens: { 9: { accessToken: 'cached-access-token', refreshToken: 'refresh-token', expiresAt: FAR_FUTURE } },
     });
     fetchSpy.mockResolvedValue(new Response('nope', { status: 500 }));
 
@@ -127,6 +143,7 @@ describe('drainEmailOutbox — queued-then-resolved audit write', () => {
     const { db, auditInserts } = fakeDb({
       outboxRows: [{ id: 44, payload, attempts: 0, owner_user_id: 3 }],
       configRows: BASE_CONFIG,
+      userTokens: { 3: { accessToken: 'cached-access-token', refreshToken: 'refresh-token', expiresAt: FAR_FUTURE } },
     });
     fetchSpy.mockResolvedValue(new Response('nope', { status: 500 }));
 

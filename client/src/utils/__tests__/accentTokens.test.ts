@@ -687,7 +687,13 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // 10532 -> 10530: ServePage's Mileage Today / Route Efficiency cards moved
   // their secondary captions to text-fg-muted while those cards were being
   // taught to fall back to the server's planned mileage.
-  const PIN = 10530;
+  //
+  // 10530 -> 10517: EmailPage.tsx's per-user mailbox connect-gate replaced
+  // the old shared-mailbox "Not Configured"/"Authorization Required" panels
+  // (and the Phase 4 "enrolled" gate), and AdminEmailTab.tsx was narrowed to
+  // app-registration config only — both dropped several text-rmpg-400/500
+  // sites along with the removed UI.
+  const PIN = 10515;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

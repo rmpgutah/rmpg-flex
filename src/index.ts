@@ -205,7 +205,7 @@ export default {
   // Cron schedule (UTC):
   //   "0 */4 * * *"   every 4 h at :00         → warrant scan, dispatch anomalies, nudge sweep
   //   "* * * * *"     every minute              → serve attempt notifications, daily rebalance
-  //   "*/30 * * * *"  every 30 min              → ServeManager job poller
+  //   "*/30 * * * *"  every 30 min              → ServeManager job poller, email outbox drain + inbox poll
   //   "0 3 1 * *"     1st of month 03:00 UTC    → NHTSA vPIC refresh
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     // ── Every 4 hours (UTC 00:00, 04:00, 08:00, 12:00, 16:00, 20:00) ──
@@ -393,6 +393,36 @@ export default {
             }
           }),
         ).catch((err) => console.error('[fleetio-health-sweep] failed:', err)),
+      );
+      // Email outbox drain — pops pending `email_outbox` rows (Graph send
+      // failed inline, e.g. because the owning user hadn't connected their
+      // mailbox yet) and retries with backoff. Previously this had ZERO
+      // call sites anywhere in the Worker, so a Phase 3 per-user send that
+      // failed inline (ensureValidToken throws for any user with no
+      // user_graph_tokens row) sat in status='pending' forever — silent
+      // permanent loss of legally-significant email (e.g. signed
+      // Acknowledgement-of-Service receipts sent via serveReceipt.ts).
+      ctx.waitUntil(
+        import('./routes/email').then((m) =>
+          m.drainEmailOutbox(env).then((r) => {
+            if (r.sent > 0 || r.failed > 0 || r.deferred > 0) {
+              console.log(`[email-outbox-drain] sent=${r.sent} failed=${r.failed} deferred=${r.deferred}`);
+            }
+          }),
+        ).catch((err) => console.error('[email-outbox-drain] failed:', err)),
+      );
+      // Per-user mailbox inbox poll — syncs each connected user's inbox
+      // (rules engine, autolinker). Skips cleanly when no user has
+      // connected a mailbox yet.
+      ctx.waitUntil(
+        import('./routes/email').then((m) =>
+          m.runEmailPoll(env, ctx).then((r) => {
+            if (!r.skipped) {
+              console.log(`[email-poll] scanned=${r.scanned} upserted=${r.upserted} ruleHits=${r.ruleHits} linked=${r.linked}`);
+            }
+            if (r.error) console.error('[email-poll]', r.error);
+          }),
+        ).catch((err) => console.error('[email-poll] failed:', err)),
       );
     }
 

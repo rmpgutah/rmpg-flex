@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Mail, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
-  Trash2, AlertTriangle, ToggleLeft, ToggleRight, RefreshCw,
-  ExternalLink, Shield, Clock, Wifi, WifiOff, Send,
+  Key, Eye, EyeOff, Loader2, CheckCircle2,
+  Trash2, AlertTriangle, ExternalLink, Send, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import AdminEmailRulesTab from './AdminEmailRulesTab';
@@ -14,15 +13,16 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
+// Phase 3 cutover: email moved from one shared admin-owned mailbox to
+// personal per-user mailboxes (see EmailPage.tsx's connect-gate, backed by
+// GET/DELETE /email/connect/*). This tab is now scoped to the Azure AD app
+// registration only — the shared "Authorize", "Enabled"/poll-interval, and
+// "Connection Status" UI that used to live here described a single shared
+// mailbox's OAuth grant, which no longer exists; each operator connects
+// their own mailbox from the Email page instead.
 interface EmailStatus {
   configured: boolean;
-  enabled: boolean;
-  authorized: boolean;
-  mailbox: string | null;
-  lastSync: string | null;
-  pollInterval: number;
   smtpFallback: boolean;
-  cachedMessages: number;
 }
 
 export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props) {
@@ -38,8 +38,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
   const [saving, setSaving] = useState(false);
   // Explicit success signal so the operator gets unambiguous feedback after
   // Save. The form clearing is too subtle; users were reporting "nothing
-  // happened" because they didn't notice the connection-status pill move
-  // from "Not Configured" → "Not Authorized".
+  // happened" because they didn't notice anything change.
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Password-manager autofill races React: Chrome/Safari can populate the
@@ -55,35 +54,10 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
   const [smtpPassword, setSmtpPassword] = useState('');
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
 
-  // Test results
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ graph?: any; smtp?: any } | null>(null);
-
-  // Syncing
-  const [syncing, setSyncing] = useState(false);
-
-  // Poll interval
-  const [pollInterval, setPollInterval] = useState(300);
-
-  // Check for OAuth callback status
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const oauthStatus = params.get('status');
-    if (oauthStatus === 'authorized') {
-      setError(null);
-      // Clean URL
-      window.history.replaceState({}, '', '/admin?tab=email');
-    } else if (oauthStatus === 'error') {
-      setError(`OAuth Error: ${params.get('message') || 'Unknown error'}`);
-      window.history.replaceState({}, '', '/admin?tab=email');
-    }
-  }, [setError]);
-
   const fetchStatus = useCallback(async () => {
     try {
       const data = await apiFetch<EmailStatus>('/email/status');
       setStatus(data);
-      setPollInterval(data.pollInterval || 300);
     } catch (err: any) {
       console.error('Failed to fetch email status:', err);
     } finally {
@@ -149,8 +123,6 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       setClientId(''); setClientSecret(''); setTenantId('');
       setSaveSuccess(true);
       await fetchStatus();
-      // Auto-dismiss after 8s; the persistent "Authorization Required"
-      // panel below carries the long-lived state cue.
       setTimeout(() => setSaveSuccess(false), 8000);
     } catch (err: any) {
       setError(err.message);
@@ -160,65 +132,9 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
   };
 
   const handleClearCredentials = async () => {
-    if (!confirm('Clear all Microsoft email credentials and cached emails?')) return;
+    if (!confirm('Clear the Microsoft email app-registration credentials and cached emails? Users will need an admin to re-enter credentials before they can connect or reconnect their mailbox.')) return;
     try {
       await apiFetch('/email/admin/credentials', { method: 'DELETE' });
-      setTestResult(null);
-      await fetchStatus();
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
-
-  const handleAuthorize = async () => {
-    try {
-      const data = await apiFetch<{ url: string }>('/email/admin/oauth/authorize');
-      // Validate redirect URL is a legitimate OAuth provider
-      const url = new URL(data.url);
-      const allowedHosts = new Set(['login.microsoftonline.com', 'accounts.google.com', 'login.live.com']);
-      if (!allowedHosts.has(url.hostname)) {
-        throw new Error('Unexpected OAuth redirect domain');
-      }
-      window.location.href = data.url;
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
-
-  const handleTestConnection = async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const data = await apiFetch<{ graph?: any; smtp?: any }>('/email/admin/test-connection', { method: 'POST' });
-      setTestResult(data);
-    } catch (err: any) {
-      setTestResult({ graph: { success: false, error: err.message } });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  const handleToggleEnabled = async () => {
-    try {
-      await apiFetch('/email/admin/enable', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !status?.enabled }),
-      });
-      await fetchStatus();
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
-
-  const handlePollIntervalChange = async (seconds: number) => {
-    setPollInterval(seconds);
-    try {
-      await apiFetch('/email/admin/enable', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pollInterval: seconds }),
-      });
       await fetchStatus();
     } catch (err: any) {
       setError(err.message);
@@ -238,18 +154,6 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       await fetchStatus();
     } catch (err: any) {
       setError(err.message);
-    }
-  };
-
-  const handleSyncNow = async () => {
-    setSyncing(true);
-    try {
-      await apiFetch('/email/admin/sync-now', { method: 'POST' });
-      await fetchStatus();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setSyncing(false);
     }
   };
 
@@ -298,74 +202,32 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
         <div className="flex items-center gap-2 px-3 py-2 text-xs rounded-sm bg-green-500/10 border border-green-500/30 text-green-400">
           <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
           <span>
-            Credentials saved. Click <strong>Authorize with Microsoft</strong> below to complete setup.
+            Credentials saved. Users can now connect their own mailbox from the Email page.
           </span>
           <button type="button" onClick={() => setSaveSuccess(false)} className="ml-auto text-green-400/60 hover:text-green-400">&times;</button>
         </div>
       )}
 
-      {/* ─── Connection Status ─── */}
-      <div className="panel-beveled p-3 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold text-rmpg-100 flex items-center gap-2">
-            <Mail className="w-3.5 h-3.5 text-brand-400" />
-            Connection Status
-          </h3>
-          <div className="flex items-center gap-2">
-            {status?.authorized ? (
-              <span className="flex items-center gap-1 text-[10px] text-green-400">
-                <Wifi className="w-3 h-3" /> Connected
-              </span>
-            ) : status?.configured ? (
-              <span className="flex items-center gap-1 text-[10px] text-yellow-400">
-                <WifiOff className="w-3 h-3" /> Not Authorized
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-[10px] text-rmpg-500">
-                <WifiOff className="w-3 h-3" /> Not Configured
-              </span>
-            )}
-          </div>
-        </div>
-
-        {status?.authorized && (
-          <div className="grid grid-cols-2 gap-2 text-[10px]">
-            <div>
-              <span className="text-rmpg-500">Mailbox:</span>
-              <span className="ml-1 text-rmpg-100 font-mono">{status.mailbox || '—'}</span>
-            </div>
-            <div>
-              <span className="text-rmpg-500">Cached:</span>
-              <span className="ml-1 text-rmpg-100">{status.cachedMessages} messages</span>
-            </div>
-            <div>
-              <span className="text-rmpg-500">Last Sync:</span>
-              <span className="ml-1 text-rmpg-100">{status.lastSync || 'Never'}</span>
-            </div>
-            <div>
-              <span className="text-rmpg-500">SMTP Fallback:</span>
-              <span className={`ml-1 ${status.smtpFallback ? 'text-green-400' : 'text-rmpg-500'}`}>
-                {status.smtpFallback ? 'Enabled' : 'Disabled'}
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* ─── Azure AD Credentials ─── */}
       <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled p-3 space-y-3">
-        <h3 className="text-xs font-semibold text-rmpg-100 flex items-center gap-2">
-          <Key className="w-3.5 h-3.5 text-brand-400" />
-          Azure AD Credentials
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold text-rmpg-100 flex items-center gap-2">
+            <Key className="w-3.5 h-3.5 text-brand-400" />
+            Azure AD Credentials
+          </h3>
+          <span className={`text-[10px] ${status?.configured ? 'text-green-400' : 'text-rmpg-500'}`}>
+            {status?.configured ? 'Configured' : 'Not Configured'}
+          </span>
+        </div>
         <p className="text-[10px] text-rmpg-500">
           Register an app at{' '}
           <a href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
             target="_blank" rel="noopener" className="text-brand-400 hover:underline">
             Azure Portal <ExternalLink className="w-2.5 h-2.5 inline" />
           </a>
-          {' '}with redirect URI: <code className="text-rmpg-300 bg-surface-sunken px-1 rounded-sm">https://rmpgutah.us/api/email/oauth/callback</code>
+          {' '}with this redirect URI (each user connects their own mailbox from the Email page):{' '}
+          <code className="text-rmpg-300 bg-surface-sunken px-1 rounded-sm">https://rmpgutah.us/api/email/connect/callback</code>
         </p>
 
         <div className="grid grid-cols-1 gap-2">
@@ -463,93 +325,14 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
             Save Credentials
           </button>
           {status?.configured && (
-            <>
-              <button type="button" onClick={handleClearCredentials}
-                className="btn-danger text-[10px] px-3 py-1 flex items-center gap-1">
-                <Trash2 className="w-3 h-3" /> Clear
-              </button>
-              <button type="button" onClick={handleTestConnection} disabled={testing}
-                className="btn-secondary text-[10px] px-3 py-1 flex items-center gap-1">
-                {testing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Wifi className="w-3 h-3" />}
-                Test Connection
-              </button>
-            </>
+            <button type="button" onClick={handleClearCredentials}
+              className="btn-danger text-[10px] px-3 py-1 flex items-center gap-1">
+              <Trash2 className="w-3 h-3" /> Clear
+            </button>
           )}
         </div>
-
-        {/* Test Results */}
-        {testResult && (
-          <div className="space-y-1 text-[10px]">
-            <div className={`flex items-center gap-1 ${testResult.graph?.success ? 'text-green-400' : 'text-red-400'}`}>
-              {testResult.graph?.success ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-              Graph API: {testResult.graph?.success ? `Connected — ${testResult.graph.mailbox}` : testResult.graph?.error}
-            </div>
-            <div className={`flex items-center gap-1 ${testResult.smtp?.success ? 'text-green-400' : 'text-rmpg-500'}`}>
-              {testResult.smtp?.success ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-              SMTP: {testResult.smtp?.success ? 'Connected' : testResult.smtp?.error || 'Not configured'}
-            </div>
-          </div>
-        )}
       </div>
       </form>
-
-      {/* ─── OAuth Authorization ─── */}
-      {status?.configured && !status?.authorized && (
-        <div className="panel-beveled p-3 space-y-3">
-          <h3 className="text-xs font-semibold text-rmpg-100 flex items-center gap-2">
-            <Shield className="w-3.5 h-3.5 text-brand-400" />
-            Authorization Required
-          </h3>
-          <p className="text-[10px] text-rmpg-400">
-            Click below to sign in with Microsoft and grant RMPG Flex access to the mailbox.
-            You will be redirected to Microsoft's login page.
-          </p>
-          <button type="button" onClick={handleAuthorize}
-            className="btn-primary text-[10px] px-4 py-1.5 flex items-center gap-1.5">
-            <ExternalLink className="w-3 h-3" />
-            Authorize with Microsoft
-          </button>
-        </div>
-      )}
-
-      {/* ─── Polling Control ─── */}
-      {status?.configured && status?.authorized && (
-        <div className="panel-beveled p-3 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-rmpg-100 flex items-center gap-2">
-              <Clock className="w-3.5 h-3.5 text-brand-400" />
-              Inbox Sync
-            </h3>
-            <button type="button" onClick={handleToggleEnabled}
-              className="flex items-center gap-1.5 text-[10px]">
-              {status.enabled ? (
-                <><ToggleRight className="w-5 h-5 text-green-400" /> <span className="text-green-400">Enabled</span></>
-              ) : (
-                <><ToggleLeft className="w-5 h-5 text-rmpg-500" /> <span className="text-rmpg-500">Disabled</span></>
-              )}
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <label htmlFor="ff-adminemailtab-3" className="text-[10px] text-rmpg-400">Poll Interval:</label>
-            <select id="ff-adminemailtab-3"
-              value={pollInterval}
-              onChange={e => handlePollIntervalChange(Number(e.target.value))}
-              className="select-dark text-[10px] px-2 py-0.5"
-            >
-              <option value={60}>1 minute</option>
-              <option value={120}>2 minutes</option>
-              <option value={300}>5 minutes</option>
-              <option value={600}>10 minutes</option>
-            </select>
-            <button type="button" onClick={handleSyncNow} disabled={syncing}
-              className="btn-secondary text-[10px] px-2 py-0.5 flex items-center gap-1">
-              {syncing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RefreshCw className="w-3 h-3" />}
-              Sync Now
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ─── SMTP Fallback ─── */}
       <form onSubmit={(e) => e.preventDefault()} autoComplete="off">

@@ -24,7 +24,6 @@ import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../
 import { asArray } from '../utils/asArray';
 import { openEmailThreadPdf } from '../utils/emailThreadPdf';
 import sanitizeHtml from 'sanitize-html';
-import EnrollmentBanner from '../components/email/EnrollmentBanner';
 import ForwardRedactionModal from '../components/email/ForwardRedactionModal';
 import { toDisplayLabel } from '../utils/formatters';
 import { withAlpha } from '../utils/withAlpha';
@@ -2001,33 +2000,62 @@ export default function EmailPage() {
   const canManage = user?.role === 'admin' || user?.role === 'manager';
   const { snackbar, show: showSnackbar, dismiss: dismissSnackbar } = useSnackbar();
 
-  // Status
-  const [status, setStatus] = useState<{ configured: boolean; enabled: boolean; authorized: boolean } | null>(null);
+  // ─── Per-user mailbox connect-gate (Phase 3 cutover) ───────────────────
+  // The backend moved from one shared admin-owned mailbox to personal
+  // per-user mailboxes (GET/DELETE /email/connect/*). This replaces the old
+  // Phase 4 "enrolled" gate, which read the shared mailbox's OAuth grant
+  // via /email/status — that flag is no longer a meaningful signal for
+  // whether THIS user can use email, and AdminEmailTab no longer offers a
+  // way to set it.
+  const [connectStatus, setConnectStatus] = useState<{ connected: boolean; mailbox: string | null } | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
 
-  // Phase 4: per-user enrollment gate
-  const [enrolled, setEnrolled] = useState<boolean | null>(null);
-
-  // Fetch enrollment status on mount
-  useEffect(() => {
-    apiFetch<{ enrolled: boolean }>('/api/email/status')
-      .then(s => setEnrolled(s.enrolled))
-      .catch(() => setEnrolled(false));
+  const fetchConnectStatus = useCallback(() => {
+    apiFetch<{ connected: boolean; mailbox: string | null }>('/email/connect/status')
+      .then(setConnectStatus)
+      .catch(() => setConnectStatus({ connected: false, mailbox: null }));
   }, []);
+  useEffect(() => { fetchConnectStatus(); }, [fetchConnectStatus]);
 
-  // Handle ?enrolled=1 callback after Microsoft consent. Strip ONLY the
-  // enrolled flag — earlier this used `replaceState({}, '', '/email')` and
-  // nuked every other query param, which made it impossible to land an
-  // operator on a deep-link AFTER OAuth (the auth bounce always cleared
-  // ?message_id/?thread_id/?folder).
+  // Handle the ?connect_status=… callback after /email/connect/callback
+  // redirects the browser back here. That redirect is a full page
+  // navigation (not SPA routing), so fetchConnectStatus above already picks
+  // up the fresh connected state on mount — this only needs to surface an
+  // error message when the OAuth flow itself failed. Mirrors the old
+  // ?enrolled=1 handling's "strip only the consumed param" approach so a
+  // pending deep-link (?message_id/?thread_id/?folder) survives the bounce.
   useEffect(() => {
-    if (searchParams.get('enrolled') === '1') {
-      setEnrolled(true);
+    const connectStatusParam = searchParams.get('connect_status');
+    if (connectStatusParam) {
+      if (connectStatusParam === 'error') {
+        setConnectError(searchParams.get('message') || 'Failed to connect mailbox');
+      }
       const next = new URLSearchParams(searchParams);
-      next.delete('enrolled');
+      next.delete('connect_status');
+      next.delete('message');
       setSearchParams(next, { replace: true });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleConnectMailbox = async () => {
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const data = await apiFetch<{ url: string }>('/email/connect/authorize');
+      // Validate redirect URL is a legitimate OAuth provider before leaving the app.
+      const url = new URL(data.url);
+      const allowedHosts = new Set(['login.microsoftonline.com', 'accounts.google.com', 'login.live.com']);
+      if (!allowedHosts.has(url.hostname)) {
+        throw new Error('Unexpected OAuth redirect domain');
+      }
+      window.location.href = data.url;
+    } catch (err: any) {
+      setConnectError(err.message);
+      setConnecting(false);
+    }
+  };
 
   // ─── URL deep-link contract ──────────────────────────────────────────
   // /email?folder=<name>       — switch to that folder on mount (well-known
@@ -2308,10 +2336,6 @@ export default function EmailPage() {
 
   // ─── Data Fetching ───
 
-  const fetchStatus = useCallback(async () => {
-    try { const data = await apiFetch<{ configured: boolean; enabled: boolean; authorized: boolean }>('/email/status'); setStatus(data); } catch (err) { console.warn('[EmailPage] fetch status failed:', err); }
-  }, []);
-
   const fetchFolders = useCallback(async () => {
     try { const data = await apiFetch<EmailFolder[]>('/email/folders'); setFolders(data || []); } catch (err) { console.warn('[EmailPage] fetch folders failed:', err); }
   }, []);
@@ -2389,20 +2413,19 @@ export default function EmailPage() {
 
   useLiveSync('admin', fetchMessages);
 
-  useEffect(() => { fetchStatus(); }, [fetchStatus]);
   useEffect(() => {
-    if (status?.authorized) { fetchFolders(); fetchMessages(1); }
-  }, [status?.authorized]); // eslint-disable-line
+    if (connectStatus?.connected) { fetchFolders(); fetchMessages(1); }
+  }, [connectStatus?.connected]); // eslint-disable-line
 
   // Open compose on mount when `?compose=1` was deep-linked. Fires once the
-  // enrollment + authorization gates have passed so the modal lands inside
-  // the real shell, not the splash.
+  // connect-gate has passed so the modal lands inside the real shell, not
+  // the splash.
   useEffect(() => {
-    if (status?.authorized && enrolled && pendingComposeRef.current) {
+    if (connectStatus?.connected && pendingComposeRef.current) {
       pendingComposeRef.current = false;
       setComposing('new');
     }
-  }, [status?.authorized, enrolled]);
+  }, [connectStatus?.connected]);
 
   // Once the folder messages hydrate, consume `?thread_id=` / `?message_id=`.
   // The list is paginated 25 at a time — if the target isn't on page 1 a
@@ -2878,53 +2901,6 @@ export default function EmailPage() {
   // Set document title
   useEffect(() => { document.title = 'Email \u2014 RMPG Flex'; }, []);
 
-  // ─── Not Configured ───
-
-  if (status && !status.configured) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
-          <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20">
-            <WifiOff className="w-8 h-8 text-red-400/60" />
-          </div>
-          <h2 className="text-sm font-semibold text-rmpg-100 tracking-wide">Email Not Configured</h2>
-          <p className="text-xs text-rmpg-400 leading-relaxed">
-            Microsoft 365 email integration needs to be set up by an administrator.
-          </p>
-          <div className="panel-beveled bg-surface-sunken p-3 text-left space-y-1.5 text-[10px] text-rmpg-400">
-            <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Setup Steps</div>
-            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">1</span> Go to Admin → Integrations</div>
-            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">2</span> Enter Microsoft Azure App credentials</div>
-            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">3</span> Complete OAuth authorization</div>
-          </div>
-          <a href="/admin?tab=integrations" className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
-            Go to Admin Settings
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  if (status && !status.authorized) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
-          <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-            <AlertTriangle className="w-8 h-8 text-amber-400/60" />
-          </div>
-          <h2 className="text-sm font-semibold text-rmpg-100 tracking-wide">Authorization Required</h2>
-          <p className="text-xs text-rmpg-400 leading-relaxed">
-            Microsoft email credentials are configured, but OAuth authorization hasn't been completed yet.
-            An administrator needs to sign in with the Microsoft 365 account.
-          </p>
-          <a href="/admin?tab=integrations" className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
-            Complete Authorization
-          </a>
-        </div>
-      </div>
-    );
-  }
-
   // ─── Folder helpers ───
   const getFolderKey = (f: EmailFolder) => {
     const map: Record<string, string> = { 'Inbox': 'inbox', 'Sent Items': 'sentitems', 'Deleted Items': 'deleteditems', 'Drafts': 'drafts', 'Junk Email': 'junkemail', 'Archive': 'archive' };
@@ -3042,9 +3018,49 @@ export default function EmailPage() {
 
   // ─── Render ───
 
-  // Phase 4: per-user enrollment gate
-  if (enrolled === false) return <EnrollmentBanner />;
-  if (enrolled === null) return <div className="p-8 text-center text-xs text-rmpg-500">Checking enrollment...</div>;
+  // Per-user mailbox connect-gate — return early and skip mounting the rest
+  // of the inbox UI (and its data-fetching effects) until this user's own
+  // mailbox is connected, so an unconnected user doesn't fire a barrage of
+  // requests against endpoints that now require a connected mailbox.
+  if (connectStatus === null) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
+      </div>
+    );
+  }
+
+  if (!connectStatus.connected) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
+          <div className="w-16 h-16 mx-auto rounded-full bg-brand-500/10 flex items-center justify-center border border-brand-500/20">
+            <Mail className="w-8 h-8 text-brand-400/60" />
+          </div>
+          <h2 className="text-sm font-semibold text-rmpg-100 tracking-wide">Connect Your Mailbox</h2>
+          <p className="text-xs text-rmpg-400 leading-relaxed">
+            Connect your Microsoft 365 mailbox to use email. Each operator now signs in with their own
+            account — your email stays in Microsoft's servers, RMPG Flex only displays it.
+          </p>
+          {connectError && (
+            <div className="flex items-center gap-2 px-3 py-2 text-xs rounded-sm bg-red-500/10 border border-red-500/30 text-red-400 text-left">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              {connectError}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={handleConnectMailbox}
+            disabled={connecting}
+            className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5"
+          >
+            {connecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Mail className="w-3.5 h-3.5" />}
+            {connecting ? 'Redirecting…' : 'Connect Microsoft 365'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full overflow-hidden">
