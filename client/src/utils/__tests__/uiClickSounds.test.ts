@@ -93,4 +93,37 @@ describe('uiClickSounds', () => {
     btn.remove();
     div.remove();
   });
+
+  it('excludes text entry (incl. nested in a button wrapper) but still ticks checkbox/radio/submit', async () => {
+    const m = await loadModule();
+    m.initUiClickSounds();
+
+    // Plain text input: silent.
+    const input = document.createElement('input');
+    input.type = 'text';
+    document.body.appendChild(input);
+    input.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    expect(playSoundAsset).not.toHaveBeenCalled();
+    input.remove();
+
+    // Text input nested inside a role="button" wrapper (combobox/search
+    // pattern): still silent — this was the typing-sound regression.
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('role', 'button');
+    const nested = document.createElement('input');
+    nested.type = 'search';
+    wrapper.appendChild(nested);
+    document.body.appendChild(wrapper);
+    nested.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    expect(playSoundAsset).not.toHaveBeenCalled();
+    wrapper.remove();
+
+    // A real checkbox still ticks.
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    document.body.appendChild(checkbox);
+    checkbox.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    expect(playSoundAsset).toHaveBeenCalledTimes(1);
+    checkbox.remove();
+  });
 });

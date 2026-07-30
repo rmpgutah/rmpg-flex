@@ -112,6 +112,15 @@ export function playUiNavigate(): void {
  * tick fires even when a handler stops propagation; pointerdown so
  * feedback is instant, matching hardware-console feel.
  */
+// Any element that accepts free-text entry. Checked BEFORE the control
+// match below (and via closest(), not just tagName) so a text field
+// nested inside a button/role="button" wrapper (a common pattern for
+// combobox/date-picker/search inputs) can never register as a click-tick
+// target — the fix for the console tick firing on ordinary typing.
+const TEXT_ENTRY_SELECTOR =
+  'textarea, [contenteditable="true"], [contenteditable=""], ' +
+  'input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])';
+
 export const initUiClickSounds = (): void => {
   if (installed || typeof document === 'undefined') return;
   installed = true;
@@ -121,6 +130,7 @@ export const initUiClickSounds = (): void => {
       // Primary button / touch only — no ticks on right-click menus
       if (e.button !== 0) return;
       if (!(e.target instanceof Element)) return;
+      if (e.target.closest(TEXT_ENTRY_SELECTOR)) return;
       const control = e.target.closest(
         'button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], a, select, summary, input[type="checkbox"], input[type="radio"], input[type="submit"]'
       );

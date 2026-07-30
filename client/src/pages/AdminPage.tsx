@@ -172,7 +172,12 @@ function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: st
   const last_name = row.last_name || (row.full_name || '').trim().split(/\s+/).slice(1).join(' ') || '';
 
   // Spread all server fields through so no data is lost (profile_image, notes, etc.)
-  const { status, full_name, last_login_at, totp_enabled, totp_setup_required, password_expires_at, force_password_change, password_changed_at, ...rest } = row as PersonnelRow & Record<string, any>;
+  // NOTE: the roster query only ever selected must_change_password, not a
+  // password_expires_at/force_password_change column (neither exists on
+  // `users` — passwordExpiresAt is computed on the fly by GET
+  // /admin/users/:id/security). Destructuring those two names here was a
+  // silent no-op for every row; fixed to read the real column.
+  const { status, full_name, last_login_at, totp_enabled, totp_setup_required, must_change_password, password_changed_at, ...rest } = row as PersonnelRow & Record<string, any>;
   return {
     ...rest,
     first_name,
@@ -184,8 +189,7 @@ function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: st
     // Map snake_case security fields to camelCase for UI components
     totpEnabled: totp_enabled === 1,
     totpSetupRequired: totp_setup_required === 1,
-    passwordExpiresAt: password_expires_at || undefined,
-    forcePasswordChange: force_password_change === 1,
+    forcePasswordChange: must_change_password === 1,
     passwordChangedAt: password_changed_at || undefined,
   };
 }
