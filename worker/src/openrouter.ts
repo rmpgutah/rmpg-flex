@@ -1,11 +1,6 @@
 import type { Message } from './db';
 
-export type Provider = 'openrouter' | 'gemini';
-
-const PROVIDER_CONFIG: Record<Provider, { baseUrl: string }> = {
-  openrouter: { baseUrl: 'https://openrouter.ai/api/v1/chat/completions' },
-  gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions' },
-};
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 export class OpenRouterError extends Error {
   status: number;
@@ -65,8 +60,7 @@ export function mapMessagesToApi(messages: Message[]): ApiMessage[] {
 export function buildOpenRouterRequest(
   apiMessages: ApiMessage[],
   model: string,
-  tools?: ToolDefinition[],
-  provider: Provider = 'openrouter'
+  tools?: ToolDefinition[]
 ): { url: string; init: RequestInit } {
   const body: Record<string, unknown> = {
     model,
@@ -78,7 +72,7 @@ export function buildOpenRouterRequest(
     body.tool_choice = 'auto';
   }
   return {
-    url: PROVIDER_CONFIG[provider].baseUrl,
+    url: OPENROUTER_URL,
     init: {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -92,10 +86,9 @@ export async function streamChatCompletion(
   apiMessages: ApiMessage[],
   model: string,
   tools?: ToolDefinition[],
-  provider: Provider = 'openrouter',
   fetchImpl: typeof fetch = fetch
 ): Promise<ReadableStream<Uint8Array>> {
-  const { url, init } = buildOpenRouterRequest(apiMessages, model, tools, provider);
+  const { url, init } = buildOpenRouterRequest(apiMessages, model, tools);
   const response = await fetchImpl(url, {
     ...init,
     headers: { ...init.headers, Authorization: `Bearer ${apiKey}` },

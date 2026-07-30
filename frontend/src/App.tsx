@@ -14,19 +14,13 @@ export function App() {
   }
 
   return (
-    <div className="app">
+    <div style={{ display: 'flex' }}>
       <Sidebar activeId={activeId} onSelect={setActiveId} />
-      <main className="main">
+      <main>
         {activeId ? (
           <ChatPane conversationId={activeId} enableKimiK3={ENABLE_KIMI_K3} />
         ) : (
-          <div className="empty-state">
-            <div className="empty-state__inner">
-              <div className="empty-state__glyph">K</div>
-              <h2 className="empty-state__title">Start a conversation</h2>
-              <p className="empty-state__sub">Select a chat from the sidebar, or start a new one.</p>
-            </div>
-          </div>
+          'Select or start a chat'
         )}
       </main>
     </div>

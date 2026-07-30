@@ -8,13 +8,12 @@ import {
   addMessage,
 } from './db';
 import { checkPassword, signCookieValue, verifyCookieValue } from './auth';
-import { streamChatCompletion, mapMessagesToApi, OpenRouterError, type ApiMessage, type Provider } from './openrouter';
+import { streamChatCompletion, mapMessagesToApi, OpenRouterError, type ApiMessage } from './openrouter';
 import { webSearchToolDefinition, executeWebSearch } from './tools/webSearch';
 
 export type Env = {
   DB: D1Database;
   OPENROUTER_API_KEY: string;
-  GEMINI_API_KEY: string;
   BRAVE_API_KEY: string;
   KIMI_CONNECT_PASSWORD: string;
   AUTH_COOKIE_SECRET: string;
@@ -23,36 +22,23 @@ export type Env = {
 
 const COOKIE_NAME = 'kimi_connect_auth';
 
-// Routed on its own subdomain (kimi-connect.rmpgutah.us/api/*, see
-// wrangler.toml) rather than a path prefix on the apex domain, so no
-// basePath is needed here — routes resolve at plain `/api/...`.
-const app = new Hono<{ Bindings: Env }>();
+// Cloudflare Worker routes do NOT strip the matched path prefix: the route
+// `rmpgutah.us/kimi-connect/api/*` (see wrangler.toml) delivers the full path
+// `/kimi-connect/api/...` to the Worker. Mounting under this basePath makes the
+// route registrations below resolve to `/kimi-connect/api/...`, matching both
+// the Cloudflare route pattern and the frontend's API_BASE in production and dev.
+const app = new Hono<{ Bindings: Env }>().basePath('/kimi-connect');
 
-type ModelEntry = { id: string; provider: Provider };
-
-const FREE_MODELS: ModelEntry[] = [
-  { id: 'inclusionai/ling-3.0-flash:free', provider: 'openrouter' },
-  { id: 'poolside/laguna-xs-2.1:free', provider: 'openrouter' },
-  { id: 'cohere/north-mini-code:free', provider: 'openrouter' },
-  { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', provider: 'openrouter' },
-  { id: 'nvidia/nemotron-3-super-120b-a12b:free', provider: 'openrouter' },
-  { id: 'google/gemma-4-26b-a4b-it:free', provider: 'openrouter' },
-  { id: 'openai/gpt-oss-20b:free', provider: 'openrouter' },
-  { id: 'gemini-3.6-flash', provider: 'gemini' },
-  { id: 'gemini-3.5-flash', provider: 'gemini' },
-  { id: 'gemini-3.5-flash-lite', provider: 'gemini' },
-];
-const KIMI_K3_MODEL: ModelEntry = { id: 'moonshotai/kimi-k3', provider: 'openrouter' };
-
-function resolveModel(model: string, enableKimiK3: string | undefined): ModelEntry | null {
-  const found = FREE_MODELS.find((m) => m.id === model);
-  if (found) return found;
-  if (model === KIMI_K3_MODEL.id && enableKimiK3 === 'true') return KIMI_K3_MODEL;
-  return null;
-}
+const FREE_MODELS = [
+  'deepseek/deepseek-r1:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'qwen/qwen-2.5-72b-instruct:free',
+] as const;
+const KIMI_K3_MODEL = 'moonshotai/kimi-k3';
 
 export function isModelAllowed(model: string, enableKimiK3: string | undefined): boolean {
-  return resolveModel(model, enableKimiK3) !== null;
+  if ((FREE_MODELS as readonly string[]).includes(model)) return true;
+  return model === KIMI_K3_MODEL && enableKimiK3 === 'true';
 }
 
 app.get('/api/health', (c) => c.json({ ok: true }));
@@ -166,8 +152,7 @@ app.post('/api/conversations/:id/messages', async (c) => {
 
   // Server-side allowlist: the frontend's disabled-option gate is trivially
   // bypassable with a raw request, and an arbitrary model is a billing risk.
-  const resolvedModel = resolveModel(body.model, c.env.ENABLE_KIMI_K3);
-  if (!resolvedModel) {
+  if (!isModelAllowed(body.model, c.env.ENABLE_KIMI_K3)) {
     return c.json({ error: 'model not allowed' }, 400);
   }
 
@@ -180,10 +165,9 @@ app.post('/api/conversations/:id/messages', async (c) => {
 
   const dbHistory = await getMessages(c.env.DB, id);
   const db = c.env.DB;
-  const apiKey = resolvedModel.provider === 'gemini' ? c.env.GEMINI_API_KEY : c.env.OPENROUTER_API_KEY;
+  const apiKey = c.env.OPENROUTER_API_KEY;
   const braveApiKey = c.env.BRAVE_API_KEY;
-  const model = resolvedModel.id;
-  const provider = resolvedModel.provider;
+  const model = body.model;
 
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
   const writer = writable.getWriter();
@@ -201,28 +185,13 @@ app.post('/api/conversations/:id/messages', async (c) => {
       // Distinguishes a genuine final answer (which may legitimately be empty)
       // from exhausting the tool-iteration cap.
       let gotFinalAnswer = false;
-      // Set when the turn is aborted for a reason we already reported over SSE.
-      let aborted = false;
 
       while (iterations < 5) {
         iterations++;
-        const upstream = await streamChatCompletion(apiKey, apiMessages, model, [webSearchToolDefinition], provider);
+        const upstream = await streamChatCompletion(apiKey, apiMessages, model, [webSearchToolDefinition]);
         const turn = await consumeAndForward(upstream, (chunk) => writer.write(chunk));
 
         if (turn.toolCalls.length > 0 && turn.finishReason === 'tool_calls') {
-          // Not every provider populates `id`/`index` on every tool_call delta.
-          // Persisting an empty tool_call_id would durably corrupt this
-          // conversation's history (every later request replays it and the
-          // upstream API rejects it), so fail this turn transiently instead.
-          if (turn.toolCalls.some((tc) => !tc.id)) {
-            await writeSSE('error', {
-              message:
-                'Received an incomplete tool call from the model (no id) — try again or pick a different model.',
-            });
-            aborted = true;
-            break;
-          }
-
           const toolCallsPayload = turn.toolCalls.map((tc) => ({
             id: tc.id,
             type: 'function' as const,
@@ -283,7 +252,7 @@ app.post('/api/conversations/:id/messages', async (c) => {
 
       if (gotFinalAnswer) {
         await addMessage(db, { conversationId: id, role: 'assistant', content: finalText, model });
-      } else if (!aborted) {
+      } else {
         await writeSSE('error', { message: 'Tool use limit reached' });
       }
       await writer.write(encoder.encode('data: [DONE]\n\n'));

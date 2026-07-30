@@ -161,21 +161,21 @@ describe('streamChatCompletion', () => {
   it('returns the response body stream on success', async () => {
     const fakeStream = new ReadableStream();
     const fetchImpl = vi.fn().mockResolvedValue(new Response(fakeStream, { status: 200 }));
-    const result = await streamChatCompletion('test-key', apiMessages, 'deepseek/deepseek-r1:free', undefined, undefined, fetchImpl);
+    const result = await streamChatCompletion('test-key', apiMessages, 'deepseek/deepseek-r1:free', undefined, fetchImpl);
     expect(result).toBeInstanceOf(ReadableStream);
   });
 
   it('throws OpenRouterError on a non-2xx response', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('rate limited', { status: 429 }));
     await expect(
-      streamChatCompletion('test-key', apiMessages, 'deepseek/deepseek-r1:free', undefined, undefined, fetchImpl)
+      streamChatCompletion('test-key', apiMessages, 'deepseek/deepseek-r1:free', undefined, fetchImpl)
     ).rejects.toThrow(OpenRouterError);
   });
 
   it('throws a distinct OpenRouterError on a 2xx response with no body', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
     await expect(
-      streamChatCompletion('test-key', apiMessages, 'deepseek/deepseek-r1:free', undefined, undefined, fetchImpl)
+      streamChatCompletion('test-key', apiMessages, 'deepseek/deepseek-r1:free', undefined, fetchImpl)
     ).rejects.toThrow(/no body/);
   });
 
@@ -183,38 +183,8 @@ describe('streamChatCompletion', () => {
     const fakeStream = new ReadableStream();
     const fetchImpl = vi.fn().mockResolvedValue(new Response(fakeStream, { status: 200 }));
     const tools = [{ type: 'function' as const, function: { name: 'web_search', description: 'search', parameters: {} } }];
-    await streamChatCompletion('test-key', apiMessages, 'deepseek/deepseek-r1:free', tools, undefined, fetchImpl);
+    await streamChatCompletion('test-key', apiMessages, 'deepseek/deepseek-r1:free', tools, fetchImpl);
     const callBody = JSON.parse(fetchImpl.mock.calls[0][1].body);
     expect(callBody.tools).toEqual(tools);
-  });
-});
-
-describe('provider selection', () => {
-  const apiMessages = mapMessagesToApi([textMessage]);
-
-  it('defaults to the OpenRouter URL when no provider is given', () => {
-    const { url } = buildOpenRouterRequest(apiMessages, 'some-model');
-    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
-  });
-
-  it('targets the Gemini OpenAI-compatible endpoint when provider is gemini', () => {
-    const { url } = buildOpenRouterRequest(apiMessages, 'gemini-3.5-flash', undefined, 'gemini');
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
-  });
-
-  it('streamChatCompletion sends the request to the Gemini endpoint when provider is gemini', async () => {
-    const fakeStream = new ReadableStream();
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(fakeStream, { status: 200 }));
-    await streamChatCompletion('gemini-key', apiMessages, 'gemini-3.5-flash', undefined, 'gemini', fetchImpl);
-    const [calledUrl] = fetchImpl.mock.calls[0];
-    expect(String(calledUrl)).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
-  });
-
-  it('streamChatCompletion still defaults to OpenRouter when provider is omitted', async () => {
-    const fakeStream = new ReadableStream();
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(fakeStream, { status: 200 }));
-    await streamChatCompletion('or-key', apiMessages, 'some-model', undefined, undefined, fetchImpl);
-    const [calledUrl] = fetchImpl.mock.calls[0];
-    expect(String(calledUrl)).toBe('https://openrouter.ai/api/v1/chat/completions');
   });
 });

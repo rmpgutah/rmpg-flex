@@ -15,16 +15,9 @@ type Message = {
 type ModelOption = { id: string; label: string; vision: boolean; tools: boolean };
 
 const FREE_MODELS: ModelOption[] = [
-  { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', label: 'Nemotron 3 Ultra 550B (free)', vision: false, tools: true },
-  { id: 'nvidia/nemotron-3-super-120b-a12b:free', label: 'Nemotron 3 Super 120B (free)', vision: false, tools: true },
-  { id: 'google/gemma-4-26b-a4b-it:free', label: 'Gemma 4 26B (free, vision)', vision: true, tools: true },
-  { id: 'openai/gpt-oss-20b:free', label: 'GPT-OSS 20B (free)', vision: false, tools: true },
-  { id: 'inclusionai/ling-3.0-flash:free', label: 'Ling 3.0 Flash (free)', vision: false, tools: false },
-  { id: 'poolside/laguna-xs-2.1:free', label: 'Laguna XS 2.1 (free)', vision: false, tools: true },
-  { id: 'cohere/north-mini-code:free', label: 'North Mini Code (free)', vision: false, tools: true },
-  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash (free, vision)', vision: true, tools: true },
-  { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash (free, vision)', vision: true, tools: true },
-  { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite (free, vision)', vision: true, tools: true },
+  { id: 'deepseek/deepseek-r1:free', label: 'DeepSeek R1 (free)', vision: false, tools: false },
+  { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (free)', vision: false, tools: false },
+  { id: 'qwen/qwen-2.5-72b-instruct:free', label: 'Qwen 2.5 72B (free)', vision: false, tools: false },
 ];
 const KIMI_K3_MODEL: ModelOption = { id: 'moonshotai/kimi-k3', label: 'Kimi K3 (paid)', vision: true, tools: true };
 
@@ -48,7 +41,6 @@ export function ChatPane({ conversationId, enableKimiK3 }: { conversationId: str
   const [error, setError] = useState<string | null>(null);
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const allModels = [...FREE_MODELS, KIMI_K3_MODEL];
   const selectedModel = allModels.find((m) => m.id === model) ?? FREE_MODELS[0];
@@ -62,24 +54,16 @@ export function ChatPane({ conversationId, enableKimiK3 }: { conversationId: str
     setToolStatus(null);
   }, [conversationId]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages, toolStatus]);
-
   async function handleFiles(files: FileList | null) {
     if (!files || !selectedModel.vision) return;
     setError(null);
-    const rejected: string[] = [];
     for (const file of Array.from(files)) {
       if (file.size > MAX_IMAGE_BYTES) {
-        rejected.push(file.name);
+        setError(`"${file.name}" is over 5MB and was not attached.`);
         continue;
       }
       const dataUrl = await fileToDataUrl(file);
       setAttachments((prev) => [...prev, dataUrl]);
-    }
-    if (rejected.length > 0) {
-      setError(`Over 5MB, not attached: ${rejected.join(', ')}`);
     }
   }
 
@@ -95,8 +79,7 @@ export function ChatPane({ conversationId, enableKimiK3 }: { conversationId: str
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    const trimmed = input.trim();
-    if ((!trimmed && attachments.length === 0) || streaming) return;
+    if ((!input.trim() && attachments.length === 0) || streaming) return;
     setError(null);
     setToolStatus(null);
 
@@ -104,10 +87,10 @@ export function ChatPane({ conversationId, enableKimiK3 }: { conversationId: str
     const outgoingContent: string =
       contentType === 'parts'
         ? JSON.stringify([
-            ...(trimmed ? [{ type: 'text', text: trimmed } as ContentPart] : []),
+            ...(input.trim() ? [{ type: 'text', text: input } as ContentPart] : []),
             ...attachments.map((url) => ({ type: 'image_url', image_url: { url } }) as ContentPart),
           ])
-        : trimmed;
+        : input;
 
     const userMessage: Message = { id: crypto.randomUUID(), role: 'user', content: outgoingContent, content_type: contentType };
     setMessages((prev) => [...prev, userMessage]);
@@ -163,7 +146,7 @@ export function ChatPane({ conversationId, enableKimiK3 }: { conversationId: str
           if (currentEvent === 'tool_call') {
             try {
               const parsed = JSON.parse(raw);
-              setToolStatus(`Searching the web for "${parsed.query}"…`);
+              setToolStatus(`🔍 Searching the web for "${parsed.query}"…`);
             } catch {
               // ignore malformed tool_call frame
             }
@@ -209,7 +192,7 @@ export function ChatPane({ conversationId, enableKimiK3 }: { conversationId: str
             p.type === 'text' ? (
               <span key={i}>{p.text}</span>
             ) : (
-              <img key={i} className="msg__image" src={p.image_url.url} alt="attachment" />
+              <img key={i} src={p.image_url.url} alt="attachment" style={{ maxWidth: 200, display: 'block' }} />
             )
           )}
         </>
@@ -219,90 +202,60 @@ export function ChatPane({ conversationId, enableKimiK3 }: { conversationId: str
     }
   }
 
-  const lastMessage = messages[messages.length - 1];
-
   return (
-    <div className="chat">
-      <div className="chat__header">
-        <select className="chat__model" value={model} onChange={(e) => setModel(e.target.value)}>
-          {FREE_MODELS.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
-          <option value={KIMI_K3_MODEL.id} disabled={!enableKimiK3}>
-            {KIMI_K3_MODEL.label}
+    <div>
+      <select value={model} onChange={(e) => setModel(e.target.value)}>
+        {FREE_MODELS.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.label}
           </option>
-        </select>
-        {!selectedModel.vision && <span className="chat__model-tag">No image attachments on this model</span>}
-      </div>
+        ))}
+        <option value={KIMI_K3_MODEL.id} disabled={!enableKimiK3}>
+          {KIMI_K3_MODEL.label}
+        </option>
+      </select>
 
-      <div className="chat__messages">
-        {messages.map((m) => {
-          const isStreamingHere = streaming && m.id === lastMessage?.id && m.role === 'assistant';
-          return (
-            <div key={m.id} className={`msg msg--${m.role}`}>
-              <div className="msg__role">{m.role === 'user' ? 'You' : m.role === 'assistant' ? 'Assistant' : 'Tool'}</div>
-              <div className="msg__bubble">
-                {renderContent(m)}
-                {isStreamingHere && <span className="msg__caret" />}
-              </div>
-            </div>
-          );
-        })}
-        {toolStatus && (
-          <div className="tool-status" aria-live="polite">
-            <span className="pulse" />
-            {toolStatus}
+      <ul>
+        {messages.map((m) => (
+          <li key={m.id}>
+            <strong>{m.role}:</strong> {renderContent(m)}
+          </li>
+        ))}
+        {toolStatus && <li aria-live="polite">{toolStatus}</li>}
+      </ul>
+
+      {error && <p role="alert">{error}</p>}
+
+      <form onSubmit={handleSend}>
+        {attachments.length > 0 && (
+          <div>
+            {attachments.map((url, i) => (
+              <span key={i}>
+                <img src={url} alt="pending attachment" style={{ maxWidth: 60, maxHeight: 60 }} />
+                <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}>
+                  remove
+                </button>
+              </span>
+            ))}
           </div>
         )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {error && (
-        <p className="chat__error" role="alert">
-          {error}
-        </p>
-      )}
-
-      {attachments.length > 0 && (
-        <div className="chat__attachments">
-          {attachments.map((url, i) => (
-            <div key={i} className="chat__attachment">
-              <img src={url} alt="pending attachment" />
-              <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}>
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <form className="chat__composer" onSubmit={handleSend}>
-        <div className="chat__composer-inner">
-          <label className="chat__attach-btn" title={selectedModel.vision ? 'Attach image' : 'This model does not support images'}>
-            +
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              disabled={streaming || !selectedModel.vision}
-              onChange={(e) => handleFiles(e.target.files)}
-            />
-          </label>
-          <input
-            className="chat__input"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onPaste={handlePaste}
-            placeholder="Message kimi-connect…"
-            disabled={streaming}
-          />
-          <button className="chat__send" type="submit" disabled={streaming} aria-label="Send">
-            ↑
-          </button>
-        </div>
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onPaste={handlePaste}
+          disabled={streaming}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          disabled={streaming || !selectedModel.vision}
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+        <button type="submit" disabled={streaming}>
+          Send
+        </button>
       </form>
     </div>
   );
