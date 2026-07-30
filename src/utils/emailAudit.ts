@@ -7,10 +7,16 @@
 //
 // email_audit_log (migration 0082) has no `action` column and this phase
 // does not touch schema/migrations, so `subject` is written verbatim
-// (unprefixed) — callers that need to distinguish send/reply/reply_all/
-// forward/delete rows should filter on `graph_message_id` presence (reply/
-// forward/delete always carry the Graph message id; a fresh `send` never
-// does) or add an `action` column in a later migration.
+// (unprefixed) rather than mangled with an action prefix. To still recover
+// the action type per row without a migration, we reuse the existing
+// nullable `error` column: on a real failure it carries the failure detail
+// as before; on success (`status === 'sent'`, no `opts.error`) it's
+// otherwise always NULL/unused, so we write `action:<name>` into it
+// instead. `graph_message_id` presence alone is NOT sufficient to tell the
+// four non-send actions apart — reply/reply_all/forward/delete all pass
+// the Graph message id, so that only distinguishes send vs. everything
+// else. A future migration adding a real `action` column would let this
+// go away.
 import { execute } from './db';
 import { log } from './logger';
 import type { Bindings } from '../types';
@@ -43,7 +49,7 @@ export async function auditEmailAction(env: Bindings, opts: EmailAuditOpts): Pro
       opts.subject || '',
       opts.graphMessageId ?? null,
       opts.status,
-      opts.error ?? null,
+      opts.error ?? (opts.status === 'sent' ? `action:${opts.action}` : null),
     );
   } catch (err) {
     log.error('Failed to write email_audit_log row', { action: opts.action, userId: opts.userId }, err);

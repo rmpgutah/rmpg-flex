@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { auditEmailAction } from '../src/utils/emailAudit';
 
 function fakeDb(runFn: (sql: string, params: unknown[]) => void) {
