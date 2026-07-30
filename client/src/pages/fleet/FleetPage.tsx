@@ -1169,6 +1169,27 @@ export default function FleetPage() {
     } finally { setIsDeleting(false); }
   };
 
+  // Bulk delete for FleetFuelTab's "Delete Duplicates" action. Distinct from
+  // handleDeleteFuel: that one reads a single `deletingFuel` set via the
+  // confirm-dialog flow — calling it in a loop for multiple records doesn't
+  // work (state updates batch to the last call), so this takes the full
+  // list directly and issues one DELETE per record before refreshing once.
+  const handleBulkDeleteFuel = async (logs: FleetFuelLog[]) => {
+    if (!logs.length || selectedId == null) return;
+    setIsDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        logs.map((log) => apiFetch(`/fleet/fuel/${log.id}`, { method: 'DELETE' })),
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      const succeeded = results.length - failed;
+      if (succeeded > 0) addToast(`${succeeded} duplicate fuel log${succeeded === 1 ? '' : 's'} deleted`, 'success');
+      if (failed > 0) addToast(`${failed} duplicate${failed === 1 ? '' : 's'} failed to delete`, 'error');
+      fetchFuelLogs(selectedId);
+      fetchDetail(selectedId);
+    } finally { setIsDeleting(false); }
+  };
+
   const handleDeleteMaintenance = async () => {
     if (!deletingMaintenance || selectedId == null) return;
     setIsDeleting(true);
@@ -1718,6 +1739,7 @@ export default function FleetPage() {
               onNewInspection={openNewInspection}
               onEditFuel={openEditFuel}
               onDeleteFuel={(log) => setDeletingFuel(log)}
+              onBulkDeleteFuel={handleBulkDeleteFuel}
               onEditMaintenance={openEditMaintenance}
               onDeleteMaintenance={(record) => setDeletingMaintenance(record)}
               onEditInspection={openEditInspection}

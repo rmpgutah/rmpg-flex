@@ -207,6 +207,12 @@ interface Props {
   onAddFuel: () => void;
   onEditFuel?: (log: FleetFuelLog) => void;
   onDeleteFuel?: (log: FleetFuelLog) => void;
+  /** Invoked by the "Delete Duplicates" banner action with every
+   *  non-kept entry across all duplicate groups. Distinct from
+   *  `onDeleteFuel`: that one only opens a single-record confirm dialog
+   *  (sets state, doesn't call the API), so calling it in a loop just
+   *  batches down to the last item — this prop is the actual bulk delete. */
+  onBulkDeleteFuel?: (logs: FleetFuelLog[]) => void;
   /** Invoked when the user clicks the "Report" button — parent composes
    *  the per-vehicle fuel PDF using the vehicle object + logs + summary. */
   onGenerateReport?: () => void;
@@ -216,7 +222,7 @@ interface Props {
 }
 
 export default function FleetFuelTab({
-  fuelLogs, summary, onAddFuel, onEditFuel, onDeleteFuel,
+  fuelLogs, summary, onAddFuel, onEditFuel, onDeleteFuel, onBulkDeleteFuel,
   onGenerateReport, onGenerateFlaggedAudit,
 }: Props) {
   // Count flagged entries so we can label the Audit button + gate visibility
@@ -358,7 +364,7 @@ export default function FleetFuelTab({
 
       {/* Possible-duplicate banner — same vehicle + date + total cost, e.g. a
           fuel-card import landing on top of a manual entry for the same fill-up. */}
-      {onDeleteFuel && duplicateCount > 0 && (
+      {onBulkDeleteFuel && duplicateCount > 0 && (
         <div className="panel-beveled p-2.5 bg-amber-900/10 border border-amber-700/40 flex items-center justify-between gap-3 print:hidden">
           <div className="flex items-center gap-2 text-[10px] text-amber-400">
             <Copy className="w-3.5 h-3.5 flex-shrink-0" />
@@ -372,10 +378,16 @@ export default function FleetFuelTab({
             className="toolbar-btn text-amber-400 flex-shrink-0"
             onClick={() => {
               // Keep the oldest (lowest id) entry per group, delete the rest.
+              // `onDeleteFuel` only opens a single-record confirm dialog (sets
+              // state, doesn't call the API) — calling it once per extra in a
+              // loop just batches down to the last item, so this collects
+              // every extra across every group into one bulk-delete call.
+              const toDelete: FleetFuelLog[] = [];
               for (const group of duplicateGroups.values()) {
                 const [, ...extras] = [...group].sort((a, b) => Number(a.id) - Number(b.id));
-                extras.forEach((log) => onDeleteFuel(log));
+                toDelete.push(...extras);
               }
+              onBulkDeleteFuel(toDelete);
             }}
             title="Keep the oldest entry in each duplicate group and delete the rest"
           >

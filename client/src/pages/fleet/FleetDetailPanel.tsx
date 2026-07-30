@@ -102,6 +102,7 @@ interface Props {
   onNewInspection: () => void;
   onEditFuel?: (log: FleetFuelLog) => void;
   onDeleteFuel?: (log: FleetFuelLog) => void;
+  onBulkDeleteFuel?: (logs: FleetFuelLog[]) => void;
   // Cost-of-ownership tab (Loan / Insurance / Accessory / Utility)
   loans: FleetLoan[];
   insurancePolicies: FleetInsurancePolicy[];
@@ -283,7 +284,7 @@ export default function FleetDetailPanel({
   analytics, analyticsLoading, onAnalyticsPeriodChange, personnelData, personnelLoading,
   activeTab, onTabChange,
   onEditVehicle, onLogMaintenance, onLogFuel, onNewInspection,
-  onEditFuel, onDeleteFuel,
+  onEditFuel, onDeleteFuel, onBulkDeleteFuel,
   loans, insurancePolicies, accessories, utilities, otherCosts, costSummary, costSubTab, onCostSubTabChange, onAddCost, onEditCost, onDeleteCost, onSaveBudgets, onViewAllWorkOrders,
   onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
   onAssignVehicle, onUnassignVehicle, onAddPersonnelNote, onDeletePersonnelNote, onRefreshPersonnel,
@@ -521,6 +522,7 @@ export default function FleetDetailPanel({
             onAddFuel={onLogFuel}
             onEditFuel={onEditFuel}
             onDeleteFuel={onDeleteFuel}
+            onBulkDeleteFuel={onBulkDeleteFuel}
             onGenerateReport={() => generateFleetFuelReport({
               vehicle: detail,
               fuelLogs,
