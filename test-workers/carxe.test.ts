@@ -96,4 +96,30 @@ describe('POST /api/carxe/plate-lookup', () => {
     const body = await res.json();
     expect(body).toMatchObject({ ok: false, code: 'not_configured' });
   });
+
+  it('fails closed (500 rate_limit_unavailable) when no KV binding is present, instead of proceeding unmetered', async () => {
+    // Miniflare binds a real KV namespace (see vitest.workers.config.mts),
+    // so the missing-KV branch can't be exercised via globalThis `env`.
+    // app.request() accepts an env override as its third arg — build one
+    // with CARXE_API_KEY set (so we get past configFromEnv) but with both
+    // CARXE_RATE_KV and KV stripped out, to simulate the binding being
+    // dropped/renamed.
+    const app = appWithUser({ id: 1, role: 'officer', username: 'test-officer' });
+    const envWithoutKv: Record<string, unknown> = { ...(env as unknown as Record<string, unknown>), CARXE_API_KEY: 'test-key' };
+    delete envWithoutKv.KV;
+    delete envWithoutKv.CARXE_RATE_KV;
+
+    const res = await app.request(
+      '/api/carxe/plate-lookup',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ plate: '7XER187', state: 'CA' }),
+      },
+      envWithoutKv,
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body).toMatchObject({ ok: false, code: 'rate_limit_unavailable' });
+  });
 });

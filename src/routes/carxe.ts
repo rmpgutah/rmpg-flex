@@ -132,10 +132,12 @@ carxe.post('/plate-lookup', operational, async (c) => {
   }
 
   const rateKv = (env.CARXE_RATE_KV ?? (env as any).KV) as KVNamespace | undefined;
-  if (rateKv) {
-    const budget = await checkAndReserveCarxeCall(rateKv, Date.now());
-    if (!budget.allowed) return c.json({ ok: false, code: 'rate_limited' }, 429);
+  if (!rateKv) {
+    log.warn('[carxe] rate-limit KV binding unavailable — failing closed', { route: 'plate-lookup' });
+    return c.json({ ok: false, code: 'rate_limit_unavailable', message: 'Rate limiting is not configured' }, 500);
   }
+  const budget = await checkAndReserveCarxeCall(rateKv, Date.now());
+  if (!budget.allowed) return c.json({ ok: false, code: 'rate_limited' }, 429);
 
   try {
     const result = await decodePlate(config, { plate, state });
@@ -168,10 +170,12 @@ carxe.post('/vin-specs', operational, async (c) => {
   }
 
   const rateKv = (env.CARXE_RATE_KV ?? env.KV) as KVNamespace | undefined;
-  if (rateKv) {
-    const budget = await checkAndReserveCarxeCall(rateKv, Date.now());
-    if (!budget.allowed) return c.json({ ok: false, code: 'rate_limited' }, 429);
+  if (!rateKv) {
+    log.warn('[carxe] rate-limit KV binding unavailable — failing closed', { route: 'vin-specs' });
+    return c.json({ ok: false, code: 'rate_limit_unavailable', message: 'Rate limiting is not configured' }, 500);
   }
+  const budget = await checkAndReserveCarxeCall(rateKv, Date.now());
+  if (!budget.allowed) return c.json({ ok: false, code: 'rate_limited' }, 429);
 
   try {
     const result = await getSpecifications(config, { vin });
@@ -206,10 +210,12 @@ carxe.post('/lien-theft', operational, async (c) => {
     fromCache = true;
   } else {
     const rateKv = (env.CARXE_RATE_KV ?? env.KV) as KVNamespace | undefined;
-    if (rateKv) {
-      const budget = await checkAndReserveCarxeCall(rateKv, Date.now());
-      if (!budget.allowed) return c.json({ ok: false, code: 'rate_limited' }, 429);
+    if (!rateKv) {
+      log.warn('[carxe] rate-limit KV binding unavailable — failing closed', { route: 'lien-theft' });
+      return c.json({ ok: false, code: 'rate_limit_unavailable', message: 'Rate limiting is not configured' }, 500);
     }
+    const budget = await checkAndReserveCarxeCall(rateKv, Date.now());
+    if (!budget.allowed) return c.json({ ok: false, code: 'rate_limited' }, 429);
     try {
       result = await getLienTheft(config, { vin });
     } catch (err) {
@@ -256,10 +262,12 @@ carxe.post('/history', operational, async (c) => {
   }
 
   const rateKv = (env.CARXE_RATE_KV ?? env.KV) as KVNamespace | undefined;
-  if (rateKv) {
-    const budget = await checkAndReserveCarxeCall(rateKv, Date.now());
-    if (!budget.allowed) return c.json({ ok: false, code: 'rate_limited' }, 429);
+  if (!rateKv) {
+    log.warn('[carxe] rate-limit KV binding unavailable — failing closed', { route: 'history' });
+    return c.json({ ok: false, code: 'rate_limit_unavailable', message: 'Rate limiting is not configured' }, 500);
   }
+  const budget = await checkAndReserveCarxeCall(rateKv, Date.now());
+  if (!budget.allowed) return c.json({ ok: false, code: 'rate_limited' }, 429);
 
   try {
     const result = await getHistory(config, { vin });
