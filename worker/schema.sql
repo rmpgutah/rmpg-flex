@@ -1,3 +1,7 @@
+-- NOTE: this DDL is duplicated in migrations/0001_init.sql for the vitest-pool-workers test
+-- environment (which needs a numbered migration file, not an ad-hoc schema file). If you change
+-- this file, update migrations/0001_init.sql to match, and vice versa.
+
 CREATE TABLE conversations (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL DEFAULT 'New chat',
