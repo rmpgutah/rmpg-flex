@@ -28,9 +28,13 @@ const COOKIE_NAME = 'kimi_connect_auth';
 const app = new Hono<{ Bindings: Env }>();
 
 const FREE_MODELS = [
-  'deepseek/deepseek-r1:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'qwen/qwen-2.5-72b-instruct:free',
+  'inclusionai/ling-3.0-flash:free',
+  'poolside/laguna-xs-2.1:free',
+  'cohere/north-mini-code:free',
+  'nvidia/nemotron-3-ultra-550b-a55b:free',
+  'nvidia/nemotron-3-super-120b-a12b:free',
+  'google/gemma-4-26b-a4b-it:free',
+  'openai/gpt-oss-20b:free',
 ] as const;
 const KIMI_K3_MODEL = 'moonshotai/kimi-k3';
 

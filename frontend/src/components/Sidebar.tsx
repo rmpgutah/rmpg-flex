@@ -23,7 +23,7 @@ export function Sidebar({
       const data = (await res.json()) as { conversations: Conversation[] };
       setConversations(data.conversations);
       setError(null);
-    } catch (err) {
+    } catch {
       setError('Failed to parse conversation data');
     }
   }
@@ -42,19 +42,37 @@ export function Sidebar({
       const data = (await res.json()) as { conversation: Conversation };
       await refresh();
       onSelect(data.conversation.id);
-    } catch (err) {
+    } catch {
       setError('Failed to parse new conversation data');
     }
   }
 
   return (
-    <nav>
-      <button onClick={handleNewChat}>New chat</button>
-      {error && <p role="alert">{error}</p>}
-      <ul>
+    <nav className="sidebar">
+      <div className="sidebar__brand">
+        <div className="sidebar__brand-title">
+          <span className="glyph">K</span>
+          kimi-connect
+        </div>
+        <div className="sidebar__brand-sub">Private chat</div>
+      </div>
+
+      <button className="sidebar__new" onClick={handleNewChat}>
+        <span className="plus">+</span>
+        New chat
+      </button>
+
+      {error && <p className="sidebar__error" role="alert">{error}</p>}
+
+      <ul className="sidebar__list">
+        {conversations.length === 0 && !error && <li className="sidebar__empty">No conversations yet</li>}
         {conversations.map((c) => (
           <li key={c.id}>
-            <button aria-current={c.id === activeId} onClick={() => onSelect(c.id)}>
+            <button
+              className="sidebar__item"
+              aria-current={c.id === activeId}
+              onClick={() => onSelect(c.id)}
+            >
               {c.title}
             </button>
           </li>

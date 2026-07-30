@@ -40,11 +40,15 @@ describe('route mounting (C1)', () => {
 });
 
 describe('isModelAllowed (I1)', () => {
-  it('allows the three free models regardless of the flag', () => {
+  it('allows all seven free models regardless of the flag', () => {
     for (const m of [
-      'deepseek/deepseek-r1:free',
-      'meta-llama/llama-3.3-70b-instruct:free',
-      'qwen/qwen-2.5-72b-instruct:free',
+      'inclusionai/ling-3.0-flash:free',
+      'poolside/laguna-xs-2.1:free',
+      'cohere/north-mini-code:free',
+      'nvidia/nemotron-3-ultra-550b-a55b:free',
+      'nvidia/nemotron-3-super-120b-a12b:free',
+      'google/gemma-4-26b-a4b-it:free',
+      'openai/gpt-oss-20b:free',
     ]) {
       expect(isModelAllowed(m, 'false')).toBe(true);
     }
@@ -122,7 +126,7 @@ describe('POST /messages model allowlist (I1)', () => {
       {
         method: 'POST',
         headers: await authHeaders(),
-        body: JSON.stringify({ content: 'hi', model: 'deepseek/deepseek-r1:free' }),
+        body: JSON.stringify({ content: 'hi', model: 'inclusionai/ling-3.0-flash:free' }),
       },
       testEnv()
     );
