@@ -14,6 +14,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { Plus, Trash2, Pencil, Upload, Store, Package, X, Check } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../../components/ToastProvider';
+import FleetioConflictBadge from '../../components/FleetioConflictBadge';
+import type { ConflictBadgeConflict } from '../../components/FleetioConflictBadge';
 
 interface VendorRow {
   id: number;
@@ -75,6 +77,40 @@ function SeedButton({ label, onSeed }: { label: string; onSeed: () => Promise<{ 
   );
 }
 
+/** Fetches /fleetio/conflicts for a table + set of row ids, returning a
+ *  Map<rmpg_id, conflicts[]>. Shared between the vendor and part sections
+ *  below so an operator editing either resource can see a field-level
+ *  disagreement instead of assuming a silent "save" actually round-tripped
+ *  to Fleet.io correctly. */
+function useFleetioConflicts(table: string, ids: number[]): Map<number, ConflictBadgeConflict[]> {
+  const [conflicts, setConflicts] = useState<Map<number, ConflictBadgeConflict[]>>(new Map());
+  useEffect(() => {
+    if (!ids.length) { setConflicts(new Map()); return; }
+    let cancelled = false;
+    apiFetch<{ conflicts: Record<string, unknown>[] }>(`/fleetio/conflicts?table=${table}&ids=${ids.join(',')}`)
+      .then((r) => {
+        if (cancelled) return;
+        const map = new Map<number, ConflictBadgeConflict[]>();
+        for (const c of r?.conflicts ?? []) {
+          const rmpgId = c.rmpg_id as number;
+          if (!map.has(rmpgId)) map.set(rmpgId, []);
+          map.get(rmpgId)!.push({
+            id: c.id as number,
+            field: c.field as string,
+            local_value: c.local_value as string | null | undefined,
+            remote_value: c.remote_value as string | null | undefined,
+            resolution: c.resolution as string | null | undefined,
+          });
+        }
+        setConflicts(map);
+      })
+      .catch(() => { if (!cancelled) setConflicts(new Map()); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table, ids.join(',')]);
+  return conflicts;
+}
+
 export default function AdminFleetioDirectoryTab() {
   const { addToast } = useToast();
   const [vendors, setVendors] = useState<VendorRow[]>([]);
@@ -99,6 +135,9 @@ export default function AdminFleetioDirectoryTab() {
     setLoading(true);
     Promise.all([loadVendors(), loadParts()]).finally(() => setLoading(false));
   }, [loadVendors, loadParts]);
+
+  const vendorConflicts = useFleetioConflicts('ref_vendors', vendors.map((v) => v.id));
+  const partConflicts = useFleetioConflicts('fleet_parts', parts.map((p) => p.id));
 
   const saveVendor = () => {
     if (!editingVendor) return;
@@ -179,6 +218,9 @@ export default function AdminFleetioDirectoryTab() {
               <span className="text-rmpg-400 flex-1">{[v.city, v.state].filter(Boolean).join(', ') || '—'}</span>
               <span className={`w-14 text-center ${v.active ? 'text-emerald-400' : 'text-rmpg-600'}`}>{v.active ? 'active' : 'inactive'}</span>
               <div className="flex items-center gap-1">
+                {vendorConflicts.get(v.id)?.map((c) => (
+                  <FleetioConflictBadge key={c.id} conflict={c} compact />
+                ))}
                 <button onClick={() => setEditingVendor(v)} aria-label={`Edit ${v.name}`} className="p-1 hover:text-brand-400"><Pencil className="w-3 h-3" /></button>
                 <button onClick={() => deleteVendor(v.id)} aria-label={`Deactivate ${v.name}`} className="p-1 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
               </div>
@@ -231,6 +273,9 @@ export default function AdminFleetioDirectoryTab() {
               </span>
               <span className="text-rmpg-400 w-16 text-right">{p.unit_cost != null ? `$${Number(p.unit_cost).toFixed(2)}` : '—'}</span>
               <div className="flex items-center gap-1">
+                {partConflicts.get(p.id)?.map((c) => (
+                  <FleetioConflictBadge key={c.id} conflict={c} compact />
+                ))}
                 <button onClick={() => setEditingPart(p)} aria-label={`Edit ${p.name}`} className="p-1 hover:text-brand-400"><Pencil className="w-3 h-3" /></button>
                 <button onClick={() => deletePart(p.id)} aria-label={`Delete ${p.name}`} className="p-1 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
               </div>

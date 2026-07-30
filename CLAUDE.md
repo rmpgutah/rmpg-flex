@@ -191,8 +191,20 @@ and wires the result into the intel plate log.
 Bidirectional sync between RMPG's in-house fleet system and Fleet.io. RMPG remains
 the operational entry surface (dispatch/MDT/patrol); Fleet.io is the downstream
 discipline layer for PM reminders, parts, vendor invoicing, and reports. Outbound
-goes live in PR 1 (this PR — seed only); bidirectional real-time + webhooks land in
-PR 4. Full spec: [`docs/superpowers/specs/2026-06-21-fleetio-integration-design.md`](docs/superpowers/specs/2026-06-21-fleetio-integration-design.md).
+went live in PR 1 (seed only); the webhook receiver + inbound sync code shipped
+in PR 4. Full spec: [`docs/superpowers/specs/2026-06-21-fleetio-integration-design.md`](docs/superpowers/specs/2026-06-21-fleetio-integration-design.md).
+
+**⚠️ "PR 4 shipped" ≠ "bidirectional sync is live in production."** Live D1
+audit (2026-07-29, `docs/superpowers/specs/2026-07-29-fleetio-fleet-manager-gap-audit.md`)
+found the inbound webhook receiver deployed and technically correct
+(secret-gated via `FLEETIO_WEBHOOK_SECRET`, deduped, `waitUntil`-backed) but
+with exactly **one** inbound event in `fleetio_events` ever (2026-06-21,
+`vehicle/update`) — most plausibly a single manual test, not a live,
+operator-registered Fleet.io webhook subscription. `fleetio_conflicts` has 0
+rows. Outbound (RMPG → Fleet.io) is genuinely active. Read this as
+"outbound live; inbound webhook code shipped but not observably in use"
+until someone confirms a real webhook subscription is registered in
+app.fleetio.com and inbound events start flowing again.
 
 - **Adapter**: [`src/utils/fleetio/client.ts`](src/utils/fleetio/client.ts) — Worker-safe REST client
   for Fleet.io API v1 (`https://secure.fleetio.com/api/v1`). Dual-header auth
@@ -261,8 +273,12 @@ PR 4. Full spec: [`docs/superpowers/specs/2026-06-21-fleetio-integration-design.
   archived" handling); RMPG hard-deletes parts
   and fuel entries → Fleet.io `DELETE`. Never translate a soft delete into a
   hard remote one.
-- **`/pull` and `/seed` both pace at `PACE_MS` (1.2 s)** against Fleet.io's
-  50 req/min account ceiling. Any new loop that calls Fleet.io must pace too.
+- **`/pull` and `/seed` both pace at `PACE_MS` (1.2 s, `src/routes/fleetio.ts:47`)**
+  — this is RMPG's own self-imposed pacing, **not a documented Fleet.io platform
+  limit** (confirmed 2026-07-29: Fleet.io's own docs say limits are
+  plan-dependent — "consult your plan" — with no fixed number published). Any
+  new loop that calls Fleet.io must pace too, but don't cite "50 req/min" as
+  a Fleet.io-documented ceiling outside this codebase.
 - Parse D1 timestamps with `parseD1TimestampMs` — `datetime('now')` is
   zone-less and `Date.parse` reads that as LOCAL time, which silently skews
   every `shared`-field last-write-wins verdict off a UTC host.

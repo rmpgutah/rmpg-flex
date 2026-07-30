@@ -2819,10 +2819,33 @@ fleet.get('/parts', async (c) => {
   } catch (err) { console.error('GET /fleet/parts failed:', err); return c.json([]); }
 });
 
+// Fleet.io's parts resource caps string fields at 255 chars (`number`,
+// `part_category_name`, `part_manufacturer_name` — see
+// docs/fleetio-api-reference.md, confirmed live 2026-07-29) and only
+// accepts a non-negative `unit_cost`. Before mapPartFieldsToFleetio was
+// fixed to send Fleet.io's real field names, none of this was ever
+// exercised — every value was silently dropped regardless of length or
+// sign. Now that the mapper round-trips correctly, an over-length or
+// negative value would 422 on sync instead of being caught here.
+const PART_MAX_LEN = 255;
+function validatePartBody(body: Record<string, unknown>): string | null {
+  for (const key of ['part_number', 'category', 'supplier'] as const) {
+    const v = body[key];
+    if (typeof v === 'string' && v.length > PART_MAX_LEN) return `${key} must be ${PART_MAX_LEN} characters or fewer`;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'unit_cost') && body.unit_cost != null && body.unit_cost !== '') {
+    const n = Number(body.unit_cost);
+    if (!Number.isFinite(n) || n < 0) return 'unit_cost must be a non-negative number';
+  }
+  return null;
+}
+
 fleet.post('/parts', async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
+    const validationError = validatePartBody(body);
+    if (validationError) return c.json({ error: validationError }, 400);
     const result = await execute(db, `INSERT INTO fleet_parts (part_number, name, category, description, unit_cost, quantity_on_hand, reorder_point, supplier, compatible_vehicles, location) VALUES (?,?,?,?,?,?,?,?,?,?)`, body.part_number ?? null, body.name ?? null, body.category ?? null, body.description ?? null, body.unit_cost ?? null, body.quantity_on_hand ?? 0, body.reorder_point ?? 0, body.supplier ?? null, body.compatible_vehicles ?? null, body.location ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_parts WHERE id = ?', result.meta.last_row_id);
     await emitFleetioEvent(c, 'part.create', created, {
@@ -2837,6 +2860,8 @@ fleet.put('/parts/:id', async (c) => {
     const id = Number(c.req.param('id'));
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
+    const validationError = validatePartBody(body);
+    if (validationError) return c.json({ error: validationError }, 400);
     const cols = ['part_number', 'name', 'category', 'description', 'unit_cost', 'quantity_on_hand', 'reorder_point', 'supplier', 'compatible_vehicles', 'location'];
     const setCols: string[] = []; const bindings: unknown[] = [];
     for (const key of cols) { if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); } }
