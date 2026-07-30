@@ -27,14 +27,14 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 describe('route mounting (C1)', () => {
-  it('serves health under the /kimi-connect basePath', async () => {
-    const res = await app.request('http://localhost/kimi-connect/api/health', {}, testEnv());
+  it('serves health at plain /api/health (subdomain routing, no path prefix)', async () => {
+    const res = await app.request('http://localhost/api/health', {}, testEnv());
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
   });
 
-  it('404s on the unprefixed path the Worker never actually receives', async () => {
-    const res = await app.request('http://localhost/api/health', {}, testEnv());
+  it('404s on a /kimi-connect-prefixed path, since the Worker is routed on its own subdomain now', async () => {
+    const res = await app.request('http://localhost/kimi-connect/api/health', {}, testEnv());
     expect(res.status).toBe(404);
   });
 });
@@ -72,7 +72,7 @@ describe('POST /messages model allowlist (I1)', () => {
     const convo = await createConversation(env.DB);
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const res = await app.request(
-      `http://localhost/kimi-connect/api/conversations/${convo.id}/messages`,
+      `http://localhost/api/conversations/${convo.id}/messages`,
       {
         method: 'POST',
         headers: await authHeaders(),
@@ -89,7 +89,7 @@ describe('POST /messages model allowlist (I1)', () => {
   it('rejects kimi-k3 when ENABLE_KIMI_K3 is false', async () => {
     const convo = await createConversation(env.DB);
     const res = await app.request(
-      `http://localhost/kimi-connect/api/conversations/${convo.id}/messages`,
+      `http://localhost/api/conversations/${convo.id}/messages`,
       {
         method: 'POST',
         headers: await authHeaders(),
@@ -118,7 +118,7 @@ describe('POST /messages model allowlist (I1)', () => {
       )
     );
     const res = await app.request(
-      `http://localhost/kimi-connect/api/conversations/${convo.id}/messages`,
+      `http://localhost/api/conversations/${convo.id}/messages`,
       {
         method: 'POST',
         headers: await authHeaders(),
@@ -134,7 +134,7 @@ describe('POST /messages model allowlist (I1)', () => {
   it('rejects an unauthenticated request before touching the model', async () => {
     const convo = await createConversation(env.DB);
     const res = await app.request(
-      `http://localhost/kimi-connect/api/conversations/${convo.id}/messages`,
+      `http://localhost/api/conversations/${convo.id}/messages`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

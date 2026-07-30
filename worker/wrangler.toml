@@ -5,11 +5,11 @@ compatibility_date = "2026-07-29"
 [[d1_databases]]
 binding = "DB"
 database_name = "kimi-connect-db"
-database_id = "REPLACE_AFTER_WRANGLER_D1_CREATE"
+database_id = "49e5271e-e6b2-46dc-9af4-37e0070ff14c"
 
 [vars]
 ENABLE_KIMI_K3 = "false"
 
 [[routes]]
-pattern = "rmpgutah.us/kimi-connect/api/*"
+pattern = "kimi-connect.rmpgutah.us/api/*"
 zone_name = "rmpgutah.us"

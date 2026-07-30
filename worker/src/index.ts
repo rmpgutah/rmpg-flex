@@ -22,12 +22,10 @@ export type Env = {
 
 const COOKIE_NAME = 'kimi_connect_auth';
 
-// Cloudflare Worker routes do NOT strip the matched path prefix: the route
-// `rmpgutah.us/kimi-connect/api/*` (see wrangler.toml) delivers the full path
-// `/kimi-connect/api/...` to the Worker. Mounting under this basePath makes the
-// route registrations below resolve to `/kimi-connect/api/...`, matching both
-// the Cloudflare route pattern and the frontend's API_BASE in production and dev.
-const app = new Hono<{ Bindings: Env }>().basePath('/kimi-connect');
+// Routed on its own subdomain (kimi-connect.rmpgutah.us/api/*, see
+// wrangler.toml) rather than a path prefix on the apex domain, so no
+// basePath is needed here — routes resolve at plain `/api/...`.
+const app = new Hono<{ Bindings: Env }>();
 
 const FREE_MODELS = [
   'deepseek/deepseek-r1:free',
