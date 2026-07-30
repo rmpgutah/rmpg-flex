@@ -10,6 +10,7 @@ function testEnv(overrides: Record<string, unknown> = {}) {
   return {
     DB: env.DB,
     OPENROUTER_API_KEY: 'test-key',
+    GEMINI_API_KEY: 'test-gemini-key',
     BRAVE_API_KEY: 'test-brave-key',
     KIMI_CONNECT_PASSWORD: 'pw',
     AUTH_COOKIE_SECRET: AUTH_SECRET,
@@ -62,6 +63,12 @@ describe('isModelAllowed (I1)', () => {
 
   it('blocks arbitrary models', () => {
     expect(isModelAllowed('openai/o3-pro', 'true')).toBe(false);
+  });
+
+  it('allows the three Gemini models regardless of the flag', () => {
+    for (const m of ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite']) {
+      expect(isModelAllowed(m, 'false')).toBe(true);
+    }
   });
 });
 
@@ -147,5 +154,38 @@ describe('POST /messages model allowlist (I1)', () => {
       testEnv()
     );
     expect(res.status).toBe(401);
+  });
+
+  it('routes a Gemini model to the Gemini endpoint with GEMINI_API_KEY', async () => {
+    const convo = await createConversation(env.DB);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}\n\n'
+              )
+            );
+            controller.close();
+          },
+        }),
+        { status: 200 }
+      )
+    );
+    const res = await app.request(
+      `http://localhost/api/conversations/${convo.id}/messages`,
+      {
+        method: 'POST',
+        headers: await authHeaders(),
+        body: JSON.stringify({ content: 'hi', model: 'gemini-3.5-flash' }),
+      },
+      testEnv({ GEMINI_API_KEY: 'test-gemini-key' })
+    );
+    expect(res.status).toBe(200);
+    await res.text();
+    const [calledUrl, calledInit] = fetchSpy.mock.calls[0];
+    expect(String(calledUrl)).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
+    expect((calledInit as RequestInit).headers).toMatchObject({ Authorization: 'Bearer test-gemini-key' });
   });
 });
