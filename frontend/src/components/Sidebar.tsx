@@ -11,11 +11,21 @@ export function Sidebar({
   onSelect: (id: string) => void;
 }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
     const res = await apiFetch('/conversations');
-    const data = await res.json<{ conversations: Conversation[] }>();
-    setConversations(data.conversations);
+    if (!res.ok) {
+      setError(`Failed to load conversations: ${res.statusText}`);
+      return;
+    }
+    try {
+      const data = await res.json<{ conversations: Conversation[] }>();
+      setConversations(data.conversations);
+      setError(null);
+    } catch (err) {
+      setError('Failed to parse conversation data');
+    }
   }
 
   useEffect(() => {
@@ -24,14 +34,23 @@ export function Sidebar({
 
   async function handleNewChat() {
     const res = await apiFetch('/conversations', { method: 'POST' });
-    const data = await res.json<{ conversation: Conversation }>();
-    await refresh();
-    onSelect(data.conversation.id);
+    if (!res.ok) {
+      setError(`Failed to create chat: ${res.statusText}`);
+      return;
+    }
+    try {
+      const data = await res.json<{ conversation: Conversation }>();
+      await refresh();
+      onSelect(data.conversation.id);
+    } catch (err) {
+      setError('Failed to parse new conversation data');
+    }
   }
 
   return (
     <nav>
       <button onClick={handleNewChat}>New chat</button>
+      {error && <p role="alert">{error}</p>}
       <ul>
         {conversations.map((c) => (
           <li key={c.id}>
