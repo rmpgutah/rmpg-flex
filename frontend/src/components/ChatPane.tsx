@@ -48,7 +48,8 @@ export function ChatPane({ conversationId, enableKimiK3 }: { conversationId: str
   useEffect(() => {
     apiFetch(`/conversations/${conversationId}`)
       .then((res) => res.json() as Promise<{ messages: Message[] }>)
-      .then((data) => setMessages(data.messages));
+      .then((data) => setMessages(data.messages))
+      .catch(() => setError('Failed to load conversation.'));
     setAttachments([]);
     setToolStatus(null);
   }, [conversationId]);
@@ -100,76 +101,85 @@ export function ChatPane({ conversationId, enableKimiK3 }: { conversationId: str
     const assistantId = crypto.randomUUID();
     setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '', content_type: 'text' }]);
 
-    const res = await apiFetch(`/conversations/${conversationId}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({ content: outgoingContent, model, contentType }),
-    });
+    try {
+      const res = await apiFetch(`/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ content: outgoingContent, model, contentType }),
+      });
 
-    const reader = res.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let currentEvent: string | null = null;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        if (line.startsWith('event: ')) {
-          currentEvent = line.slice('event: '.length);
-          continue;
-        }
-        if (!line.startsWith('data: ')) continue;
-        const raw = line.slice('data: '.length);
-
-        if (currentEvent === 'error') {
-          try {
-            const parsed = JSON.parse(raw);
-            setError(parsed.message ?? 'Something went wrong, try again or pick a different model.');
-          } catch {
-            setError('Something went wrong, try again or pick a different model.');
-          }
-          currentEvent = null;
-          continue;
-        }
-
-        if (currentEvent === 'tool_call') {
-          try {
-            const parsed = JSON.parse(raw);
-            setToolStatus(`🔍 Searching the web for "${parsed.query}"…`);
-          } catch {
-            // ignore malformed tool_call frame
-          }
-          currentEvent = null;
-          continue;
-        }
-
-        if (raw === '[DONE]') {
-          setToolStatus(null);
-          currentEvent = null;
-          continue;
-        }
-
-        try {
-          const parsed = JSON.parse(raw);
-          const delta: string = parsed.choices?.[0]?.delta?.content ?? '';
-          if (delta) {
-            setMessages((prev) =>
-              prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + delta } : m))
-            );
-          }
-        } catch {
-          // ignore malformed lines (including our own non-content event data lines)
-        }
-        currentEvent = null;
+      if (!res.ok || !res.body) {
+        setError(`Request failed (${res.status}). Try again or pick a different model.`);
+        return;
       }
-    }
 
-    setStreaming(false);
-    setToolStatus(null);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let currentEvent: string | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice('event: '.length);
+            continue;
+          }
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice('data: '.length);
+
+          if (currentEvent === 'error') {
+            try {
+              const parsed = JSON.parse(raw);
+              setError(parsed.message ?? 'Something went wrong, try again or pick a different model.');
+            } catch {
+              setError('Something went wrong, try again or pick a different model.');
+            }
+            currentEvent = null;
+            continue;
+          }
+
+          if (currentEvent === 'tool_call') {
+            try {
+              const parsed = JSON.parse(raw);
+              setToolStatus(`🔍 Searching the web for "${parsed.query}"…`);
+            } catch {
+              // ignore malformed tool_call frame
+            }
+            currentEvent = null;
+            continue;
+          }
+
+          if (raw === '[DONE]') {
+            setToolStatus(null);
+            currentEvent = null;
+            continue;
+          }
+
+          try {
+            const parsed = JSON.parse(raw);
+            const delta: string = parsed.choices?.[0]?.delta?.content ?? '';
+            if (delta) {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + delta } : m))
+              );
+            }
+          } catch {
+            // ignore malformed lines (including our own non-content event data lines)
+          }
+          currentEvent = null;
+        }
+      }
+    } catch {
+      setError('Network error, try again or pick a different model.');
+    } finally {
+      setStreaming(false);
+      setToolStatus(null);
+    }
   }
 
   function renderContent(m: Message) {
