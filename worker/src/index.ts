@@ -8,11 +8,13 @@ import {
   addMessage,
 } from './db';
 import { checkPassword, signCookieValue, verifyCookieValue } from './auth';
-import { streamChatCompletion, OpenRouterError } from './openrouter';
+import { streamChatCompletion, mapMessagesToApi, OpenRouterError, type ApiMessage } from './openrouter';
+import { webSearchToolDefinition, executeWebSearch } from './tools/webSearch';
 
 export type Env = {
   DB: D1Database;
   OPENROUTER_API_KEY: string;
+  BRAVE_API_KEY: string;
   KIMI_CONNECT_PASSWORD: string;
   AUTH_COOKIE_SECRET: string;
   ENABLE_KIMI_K3: string;
@@ -71,58 +73,157 @@ app.get('/api/conversations/:id', async (c) => {
   return c.json({ conversation, messages });
 });
 
+type StreamTurn = {
+  contentText: string;
+  toolCalls: Array<{ id: string; name: string; args: string }>;
+  finishReason: string | null;
+};
+
+async function consumeAndForward(
+  upstream: ReadableStream<Uint8Array>,
+  forward: (chunk: Uint8Array) => Promise<void>
+): Promise<StreamTurn> {
+  const reader = upstream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let contentText = '';
+  const toolCallsByIndex = new Map<number, { id: string; name: string; args: string }>();
+  let finishReason: string | null = null;
+
+  function processLine(line: string) {
+    if (!line.startsWith('data: ') || line === 'data: [DONE]') return;
+    try {
+      const parsed = JSON.parse(line.slice('data: '.length));
+      const delta = parsed.choices?.[0]?.delta;
+      if (delta?.content) contentText += delta.content;
+      if (delta?.tool_calls) {
+        for (const tc of delta.tool_calls as Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }>) {
+          const existing = toolCallsByIndex.get(tc.index) ?? { id: '', name: '', args: '' };
+          if (tc.id) existing.id = tc.id;
+          if (tc.function?.name) existing.name = tc.function.name;
+          if (tc.function?.arguments) existing.args += tc.function.arguments;
+          toolCallsByIndex.set(tc.index, existing);
+        }
+      }
+      if (parsed.choices?.[0]?.finish_reason) finishReason = parsed.choices[0].finish_reason;
+    } catch {
+      // ignore malformed line
+    }
+  }
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    await forward(value);
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) processLine(line);
+  }
+  buffer += decoder.decode();
+  for (const line of buffer.split('\n')) processLine(line);
+
+  return { contentText, toolCalls: Array.from(toolCallsByIndex.values()), finishReason };
+}
+
 app.post('/api/conversations/:id/messages', async (c) => {
   const id = c.req.param('id');
   const conversation = await getConversation(c.env.DB, id);
   if (!conversation) return c.json({ error: 'not found' }, 404);
 
-  const { content, model } = await c.req.json<{ content: string; model: string }>();
-  await addMessage(c.env.DB, { conversationId: id, role: 'user', content });
+  const body = await c.req.json<{ content: string; model: string; contentType?: 'text' | 'parts' }>();
+  await addMessage(c.env.DB, {
+    conversationId: id,
+    role: 'user',
+    content: body.content,
+    contentType: body.contentType ?? 'text',
+  });
 
-  const history = await getMessages(c.env.DB, id);
+  const dbHistory = await getMessages(c.env.DB, id);
+  const db = c.env.DB;
+  const apiKey = c.env.OPENROUTER_API_KEY;
+  const braveApiKey = c.env.BRAVE_API_KEY;
+  const model = body.model;
 
-  let upstream: ReadableStream<Uint8Array>;
-  try {
-    upstream = await streamChatCompletion(c.env.OPENROUTER_API_KEY, history, model);
-  } catch (err) {
-    const message = err instanceof OpenRouterError ? err.message : 'unknown error';
-    return new Response(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, {
-      headers: { 'Content-Type': 'text/event-stream' },
-    });
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = writable.getWriter();
+  const encoder = new TextEncoder();
+
+  async function writeSSE(event: string, data: unknown) {
+    await writer.write(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
   }
 
-  const db = c.env.DB;
-  let fullReply = '';
-  const decoder = new TextDecoder();
+  (async () => {
+    try {
+      let apiMessages: ApiMessage[] = mapMessagesToApi(dbHistory);
+      let iterations = 0;
+      let finalText = '';
 
-  const tee = upstream.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        fullReply += decoder.decode(chunk, { stream: true });
-        controller.enqueue(chunk);
-      },
-      async flush() {
-        fullReply += decoder.decode();
-        const textChunks = fullReply
-          .split('\n')
-          .filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]')
-          .map((line) => {
+      while (iterations < 5) {
+        iterations++;
+        const upstream = await streamChatCompletion(apiKey, apiMessages, model, [webSearchToolDefinition]);
+        const turn = await consumeAndForward(upstream, (chunk) => writer.write(chunk));
+
+        if (turn.toolCalls.length > 0 && turn.finishReason === 'tool_calls') {
+          apiMessages = [
+            ...apiMessages,
+            {
+              role: 'assistant',
+              content: turn.contentText || null,
+              tool_calls: turn.toolCalls.map((tc) => ({
+                id: tc.id,
+                type: 'function',
+                function: { name: tc.name, arguments: tc.args },
+              })),
+            },
+          ];
+
+          for (const tc of turn.toolCalls) {
+            let query = '';
             try {
-              const parsed = JSON.parse(line.slice('data: '.length));
-              return parsed.choices?.[0]?.delta?.content ?? '';
+              query = JSON.parse(tc.args || '{}').query ?? '';
             } catch {
-              return '';
+              query = '';
             }
-          })
-          .join('');
-        if (textChunks) {
-          await addMessage(db, { conversationId: id, role: 'assistant', content: textChunks, model });
-        }
-      },
-    })
-  );
+            await writeSSE('tool_call', { name: tc.name, query });
 
-  return new Response(tee, {
+            const result =
+              tc.name === 'web_search'
+                ? await executeWebSearch(braveApiKey, query)
+                : { error: `unknown tool ${tc.name}` };
+            const resultText = JSON.stringify(result);
+
+            await addMessage(db, {
+              conversationId: id,
+              role: 'tool',
+              content: resultText,
+              toolName: tc.name,
+              toolCallId: tc.id,
+            });
+            apiMessages = [...apiMessages, { role: 'tool', tool_call_id: tc.id, content: resultText }];
+          }
+          continue;
+        }
+
+        finalText = turn.contentText;
+        break;
+      }
+
+      if (finalText) {
+        await addMessage(db, { conversationId: id, role: 'assistant', content: finalText, model });
+      } else if (iterations >= 5) {
+        await writeSSE('error', { message: 'Tool use limit reached' });
+      }
+      await writer.write(encoder.encode('data: [DONE]\n\n'));
+    } catch (err) {
+      const message = err instanceof OpenRouterError ? err.message : 'unknown error';
+      await writeSSE('error', { message });
+    } finally {
+      await writer.close();
+    }
+  })();
+
+  return new Response(readable, {
     headers: { 'Content-Type': 'text/event-stream' },
   });
 });
