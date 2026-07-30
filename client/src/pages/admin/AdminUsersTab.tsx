@@ -584,7 +584,7 @@ export default function AdminUsersTab({
               <FilterX className="w-3 h-3" /> Reset
             </button>
           )}
-          <span className="text-[9px] text-rmpg-500 ml-auto">
+          <span className="text-[9px] text-fg-muted ml-auto">
             Showing {filteredUsers.length} of {users.length}
           </span>
           <button type="button" onClick={exportUsersCsv} className="toolbar-btn text-[9px]" title="Export visible users to CSV" aria-label="Export users to CSV">
@@ -666,7 +666,7 @@ export default function AdminUsersTab({
         ) : (
           <div className="flex-1 overflow-auto scrollbar-dark">
             {onStatusChange && filteredUsers.length > 0 && (
-              <label className="flex items-center gap-2 px-4 py-1.5 border-b border-rmpg-700/60 text-[10px] text-rmpg-400 cursor-pointer select-none">
+              <label className="flex items-center gap-2 px-4 py-1.5 border-b border-rmpg-700/60 text-[10px] text-fg-muted cursor-pointer select-none">
                 <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} className="accent-brand-500" aria-label="Select all visible users" />
                 Select all ({filteredUsers.length})
               </label>
@@ -732,7 +732,7 @@ export default function AdminUsersTab({
                         {user.last_login || user.last_login_display ? (
                           <span title="Last login">{timeAgo(user.last_login || user.last_login_display || '')}</span>
                         ) : (
-                          <span className="text-rmpg-600">Never logged in</span>
+                          <span className="text-fg-muted">Never logged in</span>
                         )}
                         {(user as any).forcePasswordChange && (
                           <span className="inline-flex items-center gap-0.5 text-amber-400" title="Must change password on next login">
