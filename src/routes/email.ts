@@ -576,12 +576,24 @@ email.get('/messages', async (c) => {
 // ─── Cached-message search (search-as-you-type) ──────────────────
 // Searches the D1 email_messages cache (subject/from/preview LIKE).
 // Returns raw snake_case rows — EmailPage maps them to camelCase.
+
+// D1's LIKE operator silently stops matching once the pattern exceeds
+// roughly 48-50 characters — not an error, just wrong (empty) results.
+// Cap the raw query well under that so `%${q}%` (42 chars max) never
+// approaches the boundary. See project memory: D1 LIKE 50-char pattern cap.
+const MAX_EMAIL_SEARCH_QUERY_LEN = 40;
+
+export function buildSearchLikePattern(rawQuery: string): string {
+  const capped = rawQuery.slice(0, MAX_EMAIL_SEARCH_QUERY_LEN);
+  return `%${capped.replace(/[%_]/g, ' ')}%`;
+}
+
 email.get('/messages/search', async (c) => {
   const userId = c.get('userId');
   const q = (c.req.query('q') || '').trim();
   if (q.length < 2) return c.json({ results: [] });
   const folder = (c.req.query('folder') || '').trim();
-  const like = `%${q.replace(/[%_]/g, ' ')}%`;
+  const like = buildSearchLikePattern(q);
   try {
     const params: unknown[] = [userId, like, like, like];
     let folderClause = '';
