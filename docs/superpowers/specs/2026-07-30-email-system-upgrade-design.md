@@ -71,9 +71,45 @@ Harden and extend the existing system across 5 ordered phases:
 
 **Fix:** Pre-check total attachment bytes in `POST /send` before calling `enqueueAndSend`; return `413` with a clear message (`"Attachments total {size}, max 25MB per message"`) rather than letting a doomed request hit the outbox and burn a retry cycle.
 
-## 5. Phase 2 — At-rest encryption (design sketch, implemented later)
+## 5. Phase 2 — At-rest encryption of cached email content
 
-Extend the AES-GCM pattern already used for OAuth secrets (`emailCrypto.ts`) to `email_messages.body_preview` and `email_scheduled.body`/`to_addresses`. Follow the envelope-encryption shape in `src/utils/encryptedR2.ts` (per-row DEK wrapped by a master KEK) rather than reusing the single static key in `emailCrypto.ts` — that key is fine for a handful of OAuth secret rows, not for a growing table of message bodies. Decrypt on read in `/messages/search` and any future full-body cache. Full plan written when this phase starts.
+**Status:** Approved 2026-07-30, ready for implementation plan.
+
+### 5.1 Envelope pattern
+
+New `src/utils/emailFieldCrypto.ts`, mirroring the shape of `src/utils/encryptedR2.ts` (per-value fresh random DEK, wrapped by a master KEK) rather than reusing `emailCrypto.ts`'s single static-key approach — that key is fine for a handful of OAuth secret rows, not appropriate for a growing table of message content. Unlike the R2 case (one `file_encryption_keys` D1 row per file), these are inline TEXT columns, so the wrapped DEK and both IVs are packed into the stored string itself rather than a separate table:
+
+```
+v2:<base64 wrapped_dek>:<base64 dek_iv>:<base64 field_iv>:<base64 ciphertext>
+```
+
+New secret: `EMAIL_FIELD_ENCRYPTION_KEK` (distinct from `FILE_ENCRYPTION_KEK` — different blast radius; a compromised email KEK shouldn't also expose file encryption, and vice versa). Set via `wrangler secret put EMAIL_FIELD_ENCRYPTION_KEK`; local dev via `.dev.vars`.
+
+Exports: `encryptField(env, plaintext: string): Promise<string>`, `decryptFieldIfEncrypted(env, stored: string): Promise<string>` — the latter checks for the `v2:` prefix and passes the value through unmodified if absent (mirrors `emailCrypto.ts`'s `v1:` legacy-tolerant check), so pre-existing plaintext rows keep working with **no backfill migration**.
+
+**Fails closed** (unlike `emailCrypto.ts`'s graceful `JWT_SECRET` fallback, matching `encryptedR2.ts`'s posture): a missing/malformed KEK throws `EmailFieldEncryptionError` rather than silently storing plaintext — silently skipping encryption here would defeat the feature without anyone noticing.
+
+### 5.2 Scope
+
+Encrypted: `email_messages.body_preview`, `email_scheduled.body`, `email_scheduled.to_addresses`, `email_scheduled.cc_addresses`.
+
+Left plaintext: `email_messages.subject`, `from_address`, `from_name` — needed for list views and the existing `GET /messages/search` LIKE query; encrypting them would either break search entirely or require a much heavier searchable-encryption scheme not justified at this scale.
+
+### 5.3 Search behavior change
+
+`GET /messages/search`'s `LIKE` clause narrows to `subject OR from_address` only — `body_preview` drops out of the WHERE clause, since ciphertext can't be LIKE-matched. Code comment explains why, so a future reader doesn't "fix" it by decrypting rows in a loop (which would defeat pagination/performance).
+
+### 5.4 Write/read paths
+
+- `runEmailPoll`'s `email_messages` upsert: encrypt `body_preview` before the `INSERT ... ON CONFLICT`.
+- `POST /schedule`: encrypt `body`/`to_addresses`/`cc_addresses` before the `INSERT INTO email_scheduled`.
+- `drainScheduledEmails` (the cron drain that reads pending `email_scheduled` rows and builds the Graph payload): decrypt before use.
+- Any handler that reads `body_preview` back out for display (message list, search results): decrypt-tolerant on the way out.
+
+### 5.5 Non-goals for this phase
+
+- No backfill of existing plaintext rows — decrypt-tolerant reads make this unnecessary; old rows age out naturally as the poller's upsert cycle touches them again (though note: the upsert only re-writes `is_read`/`is_flagged`/`categories`/`body_preview` on conflict, so `body_preview` specifically DOES get re-encrypted on the next poll touch — full text of this needs verifying against the actual `ON CONFLICT` clause when the plan is written).
+- No encryption of `email_outbox.payload` or `email_audit_log` fields in this phase — those are Phase 1 territory (already shipped) and out of scope for this pass; revisit only if a future audit flags them.
 
 ## 6. Phase 3 — Per-user mailboxes (design sketch)
 
