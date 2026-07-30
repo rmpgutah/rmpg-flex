@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { encryptField, decryptFieldIfEncrypted } from '../src/utils/emailFieldCrypto';
+import { encryptField, decryptFieldIfEncrypted, EmailFieldEncryptionError } from '../src/utils/emailFieldCrypto';
 
 const TEST_KEK = 'MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=';
 

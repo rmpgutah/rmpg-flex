@@ -27,7 +27,7 @@ import {
   type SendAttachment, type SendInput,
 } from '../utils/emailSend';
 import { encryptSecret, decryptSecret } from '../utils/emailCrypto';
-import { encryptField, decryptFieldIfEncrypted } from '../utils/emailFieldCrypto';
+import { encryptField, decryptFieldIfEncrypted, EmailFieldEncryptionError } from '../utils/emailFieldCrypto';
 import { auditEmailAction } from '../utils/emailAudit';
 import type { Bindings, Variables } from '../types';
 import type { MiddlewareHandler } from 'hono';
@@ -638,7 +638,8 @@ email.get('/messages/search', async (c) => {
       body_preview: await decryptFieldIfEncrypted(c.env, r.body_preview as string | null),
     })));
     return c.json({ results });
-  } catch {
+  } catch (err) {
+    log.error('messages search failed', { userId }, err);
     return c.json({ results: [] });
   }
 });
@@ -1460,7 +1461,7 @@ export async function runEmailPoll(env: Bindings, ctx?: ExecutionContext): Promi
           m.importance, categories, m.received_at ?? null, m.sent_at ?? null,
         );
         upserted++;
-      } catch { /* upsert best-effort */ }
+      } catch (err) { log.error('email_messages upsert failed', { graphId: m.graph_id }, err); }
 
       // Apply Graph-side side effects (move/markRead/flag). Fire-and-forget
       // so a single failure can't stall the poll loop.
@@ -2473,6 +2474,18 @@ export async function drainScheduledEmails(env: Bindings): Promise<number> {
       await execute(env.DB, "UPDATE email_scheduled SET status = 'sent', sent_at = datetime('now') WHERE id = ?", r.id);
       queued++;
     } catch (err: unknown) {
+      if (err instanceof EmailFieldEncryptionError) {
+        // KEK unset/bad — this is our failure, not the row's. Leave it
+        // pending so the next cron tick retries once the KEK is fixed,
+        // rather than permanently destroying a scheduled send.
+        log.error('drainScheduledEmails: KEK failure, leaving row pending for retry', { id: r.id }, err);
+        await execute(
+          env.DB,
+          "UPDATE email_scheduled SET status = 'pending' WHERE id = ?",
+          r.id,
+        ).catch(() => null);
+        continue;
+      }
       await execute(
         env.DB,
         "UPDATE email_scheduled SET status = 'failed', last_error = ? WHERE id = ?",
