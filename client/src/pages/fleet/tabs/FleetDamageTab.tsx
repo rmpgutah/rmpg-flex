@@ -62,7 +62,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
   const load = async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<DamageReport[]>(`/fleet/${vehicleId}/damage-reports`); setReports(data);
+      const data = await apiFetch<DamageReport[]>(`/fleet/${vehicleId}/damage-reports`); setReports(Array.isArray(data) ? data : []);
     } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to load damage reports', 'error'); } finally { setLoading(false); }
   };
 

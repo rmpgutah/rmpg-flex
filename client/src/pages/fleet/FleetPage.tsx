@@ -392,7 +392,8 @@ export default function FleetPage() {
       const data = await apiFetch<FleetVehicle & { recent_maintenance?: FleetMaintenance[]; maintenance?: FleetMaintenance[] }>(`/fleet/${id}`);
       const { recent_maintenance, maintenance: maint, ...vehicle } = data;
       setDetail(vehicle);
-      setMaintenance(recent_maintenance || maint || []);
+      const maintList = recent_maintenance ?? maint;
+      setMaintenance(Array.isArray(maintList) ? maintList : []);
     } catch (err) {
       addToast('Failed to load vehicle details', 'error');
     }
@@ -465,7 +466,7 @@ export default function FleetPage() {
       // rather than a paginated slice — lets operators see lifetime
       // consumption + every flagged fill in the period selector.
       const data = await apiFetch<{ data: FleetFuelLog[]; summary: FleetFuelSummary }>(`/fleet/${id}/fuel?per_page=10000`);
-      setFuelLogs(data.data || []);
+      setFuelLogs(Array.isArray(data?.data) ? data.data : []);
       setFuelSummary(data.summary || null);
     } catch { addToast('Failed to load fuel logs', 'error'); }
   };

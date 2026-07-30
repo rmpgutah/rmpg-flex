@@ -106,7 +106,16 @@ export default function FleetAnalysisFormsTab({
       apiFetch<FleetInspection[]>('/fleet/inspections').catch(() => [] as FleetInspection[]),
       apiFetch<FleetAssignment[]>('/fleet/assignments').catch(() => [] as FleetAssignment[]),
     ]);
-    return { maintenance, fuelLogs, inspections, assignments };
+    // .catch() above only guards a rejected promise — a 200 with an
+    // unexpected (non-array) body would otherwise reach the .filter() calls
+    // below unguarded. Confirmed live in production (2026-07-30): the same
+    // class of bug crashed FleetRecallsTab and FleetFuelCardsTab.
+    return {
+      maintenance: Array.isArray(maintenance) ? maintenance : [],
+      fuelLogs: Array.isArray(fuelLogs) ? fuelLogs : [],
+      inspections: Array.isArray(inspections) ? inspections : [],
+      assignments: Array.isArray(assignments) ? assignments : [],
+    };
   }, []);
 
   const handleGenerate = useCallback(async (report: ReportType) => {

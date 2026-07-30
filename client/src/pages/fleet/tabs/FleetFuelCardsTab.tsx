@@ -42,8 +42,8 @@ export default function FleetFuelCardsTab() {
         apiFetch<FuelCard[]>('/fleet/fuel-cards'),
         apiFetch<{ data: any[] }>('/fleet?per_page=200'),
       ]);
-      setCards(cardsData);
-      setVehicles(vehData.data || []);
+      setCards(Array.isArray(cardsData) ? cardsData : []);
+      setVehicles(Array.isArray(vehData?.data) ? vehData.data : []);
     } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to load fuel cards', 'error'); } finally { setLoading(false); }
   };
 
