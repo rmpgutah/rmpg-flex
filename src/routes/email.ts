@@ -925,7 +925,7 @@ email.post('/send', emailSendRateLimit, async (c) => {
     toAddresses: toAddrs.map((a) => a.emailAddress.address),
     ccAddresses: parseAddrList(body.cc).map((a) => a.emailAddress.address),
     subject: body.subject,
-    status: r.status === 'sent' ? 'sent' : 'failed',
+    status: r.status === 'sent' ? 'sent' : 'queued',
     error: r.error,
   });
   if (r.status === 'sent') return c.json({ success: true, outboxId: r.outboxId });
@@ -1053,17 +1053,42 @@ export async function drainEmailOutbox(env: Bindings): Promise<{ sent: number; f
   const refresh = await getCfgDecrypted(env, K.refreshToken);
   if (!refresh) return { sent: 0, failed: 0, deferred: 0 };
 
-  const rows = await query<{ id: number; payload: string; attempts: number }>(
+  const rows = await query<{ id: number; payload: string; attempts: number; owner_user_id: number }>(
     env.DB,
-    "SELECT id, payload, attempts FROM email_outbox WHERE status = 'pending' AND next_attempt_at <= datetime('now') ORDER BY id ASC LIMIT 10",
+    "SELECT id, payload, attempts, owner_user_id FROM email_outbox WHERE status = 'pending' AND next_attempt_at <= datetime('now') ORDER BY id ASC LIMIT 10",
   );
   let sent = 0, failed = 0, deferred = 0;
   const BACKOFFS = ['+1 minute', '+5 minutes', '+30 minutes', '+2 hours', '+6 hours'];
+  // Records the FINAL resolution ('sent' or 'failed') of a previously-queued
+  // send. The initial /send handler already wrote a 'queued' row; this closes
+  // it out once the retry loop actually succeeds or gives up for good.
+  const auditResolution = async (row: { id: number; payload: string; owner_user_id: number }, status: 'sent' | 'failed', error?: string) => {
+    try {
+      const p = JSON.parse(row.payload) as {
+        message?: {
+          subject?: string;
+          toRecipients?: Array<{ emailAddress?: { address?: string } }>;
+          ccRecipients?: Array<{ emailAddress?: { address?: string } }>;
+        };
+      };
+      const toAddresses = (p.message?.toRecipients || []).map((x) => x.emailAddress?.address || '').filter(Boolean);
+      const ccAddresses = (p.message?.ccRecipients || []).map((x) => x.emailAddress?.address || '').filter(Boolean);
+      const subject = p.message?.subject || '';
+      const user = await queryFirst<{ username: string | null }>(env.DB, 'SELECT username FROM users WHERE id = ?', row.owner_user_id).catch(() => null);
+      await auditEmailAction(env, {
+        userId: row.owner_user_id, username: user?.username, action: 'send',
+        toAddresses, ccAddresses, subject, status, error,
+      });
+    } catch (auditErr) {
+      log.error('Failed to write drainEmailOutbox resolution audit row', { outboxId: row.id }, auditErr);
+    }
+  };
   for (const r of rows) {
     try {
       const res = await graphFetch(env, '/me/sendMail', { method: 'POST', body: r.payload });
       if (res.ok) {
         await execute(env.DB, "UPDATE email_outbox SET status = 'sent', sent_at = datetime('now') WHERE id = ?", r.id);
+        await auditResolution(r, 'sent');
         sent++;
         continue;
       }
@@ -1072,6 +1097,7 @@ export async function drainEmailOutbox(env: Bindings): Promise<{ sent: number; f
       const err = `Graph ${res.status}: ${text.slice(0, 200)}`;
       if (attempts >= BACKOFFS.length) {
         await execute(env.DB, "UPDATE email_outbox SET status = 'failed', attempts = ?, last_error = ? WHERE id = ?", attempts, err, r.id);
+        await auditResolution(r, 'failed', err);
         failed++;
       } else {
         await execute(
@@ -1086,6 +1112,7 @@ export async function drainEmailOutbox(env: Bindings): Promise<{ sent: number; f
       const msg = err instanceof Error ? err.message : 'send failed';
       if (attempts >= BACKOFFS.length) {
         await execute(env.DB, "UPDATE email_outbox SET status = 'failed', attempts = ?, last_error = ? WHERE id = ?", attempts, msg, r.id);
+        await auditResolution(r, 'failed', msg);
         failed++;
       } else {
         await execute(
@@ -2338,7 +2365,7 @@ email.delete('/templates/:id', async (c) => {
 });
 
 // ─── Schedule send (queue in D1, cron drains) ────────────────────
-email.post('/schedule', async (c) => {
+email.post('/schedule', emailSendRateLimit, async (c) => {
   const userId = c.get('userId');
   const body = await c.req.json().catch(() => ({})) as {
     to?: string | string[]; cc?: string | string[]; bcc?: string | string[];
@@ -2348,6 +2375,13 @@ email.post('/schedule', async (c) => {
   const to = parseAddrList(body.to).map((r) => r.emailAddress.address);
   if (!to.length) return c.json({ error: 'At least one recipient required' }, 400);
   if (!body.scheduledAt) return c.json({ error: 'scheduledAt required' }, 400);
+  const attBytes = totalAttachmentBytes(body.attachments);
+  if (attBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+    return c.json({
+      error: `Attachments total ${(attBytes / 1024 / 1024).toFixed(1)}MB, max ${MAX_TOTAL_ATTACHMENT_BYTES / 1024 / 1024}MB per message`,
+      code: 'ATTACHMENTS_TOO_LARGE',
+    }, 413);
+  }
   const when = body.scheduledAt.replace('T', ' ').slice(0, 19);
   const cc = parseAddrList(body.cc).map((r) => r.emailAddress.address);
   const bcc = parseAddrList(body.bcc).map((r) => r.emailAddress.address);
@@ -2554,7 +2588,7 @@ email.get('/contacts/search', async (c) => {
     }
   } catch { /* fall through to cache */ }
   try {
-    const like = `%${q.replace(/[%_]/g, ' ')}%`;
+    const like = buildSearchLikePattern(q);
     const rows = await query<{ from_address: string; from_name: string | null }>(
       c.env.DB,
       `SELECT from_address, MAX(from_name) AS from_name FROM email_messages

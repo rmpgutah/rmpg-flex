@@ -56,6 +56,24 @@ describe('auditEmailAction', () => {
     expect(capturedParams).toContain('Graph 429: throttled');
   });
 
+  it('records a "queued" status for a send that failed synchronously but was durably enqueued for retry', async () => {
+    let capturedParams: unknown[] = [];
+    const db = fakeDb((_sql, params) => { capturedParams = params; });
+    const env = { DB: db } as any;
+
+    await auditEmailAction(env, {
+      userId: 7,
+      action: 'send',
+      toAddresses: ['a@x.com'],
+      subject: 'Case update',
+      status: 'queued',
+      error: 'Graph 503: temporarily unavailable',
+    });
+
+    expect(capturedParams).toContain('queued');
+    expect(capturedParams).toContain('Graph 503: temporarily unavailable');
+  });
+
   it('never throws even if the DB write fails', async () => {
     const db = {
       prepare: () => ({ bind: () => ({ run: async () => { throw new Error('D1 down'); } }) }),

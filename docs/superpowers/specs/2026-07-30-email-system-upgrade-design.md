@@ -61,7 +61,9 @@ Harden and extend the existing system across 5 ordered phases:
 
 **Problem:** `email_audit_log` table exists in the schema (migration `0082_email_integration.sql`) but is never written — `GET /audit` reads `email_outbox` instead, which only captures original sends, not reply/forward/delete/rule-triggered moves. A supervisor reviewing "who sent what" today has a real but incomplete picture.
 
-**Fix:** Add a small `auditEmailAction(env, userId, action, meta)` helper writing to `email_audit_log`. Call it from every mutating path: `/send` (already have outbox, add this too), `/messages/:id/reply`, forward, `/messages/:id` (delete), and rule-triggered Graph patches in `runEmailPoll`. Keep `GET /audit` as-is (outbox-based, used by `AdminEmailAuditTab`) for now — this phase only makes the write-side complete; wiring `/audit` to prefer the richer table is a follow-up once the table has data to show.
+**Fix:** Add a small `auditEmailAction(env, userId, action, meta)` helper writing to `email_audit_log`. Call it from every mutating path: `/send` (already have outbox, add this too), `/messages/:id/reply`, forward, `/messages/:id` (delete). Keep `GET /audit` as-is (outbox-based, used by `AdminEmailAuditTab`) for now — this phase only makes the write-side complete; wiring `/audit` to prefer the richer table is a follow-up once the table has data to show.
+
+**Deferred (not implemented this phase):** rule-triggered Graph patches applied automatically by `runEmailPoll` (mark-read/flag/move) are NOT audited. `runEmailPoll` runs as a scheduled cron job against a single shared tenant mailbox — it has no per-request authenticated user to attribute an audit row to, so wiring it into `auditEmailAction` (which is keyed on `userId`) is a meaningfully bigger change than the per-request routes above. Tracked as future work, not part of Phase 1 audit completeness.
 
 ### 4.4 Attachment size cap on send
 

@@ -31,7 +31,11 @@ export interface EmailAuditOpts {
   ccAddresses?: string[];
   subject?: string;
   graphMessageId?: string;
-  status: 'sent' | 'failed';
+  // 'queued' means a synchronous send attempt failed but the message was
+  // durably enqueued for retry via drainEmailOutbox — not a final outcome.
+  // drainEmailOutbox writes a second audit row with the FINAL 'sent'/'failed'
+  // status once the retry resolves (see src/routes/email.ts).
+  status: 'sent' | 'failed' | 'queued';
   error?: string;
 }
 
