@@ -275,6 +275,40 @@ self.addEventListener('activate', (event) => {
 // (script never loads), so just let it fail its normal, less confusing way.
 const TELEMETRY_HOSTS = ['events.mapbox.com', 'events.mapbox.cn'];
 
+// Self-heal for the stale-chunk wedge (live incident 2026-07-30).
+//
+// When the poison guard below sees HTML for a /assets/*.js request, the real
+// culprit is the CACHED NAVIGATION SHELL: an index.html we cached earlier whose
+// entry <script> points at a hash the current deploy no longer serves. Leaving
+// that shell cached means every subsequent navigation re-serves the same dead
+// pointer, so the tab can never recover on its own.
+//
+// Drop the cached navigation entries (SPA routes have no file extension) so the
+// NEXT navigation goes to the network for fresh HTML. Best-effort and fully
+// swallowed: this runs inside waitUntil and must never affect the response.
+async function purgeCachedShell() {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const keys = await cache.keys();
+    await Promise.all(
+      keys
+        .filter((req) => {
+          try {
+            const p = new URL(req.url).pathname;
+            // '/' and extensionless SPA routes are navigation shells.
+            // Anything with an extension (.js/.css/.png/…) is a real asset.
+            return p === '/' || !/\.[a-z0-9]+$/i.test(p);
+          } catch (e) {
+            return false;
+          }
+        })
+        .map((req) => cache.delete(req)),
+    );
+  } catch (e) {
+    /* best effort — never let self-heal break the fetch path */
+  }
+}
+
 // Fetch — network-first for code/pages, cache-first for images and tiles
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
@@ -346,6 +380,12 @@ self.addEventListener('fetch', (event) => {
               // dynamic import rejects and lazyRetry reloads the fresh bundle.
               const ct = response.headers.get('Content-Type') || '';
               if (ct.includes('text/html')) {
+                // Evict the cached shell that pointed at this dead hash, so the
+                // next navigation refetches fresh HTML instead of re-serving the
+                // same broken entry <script> forever. Without this the tab is
+                // wedged on the INITIALIZING splash permanently — see
+                // purgeCachedShell() above and index.html's entry error handler.
+                event.waitUntil(purgeCachedShell());
                 return new Response('', { status: 404, statusText: 'Stale chunk (HTML fallback)' });
               }
               if (response.ok) {
