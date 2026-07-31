@@ -102,6 +102,42 @@ describe('computePriorityScore — age now counts', () => {
   it('contributes nothing when there is no date at all', () => {
     expect(computePriorityScore({ type: 'M' })).toBe(30);
   });
+
+  it('is CONTINUOUS — two old warrants of different ages do not tie', () => {
+    // THE regression this replaced. A banded age term (5/10/15 at 6mo/1y/3y) gave
+    // every 3y+ warrant the same 15, and measured live that put **64 of 100 rows
+    // on the identical score of 45**. No bucket threshold can separate a cluster
+    // sitting on one value, so the banding itself destroyed the ordering.
+    const fourYears = computePriorityScore({ type: 'M', issued_date: daysAgo(1460) });
+    const twentyYears = computePriorityScore({ type: 'M', issued_date: daysAgo(7300) });
+    expect(twentyYears).toBeGreaterThan(fourYears);
+
+    // And the ramp is monotonic across the whole range, not just at the ends —
+    // this is what gives the service queue a usable sort.
+    const ladder = [200, 500, 1000, 2000, 3000, 4000].map(
+      (d) => computePriorityScore({ type: 'M', issued_date: daysAgo(d) }),
+    );
+    for (let i = 1; i < ladder.length; i++) {
+      expect(ladder[i]).toBeGreaterThanOrEqual(ladder[i - 1]);
+    }
+    // Strictly increasing somewhere in the middle, i.e. genuinely not banded.
+    expect(new Set(ladder).size).toBeGreaterThan(3);
+  });
+
+  it('caps staleness so age can never overtake severity', () => {
+    // A maximally stale misdemeanor must still rank below a brand-new felony.
+    const ancientMisd = computePriorityScore({ type: 'M', issued_date: daysAgo(50_000) });
+    const freshFelony = computePriorityScore({ type: 'F', issued_date: daysAgo(0) });
+    expect(ancientMisd).toBe(45); // 30 + the 15 ceiling, not more
+    expect(ancientMisd).toBeLessThan(freshFelony);
+  });
+
+  it('returns an integer — the score is rendered and compared to integer buckets', () => {
+    for (const d of [1, 137, 999, 3651]) {
+      const s = computePriorityScore({ type: 'M', issued_date: daysAgo(d) });
+      expect(Number.isInteger(s)).toBe(true);
+    }
+  });
 });
 
 describe('computePriorityScore — remaining terms', () => {

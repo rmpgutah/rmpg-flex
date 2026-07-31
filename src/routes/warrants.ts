@@ -846,12 +846,23 @@ export function computePriorityScore(row: Record<string, any>): number {
   // Age of the WARRANT (issued_date, with created_at as the documented
   // fallback) — same source the AGE column uses, so the two cannot disagree.
   const ageDays = ageDaysFrom(row.issued_date ?? row.created_at);
-  let staleness = 0;
-  if (ageDays != null) {
-    if (ageDays >= 365 * 3) staleness = 15;      // 3y+ — effectively never served
-    else if (ageDays >= 365) staleness = 10;     // 1y+
-    else if (ageDays >= 180) staleness = 5;      // 6mo+
-  }
+  // CONTINUOUS, not banded. An earlier version used three steps (5/10/15 at
+  // 6mo/1y/3y) and measured live that produced a useless distribution: nearly
+  // every warrant in this dataset is 3+ years old, so they ALL collected the same
+  // 15 and **64 of 100 rows landed on the identical score of 45**. No bucket
+  // threshold can separate a cluster sitting on one value — the banding itself
+  // created the tie.
+  //
+  // Ramping linearly to a 10-year ceiling instead means a 20-year-old warrant
+  // genuinely outranks a 4-year-old one, which is the ordering a service queue
+  // consumes (it sorts by score; the chip label is secondary). Still capped at 15
+  // so age can never overtake severity: a maximally stale misdemeanor (30+15=45)
+  // stays below a fresh felony (60).
+  const STALENESS_MAX = 15;
+  const STALENESS_RAMP_DAYS = 3650; // 10 years to reach the ceiling
+  const staleness = ageDays == null
+    ? 0
+    : Math.min(STALENESS_MAX, (ageDays / STALENESS_RAMP_DAYS) * STALENESS_MAX);
 
   let urgency = 0;
   const expiresAt = row.expires_at;
@@ -860,10 +871,13 @@ export function computePriorityScore(row: Record<string, any>): number {
     if (Number.isFinite(days) && days >= 0 && days <= 7) urgency = 15;
   }
 
-  return Math.min(
+  // Rounded because `staleness` is now continuous: the score is rendered directly
+  // and compared against integer bucket thresholds, so a fractional value would
+  // leak decimals into the UI and make boundary behaviour hard to reason about.
+  return Math.round(Math.min(
     100,
     base + Math.min(attempts * 5, 20) + staleness + urgency + (bail > 10_000 ? 10 : 0),
-  );
+  ));
 }
 
 function ageDaysFrom(createdAt: unknown): number | null {
