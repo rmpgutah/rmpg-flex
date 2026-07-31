@@ -7,6 +7,7 @@
 // ============================================================
 
 import { playToneAsync } from './dispatchTones';
+import type { VoiceMode } from './edgeTTS';
 import { renderCallNarrative, type Terseness, type CallSlots } from './narrativeRenderer';
 // Spoken-label formatter: spells acronyms letter-by-letter so the voice says
 // "P. S. O. Client Request", not the mangled word "Pso Client Request".
@@ -110,6 +111,10 @@ interface CallFlags {
 
 interface VoicePhrase {
   text: string;
+  /** Which voice chain speaks this phrase. Absent = 'conversational'
+   *  (P25 radio haze), which is what all dispatch traffic uses.
+   *  'alert_pa' routes to the station-PA chain for automated alerts. */
+  mode?: VoiceMode;
 }
 
 // ─── Constants ──────────────────────────────────────────────
@@ -250,13 +255,14 @@ export function getVoiceAlertsEnabled(): boolean {
 // turning off voice entirely. Each category maps to one localStorage
 // key; absent/anything-but-'false' means enabled (opt-out, not opt-in).
 
-export type VoiceEventCategory = 'new_call' | 'panic' | 'bolo' | 'status';
+export type VoiceEventCategory = 'new_call' | 'panic' | 'bolo' | 'status' | 'notification';
 
 const EVENT_KEYS: Record<VoiceEventCategory, string> = {
-  new_call: 'rmpg-voice-ev-new-call',
-  panic:    'rmpg-voice-ev-panic',
-  bolo:     'rmpg-voice-ev-bolo',
-  status:   'rmpg-voice-ev-status',
+  new_call:     'rmpg-voice-ev-new-call',
+  panic:        'rmpg-voice-ev-panic',
+  bolo:         'rmpg-voice-ev-bolo',
+  status:       'rmpg-voice-ev-status',
+  notification: 'rmpg-voice-ev-notification',
 };
 
 export function setEventEnabled(category: VoiceEventCategory, enabled: boolean): void {
@@ -321,7 +327,7 @@ function speakPhrase(phrase: VoicePhrase): Promise<void> {
   return new Promise(async (resolve) => {
     try {
       const { speak: edgeSpeak } = await import('./edgeTTS');
-      await edgeSpeak(phrase.text);
+      await edgeSpeak(phrase.text, undefined, phrase.mode ?? 'conversational');
     } catch {
       // Edge TTS unavailable — fall back to browser SpeechSynthesis as last resort
       if (isSpeechAvailable()) {
@@ -1198,19 +1204,49 @@ export async function announceBackupRequestEnhanced(unit: string, location: stri
 }
 
 /**
- * Announce call update (notes, priority change, etc.):
- * "Update on call 26-CFS00110. New note added by Dispatch."
+ * Announce that a call changed. Says exactly "Call updated." — deliberately
+ * bare, because the audio is an ATTENTION CUE, not a data channel; the
+ * dispatcher reads the detail off the screen. Total chain ~1.4s (110ms info
+ * tone + 400ms gap + 0.8s voice).
+ *
+ * `updateType` and `author` are kept for call-site compatibility and for the
+ * dedup key, but are NOT spoken.
+ *
+ * Until 2026-07-31 this built `Update on call ${callNumber}. ${updateType}`,
+ * and 14 of its 16 call sites passed callNumber = '' while using it as a
+ * generic "speak this text" channel — so production announced
+ * "Update on call ." then read unrelated text, 6.2s of it. Those call sites
+ * now use speakDispatcherResponse() below.
  */
 export async function announceCallUpdate(callNumber: string, updateType: string, author?: string): Promise<void> {
   if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
+  // Dedup still keys on the detail so repeated identical updates stay quiet.
   const dedupKey = `callupdate:${callNumber}:${updateType}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  enqueuePhrases([
-    { text: `Update on call ${callNumber}. ${updateType}${author ? ` by ${author}` : ''}.` },
-  ]);
+  void author; // intentionally unspoken — see doc comment above
+  enqueuePhrases([{ text: 'Call updated.' }]);
+}
+
+/**
+ * Speak a dispatcher tool-query readback verbatim — unit counts, weather,
+ * priority breakdowns, stacked-call checks, ETA answers.
+ *
+ * No prefix and no dedup: these are direct answers to an operator action,
+ * so repetition is intentional and a canned preamble would be noise.
+ *
+ * This exists because 14 of announceCallUpdate's 16 call sites were passing
+ * callNumber = '' and using it as a generic "speak this text" channel, which
+ * produced "Update on call ." followed by unrelated text. Those call sites
+ * live here now.
+ */
+export async function speakDispatcherResponse(text: string): Promise<void> {
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  enqueuePhrases([{ text: trimmed }]);
 }
 
 /**
@@ -1790,3 +1826,39 @@ export function announceNarrativeUpdate(
   }
 }
 
+/**
+ * Speak a notification alert through the automated station-PA voice.
+ *
+ * Called by notificationTones.playNotificationTone AFTER its tone, so the
+ * operator hears tone-then-speech. Muting the 'notification' category
+ * silences the SPEECH only — the tone is governed by the separate
+ * rmpg_notification_sounds_<user-id> preference, so an operator can keep the
+ * tone and drop the voice, or vice versa.
+ *
+ * Prefixes carry priority because an operator may not be looking at the
+ * screen. 'normal' gets no prefix: the info pip already means "something
+ * happened", so a canned preamble would just be noise.
+ *
+ * mode: 'alert_pa' routes this through the station-PA chain rather than the
+ * P25 radio haze, so a system alert can never be mistaken for a dispatcher
+ * transmission.
+ */
+export async function announceNotification(priority: string | undefined, detail: string): Promise<void> {
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
+  if (!isEventEnabled('notification')) return;
+
+  const text = detail.trim();
+  if (!text) return;
+
+  const prefix = priority === 'critical' ? 'Critical alert. '
+    : priority === 'high' ? 'High priority. '
+    : '';
+
+  enqueuePhrases([{ text: `${prefix}${text}`, mode: 'alert_pa' }]);
+}
+
+/** Test-only seam: speak exactly one phrase, bypassing the queue.
+ *  Not for production use — callers should go through the announce* API. */
+export function __speakPhraseForTest(phrase: { text: string; mode?: VoiceMode }): Promise<void> {
+  return speakPhrase(phrase);
+}

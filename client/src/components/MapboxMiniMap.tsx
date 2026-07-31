@@ -119,26 +119,16 @@ function buildUnitMarkerEl(callSign: string, status?: UnitStatus): HTMLElement {
   return el;
 }
 
-// Recolor the stock dark-v11 basemap toward the app's steel-blue chrome
-// (--surface-base/--surface-deep in theme-palettes.css) so the map reads as
-// part of the same CAD console rather than a generic gray Mapbox dark style.
-// 'background' and 'water' are present in every Mapbox base style (classic
-// and Standard), so this is safe across style versions; each call is guarded
-// so a future style swap that drops a layer just no-ops instead of throwing.
-function applySteelBlueMapTheme(map: mapboxgl.Map): void {
-  const trySetPaint = (layerId: string, prop: string, value: unknown) => {
-    if (map.getLayer(layerId)) {
-      // setPaintProperty's prop union is keyed per-layer-type; this helper is
-      // intentionally generic across layers, so the exact literal type can't
-      // be threaded through without a much larger overload dance for two
-      // call sites — the runtime getLayer()+try/catch guard is what actually
-      // keeps this safe against a missing/renamed paint property.
-      try { (map.setPaintProperty as (id: string, prop: string, value: unknown) => void)(layerId, prop, value); } catch { /* layer exists but lacks this paint prop on this style version */ }
-    }
-  };
-  trySetPaint('background', 'background-color', '#0d1722');
-  trySetPaint('water', 'fill-color', '#0a1420');
-}
+// NOTE: this file used to define a local steel-blue theming helper that
+// recolored 'background' to #0d1722 and 'water' to #0a1420. It ran on the map's
+// 'load' event — i.e. AFTER applyRmpgBasemap() had already run on 'style.load' —
+// so it silently overwrote two colors of the shared MAP_PALETTE with its own
+// near-black values (canonical: land #22405f, water #142840). The result was a
+// dispatch mini-map noticeably darker than the Map module showing the same
+// city. Deleted rather than reconciled: applyRmpgBasemap already sets
+// background and water, plus the gold arterials, silver roads and label ramp
+// that the local helper never touched. MAP_PALETTE in utils/mapboxBasemap.ts is
+// the single source of map color truth.
 
 export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRouteUpdate }: MapboxMiniMapProps) {
   const navigate = useNavigate();
@@ -209,7 +199,6 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
           if (!cancelled) {
             setLoaded(true);
             setError(null);
-            applySteelBlueMapTheme(map);
 
             // Add compact geocoder control
             if (!geocoderRef.current) {
@@ -354,17 +343,20 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
       {/* Map container */}
       <div ref={containerRef} className="absolute inset-0" />
 
-      {/* Steel-blue tint on just the WebGL canvas (grayscale→sepia→hue-rotate
-          is the standard CSS trick for tinting toward an arbitrary hue while
-          keeping the basemap's own shading/contrast) — scoped to
-          .mapboxgl-canvas specifically, NOT a full-panel overlay, so the
-          priority-colored unit/call marker pins (siblings within the map
-          container, not part of the canvas) keep their true colors. */}
-      <style>{`
-        .mapboxgl-canvas {
-          filter: grayscale(0.4) sepia(0.6) hue-rotate(178deg) saturate(2.4) brightness(0.85);
-        }
-      `}</style>
+      {/* REMOVED 2026-07-31: a `.mapboxgl-canvas { filter: grayscale(.4)
+          sepia(.6) hue-rotate(178deg) saturate(2.4) brightness(.85) }` block
+          used to live here to fake a steel-blue basemap.
+
+          It predated applyRmpgBasemap/MAP_PALETTE, which now produce that look
+          natively and with MEASURED contrast (navy land #22405f, gold arterials
+          #b8912f at 3.63:1, label gold #d9bd72 at 4.63:1). Running a hue-rotate
+          over the finished canvas destroyed every one of those values.
+
+          Worse, the selector was global. A bare `.mapboxgl-canvas` inside JSX
+          is not scoped to this component — while any dispatch mini-map was
+          mounted it tinted EVERY Mapbox canvas in the document, the Map module
+          included, and the tint appeared/vanished as mini-maps mounted and
+          unmounted. Do not reintroduce canvas filters; change MAP_PALETTE. */}
 
       {/* Geocoder compact dark theme override */}
       <style>{`

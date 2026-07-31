@@ -46,10 +46,14 @@ export function playUiClick(): void {
 }
 
 // ── Close / dismiss tone ────────────────────────────────────
-// Spillman console idiom: closing a window/form "de-keys" — the short
-// low roger beep (key_out.wav, the same sampled Motorola de-key used by
-// the radio). Distinct from the generic key tick so an operator hears
+// Descending reed pair (928.1 -> 600.9 Hz, Reed Group 2 tones 9 -> 2) —
+// the mirror of the ascending open tone, so open/close are audibly a
+// matched pair. Distinct from the generic key tick so an operator hears
 // "something closed" without looking. Same gates + throttle as the tick.
+//
+// Until 2026-07-31 this BORROWED the Motorola key_out.wav de-key sample.
+// It now has its own asset; key_out.wav is untouched and still belongs to
+// the radio layer alone.
 const CLOSE_GAIN = 0.16;
 
 export function playUiClose(): void {
@@ -59,7 +63,7 @@ export function playUiClose(): void {
     if (now - lastTick < THROTTLE_MS) return;
     lastTick = now;
     // Sample-only, same policy as the tick: silent on a decode miss.
-    startSoundAsset('key_out', CLOSE_GAIN);
+    startSoundAsset('ui_close', CLOSE_GAIN);
   } catch {
     // Audio must never interfere with the close itself
   }
@@ -82,26 +86,35 @@ function isCloseControl(el: Element): boolean {
 // Played when a dialog/overlay appears (MutationObserver below).
 const DIALOG_SELECTOR = '[role="dialog"], [data-modal], .modal-overlay';
 
+// Ascending reed pair (600.9 -> 928.1 Hz, Reed Group 2 tones 2 -> 9).
+// Was an ALIAS of submit.wav until 2026-07-31 — a dialog opening and a
+// record being saved sounded identical.
+const OPEN_GAIN = 0.16;
+
 export function playUiOpen(): void {
   try {
     if (!clickSoundsEnabled() || getLocalAudioMode() !== 'audible') return;
     const now = Date.now();
     if (now - lastTick < THROTTLE_MS) return;
     lastTick = now;
-    playSoundAsset('submit');
+    startSoundAsset('ui_open', OPEN_GAIN);
   } catch {
     // Audio must never interfere with the open itself
   }
 }
 
 // ── Navigation tone ─────────────────────────────────────────
+// Single 1153.4 Hz pip (Reed Group 6, tone 1). Was an ALIAS of click.wav,
+// so changing screens was indistinguishable from pressing a button.
+const NAV_GAIN = 0.14;
+
 export function playUiNavigate(): void {
   try {
     if (!clickSoundsEnabled() || getLocalAudioMode() !== 'audible') return;
     const now = Date.now();
     if (now - lastTick < THROTTLE_MS) return;
     lastTick = now;
-    playSoundAsset('click');
+    startSoundAsset('navigate', NAV_GAIN);
   } catch {
     // Audio must never interfere with navigation
   }

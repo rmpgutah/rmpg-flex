@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from './useApi';
 import { emitSettingsChange } from '../utils/settingsBus';
+import { DEFAULT_VOICE_ID } from '../utils/voiceCatalog';
 
 export interface VoicePersona {
   voiceId: string;
@@ -20,7 +21,12 @@ const LS = {
 };
 
 const DEFAULT: VoicePersona = {
-  voiceId: 'en-US-JennyNeural',
+  // Sourced from voiceCatalog so there is ONE default, not three. This was
+  // hardcoded to 'en-US-JennyNeural' — an Edge-TTS id the Aura-2 server
+  // rejects — and this hook writes voiceId back to localStorage AND to
+  // /api/voice-persona, so it kept re-seeding an invalid id even after the
+  // catalog was corrected.
+  voiceId: DEFAULT_VOICE_ID,
   rate: 1.0,
   pitch: 0,
   terseness: 'standard',

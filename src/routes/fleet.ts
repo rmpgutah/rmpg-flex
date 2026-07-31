@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { verifySignedResource } from '../utils/signedAccess';
 import { summarizeInspection } from '../utils/vehicleInspection';
@@ -3523,15 +3523,21 @@ fleet.get('/vehicle-comparison', async (c) => {
   try {
     const db = getDb(c.env); const ids = (c.req.query('ids') || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0);
     if (ids.length === 0) return c.json({ vehicles: [] });
-    const placeholders = ids.map(() => '?').join(',');
     // Pre-aggregate per table — a direct double JOIN fans out rows and
     // multiplies both SUMs (maint × fuel-log row counts).
-    const vehicles = await query<Record<string, unknown>>(db, `
+    //
+    // queryInChunks: `ids` comes straight off `?ids=` with no cap, so a caller
+    // passing >100 vehicle ids built a query D1 rejects at bind time. That
+    // throws from inside query(), lands in the catch below, and returns
+    // `{ vehicles: [] }` — the comparison silently renders empty instead of
+    // erroring. See CLAUDE.md, D1 100-BOUND-PARAMETER cap.
+    const vehicles = await queryInChunks<Record<string, unknown>>(db, ids,
+      (placeholders) => `
       SELECT v.*, COALESCE(m.cost, 0) as maint_cost, COALESCE(f.cost, 0) as fuel_cost
       FROM fleet_vehicles v
       LEFT JOIN (SELECT vehicle_id, SUM(cost) as cost FROM fleet_maintenance GROUP BY vehicle_id) m ON m.vehicle_id = v.id
       LEFT JOIN (SELECT vehicle_id, SUM(total_cost) as cost FROM fleet_fuel_log GROUP BY vehicle_id) f ON f.vehicle_id = v.id
-      WHERE v.id IN (${placeholders})`, ...ids);
+      WHERE v.id IN (${placeholders})`);
     return c.json({ vehicles });
   } catch (err) { console.error('GET /fleet/vehicle-comparison failed:', err); return c.json({ vehicles: [] }); }
 });

@@ -1,16 +1,21 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { getEdgeTTSPayload } from '../edgeTTS';
 
-// Unit tests for the pure persona -> Edge-TTS payload helper added in Task 1.4.
+// Unit tests for the pure persona -> TTS payload helper.
 // Exercises localStorage-backed persona with urgent boost arithmetic and
 // defensive handling for garbage stored values.
+//
+// 2026-07-31: the default voice is now the Aura-2 speaker 'harmonia' from
+// voiceCatalog, not the Edge-TTS id 'en-US-JennyNeural'. The server runs
+// Deepgram Aura-2 and rejects Edge-TTS names, so the old default only
+// "worked" because resolveAura2Voice() coerced it server-side.
 
 describe('getEdgeTTSPayload', () => {
   beforeEach(() => localStorage.clear());
 
-  it('returns Edge-TTS defaults when nothing is stored', () => {
+  it('defaults to the catalog dispatch voice when nothing is stored', () => {
     const p = getEdgeTTSPayload('hello');
-    expect(p.voice).toBe('en-US-JennyNeural');
+    expect(p.voice).toBe('harmonia');
     expect(p.rate).toBe('+0%');
     expect(p.pitch).toBe('+0Hz');
     expect(p.text).toBe('hello');
@@ -18,11 +23,11 @@ describe('getEdgeTTSPayload', () => {
   });
 
   it('honors persona stored in localStorage', () => {
-    localStorage.setItem('rmpg-voice-persona', 'en-US-GuyNeural');
+    localStorage.setItem('rmpg-voice-persona', 'zeus');
     localStorage.setItem('rmpg-voice-rate', '1.2');
     localStorage.setItem('rmpg-voice-pitch', '-5');
     const p = getEdgeTTSPayload('hi');
-    expect(p.voice).toBe('en-US-GuyNeural');
+    expect(p.voice).toBe('zeus');
     expect(p.rate).toBe('+20%'); // (1.2 - 1) * 100 = +20
     expect(p.pitch).toBe('-5Hz');
   });
