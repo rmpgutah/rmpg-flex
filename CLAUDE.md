@@ -287,6 +287,62 @@ app.fleetio.com and inbound events start flowing again.
   `SELECT fleetio_resource, COUNT(*) FROM fleetio_links GROUP BY 1` — expect
   only the five canonical plural values.
 
+### CarsXE (vehicle data: plate decode, VIN specs, lien/theft, history)
+
+Manual, officer-triggered vehicle-data lookups at `/api/carxe`
+([`src/routes/carxe.ts`](src/routes/carxe.ts), client in
+[`src/utils/carxe/`](src/utils/carxe/)). Cached 24 h in `carxe_lookups` so a
+re-pull never re-bills a CarsXE credit. Secret `CARXE_API_KEY`; unset →
+`200 { ok:false, code:'not_configured' }`. Migrations `0213` (cache table),
+`0215` (vehicles_records identity indexes) — all applied + tracked on live.
+
+#### CarsXE invariants — read before touching the vehicle-record bridge
+
+- **The RMS is PLATE-keyed, not VIN-keyed.** Live audit 2026-07-30: **38 of 42**
+  `vehicles_records` rows have NO `vin`; **0** lack a `plate_number`. Both UI
+  call sites ([`VehicleDossier`](client/src/components/VehicleDossier.tsx),
+  [`PlateLogPage`](client/src/pages/PlateLogPage.tsx)) enter via plate. Any
+  vehicle lookup written as `WHERE vin = ?` alone matches ~10% of the fleet.
+  That is not hypothetical: the original theft path did exactly this, so it
+  **INSERTed a duplicate row** and stamped `is_stolen=1` on an orphan while the
+  plate-keyed record officers actually see in the dossier stayed clean.
+- **ALWAYS resolve identity through `resolveVehicleRecord` /
+  `upsertVehicleFromCarxe`** in
+  [`src/utils/carxe/vehicleRecords.ts`](src/utils/carxe/vehicleRecords.ts).
+  Order is VIN → plate+state → plate, and it is the single seam every CarsXE
+  write path shares. Never hand-roll a vehicle match.
+- **Writes are FILL-ONLY.** Every column goes through
+  `COALESCE(NULLIF(col,''), ?)` (or `COALESCE(col, ?)` for numerics), so CarsXE
+  can populate a BLANK field but can never overwrite officer-entered data.
+  CarsXE is commercial third-party data landing in an authoritative
+  law-enforcement record — this is a policy constraint, not a style choice.
+  **The one deliberate exception is `is_stolen` / `stolen_status`**, which
+  overwrite because a stale blank must never beat a live active-theft finding.
+- **⚠️ `idx_vehicles_records_vin_unique` is a PARTIAL + EXPRESSION index**
+  (`ON vehicles_records(UPPER(TRIM(vin))) WHERE vin IS NOT NULL AND TRIM(vin) != ''`).
+  SQLite will only use a partial index when the query's predicate **provably
+  implies the index's**, so a VIN lookup MUST carry the redundant-looking
+  `vin IS NOT NULL AND TRIM(vin) != ''` prefix. Verified via `EXPLAIN QUERY
+  PLAN` on live: without it the plan is `SCAN vehicles_records`; with it,
+  `SEARCH ... USING INDEX`. Do not "simplify" that prefix away.
+- **Only an ACTIVE theft alerts.** `isActiveTheftEvent` requires *both*
+  `'active'` and `'theft'` in the event string, so "Theft Recovered" / "Theft
+  Record Cleared" do NOT page an officer. Liens and title brands (SALVAGE /
+  FLOOD / LEMON, via `titleStatusFromHistory`) are records data only — they
+  fill `lien_holder` / `title_status` and raise nothing.
+- **Theft notifications dedupe per `(vehicle, recipient)`** over
+  `THEFT_NOTIFY_DEDUPE_MS` (= the 24 h cache TTL). The theft path deliberately
+  runs on cache hits so a re-pull still screens, which made the notification
+  INSERT the one non-idempotent step. Dedupe is per-recipient — a different
+  officer pulling the same VIN must still be warned.
+- **A vehicle-record write must never fail the officer's lookup.** Each upsert
+  is wrapped in try/catch + `log.error` and degrades. **Consequence for tests:
+  a missing table or broken mapper is INVISIBLE** — assert on the returned
+  `vehicle_record` and on the row itself, never just on `res.status`.
+- `notifications` and `vehicles_records` both had **zero indexes** before
+  `0214`/`0215`. Assume nothing about index coverage on older tables; check
+  `sqlite_master` and confirm with `EXPLAIN QUERY PLAN`.
+
 ### Legal Data Hunter (manual warrant-charge validation)
 
 Manual, officer-initiated cross-reference of a warrant's charge text against the Legal Data
