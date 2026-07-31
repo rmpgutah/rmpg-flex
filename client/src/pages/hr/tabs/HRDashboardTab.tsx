@@ -18,8 +18,10 @@ interface DashboardData {
   new_hires_30d: number;
   on_leave_today: number;
   pending_approvals: number;
-  training_compliance_pct: number;
-  credential_compliance_pct: number;
+  // null = nothing tracked yet. Distinct from 0, which means "tracked and
+  // failing" — the API stopped conflating the two.
+  training_compliance_pct: number | null;
+  credential_compliance_pct: number | null;
   overdue_items: number;
   recent_activity: ActivityItem[];
 }
@@ -113,18 +115,26 @@ function MetricCard({
 }
 
 // ─── Progress Bar ───────────────────────────────────────────
-function ProgressBar({ label, pct, color = '#888888' }: { label: string; pct: number; color?: string }) {
+function ProgressBar({ label, pct, color = '#888888' }: { label: string; pct: number | null; color?: string }) {
+  // A null pct means the requirement set is empty (no mandatory courses / no
+  // certifications on file). Rendering that as 0% claimed the department was
+  // out of compliance, so show an explicit em dash and a neutral, empty track.
+  const tracked = typeof pct === 'number';
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs text-rmpg-300">{label}</span>
-        <span className="text-xs font-medium text-rmpg-100">{pct}%</span>
+        <span className="text-xs font-medium text-rmpg-100" title={tracked ? undefined : 'Not tracked yet — no requirements on file'}>
+          {tracked ? `${pct}%` : '—'}
+        </span>
       </div>
       <div className="h-2 bg-surface-sunken rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
-        />
+        {tracked && (
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{ width: `${Math.min(pct as number, 100)}%`, backgroundColor: color }}
+          />
+        )}
       </div>
     </div>
   );
@@ -196,12 +206,12 @@ function ManagerDashboard({
           <ProgressBar
             label="Training Compliance"
             pct={data.training_compliance_pct}
-            color={data.training_compliance_pct >= 80 ? '#22c55e' : '#f59e0b'}
+            color={(data.training_compliance_pct ?? 0) >= 80 ? '#22c55e' : '#f59e0b'}
           />
           <ProgressBar
             label="Credential Compliance"
             pct={data.credential_compliance_pct}
-            color={data.credential_compliance_pct >= 80 ? '#22c55e' : '#f59e0b'}
+            color={(data.credential_compliance_pct ?? 0) >= 80 ? '#22c55e' : '#f59e0b'}
           />
           <div className="flex items-center gap-3">
             <AlertTriangle size={16} className={data.overdue_items > 0 ? 'text-red-400' : 'text-green-400'} />

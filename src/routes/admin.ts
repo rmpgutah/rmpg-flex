@@ -547,16 +547,26 @@ admin.get('/expiring-certifications', async (c) => {
     const db = getDb(c.env);
     const days = parseInt(c.req.query('days') || '30', 10);
     const rows = await query<{ officer_name: string; cert: string; days_left: number; expiry_date: string }>(db,
-      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name, pc.certification_type AS cert,
-              CAST(julianday(pc.expiry_date) - julianday('now') AS INTEGER) AS days_left, pc.expiry_date
-       FROM personnel_certifications pc LEFT JOIN users u ON u.id = pc.user_id
-       WHERE pc.expiry_date BETWEEN DATE('now') AND DATE('now','+${Math.min(days, 90)} days')
-       ORDER BY pc.expiry_date LIMIT 30`);
+      // No personnel_certifications table: it's officer_certifications, keyed
+      // by officer_id, with expiration_date and a cert_type_id FK into
+      // certification_types (there is no certification_type text column).
+      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name,
+              COALESCE(ct.cert_name, 'Certification') AS cert,
+              CAST(julianday(pc.expiration_date) - julianday('now') AS INTEGER) AS days_left,
+              pc.expiration_date AS expiry_date
+       FROM officer_certifications pc
+       LEFT JOIN users u ON u.id = pc.officer_id
+       LEFT JOIN certification_types ct ON ct.id = pc.cert_type_id
+       WHERE pc.expiration_date BETWEEN DATE('now') AND DATE('now','+${Math.min(days, 90)} days')
+       ORDER BY pc.expiration_date LIMIT 30`);
     const expired = await query<{ officer_name: string; cert: string; days_left: number }>(db,
-      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name, pc.certification_type AS cert,
-              CAST(julianday('now') - julianday(pc.expiry_date) AS INTEGER) AS days_left
-       FROM personnel_certifications pc LEFT JOIN users u ON u.id = pc.user_id
-       WHERE pc.expiry_date < DATE('now') ORDER BY pc.expiry_date LIMIT 20`);
+      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name,
+              COALESCE(ct.cert_name, 'Certification') AS cert,
+              CAST(julianday('now') - julianday(pc.expiration_date) AS INTEGER) AS days_left
+       FROM officer_certifications pc
+       LEFT JOIN users u ON u.id = pc.officer_id
+       LEFT JOIN certification_types ct ON ct.id = pc.cert_type_id
+       WHERE pc.expiration_date < DATE('now') ORDER BY pc.expiration_date LIMIT 20`);
     return c.json({ expiring_count: rows.length, expired_count: expired.length, items: [...rows, ...expired.map(e => ({ ...e, expiry_date: 'EXPIRED' }))] });
   } catch { return c.json({ expiring_count: 0, expired_count: 0, items: [] }); }
 });

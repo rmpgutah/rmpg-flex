@@ -303,10 +303,12 @@ export async function optimizeRoute(
   // Get server's current location from their most recent GPS fix if available.
   const serverLoc = await queryFirst<{ lat: number; lng: number }>(
     db,
+    // clearpathgps_reports does not exist; gps_breadcrumbs is the live
+    // officer-keyed location source (see serveQueueEnhanced.ts).
     `SELECT latitude AS lat, longitude AS lng
-       FROM clearpathgps_reports
-       WHERE user_id = ?
-       ORDER BY created_at DESC LIMIT 1`,
+       FROM gps_breadcrumbs
+       WHERE officer_id = ?
+       ORDER BY recorded_at DESC LIMIT 1`,
     serverId,
   );
 

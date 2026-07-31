@@ -327,11 +327,13 @@ async function finalizeCapture(
     try {
       const boloMatch = await queryFirst<{ id: number; bolo_number: string; description: string }>(
         db,
+        // bolos has `type` (not bolo_type) and NO plate column — a plate can
+        // only be matched against the free-text vehicle/general description.
         `SELECT id, bolo_number, description FROM bolos
-          WHERE status = 'active' AND bolo_type = 'vehicle'
-            AND (plate_number = ? OR UPPER(description) LIKE ?)
+          WHERE status = 'active' AND type = 'vehicle'
+            AND (UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?)
           LIMIT 1`,
-        plate, `%${plate.toUpperCase()}%`,
+        `%${plate.toUpperCase()}%`, `%${plate.toUpperCase()}%`,
       );
       if (boloMatch) {
         out.hits.push({

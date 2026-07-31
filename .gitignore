@@ -82,3 +82,4 @@ tmp/
 kiosk-linux/rmpg-shell/rmpg-shell
 kiosk-linux/rmpg-shell/rmpg-browser
 kiosk-linux/output/
+__pycache__/
