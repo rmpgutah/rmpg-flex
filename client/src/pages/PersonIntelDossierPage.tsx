@@ -193,8 +193,15 @@ export default function PersonIntelDossierPage() {
   }, [deleteConfirmOpen, navigate]);
 
   const annotate = async (dpId: number, patch: Record<string, any>) => {
-    await apiFetch(`/person-intel/${id}/data-point/${dpId}`, { method: 'PATCH', body: JSON.stringify(patch) });
-    await load();
+    // apiFetch rejects on any non-2xx. Unguarded, a failed flag/note PATCH
+    // left the click doing nothing at all — no toast, no state change, just an
+    // unhandled rejection in the console. Matches handleDelete's pattern below.
+    try {
+      await apiFetch(`/person-intel/${id}/data-point/${dpId}`, { method: 'PATCH', body: JSON.stringify(patch) });
+      await load();
+    } catch (e: any) {
+      addToast(e?.message ?? 'Failed to update data point', 'error');
+    }
   };
 
   const handleDelete = async () => {
