@@ -351,25 +351,53 @@ markers exist.
    wants alerts announced by a distinct machine voice, separate from the human-sounding
    Dispatch voice, so a system alert is never mistaken for a dispatcher transmission.
 
-   **Leading candidate: `@cf/myshell-ai/melotts`** — already wired in and described in
-   [`tts.ts:11`](../../../src/routes/tts.ts) as "the robotic melotts fallback." Promoting it
-   from failure-fallback to the deliberate alert voice gives machine-vs-human separation with
-   no new dependency. Called as `ai.run(MELOTTS_MODEL, { prompt, lang: 'en' })`, returns
-   `{ audio: base64 }` (not raw bytes like Aura-2). Not yet auditioned.
+   **DECIDED 2026-07-31 — the alert voice is `harmonia` through a "station PA" DSP
+   treatment**, not a second TTS model. Confirmed by ear against five candidates.
 
-   **Architectural change required — this is not a config swap:**
+   Treatment (client-side, alongside the existing P25 chain): highpass 420 Hz →
+   peaking +6.5 dB @ 1.6 kHz (Q 1.3) → lowpass 3.1 kHz → `tanh(x·2.4)/2.4` soft drive →
+   peaking −4 dB @ 900 Hz (Q 2.0) horn notch. Reads as a building announcement rather than a
+   radio call — an idiom operators already parse as "automated system", not "a person calling
+   me".
+
+   **`melotts` was rejected on evidence, not taste.** Probed live 2026-07-31:
+   - **Returns WAV, not MP3.** [`tts.ts:51`](../../../src/routes/tts.ts)'s comment claims
+     "melotts output → raw MP3 bytes" and `audioResponse()` serves it as `audio/mpeg`. It
+     works today only because `decodeAudioData()` sniffs the container. **This is a live
+     mislabel worth fixing regardless of this decision** — anything trusting the
+     content-type would break.
+   - **Unreliable:** 500'd (`3043: Internal server error`) on 1 of 3 first attempts, needing
+     3 tries on one line. Acceptable for a failure-fallback; not for critical alerts.
+   - **~11× payload:** 477 KB uncompressed WAV for the critical line vs harmonia's 42 KB
+     MP3, on every alert, with KV cache entries scaling to match.
+
+   Also rejected: `orpheus` (deepest Aura-2, 96 Hz) — a different *person*, not a machine, so
+   it doesn't address the requirement. And `robot` (45 Hz ring modulation) — measured RMS
+   0.036, roughly a third of the alternatives, because ring mod halves amplitude; too quiet
+   for an attention-getting alert without gain compensation.
+
+   **Consequence: no second TTS engine is needed.** The alert voice reuses the same
+   `harmonia` request as dispatch, so reliability, payload, and caching are identical to the
+   dispatch path. The only difference is which client-side DSP chain the decoded buffer runs
+   through. That simplifies §8.6's architecture materially — `/api/tts` does **not** need
+   engine selection, only the client needs a voice-role → DSP-chain mapping.
+
+   **Architectural change required — client-side only:**
    - `VoicePhrase` is `{ text: string }`
      ([`voiceAlerts.ts:111`](../../../client/src/utils/voiceAlerts.ts)) with no voice field.
-     Needs a per-phrase voice role, e.g. `{ text, voice?: 'dispatch' | 'alert' }`.
-   - `getEdgeTTSPayload(text, urgent, voiceMode)` must carry that role through to
-     `/api/tts`.
-   - `/api/tts` currently resolves one Aura-2 speaker via `resolveAura2Voice`. It needs to
-     select **engine as well as speaker**, since the alert voice is a different model.
-     Keep the KV cache key engine-aware — `CACHE_PREFIX` already includes the speaker, so
-     extend it rather than risk serving Aura audio for an alert-voice request.
-   - Decide which announcements are "alert" voice vs "dispatch" voice. Proposed:
-     §4.3 notification alerts → alert voice; everything in §4.1–4.2 and all
-     `announceNewCall` / panic / status traffic → Dispatch (`harmonia`).
+     Needs a per-phrase role: `{ text, voice?: 'dispatch' | 'alert' }`, defaulting to
+     `'dispatch'` so every existing call site keeps its current behaviour.
+   - The role must reach the playback path so it can select the DSP chain. `edgeTTS.speak()`
+     builds the WebAudio graph via `buildRadioVoiceChain`; it needs a sibling PA chain and a
+     role parameter to choose between them.
+   - **`/api/tts` needs NO change.** Same model, same speaker, same cache key — the server
+     cannot tell a dispatch request from an alert request, and doesn't need to. A cached
+     clip is reusable across both roles because the difference is applied after decode.
+   - Which announcements use which role. Proposed: §4.3 notification alerts → `'alert'`;
+     everything in §4.1–4.2 plus all `announceNewCall` / panic / status traffic →
+     `'dispatch'`.
+   - **Do not apply both chains.** The PA treatment replaces the P25 haze rather than
+     stacking on it — that is the point of the separation. Assert this in a test.
 
 ---
 
