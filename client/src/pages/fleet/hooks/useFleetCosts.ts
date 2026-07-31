@@ -34,7 +34,7 @@ export interface FleetCostsResult {
   handleSaveCost: (payload: Record<string, any>) => Promise<void>;
   handleSaveBudgets: (rows: { category: string; monthly_budget: number }[]) => Promise<void>;
   closeCostModal: () => void;
-  loadCostPerMile: (id: string | number) => Promise<void>;
+  loadCostPerMile: (id: string | number, silent?: boolean) => Promise<void>;
   clearCostPerMile: () => void;
   resetCosts: () => void;
   /** Hand this to `useVehicleDetail`'s `onLazyLoad` (via FleetPage's ref bridge).
@@ -98,7 +98,8 @@ export function useFleetCosts(
     loan: 'loans', insurance: 'insurance', accessory: 'accessories', utility: 'utilities', other: 'other-costs',
   };
 
-  const loadCostPerMile = useCallback(async (vehicleId: string | number) => {
+  /** @param silent suppress the failure toast — see the comment below. */
+  const loadCostPerMile = useCallback(async (vehicleId: string | number, silent = false) => {
     setCostPerMileLoading(true);
     try {
       const data = await apiFetch<any>(`/fleet/cost-per-mile/${vehicleId}`);
@@ -107,7 +108,15 @@ export function useFleetCosts(
       // Previously swallowed to null, which made a failed click
       // indistinguishable from a dead button.
       setCostPerMile(null);
-      addToast(err instanceof Error ? `Failed to load cost per mile: ${err.message}` : 'Failed to load cost per mile', 'error');
+      // ...but only a click deserves a toast. fetchCosts also calls this to
+      // populate the TCO/mile stat, guarded by `if (!costPerMile)` — and a
+      // failure leaves costPerMile null, so that guard never stops the retry.
+      // Toasting there meant a persistently-down endpoint nagged on every
+      // single visit to the Costs tab. The stat still renders empty either
+      // way, and the explicit Cost/Mi button still reports its own failure.
+      if (!silent) {
+        addToast(err instanceof Error ? `Failed to load cost per mile: ${err.message}` : 'Failed to load cost per mile', 'error');
+      }
     } finally {
       setCostPerMileLoading(false);
     }
@@ -227,7 +236,7 @@ export function useFleetCosts(
       setOtherCosts(otherA);
       recomputeCostSummary(lnA, insA, accA, utilA, otherA, budgetA, monthlyAvgsObj);
       // Cost-per-mile feeds the TCO/mile stat; fetch if not already loaded.
-      if (!costPerMile) loadCostPerMile(id);
+      if (!costPerMile) loadCostPerMile(id, true); // background populate: no toast
     } catch (err) {
       console.error('Failed to fetch cost data:', err);
     }
