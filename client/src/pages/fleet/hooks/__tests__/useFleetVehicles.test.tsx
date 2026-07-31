@@ -59,4 +59,22 @@ describe('useFleetVehicles', () => {
     await waitFor(() => expect(apiFetch).toHaveBeenCalled());
     expect(vi.mocked(apiFetch).mock.calls[0][0]).toContain('archived=true');
   });
+
+  it('treats a numeric-string total as a real total, so truncation still surfaces', async () => {
+    // The server declares `total?: number`, but a strict typeof check silently
+    // fell back to rows.length if it ever serialised a string — reporting
+    // "nothing truncated" on a response that WAS truncated, which is the exact
+    // failure the count exists to make visible.
+    vi.mocked(apiFetch).mockResolvedValue({ data: VEHICLES, pagination: { total: '240' } } as never);
+    const { result } = renderHook(() => useFleetVehicles());
+    await waitFor(() => expect(result.current.vehicles.length).toBe(VEHICLES.length));
+    expect(result.current.vehicleTotal).toBe(240);
+  });
+
+  it('falls back to the row count when the total is absent or unusable', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ data: VEHICLES, pagination: { total: 'not-a-number' } } as never);
+    const { result } = renderHook(() => useFleetVehicles());
+    await waitFor(() => expect(result.current.vehicles.length).toBe(VEHICLES.length));
+    expect(result.current.vehicleTotal).toBe(VEHICLES.length);
+  });
 });
