@@ -424,7 +424,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
   const renderCreateView = () => (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 mb-3">
-        <button type="button" onClick={() => setView('list')} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
+        <button aria-label="Back" type="button" onClick={() => setView('list')} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
         <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold">Create New Invoice</span>
       </div>
 
@@ -494,7 +494,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => { setView('list'); setSelectedInvoice(null); }} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
+            <button aria-label="Back" type="button" onClick={() => { setView('list'); setSelectedInvoice(null); }} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
             <span className="font-mono text-brand-400 font-bold text-sm">{inv.invoice_number}</span>
             <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded-sm ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
               {toDisplayLabel(inv.status)}
@@ -524,7 +524,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                     <CheckCircle className="w-3.5 h-3.5" /> <span className="text-[10px]">Mark Paid</span>
                   </button>
                 )}
-                <button type="button" onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>
+                <button aria-label="Close" type="button" onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>
                   <XCircle className="w-3.5 h-3.5" />
                 </button>
               </>
@@ -636,7 +636,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   </td>
                   {inv.status === 'draft' && (
                     <td className="p-1 text-center">
-                      <button type="button" onClick={() => handleDeleteLineItem(item.id)} className="text-rmpg-600 hover:text-red-400 transition-colors">
+                      <button aria-label="Delete" type="button" onClick={() => handleDeleteLineItem(item.id)} className="text-rmpg-600 hover:text-red-400 transition-colors">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     </td>
@@ -740,7 +740,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                     <td className="p-1 text-rmpg-400">{pay.reference_number || '—'}</td>
                     <td className="p-1 text-rmpg-400">{pay.recorded_by_name || '—'}</td>
                     <td className="p-1">
-                      <button type="button" onClick={() => handleDeletePayment(pay.id)} className="text-rmpg-600 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                      <button aria-label="Delete" type="button" onClick={() => handleDeletePayment(pay.id)} className="text-rmpg-600 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
                     </td>
                   </tr>
                 ))}
@@ -846,7 +846,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         <div className="flex items-center gap-2 bg-red-900/30 border border-red-700/50 text-red-300 text-[10px] px-3 py-2 rounded-sm mb-2">
           <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
           <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} className="ml-auto"><XCircle className="w-3 h-3" /></button>
+          <button aria-label="Close" type="button" onClick={() => setError(null)} className="ml-auto"><XCircle className="w-3 h-3" /></button>
         </div>
       )}
       {view === 'list' && renderListView()}

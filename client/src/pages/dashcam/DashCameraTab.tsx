@@ -312,8 +312,8 @@ export default function DashCameraTab({
                 </div>
                 {canManage && (
                   <div className="flex items-center gap-1">
-                    <button onClick={() => onEditCamera(cam)} className="toolbar-btn p-1"><Edit3 className="w-3 h-3" /></button>
-                    <button onClick={() => { if (confirm('Delete this dash camera?')) onDeleteCamera(cam.id); }} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
+                    <button aria-label="Edit" onClick={() => onEditCamera(cam)} className="toolbar-btn p-1"><Edit3 className="w-3 h-3" /></button>
+                    <button aria-label="Delete" onClick={() => { if (confirm('Delete this dash camera?')) onDeleteCamera(cam.id); }} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
                   </div>
                 )}
               </div>
@@ -377,7 +377,7 @@ export default function DashCameraTab({
                     {selectedVideoIds.has(vid.id) ? <CheckSquare className="w-3.5 h-3.5 text-brand-400" /> : <Square className="w-3.5 h-3.5" />}
                   </button>
                 )}
-                <button onClick={() => onPlayVideo?.(vid)} className="flex-shrink-0 w-10 h-10 rounded bg-rmpg-800 border border-rmpg-700 flex items-center justify-center hover:bg-rmpg-700 transition-colors">
+                <button aria-label="Play" onClick={() => onPlayVideo?.(vid)} className="flex-shrink-0 w-10 h-10 rounded bg-rmpg-800 border border-rmpg-700 flex items-center justify-center hover:bg-rmpg-700 transition-colors">
                   <Play className="w-4 h-4 text-brand-400" />
                 </button>
                 <div className="flex-1 min-w-0">
@@ -396,7 +396,7 @@ export default function DashCameraTab({
                   </div>
                 </div>
                 {canManage && onDeleteVideo && (
-                  <button onClick={() => { if (confirm('Delete this video?')) onDeleteVideo(vid.id); }} className="toolbar-btn p-1 text-red-400 hover:text-red-300">
+                  <button aria-label="Delete" onClick={() => { if (confirm('Delete this video?')) onDeleteVideo(vid.id); }} className="toolbar-btn p-1 text-red-400 hover:text-red-300">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 )}

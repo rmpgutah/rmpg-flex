@@ -166,14 +166,14 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
                 <div className={`w-2 h-2 rounded-full ${info?.available ? 'bg-green-500' : 'bg-rmpg-700'}`} />
                 <span className="text-xs text-rmpg-100 flex-1">{p.charAt(0).toUpperCase() + p.slice(1)}</span>
                 <div className="flex gap-0.5">
-                  <button
+                  <button aria-label="Move up"
                     onClick={() => movePriority(i, -1)}
                     disabled={i === 0}
                     className="p-0.5 text-rmpg-500 hover:text-rmpg-100 disabled:opacity-20 transition-colors"
                   >
                     <ChevronUp className="w-3.5 h-3.5" />
                   </button>
-                  <button
+                  <button aria-label="Move down"
                     onClick={() => movePriority(i, 1)}
                     disabled={i === priority.length - 1}
                     className="p-0.5 text-rmpg-500 hover:text-rmpg-100 disabled:opacity-20 transition-colors"
