@@ -31,6 +31,12 @@ initUiClickSounds();
 // Beyond the UI five, warm the high-traffic dispatch library tones; the
 // rest of the library lazy-loads on first play (synth covers that play).
 preloadSoundAssets();
+// The system sounds that are NOT in preloadSoundAssets()'s default five.
+// These MUST be preloaded: uiClickSounds is deliberately sample-only with no
+// oscillator fallback, so an undecoded key plays SILENCE rather than a synth
+// approximation. Adding a system sound without adding it here makes it
+// silently silent on first use.
+preloadSoundAssets(['navigate', 'ui_open', 'ui_close', 'ui_error']);
 preloadSoundAssets([
   'info', 'chirp', 'double_chirp', 'error', 'caution', 'warning',
   'alert', 'alarm', 'descending', 'p1_alert', 'key_up', 'key_out', 'data_chirp',

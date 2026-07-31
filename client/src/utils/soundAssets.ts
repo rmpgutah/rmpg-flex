@@ -8,12 +8,17 @@
 // This is the primary voice for every console sound: UI clicks,
 // action chimes, login sign-on, and all 26 dispatch library tones
 // (chirps, warbles, Quick Call II pages, P25 pips, panic alarms).
-// The WebAudio oscillator synth in uiClickSounds.ts /
-// actionChimes.ts / startupSound.ts / dispatchTones.ts remains the
-// fallback when an asset hasn't decoded yet, fails to fetch, or
-// WebAudio decode is unavailable. Genuine Spillman WAV exports can
-// be dropped over the files in client/public/sounds/ — same
-// names, no code change needed.
+//
+// FALLBACK BEHAVIOUR IS NOT UNIFORM — do not assume a synth safety net:
+//  • dispatchTones.ts / startupSound.ts DO fall back to their WebAudio
+//    oscillator voice on a decode miss.
+//  • uiClickSounds.ts is SAMPLE-ONLY BY DESIGN (see its header): a miss
+//    plays silence, because the synthesized tick was harsher than the
+//    tuned sample. So any system sound it plays must be in the boot
+//    preload list in main.tsx or it is silently silent on first use.
+//
+// Genuine Spillman WAV exports can be dropped over the files in
+// client/public/sounds/ — same names, no code change needed.
 //
 // One shared lazy AudioContext; buffers decode once and replay
 // with near-zero latency (cheaper than building an oscillator

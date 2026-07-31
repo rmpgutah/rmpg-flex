@@ -78,58 +78,132 @@ const outDir = path.join(__dirname, '..', 'client', 'public', 'sounds');
 fs.mkdirSync(outDir, { recursive: true });
 console.log('Rendering Spillman-style console sounds →', outDir);
 
-// click.wav — soft key tick: muted thock, no harsh noise snap.
-// Subtle by design: sine body in a lower register, gentle attack,
-// only a whisper of filtered noise for the mechanical character.
+// ============================================================
+// SYSTEM / UI SOUNDS — rebuilt 2026-07-31.
+//
+// Pitch content is SOURCED from documented Motorola tone tables:
+// the Midian Electronics Motorola two-tone/four-tone signaling chart
+// (reed-group frequencies) and the MDC-1200 mark/space pair. Those
+// frequencies were verified against real Motorola paging recordings —
+// measured within 0.06 Hz of the tables after correcting a constant
+// 1.25% (8100/8000 Hz) playback offset in the source files.
+//
+// Cadence and envelope values are DERIVED: real paging timing is
+// 1s + 3s, roughly 20x too long for UI feedback. There is no published
+// spec for Spillman Flex application UI sounds, so nothing here claims
+// to be one.
+//
+// Tones are STEADY (flat top, linear edges), not gliding. A Motorola
+// paging reed is a mechanical resonator: constant amplitude, fixed
+// pitch, then stop. It physically cannot sweep. The one exception is
+// click — see below.
+//
+// Rendered clean at 44.1kHz / 16-bit.
+// ============================================================
+
+// click.wav — SOURCED: radio_grant's 600 -> 1200 Hz character.
+// Operator-chosen 2026-07-31 ("use that as the click sound"). This is
+// the P25 channel-grant glide, not a reed tone, so the sweep is correct
+// here — channel-grant tones are electronically generated.
+// DERIVED: 60ms. radio_grant.wav itself is 140ms, which at the 35ms
+// click throttle in uiClickSounds.ts would allow ~4 overlapping copies
+// and smear under rapid clicking. Trimmed to sit inside one throttle
+// window. radio_grant.wav is UNTOUCHED — this is a separate asset.
 {
-  const s = make(0.06);
-  noiseBurst(s, { at: 0, dur: 0.012, gain: 0.12, lowpass: 2400 });
-  tone(s, { at: 0, dur: 0.035, f0: 1500, f1: 1050, gain: 0.55, attack: 0.006 });
-  tone(s, { at: 0, dur: 0.02, f0: 3000, f1: 2400, gain: 0.05, attack: 0.004 });
+  const s = make(0.075);
+  noiseBurst(s, { at: 0, dur: 0.008, gain: 0.10, lowpass: 3000 });
+  tone(s, { at: 0, dur: 0.060, f0: 600, f1: 1200, gain: 0.55, attack: 0.004 });
   writeWav(path.join(outDir, 'click.wav'), s);
 }
 
-// submit.wav — "entry accepted": two ascending data blips, detuned pair each
+// navigate.wav — SOURCED 1153.4 Hz (Reed Group 6, tone 1).
+// DERIVED: single 40ms pip. Previously an ALIAS of click.wav.
 {
-  const s = make(0.25);
-  for (const [at, f] of [[0, 1046], [0.09, 1568]]) {
-    tone(s, { at, dur: 0.07, f0: f, gain: 0.5, type: 'square' });
-    tone(s, { at, dur: 0.07, f0: f * 1.004, gain: 0.25, type: 'square' }); // detune layer = sampled width
-    noiseBurst(s, { at, dur: 0.008, gain: 0.10, lowpass: 6000 });
-  }
+  const s = make(0.07);
+  noiseBurst(s, { at: 0, dur: 0.005, gain: 0.05, lowpass: 5000 });
+  steadyTone(s, { at: 0, dur: 0.040, f0: 1153.4, gain: 0.45, detune: 0.003 });
+  writeWav(path.join(outDir, 'navigate.wav'), s);
+}
+
+// ui_open.wav — SOURCED 600.9 -> 928.1 Hz (Reed Group 2, tones 2 -> 9).
+// DERIVED: ascending discrete pair, 60ms each, no gap (a QC2 page sends
+// tone A straight into tone B). Previously an ALIAS of submit.wav.
+{
+  const s = make(0.15);
+  steadyTone(s, { at: 0,     dur: 0.060, f0: 600.9, gain: 0.40, detune: 0.003 });
+  steadyTone(s, { at: 0.060, dur: 0.060, f0: 928.1, gain: 0.40, detune: 0.003 });
+  writeWav(path.join(outDir, 'ui_open.wav'), s);
+}
+
+// ui_close.wav — SOURCED 928.1 -> 600.9 Hz (Reed Group 2, tones 9 -> 2).
+// DERIVED: descending mirror of open. NEW dedicated asset — the close
+// role previously BORROWED the Motorola key_out.wav de-key sample.
+// key_out.wav is untouched; uiClickSounds now points here instead.
+{
+  const s = make(0.15);
+  steadyTone(s, { at: 0,     dur: 0.060, f0: 928.1, gain: 0.40, detune: 0.003 });
+  steadyTone(s, { at: 0.060, dur: 0.060, f0: 600.9, gain: 0.40, detune: 0.003 });
+  writeWav(path.join(outDir, 'ui_close.wav'), s);
+}
+
+// submit.wav — SOURCED 1200 -> 1800 Hz (MDC-1200 mark & space).
+// DERIVED: ascending pair, 55ms each. Reads as a successful data burst,
+// which is what a POST is.
+{
+  const s = make(0.14);
+  noiseBurst(s, { at: 0, dur: 0.005, gain: 0.04, lowpass: 6000 });
+  steadyTone(s, { at: 0,     dur: 0.055, f0: 1200, gain: 0.40, detune: 0.002 });
+  steadyTone(s, { at: 0.055, dur: 0.055, f0: 1800, gain: 0.36, detune: 0.002 });
   writeWav(path.join(outDir, 'submit.wav'), s);
 }
 
-// update.wav — "record updated": mid blip + soft confirm a 4th up
+// update.wav — SOURCED 1200 + 1800 Hz (MDC-1200 mark & space).
+// DERIVED: both together, 70ms. Same vocabulary as submit but stacked
+// rather than sequential — "amended, not new".
 {
-  const s = make(0.18);
-  tone(s, { at: 0, dur: 0.08, f0: 1175, gain: 0.5, type: 'square' });
-  tone(s, { at: 0, dur: 0.10, f0: 1568, gain: 0.16, harmonics: 2 });
-  noiseBurst(s, { at: 0, dur: 0.008, gain: 0.08, lowpass: 6000 });
+  const s = make(0.11);
+  steadyTone(s, { at: 0, dur: 0.070, f0: 1200, gain: 0.34, detune: 0.002 });
+  steadyTone(s, { at: 0, dur: 0.070, f0: 1800, gain: 0.22, detune: 0.002 });
   writeWav(path.join(outDir, 'update.wav'), s);
 }
 
-// delete.wav — "record cleared": low descending blip with body
+// delete.wav — SOURCED 539.0 -> 330.5 Hz (Reed Group 1, tones 9 -> 0).
+// This exact pair is Motorola Group 1 code 09, independently documented
+// by Genave as a real page. DERIVED: 55ms + 90ms, second tone held to land.
 {
-  const s = make(0.16);
-  tone(s, { at: 0, dur: 0.11, f0: 740, f1: 560, gain: 0.5, type: 'square' });
-  tone(s, { at: 0, dur: 0.11, f0: 370, f1: 280, gain: 0.18 }); // sub-octave weight
-  noiseBurst(s, { at: 0, dur: 0.01, gain: 0.08, lowpass: 3500 });
+  const s = make(0.19);
+  steadyTone(s, { at: 0,     dur: 0.055, f0: 539.0, gain: 0.38, detune: 0.004 });
+  steadyTone(s, { at: 0.055, dur: 0.090, f0: 330.5, gain: 0.42, detune: 0.004 });
   writeWav(path.join(outDir, 'delete.wav'), s);
 }
 
-// login.wav — sign-on acknowledge, softened: two gentle sine blips
-// (down an octave-ish from the original square pair, slower attacks,
-// no noise snap) into a warm low confirm chord with a smooth tail.
+// ui_error.wav — SOURCED 368.5 -> 330.5 Hz (Reed Group 1, tones 2 -> 0).
+// DERIVED: 100ms each. Deliberately the tightest interval in the set —
+// a near-unison drop reads as "rejected" without a harsh timbre.
+//
+// ⚠️ NOT 'error.wav'. That filename is ALSO emitted by the Motorola
+// dispatch library below (the sawtooth NACK profile in dispatchTones.ts),
+// which runs later and would silently overwrite this file. One filename,
+// two owners. The system NACK gets its own asset and actionChimes.ts
+// points here; Motorola's error.wav is left entirely alone.
 {
-  const s = make(1.0);
-  tone(s, { at: 0.0, dur: 0.09, f0: 988, gain: 0.30, attack: 0.012 });
-  tone(s, { at: 0.13, dur: 0.09, f0: 1318, gain: 0.30, attack: 0.012 });
-  // confirm: root + fifth, detuned layers, long smooth tail — fewer
-  // harmonics and a slower attack so it swells in rather than striking
-  for (const [f, g] of [[523, 0.45], [524.5, 0.20], [659, 0.20], [661, 0.09]]) {
-    tone(s, { at: 0.28, dur: 0.7, f0: f, gain: g, attack: 0.05, harmonics: 1 });
-  }
+  const s = make(0.24);
+  steadyTone(s, { at: 0,     dur: 0.100, f0: 368.5, gain: 0.40, detune: 0.005 });
+  steadyTone(s, { at: 0.105, dur: 0.100, f0: 330.5, gain: 0.42, detune: 0.005 });
+  writeWav(path.join(outDir, 'ui_error.wav'), s);
+}
+
+// login.wav — SOURCED 349.0 -> 928.1 Hz.
+//   tone A: Reed Group 1, tone 1 (349.0 Hz)
+//   tone B: Reed Group 2, tone 9 (928.1 Hz)
+// A real Motorola Quick Call 2 one-plus-one page: tone A from one reed
+// group, tone B from another, no silence between.
+// DERIVED: time-compressed from the documented 1s / 3s paging timing to
+// 150ms / 450ms — the authentic 1:3 ratio preserved at UI scale.
+{
+  const s = make(0.72);
+  steadyTone(s, { at: 0,     dur: 0.150, f0: 349.0, gain: 0.38, detune: 0.003 });
+  steadyTone(s, { at: 0.150, dur: 0.450, f0: 928.1, gain: 0.40, detune: 0.003 });
   writeWav(path.join(outDir, 'login.wav'), s);
 }
 
