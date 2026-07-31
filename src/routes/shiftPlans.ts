@@ -520,7 +520,12 @@ sp.get('/staffing-levels', async (c) => {
     try { assignments = typeof plan.assignments === 'string' ? JSON.parse(plan.assignments) : (plan.assignments || []); }
     catch { assignments = []; }
     const cnt = assignments.length;
-    const minR = minimums[plan.shift_type] || 1;
+    // `|| 1` discarded an explicit min of 0 ("no coverage required on this
+    // shift"), since 0 is falsy — the same falsy-zero bug as the citation
+    // warning multiplier. `??` alone would let a NaN from a junk query param
+    // through, so the guard is an explicit finite check.
+    const configured = minimums[plan.shift_type];
+    const minR = Number.isFinite(configured) ? configured : 1;
     levels.push({
       plan_id: plan.id, plan_name: plan.name, shift_type: plan.shift_type, status: plan.status,
       staff_count: cnt, min_required: minR, max_recommended: minR * 2,
