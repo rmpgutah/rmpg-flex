@@ -748,8 +748,23 @@ warrants.get('/dashboard/stats', async (c) => {
 
     return c.json({ activeWarrants, unverifiedWarrants, hitsToday, personsFlagged, sourcesOnline, sourcesTotal });
   } catch (err) {
-    console.error('[warrants] dashboard/stats error', err);
-    return c.json({ activeWarrants: 0, unverifiedWarrants: 0, hitsToday: 0, personsFlagged: 0, sourcesOnline: 0, sourcesTotal: 0 });
+    // Was a 200 with every stat zeroed. On a warrants dashboard that renders as
+    // "ACTIVE WARRANTS 0 / SOURCES 0/0" with a calm LED — a DB failure presented
+    // as an all-clear, and indistinguishable from a genuinely quiet jurisdiction.
+    // Same silent-empty class as GET /unified. Fail loudly instead; the client
+    // already renders '-' when dashStats is absent.
+    const traceId = c.get('traceId');
+    log.error('[warrants] dashboard/stats failed', { route: 'GET /warrants/dashboard/stats', traceId }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'GET /warrants/dashboard/stats' },
+      traceId,
+      source: 'GET /warrants/dashboard/stats',
+      statusCode: 500,
+    }, c.executionCtx);
+    return c.json({ error: 'Failed to load warrant dashboard stats' }, 500);
   }
 });
 

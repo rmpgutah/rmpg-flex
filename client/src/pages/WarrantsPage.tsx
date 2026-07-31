@@ -648,6 +648,9 @@ export default function WarrantsPage() {
   // ============================================================
   const [coverageSources, setCoverageSources] = useState<ScraperSource[]>([]);
   const [coverageLoading, setCoverageLoading] = useState(false);
+  // Distinguishes "coverage failed to load" from "no sources configured" — the
+  // fetch used to swallow errors, making those two states identical on screen.
+  const [coverageError, setCoverageError] = useState<string | null>(null);
   const [watchRuns, setWatchRuns] = useState<WatchRun[]>([]);
   const [watchRunsLoading, setWatchRunsLoading] = useState(false);
   const scanPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -932,7 +935,14 @@ export default function WarrantsPage() {
     try {
       const res = await apiFetch<{ sources: ScraperSource[] }>('/warrants/scrapers');
       setCoverageSources(res.sources || []);
-    } catch { /* silent */ }
+      setCoverageError(null);
+    } catch (err) {
+      // Was `catch { /* silent */ }` — a failed load left the Sources tab in a
+      // calm, permanent empty state that read as "no sources configured". On a
+      // coverage screen that is indistinguishable from real zero coverage.
+      setCoverageError(err instanceof Error ? err.message : 'Failed to load source coverage');
+      setCoverageSources([]);
+    }
     finally { setCoverageLoading(false); }
   }, []);
 
@@ -2436,6 +2446,26 @@ export default function WarrantsPage() {
             {coverageLoading ? (
               <div className="flex items-center justify-center h-64 text-rmpg-400">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading coverage data...
+              </div>
+            ) : coverageError ? (
+              <div role="alert" className="panel-inset bg-surface-sunken p-4 rounded-sm text-center space-y-2">
+                <div className="text-[11px] font-bold text-[color:var(--sev-critical)] uppercase tracking-wider">
+                  Source coverage unavailable
+                </div>
+                {/* text-fg-secondary / text-fg-muted, not the rmpg text ramp —
+                    the accentTokens ratchet forbids new sub-AA ramp utilities,
+                    and an error message is the last thing that should be low
+                    contrast. */}
+                <div className="text-[10px] text-fg-secondary">{coverageError}</div>
+                <div className="text-[9px] text-fg-muted">
+                  This is a load failure, not zero coverage — source counts below are not being shown.
+                </div>
+                <button
+                  onClick={fetchCoverage}
+                  className="text-[10px] px-2 py-1 border border-rmpg-600 rounded-sm text-rmpg-200 hover:bg-surface-raised"
+                >
+                  Retry
+                </button>
               </div>
             ) : (() => {
               const totalSources = coverageSources.length;
