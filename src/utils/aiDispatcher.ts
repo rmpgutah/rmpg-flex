@@ -74,10 +74,17 @@ const MAX_OCR_BYTES = 6 * 1024 * 1024;
 // dispatcher's short replies is negligible (~300 chars/reply).
 const TTS_PRIMARY_MODEL = '@cf/deepgram/aura-2-en';
 const TTS_FALLBACK_MODEL = '@cf/myshell-ai/melotts';
-// Deepgram Aura-2 speaker. Calm, clear, professional female dispatcher voice.
-// MUST be a valid aura-2-en speaker (see AURA2_EN_VOICES) — an Aura-1-only name
-// errors the model and drops us to the robotic melotts fallback.
-const DISPATCH_VOICE = 'asteria';
+// Deepgram Aura-2 speaker — the confirmed Dispatch voice, chosen by ear
+// 2026-07-31 after auditioning all 40 speakers in AURA2_EN_VOICES.
+// Measured: median F0 178 Hz; 90.4% RMS retained through the P25
+// 300-3400Hz band (tied best of all 40); 5.3s on the reference
+// announcement vs asteria's 8.4s — the fastest of the 23 female-register
+// speakers, which recovers ~37% of channel time on every announcement.
+//
+// MUST be a valid aura-2-en speaker (see AURA2_EN_VOICES) — an Aura-1-only
+// name errors the model and drops us to the robotic melotts fallback.
+// MUST stay in sync with DEFAULT_VOICE_ID in client/src/utils/voiceCatalog.ts.
+const DISPATCH_VOICE = 'harmonia';
 // Valid @cf/deepgram/aura-2-en speakers (the full model enum). Used to validate
 // an operator-chosen voice before it reaches the model, so a stale/invalid stored
 // value can never knock the premium voice offline. NOTE: Aura-2 has a different
