@@ -887,8 +887,18 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
   return (
     <div style={{ display: isVisible ? undefined : 'none' }}>
       {pollStatus && (
+        // pointer-events-none: this strip is PURELY INFORMATIONAL — no buttons,
+        // no links, only a title tooltip — so it never needs to receive clicks.
+        // Verified live on 2026-07-30 that while this banner was present, a
+        // DOM hit-test at the Screening tab's own centre returned THIS div and
+        // not the tab (isSelfOrChild: false): every tab click on the Warrants
+        // page was being swallowed. Making the strip click-transparent removes
+        // that failure mode regardless of what causes the overlap, without
+        // altering any layout geometry — safer than guessing at z-index on a
+        // nav bar. The remaining 23px layout shift this strip causes when it
+        // appears is a separate (cosmetic) misclick hazard, still open.
         <div
-          className="flex items-center gap-2 px-2 py-1 mb-1.5 border border-[#1a1a1a] bg-[#080808] text-[9px] uppercase font-semibold tracking-wide"
+          className="flex items-center gap-2 px-2 py-1 mb-1.5 border border-[#1a1a1a] bg-[#080808] text-[9px] uppercase font-semibold tracking-wide pointer-events-none"
           title={pollStatus.error_message ?? undefined}
         >
           {pollStatus.status === 'running' ? (
