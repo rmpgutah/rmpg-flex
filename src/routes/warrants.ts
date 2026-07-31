@@ -9,8 +9,17 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-import { log } from '../utils/logger';
-import { runUtahWarrantScan, runUtahWarrantCheckForPerson, fetchWarrantsForPerson, recordWarrant } from '../utils/utahWarrantPoller';
+import { log, logErrorToDb } from '../utils/logger';
+import { stateFromSourceKey } from '../utils/warrantSourceState';
+
+// Per-table row cap for GET /unified. That route merges two heterogeneous tables
+// in JS, so it cannot paginate purely in SQL — but it also must not read entire
+// tables into a 128 MB isolate, which is what it did before (plain
+// `SELECT * FROM warrants` / `FROM scraped_warrants`, no LIMIT). 5,000 per side
+// is far above any realistic page depth (per_page maxes at 100) while keeping
+// the isolate's memory bounded as scraped_warrants grows.
+const UNIFIED_SCAN_CAP = 5000;
+import { runUtahWarrantScan, runUtahWarrantCheckForPerson, fetchWarrantsForPerson, recordWarrant, MANUAL_RUN_WALL_BUDGET_MS } from '../utils/utahWarrantPoller';
 import { screenPersonAllSources } from '../utils/screening/screenPerson';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
@@ -110,18 +119,31 @@ warrants.get('/watch/runs', async (c) => {
 });
 
 // POST /warrants/watch/scan — manually trigger a scan ("Scan Now" button).
-// FIRE-AND-FORGET: a full scan paces ~8s/person and runs ~80s+, which blows
-// past the browser/request timeout if awaited. We hand it to
-// executionCtx.waitUntil (same async pattern as the cron) and return 202
-// immediately; the UI polls /watch/runs to observe the run row complete.
+// FIRE-AND-FORGET: a full scan paces ~8s/person, so it cannot be awaited inside
+// the request. We hand it to executionCtx.waitUntil and return 202; the UI polls
+// /watch/runs to observe the run row complete.
+//
+// ⚠️ waitUntil() extends a request by only 30 SECONDS (Cloudflare limit) — it is
+// NOT the same budget as the cron's 15 minutes, despite "same async pattern as
+// the cron" in the old comment here. A run pacing ~80s+ was therefore killed
+// every single time, orphaning its warrant_watch_runs row as 'running' forever
+// (three such rows inside three minutes in live D1 on 2026-07-30 — an operator
+// clicking this button). So pass the SHORT manual budget: the run does a real,
+// honestly-finalized slice inside the 30s window and its cursor resumes the rest
+// on the next cron tick, instead of pretending to start a full scan it cannot
+// possibly finish.
 warrants.post('/watch/scan', async (c) => {
   const db = getDb(c.env);
   c.executionCtx.waitUntil(
-    runUtahWarrantScan(db).catch((err) => {
+    runUtahWarrantScan(db, { wallBudgetMs: MANUAL_RUN_WALL_BUDGET_MS }).catch((err) => {
       console.error('[warrants] manual scan failed:', err);
     }),
   );
-  return c.json({ success: true, started: true, message: 'Scan started; poll /watch/runs for completion.' }, 202);
+  return c.json({
+    success: true,
+    started: true,
+    message: 'Scan started; poll /watch/runs for completion. Large rosters continue on the next scheduled tick.',
+  }, 202);
 });
 
 // GET /warrants/utah — list scraped Utah warrants (the new utah_warrants
@@ -726,8 +748,23 @@ warrants.get('/dashboard/stats', async (c) => {
 
     return c.json({ activeWarrants, unverifiedWarrants, hitsToday, personsFlagged, sourcesOnline, sourcesTotal });
   } catch (err) {
-    console.error('[warrants] dashboard/stats error', err);
-    return c.json({ activeWarrants: 0, unverifiedWarrants: 0, hitsToday: 0, personsFlagged: 0, sourcesOnline: 0, sourcesTotal: 0 });
+    // Was a 200 with every stat zeroed. On a warrants dashboard that renders as
+    // "ACTIVE WARRANTS 0 / SOURCES 0/0" with a calm LED — a DB failure presented
+    // as an all-clear, and indistinguishable from a genuinely quiet jurisdiction.
+    // Same silent-empty class as GET /unified. Fail loudly instead; the client
+    // already renders '-' when dashStats is absent.
+    const traceId = c.get('traceId');
+    log.error('[warrants] dashboard/stats failed', { route: 'GET /warrants/dashboard/stats', traceId }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'GET /warrants/dashboard/stats' },
+      traceId,
+      source: 'GET /warrants/dashboard/stats',
+      statusCode: 500,
+    }, c.executionCtx);
+    return c.json({ error: 'Failed to load warrant dashboard stats' }, 500);
   }
 });
 
@@ -865,7 +902,29 @@ warrants.get('/unified', async (c) => {
       }
     }
 
-    const localRows = await query<Record<string, any>>(db, 'SELECT * FROM warrants');
+    // Both reads were `SELECT * FROM <table>` with NO LIMIT — the whole of both
+    // tables was pulled into the isolate and then filtered/sorted/paginated in
+    // JS, so pagination was cosmetic: the full cost was paid before the first
+    // row was skipped. Push the filters that survive a cross-table merge down
+    // into SQL, and cap each side.
+    //
+    // The merge, derived fields (priority/age/source_state) and final sort stay
+    // in JS on purpose — they span two heterogeneous tables and cannot be
+    // expressed as one D1 statement. But they no longer start from everything.
+    //
+    // These WHERE clauses are built from a FIXED set of scalar filters, never
+    // from a caller-supplied array, so there is no IN-list and no exposure to
+    // D1's 100-bound-parameter cap. If you add an IN filter here, route it
+    // through queryInChunks/chunkBindings (see CLAUDE.md).
+    const localWhere: string[] = [];
+    const localBinds: unknown[] = [];
+    if (!includeArchived) localWhere.push('archived_at IS NULL');
+    if (status) { localWhere.push('status = ?'); localBinds.push(status); }
+    if (type) { localWhere.push('type = ?'); localBinds.push(type); }
+    if (personId) { localWhere.push('subject_person_id = ?'); localBinds.push(personId); }
+    const localSql = `SELECT * FROM warrants${localWhere.length ? ` WHERE ${localWhere.join(' AND ')}` : ''} LIMIT ${UNIFIED_SCAN_CAP}`;
+
+    const localRows = await query<Record<string, any>>(db, localSql, ...localBinds);
     let merged: Record<string, any>[] = localRows.map((row) => ({
       ...row,
       source: row.source ?? 'local',
@@ -873,7 +932,13 @@ warrants.get('/unified', async (c) => {
     }));
 
     try {
-      const scrapedRows = await query<Record<string, any>>(db, 'SELECT * FROM scraped_warrants');
+      // scraped_warrants has no archived_at/subject_person_id, so only the
+      // filters it genuinely supports are pushed down.
+      const scrapedWhere: string[] = [];
+      const scrapedBinds: unknown[] = [];
+      if (status) { scrapedWhere.push('status = ?'); scrapedBinds.push(status); }
+      const scrapedSql = `SELECT * FROM scraped_warrants${scrapedWhere.length ? ` WHERE ${scrapedWhere.join(' AND ')}` : ''} LIMIT ${UNIFIED_SCAN_CAP}`;
+      const scrapedRows = await query<Record<string, any>>(db, scrapedSql, ...scrapedBinds);
       const reshaped = scrapedRows.map((row) => ({
         id: `scraped-${row.id}`,
         warrant_number: row.warrant_number ?? row.case_id ?? null,
@@ -901,20 +966,42 @@ warrants.get('/unified', async (c) => {
         created_at: row.fetched_at ?? row.created_at ?? row.issue_date ?? null,
         updated_at: row.fetched_at ?? row.updated_at ?? null,
         source_state: (row.state as string | undefined)?.toUpperCase() ?? null,
+        // ── Fields the reshape used to DROP ─────────────────────────────────
+        // issued_date: omitted entirely before, even though issue_date is read
+        // one line up as a created_at fallback. Its absence meant age_days fell
+        // back to the batch-insert time, so the AGE column read the SAME value
+        // ('8w') on every row in production, and the DATE column was blank for
+        // every scraped warrant.
+        issued_date: row.issue_date ?? row.issued_date ?? null,
+        // last_scrape_at: never carried, so the client's freshnessClass(null)
+        // always returned 'manual' and the FRESHNESS column rendered the same
+        // pencil icon on every row. This gives that column a real input.
+        last_scrape_at: row.fetched_at ?? row.last_scrape_at ?? null,
       }));
       merged = merged.concat(reshaped);
     } catch { /* scraped_warrants missing on this env — local-only unified list */ }
 
     merged = merged.map((row) => {
       const priority_score = computePriorityScore(row);
-      const age_days = ageDaysFrom(row.created_at);
+      // Age is the age of the WARRANT, not of our database row. This used to read
+      // created_at (batch insert / fetched_at), which is identical across a whole
+      // scrape batch — hence the AGE column showing '8w' on every row in
+      // production. created_at stays as an explicit last-resort fallback.
+      const age_days = ageDaysFrom(row.issued_date ?? row.created_at);
       const matches_person = row.subject_person_id != null;
-      let source_state = row.source_state;
-      if (!source_state && row.source && row.source !== 'local') {
-        const m = String(row.source).match(/^([a-z]{2})[-_]/i);
-        source_state = m ? m[1].toUpperCase() : (String(row.source).startsWith('fed') ? 'FED' : null);
-      }
-      return { ...row, priority_score, age_days, matches_person, source_state };
+      // Single authority: src/utils/warrantSourceState.ts. The inline regex that
+      // used to live here was prefix-anchored and resolved NOTHING for any live
+      // source key ('ada-county-id' etc.), so ?state= filtered on a null.
+      const source_state = row.source_state
+        ?? (row.source && row.source !== 'local' ? stateFromSourceKey(row.source) : null);
+      // WarrantsListTab renders freshnessIcon(freshnessClass(w.freshness_days)) —
+      // a field this route never computed, so it was always undefined,
+      // freshnessClass fell through to 'manual', and the FRESHNESS column showed
+      // the same pencil icon on every row. Derived here (rather than in the
+      // client) so there is one definition of "how stale is this record".
+      // null stays null and legitimately means "manually entered, never scraped".
+      const freshness_days = ageDaysFrom(row.last_scrape_at ?? null);
+      return { ...row, priority_score, age_days, freshness_days, matches_person, source_state };
     });
 
     const filtered = merged.filter((row) => {
@@ -940,7 +1027,12 @@ warrants.get('/unified', async (c) => {
 
     const sortKeyMap: Record<string, string> = {
       created_at: 'created_at', updated_at: 'updated_at', warrant_number: 'warrant_number',
-      type: 'type', status: 'status', subject_name: 'subject_name', issued_date: 'created_at',
+      type: 'type', status: 'status', subject_name: 'subject_name',
+      // Was `issued_date: 'created_at'` — asking to sort by issue date silently
+      // sorted by row-insert date instead. A wrong answer with no error, and
+      // indistinguishable from a correct one in the UI. Now sorts by issue date,
+      // which the reshape above finally carries.
+      issued_date: 'issued_date',
       priority: 'priority_score',
     };
     const sortKey = sortKeyMap[sort] ?? 'created_at';
@@ -960,8 +1052,138 @@ warrants.get('/unified', async (c) => {
 
     return c.json({ warrants: pageRows, total });
   } catch (err) {
-    console.error('[warrants] unified error', err);
-    return c.json({ warrants: [], total: 0 });
+    // Was `return c.json({ warrants: [], total: 0 })` with a 200 — a DB failure
+    // was indistinguishable from "this jurisdiction has no warrants", which on a
+    // warrants screen is the most dangerous possible lie. The 2026-07-21 rebuild
+    // removed this pattern from GET / but never from here.
+    const traceId = c.get('traceId');
+    log.error('[warrants] unified failed', { route: 'GET /warrants/unified', traceId }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'GET /warrants/unified' },
+      traceId,
+      source: 'GET /warrants/unified',
+      statusCode: 500,
+    }, c.executionCtx);
+    return c.json({ error: 'Failed to load unified warrant list' }, 500);
+  }
+});
+
+// ── Literal paths that MUST precede /:id ─────────────────────────────────────
+// Both of these were registered BELOW warrants.get('/:id') and were therefore
+// DEAD in production: GET /warrants/summary-report and PUT /warrants/batch-update
+// both returned 400 {"error":"Invalid warrant id"} (verified live 2026-07-30),
+// because /:id matched first and parseInt('summary-report') is NaN.
+//
+// The banner below claims Hono's radix trie prioritizes static segments
+// "regardless of declaration order". For these two paths production did not
+// behave that way, so declaration order IS load-bearing here — do not move a
+// literal path below /:id on the strength of that claim. Covered by a route-
+// order regression test in test-workers/warrants.test.ts.
+
+// PUT /warrants/batch-update { ids: number[], status: string }
+// WarrantsPage's batch status toolbar — the route never existed, so
+// "Apply" always silently no-op'd (the button just showed a generic error).
+warrants.put('/batch-update', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ ids?: number[]; status?: string }>();
+    const ids = Array.isArray(body.ids) ? body.ids.map((n) => parseInt(String(n), 10)).filter(Number.isFinite) : [];
+    const status = (body.status || '').trim();
+    if (!ids.length || !status) return c.json({ error: 'ids and status required' }, 400);
+    // D1 caps bound parameters at ~100/query — chunk so a selection over the
+    // cap doesn't blow up the prepared statement and 500 the whole batch.
+    let updated = 0;
+    for (const chunk of chunkIds(ids)) {
+      const placeholders = chunk.map(() => '?').join(',');
+      await execute(
+        db,
+        `UPDATE warrants SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
+        status, ...chunk,
+      );
+      updated += chunk.length;
+    }
+    return c.json({ success: true, updated });
+  } catch (err) {
+    console.error('[warrants] batch-update error', err);
+    return c.json({ error: 'Batch update failed' }, 500);
+  }
+});
+
+
+// GET /warrants/summary-report?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Feeds WarrantSummaryData for the client-side PDF generator
+// (generateWarrantSummaryPdf) — this route only aggregates; the PDF itself
+// is built in the browser. bySeverity/bySource are scoped to what the local
+// `warrants` records table actually carries (no severity column exists on
+// it, and only ingested/local records count toward source counts — hits
+// still living only in utah_warrants/scraped_warrants aren't "local" yet).
+warrants.get('/summary-report', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const from = c.req.query('from') || null;
+    const to = c.req.query('to') || null;
+    const dateCol = 'issued_date';
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (from) { where.push(`${dateCol} >= ?`); params.push(from); }
+    if (to) { where.push(`${dateCol} <= ?`); params.push(to); }
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const topCourtsWhere = where.length
+      ? `WHERE ${where.join(' AND ')} AND issuing_court IS NOT NULL`
+      : 'WHERE issuing_court IS NOT NULL';
+
+    const [byStatusRows, byTypeRows, topCourtsRows, newCountRow, clearedCountRow, latestRun] = await Promise.all([
+      query<{ status: string; n: number }>(db, `SELECT status, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY status`, ...params),
+      query<{ type: string; n: number }>(db, `SELECT type, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY type`, ...params),
+      query<{ issuing_court: string; count: number }>(
+        db,
+        `SELECT issuing_court, COUNT(*) AS count FROM warrants ${topCourtsWhere} GROUP BY issuing_court ORDER BY count DESC LIMIT 10`,
+        ...params,
+      ).catch(() => []),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM warrants ${whereClause}`, ...params),
+      queryFirst<{ n: number }>(
+        db,
+        `SELECT COUNT(*) AS n FROM warrants WHERE archived_at IS NOT NULL ${from ? 'AND archived_at >= ?' : ''} ${to ? 'AND archived_at <= ?' : ''}`,
+        ...(from ? [from] : []), ...(to ? [to] : []),
+      ),
+      query<{ persons_checked: number; new_warrants_found: number; warrants_cleared: number }>(
+        db,
+        `SELECT persons_checked, new_warrants_found, warrants_cleared FROM warrant_watch_runs
+          WHERE started_at >= COALESCE(?, '0000-01-01') AND started_at <= COALESCE(?, '9999-12-31')`,
+        from, to,
+      ).catch(() => []),
+    ]);
+
+    const byStatus: Record<string, number> = {};
+    for (const r of byStatusRows) byStatus[r.status] = r.n;
+    const byType: Record<string, number> = {};
+    for (const r of byTypeRows) byType[r.type] = r.n;
+    const scanActivity = latestRun.reduce(
+      (acc, r) => ({
+        totalScans: acc.totalScans + 1,
+        totalFound: acc.totalFound + (r.new_warrants_found ?? 0),
+        totalCleared: acc.totalCleared + (r.warrants_cleared ?? 0),
+      }),
+      { totalScans: 0, totalFound: 0, totalCleared: 0 },
+    );
+
+    return c.json({
+      period: { from, to },
+      byStatus,
+      byType,
+      bySeverity: {},
+      bySource: { local: newCountRow?.n ?? 0 },
+      topCourts: topCourtsRows,
+      newThisPeriod: newCountRow?.n ?? null,
+      clearedThisPeriod: clearedCountRow?.n ?? null,
+      scanActivity,
+    });
+  } catch (err) {
+    console.error('[warrants] summary-report error', err);
+    return c.json({ error: 'Failed to build summary report' }, 500);
   }
 });
 
@@ -969,10 +1191,15 @@ warrants.get('/unified', async (c) => {
 // Manual warrant CRUD — WarrantsPage.tsx's New/Edit Warrant form, serve,
 // archive/unarchive, and delete actions. Registered after every other
 // literal-path route in this file so a numeric warrant id can never shadow
-// a named route like /watch/runs or /dashboard/stats (Hono's router is a
-// radix trie and prioritizes static segments regardless of declaration
-// order, but keeping /: routes last matches this file's existing style
-// and stays correct even if that routing guarantee ever changes).
+// a named route like /watch/runs or /dashboard/stats.
+//
+// ⚠️ An earlier version of this comment said Hono's radix trie "prioritizes
+// static segments regardless of declaration order". DO NOT RELY ON THAT.
+// GET /summary-report and PUT /batch-update sat below /:id on that assumption
+// and were dead in production for as long as they existed — both returned
+// 400 {"error":"Invalid warrant id"} (verified live 2026-07-30). Declaration
+// order is load-bearing: every literal path belongs ABOVE /:id, and there is a
+// route-order regression test in test-workers/warrants.test.ts to keep it that way.
 // ============================================================
 
 const ALLOWED_WARRANT_COLUMNS = [
@@ -1244,35 +1471,6 @@ warrants.delete('/:id', async (c) => {
   }
 });
 
-// PUT /warrants/batch-update { ids: number[], status: string }
-// WarrantsPage's batch status toolbar — the route never existed, so
-// "Apply" always silently no-op'd (the button just showed a generic error).
-warrants.put('/batch-update', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const body = await c.req.json<{ ids?: number[]; status?: string }>();
-    const ids = Array.isArray(body.ids) ? body.ids.map((n) => parseInt(String(n), 10)).filter(Number.isFinite) : [];
-    const status = (body.status || '').trim();
-    if (!ids.length || !status) return c.json({ error: 'ids and status required' }, 400);
-    // D1 caps bound parameters at ~100/query — chunk so a selection over the
-    // cap doesn't blow up the prepared statement and 500 the whole batch.
-    let updated = 0;
-    for (const chunk of chunkIds(ids)) {
-      const placeholders = chunk.map(() => '?').join(',');
-      await execute(
-        db,
-        `UPDATE warrants SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
-        status, ...chunk,
-      );
-      updated += chunk.length;
-    }
-    return c.json({ success: true, updated });
-  } catch (err) {
-    console.error('[warrants] batch-update error', err);
-    return c.json({ error: 'Batch update failed' }, 500);
-  }
-});
-
 // POST /warrants/bulk-archive { warrant_ids: number[] }
 // Same "never existed" gap as batch-update — reuses the archived_at column
 // the single-warrant /:id/archive route already writes.
@@ -1391,78 +1589,5 @@ warrants.post('/check/:personId', async (c) => {
   }
 });
 
-// GET /warrants/summary-report?from=YYYY-MM-DD&to=YYYY-MM-DD
-// Feeds WarrantSummaryData for the client-side PDF generator
-// (generateWarrantSummaryPdf) — this route only aggregates; the PDF itself
-// is built in the browser. bySeverity/bySource are scoped to what the local
-// `warrants` records table actually carries (no severity column exists on
-// it, and only ingested/local records count toward source counts — hits
-// still living only in utah_warrants/scraped_warrants aren't "local" yet).
-warrants.get('/summary-report', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const from = c.req.query('from') || null;
-    const to = c.req.query('to') || null;
-    const dateCol = 'issued_date';
-    const where: string[] = [];
-    const params: unknown[] = [];
-    if (from) { where.push(`${dateCol} >= ?`); params.push(from); }
-    if (to) { where.push(`${dateCol} <= ?`); params.push(to); }
-    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const topCourtsWhere = where.length
-      ? `WHERE ${where.join(' AND ')} AND issuing_court IS NOT NULL`
-      : 'WHERE issuing_court IS NOT NULL';
-
-    const [byStatusRows, byTypeRows, topCourtsRows, newCountRow, clearedCountRow, latestRun] = await Promise.all([
-      query<{ status: string; n: number }>(db, `SELECT status, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY status`, ...params),
-      query<{ type: string; n: number }>(db, `SELECT type, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY type`, ...params),
-      query<{ issuing_court: string; count: number }>(
-        db,
-        `SELECT issuing_court, COUNT(*) AS count FROM warrants ${topCourtsWhere} GROUP BY issuing_court ORDER BY count DESC LIMIT 10`,
-        ...params,
-      ).catch(() => []),
-      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM warrants ${whereClause}`, ...params),
-      queryFirst<{ n: number }>(
-        db,
-        `SELECT COUNT(*) AS n FROM warrants WHERE archived_at IS NOT NULL ${from ? 'AND archived_at >= ?' : ''} ${to ? 'AND archived_at <= ?' : ''}`,
-        ...(from ? [from] : []), ...(to ? [to] : []),
-      ),
-      query<{ persons_checked: number; new_warrants_found: number; warrants_cleared: number }>(
-        db,
-        `SELECT persons_checked, new_warrants_found, warrants_cleared FROM warrant_watch_runs
-          WHERE started_at >= COALESCE(?, '0000-01-01') AND started_at <= COALESCE(?, '9999-12-31')`,
-        from, to,
-      ).catch(() => []),
-    ]);
-
-    const byStatus: Record<string, number> = {};
-    for (const r of byStatusRows) byStatus[r.status] = r.n;
-    const byType: Record<string, number> = {};
-    for (const r of byTypeRows) byType[r.type] = r.n;
-    const scanActivity = latestRun.reduce(
-      (acc, r) => ({
-        totalScans: acc.totalScans + 1,
-        totalFound: acc.totalFound + (r.new_warrants_found ?? 0),
-        totalCleared: acc.totalCleared + (r.warrants_cleared ?? 0),
-      }),
-      { totalScans: 0, totalFound: 0, totalCleared: 0 },
-    );
-
-    return c.json({
-      period: { from, to },
-      byStatus,
-      byType,
-      bySeverity: {},
-      bySource: { local: newCountRow?.n ?? 0 },
-      topCourts: topCourtsRows,
-      newThisPeriod: newCountRow?.n ?? null,
-      clearedThisPeriod: clearedCountRow?.n ?? null,
-      scanActivity,
-    });
-  } catch (err) {
-    console.error('[warrants] summary-report error', err);
-    return c.json({ error: 'Failed to build summary report' }, 500);
-  }
-});
 
 export default warrants;

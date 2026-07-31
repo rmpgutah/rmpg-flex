@@ -46,6 +46,11 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { execute, query, queryFirst } from './db';
 import { broadcastAll } from '../routes/ws';
 import { isCircuitOpen } from './warrantSources/resilience';
+// Reused rather than re-implemented: warrant_watch_runs mixes ISO-8601
+// (toISOString) and zone-less datetime('now') timestamps, which is exactly the
+// skew this helper exists to normalize. Its own docblock argues for centralizing
+// it instead of keeping parallel copies.
+import { parseD1TimestampMs } from './fleetio/sync';
 
 // Source key tying this poller to its warrant_scraper_config row + the
 // scraper_events WebSocket channel + the dispatcher-facing display name
@@ -67,7 +72,35 @@ const BASE_DELAY_MS = 8_000; // matches legacy adaptive baseline
 // Fallback only — the live cap is read from warrant_scraper_config.max_persons_per_run
 // (migration 0200) so it can be retuned without a redeploy. This constant is used
 // solely when that row/column is missing (fresh D1, migration not yet applied).
-const DEFAULT_MAX_PERSONS_PER_RUN = 150;
+const DEFAULT_MAX_PERSONS_PER_RUN = 60;
+// ── Execution-window budget ───────────────────────────────────────────────────
+// Cloudflare caps a Cron Trigger invocation at 15 MINUTES of wall time (and
+// waitUntil() at only 30s past a response). This loop sleeps BASE_DELAY_MS
+// between every person, so 150 persons needed ~20-25 min — meaning the finalize
+// UPDATE below the loop was UNREACHABLE and every run stayed 'running' forever
+// (20/20 rows in live D1 on 2026-07-30, oldest 3 days old, all with the
+// persons_checked=0 that the INSERT wrote). The health write to
+// warrant_scraper_config sits below the loop too, which is why
+// last_success_at was frozen at 2026-07-24.
+//
+// Two guards, because either alone is insufficient:
+//   - DEFAULT_MAX_PERSONS_PER_RUN (60 x ~10s = ~10 min) sizes the COMMON path,
+//     but it is only a fallback — the live cap comes from
+//     warrant_scraper_config.max_persons_per_run and can be retuned to
+//     anything, so it cannot be trusted to bound wall time.
+//   - RUN_WALL_BUDGET_MS is the HARD backstop: whatever the configured slice
+//     size and however slow the upstream gets, the loop stops in time to
+//     finalize. persons_cursor_id already resumes the next slice on the next
+//     tick, so stopping early loses no coverage — it just spreads it out.
+const RUN_WALL_BUDGET_MS = 10 * 60 * 1000;
+// A manual trigger runs inside a request isolate, where waitUntil() grants only
+// 30s past the response. Give it a much smaller budget so it does a real,
+// honestly-finalized slice instead of orphaning a row it can never close.
+export const MANUAL_RUN_WALL_BUDGET_MS = 20 * 1000;
+// Any run still 'running' past this is not slow, it is dead — its isolate was
+// evicted. Comfortably above RUN_WALL_BUDGET_MS so a healthy long run is never
+// reaped out from under itself.
+const STALE_RUN_TIMEOUT_MS = 20 * 60 * 1000;
 // Emit a run_progress WS event every N persons so the Sources/Scrapers Live
 // Feed and the Warrants-tab poll-status strip show movement mid-run instead
 // of only start/end.
@@ -556,9 +589,16 @@ export async function runUtahWarrantCheckForPerson(
  * Old export name (`runUtahWarrantSmokePoll`) kept as an alias for
  * backward compat with code that imports the prior smoke-poll name.
  */
-export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult> {
+export async function runUtahWarrantScan(
+  db: D1Database,
+  opts: { wallBudgetMs?: number } = {},
+): Promise<WatchRunResult> {
   const run_id = `utah-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const started_at = new Date().toISOString();
+  // Monotonic-ish deadline for the per-person loop. See RUN_WALL_BUDGET_MS.
+  const wallBudgetMs = opts.wallBudgetMs ?? RUN_WALL_BUDGET_MS;
+  const runStartedMs = Date.now();
+  let budgetExhausted = false;
 
   await execute(
     db,
@@ -688,12 +728,25 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
     // Advance the cursor to the last id processed; wrap to 0 (restart from
     // the top) once a pass returns fewer rows than the cap — that means we
     // hit the end of the eligible roster.
+    // NOTE: this is the cursor for a run that processes the WHOLE slice. If the
+    // wall-budget guard below breaks early we must NOT use it — advancing past
+    // people we never checked would silently skip them for a full roster pass.
+    // lastProcessedId tracks what we actually got through.
     const nextCursorId =
       persons.length === 0 || persons.length < maxPersonsPerRun
         ? 0
         : persons[persons.length - 1].id;
+    let lastProcessedId: number | null = null;
 
     for (const person of persons) {
+      // Hard wall-budget guard. Stop BEFORE starting another person (each costs
+      // a fetch plus a ~8-10s sleep) so there is always time left to finalize
+      // this run's row. Without this the isolate is evicted mid-loop and the row
+      // below never gets written — see RUN_WALL_BUDGET_MS.
+      if (Date.now() - runStartedMs >= wallBudgetMs) {
+        budgetExhausted = true;
+        break;
+      }
       // Confirmed = local DOB present, so isLikelyMatch age-gated the candidate
       // before we ever fetched it. Only confirmed hits are promoted to the
       // canonical warrants records table; DOB-less namesakes stay as leads.
@@ -717,6 +770,7 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
         );
       }
       persons_checked++;
+      lastProcessedId = person.id;
       if (persons_checked % PROGRESS_EVENT_INTERVAL === 0 && persons_checked < persons.length) {
         try {
           broadcastAll('scraper_events', {
@@ -739,15 +793,29 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
 
     // Sweep: anything whose last_seen_at predates this run is cleared —
     // archives the canonical record + emits a warrant_cleared notification.
-    warrants_cleared = await markClearedWarrants(db, started_at, run_id);
+    //
+    // MUST NOT run on a budget-truncated pass. The sweep's premise is "this run
+    // saw everyone, so anything unseen is gone"; on a partial pass that premise
+    // is false and it would clear live warrants belonging to people we simply
+    // never got to. Skipping it only defers clearing to a pass that completes.
+    if (budgetExhausted) {
+      console.warn(
+        `[Utah Warrants] wall budget (${wallBudgetMs}ms) reached after ${persons_checked}/${persons.length} persons — skipping cleared-warrant sweep, resuming next tick`,
+      );
+    } else {
+      warrants_cleared = await markClearedWarrants(db, started_at, run_id);
+    }
 
     // Advance the resume cursor so the next run covers a fresh slice of
-    // the roster (or wraps to the top — see nextCursorId above).
+    // the roster (or wraps to the top — see nextCursorId above). On a truncated
+    // pass advance only as far as we actually got, so the next tick picks up at
+    // the first unchecked person rather than skipping the remainder.
+    const cursorToWrite = budgetExhausted ? (lastProcessedId ?? cursorId) : nextCursorId;
     try {
       await execute(
         db,
         'UPDATE warrant_scraper_config SET persons_cursor_id = ? WHERE source_name = ?',
-        nextCursorId,
+        cursorToWrite,
         SOURCE_KEY,
       );
     } catch (err) {
@@ -771,7 +839,14 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
     new_warrants_found,
     warrants_cleared,
     errors,
-    error_message ?? null,
+    // A budget-truncated pass is a SUCCESSFUL partial, not a failure — it checked
+    // real people and resumes from its cursor. Record that in error_message (the
+    // only free-text column here) so scan history can say "partial" instead of
+    // implying full roster coverage.
+    error_message
+      ?? (budgetExhausted
+        ? `partial: wall budget reached after ${persons_checked} person(s); resumes next tick`
+        : null),
     run_id,
   );
 
@@ -869,6 +944,73 @@ export async function getLatestUtahWatchRun(db: D1Database) {
     errors: number;
     error_message: string | null;
   }>(db, 'SELECT * FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 1');
+}
+
+/**
+ * Reap watch runs whose isolate died before they could finalize.
+ *
+ * Cloudflare caps a Cron Trigger at 15 min of wall time and a waitUntil() at 30s
+ * past the response. Any run still `'running'` well past RUN_WALL_BUDGET_MS did
+ * not finish slowly — it was evicted mid-loop and will never write its own
+ * completion row. Left alone those rows are actively harmful: the Warrants-tab
+ * poll banner reads them as a live scan (and, being injected above the tab strip,
+ * overlays and swallows every tab click), Watch List reports "LAST SCAN: Never"
+ * because it looks for a completed run, and scan history shows "In progress…
+ * 0/0/0/0" forever.
+ *
+ * Live D1 on 2026-07-30 had 20/20 rows in exactly this state, the oldest 3 days
+ * old. The first production tick of this reaper closes all of them out, which is
+ * the intended one-time backfill.
+ *
+ * `completed_at` is set to `started_at + timeout` rather than now, so the row
+ * reports roughly when it actually stopped being viable instead of when someone
+ * happened to notice.
+ *
+ * Timestamps here are mixed-format — `started_at` is written as ISO-8601 UTC
+ * (`toISOString()`) while sibling columns elsewhere use zone-less
+ * `datetime('now')` — so comparison MUST go through `parseD1TimestampMs`, or the
+ * timeout skews by the host's UTC offset (CLAUDE.md invariant).
+ *
+ * Returns the number of rows reaped.
+ */
+export async function reapStaleWatchRuns(
+  db: D1Database,
+  now: number = Date.now(),
+): Promise<number> {
+  const running = await query<{ id: number; run_id: string; started_at: string | null }>(
+    db,
+    `SELECT id, run_id, started_at FROM warrant_watch_runs WHERE status = 'running'`,
+  );
+  if (running.length === 0) return 0;
+
+  let reaped = 0;
+  for (const row of running) {
+    const startedMs = parseD1TimestampMs(row.started_at);
+    // An unparseable/absent started_at cannot be aged out safely — leave it and
+    // log, rather than reaping a row we can't reason about.
+    if (startedMs == null) {
+      console.warn(`[Utah Warrants] reaper: run ${row.run_id} has unparseable started_at, skipping`);
+      continue;
+    }
+    if (now - startedMs < STALE_RUN_TIMEOUT_MS) continue;
+
+    const completed_at = new Date(startedMs + STALE_RUN_TIMEOUT_MS).toISOString();
+    await execute(
+      db,
+      `UPDATE warrant_watch_runs
+          SET status = 'failed', completed_at = ?, error_message = ?
+        WHERE id = ? AND status = 'running'`,
+      completed_at,
+      'run did not finalize within the execution window (isolate evicted before completion)',
+      row.id,
+    );
+    reaped++;
+  }
+
+  if (reaped > 0) {
+    console.warn(`[Utah Warrants] reaper: closed out ${reaped} stale 'running' run(s)`);
+  }
+  return reaped;
 }
 
 /** @deprecated alias kept for backward compat with v1 callers; use runUtahWarrantScan */
