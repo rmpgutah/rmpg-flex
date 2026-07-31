@@ -945,7 +945,13 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
 
       <div className={`flex-1 ${props.isMobile ? 'flex flex-col' : 'flex'} overflow-hidden`}>
         {/* LEFT: Warrant List */}
-        <div className={`${props.isMobile ? (selectedWarrant ? 'hidden' : 'flex-1') : 'w-[55%]'} flex flex-col ${!props.isMobile ? 'border-r border-rmpg-600' : ''}`}>
+        {/* Desktop width: the detail pane used to hold a fixed 45% even with
+            NOTHING selected, squeezing this table into ~770px when it needs
+            ~1324px — so BAIL, ATTEMPTS and DATE were hidden behind a horizontal
+            scrollbar while half the screen showed an empty panel (measured live
+            2026-07-30: table scrollWidth 1324 in a 987px container). Give the
+            list the full width until a row is actually selected. */}
+        <div className={`${props.isMobile ? (selectedWarrant ? 'hidden' : 'flex-1') : (selectedWarrant ? 'w-[55%]' : 'w-full')} flex flex-col ${!props.isMobile && selectedWarrant ? 'border-r border-rmpg-600' : ''}`}>
           {/* Filters (thin bar) */}
           <div className={`flex ${props.isMobile ? 'flex-col gap-1' : 'items-center gap-1.5'} px-2 py-1 border-b border-[#1a1a1a] bg-[#080808]`}>
             <div className="relative flex-1">
@@ -967,7 +973,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
             </div>
             <div className={`flex ${props.isMobile ? 'gap-1.5 flex-wrap' : 'gap-2'}`}>
               <select id="ff-warrantslisttab-1"
-                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
+                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
                 value={filterStatus}
                 onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
                 style={props.isMobile ? { minHeight: 44 } : undefined}
@@ -978,7 +984,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                 ))}
               </select>
               <select id="ff-warrantslisttab-2"
-                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
+                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
                 value={filterType}
                 onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
                 style={props.isMobile ? { minHeight: 44 } : undefined}
@@ -989,7 +995,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                 ))}
               </select>
               <select id="ff-warrantslisttab-3"
-                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
+                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-32'}`}
                 value={filterSeverity}
                 onChange={(e) => { setFilterSeverity(e.target.value); setPage(1); }}
                 style={props.isMobile ? { minHeight: 44 } : undefined}
@@ -1010,7 +1016,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
               />
               {/* Source filter */}
               <select id="ff-warrantslisttab-5"
-                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
+                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
                 value={filterSource}
                 onChange={(e) => { setFilterSource(e.target.value); setPage(1); }}
                 style={props.isMobile ? { minHeight: 44 } : undefined}
@@ -1032,7 +1038,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
             <select id="ff-warrantslisttab-6"
               value={filterStateChip}
               onChange={(e) => { setFilterStateChip(e.target.value); setPage(1); }}
-              className="select-dark text-xs"
+              className="select-dark text-xs w-32"
               style={{ minHeight: 26 }}
             >
               <option value="">By state</option>
@@ -1320,7 +1326,10 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
         </div>
 
         {/* RIGHT: Warrant Detail */}
-        <div className={`${props.isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
+        {/* Hidden until a row is selected on desktop too — see the width note on
+            the list pane above. An empty 45% panel is not worth three hidden
+            columns of warrant data. */}
+        <div className={`${selectedWarrant ? 'flex-1' : 'hidden'} flex flex-col overflow-hidden`}>
           <div className={`flex ${props.isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-rmpg-700 bg-[var(--grid-header-bg)]`}>
             <Gavel className="w-3 h-3 text-brand-400" />
             <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest">Warrant Detail</span>
