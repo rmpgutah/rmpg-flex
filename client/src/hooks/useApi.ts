@@ -123,6 +123,63 @@ export function authedImageUrl(url: string | null | undefined): string {
 const inflightMutations = new Map<string, { promise: Promise<Response>; ts: number }>();
 const DEDUP_WINDOW_MS = 500;
 
+// ─── GET in-flight coalescing (cut cold-load duplicate reads) ────
+// A cold load fires ~75 requests and several endpoints have more than one
+// independent consumer in the same tick (/settings ×4, /user/preferences ×4,
+// /dispatch/units ×2 — field DevTools 2026-07-31). Against the 600 req/300 s
+// per-user budget in src/middleware/rateLimit.ts that duplication is what
+// turns a few hard reloads into a 429 storm.
+//
+// Keyed by URL + header fingerprint (see getCoalesceKey), and the entry lives
+// ONLY while the request is genuinely in flight — deleted the moment it
+// settles. There is deliberately no TTL
+// cache: no consumer may ever read a staler value than it would have without
+// this optimization, which is non-negotiable for live CAD reads (unit
+// positions, GPS). Contract pinned by
+// client/src/hooks/__tests__/useApiGetCoalescing.test.ts.
+const inflightGets = new Map<string, Promise<Response>>();
+
+/**
+ * Coalescing key for a request, or `null` when it must NOT share an in-flight
+ * response with a concurrent twin. Two callers that resolve to the same key
+ * must be indistinguishable from two callers each issuing their own request.
+ *
+ * Ineligible, and why:
+ *  - Anything but GET. A POST/PATCH to the same URL is a distinct action with
+ *    its own body; sharing one response would silently drop a write.
+ *  - `init.signal` present. Callers that abort on unmount pass a signal; if
+ *    such a caller *started* the shared request, its abort would reject the
+ *    promise every follower awaits, failing a still-mounted component.
+ *  - A body on a GET. Malformed, and the body is not part of the key.
+ *
+ * Headers are folded INTO the key rather than gating eligibility. apiFetch
+ * adds Content-Type / X-Requested-With / Authorization uniformly, but callers
+ * may pass extras via `options.headers`, and apiFetchBlob sends a different
+ * set entirely. Fingerprinting them means a caller with distinct headers gets
+ * its own request instead of one computed for somebody else's — and it also
+ * means a token refreshed mid-flight can never share across two tokens.
+ */
+function getCoalesceKey(method: string, url: string, init: RequestInit): string | null {
+  if (method !== 'GET') return null;
+  if (init.signal) return null;
+  if (init.body != null) return null;
+  return `${url}\n${headerFingerprint(init.headers)}`;
+}
+
+/** Stable, order-independent fingerprint of a header set. */
+function headerFingerprint(headers: HeadersInit | undefined): string {
+  if (!headers) return '';
+  const entries = headers instanceof Headers
+    ? [...headers.entries()]
+    : Array.isArray(headers)
+      ? headers.map(([k, v]) => [k, v] as [string, string])
+      : Object.entries(headers);
+  return entries
+    .map(([k, v]) => `${k.toLowerCase()}:${v}`)
+    .sort()
+    .join(' ');
+}
+
 // ─── Retry config for 500/502/503/504 (server restart recovery) ────
 const RETRY_STATUS_CODES = [500, 502, 503, 504];
 const MAX_RETRIES = 3;
@@ -185,6 +242,23 @@ async function fetchWithRetry(
     }
     throw lastError || new Error('Server temporarily unavailable. Please try again.');
   };
+
+  // GET coalescing. Note that EVERY caller — including the one that started
+  // the request — receives a .clone(), and the stored Response itself is never
+  // read. Handing the original to the first caller and clones to the rest
+  // would break as soon as the first caller's .json() consumed the body before
+  // a later follower got around to cloning it (clone() is only legal on an
+  // unconsumed body).
+  const coalesceKey = getCoalesceKey(method.toUpperCase(), url, init);
+  if (coalesceKey) {
+    const existing = inflightGets.get(coalesceKey);
+    if (existing) return existing.then((res) => res.clone());
+
+    const shared = doFetch();
+    inflightGets.set(coalesceKey, shared);
+    shared.finally(() => inflightGets.delete(coalesceKey)).catch(() => {});
+    return shared.then((res) => res.clone());
+  }
 
   const promise = doFetch();
   if (isMutation) {
