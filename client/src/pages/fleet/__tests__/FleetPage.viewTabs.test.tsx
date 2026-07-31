@@ -28,8 +28,8 @@ vi.mock('../../../context/WebSocketContext', () => ({
 // onViewAllWorkOrders, exactly like the real "View all ->" control inside
 // the Costs tab's OpenWorkOrdersPanel does.
 vi.mock('../FleetDetailPanel', () => ({
-  default: ({ onViewAllWorkOrders }: { onViewAllWorkOrders: () => void }) => (
-    <button type="button" onClick={onViewAllWorkOrders}>
+  default: ({ actions }: { actions: { onViewAllWorkOrders: () => void } }) => (
+    <button type="button" onClick={actions.onViewAllWorkOrders}>
       trigger view all work orders
     </button>
   ),
