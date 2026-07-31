@@ -2416,8 +2416,7 @@ personnel.get('/training-materials', async (c) => {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, `
       SELECT id, title, description, category, content_type, external_url,
-             file_id, file_name, mime_type, file_size, is_required_reading,
-             published, created_at
+             file_id, is_required_reading, published, created_at
         FROM company_documents
        WHERE published = 1
          AND category IN ('training_manual', 'reference', 'sop', 'procedure')

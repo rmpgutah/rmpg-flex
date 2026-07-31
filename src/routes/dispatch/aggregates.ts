@@ -768,9 +768,11 @@ aggregates.get('/by-zone', async (c) => {
     const daysRaw = parseInt(c.req.query('days') || '7', 10);
     const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 90) : 7;
     const rows = await query<{ zone: string; count: number }>(db,
-      `SELECT COALESCE(dispatch_zone, 'Unzoned') AS zone, COUNT(*) AS count FROM calls_for_service
+      // No dispatch_zone on live calls_for_service — zone_name is the label,
+      // zone_beat the fallback identifier.
+      `SELECT COALESCE(zone_name, zone_beat, 'Unzoned') AS zone, COUNT(*) AS count FROM calls_for_service
        WHERE created_at >= datetime('now','-${days} days')
-       GROUP BY dispatch_zone ORDER BY count DESC LIMIT 20`);
+       GROUP BY zone ORDER BY count DESC LIMIT 20`);
     return c.json({ by_zone: rows, days });
   } catch { return c.json({ by_zone: [], days: 7 }); }
 });

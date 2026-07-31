@@ -200,11 +200,14 @@ uof.get('/:id/footage', async (c) => {
     let bodycam: Record<string, unknown>[] = [];
     if (incidentId != null) {
       bodycam = await query<Record<string, unknown>>(db,
-        `SELECT id, title, classification, retention_status, recorded_at,
-                duration_seconds, file_size, officer_name, case_number, created_at
-         FROM bodycam_videos
-         WHERE incident_id = ?
-         ORDER BY recorded_at DESC`, incidentId).catch(() => []);
+        // bodycam_videos has no officer_name — resolve it off users.full_name.
+        `SELECT v.id, v.title, v.classification, v.retention_status, v.recorded_at,
+                v.duration_seconds, v.file_size, u.full_name AS officer_name,
+                v.case_number, v.created_at
+         FROM bodycam_videos v
+         LEFT JOIN users u ON u.id = v.officer_id
+         WHERE v.incident_id = ?
+         ORDER BY v.recorded_at DESC`, incidentId).catch(() => []);
     }
     return c.json({ flexcam: flexcam || [], bodycam: bodycam || [] });
   } catch (err) {

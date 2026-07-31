@@ -527,7 +527,8 @@ flexcam.post('/backfill', requireRole('admin'), async (c): Promise<Response> => 
 
   for (const trip of batch) {
     const mapping = await queryFirst<{ asset_id: number; cpg_device_id: string }>(db,
-      `SELECT asset_id, cpg_device_id FROM cpg_device_mappings WHERE unit_id=? AND is_active=1 LIMIT 1`,
+      // The CPG asset id lives in `cpg_camera_id` (mirrors the /request handler above).
+      `SELECT cpg_camera_id AS asset_id, cpg_device_id FROM cpg_device_mappings WHERE unit_id=? AND is_active=1 LIMIT 1`,
       trip.unit_id,
     ).catch(() => null);
 

@@ -188,7 +188,8 @@ export async function detectDispatchAnomalies(db: D1Database): Promise<{ raised:
       LIMIT 50`,
   );
   for (const b of expiredBolos) {
-    await execute(db, `UPDATE bolos SET status = 'expired', updated_at = datetime('now') WHERE id = ?`, b.id);
+    // bolos has no updated_at; expired_at is the column that records this.
+    await execute(db, `UPDATE bolos SET status = 'expired', expired_at = datetime('now') WHERE id = ?`, b.id);
     candidates.push({
       dedup_key: `bolo_expired:${b.id}`,
       alert_type: 'bolo_expired',

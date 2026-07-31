@@ -77,7 +77,8 @@ adminDev.post('/mock/gps', async (c) => {
   }
 
   const db = c.env.DB;
-  const unit = await db.prepare('SELECT id, unit_number FROM units WHERE id = ?')
+  // units has no `unit_number` — the live column is `call_sign`.
+  const unit = await db.prepare('SELECT id, call_sign AS unit_number FROM units WHERE id = ?')
     .bind(body.unit_id).first<{ id: number; unit_number: string }>();
   if (!unit) return c.json({ error: 'unit_not_found' }, 404);
 
@@ -89,7 +90,9 @@ adminDev.post('/mock/gps', async (c) => {
   ).bind(body.unit_id, body.lat, body.lng).run();
 
   await db.prepare(
-    `INSERT INTO audit_log (action_type, entity_type, entity_id, performed_by, notes)
+    // audit_log columns are action / user_id / details (not action_type /
+    // performed_by / notes).
+    `INSERT INTO audit_log (action, entity_type, entity_id, user_id, details)
      VALUES ('DEV_SIM', 'unit', ?, ?, 'Mock GPS injection')`
   ).bind(body.unit_id, actor.id).run();
 
@@ -119,7 +122,7 @@ adminDev.post('/mock/call', async (c) => {
   ).bind(type, actor.id).run();
 
   await db.prepare(
-    `INSERT INTO audit_log (action_type, entity_type, entity_id, performed_by, notes)
+    `INSERT INTO audit_log (action, entity_type, entity_id, user_id, details)
      VALUES ('DEV_SIM', 'call', ?, ?, 'Mock call seed')`
   ).bind(result.meta.last_row_id, actor.id).run();
 
