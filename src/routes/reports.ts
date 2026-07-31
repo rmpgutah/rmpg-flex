@@ -1084,7 +1084,8 @@ reports.get('/weekly-digest', async (c) => {
       safe1(`SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now',?)`, since7),
       safe1(`SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now',?)`, since7),
       safe1(`SELECT COUNT(*) AS n FROM citations WHERE created_at >= datetime('now',?)`, since7),
-      safe1(`SELECT COUNT(*) AS n FROM arrests WHERE created_at >= datetime('now',?)`, since7),
+      // No `arrests` table on live D1 — it's arrest_records.
+      safe1(`SELECT COUNT(*) AS n FROM arrest_records WHERE created_at >= datetime('now',?)`, since7),
       (async () => {
         try {
           const r = await queryFirst<{ v: number | null }>(db, `SELECT ROUND(AVG(COALESCE(response_time_seconds/60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at)-julianday(dispatched_at))*1440 END)),1) AS v FROM calls_for_service WHERE created_at >= datetime('now',?) AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)`, since7);
@@ -1375,7 +1376,9 @@ reports.get('/patrol-coverage', async (c) => {
   try {
     const db = getDb(c.env);
     const totalBeats = (await queryFirst<{ n: number }>(db,
-      'SELECT COUNT(DISTINCT beat_id) AS n FROM dispatch_geography'))?.n ?? 0;
+      // No dispatch_geography table exists (in rmpg-flex or rmpg-geo) —
+      // dispatch_beats is the beat registry.
+      'SELECT COUNT(*) AS n FROM dispatch_beats WHERE COALESCE(active, 1) = 1'))?.n ?? 0;
     const coveredBeats = (await queryFirst<{ n: number }>(db,
       `SELECT COUNT(DISTINCT u.assigned_beat) AS n FROM units u WHERE u.status = 'available' AND u.assigned_beat IS NOT NULL`))?.n ?? 0;
     return c.json({ coverage: totalBeats ? Math.round((coveredBeats / totalBeats) * 100) : 0, coveredBeats, totalBeats });

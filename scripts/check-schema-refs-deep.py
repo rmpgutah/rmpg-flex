@@ -19,6 +19,9 @@ of SQL that stay unambiguous even in a big join:
      invents (`AS x`, `COUNT(*) n`) — without that subtraction this rule is
      ~60:1 noise; with it, it is the only rule that sees a bad column in a
      WHERE clause, where a wrong name returns zero rows instead of erroring.
+  6. Unqualified refs in a MULTI-TABLE join: reported when the name exists on
+     NONE of the participating tables. Which table owns it is ambiguous; that
+     it resolves nowhere is not.
 This supersedes check-schema-refs.py, whose regex-based literal extraction
 mis-pairs quotes across a file and silently drops whole queries.
 
@@ -224,9 +227,26 @@ def main():
         if cols:
             schema[r['name']] = cols
 
-    findings, files = [], sorted(SRC.rglob('*.ts'))
+    # Tables /src/ creates at runtime (ensure*Schema helpers) are legitimately
+    # absent from live until first use, so they are not "missing".
+    runtime_created = set()
+    for path in SRC.rglob('*.ts'):
+        for cm in re.finditer(r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z_][A-Za-z0-9_]*)',
+                              path.read_text(errors='replace'), re.I):
+            runtime_created.add(cm.group(1))
+
+    # ⚠️ The Worker binds THREE D1 databases (wrangler.toml): DB=rmpg-flex,
+    # GEO_DB=rmpg-geo, KIOSK_DB=kiosk-linux-fleet. This script only reads
+    # rmpg-flex, so a file that queries another binding would have every one of
+    # its tables reported "missing" — kiosk_devices is correct code, not a bug.
+    # Skip those files entirely rather than emit confident false positives.
+    OTHER_DB_BINDINGS = ('KIOSK_DB', 'GEO_DB')
+
+    missing_tables, findings, files = {}, [], sorted(SRC.rglob('*.ts'))
     for path in files:
         src = path.read_text(errors='replace')
+        if any(b in src for b in OTHER_DB_BINDINGS):
+            continue
         for offset, raw in iter_literals(src):
             if not SQL_START.search(raw) or NOT_SQL.search(raw):
                 continue
@@ -236,10 +256,22 @@ def main():
             # Alias map for this statement. Unknown tables (runtime-created,
             # CTEs) map to None so their qualified refs are skipped, not
             # falsely blamed on another table.
+            # CTE names declared by this statement are not tables.
+            ctes = {c.group(1).lower() for c in
+                    re.finditer(r'\b([A-Za-z_][A-Za-z0-9_]*)\s+AS\s*(?:(?:NOT\s+)?MATERIALIZED\s*)?\(',
+                                flat, re.I)}
+
             aliases, tables = {}, []
             for tm in TABLE_REF.finditer(flat):
                 tbl, alias = tm.group(1), tm.group(2)
                 known = tbl in schema
+                # A referenced table that exists NOWHERE is a bigger defect than
+                # a bad column, and both scanners used to skip it in silence.
+                if (not known and tbl not in runtime_created
+                        and tbl.lower() not in ctes and tbl.lower() not in KEYWORDS
+                        and tbl != 'sqlite_master' and not tbl.startswith('pragma_')
+                        and '_' in tbl):          # single bare words are comment prose
+                    missing_tables.setdefault(tbl, []).append(f"{path}:{line}")
                 if known and tbl not in tables:
                     tables.append(tbl)
                 aliases[tbl.lower()] = tbl if known else None
@@ -275,6 +307,34 @@ def main():
                 if tbl in schema:
                     for col in re.findall(r'(?:^|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s*=', um.group(2)):
                         report(tbl, col)
+
+            # 6. Unqualified refs in a MULTI-TABLE (join) statement. Rules 4
+            #    and 5 bail out on joins because an unqualified name could
+            #    belong to any participating table -- but that ambiguity only
+            #    blocks saying WHICH table owns it. It does not block the
+            #    stronger claim: a name that exists on NONE of the joined
+            #    tables cannot resolve anywhere, so the statement throws. That
+            #    is decidable without knowing the owner, and it is the only
+            #    rule that reaches unqualified columns in the joins that make
+            #    up most of this codebase's real queries.
+            if len(tables) > 1 and all(aliases.values()):
+                if len(re.findall(r'\bSELECT\b', flat, re.I)) == 1:
+                    known = set().union(*(schema[t] for t in tables))
+                    local = {m.group(1).lower() for m in
+                             re.finditer(r'\bAS\s+([A-Za-z_][A-Za-z0-9_]*)', flat, re.I)}
+                    local |= {m.group(1).lower() for m in
+                              re.finditer(r'\)\s*([A-Za-z_][A-Za-z0-9_]*)', flat)}
+                    local |= set(aliases)
+                    body = re.sub(TABLE_REF, ' ', flat)
+                    body = re.sub(r'\b[A-Za-z_][A-Za-z0-9_]*\s*\(', ' ( ', body)
+                    body = re.sub(r'\b[A-Za-z_][A-Za-z0-9_]*\.\*', ' ', body)
+                    body = re.sub(r'\b[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*', ' ', body)
+                    body = re.sub(r'\bAS\s+[A-Za-z_][A-Za-z0-9_]*', ' ', body, flags=re.I)
+                    for col in re.findall(r'[A-Za-z_][A-Za-z0-9_]*', body):
+                        if col.lower() in KEYWORDS or col.lower() in local or col in known:
+                            continue
+                        findings.append((str(path), line,
+                                         '|'.join(tables) + ' (join)', col))
 
             # 5. Unqualified refs in EVERY OTHER clause (WHERE / GROUP BY /
             #    ORDER BY / HAVING) of a single-table, join-free statement.
@@ -332,6 +392,12 @@ def main():
     print(f"suspect column refs: {len(uniq)}  (verify each before editing)\n")
     for path, line, table, col in sorted(uniq, key=lambda x: (x[0], x[1])):
         print(f"{path}:{line}  {table}.{col}")
+
+    print(f"\nreferenced TABLES absent from live D1: {len(missing_tables)}")
+    print("(heuristic: names containing '_'; bare single words are usually "
+          "comment prose matched after FROM/UPDATE)")
+    for tbl, sites in sorted(missing_tables.items()):
+        print(f"  {tbl}  ({len(sites)} site{'s' if len(sites) > 1 else ''})  e.g. {sites[0]}")
 
 
 if __name__ == '__main__':

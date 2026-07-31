@@ -2051,7 +2051,7 @@ records.get('/evidence/:id/linked-records', async (c) => {
       try {
         return await query<Record<string, unknown>>(db,
           `SELECT c.id, c.case_number, c.case_type, c.status FROM cases c
-           INNER JOIN evidence_case_links ecl ON ecl.case_id = c.id WHERE ecl.evidence_id = ?
+           INNER JOIN case_evidence_links ecl ON ecl.case_id = c.id WHERE ecl.evidence_id = ?
            UNION
            SELECT c.id, c.case_number, c.case_type, c.status FROM cases c WHERE c.id = ?`,
           id, row.case_id ?? -1,
@@ -2064,8 +2064,10 @@ records.get('/evidence/:id/linked-records', async (c) => {
         return await query<Record<string, unknown>>(db,
           `SELECT fc.id, fc.lab_number, fc.title, fc.case_type, fc.status
            FROM forensic_cases fc
-           INNER JOIN forensic_case_evidence fce ON fce.forensic_case_id = fc.id
-           WHERE fce.evidence_id = ?`,
+           -- forensic_case_evidence does not exist; forensic_case_entity_links
+           -- is the polymorphic link table (entity_type + entity_id).
+           INNER JOIN forensic_case_entity_links fce ON fce.forensic_case_id = fc.id
+           WHERE fce.entity_type = 'evidence' AND fce.entity_id = ?`,
           id,
         );
       } catch { return []; }
