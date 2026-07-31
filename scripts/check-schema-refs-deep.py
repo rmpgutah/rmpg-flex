@@ -120,6 +120,16 @@ NOT_SQL = re.compile(r'=>|\bc\.json\(|\b(?:const|let|var|function|await|async|re
                      r'|catch|=== |!== )\b|\breq\.|\bconsole\.')
 
 
+# JavaScript expressions sitting INSIDE a SQL literal with NO ${} around them.
+# D1 then receives the literal source text and throws a syntax error, which the
+# call site's catch turns into []. fleet.ts's emissions-tests query shipped
+# `v.year <= new Date().getFullYear() - 4` this way and never once returned a
+# row. Checked AFTER stripping interpolations, since JS inside ${} is correct.
+# `||` is excluded: in SQL it is string concatenation, not a JS or.
+JS_IN_SQL = re.compile(r'\bnew\s+Date\s*\(|\.getFullYear\s*\(|\.toISOString\s*\('
+                       r'|\bMath\.\w+\s*\(|\?\?|\.length\b|\.map\s*\(|\bJSON\.\w+\s*\(')
+
+
 def iter_literals(src: str):
     """Yield (offset, text) for every JS string/template literal.
 
@@ -220,6 +230,49 @@ def flatten(sql: str) -> str:
     return ' '.join(s.split())
 
 
+def top_level_split(text: str):
+    """Split on top-level commas only (parens/function calls stay intact)."""
+    out, cur, depth = [], '', 0
+    for ch in text:
+        if ch == '(':
+            depth += 1
+        elif ch == ')':
+            depth -= 1
+        if ch == ',' and depth == 0:
+            out.append(cur); cur = ''
+        else:
+            cur += ch
+    out.append(cur)
+    return [x for x in out if x.strip()]
+
+
+def insert_arity(flat: str):
+    """(n_columns, n_values, kind) when an INSERT's counts disagree, else None.
+
+    An arity mismatch is a different defect from a wrong column name, and no
+    amount of schema knowledge catches it: dispatch/extensions.ts listed 6
+    geofence columns against 7 VALUES (a stray 'info' literal), so that INSERT
+    would still have thrown even after migration 0214 supplied the columns.
+    """
+    im = re.search(r'\bINSERT(?:\s+OR\s+\w+)?\s+INTO\s+[A-Za-z_]\w*\s*\(([^()]*)\)\s*(SELECT\b|VALUES\b)',
+                   flat, re.I)
+    if not im:
+        return None
+    n_cols = len(top_level_split(im.group(1)))
+    rest = flat[im.end() - 6:]
+    if im.group(2).upper().startswith('SELECT'):
+        sel = re.search(r'\bSELECT\b(.*?)\bFROM\b', rest, re.I | re.S)
+        if not sel:
+            return None
+        n_vals, kind = len(top_level_split(sel.group(1))), 'SELECT'
+    else:
+        vm = re.search(r'\bVALUES\s*\((.*?)\)\s*(?:ON\s+CONFLICT|RETURNING|$)', rest, re.I | re.S)
+        if not vm:
+            return None
+        n_vals, kind = len(top_level_split(vm.group(1))), 'VALUES'
+    return None if n_cols == n_vals else (n_cols, n_vals, kind)
+
+
 def main():
     schema = {}
     for r in live_ddl():
@@ -242,7 +295,7 @@ def main():
     # Skip those files entirely rather than emit confident false positives.
     OTHER_DB_BINDINGS = ('KIOSK_DB', 'GEO_DB')
 
-    missing_tables, findings, files = {}, [], sorted(SRC.rglob('*.ts'))
+    missing_tables, js_in_sql, arity, findings, files = {}, [], [], [], sorted(SRC.rglob('*.ts'))
     for path in files:
         src = path.read_text(errors='replace')
         if any(b in src for b in OTHER_DB_BINDINGS):
@@ -252,6 +305,14 @@ def main():
                 continue
             flat = flatten(raw)
             line = src[:offset].count('\n') + 1
+
+            mismatch = insert_arity(flat)
+            if mismatch:
+                arity.append((str(path), line, *mismatch))
+
+            bare = re.sub(r'--[^\n]*', ' ', strip_interpolations(raw))
+            for jm in JS_IN_SQL.finditer(bare):
+                js_in_sql.append((str(path), line, jm.group(0).strip()))
 
             # Alias map for this statement. Unknown tables (runtime-created,
             # CTEs) map to None so their qualified refs are skipped, not
@@ -374,6 +435,7 @@ def main():
                 sel = re.search(r'\bSELECT\b(.*?)\bFROM\b', flat, re.I | re.S)
                 if sel and len(re.findall(r'\bSELECT\b', flat, re.I)) == 1:
                     t = re.sub(r'\bAS\s+[A-Za-z_][A-Za-z0-9_]*', ' ', sel.group(1), flags=re.I)
+                    t = re.sub(r'\b[A-Za-z_][A-Za-z0-9_]*\.\*', ' ', t)       # al.*
                     t = re.sub(r'\b[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*', ' ', t)
                     prev = None
                     while prev != t:                 # implicit aliases: COUNT(*) n
@@ -392,6 +454,14 @@ def main():
     print(f"suspect column refs: {len(uniq)}  (verify each before editing)\n")
     for path, line, table, col in sorted(uniq, key=lambda x: (x[0], x[1])):
         print(f"{path}:{line}  {table}.{col}")
+
+    print(f"\nINSERT column/value arity mismatches: {len(arity)}")
+    for path, line, ncols, nvals, kind in arity:
+        print(f"  {path}:{line}  {ncols} columns vs {nvals} {kind} items")
+
+    print(f"\nSQL literals containing un-interpolated JavaScript: {len(js_in_sql)}")
+    for path, line, tok in js_in_sql:
+        print(f"  {path}:{line}  [{tok}]  -- D1 receives this as literal text")
 
     print(f"\nreferenced TABLES absent from live D1: {len(missing_tables)}")
     print("(heuristic: names containing '_'; bare single words are usually "
