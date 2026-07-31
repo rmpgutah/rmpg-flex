@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { denverNowDateExpr } from '../utils/denverTime';
 
 import { log } from '../utils/logger';
@@ -247,11 +247,14 @@ crm.post('/leads/bulk-action', async (c) => {
     const db = getDb(c.env); const b = await c.req.json<{ action?: string; lead_ids?: number[]; ids?: number[]; value?: any }>();
     const ids = (b.lead_ids ?? b.ids ?? []).map(Number).filter(Boolean);
     if (!ids.length) return c.json({ updated: 0 });
-    const ph = ids.map(() => '?').join(',');
-    if (b.action === 'mark_contacted') await execute(db, `UPDATE crm_leads SET pipeline_stage='contacted', updated_at=datetime('now') WHERE id IN (${ph})`, ...ids);
-    else if (b.action === 'dismiss') await execute(db, `UPDATE crm_leads SET pipeline_stage='dismissed', updated_at=datetime('now') WHERE id IN (${ph})`, ...ids);
-    else if (b.action === 'delete') await execute(db, `DELETE FROM crm_leads WHERE id IN (${ph})`, ...ids);
-    else if (b.action === 'assign') await execute(db, `UPDATE crm_leads SET assigned_to=?, updated_at=datetime('now') WHERE id IN (${ph})`, b.value ?? null, ...ids);
+    // lead_ids is caller-supplied and unbounded — a bulk action over 100+ leads
+    // exceeds D1's 100-bound-parameter cap and throws at BIND time. The 'assign'
+    // branch also binds assigned_to ahead of the IN-list, so that leading
+    // parameter is declared and counted against the per-chunk budget.
+    if (b.action === 'mark_contacted') await executeInChunks(db, ids, (ph) => `UPDATE crm_leads SET pipeline_stage='contacted', updated_at=datetime('now') WHERE id IN (${ph})`);
+    else if (b.action === 'dismiss') await executeInChunks(db, ids, (ph) => `UPDATE crm_leads SET pipeline_stage='dismissed', updated_at=datetime('now') WHERE id IN (${ph})`);
+    else if (b.action === 'delete') await executeInChunks(db, ids, (ph) => `DELETE FROM crm_leads WHERE id IN (${ph})`);
+    else if (b.action === 'assign') await executeInChunks(db, ids, (ph) => `UPDATE crm_leads SET assigned_to=?, updated_at=datetime('now') WHERE id IN (${ph})`, [b.value ?? null]);
     return c.json({ updated: ids.length });
   } catch (e) {
     log.error('POST /leads/bulk-action failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }

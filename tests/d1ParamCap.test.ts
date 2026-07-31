@@ -76,6 +76,66 @@ describe('no unbounded IN-list survives', () => {
   }
 });
 
+// Second wave (2026-07-31). These files legitimately KEEP other
+// `map(() => '?')` builders -- for schema column arrays and fixed status
+// constants, whose length is set by the code, not by the data -- so the
+// blanket "not.toContain" assertion above cannot be reused. Each site is
+// pinned by the specific hand-rolled builder that was removed.
+describe('no unbounded IN-list survives (wave 2)', () => {
+  const SITES: Array<{ file: string; helper: string; removed: string; why: string }> = [
+    {
+      file: 'routes/records.ts',
+      helper: 'executeInChunks',
+      removed: "const ps = ids.map(() => '?')",
+      why: 'retention sweep SELECTs LIMIT 500 then bound all of them -- 5x the cap',
+    },
+    {
+      file: 'routes/shiftPlans.ts',
+      helper: 'executeInChunks',
+      removed: "body.plan_ids.map(() => '?')",
+      why: 'bulk-activate binds a caller-supplied plan_ids array',
+    },
+    {
+      file: 'routes/hr.ts',
+      helper: 'executeInChunks',
+      removed: "const placeholders = ids.map(() => '?')",
+      why: 'disciplinary + grievance bulk-status bind body.ids, with leading bindings',
+    },
+    {
+      file: 'routes/crm.ts',
+      helper: 'executeInChunks',
+      removed: "const ph = ids.map(() => '?')",
+      why: 'lead bulk-action binds caller-supplied lead_ids across four branches',
+    },
+    {
+      file: 'routes/personnel.ts',
+      helper: 'queryInChunks',
+      removed: "const placeholders = ids.map(() => '?')",
+      why: 'time-entry edit lookup had no LIMIT on the entries query',
+    },
+  ];
+
+  for (const { file, helper, removed, why } of SITES) {
+    it(`${file} chunks through ${helper} (${why})`, () => {
+      const src = read(file);
+      expect(src, `${file} should import/use ${helper}`).toContain(helper);
+      expect(src, `${file} still hand-rolls: ${removed}`).not.toContain(removed);
+    });
+  }
+
+  it('leading bindings are declared where the write binds more than the IN-list', () => {
+    // hr.ts binds status/updated_at (2) and status/resolved_at/updated_at (3)
+    // BEFORE the IN-list. Omitting them from executeInChunks would size chunks
+    // at the full 100 and blow the cap by exactly the leading count -- the
+    // subtlest way to "fix" this bug and still ship it broken.
+    const hr = read('routes/hr.ts');
+    expect(hr).toContain('[status, nowIso()]');
+    expect(hr).toContain('[status, resolvedAt, now]');
+    // crm.ts's assign branch binds assigned_to ahead of the IN-list.
+    expect(read('routes/crm.ts')).toContain('[b.value ?? null]');
+  });
+});
+
 describe('route optimizer schema', () => {
   // Five column references in the stop fetch did not exist on live D1, so the
   // optimizer threw on every call and never produced a route. Verified via

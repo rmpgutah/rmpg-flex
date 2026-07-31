@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { normalizeDob } from '../utils/normalizeDob';
 import { codedLike, containsAnyClause } from '../utils/searchText';
 import { recordAudit } from '../utils/auditLog';
@@ -2430,9 +2430,12 @@ records.post('/retention/enforce', async (c) => {
            AND datetime(created_at) < datetime('now',?) LIMIT 500`, `-${days} days`);
         if (expired.length > 0) {
           const ids = expired.map((r: any) => r.id);
-          const ps = ids.map(() => '?').join(',');
-          await execute(db, `UPDATE evidence SET status='disposed' WHERE id IN (${ps})`, ...ids);
-          count = ids.length;
+          // The SELECT above is LIMIT 500, so this IN-list can carry up to 500
+          // bound parameters — five times D1's 100-parameter cap, which throws
+          // at BIND time before the statement runs. Retention enforcement would
+          // 500 and dispose nothing the moment 100+ rows aged out.
+          count = await executeInChunks(db, ids,
+            (ps) => `UPDATE evidence SET status='disposed' WHERE id IN (${ps})`);
         }
       } else if (recordType === 'incidents') {
         const expired = await query<{ id: number }>(db,
@@ -2440,11 +2443,9 @@ records.post('/retention/enforce', async (c) => {
            AND datetime(created_at) < datetime('now',?) LIMIT 500`, `-${days} days`);
         if (expired.length > 0) {
           const ids = expired.map((r: any) => r.id);
-          const ps = ids.map(() => '?').join(',');
-          await execute(db,
-            `UPDATE incidents SET archived_at=datetime('now'),updated_at=datetime('now') WHERE id IN (${ps})`,
-            ...ids);
-          count = ids.length;
+          // Same LIMIT 500 vs 100-parameter-cap mismatch as the evidence branch.
+          count = await executeInChunks(db, ids,
+            (ps) => `UPDATE incidents SET archived_at=datetime('now'),updated_at=datetime('now') WHERE id IN (${ps})`);
         }
       }
       if (count > 0) results[recordType] = count;
