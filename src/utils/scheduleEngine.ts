@@ -243,8 +243,11 @@ async function getOfficerRole(db: D1Database, userId: number): Promise<string | 
 async function isOnLeave(db: D1Database, userId: number, date: string): Promise<boolean> {
   const row = await queryFirst<{ id: number }>(
     db,
-    `SELECT id FROM shift_leave_requests
-       WHERE user_id = ?
+    // Live table is leave_requests, keyed by officer_id. shift_leave_requests
+    // exists nowhere, so isOnLeave() threw on every call — scheduling could
+    // never see that anyone was on leave.
+    `SELECT id FROM leave_requests
+       WHERE officer_id = ?
          AND status = 'approved'
          AND start_date <= ?
          AND end_date >= ?
@@ -607,8 +610,11 @@ export async function getShiftHandoffData(
   // Pending serve jobs
   const pendingServes = await query(
     db,
-    `SELECT id, case_number, serve_type, recipient_name, address, status, priority, created_at
-       FROM serve_jobs
+    // serve_jobs does not exist — the queue table is serve_queue, whose
+    // columns are document_type / recipient_address.
+    `SELECT id, case_number, document_type AS serve_type, recipient_name,
+            recipient_address AS address, status, priority, created_at
+       FROM serve_queue
        WHERE status IN ('pending','in_progress','attempted')
        ORDER BY priority ASC, created_at ASC
        LIMIT 50`,

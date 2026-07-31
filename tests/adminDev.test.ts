@@ -157,7 +157,10 @@ test('POST /mock/gps returns 404 when unit not found', async () => {
 });
 
 test('POST /mock/gps succeeds when unit exists', async () => {
-  mockDb.first.mockResolvedValueOnce({ id: 1, unit_number: 'UNIT-1' });
+  // officer_id is required: the breadcrumb lands in gps_breadcrumbs, whose
+  // officer_id column is NOT NULL on live D1. A unit row without one cannot
+  // produce a valid breadcrumb, so the mock has to carry it.
+  mockDb.first.mockResolvedValueOnce({ id: 1, unit_number: 'UNIT-1', officer_id: 7 });
   const app = makeAdminApp();
   const res = await app.request('/mock/gps', {
     method: 'POST',
@@ -167,6 +170,21 @@ test('POST /mock/gps succeeds when unit exists', async () => {
   expect(res.status).toBe(200);
   const body = await res.json() as any;
   expect(body.success).toBe(true);
+});
+
+test('POST /mock/gps returns 409 when the unit has no officer assigned', async () => {
+  // Rather than fabricate an officer_id, the route refuses — gps_breadcrumbs
+  // .officer_id is NOT NULL, so there is nothing honest to insert.
+  mockDb.first.mockResolvedValueOnce({ id: 2, unit_number: 'UNIT-2', officer_id: null });
+  const app = makeAdminApp();
+  const res = await app.request('/mock/gps', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ unit_id: 2, lat: 40.7, lng: -111.9 }),
+  }, { KV: mockKV, DB: mockDb });
+  expect(res.status).toBe(409);
+  const body = await res.json() as any;
+  expect(body.error).toBe('unit_has_no_officer');
 });
 
 test('DELETE /mock/calls rejects non-admin', async () => {

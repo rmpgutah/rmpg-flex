@@ -333,7 +333,7 @@ ce.get('/stats', async (c) => {
     try {
       const p = await queryFirst<{ n: number }>(db, `
         SELECT COUNT(*) AS n FROM citations
-        WHERE (violation LIKE '%park%' OR violation_type LIKE '%park%')
+        WHERE (violation LIKE '%park%' OR type LIKE '%park%')
           AND ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`);
       parkingToday = p?.n ?? 0;
     } catch { /* citations schema drift — leave 0 */ }

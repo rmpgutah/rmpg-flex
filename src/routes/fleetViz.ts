@@ -51,9 +51,12 @@ viz.get('/kpi', async (c) => {
     const db = getDb(c.env);
     const period = c.req.query('period');
     const fuelWin = buildDateWindow(period, 'fuel_date');
-    // fleet_maintenance uses `service_date` on live D1 (no `maintenance_date`
-    // column ever shipped). Same drift fixed in /cost-per-mile.
-    const mvWin = buildDateWindow(period, 'service_date');
+    // fleet_maintenance carries the service date in TWO columns. On live D1
+    // `performed_at` is populated on 100% of rows and `service_date` on NONE,
+    // and 28 other call sites read `performed_at` — so a window on
+    // `service_date` alone matched zero rows and every maintenance figure in
+    // this module read empty. Primary + validated fallback covers both shapes.
+    const mvWin = buildDateWindow(period, 'performed_at', 'service_date');
 
     const inService = await queryFirst<{ n: number }>(
       db, `SELECT COUNT(*) AS n FROM fleet_vehicles WHERE status = 'in_service'`,
@@ -135,18 +138,19 @@ viz.get('/dossier/:id{[0-9]+}', async (c) => {
            WHERE vehicle_id = ? AND fuel_date >= date('now','-90 days')
            ORDER BY fuel_date`, id,
     );
-    // fleet_maintenance columns on live: service_date, service_type (no
-    // `maintenance_date`/`maintenance_type`); there is no `status` column.
-    // Alias service_* back to maintenance_* so the dossier UI keeps its
-    // current JSON shape without a client edit.
+    // fleet_maintenance columns on live: performed_at/service_date (the date
+    // lives in either; performed_at is the populated one), service_type — no
+    // `maintenance_date`/`maintenance_type`, and no `status`. Alias back to
+    // maintenance_* so the dossier UI keeps its JSON shape with no client edit.
     const maint90d = await query<Record<string, unknown>>(
       db, `SELECT id,
-                  service_date AS maintenance_date,
+                  COALESCE(performed_at, service_date) AS maintenance_date,
                   service_type AS maintenance_type,
                   description, cost, work_order_id
            FROM fleet_maintenance
-           WHERE vehicle_id = ? AND service_date >= date('now','-90 days')
-           ORDER BY service_date DESC`, id,
+           WHERE vehicle_id = ?
+             AND COALESCE(performed_at, service_date) >= date('now','-90 days')
+           ORDER BY COALESCE(performed_at, service_date) DESC`, id,
     );
     const openWoCount = await queryFirst<{ n: number }>(
       db, `SELECT COUNT(*) AS n FROM work_orders WHERE vehicle_id = ?
@@ -364,9 +368,10 @@ function stableHash(s: string): number {
 viz.get('/cost-per-mile', async (c) => {
   try {
     const db = getDb(c.env);
-    // Schema: fleet_maintenance uses `service_date` (NOT `maintenance_date`).
-    // The latter was a renamed column that never landed in baseline schema.
-    const win = buildDateWindow(c.req.query('period'), 'service_date');
+    // Schema: the service date is in performed_at (populated on live) or
+    // service_date (never populated) — never `maintenance_date`. See the
+    // dual-column note on buildDateWindow.
+    const win = buildDateWindow(c.req.query('period'), 'performed_at', 'service_date');
     const fuelWin = buildDateWindow(c.req.query('period'), 'fuel_date');
     const rows = await query<Record<string, unknown>>(
       db, `

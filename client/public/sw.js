@@ -199,6 +199,23 @@ function cachePut(cacheName, request, response) {
 // no body to consume, so the same Request object can be re-issued.
 const RETRY_DELAY_MS = 300;
 
+// Cache Storage reads can REJECT, not just miss — quota pressure, a browser
+// eviction mid-read, or storage torn down while a worker is being replaced.
+// Every fetch() chain below already ends in .catch(), but the caches.match()
+// chains did not, so one rejecting read went straight through respondWith.
+// A promise handed to respondWith must never reject: when it does the browser
+// logs "The FetchEvent for <url> resulted in a network error response: the
+// promise was rejected" and the page gets a hard failure instead of the
+// offline fallback this handler exists to provide — it does NOT quietly fall
+// back to the network. A burst of identical rejections in the same millisecond
+// is the signature, since parallel asset requests share the one failing cache.
+//
+// Treating a rejected read as a miss is right in every branch here: a miss
+// falls through to the network, which is exactly what an unusable cache wants.
+function cacheMatch(request) {
+  return caches.match(request).catch(() => undefined);
+}
+
 function fetchWithRetry(request) {
   return fetch(request).catch((firstErr) =>
     new Promise((resolve, reject) => {
@@ -343,8 +360,8 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(() =>
-          caches.match(event.request)
-            .then((cached) => cached || caches.match('/'))
+          cacheMatch(event.request)
+            .then((cached) => cached || cacheMatch('/'))
             .then((fallback) => fallback || new Response(
               '<!DOCTYPE html><html><head><title>Offline — RMPG Flex</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0}body{background:#0a0a0a;color:#d4a017;font-family:Calibri,Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{text-align:center;max-width:420px;padding:32px 28px;border:1px solid #222;background:#141414;border-radius:2px}h1{margin:0 0 12px;font-size:18px;letter-spacing:0.05em;text-transform:uppercase;color:#d4a017}p{margin:0 0 20px;color:#888;font-size:13px;line-height:1.5}button{background:#d4a017;color:#000;border:0;padding:10px 28px;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;border-radius:2px;font-family:inherit}button:hover{background:#f0bf38}</style></head><body><div class="card"><h1>Connection Lost</h1><p>Unable to reach the RMPG Flex server. Check your network connection and retry.</p><button onclick="window.location.reload()" type="button">Retry</button></div></body></html>',
               { status: 503, headers: { 'Content-Type': 'text/html' } }
@@ -368,7 +385,7 @@ self.addEventListener('fetch', (event) => {
     if (isHashedAsset) {
       // Cache-first — return immediately if we have it, only hit network on miss.
       event.respondWith(
-        caches.match(event.request).then((cached) => {
+        cacheMatch(event.request).then((cached) => {
           if (cached) return cached;
           return fetchWithRetry(event.request)
             .then((response) => {
@@ -407,7 +424,7 @@ self.addEventListener('fetch', (event) => {
           // for a JS/CSS request (see v716 note).
           const ct = response.headers.get('Content-Type') || '';
           if (ct.includes('text/html')) {
-            return caches.match(event.request).then(
+            return cacheMatch(event.request).then(
               (cached) => cached || new Response('', { status: 404, statusText: 'Stale chunk (HTML fallback)' })
             );
           }
@@ -416,14 +433,14 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => caches.match(event.request).then((cached) => cached || new Response('', { status: 503, statusText: 'Offline' })))
+        .catch(() => cacheMatch(event.request).then((cached) => cached || new Response('', { status: 503, statusText: 'Offline' })))
     );
     return;
   }
 
   // Images, fonts, etc. — cache first (these rarely change for same filename)
   event.respondWith(
-    caches.match(event.request).then((cached) => {
+    cacheMatch(event.request).then((cached) => {
       if (cached) return cached;
       return fetchWithRetry(event.request)
         .then((response) => {

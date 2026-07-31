@@ -204,3 +204,67 @@ describe('service worker fetch handler — requests it must decline', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+// A promise handed to respondWith must NEVER reject. When it does, Chrome logs
+// "The FetchEvent for <url> resulted in a network error response: the promise
+// was rejected" and the page sees a hard failure instead of the offline
+// fallback the handler intends — the request does not fall back to the network.
+//
+// Every fetch() chain already ends in .catch(), but four caches.match() chains
+// did not, so a rejecting Cache Storage (quota pressure, or storage torn down
+// while a worker is being replaced) rejected straight through respondWith.
+// One burst of 29 identical rejections in the same millisecond is the shape
+// this produces: many parallel asset requests sharing one failing cache.
+describe('service worker fetch handler — Cache Storage failure', () => {
+  const cacheDown = (listeners: Record<string, Listener>, cachesStub: { match: ReturnType<typeof vi.fn> }) => {
+    cachesStub.match.mockRejectedValue(new Error('Cache Storage unavailable'));
+    return listeners;
+  };
+
+  it('still answers a navigation request when caches.match rejects', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const { listeners, cachesStub } = loadServiceWorker(fetchMock);
+    cacheDown(listeners, cachesStub);
+
+    const response = await dispatchAndSettle(listeners, makeFetchEvent(`${ORIGIN}/dispatch`, { mode: 'navigate' }));
+    expect(response?.status).toBe(503);
+    expect(await response?.text()).toContain('Connection Lost');
+  });
+
+  it('still answers a hashed asset request when caches.match rejects', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('console.log(1)', { status: 200, headers: { 'Content-Type': 'application/javascript' } }),
+    );
+    const { listeners, cachesStub } = loadServiceWorker(fetchMock);
+    cacheDown(listeners, cachesStub);
+
+    // Cache is unusable, so this must fall through to the network, not reject.
+    const response = await dispatchAndSettle(listeners, makeFetchEvent(`${ORIGIN}/assets/index-abc123.js`));
+    expect(response?.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('still answers a non-hashed script request when caches.match rejects', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const { listeners, cachesStub } = loadServiceWorker(fetchMock);
+    cacheDown(listeners, cachesStub);
+
+    const response = await dispatchAndSettle(listeners, makeFetchEvent(`${ORIGIN}/sw-helper.js`));
+    expect(response?.status).toBe(503);
+    expect(response?.statusText).toBe('Offline');
+  });
+
+  it('still answers an image request when caches.match rejects', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const { listeners, cachesStub } = loadServiceWorker(fetchMock);
+    cacheDown(listeners, cachesStub);
+
+    const response = await dispatchAndSettle(listeners, makeFetchEvent(`${ORIGIN}/badge.png`));
+    expect(response?.status).toBe(503);
+    expect(response?.statusText).toBe('Offline');
+  });
+});
