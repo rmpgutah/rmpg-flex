@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { computePriorityScore, normalizeOffenseLevel } from '../src/routes/warrants';
 
-// priorityBucket() in client/src/utils/warrantListHelpers.ts:
-//   >=90 critical | >=70 high | >=40 medium | else low
-const bucket = (n: number) => n >= 90 ? 'critical' : n >= 70 ? 'high' : n >= 40 ? 'medium' : 'low';
+// Mirrors priorityBucket() in client/src/utils/warrantListHelpers.ts:
+//   >=90 critical | >=60 high | >=40 medium | else low
+// `high` is 60 so a felony with no modifiers (base 60) reads as high, which is
+// this scorer's stated intent. Keep the two in sync — the boundaries are coupled
+// to the base values below.
+const bucket = (n: number) => n >= 90 ? 'critical' : n >= 60 ? 'high' : n >= 40 ? 'medium' : 'low';
 
 // Measured live 2026-07-31 over 100 unified rows: offense_level NULL on 100/100,
 // severity actually in `type` as 'M' x93 / 'F' x7, every score 20 or 30, every
