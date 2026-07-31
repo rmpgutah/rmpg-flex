@@ -321,6 +321,21 @@ export default {
 
     // ── Every 30 minutes ──
     if (event.cron === '*/30 * * * *') {
+      // Stale warrant-watch-run reaper. A Cron Trigger is capped at 15 min of
+      // wall time and a waitUntil() at 30s, so a scan whose isolate is evicted
+      // mid-loop never writes its own completion row and sits at 'running'
+      // forever. Those rows are not cosmetic: the Warrants-tab poll banner reads
+      // them as a live scan and, being injected above the tab strip, overlays and
+      // swallows every tab click; Watch List reports "LAST SCAN: Never". This
+      // sweep closes out anything past the stale timeout so the UI tells the
+      // truth. (Live D1 had 20/20 rows stuck this way on 2026-07-30.)
+      ctx.waitUntil(
+        import('./utils/utahWarrantPoller').then((m) =>
+          m.reapStaleWatchRuns(env.DB)
+            .then((n) => { if (n > 0) console.log(`[warrant-watch-reaper] closed out ${n} stale run(s)`); })
+            .catch((err) => console.error('Stale warrant-watch-run reaper failed:', err)),
+        ).catch((err) => console.error('Stale warrant-watch-run reaper import failed:', err)),
+      );
       // ServeManager job poller — syncs jobs from ServeManager into CFS dispatch
       ctx.waitUntil(
         import('./utils/serveManagerPoller').then((m) =>
