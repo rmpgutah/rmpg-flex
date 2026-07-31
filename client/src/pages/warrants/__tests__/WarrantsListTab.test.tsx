@@ -94,6 +94,33 @@ describe('WarrantsListTab', () => {
     vi.spyOn(useApiModule, 'apiFetch').mockResolvedValue({ warrants: [], total: 0 });
   });
 
+  // ── Detail-pane width regression ─────────────────────────────────────────
+  // The detail pane used to hold a fixed 45% of the desktop width even with
+  // NOTHING selected, squeezing the table into ~770px when it needs ~1324px —
+  // BAIL, ATTEMPTS and DATE were hidden behind a horizontal scrollbar while half
+  // the screen showed an empty panel (measured live 2026-07-30: table
+  // scrollWidth 1324 in a 987px container).
+  //
+  // jsdom has no layout engine, so this asserts the CLASS CONDITIONAL rather
+  // than pixels — that is the part that can regress. The pixel outcome follows
+  // deterministically from w-full plus a hidden sibling.
+  it('gives the list full width and hides the detail pane when nothing is selected', async () => {
+    const { container } = renderTab();
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalled());
+
+    const listPane = container.querySelector('.w-full.flex.flex-col');
+    expect(listPane, 'list pane should be w-full with no selection').not.toBeNull();
+    // The old fixed-width class must be gone while nothing is selected.
+    expect(container.querySelector('.w-\\[55\\%\\]')).toBeNull();
+    // And the empty detail pane must not be occupying flex space. Assert the
+    // CLASS, not textContent — `hidden` is display:none, so the pane's text is
+    // still present in the DOM tree while contributing no layout.
+    const detailHeading = screen.getByText(/Warrant Detail/i);
+    const detailPane = detailHeading.closest('div.hidden');
+    expect(detailPane, 'detail pane should carry `hidden` with no selection').not.toBeNull();
+    expect(detailPane?.className).not.toMatch(/flex-1/);
+  });
+
   it('renders without crashing and fetches the list on mount', async () => {
     renderTab();
     await waitFor(() => {
