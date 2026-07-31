@@ -1484,7 +1484,7 @@ fleet.delete('/:id{[0-9]+}', async (c) => {
 // can be unit-tested and reused by the report endpoints. `logs` arrive in
 // DESC order (newest first); we sort a copy ASC by odometer to chain spans,
 // then merge the computed fields back by id so the response keeps DESC order.
-function computeFuelAnalytics(logs: Record<string, unknown>[]): {
+export function computeFuelAnalytics(logs: Record<string, unknown>[]): {
   logs: Record<string, unknown>[];
   summary: Record<string, unknown>;
 } {
@@ -1525,9 +1525,20 @@ function computeFuelAnalytics(logs: Record<string, unknown>[]): {
     }
     // A stored MPG is authoritative: it overrides the odometer-derived estimate
     // and lets rows without an odometer (or without a prior reading) still show
-    // MPG. Whatever the final value, feed it into the avg/best/worst aggregates.
+    // MPG.
     if (storedMpg != null) mpg = storedMpg;
-    if (mpg != null && mpg > 0 && mpg < 200) mpgValues.push(mpg);
+    // ...but it must not smuggle a PARTIAL fill into the aggregates. A partial
+    // fill doesn't reset the tank, so the distance since the last fill wasn't
+    // burned from these gallons and the ratio isn't an MPG at all — which is
+    // exactly why the odometer-derived branch above requires `isFull !== 0`.
+    // Applying that guard only to the computed path let a stored value on a
+    // partial fill through anyway, so avg/best/worst were mixing in numbers the
+    // same function had just refused to compute. On live vehicle PS-D19 that
+    // was 5 of 84 contributing rows (avg MPG 13.0 -> 12.6).
+    //
+    // The row still REPORTS its stored mpg — this only governs what feeds the
+    // aggregates.
+    if (mpg != null && mpg > 0 && mpg < 200 && isFull !== 0) mpgValues.push(mpg);
     computed.set(log.id, { calc_distance, mpg, cost_per_mile });
     if (odo != null) prevOdo = odo;
   }
