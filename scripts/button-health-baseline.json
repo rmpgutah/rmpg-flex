@@ -1,0 +1,8 @@
+{
+  "_note": "Ratchet baseline for scripts/check-button-health.mjs. These numbers may only go DOWN. If a new hit appears, fix the button or refine the classifier — never raise a number to silence a real defect.",
+  "_stuck_flag_note": "stuck-flag is 2 ONLY because PR #3194 (ToolCard IPC-rejection guards) had not merged when this baseline was recorded. Both hits are client/src/pages/recon-connect/ToolCard.tsx:165 and :302. Once #3194 is on main, drop this to 0.",
+  "no-accessible-name": 0,
+  "popup-listener-race": 0,
+  "stuck-flag": 2,
+  "implicit-submit": 0
+}
