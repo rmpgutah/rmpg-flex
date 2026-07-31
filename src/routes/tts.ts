@@ -48,7 +48,13 @@ async function textHash(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// base64 (melotts output) → raw MP3 bytes (client decode contract).
+// base64 (melotts output) → raw audio bytes.
+// ⚠️ melotts returns WAV, NOT MP3 — verified live 2026-07-31 against
+// @cf/myshell-ai/melotts. This comment used to claim MP3 and audioResponse()
+// served everything as audio/mpeg regardless. It only worked because the
+// client's decodeAudioData() sniffs the container and ignores the header, so
+// any consumer that trusted Content-Type would have broken. Use
+// contentTypeFor() so the header matches the actual bytes.
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
@@ -56,11 +62,29 @@ function base64ToBytes(b64: string): Uint8Array {
   return bytes;
 }
 
-function audioResponse(bytes: Uint8Array, cache: 'HIT' | 'MISS', engine: string): Response {
+/**
+ * Content-type from the actual container bytes rather than an assumption.
+ * Aura-2 returns MP3; melotts returns WAV. Unknown input falls back to
+ * audio/mpeg — the historical behaviour, so a future model never 500s here.
+ */
+export function contentTypeFor(bytes: Uint8Array): 'audio/wav' | 'audio/mpeg' {
+  if (bytes.length > 12
+    && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x41 && bytes[10] === 0x56 && bytes[11] === 0x45
+  ) return 'audio/wav';
+  return 'audio/mpeg';
+}
+
+function audioResponse(
+  bytes: Uint8Array,
+  cache: 'HIT' | 'MISS',
+  engine: string,
+  contentType: string = 'audio/mpeg',
+): Response {
   return new Response(bytes, {
     status: 200,
     headers: {
-      'Content-Type': 'audio/mpeg',
+      'Content-Type': contentType,
       'X-TTS-Engine': engine,
       'X-TTS-Cache': cache,
       // Let the SPA cache identical phrases briefly so rapid repeats
@@ -125,7 +149,8 @@ tts.post('/', async (c) => {
     cacheKey = CACHE_PREFIX + speaker + ':' + (await textHash(text));
     const cached = await c.env.KV.get(cacheKey, 'arrayBuffer');
     if (cached && cached.byteLength > 0) {
-      return audioResponse(new Uint8Array(cached), 'HIT', 'workers-ai-aura-2');
+      const cachedBytes = new Uint8Array(cached);
+      return audioResponse(cachedBytes, 'HIT', 'workers-ai-aura-2', contentTypeFor(cachedBytes));
     }
   } catch (err) {
     console.warn('[TTS] cache read failed (continuing):', (err as Error)?.message);
@@ -152,7 +177,7 @@ tts.post('/', async (c) => {
     }
   }
 
-  return audioResponse(bytes, 'MISS', engine);
+  return audioResponse(bytes, 'MISS', engine, contentTypeFor(bytes));
 });
 
 export default tts;

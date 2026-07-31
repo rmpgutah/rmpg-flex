@@ -18,12 +18,15 @@ import { playToneAsync } from './dispatchTones';
 import type { AlertSeverity } from './alertSeverity';
 import { getToneForSeverity, shouldPlayAudio } from './alertSeverity';
 import type { ToneType } from './dispatchTones';
-import { ensureRadioWorklets, buildRadioVoiceChain, createRadioNoiseBed } from './radioProcessor';
+import { ensureRadioWorklets, buildRadioVoiceChain, buildPaVoiceChain, createRadioNoiseBed } from './radioProcessor';
 import { normalizeForSpeech } from './speechNormalizer';
+import { DEFAULT_VOICE_ID } from './voiceCatalog';
 
 // ─── Types ──────────────────────────────────────────────────
 
-export type VoiceMode = 'conversational' | 'spillman_flat';
+// 'alert_pa' = the AUTOMATED ALERT voice: same TTS request as dispatch,
+// but rendered through the station-PA chain with no radio artifacts.
+export type VoiceMode = 'conversational' | 'spillman_flat' | 'alert_pa';
 
 interface QueueEntry {
   text: string;
@@ -71,9 +74,12 @@ export function getEdgeTTSPayload(
   // Spillman flat = clipped CAD-terminal voice. Use a more neutral male
   // voice at slightly faster rate with flat pitch — mimics the Motorola
   // Premier CAD announcer cadence. Conversational uses the user's persona.
+  // Defaults come from voiceCatalog. These were hardcoded to
+  // 'en-US-JennyNeural', an Edge-TTS id the Aura-2 server rejects — it only
+  // worked because resolveAura2Voice() coerced it server-side.
   const voice = voiceMode === 'spillman_flat'
-    ? (localStorage.getItem('rmpg-voice-spillman') || 'en-US-JennyNeural')
-    : (localStorage.getItem('rmpg-voice-persona') || 'en-US-JennyNeural');
+    ? (localStorage.getItem('rmpg-voice-spillman') || DEFAULT_VOICE_ID)
+    : (localStorage.getItem('rmpg-voice-persona') || DEFAULT_VOICE_ID);
   const rateNum = safeNum(localStorage.getItem('rmpg-voice-rate'), 1.0);
   const pitchNum = safeNum(localStorage.getItem('rmpg-voice-pitch'), 0);
 
@@ -284,27 +290,43 @@ async function fetchAndPlay(
     currentSource = source;
 
     const now = ctx.currentTime;
+    // 'alert_pa' is the AUTOMATED ALERT voice — a system announcement, not
+    // radio traffic. It gets NO key-up chime, NO receiver noise bed and NO
+    // squelch tail, because none of those exist on a PA speaker. That
+    // radio-vs-not-radio contrast is the second half of the separation from
+    // the dispatch voice (the first half being the PA filter chain).
+    const isPa = voiceMode === 'alert_pa';
+
     // Spillman terminal announcer uses the classic 2-tone chime (~280ms);
     // conversational/officer-speech path uses the P25 trunked talk-permit
-    // triple-chirp (~155ms). Voice starts after a 20ms gap.
-    const introDuration = voiceMode === 'spillman_flat'
-      ? SPILLMAN_CHIME_DURATION
-      : P25_KEYUP_DURATION;
-    const voiceDelay = introDuration + 0.02;
+    // triple-chirp (~155ms). Voice starts after a 20ms gap. PA starts dry.
+    const introDuration = isPa
+      ? 0
+      : voiceMode === 'spillman_flat'
+        ? SPILLMAN_CHIME_DURATION
+        : P25_KEYUP_DURATION;
+    const voiceDelay = isPa ? 0 : introDuration + 0.02;
     const voiceDuration = audioBuffer.duration;
 
     // ── 1. INTRO TONE ─────────────────────────────────────
-    if (voiceMode === 'spillman_flat') {
-      playSpillmanChime(ctx, now);
-    } else {
-      playP25KeyUp(ctx, now);
+    if (!isPa) {
+      if (voiceMode === 'spillman_flat') {
+        playSpillmanChime(ctx, now);
+      } else {
+        playP25KeyUp(ctx, now);
+      }
     }
 
-    // ── 2. RADIO HAZE CHAIN (shared P25 coloring) ─────────
-    // AGC → 300–3400Hz bandpass → 1.8kHz presence → 12-bit bitcrusher,
-    // the exact graph used for saved-clip + AI-dispatcher playback.
-    // See utils/radioProcessor.ts — one source of truth for the sound.
-    const { input, output } = buildRadioVoiceChain(ctx, hasWorklets);
+    // ── 2. VOICE COLORING CHAIN ───────────────────────────
+    // alert_pa → station-PA chain (horn speaker, 420–3100Hz, driven).
+    // everything else → the shared P25 haze: AGC → 300–3400Hz bandpass →
+    // 1.8kHz presence → 12-bit bitcrusher, the exact graph used for
+    // saved-clip + AI-dispatcher playback.
+    // See utils/radioProcessor.ts — one source of truth for both.
+    // These are MUTUALLY EXCLUSIVE by design; never both.
+    const { input, output } = isPa
+      ? buildPaVoiceChain(ctx)
+      : buildRadioVoiceChain(ctx, hasWorklets);
     source.connect(input);
     output.connect(ctx.destination);
 
@@ -312,7 +334,8 @@ async function fetchAndPlay(
     // Faint band-limited pink-noise hiss under the voice. squelchTail
     // is off here because the conversational path emits its own P25
     // courtesy beep below (step 5); doubling them sounds wrong.
-    const noiseSource = createRadioNoiseBed(ctx, {
+    // Skipped entirely for alert_pa — receiver hiss is a radio artifact.
+    const noiseSource = isPa ? null : createRadioNoiseBed(ctx, {
       startTime: now,
       attackAt: now + voiceDelay,
       holdUntil: now + voiceDelay + voiceDuration,
@@ -321,19 +344,20 @@ async function fetchAndPlay(
 
     // ── 5. P25 SQUELCH TAIL (KEY-DOWN / un-key) ───────────
     // Only for the conversational / radio-channel path. Terminal
-    // announcers don't carry a P25 un-key tail.
-    if (voiceMode !== 'spillman_flat') {
+    // announcers and PA announcements don't carry a P25 un-key tail.
+    if (!isPa && voiceMode !== 'spillman_flat') {
       const closeTime = now + voiceDelay + voiceDuration + 0.05;
       playP25KeyDown(ctx, closeTime);
     }
 
     source.onended = () => {
       currentSource = null;
-      // Let the close squelch + noise fade finish before resolving
+      // Let the close squelch + noise fade finish before resolving.
+      // noiseSource is null on the PA path — nothing to stop.
       setTimeout(() => {
-        try { noiseSource.stop(); } catch { /* already stopped */ }
+        try { noiseSource?.stop(); } catch { /* already stopped */ }
         resolve();
-      }, 400);
+      }, isPa ? 60 : 400);
     };
 
     // Start voice after squelch open completes

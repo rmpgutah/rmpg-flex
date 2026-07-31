@@ -123,9 +123,17 @@ const STATIC_ASSETS = [
   '/favicon.png',
   '/rmpg flex.png',
   // Sampled console feedback sounds (soundAssets.ts) — offline-critical.
-  // UI feedback five + the full Spillman/Motorola dispatch tone library
+  // The system/UI set + the full Spillman/Motorola dispatch tone library
   // (dispatchTones.ts plays these asset-first with synth fallback).
+  //
+  // ⚠️ This list is EXPLICIT. A new sound added to client/public/sounds/ is
+  // NOT precached until it appears here, and uiClickSounds is sample-only
+  // with no synth fallback — so offline it plays silence.
   '/sounds/click.wav',
+  '/sounds/navigate.wav',
+  '/sounds/ui_open.wav',
+  '/sounds/ui_close.wav',
+  '/sounds/ui_error.wav',
   '/sounds/submit.wav',
   '/sounds/update.wav',
   '/sounds/delete.wav',

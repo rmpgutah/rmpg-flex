@@ -206,6 +206,7 @@ const EVENT_LABELS: { cat: VoiceEventCategory; label: string; desc: string }[] =
   { cat: 'panic', label: 'Panic / officer-down', desc: 'Emergency assistance alerts' },
   { cat: 'bolo', label: 'BOLO alerts', desc: 'Be-on-the-lookout broadcasts' },
   { cat: 'status', label: 'Unit status changes', desc: 'En route, on scene, cleared' },
+  { cat: 'notification', label: 'Notification alerts', desc: 'Spoken in the automated PA voice, separate from the dispatcher. Muting this keeps the alert tone.' },
 ];
 
 // Sections that ?section= can deep-link to. Anchors map 1:1 to the
@@ -256,6 +257,7 @@ export default function SettingsPage() {
     panic: getEventEnabled('panic'),
     bolo: getEventEnabled('bolo'),
     status: getEventEnabled('status'),
+    notification: getEventEnabled('notification'),
   }));
   const [previewing, setPreviewing] = useState(false);
 

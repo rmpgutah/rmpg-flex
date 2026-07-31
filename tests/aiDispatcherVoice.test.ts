@@ -14,6 +14,7 @@ import {
   sayAgainReadback,
   resolveAura2Voice,
   shapeDelivery,
+  AURA2_EN_VOICES,
 } from '../src/utils/aiDispatcher';
 
 describe('spellAlnum — phonetic identifier readback', () => {
@@ -123,14 +124,23 @@ describe('resolveAura2Voice — coerce to a valid Aura-2 speaker', () => {
     expect(resolveAura2Voice('Luna')).toBe('luna');
     expect(resolveAura2Voice('orion')).toBe('orion');
   });
+  // Default is harmonia as of 2026-07-31 (was asteria): fastest of the 23
+  // female-register speakers — 5.3s vs asteria's 8.4s on the reference line —
+  // and tied best for intelligibility through the P25 300-3400Hz band at
+  // 90.4% RMS retained. Must stay in sync with DEFAULT_VOICE_ID in
+  // client/src/utils/voiceCatalog.ts.
   it('coerces an Aura-1-only or unknown name to the default', () => {
-    expect(resolveAura2Voice('stella')).toBe('asteria'); // aura-1 only → default
-    expect(resolveAura2Voice('en-US-JennyNeural')).toBe('asteria'); // browser persona → default
-    expect(resolveAura2Voice('')).toBe('asteria');
-    expect(resolveAura2Voice(null)).toBe('asteria');
+    expect(resolveAura2Voice('stella')).toBe('harmonia'); // aura-1 only → default
+    expect(resolveAura2Voice('en-US-JennyNeural')).toBe('harmonia'); // stale Edge-TTS id → default
+    expect(resolveAura2Voice('')).toBe('harmonia');
+    expect(resolveAura2Voice(null)).toBe('harmonia');
+    expect(resolveAura2Voice(undefined)).toBe('harmonia');
   });
   it('honors an explicit fallback', () => {
     expect(resolveAura2Voice('nope', 'luna')).toBe('luna');
+  });
+  it('harmonia is in the allowlist', () => {
+    expect(AURA2_EN_VOICES.has('harmonia')).toBe(true);
   });
 });
 
