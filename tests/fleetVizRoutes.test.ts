@@ -70,20 +70,29 @@ describe('/api/fleet-viz schema-drift regression', () => {
     const res = await buildApp(db)('/api/fleet-viz/kpi');
     expect(res.status).toBe(200);
     const all = queries.join('\n');
+    // performed_at is the populated column on live; service_date remains the
+    // fallback, so the KPI window must reference both.
+    expect(all).toContain('performed_at');
     expect(all).toContain('service_date');
     expect(all).not.toContain('maintenance_date');
   });
 
-  it('GET /dossier/:id — uses service_date / service_type, NOT maintenance_*', async () => {
+  it('GET /dossier/:id — dates via COALESCE(performed_at, service_date), NOT maintenance_*', async () => {
     const { db, queries } = inspectingDb();
     const res = await buildApp(db)('/api/fleet-viz/dossier/1');
     expect([200, 404]).toContain(res.status);
     const all = queries.join('\n');
-    // The fix routes WHERE / ORDER BY against service_date and service_type.
-    // `maintenance_date AS alias` is allowed (preserves the client JSON
+    // Originally this pinned a bare `service_date >=`. That was the right call
+    // against `maintenance_date` (which never shipped) but still wrong: on live
+    // D1 `service_date` is populated on ZERO rows while `performed_at` is
+    // populated on all of them, so the bare form matched nothing and the
+    // dossier's 90-day maintenance list was always empty. The window now reads
+    // COALESCE(performed_at, service_date), which covers either shape — so the
+    // assertion tracks that intent rather than the old literal.
+    // `maintenance_date AS alias` is still allowed (preserves the client JSON
     // contract), but the dead identifiers must not appear as column reads.
-    expect(all).toMatch(/WHERE[^]*service_date\s*>=/);
-    expect(all).toMatch(/ORDER BY service_date/);
+    expect(all).toMatch(/WHERE[^]*COALESCE\(performed_at,\s*service_date\)\s*>=/);
+    expect(all).toMatch(/ORDER BY COALESCE\(performed_at,\s*service_date\)/);
     expect(all).toContain('service_type');
     expect(all).not.toMatch(/WHERE[^]*maintenance_date\s*>=/);
     expect(all).not.toMatch(/ORDER BY maintenance_date/);

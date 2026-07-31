@@ -503,7 +503,12 @@ reports.get('/officer-activity', async (c) => {
       SELECT u.officer_id, usr.full_name, usr.badge_number,
         (SELECT COUNT(*) FROM incidents i WHERE i.officer_id = u.officer_id) AS incidents_written,
         (SELECT COUNT(*) FROM calls_for_service c WHERE c.assigned_unit_ids LIKE '%' || CAST(u.id AS TEXT) || '%') AS calls_responded,
-        0 AS total_hours
+        -- Was a hardcoded 0, so this column read "0 hours" for every officer
+        -- on the report even though time_entries has the real total (one
+        -- officer on live has 498.8 logged hours). A hardcoded metric is worse
+        -- than an empty one: it renders as data and looks authoritative.
+        (SELECT ROUND(COALESCE(SUM(te.total_hours), 0), 1)
+           FROM time_entries te WHERE te.officer_id = u.officer_id) AS total_hours
       FROM units u
       LEFT JOIN users usr ON u.officer_id = usr.id
       WHERE u.officer_id IS NOT NULL
@@ -543,7 +548,8 @@ reports.get('/command-center', async (c) => {
     units_available: await one("SELECT COUNT(*) AS n FROM units WHERE status = 'available'"),
     units_total: await one('SELECT COUNT(*) AS n FROM units'),
     active_bolos: await one("SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'"),
-    anomaly_alerts: await one("SELECT COUNT(*) AS n FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0"),
+    // anomaly_alerts has no boolean `acknowledged` — acknowledged_at is the flag.
+    anomaly_alerts: await one('SELECT COUNT(*) AS n FROM anomaly_alerts WHERE acknowledged_at IS NULL'),
   };
 
   // calls_for_service has no call_type/address columns — it's incident_type/
@@ -573,7 +579,8 @@ reports.get('/command-center', async (c) => {
       WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}
       GROUP BY hour ORDER BY hour`,
   );
-  const anomaly_alerts = await list('SELECT * FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0 ORDER BY created_at DESC LIMIT 20');
+  // No boolean `acknowledged` column — acknowledged_at is the flag.
+  const anomaly_alerts = await list('SELECT * FROM anomaly_alerts WHERE acknowledged_at IS NULL ORDER BY created_at DESC LIMIT 20');
 
   return c.json({ kpis, active_calls, units, calls_by_hour, anomaly_alerts });
 });
@@ -1082,7 +1089,8 @@ reports.get('/weekly-digest', async (c) => {
       safe1(`SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now',?)`, since7),
       safe1(`SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now',?)`, since7),
       safe1(`SELECT COUNT(*) AS n FROM citations WHERE created_at >= datetime('now',?)`, since7),
-      safe1(`SELECT COUNT(*) AS n FROM arrests WHERE created_at >= datetime('now',?)`, since7),
+      // No `arrests` table on live D1 — it's arrest_records.
+      safe1(`SELECT COUNT(*) AS n FROM arrest_records WHERE created_at >= datetime('now',?)`, since7),
       (async () => {
         try {
           const r = await queryFirst<{ v: number | null }>(db, `SELECT ROUND(AVG(COALESCE(response_time_seconds/60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at)-julianday(dispatched_at))*1440 END)),1) AS v FROM calls_for_service WHERE created_at >= datetime('now',?) AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)`, since7);
@@ -1373,7 +1381,9 @@ reports.get('/patrol-coverage', async (c) => {
   try {
     const db = getDb(c.env);
     const totalBeats = (await queryFirst<{ n: number }>(db,
-      'SELECT COUNT(DISTINCT beat_id) AS n FROM dispatch_geography'))?.n ?? 0;
+      // No dispatch_geography table exists (in rmpg-flex or rmpg-geo) —
+      // dispatch_beats is the beat registry.
+      'SELECT COUNT(*) AS n FROM dispatch_beats WHERE COALESCE(active, 1) = 1'))?.n ?? 0;
     const coveredBeats = (await queryFirst<{ n: number }>(db,
       `SELECT COUNT(DISTINCT u.assigned_beat) AS n FROM units u WHERE u.status = 'available' AND u.assigned_beat IS NOT NULL`))?.n ?? 0;
     return c.json({ coverage: totalBeats ? Math.round((coveredBeats / totalBeats) * 100) : 0, coveredBeats, totalBeats });
