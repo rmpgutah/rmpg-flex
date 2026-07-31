@@ -107,7 +107,21 @@ function buildServeMarker(item: QueueMapItem, selected: boolean = false): HTMLEl
     ? '3px solid #22c55e'
     : '2px solid rgba(255,255,255,0.7)';
 
-  el.style.cssText = `
+  // ROOT: position-neutral only. This is the element handed to
+  // `new mapboxgl.Marker({ element: el })`, and Mapbox GL REWRITES its
+  // `style.transform` on every render frame. Two things must therefore never
+  // live here: a `transition:transform` (each frame's reposition becomes an
+  // animation the pin chases) and any literal `transform` of our own (it
+  // overwrites Mapbox's `translate(...)`, teleporting the pin to the map's
+  // origin until the next frame restores it). Both were present before; the
+  // hover scale below now targets the inner wrapper instead.
+  el.style.cssText = 'display:block;cursor:pointer;';
+  el.title = item.recipient_name || 'serve target';
+
+  // INNER: every visual style, and the only element we may transform.
+  const inner = document.createElement('div');
+  inner.setAttribute('data-role', 'marker-inner');
+  inner.style.cssText = `
     position:relative;
     width:28px;height:28px;
     border-radius:50%;
@@ -115,23 +129,15 @@ function buildServeMarker(item: QueueMapItem, selected: boolean = false): HTMLEl
     border:${border};
     box-shadow:${boxShadowValue}${selected ? ', 0 0 0 2px rgba(34,197,94,0.5)' : ''};
     display:flex;align-items:center;justify-content:center;
-    cursor:pointer;
+    transition:transform 0.15s;
   `;
-  // NOTE: no `transition:transform` here. This is the root element handed to
-  // `new mapboxgl.Marker({ element: el })`, and Mapbox GL rewrites its
-  // `style.transform` on EVERY render frame during pan/zoom — a transition on
-  // that property turns each frame's reposition into an animation the pin
-  // chases, so every serve-job marker visibly lagged and slid behind the map.
-  // Nothing in this component animates the pin's transform, so the transition
-  // was pure drift with no upside. (Same contract as buildUnitMarkerEl in
-  // pages/map/utils/mapMarkers.ts, which keeps its glide on an inner wrapper.)
-  el.title = item.recipient_name || 'serve target';
+  el.appendChild(inner);
 
   // Icon — building for business, person pin for individual
   const icon = document.createElement('div');
   icon.style.cssText = 'color:#fff;font-size:12px;line-height:1;font-weight:700;';
   icon.textContent = isBusiness ? '🏢' : '👤';
-  el.appendChild(icon);
+  inner.appendChild(icon);
 
   // Notation badge — yellow dot in corner when a system constraint exists
   if (hasNote) {
@@ -145,7 +151,7 @@ function buildServeMarker(item: QueueMapItem, selected: boolean = false): HTMLEl
       box-shadow:0 0 4px rgba(212,160,23,0.8);
     `;
     badge.title = 'Recorded service notation — see popup';
-    el.appendChild(badge);
+    inner.appendChild(badge);
   }
 
   // Deadline urgency pulse ring
@@ -157,7 +163,7 @@ function buildServeMarker(item: QueueMapItem, selected: boolean = false): HTMLEl
       border:2px solid ${ringColor};
       animation:srv-pulse-${tier} 1.6s ease-out infinite;
     `;
-    el.appendChild(ring);
+    inner.appendChild(ring);
   }
 
   // Officer-safety risk halo
@@ -168,11 +174,14 @@ function buildServeMarker(item: QueueMapItem, selected: boolean = false): HTMLEl
     warningIcon.style.cssText = 'position:absolute;bottom:-4px;right:-4px;font-size:10px;';
     warningIcon.textContent = '⚠';
     warningIcon.title = 'Officer safety flag';
-    el.appendChild(warningIcon);
+    inner.appendChild(warningIcon);
   }
 
-  el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; });
-  el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)'; });
+  // Hover scale targets the INNER wrapper. Writing it on `el` clobbered the
+  // translate Mapbox owns, so hovering a pin visibly threw it to the corner
+  // of the map until the next render frame snapped it back.
+  el.addEventListener('mouseenter', () => { inner.style.transform = 'scale(1.2)'; });
+  el.addEventListener('mouseleave', () => { inner.style.transform = 'scale(1)'; });
 
   return el;
 }
