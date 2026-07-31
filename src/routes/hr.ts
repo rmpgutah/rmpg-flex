@@ -21,7 +21,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 
 const hr = new Hono<Env>();
@@ -708,11 +708,15 @@ hr.post('/disciplinary/bulk-status', requireRole(...MANAGER_ROLES), async (c) =>
     const status = body?.status;
     if (!ids.length) return c.json({ error: 'ids required' }, 400);
     if (!DISC_STATUSES.has(status)) return c.json({ error: 'Invalid status' }, 400);
-    const placeholders = ids.map(() => '?').join(',');
-    const res = await execute(db,
-      `UPDATE disciplinary_records SET status = ?, updated_at = ? WHERE id IN (${placeholders})`,
-      status, nowIso(), ...ids);
-    return c.json({ success: true, updated: res.meta.changes ?? 0 });
+    // ids comes straight from the request body and is unbounded, so this
+    // query's SHAPE grows with the payload: a bulk-status of 100+ records
+    // exceeds D1's 100-bound-parameter cap and throws at BIND time. The two
+    // leading bindings (status, updated_at) are re-bound per chunk and counted
+    // against the budget by executeInChunks.
+    const updated = await executeInChunks(db, ids,
+      (placeholders) => `UPDATE disciplinary_records SET status = ?, updated_at = ? WHERE id IN (${placeholders})`,
+      [status, nowIso()]);
+    return c.json({ success: true, updated });
   } catch (err) {
     console.error('[hr] POST /disciplinary/bulk-status', err);
     return c.json({ error: 'Failed to bulk-update disciplinary records', code: 'HR_DISC_BULK_ERR' }, 500);
@@ -1417,11 +1421,12 @@ hr.post('/grievances/bulk-status', requireRole(...MANAGER_ROLES), async (c) => {
     if (!GRIEVANCE_STATUSES.has(status)) return c.json({ error: 'Invalid status' }, 400);
     const now = nowIso();
     const resolvedAt = (status === 'resolved' || status === 'dismissed') ? now : null;
-    const placeholders = ids.map(() => '?').join(',');
-    const res = await execute(db,
-      `UPDATE hr_grievances SET status = ?, resolved_at = COALESCE(?, resolved_at), updated_at = ? WHERE id IN (${placeholders})`,
-      status, resolvedAt, now, ...ids);
-    return c.json({ success: true, updated: res.meta.changes ?? 0 });
+    // Same caller-sized IN-list as /disciplinary/bulk-status above; three
+    // leading bindings here (status, resolved_at, updated_at).
+    const updated = await executeInChunks(db, ids,
+      (placeholders) => `UPDATE hr_grievances SET status = ?, resolved_at = COALESCE(?, resolved_at), updated_at = ? WHERE id IN (${placeholders})`,
+      [status, resolvedAt, now]);
+    return c.json({ success: true, updated });
   } catch (err) {
     console.error('[hr] POST /grievances/bulk-status', err);
     return c.json({ error: 'Failed to bulk-update grievances', code: 'HR_GRIEV_BULK_ERR' }, 500);

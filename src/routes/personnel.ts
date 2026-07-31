@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { hashSync } from 'bcryptjs';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute, ensureTimeEntryColumns } from '../utils/db';
+import { getDb, query, queryFirst, execute, queryInChunks, ensureTimeEntryColumns } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { setFleetOdometer } from '../utils/fleetOdometer';
 import { nowDualStamp } from '../utils/denverTime';
@@ -753,15 +753,21 @@ personnel.get('/time', async (c) => {
     const ids = entries.map(e => e.id).filter(v => typeof v === 'number') as number[];
     let editsByEntry = new Map<number, Array<Record<string, unknown>>>();
     if (ids.length > 0) {
-      const placeholders = ids.map(() => '?').join(',');
-      const edits = await query<Record<string, unknown>>(
-        db,
-        `SELECT id, time_entry_id, edited_by, edited_by_name, edit_type,
+      // The entries query above has no LIMIT — only optional date/officer
+      // filters — so `ids` is unbounded in practice. A wide time window (a
+      // month of entries across the roster) pushes this IN-list past D1's
+      // 100-bound-parameter cap, which throws at BIND time. The comment above
+      // says "time windows are bounded"; that bounds the DATE RANGE, not the
+      // ROW COUNT, which is what the cap actually counts.
+      // Chunked results are re-grouped by time_entry_id below, so the
+      // concatenation order across chunks does not matter here.
+      const edits = await queryInChunks<Record<string, unknown>>(
+        db, ids,
+        (placeholders) => `SELECT id, time_entry_id, edited_by, edited_by_name, edit_type,
                 old_value, new_value, reason, created_at
            FROM time_entry_edits
           WHERE time_entry_id IN (${placeholders})
           ORDER BY created_at ASC`,
-        ...ids
       );
       editsByEntry = edits.reduce((map, e) => {
         const k = Number(e.time_entry_id);
