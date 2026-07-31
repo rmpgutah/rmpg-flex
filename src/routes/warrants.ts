@@ -9,7 +9,16 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-import { log } from '../utils/logger';
+import { log, logErrorToDb } from '../utils/logger';
+import { stateFromSourceKey } from '../utils/warrantSourceState';
+
+// Per-table row cap for GET /unified. That route merges two heterogeneous tables
+// in JS, so it cannot paginate purely in SQL — but it also must not read entire
+// tables into a 128 MB isolate, which is what it did before (plain
+// `SELECT * FROM warrants` / `FROM scraped_warrants`, no LIMIT). 5,000 per side
+// is far above any realistic page depth (per_page maxes at 100) while keeping
+// the isolate's memory bounded as scraped_warrants grows.
+const UNIFIED_SCAN_CAP = 5000;
 import { runUtahWarrantScan, runUtahWarrantCheckForPerson, fetchWarrantsForPerson, recordWarrant, MANUAL_RUN_WALL_BUDGET_MS } from '../utils/utahWarrantPoller';
 import { screenPersonAllSources } from '../utils/screening/screenPerson';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
@@ -878,7 +887,29 @@ warrants.get('/unified', async (c) => {
       }
     }
 
-    const localRows = await query<Record<string, any>>(db, 'SELECT * FROM warrants');
+    // Both reads were `SELECT * FROM <table>` with NO LIMIT — the whole of both
+    // tables was pulled into the isolate and then filtered/sorted/paginated in
+    // JS, so pagination was cosmetic: the full cost was paid before the first
+    // row was skipped. Push the filters that survive a cross-table merge down
+    // into SQL, and cap each side.
+    //
+    // The merge, derived fields (priority/age/source_state) and final sort stay
+    // in JS on purpose — they span two heterogeneous tables and cannot be
+    // expressed as one D1 statement. But they no longer start from everything.
+    //
+    // These WHERE clauses are built from a FIXED set of scalar filters, never
+    // from a caller-supplied array, so there is no IN-list and no exposure to
+    // D1's 100-bound-parameter cap. If you add an IN filter here, route it
+    // through queryInChunks/chunkBindings (see CLAUDE.md).
+    const localWhere: string[] = [];
+    const localBinds: unknown[] = [];
+    if (!includeArchived) localWhere.push('archived_at IS NULL');
+    if (status) { localWhere.push('status = ?'); localBinds.push(status); }
+    if (type) { localWhere.push('type = ?'); localBinds.push(type); }
+    if (personId) { localWhere.push('subject_person_id = ?'); localBinds.push(personId); }
+    const localSql = `SELECT * FROM warrants${localWhere.length ? ` WHERE ${localWhere.join(' AND ')}` : ''} LIMIT ${UNIFIED_SCAN_CAP}`;
+
+    const localRows = await query<Record<string, any>>(db, localSql, ...localBinds);
     let merged: Record<string, any>[] = localRows.map((row) => ({
       ...row,
       source: row.source ?? 'local',
@@ -886,7 +917,13 @@ warrants.get('/unified', async (c) => {
     }));
 
     try {
-      const scrapedRows = await query<Record<string, any>>(db, 'SELECT * FROM scraped_warrants');
+      // scraped_warrants has no archived_at/subject_person_id, so only the
+      // filters it genuinely supports are pushed down.
+      const scrapedWhere: string[] = [];
+      const scrapedBinds: unknown[] = [];
+      if (status) { scrapedWhere.push('status = ?'); scrapedBinds.push(status); }
+      const scrapedSql = `SELECT * FROM scraped_warrants${scrapedWhere.length ? ` WHERE ${scrapedWhere.join(' AND ')}` : ''} LIMIT ${UNIFIED_SCAN_CAP}`;
+      const scrapedRows = await query<Record<string, any>>(db, scrapedSql, ...scrapedBinds);
       const reshaped = scrapedRows.map((row) => ({
         id: `scraped-${row.id}`,
         warrant_number: row.warrant_number ?? row.case_id ?? null,
@@ -914,20 +951,42 @@ warrants.get('/unified', async (c) => {
         created_at: row.fetched_at ?? row.created_at ?? row.issue_date ?? null,
         updated_at: row.fetched_at ?? row.updated_at ?? null,
         source_state: (row.state as string | undefined)?.toUpperCase() ?? null,
+        // ── Fields the reshape used to DROP ─────────────────────────────────
+        // issued_date: omitted entirely before, even though issue_date is read
+        // one line up as a created_at fallback. Its absence meant age_days fell
+        // back to the batch-insert time, so the AGE column read the SAME value
+        // ('8w') on every row in production, and the DATE column was blank for
+        // every scraped warrant.
+        issued_date: row.issue_date ?? row.issued_date ?? null,
+        // last_scrape_at: never carried, so the client's freshnessClass(null)
+        // always returned 'manual' and the FRESHNESS column rendered the same
+        // pencil icon on every row. This gives that column a real input.
+        last_scrape_at: row.fetched_at ?? row.last_scrape_at ?? null,
       }));
       merged = merged.concat(reshaped);
     } catch { /* scraped_warrants missing on this env — local-only unified list */ }
 
     merged = merged.map((row) => {
       const priority_score = computePriorityScore(row);
-      const age_days = ageDaysFrom(row.created_at);
+      // Age is the age of the WARRANT, not of our database row. This used to read
+      // created_at (batch insert / fetched_at), which is identical across a whole
+      // scrape batch — hence the AGE column showing '8w' on every row in
+      // production. created_at stays as an explicit last-resort fallback.
+      const age_days = ageDaysFrom(row.issued_date ?? row.created_at);
       const matches_person = row.subject_person_id != null;
-      let source_state = row.source_state;
-      if (!source_state && row.source && row.source !== 'local') {
-        const m = String(row.source).match(/^([a-z]{2})[-_]/i);
-        source_state = m ? m[1].toUpperCase() : (String(row.source).startsWith('fed') ? 'FED' : null);
-      }
-      return { ...row, priority_score, age_days, matches_person, source_state };
+      // Single authority: src/utils/warrantSourceState.ts. The inline regex that
+      // used to live here was prefix-anchored and resolved NOTHING for any live
+      // source key ('ada-county-id' etc.), so ?state= filtered on a null.
+      const source_state = row.source_state
+        ?? (row.source && row.source !== 'local' ? stateFromSourceKey(row.source) : null);
+      // WarrantsListTab renders freshnessIcon(freshnessClass(w.freshness_days)) —
+      // a field this route never computed, so it was always undefined,
+      // freshnessClass fell through to 'manual', and the FRESHNESS column showed
+      // the same pencil icon on every row. Derived here (rather than in the
+      // client) so there is one definition of "how stale is this record".
+      // null stays null and legitimately means "manually entered, never scraped".
+      const freshness_days = ageDaysFrom(row.last_scrape_at ?? null);
+      return { ...row, priority_score, age_days, freshness_days, matches_person, source_state };
     });
 
     const filtered = merged.filter((row) => {
@@ -953,7 +1012,12 @@ warrants.get('/unified', async (c) => {
 
     const sortKeyMap: Record<string, string> = {
       created_at: 'created_at', updated_at: 'updated_at', warrant_number: 'warrant_number',
-      type: 'type', status: 'status', subject_name: 'subject_name', issued_date: 'created_at',
+      type: 'type', status: 'status', subject_name: 'subject_name',
+      // Was `issued_date: 'created_at'` — asking to sort by issue date silently
+      // sorted by row-insert date instead. A wrong answer with no error, and
+      // indistinguishable from a correct one in the UI. Now sorts by issue date,
+      // which the reshape above finally carries.
+      issued_date: 'issued_date',
       priority: 'priority_score',
     };
     const sortKey = sortKeyMap[sort] ?? 'created_at';
@@ -973,8 +1037,22 @@ warrants.get('/unified', async (c) => {
 
     return c.json({ warrants: pageRows, total });
   } catch (err) {
-    console.error('[warrants] unified error', err);
-    return c.json({ warrants: [], total: 0 });
+    // Was `return c.json({ warrants: [], total: 0 })` with a 200 — a DB failure
+    // was indistinguishable from "this jurisdiction has no warrants", which on a
+    // warrants screen is the most dangerous possible lie. The 2026-07-21 rebuild
+    // removed this pattern from GET / but never from here.
+    const traceId = c.get('traceId');
+    log.error('[warrants] unified failed', { route: 'GET /warrants/unified', traceId }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'GET /warrants/unified' },
+      traceId,
+      source: 'GET /warrants/unified',
+      statusCode: 500,
+    }, c.executionCtx);
+    return c.json({ error: 'Failed to load unified warrant list' }, 500);
   }
 });
 

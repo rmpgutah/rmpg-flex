@@ -173,8 +173,11 @@ All four render an identical value on every row in production.
 (`client/src/utils/warrantListHelpers.ts:44`) matches `^([a-z]{2})_` but real keys
 are `ada-county-id` — hyphen-separated with the state as a **suffix**. The Worker
 has a *second, different* implementation (`warrants.ts:914`, `^([a-z]{2})[-_]`)
-which returns `"AD"` for Ada County — not a state at all. Two implementations of one
-derivation, both wrong, disagreeing with each other.
+which is also prefix-anchored and, verified against the live keys, resolves
+**nothing**: `ada` is three letters so the pattern never matches, and
+`ada-county-id`, `natrona-county-wy`, `ohio-drc-pval` and `utah-warrant-watch` all
+return null. Only the legacy `ut_district` shape ever worked. So `?state=` filters
+match nothing, and two implementations of one derivation are both broken.
 
 **`FRESHNESS` → ✏️ always.** `/unified` returns no scrape timestamp on any row, so
 `freshnessClass(null)` always falls through to `'manual'`.

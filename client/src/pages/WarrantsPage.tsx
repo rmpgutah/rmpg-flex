@@ -45,6 +45,9 @@ import { displayUserName } from '../utils/userDisplay';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ScrapersTab from './warrants/ScrapersTab';
 import WarrantsListTab, { type WarrantsListTabHandle } from './warrants/WarrantsListTab';
+// Canonical /warrants/scrapers row shape. See the note above ScraperSource's old
+// local declaration site below — do not redeclare this locally.
+import type { ScraperSource } from '../types/scrapers';
 
 // ============================================================
 // Types
@@ -259,49 +262,27 @@ interface WatchPerson {
 /**
  * Shape of one row from GET /warrants/scrapers.
  *
- * ⚠️ REWRITTEN 2026-07-30 to match what the endpoint ACTUALLY emits. The previous
- * version declared `id`, `source_name`, `last_run_at`, `last_scraped_at`,
- * `active_count`, `active_warrants`, `consecutive_failures` and `total_count` —
- * NONE of which the API sends. Because `apiFetch<ScraperSource[]>` is a cast and
- * not a validation, tsc reported zero errors while six things on the Sources tab
- * were silently broken at runtime:
- *   - `sum + s.active_count` / `sum + s.total_count` → undefined → literal "NaN"
- *     rendered in two stat tiles
- *   - `s.last_scraped_at` → undefined → "RECENTLY SCRAPED 0" despite live
- *     timestamps, and every state card styled "not recent"
- *   - `s.active_warrants` → undefined → the per-state "N active" count never rendered
- *   - `s.consecutive_failures` → undefined → error styling never rendered
+ * ⚠️ Imported, NOT redeclared. This file used to define its OWN local
+ * `ScraperSource` interface, and that duplicate is the entire root cause of the
+ * Sources tab's broken stats. It declared `id`, `source_name`, `last_run_at`,
+ * `last_scraped_at`, `active_count`, `active_warrants`, `consecutive_failures`
+ * and `total_count` — NONE of which the endpoint sends — while the CORRECT type
+ * already existed in types/scrapers.ts and was already being used successfully by
+ * AdminWarrantScrapersTab.
  *
- * Add nothing here that the endpoint does not return. If a field is wanted, add
- * it to the route first — an optimistic field on this interface is invisible
- * until it reaches production.
+ * Because `apiFetch<T>` is a cast and not a validation, tsc reported zero errors
+ * while six things broke at runtime: two literal "NaN" stat tiles
+ * (`sum + undefined`), "RECENTLY SCRAPED 0" despite live timestamps
+ * (last_scraped_at vs last_scrape_at), never-rendered per-state counts
+ * (active_warrants vs warrant_count), and never-rendered error styling
+ * (consecutive_failures vs consecutive_errors).
+ *
+ * Do not re-add a local copy. There is one authority for this shape.
+ *
+ * Note the payload carries a SINGLE count (`warrant_count`) — there is no
+ * active-vs-total pair, so the tiles that once read "Active Warrants" and
+ * "Total Indexed" were describing a distinction that does not exist in the data.
  */
-interface ScraperSource {
-  source_key: string;
-  display_name: string;
-  state: string | null;
-  county: string | null;
-  source_url: string;
-  source_type: string;
-  enabled: boolean | number;
-  circuit_broken: boolean | number;
-  priority: number;
-  consecutive_errors: number;
-  /**
-   * The ONLY count the endpoint returns. There is no separate active-vs-total
-   * pair — the old interface invented one, so the tiles labelled "Active
-   * Warrants" and "Total Indexed" were describing a distinction that does not
-   * exist in the data.
-   */
-  warrant_count: number;
-  last_scrape_at: string | null;
-  last_success_at: string | null;
-  last_error: string | null;
-  avg_parse_count: number | null;
-  p95_latency_ms: number | null;
-  metrics_24h?: Record<string, unknown>;
-}
-
 /**
  * Resolve a source's state code for grouping/display.
  *

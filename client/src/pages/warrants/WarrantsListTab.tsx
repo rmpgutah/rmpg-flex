@@ -54,7 +54,7 @@ import { useWatchedWarrantIds } from './useWatchedWarrantIds';
 import { formatDate, formatDateTime, parseTimestamp } from '../../utils/dateUtils';
 import {
   priorityBucket, priorityChipClass, formatAge, freshnessClass, freshnessIcon,
-  stateFromSource,
+
 } from '../../utils/warrantListHelpers';
 import { buildWarrantPacketPdf } from '../../utils/warrantPacket';
 import { downloadRecordPdf } from '../../utils/recordPdfGenerator';
@@ -1228,7 +1228,13 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                         <span className="mr-1">{freshnessIcon(freshnessClass(w.freshness_days))}</span>
                         <span className="text-rmpg-400 font-mono">{formatAge(w.freshness_days)}</span>
                       </td>
-                      <td className="text-xs font-mono text-rmpg-300 py-2">{stateFromSource(w.source)}</td>
+                      {/* Was stateFromSource(w.source) — a client-side re-derivation
+                          whose regex was prefix-anchored and matched none of the
+                          live source keys ('ada-county-id', 'natrona-county-wy',
+                          'ohio-drc-pval'), so this column read '—' on EVERY row.
+                          The server now resolves this once, authoritatively, via
+                          src/utils/warrantSourceState.ts. Render it; don't re-derive. */}
+                      <td className="text-xs font-mono text-rmpg-300 py-2">{w.source_state ?? '—'}</td>
                       <td className="py-2">
                         <StatusPill status={w.status} />
                         {w.expires_at && w.status === 'active' && (() => {
@@ -1601,7 +1607,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                 <CollapsibleSection title="Source / Provenance" defaultOpen={false}>
                   <div className="text-xs space-y-1 p-2">
                     <div>Scraper: <span className="text-rmpg-200">{(selectedWarrant as any).source_scraper_name}</span></div>
-                    <div>State: <span className="text-rmpg-200">{(selectedWarrant as any).source_state || stateFromSource(selectedWarrant.source)}</span></div>
+                    <div>State: <span className="text-rmpg-200">{selectedWarrant.source_state ?? '—'}</span></div>
                     {(selectedWarrant as any).source_url && (
                       <div>URL: <a href={(selectedWarrant as any).source_url} target="_blank" rel="noreferrer" className="text-amber-400 underline">link</a></div>
                     )}
