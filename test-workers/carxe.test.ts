@@ -275,4 +275,85 @@ describe('POST /api/carxe/lien-theft', () => {
     const notif = await queryFirst<any>(db, "SELECT * FROM notifications WHERE type = 'intel_screen'");
     expect(notif).toBeFalsy();
   });
+
+  // The theft path intentionally runs on cache hits too (so a re-pull of a
+  // cached active-theft VIN still screens). That made the notification INSERT
+  // the one non-idempotent step: N pulls produced N rows.
+  it('re-pulling a cached active-theft VIN keeps screening but does NOT append a duplicate notification for the same officer', async () => {
+    const fetchStub = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          success: true,
+          input: { vin: '2C3CDXFG1FH762860' },
+          year: 2015,
+          make: 'Dodge',
+          model: 'Charger',
+          events: [{ event: 'Active Theft', location: 'OH', date: '2026-07-01' }],
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchStub);
+    const withKey = { ...(env as unknown as Record<string, unknown>), CARXE_API_KEY: 'test-key' };
+    const app = appWithUser({ id: 7, role: 'officer', username: 'test-officer' });
+    const req = () =>
+      app.request(
+        '/api/carxe/lien-theft',
+        { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ vin: '2C3CDXFG1FH762860' }) },
+        withKey,
+      );
+
+    const first = await req();
+    const firstBody = await first.json() as any;
+    expect(firstBody.cached).toBe(false);
+
+    const second = await req();
+    const secondBody = await second.json() as any;
+    // Pin the branch: this must be the CACHED path, otherwise the test would
+    // pass for the wrong reason (a fresh call that simply raced the window).
+    expect(secondBody.cached).toBe(true);
+    expect(fetchStub).toHaveBeenCalledTimes(1);
+    // Screening must still be returned on the cached pull — dedupe suppresses
+    // the notification only, never the officer-safety verdict.
+    expect(secondBody.screening.hits.some((h: any) => h.severity === 'critical')).toBe(true);
+
+    const db = getDb(env as unknown as { DB: D1Database });
+    const rows = await env.DB.prepare("SELECT COUNT(*) AS c FROM notifications WHERE type = 'intel_screen'").first<{ c: number }>();
+    expect(rows?.c).toBe(1);
+
+    // The flag must not have been duplicated either.
+    const vehicle = await queryFirst<any>(db, 'SELECT * FROM vehicles_records WHERE UPPER(vin) = ?', '2C3CDXFG1FH762860');
+    expect(JSON.parse(vehicle.flags).filter((f: any) => f?.type === 'carxe_theft')).toHaveLength(1);
+  });
+
+  it('dedupe is per-recipient: a DIFFERENT officer pulling the same cached active-theft VIN still gets their own alert', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            input: { vin: '2C3CDXFG1FH762860' },
+            events: [{ event: 'Active Theft', location: 'OH', date: '2026-07-01' }],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const withKey = { ...(env as unknown as Record<string, unknown>), CARXE_API_KEY: 'test-key' };
+    const body = JSON.stringify({ vin: '2C3CDXFG1FH762860' });
+    const headers = { 'content-type': 'application/json' };
+
+    await appWithUser({ id: 7, role: 'officer', username: 'officer-a' }).request(
+      '/api/carxe/lien-theft', { method: 'POST', headers, body }, withKey,
+    );
+    await appWithUser({ id: 8, role: 'officer', username: 'officer-b' }).request(
+      '/api/carxe/lien-theft', { method: 'POST', headers, body }, withKey,
+    );
+
+    const rows = await env.DB.prepare(
+      "SELECT user_id FROM notifications WHERE type = 'intel_screen' ORDER BY user_id",
+    ).all<{ user_id: number }>();
+    expect(rows.results.map((r) => r.user_id)).toEqual([7, 8]);
+  });
 });

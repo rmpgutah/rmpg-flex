@@ -44,6 +44,15 @@ const operational = requireRole('admin', 'manager', 'supervisor', 'officer', 'di
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** How long a CarsXE theft notification suppresses a duplicate for the SAME
+ *  (vehicle, recipient) pair. Deliberately equal to CACHE_TTL_MS: within the
+ *  cache window a re-pull returns a byte-identical cached payload, so a second
+ *  notification carries zero new information. Once the cache expires the next
+ *  pull is a genuinely fresh CarsXE assertion that the theft is still active,
+ *  and re-alerting is correct. Per-recipient, not global — a different officer
+ *  pulling the same VIN must still be warned. */
+const THEFT_NOTIFY_DEDUPE_MS = CACHE_TTL_MS;
+
 type CarxeEnv = {
   CARXE_API_KEY?: string;
   CARXE_API_BASE?: string;
@@ -270,15 +279,51 @@ async function recordCarxeTheftHit(
   const critical = screening.hits.filter((h) => h.severity === 'critical');
   if (critical.length) {
     try {
-      await execute(
+      // Suppress a duplicate alert for the same (vehicle, recipient) inside the
+      // dedupe window. The flag/is_stolen writes above are already idempotent,
+      // but this INSERT was not: because the theft path deliberately runs on
+      // cache hits too (so a cached active-theft VIN still screens), every
+      // re-pull of the same VIN previously appended another notification row.
+      //
+      // The window is evaluated entirely in SQLite via datetime('now', ...) —
+      // both sides are UTC there. Doing it in JS would mean Date.parse()-ing a
+      // zone-less `datetime('now')` string, which reads as LOCAL time and skews
+      // the comparison on a non-UTC host (see CLAUDE.md / parseD1TimestampMs).
+      const dedupeHours = Math.max(1, Math.round(THEFT_NOTIFY_DEDUPE_MS / 3_600_000));
+      const recent = await queryFirst<{ id: number }>(
         db,
-        `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-         VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
-        `CARSXE THEFT HIT: VIN ${vin}`,
-        critical.map((h) => h.detail).join('; '),
+        `SELECT id FROM notifications
+          WHERE type = 'intel_screen'
+            AND entity_type = 'vehicle'
+            AND entity_id = ?
+            AND user_id IS ?
+            AND title = ?
+            AND created_at > datetime('now', ?)
+          LIMIT 1`,
         vehicleId,
         userId ?? null,
+        `CARSXE THEFT HIT: VIN ${vin}`,
+        `-${dedupeHours} hours`,
       );
+
+      if (recent) {
+        log.info('[carxe] theft notification suppressed as duplicate', {
+          vin,
+          vehicleId,
+          userId: userId ?? null,
+          existingNotificationId: recent.id,
+        });
+      } else {
+        await execute(
+          db,
+          `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+           VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
+          `CARSXE THEFT HIT: VIN ${vin}`,
+          critical.map((h) => h.detail).join('; '),
+          vehicleId,
+          userId ?? null,
+        );
+      }
     } catch (err: any) {
       log.error('[carxe] theft notification insert failed', { error: err?.message });
     }
