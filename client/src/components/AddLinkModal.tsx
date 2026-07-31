@@ -269,7 +269,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
                 {selected.status && <> &middot; <span className={STATUS_COLORS[selected.status] || 'text-rmpg-400'}>{formatEnumValue(selected.status)}</span></>}
               </span>
             </div>
-            <button type="button" onClick={handleClearSelection} className="text-fg-muted hover:text-rmpg-100 p-0.5">
+            <button aria-label="Clear" type="button" onClick={handleClearSelection} className="text-fg-muted hover:text-rmpg-100 p-0.5">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>

@@ -268,7 +268,7 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
           <input id="ff-businesstab-0" type="text" className="input-dark pl-9 w-full text-[11px] min-h-[36px]" placeholder="Search businesses by name, DBA, address, EIN..."
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
-          {searchQuery && <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100"><X className="w-3 h-3" /></button>}
+          {searchQuery && <button aria-label="Close" type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100"><X className="w-3 h-3" /></button>}
         </div>
       </div>
 
@@ -352,8 +352,8 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
                 {b.phone && <a href={`tel:${b.phone}`} onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400"><Phone className="w-3 h-3" /></a>}
                 {b.email && <a href={`mailto:${b.email}`} onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-rmpg-400"><Mail className="w-3 h-3" /></a>}
                 {b.website && <a href={b.website.startsWith('http') ? b.website : `https://${b.website}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400"><Globe className="w-3 h-3" /></a>}
-                {isAdmin && <button type="button" onClick={e => { e.stopPropagation(); openEdit(b); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400"><Pencil className="w-3 h-3" /></button>}
-                {isAdmin && <button type="button" onClick={e => { e.stopPropagation(); setDeleteTarget({ type: 'business', id: b.id, label: b.name }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
+                {isAdmin && <button aria-label="Edit" type="button" onClick={e => { e.stopPropagation(); openEdit(b); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400"><Pencil className="w-3 h-3" /></button>}
+                {isAdmin && <button aria-label="Delete" type="button" onClick={e => { e.stopPropagation(); setDeleteTarget({ type: 'business', id: b.id, label: b.name }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
               </div>
             </div>
           </div>

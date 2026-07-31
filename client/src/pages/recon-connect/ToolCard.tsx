@@ -518,7 +518,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
             <div className="flex items-center gap-2">
               <Link2 className="w-3.5 h-3.5 text-[#d4a017]" />
               <div className="text-[10px] text-[#d4a017] uppercase tracking-wider font-semibold flex-1">Attach this scan to a case</div>
-              <button onClick={() => setCaseModalOpen(false)} className="text-[#888] hover:text-[#ff8888]"><X className="w-3 h-3" /></button>
+              <button aria-label="Close" onClick={() => setCaseModalOpen(false)} className="text-[#888] hover:text-[#ff8888]"><X className="w-3 h-3" /></button>
             </div>
             {cases === null && <div className="text-[11px] text-[#888]">Loading cases…</div>}
             {cases !== null && cases.length === 0 && <div className="text-[11px] text-[#888]">No cases available. Create one in Case Management first.</div>}

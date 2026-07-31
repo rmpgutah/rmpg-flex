@@ -72,7 +72,7 @@ export default function PersonDuplicatesModal({ isOpen, onClose, onMergeComplete
             <span>DUPLICATE PERSON RECORDS</span>
             <span className="text-[9px] text-rmpg-400 ml-1">({pairs.length} pairs)</span>
           </div>
-          <button type="button" onClick={onClose} className="toolbar-btn" style={{ padding: '1px 4px' }}>
+          <button aria-label="Close" type="button" onClick={onClose} className="toolbar-btn" style={{ padding: '1px 4px' }}>
             <X className="w-3 h-3" />
           </button>
         </div>

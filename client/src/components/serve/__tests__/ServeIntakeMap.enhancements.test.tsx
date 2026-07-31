@@ -93,13 +93,18 @@ vi.mock('../../../utils/mapboxLoader', () => ({
         addTo: vi.fn(() => {
           // Simulate real Mapbox behavior enough for popup-button wiring
           // tests: insert the popup's HTML into the document so the
-          // component's document.getElementById lookups (for the "Open
-          // record" / "Add notation" / "View trail" buttons) can find them.
+          // component's delegated click listener has a container to bind to
+          // and the "Open record" / "Add notation" / "History" / "Preview"
+          // buttons are reachable.
           attached = document.createElement('div');
           attached.innerHTML = html;
           document.body.appendChild(attached);
           return attached;
         }),
+        // The component delegates popup clicks to this container instead of
+        // looking each button up by id, so the mock must expose it like the
+        // real mapboxgl.Popup does.
+        getElement: vi.fn(() => attached),
         remove: vi.fn(() => { attached?.remove(); attached = null; }),
       };
     }),
@@ -221,7 +226,7 @@ describe('ServeIntakeMap', () => {
       await new Promise((r) => setTimeout(r, 60));
     });
 
-    const trailBtn = document.getElementById(`srv-popup-trail-${MOCK_QUEUE_ITEM.id}`);
+    const trailBtn = document.querySelector<HTMLElement>(`[data-action="trail"][data-item-id="${MOCK_QUEUE_ITEM.id}"]`);
     expect(trailBtn).toBeTruthy();
 
     await act(async () => {
@@ -255,7 +260,7 @@ describe('ServeIntakeMap', () => {
       await new Promise((r) => setTimeout(r, 60));
     });
 
-    const trailBtn = document.getElementById(`srv-popup-trail-${MOCK_QUEUE_ITEM.id}`);
+    const trailBtn = document.querySelector<HTMLElement>(`[data-action="trail"][data-item-id="${MOCK_QUEUE_ITEM.id}"]`);
     await act(async () => {
       trailBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
@@ -295,7 +300,7 @@ describe('ServeIntakeMap', () => {
       markerElements[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await new Promise((r) => setTimeout(r, 60));
     });
-    const previewBtn = document.getElementById(`srv-popup-preview-${MOCK_QUEUE_ITEM.id}`);
+    const previewBtn = document.querySelector<HTMLElement>(`[data-action="preview"][data-item-id="${MOCK_QUEUE_ITEM.id}"]`);
     expect(previewBtn).toBeTruthy();
     await act(async () => {
       previewBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -346,7 +351,7 @@ describe('ServeIntakeMap', () => {
       markerElements[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await new Promise((r) => setTimeout(r, 60));
     });
-    document.getElementById(`srv-popup-preview-${MOCK_QUEUE_ITEM.id}`)!
+    document.querySelector<HTMLElement>(`[data-action="preview"][data-item-id="${MOCK_QUEUE_ITEM.id}"]`)!
       .dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
     // Before the first fetch resolves, switch to a second target.
@@ -355,7 +360,7 @@ describe('ServeIntakeMap', () => {
       await new Promise((r) => setTimeout(r, 60));
     });
     await act(async () => {
-      document.getElementById(`srv-popup-preview-${otherItem.id}`)!
+      document.querySelector<HTMLElement>(`[data-action="preview"][data-item-id="${otherItem.id}"]`)!
         .dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
@@ -391,7 +396,7 @@ describe('ServeIntakeMap', () => {
       await new Promise((r) => setTimeout(r, 60));
     });
     await act(async () => {
-      document.getElementById(`srv-popup-preview-${MOCK_QUEUE_ITEM.id}`)!
+      document.querySelector<HTMLElement>(`[data-action="preview"][data-item-id="${MOCK_QUEUE_ITEM.id}"]`)!
         .dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     await waitFor(() => expect(lastMapInstance.addSource).toHaveBeenCalled());
@@ -526,5 +531,12 @@ describe('ServeIntakeMap', () => {
 
   afterEach(() => {
     cleanup();
+    // The mocked mapboxgl.Popup appends its container directly to
+    // document.body, outside React's tree, so cleanup() leaves it behind.
+    // A leftover popup from a previous test would otherwise win the
+    // querySelector in the next one and make assertions read a stale node.
+    document.body.querySelectorAll(':scope > div').forEach((el) => {
+      if (el.querySelector('[data-action]')) el.remove();
+    });
   });
 });

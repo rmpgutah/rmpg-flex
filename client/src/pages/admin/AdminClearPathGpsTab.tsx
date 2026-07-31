@@ -1381,7 +1381,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                       <span className="text-[10px] text-purple-200 font-bold uppercase tracking-wider">
                         {jobStatus.trip_count} Trip{jobStatus.trip_count !== 1 ? 's' : ''} · Total Download
                       </span>
-                      <button type="button"
+                      <button aria-label="Close" type="button"
                         onClick={() => { setActiveJobId(null); setJobStatus(null); }}
                         className="text-rmpg-500 hover:text-rmpg-300 transition-colors">
                         <XIcon className="w-3 h-3" />

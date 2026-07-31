@@ -259,7 +259,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
               <span className="text-[8px]">HUD</span>
             </button>
             {onEditVideo && (
-              <button type="button" onClick={() => onEditVideo(video)} className="toolbar-btn h-5 px-1">
+              <button aria-label="Edit" type="button" onClick={() => onEditVideo(video)} className="toolbar-btn h-5 px-1">
                 <Edit2 className="w-3 h-3" />
               </button>
             )}

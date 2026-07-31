@@ -391,25 +391,33 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
         const popup = new mapboxgl.Popup({ offset: 18, closeButton: true, maxWidth: '280px' })
           .setHTML(buildPopupHtml(item));
 
+        // Delegated popup handler, matching the pattern in MapboxMapPage.
+        // Previously each button was wired by id inside a setTimeout(…, 50),
+        // which raced Mapbox inserting the popup DOM: lose the race and
+        // getElementById returned null, leaving every button silently dead
+        // until the popup was reopened. Delegating to the popup container has
+        // no race — the container exists before any click can reach it.
+        //
+        // Declared once per item so its identity is stable: addEventListener
+        // ignores a duplicate (type, listener) pair, so re-opening the popup
+        // cannot stack handlers and double-fire the action.
+        const onPopupClick = (evt: MouseEvent) => {
+          const action = (evt.target as HTMLElement).closest<HTMLElement>('[data-action]')
+            ?.dataset.action;
+          if (!action) return;
+          if (action === 'open') onSelectQueue?.(item.id);
+          else if (action === 'note') setNoteModal({ open: true, queueItem: item });
+          else if (action === 'trail') setTrailQueueId(item.id);
+          else if (action === 'preview') {
+            setPreviewTarget({ id: item.id, lng: item.recipient_lng!, lat: item.recipient_lat! });
+          }
+        };
+
         el.addEventListener('click', () => {
           popupRef.current?.remove();
           popup.addTo(map);
           popupRef.current = popup;
-          // Wire "Open record" button inside popup
-          setTimeout(() => {
-            const btn = document.getElementById(`srv-popup-open-${item.id}`);
-            if (btn) btn.addEventListener('click', () => onSelectQueue?.(item.id));
-            const noteBtn = document.getElementById(`srv-popup-note-${item.id}`);
-            if (noteBtn) noteBtn.addEventListener('click', () =>
-              setNoteModal({ open: true, queueItem: item }),
-            );
-            const trailBtn = document.getElementById(`srv-popup-trail-${item.id}`);
-            if (trailBtn) trailBtn.addEventListener('click', () => setTrailQueueId(item.id));
-            const previewBtn = document.getElementById(`srv-popup-preview-${item.id}`);
-            if (previewBtn) previewBtn.addEventListener('click', () =>
-              setPreviewTarget({ id: item.id, lng: item.recipient_lng!, lat: item.recipient_lat! }),
-            );
-          }, 50);
+          popup.getElement()?.addEventListener('click', onPopupClick);
         });
 
         // Pinned to the stored coordinate: `draggable` is deliberately OFF so a
@@ -863,16 +871,16 @@ function buildPopupHtml(item: QueueMapItem): string {
       <div style="color:#64748b;font-size:10px;">Next window: ${escapeHtml(nextStr)}</div>
       ${noteBlock}
       <div style="margin-top:8px;display:flex;gap:6px;">
-        <button id="srv-popup-open-${item.id}" style="flex:1;padding:3px 6px;background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.5);border-radius:2px;color:#93c5fd;font-size:10px;cursor:pointer;font-family:monospace;">
+        <button data-action="open" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.5);border-radius:2px;color:#93c5fd;font-size:10px;cursor:pointer;font-family:monospace;">
           Open Record
         </button>
-        <button id="srv-popup-note-${item.id}" style="flex:1;padding:3px 6px;background:rgba(212,160,23,0.15);border:1px solid rgba(212,160,23,0.4);border-radius:2px;color:#d4a017;font-size:10px;cursor:pointer;font-family:monospace;">
+        <button data-action="note" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(212,160,23,0.15);border:1px solid rgba(212,160,23,0.4);border-radius:2px;color:#d4a017;font-size:10px;cursor:pointer;font-family:monospace;">
           ${item.location_note_id ? 'View Notation' : 'Add Notation'}
         </button>
-        <button id="srv-popup-trail-${item.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">
+        <button data-action="trail" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">
           History
         </button>
-        <button id="srv-popup-preview-${item.id}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:monospace;">
+        <button data-action="preview" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:monospace;">
           Preview drive time
         </button>
       </div>
