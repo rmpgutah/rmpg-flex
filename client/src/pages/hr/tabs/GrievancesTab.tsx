@@ -261,7 +261,7 @@ export default function GrievancesTab() {
                   <div className="flex gap-1">
                     {g.status === 'filed' && <button type="button" onClick={() => updateStatus(g.id, 'under_review')} className="toolbar-btn text-[9px]">Review</button>}
                     {g.status === 'under_review' && <button type="button" onClick={() => updateStatus(g.id, 'investigation')} className="toolbar-btn text-[9px]">Investigate</button>}
-                    <button type="button" onClick={() => updateStatus(g.id, 'resolved')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
+                    <button aria-label="Mark complete" type="button" onClick={() => updateStatus(g.id, 'resolved')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
                     <button type="button" onClick={() => updateStatus(g.id, 'dismissed')} className="toolbar-btn toolbar-btn-danger text-[9px]">Dismiss</button>
                   </div>
                 )}

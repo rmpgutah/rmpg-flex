@@ -544,7 +544,7 @@ export default function LawBookPage() {
         <div className="border border-rmpg-800 bg-surface-raised" style={{ borderRadius: 2, maxHeight: '64vh', overflowY: 'auto' }}>
           <div className="px-3 py-2 border-b border-rmpg-800 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-rmpg-300 sticky top-0 bg-surface-raised z-10">
             {(chapter || showingSearch) && (
-              <button type="button" onClick={resetToBrowse} className="text-rmpg-500 hover:text-brand-gold-500 flex items-center gap-1">
+              <button aria-label="Back" type="button" onClick={resetToBrowse} className="text-rmpg-500 hover:text-brand-gold-500 flex items-center gap-1">
                 <ArrowLeft className="w-3 h-3" />
               </button>
             )}

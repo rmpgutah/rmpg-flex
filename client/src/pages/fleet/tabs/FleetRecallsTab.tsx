@@ -169,7 +169,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
                   {r.status !== 'completed' && r.status !== 'not_applicable' && (
                     <>
                       {r.status === 'open' && <button type="button" onClick={() => updateStatus(r.id, 'scheduled')} className="toolbar-btn text-[9px]"><Calendar className="w-3 h-3" /> Schedule</button>}
-                      <button type="button" onClick={() => updateStatus(r.id, 'completed')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
+                      <button aria-label="Mark complete" type="button" onClick={() => updateStatus(r.id, 'completed')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
                     </>
                   )}
                 </div>

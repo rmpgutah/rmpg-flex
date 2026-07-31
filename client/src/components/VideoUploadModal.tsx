@@ -484,7 +484,7 @@ export default function VideoUploadModal({
                   </p>
                 </div>
                 {!isUploading && (
-                  <button type="button" onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="toolbar-btn p-1">
+                  <button aria-label="Close" type="button" onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="toolbar-btn p-1">
                     <X className="w-3 h-3" />
                   </button>
                 )}

@@ -219,7 +219,7 @@ export default function IntegrationWizardModal({
             <Icon className="w-4 h-4 text-brand-400" />
             <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wide">Setup {config.name}</span>
           </div>
-          <button onClick={onClose} className="text-fg-muted hover:text-rmpg-100"><X className="w-4 h-4" /></button>
+          <button aria-label="Close" onClick={onClose} className="text-fg-muted hover:text-rmpg-100"><X className="w-4 h-4" /></button>
         </div>
 
         {/* Step indicator bar */}

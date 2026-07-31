@@ -77,7 +77,9 @@ adminDev.post('/mock/gps', async (c) => {
   }
 
   const db = c.env.DB;
-  const unit = await db.prepare('SELECT id, unit_number FROM units WHERE id = ?')
+  // `units` has no unit_number column on live D1 — the identifier is call_sign.
+  // Aliased so the response shape callers already depend on stays unchanged.
+  const unit = await db.prepare('SELECT id, call_sign AS unit_number FROM units WHERE id = ?')
     .bind(body.unit_id).first<{ id: number; unit_number: string }>();
   if (!unit) return c.json({ error: 'unit_not_found' }, 404);
 

@@ -625,7 +625,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                   <span className="text-xs font-bold text-rmpg-100">Job #{selectedJob.sm_job_number}</span>
                   <ServiceStatusBadge status={selectedJob.service_status} />
                 </div>
-                <button type="button" onClick={() => setSelectedJob(null)} className="text-rmpg-500 hover:text-rmpg-300">
+                <button aria-label="Close" type="button" onClick={() => setSelectedJob(null)} className="text-rmpg-500 hover:text-rmpg-300">
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
@@ -719,14 +719,14 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 Page {jobPage} of {jobTotalPages} ({jobTotal} total)
               </span>
               <div className="flex items-center gap-1">
-                <button type="button"
+                <button aria-label="Previous" type="button"
                   onClick={() => setJobPage(p => Math.max(1, p - 1))}
                   disabled={jobPage <= 1}
                   className="toolbar-btn p-1 disabled:opacity-30"
                 >
                   <ChevronLeft className="w-3 h-3" />
                 </button>
-                <button type="button"
+                <button aria-label="Next" type="button"
                   onClick={() => setJobPage(p => Math.min(jobTotalPages, p + 1))}
                   disabled={jobPage >= jobTotalPages}
                   className="toolbar-btn p-1 disabled:opacity-30"

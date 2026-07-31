@@ -204,7 +204,7 @@ export default function AdminFleetioDirectoryTab() {
             <input className="input-dark col-span-2" placeholder="Email" value={editingVendor.email ?? ''} onChange={(e) => setEditingVendor({ ...editingVendor, email: e.target.value })} />
             <div className="flex items-center gap-1">
               <button onClick={saveVendor} className="flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-green-700 hover:bg-green-600 text-white"><Check className="w-3 h-3" /> Save</button>
-              <button onClick={() => setEditingVendor(null)} className="flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-surface-base hover:bg-rmpg-700"><X className="w-3 h-3" /></button>
+              <button aria-label="Close" onClick={() => setEditingVendor(null)} className="flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-surface-base hover:bg-rmpg-700"><X className="w-3 h-3" /></button>
             </div>
           </div>
         )}
@@ -257,7 +257,7 @@ export default function AdminFleetioDirectoryTab() {
             <input className="input-dark col-span-2" placeholder="Location" value={editingPart.location ?? ''} onChange={(e) => setEditingPart({ ...editingPart, location: e.target.value })} />
             <div className="flex items-center gap-1">
               <button onClick={savePart} className="flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-green-700 hover:bg-green-600 text-white"><Check className="w-3 h-3" /> Save</button>
-              <button onClick={() => setEditingPart(null)} className="flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-surface-base hover:bg-rmpg-700"><X className="w-3 h-3" /></button>
+              <button aria-label="Close" onClick={() => setEditingPart(null)} className="flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-surface-base hover:bg-rmpg-700"><X className="w-3 h-3" /></button>
             </div>
           </div>
         )}

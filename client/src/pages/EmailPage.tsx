@@ -616,7 +616,7 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
                 <Icon className="w-3 h-3 text-brand-400" />
                 <span>{getLinkLabel(link)}</span>
                 {link.link_type && <span className="text-[8px] text-rmpg-600 capitalize">{link.link_type}</span>}
-                <button type="button" onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
+                <button aria-label="Unlink" type="button" onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
                   <X className="w-2.5 h-2.5" />
                 </button>
               </div>
@@ -650,7 +650,7 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
             <button type="button" onClick={handleLink} disabled={saving || !linkId.trim()} className="btn-primary text-[9px] px-2 py-1 disabled:opacity-40">
               {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : 'Link'}
             </button>
-            <button type="button" onClick={() => { setShowForm(false); setLinkId(''); setLinkNotes(''); }} className="text-rmpg-500 hover:text-rmpg-100">
+            <button aria-label="Close" type="button" onClick={() => { setShowForm(false); setLinkId(''); setLinkNotes(''); }} className="text-rmpg-500 hover:text-rmpg-100">
               <X className="w-3 h-3" />
             </button>
           </div>
@@ -1318,7 +1318,7 @@ function ComposeModal({ mode, replyMessage, userId, onClose, onSent }: ComposeMo
           {error && (
             <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-sm px-3 py-1.5 flex items-center gap-2">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" /> {error}
-              <button type="button" onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-300"><X className="w-3 h-3" /></button>
+              <button aria-label="Close" type="button" onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-300"><X className="w-3 h-3" /></button>
             </div>
           )}
 
@@ -1440,7 +1440,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                       style={{ backgroundColor: withAlpha(fileColor, '15'), color: fileColor }}>{ext.slice(0, 3)}</div>
                     <span className="truncate max-w-[100px]">{att.name}</span>
                     <span className="text-rmpg-600 text-[9px]">{formatSize(att.size)}</span>
-                    <button type="button" onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
+                    <button aria-label="Remove" type="button" onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
                   </div>
                 );
               })}
@@ -3101,8 +3101,8 @@ export default function EmailPage() {
                 <input id="ff-emailpage-16" value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); } }}
                   className="flex-1 input-dark text-[10px] px-2 py-0.5 min-h-[36px]" placeholder="Folder name" autoFocus />
-                <button type="button" onClick={() => handleCreateFolder()} className="p-0.5 text-brand-400 hover:text-brand-300"><CheckCircle className="w-3.5 h-3.5" /></button>
-                <button type="button" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} className="p-0.5 text-rmpg-500 hover:text-rmpg-100"><X className="w-3.5 h-3.5" /></button>
+                <button aria-label="Mark complete" type="button" onClick={() => handleCreateFolder()} className="p-0.5 text-brand-400 hover:text-brand-300"><CheckCircle className="w-3.5 h-3.5" /></button>
+                <button aria-label="Close" type="button" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} className="p-0.5 text-rmpg-500 hover:text-rmpg-100"><X className="w-3.5 h-3.5" /></button>
               </div>
             ) : (
               <button type="button" onClick={() => setShowNewFolder(true)}
@@ -3370,7 +3370,7 @@ export default function EmailPage() {
                           {/* Avatar / Select checkbox */}
                           <div className="relative flex-shrink-0 mt-0.5">
                             {selectedIds.has(msg.id) ? (
-                              <button type="button" onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
+                              <button aria-label="Mark complete" type="button" onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
                                 className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center">
                                 <CheckCircle className="w-4 h-4 text-rmpg-100" />
                               </button>
@@ -3467,7 +3467,7 @@ export default function EmailPage() {
             <div className="border-b border-border-subtle bg-surface-base">
               {/* Subject + back button */}
               <div className="flex items-center gap-2 px-4 pt-3 pb-2">
-                <button type="button" onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-rmpg-100 flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
+                <button aria-label="Previous" type="button" onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-rmpg-100 flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
                 <h2 className="text-sm font-semibold text-rmpg-100 min-w-0 flex-1 truncate">{fullMessage.subject || '(no subject)'}</h2>
                 {fullMessage.importance === 'high' && (
                   <span className="text-[8px] px-1.5 py-0.5 bg-red-900/20 text-red-400 rounded-sm font-bold uppercase flex-shrink-0 border border-red-700/20 tracking-wider">Important</span>
