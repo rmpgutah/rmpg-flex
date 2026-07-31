@@ -202,6 +202,38 @@
             }
           } catch (e) { /* SW API unavailable — fall through to reload */ }
 
+          // Evict the entry chunk from the browser's own HTTP cache.
+          //
+          // Confirmed live 2026-07-31: during a Pages deploy's propagation
+          // window the CDN can answer a not-yet-published chunk with the SPA
+          // fallback — index.html, HTTP 200, Content-Type text/html. Those
+          // assets carry immutable cache headers, so that poisoned HTML is
+          // stored in the browser's HTTP disk cache and every later load
+          // re-reads it. Module parsing fails and the page strands here.
+          //
+          // Nothing above can fix that: caches.delete() clears the SERVICE
+          // WORKER cache and unregister() drops the SW, but neither touches the
+          // HTTP cache, and JS cannot evict it directly. A plain reload re-reads
+          // the same poisoned entry. That is why the documented remedy was a
+          // manual hard-refresh (Cmd/Ctrl+Shift+R).
+          //
+          // `fetch(src, {cache:'reload'})` is the one lever JS does have: it
+          // bypasses the HTTP cache AND writes the fresh response back into it,
+          // so the reload below reads good JS. Best-effort — a failure here must
+          // never block recovery, and it is covered by the same 3s ceiling.
+          //
+          // Diagnostic that isolates this cause from the others: fetch the entry
+          // URL twice, once plain and once with {cache:'reload'}, and compare
+          // content-type. Same URL, two answers => poisoned HTTP cache. (curl
+          // has no browser cache, so "curl works but the browser doesn't" is the
+          // signature, and it reads misleadingly like a server problem.)
+          try {
+            var entrySrc = el.getAttribute('src');
+            if (entrySrc && window.fetch) {
+              tasks.push(fetch(entrySrc, { cache: 'reload' }).catch(function () {}));
+            }
+          } catch (e) { /* fetch unavailable — fall through to reload */ }
+
           if (!tasks.length) return go();
           Promise.all(tasks).then(go, go);
         }
