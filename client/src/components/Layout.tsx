@@ -734,7 +734,21 @@ export default function Layout() {
     // are read at their own call sites via getSystemSetting.
     loadSystemSettings();
     return initSettingsSync();
-  }, [user]);
+    // Keyed on the user ID, NOT the user object. GET /api/settings is a pure
+    // function of the actor id (src/routes/settings.ts: org is `WHERE id = 1`,
+    // system is the whole table, and only the user blob is `WHERE user_id = ?`
+    // — the handler never reads actor.role), so nothing in this payload can
+    // change without the id changing.
+    //
+    // Depending on the object re-ran this effect on every cold boot: AuthContext
+    // seeds `user` from localStorage for an instant paint, then its background
+    // /auth/me validation calls setUser() with a FRESH OBJECT for the same
+    // person. Each run tears down and re-inits settingsSync (its `started`
+    // guard is released by the cleanup), so the pair of /api/settings reads
+    // below fired twice — 4 requests per boot against the 600 req/300 s budget
+    // in src/middleware/rateLimit.ts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Clear unsaved changes on navigation
   useEffect(() => {
