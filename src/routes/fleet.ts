@@ -1484,7 +1484,7 @@ fleet.delete('/:id{[0-9]+}', async (c) => {
 // can be unit-tested and reused by the report endpoints. `logs` arrive in
 // DESC order (newest first); we sort a copy ASC by odometer to chain spans,
 // then merge the computed fields back by id so the response keeps DESC order.
-function computeFuelAnalytics(logs: Record<string, unknown>[]): {
+export function computeFuelAnalytics(logs: Record<string, unknown>[]): {
   logs: Record<string, unknown>[];
   summary: Record<string, unknown>;
 } {
@@ -1525,9 +1525,20 @@ function computeFuelAnalytics(logs: Record<string, unknown>[]): {
     }
     // A stored MPG is authoritative: it overrides the odometer-derived estimate
     // and lets rows without an odometer (or without a prior reading) still show
-    // MPG. Whatever the final value, feed it into the avg/best/worst aggregates.
+    // MPG.
     if (storedMpg != null) mpg = storedMpg;
-    if (mpg != null && mpg > 0 && mpg < 200) mpgValues.push(mpg);
+    // ...but it must not smuggle a PARTIAL fill into the aggregates. A partial
+    // fill doesn't reset the tank, so the distance since the last fill wasn't
+    // burned from these gallons and the ratio isn't an MPG at all — which is
+    // exactly why the odometer-derived branch above requires `isFull !== 0`.
+    // Applying that guard only to the computed path let a stored value on a
+    // partial fill through anyway, so avg/best/worst were mixing in numbers the
+    // same function had just refused to compute. On live vehicle PS-D19 that
+    // was 5 of 84 contributing rows (avg MPG 13.0 -> 12.6).
+    //
+    // The row still REPORTS its stored mpg — this only governs what feeds the
+    // aggregates.
+    if (mpg != null && mpg > 0 && mpg < 200 && isFull !== 0) mpgValues.push(mpg);
     computed.set(log.id, { calc_distance, mpg, cost_per_mile });
     if (odo != null) prevOdo = odo;
   }
@@ -4033,7 +4044,19 @@ fleet.get('/financial/budget-forecast', async (c) => { try { const db = getDb(c.
 // 311: Multi-year budget planning
 fleet.get('/financial/multi-year-plan', async (c) => { try { const db = getDb(c.env); const years = [new Date().getFullYear(), new Date().getFullYear() + 1, new Date().getFullYear() + 2]; const plan = []; for (const y of years) { const fuel = (await queryFirst<{ cost: number }>(db, "SELECT COALESCE(SUM(total_cost),0) as cost FROM fleet_fuel_log WHERE strftime('%Y', fuel_date) = ?", String(y - 1)))?.cost ?? 50000; const maint = (await queryFirst<{ cost: number }>(db, "SELECT COALESCE(SUM(cost),0) as cost FROM fleet_maintenance WHERE strftime('%Y', performed_at) = ?", String(y - 1)))?.cost ?? 20000; plan.push({ year: y, projected_fuel: Math.round(fuel * 1.03), projected_maintenance: Math.round(maint * 1.03), projected_total: Math.round((fuel + maint) * 1.03) }); } return c.json(plan); } catch (err) { return c.json([]); } });
 // 312: Cost per mile trending
-fleet.get('/financial/cpm-trend', async (c) => { try { const db = getDb(c.env); const rows = await query<Record<string, unknown>>(db, "SELECT strftime('%Y-%m', fuel_date) as month, COALESCE(SUM(total_cost),0) as fuel_cost, 0 as maint_cost, COALESCE(SUM(odometer_filled),0) as miles FROM fleet_fuel_log WHERE fuel_date >= datetime('now', '-12 months') GROUP BY month ORDER BY month"); return c.json(rows.map((r: any) => ({ ...r, cpm: r.miles > 0 ? Math.round((r.fuel_cost / r.miles) * 100) / 100 : 0 }))); } catch (err) { return c.json([]); } });
+// Miles must be a PER-VEHICLE delta, summed — not a fleet-wide MAX-MIN.
+// `odometer` is a reading, so a single MAX-MIN grouped by month alone is the
+// spread between the highest- and lowest-odometer VEHICLE, not distance driven.
+// That happens to return the correct number today only because the live fleet
+// has exactly one vehicle logging fuel in any given month (verified against
+// live D1) — it silently becomes wrong the first month a second vehicle fuels.
+// The inner GROUP BY month, vehicle_id fixes that.
+//
+// Known conservative limitation: a per-month MAX-MIN ignores distance between
+// the last fill of one month and the first of the next, and a vehicle with a
+// single fill-up in a month contributes 0. That understates miles and so
+// OVERstates cost-per-mile — the safe direction for a budget figure.
+fleet.get('/financial/cpm-trend', async (c) => { try { const db = getDb(c.env); const rows = await query<Record<string, unknown>>(db, "SELECT month, COALESCE(SUM(fuel_cost),0) as fuel_cost, 0 as maint_cost, COALESCE(SUM(miles),0) as miles FROM (SELECT strftime('%Y-%m', fuel_date) as month, vehicle_id, COALESCE(SUM(total_cost),0) as fuel_cost, MAX(odometer) - MIN(odometer) as miles FROM fleet_fuel_log WHERE fuel_date >= datetime('now', '-12 months') AND odometer IS NOT NULL GROUP BY month, vehicle_id) GROUP BY month ORDER BY month"); return c.json(rows.map((r: any) => ({ ...r, cpm: r.miles > 0 ? Math.round((r.fuel_cost / r.miles) * 100) / 100 : 0 }))); } catch (err) { return c.json([]); } });
 // 313: Vehicle ROI calculator
 fleet.post('/financial/roi-calculator', async (c) => { try { const body = await c.req.json<Record<string, unknown>>(); const purchasePrice = (body.purchase_price as number) || 0; const annualRevenue = (body.annual_revenue as number) || 0; const annualCost = (body.annual_cost as number) || 0; const years = (body.years as number) || 5; const netAnnual = annualRevenue - annualCost; const totalReturn = netAnnual * years; const roi = purchasePrice > 0 ? ((totalReturn - purchasePrice) / purchasePrice) * 100 : 0; const paybackMonths = netAnnual > 0 ? Math.round((purchasePrice / netAnnual) * 12) : 0; return c.json({ total_return: totalReturn, roi_pct: Math.round(roi), payback_months: paybackMonths, net_annual: netAnnual }); } catch (err) {
   logger.error('POST /financial/roi-calculator failed', { src: 'src/routes/fleet.ts' }, err); return c.json({ error: 'Failed' }, 500); } });
@@ -4223,7 +4246,7 @@ fleet.post('/procurement/orders/:id/bids', async (c) => { try { const orderId = 
   logger.error('POST /procurement/orders/:id/bids failed', { src: 'src/routes/fleet.ts' }, err); return c.json({ error: 'Failed' }, 500); } });
 fleet.put('/procurement/bids/:id/select', async (c) => { try { const bidId = Number(c.req.param('id')); const db = getDb(c.env); const bid = await queryFirst<{ procurement_order_id: number }>(db, 'SELECT procurement_order_id FROM fleet_vendor_bids WHERE id = ?', bidId); if (!bid) return c.json({ error: 'Not found' }, 404); await execute(db, 'UPDATE fleet_vendor_bids SET selected = 0 WHERE procurement_order_id = ?', bid.procurement_order_id); await execute(db, 'UPDATE fleet_vendor_bids SET selected = 1 WHERE id = ?', bidId); return c.json({ success: true }); } catch (err) {
   logger.error('PUT /procurement/bids/:id/select failed', { src: 'src/routes/fleet.ts' }, err); return c.json({ error: 'Failed' }, 500); } });
-fleet.get('/procurement/acquisition-cost-analysis', async (c) => { try { const db = getDb(c.env); const rows = await query<Record<string, unknown>>(db, `SELECT make, model, COUNT(*) as count, ROUND(AVG(COALESCE(v.cost, 0) + COALESCE(mc.total, 0) + COALESCE(fc.total, 0)),0) as avg_lifetime_cost FROM fleet_vehicles v LEFT JOIN (SELECT vehicle_id, SUM(cost) AS total FROM fleet_maintenance GROUP BY vehicle_id) mc ON mc.vehicle_id = v.id LEFT JOIN (SELECT vehicle_id, SUM(total_cost) AS total FROM fleet_fuel_log GROUP BY vehicle_id) fc ON fc.vehicle_id = v.id GROUP BY make, model HAVING count >= 1 ORDER BY avg_lifetime_cost`); return c.json(rows); } catch (err) { return c.json([]); } });
+fleet.get('/procurement/acquisition-cost-analysis', async (c) => { try { const db = getDb(c.env); const rows = await query<Record<string, unknown>>(db, `SELECT make, model, COUNT(*) as count, ROUND(AVG(COALESCE(v.purchase_price, 0) + COALESCE(mc.total, 0) + COALESCE(fc.total, 0)),0) as avg_lifetime_cost FROM fleet_vehicles v LEFT JOIN (SELECT vehicle_id, SUM(cost) AS total FROM fleet_maintenance GROUP BY vehicle_id) mc ON mc.vehicle_id = v.id LEFT JOIN (SELECT vehicle_id, SUM(total_cost) AS total FROM fleet_fuel_log GROUP BY vehicle_id) fc ON fc.vehicle_id = v.id GROUP BY make, model HAVING count >= 1 ORDER BY avg_lifetime_cost`); return c.json(rows); } catch (err) { return c.json([]); } });
 fleet.get('/procurement/standardization', async (c) => { try { const db = getDb(c.env); const byMake = await query<Record<string, unknown>>(db, `SELECT make, COUNT(*) as count, ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM fleet_vehicles WHERE archived_at IS NULL),0) as pct FROM fleet_vehicles WHERE archived_at IS NULL GROUP BY make ORDER BY count DESC`); return c.json({ by_make: byMake, recommendation: (byMake[0] as any)?.pct > 70 ? 'Fleet is well standardized' : 'Consider standardizing on fewer makes for parts/commonality savings' }); } catch (err) { return c.json({}); } });
 fleet.get('/procurement/delivery-timeline', async (c) => { try { const rows = await query<Record<string, unknown>>(getDb(c.env), `SELECT po.*, s.name as spec_name, CASE WHEN po.actual_delivery IS NOT NULL THEN ROUND(julianday(po.actual_delivery) - julianday(po.order_date),0) ELSE ROUND(julianday('now') - julianday(po.order_date),0) END as days_elapsed FROM fleet_procurement_orders po LEFT JOIN fleet_vehicle_specs s ON s.id = po.spec_id WHERE po.status != 'delivered' ORDER BY po.order_date`); return c.json(rows); } catch (err) { return c.json([]); } });
 
@@ -4552,10 +4575,12 @@ fleet.get('/combined-cost-trend', async (c) => {
       GROUP BY month ORDER BY month`);
 
     const loans = await queryFn<{ month: string; total_cost: number }>(`
-      SELECT strftime('%Y-%m', COALESCE(date, created_at)) AS month,
-             COALESCE(SUM(payment_amount), 0) AS total_cost
+      -- fleet_loans has neither a date nor a payment_amount column on live D1:
+      -- start_date and monthly_payment are the real ones.
+      SELECT strftime('%Y-%m', COALESCE(start_date, created_at)) AS month,
+             COALESCE(SUM(monthly_payment), 0) AS total_cost
       FROM fleet_loans
-      WHERE COALESCE(date, created_at) >= datetime('now', '-${months} months')
+      WHERE COALESCE(start_date, created_at) >= datetime('now', '-${months} months')
       GROUP BY month ORDER BY month`);
 
     // Merge by month key — every month in the union of all four sources.
@@ -4618,10 +4643,11 @@ fleet.get('/monthly-spend', async (c) => {
       GROUP BY month ORDER BY month`).catch(() => []);
 
     const loans = await queryFn<{ month: string; amount: number }>(`
-      SELECT strftime('%Y-%m', COALESCE(date, created_at)) AS month,
-             COALESCE(SUM(payment_amount), 0) AS amount
+      -- Live fleet_loans: start_date / monthly_payment (no date/payment_amount).
+      SELECT strftime('%Y-%m', COALESCE(start_date, created_at)) AS month,
+             COALESCE(SUM(monthly_payment), 0) AS amount
       FROM fleet_loans
-      WHERE COALESCE(date, created_at) >= datetime('now', '-${months} months')
+      WHERE COALESCE(start_date, created_at) >= datetime('now', '-${months} months')
       GROUP BY month ORDER BY month`).catch(() => []);
 
     const byMonth = new Map<string, { month: string; fuel: number; maintenance: number; recurring: number; loans: number }>();

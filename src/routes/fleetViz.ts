@@ -468,7 +468,12 @@ viz.get('/calls-per-gallon', async (c) => {
   try {
     const db = getDb(c.env);
     const win = buildDateWindow(c.req.query('period'), 'fuel_date');
-    const callWin = buildDateWindow(c.req.query('period'), 'created_at');
+    // MUST be alias-qualified: the calls query below JOINs units + users +
+    // calls_for_service, and all three carry a `created_at`. A bare
+    // `created_at` made SQLite throw "ambiguous column name: created_at", which
+    // the catch turned into a 500 "aggregation failure" — reproduced live for
+    // ?period=30d and ?ytd, while ?all passed because its clause is empty.
+    const callWin = buildDateWindow(c.req.query('period'), 'c.created_at');
 
     // Live schema reality: there is no `officers` table and
     // `fleet_fuel_log` has no `driver_id` FK — only `driver_name TEXT`.

@@ -88,8 +88,7 @@ export async function syncServeCompletionToCfs(
        process_served_at = ?,
        process_attempts = ?,
        process_served_to = ?,
-       process_served_address = ?,
-       updated_at = datetime('now')
+       process_served_address = ?
      WHERE id = ?`,
   ).bind(
     resultLabel,

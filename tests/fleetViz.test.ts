@@ -44,6 +44,27 @@ describe('buildDateWindow', () => {
     expect(() => buildDateWindow('30d', 'BAD UPPER')).toThrow();
     expect(() => buildDateWindow('30d', '1bad')).toThrow();
   });
+
+  // Regression: /calls-per-gallon 500'd in production for every period except
+  // `all`. Its calls query JOINs units + users + calls_for_service, all three of
+  // which have a `created_at`, so the unqualified fragment made SQLite throw
+  // "ambiguous column name". The validator used to reject dots outright, so a
+  // caller had no way to disambiguate.
+  it('accepts an alias-qualified column, which JOINed queries require', () => {
+    const w = buildDateWindow('30d', 'c.created_at');
+    expect(w.whereClause).toContain('AND c.created_at');
+    expect(w.whereClause).toContain("date('now','-30 days')");
+  });
+
+  it('still rejects injection attempts through the alias form', () => {
+    // Widening the regex must not open a hole: only a single
+    // [a-z][a-z0-9_]* segment either side of exactly one dot.
+    expect(() => buildDateWindow('30d', 'c.created_at; DROP TABLE x')).toThrow(/invalid column/);
+    expect(() => buildDateWindow('30d', 'a.b.c')).toThrow(/invalid column/);
+    expect(() => buildDateWindow('30d', '.created_at')).toThrow(/invalid column/);
+    expect(() => buildDateWindow('30d', 'c.')).toThrow(/invalid column/);
+    expect(() => buildDateWindow('30d', 'C.created_at')).toThrow(/invalid column/);
+  });
 });
 
 // ─── computeCostBreakdown ─────────────────────────────────

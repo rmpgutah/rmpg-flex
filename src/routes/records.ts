@@ -596,7 +596,11 @@ records.post('/from-dl-scan', async (c) => {
       }
       try {
         warrantHits = await query<Record<string, unknown>>(db,
-          `SELECT id, warrant_number, warrant_type, offense_description, bond_amount, issuing_agency
+          // Live warrants columns are type / charge_description / bail_amount.
+          // Aliased so the DL-scan response shape is unchanged.
+          `SELECT id, warrant_number, type AS warrant_type,
+                  charge_description AS offense_description,
+                  bail_amount AS bond_amount, issuing_agency
            FROM warrants WHERE subject_person_id = ? AND LOWER(status) = 'active'`,
           personId);
       } catch (err) {
@@ -2532,7 +2536,8 @@ records.post('/reports/:id/return', async (c) => {
     const db = getDb(c.env);
     const report = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM incidents WHERE id = ?', id);
     if (!report) return c.json({ error: 'Report not found' }, 404);
-    await db.prepare(`UPDATE incidents SET status = 'returned', supervisor_id = ?, supervisor_notes = ?, updated_at = datetime('now') WHERE id = ?`)
+    // incidents stores supervisor feedback in review_notes (no supervisor_notes).
+    await db.prepare(`UPDATE incidents SET status = 'returned', supervisor_id = ?, review_notes = ?, updated_at = datetime('now') WHERE id = ?`)
       .bind(actor?.id ?? null, reason, id).run();
     return c.json({ success: true, id: Number(id), status: 'returned', reason });
   } catch (err) {

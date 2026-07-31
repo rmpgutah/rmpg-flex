@@ -1212,7 +1212,8 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       if (personIdForLink) {
         await execute(
           db,
-          `INSERT OR IGNORE INTO case_persons (case_id, person_id, relationship)
+          // case_persons stores the linkage label in `role`, not `relationship`.
+          `INSERT OR IGNORE INTO case_persons (case_id, person_id, role)
            VALUES (?, ?, ?)`,
           caseId, personIdForLink, relationshipLabel,
         );

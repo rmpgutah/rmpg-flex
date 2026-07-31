@@ -531,10 +531,13 @@ admin.get('/upcoming-court-dates', async (c) => {
     // denverNowDateExpr helper (utils/denverTime.ts) — same fix as shift-stats
     // above and reports.ts.
     const rows = await query<{ date: string; case_number: string; officer_name: string }>(db,
-      `SELECT ce.hearing_date AS date, ce.case_number, COALESCE(u.full_name, 'Unassigned') AS officer_name
-       FROM court_events ce LEFT JOIN users u ON u.id = ce.officer_id
-       WHERE ce.hearing_date BETWEEN ${denverNowDateExpr()} AND ${denverNowDateExpr(`+${Math.min(days, 90)} days`)}
-       ORDER BY ce.hearing_date LIMIT 50`);
+      // Live court_events uses event_date / court_case_number, and has no
+      // officer_id — created_by is the only user FK on the row.
+      `SELECT ce.event_date AS date, ce.court_case_number AS case_number,
+              COALESCE(u.full_name, 'Unassigned') AS officer_name
+       FROM court_events ce LEFT JOIN users u ON u.id = ce.created_by
+       WHERE ce.event_date BETWEEN ${denverNowDateExpr()} AND ${denverNowDateExpr(`+${Math.min(days, 90)} days`)}
+       ORDER BY ce.event_date LIMIT 50`);
     return c.json({ count: rows.length, dates: rows });
   } catch { return c.json({ count: 0, dates: [] }); }
 });
