@@ -58,6 +58,46 @@ describe('buildCallMarker', () => {
   });
 });
 
+// ── Regression guard: mapboxgl-owned root element ────────────────────────
+// Every element handed to `new mapboxgl.Marker({ element })` has its
+// `style.transform` REWRITTEN IN FULL by Mapbox on every render frame during
+// pan/zoom. Two consequences these tests pin:
+//   1. a `transform` written on the root is destroyed (the teardrop's
+//      rotate(-45deg) used to live here and rendered as a plain circle);
+//   2. a `transition`/`animation` on `transform` turns each frame's reposition
+//      into an animation the marker chases, so the pin visibly lags the map.
+// All visual styling belongs on the inner [data-role="marker-inner"] wrapper.
+describe('marker roots stay transform-free (pan/zoom drift guard)', () => {
+  const ROOTS: Array<[string, () => HTMLElement]> = [
+    ['buildUnitMarker', () => buildUnitMarker({ label: '12', status: 'in_service' })],
+    ['buildCallMarker', () => buildCallMarker({ priority: 1, label: 'P1' })],
+    ['buildDotMarker', () => buildDotMarker({ color: '#d4a017', size: 12 })],
+    ['buildDotMarker (pulsing)', () => buildDotMarker({ color: '#d4a017', size: 12, pulse: true })],
+  ];
+
+  for (const [name, build] of ROOTS) {
+    it(`${name} writes no transform on the root element`, () => {
+      expect(build().style.transform).toBe('');
+    });
+
+    it(`${name} writes no transform transition on the root element`, () => {
+      const { transition, animationName } = build().style;
+      expect(transition).not.toContain('transform');
+      // The only animation any of these roots may carry is the opacity-only
+      // recovery pulse; a transform-animating keyframe would fight Mapbox.
+      if (animationName) expect(animationName).toBe('rmpg-recovery-pulse');
+    });
+  }
+
+  it('buildCallMarker keeps the teardrop rotation on the inner wrapper, where it survives', () => {
+    const el = buildCallMarker({ priority: 1 });
+    const inner = el.querySelector<HTMLElement>('[data-role="marker-inner"]');
+    expect(inner).not.toBeNull();
+    expect(inner!.style.transform).toContain('rotate(-45deg)');
+    expect(inner!.style.borderRadius).toBe('50% 50% 50% 0');
+  });
+});
+
 describe('buildDotMarker', () => {
   it('returns a colored dot element', () => {
     const el = buildDotMarker({ color: '#d4a017', size: 12 });

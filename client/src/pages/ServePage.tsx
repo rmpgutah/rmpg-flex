@@ -54,7 +54,6 @@ import { escapeHtml } from '../utils/sanitize';
 import { clusterByGrid, type ClusterableItem } from '../utils/serveMapClustering';
 import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter, type DeadlineFilter } from '../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../utils/mapboxRouting';
-import { reverseGeocode } from '../utils/mapboxServices';
 import { exportServeMapSheet } from '../utils/serveMapExport';
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -1370,31 +1369,13 @@ export default function ServePage() {
         const lngLat: [number, number] = [job.recipient_lng!, job.recipient_lat!];
 
         const el = buildServeJobMarkerElement(job, selectedJobIds.has(job.id));
-        const marker = new mapboxgl.Marker({ element: el, anchor: 'center', draggable: true })
+        // Pinned to the stored coordinate: `draggable` is deliberately OFF so a
+        // serve target can never be nudged off its geocoded position by a
+        // stray click-drag on the map. Relocating a job is an explicit records
+        // edit, not a map gesture.
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'center', draggable: false })
           .setLngLat(lngLat)
           .addTo(mapRef.current!);
-
-        marker.on('dragend', async () => {
-          const { lng, lat } = marker.getLngLat();
-          let placeName: string | undefined;
-          try {
-            const geocodeResult = await reverseGeocode(lng, lat);
-            placeName = geocodeResult.features[0]?.place_name;
-          } catch { /* fall back to raw coordinates below */ }
-          const label = placeName || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-          const confirmed = window.confirm(`Update ${job.recipient_name}'s location to:\n${label}?`);
-          if (!confirmed) { fetchJobs(); return; }
-          try {
-            await apiFetch(`/process-server/${job.id}`, {
-              method: 'PUT',
-              body: JSON.stringify({ recipient_lat: lat, recipient_lng: lng }),
-            });
-            fetchJobs();
-          } catch {
-            window.alert('Failed to save the corrected location. Please try again.');
-            fetchJobs();
-          }
-        });
 
         // Popup on click
         el.addEventListener('click', () => {
