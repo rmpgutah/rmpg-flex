@@ -823,16 +823,9 @@ dlRecords.get('/deep-sweep', async (c) => {
           SELECT alert_type, status, severity, description, alert_address,
                  last_compliance_check, last_compliance_result, expiration_date
           FROM offender_alerts WHERE person_id = ? ORDER BY created_at DESC LIMIT 10`, personId)),
-        // stolen_status, NOT status: vehicles_records has no `status` column
-        // (it has stolen_status / tow_status / insurance_status / title_status).
-        // The bad name made this query throw "no such column" on EVERY call,
-        // and because soft() swallows the error and returns [], the person
-        // dossier's linked-vehicles block silently came back EMPTY on live — an
-        // officer viewing a person never saw their registered vehicles.
-        // Verified against live D1 785de7ae. stolen_status is also the field
-        // name the PDF generator's linked_vehicles shape already expects.
         soft(() => query<Record<string, any>>(db, `
-          SELECT id, plate_number, state, make, model, color, year, is_stolen, stolen_status
+          SELECT id, plate_number, state, make, model, color, year, is_stolen,
+                 stolen_status AS status
           FROM vehicles_records WHERE owner_person_id = ? LIMIT 10`, personId)),
         soft(() => query<Record<string, any>>(db, `
           SELECT id, fi_number, interview_date, date, location, contact_reason, gang_affiliation

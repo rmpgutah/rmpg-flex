@@ -975,10 +975,13 @@ sqe.get('/cross-reference/dispatch', async (c) => {
     incident_type: string;
   }>(
     db,
+    // calls_for_service has no `jurisdiction` (and is at D1's 100-column cap,
+    // so it can't gain one) — the overflow table's area_name carries it.
     `SELECT c.id, c.call_number, c.priority, c.status,
-            c.location_address, c.jurisdiction, c.created_at,
+            c.location_address, e.area_name AS jurisdiction, c.created_at,
             c.incident_type
        FROM calls_for_service c
+       LEFT JOIN calls_for_service_ext e ON e.id = c.id
       WHERE c.incident_type = 'pso_client_request'
         AND c.status NOT IN ('cancelled', 'archived')
         AND NOT EXISTS (
