@@ -90,6 +90,14 @@ hr.get('/dashboard', requireRole(...ALL_ROLES), async (c) => {
   const n = async (sql: string): Promise<number> => {
     try { const r = await queryFirst<{ n: number }>(db, sql); return r?.n ?? 0; } catch { return 0; }
   };
+  // Nullable percentage: null means "nothing is being tracked yet", which is a
+  // different fact from 0% and must not be rendered as one.
+  const pct = async (sql: string): Promise<number | null> => {
+    try {
+      const r = await queryFirst<{ pct: number | null }>(db, sql);
+      return r?.pct ?? null;
+    } catch { return null; }
+  };
   let recent_activity: unknown[] = [];
   try {
     recent_activity = await query(db,
@@ -104,8 +112,33 @@ hr.get('/dashboard', requireRole(...ALL_ROLES), async (c) => {
     new_hires_30d: await n("SELECT COUNT(*) n FROM users WHERE created_at >= datetime('now','-30 days')"),
     on_leave_today: await n("SELECT COUNT(*) n FROM leave_requests WHERE status='approved' AND date('now') BETWEEN date(start_date) AND date(end_date)"),
     pending_approvals: await n("SELECT COUNT(*) n FROM leave_requests WHERE status='pending'"),
-    training_compliance_pct: 0,
-    credential_compliance_pct: 0,
+    // These were hardcoded 0 with a comment saying they'd stay that way "until
+    // those tables land" — but officer_certifications, training_courses and
+    // training_enrollments all exist on live. Same stale-comment trap as the
+    // Benefits handler. Now computed, and null (not 0) when there is nothing to
+    // measure: a real 0% and "no requirements defined" look identical on a
+    // progress bar, and 0 trips the UI's amber "out of compliance" colour, so
+    // an untracked department was being reported as failing.
+    //
+    // Training: the requirement set is every active officer × every mandatory
+    // active course; the numerator is distinct completed enrolments for those.
+    training_compliance_pct: await pct(`
+      SELECT CASE WHEN req.pairs = 0 THEN NULL
+                  ELSE CAST(ROUND(100.0 * done.completed / req.pairs) AS INTEGER) END AS pct
+        FROM (SELECT (SELECT COUNT(*) FROM users WHERE COALESCE(status,'active') = 'active')
+                   * (SELECT COUNT(*) FROM training_courses
+                       WHERE is_mandatory = 1 AND COALESCE(is_active,1) = 1) AS pairs) req,
+             (SELECT COUNT(DISTINCT e.officer_id || '-' || e.course_id) AS completed
+                FROM training_enrollments e
+                JOIN training_courses c ON c.id = e.course_id
+               WHERE c.is_mandatory = 1 AND COALESCE(c.is_active,1) = 1
+                 AND LOWER(COALESCE(e.status,'')) = 'completed') done`),
+    // Credentials: share of certifications carrying an expiry that are current.
+    credential_compliance_pct: await pct(`
+      SELECT CASE WHEN COUNT(*) = 0 THEN NULL
+                  ELSE CAST(ROUND(100.0 * SUM(CASE WHEN date(expiration_date) >= date('now')
+                                                   THEN 1 ELSE 0 END) / COUNT(*)) AS INTEGER) END AS pct
+        FROM officer_certifications WHERE expiration_date IS NOT NULL`),
     overdue_items: await n("SELECT COUNT(*) n FROM disciplinary_records WHERE status='open'"),
     recent_activity,
   });

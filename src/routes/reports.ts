@@ -503,7 +503,12 @@ reports.get('/officer-activity', async (c) => {
       SELECT u.officer_id, usr.full_name, usr.badge_number,
         (SELECT COUNT(*) FROM incidents i WHERE i.officer_id = u.officer_id) AS incidents_written,
         (SELECT COUNT(*) FROM calls_for_service c WHERE c.assigned_unit_ids LIKE '%' || CAST(u.id AS TEXT) || '%') AS calls_responded,
-        0 AS total_hours
+        -- Was a hardcoded 0, so this column read "0 hours" for every officer
+        -- on the report even though time_entries has the real total (one
+        -- officer on live has 498.8 logged hours). A hardcoded metric is worse
+        -- than an empty one: it renders as data and looks authoritative.
+        (SELECT ROUND(COALESCE(SUM(te.total_hours), 0), 1)
+           FROM time_entries te WHERE te.officer_id = u.officer_id) AS total_hours
       FROM units u
       LEFT JOIN users usr ON u.officer_id = usr.id
       WHERE u.officer_id IS NOT NULL
