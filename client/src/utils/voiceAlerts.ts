@@ -255,13 +255,14 @@ export function getVoiceAlertsEnabled(): boolean {
 // turning off voice entirely. Each category maps to one localStorage
 // key; absent/anything-but-'false' means enabled (opt-out, not opt-in).
 
-export type VoiceEventCategory = 'new_call' | 'panic' | 'bolo' | 'status';
+export type VoiceEventCategory = 'new_call' | 'panic' | 'bolo' | 'status' | 'notification';
 
 const EVENT_KEYS: Record<VoiceEventCategory, string> = {
-  new_call: 'rmpg-voice-ev-new-call',
-  panic:    'rmpg-voice-ev-panic',
-  bolo:     'rmpg-voice-ev-bolo',
-  status:   'rmpg-voice-ev-status',
+  new_call:     'rmpg-voice-ev-new-call',
+  panic:        'rmpg-voice-ev-panic',
+  bolo:         'rmpg-voice-ev-bolo',
+  status:       'rmpg-voice-ev-status',
+  notification: 'rmpg-voice-ev-notification',
 };
 
 export function setEventEnabled(category: VoiceEventCategory, enabled: boolean): void {
@@ -1823,6 +1824,37 @@ export function announceNarrativeUpdate(
   if (version > 1) {
     enqueuePhrases([{ text: `Narrative updated for call ${callNumber} by ${editorName}. Version ${version}.` }]);
   }
+}
+
+/**
+ * Speak a notification alert through the automated station-PA voice.
+ *
+ * Called by notificationTones.playNotificationTone AFTER its tone, so the
+ * operator hears tone-then-speech. Muting the 'notification' category
+ * silences the SPEECH only — the tone is governed by the separate
+ * rmpg_notification_sounds_<user-id> preference, so an operator can keep the
+ * tone and drop the voice, or vice versa.
+ *
+ * Prefixes carry priority because an operator may not be looking at the
+ * screen. 'normal' gets no prefix: the info pip already means "something
+ * happened", so a canned preamble would just be noise.
+ *
+ * mode: 'alert_pa' routes this through the station-PA chain rather than the
+ * P25 radio haze, so a system alert can never be mistaken for a dispatcher
+ * transmission.
+ */
+export async function announceNotification(priority: string | undefined, detail: string): Promise<void> {
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
+  if (!isEventEnabled('notification')) return;
+
+  const text = detail.trim();
+  if (!text) return;
+
+  const prefix = priority === 'critical' ? 'Critical alert. '
+    : priority === 'high' ? 'High priority. '
+    : '';
+
+  enqueuePhrases([{ text: `${prefix}${text}`, mode: 'alert_pa' }]);
 }
 
 /** Test-only seam: speak exactly one phrase, bypassing the queue.
