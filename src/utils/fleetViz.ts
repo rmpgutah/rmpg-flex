@@ -29,8 +29,17 @@ export interface DateWindow {
  * Build a SQL-safe date window from a `period` query string.
  * The column name is interpolated — caller MUST pass a hard-coded
  * identifier (never user-supplied) so this can't be a SQL-injection sink.
+ *
+ * `fallbackColumn` exists for tables that carry the same fact in two columns.
+ * fleet_maintenance is the case that forced it: 28 call sites read
+ * `performed_at` and 6 read `service_date`, and on live D1 `performed_at` is
+ * populated on 100% of rows while `service_date` is populated on NONE. A
+ * window built on `service_date` alone therefore matched zero rows, which is
+ * why every FleetViz maintenance figure read empty. Passing a fallback emits
+ * `COALESCE(primary, fallback)` so either shape resolves. Both identifiers are
+ * validated, so the injection guard is unchanged.
  */
-export function buildDateWindow(period: string | undefined, column: string): DateWindow {
+export function buildDateWindow(period: string | undefined, column: string, fallbackColumn?: string): DateWindow {
   // Hardened against identifier injection: require column to match the
   // standard snake_case shape, optionally prefixed by a table alias
   // (`c.created_at`). Crash if a caller gets clever.
@@ -40,14 +49,20 @@ export function buildDateWindow(period: string | undefined, column: string): Dat
   // is exactly how /calls-per-gallon 500'd in production for every period
   // except `all` (where the clause is empty, so nothing was ambiguous). The
   // previous regex rejected dots outright, so callers had no way to qualify.
-  if (!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$/.test(column)) {
+  const IDENT = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$/;
+  if (!IDENT.test(column)) {
     throw new Error(`fleetViz.buildDateWindow: invalid column identifier '${column}'`);
   }
+  if (fallbackColumn !== undefined && !IDENT.test(fallbackColumn)) {
+    throw new Error(`fleetViz.buildDateWindow: invalid fallback column identifier '${fallbackColumn}'`);
+  }
+  // Both validated above, so this stays a hard-coded-identifier expression.
+  const expr = fallbackColumn ? `COALESCE(${column}, ${fallbackColumn})` : column;
   const p = (period ?? '30d').toLowerCase();
   if (p === 'all') return { whereClause: '', label: 'All time', fromIso: null };
   if (p === 'ytd') {
     return {
-      whereClause: ` AND ${column} >= date('now','start of year')`,
+      whereClause: ` AND ${expr} >= date('now','start of year')`,
       label: 'Year to date',
       fromIso: null, // route handler can resolve via SQL if it wants
     };
@@ -56,9 +71,9 @@ export function buildDateWindow(period: string | undefined, column: string): Dat
   if (!days) {
     // Default to 30d on unknown input rather than reject — the UI's
     // period picker is just a chip set.
-    return { whereClause: ` AND ${column} >= date('now','-30 days')`, label: 'Last 30 days', fromIso: null };
+    return { whereClause: ` AND ${expr} >= date('now','-30 days')`, label: 'Last 30 days', fromIso: null };
   }
-  return { whereClause: ` AND ${column} >= date('now','-${days} days')`, label: `Last ${days} days`, fromIso: null };
+  return { whereClause: ` AND ${expr} >= date('now','-${days} days')`, label: `Last ${days} days`, fromIso: null };
 }
 
 // ─── Cost-per-mile ─────────────────────────────────────────
