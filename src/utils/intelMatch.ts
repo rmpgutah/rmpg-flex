@@ -19,6 +19,39 @@ export function isRealValue(v: unknown): boolean {
   return s !== '' && !['none', 'n/a', 'na', 'null', '0', 'unknown'].includes(s.toLowerCase());
 }
 
+/**
+ * Is this vehicle actually reported stolen?
+ *
+ * Two callers decided this independently and BOTH got it wrong, in a way that
+ * fires a FALSE officer-safety alert rather than missing a real one:
+ *
+ *   intelScreen.screenVehicle()  `is_stolen === 1 || isRealValue(stolen_status)`
+ *       — isRealValue only rejects sentinels (''/none/n/a/null/0/unknown), so
+ *         the literal string "Not Stolen" passed and raised a CRITICAL 'stolen'
+ *         hit whose detail read "STOLEN (Not Stolen) — <plate>".
+ *   dispatcherAwareness          `/stolen|yes|active/i.test(stolen_status)`
+ *       — /stolen/ matches inside "not stolen", same false positive.
+ *
+ * On live D1 `is_stolen` is populated on ZERO of 42 rows while `stolen_status`
+ * carries the value, and its live values are "Not Stolen" (5) and "Cleared"
+ * (1) — i.e. every populated non-empty value today is a NEGATIVE. So both call
+ * sites would flag six known-clean vehicles as stolen, and an ALPR capture of
+ * any of those plates fires a bogus critical notification.
+ *
+ * A false stolen hit is worse than a missed one: it escalates a routine stop
+ * and teaches officers to distrust the alert. Negations are therefore checked
+ * BEFORE the positive test, and presence alone never means stolen.
+ */
+export function isVehicleStolen(isStolen: unknown, stolenStatus: unknown): boolean {
+  if (isStolen === 1 || isStolen === true || isStolen === '1') return true;
+  if (!isRealValue(stolenStatus)) return false;
+  const s = String(stolenStatus).trim().toLowerCase();
+  // Negations first — "not stolen" contains "stolen".
+  if (/\b(not|non|un)[\s_-]?stolen\b/.test(s)) return false;
+  if (/^(cleared|clear|recovered|unfounded|false|no|none)\b/.test(s)) return false;
+  return /\bstolen\b/.test(s) || /^(yes|active|confirmed|true)\b/.test(s);
+}
+
 export function normalizePhone(v: string): string {
   const d = v.replace(/\D/g, '');
   return d.length === 11 && d.startsWith('1') ? d.slice(1) : d;
