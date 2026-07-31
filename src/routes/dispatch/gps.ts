@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
+import { getDb, query, queryFirst, execute, executeBatch, executeInChunks } from '../../utils/db';
 import { emitAnalytics, flexEvent } from '../../utils/analytics';
 import { emitAlert } from '../../utils/alertHub';
 import { haversineM } from '../../utils/tripTelemetry';
@@ -488,11 +488,18 @@ gps.post('/', async (c) => {
             `SELECT id FROM unit_trips WHERE unit_id = ? AND status = 'active'
              ORDER BY start_time DESC LIMIT 1`, unitId);
           if (activeTrip?.id) {
-            const placeholders = inserted.map(() => '?').join(',');
-            await execute(db,
-              `UPDATE gps_breadcrumbs SET trip_id = ?
+            // executeInChunks: `inserted` is one id per accepted GPS fix and the
+            // batch size is NOT capped anywhere upstream, so a device posting
+            // >100 fixes in one payload built a >100-parameter UPDATE that D1
+            // rejects at bind time. It fails inside the enclosing try/catch,
+            // which logs "trip engine failed" and moves on — so the breadcrumbs
+            // silently keep trip_id = NULL and the trip log is incomplete with
+            // no error surfaced. leadingBindings carries the trip id, which
+            // chunkBindings counts against the cap.
+            await executeInChunks(db, inserted,
+              (placeholders) => `UPDATE gps_breadcrumbs SET trip_id = ?
                WHERE id IN (${placeholders}) AND trip_id IS NULL`,
-              activeTrip.id, ...inserted);
+              [activeTrip.id]);
           }
         } catch { log.warn('[gps] breadcrumb trip_id backfill failed', { unitId, insertedCount: inserted.length }); /* non-fatal — replay degrades, GPS write still succeeds */ }
       }

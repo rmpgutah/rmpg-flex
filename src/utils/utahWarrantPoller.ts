@@ -1013,5 +1013,62 @@ export async function reapStaleWatchRuns(
   return reaped;
 }
 
+/**
+ * Continue a roster pass that the wall budget truncated, WITHOUT waiting for the
+ * next 4-hourly cron tick.
+ *
+ * WHY. The wall-budget guard is not optional — Cloudflare caps a Cron Trigger at
+ * 15 minutes, so a run that tries to sweep the whole roster in one invocation is
+ * killed mid-loop and never finalizes (that was the original 20/20-stuck-rows
+ * bug). The limit cannot be removed. What CAN be removed is the limit's
+ * CONSEQUENCE: a truncated pass used to sit idle for up to 4 hours before
+ * resuming, so people at the far end of the roster went unchecked for most of a
+ * day. Observed live 2026-07-31: two consecutive passes stopped at 59 and 60 of
+ * 83 people.
+ *
+ * This runs on the per-minute cron and immediately continues from
+ * `persons_cursor_id` until the pass completes, so NO PERSON IS SKIPPED and no
+ * pass is abandoned — the roster is always swept end to end.
+ *
+ * It is deliberately bounded to finishing the current pass rather than looping
+ * forever. Once the cursor wraps to 0 the pass is complete (and the
+ * cleared-warrant sweep has run), and we stop until the next scheduled tick.
+ * That matters: the 8s-per-person pacing exists to stay under
+ * warrants.utah.gov's WAF scraper heuristic, and turning this into a 24/7
+ * crawler would risk RMPG being blocked outright — which would take warrant
+ * checks down completely, a far worse outcome than a slower sweep.
+ *
+ * Overlap-safe: skips entirely while any run is still 'running', so the
+ * per-minute cadence cannot start a second concurrent scan. If an isolate dies
+ * mid-run, `reapStaleWatchRuns` closes the row out and resumption self-heals on
+ * the following tick.
+ *
+ * @returns the run result if a continuation was started, else null.
+ */
+export async function resumePartialWatchRun(db: D1Database): Promise<WatchRunResult | null> {
+  // 1. Never overlap a live run.
+  const inFlight = await queryFirst<{ n: number }>(
+    db, `SELECT COUNT(*) AS n FROM warrant_watch_runs WHERE status = 'running'`);
+  if ((inFlight?.n ?? 0) > 0) return null;
+
+  // 2. Only continue when the LAST run was itself budget-truncated. A run that
+  //    completed a full pass, failed outright, or was reaped is not resumable —
+  //    resuming those would be a new pass, which is the cron's job, not ours.
+  const latest = await queryFirst<{ status: string; error_message: string | null }>(
+    db, `SELECT status, error_message FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 1`);
+  if (!latest || latest.status !== 'completed') return null;
+  if (!String(latest.error_message ?? '').startsWith('partial:')) return null;
+
+  // 3. Confirm we are genuinely mid-pass. The cursor wraps to 0 when a pass
+  //    reaches the end of the eligible roster, so a zero cursor means the pass
+  //    finished and there is nothing to resume.
+  const cfg = await queryFirst<{ persons_cursor_id: number | null }>(
+    db, 'SELECT persons_cursor_id FROM warrant_scraper_config WHERE source_name = ?', SOURCE_KEY);
+  if (!cfg || !cfg.persons_cursor_id) return null;
+
+  console.log(`[Utah Warrants] resuming truncated pass from cursor ${cfg.persons_cursor_id}`);
+  return runUtahWarrantScan(db);
+}
+
 /** @deprecated alias kept for backward compat with v1 callers; use runUtahWarrantScan */
 export const runUtahWarrantSmokePoll = runUtahWarrantScan;
