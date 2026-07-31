@@ -62,3 +62,6 @@ jobs:
 
       - name: Form-draft ("filler") coverage check
         run: node scripts/check-form-draft-coverage.js
+
+      - name: Button health ratchet
+        run: node scripts/check-button-health.mjs
