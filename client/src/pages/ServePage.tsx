@@ -1192,7 +1192,17 @@ export default function ServePage() {
         // brought it back for the rest of the session.
         const attached = mapRef.current.getContainer?.();
         if (attached && attached.isConnected && attached === mapContainerRef.current) {
-          updateMapMarkers();
+          // Only paint markers onto a map that has actually finished loading.
+          // This path used to call updateMapMarkers() unconditionally, which
+          // BYPASSED the `if (mapReady)` gate below and attached every job
+          // marker to a map whose camera had not settled — the markers then sat
+          // at stale pixel positions, ignored the basemap while panning, and
+          // (because clustering had not run for the real zoom yet) piled up
+          // into a single line when zoomed out. If the map is still loading,
+          // do nothing: its own 'load' handler flips mapReady and the
+          // [mapReady, updateMapMarkers] effect renders them against a settled
+          // camera.
+          if (mapRef.current.loaded()) updateMapMarkers();
           return;
         }
         // Stale: tear the dead map down and fall through to a fresh build.
@@ -1300,6 +1310,15 @@ export default function ServePage() {
       });
     };
 
+    // The map may ONLY be constructed after initMapbox() has set
+    // mapboxgl.accessToken. A bare synchronous `initMap()` used to sit below
+    // this block and always won the race against the await, building the map
+    // with no token: its style/tile requests never authenticated, 'load' never
+    // fired, mapReady stayed false, and the tab sat on "Loading map…" while
+    // mapRef.current was already populated — so the token-aware call that
+    // followed took the reuse branch and hung markers off that dead map.
+    // Intermittent by nature: initMapbox is global, so only the first map
+    // opened in a session raced, and every later one inherited the token.
     (async () => {
       try {
         const token = await getMapboxAccessToken();
@@ -1311,8 +1330,6 @@ export default function ServePage() {
         if (!cancelled) setMapReady(false);
       }
     })();
-
-    initMap();
 
     return () => {
       cancelled = true;

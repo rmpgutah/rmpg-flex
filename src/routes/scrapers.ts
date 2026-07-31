@@ -17,10 +17,16 @@
 //   - national_warrant_sources (the federated Socrata/ArcGIS/PDF pull,
 //     PR #1221+)
 //
-// No run-history table this round (see design doc) — metrics_24h ships
-// zeroed/null. circuit_broken is derived per-request from
-// consecutive_errors via the existing isCircuitOpen() pure function —
-// no separate stored flag to drift out of sync.
+// ⚠️ This paragraph used to read "No run-history table this round — metrics_24h
+// ships zeroed/null". That is STALE and was actively harmful: `scraper_runs`
+// landed in migration 0174, and metrics_24h/health_grade have read from it since.
+// The stale note is what left GET /health returning hardcoded zeros for
+// `failed`, `last_hour_runs` and `last_hour_inserted` long after the data existed
+// — so ScrapersTab showed "Last hour: <blank> runs, <blank> new" and its Failed
+// LED could never light. Fixed 2026-07-31. Run history IS available here; read it.
+//
+// circuit_broken is derived per-request from consecutive_errors via the existing
+// isCircuitOpen() pure function — no separate stored flag to drift out of sync.
 // ============================================================
 
 import { Hono } from 'hono';
@@ -33,6 +39,10 @@ import { getConfigAdapters } from '../utils/warrantSources/configRegistry';
 import { runFullListLeg } from '../utils/warrantSources/runScan';
 import { insertScraperRunRow } from '../utils/warrantSources/logScanResult';
 import { computeHealthGrade, MAX_RUNS_CONSIDERED, type HealthGrade } from '../utils/warrantSources/healthGrade';
+import { log } from '../utils/logger';
+// scraper_runs.started_at is written zone-less by some writers and ISO by others;
+// this normalizes both so the /health last-hour window can't skew by UTC offset.
+import { parseD1TimestampMs } from '../utils/fleetio/sync';
 
 const scrapers = new Hono<Env>();
 
@@ -252,22 +262,68 @@ scrapers.get('/health', async (c) => {
   const db = getDb(c.env);
   const sources = await getMergedSources(db);
   const circuit_broken = sources.filter((s) => s.circuit_broken === 1).length;
-  const failed = sources.filter((s) => s.last_error && s.circuit_broken === 0).length;
-  const healthy = sources.length - circuit_broken - failed;
-  // `failed` is always 0: distinguishing "fully dead" from "degraded but
-  // still running" needs per-run history we don't have yet (see the
-  // no-run-history-table note at the top of this file). A source with a
-  // lingering last_error that hasn't tripped the circuit breaker is
-  // reported as `degraded`, not `failed` — don't "fix" this by swapping
-  // the two without also adding the history table that would justify it.
+
+  // ⚠️ This handler used to return `failed: 0`, `last_hour_runs: 0` and
+  // `last_hour_inserted: 0` as HARDCODED ZEROS, justified by a comment saying
+  // per-run history "we don't have yet". That was STALE: `scraper_runs` landed in
+  // migration 0174, this very file already imports insertScraperRunRow and
+  // computeHealthGrade, and buildMetrics above is explicitly documented as
+  // replacing "the old zeroedMetrics() placeholder now that scraper_runs exists".
+  // Only this endpoint was left behind — so ScrapersTab rendered
+  // "Last hour: <blank> runs, <blank> new" and its Failed LED could never light,
+  // on a live system that had the data all along.
+  //
+  // A source is FAILED vs DEGRADED by its most recent run, which is what the
+  // history table makes answerable:
+  //   failed   — the latest run did not succeed (it is broken right now)
+  //   degraded — a lingering last_error but the latest run DID succeed, or an
+  //              error with no run history to judge it by
+  // circuit_broken is counted separately and takes precedence over both.
+  const latestRunSuccessByKey = new Map<string, boolean>();
+  const HOUR_MS = 60 * 60 * 1000;
+  let last_hour_runs = 0;
+  let last_hour_inserted = 0;
+  try {
+    // Newest-first per source, same ordering contract as getMergedSources.
+    const runRows = await query<{ source_key: string; success: number; found: number; started_at: string }>(
+      db, `SELECT source_key, success, found, started_at FROM scraper_runs ORDER BY source_key, started_at DESC`,
+    );
+    const cutoff = Date.now() - HOUR_MS;
+    for (const r of runRows) {
+      if (!latestRunSuccessByKey.has(r.source_key)) {
+        latestRunSuccessByKey.set(r.source_key, r.success === 1);
+      }
+      // started_at is written zone-less by some writers and ISO by others;
+      // parseD1TimestampMs treats a bare timestamp as UTC so the 1-hour window
+      // cannot skew by the host's offset (CLAUDE.md invariant).
+      const startedMs = parseD1TimestampMs(r.started_at);
+      if (startedMs != null && startedMs >= cutoff) {
+        last_hour_runs++;
+        last_hour_inserted += r.found ?? 0;
+      }
+    }
+  } catch (err) {
+    // scraper_runs absent on a fresh env — degrade to the pre-history behavior
+    // rather than 500ing a health endpoint. Logged so it is not silent.
+    log.warn('[scrapers] health: scraper_runs unavailable, run-derived fields degraded', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  const nonBroken = sources.filter((s) => s.circuit_broken !== 1);
+  const failed = nonBroken.filter((s) => latestRunSuccessByKey.get(s.source_key) === false).length;
+  const degraded = nonBroken.filter((s) =>
+    s.last_error && latestRunSuccessByKey.get(s.source_key) !== false).length;
+  const healthy = sources.length - circuit_broken - failed - degraded;
+
   return c.json({
     healthy,
-    degraded: failed,
-    failed: 0,
+    degraded,
+    failed,
     circuit_broken,
     total: sources.length,
-    last_hour_runs: 0,
-    last_hour_inserted: 0,
+    last_hour_runs,
+    last_hour_inserted,
   });
 });
 
