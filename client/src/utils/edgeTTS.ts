@@ -20,6 +20,7 @@ import { getToneForSeverity, shouldPlayAudio } from './alertSeverity';
 import type { ToneType } from './dispatchTones';
 import { ensureRadioWorklets, buildRadioVoiceChain, createRadioNoiseBed } from './radioProcessor';
 import { normalizeForSpeech } from './speechNormalizer';
+import { DEFAULT_VOICE_ID } from './voiceCatalog';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -71,9 +72,12 @@ export function getEdgeTTSPayload(
   // Spillman flat = clipped CAD-terminal voice. Use a more neutral male
   // voice at slightly faster rate with flat pitch — mimics the Motorola
   // Premier CAD announcer cadence. Conversational uses the user's persona.
+  // Defaults come from voiceCatalog. These were hardcoded to
+  // 'en-US-JennyNeural', an Edge-TTS id the Aura-2 server rejects — it only
+  // worked because resolveAura2Voice() coerced it server-side.
   const voice = voiceMode === 'spillman_flat'
-    ? (localStorage.getItem('rmpg-voice-spillman') || 'en-US-JennyNeural')
-    : (localStorage.getItem('rmpg-voice-persona') || 'en-US-JennyNeural');
+    ? (localStorage.getItem('rmpg-voice-spillman') || DEFAULT_VOICE_ID)
+    : (localStorage.getItem('rmpg-voice-persona') || DEFAULT_VOICE_ID);
   const rateNum = safeNum(localStorage.getItem('rmpg-voice-rate'), 1.0);
   const pitchNum = safeNum(localStorage.getItem('rmpg-voice-pitch'), 0);
 
