@@ -26,6 +26,7 @@ import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
 import { emitAlert } from './alertHub';
 import { isFlagSet } from './sentinel';
+import { isVehicleStolen } from './intelMatch';
 import { containsAnyClause } from './searchText';
 import { geocodeAddress, reverseGeocodeAddress } from '../routes/geocode';
 import { resolveDistrict } from './districtResolver';
@@ -302,10 +303,13 @@ async function lookupVin(db: D1Database, raw: string): Promise<string> {
   // Match a full VIN or a partial (last-N) — officers often read partials.
   const v = await queryFirst<{
     vin: string | null; plate_number: string | null; make: string | null; model: string | null;
-    year: number | null; color: string | null; is_stolen: number | null; registered_owner: string | null;
+    year: number | null; color: string | null; is_stolen: number | null;
+    stolen_status: string | null; registered_owner: string | null;
   }>(
     db,
-    `SELECT vin, plate_number, make, model, year, color, is_stolen, registered_owner
+    // is_stolen is 100% NULL on live; stolen_status carries the value, so this
+    // projection said "Not flagged stolen." for every vehicle unconditionally.
+    `SELECT vin, plate_number, make, model, year, color, is_stolen, stolen_status, registered_owner
      FROM vehicles_records
      WHERE UPPER(REPLACE(vin,' ','')) = ? OR UPPER(REPLACE(vin,' ','')) LIKE ?
      ORDER BY datetime(COALESCE(updated_at, created_at)) DESC LIMIT 1`,
@@ -316,7 +320,8 @@ async function lookupVin(db: D1Database, raw: string): Promise<string> {
   const parts = [
     `VIN ${v.vin || ''} comes back ${desc}${v.plate_number ? `, plate ${v.plate_number}` : ''}.`,
     isFlagSet(v.registered_owner) ? `Registered owner ${v.registered_owner}.` : null,
-    v.is_stolen ? 'FLAGGED STOLEN — confirm and use caution.' : 'Not flagged stolen.',
+    isVehicleStolen(v.is_stolen, v.stolen_status)
+      ? 'FLAGGED STOLEN — confirm and use caution.' : 'Not flagged stolen.',
   ].filter(Boolean);
   return parts.join(' ');
 }
@@ -344,7 +349,9 @@ async function lookupPlate(db: D1Database, raw: string): Promise<LookupResult> {
   // stolen check stays as-is — is_stolen is an integer and stolen_status is
   // regex-matched, so neither leaks a sentinel.)
   const owner = [v.registered_owner, v.owner_name].find(isFlagSet);
-  const stolen = v.is_stolen || (v.stolen_status && /stolen|yes|active/i.test(v.stolen_status));
+  // /stolen/ matches inside "not stolen", so this reported live vehicles marked
+  // "Not Stolen" as FLAGGED STOLEN. Shared helper owns the semantics now.
+  const stolen = isVehicleStolen(v.is_stolen, v.stolen_status);
   const parts = [
     `Plate ${v.plate_number}${v.registration_state || v.state ? ` (${v.registration_state || v.state})` : ''}: ${desc}.`,
     owner ? `Registered owner ${owner}.` : null,

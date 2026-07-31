@@ -2389,7 +2389,8 @@ personnel.get('/:id/fleet-summary', async (c) => {
         JOIN units u ON fv.assigned_unit_id = u.id
         WHERE u.officer_id = ?`, officerId),
       query<Record<string, unknown>>(db, `
-        SELECT fm.id, fm.vehicle_id, fm.service_type, fm.description,
+        -- fm.service_type is 100% NULL on live; fm.type carries the value.
+        SELECT fm.id, fm.vehicle_id, COALESCE(fm.type, fm.service_type) AS service_type, fm.description,
           fm.cost, fm.performed_at as date, fm.vendor, fm.mileage_at_service,
           fv.vehicle_number
         FROM fleet_maintenance fm
