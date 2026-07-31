@@ -314,11 +314,29 @@ markers exist.
 4. **Sequencing (§9).** Voice-first is a recommendation, **not confirmed** — it follows from
    Phase 1 being live defects and Phase 2 being a preference change. Either order works;
    the phases are independent.
-5. **Aura-2 speaker selection.** Choosing the announcer requires auditioning the real
-   speakers (`asteria`, `athena`, `hera`, `luna`, `aurora`, `cora`, `iris`, `juno`,
-   `selene`, `thalia`, `vesta`), which needs a Workers AI call — `wrangler dev --remote` or
-   the deployed endpoint with a token. Until then `asteria` stays the pinned default on the
-   strength of its in-code description ("calm, clear, professional female dispatcher voice").
+5. **Aura-2 speaker selection.** All 40 speakers in `AURA2_EN_VOICES` were probed live
+   against `@cf/deepgram/aura-2-en` via `wrangler dev --remote` on 2026-07-30 and each
+   clip's median F0 measured by autocorrelation. The split is cleanly bimodal — 23 voices
+   at ≥165 Hz, 17 at ≤155 Hz, **none in between**.
+
+   **Female-register candidates (measured F0, descending):** `hera` 235, `ophelia` 222,
+   `minerva` 216, `amalthea`/`asteria`/`aurora`/`callista`/`luna`/`phoebe` 211,
+   `cordelia`/`electra`/`juno` 205, `helena`/`thalia` 200, `iris` 195, `delia` 190,
+   `andromeda`/`theia` 186, `vesta` 182, `harmonia`/`pandora` 178, `cora` 174.
+
+   **Two corrections to an earlier candidate list in this project's history:**
+   - **`selene` is not in `AURA2_EN_VOICES`** — it exists in Deepgram's wider roster but
+     the Worker's allowlist would reject it.
+   - **`athena` measured 145 Hz**, in the male-typical band, despite the classical
+     association. Do not assume gender from the name.
+
+   **Delivery speed varies a lot and matters for §4.4.** Speaking the identical 85-character
+   line: `harmonia` **5.3 s**, `theia` 6.5 s, `aurora` 6.6 s, `asteria` **8.4 s**,
+   `hera` 8.1 s. Switching from `asteria` to `harmonia` cuts **37% of channel time with no
+   wording change** — which is a cheaper lever on the 13-second P1 problem than rewording,
+   and composes with terseness rather than competing with it.
+
+   `asteria` (211 Hz) remains the pinned default until a speaker is chosen by ear.
 
 ---
 
