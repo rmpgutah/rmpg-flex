@@ -359,6 +359,8 @@ const PatrolPage: React.FC = () => {
   // a binary "you're on break" state. Hydrated from server on mount along
   // with isOnBreak so a page refresh doesn't lose the timer.
   const [breakStartIso, setBreakStartIso] = useState<string | null>(null);
+  // In-flight guard for the Break / Meal buttons — see startBreak().
+  const [breakStarting, setBreakStarting] = useState(false);
   const [breakElapsedMs, setBreakElapsedMs] = useState(0);
   const [efficiency, setEfficiency] = useState<any>(null);
 
@@ -416,6 +418,12 @@ const PatrolPage: React.FC = () => {
   };
 
   const startBreak = async (breakType = 'break') => {
+    // Guard against a double-click firing two POSTs before the first returns.
+    // The server is also idempotent now (it returns any already-open break
+    // rather than inserting a second one), which is the authoritative fix —
+    // this only stops the duplicate request leaving the device at all.
+    if (breakStarting) return;
+    setBreakStarting(true);
     try {
       const data = await apiFetch<{ break_start?: string }>(
         '/patrol/breaks/start',
@@ -426,7 +434,13 @@ const PatrolPage: React.FC = () => {
       // to "now" so the elapsed counter starts ticking immediately.
       setBreakStartIso(data?.break_start ?? new Date().toISOString());
       addToast('Break started', 'success');
-    } catch (err: any) { addToast(err?.message || 'Failed to start break', 'error'); }
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to start break', 'error');
+    } finally {
+      // finally, not a trailing call: a thrown request must still re-enable
+      // the button, or it would be dead until the operator reloaded.
+      setBreakStarting(false);
+    }
   };
 
   const endBreak = async () => {
@@ -1594,8 +1608,8 @@ const PatrolPage: React.FC = () => {
                     </>
                   ) : (
                     <div className="flex gap-1">
-                      <button type="button" onClick={() => startBreak('break')} className="toolbar-btn">Break</button>
-                      <button type="button" onClick={() => startBreak('meal')} className="toolbar-btn">Meal</button>
+                      <button type="button" onClick={() => startBreak('break')} disabled={breakStarting} className="toolbar-btn disabled:opacity-50">Break</button>
+                      <button type="button" onClick={() => startBreak('meal')} disabled={breakStarting} className="toolbar-btn disabled:opacity-50">Meal</button>
                     </div>
                   )}
                 </div>
