@@ -3,7 +3,6 @@ import {
   priorityBucket,
   formatAge,
   freshnessClass,
-  stateFromSource,
 } from '../warrantListHelpers';
 
 describe('warrantListHelpers', () => {
@@ -28,10 +27,10 @@ describe('warrantListHelpers', () => {
     expect(freshnessClass(60)).toBe('old');
     expect(freshnessClass(null)).toBe('manual');
   });
-  it('stateFromSource', () => {
-    expect(stateFromSource('ut_warrants')).toBe('UT');
-    expect(stateFromSource('fed_usms_wanted')).toBe('FED');
-    expect(stateFromSource('manual')).toBe('—');
-    expect(stateFromSource(null)).toBe('—');
-  });
+  // stateFromSource was deleted — see the note in warrantListHelpers.ts. The
+  // derivation now lives server-side in src/utils/warrantSourceState.ts and is
+  // covered by tests/warrantSourceState.test.ts against the REAL live source
+  // keys. The old test here only ever exercised the 'ut_warrants' shape, which
+  // is why a parser that failed on every production key looked tested.
+
 });
