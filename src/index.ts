@@ -443,6 +443,24 @@ export default {
 
     // ── Every minute ──
     if (event.cron === '* * * * *') {
+      // Continue a warrant-roster pass that the 15-minute cron wall cap
+      // truncated, instead of leaving the remainder unchecked for up to 4 hours
+      // until the next scheduled tick. Observed live 2026-07-31: consecutive
+      // passes stopped at 59 and 60 of 83 people, so the tail of the roster was
+      // going unchecked for most of the day.
+      //
+      // No-ops unless the LAST run was budget-truncated AND the resume cursor is
+      // mid-roster, and skips entirely while any run is still 'running' — so this
+      // per-minute cadence cannot start overlapping scans or turn into a 24/7
+      // crawler against warrants.utah.gov (whose WAF the 8s pacing exists to
+      // stay under). See resumePartialWatchRun for the full reasoning.
+      ctx.waitUntil(
+        import('./utils/utahWarrantPoller').then((m) =>
+          m.resumePartialWatchRun(env.DB)
+            .then((r) => { if (r) console.log(`[warrant-resume] continued pass: ${r.persons_checked} checked, ${r.new_warrants_found} found`); })
+            .catch((err) => console.error('Warrant partial-pass resume failed:', err)),
+        ).catch((err) => console.error('Warrant partial-pass resume import failed:', err)),
+      );
       // Unified scheduler reminders (scheduler_events.notify_at) — mirrors
       // the serve-attempt sweep below; fires scheduler_reminder alerts.
       ctx.waitUntil(
