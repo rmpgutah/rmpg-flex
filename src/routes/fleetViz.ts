@@ -145,7 +145,11 @@ viz.get('/dossier/:id{[0-9]+}', async (c) => {
     const maint90d = await query<Record<string, unknown>>(
       db, `SELECT id,
                   COALESCE(performed_at, service_date) AS maintenance_date,
-                  service_type AS maintenance_type,
+                  -- service_type is 100% NULL on live (0 of 4 rows) while the
+                  -- type column is populated on all of them — the same drift as
+                  -- the date pair above, fixed there and missed here.
+                  -- fleet.ts:2202 already COALESCEs these two.
+                  COALESCE(type, service_type) AS maintenance_type,
                   description, cost, work_order_id
            FROM fleet_maintenance
            WHERE vehicle_id = ?
