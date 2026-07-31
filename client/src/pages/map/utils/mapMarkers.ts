@@ -1,6 +1,6 @@
 import type { MapUnit as Unit, ActiveCall } from './mapConstants';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, priorityHex } from './mapConstants';
-import { CALL_MARKER_INK } from '../../../utils/statusColors';
+import { CALL_MARKER_INK, priorityLabel } from '../../../utils/statusColors';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { formatEnumValue } from '../../../utils/formatters';
 import { escapeHtml } from '../../../utils/sanitize';
@@ -276,7 +276,9 @@ export function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
   const inner = document.createElement('span');
   inner.style.cssText = `font-size:8px;font-weight:700;color:${CALL_MARKER_INK};font-family:ui-monospace,monospace;`;
   inner.style.transform = 'rotate(-45deg)';
-  inner.textContent = `P${call.priority}`;
+  // priorityLabel, not `P${call.priority}` — live rows store 'P1'..'P4', so the
+  // hand-built prefix rendered "PP1" on the map.
+  inner.textContent = priorityLabel(call.priority);
   diamond.appendChild(inner);
   el.title = `${call.call_number} — ${formatIncidentType(call.incident_type)}`;
   return el;
@@ -299,7 +301,7 @@ export function buildCallPopupHtml(call: ActiveCall, queued: boolean = false): s
     <div style="background:${TACTICAL_SURFACE_RAISED};color:${TACTICAL_TEXT_PRIMARY};padding:8px 12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:180px;">
       <div style="font-weight:700;color:${color};margin-bottom:2px;font-size:12px;">${escapeHtml(call.call_number)}</div>
       <div style="font-weight:600;">${escapeHtml(formatIncidentType(call.incident_type))}</div>
-      <div>Priority: <span style="color:${color};font-weight:700;">P${escapeHtml(call.priority)}</span></div>
+      <div>Priority: <span style="color:${color};font-weight:700;">${escapeHtml(priorityLabel(call.priority))}</span></div>
       <div>Status: ${escapeHtml(formatEnumValue(call.status))}</div>
       <div style="color:${TACTICAL_TEXT_MUTED};margin-top:2px;">${escapeHtml(call.location_address)}</div>
       ${call.cross_street ? `<div style="color:${TACTICAL_TEXT_DIM};font-size:10px;">X: ${escapeHtml(call.cross_street)}</div>` : ''}
