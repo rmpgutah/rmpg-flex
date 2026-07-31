@@ -39,6 +39,40 @@ describe('mapMarkers', () => {
     expect(buildCallPopupHtml(call)).toContain('CFS-1');
   });
 
+  // ── "PP1" regression ────────────────────────────────────────────────────
+  // Seen on the live map 2026-07-31: the diamond read "PP1", not "P1".
+  // The label was hand-built as `P${call.priority}` while
+  // calls_for_service.priority is DB-constrained to 'P1'..'P4' and passed
+  // through verbatim by the dispatch queue route — so the prefix doubled.
+  // priorityHex already normalized (which is why the COLOR was right and only
+  // the TEXT was wrong); priorityLabel now shares that normalization.
+  describe('priority label never double-prefixes', () => {
+    // Both shapes occur in this tree: 'P1' live, bare '1' in fixtures.
+    for (const [input, expected] of [['P1', 'P1'], ['1', 'P1'], ['P4', 'P4'], ['3', 'P3'], [1, 'P1']] as const) {
+      it(`renders ${JSON.stringify(input)} as ${expected} on the marker`, () => {
+        const el = buildCallMarkerEl({ ...call, priority: input } as unknown as ActiveCall);
+        expect(el.textContent).toBe(expected);
+        expect(el.textContent).not.toMatch(/^PP/);
+      });
+    }
+
+    it('renders the same label in the popup', () => {
+      const html = buildCallPopupHtml({ ...call, priority: 'P1' } as unknown as ActiveCall);
+      expect(html).toContain('>P1<');
+      expect(html).not.toContain('PP1');
+    });
+
+    it('keeps the fill color and the label agreeing on the input shape', () => {
+      // The original defect was exactly this disagreement.
+      const bare = buildCallMarkerEl({ ...call, priority: '1' } as unknown as ActiveCall);
+      const prefixed = buildCallMarkerEl({ ...call, priority: 'P1' } as unknown as ActiveCall);
+      expect(bare.textContent).toBe(prefixed.textContent);
+      const fill = (el: HTMLElement) =>
+        (el.querySelector('[data-role="marker-inner"]') as HTMLElement).style.background;
+      expect(fill(bare)).toBe(fill(prefixed));
+    });
+  });
+
   it('unit popup HTML uses the tactical palette surface color, not a bare literal', () => {
     const html = buildUnitPopupHtml(unit);
     expect(html).toContain(TACTICAL_SURFACE_RAISED);

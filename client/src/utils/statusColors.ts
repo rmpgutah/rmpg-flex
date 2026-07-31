@@ -88,6 +88,20 @@ export function priorityHex(priority: string | number | null | undefined): strin
   return Number.isInteger(n) && n >= 1 && n <= 4 ? PRIORITY_HEX[`P${n}`] : PRIORITY_HEX.P4;
 }
 
+/** Render a priority as a "P1".."P4" label, tolerating both live shapes.
+ *
+ *  Callers used to hand-build this as `` `P${call.priority}` ``, which is
+ *  correct for the bare '1' the map test fixture uses and WRONG for the 'P1'
+ *  that `calls_for_service.priority` actually stores — producing a call marker
+ *  reading "PP1" on the live map. Shares priorityHex's normalization so the
+ *  label and the fill can never disagree about the input shape again.
+ *  Unrecognized input falls back to the most recessive step, matching
+ *  priorityHex. */
+export function priorityLabel(priority: string | number | null | undefined): string {
+  const n = Number(String(priority ?? '').trim().replace(/^p/i, ''));
+  return Number.isInteger(n) && n >= 1 && n <= 4 ? `P${n}` : 'P4';
+}
+
 export const PRIORITY_CLASSES: Record<CallPriority, string> = {
   P1: 'bg-red-900/50 text-red-400 border border-red-700/50',
   P2: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
