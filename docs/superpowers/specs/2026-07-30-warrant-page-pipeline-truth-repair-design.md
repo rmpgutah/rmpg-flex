@@ -230,6 +230,72 @@ start from the full tables. The catch block returns a real 500 with `log.error` 
 Any `IN (...)` list added here must go through `queryInChunks`/`chunkBindings` per
 the D1 100-bound-parameter cap in CLAUDE.md.
 
+## Corrections made during implementation
+
+Recorded because each one was a claim in an earlier revision of this spec that
+turned out to be wrong when checked against the code or the live API:
+
+1. **`/warrants/scrapers` field drift had a simpler root cause than described.**
+   A CORRECT `ScraperSource` type already existed in `client/src/types/scrapers.ts`
+   and `AdminWarrantScrapersTab` was already using it successfully.
+   `WarrantsPage.tsx` declared a **local duplicate** that was wrong. The fix is to
+   delete the duplicate and import the canonical type — not to write a new one.
+   Rewriting it honestly then surfaced **four further** drift sites `tsc` caught
+   immediately (`CoverageSourceCard`, the detail table).
+2. **The Worker's source→state regex does not return `"AD"`.** `ada` is three
+   letters, so `^([a-z]{2})[-_]` never matches; verified it returns **null** for
+   every live source key. The defect is equally severe (no state ever resolves,
+   so `?state=` matches nothing) but it is an honest null, not a bogus code.
+3. **`POST /watch/scan` was not missing `waitUntil`.** It already used
+   `c.executionCtx.waitUntil`. The real defect is that `waitUntil` grants only
+   **30 seconds** while its own comment described a "~80s+" run, so it was killed
+   every time. Fixed by passing a short wall budget, not by adding `waitUntil`.
+4. **"ALL SOURCES DETAIL (19)" is a collapsed `<details>`.** The empty body was
+   correct behavior. **Finding withdrawn.**
+5. **The four dashboard tiles spinning forever was load latency, not a defect.**
+   They resolved on a second look. **Finding withdrawn.**
+6. **Renaming `national-coverage`'s scalar `sources` to `source_count` is
+   withdrawn.** Its only consumer already types it correctly as a number, and the
+   header chip counts a genuinely DIFFERENT population (enabled code `ADAPTERS` +
+   `national_warrant_sources` rows) from the Sources tab
+   (`warrant_scraper_config` rows). They are not one number; collapsing them would
+   be wrong. This spec's framing of that finding was too glib.
+7. **The tab-strip overlay is fixed by `pointer-events-none`, not by z-index.**
+   The strip is purely informational, so it never needs pointer events. The exact
+   stacking cause is still unexplained; making the strip click-transparent removes
+   the failure mode without touching layout geometry, which is the safer fix on a
+   dispatch nav bar. Confirmed in a real browser that an overlay at those
+   coordinates steals the click with `pointer-events: auto` and passes it through
+   with `none`.
+
+Additionally fixed, found while in the code and squarely in the "truth" scope:
+`GET /warrants/dashboard/stats` caught every error and returned `200` with all six
+stats **zeroed** — a DB failure rendered as "ACTIVE WARRANTS 0 / SOURCES 0/0"
+behind a calm green LED. And `fetchCoverage` had `catch { /* silent */ }`, making
+a failed load identical on screen to zero configured sources.
+
+## UI scope (added by operator mid-implementation)
+
+Originally out of scope; the operator extended the work to the UI. Fixed:
+
+- Detail pane held a fixed 45% with nothing selected, hiding BAIL/ATTEMPTS/DATE
+  behind a scrollbar; list now takes full width until a row is selected.
+- Filter selects clipped their own placeholders at 96 px ("All Statu",
+  "All Sour", "All Severit"); widened.
+- The "By state" select had no width class in a flex-wrap row, stretching to
+  962 px and reading as a broken empty bar; given a width.
+
+Still open from the UI list, deliberately:
+
+- Scrapers "LAST HOUR: RUNS, NEW" renders no values because
+  `/scrapers/health` returns `last_hour_runs`/`last_hour_inserted` as **hardcoded
+  zeros**, and that route's comment states the per-run history table needed to
+  compute them does not exist. Faking a number is worse than the blank.
+- Watch List has no empty state below its tiles.
+- Screening's inner `WATCHLIST`/`SOURCES` sub-tabs still duplicate the outer tabs.
+- The 23 px layout shift when the poll strip appears (a misclick hazard
+  independent of the click-blocking, which is fixed).
+
 ## Observed but explicitly out of scope
 
 Recorded so they are not lost, deliberately not fixed here:
