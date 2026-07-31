@@ -15,6 +15,7 @@ import {
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log as logger } from '../utils/logger';
+import { normalizeToUtcTimestamp } from '../utils/denverTime';
 const fleet = new Hono<Env>();
 
 // Manager-tier roles can create/update/delete vehicles. Read endpoints
@@ -1696,7 +1697,39 @@ fleet.post('/:id/fuel', async (c) => {
     // defaults to full (1) when the client omits it (back-compat with the
     // pre-enhancement modal that had no toggle).
     const isFullTank = body.is_full_tank == null ? 1 : (body.is_full_tank ? 1 : 0);
-    const result = await execute(db, `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, fuel_type, station, odometer, notes, is_full_tank, payment_method, driver_name, location, mpg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, vehicleId, body.fuel_date, body.gallons ?? null, body.total_cost ?? null, body.cost_per_gallon ?? null, body.fuel_type ?? null, body.station ?? null, odometer, body.notes ?? null, isFullTank, body.payment_method ?? null, body.driver_name ?? null, body.location ?? null, body.mpg ?? null);
+
+    // Store canonical UTC. The browser's datetime-local input sends Denver
+    // wall-clock with no offset, which SQLite reads as UTC — that is how this
+    // column ended up holding four incompatible formats and why evening fills
+    // bucketed into the next day. See normalizeToUtcTimestamp.
+    const fuelDate = normalizeToUtcTimestamp(body.fuel_date);
+    if (!fuelDate) return c.json({ error: 'fuel_date is not a recognizable date/time' }, 400);
+
+    // Duplicate guard. Live D1 carried three double-logged fills (an automated
+    // import wrote gallons-only rows, then the same fills were entered by hand
+    // with full detail). Gallons were double-counted while cost was not, which
+    // silently skews avg $/gal and MPG. Same vehicle + same gallons within the
+    // window is a re-entry, not two real fills.
+    const dupWindowMin = 120;
+    if (body.gallons != null) {
+      const dup = await queryFirst<{ id: number; fuel_date: string }>(
+        db,
+        `SELECT id, fuel_date FROM fleet_fuel_log
+          WHERE vehicle_id = ? AND gallons = ?
+            AND ABS((julianday(fuel_date) - julianday(?)) * 1440) <= ?
+          LIMIT 1`,
+        vehicleId, body.gallons, fuelDate, dupWindowMin,
+      ).catch(() => null);
+      if (dup && body.allow_duplicate !== true) {
+        return c.json({
+          error: 'duplicate_fuel_entry',
+          message: `A ${body.gallons} gal entry for this vehicle already exists at ${dup.fuel_date}. Re-send with allow_duplicate:true to record it anyway.`,
+          existing_id: dup.id,
+        }, 409);
+      }
+    }
+
+    const result = await execute(db, `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, fuel_type, station, odometer, notes, is_full_tank, payment_method, driver_name, location, mpg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, vehicleId, fuelDate, body.gallons ?? null, body.total_cost ?? null, body.cost_per_gallon ?? null, body.fuel_type ?? null, body.station ?? null, odometer, body.notes ?? null, isFullTank, body.payment_method ?? null, body.driver_name ?? null, body.location ?? null, body.mpg ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_fuel_log WHERE id = ?', result.meta.last_row_id);
 
     // Fleet.io outbound queue (PR 3) — see the equivalent emit on PUT /:id
@@ -3852,10 +3885,17 @@ fleet.post('/fuel/import/commit', async (c) => {
     for (const e of rows) {
       try {
         const odometer = e.odometer ?? e.odometer_reading ?? null;
+        // Canonical UTC — CSV imports historically supplied Denver wall-clock
+        // with no offset, which SQLite then read as UTC (6-7h early).
+        const fuelDate = normalizeToUtcTimestamp(e.fuel_date);
+        if (!fuelDate) {
+          errors.push({ entry: e, error: 'fuel_date is not a recognizable date/time' });
+          continue;
+        }
         await execute(
           db,
           'INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, station, odometer, notes) VALUES (?,?,?,?,?,?,?,?)',
-          e.vehicle_id, e.fuel_date, e.gallons, e.total_cost ?? null, e.cost_per_gallon ?? null, e.station ?? null, odometer, e.notes ?? null,
+          e.vehicle_id, fuelDate, e.gallons, e.total_cost ?? null, e.cost_per_gallon ?? null, e.station ?? null, odometer, e.notes ?? null,
         );
         inserted++;
       } catch (e2) { errors.push({ entry: e, error: (e2 as Error).message }); }
