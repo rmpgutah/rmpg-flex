@@ -227,6 +227,14 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // of its own) can still be shown. Flies to the point and drops a one-off
   // marker+popup once the map has finished loading; runs once per page
   // load (searchParams don't change after initial navigation here).
+  // The Map module never claimed the document title, so the browser tab kept
+  // whatever the previously-visited route set — landing on /map straight from
+  // the Dashboard left the tab reading "Dashboard — RMPG Flex" (confirmed on
+  // production 2026-07-31). Every other module sets this from its own effect;
+  // this brings the Map module in line so tab titles, window/tab switchers,
+  // and bookmarks name the right screen.
+  useEffect(() => { document.title = 'Map — RMPG Flex'; }, []);
+
   const [searchParams] = useSearchParams();
   const lastDeepLinkKeyRef = useRef('');
   const deepLinkMarkerRef = useRef<mapboxgl.Marker | null>(null);
