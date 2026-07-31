@@ -307,7 +307,14 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
         call.call_number || call.incident_type || 'CALL',
         call.priority
       );
-      const marker = new mapboxgl.Marker({ element: el })
+      // `anchor: 'bottom'` — this builder renders a tag with a downward caret,
+      // so the caret TIP is the thing claiming the coordinate. Left at Mapbox's
+      // default ('center') the pin was centered on the tag instead, planting the
+      // call roughly half a badge north of its real address and shifting it
+      // again whenever the label text changed length (call_number vs the
+      // incident_type fallback). DispatchMiniMap's identical caret pin already
+      // anchors 'bottom'; this brings the two surfaces into agreement.
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([call.longitude, call.latitude])
         .addTo(map);
       markersRef.current.push(marker);
@@ -319,7 +326,11 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
     for (const unit of assignedUnits) {
       if (unit.latitude == null || unit.longitude == null) continue;
       const el = buildUnitMarkerEl(unit.call_sign, unit.status as UnitStatus);
-      const marker = new mapboxgl.Marker({ element: el })
+      // Explicit 'bottom' to match DispatchMiniMap's unit convention (and the
+      // call pin above) rather than relying on the implicit 'center' default,
+      // which silently re-centers the whole photo+label stack if the label ever
+      // changes size.
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([unit.longitude!, unit.latitude!])
         .addTo(map);
       markersRef.current.push(marker);

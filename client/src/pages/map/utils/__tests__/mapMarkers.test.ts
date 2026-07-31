@@ -253,6 +253,25 @@ describe('buildUnitMarkerEl — marker root vs inner wrapper (pan/zoom smear fix
     expect(inner.style.transition).toContain('transform');
   });
 
+  it('buildCallMarkerEl root carries no transform — mapboxgl overwrites it wholesale', () => {
+    // The diamond's rotate(45deg) used to sit on the root, where Mapbox's
+    // per-frame `element.style.transform = ...` deleted it: the diamond
+    // flattened to a square while the counter-rotated "P1" span stayed tilted.
+    const el = buildCallMarkerEl(call);
+    expect(el.style.transform).toBe('');
+    expect(el.style.cssText).not.toContain('transform');
+  });
+
+  it('buildCallMarkerEl keeps the 45° diamond rotation on the inner wrapper', () => {
+    const el = buildCallMarkerEl(call);
+    const inner = el.querySelector('[data-role="marker-inner"]') as HTMLElement;
+    expect(inner).not.toBeNull();
+    expect(inner.style.transform).toContain('rotate(45deg)');
+    // The label is counter-rotated inside the diamond so it reads level.
+    expect(inner.querySelector('span')?.style.transform).toContain('rotate(-45deg)');
+    expect(el.textContent).toBe('P1');
+  });
+
   it('applyUnitMarkerState mutates the same inner wrapper node identity', () => {
     const el = buildUnitMarkerEl(unit);
     const innerBefore = el.querySelector('[data-role="marker-inner"]');
