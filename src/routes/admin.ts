@@ -546,17 +546,37 @@ admin.get('/expiring-certifications', async (c) => {
   try {
     const db = getDb(c.env);
     const days = parseInt(c.req.query('days') || '30', 10);
+    // `personnel_certifications` DOES NOT EXIST on live D1 (785de7ae). Both
+    // queries below therefore threw "no such table" on every request, and the
+    // handler's catch returns zeros — so this endpoint silently reported
+    // "0 expiring, 0 expired" forever. For a law-enforcement agency that is a
+    // compliance blind spot, not a cosmetic bug: the dashboard asserted nothing
+    // was lapsing when it could not know either way.
+    //
+    // Real schema (verified via pragma_table_info):
+    //   officer_certifications(officer_id, cert_type_id, expiration_date, status, ...)
+    //   certification_types(id, cert_name, ...)
+    // Note every column name differed from the old query's assumptions —
+    // officer_id not user_id, expiration_date not expiry_date, and the cert
+    // NAME lives on certification_types, reached via cert_type_id.
     const rows = await query<{ officer_name: string; cert: string; days_left: number; expiry_date: string }>(db,
-      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name, pc.certification_type AS cert,
-              CAST(julianday(pc.expiry_date) - julianday('now') AS INTEGER) AS days_left, pc.expiry_date
-       FROM personnel_certifications pc LEFT JOIN users u ON u.id = pc.user_id
-       WHERE pc.expiry_date BETWEEN DATE('now') AND DATE('now','+${Math.min(days, 90)} days')
-       ORDER BY pc.expiry_date LIMIT 30`);
+      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name,
+              COALESCE(ct.cert_name, 'Unknown') AS cert,
+              CAST(julianday(oc.expiration_date) - julianday('now') AS INTEGER) AS days_left,
+              oc.expiration_date AS expiry_date
+       FROM officer_certifications oc
+       LEFT JOIN users u ON u.id = oc.officer_id
+       LEFT JOIN certification_types ct ON ct.id = oc.cert_type_id
+       WHERE oc.expiration_date BETWEEN DATE('now') AND DATE('now','+${Math.min(days, 90)} days')
+       ORDER BY oc.expiration_date LIMIT 30`);
     const expired = await query<{ officer_name: string; cert: string; days_left: number }>(db,
-      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name, pc.certification_type AS cert,
-              CAST(julianday('now') - julianday(pc.expiry_date) AS INTEGER) AS days_left
-       FROM personnel_certifications pc LEFT JOIN users u ON u.id = pc.user_id
-       WHERE pc.expiry_date < DATE('now') ORDER BY pc.expiry_date LIMIT 20`);
+      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name,
+              COALESCE(ct.cert_name, 'Unknown') AS cert,
+              CAST(julianday('now') - julianday(oc.expiration_date) AS INTEGER) AS days_left
+       FROM officer_certifications oc
+       LEFT JOIN users u ON u.id = oc.officer_id
+       LEFT JOIN certification_types ct ON ct.id = oc.cert_type_id
+       WHERE oc.expiration_date < DATE('now') ORDER BY oc.expiration_date LIMIT 20`);
     return c.json({ expiring_count: rows.length, expired_count: expired.length, items: [...rows, ...expired.map(e => ({ ...e, expiry_date: 'EXPIRED' }))] });
   } catch { return c.json({ expiring_count: 0, expired_count: 0, items: [] }); }
 });
