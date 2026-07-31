@@ -8,7 +8,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 import { log, logErrorToDb } from '../utils/logger';
 import { stateFromSourceKey } from '../utils/warrantSourceState';
 
@@ -308,18 +308,140 @@ async function buildUtahStatus(c: Context<Env>) {
   };
 }
 
+/**
+ * The Watch List tab's payload — the nested shape `WarrantsPage.tsx`'s
+ * `AutoPollStatus` interface actually reads.
+ *
+ * ⚠️ WHY THIS EXISTS. `buildUtahStatus` returns a FLAT object (`lastSync`,
+ * `lastPersonsChecked`, `activeWarrants`, …). The Watch List tab reads
+ * `res.syncStatus.lastSync`, `res.totalPersons`, `res.runs`,
+ * `res.flaggedPersons` and `res.recentHits` — NONE of which that payload
+ * contains. Every one resolved to `undefined`.
+ *
+ * The client normalizes with `?? []` / `?? 0` / `?? {lastSync: null}` to avoid
+ * `undefined.length` crashes. Reasonable instinct, but it converted a TOTAL
+ * contract mismatch into a confident, plausible "empty but working" tab — which
+ * is why this survived so long. Verified live 2026-07-31: the tab reported
+ * "PERSONS MONITORED 0", "WARRANT HITS 0", "LAST SCAN: Never" and a completely
+ * blank body, immediately after a run that checked 83 people and found 37
+ * warrants. A crash would have been fixed in a day; a calm zero was not.
+ *
+ * Backwards compatibility matters here: `/utah/sync-status` and
+ * `/scraped/status` read the FLAT keys. So the response is a SUPERSET — flat
+ * keys retained verbatim, nested watch-tab keys added alongside.
+ */
+async function buildWatchTabPayload(c: Context<Env>) {
+  const db = getDb(c.env);
+
+  const runs = await query<Record<string, any>>(
+    db, 'SELECT * FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 20');
+
+  // The roster the poller actually scans — same eligibility the poller uses
+  // (a named person row). This is "how many people are we watching", which is
+  // what the tile claims to show.
+  const personsRow = await queryFirst<{ n: number }>(
+    db, `SELECT COUNT(*) AS n FROM persons
+          WHERE first_name IS NOT NULL AND first_name != ''
+            AND last_name  IS NOT NULL AND last_name  != ''`);
+
+  // Distinct people with a live Utah hit, newest first.
+  const flagged = await query<Record<string, any>>(
+    db, `SELECT p.id, p.first_name, p.last_name, p.dob, p.gender, p.race, p.height,
+                p.weight, p.hair_color, p.eye_color, p.address, p.photo_url,
+                COUNT(uw.id) AS utah_hit_count,
+                MAX(uw.last_seen_at) AS last_hit_at
+           FROM utah_warrants uw
+           JOIN persons p ON p.id = uw.person_id
+          WHERE uw.is_active = 1 AND uw.person_id IS NOT NULL
+          GROUP BY p.id
+          ORDER BY last_hit_at DESC
+          LIMIT 100`);
+
+  // Per-person Utah warrant detail for the flagged cards + the BOLO packet.
+  // Bounded by the LIMIT 100 above, so the IN-list is capped well under D1's
+  // 100-bound-parameter ceiling — but routed through chunking anyway so a future
+  // LIMIT increase cannot silently break it (CLAUDE.md).
+  const flaggedIds = flagged.map((f) => Number(f.id));
+  const utahByPerson = new Map<number, Record<string, any>[]>();
+  if (flaggedIds.length > 0) {
+    const detail = await queryInChunks<Record<string, any>>(
+      db,
+      flaggedIds,
+      (ph) => `SELECT person_id, utah_warrant_id, charges, court_name, issue_date, city, age
+                 FROM utah_warrants
+                WHERE is_active = 1 AND person_id IN (${ph})`,
+    );
+    for (const d of detail) {
+      const list = utahByPerson.get(Number(d.person_id));
+      if (list) list.push(d); else utahByPerson.set(Number(d.person_id), [d]);
+    }
+  }
+
+  const flaggedPersons = flagged.map((f) => ({
+    ...f,
+    // A hit on a person with no local DOB could not be age-confirmed by the
+    // poller, so it is a possible namesake — surfaced as a lead, not a match.
+    unverified: !f.dob,
+    warrant_severity: null,
+    local_warrant_count: 0,
+    warrants: [],
+    utahWarrants: utahByPerson.get(Number(f.id)) ?? [],
+  }));
+
+  // Recent watch-log events feed the tab's hit list.
+  let recentHits: Record<string, any>[] = [];
+  try {
+    recentHits = await query<Record<string, any>>(
+      db, `SELECT id, person_id, person_name, event, charges, court_name, created_at
+             FROM warrant_watch_log ORDER BY created_at DESC LIMIT 50`);
+  } catch {
+    // warrant_watch_log absent pre-migration — an empty hit list is honest here.
+  }
+
+  const latest = runs[0] ?? null;
+  const flat = await buildUtahStatus(c);
+
+  return {
+    ...flat,
+    // Nested shape the Watch List tab reads.
+    syncStatus: {
+      lastSync: latest ? latest.completed_at ?? latest.started_at : null,
+      warrantCount: flat.activeWarrants,
+      status: latest ? latest.status : 'unknown',
+      lastError: latest ? latest.error_message ?? null : null,
+    },
+    blocked: false,
+    runs,
+    flaggedPersons,
+    recentHits,
+    totalPersons: personsRow?.n ?? 0,
+  };
+}
+
 // All three resolve to the same rich status (see buildUtahStatus).
 const EMPTY_STATUS = {
   lastSync: null, lastStatus: null, lastPersonsChecked: 0, lastNewWarrants: 0,
   lastWarrantsCleared: 0, lastErrors: 0, activeWarrants: 0,
   nextScheduledRun: null, isRunning: false, enabled: true, polling: false,
   lastRunAt: null, lastRunStatus: null,
+  // Nested keys included so a degraded response still satisfies the Watch
+  // List tab's shape rather than making it fall back to its own defaults.
+  syncStatus: { lastSync: null, warrantCount: 0, status: 'unknown', lastError: null },
+  blocked: false, runs: [], flaggedPersons: [], recentHits: [], totalPersons: 0,
 };
 for (const path of ['/utah/sync-status', '/utah-search/auto-poll-status', '/scraped/status']) {
   warrants.get(path, async (c) => {
     try {
-      return c.json(await buildUtahStatus(c));
+      // The Watch List tab polls /utah-search/auto-poll-status and needs the
+      // nested payload; the other two only read the flat keys, which are a
+      // subset of it. One builder keeps all three from drifting apart.
+      return c.json(
+        path === '/utah-search/auto-poll-status'
+          ? await buildWatchTabPayload(c)
+          : await buildUtahStatus(c),
+      );
     } catch (err) {
+      log.error('[warrants] utah status build failed', { route: `GET /warrants${path}` }, err as Error);
       // Pre-migration / table-missing → harmless empty status.
       return c.json(EMPTY_STATUS);
     }
@@ -981,6 +1103,27 @@ warrants.get('/unified', async (c) => {
       merged = merged.concat(reshaped);
     } catch { /* scraped_warrants missing on this env — local-only unified list */ }
 
+    // Last-scrape time PER SOURCE, for the FRESHNESS column.
+    //
+    // Verified live 2026-07-31: scraped_warrants.fetched_at is NULL on every row
+    // (created_at falls all the way through to issue_date, e.g. "9/9/2015"), so a
+    // per-row scrape timestamp does not exist to read. Freshness of a scraped
+    // record is really a property of ITS SOURCE — when did we last pull that
+    // jurisdiction — and scraper_runs is the authoritative record of that. One
+    // grouped query, so this stays O(1) queries regardless of row count.
+    const lastScrapeBySource = new Map<string, string>();
+    try {
+      const scrapeRows = await query<{ source_key: string; last_started: string }>(
+        db, `SELECT source_key, MAX(started_at) AS last_started FROM scraper_runs GROUP BY source_key`,
+      );
+      for (const r of scrapeRows) {
+        if (r.last_started) lastScrapeBySource.set(r.source_key, r.last_started);
+      }
+    } catch {
+      // scraper_runs absent on this env — FRESHNESS degrades to 'manual', which
+      // is the honest reading when we have no scrape history at all.
+    }
+
     merged = merged.map((row) => {
       const priority_score = computePriorityScore(row);
       // Age is the age of the WARRANT, not of our database row. This used to read
@@ -999,9 +1142,13 @@ warrants.get('/unified', async (c) => {
       // freshnessClass fell through to 'manual', and the FRESHNESS column showed
       // the same pencil icon on every row. Derived here (rather than in the
       // client) so there is one definition of "how stale is this record".
-      // null stays null and legitimately means "manually entered, never scraped".
-      const freshness_days = ageDaysFrom(row.last_scrape_at ?? null);
-      return { ...row, priority_score, age_days, freshness_days, matches_person, source_state };
+      // Falls back to the row's SOURCE last-scrape time, because scraped rows
+      // carry no timestamp of their own (fetched_at is NULL live). null stays
+      // null and legitimately means "manually entered, never scraped".
+      const rowLastScrape = row.last_scrape_at
+        ?? (row.source ? lastScrapeBySource.get(String(row.source)) ?? null : null);
+      const freshness_days = ageDaysFrom(rowLastScrape);
+      return { ...row, priority_score, age_days, freshness_days, matches_person, source_state, last_scrape_at: rowLastScrape };
     });
 
     const filtered = merged.filter((row) => {
