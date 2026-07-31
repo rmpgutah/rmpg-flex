@@ -61,6 +61,19 @@ beforeAll(async () => {
   ).run();
   vehicleB = Number(b.meta.last_row_id);
 
+  // Service targets for BOTH vehicles, seeded here rather than mutated inside a
+  // test. If maintenance_forecast were not scoped to vehicle_id it would return
+  // 2 rows instead of 1 — `.every(...)` is vacuously true on any array,
+  // including a wrongly-sized one, so it alone cannot catch a missing scope;
+  // `toHaveLength(1)` can. B's target (30000) stays NOT service-due against B's
+  // current_mileage of 20000, so it does not perturb vehicles_needing_service /
+  // service_compliance in the other tests.
+  //
+  // Previously these two UPDATEs ran mid-suite, so tests before and after saw
+  // different fixtures and the file's correctness depended on execution order.
+  await db.prepare(`UPDATE fleet_vehicles SET next_service_mileage = 60000 WHERE id = ?`).bind(vehicleA).run();
+  await db.prepare(`UPDATE fleet_vehicles SET next_service_mileage = 30000 WHERE id = ?`).bind(vehicleB).run();
+
   // Maintenance: A totals 9000, B totals 100. Distinct 'type' per vehicle
   // so top_issues can't coincidentally match across vehicles.
   await db.prepare(
@@ -147,17 +160,6 @@ describe('GET /api/fleet/analytics — scoped to a single vehicle', () => {
   });
 
   it('scopes maintenance_forecast and avg_daily_miles to the single vehicle', async () => {
-    // Give BOTH vehicles a service target. If maintenance_forecast were not
-    // scoped to vehicle_id, this would return 2 rows (A and B) instead of 1 —
-    // `.every(...)` is vacuously true on any array, including a wrongly-sized
-    // one, so it alone can't catch a missing scope; `toHaveLength(1)` can.
-    // B's target (30000) is picked to stay NOT service-due against B's
-    // current_mileage of 20000 (30000 > 20000), so it doesn't perturb
-    // vehicles_needing_service / service_compliance in the other tests.
-    const db = (env as unknown as { DB: D1Database }).DB;
-    await db.prepare(`UPDATE fleet_vehicles SET next_service_mileage = 60000 WHERE id = ?`).bind(vehicleA).run();
-    await db.prepare(`UPDATE fleet_vehicles SET next_service_mileage = 30000 WHERE id = ?`).bind(vehicleB).run();
-
     const res = await app.request(`/api/fleet/analytics?vehicle_id=${vehicleA}`, {}, env as unknown as Record<string, unknown>);
     const body = await res.json() as {
       maintenance_forecast: Array<{ id: number }>;
