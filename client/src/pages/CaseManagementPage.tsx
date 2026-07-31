@@ -1015,7 +1015,15 @@ export default function CaseManagementPage() {
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">ACTIVE</div>
-              <div className="text-sm font-bold text-green-400 tabular-nums">{(stats.by_status?.open || 0) + (stats.by_status?.active || 0) + (stats.by_status?.assigned || 0)}</div>
+              {/* stats.open is the server's canonical open count
+                  (`status NOT LIKE 'closed%' AND archived_at IS NULL`, cases.ts:131).
+                  This tile used to hand-sum by_status.{open,active,assigned},
+                  which silently dropped the other two non-closed statuses --
+                  `under_review` and `suspended`. Live D1 had 2 cases sitting in
+                  under_review while this rendered ACTIVE 0, reading as "no open
+                  case work". Enumerating members breaks every time a status is
+                  added; negating the closed set does not. */}
+              <div className="text-sm font-bold text-green-400 tabular-nums">{stats.open || 0}</div>
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">SOLVABILITY</div>
