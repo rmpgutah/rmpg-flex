@@ -136,6 +136,82 @@ describe('no unbounded IN-list survives (wave 2)', () => {
   });
 });
 
+// Third wave (2026-07-31). Found by classifying every `map(() => '?')` site in
+// src/ by WHAT FEEDS THE ARRAY — constant / schema-column-list / already-chunked
+// / caller-or-data-sized. 67 sites total; the four below were the ones whose
+// length is set by data or by a query parameter. The rest legitimately keep
+// their hand-rolled builders, which is why these are pinned individually.
+describe('no unbounded IN-list survives (wave 3)', () => {
+  const SITES: Array<{ file: string; helper: string; removed: string; why: string }> = [
+    {
+      file: 'routes/arrests.ts',
+      helper: 'queryInChunks',
+      removed: "const placeholders = ids.map(() => '?')",
+      why: 'enrichLinkedPersons is fed rows from a list endpoint whose ?limit= allows 500 — 5x the cap',
+    },
+    {
+      file: 'routes/intel.ts',
+      helper: 'queryInChunks',
+      removed: "const ph = ids.map(() => '?').join(',');\n  try {",
+      why: 'personFlags swallowed the throw per-block and returned an EMPTY flag map — officer-safety badges vanished',
+    },
+    {
+      file: 'routes/dispatch/gps.ts',
+      helper: 'executeInChunks',
+      removed: "const placeholders = inserted.map(() => '?')",
+      why: 'GPS batch size is uncapped, so the trip_id backfill silently left breadcrumbs unlinked',
+    },
+    {
+      file: 'routes/fleet.ts',
+      helper: 'queryInChunks',
+      removed: "const placeholders = ids.map(() => '?')",
+      why: 'vehicle-comparison binds ?ids= straight from the query string with no cap',
+    },
+  ];
+
+  for (const { file, helper, removed, why } of SITES) {
+    it(`${file} chunks through ${helper} (${why})`, () => {
+      const src = read(file);
+      expect(src, `${file} should import/use ${helper}`).toContain(helper);
+      expect(src, `${file} still hand-rolls: ${removed}`).not.toContain(removed);
+    });
+  }
+
+  it('the GPS backfill declares its leading binding', () => {
+    // The UPDATE binds trip_id BEFORE the IN-list. Omitting it from
+    // executeInChunks would size chunks at the full 100 and exceed the cap by
+    // exactly one — passing at 99 ids and failing at 100.
+    expect(read('routes/dispatch/gps.ts')).toContain('[activeTrip.id]');
+  });
+
+  it('personFlags chunks BOTH of its queries, not just the first', () => {
+    // The warrant block and the persons block each bind the same id list. Fixing
+    // only one still loses OFFICER SAFETY / GANG (or ACTIVE WARRANT) above 100.
+    const src = read('routes/intel.ts');
+    const chunked = src.match(/queryInChunks<any>\(db, ids/g) ?? [];
+    expect(chunked.length, 'both personFlags queries must chunk').toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('calls_for_service clone INSERT stays under the cap', () => {
+  // dispatch/calls.ts builds a PSO re-attempt clone as
+  // INSERT INTO calls_for_service (<every column except id>) VALUES (<one ? each>).
+  // Live D1 has exactly 100 columns, so that binds 99 parameters — under the
+  // 100 cap by ONE. It is not broken today, but a single ALTER TABLE ADD COLUMN
+  // takes it to 100 and the next one breaks the clone outright, at bind time,
+  // on a code path officers use to re-attempt a service.
+  //
+  // CLAUDE.md already forbids ALTERs on calls_for_service (the separate 100-
+  // COLUMN cap) and routes new fields to calls_for_service_ext — this asserts
+  // the clone still derives its column list from PRAGMA rather than a literal,
+  // so the _ext overflow pattern keeps the bind count flat as the schema grows.
+  it('derives its column list from PRAGMA and excludes id', () => {
+    const src = read('routes/dispatch/calls.ts');
+    expect(src).toContain("PRAGMA table_info('calls_for_service')");
+    expect(src).toContain("filter((n) => n !== 'id')");
+  });
+});
+
 describe('route optimizer schema', () => {
   // Five column references in the stop fetch did not exist on live D1, so the
   // optimizer threw on every call and never produced a route. Verified via
