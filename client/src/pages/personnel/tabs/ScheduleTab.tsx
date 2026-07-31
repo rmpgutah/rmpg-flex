@@ -113,13 +113,13 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
           <span className="text-[11px] font-mono text-rmpg-500">({schedules.length})</span>
         </div>
         <div className="panel-beveled p-2 flex items-center gap-1.5">
-          <button type="button" onClick={handlePrevWeek} className="toolbar-btn p-1">
+          <button aria-label="Previous" type="button" onClick={handlePrevWeek} className="toolbar-btn p-1">
             <ChevronLeft className="w-3.5 h-3.5" />
           </button>
           <span className="text-xs font-semibold text-rmpg-300 min-w-[180px] text-center">
             {formatWeekLabel(weekMonday)}
           </span>
-          <button type="button" onClick={handleNextWeek} className="toolbar-btn p-1">
+          <button aria-label="Next" type="button" onClick={handleNextWeek} className="toolbar-btn p-1">
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>

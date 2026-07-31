@@ -775,7 +775,7 @@ export default function ServeAttemptModal({
                   {photos.map((photo) => (
                     <div key={photo.id} className="relative w-16 h-16 rounded-sm border border-rmpg-600 overflow-hidden group">
                       <img src={photo.url} alt="Attempt photo" className="w-full h-full object-cover" />
-                      <button type="button"
+                      <button aria-label="Remove" type="button"
                         onClick={() => removePhoto(photo.id)}
                         className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
                       >

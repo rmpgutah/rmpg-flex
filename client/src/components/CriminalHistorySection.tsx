@@ -261,7 +261,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 <span className="text-[10px] text-brand-400 uppercase font-bold tracking-wider">
                   {editingId ? 'Edit Record' : 'Add Criminal Record'}
                 </span>
-                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="text-rmpg-400 hover:text-rmpg-100">
+                <button aria-label="Close" type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="text-rmpg-400 hover:text-rmpg-100">
                   <X className="w-3 h-3" />
                 </button>
               </div>

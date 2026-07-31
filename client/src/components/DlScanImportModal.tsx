@@ -192,7 +192,7 @@ export default function DlScanImportModal({ isOpen, onClose, onImported }: DlSca
                'Importing to Records…'}
             </span>
           </div>
-          <button type="button" onClick={handleClose} className="p-1 text-fg-muted hover:text-rmpg-200 transition-colors">
+          <button aria-label="Close" type="button" onClick={handleClose} className="p-1 text-fg-muted hover:text-rmpg-200 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>

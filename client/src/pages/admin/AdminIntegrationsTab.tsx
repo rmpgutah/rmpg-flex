@@ -414,7 +414,7 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
                 </button>
               )}
               {configured[key] && (
-                <button
+                <button aria-label="Clear"
                   type="button"
                   onClick={() => handleClear(key)}
                   disabled={saving === key}
@@ -983,7 +983,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
               <h3 className="text-sm font-semibold text-rmpg-300">Create API Key</h3>
               {createdKey && (
-                <button type="button"
+                <button aria-label="Close" type="button"
                   onClick={closeCreateModal}
                   className="text-rmpg-500 hover:text-rmpg-300 transition-colors"
                 >

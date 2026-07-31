@@ -404,7 +404,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
             <Link2 className="w-3 h-3 text-rmpg-400" />
             <span className="font-medium">{selectedLabel}</span>
           </div>
-          <button type="button" onClick={() => { setSelectedId(null); setSelectedLabel(''); }} className="text-fg-muted hover:text-red-400">
+          <button aria-label="Close" type="button" onClick={() => { setSelectedId(null); setSelectedLabel(''); }} className="text-fg-muted hover:text-red-400">
             <X className="w-3 h-3" />
           </button>
         </div>

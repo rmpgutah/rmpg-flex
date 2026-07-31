@@ -1539,7 +1539,7 @@ export default function IncidentsPage() {
               }
             }}
           />
-        <button type="button"
+        <button aria-label="Close" type="button"
           onClick={() => {
             setSelectedIncident(null);
             setIsEditing(false);
