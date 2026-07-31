@@ -773,22 +773,111 @@ warrants.post('/national-search', async (c) => {
 // + urgency bonus if the warrant expires within a week. Capped at 100.
 // Mirrors the score used by /dashboard/priority and /unified?sort=priority
 // so the same warrant ranks the same everywhere in the UI.
-function computePriorityScore(row: Record<string, any>): number {
-  const offenseLevel = String(row.offense_level ?? '').toUpperCase();
-  const base = offenseLevel === 'FELONY' ? 60
-    : offenseLevel === 'MISDEMEANOR' ? 30
-    : offenseLevel === 'INFRACTION' ? 10
-    : offenseLevel === 'CIVIL' ? 5
-    : 20;
+/**
+ * Normalize an offense-severity value to the canonical word the scorer keys off.
+ *
+ * ⚠️ Live data does NOT spell these out. Measured 2026-07-31 over 100 unified
+ * rows: `offense_level` was NULL on **100 of 100**, while the severity actually
+ * sat in `type` as single-letter NCIC-style codes — `'M'` x93, `'F'` x7.
+ * `computePriorityScore` compared against the literal strings 'FELONY' /
+ * 'MISDEMEANOR', so `base` ALWAYS fell through to its 20 default and the only
+ * live term left was `bail > 10_000` — which matched exactly those same 7 rows.
+ * The result was a "priority score" that was really just a bail flag: every row
+ * scored 20 or 30, and priorityBucket() rendered LOW for all of them.
+ */
+export function normalizeOffenseLevel(raw: unknown): 'FELONY' | 'MISDEMEANOR' | 'INFRACTION' | 'CIVIL' | null {
+  const v = String(raw ?? '').trim().toUpperCase();
+  if (!v) return null;
+  // Spelled-out forms first (local/manual records use these).
+  if (v.startsWith('FELON')) return 'FELONY';
+  if (v.startsWith('MISD')) return 'MISDEMEANOR';
+  if (v.startsWith('INFRAC')) return 'INFRACTION';
+  if (v.startsWith('CIVIL')) return 'CIVIL';
+  // Single-letter / short codes — the shape scraped sources actually emit.
+  // Anchored to the whole token so a warrant TYPE like 'FTA' or a charge string
+  // can't be misread as a felony off its first letter.
+  if (v === 'F' || v === 'FEL') return 'FELONY';
+  if (v === 'M' || v === 'MIS' || v === 'MISD') return 'MISDEMEANOR';
+  if (v === 'I' || v === 'INF') return 'INFRACTION';
+  if (v === 'C' || v === 'CIV') return 'CIVIL';
+  return null;
+}
+
+/**
+ * Priority score, 0-100, bucketed by the client as
+ * >=90 critical / >=70 high / >=40 medium / else low.
+ *
+ * Weights are a judgment call for warrant SERVICE prioritization, not derived
+ * from an external standard. The reasoning:
+ *
+ *  - Severity dominates (base 60/30/10/5). What the person is wanted for is the
+ *    single most important input, so it sets the band and the other terms move
+ *    within it. A felony starts at 60 = "high" before anything else applies.
+ *  - Severity is read from `offense_level` OR, when that is null (which is every
+ *    live row today), from `type`, which is where scraped sources put the M/F
+ *    code. Falling back to a neutral 20 when severity is genuinely unknown is
+ *    deliberate: an unknown charge must not silently outrank a known felony.
+ *  - Age matters and previously did not count at all. Live warrants span 305 to
+ *    10,169 days outstanding; a 27-year-old warrant scored identically to a
+ *    10-month-old one. Long-outstanding warrants are the ones that never get
+ *    served, so age adds up to 15 — enough to lift a stale misdemeanor toward
+ *    review, never enough to push it past a fresh felony.
+ *  - Service attempts add up to 20: repeated failed attempts mean the subject is
+ *    evading, which is exactly what should escalate. (Dead for scraped rows,
+ *    which carry no attempt count — real for local records.)
+ *  - Imminent expiry adds 15: a warrant about to lapse is use-it-or-lose-it.
+ *  - High bail adds 10 as a weak proxy for court-assessed seriousness. It stays
+ *    LAST and smallest on purpose — it was accidentally the ONLY live signal
+ *    before this fix, and bail correlates with means as much as with risk.
+ */
+export function computePriorityScore(row: Record<string, any>): number {
+  // offense_level is authoritative when present; `type` carries the M/F code on
+  // scraped rows, which is the only place severity lives in live data today.
+  const level = normalizeOffenseLevel(row.offense_level) ?? normalizeOffenseLevel(row.type);
+  const base = level === 'FELONY' ? 60
+    : level === 'MISDEMEANOR' ? 30
+    : level === 'INFRACTION' ? 10
+    : level === 'CIVIL' ? 5
+    : 20; // severity unknown — neutral, must not outrank a known felony
+
   const bail = Number(row.bail_amount) || 0;
   const attempts = Number(row.service_attempt_count) || 0;
+
+  // Age of the WARRANT (issued_date, with created_at as the documented
+  // fallback) — same source the AGE column uses, so the two cannot disagree.
+  const ageDays = ageDaysFrom(row.issued_date ?? row.created_at);
+  // CONTINUOUS, not banded. An earlier version used three steps (5/10/15 at
+  // 6mo/1y/3y) and measured live that produced a useless distribution: nearly
+  // every warrant in this dataset is 3+ years old, so they ALL collected the same
+  // 15 and **64 of 100 rows landed on the identical score of 45**. No bucket
+  // threshold can separate a cluster sitting on one value — the banding itself
+  // created the tie.
+  //
+  // Ramping linearly to a 10-year ceiling instead means a 20-year-old warrant
+  // genuinely outranks a 4-year-old one, which is the ordering a service queue
+  // consumes (it sorts by score; the chip label is secondary). Still capped at 15
+  // so age can never overtake severity: a maximally stale misdemeanor (30+15=45)
+  // stays below a fresh felony (60).
+  const STALENESS_MAX = 15;
+  const STALENESS_RAMP_DAYS = 3650; // 10 years to reach the ceiling
+  const staleness = ageDays == null
+    ? 0
+    : Math.min(STALENESS_MAX, (ageDays / STALENESS_RAMP_DAYS) * STALENESS_MAX);
+
   let urgency = 0;
   const expiresAt = row.expires_at;
   if (expiresAt) {
     const days = (new Date(expiresAt).getTime() - Date.now()) / 86_400_000;
     if (Number.isFinite(days) && days >= 0 && days <= 7) urgency = 15;
   }
-  return Math.min(100, base + Math.min(attempts * 5, 20) + (bail > 10_000 ? 10 : 0) + urgency);
+
+  // Rounded because `staleness` is now continuous: the score is rendered directly
+  // and compared against integer bucket thresholds, so a fractional value would
+  // leak decimals into the UI and make boundary behaviour hard to reason about.
+  return Math.round(Math.min(
+    100,
+    base + Math.min(attempts * 5, 20) + staleness + urgency + (bail > 10_000 ? 10 : 0),
+  ));
 }
 
 function ageDaysFrom(createdAt: unknown): number | null {
