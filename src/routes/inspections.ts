@@ -183,10 +183,15 @@ inspections.post('/by-token/:token', async (c) => {
         const summary = `Auto-escalated from pre-trip inspection — ${escalations.length} failed item${escalations.length === 1 ? '' : 's'}: ${escalations.map(e => e.label).join(', ')}`;
         const detail = JSON.stringify({ failed_items: escalations, inspection_id: inspectionId, phase });
         const res = await execute(db,
+          // Write BOTH date columns. fleet_maintenance carries the service date
+          // in performed_at (what 28 reader sites use, and the only one
+          // populated on live) and service_date (what FleetViz used to read).
+          // Writing only one made an escalated repair invisible to every
+          // reader on the other column.
           `INSERT INTO fleet_maintenance
-              (vehicle_id, service_date, performed_by, description, notes,
+              (vehicle_id, performed_at, service_date, performed_by, description, notes,
                status, service_type, attachments_json)
-           VALUES (?, date('now'), ?, ?, ?, 'requested', 'inspection_failure', ?)`,
+           VALUES (?, date('now'), date('now'), ?, ?, ?, 'requested', 'inspection_failure', ?)`,
           entry.vehicle_id, entry.officer_id, summary, detail,
           // attachments_json: thumbnail list — pull any per-item photo keys.
           JSON.stringify(escalations.map(e => e.photo_key).filter(Boolean)),

@@ -796,7 +796,9 @@ links.get('/persons/:id/risk-score', async (c) => {
     );
     if (warrantCount?.n) { score += Math.min(warrantCount.n * 20, 60); flags.push(`${warrantCount.n} active warrant(s)`); }
     const cautionCount = await queryFirst<{ n: number }>(
-      db, "SELECT COUNT(*) AS n FROM person_flags WHERE person_id = ? AND flag_type = 'caution'", personId,
+      // There is no person_flags table — caution flags are a column on the
+      // person row, so this is a presence check (0 or 1), not a tally.
+      db, "SELECT COUNT(*) AS n FROM persons WHERE id = ? AND COALESCE(caution_flags, '') NOT IN ('', '[]', 'null')", personId,
     );
     if (cautionCount?.n) { score += Math.min(cautionCount.n * 5, 25); flags.push(`${cautionCount.n} caution flag(s)`); }
     const violentCount = await queryFirst<{ n: number }>(

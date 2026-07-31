@@ -1433,8 +1433,11 @@ callActions.post('/geofences', requireRole('admin', 'manager', 'supervisor'), as
     if (!body.name || !body.geojson) return c.json({ error: 'name and geojson required' }, 400);
     const userId = c.get('userId') as number | undefined;
     const r = await execute(db,
+      // 6 columns needs 6 values — a stray 'info' literal made 7, so this
+      // INSERT threw on arity even once 0214 added the columns. alert_type
+      // already defaults to 'info' via the bound parameter below.
       `INSERT INTO geofences (name, geojson, alert_type, created_by, created_at, updated_at)
-       VALUES (?,?,?,'info',?,datetime('now'),datetime('now'))`,
+       VALUES (?,?,?,?,datetime('now'),datetime('now'))`,
       body.name, JSON.stringify(body.geojson), body.alert_type || 'info', userId ?? null);
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch (err) {

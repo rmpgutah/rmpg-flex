@@ -813,8 +813,9 @@ export async function generateServeInstructions(
   // Check for location notes
   const locationNote = await queryFirst<{ note_text: string }>(
     db,
+    // serve_location_notes stores these as address_norm / entity_name.
     `SELECT note_text FROM serve_location_notes
-     WHERE address LIKE ? OR person_name LIKE ?
+     WHERE address_norm LIKE ? OR entity_name LIKE ?
      LIMIT 1`,
     `%${job.recipient_address || ''}%`,
     `%${defendantName}%`,
