@@ -408,3 +408,77 @@ markers exist.
 
 The two touch almost no shared files, so they review cleanly apart. Phase 2 does not depend
 on Phase 1.
+
+---
+
+## 10. Implementation record — 2026-07-31
+
+### Shipped
+
+| Commit | What |
+|---|---|
+| `10ce2348c8` | Voice picker fixed — consolidated **three** disagreeing sources onto `voiceCatalog` |
+| `1d763cc89f` | **The 9 system sounds rebuilt** on documented Motorola frequencies |
+| `1cb928b143` | `DISPATCH_VOICE` → `harmonia` |
+| `ed00947d57` | Station-PA chain + `alert_pa` voice mode |
+| `5f7d510357` | `"Update on call ."` fixed + `VoicePhrase.mode` threading |
+| `45251d2b34` | Notification alerts speak, in the PA voice |
+| `b9e70d67a1` | melotts WAV/MP3 content-type mislabel |
+| `12851928bb` | Service-worker precache for the 4 new sounds |
+
+### Corrections to this spec, found during implementation
+
+1. **§4.1 understated the picker defect.** There were **three** sources of truth, not one:
+   `voiceCatalog` (14 ids), a *separate* 4-entry array in `VoicePersonaSettings.tsx`, and a
+   hardcoded `DEFAULT` in `useVoicePersona.ts` that wrote an invalid id back to localStorage
+   **and to D1**. Fixing only the catalog would have left the profile-modal picker broken.
+2. **§4.2's count was wrong.** 13 of 15 call sites passed `callNumber = ''`, not 14 of 16.
+   The 16 grep matches were 1 import + 2 real + 13 generic.
+3. **§5 hit a filename collision the spec missed.** `error.wav` is emitted by *both* the
+   system block and the Motorola dispatch library, which renders later and overwrote it. The
+   system NACK is now `ui_error.wav`.
+4. **The generator is non-deterministic.** Noise-based tones use `Math.random()`, so re-running
+   it dirtied `squelch_tail.wav` and `static_burst.wav` — both Motorola. Reverted; all 24
+   Motorola tones verified byte-identical.
+5. **A new sound must be registered in THREE places**, and the failure mode in all three is
+   *silence*, not an error: the generator, the `main.tsx` boot preload, and the **explicit**
+   `sw.js` precache list. The spec only knew about the first two.
+6. **§8.6 was over-specified.** Because the alert voice reuses the same `harmonia` request,
+   `/api/tts` needed **no** change at all — no engine selection, no cache-key change.
+
+### Verified
+
+All six gates pass serially: worker typecheck; worker vitest 2658; worker integration 353;
+client typecheck; client vitest 3817; client build.
+
+**Sounds — verified in a real browser against `client/dist` (the actual build artifact),**
+all 9 decoded, mono, peak ≈0.891 (−1 dBFS contract), every start frequency matching source:
+
+```
+click     75ms  peak 0.892  start ~713Hz  (mid-glide of 600->1200)
+navigate  70ms  peak 0.890  start ~1154Hz (spec 1153.4)
+ui_open  150ms  peak 0.891  start ~601Hz  (spec 600.9)
+ui_close 150ms  peak 0.891  start ~929Hz  (spec 928.1)
+submit   140ms  peak 0.890  start ~1201Hz (spec 1200)
+update   110ms  peak 0.890  start ~1201Hz (spec 1200+1800)
+delete   190ms  peak 0.891  start ~540Hz  (spec 539.0)
+ui_error 240ms  peak 0.891  start ~369Hz  (spec 368.5)
+login    720ms  peak 0.891  start ~349Hz  (spec 349.0)
+```
+
+### NOT verified — needs a live environment
+
+**The voice paths are code-verified only.** Confirming the PA chain audibly differs from the
+P25 haze, that the picker now changes the voice you hear, and that `"Call updated."` speaks
+correctly all require a **logged-in session** (`/api/tts` is `auth: 'required'`) plus live
+Workers AI. That is §4 of the plan's Task 8 and is still outstanding. Do not treat the voice
+work as field-verified until someone runs it.
+
+### Still open
+
+- **Panic-mute policy (§8.2)** — an operator can still silence officer-down announcements.
+  `isEventEnabled()` is unchanged. Policy decision, not a code one.
+- **Terseness policy (§4.4)** — the 13.1 s / 13.4 s figures were measured with `asteria` and
+  are ~37% too high for `harmonia`. Re-measure before setting policy.
+- **Authentic Spillman audio** — still unavailable. See §7. Drop-in path is unchanged:
+  `cp <install>/sounds/*.wav client/public/sounds/`.
