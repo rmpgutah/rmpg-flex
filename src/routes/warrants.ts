@@ -981,6 +981,27 @@ warrants.get('/unified', async (c) => {
       merged = merged.concat(reshaped);
     } catch { /* scraped_warrants missing on this env — local-only unified list */ }
 
+    // Last-scrape time PER SOURCE, for the FRESHNESS column.
+    //
+    // Verified live 2026-07-31: scraped_warrants.fetched_at is NULL on every row
+    // (created_at falls all the way through to issue_date, e.g. "9/9/2015"), so a
+    // per-row scrape timestamp does not exist to read. Freshness of a scraped
+    // record is really a property of ITS SOURCE — when did we last pull that
+    // jurisdiction — and scraper_runs is the authoritative record of that. One
+    // grouped query, so this stays O(1) queries regardless of row count.
+    const lastScrapeBySource = new Map<string, string>();
+    try {
+      const scrapeRows = await query<{ source_key: string; last_started: string }>(
+        db, `SELECT source_key, MAX(started_at) AS last_started FROM scraper_runs GROUP BY source_key`,
+      );
+      for (const r of scrapeRows) {
+        if (r.last_started) lastScrapeBySource.set(r.source_key, r.last_started);
+      }
+    } catch {
+      // scraper_runs absent on this env — FRESHNESS degrades to 'manual', which
+      // is the honest reading when we have no scrape history at all.
+    }
+
     merged = merged.map((row) => {
       const priority_score = computePriorityScore(row);
       // Age is the age of the WARRANT, not of our database row. This used to read
@@ -999,9 +1020,13 @@ warrants.get('/unified', async (c) => {
       // freshnessClass fell through to 'manual', and the FRESHNESS column showed
       // the same pencil icon on every row. Derived here (rather than in the
       // client) so there is one definition of "how stale is this record".
-      // null stays null and legitimately means "manually entered, never scraped".
-      const freshness_days = ageDaysFrom(row.last_scrape_at ?? null);
-      return { ...row, priority_score, age_days, freshness_days, matches_person, source_state };
+      // Falls back to the row's SOURCE last-scrape time, because scraped rows
+      // carry no timestamp of their own (fetched_at is NULL live). null stays
+      // null and legitimately means "manually entered, never scraped".
+      const rowLastScrape = row.last_scrape_at
+        ?? (row.source ? lastScrapeBySource.get(String(row.source)) ?? null : null);
+      const freshness_days = ageDaysFrom(rowLastScrape);
+      return { ...row, priority_score, age_days, freshness_days, matches_person, source_state, last_scrape_at: rowLastScrape };
     });
 
     const filtered = merged.filter((row) => {
