@@ -1153,14 +1153,19 @@ async function computeWaitTimeForQueue(db: D1Database, queueId: number): Promise
   // Otherwise return 0 (no stakeout data available).
   const row = await queryFirst<{ wait_minutes: number }>(
     db,
+    // serve_attempts has no planned_at — the planned time lives on
+    // serve_attempt_schedules.window_start, matched by queue + attempt number.
     `SELECT COALESCE(SUM(
        CASE
-         WHEN sa.planned_at IS NOT NULL AND sa.attempt_at IS NOT NULL
-         THEN MAX(0, (julianday(sa.attempt_at) - julianday(sa.planned_at)) * 1440)
+         WHEN sch.window_start IS NOT NULL AND sa.attempt_at IS NOT NULL
+         THEN MAX(0, (julianday(sa.attempt_at) - julianday(sch.window_start)) * 1440)
          ELSE 0
        END
      ), 0) as wait_minutes
      FROM serve_attempts sa
+     LEFT JOIN serve_attempt_schedules sch
+            ON sch.queue_id = sa.serve_queue_id
+           AND sch.attempt_number = sa.attempt_number
      WHERE sa.serve_queue_id = ?`,
     queueId,
   ).catch(() => ({ wait_minutes: 0 }));

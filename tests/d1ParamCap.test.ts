@@ -95,20 +95,26 @@ describe('route optimizer schema', () => {
     expect(src).toContain('JOIN serve_queue q ON q.id = a.serve_queue_id');
   });
 
-  it('DOCUMENTS the queries still written against a schema that never shipped', () => {
-    // Deliberately asserted as a KNOWN-BROKEN count rather than fixed. Three
-    // further queries in this module reference serve_attempts.server_id,
-    // .status, .scheduled_date and .queue_id -- pragma_table_info confirms
-    // ZERO of those four columns exist on live D1. They cannot be repaired by
-    // renaming: serve_attempts records COMPLETED attempts (attempt_at,
-    // result), so "status IN ('scheduled','pending')" has no meaning against
-    // the real table. Whether a route stop is a pending serve_queue row or
-    // something else is a product decision, not a mechanical fix.
-    //
-    // This test fails loudly if the count changes, so the debt cannot grow
-    // quietly and cannot be silently declared fixed.
-    const stale = (src.match(/a\.queue_id/g) || []).length;
-    expect(stale, 'known-broken a.queue_id references').toBe(3);
+  it('no query in this module references a serve_attempts column that never shipped', () => {
+    // The three remaining queries used serve_attempts.server_id / .queue_id /
+    // .scheduled_date / .status; pragma_table_info confirms ZERO of those four
+    // exist on live D1. The first three had exact live equivalents
+    // (officer_id / serve_queue_id / attempt_at) and were renamed.
+    for (const dead of ['a.queue_id', 'a.server_id', 'a.scheduled_date', 'a.status']) {
+      expect(src, `${dead} does not exist on live serve_attempts`).not.toContain(dead);
+    }
+  });
+
+  it('treats an unresolved attempt as one with no recorded result', () => {
+    // `.status IN ('scheduled','pending')` had no live equivalent: serve_attempts
+    // records attempts that HAPPENED (attempt_at, result), so there is no
+    // pending-attempt state column. Standing in `result IS NULL OR result =
+    // 'pending'` keeps the three queries executable instead of throwing "no
+    // such column" on every call, but whether a route stop should instead be
+    // driven off pending serve_queue rows is still a PRODUCT decision — see
+    // the module header. Pinned so that choice can't drift unnoticed.
+    const guards = (src.match(/a\.result IS NULL OR a\.result = 'pending'/g) || []).length;
+    expect(guards, "unresolved-attempt stand-in for the absent status column").toBe(3);
   });
 
   it('reads the geocoded and address columns serve_queue actually has', () => {

@@ -874,10 +874,14 @@ calls.post('/:id/merge', async (c) => {
          SELECT ?, user_id, '[Merged from CFS #' || cn.call_id || '] ' || note, datetime('now')
          FROM (SELECT call_id, user_id, note FROM call_notes WHERE call_id = ? LIMIT 50) cn`,
         id, mergeId);
-      // Mark merged call as merged with reference
+      // Mark merged call as merged with reference. calls_for_service has no
+      // merged_into_id and is at D1's 100-column cap, so the structured link
+      // goes to the overflow table's parent_call_id instead of a new column.
       await execute(db,
-        `UPDATE calls_for_service SET status = 'merged', merged_into_id = ?, notes = COALESCE(notes || char(10), '') || '[Merged into CFS ' || ? || ']'
-         WHERE id = ?`, id, (await queryFirst<{ call_number: string }>(db, 'SELECT call_number FROM calls_for_service WHERE id = ?', id))?.call_number || String(id), mergeId);
+        `UPDATE calls_for_service SET status = 'merged', notes = COALESCE(notes || char(10), '') || '[Merged into CFS ' || ? || ']'
+         WHERE id = ?`, (await queryFirst<{ call_number: string }>(db, 'SELECT call_number FROM calls_for_service WHERE id = ?', id))?.call_number || String(id), mergeId);
+      await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', mergeId);
+      await execute(db, 'UPDATE calls_for_service_ext SET parent_call_id = ? WHERE id = ?', id, mergeId);
       if (userId) {
         await execute(db,
           `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'merge_call', 'call', ?, ?)`,
@@ -1542,10 +1546,15 @@ calls.post('/:id/split', requireRole('dispatcher', 'supervisor', 'manager', 'adm
     const created: number[] = [];
     for (const s of splits) {
       const result = await execute(db,
-        `INSERT INTO calls_for_service (incident_type, priority, status, location_address, latitude, longitude, description, split_from_id, created_at, updated_at)
-         VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        s.incident_type, parent.priority || 'P3', s.location_address || parent.location_address, parent.latitude, parent.longitude, s.description || null, id);
-      created.push(Number(result.meta.last_row_id));
+        // No split_from_id on calls_for_service (and it's at the 100-column
+        // cap) — the parent link lives on calls_for_service_ext.parent_call_id.
+        `INSERT INTO calls_for_service (incident_type, priority, status, location_address, latitude, longitude, description, created_at, updated_at)
+         VALUES (?, ?, 'pending', ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        s.incident_type, parent.priority || 'P3', s.location_address || parent.location_address, parent.latitude, parent.longitude, s.description || null);
+      const childId = Number(result.meta.last_row_id);
+      await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', childId);
+      await execute(db, 'UPDATE calls_for_service_ext SET parent_call_id = ? WHERE id = ?', id, childId);
+      created.push(childId);
     }
     await execute(db, 'UPDATE calls_for_service SET status = ?, notes = COALESCE(notes || char(10), \'\') || ? WHERE id = ?', 'split', `Split into ${created.length} child call(s): ${created.join(', ')}`, id);
     if (userId) await execute(db, `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'split_call', 'call', ?, ?)`, userId, id, JSON.stringify({ child_ids: created }));
