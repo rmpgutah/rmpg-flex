@@ -256,22 +256,67 @@ interface WatchPerson {
 }
 
 // Coverage / Sources
+/**
+ * Shape of one row from GET /warrants/scrapers.
+ *
+ * ⚠️ REWRITTEN 2026-07-30 to match what the endpoint ACTUALLY emits. The previous
+ * version declared `id`, `source_name`, `last_run_at`, `last_scraped_at`,
+ * `active_count`, `active_warrants`, `consecutive_failures` and `total_count` —
+ * NONE of which the API sends. Because `apiFetch<ScraperSource[]>` is a cast and
+ * not a validation, tsc reported zero errors while six things on the Sources tab
+ * were silently broken at runtime:
+ *   - `sum + s.active_count` / `sum + s.total_count` → undefined → literal "NaN"
+ *     rendered in two stat tiles
+ *   - `s.last_scraped_at` → undefined → "RECENTLY SCRAPED 0" despite live
+ *     timestamps, and every state card styled "not recent"
+ *   - `s.active_warrants` → undefined → the per-state "N active" count never rendered
+ *   - `s.consecutive_failures` → undefined → error styling never rendered
+ *
+ * Add nothing here that the endpoint does not return. If a field is wanted, add
+ * it to the route first — an optimistic field on this interface is invisible
+ * until it reaches production.
+ */
 interface ScraperSource {
-  id: number;
   source_key: string;
-  source_name: string;
+  display_name: string;
+  state: string | null;
+  county: string | null;
   source_url: string;
+  source_type: string;
   enabled: boolean | number;
-  last_run_at: string | null;
-  last_scraped_at: string | null;
+  circuit_broken: boolean | number;
+  priority: number;
+  consecutive_errors: number;
+  /**
+   * The ONLY count the endpoint returns. There is no separate active-vs-total
+   * pair — the old interface invented one, so the tiles labelled "Active
+   * Warrants" and "Total Indexed" were describing a distinction that does not
+   * exist in the data.
+   */
+  warrant_count: number;
+  last_scrape_at: string | null;
+  last_success_at: string | null;
   last_error: string | null;
-  active_count: number;
-  active_warrants: number;
-  consecutive_failures: number;
-  total_count: number;
-  status?: string;
-  county?: string;
-  state?: string;
+  avg_parse_count: number | null;
+  p95_latency_ms: number | null;
+  metrics_24h?: Record<string, unknown>;
+}
+
+/**
+ * Resolve a source's state code for grouping/display.
+ *
+ * `utah-warrant-watch` ships with `state: ''`, and the state grid was built with
+ * `.filter(Boolean)` — which silently DROPPED RMPG's home jurisdiction from its
+ * own coverage grid and collapsed 19 sources into 9 state groups (hence
+ * national-coverage reporting states_covered: 10 against 9 rendered cards).
+ * Returning an explicit bucket instead of a falsy value means a source can never
+ * again vanish from a count without anyone noticing.
+ */
+function sourceStateCode(s: ScraperSource): string {
+  const declared = (s.state || '').trim().toUpperCase();
+  if (declared) return declared;
+  if (/utah/i.test(s.source_key)) return 'UT';
+  return 'UNK';
 }
 
 interface WatchRun {
@@ -431,8 +476,8 @@ function relativeTime(dt: string): string {
 
 function CoverageSourceCard({ source }: { source: ScraperSource }) {
   const hasError = !!source.last_error;
-  const isRecent = source.last_scraped_at &&
-    (Date.now() - parseTimestamp(source.last_scraped_at).getTime()) < 3 * 60 * 60 * 1000;
+  const isRecent = source.last_scrape_at &&
+    (Date.now() - parseTimestamp(source.last_scrape_at).getTime()) < 3 * 60 * 60 * 1000;
   return (
     <div className={`p-2 rounded-sm border ${
       !source.enabled
@@ -450,11 +495,14 @@ function CoverageSourceCard({ source }: { source: ScraperSource }) {
         }`} />
       </div>
       <div className="flex items-center justify-between mt-1 text-[9px] text-rmpg-400">
-        <span>{source.active_count} active / {source.total_count} total</span>
+        {/* Was "{active_count} active / {total_count} total" — both fields are
+            absent from the payload, so this rendered "undefined active /
+            undefined total". One real count exists. */}
+        <span>{(source.warrant_count || 0).toLocaleString()} indexed</span>
       </div>
-      {source.last_run_at && (
+      {source.last_scrape_at && (
         <div className="text-[8px] text-rmpg-500 mt-0.5">
-          Last: {formatDateTime(source.last_run_at)}
+          Last: {formatDateTime(source.last_scrape_at)}
         </div>
       )}
     </div>
@@ -2411,17 +2459,27 @@ export default function WarrantsPage() {
             ) : (() => {
               const totalSources = coverageSources.length;
               const enabledSources = coverageSources.filter(s => s.enabled).length;
-              const totalActive = coverageSources.reduce((sum, s) => sum + s.active_count, 0);
-              const totalScraped = coverageSources.reduce((sum, s) => sum + s.total_count, 0);
+              // `warrant_count` is the only count /warrants/scrapers returns. The old
+              // code summed `active_count` and `total_count` — neither exists, so both
+              // reduces produced NaN and rendered the literal string "NaN". There is no
+              // active-vs-total distinction in the data, so we report ONE honest number
+              // rather than the same value under two different labels.
+              const totalIndexed = coverageSources.reduce((sum, s) => sum + (s.warrant_count || 0), 0);
+              // Field is `last_scrape_at`, not `last_scraped_at` — the typo'd read made
+              // this always 0 even though every source has a live timestamp.
               const recentlyScraped = coverageSources.filter(s => {
-                if (!s.last_scraped_at) return false;
-                const ago = Date.now() - parseTimestamp(s.last_scraped_at).getTime();
+                if (!s.last_scrape_at) return false;
+                const ago = Date.now() - parseTimestamp(s.last_scrape_at).getTime();
                 return ago < 3 * 60 * 60 * 1000;
               }).length;
-              const stateCodes = [...new Set(coverageSources.map(s => s.state).filter(Boolean))].sort();
+              const brokenSources = coverageSources.filter(s => s.circuit_broken).length;
+              // Group via sourceStateCode so a source with a blank state lands in an
+              // explicit bucket instead of being dropped by .filter(Boolean) — that
+              // drop is what hid Utah from its own coverage grid.
+              const stateCodes = [...new Set(coverageSources.map(sourceStateCode))].sort();
               const byState = new Map(stateCodes.map(code => [
                 code,
-                coverageSources.filter(s => s.state === code),
+                coverageSources.filter(s => sourceStateCode(s) === code),
               ]));
 
               return (
@@ -2431,8 +2489,8 @@ export default function WarrantsPage() {
                     {[
                       { label: 'Total Sources', value: totalSources, sub: `${enabledSources} enabled` },
                       { label: 'Recently Scraped', value: recentlyScraped, sub: 'within 3 hours' },
-                      { label: 'Active Warrants', value: totalActive.toLocaleString(), sub: 'across all sources' },
-                      { label: 'Total Indexed', value: totalScraped.toLocaleString(), sub: 'all-time records' },
+                      { label: 'Indexed Warrants', value: totalIndexed.toLocaleString(), sub: 'across all sources' },
+                      { label: 'Circuit Broken', value: brokenSources, sub: brokenSources > 0 ? 'not being scraped' : 'all sources reachable' },
                     ].map((s, i) => (
                       <div key={i} className="panel-inset bg-surface-sunken p-3 rounded-sm text-center">
                         <div className="text-lg font-bold text-rmpg-100 font-mono">{s.value}</div>
@@ -2451,10 +2509,15 @@ export default function WarrantsPage() {
                     <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'} gap-2`}>
                       {stateCodes.map((state: any) => {
                         const sources: ScraperSource[] = byState.get(state) || [];
-                        const active = sources.reduce((sum: number, s) => sum + (s.active_warrants || 0), 0);
+                        // Was `s.active_warrants` (nonexistent) → always 0, so the
+                        // "N active" line below never rendered for any state.
+                        const active = sources.reduce((sum: number, s) => sum + (s.warrant_count || 0), 0);
                         const enabled = sources.filter(s => s.enabled).length;
-                        const hasErrors = sources.some(s => (s.consecutive_failures || 0) > 0);
-                        const lastScraped = sources.map(s => s.last_scraped_at).filter(Boolean).sort().pop();
+                        // Was `s.consecutive_failures` (nonexistent) → always false, so
+                        // the amber error styling never rendered no matter how broken
+                        // a source was. Real field is `consecutive_errors`.
+                        const hasErrors = sources.some(s => (s.consecutive_errors || 0) > 0);
+                        const lastScraped = sources.map(s => s.last_scrape_at).filter(Boolean).sort().pop();
                         const isRecent = lastScraped && (Date.now() - parseTimestamp(lastScraped).getTime()) < 3 * 60 * 60 * 1000;
 
                         return (
@@ -2507,9 +2570,12 @@ export default function WarrantsPage() {
                             <th className="text-left px-2 py-1">State</th>
                             <th className="text-left px-2 py-1">County</th>
                             <th className="text-center px-2 py-1">Status</th>
-                            <th className="text-right px-2 py-1">Active</th>
-                            <th className="text-right px-2 py-1">Total</th>
-                            <th className="text-left px-2 py-1">Last Run</th>
+                            {/* One count, not two — /warrants/scrapers returns only
+                                warrant_count. The old Active/Total pair read two
+                                nonexistent fields and rendered blank cells. */}
+                            <th className="text-right px-2 py-1">Indexed</th>
+                            <th className="text-left px-2 py-1">Last Scrape</th>
+                            <th className="text-left px-2 py-1">Last Success</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2529,10 +2595,12 @@ export default function WarrantsPage() {
                                   <span className="text-rmpg-500">Disabled</span>
                                 )}
                               </td>
-                              <td className="px-2 py-1 text-right font-mono">{src.active_count}</td>
-                              <td className="px-2 py-1 text-right font-mono text-rmpg-400">{src.total_count}</td>
+                              <td className="px-2 py-1 text-right font-mono">{(src.warrant_count || 0).toLocaleString()}</td>
                               <td className="px-2 py-1 text-rmpg-400">
-                                {src.last_run_at ? formatDateTime(src.last_run_at) : 'Never'}
+                                {src.last_scrape_at ? formatDateTime(src.last_scrape_at) : 'Never'}
+                              </td>
+                              <td className="px-2 py-1 text-rmpg-400">
+                                {src.last_success_at ? formatDateTime(src.last_success_at) : 'Never'}
                               </td>
                             </tr>
                           ))}

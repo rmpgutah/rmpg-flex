@@ -10,7 +10,7 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { log } from '../utils/logger';
-import { runUtahWarrantScan, runUtahWarrantCheckForPerson, fetchWarrantsForPerson, recordWarrant } from '../utils/utahWarrantPoller';
+import { runUtahWarrantScan, runUtahWarrantCheckForPerson, fetchWarrantsForPerson, recordWarrant, MANUAL_RUN_WALL_BUDGET_MS } from '../utils/utahWarrantPoller';
 import { screenPersonAllSources } from '../utils/screening/screenPerson';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
@@ -110,18 +110,31 @@ warrants.get('/watch/runs', async (c) => {
 });
 
 // POST /warrants/watch/scan — manually trigger a scan ("Scan Now" button).
-// FIRE-AND-FORGET: a full scan paces ~8s/person and runs ~80s+, which blows
-// past the browser/request timeout if awaited. We hand it to
-// executionCtx.waitUntil (same async pattern as the cron) and return 202
-// immediately; the UI polls /watch/runs to observe the run row complete.
+// FIRE-AND-FORGET: a full scan paces ~8s/person, so it cannot be awaited inside
+// the request. We hand it to executionCtx.waitUntil and return 202; the UI polls
+// /watch/runs to observe the run row complete.
+//
+// ⚠️ waitUntil() extends a request by only 30 SECONDS (Cloudflare limit) — it is
+// NOT the same budget as the cron's 15 minutes, despite "same async pattern as
+// the cron" in the old comment here. A run pacing ~80s+ was therefore killed
+// every single time, orphaning its warrant_watch_runs row as 'running' forever
+// (three such rows inside three minutes in live D1 on 2026-07-30 — an operator
+// clicking this button). So pass the SHORT manual budget: the run does a real,
+// honestly-finalized slice inside the 30s window and its cursor resumes the rest
+// on the next cron tick, instead of pretending to start a full scan it cannot
+// possibly finish.
 warrants.post('/watch/scan', async (c) => {
   const db = getDb(c.env);
   c.executionCtx.waitUntil(
-    runUtahWarrantScan(db).catch((err) => {
+    runUtahWarrantScan(db, { wallBudgetMs: MANUAL_RUN_WALL_BUDGET_MS }).catch((err) => {
       console.error('[warrants] manual scan failed:', err);
     }),
   );
-  return c.json({ success: true, started: true, message: 'Scan started; poll /watch/runs for completion.' }, 202);
+  return c.json({
+    success: true,
+    started: true,
+    message: 'Scan started; poll /watch/runs for completion. Large rosters continue on the next scheduled tick.',
+  }, 202);
 });
 
 // GET /warrants/utah — list scraped Utah warrants (the new utah_warrants
@@ -965,14 +978,135 @@ warrants.get('/unified', async (c) => {
   }
 });
 
+// ── Literal paths that MUST precede /:id ─────────────────────────────────────
+// Both of these were registered BELOW warrants.get('/:id') and were therefore
+// DEAD in production: GET /warrants/summary-report and PUT /warrants/batch-update
+// both returned 400 {"error":"Invalid warrant id"} (verified live 2026-07-30),
+// because /:id matched first and parseInt('summary-report') is NaN.
+//
+// The banner below claims Hono's radix trie prioritizes static segments
+// "regardless of declaration order". For these two paths production did not
+// behave that way, so declaration order IS load-bearing here — do not move a
+// literal path below /:id on the strength of that claim. Covered by a route-
+// order regression test in test-workers/warrants.test.ts.
+
+// PUT /warrants/batch-update { ids: number[], status: string }
+// WarrantsPage's batch status toolbar — the route never existed, so
+// "Apply" always silently no-op'd (the button just showed a generic error).
+warrants.put('/batch-update', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ ids?: number[]; status?: string }>();
+    const ids = Array.isArray(body.ids) ? body.ids.map((n) => parseInt(String(n), 10)).filter(Number.isFinite) : [];
+    const status = (body.status || '').trim();
+    if (!ids.length || !status) return c.json({ error: 'ids and status required' }, 400);
+    // D1 caps bound parameters at ~100/query — chunk so a selection over the
+    // cap doesn't blow up the prepared statement and 500 the whole batch.
+    let updated = 0;
+    for (const chunk of chunkIds(ids)) {
+      const placeholders = chunk.map(() => '?').join(',');
+      await execute(
+        db,
+        `UPDATE warrants SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
+        status, ...chunk,
+      );
+      updated += chunk.length;
+    }
+    return c.json({ success: true, updated });
+  } catch (err) {
+    console.error('[warrants] batch-update error', err);
+    return c.json({ error: 'Batch update failed' }, 500);
+  }
+});
+
+
+// GET /warrants/summary-report?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Feeds WarrantSummaryData for the client-side PDF generator
+// (generateWarrantSummaryPdf) — this route only aggregates; the PDF itself
+// is built in the browser. bySeverity/bySource are scoped to what the local
+// `warrants` records table actually carries (no severity column exists on
+// it, and only ingested/local records count toward source counts — hits
+// still living only in utah_warrants/scraped_warrants aren't "local" yet).
+warrants.get('/summary-report', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const from = c.req.query('from') || null;
+    const to = c.req.query('to') || null;
+    const dateCol = 'issued_date';
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (from) { where.push(`${dateCol} >= ?`); params.push(from); }
+    if (to) { where.push(`${dateCol} <= ?`); params.push(to); }
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const topCourtsWhere = where.length
+      ? `WHERE ${where.join(' AND ')} AND issuing_court IS NOT NULL`
+      : 'WHERE issuing_court IS NOT NULL';
+
+    const [byStatusRows, byTypeRows, topCourtsRows, newCountRow, clearedCountRow, latestRun] = await Promise.all([
+      query<{ status: string; n: number }>(db, `SELECT status, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY status`, ...params),
+      query<{ type: string; n: number }>(db, `SELECT type, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY type`, ...params),
+      query<{ issuing_court: string; count: number }>(
+        db,
+        `SELECT issuing_court, COUNT(*) AS count FROM warrants ${topCourtsWhere} GROUP BY issuing_court ORDER BY count DESC LIMIT 10`,
+        ...params,
+      ).catch(() => []),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM warrants ${whereClause}`, ...params),
+      queryFirst<{ n: number }>(
+        db,
+        `SELECT COUNT(*) AS n FROM warrants WHERE archived_at IS NOT NULL ${from ? 'AND archived_at >= ?' : ''} ${to ? 'AND archived_at <= ?' : ''}`,
+        ...(from ? [from] : []), ...(to ? [to] : []),
+      ),
+      query<{ persons_checked: number; new_warrants_found: number; warrants_cleared: number }>(
+        db,
+        `SELECT persons_checked, new_warrants_found, warrants_cleared FROM warrant_watch_runs
+          WHERE started_at >= COALESCE(?, '0000-01-01') AND started_at <= COALESCE(?, '9999-12-31')`,
+        from, to,
+      ).catch(() => []),
+    ]);
+
+    const byStatus: Record<string, number> = {};
+    for (const r of byStatusRows) byStatus[r.status] = r.n;
+    const byType: Record<string, number> = {};
+    for (const r of byTypeRows) byType[r.type] = r.n;
+    const scanActivity = latestRun.reduce(
+      (acc, r) => ({
+        totalScans: acc.totalScans + 1,
+        totalFound: acc.totalFound + (r.new_warrants_found ?? 0),
+        totalCleared: acc.totalCleared + (r.warrants_cleared ?? 0),
+      }),
+      { totalScans: 0, totalFound: 0, totalCleared: 0 },
+    );
+
+    return c.json({
+      period: { from, to },
+      byStatus,
+      byType,
+      bySeverity: {},
+      bySource: { local: newCountRow?.n ?? 0 },
+      topCourts: topCourtsRows,
+      newThisPeriod: newCountRow?.n ?? null,
+      clearedThisPeriod: clearedCountRow?.n ?? null,
+      scanActivity,
+    });
+  } catch (err) {
+    console.error('[warrants] summary-report error', err);
+    return c.json({ error: 'Failed to build summary report' }, 500);
+  }
+});
+
 // ============================================================
 // Manual warrant CRUD — WarrantsPage.tsx's New/Edit Warrant form, serve,
 // archive/unarchive, and delete actions. Registered after every other
 // literal-path route in this file so a numeric warrant id can never shadow
-// a named route like /watch/runs or /dashboard/stats (Hono's router is a
-// radix trie and prioritizes static segments regardless of declaration
-// order, but keeping /: routes last matches this file's existing style
-// and stays correct even if that routing guarantee ever changes).
+// a named route like /watch/runs or /dashboard/stats.
+//
+// ⚠️ An earlier version of this comment said Hono's radix trie "prioritizes
+// static segments regardless of declaration order". DO NOT RELY ON THAT.
+// GET /summary-report and PUT /batch-update sat below /:id on that assumption
+// and were dead in production for as long as they existed — both returned
+// 400 {"error":"Invalid warrant id"} (verified live 2026-07-30). Declaration
+// order is load-bearing: every literal path belongs ABOVE /:id, and there is a
+// route-order regression test in test-workers/warrants.test.ts to keep it that way.
 // ============================================================
 
 const ALLOWED_WARRANT_COLUMNS = [
@@ -1244,35 +1378,6 @@ warrants.delete('/:id', async (c) => {
   }
 });
 
-// PUT /warrants/batch-update { ids: number[], status: string }
-// WarrantsPage's batch status toolbar — the route never existed, so
-// "Apply" always silently no-op'd (the button just showed a generic error).
-warrants.put('/batch-update', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const body = await c.req.json<{ ids?: number[]; status?: string }>();
-    const ids = Array.isArray(body.ids) ? body.ids.map((n) => parseInt(String(n), 10)).filter(Number.isFinite) : [];
-    const status = (body.status || '').trim();
-    if (!ids.length || !status) return c.json({ error: 'ids and status required' }, 400);
-    // D1 caps bound parameters at ~100/query — chunk so a selection over the
-    // cap doesn't blow up the prepared statement and 500 the whole batch.
-    let updated = 0;
-    for (const chunk of chunkIds(ids)) {
-      const placeholders = chunk.map(() => '?').join(',');
-      await execute(
-        db,
-        `UPDATE warrants SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
-        status, ...chunk,
-      );
-      updated += chunk.length;
-    }
-    return c.json({ success: true, updated });
-  } catch (err) {
-    console.error('[warrants] batch-update error', err);
-    return c.json({ error: 'Batch update failed' }, 500);
-  }
-});
-
 // POST /warrants/bulk-archive { warrant_ids: number[] }
 // Same "never existed" gap as batch-update — reuses the archived_at column
 // the single-warrant /:id/archive route already writes.
@@ -1391,78 +1496,5 @@ warrants.post('/check/:personId', async (c) => {
   }
 });
 
-// GET /warrants/summary-report?from=YYYY-MM-DD&to=YYYY-MM-DD
-// Feeds WarrantSummaryData for the client-side PDF generator
-// (generateWarrantSummaryPdf) — this route only aggregates; the PDF itself
-// is built in the browser. bySeverity/bySource are scoped to what the local
-// `warrants` records table actually carries (no severity column exists on
-// it, and only ingested/local records count toward source counts — hits
-// still living only in utah_warrants/scraped_warrants aren't "local" yet).
-warrants.get('/summary-report', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const from = c.req.query('from') || null;
-    const to = c.req.query('to') || null;
-    const dateCol = 'issued_date';
-    const where: string[] = [];
-    const params: unknown[] = [];
-    if (from) { where.push(`${dateCol} >= ?`); params.push(from); }
-    if (to) { where.push(`${dateCol} <= ?`); params.push(to); }
-    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const topCourtsWhere = where.length
-      ? `WHERE ${where.join(' AND ')} AND issuing_court IS NOT NULL`
-      : 'WHERE issuing_court IS NOT NULL';
-
-    const [byStatusRows, byTypeRows, topCourtsRows, newCountRow, clearedCountRow, latestRun] = await Promise.all([
-      query<{ status: string; n: number }>(db, `SELECT status, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY status`, ...params),
-      query<{ type: string; n: number }>(db, `SELECT type, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY type`, ...params),
-      query<{ issuing_court: string; count: number }>(
-        db,
-        `SELECT issuing_court, COUNT(*) AS count FROM warrants ${topCourtsWhere} GROUP BY issuing_court ORDER BY count DESC LIMIT 10`,
-        ...params,
-      ).catch(() => []),
-      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM warrants ${whereClause}`, ...params),
-      queryFirst<{ n: number }>(
-        db,
-        `SELECT COUNT(*) AS n FROM warrants WHERE archived_at IS NOT NULL ${from ? 'AND archived_at >= ?' : ''} ${to ? 'AND archived_at <= ?' : ''}`,
-        ...(from ? [from] : []), ...(to ? [to] : []),
-      ),
-      query<{ persons_checked: number; new_warrants_found: number; warrants_cleared: number }>(
-        db,
-        `SELECT persons_checked, new_warrants_found, warrants_cleared FROM warrant_watch_runs
-          WHERE started_at >= COALESCE(?, '0000-01-01') AND started_at <= COALESCE(?, '9999-12-31')`,
-        from, to,
-      ).catch(() => []),
-    ]);
-
-    const byStatus: Record<string, number> = {};
-    for (const r of byStatusRows) byStatus[r.status] = r.n;
-    const byType: Record<string, number> = {};
-    for (const r of byTypeRows) byType[r.type] = r.n;
-    const scanActivity = latestRun.reduce(
-      (acc, r) => ({
-        totalScans: acc.totalScans + 1,
-        totalFound: acc.totalFound + (r.new_warrants_found ?? 0),
-        totalCleared: acc.totalCleared + (r.warrants_cleared ?? 0),
-      }),
-      { totalScans: 0, totalFound: 0, totalCleared: 0 },
-    );
-
-    return c.json({
-      period: { from, to },
-      byStatus,
-      byType,
-      bySeverity: {},
-      bySource: { local: newCountRow?.n ?? 0 },
-      topCourts: topCourtsRows,
-      newThisPeriod: newCountRow?.n ?? null,
-      clearedThisPeriod: clearedCountRow?.n ?? null,
-      scanActivity,
-    });
-  } catch (err) {
-    console.error('[warrants] summary-report error', err);
-    return c.json({ error: 'Failed to build summary report' }, 500);
-  }
-});
 
 export default warrants;
