@@ -336,7 +336,40 @@ markers exist.
    wording change** — which is a cheaper lever on the 13-second P1 problem than rewording,
    and composes with terseness rather than competing with it.
 
-   `asteria` (211 Hz) remains the pinned default until a speaker is chosen by ear.
+   **DECIDED 2026-07-31 — `harmonia` is the Dispatch voice.** Confirmed by ear after the
+   live audition. Measured: F0 178 Hz, radio survival 90.4% (tied best of all 40), pace
+   **5.3 s** on the reference line — the fastest of the 23 female-register speakers and
+   3.1 s quicker than `asteria`. `DISPATCH_VOICE` in
+   [`aiDispatcher.ts:80`](../../../src/utils/aiDispatcher.ts) changes from `'asteria'` to
+   `'harmonia'`.
+
+   Because `harmonia` alone cuts ~37% of channel time, re-measure the §4.4 announcement
+   lengths against it before deciding how aggressive the terseness policy needs to be —
+   the 13.1 s Priority 1 figure was measured with `asteria`.
+
+6. **A second, "automated" voice for alerts — NEW REQUIREMENT (2026-07-31).** The operator
+   wants alerts announced by a distinct machine voice, separate from the human-sounding
+   Dispatch voice, so a system alert is never mistaken for a dispatcher transmission.
+
+   **Leading candidate: `@cf/myshell-ai/melotts`** — already wired in and described in
+   [`tts.ts:11`](../../../src/routes/tts.ts) as "the robotic melotts fallback." Promoting it
+   from failure-fallback to the deliberate alert voice gives machine-vs-human separation with
+   no new dependency. Called as `ai.run(MELOTTS_MODEL, { prompt, lang: 'en' })`, returns
+   `{ audio: base64 }` (not raw bytes like Aura-2). Not yet auditioned.
+
+   **Architectural change required — this is not a config swap:**
+   - `VoicePhrase` is `{ text: string }`
+     ([`voiceAlerts.ts:111`](../../../client/src/utils/voiceAlerts.ts)) with no voice field.
+     Needs a per-phrase voice role, e.g. `{ text, voice?: 'dispatch' | 'alert' }`.
+   - `getEdgeTTSPayload(text, urgent, voiceMode)` must carry that role through to
+     `/api/tts`.
+   - `/api/tts` currently resolves one Aura-2 speaker via `resolveAura2Voice`. It needs to
+     select **engine as well as speaker**, since the alert voice is a different model.
+     Keep the KV cache key engine-aware — `CACHE_PREFIX` already includes the speaker, so
+     extend it rather than risk serving Aura audio for an alert-voice request.
+   - Decide which announcements are "alert" voice vs "dispatch" voice. Proposed:
+     §4.3 notification alerts → alert voice; everything in §4.1–4.2 and all
+     `announceNewCall` / panic / status traffic → Dispatch (`harmonia`).
 
 ---
 
