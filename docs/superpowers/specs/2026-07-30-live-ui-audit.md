@@ -24,7 +24,7 @@ discarded** — it would have added dead columns to production.
 **Lesson: `git fetch origin main` and diff BEFORE auditing a long-lived branch.**
 Everything below is what survived that check as genuinely novel.
 
-## 🔴 INCIDENT — service-worker stale-chunk wedge (resolved in operator's browser)
+## 🔴 INCIDENT — INITIALIZING wedge (root cause: Rocket Loader — see correction below)
 
 **Symptom:** any hard navigation stranded permanently on the `INITIALIZING`
 splash. Reproduced in a clean tab. No console error, no failed request visible.
@@ -40,30 +40,69 @@ splash. Reproduced in a clean tab. No console error, no failed request visible.
 - SW cache name changed mid-session (`rmpg-flex-f0fcb00` → `rmpg-flex-8b458c2`),
   confirming a deploy rotated underneath the open session.
 
-**Mechanism:** `client/public/sw.js:348` has a deliberate poison guard — if a
-`/assets/*.js` request returns `text/html`, it refuses to cache and returns
-`new Response('', {status: 404})`. Its offline path returns `new Response('',
-{status: 503})`. **Both return an empty body**, which is the observed 0 bytes.
-The entry module then fails while its static import graph is still resolving,
-so the `unhandledrejection` retry in `chunkRetry.ts` is never wired up.
-`client/index.html:144` documents this exact case: *"stranded forever with no
-error and no recovery path."* The one-reload-per-30s guard had been spent.
+### ⚠️ ROOT CAUSE CORRECTION — it was Rocket Loader, not the service worker
 
-**Immediate remediation applied:** unregistered the SW and deleted its caches in
+An earlier revision of this document blamed `sw.js`'s poison guard. **That was
+wrong.** PR #3186 (`opt every script out of Cloudflare Rocket Loader`, merged to
+main 2026-07-31) identified the real cause:
+
+Cloudflare **Rocket Loader** is enabled on the `rmpgutah.us` zone and rewrites
+the entry script's type attribute —
+`type="module"` → `type="<cf-hash>-module"`. A mangled type is not a module
+type, so the browser **fetches the bundle (clean 200) but never EXECUTES it**.
+React never mounts and the page sits on `#pre-splash`.
+
+**Why that beats the SW theory:** #3186 reproduced it on a **fresh profile with
+no service worker and no caches**, which rules the SW out as cause. This audit
+never ran that control — the SW was simply where I happened to be looking, and
+the empty-body poison guard was a plausible-looking culprit. Every symptom
+recorded here fits Rocket Loader at least as well: splash forever, `#root`
+holding only `#pre-splash`, healthy 200s from the server, an older cached bundle
+still working, and the cache name flipping on deploy.
+
+#3186 also explains the confusing part: *"a warm service worker kept serving the
+app until a deploy rotated the cache and pushed every client back through the
+rewritten HTML."* The SW was **masking** the bug, not causing it — so the root
+cause is a zone setting while the trigger is ANY deploy. `sw.js`'s cache name is
+stamped from the git SHA, which is why the failure tracks deploys.
+
+**Fix for the actual outage is #3186 (already on main), not this branch.**
+
+### Secondary gap this branch does address (defense-in-depth)
+
+Independently of the above, `sw.js:348`'s poison guard has no recovery path. If a
+`/assets/*.js` request returns `text/html` it correctly refuses to cache and
+returns `new Response('', {status: 404})`; its offline path returns an empty 503.
+`client/index.html:144` documents the dead end — *"stranded forever with no error
+and no recovery path"* — because the entry handler's bare `reload()` re-enters
+the same SW, changes nothing, and spends the once-per-30s budget.
+
+That gap is real and worth closing, but it is **not** what caused the 2026-07-30
+incident. This branch's changes cannot fire during a Rocket Loader outage at all:
+a mangled script type produces no `error` event, so the handler never runs and
+cannot destroy the warm SW cache that is keeping clients alive.
+
+Compatibility with #3186 verified: the `stampCfAsync` vite plugin adds
+`data-cfasync="false"` to EVERY script in `index.html`, including this inline
+handler (confirmed in `dist/index.html`).
+
+**Immediate remediation applied (before the true cause was known):** unregistered the SW and deleted its caches in
 the operator's browser. Cookies/localStorage untouched (auth is 55 localStorage
 keys, 0 cookies) so the session survived. `/records` loaded immediately after.
 
-**✅ FIXED IN CODE (two halves).**
+**✅ SECONDARY GAP CLOSED (two halves) — this is hardening, NOT the outage fix.**
+The 2026-07-30 outage is fixed by #3186 on main. The two changes below close a
+separate, genuine dead end in the stale-chunk recovery path.
 
 1. **Recovery — `client/index.html` entry `error` handler.** It previously called
-   a bare `window.location.reload()`. That was the reason this bug was
-   unrecoverable rather than self-healing: the reload re-enters the SAME service
-   worker, which serves the SAME empty body, so nothing changes and the
-   once-per-30s budget is spent on a no-op. It now purges the SW registration
-   and all caches FIRST, then reloads — a reload that can actually reach the
-   network. Bounded by a 3s ceiling so a hung `caches`/SW API can never block
-   the reload it exists to enable. Cookies/localStorage untouched, so the user
-   stays signed in.
+   a bare `window.location.reload()`. When the entry module fails *because the SW
+   served an empty body*, that reload re-enters the SAME service worker, gets the
+   SAME empty body, changes nothing, and spends the once-per-30s budget on a
+   no-op — leaving the next failure with no recovery left. It now purges the SW
+   registration and all caches FIRST, then reloads — a reload that can actually
+   reach the network. Bounded by a 3s ceiling so a hung `caches`/SW API can never
+   block the reload it exists to enable. Cookies/localStorage untouched, so the
+   user stays signed in.
 
    Note the guard's fail-safe: if `sessionStorage` is unavailable (private mode,
    blocked storage) it does **not** reload, because the once-per-30s guard can't
