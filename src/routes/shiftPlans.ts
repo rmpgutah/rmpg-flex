@@ -20,7 +20,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
 
 const sp = new Hono<Env>();
@@ -153,14 +153,14 @@ sp.post('/shift-plans/bulk-activate', async (c) => {
   const db = getDb(c.env);
   let activated = 0;
   if (Array.isArray(body.plan_ids) && body.plan_ids.length > 0) {
-    const ph = body.plan_ids.map(() => '?').join(',');
-    const r = await execute(
-      db,
-      `UPDATE shift_plans SET status = 'active', updated_at = datetime('now')
-         WHERE id IN (${ph}) AND status = 'draft'`,
-      ...body.plan_ids,
-    );
-    activated = (r.meta as any).changes ?? 0;
+    // plan_ids is caller-supplied and unbounded, so the query's SHAPE grows with
+    // the request: a bulk-activate of 100+ plans exceeds D1's 100-bound-parameter
+    // cap and throws at BIND time, before the statement runs. Passes every test
+    // and every small activation, then fails on exactly the big batch that
+    // matters most.
+    activated = await executeInChunks(db, body.plan_ids,
+      (ph) => `UPDATE shift_plans SET status = 'active', updated_at = datetime('now')
+         WHERE id IN (${ph}) AND status = 'draft'`);
   } else if (body.start_date && body.end_date) {
     const r = await execute(
       db,
