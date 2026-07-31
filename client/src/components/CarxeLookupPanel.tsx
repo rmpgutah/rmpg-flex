@@ -35,13 +35,25 @@ export default function CarxeLookupPanel(props: PlateProps | VinProps) {
   const [lienHits, setLienHits] = useState<Array<{ kind: string; severity: string; detail: string }>>([]);
   const [historyResult, setHistoryResult] = useState<HistoryResult | null>(null);
 
+  // The VIN that unlocks the specs/lien-theft/history lookups. In mode="vin"
+  // it's supplied directly; in mode="plate" it's whatever the plate decode just
+  // returned. This is what makes those three endpoints REACHABLE: every call
+  // site in the app passes mode="plate" (VehicleDossier, PlateLogPage), so
+  // before this the VIN-keyed lookups could not be triggered from anywhere.
+  const effectiveVin = props.mode === 'vin' ? props.vin : (plateResult?.vin as string | undefined) ?? '';
+
   async function runLookup(kind: 'plate' | 'vin-specs' | 'lien-theft' | 'history') {
     setLoading(kind);
     setError(null);
     try {
+      // Plate context rides along on the VIN lookups so the server can resolve
+      // onto the plate-keyed vehicles_records row the officer is already looking
+      // at, instead of matching by VIN alone (90% of live rows have no VIN) and
+      // creating a duplicate record.
+      const plateCtx = props.mode === 'plate' ? { plate: props.plate, state: props.state } : {};
       const body = kind === 'plate'
         ? { plate: (props as PlateProps).plate, state: (props as PlateProps).state }
-        : { vin: (props as VinProps).vin };
+        : { vin: effectiveVin, ...plateCtx };
       const resp = await apiFetch<CarxeResponse<any>>(`/carxe/${kind}`, {
         method: 'POST',
         body: JSON.stringify(body),
@@ -88,7 +100,11 @@ export default function CarxeLookupPanel(props: PlateProps | VinProps) {
         </div>
       )}
 
-      {props.mode === 'vin' && (
+      {/* Auto-upgrade: show the VIN-keyed lookups as soon as a VIN is known —
+          either passed in (mode="vin") or discovered by the plate decode above.
+          The officer runs a plate and these unlock in place; no VIN typing, no
+          separate screen. */}
+      {effectiveVin !== '' && (
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => runLookup('vin-specs')} disabled={loading === 'vin-specs'} className="text-[11px] px-2 py-1 bg-surface-raised hover:bg-surface-hover border border-rmpg-700 disabled:opacity-50">
             {loading === 'vin-specs' ? <Loader2 size={12} className="animate-spin inline" /> : null} Specifications

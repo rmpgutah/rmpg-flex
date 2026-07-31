@@ -33,6 +33,15 @@ import type { CarxeLienTheftResult } from '../utils/carxe/types';
 import { CarxeConfigError, CarxeError, CarxeHttpError, CarxeRateLimitError, CarxeTimeoutError } from '../utils/carxe/errors';
 import { checkAndReserveCarxeCall } from '../utils/carxe/rateLimit';
 import { screenVehicle } from '../utils/intelScreen';
+import {
+  upsertVehicleFromCarxe,
+  fieldsFromPlateResult,
+  fieldsFromSpecsResult,
+  fieldsFromHistoryResult,
+  normalizeId,
+  type VehicleIdentity,
+} from '../utils/carxe/vehicleRecords';
+import type { CarxePlateResult, CarxeSpecsResult, CarxeHistoryResult } from '../utils/carxe/types';
 import { parseD1TimestampMs } from '../utils/fleetio/sync';
 import { log } from '../utils/logger';
 
@@ -43,6 +52,15 @@ const carxe = new Hono<Env>();
 const operational = requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher');
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** How long a CarsXE theft notification suppresses a duplicate for the SAME
+ *  (vehicle, recipient) pair. Deliberately equal to CACHE_TTL_MS: within the
+ *  cache window a re-pull returns a byte-identical cached payload, so a second
+ *  notification carries zero new information. Once the cache expires the next
+ *  pull is a genuinely fresh CarsXE assertion that the theft is still active,
+ *  and re-alerting is correct. Per-recipient, not global — a different officer
+ *  pulling the same VIN must still be warned. */
+const THEFT_NOTIFY_DEDUPE_MS = CACHE_TTL_MS;
 
 type CarxeEnv = {
   CARXE_API_KEY?: string;
@@ -208,23 +226,40 @@ function isActiveTheftEvent(eventText: string | undefined): boolean {
  *  created_at) for any critical hit. */
 async function recordCarxeTheftHit(
   db: D1Database,
-  vin: string,
+  identity: VehicleIdentity,
   lienTheft: CarxeLienTheftResult,
   userId: number | undefined,
 ): Promise<{ vehicleId: number | null; hits: unknown[] }> {
-  const existing = await queryFirst<{ id: number; flags: string | null }>(
+  const vin = normalizeId(identity.vin) ?? '';
+
+  // Resolve identity by VIN **or plate** and fill descriptive fields in one
+  // step. Previously this matched on `UPPER(vin) = ?` alone, which on live data
+  // (38/42 rows have no VIN) meant a theft lookup for a car already known by
+  // plate INSERTed a SECOND row — stamping is_stolen=1 on an orphan while the
+  // plate-keyed record officers see in the dossier stayed clean.
+  const { vehicleId } = await upsertVehicleFromCarxe(
     db,
-    'SELECT id, flags FROM vehicles_records WHERE UPPER(vin) = ?',
-    vin,
+    identity,
+    {
+      make: lienTheft.make ?? null,
+      model: lienTheft.model ?? null,
+      year: lienTheft.year ?? null,
+    },
+    'Created from CarsXE lien/theft lookup',
+  );
+
+  const existing = await queryFirst<{ flags: string | null }>(
+    db,
+    'SELECT flags FROM vehicles_records WHERE id = ?',
+    vehicleId,
   );
 
   const stolenStatus = 'Active theft (CarsXE)';
-  let vehicleId: number;
 
-  if (existing) {
+  {
     const flags = (() => {
       try {
-        const parsed = JSON.parse(existing.flags || '[]');
+        const parsed = JSON.parse(existing?.flags || '[]');
         return Array.isArray(parsed) ? parsed : [];
       } catch {
         return [];
@@ -233,36 +268,18 @@ async function recordCarxeTheftHit(
     if (!flags.some((f: any) => typeof f === 'object' && f?.type === 'carxe_theft')) {
       flags.push({ type: 'carxe_theft', source: 'carsxe_lien_theft', flagged_at: new Date().toISOString() });
     }
+    // is_stolen / stolen_status OVERWRITE rather than COALESCE-fill — unlike the
+    // descriptive columns above, this is an officer-safety signal and a stale
+    // blank must never win over a live active-theft finding.
     await execute(
       db,
       `UPDATE vehicles_records SET
-         is_stolen = 1, stolen_status = ?, flags = ?,
-         make = COALESCE(NULLIF(make,''), ?), model = COALESCE(NULLIF(model,''), ?),
-         year = COALESCE(year, ?), updated_at = datetime('now')
+         is_stolen = 1, stolen_status = ?, flags = ?, updated_at = datetime('now')
        WHERE id = ?`,
       stolenStatus,
       JSON.stringify(flags),
-      lienTheft.make ?? null,
-      lienTheft.model ?? null,
-      lienTheft.year ?? null,
-      existing.id,
+      vehicleId,
     );
-    vehicleId = existing.id;
-  } else {
-    const flags = [{ type: 'carxe_theft', source: 'carsxe_lien_theft', flagged_at: new Date().toISOString() }];
-    const r = await execute(
-      db,
-      `INSERT INTO vehicles_records (vin, make, model, year, is_stolen, stolen_status, flags, notes, updated_at)
-       VALUES (?, ?, ?, ?, 1, ?, ?, ?, datetime('now'))`,
-      vin,
-      lienTheft.make ?? null,
-      lienTheft.model ?? null,
-      lienTheft.year ?? null,
-      stolenStatus,
-      JSON.stringify(flags),
-      'Created from CarsXE lien/theft lookup',
-    );
-    vehicleId = Number(r.meta.last_row_id);
   }
 
   const screening = await screenVehicle(db, { vehicleId });
@@ -270,15 +287,51 @@ async function recordCarxeTheftHit(
   const critical = screening.hits.filter((h) => h.severity === 'critical');
   if (critical.length) {
     try {
-      await execute(
+      // Suppress a duplicate alert for the same (vehicle, recipient) inside the
+      // dedupe window. The flag/is_stolen writes above are already idempotent,
+      // but this INSERT was not: because the theft path deliberately runs on
+      // cache hits too (so a cached active-theft VIN still screens), every
+      // re-pull of the same VIN previously appended another notification row.
+      //
+      // The window is evaluated entirely in SQLite via datetime('now', ...) —
+      // both sides are UTC there. Doing it in JS would mean Date.parse()-ing a
+      // zone-less `datetime('now')` string, which reads as LOCAL time and skews
+      // the comparison on a non-UTC host (see CLAUDE.md / parseD1TimestampMs).
+      const dedupeHours = Math.max(1, Math.round(THEFT_NOTIFY_DEDUPE_MS / 3_600_000));
+      const recent = await queryFirst<{ id: number }>(
         db,
-        `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-         VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
-        `CARSXE THEFT HIT: VIN ${vin}`,
-        critical.map((h) => h.detail).join('; '),
+        `SELECT id FROM notifications
+          WHERE type = 'intel_screen'
+            AND entity_type = 'vehicle'
+            AND entity_id = ?
+            AND user_id IS ?
+            AND title = ?
+            AND created_at > datetime('now', ?)
+          LIMIT 1`,
         vehicleId,
         userId ?? null,
+        `CARSXE THEFT HIT: VIN ${vin}`,
+        `-${dedupeHours} hours`,
       );
+
+      if (recent) {
+        log.info('[carxe] theft notification suppressed as duplicate', {
+          vin,
+          vehicleId,
+          userId: userId ?? null,
+          existingNotificationId: recent.id,
+        });
+      } else {
+        await execute(
+          db,
+          `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+           VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
+          `CARSXE THEFT HIT: VIN ${vin}`,
+          critical.map((h) => h.detail).join('; '),
+          vehicleId,
+          userId ?? null,
+        );
+      }
     } catch (err: any) {
       log.error('[carxe] theft notification insert failed', { error: err?.message });
     }
@@ -300,28 +353,85 @@ carxe.post('/plate-lookup', operational, async (c) => {
     decodePlate(config, { plate, state }),
   );
   if ('response' in outcome) return outcome.response;
-  return c.json({ ok: true, cached: outcome.cached, result: outcome.result });
+
+  // Bridge the plate→VIN gap. This is the ONLY CarsXE endpoint the UI can
+  // reach (both call sites pass mode="plate"), and it previously wrote nothing
+  // to vehicles_records — so an officer ran a plate, saw make/model/VIN on
+  // screen, and the RMS learned nothing. Writing the decoded VIN onto the
+  // plate-keyed record is also what makes the VIN-keyed lookups (specs,
+  // lien/theft, history) resolvable at all on a fleet that is 90% VIN-less.
+  //
+  // Fill-only: upsertVehicleFromCarxe COALESCEs every column, so this can
+  // populate blanks but never overwrite officer-entered data.
+  const plateResult = outcome.result as CarxePlateResult;
+  let vehicle: { vehicleId: number; created: boolean; filled: number } | undefined;
+  try {
+    vehicle = await upsertVehicleFromCarxe(
+      outcome.db,
+      { plate, state, vin: plateResult.vin },
+      fieldsFromPlateResult(plateResult),
+      'Created from CarsXE plate lookup',
+    );
+  } catch (err: any) {
+    // A record-write failure must never fail the lookup the officer asked for —
+    // they still need the data on screen. Log and degrade.
+    log.error('[carxe] plate-lookup vehicle upsert failed', { plate, error: err?.message });
+  }
+
+  return c.json({
+    ok: true,
+    cached: outcome.cached,
+    result: outcome.result,
+    ...(vehicle ? { vehicle_record: vehicle } : {}),
+  });
 });
 
 carxe.post('/vin-specs', operational, async (c) => {
   const cfg = await resolveCarxeConfig(c);
   if ('response' in cfg) return cfg.response;
 
-  const body = await c.req.json<{ vin?: string }>().catch(() => ({} as { vin?: string }));
+  const body = await c.req.json<{ vin?: string; plate?: string; state?: string }>().catch(() => ({} as { vin?: string; plate?: string; state?: string }));
   const vin = (body.vin || '').trim().toUpperCase();
+  const plate = (body.plate || '').trim().toUpperCase() || undefined;
+  const state = (body.state || '').trim().toUpperCase() || undefined;
   if (!vin) return c.json({ ok: false, code: 'invalid_input', message: 'vin is required' }, 400);
 
   const outcome = await runCarxeLookup(c, cfg.config, 'vin_specs', { vin }, (config) => getSpecifications(config, { vin }));
   if ('response' in outcome) return outcome.response;
-  return c.json({ ok: true, cached: outcome.cached, result: outcome.result });
+
+  // Specs carry exactly the columns vehicles_records already has and rarely has
+  // filled: trim, body_style, engine_type, fuel_type, transmission, drive_type,
+  // doors. `plate`/`state` are optional and let the UI resolve onto the
+  // plate-keyed record it's already showing rather than a VIN-only row.
+  const specsResult = outcome.result as CarxeSpecsResult;
+  let vehicle: { vehicleId: number; created: boolean; filled: number } | undefined;
+  try {
+    vehicle = await upsertVehicleFromCarxe(
+      outcome.db,
+      { vin, plate, state },
+      fieldsFromSpecsResult(specsResult),
+      'Created from CarsXE VIN specifications lookup',
+    );
+  } catch (err: any) {
+    log.error('[carxe] vin-specs vehicle upsert failed', { vin, error: err?.message });
+  }
+
+  return c.json({
+    ok: true,
+    cached: outcome.cached,
+    result: outcome.result,
+    ...(vehicle ? { vehicle_record: vehicle } : {}),
+  });
 });
 
 carxe.post('/lien-theft', operational, async (c) => {
   const cfg = await resolveCarxeConfig(c);
   if ('response' in cfg) return cfg.response;
 
-  const body = await c.req.json<{ vin?: string }>().catch(() => ({} as { vin?: string }));
+  const body = await c.req.json<{ vin?: string; plate?: string; state?: string }>().catch(() => ({} as { vin?: string; plate?: string; state?: string }));
   const vin = (body.vin || '').trim().toUpperCase();
+  const plate = (body.plate || '').trim().toUpperCase() || undefined;
+  const state = (body.state || '').trim().toUpperCase() || undefined;
   if (!vin) return c.json({ ok: false, code: 'invalid_input', message: 'vin is required' }, 400);
 
   const outcome = await runCarxeLookup(c, cfg.config, 'lien_theft', { vin }, (config) => getLienTheft(config, { vin }));
@@ -329,6 +439,10 @@ carxe.post('/lien-theft', operational, async (c) => {
 
   const { result, cached, db } = outcome;
   const lienTheft = result as CarxeLienTheftResult;
+  // `plate`/`state` are optional context from the UI. They matter because the
+  // theft write resolves identity by VIN *or* plate — without them, a VIN-only
+  // lookup against a plate-keyed record can't find its target.
+  const identity: VehicleIdentity = { vin, plate, state };
 
   // Wire a genuine active-theft flag into the same officer-safety screening
   // path Roboflow ALPR uses. Non-theft liens and cleared/recovered theft
@@ -339,23 +453,79 @@ carxe.post('/lien-theft', operational, async (c) => {
   let screening: { vehicleId: number | null; hits: unknown[] } | undefined;
   if (hasActiveTheft) {
     const user = c.get('user') as { id?: number } | undefined;
-    screening = await recordCarxeTheftHit(db, vin, lienTheft, user?.id);
+    screening = await recordCarxeTheftHit(db, identity, lienTheft, user?.id);
   }
 
-  return c.json({ ok: true, cached, result, ...(screening ? { screening } : {}) });
+  // Non-theft liens: the spec says these are "stored as informational data
+  // only — no alert", but nothing ever persisted them beyond the raw
+  // carxe_lookups cache blob. vehicles_records.lien_holder is exactly the
+  // column for it, and CarsXE hands us `lienholder` per event. Fill-only, so
+  // an officer-recorded lienholder is never overwritten.
+  const lienholder = (lienTheft.events ?? [])
+    .map((e) => (e.lienholder || '').trim())
+    .find((l) => l !== '');
+  let lienRecord: { vehicleId: number; created: boolean; filled: number } | undefined;
+  if (lienholder && !hasActiveTheft) {
+    try {
+      lienRecord = await upsertVehicleFromCarxe(
+        db,
+        identity,
+        { lien_holder: lienholder, make: lienTheft.make ?? null, model: lienTheft.model ?? null, year: lienTheft.year ?? null },
+        'Created from CarsXE lien/theft lookup',
+      );
+    } catch (err: any) {
+      log.error('[carxe] lien holder record write failed', { vin, error: err?.message });
+    }
+  }
+
+  return c.json({
+    ok: true,
+    cached,
+    result,
+    ...(screening ? { screening } : {}),
+    ...(lienRecord ? { vehicle_record: lienRecord } : {}),
+  });
 });
 
 carxe.post('/history', operational, async (c) => {
   const cfg = await resolveCarxeConfig(c);
   if ('response' in cfg) return cfg.response;
 
-  const body = await c.req.json<{ vin?: string }>().catch(() => ({} as { vin?: string }));
+  const body = await c.req.json<{ vin?: string; plate?: string; state?: string }>().catch(() => ({} as { vin?: string; plate?: string; state?: string }));
   const vin = (body.vin || '').trim().toUpperCase();
+  const plate = (body.plate || '').trim().toUpperCase() || undefined;
+  const state = (body.state || '').trim().toUpperCase() || undefined;
   if (!vin) return c.json({ ok: false, code: 'invalid_input', message: 'vin is required' }, 400);
 
   const outcome = await runCarxeLookup(c, cfg.config, 'history', { vin }, (config) => getHistory(config, { vin }));
   if ('response' in outcome) return outcome.response;
-  return c.json({ ok: true, cached: outcome.cached, result: outcome.result });
+
+  // Title brands (SALVAGE / FLOOD / LEMON) and title status are records-relevant
+  // facts vehicles_records has a column for. Informational only — a salvage
+  // title is not an officer-safety alert, so unlike the theft path this raises
+  // no notification and never touches is_stolen.
+  const historyResult = outcome.result as CarxeHistoryResult;
+  let vehicle: { vehicleId: number; created: boolean; filled: number } | undefined;
+  try {
+    const fields = fieldsFromHistoryResult(historyResult);
+    if (fields.title_status) {
+      vehicle = await upsertVehicleFromCarxe(
+        outcome.db,
+        { vin, plate, state },
+        fields,
+        'Created from CarsXE history lookup',
+      );
+    }
+  } catch (err: any) {
+    log.error('[carxe] history vehicle upsert failed', { vin, error: err?.message });
+  }
+
+  return c.json({
+    ok: true,
+    cached: outcome.cached,
+    result: outcome.result,
+    ...(vehicle ? { vehicle_record: vehicle } : {}),
+  });
 });
 
 carxe.get('/lookups', operational, async (c) => {

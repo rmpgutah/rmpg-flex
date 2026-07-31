@@ -824,12 +824,8 @@ dlRecords.get('/deep-sweep', async (c) => {
                  last_compliance_check, last_compliance_result, expiration_date
           FROM offender_alerts WHERE person_id = ? ORDER BY created_at DESC LIMIT 10`, personId)),
         soft(() => query<Record<string, any>>(db, `
-          -- No "status" column exists on vehicles_records (only stolen_status /
-          -- insurance_status / tow_status). It was a paste artifact from the
-          -- sibling citations/trespass queries; soft() swallowed the resulting
-          -- "no such column" so this block always returned empty. No consumer
-          -- reads it — DlSearchPage renders is_stolen — so it is simply dropped.
-          SELECT id, plate_number, state, make, model, color, year, is_stolen
+          SELECT id, plate_number, state, make, model, color, year, is_stolen,
+                 stolen_status AS status
           FROM vehicles_records WHERE owner_person_id = ? LIMIT 10`, personId)),
         soft(() => query<Record<string, any>>(db, `
           SELECT id, fi_number, interview_date, date, location, contact_reason, gang_affiliation

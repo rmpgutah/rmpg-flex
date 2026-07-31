@@ -184,8 +184,8 @@ inspections.post('/by-token/:token', async (c) => {
         const detail = JSON.stringify({ failed_items: escalations, inspection_id: inspectionId, phase });
         const res = await execute(db,
           `INSERT INTO fleet_maintenance
-              (vehicle_id, maintenance_date, performed_by, description, notes,
-               status, maintenance_type, attachments_json)
+              (vehicle_id, service_date, performed_by, description, notes,
+               status, service_type, attachments_json)
            VALUES (?, date('now'), ?, ?, ?, 'requested', 'inspection_failure', ?)`,
           entry.vehicle_id, entry.officer_id, summary, detail,
           // attachments_json: thumbnail list — pull any per-item photo keys.

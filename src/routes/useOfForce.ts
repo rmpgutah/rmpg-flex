@@ -200,16 +200,14 @@ uof.get('/:id/footage', async (c) => {
     let bodycam: Record<string, unknown>[] = [];
     if (incidentId != null) {
       bodycam = await query<Record<string, unknown>>(db,
-        // bodycam_videos stores officer_id, not officer_name — selecting the
-        // latter threw "no such column" and the .catch below swallowed it, so
-        // the BWC list silently came back empty. Resolve the name via users.
-        `SELECT b.id, b.title, b.classification, b.retention_status, b.recorded_at,
-                b.duration_seconds, b.file_size, u.full_name AS officer_name,
-                b.case_number, b.created_at
-         FROM bodycam_videos b
-         LEFT JOIN users u ON u.id = b.officer_id
-         WHERE b.incident_id = ?
-         ORDER BY b.recorded_at DESC`, incidentId).catch(() => []);
+        // bodycam_videos has no officer_name — resolve it off users.full_name.
+        `SELECT v.id, v.title, v.classification, v.retention_status, v.recorded_at,
+                v.duration_seconds, v.file_size, u.full_name AS officer_name,
+                v.case_number, v.created_at
+         FROM bodycam_videos v
+         LEFT JOIN users u ON u.id = v.officer_id
+         WHERE v.incident_id = ?
+         ORDER BY v.recorded_at DESC`, incidentId).catch(() => []);
     }
     return c.json({ flexcam: flexcam || [], bodycam: bodycam || [] });
   } catch (err) {

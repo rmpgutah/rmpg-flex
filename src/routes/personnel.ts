@@ -2415,19 +2415,12 @@ personnel.get('/training-materials', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, `
-      -- file_name / mime_type / file_size do not exist on company_documents;
-      -- the uploaded file's metadata lives in attachments, keyed by file_id.
-      -- Selecting them directly threw "no such column" and the catch below
-      -- turned the whole training-materials list into an empty response.
-      SELECT cd.id, cd.title, cd.description, cd.category, cd.content_type,
-             cd.external_url, cd.file_id,
-             a.original_name AS file_name, a.mime_type, a.file_size,
-             cd.is_required_reading, cd.published, cd.created_at
-        FROM company_documents cd
-        LEFT JOIN attachments a ON a.file_id = cd.file_id
-       WHERE cd.published = 1
-         AND cd.category IN ('training_manual', 'reference', 'sop', 'procedure')
-       ORDER BY cd.is_required_reading DESC, cd.created_at DESC
+      SELECT id, title, description, category, content_type, external_url,
+             file_id, is_required_reading, published, created_at
+        FROM company_documents
+       WHERE published = 1
+         AND category IN ('training_manual', 'reference', 'sop', 'procedure')
+       ORDER BY is_required_reading DESC, created_at DESC
        LIMIT 100
     `);
     return c.json({ data: rows });
