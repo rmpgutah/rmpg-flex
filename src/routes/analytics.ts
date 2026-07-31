@@ -22,6 +22,7 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { requireRole } from '../middleware/auth';
 import { dbErrorResponse } from '../utils/dbErrors';
+import { notConfigured } from '../utils/notConfigured';
 import {
   parseWarehouse,
   extractRows,
@@ -86,10 +87,17 @@ async function runR2Sql(env: Env['Bindings'], sql: string): Promise<Record<strin
 /** Map a thrown R2 SQL error to an HTTP response. */
 function sqlErrorResponse(c: Context<Env>, err: unknown): Response {
   if (err instanceof R2SqlConfigError) {
-    return c.json(
-      { error: 'analytics warehouse not configured',
-        hint: 'Set R2_ANALYTICS_WAREHOUSE + the R2_SQL_TOKEN secret (see wrangler.toml).' },
-      503,
+    // 200 + { ok:false, skipped:true, code:'not_configured' } — NOT 503. The
+    // R2 analytics warehouse is an optional, unprovisioned integration, which
+    // is a stable configuration gap rather than an outage. Observed live on
+    // 2026-07-30: six /api/analytics/* endpoints returned a hard 503 on the
+    // Admin, CRM and several records pages. Because apiFetch RETRIES on 5xx
+    // (see src/utils/notConfigured.ts), each one fired twice and produced a red
+    // console error every time, so a missing secret read as a site outage.
+    return notConfigured(
+      c,
+      'analytics warehouse not configured',
+      { hint: 'Set R2_ANALYTICS_WAREHOUSE + the R2_SQL_TOKEN secret (see wrangler.toml).' },
     );
   }
   if (err instanceof R2SqlHttpError) {

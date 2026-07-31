@@ -204,13 +204,54 @@ bucket_name = "kiosk-linux-devices"
 #        Sharing the bucket means the SAME R2_ANALYTICS_WAREHOUSE + R2_SQL_TOKEN
 #        query BOTH alpr_reads and flex_events.
 #
+# ── PROVISIONED 2026-07-30 ───────────────────────────────────────────────────
+# Done already (non-interactively — `wrangler pipelines setup` is interactive
+# and cannot be driven from CI/an agent loop):
+#   ✅ R2 bucket `rmpg-flex-analytics`            (wrangler r2 bucket create)
+#   ✅ R2 Data Catalog enabled on that bucket     (wrangler r2 bucket catalog enable)
+#   ✅ Stream `rmpg_alpr_reads`   id 940a2ab71ee54ace9e534fd91e342f89
+#   ✅ Stream `rmpg_flex_events`  id 622585b17623479190bbecb141d606ce
+#      Schemas are version-controlled at scripts/analytics/*.schema.json
+#   ✅ R2_ANALYTICS_WAREHOUSE var set in [vars] below.
+#
+# REMAINING — all three need a Cloudflare API token, which must be minted in the
+# dashboard (there is no wrangler command for it):
+#
+#   1. Create an API token with `R2 Data Catalog (edit)` + `R2 (edit)` on the
+#      rmpg-flex-analytics bucket. Then create one sink per Iceberg table:
+#        npx wrangler pipelines sinks create rmpg_alpr_sink \
+#          --type r2-data-catalog --bucket rmpg-flex-analytics \
+#          --namespace default --table alpr_reads \
+#          --catalog-token <TOKEN> --roll-interval 300
+#        npx wrangler pipelines sinks create rmpg_events_sink \
+#          --type r2-data-catalog --bucket rmpg-flex-analytics \
+#          --namespace default --table flex_events \
+#          --catalog-token <TOKEN> --roll-interval 300
+#
+#   2. Create one pipeline per stream→sink pair:
+#        npx wrangler pipelines create rmpg_alpr_pipeline \
+#          --sql "INSERT INTO rmpg_alpr_sink SELECT * FROM rmpg_alpr_reads"
+#        npx wrangler pipelines create rmpg_events_pipeline \
+#          --sql "INSERT INTO rmpg_events_sink SELECT * FROM rmpg_flex_events"
+#
+#   3. Create a SECOND, read-only token (`R2 SQL (read)` + `R2 Data Catalog
+#      (read)` + `R2 (read)`) for querying, then:
+#        npx wrangler secret put R2_SQL_TOKEN
+#
+# Then UNCOMMENT the two binding blocks below and redeploy. Verify with
+# GET /api/analytics/health → query_ready:true.
+#
+# Leave them commented until the sinks + pipelines exist: emitAnalytics() would
+# otherwise write into a stream with no sink, and the rows would be discarded
+# rather than landing in Iceberg — silent data loss that looks like success.
+#
 # [[pipelines]]
 # binding = "ANALYTICS"
-# stream  = "<ALPR_STREAM_ID>"
+# stream  = "940a2ab71ee54ace9e534fd91e342f89"
 #
 # [[pipelines]]
 # binding = "EVENTS"
-# stream  = "<FLEX_EVENTS_STREAM_ID>"
+# stream  = "622585b17623479190bbecb141d606ce"
 
 # ─── PDF Tools Container (DISABLED) ───────────────────────
 # The PdfToolsContainer sidecar is intentionally OFF in prod.
@@ -313,10 +354,14 @@ SERVER_TIMEZONE = "America/Denver"
 # secret. Used by src/utils/r2Presign.ts to build the presigned-PUT host
 # for both R2 buckets (rmpg-flex-uploads, system-essentials).
 R2_ACCOUNT_ID = "5caa95c5789f4fc4ed3934b2a2c29ed4"
-# Analytics warehouse id from `wrangler pipelines setup` (= "<account_id>_<bucket>").
-# Uncomment + set once provisioned; /api/analytics 503s until then. The bearer
-# token is the R2_SQL_TOKEN secret (set via `wrangler secret put`).
-# R2_ANALYTICS_WAREHOUSE = "<account_id>_rmpg-flex-analytics"
+# Analytics lakehouse warehouse id (= "<account_id>_<bucket>"). Provisioned
+# 2026-07-30: R2 bucket `rmpg-flex-analytics` created (location wnam) and R2
+# Data Catalog enabled on it.
+#   Catalog URI: https://catalog.cloudflarestorage.com/5caa95c5789f4fc4ed3934b2a2c29ed4/rmpg-flex-analytics
+# Setting this alone is INERT and safe: src/routes/analytics.ts requires BOTH
+# this var and the R2_SQL_TOKEN secret, and returns 200 {ok:false,
+# code:'not_configured'} until both are present.
+R2_ANALYTICS_WAREHOUSE = "5caa95c5789f4fc4ed3934b2a2c29ed4_rmpg-flex-analytics"
 # Fleet.io integration (PR 1+). Base URL of the Fleet.io REST API v1.
 # Override in dev/test via .dev.vars. Set FLEETIO_API_KEY, FLEETIO_ACCOUNT_TOKEN,
 # and FLEETIO_WEBHOOK_SECRET via `npx wrangler secret put <NAME>` (PR 4 adds the

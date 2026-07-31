@@ -4044,7 +4044,19 @@ fleet.get('/financial/budget-forecast', async (c) => { try { const db = getDb(c.
 // 311: Multi-year budget planning
 fleet.get('/financial/multi-year-plan', async (c) => { try { const db = getDb(c.env); const years = [new Date().getFullYear(), new Date().getFullYear() + 1, new Date().getFullYear() + 2]; const plan = []; for (const y of years) { const fuel = (await queryFirst<{ cost: number }>(db, "SELECT COALESCE(SUM(total_cost),0) as cost FROM fleet_fuel_log WHERE strftime('%Y', fuel_date) = ?", String(y - 1)))?.cost ?? 50000; const maint = (await queryFirst<{ cost: number }>(db, "SELECT COALESCE(SUM(cost),0) as cost FROM fleet_maintenance WHERE strftime('%Y', performed_at) = ?", String(y - 1)))?.cost ?? 20000; plan.push({ year: y, projected_fuel: Math.round(fuel * 1.03), projected_maintenance: Math.round(maint * 1.03), projected_total: Math.round((fuel + maint) * 1.03) }); } return c.json(plan); } catch (err) { return c.json([]); } });
 // 312: Cost per mile trending
-fleet.get('/financial/cpm-trend', async (c) => { try { const db = getDb(c.env); const rows = await query<Record<string, unknown>>(db, "SELECT strftime('%Y-%m', fuel_date) as month, COALESCE(SUM(total_cost),0) as fuel_cost, 0 as maint_cost, COALESCE(MAX(odometer) - MIN(odometer),0) as miles FROM fleet_fuel_log WHERE fuel_date >= datetime('now', '-12 months') GROUP BY month ORDER BY month"); return c.json(rows.map((r: any) => ({ ...r, cpm: r.miles > 0 ? Math.round((r.fuel_cost / r.miles) * 100) / 100 : 0 }))); } catch (err) { return c.json([]); } });
+// Miles must be a PER-VEHICLE delta, summed — not a fleet-wide MAX-MIN.
+// `odometer` is a reading, so a single MAX-MIN grouped by month alone is the
+// spread between the highest- and lowest-odometer VEHICLE, not distance driven.
+// That happens to return the correct number today only because the live fleet
+// has exactly one vehicle logging fuel in any given month (verified against
+// live D1) — it silently becomes wrong the first month a second vehicle fuels.
+// The inner GROUP BY month, vehicle_id fixes that.
+//
+// Known conservative limitation: a per-month MAX-MIN ignores distance between
+// the last fill of one month and the first of the next, and a vehicle with a
+// single fill-up in a month contributes 0. That understates miles and so
+// OVERstates cost-per-mile — the safe direction for a budget figure.
+fleet.get('/financial/cpm-trend', async (c) => { try { const db = getDb(c.env); const rows = await query<Record<string, unknown>>(db, "SELECT month, COALESCE(SUM(fuel_cost),0) as fuel_cost, 0 as maint_cost, COALESCE(SUM(miles),0) as miles FROM (SELECT strftime('%Y-%m', fuel_date) as month, vehicle_id, COALESCE(SUM(total_cost),0) as fuel_cost, MAX(odometer) - MIN(odometer) as miles FROM fleet_fuel_log WHERE fuel_date >= datetime('now', '-12 months') AND odometer IS NOT NULL GROUP BY month, vehicle_id) GROUP BY month ORDER BY month"); return c.json(rows.map((r: any) => ({ ...r, cpm: r.miles > 0 ? Math.round((r.fuel_cost / r.miles) * 100) / 100 : 0 }))); } catch (err) { return c.json([]); } });
 // 313: Vehicle ROI calculator
 fleet.post('/financial/roi-calculator', async (c) => { try { const body = await c.req.json<Record<string, unknown>>(); const purchasePrice = (body.purchase_price as number) || 0; const annualRevenue = (body.annual_revenue as number) || 0; const annualCost = (body.annual_cost as number) || 0; const years = (body.years as number) || 5; const netAnnual = annualRevenue - annualCost; const totalReturn = netAnnual * years; const roi = purchasePrice > 0 ? ((totalReturn - purchasePrice) / purchasePrice) * 100 : 0; const paybackMonths = netAnnual > 0 ? Math.round((purchasePrice / netAnnual) * 12) : 0; return c.json({ total_return: totalReturn, roi_pct: Math.round(roi), payback_months: paybackMonths, net_annual: netAnnual }); } catch (err) {
   logger.error('POST /financial/roi-calculator failed', { src: 'src/routes/fleet.ts' }, err); return c.json({ error: 'Failed' }, 500); } });

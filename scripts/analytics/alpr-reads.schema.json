@@ -1,0 +1,26 @@
+{
+  "fields": [
+    { "name": "event_type", "type": "string", "required": true },
+    { "name": "occurred_at", "type": "string", "required": true },
+    { "name": "captured_by", "type": "int64", "required": false },
+    { "name": "source", "type": "string", "required": false },
+    { "name": "capture_id", "type": "int64", "required": false },
+    { "name": "call_id", "type": "int64", "required": false },
+    { "name": "incident_id", "type": "int64", "required": false },
+    { "name": "plate", "type": "string", "required": false },
+    { "name": "raw_plate", "type": "string", "required": false },
+    { "name": "state", "type": "string", "required": false },
+    { "name": "make", "type": "string", "required": false },
+    { "name": "model", "type": "string", "required": false },
+    { "name": "color", "type": "string", "required": false },
+    { "name": "vehicle_type", "type": "string", "required": false },
+    { "name": "year", "type": "string", "required": false },
+    { "name": "trust", "type": "float64", "required": false },
+    { "name": "vehicle_record_id", "type": "int64", "required": false },
+    { "name": "lat", "type": "float64", "required": false },
+    { "name": "lng", "type": "float64", "required": false },
+    { "name": "location_text", "type": "string", "required": false },
+    { "name": "hit_count", "type": "int64", "required": false },
+    { "name": "critical_hit", "type": "bool", "required": false }
+  ]
+}
