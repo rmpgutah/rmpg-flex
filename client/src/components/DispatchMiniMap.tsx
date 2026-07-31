@@ -480,7 +480,18 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       callMarkerRef.current = null;
       unitMarkersRef.current.forEach((m) => m.remove());
       unitMarkersRef.current.clear();
-      if (mapRef.current) unregisterMapInstance(mapRef.current);
+      // unregisterMapInstance() only drops our bookkeeping entry — it does NOT
+      // release the map. Mapbox holds a WebGL context, a canvas, and
+      // window-level listeners until map.remove() is called, so leaving it out
+      // leaked a live GL context every time this mini-map unmounted (it is
+      // mounted per dispatch call, so the count climbs fast). Browsers cap
+      // WebGL contexts (~16 in Chrome) and silently kill the OLDEST on
+      // overflow, so the damage surfaces as unrelated maps going blank.
+      if (mapRef.current) {
+        unregisterMapInstance(mapRef.current);
+        try { mapRef.current.remove(); } catch { /* already gone */ }
+        mapRef.current = null;
+      }
     };
   }, []);
 

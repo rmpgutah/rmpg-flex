@@ -72,7 +72,7 @@ import { useDispatchNotesActions } from './hooks/useDispatchNotesActions';
 import { useDispatchMultiUnitActions } from './hooks/useDispatchMultiUnitActions';
 import {
   announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent,
-  announceEscalation, announceCallUpdate, announceUnitAssignment,
+  announceEscalation, announceCallUpdate, speakDispatcherResponse, announceUnitAssignment,
   announceCallArchived, announceTime, announceAllClear, announceAcknowledgment,
   announceStatusChange, announceReturnVisit, announceServeComplete,
   announceCallStack, announceShiftSummary, announceCourtDeadline,
@@ -7130,7 +7130,7 @@ export default function DispatchPage() {
                 } else {
                   const active = units.filter(u => u.status !== 'off_duty');
                   const msg = `${active.length} units active. ${active.filter(u => u.status === 'available').length} available.`;
-                  announceCallUpdate('', msg);
+                  speakDispatcherResponse(msg);
                 }
                 break;
               }
@@ -7147,16 +7147,16 @@ export default function DispatchPage() {
                 const unit = units.find(u => u.call_sign === action.callSign);
                 if (unit) {
                   const statusLabel = unit.status === 'enroute' ? 'en route' : unit.status.replace(/_/g, ' ').toUpperCase();
-                  announceCallUpdate('', `Unit ${unit.call_sign} is currently ${statusLabel}`);
+                  speakDispatcherResponse(`Unit ${unit.call_sign} is currently ${statusLabel}`);
                 }
                 break;
               }
               case 'voice_weather':
                 // Voice weather — use selected call location weather if available
                 if (selectedCall?.weather_conditions) {
-                  announceCallUpdate('', `Weather conditions: ${selectedCall.weather_conditions}`);
+                  speakDispatcherResponse(`Weather conditions: ${selectedCall.weather_conditions}`);
                 } else {
-                  announceCallUpdate('', 'No weather data available for current location');
+                  speakDispatcherResponse('No weather data available for current location');
                 }
                 break;
               case 'voice_time':
@@ -7199,9 +7199,9 @@ export default function DispatchPage() {
                 if (unit && unit.current_call_id) {
                   const call = calls.find(c => c.id === String(unit.current_call_id));
                   const loc = call?.location || 'unknown location';
-                  announceCallUpdate('', `Unit ${unit.call_sign} last reported at ${loc}. Status: ${unit.status.replace(/_/g, ' ').toUpperCase()}.`);
+                  speakDispatcherResponse(`Unit ${unit.call_sign} last reported at ${loc}. Status: ${unit.status.replace(/_/g, ' ').toUpperCase()}.`);
                 } else if (unit) {
-                  announceCallUpdate('', `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ').toUpperCase()}. No active call assigned.`);
+                  speakDispatcherResponse(`Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ').toUpperCase()}. No active call assigned.`);
                 }
                 break;
               }
@@ -7245,7 +7245,7 @@ export default function DispatchPage() {
                       .then((full) => announceCourtDeadline(caseNum, hoursLeft, full?.process_served_to || call.caller_name))
                       .catch(() => announceCourtDeadline(caseNum, hoursLeft, call.caller_name));
                   } else {
-                    announceCallUpdate('', `Call ${call.call_number} has not been cleared or closed yet. No deadline active.`);
+                    speakDispatcherResponse(`Call ${call.call_number} has not been cleared or closed yet. No deadline active.`);
                   }
                 }
                 break;
@@ -7261,10 +7261,10 @@ export default function DispatchPage() {
                     const unitNames = units.filter(u => unitSet.has(String(u.id))).map(u => u.call_sign);
                     announceCallStack(stacked.length, selectedCall.location, unitNames);
                   } else {
-                    announceCallUpdate('', `No stacked calls at ${selectedCall.location}.`);
+                    speakDispatcherResponse(`No stacked calls at ${selectedCall.location}.`);
                   }
                 } else {
-                  announceCallUpdate('', 'No call selected. Select a call to check for stacked calls.');
+                  speakDispatcherResponse('No call selected. Select a call to check for stacked calls.');
                 }
                 break;
               }
@@ -7275,17 +7275,17 @@ export default function DispatchPage() {
                 const enr = active.filter(u => u.status === 'enroute').length;
                 const ons = active.filter(u => u.status === 'onscene').length;
                 const busy = active.filter(u => u.status === 'busy').length;
-                announceCallUpdate('', `${active.length} units active. ${avail} available, ${enr} en route, ${ons} on scene, ${busy} busy.`);
+                speakDispatcherResponse(`${active.length} units active. ${avail} available, ${enr} en route, ${ons} on scene, ${busy} busy.`);
                 break;
               }
               case 'voice_pending': {
                 // Announce pending calls
                 const pending = calls.filter(c => c.status === 'pending');
                 if (pending.length === 0) {
-                  announceCallUpdate('', 'No pending calls.');
+                  speakDispatcherResponse('No pending calls.');
                 } else {
                   const details = pending.slice(0, 5).map(c => `${c.call_number}, ${c.incident_type?.replace(/_/g, ' ').toUpperCase() || 'unknown'}`).join('. ');
-                  announceCallUpdate('', `${pending.length} pending calls. ${details}.`);
+                  speakDispatcherResponse(`${pending.length} pending calls. ${details}.`);
                 }
                 break;
               }
@@ -7296,7 +7296,7 @@ export default function DispatchPage() {
                 const p2 = active.filter(c => c.priority === 'P2').length;
                 const p3 = active.filter(c => c.priority === 'P3').length;
                 const p4 = active.filter(c => c.priority === 'P4').length;
-                announceCallUpdate('', `Priority breakdown. ${p1} priority 1. ${p2} priority 2. ${p3} priority 3. ${p4} priority 4.`);
+                speakDispatcherResponse(`Priority breakdown. ${p1} priority 1. ${p2} priority 2. ${p3} priority 3. ${p4} priority 4.`);
                 break;
               }
             }

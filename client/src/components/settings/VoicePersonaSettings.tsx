@@ -1,20 +1,25 @@
 // ============================================================
 // Voice Persona Settings — user-facing tab inside UserProfileModal.
-// Lets an officer/dispatcher pick from 4 curated Edge-TTS voices,
-// adjust rate/pitch, choose a terseness mode, and preview the result.
+// Lets an officer/dispatcher pick a dispatcher voice, adjust rate/pitch,
+// choose a terseness mode, and preview the result.
 // Backed by useVoicePersona (localStorage + /api/voice-persona).
+//
+// ⚠️ Voices come from utils/voiceCatalog — do NOT reintroduce a local list.
+// This component used to carry its own 4-entry array of Edge-TTS ids
+// ('en-US-JennyNeural', …) which differed from the SettingsPage list AND
+// was invalid for the Aura-2 server, so every pick here silently coerced to
+// the default. One catalog, one source of truth.
 // ============================================================
 
 import { Volume2 } from 'lucide-react';
 import { useVoicePersona } from '../../hooks/useVoicePersona';
 import { speak } from '../../utils/edgeTTS';
+import { VOICE_CATALOG } from '../../utils/voiceCatalog';
 
-const VOICES: Array<{ id: string; label: string }> = [
-  { id: 'en-US-JennyNeural', label: 'Female — Calm' },
-  { id: 'en-US-AriaNeural',  label: 'Female — Crisp' },
-  { id: 'en-US-GuyNeural',   label: 'Male — Baritone' },
-  { id: 'en-US-DavisNeural', label: 'Male — Tactical' },
-];
+const VOICES: Array<{ id: string; label: string }> = VOICE_CATALOG.map((v) => ({
+  id: v.id,
+  label: `${v.gender === 'female' ? 'Female' : 'Male'} — ${v.label}`,
+}));
 
 const SAMPLE_LINE =
   'Priority one domestic at 123 Main Street, Delta 2-14, 3 Adam responding.';

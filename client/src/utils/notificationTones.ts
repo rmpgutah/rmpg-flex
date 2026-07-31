@@ -55,11 +55,36 @@ export function setNotificationSoundEnabled(enabled: boolean): void {
   }
 }
 
-export function playNotificationTone(priority?: string): void {
+/**
+ * Play the notification tone and, when a detail string is supplied, follow it
+ * with the automated station-PA voice.
+ *
+ * Two independent gates:
+ *  - the TONE honours rmpg_notification_sounds_<user-id> (this module's own
+ *    per-user toggle, checked above)
+ *  - the SPEECH honours the 'notification' VoiceEventCategory
+ * So an operator can keep the tone and mute the voice, or the reverse.
+ *
+ * Tone mapping is unchanged — these are Motorola library tones:
+ *   critical → emergency_three (APX emergency warble)
+ *   high     → alert           (P25 three-pip attention getter)
+ *   normal   → info            (MDT acknowledge pip)
+ */
+export function playNotificationTone(priority?: string, detail?: string): void {
   if (!isNotificationSoundEnabled()) return;
   try {
     if (priority === 'critical') playSound('emergency_three');
     else if (priority === 'high') playSound('alert');
     else playSound('info');
   } catch { /* audio is a nicety */ }
+
+  // Voice is additive and separately gated — a tone failure must not suppress
+  // the announcement, and a voice failure must not suppress the tone.
+  // Dynamic import avoids a static notificationTones -> voiceAlerts cycle
+  // (voiceAlerts already imports playSound from dispatchTones).
+  if (detail && detail.trim()) {
+    void import('./voiceAlerts')
+      .then((m) => m.announceNotification(priority, detail))
+      .catch(() => { /* voice module unavailable; the tone already played */ });
+  }
 }

@@ -108,8 +108,12 @@ export function nackForApiFailure(method: string | undefined, url: string, statu
     const now = Date.now();
     if (now - lastNack < THROTTLE_MS) return;
     lastNack = now;
-    // error.wav = the sampled console NACK bonk (gain matches the ACKs).
-    startSoundAsset('error', 0.22);
+    // ui_error.wav = the system NACK — descending reed pair 368.5 -> 330.5 Hz
+    // (Reed Group 1, tones 2 -> 0). NOT 'error', which is the Motorola
+    // dispatch library's sawtooth NACK: one filename, two owners, and the
+    // dispatch library wins because it renders last. Separate asset since
+    // 2026-07-31 so the API-failure sound and the radio NACK are distinct.
+    startSoundAsset('ui_error', 0.22);
   } catch {
     // Audio is a nicety — never let it break error handling
   }
