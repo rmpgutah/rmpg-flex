@@ -361,9 +361,21 @@ export default function FleetPage() {
     if (showPretripModal) pretripFirstItemRef.current?.focus();
   }, [showPretripModal]);
 
-  // Snapshot form as clean baseline after modal opens and form is populated
+  // Snapshot form as clean baseline after modal opens and form is populated.
+  //
+  // Every form needs this, not just the vehicle one. `useFormDraft.isDirty` is
+  // `isActive && initialRef.current !== '' && <changed>`, and `initialRef` is
+  // written ONLY by snapshot() — so a form that never snapshots is permanently
+  // reported clean. Before this covered all four, an officer could fill in a
+  // maintenance, fuel or inspection form and lose it silently: no
+  // UnsavedChangesGuard on navigation, no FloatingSaveBar, no "UNSAVED" badge,
+  // and the modals' guardedClose skipped its confirm so a stray backdrop click
+  // discarded the entry outright.
   useEffect(() => {
     if (modal === 'new_vehicle' || modal === 'edit_vehicle') v.snapshot();
+    else if (modal === 'log_maintenance' || modal === 'edit_maintenance') m.snapshot();
+    else if (modal === 'log_fuel' || modal === 'edit_fuel') f.snapshot();
+    else if (modal === 'new_inspection' || modal === 'edit_inspection') i.snapshot();
   }, [modal]);
 
   // Combined dirty state for any open form
