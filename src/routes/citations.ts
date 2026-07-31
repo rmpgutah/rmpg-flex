@@ -256,15 +256,11 @@ citations.get('/calculate-fine', async (c) => {
     const type = c.req.query('type') || 'traffic';
     let baseFine = 0;
     if (statuteId) {
-      // `citation_fine`, NOT `default_fine`: utah_statutes has no
-      // `default_fine` column, so this SELECT threw "no such column" on every
-      // call. The .catch(() => null) made it silent, leaving baseFine at 0 so
-      // the statute's real fine was NEVER used and every citation fell through
-      // to the generic offense-level default below. Verified on live D1.
-      const statute = await queryFirst<{ citation_fine: number | null; offense_level: string }>(
-        db, 'SELECT citation_fine, offense_level FROM utah_statutes WHERE id = ?', statuteId,
+      const statute = await queryFirst<{ default_fine: number | null; offense_level: string }>(
+        // utah_statutes stores the scheduled fine as `citation_fine`.
+        db, 'SELECT citation_fine AS default_fine, offense_level FROM utah_statutes WHERE id = ?', statuteId,
       ).catch(() => null);
-      if (statute?.citation_fine) baseFine = statute.citation_fine;
+      if (statute?.default_fine) baseFine = statute.default_fine;
     }
     if (!baseFine) {
       const fineSchedule: Record<string, number> = {
@@ -1017,9 +1013,12 @@ citations.get('/statutes/lookup', async (c) => {
     let whereExtra = '';
     if (offenseLevel) { whereExtra = ' AND s.offense_level = ?'; params.push(offenseLevel); }
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT s.id, s.citation_code, s.title, s.offense_level, s.default_fine, s.description
-       FROM utah_statutes s WHERE (s.citation_code LIKE ? OR s.title LIKE ? OR s.description LIKE ?)${whereExtra}
-       ORDER BY s.citation_code LIMIT 20`, ...params);
+      // Live utah_statutes: `citation` (not citation_code), `citation_fine`
+      // (not default_fine). Aliased so the response shape is unchanged.
+      `SELECT s.id, s.citation AS citation_code, s.title, s.offense_level,
+              s.citation_fine AS default_fine, s.description
+       FROM utah_statutes s WHERE (s.citation LIKE ? OR s.title LIKE ? OR s.description LIKE ?)${whereExtra}
+       ORDER BY s.citation LIMIT 20`, ...params);
     return c.json({ data: rows });
   } catch { return c.json({ data: [] }); }
 });

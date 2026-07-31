@@ -74,7 +74,7 @@ panic.post('/panic', async (c) => {
     const ins = await execute(
       db,
       `INSERT INTO calls_for_service (incident_type, priority, status, location_address, latitude, longitude,
-         description, source, officer_safety_alert, created_at, updated_at)
+         description, source, officer_safety_caution, created_at, updated_at)
        VALUES ('panic_alarm', 'P1', 'active', ?, ?, ?, ?, 'panic', 1, datetime('now'), datetime('now'))`,
       body.location_address ?? 'Panic location',
       body.latitude ?? null, body.longitude ?? null,

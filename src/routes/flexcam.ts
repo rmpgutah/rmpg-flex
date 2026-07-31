@@ -526,14 +526,9 @@ flexcam.post('/backfill', requireRole('admin'), async (c): Promise<Response> => 
   const skippedUnits: Array<{ unit_id: number; trip_id: number }> = [];
 
   for (const trip of batch) {
-    // `cpg_camera_id`, NOT `asset_id`: cpg_device_mappings has no `asset_id`
-    // column. Line 88 of this same file already resolves the ClearPathGPS asset
-    // id correctly (`assetId = m?.cpg_camera_id`) — this loop drifted from it.
-    // The .catch(() => null) made the resulting "no such column" silent, so
-    // `mapping` was always null and EVERY trip hit the `!mapping` skip branch:
-    // the auto-queue sweep queued nothing at all. Verified on live D1.
-    const mapping = await queryFirst<{ cpg_camera_id: number; cpg_device_id: string }>(db,
-      `SELECT cpg_camera_id, cpg_device_id FROM cpg_device_mappings WHERE unit_id=? AND is_active=1 LIMIT 1`,
+    const mapping = await queryFirst<{ asset_id: number; cpg_device_id: string }>(db,
+      // The CPG asset id lives in `cpg_camera_id` (mirrors the /request handler above).
+      `SELECT cpg_camera_id AS asset_id, cpg_device_id FROM cpg_device_mappings WHERE unit_id=? AND is_active=1 LIMIT 1`,
       trip.unit_id,
     ).catch(() => null);
 
@@ -552,7 +547,7 @@ flexcam.post('/backfill', requireRole('admin'), async (c): Promise<Response> => 
 
     try {
       await enqueueFootage(c.env, {
-        assetId: mapping.cpg_camera_id,
+        assetId: mapping.asset_id,
         unitId: trip.unit_id,
         cpgDeviceId: mapping.cpg_device_id,
         tripId: String(trip.id),

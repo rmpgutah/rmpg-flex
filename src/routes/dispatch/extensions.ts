@@ -1422,7 +1422,7 @@ callActions.get('/bolos/metrics', requireRole(...READ_ROLES), async (c) => {
 callActions.get('/geofences', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM geofences WHERE active = 1 ORDER BY name').catch(() => []);
+    const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM geofences WHERE is_active = 1 ORDER BY name').catch(() => []);
     return c.json(rows);
   } catch { return c.json([]); }
 });
@@ -1739,13 +1739,7 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
         notesBlock, incidentId,
       ).catch(() => {});
     }
-    // Copy field photos linked to the call.
-    // `id`, NOT `file_id`: field_photos has no `file_id` column (its columns are
-    // id / officer_id / call_id / r2_key / …), so this INSERT…SELECT threw "no
-    // such column" every time. The .catch(() => {}) swallowed it, so converting
-    // a call to an incident silently copied ZERO photos — an evidence-continuity
-    // gap with no error surface. incident_photos.photo_id is the field_photos
-    // row id. Verified on live D1 785de7ae.
+    // Copy field photos linked to the call
     await execute(db,
       `INSERT INTO incident_photos (incident_id, photo_id, call_id)
        SELECT ?, id, call_id FROM field_photos WHERE call_id = ?`,
@@ -1882,7 +1876,8 @@ callActions.post('/:id/promote-to-case', requireRole('admin', 'manager', 'superv
 
     const caseNumber = `CASE-${incident.incident_number}`;
     const result = await execute(db,
-      `INSERT INTO cases (case_number, incident_id, case_type, status, priority, officer_id, created_at, updated_at)
+      // cases has no officer_id — lead_investigator_id is the officer FK.
+      `INSERT INTO cases (case_number, incident_id, case_type, status, priority, lead_investigator_id, created_at, updated_at)
        VALUES (?, ?, ?, 'open', ?, ?, datetime('now'), datetime('now'))`,
       caseNumber, incident.id, (incident.incident_type as string) || 'general',
       (incident.priority as string) || 'P3', incident.officer_id ?? userId ?? null);
