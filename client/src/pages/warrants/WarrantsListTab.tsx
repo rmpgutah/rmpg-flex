@@ -54,7 +54,7 @@ import { useWatchedWarrantIds } from './useWatchedWarrantIds';
 import { formatDate, formatDateTime, parseTimestamp } from '../../utils/dateUtils';
 import {
   priorityBucket, priorityChipClass, formatAge, freshnessClass, freshnessIcon,
-  stateFromSource,
+
 } from '../../utils/warrantListHelpers';
 import { buildWarrantPacketPdf } from '../../utils/warrantPacket';
 import { downloadRecordPdf } from '../../utils/recordPdfGenerator';
@@ -887,8 +887,18 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
   return (
     <div style={{ display: isVisible ? undefined : 'none' }}>
       {pollStatus && (
+        // pointer-events-none: this strip is PURELY INFORMATIONAL — no buttons,
+        // no links, only a title tooltip — so it never needs to receive clicks.
+        // Verified live on 2026-07-30 that while this banner was present, a
+        // DOM hit-test at the Screening tab's own centre returned THIS div and
+        // not the tab (isSelfOrChild: false): every tab click on the Warrants
+        // page was being swallowed. Making the strip click-transparent removes
+        // that failure mode regardless of what causes the overlap, without
+        // altering any layout geometry — safer than guessing at z-index on a
+        // nav bar. The remaining 23px layout shift this strip causes when it
+        // appears is a separate (cosmetic) misclick hazard, still open.
         <div
-          className="flex items-center gap-2 px-2 py-1 mb-1.5 border border-[#1a1a1a] bg-[#080808] text-[9px] uppercase font-semibold tracking-wide"
+          className="flex items-center gap-2 px-2 py-1 mb-1.5 border border-[#1a1a1a] bg-[#080808] text-[9px] uppercase font-semibold tracking-wide pointer-events-none"
           title={pollStatus.error_message ?? undefined}
         >
           {pollStatus.status === 'running' ? (
@@ -935,7 +945,13 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
 
       <div className={`flex-1 ${props.isMobile ? 'flex flex-col' : 'flex'} overflow-hidden`}>
         {/* LEFT: Warrant List */}
-        <div className={`${props.isMobile ? (selectedWarrant ? 'hidden' : 'flex-1') : 'w-[55%]'} flex flex-col ${!props.isMobile ? 'border-r border-rmpg-600' : ''}`}>
+        {/* Desktop width: the detail pane used to hold a fixed 45% even with
+            NOTHING selected, squeezing this table into ~770px when it needs
+            ~1324px — so BAIL, ATTEMPTS and DATE were hidden behind a horizontal
+            scrollbar while half the screen showed an empty panel (measured live
+            2026-07-30: table scrollWidth 1324 in a 987px container). Give the
+            list the full width until a row is actually selected. */}
+        <div className={`${props.isMobile ? (selectedWarrant ? 'hidden' : 'flex-1') : (selectedWarrant ? 'w-[55%]' : 'w-full')} flex flex-col ${!props.isMobile && selectedWarrant ? 'border-r border-rmpg-600' : ''}`}>
           {/* Filters (thin bar) */}
           <div className={`flex ${props.isMobile ? 'flex-col gap-1' : 'items-center gap-1.5'} px-2 py-1 border-b border-[#1a1a1a] bg-[#080808]`}>
             <div className="relative flex-1">
@@ -957,7 +973,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
             </div>
             <div className={`flex ${props.isMobile ? 'gap-1.5 flex-wrap' : 'gap-2'}`}>
               <select id="ff-warrantslisttab-1"
-                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
+                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
                 value={filterStatus}
                 onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
                 style={props.isMobile ? { minHeight: 44 } : undefined}
@@ -968,7 +984,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                 ))}
               </select>
               <select id="ff-warrantslisttab-2"
-                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
+                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
                 value={filterType}
                 onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
                 style={props.isMobile ? { minHeight: 44 } : undefined}
@@ -979,7 +995,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                 ))}
               </select>
               <select id="ff-warrantslisttab-3"
-                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
+                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-32'}`}
                 value={filterSeverity}
                 onChange={(e) => { setFilterSeverity(e.target.value); setPage(1); }}
                 style={props.isMobile ? { minHeight: 44 } : undefined}
@@ -1000,7 +1016,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
               />
               {/* Source filter */}
               <select id="ff-warrantslisttab-5"
-                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
+                className={`input-dark ${props.isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
                 value={filterSource}
                 onChange={(e) => { setFilterSource(e.target.value); setPage(1); }}
                 style={props.isMobile ? { minHeight: 44 } : undefined}
@@ -1022,7 +1038,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
             <select id="ff-warrantslisttab-6"
               value={filterStateChip}
               onChange={(e) => { setFilterStateChip(e.target.value); setPage(1); }}
-              className="select-dark text-xs"
+              className="select-dark text-xs w-32"
               style={{ minHeight: 26 }}
             >
               <option value="">By state</option>
@@ -1228,7 +1244,13 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                         <span className="mr-1">{freshnessIcon(freshnessClass(w.freshness_days))}</span>
                         <span className="text-rmpg-400 font-mono">{formatAge(w.freshness_days)}</span>
                       </td>
-                      <td className="text-xs font-mono text-rmpg-300 py-2">{stateFromSource(w.source)}</td>
+                      {/* Was stateFromSource(w.source) — a client-side re-derivation
+                          whose regex was prefix-anchored and matched none of the
+                          live source keys ('ada-county-id', 'natrona-county-wy',
+                          'ohio-drc-pval'), so this column read '—' on EVERY row.
+                          The server now resolves this once, authoritatively, via
+                          src/utils/warrantSourceState.ts. Render it; don't re-derive. */}
+                      <td className="text-xs font-mono text-rmpg-300 py-2">{w.source_state ?? '—'}</td>
                       <td className="py-2">
                         <StatusPill status={w.status} />
                         {w.expires_at && w.status === 'active' && (() => {
@@ -1304,7 +1326,10 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
         </div>
 
         {/* RIGHT: Warrant Detail */}
-        <div className={`${props.isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
+        {/* Hidden until a row is selected on desktop too — see the width note on
+            the list pane above. An empty 45% panel is not worth three hidden
+            columns of warrant data. */}
+        <div className={`${selectedWarrant ? 'flex-1' : 'hidden'} flex flex-col overflow-hidden`}>
           <div className={`flex ${props.isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-rmpg-700 bg-[var(--grid-header-bg)]`}>
             <Gavel className="w-3 h-3 text-brand-400" />
             <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest">Warrant Detail</span>
@@ -1601,7 +1626,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                 <CollapsibleSection title="Source / Provenance" defaultOpen={false}>
                   <div className="text-xs space-y-1 p-2">
                     <div>Scraper: <span className="text-rmpg-200">{(selectedWarrant as any).source_scraper_name}</span></div>
-                    <div>State: <span className="text-rmpg-200">{(selectedWarrant as any).source_state || stateFromSource(selectedWarrant.source)}</span></div>
+                    <div>State: <span className="text-rmpg-200">{selectedWarrant.source_state ?? '—'}</span></div>
                     {(selectedWarrant as any).source_url && (
                       <div>URL: <a href={(selectedWarrant as any).source_url} target="_blank" rel="noreferrer" className="text-amber-400 underline">link</a></div>
                     )}
