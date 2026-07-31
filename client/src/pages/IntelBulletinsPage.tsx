@@ -294,7 +294,7 @@ export default function IntelBulletinsPage() {
                 <Shield className="w-4 h-4 text-[#d4a017]" />
                 <span className="text-sm font-semibold text-gray-100">Bulletin Detail</span>
               </div>
-              <button onClick={() => setSelectedBulletin(null)} className="text-gray-400 hover:text-gray-200">
+              <button aria-label="Close" onClick={() => setSelectedBulletin(null)} className="text-gray-400 hover:text-gray-200">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -349,7 +349,7 @@ export default function IntelBulletinsPage() {
               <span className="text-sm font-semibold text-gray-100">
                 {editingBulletin ? 'Edit Bulletin' : 'New Intelligence Bulletin'}
               </span>
-              <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-200">
+              <button aria-label="Close" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-200">
                 <X className="w-4 h-4" />
               </button>
             </div>

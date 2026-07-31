@@ -151,9 +151,93 @@
       // so listening here catches this class of failure uniformly. Mirrors
       // chunkRetry.ts's bounded one-reload-per-30s guard, using the SAME
       // sessionStorage key so the two paths can't loop against each other.
+      //
+      // A BARE reload() here is not enough, and shipping one made this bug
+      // unrecoverable rather than self-healing (live incident 2026-07-30).
+      // The service worker is what served the broken entry module: sw.js's
+      // hashed-asset poison guard answers a stale chunk with an EMPTY
+      // `new Response('', {status: 404})`, and its offline path with an empty
+      // 503. Reloading re-enters the same SW, which serves the same empty
+      // body — so the reload changes nothing, the once-per-30s budget is
+      // spent on it, and the splash is then stranded permanently with no
+      // console error. Measured signature: the entry bundle shows
+      // decodedBodySize 0 in performance.getEntriesByType('resource') while
+      // an older hash shows its real size (that older one is the SW cache,
+      // which is why already-open tabs keep working and only hard
+      // navigations break).
+      //
+      // So: purge the SW registration and its caches FIRST, then reload — a
+      // reload that can actually reach the network. Cookies and localStorage
+      // are untouched, so the user stays signed in (auth here is localStorage,
+      // not cookies). The purge is bounded by a timer so a hung caches/SW API
+      // can never prevent the reload it is meant to enable.
       (function () {
         var el = document.getElementById('rmpg-entry');
         if (!el) return;
+
+        function purgeThenReload() {
+          var reloaded = false;
+          function go() {
+            if (reloaded) return;
+            reloaded = true;
+            window.location.reload();
+          }
+          // Hard ceiling: never let a stuck purge block recovery.
+          setTimeout(go, 3000);
+
+          var tasks = [];
+          try {
+            if (window.caches && caches.keys) {
+              tasks.push(caches.keys().then(function (keys) {
+                return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+              }));
+            }
+          } catch (e) { /* Cache API unavailable — fall through to reload */ }
+          try {
+            var sw = navigator.serviceWorker;
+            if (sw && sw.getRegistrations) {
+              tasks.push(sw.getRegistrations().then(function (regs) {
+                return Promise.all(regs.map(function (r) { return r.unregister(); }));
+              }));
+            }
+          } catch (e) { /* SW API unavailable — fall through to reload */ }
+
+          // Evict the entry chunk from the browser's own HTTP cache.
+          //
+          // Confirmed live 2026-07-31: during a Pages deploy's propagation
+          // window the CDN can answer a not-yet-published chunk with the SPA
+          // fallback — index.html, HTTP 200, Content-Type text/html. Those
+          // assets carry immutable cache headers, so that poisoned HTML is
+          // stored in the browser's HTTP disk cache and every later load
+          // re-reads it. Module parsing fails and the page strands here.
+          //
+          // Nothing above can fix that: caches.delete() clears the SERVICE
+          // WORKER cache and unregister() drops the SW, but neither touches the
+          // HTTP cache, and JS cannot evict it directly. A plain reload re-reads
+          // the same poisoned entry. That is why the documented remedy was a
+          // manual hard-refresh (Cmd/Ctrl+Shift+R).
+          //
+          // `fetch(src, {cache:'reload'})` is the one lever JS does have: it
+          // bypasses the HTTP cache AND writes the fresh response back into it,
+          // so the reload below reads good JS. Best-effort — a failure here must
+          // never block recovery, and it is covered by the same 3s ceiling.
+          //
+          // Diagnostic that isolates this cause from the others: fetch the entry
+          // URL twice, once plain and once with {cache:'reload'}, and compare
+          // content-type. Same URL, two answers => poisoned HTTP cache. (curl
+          // has no browser cache, so "curl works but the browser doesn't" is the
+          // signature, and it reads misleadingly like a server problem.)
+          try {
+            var entrySrc = el.getAttribute('src');
+            if (entrySrc && window.fetch) {
+              tasks.push(fetch(entrySrc, { cache: 'reload' }).catch(function () {}));
+            }
+          } catch (e) { /* fetch unavailable — fall through to reload */ }
+
+          if (!tasks.length) return go();
+          Promise.all(tasks).then(go, go);
+        }
+
         el.addEventListener('error', function () {
           try {
             var KEY = 'rmpg_chunk_reload';
@@ -163,9 +247,13 @@
             if (lastAt !== null && isNaN(lastAt)) lastAt = null;
             if (lastAt === null || Date.now() - lastAt > WINDOW_MS) {
               sessionStorage.setItem(KEY, String(Date.now()));
-              window.location.reload();
+              purgeThenReload();
             }
-          } catch (e) { /* sessionStorage unavailable — nothing more we can do here */ }
+          } catch (e) {
+            // sessionStorage unavailable (private mode / blocked storage): we
+            // cannot enforce the once-per-30s guard, so do NOT reload — an
+            // unguarded reload here could loop.
+          }
         });
       })();
     </script>

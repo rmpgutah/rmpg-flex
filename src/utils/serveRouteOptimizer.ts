@@ -303,10 +303,12 @@ export async function optimizeRoute(
   // Get server's current location from their most recent GPS fix if available.
   const serverLoc = await queryFirst<{ lat: number; lng: number }>(
     db,
+    // clearpathgps_reports does not exist; gps_breadcrumbs is the live
+    // officer-keyed location source (see serveQueueEnhanced.ts).
     `SELECT latitude AS lat, longitude AS lng
-       FROM clearpathgps_reports
-       WHERE user_id = ?
-       ORDER BY created_at DESC LIMIT 1`,
+       FROM gps_breadcrumbs
+       WHERE officer_id = ?
+       ORDER BY recorded_at DESC LIMIT 1`,
     serverId,
   );
 
@@ -375,12 +377,15 @@ export async function batchOptimizeAllServers(
   // Find all servers (users with role='officer') that have pending/assigned attempts.
   const servers = await query<{ id: number; full_name: string }>(
     db,
+    // Same live-schema mapping as fetchStops above: serve_attempts uses
+    // officer_id / serve_queue_id, and has no `status` — an unresolved attempt
+    // is one whose `result` is still null/pending.
     `SELECT DISTINCT u.id, u.full_name
        FROM users u
-       JOIN serve_attempts a ON a.server_id = u.id
-       JOIN serve_queue q ON q.id = a.queue_id
+       JOIN serve_attempts a ON a.officer_id = u.id
+       JOIN serve_queue q ON q.id = a.serve_queue_id
        WHERE u.role = 'officer'
-         AND a.status IN ('scheduled', 'in_progress', 'pending')
+         AND (a.result IS NULL OR a.result = 'pending')
          AND q.status NOT IN ('served', 'cancelled', 'failed')`,
   ).catch(() => []);
 
@@ -392,11 +397,11 @@ export async function batchOptimizeAllServers(
       db,
       `SELECT a.id
          FROM serve_attempts a
-         JOIN serve_queue q ON q.id = a.queue_id
-         WHERE a.server_id = ?
-           AND a.status IN ('scheduled', 'in_progress', 'pending')
+         JOIN serve_queue q ON q.id = a.serve_queue_id
+         WHERE a.officer_id = ?
+           AND (a.result IS NULL OR a.result = 'pending')
            AND q.status NOT IN ('served', 'cancelled', 'failed')
-         ORDER BY q.priority DESC, q.deadline ASC NULLS LAST, a.scheduled_date ASC`,
+         ORDER BY q.priority DESC, q.deadline ASC NULLS LAST, a.attempt_at ASC`,
       server.id,
     ).catch(() => []);
 
@@ -455,17 +460,17 @@ export async function getNearestUnassignedAttempt(
   }>(
     db,
     `SELECT a.id, q.id AS queue_id,
-            q.lat AS lat, q.lng AS lng,
-            q.address AS address,
+            q.recipient_lat AS lat, q.recipient_lng AS lng,
+            q.recipient_address AS address,
             q.defendant_name AS defendant_name,
             q.priority AS priority,
             q.case_number AS case_number
        FROM serve_queue q
-       JOIN serve_attempts a ON a.queue_id = q.id
-       WHERE a.server_id IS NULL
-         AND a.status IN ('scheduled', 'pending')
+       JOIN serve_attempts a ON a.serve_queue_id = q.id
+       WHERE a.officer_id IS NULL
+         AND (a.result IS NULL OR a.result = 'pending')
          AND q.status IN ('pending', 'assigned', 'in_progress', 'attempted')
-         AND q.lat IS NOT NULL AND q.lng IS NOT NULL`,
+         AND q.recipient_lat IS NOT NULL AND q.recipient_lng IS NOT NULL`,
   ).catch(() => []);
 
   let best: NearestAttemptResult | null = null;

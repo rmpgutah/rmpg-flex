@@ -684,10 +684,13 @@ sqe.get('/eta/:attemptId', async (c) => {
 
   const serverLocation = await queryFirst<{ lat: number; lng: number }>(
     db,
+    // clearpathgps_reports does not exist. The live officer-keyed location
+    // source is gps_breadcrumbs (cpgps_locations is vehicle-keyed and has no
+    // user column), so the server's last known position comes from there.
     `SELECT latitude AS lat, longitude AS lng
-       FROM clearpathgps_reports
-       WHERE user_id = ?
-       ORDER BY created_at DESC LIMIT 1`,
+       FROM gps_breadcrumbs
+       WHERE officer_id = ?
+       ORDER BY recorded_at DESC LIMIT 1`,
     userId,
   );
 
@@ -975,10 +978,13 @@ sqe.get('/cross-reference/dispatch', async (c) => {
     incident_type: string;
   }>(
     db,
+    // calls_for_service has no `jurisdiction` (and is at D1's 100-column cap,
+    // so it can't gain one) — the overflow table's area_name carries it.
     `SELECT c.id, c.call_number, c.priority, c.status,
-            c.location_address, c.jurisdiction, c.created_at,
+            c.location_address, e.area_name AS jurisdiction, c.created_at,
             c.incident_type
        FROM calls_for_service c
+       LEFT JOIN calls_for_service_ext e ON e.id = c.id
       WHERE c.incident_type = 'pso_client_request'
         AND c.status NOT IN ('cancelled', 'archived')
         AND NOT EXISTS (

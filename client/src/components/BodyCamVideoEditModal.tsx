@@ -118,7 +118,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
             <Video className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-bold text-rmpg-100">Edit Video Details</h2>
           </div>
-          <button onClick={onClose} className="toolbar-btn p-1">
+          <button aria-label="Close" onClick={onClose} className="toolbar-btn p-1">
             <X className="w-4 h-4" />
           </button>
         </div>

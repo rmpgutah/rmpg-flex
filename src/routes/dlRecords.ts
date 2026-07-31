@@ -824,7 +824,8 @@ dlRecords.get('/deep-sweep', async (c) => {
                  last_compliance_check, last_compliance_result, expiration_date
           FROM offender_alerts WHERE person_id = ? ORDER BY created_at DESC LIMIT 10`, personId)),
         soft(() => query<Record<string, any>>(db, `
-          SELECT id, plate_number, state, make, model, color, year, is_stolen, status
+          SELECT id, plate_number, state, make, model, color, year, is_stolen,
+                 stolen_status AS status
           FROM vehicles_records WHERE owner_person_id = ? LIMIT 10`, personId)),
         soft(() => query<Record<string, any>>(db, `
           SELECT id, fi_number, interview_date, date, location, contact_reason, gang_affiliation

@@ -447,13 +447,58 @@ pt.post('/breaks/start', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}));
   const breakType = BREAK_TYPES.has(body.break_type) ? body.break_type : 'break';
   const today = new Date().toISOString().slice(0, 10);
+  const db = getDb(c.env);
+
+  // An officer can only be on ONE break at a time, and this INSERT used to be
+  // unconditional. A double-click (or a second device) therefore created two
+  // rows with break_end IS NULL — and /breaks/end below closes only the
+  // most-recent open break, so the EARLIER duplicate could never be closed by
+  // any later action. It stayed open forever and skewed break/time tracking.
+  //
+  // Confirmed in live data before this fix: patrol_breaks ids 3/4 (2026-07-04
+  // 04:18:21 and :23) and 10/11 (2026-07-29 21:26:43 and :45) are double-click
+  // pairs two seconds apart.
+  //
+  // Returning the already-open break makes "start break" idempotent, which the
+  // client-side disabled guard alone cannot achieve across tabs or devices.
+  const open = await queryFirst<{ id: number; break_start: string; break_type: string }>(
+    db,
+    `SELECT id, break_start, break_type FROM patrol_breaks
+       WHERE officer_id = ? AND break_end IS NULL
+       ORDER BY id DESC LIMIT 1`,
+    user.id,
+  );
+  if (open) {
+    return c.json({
+      success: true,
+      id: open.id,
+      break_start: open.break_start,
+      break_type: open.break_type,
+      already_open: true,
+    });
+  }
+
   const r = await execute(
-    getDb(c.env),
+    db,
     `INSERT INTO patrol_breaks (officer_id, shift_date, break_start, break_type)
      VALUES (?,?, datetime('now'), ?)`,
     user.id, body.shift_date ?? today, breakType,
   );
-  return c.json({ success: true, id: r.meta.last_row_id }, 201);
+  // Return the canonical server clock so the client's elapsed counter does not
+  // drift off the device clock (it previously fell back to a local new Date()
+  // because this handler never sent break_start at all).
+  const created = await queryFirst<{ break_start: string }>(
+    db,
+    'SELECT break_start FROM patrol_breaks WHERE id = ?',
+    r.meta.last_row_id,
+  );
+  return c.json({
+    success: true,
+    id: r.meta.last_row_id,
+    break_start: created?.break_start,
+    break_type: breakType,
+    already_open: false,
+  }, 201);
 });
 
 // POST /breaks/end — close the most-recent open break for this officer.

@@ -75,6 +75,13 @@ import ModuleDirectoryPage from './ModuleDirectoryPage';
 import { useBattery } from '../components/BatteryIndicator';
 import type { MapUnit } from './map/utils/mapConstants';
 import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml } from './map/utils/mapMarkers';
+// Mapbox's built-in Marker `color` option is written straight onto an SVG
+// `fill` PRESENTATION ATTRIBUTE, where `var(--x)` is not valid syntax (CSS
+// custom properties only resolve inside CSS properties). Passing the theme
+// variable silently produced an unparseable fill and a default-black pin, so
+// these two markers take the literal tactical value — the same fixed-palette
+// exemption the map basemap uses.
+import { TACTICAL_BRAND_GOLD } from './map/utils/tacticalPalette';
 import { withAlpha } from '../utils/withAlpha';
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -1142,7 +1149,7 @@ export default function NavigationPage() {
               setNavRecoverNonce((n) => n + 1);
             },
           });
-          markerRef.current = new mapboxgl.Marker({ color: 'var(--brand-gold)' })
+          markerRef.current = new mapboxgl.Marker({ color: TACTICAL_BRAND_GOLD, anchor: 'bottom' })
             .setLngLat([gps.longitude ?? -111.891, gps.latitude ?? 40.7608])
             .addTo(map);
           setMapReady(true);
@@ -1197,7 +1204,7 @@ export default function NavigationPage() {
               setInsetRecoverNonce((n) => n + 1);
             },
           });
-          insetMarkerRef.current = new mapboxgl.Marker({ color: 'var(--brand-gold)' })
+          insetMarkerRef.current = new mapboxgl.Marker({ color: TACTICAL_BRAND_GOLD, anchor: 'bottom' })
             .setLngLat([gps.longitude!, gps.latitude!]).addTo(m);
           setInsetReady(true);
         });

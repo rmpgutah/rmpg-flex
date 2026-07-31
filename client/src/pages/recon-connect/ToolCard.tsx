@@ -163,14 +163,25 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
     setOutput([]);
     setLastExit(null);
     setRunning(true);
-    const res = await api.reconToolSpawn(tool.id, formValues);
+    // The spawn is an Electron IPC round-trip and can REJECT (main-process
+    // handler throws, channel missing). Unguarded, a rejection skipped
+    // setRunning(false) entirely and left the Run button disabled until the
+    // operator reloaded the page — the failure looked like a dead button.
+    let res: { ok?: boolean; error?: string; sessionId?: string } | undefined;
+    try {
+      res = await api.reconToolSpawn(tool.id, formValues);
+    } catch (e) {
+      setOutput([{ kind: 'stderr', text: `Failed to start: ${e instanceof Error ? e.message : String(e)}` }]);
+      setRunning(false);
+      return;
+    }
     if (!res?.ok) {
       setOutput([{ kind: 'stderr', text: res?.error || 'Failed to start.' }]);
       setRunning(false);
       return;
     }
-    sessionIdRef.current = res.sessionId;
-    setSessionId(res.sessionId);
+    sessionIdRef.current = res.sessionId ?? null;
+    setSessionId(res.sessionId ?? null);
   };
 
   const stop = async () => {
@@ -194,31 +205,55 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
     setOutput([]);
     setLastExit(null);
     setBulkProgress({ done: 0, total: targets.length });
-    for (let i = 0; i < targets.length; i++) {
-      if (bulkAbortRef.current) break;
-      const target = targets[i];
-      setOutput((prev) => [...prev, { kind: 'meta', text: `\n━━━ [${i + 1}/${targets.length}] ${target} ━━━\n` }]);
-      setRunning(true);
-      const res = await api.reconToolSpawn(tool.id, { [firstArg.name]: target });
-      if (!res?.ok) {
-        setOutput((prev) => [...prev, { kind: 'stderr', text: `${res?.error || 'Failed to start.'}\n` }]);
+    // finally: setRunning(true) happens per-iteration but the reset lived
+    // AFTER the loop, so one rejected spawn threw straight out and left the
+    // Run button disabled until reload. The reset must survive any throw.
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        if (bulkAbortRef.current) break;
+        const target = targets[i];
+        setOutput((prev) => [...prev, { kind: 'meta', text: `\n━━━ [${i + 1}/${targets.length}] ${target} ━━━\n` }]);
+        setRunning(true);
+        let res: { ok?: boolean; error?: string; sessionId?: string } | undefined;
+        try {
+          res = await api.reconToolSpawn(tool.id, { [firstArg.name]: target });
+        } catch (e) {
+          // One target failing must not abandon the rest of the batch.
+          setOutput((prev) => [...prev, { kind: 'stderr', text: `${e instanceof Error ? e.message : String(e)}\n` }]);
+          setBulkProgress((p) => p && { ...p, done: i + 1 });
+          continue;
+        }
+        if (!res?.ok) {
+          setOutput((prev) => [...prev, { kind: 'stderr', text: `${res?.error || 'Failed to start.'}\n` }]);
+          setBulkProgress((p) => p && { ...p, done: i + 1 });
+          continue;
+        }
+        // A spawn reporting ok:true but no sessionId would make the poll below
+        // compare null !== null forever — the promise never resolves, the
+        // finally never runs, and the Run button stays disabled. Treat a
+        // missing session as a failed target and move on.
+        if (!res.sessionId) {
+          setOutput((prev) => [...prev, { kind: 'stderr', text: 'Started but no session id was returned.\n' }]);
+          setBulkProgress((p) => p && { ...p, done: i + 1 });
+          continue;
+        }
+        sessionIdRef.current = res.sessionId;
+        setSessionId(res.sessionId);
+        // Wait for this run's exit before starting the next
+        const activeSessionId = res.sessionId;
+        await new Promise<void>((resolve) => {
+          const check = () => {
+            if (sessionIdRef.current !== activeSessionId) resolve();
+            else setTimeout(check, 200);
+          };
+          check();
+        });
         setBulkProgress((p) => p && { ...p, done: i + 1 });
-        continue;
       }
-      sessionIdRef.current = res.sessionId;
-      setSessionId(res.sessionId);
-      // Wait for this run's exit before starting the next
-      await new Promise<void>((resolve) => {
-        const check = () => {
-          if (sessionIdRef.current !== res.sessionId) resolve();
-          else setTimeout(check, 200);
-        };
-        check();
-      });
-      setBulkProgress((p) => p && { ...p, done: i + 1 });
+    } finally {
+      setRunning(false);
+      setBulkProgress(null);
     }
-    setRunning(false);
-    setBulkProgress(null);
   };
 
   const loadCases = async () => {
@@ -300,14 +335,23 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
     if (!tool.installPkg || !api?.reconToolInstall) return;
     setOutput([{ kind: 'meta', text: `Installing ${tool.installPkg} via Homebrew. This takes 1-5 min.\n` }]);
     setRunning(true);
-    const res = await api.reconToolInstall(tool.installPkg);
+    // Same IPC-rejection hazard as run() above: without the catch, a rejected
+    // install left the Install button permanently disabled.
+    let res: { ok?: boolean; error?: string; sessionId?: string } | undefined;
+    try {
+      res = await api.reconToolInstall(tool.installPkg);
+    } catch (e) {
+      setOutput((prev) => [...prev, { kind: 'stderr', text: `Install failed: ${e instanceof Error ? e.message : String(e)}` }]);
+      setRunning(false);
+      return;
+    }
     if (!res?.ok) {
       setOutput((prev) => [...prev, { kind: 'stderr', text: res?.error || 'Install failed.' }]);
       setRunning(false);
       return;
     }
-    sessionIdRef.current = res.sessionId;
-    setSessionId(res.sessionId);
+    sessionIdRef.current = res.sessionId ?? null;
+    setSessionId(res.sessionId ?? null);
   };
 
   // Show Install button whenever:
@@ -518,7 +562,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
             <div className="flex items-center gap-2">
               <Link2 className="w-3.5 h-3.5 text-[#d4a017]" />
               <div className="text-[10px] text-[#d4a017] uppercase tracking-wider font-semibold flex-1">Attach this scan to a case</div>
-              <button onClick={() => setCaseModalOpen(false)} className="text-[#888] hover:text-[#ff8888]"><X className="w-3 h-3" /></button>
+              <button aria-label="Close" onClick={() => setCaseModalOpen(false)} className="text-[#888] hover:text-[#ff8888]"><X className="w-3 h-3" /></button>
             </div>
             {cases === null && <div className="text-[11px] text-[#888]">Loading cases…</div>}
             {cases !== null && cases.length === 0 && <div className="text-[11px] text-[#888]">No cases available. Create one in Case Management first.</div>}

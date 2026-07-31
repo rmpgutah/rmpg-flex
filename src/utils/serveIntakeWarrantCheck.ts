@@ -62,7 +62,9 @@ export async function serveIntakeWarrantCheck(
         `SELECT w.id, w.warrant_number, w.charge_description AS charge
            FROM warrants w
            JOIN persons p ON p.id = w.subject_person_id
-          WHERE (LOWER(p.last_name) LIKE LOWER(?) OR LOWER(p.full_name) LIKE LOWER(?))
+          -- persons has no full_name column; compose it from the name parts.
+          WHERE (LOWER(p.last_name) LIKE LOWER(?)
+                 OR LOWER(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) LIKE LOWER(?))
             AND w.status NOT IN ('served','recalled','expired','cancelled')
           LIMIT 5`,
         `%${recipientName.split(' ').pop()?.replace(/%/g, '') ?? ''}%`,

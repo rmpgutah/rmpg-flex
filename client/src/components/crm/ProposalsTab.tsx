@@ -319,14 +319,14 @@ export default function ProposalsTab() {
               </div>
               <div className="flex items-center gap-1">
                 {selectedProposal.stage === 'draft' && (
-                  <button type="button"
+                  <button aria-label="Edit" type="button"
                     onClick={() => { setEditMode(!editMode); setEditForm(selectedProposal); }}
                     className={`text-xs p-1 rounded-sm ${editMode ? 'text-brand-400' : 'text-rmpg-400 hover:text-rmpg-100'}`}
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                   </button>
                 )}
-                <button type="button" onClick={() => setSelectedProposal(null)} className="text-rmpg-400 hover:text-rmpg-100">
+                <button aria-label="Close" type="button" onClick={() => setSelectedProposal(null)} className="text-rmpg-400 hover:text-rmpg-100">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -564,7 +564,7 @@ export default function ProposalsTab() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowCreateModal(false)}>
           <div className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="New Proposal" icon={FileText}>
-              <button type="button" onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-rmpg-100">
+              <button aria-label="Close" type="button" onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-rmpg-100">
                 <X className="w-4 h-4" />
               </button>
             </PanelTitleBar>

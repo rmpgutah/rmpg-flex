@@ -17,7 +17,6 @@ import { withAlpha } from '../../utils/withAlpha';
 import { clusterByGrid, type ClusterableItem } from '../../utils/serveMapClustering';
 import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter, type DeadlineFilter } from '../../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../../utils/mapboxRouting';
-import { reverseGeocode } from '../../utils/mapboxServices';
 import { exportServeMapSheet } from '../../utils/serveMapExport';
 import type { MapUnit as Unit } from '../../pages/map/utils/mapConstants';
 import {
@@ -108,7 +107,21 @@ function buildServeMarker(item: QueueMapItem, selected: boolean = false): HTMLEl
     ? '3px solid #22c55e'
     : '2px solid rgba(255,255,255,0.7)';
 
-  el.style.cssText = `
+  // ROOT: position-neutral only. This is the element handed to
+  // `new mapboxgl.Marker({ element: el })`, and Mapbox GL REWRITES its
+  // `style.transform` on every render frame. Two things must therefore never
+  // live here: a `transition:transform` (each frame's reposition becomes an
+  // animation the pin chases) and any literal `transform` of our own (it
+  // overwrites Mapbox's `translate(...)`, teleporting the pin to the map's
+  // origin until the next frame restores it). Both were present before; the
+  // hover scale below now targets the inner wrapper instead.
+  el.style.cssText = 'display:block;cursor:pointer;';
+  el.title = item.recipient_name || 'serve target';
+
+  // INNER: every visual style, and the only element we may transform.
+  const inner = document.createElement('div');
+  inner.setAttribute('data-role', 'marker-inner');
+  inner.style.cssText = `
     position:relative;
     width:28px;height:28px;
     border-radius:50%;
@@ -116,16 +129,15 @@ function buildServeMarker(item: QueueMapItem, selected: boolean = false): HTMLEl
     border:${border};
     box-shadow:${boxShadowValue}${selected ? ', 0 0 0 2px rgba(34,197,94,0.5)' : ''};
     display:flex;align-items:center;justify-content:center;
-    cursor:pointer;
     transition:transform 0.15s;
   `;
-  el.title = item.recipient_name || 'serve target';
+  el.appendChild(inner);
 
   // Icon — building for business, person pin for individual
   const icon = document.createElement('div');
   icon.style.cssText = 'color:#fff;font-size:12px;line-height:1;font-weight:700;';
   icon.textContent = isBusiness ? '🏢' : '👤';
-  el.appendChild(icon);
+  inner.appendChild(icon);
 
   // Notation badge — yellow dot in corner when a system constraint exists
   if (hasNote) {
@@ -139,7 +151,7 @@ function buildServeMarker(item: QueueMapItem, selected: boolean = false): HTMLEl
       box-shadow:0 0 4px rgba(212,160,23,0.8);
     `;
     badge.title = 'Recorded service notation — see popup';
-    el.appendChild(badge);
+    inner.appendChild(badge);
   }
 
   // Deadline urgency pulse ring
@@ -151,7 +163,7 @@ function buildServeMarker(item: QueueMapItem, selected: boolean = false): HTMLEl
       border:2px solid ${ringColor};
       animation:srv-pulse-${tier} 1.6s ease-out infinite;
     `;
-    el.appendChild(ring);
+    inner.appendChild(ring);
   }
 
   // Officer-safety risk halo
@@ -162,11 +174,14 @@ function buildServeMarker(item: QueueMapItem, selected: boolean = false): HTMLEl
     warningIcon.style.cssText = 'position:absolute;bottom:-4px;right:-4px;font-size:10px;';
     warningIcon.textContent = '⚠';
     warningIcon.title = 'Officer safety flag';
-    el.appendChild(warningIcon);
+    inner.appendChild(warningIcon);
   }
 
-  el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; });
-  el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)'; });
+  // Hover scale targets the INNER wrapper. Writing it on `el` clobbered the
+  // translate Mapbox owns, so hovering a pin visibly threw it to the corner
+  // of the map until the next render frame snapped it back.
+  el.addEventListener('mouseenter', () => { inner.style.transform = 'scale(1.2)'; });
+  el.addEventListener('mouseleave', () => { inner.style.transform = 'scale(1)'; });
 
   return el;
 }
@@ -385,57 +400,42 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
         const popup = new mapboxgl.Popup({ offset: 18, closeButton: true, maxWidth: '280px' })
           .setHTML(buildPopupHtml(item));
 
+        // Delegated popup handler, matching the pattern in MapboxMapPage.
+        // Previously each button was wired by id inside a setTimeout(…, 50),
+        // which raced Mapbox inserting the popup DOM: lose the race and
+        // getElementById returned null, leaving every button silently dead
+        // until the popup was reopened. Delegating to the popup container has
+        // no race — the container exists before any click can reach it.
+        //
+        // Declared once per item so its identity is stable: addEventListener
+        // ignores a duplicate (type, listener) pair, so re-opening the popup
+        // cannot stack handlers and double-fire the action.
+        const onPopupClick = (evt: MouseEvent) => {
+          const action = (evt.target as HTMLElement).closest<HTMLElement>('[data-action]')
+            ?.dataset.action;
+          if (!action) return;
+          if (action === 'open') onSelectQueue?.(item.id);
+          else if (action === 'note') setNoteModal({ open: true, queueItem: item });
+          else if (action === 'trail') setTrailQueueId(item.id);
+          else if (action === 'preview') {
+            setPreviewTarget({ id: item.id, lng: item.recipient_lng!, lat: item.recipient_lat! });
+          }
+        };
+
         el.addEventListener('click', () => {
           popupRef.current?.remove();
           popup.addTo(map);
           popupRef.current = popup;
-          // Wire "Open record" button inside popup
-          setTimeout(() => {
-            const btn = document.getElementById(`srv-popup-open-${item.id}`);
-            if (btn) btn.addEventListener('click', () => onSelectQueue?.(item.id));
-            const noteBtn = document.getElementById(`srv-popup-note-${item.id}`);
-            if (noteBtn) noteBtn.addEventListener('click', () =>
-              setNoteModal({ open: true, queueItem: item }),
-            );
-            const trailBtn = document.getElementById(`srv-popup-trail-${item.id}`);
-            if (trailBtn) trailBtn.addEventListener('click', () => setTrailQueueId(item.id));
-            const previewBtn = document.getElementById(`srv-popup-preview-${item.id}`);
-            if (previewBtn) previewBtn.addEventListener('click', () =>
-              setPreviewTarget({ id: item.id, lng: item.recipient_lng!, lat: item.recipient_lat! }),
-            );
-          }, 50);
+          popup.getElement()?.addEventListener('click', onPopupClick);
         });
 
-        const marker = new mapboxgl.Marker({ element: el, draggable: true })
+        // Pinned to the stored coordinate: `draggable` is deliberately OFF so a
+        // serve target can never be nudged off its geocoded position by a
+        // stray click-drag on the map. Relocating a job is an explicit records
+        // edit, not a map gesture.
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'center', draggable: false })
           .setLngLat([item.recipient_lng!, item.recipient_lat!])
           .addTo(map);
-        marker.on('dragend', async () => {
-          const { lng, lat } = marker.getLngLat();
-          let placeName: string | undefined;
-          try {
-            const geocodeResult = await reverseGeocode(lng, lat);
-            placeName = geocodeResult.features[0]?.place_name;
-          } catch {
-            // non-fatal — fall back to raw coordinates in the confirmation prompt
-          }
-          const label = placeName || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-          const confirmed = window.confirm(`Move this job's location to: ${label}?`);
-          if (!confirmed) {
-            // Snap back by reloading, which re-renders from the last saved position.
-            load();
-            return;
-          }
-          try {
-            await apiFetch(`/process-server/${item.id}`, {
-              method: 'PUT',
-              body: JSON.stringify({ recipient_lat: lat, recipient_lng: lng }),
-            });
-            load();
-          } catch {
-            // non-fatal — snap back by reloading, which re-renders from the last saved position
-            load();
-          }
-        });
         markersRef.current.push(marker);
       } else {
         const el = buildClusterMarker(cluster);
@@ -880,16 +880,16 @@ function buildPopupHtml(item: QueueMapItem): string {
       <div style="color:#64748b;font-size:10px;">Next window: ${escapeHtml(nextStr)}</div>
       ${noteBlock}
       <div style="margin-top:8px;display:flex;gap:6px;">
-        <button id="srv-popup-open-${item.id}" style="flex:1;padding:3px 6px;background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.5);border-radius:2px;color:#93c5fd;font-size:10px;cursor:pointer;font-family:monospace;">
+        <button data-action="open" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.5);border-radius:2px;color:#93c5fd;font-size:10px;cursor:pointer;font-family:monospace;">
           Open Record
         </button>
-        <button id="srv-popup-note-${item.id}" style="flex:1;padding:3px 6px;background:rgba(212,160,23,0.15);border:1px solid rgba(212,160,23,0.4);border-radius:2px;color:#d4a017;font-size:10px;cursor:pointer;font-family:monospace;">
+        <button data-action="note" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(212,160,23,0.15);border:1px solid rgba(212,160,23,0.4);border-radius:2px;color:#d4a017;font-size:10px;cursor:pointer;font-family:monospace;">
           ${item.location_note_id ? 'View Notation' : 'Add Notation'}
         </button>
-        <button id="srv-popup-trail-${item.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">
+        <button data-action="trail" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">
           History
         </button>
-        <button id="srv-popup-preview-${item.id}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:monospace;">
+        <button data-action="preview" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:monospace;">
           Preview drive time
         </button>
       </div>

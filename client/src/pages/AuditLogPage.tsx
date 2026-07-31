@@ -846,7 +846,7 @@ const AuditLogPage: React.FC = () => {
       {error && (
         <div className="mx-0 mb-3 px-3 py-2 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between">
           <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+          <button aria-label="Close" type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
             <X className="w-3 h-3" />
           </button>
         </div>

@@ -992,7 +992,7 @@ export default function FlexCamFootagePage() {
             <Shield className="w-3 h-3" />
             {overlayMode === 'classic' ? 'CAM' : overlayMode === 'minimal' ? 'MIN' : 'OFF'}
           </button>
-          <button onClick={handleFullscreen}
+          <button aria-label="Expand" onClick={handleFullscreen}
             className="p-1.5 bg-black/50 text-white/40 hover:text-white transition-colors">
             <Maximize2 className="w-3.5 h-3.5" />
           </button>

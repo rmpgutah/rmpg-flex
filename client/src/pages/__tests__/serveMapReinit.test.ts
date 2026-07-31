@@ -69,6 +69,80 @@ describe('serve map re-initialisation', () => {
     expect(guard).toMatch(/popupRef\.current = null/);
   });
 
+  // ══════════════════════════════════════════════════════════════════════
+  // Token race — reported as "the pins ball into a line", reproduced live
+  // 2026-07-31.
+  //
+  // The effect used to end with a BARE synchronous `initMap();` sitting
+  // below the async token block:
+  //
+  //     (async () => { const t = await getMapboxAccessToken();
+  //                    initMapbox(t); initMap(); })();
+  //     initMap();          // <-- always won the race
+  //
+  // The bare call always ran first, constructing a mapboxgl.Map before
+  // initMapbox() had set mapboxgl.accessToken. Its style/tile requests never
+  // authenticated, so 'load' never fired and mapReady stayed false — the tab
+  // sat on "Loading map…" (measured at ~25s on live). But it had already
+  // assigned mapRef.current, so the token-aware call that followed took the
+  // reuse branch and called updateMapMarkers() on that dead map, BYPASSING
+  // the `if (mapReady)` gate. All 21 job markers were attached to a map whose
+  // camera had never settled: they ignored the basemap while panning and,
+  // with clustering never re-run for the real zoom, collapsed into a single
+  // north-south line when zoomed out.
+  //
+  // Intermittent by construction: initMapbox is global and idempotent, so
+  // only the FIRST map opened in a session lost the race.
+  // ══════════════════════════════════════════════════════════════════════
+
+  /** Body of the Map-tab init effect, from the effect head to its cleanup. */
+  function initEffect(): string {
+    const start = SRC.indexOf("if (activeTab !== 'Map') return;");
+    expect(start, 'map init effect not found').toBeGreaterThan(-1);
+    const end = SRC.indexOf('return () => {', start);
+    expect(end).toBeGreaterThan(start);
+    return SRC.slice(start, end);
+  }
+
+  it('never constructs the map outside the token-initialised path', () => {
+    const body = initEffect();
+    // A bare `initMap();` at statement level (not inside the async IIFE, where
+    // it is indented well past column 4) is the regression.
+    const bareCalls = body.match(/\n {4}initMap\(\);/g) ?? [];
+    expect(
+      bareCalls,
+      'A synchronous initMap() outside the async token block races ahead of '
+        + 'initMapbox() and builds a Map with no accessToken — it will never fire '
+        + '"load", and markers get hung off a camera that never settles.',
+    ).toEqual([]);
+  });
+
+  it('calls initMap only after initMapbox has set the access token', () => {
+    const body = initEffect();
+    const initMapboxIdx = body.indexOf('initMapbox(token);');
+    const callIdx = body.indexOf('initMap();', initMapboxIdx);
+    expect(initMapboxIdx, 'initMapbox(token) not found').toBeGreaterThan(-1);
+    expect(callIdx, 'no initMap() after initMapbox(token)').toBeGreaterThan(initMapboxIdx);
+    // And that ordered pair must be the ONLY invocation in the effect.
+    expect((body.match(/initMap\(\);/g) ?? []).length).toBe(1);
+  });
+
+  it('the reuse path refuses to paint markers onto a map that has not loaded', () => {
+    const guard = initGuard();
+    // Without this, updateMapMarkers() on the reuse branch sidesteps the
+    // `if (mapReady)` gate entirely — which is how markers reached an
+    // unsettled camera in the first place.
+    expect(guard).toMatch(/loaded\(\)/);
+    const loadedIdx = guard.indexOf('loaded()');
+    const updateIdx = guard.indexOf('updateMapMarkers();');
+    expect(loadedIdx).toBeLessThan(updateIdx);
+  });
+
+  it('marker rendering is otherwise gated on mapReady', () => {
+    // The effect that owns the settled-camera render path.
+    expect(SRC).toMatch(/if \(mapReady\) updateMapMarkers\(\);/);
+  });
+
   it('the container really is conditionally mounted — the reason this matters', () => {
     // If the Map panel ever becomes always-mounted, the attachment check
     // becomes redundant rather than load-bearing, and this guard should be

@@ -185,7 +185,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
                     <span className="text-[10px] text-green-400 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Acknowledged</span>
                   )}
                   {isManager && (
-                    <button type="button" onClick={e => { e.stopPropagation(); handleDelete(doc.id); }} className="toolbar-btn toolbar-btn-danger text-[9px]"><Trash2 className="w-3 h-3" /></button>
+                    <button aria-label="Delete" type="button" onClick={e => { e.stopPropagation(); handleDelete(doc.id); }} className="toolbar-btn toolbar-btn-danger text-[9px]"><Trash2 className="w-3 h-3" /></button>
                   )}
                 </div>
               </div>

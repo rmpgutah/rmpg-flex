@@ -21,7 +21,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 
 const hr = new Hono<Env>();
@@ -42,6 +42,10 @@ const DISC_SEVERITIES = new Set(['minor', 'moderate', 'major', 'critical']);
 const DISC_STATUSES = new Set(['open', 'closed', 'appealed']);
 const REVIEW_TYPES = new Set(['annual', 'probationary', 'quarterly', 'improvement_plan']);
 const REVIEW_STATUSES = new Set(['draft', 'submitted', 'acknowledged', 'completed']);
+// Mirrors BENEFIT_TYPES / COVERAGE_LABELS in
+// client/src/pages/hr/tabs/BenefitsTab.tsx — keep the two in step.
+const BENEFIT_TYPES = new Set(['health', 'dental', 'vision', 'life', '401k', 'hsa', 'fsa', 'disability', 'other']);
+const COVERAGE_LEVELS = new Set(['individual', 'individual_spouse', 'family']);
 
 // Policy defaults for synthesized leave balances. Honest fiction:
 // the live D1 has no per-officer balance table, so we expose a
@@ -86,6 +90,14 @@ hr.get('/dashboard', requireRole(...ALL_ROLES), async (c) => {
   const n = async (sql: string): Promise<number> => {
     try { const r = await queryFirst<{ n: number }>(db, sql); return r?.n ?? 0; } catch { return 0; }
   };
+  // Nullable percentage: null means "nothing is being tracked yet", which is a
+  // different fact from 0% and must not be rendered as one.
+  const pct = async (sql: string): Promise<number | null> => {
+    try {
+      const r = await queryFirst<{ pct: number | null }>(db, sql);
+      return r?.pct ?? null;
+    } catch { return null; }
+  };
   let recent_activity: unknown[] = [];
   try {
     recent_activity = await query(db,
@@ -100,20 +112,125 @@ hr.get('/dashboard', requireRole(...ALL_ROLES), async (c) => {
     new_hires_30d: await n("SELECT COUNT(*) n FROM users WHERE created_at >= datetime('now','-30 days')"),
     on_leave_today: await n("SELECT COUNT(*) n FROM leave_requests WHERE status='approved' AND date('now') BETWEEN date(start_date) AND date(end_date)"),
     pending_approvals: await n("SELECT COUNT(*) n FROM leave_requests WHERE status='pending'"),
-    training_compliance_pct: 0,
-    credential_compliance_pct: 0,
+    // These were hardcoded 0 with a comment saying they'd stay that way "until
+    // those tables land" — but officer_certifications, training_courses and
+    // training_enrollments all exist on live. Same stale-comment trap as the
+    // Benefits handler. Now computed, and null (not 0) when there is nothing to
+    // measure: a real 0% and "no requirements defined" look identical on a
+    // progress bar, and 0 trips the UI's amber "out of compliance" colour, so
+    // an untracked department was being reported as failing.
+    //
+    // Training: the requirement set is every active officer × every mandatory
+    // active course; the numerator is distinct completed enrolments for those.
+    training_compliance_pct: await pct(`
+      SELECT CASE WHEN req.pairs = 0 THEN NULL
+                  ELSE CAST(ROUND(100.0 * done.completed / req.pairs) AS INTEGER) END AS pct
+        FROM (SELECT (SELECT COUNT(*) FROM users WHERE COALESCE(status,'active') = 'active')
+                   * (SELECT COUNT(*) FROM training_courses
+                       WHERE is_mandatory = 1 AND COALESCE(is_active,1) = 1) AS pairs) req,
+             (SELECT COUNT(DISTINCT e.officer_id || '-' || e.course_id) AS completed
+                FROM training_enrollments e
+                JOIN training_courses c ON c.id = e.course_id
+               WHERE c.is_mandatory = 1 AND COALESCE(c.is_active,1) = 1
+                 AND LOWER(COALESCE(e.status,'')) = 'completed') done`),
+    // Credentials: share of certifications carrying an expiry that are current.
+    credential_compliance_pct: await pct(`
+      SELECT CASE WHEN COUNT(*) = 0 THEN NULL
+                  ELSE CAST(ROUND(100.0 * SUM(CASE WHEN date(expiration_date) >= date('now')
+                                                   THEN 1 ELSE 0 END) / COUNT(*)) AS INTEGER) END AS pct
+        FROM officer_certifications WHERE expiration_date IS NOT NULL`),
     overdue_items: await n("SELECT COUNT(*) n FROM disciplinary_records WHERE status='open'"),
     recent_activity,
   });
 });
 
-// ── /benefits — deferred until hr_benefits table exists ─────
+// ── /benefits ───────────────────────────────────────────────
+// Backed by hr_benefits (migration 0217). This used to be a stub returning a
+// hardcoded [] "until the hr_benefits table exists", and POST did not exist at
+// all — so BenefitsTab's Add-benefit submit 404'd and reported only "Failed to
+// add benefit". Visibility mirrors /leave and /disciplinary: an officer sees
+// only their own enrolment, managers see everyone.
 
+// GET /hr/benefits?officer_id=&status=&benefit_type=
 hr.get('/benefits', requireRole(...ALL_ROLES), async (c) => {
-  // Empty list silences BenefitsTab's load() error toast and lets
-  // the "no benefits enrolled" empty state render. Real handler
-  // lands with the hr_benefits table in a follow-up.
-  return c.json([]);
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number; role: string };
+    const officerId = c.req.query('officer_id');
+    const status = c.req.query('status');
+    const benefitType = c.req.query('benefit_type');
+
+    const where: string[] = [];
+    const params: unknown[] = [];
+
+    if (!isManager(user.role)) {
+      where.push('b.officer_id = ?');
+      params.push(user.id);
+    } else if (officerId) {
+      where.push('b.officer_id = ?');
+      params.push(Number(officerId));
+    }
+    if (status) { where.push('b.status = ?'); params.push(status); }
+    if (benefitType && BENEFIT_TYPES.has(benefitType)) {
+      where.push('b.benefit_type = ?');
+      params.push(benefitType);
+    }
+
+    const rows = await query(db,
+      `SELECT b.*, o.full_name AS officer_name
+         FROM hr_benefits b
+         LEFT JOIN users o ON o.id = b.officer_id
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY b.effective_date DESC, b.id DESC
+        LIMIT 1000`,
+      ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('[hr] GET /benefits', err);
+    return c.json({ error: 'Failed to load benefits', code: 'HR_BENEFITS_ERR' }, 500);
+  }
+});
+
+// POST /hr/benefits — manager enrols an officer in a plan
+hr.post('/benefits', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+    const body = await c.req.json();
+    const {
+      officer_id, benefit_type, plan_name, provider, coverage_level,
+      employee_cost, employer_cost, effective_date, end_date, notes,
+    } = body ?? {};
+
+    if (!officer_id) return c.json({ error: 'officer_id required' }, 400);
+    if (!benefit_type || !BENEFIT_TYPES.has(benefit_type)) {
+      return c.json({ error: 'Invalid benefit_type' }, 400);
+    }
+    if (coverage_level && !COVERAGE_LEVELS.has(coverage_level)) {
+      return c.json({ error: 'Invalid coverage_level' }, 400);
+    }
+    // Costs arrive from a number input but can still be '' or null.
+    const eeCost = Number(employee_cost ?? 0);
+    const erCost = Number(employer_cost ?? 0);
+    if (!Number.isFinite(eeCost) || eeCost < 0) return c.json({ error: 'employee_cost must be >= 0' }, 400);
+    if (!Number.isFinite(erCost) || erCost < 0) return c.json({ error: 'employer_cost must be >= 0' }, 400);
+
+    const now = nowIso();
+    const res = await execute(db,
+      `INSERT INTO hr_benefits
+        (officer_id, benefit_type, plan_name, provider, coverage_level,
+         employee_cost, employer_cost, effective_date, end_date, status,
+         notes, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
+      Number(officer_id), benefit_type, plan_name ?? null, provider ?? null,
+      coverage_level || 'individual', eeCost, erCost,
+      effective_date || null, end_date ?? null, notes ?? null, user.id, now, now
+    );
+    return c.json({ success: true, id: res.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('[hr] POST /benefits', err);
+    return c.json({ error: 'Failed to add benefit', code: 'HR_BENEFITS_CREATE_ERR' }, 500);
+  }
 });
 
 // ── /leave ──────────────────────────────────────────────────
@@ -591,11 +708,15 @@ hr.post('/disciplinary/bulk-status', requireRole(...MANAGER_ROLES), async (c) =>
     const status = body?.status;
     if (!ids.length) return c.json({ error: 'ids required' }, 400);
     if (!DISC_STATUSES.has(status)) return c.json({ error: 'Invalid status' }, 400);
-    const placeholders = ids.map(() => '?').join(',');
-    const res = await execute(db,
-      `UPDATE disciplinary_records SET status = ?, updated_at = ? WHERE id IN (${placeholders})`,
-      status, nowIso(), ...ids);
-    return c.json({ success: true, updated: res.meta.changes ?? 0 });
+    // ids comes straight from the request body and is unbounded, so this
+    // query's SHAPE grows with the payload: a bulk-status of 100+ records
+    // exceeds D1's 100-bound-parameter cap and throws at BIND time. The two
+    // leading bindings (status, updated_at) are re-bound per chunk and counted
+    // against the budget by executeInChunks.
+    const updated = await executeInChunks(db, ids,
+      (placeholders) => `UPDATE disciplinary_records SET status = ?, updated_at = ? WHERE id IN (${placeholders})`,
+      [status, nowIso()]);
+    return c.json({ success: true, updated });
   } catch (err) {
     console.error('[hr] POST /disciplinary/bulk-status', err);
     return c.json({ error: 'Failed to bulk-update disciplinary records', code: 'HR_DISC_BULK_ERR' }, 500);
@@ -1300,11 +1421,12 @@ hr.post('/grievances/bulk-status', requireRole(...MANAGER_ROLES), async (c) => {
     if (!GRIEVANCE_STATUSES.has(status)) return c.json({ error: 'Invalid status' }, 400);
     const now = nowIso();
     const resolvedAt = (status === 'resolved' || status === 'dismissed') ? now : null;
-    const placeholders = ids.map(() => '?').join(',');
-    const res = await execute(db,
-      `UPDATE hr_grievances SET status = ?, resolved_at = COALESCE(?, resolved_at), updated_at = ? WHERE id IN (${placeholders})`,
-      status, resolvedAt, now, ...ids);
-    return c.json({ success: true, updated: res.meta.changes ?? 0 });
+    // Same caller-sized IN-list as /disciplinary/bulk-status above; three
+    // leading bindings here (status, resolved_at, updated_at).
+    const updated = await executeInChunks(db, ids,
+      (placeholders) => `UPDATE hr_grievances SET status = ?, resolved_at = COALESCE(?, resolved_at), updated_at = ? WHERE id IN (${placeholders})`,
+      [status, resolvedAt, now]);
+    return c.json({ success: true, updated });
   } catch (err) {
     console.error('[hr] POST /grievances/bulk-status', err);
     return c.json({ error: 'Failed to bulk-update grievances', code: 'HR_GRIEV_BULK_ERR' }, 500);

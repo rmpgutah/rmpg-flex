@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { normalizeDob } from '../utils/normalizeDob';
 import { codedLike, containsAnyClause } from '../utils/searchText';
 import { recordAudit } from '../utils/auditLog';
@@ -596,7 +596,11 @@ records.post('/from-dl-scan', async (c) => {
       }
       try {
         warrantHits = await query<Record<string, unknown>>(db,
-          `SELECT id, warrant_number, warrant_type, offense_description, bond_amount, issuing_agency
+          // Live warrants columns are type / charge_description / bail_amount.
+          // Aliased so the DL-scan response shape is unchanged.
+          `SELECT id, warrant_number, type AS warrant_type,
+                  charge_description AS offense_description,
+                  bail_amount AS bond_amount, issuing_agency
            FROM warrants WHERE subject_person_id = ? AND LOWER(status) = 'active'`,
           personId);
       } catch (err) {
@@ -2047,7 +2051,7 @@ records.get('/evidence/:id/linked-records', async (c) => {
       try {
         return await query<Record<string, unknown>>(db,
           `SELECT c.id, c.case_number, c.case_type, c.status FROM cases c
-           INNER JOIN evidence_case_links ecl ON ecl.case_id = c.id WHERE ecl.evidence_id = ?
+           INNER JOIN case_evidence_links ecl ON ecl.case_id = c.id WHERE ecl.evidence_id = ?
            UNION
            SELECT c.id, c.case_number, c.case_type, c.status FROM cases c WHERE c.id = ?`,
           id, row.case_id ?? -1,
@@ -2060,8 +2064,10 @@ records.get('/evidence/:id/linked-records', async (c) => {
         return await query<Record<string, unknown>>(db,
           `SELECT fc.id, fc.lab_number, fc.title, fc.case_type, fc.status
            FROM forensic_cases fc
-           INNER JOIN forensic_case_evidence fce ON fce.forensic_case_id = fc.id
-           WHERE fce.evidence_id = ?`,
+           -- forensic_case_evidence does not exist; forensic_case_entity_links
+           -- is the polymorphic link table (entity_type + entity_id).
+           INNER JOIN forensic_case_entity_links fce ON fce.forensic_case_id = fc.id
+           WHERE fce.entity_type = 'evidence' AND fce.entity_id = ?`,
           id,
         );
       } catch { return []; }
@@ -2426,9 +2432,12 @@ records.post('/retention/enforce', async (c) => {
            AND datetime(created_at) < datetime('now',?) LIMIT 500`, `-${days} days`);
         if (expired.length > 0) {
           const ids = expired.map((r: any) => r.id);
-          const ps = ids.map(() => '?').join(',');
-          await execute(db, `UPDATE evidence SET status='disposed' WHERE id IN (${ps})`, ...ids);
-          count = ids.length;
+          // The SELECT above is LIMIT 500, so this IN-list can carry up to 500
+          // bound parameters — five times D1's 100-parameter cap, which throws
+          // at BIND time before the statement runs. Retention enforcement would
+          // 500 and dispose nothing the moment 100+ rows aged out.
+          count = await executeInChunks(db, ids,
+            (ps) => `UPDATE evidence SET status='disposed' WHERE id IN (${ps})`);
         }
       } else if (recordType === 'incidents') {
         const expired = await query<{ id: number }>(db,
@@ -2436,11 +2445,9 @@ records.post('/retention/enforce', async (c) => {
            AND datetime(created_at) < datetime('now',?) LIMIT 500`, `-${days} days`);
         if (expired.length > 0) {
           const ids = expired.map((r: any) => r.id);
-          const ps = ids.map(() => '?').join(',');
-          await execute(db,
-            `UPDATE incidents SET archived_at=datetime('now'),updated_at=datetime('now') WHERE id IN (${ps})`,
-            ...ids);
-          count = ids.length;
+          // Same LIMIT 500 vs 100-parameter-cap mismatch as the evidence branch.
+          count = await executeInChunks(db, ids,
+            (ps) => `UPDATE incidents SET archived_at=datetime('now'),updated_at=datetime('now') WHERE id IN (${ps})`);
         }
       }
       if (count > 0) results[recordType] = count;
@@ -2532,7 +2539,8 @@ records.post('/reports/:id/return', async (c) => {
     const db = getDb(c.env);
     const report = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM incidents WHERE id = ?', id);
     if (!report) return c.json({ error: 'Report not found' }, 404);
-    await db.prepare(`UPDATE incidents SET status = 'returned', supervisor_id = ?, supervisor_notes = ?, updated_at = datetime('now') WHERE id = ?`)
+    // incidents stores supervisor feedback in review_notes (no supervisor_notes).
+    await db.prepare(`UPDATE incidents SET status = 'returned', supervisor_id = ?, review_notes = ?, updated_at = datetime('now') WHERE id = ?`)
       .bind(actor?.id ?? null, reason, id).run();
     return c.json({ success: true, id: Number(id), status: 'returned', reason });
   } catch (err) {

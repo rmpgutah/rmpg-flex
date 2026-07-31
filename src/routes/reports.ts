@@ -501,9 +501,14 @@ reports.get('/officer-activity', async (c) => {
   try {
     const rows = await query<Record<string, unknown>>(db, `
       SELECT u.officer_id, usr.full_name, usr.badge_number,
-        (SELECT COUNT(*) FROM incidents i WHERE i.reporting_officer_id = u.officer_id) AS incidents_written,
+        (SELECT COUNT(*) FROM incidents i WHERE i.officer_id = u.officer_id) AS incidents_written,
         (SELECT COUNT(*) FROM calls_for_service c WHERE c.assigned_unit_ids LIKE '%' || CAST(u.id AS TEXT) || '%') AS calls_responded,
-        0 AS total_hours
+        -- Was a hardcoded 0, so this column read "0 hours" for every officer
+        -- on the report even though time_entries has the real total (one
+        -- officer on live has 498.8 logged hours). A hardcoded metric is worse
+        -- than an empty one: it renders as data and looks authoritative.
+        (SELECT ROUND(COALESCE(SUM(te.total_hours), 0), 1)
+           FROM time_entries te WHERE te.officer_id = u.officer_id) AS total_hours
       FROM units u
       LEFT JOIN users usr ON u.officer_id = usr.id
       WHERE u.officer_id IS NOT NULL
@@ -543,7 +548,8 @@ reports.get('/command-center', async (c) => {
     units_available: await one("SELECT COUNT(*) AS n FROM units WHERE status = 'available'"),
     units_total: await one('SELECT COUNT(*) AS n FROM units'),
     active_bolos: await one("SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'"),
-    anomaly_alerts: await one("SELECT COUNT(*) AS n FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0"),
+    // anomaly_alerts has no boolean `acknowledged` — acknowledged_at is the flag.
+    anomaly_alerts: await one('SELECT COUNT(*) AS n FROM anomaly_alerts WHERE acknowledged_at IS NULL'),
   };
 
   // calls_for_service has no call_type/address columns — it's incident_type/
@@ -573,7 +579,8 @@ reports.get('/command-center', async (c) => {
       WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}
       GROUP BY hour ORDER BY hour`,
   );
-  const anomaly_alerts = await list('SELECT * FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0 ORDER BY created_at DESC LIMIT 20');
+  // No boolean `acknowledged` column — acknowledged_at is the flag.
+  const anomaly_alerts = await list('SELECT * FROM anomaly_alerts WHERE acknowledged_at IS NULL ORDER BY created_at DESC LIMIT 20');
 
   return c.json({ kpis, active_calls, units, calls_by_hour, anomaly_alerts });
 });
@@ -1049,8 +1056,9 @@ reports.get('/daily-briefing', async (c) => {
                SUM(CASE WHEN priority='P2' THEN 1 ELSE 0 END) AS p2_calls,
                ROUND(AVG(COALESCE(response_time_seconds/60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at)-julianday(dispatched_at))*1440 END)),1) AS avg_response
              FROM calls_for_service WHERE date(created_at)=date('now','-1 day')`),
-      safeList(`SELECT id, bolo_number, title, priority, category FROM bolos WHERE status='active' ORDER BY priority ASC, created_at DESC LIMIT 10`),
-      safeList(`SELECT id, warrant_number, charge_description, status FROM warrants WHERE status='active' AND archived_at IS NULL ORDER BY date_issued DESC LIMIT 10`),
+      // bolos has `type`, not `category`; warrants has `issued_date`, not `date_issued`.
+      safeList(`SELECT id, bolo_number, title, priority, type AS category FROM bolos WHERE status='active' ORDER BY priority ASC, created_at DESC LIMIT 10`),
+      safeList(`SELECT id, warrant_number, charge_description, status FROM warrants WHERE status='active' AND archived_at IS NULL ORDER BY issued_date DESC LIMIT 10`),
       safeList(`SELECT incident_type, COUNT(*) AS count FROM incidents WHERE created_at >= datetime('now','-7 days') GROUP BY incident_type ORDER BY count DESC LIMIT 5`),
       safeList(`SELECT u.call_sign, usr.full_name FROM units u LEFT JOIN users usr ON usr.id=u.officer_id WHERE u.status NOT IN ('off_duty','out_of_service') ORDER BY u.call_sign LIMIT 30`),
     ]);
@@ -1081,7 +1089,8 @@ reports.get('/weekly-digest', async (c) => {
       safe1(`SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now',?)`, since7),
       safe1(`SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now',?)`, since7),
       safe1(`SELECT COUNT(*) AS n FROM citations WHERE created_at >= datetime('now',?)`, since7),
-      safe1(`SELECT COUNT(*) AS n FROM arrests WHERE created_at >= datetime('now',?)`, since7),
+      // No `arrests` table on live D1 — it's arrest_records.
+      safe1(`SELECT COUNT(*) AS n FROM arrest_records WHERE created_at >= datetime('now',?)`, since7),
       (async () => {
         try {
           const r = await queryFirst<{ v: number | null }>(db, `SELECT ROUND(AVG(COALESCE(response_time_seconds/60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at)-julianday(dispatched_at))*1440 END)),1) AS v FROM calls_for_service WHERE created_at >= datetime('now',?) AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)`, since7);
@@ -1139,9 +1148,11 @@ reports.get('/patrol-tracking', async (c) => {
       speed_mph: number | null; heading: number | null;
       recorded_at: string; location_address: string | null;
     }>(db, `
+      -- gps_breadcrumbs has speed (not speed_mph) and no location_address --
+      -- road_name / nearest_intersection are the only place data on the row.
       SELECT g.unit_id, u.call_sign, g.latitude, g.longitude,
-             g.speed_mph, g.heading, g.recorded_at,
-             ${geocode ? 'g.location_address' : 'NULL AS location_address'}
+             g.speed AS speed_mph, g.heading, g.recorded_at,
+             ${geocode ? 'COALESCE(g.road_name, g.nearest_intersection) AS location_address' : 'NULL AS location_address'}
         FROM gps_breadcrumbs g
         LEFT JOIN units u ON u.id = g.unit_id
        WHERE g.recorded_at >= ? ${untilFilter} ${unitFilter}
@@ -1370,7 +1381,9 @@ reports.get('/patrol-coverage', async (c) => {
   try {
     const db = getDb(c.env);
     const totalBeats = (await queryFirst<{ n: number }>(db,
-      'SELECT COUNT(DISTINCT beat_id) AS n FROM dispatch_geography'))?.n ?? 0;
+      // No dispatch_geography table exists (in rmpg-flex or rmpg-geo) —
+      // dispatch_beats is the beat registry.
+      'SELECT COUNT(*) AS n FROM dispatch_beats WHERE COALESCE(active, 1) = 1'))?.n ?? 0;
     const coveredBeats = (await queryFirst<{ n: number }>(db,
       `SELECT COUNT(DISTINCT u.assigned_beat) AS n FROM units u WHERE u.status = 'available' AND u.assigned_beat IS NOT NULL`))?.n ?? 0;
     return c.json({ coverage: totalBeats ? Math.round((coveredBeats / totalBeats) * 100) : 0, coveredBeats, totalBeats });
@@ -1395,10 +1408,13 @@ reports.get('/upcoming-court', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<{ date: string; time: string; case_number: string; officer_name: string }>(db,
-      `SELECT ce.hearing_date AS date, ce.hearing_time AS time, ce.case_number, COALESCE(u.full_name, 'Unassigned') AS officer_name
-       FROM court_events ce LEFT JOIN users u ON u.id = ce.officer_id
-       WHERE ce.hearing_date >= DATE('now') AND ce.hearing_date <= DATE('now','+7 days')
-       ORDER BY ce.hearing_date, ce.hearing_time LIMIT 30`);
+      // Live court_events: event_date / event_time / court_case_number, and no
+      // officer_id — created_by is the only user FK (same as admin.ts).
+      `SELECT ce.event_date AS date, ce.event_time AS time,
+              ce.court_case_number AS case_number, COALESCE(u.full_name, 'Unassigned') AS officer_name
+       FROM court_events ce LEFT JOIN users u ON u.id = ce.created_by
+       WHERE ce.event_date >= DATE('now') AND ce.event_date <= DATE('now','+7 days')
+       ORDER BY ce.event_date, ce.event_time LIMIT 30`);
     return c.json({ upcoming: rows });
   } catch { return c.json({ upcoming: [] }); }
 });

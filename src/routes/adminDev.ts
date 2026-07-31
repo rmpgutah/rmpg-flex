@@ -77,19 +77,28 @@ adminDev.post('/mock/gps', async (c) => {
   }
 
   const db = c.env.DB;
-  const unit = await db.prepare('SELECT id, unit_number FROM units WHERE id = ?')
-    .bind(body.unit_id).first<{ id: number; unit_number: string }>();
+  // units has no `unit_number` — the live column is `call_sign`. officer_id is
+  // needed below because gps_breadcrumbs.officer_id is NOT NULL.
+  const unit = await db.prepare('SELECT id, call_sign AS unit_number, officer_id FROM units WHERE id = ?')
+    .bind(body.unit_id).first<{ id: number; unit_number: string; officer_id: number | null }>();
   if (!unit) return c.json({ error: 'unit_not_found' }, 404);
+  if (unit.officer_id == null) {
+    return c.json({ error: 'unit_has_no_officer', detail: 'gps_breadcrumbs requires an officer' }, 409);
+  }
 
   const actor = c.get('user')!;
 
   await db.prepare(
-    `INSERT INTO gps_positions (unit_id, latitude, longitude, timestamp)
-     VALUES (?, ?, ?, datetime('now'))`
-  ).bind(body.unit_id, body.lat, body.lng).run();
+    // gps_positions does not exist on live D1 — breadcrumbs land in
+    // gps_breadcrumbs, whose timestamp column is recorded_at.
+    `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, recorded_at, gps_source)
+     VALUES (?, ?, ?, ?, datetime('now'), 'dev_sim')`
+  ).bind(body.unit_id, unit.officer_id, body.lat, body.lng).run();
 
   await db.prepare(
-    `INSERT INTO audit_log (action_type, entity_type, entity_id, performed_by, notes)
+    // audit_log columns are action / user_id / details (not action_type /
+    // performed_by / notes).
+    `INSERT INTO audit_log (action, entity_type, entity_id, user_id, details)
      VALUES ('DEV_SIM', 'unit', ?, ?, 'Mock GPS injection')`
   ).bind(body.unit_id, actor.id).run();
 
@@ -119,7 +128,7 @@ adminDev.post('/mock/call', async (c) => {
   ).bind(type, actor.id).run();
 
   await db.prepare(
-    `INSERT INTO audit_log (action_type, entity_type, entity_id, performed_by, notes)
+    `INSERT INTO audit_log (action, entity_type, entity_id, user_id, details)
      VALUES ('DEV_SIM', 'call', ?, ?, 'Mock call seed')`
   ).bind(result.meta.last_row_id, actor.id).run();
 

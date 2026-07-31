@@ -1,0 +1,25 @@
+-- 0214_notifications_entity_index.sql
+-- ============================================================
+-- Index `notifications` for entity-scoped duplicate lookups.
+-- ============================================================
+-- Verified against live D1 (785de7ae) on 2026-07-30: `notifications` carried
+-- ZERO indexes, so every entity-scoped read was a full table scan. That was
+-- invisible at 277 rows, but the CarsXE theft-notification dedupe added in
+-- src/routes/carxe.ts (recordCarxeTheftHit) runs such a lookup on the officer
+-- -safety path, and this table only grows.
+--
+-- Column order matches the dedupe predicate's selectivity, most-selective
+-- first: entity_id narrows to a single vehicle, entity_type/type disambiguate
+-- the notification kind, user_id makes the check per-recipient, and created_at
+-- trails so the `created_at > datetime('now', ?)` window is an index range scan
+-- rather than a filter applied after the fact.
+--
+-- `title` is intentionally NOT indexed. It embeds the VIN, so including it
+-- would bloat the index for no gain — the four leading columns already narrow
+-- to a handful of rows, and title is cheap to compare on those.
+--
+-- Idempotent (CREATE INDEX IF NOT EXISTS) per migrations/README.md, so a
+-- re-apply is a no-op. No ALTER TABLE here, so the D1 100-column cap does not
+-- apply and scripts/check-column-cap.js has nothing to flag.
+CREATE INDEX IF NOT EXISTS idx_notifications_entity_recipient
+  ON notifications (entity_id, entity_type, type, user_id, created_at);

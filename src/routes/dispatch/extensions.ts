@@ -1422,7 +1422,7 @@ callActions.get('/bolos/metrics', requireRole(...READ_ROLES), async (c) => {
 callActions.get('/geofences', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM geofences WHERE active = 1 ORDER BY name').catch(() => []);
+    const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM geofences WHERE is_active = 1 ORDER BY name').catch(() => []);
     return c.json(rows);
   } catch { return c.json([]); }
 });
@@ -1433,8 +1433,11 @@ callActions.post('/geofences', requireRole('admin', 'manager', 'supervisor'), as
     if (!body.name || !body.geojson) return c.json({ error: 'name and geojson required' }, 400);
     const userId = c.get('userId') as number | undefined;
     const r = await execute(db,
+      // 6 columns needs 6 values — a stray 'info' literal made 7, so this
+      // INSERT threw on arity even once 0214 added the columns. alert_type
+      // already defaults to 'info' via the bound parameter below.
       `INSERT INTO geofences (name, geojson, alert_type, created_by, created_at, updated_at)
-       VALUES (?,?,?,'info',?,datetime('now'),datetime('now'))`,
+       VALUES (?,?,?,?,datetime('now'),datetime('now'))`,
       body.name, JSON.stringify(body.geojson), body.alert_type || 'info', userId ?? null);
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch (err) {
@@ -1742,7 +1745,7 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
     // Copy field photos linked to the call
     await execute(db,
       `INSERT INTO incident_photos (incident_id, photo_id, call_id)
-       SELECT ?, file_id, call_id FROM field_photos WHERE call_id = ?`,
+       SELECT ?, id, call_id FROM field_photos WHERE call_id = ?`,
       incidentId, id,
     ).catch(() => {});
 
@@ -1876,7 +1879,8 @@ callActions.post('/:id/promote-to-case', requireRole('admin', 'manager', 'superv
 
     const caseNumber = `CASE-${incident.incident_number}`;
     const result = await execute(db,
-      `INSERT INTO cases (case_number, incident_id, case_type, status, priority, officer_id, created_at, updated_at)
+      // cases has no officer_id — lead_investigator_id is the officer FK.
+      `INSERT INTO cases (case_number, incident_id, case_type, status, priority, lead_investigator_id, created_at, updated_at)
        VALUES (?, ?, ?, 'open', ?, ?, datetime('now'), datetime('now'))`,
       caseNumber, incident.id, (incident.incident_type as string) || 'general',
       (incident.priority as string) || 'P3', incident.officer_id ?? userId ?? null);

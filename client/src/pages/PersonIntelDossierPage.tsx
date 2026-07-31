@@ -193,8 +193,15 @@ export default function PersonIntelDossierPage() {
   }, [deleteConfirmOpen, navigate]);
 
   const annotate = async (dpId: number, patch: Record<string, any>) => {
-    await apiFetch(`/person-intel/${id}/data-point/${dpId}`, { method: 'PATCH', body: JSON.stringify(patch) });
-    await load();
+    // apiFetch rejects on any non-2xx. Unguarded, a failed flag/note PATCH
+    // left the click doing nothing at all — no toast, no state change, just an
+    // unhandled rejection in the console. Matches handleDelete's pattern below.
+    try {
+      await apiFetch(`/person-intel/${id}/data-point/${dpId}`, { method: 'PATCH', body: JSON.stringify(patch) });
+      await load();
+    } catch (e: any) {
+      addToast(e?.message ?? 'Failed to update data point', 'error');
+    }
   };
 
   const handleDelete = async () => {
@@ -247,7 +254,7 @@ export default function PersonIntelDossierPage() {
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center gap-2">
-        <button onClick={() => navigate('/person-intel')} className="text-rmpg-500 hover:text-rmpg-300">
+        <button aria-label="Back" onClick={() => navigate('/person-intel')} className="text-rmpg-500 hover:text-rmpg-300">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <PanelTitleBar title={`DOSSIER: ${dossier.subject_name.toUpperCase()}`} icon={Search} />

@@ -8,9 +8,8 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
-import { parseTimestamp, safeDateStr, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
+import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
 import { usePersistedTab } from '../../hooks/usePersistedState';
-import { useFormDraft } from '../../hooks/useFormDraft';
 import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../context/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -28,16 +27,17 @@ import FleetAnalysisFormsTab from './tabs/FleetAnalysisFormsTab';
 import FleetVendorsTab from './tabs/FleetVendorsTab';
 import FleetWorkOrdersTab from './tabs/FleetWorkOrdersTab';
 import FleetServiceTab from './tabs/FleetServiceTab';
-import VehicleFormModal, { type VehicleFormState, EMPTY_VEHICLE_FORM } from './modals/VehicleFormModal';
-import MaintenanceFormModal, { type MaintenanceFormState, EMPTY_MAINT_FORM } from './modals/MaintenanceFormModal';
-import FuelLogModal, { type FuelFormState, EMPTY_FUEL_FORM } from './modals/FuelLogModal';
-import InspectionFormModal, { type InspectionFormState, EMPTY_INSPECTION_FORM } from './modals/InspectionFormModal';
+import VehicleFormModal, { EMPTY_VEHICLE_FORM } from './modals/VehicleFormModal';
+import MaintenanceFormModal, { EMPTY_MAINT_FORM } from './modals/MaintenanceFormModal';
+import FuelLogModal, { EMPTY_FUEL_FORM } from './modals/FuelLogModal';
+import InspectionFormModal, { EMPTY_INSPECTION_FORM } from './modals/InspectionFormModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import ExportButton from '../../components/ExportButton';
 import MaintenanceMonitor from './components/MaintenanceMonitor';
 import { useFleetVehicles } from './hooks/useFleetVehicles';
 import { useVehicleDetail } from './hooks/useVehicleDetail';
 import { useFleetCosts } from './hooks/useFleetCosts';
+import { useFleetForms, type ModalMode } from './hooks/useFleetForms';
 import type {
   FleetVehicle, FleetMaintenance, FleetVehicleStatus, FleetFuelLog,
   FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
@@ -48,7 +48,6 @@ import type {
 // RMPG Flex — Fleet Vehicle Management Page (Refactored)
 // ============================================================
 
-type ModalMode = 'none' | 'new_vehicle' | 'edit_vehicle' | 'log_maintenance' | 'edit_maintenance' | 'log_fuel' | 'edit_fuel' | 'new_inspection' | 'edit_inspection';
 type FleetViewMode = 'dashboard' | 'analysis' | 'work_orders' | 'vendors' | 'service';
 
 // Fleet-wide views. Rendered as a real tablist — the previous version had
@@ -184,42 +183,6 @@ export default function FleetPage() {
   // on a reload that restores the persisted view (ref starts false and the
   // effect no-ops on that first render).
   const pendingTabFocusRef = useRef(false);
-  const [modal, setModal] = useState<ModalMode>('none');
-  // Editing state — tracks which record is being edited. Declared here
-  // (rather than further down with the other editing/delete state) because
-  // the useFormDraft storageKeys below need it to scope drafts per-record.
-  const [editingFuelId, setEditingFuelId] = useState<string | null>(null);
-  const [editingMaintenanceId, setEditingMaintenanceId] = useState<string | null>(null);
-  const [editingInspectionId, setEditingInspectionId] = useState<string | null>(null);
-  const v = useFormDraft<VehicleFormState>({
-    storageKey: `rmpg_fleet_vehicle_form_${modal === 'edit_vehicle' ? (selectedId ?? 'new') : 'new'}`,
-    defaultValue: EMPTY_VEHICLE_FORM,
-    isActive: modal === 'new_vehicle' || modal === 'edit_vehicle',
-  });
-  const m = useFormDraft<MaintenanceFormState>({
-    storageKey: `rmpg_fleet_maintenance_form_${editingMaintenanceId ?? 'new'}`,
-    defaultValue: EMPTY_MAINT_FORM,
-    isActive: modal === 'log_maintenance' || modal === 'edit_maintenance',
-  });
-  const f = useFormDraft<FuelFormState>({
-    storageKey: `rmpg_fleet_fuel_log_form_${editingFuelId ?? 'new'}`,
-    defaultValue: EMPTY_FUEL_FORM,
-    isActive: modal === 'log_fuel' || modal === 'edit_fuel',
-  });
-  const i = useFormDraft<InspectionFormState>({
-    storageKey: `rmpg_fleet_inspection_form_${editingInspectionId ?? 'new'}`,
-    defaultValue: EMPTY_INSPECTION_FORM,
-    isActive: modal === 'new_inspection' || modal === 'edit_inspection',
-  });
-  const vehicleForm = v.form;
-  const setVehicleForm = v.setForm;
-  const maintForm = m.form;
-  const setMaintForm = m.setForm;
-  const fuelForm = f.form;
-  const setFuelForm = f.setForm;
-  const inspectionForm = i.form;
-  const setInspectionForm = i.setForm;
-  const [saving, setSaving] = useState(false);
 
   // Fleet-wide analytics for no-selection state
   const [fleetAnalytics, setFleetAnalytics] = useState<FleetAnalytics | null>(null);
@@ -318,6 +281,46 @@ export default function FleetPage() {
   resetCostsRef.current = resetCosts;
   costsLazyLoadRef.current = onCostsLazyLoad;
 
+  // Pre-save modal mode, read by onVehicleSaved below. The save handler calls
+  // setModal('none') before invoking the callback, so the `modal` value from
+  // this render (not the pending one) is what tells us whether the save was an
+  // edit — the exact condition the pre-extraction handler used to decide
+  // whether to refresh the open detail record.
+  const modalRef = useRef<ModalMode>('none');
+
+  // The four form modals, their per-record drafts and their save handlers.
+  // The on*Saved callbacks are what the handlers used to call directly
+  // (fetchDetail / fetchFuelLogs / fetchInspections / fetchVehicles); the hook
+  // holds them in refs, so these plain arrows never reach a dependency array.
+  const {
+    modal, setModal,
+    vehicleForm, setVehicleForm, maintForm, setMaintForm,
+    fuelForm, setFuelForm, inspectionForm, setInspectionForm,
+    editingFuelId, editingMaintenanceId, editingInspectionId,
+    setEditingFuelId, setEditingMaintenanceId, setEditingInspectionId,
+    saving, isDirtyAny, drafts: { v, m, f, i },
+    handleSaveVehicle, handleSaveMaintenance, handleSaveFuel, handleSaveInspection,
+    activeSaveHandler, activeCancelHandler,
+  } = useFleetForms({
+    selectedId,
+    onVehicleSaved: () => {
+      if (modalRef.current === 'edit_vehicle' && selectedId != null) fetchDetail(selectedId);
+      fetchVehicles({ silent: true });
+    },
+    onMaintenanceSaved: () => { if (selectedId != null) fetchDetail(selectedId); },
+    onFuelSaved: (odometerChanged) => {
+      if (selectedId == null) return;
+      fetchFuelLogs(selectedId);
+      if (odometerChanged) fetchDetail(selectedId); // refresh mileage
+    },
+    onInspectionSaved: (mileageChanged) => {
+      if (selectedId == null) return;
+      fetchInspections(selectedId);
+      if (mileageChanged) fetchDetail(selectedId);
+    },
+  });
+  modalRef.current = modal;
+
   const [showPretripModal, setShowPretripModal] = useState(false);
   // Derived from PRETRIP_ITEMS, not hand-listed: a key present in the item list
   // but missing here would render as undefined — an unchecked box reading as FAIL —
@@ -360,26 +363,6 @@ export default function FleetPage() {
   useEffect(() => {
     if (showPretripModal) pretripFirstItemRef.current?.focus();
   }, [showPretripModal]);
-
-  // Snapshot form as clean baseline after modal opens and form is populated.
-  //
-  // Every form needs this, not just the vehicle one. `useFormDraft.isDirty` is
-  // `isActive && initialRef.current !== '' && <changed>`, and `initialRef` is
-  // written ONLY by snapshot() — so a form that never snapshots is permanently
-  // reported clean. Before this covered all four, an officer could fill in a
-  // maintenance, fuel or inspection form and lose it silently: no
-  // UnsavedChangesGuard on navigation, no FloatingSaveBar, no "UNSAVED" badge,
-  // and the modals' guardedClose skipped its confirm so a stray backdrop click
-  // discarded the entry outright.
-  useEffect(() => {
-    if (modal === 'new_vehicle' || modal === 'edit_vehicle') v.snapshot();
-    else if (modal === 'log_maintenance' || modal === 'edit_maintenance') m.snapshot();
-    else if (modal === 'log_fuel' || modal === 'edit_fuel') f.snapshot();
-    else if (modal === 'new_inspection' || modal === 'edit_inspection') i.snapshot();
-  }, [modal]);
-
-  // Combined dirty state for any open form
-  const isDirtyAny = v.isDirty || m.isDirty || f.isDirty || i.isDirty;
 
   // Move DOM focus to the newly-active fleet view tab, but only when the
   // change was driven by the tablist's own keyboard handler (which sets
@@ -451,146 +434,6 @@ export default function FleetPage() {
   // ----------------------------------------------------------
   // CRUD handlers
   // ----------------------------------------------------------
-
-  const handleSaveVehicle = async () => {
-    if (!vehicleForm.vehicle_number.trim()) { addToast('Vehicle number is required', 'warning'); return; }
-    setSaving(true);
-    try {
-      const equipArr = vehicleForm.equipment_str.split(',').map(s => s.trim()).filter(Boolean);
-      const payload = {
-        vehicle_number: vehicleForm.vehicle_number.trim(),
-        make: vehicleForm.make.trim() || null,
-        model: vehicleForm.model.trim() || null,
-        year: vehicleForm.year ? parseInt(vehicleForm.year, 10) : null,
-        color: vehicleForm.color.trim() || null,
-        vin: vehicleForm.vin.trim() || null,
-        plate_number: vehicleForm.plate_number.trim() || null,
-        plate_state: vehicleForm.plate_state.trim() || null,
-        status: vehicleForm.status,
-        current_mileage: vehicleForm.current_mileage ? parseInt(vehicleForm.current_mileage, 10) : null,
-        next_service_mileage: vehicleForm.next_service_mileage ? parseInt(vehicleForm.next_service_mileage, 10) : null,
-        insurance_expiry: vehicleForm.insurance_expiry ? mtDatetimeLocalToUtc(vehicleForm.insurance_expiry) : null,
-        registration_expiry: vehicleForm.registration_expiry ? mtDatetimeLocalToUtc(vehicleForm.registration_expiry) : null,
-        equipment: equipArr,
-        notes: vehicleForm.notes.trim() || null,
-      };
-      if (modal === 'new_vehicle') {
-        await apiFetch('/fleet', { method: 'POST', body: JSON.stringify(payload) });
-        addToast('Vehicle created successfully', 'success');
-      } else if (modal === 'edit_vehicle' && selectedId != null) {
-        await apiFetch(`/fleet/${selectedId}`, { method: 'PUT', body: JSON.stringify(payload) });
-        addToast('Vehicle updated successfully', 'success');
-        fetchDetail(selectedId);
-      }
-      v.clearDraft();
-      setModal('none');
-      fetchVehicles({ silent: true });
-    } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to save vehicle', 'error');
-    } finally { setSaving(false); }
-  };
-
-  const handleSaveMaintenance = async () => {
-    if (!maintForm.description.trim()) { addToast('Description is required', 'warning'); return; }
-    if (selectedId == null) return;
-    setSaving(true);
-    try {
-      const payload = {
-        type: maintForm.type,
-        description: maintForm.description.trim(),
-        mileage_at_service: maintForm.mileage_at_service ? parseInt(maintForm.mileage_at_service, 10) : null,
-        cost: maintForm.cost ? parseFloat(maintForm.cost) : null,
-        labor_cost: maintForm.labor_cost ? parseFloat(maintForm.labor_cost) : null,
-        vendor: maintForm.vendor.trim() || null,
-        performed_by: maintForm.performed_by.trim() || null,
-        performed_at: mtDatetimeLocalToUtc(maintForm.performed_at || nowLocalISO()),
-        next_due_date: maintForm.next_due_date ? mtDatetimeLocalToUtc(maintForm.next_due_date) : null,
-        next_due_mileage: maintForm.next_due_mileage ? parseInt(maintForm.next_due_mileage, 10) : null,
-        service_tasks: maintForm.service_tasks.trim() || null,
-        notes: maintForm.notes.trim() || null,
-      };
-      if (modal === 'edit_maintenance' && editingMaintenanceId) {
-        await apiFetch(`/fleet/maintenance/${editingMaintenanceId}`, { method: 'PUT', body: JSON.stringify(payload) });
-        addToast('Maintenance updated successfully', 'success');
-      } else {
-        await apiFetch(`/fleet/${selectedId}/maintenance`, { method: 'POST', body: JSON.stringify(payload) });
-        addToast('Maintenance logged successfully', 'success');
-      }
-      m.clearDraft();
-      setModal('none');
-      setEditingMaintenanceId(null);
-      fetchDetail(selectedId);
-    } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to save maintenance', 'error');
-    } finally { setSaving(false); }
-  };
-
-  const handleSaveFuel = async () => {
-    if (!fuelForm.fuel_date || !fuelForm.gallons) { addToast('Date and gallons are required', 'warning'); return; }
-    if (selectedId == null) return;
-    setSaving(true);
-    try {
-      const payload = {
-        fuel_date: mtDatetimeLocalToUtc(fuelForm.fuel_date),
-        gallons: parseFloat(fuelForm.gallons),
-        cost_per_gallon: fuelForm.cost_per_gallon ? parseFloat(fuelForm.cost_per_gallon) : null,
-        total_cost: fuelForm.total_cost ? parseFloat(fuelForm.total_cost) : null,
-        odometer_reading: fuelForm.odometer_reading ? parseInt(fuelForm.odometer_reading, 10) : null,
-        fuel_type: fuelForm.fuel_type,
-        station: fuelForm.station.trim() || null,
-        notes: fuelForm.notes.trim() || null,
-        is_full_tank: fuelForm.is_full_tank ? 1 : 0,
-        payment_method: fuelForm.payment_method.trim() || null,
-        driver_name: fuelForm.driver_name.trim() || null,
-        location: fuelForm.location.trim() || null,
-      };
-      if (modal === 'edit_fuel' && editingFuelId) {
-        await apiFetch(`/fleet/fuel/${editingFuelId}`, { method: 'PUT', body: JSON.stringify(payload) });
-        addToast('Fuel entry updated successfully', 'success');
-      } else {
-        await apiFetch(`/fleet/${selectedId}/fuel`, { method: 'POST', body: JSON.stringify(payload) });
-        addToast('Fuel entry logged successfully', 'success');
-      }
-      f.clearDraft();
-      setModal('none');
-      setEditingFuelId(null);
-      fetchFuelLogs(selectedId);
-      if (payload.odometer_reading) fetchDetail(selectedId); // refresh mileage
-    } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to save fuel entry', 'error');
-    } finally { setSaving(false); }
-  };
-
-  const handleSaveInspection = async () => {
-    if (!(inspectionForm.inspector_name || '').trim()) { addToast('Inspector name is required', 'warning'); return; }
-    if (selectedId == null) return;
-    setSaving(true);
-    try {
-      const payload = {
-        inspection_type: inspectionForm.inspection_type,
-        inspector_name: (inspectionForm.inspector_name || '').trim(),
-        inspection_date: mtDatetimeLocalToUtc(inspectionForm.inspection_date),
-        overall_result: inspectionForm.overall_result,
-        mileage: inspectionForm.mileage ? parseInt(inspectionForm.mileage, 10) : null,
-        items: inspectionForm.items,
-        notes: inspectionForm.notes.trim() || null,
-      };
-      if (modal === 'edit_inspection' && editingInspectionId) {
-        await apiFetch(`/fleet/inspections/${editingInspectionId}`, { method: 'PUT', body: JSON.stringify(payload) });
-        addToast('Inspection updated successfully', 'success');
-      } else {
-        await apiFetch(`/fleet/${selectedId}/inspections`, { method: 'POST', body: JSON.stringify(payload) });
-        addToast('Inspection submitted successfully', 'success');
-      }
-      i.clearDraft();
-      setModal('none');
-      setEditingInspectionId(null);
-      fetchInspections(selectedId);
-      if (payload.mileage) fetchDetail(selectedId);
-    } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to save inspection', 'error');
-    } finally { setSaving(false); }
-  };
 
   // Personnel CRUD handlers
   const handleAssignVehicle = async (unitId: string) => {
@@ -894,19 +737,6 @@ export default function FleetPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [showPretripModal, closePretrip]);
-
-  // Active save/cancel for FloatingSaveBar
-  const activeSaveHandler = () => {
-    if (modal === 'new_vehicle' || modal === 'edit_vehicle') handleSaveVehicle();
-    else if (modal === 'log_maintenance' || modal === 'edit_maintenance') handleSaveMaintenance();
-    else if (modal === 'log_fuel' || modal === 'edit_fuel') handleSaveFuel();
-    else if (modal === 'new_inspection' || modal === 'edit_inspection') handleSaveInspection();
-  };
-
-  const activeCancelHandler = () => {
-    v.clearDraft(); m.clearDraft(); f.clearDraft(); i.clearDraft();
-    setModal('none');
-  };
 
   // Right-click menu for a vehicle list row. Acts on the right-clicked row,
   // not the current selection (Open selects it; Delete opens the confirm).
@@ -1366,62 +1196,68 @@ export default function FleetPage() {
               </button>
             )}
             <FleetDetailPanel
-              detail={detail}
-              onViewAllWorkOrders={() => {
-                setWorkOrdersVehicleFilter(Number(detail.id));
-                setSelectedId(null);
-                clearDetail();
-                setViewMode('work_orders');
+              data={{
+                detail,
+                maintenance,
+                fuelLogs,
+                fuelSummary,
+                inspections,
+                assignments,
+                analytics,
+                analyticsLoading,
+                personnelData,
+                personnelLoading,
+                gpsMileage,
+                gpsMileageLoading,
+                isArchived: showArchived,
               }}
-              maintenance={maintenance}
-              fuelLogs={fuelLogs}
-              fuelSummary={fuelSummary}
-              inspections={inspections}
-              assignments={assignments}
-              analytics={analytics}
-              analyticsLoading={analyticsLoading}
-              onAnalyticsPeriodChange={(p) => { if (selectedId) fetchVehicleAnalytics(selectedId, p); }}
-              personnelData={personnelData}
-              personnelLoading={personnelLoading}
+              costs={{
+                loans,
+                insurancePolicies,
+                accessories,
+                utilities,
+                otherCosts,
+                summary: costSummary,
+                subTab: costSubTab,
+                onSubTabChange: setCostSubTab,
+                onAdd: handleAddCost,
+                onEdit: handleEditCost,
+                onDelete: handleDeleteCost,
+                onSaveBudgets: handleSaveBudgets,
+              }}
+              actions={{
+                onEditVehicle: openEditVehicle,
+                onLogMaintenance: openLogMaintenance,
+                onLogFuel: openLogFuel,
+                onNewInspection: openNewInspection,
+                onViewAllWorkOrders: () => {
+                  setWorkOrdersVehicleFilter(Number(detail.id));
+                  setSelectedId(null);
+                  clearDetail();
+                  setViewMode('work_orders');
+                },
+                onEditFuel: openEditFuel,
+                onDeleteFuel: (log) => setDeletingFuel(log),
+                onBulkDeleteFuel: handleBulkDeleteFuel,
+                onEditMaintenance: openEditMaintenance,
+                onDeleteMaintenance: (record) => setDeletingMaintenance(record),
+                onEditInspection: openEditInspection,
+                onDeleteInspection: (insp) => setDeletingInspection(insp),
+                onAnalyticsPeriodChange: (p) => { if (selectedId) fetchVehicleAnalytics(selectedId, p); },
+                onAssignVehicle: handleAssignVehicle,
+                onUnassignVehicle: handleUnassignVehicle,
+                onAddPersonnelNote: handleAddPersonnelNote,
+                onDeletePersonnelNote: handleDeletePersonnelNote,
+                onRefreshPersonnel: handleRefreshPersonnel,
+                onArchiveVehicle: handleArchiveVehicle,
+                onUnarchiveVehicle: handleUnarchiveVehicle,
+                onDeleteVehicle: () => setDeletingVehicleId(selectedId),
+                onFetchGpsMileage: fetchGpsMileage,
+                onSyncGpsMileage: handleSyncGpsMileage,
+                onClose: () => { setSelectedId(null); clearDetail(); },
+              }}
               activeTab={activeTab}
               onTabChange={setActiveTab}
-              loans={loans}
-              insurancePolicies={insurancePolicies}
-              accessories={accessories}
-              utilities={utilities}
-              otherCosts={otherCosts}
-              costSummary={costSummary}
-              costSubTab={costSubTab}
-              onCostSubTabChange={setCostSubTab}
-              onAddCost={handleAddCost}
-              onEditCost={handleEditCost}
-              onDeleteCost={handleDeleteCost}
-              onSaveBudgets={handleSaveBudgets}
-              onEditVehicle={openEditVehicle}
-              onLogMaintenance={openLogMaintenance}
-              onLogFuel={openLogFuel}
-              onNewInspection={openNewInspection}
-              onEditFuel={openEditFuel}
-              onDeleteFuel={(log) => setDeletingFuel(log)}
-              onBulkDeleteFuel={handleBulkDeleteFuel}
-              onEditMaintenance={openEditMaintenance}
-              onDeleteMaintenance={(record) => setDeletingMaintenance(record)}
-              onEditInspection={openEditInspection}
-              onDeleteInspection={(insp) => setDeletingInspection(insp)}
-              onAssignVehicle={handleAssignVehicle}
-              onUnassignVehicle={handleUnassignVehicle}
-              onAddPersonnelNote={handleAddPersonnelNote}
-              onDeletePersonnelNote={handleDeletePersonnelNote}
-              onRefreshPersonnel={handleRefreshPersonnel}
-              onArchiveVehicle={handleArchiveVehicle}
-              onUnarchiveVehicle={handleUnarchiveVehicle}
-              onDeleteVehicle={() => setDeletingVehicleId(selectedId)}
-              isArchived={showArchived}
-              gpsMileage={gpsMileage}
-              gpsMileageLoading={gpsMileageLoading}
-              onFetchGpsMileage={fetchGpsMileage}
-              onSyncGpsMileage={handleSyncGpsMileage}
-              onClose={() => { setSelectedId(null); clearDetail(); }}
             />
             </>
           )}

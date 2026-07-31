@@ -118,6 +118,14 @@ for path in files:
         sql = next((g for g in m.groups() if g), None)
         if not sql or not re.search(r'\bSELECT\b', sql, re.I):
             continue
+        # Un-escape JS-escaped quotes BEFORE anything else. SQL embedded in a
+        # single-quoted JS string writes its own literals as \'pass\', and the
+        # literal-stripping regex below cannot match a quote preceded by a
+        # backslash — so the literal survived and its contents tokenized as
+        # column names. That produced fleet_fuel_log.Y / .m (from
+        # strftime(\'%Y-%m\', …)) and fleet_inspections.pass (from
+        # overall_result=\'pass\'): three false positives from one root cause.
+        sql = sql.replace("\\'", "'").replace('\\"', '"')
         # Strip SQL comments — prose inside them tokenizes as fake identifiers.
         flat = ' '.join(re.sub(r'--[^\n]*', ' ', sql).split())
         froms = re.findall(r'\bFROM\s+([A-Za-z_][A-Za-z0-9_]*)', flat, re.I)
@@ -141,7 +149,13 @@ for path in files:
             prev = t
             t = re.sub(r'\)\s*[A-Za-z_][A-Za-z0-9_]*', ')', t)
         for tok in re.findall(r'[A-Za-z_][A-Za-z0-9_]*', t):
-            if tok.lower() in KEYWORDS or tok in schema[table]:
+            # `tok == table` — FTS5 auxiliary functions take the TABLE name as
+            # their first argument (`bm25(intel_index)`,
+            # `snippet(intel_index, 3, …)`), which is not a column reference.
+            # Without this, every FTS5 search reads as a bad column ref; that
+            # was 3 of the 4 remaining false positives (intel.ts, intelAi.ts,
+            # intelQuery.ts).
+            if tok.lower() in KEYWORDS or tok in schema[table] or tok == table:
                 continue
             findings.append((str(path), src[:m.start()].count('\n') + 1, table, tok))
 

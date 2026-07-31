@@ -507,7 +507,7 @@ export default function AIDevChatPanel() {
                 <p className="text-xs text-rmpg-300 truncate">{s.first_message || 'New conversation'}</p>
                 <p className="text-[10px] text-rmpg-500">{s.message_count} messages</p>
               </div>
-              <button
+              <button aria-label="Delete"
                 onClick={(e) => deleteSession(s.session_id, e)}
                 className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-all"
               >
@@ -728,7 +728,7 @@ export default function AIDevChatPanel() {
               placeholder="Enter file path for context (e.g., client/src/pages/AdminPage.tsx)"
               className="flex-1 bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded focus:outline-none focus:border-rmpg-500"
             />
-            <button
+            <button aria-label="Close"
               onClick={() => {
                 setShowFileInput(false);
                 setFileContext('');
