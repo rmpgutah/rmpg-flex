@@ -12,7 +12,7 @@
 import { Hono } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { sniffIdentifiers, toFtsQuery, isRealValue } from '../utils/intelMatch';
 import { rebuildIntelIndex, computeResolutionSuggestions, INTEL_TYPES } from '../utils/intelIndexer';
@@ -44,18 +44,26 @@ interface IntelHit {
   cluster?: { canonical_person_id: number | null; pending_suggestions: number };
 }
 
+// ⚠️ Both blocks below MUST use queryInChunks. This is the officer-safety
+// variant of the D1 100-bound-parameter cap, and it is the SILENT one:
+// D1 rejects a >100-parameter query at bind time, the per-block try/catch here
+// swallows that into a console line, and the function returns an EMPTY flag map.
+// The caller cannot tell "no flags" from "could not read flags", so
+// ACTIVE WARRANT / OFFICER SAFETY / GANG badges simply disappear from any
+// result set holding more than 100 persons — no error on screen, nothing in
+// error_log. CLAUDE.md documents the identical defect in intelQueryFlags.ts;
+// this was its unfixed twin. Do not reintroduce a hand-rolled IN-list here.
 async function personFlags(db: D1Database, ids: number[]): Promise<Map<number, string[]>> {
   const out = new Map<number, string[]>();
   if (!ids.length) return out;
-  const ph = ids.map(() => '?').join(',');
   try {
-    for (const w of await query<any>(db,
-      `SELECT subject_person_id AS pid FROM warrants
-       WHERE status IN ('active','outstanding') AND subject_person_id IN (${ph})`, ...ids))
+    for (const w of await queryInChunks<any>(db, ids,
+      (ph) => `SELECT subject_person_id AS pid FROM warrants
+       WHERE status IN ('active','outstanding') AND subject_person_id IN (${ph})`))
       out.set(w.pid, [...(out.get(w.pid) || []), 'ACTIVE WARRANT']);
   } catch (err: any) { console.error('[intel] warrant flags failed:', err?.message); }
   try {
-    for (const p of await query<any>(db, `SELECT id, flags FROM persons WHERE id IN (${ph})`, ...ids)) {
+    for (const p of await queryInChunks<any>(db, ids, (ph) => `SELECT id, flags FROM persons WHERE id IN (${ph})`)) {
       const f = isRealValue(p.flags) ? String(p.flags).toLowerCase() : '';
       if (f.includes('officer safety') || f.includes('violent')) out.set(p.id, [...(out.get(p.id) || []), 'OFFICER SAFETY']);
       if (f.includes('gang')) out.set(p.id, [...(out.get(p.id) || []), 'GANG']);
