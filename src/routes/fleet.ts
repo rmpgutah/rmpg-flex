@@ -1559,7 +1559,47 @@ export function computeFuelAnalytics(logs: Record<string, unknown>[]): {
       daySpan = Math.max(1, Math.round((last.getTime() - first.getTime()) / 86400000));
     }
   }
-  const avgMpg = mpgValues.length ? Math.round((mpgValues.reduce((s, v) => s + v, 0) / mpgValues.length) * 10) / 10 : null;
+  // Drop physically impossible readings before they become headline stats.
+  //
+  // A bad odometer entry or a mistyped manual mpg produces values the vehicle
+  // cannot have achieved, and Math.max/min surface exactly those as "BEST MPG"
+  // and "WORST MPG". Live PS-D19 (a RAM 1500) reported best 118.4 — 395 miles
+  // on a 3.3-gallon fill — and worst 0.2, about 4 miles on a full tank. Both
+  // were presented to operators as fact.
+  //
+  // The band is a RATIO around the vehicle's own median, not a fixed ceiling,
+  // so it carries no assumption about what this fleet drives: a pickup with a
+  // median of 10 gets 3.4-30.9, while a motorcycle with a median of 45 gets
+  // 15-135. A fixed constant would have to be wrong for one of them.
+  //
+  // Factor 3 measured against the live 84-value population: it is the only one
+  // that leaves a range a RAM 1500 can actually produce (best 21.9 highway,
+  // worst 4.0 towing/idling). Factor 4 leaves 31.6 and factor 5 leaves 46.8 —
+  // both still impossible for that truck.
+  //
+  // Requires a real sample: below MIN_SAMPLE the median is too unstable to
+  // judge an outlier by, so nothing is filtered.
+  const MPG_OUTLIER_FACTOR = 3;
+  const MPG_OUTLIER_MIN_SAMPLE = 8;
+  let mpgKept = mpgValues;
+  let mpgExcluded = 0;
+  if (mpgValues.length >= MPG_OUTLIER_MIN_SAMPLE) {
+    const asc = [...mpgValues].sort((a, b) => a - b);
+    const median = asc[Math.floor((asc.length - 1) / 2)];
+    if (median > 0) {
+      const lo = median / MPG_OUTLIER_FACTOR;
+      const hi = median * MPG_OUTLIER_FACTOR;
+      const kept = mpgValues.filter((v) => v >= lo && v <= hi);
+      // Never let the filter empty the set — if it would, the data is too odd
+      // to judge and the raw values are the more honest answer.
+      if (kept.length > 0) {
+        mpgExcluded = mpgValues.length - kept.length;
+        mpgKept = kept;
+      }
+    }
+  }
+
+  const avgMpg = mpgKept.length ? Math.round((mpgKept.reduce((s, v) => s + v, 0) / mpgKept.length) * 10) / 10 : null;
   const fullTankCount = logs.filter((l) => num(l.is_full_tank) !== 0).length;
   const summary: Record<string, unknown> = {
     total_gallons: Math.round(totalGallons * 1000) / 1000,
@@ -1568,8 +1608,12 @@ export function computeFuelAnalytics(logs: Record<string, unknown>[]): {
     full_tank_count: fullTankCount,
     avg_cost_per_gallon: totalGallons > 0 ? Math.round((totalCost / totalGallons) * 1000) / 1000 : 0,
     avg_mpg: avgMpg,
-    best_mpg: mpgValues.length ? Math.max(...mpgValues) : null,
-    worst_mpg: mpgValues.length ? Math.min(...mpgValues) : null,
+    best_mpg: mpgKept.length ? Math.max(...mpgKept) : null,
+    worst_mpg: mpgKept.length ? Math.min(...mpgKept) : null,
+    // Surfaced, not swallowed: the UI can tell an operator that N readings were
+    // set aside, so a data-entry problem stays visible instead of being quietly
+    // smoothed away.
+    mpg_outliers_excluded: mpgExcluded,
     total_distance: totalDistance != null ? Math.round(totalDistance * 10) / 10 : null,
     cost_per_mile: totalDistance && totalDistance > 0 ? Math.round((totalCost / totalDistance) * 1000) / 1000 : null,
     fuel_cost_per_day: daySpan != null ? Math.round((totalCost / daySpan) * 100) / 100 : null,
