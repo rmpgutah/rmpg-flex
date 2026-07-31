@@ -171,7 +171,19 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     return () => {
       cancelled = true;
       if (recoveryCleanupRef.current) { recoveryCleanupRef.current(); recoveryCleanupRef.current = null; }
-      if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
+      // unregisterMapInstance() only drops our bookkeeping entry — it does NOT
+      // release the map. Mapbox holds a WebGL context, a canvas, and
+      // window-level listeners until map.remove() is called, so leaving it out
+      // meant every visit to Patrol leaked a live GL context that could never
+      // be garbage collected. Browsers cap WebGL contexts (~16 in Chrome) and
+      // silently kill the OLDEST when that ceiling is hit, so the damage shows
+      // up as unrelated maps elsewhere in the app going blank.
+      if (mapInstanceRef.current) {
+        unregisterMapInstance(mapInstanceRef.current);
+        try { mapInstanceRef.current.remove(); } catch { /* already gone */ }
+        mapInstanceRef.current = null;
+      }
+      setMapReady(false);
     };
   }, [recoverNonce]);
 
