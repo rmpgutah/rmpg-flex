@@ -1,0 +1,7 @@
+{
+  "_note": "Ratchet baseline for scripts/check-button-health.mjs. These numbers may only go DOWN. If a new hit appears, fix the button or refine the classifier — never raise a number to silence a real defect. All four classes are at zero as of PRs #3187 / #3194 / #3195 / #3197.",
+  "no-accessible-name": 0,
+  "popup-listener-race": 0,
+  "stuck-flag": 0,
+  "implicit-submit": 0
+}
