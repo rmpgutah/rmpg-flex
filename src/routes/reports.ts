@@ -1049,8 +1049,9 @@ reports.get('/daily-briefing', async (c) => {
                SUM(CASE WHEN priority='P2' THEN 1 ELSE 0 END) AS p2_calls,
                ROUND(AVG(COALESCE(response_time_seconds/60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at)-julianday(dispatched_at))*1440 END)),1) AS avg_response
              FROM calls_for_service WHERE date(created_at)=date('now','-1 day')`),
-      safeList(`SELECT id, bolo_number, title, priority, category FROM bolos WHERE status='active' ORDER BY priority ASC, created_at DESC LIMIT 10`),
-      safeList(`SELECT id, warrant_number, charge_description, status FROM warrants WHERE status='active' AND archived_at IS NULL ORDER BY date_issued DESC LIMIT 10`),
+      // bolos has `type`, not `category`; warrants has `issued_date`, not `date_issued`.
+      safeList(`SELECT id, bolo_number, title, priority, type AS category FROM bolos WHERE status='active' ORDER BY priority ASC, created_at DESC LIMIT 10`),
+      safeList(`SELECT id, warrant_number, charge_description, status FROM warrants WHERE status='active' AND archived_at IS NULL ORDER BY issued_date DESC LIMIT 10`),
       safeList(`SELECT incident_type, COUNT(*) AS count FROM incidents WHERE created_at >= datetime('now','-7 days') GROUP BY incident_type ORDER BY count DESC LIMIT 5`),
       safeList(`SELECT u.call_sign, usr.full_name FROM units u LEFT JOIN users usr ON usr.id=u.officer_id WHERE u.status NOT IN ('off_duty','out_of_service') ORDER BY u.call_sign LIMIT 30`),
     ]);
@@ -1139,9 +1140,11 @@ reports.get('/patrol-tracking', async (c) => {
       speed_mph: number | null; heading: number | null;
       recorded_at: string; location_address: string | null;
     }>(db, `
+      -- gps_breadcrumbs has speed (not speed_mph) and no location_address --
+      -- road_name / nearest_intersection are the only place data on the row.
       SELECT g.unit_id, u.call_sign, g.latitude, g.longitude,
-             g.speed_mph, g.heading, g.recorded_at,
-             ${geocode ? 'g.location_address' : 'NULL AS location_address'}
+             g.speed AS speed_mph, g.heading, g.recorded_at,
+             ${geocode ? 'COALESCE(g.road_name, g.nearest_intersection) AS location_address' : 'NULL AS location_address'}
         FROM gps_breadcrumbs g
         LEFT JOIN units u ON u.id = g.unit_id
        WHERE g.recorded_at >= ? ${untilFilter} ${unitFilter}
@@ -1395,10 +1398,13 @@ reports.get('/upcoming-court', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<{ date: string; time: string; case_number: string; officer_name: string }>(db,
-      `SELECT ce.hearing_date AS date, ce.hearing_time AS time, ce.case_number, COALESCE(u.full_name, 'Unassigned') AS officer_name
-       FROM court_events ce LEFT JOIN users u ON u.id = ce.officer_id
-       WHERE ce.hearing_date >= DATE('now') AND ce.hearing_date <= DATE('now','+7 days')
-       ORDER BY ce.hearing_date, ce.hearing_time LIMIT 30`);
+      // Live court_events: event_date / event_time / court_case_number, and no
+      // officer_id — created_by is the only user FK (same as admin.ts).
+      `SELECT ce.event_date AS date, ce.event_time AS time,
+              ce.court_case_number AS case_number, COALESCE(u.full_name, 'Unassigned') AS officer_name
+       FROM court_events ce LEFT JOIN users u ON u.id = ce.created_by
+       WHERE ce.event_date >= DATE('now') AND ce.event_date <= DATE('now','+7 days')
+       ORDER BY ce.event_date, ce.event_time LIMIT 30`);
     return c.json({ upcoming: rows });
   } catch { return c.json({ upcoming: [] }); }
 });

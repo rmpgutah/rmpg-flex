@@ -13,8 +13,11 @@ of SQL that stay unambiguous even in a big join:
      scope. Highest-precision signal available.
   2. INSERT INTO <table> (col, col, ...) column lists.
   3. UPDATE <table> SET col = ... assignment targets.
-Unqualified identifiers in arbitrary clauses are intentionally out of scope —
-see the NOTE in main(). Run check-schema-refs.py alongside this for those.
+  4. Unqualified refs in the SELECT list of a single-table, join-free statement.
+
+Unqualified refs in OTHER clauses stay out of scope — see the note in main().
+This supersedes check-schema-refs.py, whose regex-based literal extraction
+mis-pairs quotes across a file and silently drops whole queries.
 
 Template literals are handled by blanking `${...}` to a neutral token rather
 than skipping the statement, which is what unlocked most of the new coverage.
@@ -99,9 +102,50 @@ TABLE_REF = re.compile(
     r'([A-Za-z_][A-Za-z0-9_]*)'
     r'(?:\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*))?', re.I)
 
-# Every SQL-bearing string literal, incl. template literals.
-STR = re.compile(r'`([^`]*?)`|\'((?:[^\'\\\n]|\\.)*)\'|"((?:[^"\\\n]|\\.)*)"', re.S)
 SQL_START = re.compile(r'\b(SELECT|INSERT\s+INTO|INSERT\s+OR|REPLACE\s+INTO|UPDATE|DELETE\s+FROM)\b', re.I)
+
+
+def iter_literals(src: str):
+    """Yield (offset, text) for every JS string/template literal.
+
+    Deliberately a real lexer, not a regex. A regex alternation over
+    `...` / '...' / "..." pairs quotes by POSITION across the whole file, so
+    one apostrophe in a comment (or a backtick in unrelated code) shifts every
+    subsequent pairing and silently swallows whole queries — records.ts's
+    warrants SELECT referenced three nonexistent columns and went unreported
+    for exactly this reason. Tracking lexer state instead makes extraction
+    exact, and skipping comments means prose can't masquerade as SQL.
+    """
+    i, n = 0, len(src)
+    while i < n:
+        ch = src[i]
+        if ch == '/' and i + 1 < n and src[i + 1] == '/':
+            j = src.find('\n', i)
+            i = n if j < 0 else j + 1
+        elif ch == '/' and i + 1 < n and src[i + 1] == '*':
+            j = src.find('*/', i + 2)
+            i = n if j < 0 else j + 2
+        elif ch in '\'"`':
+            quote, start, i = ch, i + 1, i + 1
+            depth = 0            # ${ } nesting inside a template literal
+            while i < n:
+                c = src[i]
+                if c == '\\':
+                    i += 2; continue
+                if quote == '`':
+                    if c == '$' and i + 1 < n and src[i + 1] == '{':
+                        depth += 1; i += 2; continue
+                    if c == '}' and depth:
+                        depth -= 1; i += 1; continue
+                elif c == '\n':
+                    break        # unterminated single/double quote — bail
+                if c == quote and not depth:
+                    break
+                i += 1
+            yield start, src[start:i]
+            i += 1
+        else:
+            i += 1
 
 
 def strip_interpolations(s: str) -> str:
@@ -144,12 +188,11 @@ def main():
     findings, files = [], sorted(SRC.rglob('*.ts'))
     for path in files:
         src = path.read_text(errors='replace')
-        for m in STR.finditer(src):
-            raw = next((g for g in m.groups() if g), None)
-            if not raw or not SQL_START.search(raw):
+        for offset, raw in iter_literals(src):
+            if not SQL_START.search(raw):
                 continue
             flat = flatten(raw)
-            line = src[:m.start()].count('\n') + 1
+            line = src[:offset].count('\n') + 1
 
             # Alias map for this statement. Unknown tables (runtime-created,
             # CTEs) map to None so their qualified refs are skipped, not
@@ -194,13 +237,24 @@ def main():
                     for col in re.findall(r'(?:^|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s*=', um.group(2)):
                         report(tbl, col)
 
-            # NOTE: unqualified identifiers in arbitrary clauses are deliberately
-            # NOT checked here. Implicit result aliases (`COUNT(*) n`), CTE
-            # column names and SQLite date modifiers are indistinguishable from
-            # column refs without a real parser, and they drowned the real hits
-            # ~60:1 when tried. check-schema-refs.py covers the one case where
-            # unqualified refs ARE safely attributable (single-table SELECT
-            # lists); run both scripts.
+            # 4. Unqualified refs in the SELECT LIST of a single-table,
+            #    join-free statement -- the one place an unqualified name is
+            #    safely attributable. Elsewhere (WHERE, GROUP BY, ORDER BY)
+            #    implicit result aliases (`COUNT(*) n`), CTE column names and
+            #    SQLite date modifiers are indistinguishable from column refs
+            #    without a real parser, and drowned the real hits ~60:1 when
+            #    tried -- so those stay out of scope.
+            if len(tables) == 1 and all(aliases.values()) and not re.search(r'\bJOIN\b', flat, re.I):
+                sel = re.search(r'\bSELECT\b(.*?)\bFROM\b', flat, re.I | re.S)
+                if sel and len(re.findall(r'\bSELECT\b', flat, re.I)) == 1:
+                    t = re.sub(r'\bAS\s+[A-Za-z_][A-Za-z0-9_]*', ' ', sel.group(1), flags=re.I)
+                    t = re.sub(r'\b[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*', ' ', t)
+                    prev = None
+                    while prev != t:                 # implicit aliases: COUNT(*) n
+                        prev = t
+                        t = re.sub(r'\)\s*[A-Za-z_][A-Za-z0-9_]*', ')', t)
+                    for col in re.findall(r'[A-Za-z_][A-Za-z0-9_]*', t):
+                        report(tables[0], col)
 
     seen, uniq = set(), []
     for f in findings:

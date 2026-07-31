@@ -109,9 +109,12 @@ async function resetTables() {
     notes TEXT, is_active INTEGER, created_at TEXT
   )`);
   await execute(db, `CREATE TABLE warrants (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, warrant_number TEXT, warrant_type TEXT, status TEXT DEFAULT 'active',
+    -- Live column names: type / charge_description / bail_amount. This fixture
+    -- used to declare warrant_type / offense_description / bond_amount, which
+    -- kept the route's SELECT green in CI while it threw in production.
+    id INTEGER PRIMARY KEY AUTOINCREMENT, warrant_number TEXT, type TEXT, status TEXT DEFAULT 'active',
     subject_person_id INTEGER, subject_first_name TEXT, subject_last_name TEXT, subject_dob TEXT,
-    offense_description TEXT, bond_amount REAL, issuing_agency TEXT
+    charge_description TEXT, bail_amount REAL, issuing_agency TEXT
   )`);
   await execute(db, `CREATE TABLE calls_for_service (
     id INTEGER PRIMARY KEY AUTOINCREMENT, call_number TEXT, incident_type TEXT, status TEXT, created_at TEXT

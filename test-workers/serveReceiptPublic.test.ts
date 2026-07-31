@@ -66,7 +66,9 @@ beforeAll(async () => {
     id INTEGER PRIMARY KEY AUTOINCREMENT, serve_queue_id INTEGER,
     attempt_number INTEGER, attempt_at TEXT, result TEXT,
     latitude REAL, longitude REAL,
-    notes TEXT, attempt_type TEXT, signature_data TEXT, receipt_id INTEGER
+    -- No receipt_id on live serve_attempts (the link lives on
+    -- serve_receipt_tokens.used_receipt_id).
+    notes TEXT, attempt_type TEXT, signature_data TEXT
   )`).run();
 
   // Strip comment lines BEFORE splitting. Each migration opens with a

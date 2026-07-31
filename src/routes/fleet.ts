@@ -4552,10 +4552,12 @@ fleet.get('/combined-cost-trend', async (c) => {
       GROUP BY month ORDER BY month`);
 
     const loans = await queryFn<{ month: string; total_cost: number }>(`
-      SELECT strftime('%Y-%m', COALESCE(date, created_at)) AS month,
-             COALESCE(SUM(payment_amount), 0) AS total_cost
+      -- fleet_loans has neither a date nor a payment_amount column on live D1:
+      -- start_date and monthly_payment are the real ones.
+      SELECT strftime('%Y-%m', COALESCE(start_date, created_at)) AS month,
+             COALESCE(SUM(monthly_payment), 0) AS total_cost
       FROM fleet_loans
-      WHERE COALESCE(date, created_at) >= datetime('now', '-${months} months')
+      WHERE COALESCE(start_date, created_at) >= datetime('now', '-${months} months')
       GROUP BY month ORDER BY month`);
 
     // Merge by month key — every month in the union of all four sources.
@@ -4618,10 +4620,11 @@ fleet.get('/monthly-spend', async (c) => {
       GROUP BY month ORDER BY month`).catch(() => []);
 
     const loans = await queryFn<{ month: string; amount: number }>(`
-      SELECT strftime('%Y-%m', COALESCE(date, created_at)) AS month,
-             COALESCE(SUM(payment_amount), 0) AS amount
+      -- Live fleet_loans: start_date / monthly_payment (no date/payment_amount).
+      SELECT strftime('%Y-%m', COALESCE(start_date, created_at)) AS month,
+             COALESCE(SUM(monthly_payment), 0) AS amount
       FROM fleet_loans
-      WHERE COALESCE(date, created_at) >= datetime('now', '-${months} months')
+      WHERE COALESCE(start_date, created_at) >= datetime('now', '-${months} months')
       GROUP BY month ORDER BY month`).catch(() => []);
 
     const byMonth = new Map<string, { month: string; fuel: number; maintenance: number; recurring: number; loans: number }>();
