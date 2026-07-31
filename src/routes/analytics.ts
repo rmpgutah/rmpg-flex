@@ -22,6 +22,7 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { requireRole } from '../middleware/auth';
 import { dbErrorResponse } from '../utils/dbErrors';
+import { notConfigured } from '../utils/notConfigured';
 import {
   parseWarehouse,
   extractRows,
@@ -86,16 +87,49 @@ async function runR2Sql(env: Env['Bindings'], sql: string): Promise<Record<strin
 /** Map a thrown R2 SQL error to an HTTP response. */
 function sqlErrorResponse(c: Context<Env>, err: unknown): Response {
   if (err instanceof R2SqlConfigError) {
-    return c.json(
-      { error: 'analytics warehouse not configured',
-        hint: 'Set R2_ANALYTICS_WAREHOUSE + the R2_SQL_TOKEN secret (see wrangler.toml).' },
-      503,
+    // 200 + { ok:false, skipped:true, code:'not_configured' } — NOT 503. The
+    // R2 analytics warehouse is an optional, unprovisioned integration, which
+    // is a stable configuration gap rather than an outage. Observed live on
+    // 2026-07-30: six /api/analytics/* endpoints returned a hard 503 on the
+    // Admin, CRM and several records pages. Because apiFetch RETRIES on 5xx
+    // (see src/utils/notConfigured.ts), each one fired twice and produced a red
+    // console error every time, so a missing secret read as a site outage.
+    return notConfigured(
+      c,
+      'analytics warehouse not configured',
+      { hint: 'Set R2_ANALYTICS_WAREHOUSE + the R2_SQL_TOKEN secret (see wrangler.toml).' },
     );
   }
   if (err instanceof R2SqlHttpError) {
-    // 4xx from R2 SQL is usually a query/permission problem on our side → 502
-    // so the client sees "upstream analytics error" rather than a bare 500.
     console.error('[analytics] R2 SQL error:', err.status, err.message);
+    // An AUTH rejection from R2 SQL is a configuration state, not an outage:
+    // the R2_SQL_TOKEN is missing scopes, expired, or was minted for a
+    // different warehouse. Retrying cannot fix it, so it belongs on the same
+    // not_configured path as an unset secret — otherwise apiFetch retries a
+    // permanent failure and every analytics widget logs a red 500.
+    //
+    // Observed live 2026-07-31: a stale R2_SQL_TOKEN predating the lakehouse
+    // build returned "Unauthenticated." Once R2_ANALYTICS_WAREHOUSE was set,
+    // the config guard stopped short-circuiting (it requires BOTH values), so
+    // six endpoints went from an honest 503 to a misleading 500 db_error.
+    if (err.status === 401 || err.status === 403 || /unauthenticated|unauthorized|forbidden/i.test(err.message)) {
+      return notConfigured(
+        c,
+        'analytics warehouse credentials rejected',
+        { hint: 'R2_SQL_TOKEN is missing, expired, or lacks R2 SQL + R2 Data Catalog read on the analytics bucket. Re-mint it and run: npx wrangler secret put R2_SQL_TOKEN' },
+      );
+    }
+    // A missing Iceberg table is likewise a not-yet-provisioned state: the
+    // sinks/pipelines create the tables, so before they exist every query
+    // legitimately has nothing to read.
+    if (err.status === 404 || /not found|does not exist|no such table|unknown table/i.test(err.message)) {
+      return notConfigured(
+        c,
+        'analytics tables not yet created',
+        { hint: 'Run scripts/analytics/finish-lakehouse.sh to create the sinks + pipelines that materialize the Iceberg tables.' },
+      );
+    }
+    // Anything else (5xx, malformed query, quota) is a real runtime failure.
     return dbErrorResponse(c, err, 'analytics query failed');
   }
   console.error('[analytics] unexpected error:', err instanceof Error ? err.message : String(err));

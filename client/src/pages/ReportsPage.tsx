@@ -1219,7 +1219,13 @@ export default function ReportsPage() {
       : []),
   ];
 
-  const priorityChartData = (Array.isArray(dashboardData?.callsByPriority) ? dashboardData.callsByPriority : []).map(item => ({
+  // Sourced from responseTimesData, NOT dashboardData.callsByPriority. The
+  // dashboard field is scoped to CURRENTLY-ACTIVE calls (StatusBar and the
+  // Dashboard P1-P4 tiles both want that), so on this page — which is driven
+  // by a date-range selector — it rendered "No data for selected filters"
+  // whenever nothing was active, even with 23 calls in the window. Same fix
+  // already applied to totalCalls above.
+  const priorityChartData = (Array.isArray(responseTimesData?.byPriority) ? responseTimesData.byPriority : []).map(item => ({
     priority: item.priority,
     count: item.count,
     fill: chartPriorityColor(item.priority),

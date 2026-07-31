@@ -1051,12 +1051,12 @@ export default function DashCamerasPage() {
             Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
           </span>
           <div className="flex items-center gap-1">
-            <button type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)}
+            <button aria-label="Previous" type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)}
               className="toolbar-btn p-1 disabled:opacity-30">
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
             <span className="text-[10px] text-rmpg-400 font-mono px-2">{page + 1} / {totalPages}</span>
-            <button type="button" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
+            <button aria-label="Next" type="button" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
               className="toolbar-btn p-1 disabled:opacity-30">
               <ChevronRight className="w-3.5 h-3.5" />
             </button>

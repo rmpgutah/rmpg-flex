@@ -1,0 +1,19 @@
+{
+  "fields": [
+    { "name": "event_type", "type": "string", "required": true },
+    { "name": "occurred_at", "type": "string", "required": true },
+    { "name": "actor_id", "type": "int64", "required": false },
+    { "name": "source", "type": "string", "required": false },
+    { "name": "entity_type", "type": "string", "required": false },
+    { "name": "entity_id", "type": "string", "required": false },
+    { "name": "unit_id", "type": "string", "required": false },
+    { "name": "lat", "type": "float64", "required": false },
+    { "name": "lng", "type": "float64", "required": false },
+    { "name": "status", "type": "string", "required": false },
+    { "name": "label", "type": "string", "required": false },
+    { "name": "category", "type": "string", "required": false },
+    { "name": "priority", "type": "string", "required": false },
+    { "name": "value", "type": "float64", "required": false },
+    { "name": "payload", "type": "string", "required": false }
+  ]
+}

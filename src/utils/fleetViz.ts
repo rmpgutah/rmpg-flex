@@ -32,8 +32,15 @@ export interface DateWindow {
  */
 export function buildDateWindow(period: string | undefined, column: string): DateWindow {
   // Hardened against identifier injection: require column to match the
-  // standard snake_case shape. Crash if a caller gets clever.
-  if (!/^[a-z][a-z0-9_]*$/.test(column)) {
+  // standard snake_case shape, optionally prefixed by a table alias
+  // (`c.created_at`). Crash if a caller gets clever.
+  //
+  // The alias prefix is REQUIRED for any query that JOINs: a bare `created_at`
+  // in a multi-table WHERE is an "ambiguous column name" error in SQLite, which
+  // is exactly how /calls-per-gallon 500'd in production for every period
+  // except `all` (where the clause is empty, so nothing was ambiguous). The
+  // previous regex rejected dots outright, so callers had no way to qualify.
+  if (!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$/.test(column)) {
     throw new Error(`fleetViz.buildDateWindow: invalid column identifier '${column}'`);
   }
   const p = (period ?? '30d').toLowerCase();

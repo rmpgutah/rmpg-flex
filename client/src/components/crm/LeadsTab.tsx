@@ -548,7 +548,7 @@ export default function LeadsTab() {
                   <span className="text-[10px] text-rmpg-400 font-mono">Score: {selectedLead.lead_score}</span>
                 </div>
               </div>
-              <button type="button" onClick={() => setSelectedLead(null)} className="text-rmpg-400 hover:text-rmpg-100">
+              <button aria-label="Close" type="button" onClick={() => setSelectedLead(null)} className="text-rmpg-400 hover:text-rmpg-100">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -767,7 +767,7 @@ export default function LeadsTab() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowCreateModal(false)}>
           <div className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="Add Lead" icon={Plus}>
-              <button type="button" onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-rmpg-100">
+              <button aria-label="Close" type="button" onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-rmpg-100">
                 <X className="w-4 h-4" />
               </button>
             </PanelTitleBar>

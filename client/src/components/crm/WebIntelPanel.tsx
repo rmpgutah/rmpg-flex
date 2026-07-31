@@ -389,7 +389,7 @@ export default function WebIntelPanel() {
               {savingTemplate ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
               Save
             </button>
-            <button
+            <button aria-label="Close"
               type="button"
               onClick={() => { setShowSaveForm(false); setSaveTemplateName(''); }}
               className="toolbar-btn flex items-center px-1.5"

@@ -65,10 +65,13 @@ vi.mock('../../../utils/mapboxLoader', () => ({
       lastMapInstance = instance;
       return instance;
     }),
-    Marker: vi.fn(function (opts: { element: HTMLElement }) {
+    Marker: vi.fn(function (opts: { element: HTMLElement; draggable?: boolean; anchor?: string }) {
       if (opts?.element) markerElements.push(opts.element);
       const handlers: Record<string, (...args: any[]) => void> = {};
       const instance = {
+        // Retained so tests can assert on construction options (draggable /
+        // anchor) — a serve pin must be constructed non-draggable.
+        __options: opts,
         setLngLat: vi.fn().mockReturnThis(),
         addTo: vi.fn().mockReturnThis(),
         remove: vi.fn(),
@@ -90,13 +93,18 @@ vi.mock('../../../utils/mapboxLoader', () => ({
         addTo: vi.fn(() => {
           // Simulate real Mapbox behavior enough for popup-button wiring
           // tests: insert the popup's HTML into the document so the
-          // component's document.getElementById lookups (for the "Open
-          // record" / "Add notation" / "View trail" buttons) can find them.
+          // component's delegated click listener has a container to bind to
+          // and the "Open record" / "Add notation" / "History" / "Preview"
+          // buttons are reachable.
           attached = document.createElement('div');
           attached.innerHTML = html;
           document.body.appendChild(attached);
           return attached;
         }),
+        // The component delegates popup clicks to this container instead of
+        // looking each button up by id, so the mock must expose it like the
+        // real mapboxgl.Popup does.
+        getElement: vi.fn(() => attached),
         remove: vi.fn(() => { attached?.remove(); attached = null; }),
       };
     }),
@@ -218,7 +226,7 @@ describe('ServeIntakeMap', () => {
       await new Promise((r) => setTimeout(r, 60));
     });
 
-    const trailBtn = document.getElementById(`srv-popup-trail-${MOCK_QUEUE_ITEM.id}`);
+    const trailBtn = document.querySelector<HTMLElement>(`[data-action="trail"][data-item-id="${MOCK_QUEUE_ITEM.id}"]`);
     expect(trailBtn).toBeTruthy();
 
     await act(async () => {
@@ -252,7 +260,7 @@ describe('ServeIntakeMap', () => {
       await new Promise((r) => setTimeout(r, 60));
     });
 
-    const trailBtn = document.getElementById(`srv-popup-trail-${MOCK_QUEUE_ITEM.id}`);
+    const trailBtn = document.querySelector<HTMLElement>(`[data-action="trail"][data-item-id="${MOCK_QUEUE_ITEM.id}"]`);
     await act(async () => {
       trailBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
@@ -292,7 +300,7 @@ describe('ServeIntakeMap', () => {
       markerElements[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await new Promise((r) => setTimeout(r, 60));
     });
-    const previewBtn = document.getElementById(`srv-popup-preview-${MOCK_QUEUE_ITEM.id}`);
+    const previewBtn = document.querySelector<HTMLElement>(`[data-action="preview"][data-item-id="${MOCK_QUEUE_ITEM.id}"]`);
     expect(previewBtn).toBeTruthy();
     await act(async () => {
       previewBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -343,7 +351,7 @@ describe('ServeIntakeMap', () => {
       markerElements[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await new Promise((r) => setTimeout(r, 60));
     });
-    document.getElementById(`srv-popup-preview-${MOCK_QUEUE_ITEM.id}`)!
+    document.querySelector<HTMLElement>(`[data-action="preview"][data-item-id="${MOCK_QUEUE_ITEM.id}"]`)!
       .dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
     // Before the first fetch resolves, switch to a second target.
@@ -352,7 +360,7 @@ describe('ServeIntakeMap', () => {
       await new Promise((r) => setTimeout(r, 60));
     });
     await act(async () => {
-      document.getElementById(`srv-popup-preview-${otherItem.id}`)!
+      document.querySelector<HTMLElement>(`[data-action="preview"][data-item-id="${otherItem.id}"]`)!
         .dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
@@ -388,7 +396,7 @@ describe('ServeIntakeMap', () => {
       await new Promise((r) => setTimeout(r, 60));
     });
     await act(async () => {
-      document.getElementById(`srv-popup-preview-${MOCK_QUEUE_ITEM.id}`)!
+      document.querySelector<HTMLElement>(`[data-action="preview"][data-item-id="${MOCK_QUEUE_ITEM.id}"]`)!
         .dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     await waitFor(() => expect(lastMapInstance.addSource).toHaveBeenCalled());
@@ -399,7 +407,9 @@ describe('ServeIntakeMap', () => {
     expect(() => unmount()).not.toThrow();
   });
 
-  it('does not call reverseGeocode until a marker is dragged', async () => {
+  // Pins are no longer draggable, so the map surface never reverse-geocodes at
+  // all — the assertion now holds unconditionally rather than "until a drag".
+  it('never calls reverseGeocode from the map surface', async () => {
     render(<ServeIntakeMap />);
     await waitFor(() => expect(screen.getByText(/no active serve orders/i)).toBeInTheDocument());
     expect(reverseGeocode).not.toHaveBeenCalled();
@@ -481,8 +491,13 @@ describe('ServeIntakeMap', () => {
     });
   });
 
-  describe('drag-to-correct-geocode confirmation', () => {
-    async function openMarkerAndDrag() {
+  // Replaces the former "drag-to-correct-geocode confirmation" suite. Serve-job
+  // pins are now PINNED to their stored coordinate: dragging a data point on the
+  // map is no longer a way to relocate a job, so there is no dragend handler and
+  // no confirm/PUT round-trip to exercise. Relocating a job is an explicit
+  // records edit instead.
+  describe('serve-job pins are fixed to their stored coordinate', () => {
+    async function renderWithOneMarker() {
       vi.spyOn(useApiModule, 'apiFetch').mockImplementation((path: string) => {
         if (path === '/serve-intake/map-items') return Promise.resolve([MOCK_QUEUE_ITEM]);
         if (path === '/serve-intake/location-notes') return Promise.resolve([]);
@@ -490,48 +505,38 @@ describe('ServeIntakeMap', () => {
       });
       render(<ServeIntakeMap />);
       await waitFor(() => expect(markerInstances.length).toBeGreaterThan(0));
-      const marker = markerInstances[0];
-      await act(async () => {
-        await marker.__handlers.dragend?.();
-      });
-      return marker;
+      return markerInstances[0];
     }
 
-    it('does not PUT the new coordinates when the user declines the confirmation', async () => {
-      const apiFetchSpy = vi.spyOn(useApiModule, 'apiFetch');
-      vi.spyOn(window, 'confirm').mockReturnValue(false);
+    it('constructs the job marker with draggable disabled', async () => {
+      await renderWithOneMarker();
+      const opts = markerInstances[0].__options ?? {};
+      expect(opts.draggable).toBe(false);
+    });
 
-      await openMarkerAndDrag();
+    it('registers no dragend handler, so a pin can never be moved by a map gesture', async () => {
+      const marker = await renderWithOneMarker();
+      expect(marker.__handlers.dragend).toBeUndefined();
+    });
 
-      expect(window.confirm).toHaveBeenCalled();
+    it('never PUTs a coordinate change from the map surface', async () => {
+      const apiFetchSpy = useApiModule.apiFetch as ReturnType<typeof vi.fn>;
+      await renderWithOneMarker();
       expect(apiFetchSpy).not.toHaveBeenCalledWith(
         expect.stringContaining(`/process-server/${MOCK_QUEUE_ITEM.id}`),
         expect.objectContaining({ method: 'PUT' }),
       );
     });
-
-    it('PUTs the new coordinates when the user confirms', async () => {
-      vi.spyOn(window, 'confirm').mockReturnValue(true);
-      vi.spyOn(useApiModule, 'apiFetch').mockImplementation((path: string, opts?: any) => {
-        if (path === '/serve-intake/map-items') return Promise.resolve([MOCK_QUEUE_ITEM]);
-        if (path === '/serve-intake/location-notes') return Promise.resolve([]);
-        if (path === `/process-server/${MOCK_QUEUE_ITEM.id}` && opts?.method === 'PUT') return Promise.resolve({ success: true });
-        return Promise.resolve([]);
-      });
-
-      const apiFetchSpy = useApiModule.apiFetch as ReturnType<typeof vi.fn>;
-      await openMarkerAndDrag();
-
-      await waitFor(() => {
-        expect(apiFetchSpy).toHaveBeenCalledWith(
-          `/process-server/${MOCK_QUEUE_ITEM.id}`,
-          expect.objectContaining({ method: 'PUT' }),
-        );
-      });
-    });
   });
 
   afterEach(() => {
     cleanup();
+    // The mocked mapboxgl.Popup appends its container directly to
+    // document.body, outside React's tree, so cleanup() leaves it behind.
+    // A leftover popup from a previous test would otherwise win the
+    // querySelector in the next one and make assertions read a stale node.
+    document.body.querySelectorAll(':scope > div').forEach((el) => {
+      if (el.querySelector('[data-action]')) el.remove();
+    });
   });
 });

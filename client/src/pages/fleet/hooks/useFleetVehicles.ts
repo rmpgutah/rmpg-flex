@@ -50,7 +50,13 @@ export function useFleetVehicles(): FleetVehiclesResult {
       const rows = Array.isArray(resp) ? resp : resp.data || [];
       setVehicles(rows);
       const total = Array.isArray(resp) ? rows.length : resp.pagination?.total;
-      setVehicleTotal(typeof total === 'number' ? total : rows.length);
+      // Coerce rather than type-check. The server declares `total?: number`,
+      // but if it ever serialises a numeric string the strict typeof check
+      // silently fell back to rows.length — i.e. reported "nothing truncated"
+      // on a response that was truncated, which is the exact failure this
+      // count exists to make visible.
+      const totalNum = Number(total);
+      setVehicleTotal(Number.isFinite(totalNum) && totalNum > 0 ? totalNum : rows.length);
     } catch {
       if (!options?.silent) addToast('Failed to load fleet vehicles', 'error');
     }

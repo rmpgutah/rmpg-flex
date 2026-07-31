@@ -160,7 +160,7 @@ reanalysis.post('/backfill-confidence', adminOnly, async (c): Promise<Response> 
 
     if (batch.length > 0) {
       await execute(db,
-        `INSERT INTO audit_log (action, entity_type, entity_id, user_id, detail)
+        `INSERT INTO audit_log (action, entity_type, entity_id, user_id, details)
          VALUES ('CONFIDENCE_BACKFILL','reanalysis',?,?,?)`,
         jobId, c.var.user.id,
         JSON.stringify({ corrected, id_range: [firstId, lastId], cursor }),
@@ -401,7 +401,9 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
         status: string | null; priority: string | null;
         lat: number | null; lng: number | null; created_at: string;
       }>(db,
-        `SELECT c.id, c.call_number, c.call_type, c.status, c.priority, c.lat, c.lng, c.created_at
+        // Live CFS: incident_type / latitude / longitude (no call_type/lat/lng).
+        `SELECT c.id, c.call_number, c.incident_type AS call_type, c.status, c.priority,
+                c.latitude AS lat, c.longitude AS lng, c.created_at
          FROM calls_for_service c
          LEFT JOIN calls_for_service_ext e ON e.id = c.id
          WHERE c.id > ? AND (e.id IS NULL OR e.analytics_replayed_at IS NULL)

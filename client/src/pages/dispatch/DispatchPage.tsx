@@ -6788,7 +6788,7 @@ export default function DispatchPage() {
                 <Send className="w-3.5 h-3.5 text-brand-400" />
                 <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Quick Dispatch</span>
               </div>
-              <button type="button" onClick={() => setQuickTemplateData(null)} className="text-rmpg-400 hover:text-rmpg-100">
+              <button aria-label="Close" type="button" onClick={() => setQuickTemplateData(null)} className="text-rmpg-400 hover:text-rmpg-100">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -7396,7 +7396,7 @@ export default function DispatchPage() {
                 <Briefcase className="w-4 h-4 text-brand-400" />
                 <h3 className="text-sm font-bold text-rmpg-100">Shift Handoff Notes</h3>
               </div>
-              <button type="button" onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-rmpg-100 transition-colors"><X className="w-4 h-4" /></button>
+              <button aria-label="Close" type="button" onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-rmpg-100 transition-colors"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-3 flex-1 overflow-auto" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
               {handoffMeta.updated_by && (

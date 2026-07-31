@@ -22,7 +22,9 @@ beforeAll(async () => {
   const db = (env as unknown as { DB: D1Database }).DB;
   await execute(db, `CREATE TABLE IF NOT EXISTS units (
     id INTEGER PRIMARY KEY AUTOINCREMENT, call_sign TEXT UNIQUE NOT NULL, officer_id INTEGER,
-    status TEXT NOT NULL DEFAULT 'available', current_call_id INTEGER, current_call_number TEXT,
+    -- current_call_number is only ever an ALIAS of current_call_id in route SQL;
+    -- declaring it as a real column here diverges from live D1.
+    status TEXT NOT NULL DEFAULT 'available', current_call_id INTEGER,
     latitude REAL, longitude REAL, vehicle_id INTEGER, capabilities TEXT, last_status_change TEXT, audio_mode TEXT
   )`);
   await execute(db, `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, full_name TEXT, badge_number TEXT)`);

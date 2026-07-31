@@ -650,7 +650,7 @@ export default function ArrestRecordsPage() {
         <div className="px-3 py-2 bg-red-900/30 border-b border-red-700 text-red-400 text-xs flex items-center gap-2">
           <AlertTriangle className="w-3 h-3 shrink-0" />
           <span className="flex-1">{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+          <button aria-label="Close" type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -779,7 +779,7 @@ export default function ArrestRecordsPage() {
           <button type="button" onClick={cycleSort} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1" title={`Sort: ${sortConfig.label}`}>
             <ArrowUpDown className="w-3 h-3" /> {sortConfig.label}
           </button>
-          <button type="button"
+          <button aria-label="Refresh" type="button"
             onClick={() => { fetchStats(); fetchRecords(recordsPage); }}
             className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1 ml-auto"
           >

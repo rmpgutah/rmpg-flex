@@ -82,7 +82,8 @@ const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ classNa
   { key: 'fuel_cards', label: 'Fuel Cards', icon: CreditCard },
 ];
 
-interface Props {
+/** Read-only vehicle record data the panel renders. */
+export interface FleetDetailData {
   detail: FleetVehicle;
   maintenance: FleetMaintenance[];
   fuelLogs: FleetFuelLog[];
@@ -91,36 +92,44 @@ interface Props {
   assignments: FleetAssignment[];
   analytics: FleetAnalytics | null;
   analyticsLoading: boolean;
-  onAnalyticsPeriodChange?: (period: string) => void;
   personnelData: FleetPersonnelData | null;
   personnelLoading: boolean;
-  activeTab: DetailTab;
-  onTabChange: (tab: DetailTab) => void;
-  onEditVehicle: () => void;
-  onLogMaintenance: () => void;
-  onLogFuel: () => void;
-  onNewInspection: () => void;
-  onEditFuel?: (log: FleetFuelLog) => void;
-  onDeleteFuel?: (log: FleetFuelLog) => void;
-  onBulkDeleteFuel?: (logs: FleetFuelLog[]) => void;
-  // Cost-of-ownership tab (Loan / Insurance / Accessory / Utility)
+  gpsMileage: any;
+  gpsMileageLoading: boolean;
+  isArchived: boolean;
+}
+
+/** Cost-of-ownership tab (Loan / Insurance / Accessory / Utility / Other) — data + its own controls. */
+export interface FleetDetailCosts {
   loans: FleetLoan[];
   insurancePolicies: FleetInsurancePolicy[];
   accessories: FleetAccessory[];
   utilities: FleetUtilityCost[];
   otherCosts: FleetOtherCost[];
-  costSummary: FleetCostSummary | null;
-  costSubTab: CostSubTab;
-  onCostSubTabChange: (t: CostSubTab) => void;
-  onAddCost: (category: CostCategory) => void;
-  onEditCost: (category: CostCategory, record: any) => void;
-  onDeleteCost: (category: CostCategory, record: any) => void;
+  summary: FleetCostSummary | null;
+  subTab: CostSubTab;
+  onSubTabChange: (t: CostSubTab) => void;
+  onAdd: (category: CostCategory) => void;
+  onEdit: (category: CostCategory, record: any) => void;
+  onDelete: (category: CostCategory, record: any) => void;
   onSaveBudgets?: (rows: { category: string; monthly_budget: number }[]) => Promise<void>;
+}
+
+/** Everything the panel can ask the page to do. */
+export interface FleetDetailActions {
+  onEditVehicle: () => void;
+  onLogMaintenance: () => void;
+  onLogFuel: () => void;
+  onNewInspection: () => void;
   onViewAllWorkOrders: () => void;
+  onEditFuel?: (log: FleetFuelLog) => void;
+  onDeleteFuel?: (log: FleetFuelLog) => void;
+  onBulkDeleteFuel?: (logs: FleetFuelLog[]) => void;
   onEditMaintenance?: (record: FleetMaintenance) => void;
   onDeleteMaintenance?: (record: FleetMaintenance) => void;
   onEditInspection?: (inspection: FleetInspection) => void;
   onDeleteInspection?: (inspection: FleetInspection) => void;
+  onAnalyticsPeriodChange?: (period: string) => void;
   onAssignVehicle: (unitId: string) => void;
   onUnassignVehicle: () => void;
   onAddPersonnelNote: (note: string) => void;
@@ -129,13 +138,18 @@ interface Props {
   onArchiveVehicle: () => void;
   onUnarchiveVehicle: () => void;
   onDeleteVehicle: () => void;
-  isArchived: boolean;
-  // GPS mileage
-  gpsMileage: any;
-  gpsMileageLoading: boolean;
   onFetchGpsMileage: (days?: number) => void;
   onSyncGpsMileage: () => void;
   onClose: () => void;
+}
+
+interface Props {
+  data: FleetDetailData;
+  costs: FleetDetailCosts;
+  actions: FleetDetailActions;
+  // The panel's own control state — not data, not an action.
+  activeTab: DetailTab;
+  onTabChange: (tab: DetailTab) => void;
 }
 
 // fleet_maintenance rows carry the real DB columns (type/performed_at/mileage_at_service),
@@ -279,19 +293,27 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
   );
 }
 
-export default function FleetDetailPanel({
-  detail, maintenance, fuelLogs, fuelSummary, inspections, assignments,
-  analytics, analyticsLoading, onAnalyticsPeriodChange, personnelData, personnelLoading,
-  activeTab, onTabChange,
-  onEditVehicle, onLogMaintenance, onLogFuel, onNewInspection,
-  onEditFuel, onDeleteFuel, onBulkDeleteFuel,
-  loans, insurancePolicies, accessories, utilities, otherCosts, costSummary, costSubTab, onCostSubTabChange, onAddCost, onEditCost, onDeleteCost, onSaveBudgets, onViewAllWorkOrders,
-  onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
-  onAssignVehicle, onUnassignVehicle, onAddPersonnelNote, onDeletePersonnelNote, onRefreshPersonnel,
-  onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
-  gpsMileage, gpsMileageLoading, onFetchGpsMileage, onSyncGpsMileage,
-  onClose,
-}: Props) {
+export default function FleetDetailPanel({ data, costs, actions, activeTab, onTabChange }: Props) {
+  // Destructured back to the original identifiers so the render tree below is unchanged.
+  const {
+    detail, maintenance, fuelLogs, fuelSummary, inspections, assignments,
+    analytics, analyticsLoading, personnelData, personnelLoading,
+    gpsMileage, gpsMileageLoading, isArchived,
+  } = data;
+  const {
+    loans, insurancePolicies, accessories, utilities, otherCosts,
+    summary: costSummary, subTab: costSubTab, onSubTabChange: onCostSubTabChange,
+    onAdd: onAddCost, onEdit: onEditCost, onDelete: onDeleteCost, onSaveBudgets,
+  } = costs;
+  const {
+    onEditVehicle, onLogMaintenance, onLogFuel, onNewInspection, onViewAllWorkOrders,
+    onEditFuel, onDeleteFuel, onBulkDeleteFuel,
+    onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
+    onAnalyticsPeriodChange,
+    onAssignVehicle, onUnassignVehicle, onAddPersonnelNote, onDeletePersonnelNote, onRefreshPersonnel,
+    onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle,
+    onFetchGpsMileage, onSyncGpsMileage, onClose,
+  } = actions;
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode
 

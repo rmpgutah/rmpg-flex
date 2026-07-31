@@ -54,7 +54,6 @@ import { escapeHtml } from '../utils/sanitize';
 import { clusterByGrid, type ClusterableItem } from '../utils/serveMapClustering';
 import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter, type DeadlineFilter } from '../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../utils/mapboxRouting';
-import { reverseGeocode } from '../utils/mapboxServices';
 import { exportServeMapSheet } from '../utils/serveMapExport';
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -655,6 +654,29 @@ export default function ServePage() {
   const [previewTarget, setPreviewTarget] = useState<{ id: number; lng: number; lat: number } | null>(null);
   const [previewRoute, setPreviewRoute] = useState<{ eta: string; distance: string } | null>(null);
 
+  // Delegated click handler for the map popup. ONE popup instance is reused for
+  // every job, so this resolves its target from the DOM rather than from a
+  // captured `job`. The previous code wired each button by id inside a
+  // setTimeout(…, 50) after setHTML, which had two failure modes an operator
+  // sees as "the button stopped working": lose the race and getElementById
+  // returned null so nothing was wired, or reopen the popup and a second
+  // listener stacked on the same button, firing the action twice.
+  // Stable identity (useCallback, no deps) makes re-attachment idempotent —
+  // addEventListener ignores a duplicate (type, listener) pair.
+  const onServePopupClick = useCallback((evt: MouseEvent) => {
+    const btn = (evt.target as HTMLElement).closest<HTMLElement>('[data-action]');
+    if (!btn) return;
+    const id = Number(btn.dataset.jobId);
+    if (!Number.isFinite(id)) return;
+    if (btn.dataset.action === 'trail') {
+      setTrailJobId(id);
+    } else if (btn.dataset.action === 'preview') {
+      const lng = Number(btn.dataset.lng);
+      const lat = Number(btn.dataset.lat);
+      if (Number.isFinite(lng) && Number.isFinite(lat)) setPreviewTarget({ id, lng, lat });
+    }
+  }, []);
+
   // ── Route state ────────────────────────────────────────────────────
   const [routeData, setRouteData] = useState<{
     orderedIds: number[];
@@ -1246,7 +1268,13 @@ export default function ServePage() {
       };
 
       mapRef.current = map;
-      popupRef.current = new mapboxgl.Popup({ offset: 25, closeButton: false });
+      const jobPopup = new mapboxgl.Popup({ offset: 25, closeButton: false });
+      // Attach on 'open' rather than at construction: the popup's container
+      // element does not exist until it is added to the map.
+      jobPopup.on('open', () => {
+        jobPopup.getElement()?.addEventListener('click', onServePopupClick);
+      });
+      popupRef.current = jobPopup;
 
       // Rebuild in place if the GPU drops the context. updateMapMarkers re-runs
       // (keyed on mapReady) and re-adds the markers + route layer to the new map.
@@ -1341,31 +1369,13 @@ export default function ServePage() {
         const lngLat: [number, number] = [job.recipient_lng!, job.recipient_lat!];
 
         const el = buildServeJobMarkerElement(job, selectedJobIds.has(job.id));
-        const marker = new mapboxgl.Marker({ element: el, anchor: 'center', draggable: true })
+        // Pinned to the stored coordinate: `draggable` is deliberately OFF so a
+        // serve target can never be nudged off its geocoded position by a
+        // stray click-drag on the map. Relocating a job is an explicit records
+        // edit, not a map gesture.
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'center', draggable: false })
           .setLngLat(lngLat)
           .addTo(mapRef.current!);
-
-        marker.on('dragend', async () => {
-          const { lng, lat } = marker.getLngLat();
-          let placeName: string | undefined;
-          try {
-            const geocodeResult = await reverseGeocode(lng, lat);
-            placeName = geocodeResult.features[0]?.place_name;
-          } catch { /* fall back to raw coordinates below */ }
-          const label = placeName || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-          const confirmed = window.confirm(`Update ${job.recipient_name}'s location to:\n${label}?`);
-          if (!confirmed) { fetchJobs(); return; }
-          try {
-            await apiFetch(`/process-server/${job.id}`, {
-              method: 'PUT',
-              body: JSON.stringify({ recipient_lat: lat, recipient_lng: lng }),
-            });
-            fetchJobs();
-          } catch {
-            window.alert('Failed to save the corrected location. Please try again.');
-            fetchJobs();
-          }
-        });
 
         // Popup on click
         el.addEventListener('click', () => {
@@ -1378,19 +1388,13 @@ export default function ServePage() {
                 <div style="font-size:11px;color:var(--text-secondary);">${escapeHtml(fullAddr) || 'No address'}</div>
                 <div style="font-size:10px;color:var(--text-muted);margin-top:4px;text-transform:uppercase;">${escapeHtml(job.status.replace(/_/g, ' '))} &middot; ${escapeHtml((job.document_type || '').replace(/_/g, ' '))}</div>
                 <div style="margin-top:8px;display:flex;gap:6px;">
-                  <button id="srv-map-popup-trail-${job.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">History</button>
-                  <button id="srv-map-popup-preview-${job.id}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:monospace;">Preview drive time</button>
+                  <button data-action="trail" data-job-id="${job.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">History</button>
+                  <button data-action="preview" data-job-id="${job.id}" data-lng="${job.recipient_lng}" data-lat="${job.recipient_lat}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:monospace;">Preview drive time</button>
                 </div>
               </div>
             `).addTo(mapRef.current!);
-            setTimeout(() => {
-              const trailBtn = document.getElementById(`srv-map-popup-trail-${job.id}`);
-              if (trailBtn) trailBtn.addEventListener('click', () => setTrailJobId(job.id));
-              const previewBtn = document.getElementById(`srv-map-popup-preview-${job.id}`);
-              if (previewBtn) previewBtn.addEventListener('click', () =>
-                setPreviewTarget({ id: job.id, lng: job.recipient_lng!, lat: job.recipient_lat! }),
-              );
-            }, 50);
+            // Buttons are handled by the delegated onServePopupClick listener
+            // attached when the popup opens — no per-click id lookup needed.
           }
         });
 

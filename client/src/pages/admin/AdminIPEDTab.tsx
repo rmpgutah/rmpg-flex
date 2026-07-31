@@ -618,7 +618,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
                   <div className="text-[10px] font-medium text-rmpg-200">{hs.name}</div>
                   <div className="text-[9px] text-rmpg-500">{hs.category} • {(hs.count || 0).toLocaleString()} entries</div>
                 </div>
-                <button type="button"
+                <button aria-label="Remove" type="button"
                   onClick={() => handleRemoveHashSet(hs.name)}
                   className="text-rmpg-600 hover:text-red-400 shrink-0 ml-2"
                 >
