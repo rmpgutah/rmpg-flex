@@ -143,11 +143,20 @@ export interface CallMarkerOpts {
 /** Priority-colored teardrop call marker. */
 export function buildCallMarker(opts: CallMarkerOpts): HTMLElement {
   const color = callPriorityColor(opts.priority);
+  // Root element handed to `new mapboxgl.Marker({ element: el })`. Mapbox GL
+  // rewrites this node's `style.transform` in full on every render frame, so
+  // the teardrop's `rotate(-45deg)` must NOT live here — it was being wiped the
+  // moment the marker was added, rendering a plain circle instead of a pin.
+  // Root stays position-neutral; the shape lives on the inner wrapper.
   const el = document.createElement('div');
   // Record the resolved priority color verbatim (the DOM normalizes hex in
   // `style` to rgb(), so callers/tests can read the canonical hex from here).
   el.dataset.priorityColor = color;
-  applyStyles(el, {
+  applyStyles(el, { display: 'block', cursor: 'pointer' });
+
+  const teardrop = document.createElement('div');
+  teardrop.setAttribute('data-role', 'marker-inner');
+  applyStyles(teardrop, {
     width: '20px',
     height: '20px',
     background: color,
@@ -155,8 +164,9 @@ export function buildCallMarker(opts: CallMarkerOpts): HTMLElement {
     'border-radius': '50% 50% 50% 0',
     transform: 'rotate(-45deg)',
     'box-shadow': '0 2px 4px rgba(0,0,0,0.6)',
-    cursor: 'pointer',
   });
+  el.appendChild(teardrop);
+
   if (opts.label) {
     const span = document.createElement('span');
     span.textContent = opts.label;
@@ -169,7 +179,7 @@ export function buildCallMarker(opts: CallMarkerOpts): HTMLElement {
       color: '#000',
       'line-height': '20px',
     });
-    el.appendChild(span);
+    teardrop.appendChild(span);
   }
   return el;
 }

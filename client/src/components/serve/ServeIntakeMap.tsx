@@ -17,7 +17,6 @@ import { withAlpha } from '../../utils/withAlpha';
 import { clusterByGrid, type ClusterableItem } from '../../utils/serveMapClustering';
 import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter, type DeadlineFilter } from '../../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../../utils/mapboxRouting';
-import { reverseGeocode } from '../../utils/mapboxServices';
 import { exportServeMapSheet } from '../../utils/serveMapExport';
 import type { MapUnit as Unit } from '../../pages/map/utils/mapConstants';
 import {
@@ -117,8 +116,15 @@ function buildServeMarker(item: QueueMapItem, selected: boolean = false): HTMLEl
     box-shadow:${boxShadowValue}${selected ? ', 0 0 0 2px rgba(34,197,94,0.5)' : ''};
     display:flex;align-items:center;justify-content:center;
     cursor:pointer;
-    transition:transform 0.15s;
   `;
+  // NOTE: no `transition:transform` here. This is the root element handed to
+  // `new mapboxgl.Marker({ element: el })`, and Mapbox GL rewrites its
+  // `style.transform` on EVERY render frame during pan/zoom — a transition on
+  // that property turns each frame's reposition into an animation the pin
+  // chases, so every serve-job marker visibly lagged and slid behind the map.
+  // Nothing in this component animates the pin's transform, so the transition
+  // was pure drift with no upside. (Same contract as buildUnitMarkerEl in
+  // pages/map/utils/mapMarkers.ts, which keeps its glide on an inner wrapper.)
   el.title = item.recipient_name || 'serve target';
 
   // Icon — building for business, person pin for individual
@@ -406,36 +412,13 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
           }, 50);
         });
 
-        const marker = new mapboxgl.Marker({ element: el, draggable: true })
+        // Pinned to the stored coordinate: `draggable` is deliberately OFF so a
+        // serve target can never be nudged off its geocoded position by a
+        // stray click-drag on the map. Relocating a job is an explicit records
+        // edit, not a map gesture.
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'center', draggable: false })
           .setLngLat([item.recipient_lng!, item.recipient_lat!])
           .addTo(map);
-        marker.on('dragend', async () => {
-          const { lng, lat } = marker.getLngLat();
-          let placeName: string | undefined;
-          try {
-            const geocodeResult = await reverseGeocode(lng, lat);
-            placeName = geocodeResult.features[0]?.place_name;
-          } catch {
-            // non-fatal — fall back to raw coordinates in the confirmation prompt
-          }
-          const label = placeName || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-          const confirmed = window.confirm(`Move this job's location to: ${label}?`);
-          if (!confirmed) {
-            // Snap back by reloading, which re-renders from the last saved position.
-            load();
-            return;
-          }
-          try {
-            await apiFetch(`/process-server/${item.id}`, {
-              method: 'PUT',
-              body: JSON.stringify({ recipient_lat: lat, recipient_lng: lng }),
-            });
-            load();
-          } catch {
-            // non-fatal — snap back by reloading, which re-renders from the last saved position
-            load();
-          }
-        });
         markersRef.current.push(marker);
       } else {
         const el = buildClusterMarker(cluster);
