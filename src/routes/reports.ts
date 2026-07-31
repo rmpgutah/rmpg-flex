@@ -543,7 +543,8 @@ reports.get('/command-center', async (c) => {
     units_available: await one("SELECT COUNT(*) AS n FROM units WHERE status = 'available'"),
     units_total: await one('SELECT COUNT(*) AS n FROM units'),
     active_bolos: await one("SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'"),
-    anomaly_alerts: await one("SELECT COUNT(*) AS n FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0"),
+    // anomaly_alerts has no boolean `acknowledged` — acknowledged_at is the flag.
+    anomaly_alerts: await one('SELECT COUNT(*) AS n FROM anomaly_alerts WHERE acknowledged_at IS NULL'),
   };
 
   // calls_for_service has no call_type/address columns — it's incident_type/
@@ -573,7 +574,8 @@ reports.get('/command-center', async (c) => {
       WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}
       GROUP BY hour ORDER BY hour`,
   );
-  const anomaly_alerts = await list('SELECT * FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0 ORDER BY created_at DESC LIMIT 20');
+  // No boolean `acknowledged` column — acknowledged_at is the flag.
+  const anomaly_alerts = await list('SELECT * FROM anomaly_alerts WHERE acknowledged_at IS NULL ORDER BY created_at DESC LIMIT 20');
 
   return c.json({ kpis, active_calls, units, calls_by_hour, anomaly_alerts });
 });

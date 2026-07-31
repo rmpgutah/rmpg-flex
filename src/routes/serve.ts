@@ -802,7 +802,7 @@ sv.get('/folder-stats', async (c) => {
   const rows = await query<{ status: string; cnt: number }>(
     db,
     `SELECT status, COUNT(*) AS cnt FROM serve_queue
-     WHERE DATE(created_at) = ? OR DATE(scheduled_date) = ?
+     WHERE DATE(created_at) = ? OR DATE(serve_date) = ?
      GROUP BY status`,
     date, date,
   );

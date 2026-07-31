@@ -14,8 +14,11 @@ of SQL that stay unambiguous even in a big join:
   2. INSERT INTO <table> (col, col, ...) column lists.
   3. UPDATE <table> SET col = ... assignment targets.
   4. Unqualified refs in the SELECT list of a single-table, join-free statement.
-
-Unqualified refs in OTHER clauses stay out of scope — see the note in main().
+  5. Unqualified refs in the WHERE / GROUP BY / ORDER BY / HAVING of such a
+     statement, after subtracting the result aliases the statement itself
+     invents (`AS x`, `COUNT(*) n`) — without that subtraction this rule is
+     ~60:1 noise; with it, it is the only rule that sees a bad column in a
+     WHERE clause, where a wrong name returns zero rows instead of erroring.
 This supersedes check-schema-refs.py, whose regex-based literal extraction
 mis-pairs quotes across a file and silently drops whole queries.
 
@@ -93,7 +96,7 @@ foreign key unique check constraint autoincrement collate nocase using natural c
 pragma explain analyze current_timestamp current_date current_time row_number rank dense_rank
 over partition snippet bm25 highlight rowid matchinfo offsets match table if not temp view
 trigger index begin commit rollback numeric boolean varchar char decimal double float
-escape substring max min iif unixepoch abs sign lag lead first_value last_value cume_dist ntile
+nulls last excluded escape substring max min iif unixepoch abs sign lag lead first_value last_value cume_dist ntile
 """.split())
 
 # Statement-level table reference: FROM/JOIN/INTO/UPDATE <table> [AS] [alias]
@@ -103,6 +106,15 @@ TABLE_REF = re.compile(
     r'(?:\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*))?', re.I)
 
 SQL_START = re.compile(r'\b(SELECT|INSERT\s+INTO|INSERT\s+OR|REPLACE\s+INTO|UPDATE|DELETE\s+FROM)\b', re.I)
+
+# Tokens that appear in JavaScript but never in SQL. A backstop for lexer
+# desync: this file lexes JS well enough for string extraction, but not
+# perfectly (regex literals and JSX can resync it mid-string), and a desynced
+# scanner yields a chunk of CODE that happens to contain the word UPDATE. That
+# chunk then tokenizes as dozens of imaginary columns -- hr.ts reported ten,
+# including "await" and "const". Cheaper and more robust than a full JS parser.
+NOT_SQL = re.compile(r'=>|\bc\.json\(|\b(?:const|let|var|function|await|async|return|typeof'
+                     r'|catch|=== |!== )\b|\breq\.|\bconsole\.')
 
 
 def iter_literals(src: str):
@@ -148,21 +160,44 @@ def iter_literals(src: str):
             i += 1
 
 
+# A quoted string inside an interpolation that looks like a SQL fragment rather
+# than JS: bare/qualified identifiers, commas, dots, parens, AS/NULL/DESC etc.
+SQL_FRAGMENT = re.compile(
+    r'^[\s(]*(?:[A-Za-z_][A-Za-z0-9_]*\.)?[A-Za-z_][A-Za-z0-9_]*'
+    r'(?:[\s,().*=<>!|+\-]|\b(?:AS|NULL|ASC|DESC|AND|OR|IS|NOT|IN|LIKE|ON|END)\b'
+    r'|[A-Za-z_][A-Za-z0-9_]*|\.)*$', re.I)
+
+
 def strip_interpolations(s: str) -> str:
-    """Remove `${...}` with brace counting. A naive [^{}]* pattern leaves the
-    tail of any interpolation containing an object literal or nested template,
-    and that leaked JS then tokenizes as dozens of fake column names."""
+    """Replace each `${...}` with the SQL-looking string literals inside it.
+
+    Brace counting, because a naive [^{}]* pattern leaves the tail of any
+    interpolation containing an object literal or nested template, and that
+    leaked JS then tokenizes as dozens of fake column names.
+
+    Crucially this does NOT blank the interpolation outright. A conditional
+    column list -- `${geocode ? 'g.location_address' : 'NULL AS x'}` -- hides
+    real column references from every scanner that treats `${...}` as opaque;
+    reports.ts referenced a nonexistent gps_breadcrumbs.location_address that
+    way. Splicing in BOTH branches can yield SQL that would never execute as
+    written, which is fine: we only tokenize identifiers, never run it.
+    """
     out, i = [], 0
     while i < len(s):
         if s.startswith('${', i):
-            depth, i = 1, i + 2
-            while i < len(s) and depth:
-                if s[i] == '{':
+            depth, j = 1, i + 2
+            while j < len(s) and depth:
+                if s[j] == '{':
                     depth += 1
-                elif s[i] == '}':
+                elif s[j] == '}':
                     depth -= 1
-                i += 1
-            out.append(' ? ')
+                j += 1
+            inner = s[i + 2:j - 1]
+            frags = [m.group(1) or m.group(2) or ''
+                     for m in re.finditer(r"'((?:[^'\\]|\\.)*)'|\"((?:[^\"\\]|\\.)*)\"", inner)]
+            keep = [f for f in frags if f.strip() and SQL_FRAGMENT.match(f)]
+            out.append(' ' + ' '.join(keep) + ' ' if keep else ' ? ')
+            i = j
         else:
             out.append(s[i]); i += 1
     return ''.join(out)
@@ -173,6 +208,10 @@ def flatten(sql: str) -> str:
     s = strip_interpolations(sql)
     s = re.sub(r'--[^\n]*', ' ', s)               # line comments
     s = re.sub(r'/\*.*?\*/', ' ', s, flags=re.S)  # block comments
+    # Escaped \'...\' first: SQL embedded in a JS single-quoted string escapes
+    # its own literals, and leaving them intact makes 'in_service' read as a
+    # column name.
+    s = re.sub(r"\\'(?:[^'\\]|\\.)*?\\'", " '' ", s)
     s = re.sub(r"'(?:[^'\\]|\\.)*'", " '' ", s)   # inner single-quoted literals
     s = re.sub(r'\\"(?:[^"\\]|\\.)*\\"', ' "" ', s)  # escaped double-quoted literals
     return ' '.join(s.split())
@@ -189,7 +228,7 @@ def main():
     for path in files:
         src = path.read_text(errors='replace')
         for offset, raw in iter_literals(src):
-            if not SQL_START.search(raw):
+            if not SQL_START.search(raw) or NOT_SQL.search(raw):
                 continue
             flat = flatten(raw)
             line = src[:offset].count('\n') + 1
@@ -236,6 +275,33 @@ def main():
                 if tbl in schema:
                     for col in re.findall(r'(?:^|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s*=', um.group(2)):
                         report(tbl, col)
+
+            # 5. Unqualified refs in EVERY OTHER clause (WHERE / GROUP BY /
+            #    ORDER BY / HAVING) of a single-table, join-free statement.
+            #    Made precise by first collecting the names the statement
+            #    INVENTS -- explicit `AS x` and implicit `COUNT(*) n` result
+            #    aliases -- which SQLite lets you reference downstream
+            #    (`GROUP BY month`). Without that step this rule is ~60:1 noise;
+            #    with it, it is the only rule that can see a bad column in a
+            #    WHERE clause, where a wrong name silently returns zero rows
+            #    rather than erroring.
+            if len(tables) == 1 and all(aliases.values()) and not re.search(r'\bJOIN\b', flat, re.I):
+                if len(re.findall(r'\bSELECT\b', flat, re.I)) == 1:
+                    local = {m.group(1).lower() for m in
+                             re.finditer(r'\bAS\s+([A-Za-z_][A-Za-z0-9_]*)', flat, re.I)}
+                    local |= {m.group(1).lower() for m in
+                              re.finditer(r'\)\s*([A-Za-z_][A-Za-z0-9_]*)', flat)}
+                    local |= set(aliases)      # the statement's own table aliases
+                    tail = re.split(r'\bFROM\b', flat, maxsplit=1, flags=re.I)
+                    if len(tail) == 2:
+                        body = re.sub(TABLE_REF, ' ', 'FROM ' + tail[1])
+                        body = re.sub(r'\b[A-Za-z_][A-Za-z0-9_]*\s*\(', ' ( ', body)   # fn names
+                        body = re.sub(r'\b[A-Za-z_][A-Za-z0-9_]*\.\*', ' ', body)      # v.*
+                        body = re.sub(r'\b[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*', ' ', body)
+                        body = re.sub(r'\bAS\s+[A-Za-z_][A-Za-z0-9_]*', ' ', body, flags=re.I)
+                        for col in re.findall(r'[A-Za-z_][A-Za-z0-9_]*', body):
+                            if col.lower() not in local:
+                                report(tables[0], col)
 
             # 4. Unqualified refs in the SELECT LIST of a single-table,
             #    join-free statement -- the one place an unqualified name is
