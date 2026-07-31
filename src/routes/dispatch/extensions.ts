@@ -1739,10 +1739,16 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
         notesBlock, incidentId,
       ).catch(() => {});
     }
-    // Copy field photos linked to the call
+    // Copy field photos linked to the call.
+    // `id`, NOT `file_id`: field_photos has no `file_id` column (its columns are
+    // id / officer_id / call_id / r2_key / …), so this INSERT…SELECT threw "no
+    // such column" every time. The .catch(() => {}) swallowed it, so converting
+    // a call to an incident silently copied ZERO photos — an evidence-continuity
+    // gap with no error surface. incident_photos.photo_id is the field_photos
+    // row id. Verified on live D1 785de7ae.
     await execute(db,
       `INSERT INTO incident_photos (incident_id, photo_id, call_id)
-       SELECT ?, file_id, call_id FROM field_photos WHERE call_id = ?`,
+       SELECT ?, id, call_id FROM field_photos WHERE call_id = ?`,
       incidentId, id,
     ).catch(() => {});
 

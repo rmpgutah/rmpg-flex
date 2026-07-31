@@ -256,10 +256,15 @@ citations.get('/calculate-fine', async (c) => {
     const type = c.req.query('type') || 'traffic';
     let baseFine = 0;
     if (statuteId) {
-      const statute = await queryFirst<{ default_fine: number | null; offense_level: string }>(
-        db, 'SELECT default_fine, offense_level FROM utah_statutes WHERE id = ?', statuteId,
+      // `citation_fine`, NOT `default_fine`: utah_statutes has no
+      // `default_fine` column, so this SELECT threw "no such column" on every
+      // call. The .catch(() => null) made it silent, leaving baseFine at 0 so
+      // the statute's real fine was NEVER used and every citation fell through
+      // to the generic offense-level default below. Verified on live D1.
+      const statute = await queryFirst<{ citation_fine: number | null; offense_level: string }>(
+        db, 'SELECT citation_fine, offense_level FROM utah_statutes WHERE id = ?', statuteId,
       ).catch(() => null);
-      if (statute?.default_fine) baseFine = statute.default_fine;
+      if (statute?.citation_fine) baseFine = statute.citation_fine;
     }
     if (!baseFine) {
       const fineSchedule: Record<string, number> = {

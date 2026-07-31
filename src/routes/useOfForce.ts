@@ -195,16 +195,35 @@ uof.get('/:id/footage', async (c) => {
        WHERE fel.entity_type = 'use_of_force' AND fel.entity_id = ?
        ORDER BY fr.id DESC`, id).catch(() => []);
 
-    // BWC clips — linked via incident_id where available. Older bodycam_videos
-    // rows may lack incident_id; the IS NOT NULL guard avoids the empty match.
+    // BWC clips. This query was broken on TWO columns that do not exist on
+    // bodycam_videos (verified against live D1 785de7ae):
+    //
+    //   - `incident_id` — never existed. The old comment claimed "older rows
+    //     may lack incident_id", but no row has ever had it, so the premise was
+    //     wrong, not just the data.
+    //   - `officer_name` — bodycam_videos stores `officer_id`; the display name
+    //     lives on users.full_name. `u.full_name AS officer_name` is the
+    //     established convention here (see accreditations.ts, admin.ts).
+    //
+    // With .catch(() => []) both failures were silent, so the BWC feed on a
+    // use-of-force review was ALWAYS empty — footage a reviewer needs, absent
+    // with no error. Real linkage, traced through live data: bodycam_videos
+    // .case_number holds a CFS number (e.g. 'CFS26-00107') which matches
+    // calls_for_service.call_number, and the incident reaches its call via
+    // incidents.call_id. Hence incident → call → call_number = case_number.
     let bodycam: Record<string, unknown>[] = [];
     if (incidentId != null) {
       bodycam = await query<Record<string, unknown>>(db,
-        `SELECT id, title, classification, retention_status, recorded_at,
-                duration_seconds, file_size, officer_name, case_number, created_at
-         FROM bodycam_videos
-         WHERE incident_id = ?
-         ORDER BY recorded_at DESC`, incidentId).catch(() => []);
+        `SELECT b.id, b.title, b.classification, b.retention_status, b.recorded_at,
+                b.duration_seconds, b.file_size,
+                COALESCE(u.full_name, 'Unknown') AS officer_name,
+                b.case_number, b.created_at
+         FROM bodycam_videos b
+         JOIN calls_for_service c ON TRIM(b.case_number) = TRIM(c.call_number)
+         JOIN incidents i ON i.call_id = c.id
+         LEFT JOIN users u ON u.id = b.officer_id
+         WHERE i.id = ?
+         ORDER BY b.recorded_at DESC`, incidentId).catch(() => []);
     }
     return c.json({ flexcam: flexcam || [], bodycam: bodycam || [] });
   } catch (err) {

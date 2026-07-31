@@ -2415,8 +2415,16 @@ personnel.get('/training-materials', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, `
+      -- file_name / mime_type / file_size do NOT exist on company_documents
+      -- (its columns are id / title / description / category / file_id /
+      -- content_type / external_url / is_required_reading / published /
+      -- sort_order / created_by / updated_by / created_at / updated_at).
+      -- Selecting them threw "no such column" on every request, and the
+      -- route's catch returns { data: [] }, so the Training Materials panel
+      -- was permanently empty rather than showing an error. content_type is
+      -- the real MIME field and is already selected. Verified on live D1.
       SELECT id, title, description, category, content_type, external_url,
-             file_id, file_name, mime_type, file_size, is_required_reading,
+             file_id, is_required_reading,
              published, created_at
         FROM company_documents
        WHERE published = 1
