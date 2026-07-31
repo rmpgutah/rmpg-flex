@@ -247,7 +247,7 @@ export default function PersonIntelDossierPage() {
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center gap-2">
-        <button onClick={() => navigate('/person-intel')} className="text-rmpg-500 hover:text-rmpg-300">
+        <button aria-label="Back" onClick={() => navigate('/person-intel')} className="text-rmpg-500 hover:text-rmpg-300">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <PanelTitleBar title={`DOSSIER: ${dossier.subject_name.toUpperCase()}`} icon={Search} />

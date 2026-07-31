@@ -177,7 +177,7 @@ export default function FleetPersonnelTab({
               >
                 <UserMinus className="w-3 h-3" /> Unassign
               </button>
-              <button type="button" className="toolbar-btn text-[9px]" onClick={onRefresh}>
+              <button aria-label="Refresh" type="button" className="toolbar-btn text-[9px]" onClick={onRefresh}>
                 <RefreshCw className="w-3 h-3" />
               </button>
             </div>

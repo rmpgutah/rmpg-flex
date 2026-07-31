@@ -433,7 +433,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
           />
           {searchTerm && (
-            <button type="button" onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
+            <button aria-label="Close" type="button" onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
               <X className="w-3 h-3" />
             </button>
           )}

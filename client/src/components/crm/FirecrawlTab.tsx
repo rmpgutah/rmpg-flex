@@ -1602,7 +1602,7 @@ function WorkflowsPanel() {
                   className="flex-1 bg-rmpg-800 border border-rmpg-600 rounded-sm px-2 py-0.5 text-[10px] text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
                   placeholder={step.type === 'search' ? 'Search query...' : 'https://...'}
                 />
-                <button
+                <button aria-label="Remove"
                   onClick={() => removeStep(idx)}
                   disabled={formSteps.length <= 1}
                   className="text-rmpg-500 hover:text-red-400 disabled:opacity-30"
@@ -3643,7 +3643,7 @@ function GraphsPanel() {
                       className="w-6 h-6 bg-transparent border-0 cursor-pointer rounded-sm"
                     />
                     {formDatasets.length > 1 && (
-                      <button onClick={() => removeDataset(idx)} className="text-rmpg-500 hover:text-red-400">
+                      <button aria-label="Remove" onClick={() => removeDataset(idx)} className="text-rmpg-500 hover:text-red-400">
                         <X className="w-3 h-3" />
                       </button>
                     )}
@@ -4905,7 +4905,7 @@ function ExtractPanel() {
               placeholder="Description"
             />
             {fields.length > 1 && (
-              <button onClick={() => removeField(idx)} className="text-rmpg-500 hover:text-red-400">
+              <button aria-label="Remove" onClick={() => removeField(idx)} className="text-rmpg-500 hover:text-red-400">
                 <X className="w-3 h-3" />
               </button>
             )}
@@ -5717,7 +5717,7 @@ function McpPanel() {
                 className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
                 placeholder="fc-••••••••"
               />
-              <button onClick={() => setShowApiKey(!showApiKey)} className="text-rmpg-500 hover:text-rmpg-100">
+              <button aria-label="View" onClick={() => setShowApiKey(!showApiKey)} className="text-rmpg-500 hover:text-rmpg-100">
                 <Eye className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -8845,7 +8845,7 @@ function N8nPanel() {
                   placeholder="Config JSON or URL..."
                 />
                 {formNodes.length > 1 && (
-                  <button onClick={() => removeNode(idx)} className="text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+                  <button aria-label="Remove" onClick={() => removeNode(idx)} className="text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
                 )}
               </div>
             ))}
@@ -9609,7 +9609,7 @@ function PipelinesPanel() {
                   placeholder="Config..."
                 />
                 {formSteps.length > 1 && (
-                  <button onClick={() => removeStep(idx)} className="text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+                  <button aria-label="Remove" onClick={() => removeStep(idx)} className="text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
                 )}
               </div>
             ))}
@@ -10893,7 +10893,7 @@ function WorkflowStepIndicator({
         })}
       </div>
       <span className="text-[9px] text-rmpg-500 ml-auto">Step {currentStep + 1}/{template.steps.length}</span>
-      <button onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100 p-0.5"><X className="w-3 h-3" /></button>
+      <button aria-label="Close" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100 p-0.5"><X className="w-3 h-3" /></button>
     </div>
   );
 }
@@ -11109,7 +11109,7 @@ export default function FirecrawlTab() {
             <SmallBtn variant="primary" onClick={() => quickInput.trim() && handleQuickGo(qa.tab)}>
               <Play className="w-2.5 h-2.5" /> Go
             </SmallBtn>
-            <button onClick={() => { setQuickAction(null); setQuickInput(''); }} className="text-rmpg-500 hover:text-rmpg-100">
+            <button aria-label="Close" onClick={() => { setQuickAction(null); setQuickInput(''); }} className="text-rmpg-500 hover:text-rmpg-100">
               <X className="w-3 h-3" />
             </button>
           </div>
@@ -11141,7 +11141,7 @@ export default function FirecrawlTab() {
               className="w-full bg-rmpg-800 border border-rmpg-600 rounded-sm pl-5 pr-2 py-0.5 text-[10px] text-rmpg-100 placeholder-rmpg-500 focus:outline-none focus:border-orange-500/50"
             />
             {toolSearch && (
-              <button
+              <button aria-label="Close"
                 onClick={() => setToolSearch('')}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100"
               >
