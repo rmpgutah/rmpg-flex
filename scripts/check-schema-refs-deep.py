@@ -130,47 +130,124 @@ JS_IN_SQL = re.compile(r'\bnew\s+Date\s*\(|\.getFullYear\s*\(|\.toISOString\s*\(
                        r'|\bMath\.\w+\s*\(|\?\?|\.length\b|\.map\s*\(|\bJSON\.\w+\s*\(')
 
 
+# A `/` starts a REGEX (not division) when the previous significant token
+# cannot end an expression. Getting this wrong is not cosmetic: hr.ts line 179
+# holds /[",\n\r]/ , whose `"` was read as a string opener. That desynced the
+# scanner, and because each mispairing cascades, 21 of 28 SQL-bearing literals
+# in that file came out as garbage -- its ~81 statements were never checked.
+REGEX_PREV_OK = re.compile(r'(?:[(,=:\[!&|?{};+\-*%~^<>]|\b(?:return|typeof|instanceof|in|of'
+                           r'|new|delete|void|do|else|case|yield|await))\s*$')
+
+
+def _regex_end(src: str, i: int) -> int:
+    """Index just past a regex literal starting at src[i] == '/', or -1."""
+    j, in_class = i + 1, False
+    while j < len(src):
+        c = src[j]
+        if c == '\\':
+            j += 2; continue
+        if c == '\n':
+            return -1                 # regex literals cannot span lines
+        if c == '[':
+            in_class = True
+        elif c == ']':
+            in_class = False
+        elif c == '/' and not in_class:
+            j += 1
+            while j < len(src) and src[j].isalpha():   # flags
+                j += 1
+            return j
+        j += 1
+    return -1
+
+
 def iter_literals(src: str):
     """Yield (offset, text) for every JS string/template literal.
 
-    Deliberately a real lexer, not a regex. A regex alternation over
-    `...` / '...' / "..." pairs quotes by POSITION across the whole file, so
-    one apostrophe in a comment (or a backtick in unrelated code) shifts every
-    subsequent pairing and silently swallows whole queries — records.ts's
-    warrants SELECT referenced three nonexistent columns and went unreported
-    for exactly this reason. Tracking lexer state instead makes extraction
-    exact, and skipping comments means prose can't masquerade as SQL.
+    A real lexer with an explicit state STACK, not a regex and not a depth
+    counter. Two earlier designs both under-reported badly:
+
+      1. A regex alternation over `...` / '...' / "..." pairs quotes by POSITION
+         across the whole file, so one stray backtick shifts every later pairing
+         and silently swallows whole queries.
+      2. Tracking `${` nesting with a plain integer ignores quotes INSIDE the
+         interpolation, so a brace in a quoted string -- `${cond ? '{' : ''}` --
+         or simply a nested template desynchronises everything downstream. In
+         src/routes/hr.ts that left 22 of 29 extracted literals as garbage and
+         the file's ~81 SQL statements effectively UNSCANNED.
+
+    The stack makes interpolations first-class: inside `${...}` we are back in
+    code, where strings, templates and braces all nest properly.
     """
     i, n = 0, len(src)
+    stack = []            # 'tmpl' | 'brace'
+    lit_start = None      # offset where the current top-level literal began
     while i < n:
         ch = src[i]
-        if ch == '/' and i + 1 < n and src[i + 1] == '/':
+        in_code = not stack or stack[-1] == 'brace'
+
+        if in_code and ch == '/' and i + 1 < n and src[i + 1] == '/':
             j = src.find('\n', i)
             i = n if j < 0 else j + 1
-        elif ch == '/' and i + 1 < n and src[i + 1] == '*':
+            continue
+        if in_code and ch == '/' and i + 1 < n and src[i + 1] == '*':
             j = src.find('*/', i + 2)
             i = n if j < 0 else j + 2
-        elif ch in '\'"`':
-            quote, start, i = ch, i + 1, i + 1
-            depth = 0            # ${ } nesting inside a template literal
-            while i < n:
-                c = src[i]
-                if c == '\\':
+            continue
+
+        if in_code and ch == '/' and REGEX_PREV_OK.search(src[max(0, i - 40):i]):
+            end = _regex_end(src, i)
+            if end > 0:
+                i = end
+                continue
+
+        if in_code and ch in '\'"':
+            # Simple quoted string: cannot contain a newline, so an unterminated
+            # one is a lexing error we recover from rather than run away with.
+            q, start = ch, i + 1
+            i += 1
+            while i < n and src[i] != q:
+                if src[i] == '\\':
                     i += 2; continue
-                if quote == '`':
-                    if c == '$' and i + 1 < n and src[i + 1] == '{':
-                        depth += 1; i += 2; continue
-                    if c == '}' and depth:
-                        depth -= 1; i += 1; continue
-                elif c == '\n':
-                    break        # unterminated single/double quote — bail
-                if c == quote and not depth:
+                if src[i] == '\n':
                     break
                 i += 1
-            yield start, src[start:i]
+            if not stack:
+                yield start, src[start:i]
             i += 1
-        else:
+            continue
+
+        if in_code and ch == '`':
+            if not stack:
+                lit_start = i + 1
+            stack.append('tmpl')
             i += 1
+            continue
+
+        if stack and stack[-1] == 'tmpl':
+            if ch == '\\':
+                i += 2; continue
+            if ch == '$' and i + 1 < n and src[i + 1] == '{':
+                stack.append('brace'); i += 2; continue
+            if ch == '`':
+                stack.pop()
+                if not stack and lit_start is not None:
+                    yield lit_start, src[lit_start:i]
+                    lit_start = None
+                i += 1
+                continue
+            i += 1
+            continue
+
+        if stack and stack[-1] == 'brace':
+            if ch == '{':
+                stack.append('brace')
+            elif ch == '}':
+                stack.pop()
+            i += 1
+            continue
+
+        i += 1
 
 
 # A quoted string inside an interpolation that looks like a SQL fragment rather

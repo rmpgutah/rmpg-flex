@@ -42,6 +42,10 @@ const DISC_SEVERITIES = new Set(['minor', 'moderate', 'major', 'critical']);
 const DISC_STATUSES = new Set(['open', 'closed', 'appealed']);
 const REVIEW_TYPES = new Set(['annual', 'probationary', 'quarterly', 'improvement_plan']);
 const REVIEW_STATUSES = new Set(['draft', 'submitted', 'acknowledged', 'completed']);
+// Mirrors BENEFIT_TYPES / COVERAGE_LABELS in
+// client/src/pages/hr/tabs/BenefitsTab.tsx — keep the two in step.
+const BENEFIT_TYPES = new Set(['health', 'dental', 'vision', 'life', '401k', 'hsa', 'fsa', 'disability', 'other']);
+const COVERAGE_LEVELS = new Set(['individual', 'individual_spouse', 'family']);
 
 // Policy defaults for synthesized leave balances. Honest fiction:
 // the live D1 has no per-officer balance table, so we expose a
@@ -107,13 +111,93 @@ hr.get('/dashboard', requireRole(...ALL_ROLES), async (c) => {
   });
 });
 
-// ── /benefits — deferred until hr_benefits table exists ─────
+// ── /benefits ───────────────────────────────────────────────
+// Backed by hr_benefits (migration 0217). This used to be a stub returning a
+// hardcoded [] "until the hr_benefits table exists", and POST did not exist at
+// all — so BenefitsTab's Add-benefit submit 404'd and reported only "Failed to
+// add benefit". Visibility mirrors /leave and /disciplinary: an officer sees
+// only their own enrolment, managers see everyone.
 
+// GET /hr/benefits?officer_id=&status=&benefit_type=
 hr.get('/benefits', requireRole(...ALL_ROLES), async (c) => {
-  // Empty list silences BenefitsTab's load() error toast and lets
-  // the "no benefits enrolled" empty state render. Real handler
-  // lands with the hr_benefits table in a follow-up.
-  return c.json([]);
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number; role: string };
+    const officerId = c.req.query('officer_id');
+    const status = c.req.query('status');
+    const benefitType = c.req.query('benefit_type');
+
+    const where: string[] = [];
+    const params: unknown[] = [];
+
+    if (!isManager(user.role)) {
+      where.push('b.officer_id = ?');
+      params.push(user.id);
+    } else if (officerId) {
+      where.push('b.officer_id = ?');
+      params.push(Number(officerId));
+    }
+    if (status) { where.push('b.status = ?'); params.push(status); }
+    if (benefitType && BENEFIT_TYPES.has(benefitType)) {
+      where.push('b.benefit_type = ?');
+      params.push(benefitType);
+    }
+
+    const rows = await query(db,
+      `SELECT b.*, o.full_name AS officer_name
+         FROM hr_benefits b
+         LEFT JOIN users o ON o.id = b.officer_id
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY b.effective_date DESC, b.id DESC
+        LIMIT 1000`,
+      ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('[hr] GET /benefits', err);
+    return c.json({ error: 'Failed to load benefits', code: 'HR_BENEFITS_ERR' }, 500);
+  }
+});
+
+// POST /hr/benefits — manager enrols an officer in a plan
+hr.post('/benefits', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+    const body = await c.req.json();
+    const {
+      officer_id, benefit_type, plan_name, provider, coverage_level,
+      employee_cost, employer_cost, effective_date, end_date, notes,
+    } = body ?? {};
+
+    if (!officer_id) return c.json({ error: 'officer_id required' }, 400);
+    if (!benefit_type || !BENEFIT_TYPES.has(benefit_type)) {
+      return c.json({ error: 'Invalid benefit_type' }, 400);
+    }
+    if (coverage_level && !COVERAGE_LEVELS.has(coverage_level)) {
+      return c.json({ error: 'Invalid coverage_level' }, 400);
+    }
+    // Costs arrive from a number input but can still be '' or null.
+    const eeCost = Number(employee_cost ?? 0);
+    const erCost = Number(employer_cost ?? 0);
+    if (!Number.isFinite(eeCost) || eeCost < 0) return c.json({ error: 'employee_cost must be >= 0' }, 400);
+    if (!Number.isFinite(erCost) || erCost < 0) return c.json({ error: 'employer_cost must be >= 0' }, 400);
+
+    const now = nowIso();
+    const res = await execute(db,
+      `INSERT INTO hr_benefits
+        (officer_id, benefit_type, plan_name, provider, coverage_level,
+         employee_cost, employer_cost, effective_date, end_date, status,
+         notes, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
+      Number(officer_id), benefit_type, plan_name ?? null, provider ?? null,
+      coverage_level || 'individual', eeCost, erCost,
+      effective_date || null, end_date ?? null, notes ?? null, user.id, now, now
+    );
+    return c.json({ success: true, id: res.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('[hr] POST /benefits', err);
+    return c.json({ error: 'Failed to add benefit', code: 'HR_BENEFITS_CREATE_ERR' }, 500);
+  }
 });
 
 // ── /leave ──────────────────────────────────────────────────
