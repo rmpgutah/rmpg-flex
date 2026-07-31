@@ -33,7 +33,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
@@ -104,19 +104,28 @@ async function enrichLinkedPersons<T extends { id?: number; person_id?: number |
 ): Promise<T[]> {
   const ids = rows.map((r) => r.id).filter((v): v is number => typeof v === 'number');
   if (ids.length === 0) return rows.map((r) => ({ ...r, person_id: (r.person_id ?? null), linked_person: null }));
-  const placeholders = ids.map(() => '?').join(',');
-  const links = await query<{ arrest_record_id: number; person_id: number; name: string }>(
+  // queryInChunks, NOT a hand-rolled IN-list: `rows` is caller-sized and the
+  // list endpoint allows `?limit=` up to 500, so this built a 500-parameter
+  // query and D1 rejects anything over 100 AT BIND TIME. That throws from
+  // inside query() rather than the route body, so it 500s with nothing in
+  // error_log — and it only ever triggers once a page holds >100 arrests, which
+  // is why every test and dev run passed. See CLAUDE.md, D1 100-BOUND-PARAM cap.
+  const links = await queryInChunks<{ arrest_record_id: number; person_id: number; name: string }>(
     db,
-    `SELECT acl.arrest_record_id,
+    ids,
+    (placeholders) => `SELECT acl.arrest_record_id,
             acl.linked_id AS person_id,
             TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) AS name
        FROM arrest_cross_links acl
        JOIN persons p ON p.id = acl.linked_id
       WHERE acl.linked_type = 'person' AND acl.arrest_record_id IN (${placeholders})
       ORDER BY acl.created_at DESC`,
-    ...ids,
   );
   // Keep the most-recent link per arrest (rows arrive newest-first).
+  // NOTE: newest-first holds WITHIN a chunk. queryInChunks concatenates chunks
+  // rather than globally sorting, so this "first wins" reduction is still
+  // correct per arrest_record_id — every row for a given arrest lands in the
+  // same chunk, because chunking partitions BY arrest id.
   const byArrest = new Map<number, { person_id: number; name: string }>();
   for (const l of links) {
     if (!byArrest.has(l.arrest_record_id)) byArrest.set(l.arrest_record_id, { person_id: l.person_id, name: l.name });
