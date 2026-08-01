@@ -27,6 +27,7 @@ import FleetAnalysisFormsTab from './tabs/FleetAnalysisFormsTab';
 import FleetVendorsTab from './tabs/FleetVendorsTab';
 import FleetWorkOrdersTab from './tabs/FleetWorkOrdersTab';
 import FleetServiceTab from './tabs/FleetServiceTab';
+import FleetDriverPerformanceTab from './tabs/FleetDriverPerformanceTab';
 import VehicleFormModal, { EMPTY_VEHICLE_FORM } from './modals/VehicleFormModal';
 import MaintenanceFormModal, { EMPTY_MAINT_FORM } from './modals/MaintenanceFormModal';
 import FuelLogModal, { EMPTY_FUEL_FORM } from './modals/FuelLogModal';
@@ -49,7 +50,7 @@ import { toDisplayLabel } from '../../utils/formatters';
 // RMPG Flex — Fleet Vehicle Management Page (Refactored)
 // ============================================================
 
-type FleetViewMode = 'dashboard' | 'analysis' | 'work_orders' | 'vendors' | 'service';
+type FleetViewMode = 'dashboard' | 'analysis' | 'work_orders' | 'vendors' | 'service' | 'driver_performance';
 
 // Fleet-wide views. Rendered as a real tablist — the previous version had
 // no tab semantics and hardcoded a banned legacy gold literal (fails AA in
@@ -60,6 +61,7 @@ const FLEET_VIEWS: { id: FleetViewMode; label: string; icon?: typeof FileText }[
   { id: 'work_orders', label: 'Work Orders' },
   { id: 'vendors', label: 'Vendors' },
   { id: 'service', label: 'Service' },
+  { id: 'driver_performance', label: 'Driver Performance', icon: Gauge },
 ];
 
 // Rough patrol-fleet service-life heuristic (no per-vehicle target exists in
@@ -1184,6 +1186,8 @@ export default function FleetPage() {
                   <FleetWorkOrdersTab initialVehicleId={workOrdersVehicleFilter ?? undefined} />
                 ) : viewMode === 'vendors' ? (
                   <FleetVendorsTab />
+                ) : viewMode === 'driver_performance' ? (
+                  <FleetDriverPerformanceTab />
                 ) : (
                   <FleetServiceTab />
                 )}

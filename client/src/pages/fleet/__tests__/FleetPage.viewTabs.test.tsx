@@ -103,7 +103,7 @@ describe('FleetPage fleet-wide view tablist', () => {
 
     const dashboardTab = screen.getByRole('tab', { name: 'Dashboard' });
     const analysisTab = screen.getByRole('tab', { name: 'Analysis Reports' });
-    const serviceTab = screen.getByRole('tab', { name: 'Service' });
+    const lastTab = screen.getByRole('tab', { name: 'Driver Performance' });
 
     dashboardTab.focus();
     expect(document.activeElement).toBe(dashboardTab);
@@ -112,15 +112,15 @@ describe('FleetPage fleet-wide view tablist', () => {
     await waitFor(() => expect(analysisTab).toHaveAttribute('aria-selected', 'true'));
     expect(document.activeElement).toBe(analysisTab);
 
-    // Wrap: ArrowLeft from the first tab (Dashboard) goes to the last (Service).
+    // Wrap: ArrowLeft from the first tab (Dashboard) goes to the last (Driver Performance).
     // Reselect Dashboard first — the previous ArrowRight left viewMode on
     // Analysis, and the handler computes "current" from viewMode, not from
     // DOM focus.
     await user.click(dashboardTab);
     dashboardTab.focus();
     await user.keyboard('{ArrowLeft}');
-    await waitFor(() => expect(serviceTab).toHaveAttribute('aria-selected', 'true'));
-    expect(document.activeElement).toBe(serviceTab);
+    await waitFor(() => expect(lastTab).toHaveAttribute('aria-selected', 'true'));
+    expect(document.activeElement).toBe(lastTab);
   });
 
   it('Home selects the first tab and End selects the last', async () => {
@@ -129,12 +129,12 @@ describe('FleetPage fleet-wide view tablist', () => {
     await waitFor(() => expect(screen.getByRole('tablist', { name: 'Fleet-wide views' })).toBeInTheDocument());
 
     const dashboardTab = screen.getByRole('tab', { name: 'Dashboard' });
-    const serviceTab = screen.getByRole('tab', { name: 'Service' });
+    const lastTab = screen.getByRole('tab', { name: 'Driver Performance' });
 
     dashboardTab.focus();
     await user.keyboard('{End}');
-    await waitFor(() => expect(serviceTab).toHaveAttribute('aria-selected', 'true'));
-    expect(document.activeElement).toBe(serviceTab);
+    await waitFor(() => expect(lastTab).toHaveAttribute('aria-selected', 'true'));
+    expect(document.activeElement).toBe(lastTab);
 
     await user.keyboard('{Home}');
     await waitFor(() => expect(dashboardTab).toHaveAttribute('aria-selected', 'true'));
