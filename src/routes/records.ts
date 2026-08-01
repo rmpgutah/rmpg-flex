@@ -656,7 +656,18 @@ records.get('/persons/search', async (c) => {
     const db = getDb(c.env);
     const q = c.req.query('q');
     if (!q || q.length < 2) return c.json([]);
-    const mq = containsAnyClause(['last_name', 'first_name', 'phone']);
+    // Three person-search paths in this file each named a DIFFERENT column set:
+    // this one (last/first/phone), /persons/alias-search (first/last only), and
+    // the bulk /persons list (first/last/alias_nickname/phone/email/dl_number).
+    // The bulk list was the most complete, so the two dedicated SEARCH
+    // endpoints — the ones an officer actually types into — were the narrowest.
+    // Aligned here, plus the alias and secondary-phone columns none of them had.
+    const mq = containsAnyClause([
+      'last_name', 'first_name', 'middle_name',
+      'alias_nickname', 'aliases',
+      'phone', 'phone_secondary', 'home_phone', 'work_phone',
+      'email', 'dl_number',
+    ]);
     const rows = await query<Record<string, unknown>>(db, `
       SELECT * FROM persons
       WHERE ${mq.sql}
@@ -749,15 +760,27 @@ records.post('/persons/merge', async (c) => {
   } catch (err) { return dbErrorResponse(c, err, 'Merge failed'); }
 });
 
-// GET /records/persons/alias-search — search by potential alias (name match).
+// GET /records/persons/alias-search — search by potential alias.
+//
+// This searched ONLY first_name and last_name, which made it functionally
+// identical to a plain name search: the one endpoint whose entire purpose is
+// finding people by alias could not match an alias at all. `persons` stores
+// them in alias_nickname and aliases.
+//
+// Verified live: 'NIKITA' and 'BRAYDEN' are real alias_nickname values that
+// returned 0 rows here. Same defect class as #3222/#3223 — a matcher naming
+// fewer columns than the data lives in.
 records.get('/persons/alias-search', async (c) => {
   try {
     const db = getDb(c.env);
     const q = c.req.query('q');
     if (!q || q.length < 2) return c.json([]);
-    const ma = containsAnyClause(['first_name', 'last_name']);
+    const ma = containsAnyClause([
+      'alias_nickname', 'aliases',
+      'first_name', 'last_name', 'middle_name',
+    ]);
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT id, first_name, last_name, dob, gender FROM persons WHERE ${ma.sql} ORDER BY last_name, first_name LIMIT 50`,
+      `SELECT id, first_name, last_name, dob, gender, alias_nickname FROM persons WHERE ${ma.sql} ORDER BY last_name, first_name LIMIT 50`,
       ...ma.binds(q));
     return c.json(rows);
   } catch (err) { return c.json([]); }
@@ -2172,8 +2195,23 @@ records.get('/ncic-query', async (c) => {
   try {
     switch (type) {
       case 'person': {
-        const mp = nq('first_name', 'last_name',
-          "first_name || ' ' || last_name", "last_name || ', ' || first_name");
+        // Aliases and middle names are searchable, not just the legal first/last.
+        //
+        // Same defect class as the QW warrant query (#3222): the matcher named
+        // fewer columns than the data actually lives in, so records that were
+        // present answered NO RECORD FOUND. A subject known to officers by a
+        // nickname was unreachable, even though `persons.alias_nickname` and
+        // `persons.aliases` hold exactly that — and records.ts already exposes
+        // a dedicated /persons/alias-search endpoint that this query never used.
+        //
+        // Live D1: 4 persons carry alias_nickname, 1 carries aliases, 43 carry
+        // a middle_name.
+        //
+        // Purely additive — this can only return MORE matches, never fewer.
+        const mp = nq('first_name', 'last_name', 'middle_name',
+          'alias_nickname', 'aliases',
+          "first_name || ' ' || last_name", "last_name || ', ' || first_name",
+          "first_name || ' ' || COALESCE(middle_name,'') || ' ' || last_name");
         const persons = await query<Record<string, any>>(db, `
           SELECT * FROM persons
           WHERE ${mp.sql}
@@ -2260,7 +2298,15 @@ records.get('/ncic-query', async (c) => {
         return respond(results);
       }
       case 'phone': {
-        const mph = nq('phone');
+        // persons stores FOUR phone columns; this searched one.
+        //
+        // Live D1: 17 persons have a primary phone, but 4 have phone_secondary,
+        // 4 home_phone and 3 work_phone — and 2 persons have ONLY a non-primary
+        // number, making them entirely unreachable by a QT lookup. Dialling a
+        // number that is on file returned NO RECORD FOUND.
+        //
+        // Purely additive.
+        const mph = nq('phone', 'phone_secondary', 'home_phone', 'work_phone');
         const results = await soft('persons by phone', () => query<Record<string, any>>(db,
           `SELECT * FROM persons WHERE ${mph.sql} ORDER BY last_name, first_name LIMIT 10`,
           ...mph.binds(q)));
