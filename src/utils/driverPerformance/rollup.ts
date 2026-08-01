@@ -47,7 +47,6 @@ interface Acc {
   fuelCost: number;
   fuelGallons: number;
   maintenanceCost: number;
-  damageCost: number;
 }
 
 const newAcc = (): Acc => ({
@@ -55,7 +54,7 @@ const newAcc = (): Acc => ({
   severity: { critical: 0, high: 0, moderate: 0, low: 0 },
   recorded: 0, inferred: 0,
   miles: 0, minutes: 0, trips: 0,
-  fuelCost: 0, fuelGallons: 0, maintenanceCost: 0, damageCost: 0,
+  fuelCost: 0, fuelGallons: 0, maintenanceCost: 0,
 });
 
 const METERS_PER_MILE = 1609.344;
@@ -144,12 +143,24 @@ export async function rollupDay(
   // ── Cost, attributed through the same assignment windows (lens 4) ──
   // Displayed beside the safety score, never folded into it: a driver
   // assigned an older, thirstier vehicle must not score as unsafe.
+  // fleet_fuel_log.fuel_date is always written through normalizeToUtcTimestamp()
+  // (src/routes/fleet.ts, src/routes/fleetio.ts), which returns a full
+  // 'YYYY-MM-DD HH:MM:SS' UTC timestamp — even a date-only input becomes
+  // Denver-midnight-as-UTC. Exact equality against a bare perfDate matches
+  // nothing; use the same half-open day-range bounds as the event/trip queries.
   const fuelRows = await query<{ vehicle_id: number; total_cost: number | null; gallons: number | null }>(
     db,
-    `SELECT vehicle_id, total_cost, gallons FROM fleet_fuel_log WHERE fuel_date = ?`,
-    perfDate,
+    `SELECT vehicle_id, total_cost, gallons FROM fleet_fuel_log WHERE fuel_date >= ? AND fuel_date <= ?`,
+    dayStart, dayEnd,
   );
-  const vehicleOfficer = new Map<number, number>();
+  // Attribute a vehicle's cost only when exactly ONE distinct officer held it
+  // during the day. A mid-shift swap means the vehicle covers two officers;
+  // guessing which one owns the whole day's cost is exactly the ambiguity
+  // resolveAttribution refuses to resolve for events, so cost follows the
+  // same rule — ambiguous vehicles are excluded from cost attribution
+  // entirely (2+ DISTINCT officers -> null/excluded; repeated rows for the
+  // SAME officer are not ambiguous).
+  const vehicleOfficers = new Map<number, Set<number>>();
   const vehAssign = await query<{ vehicle_id: number; officer_id: number | null }>(
     db,
     `SELECT vehicle_id, officer_id FROM fleet_assignments
@@ -158,7 +169,16 @@ export async function rollupDay(
         AND (unassigned_at IS NULL OR unassigned_at >= ?)`,
     dayEnd, dayStart,
   );
-  for (const v of vehAssign) if (v.officer_id != null) vehicleOfficer.set(v.vehicle_id, v.officer_id);
+  for (const v of vehAssign) {
+    if (v.officer_id == null) continue;
+    const set = vehicleOfficers.get(v.vehicle_id) ?? new Set<number>();
+    set.add(v.officer_id);
+    vehicleOfficers.set(v.vehicle_id, set);
+  }
+  const vehicleOfficer = new Map<number, number>();
+  for (const [vehicleId, officers] of vehicleOfficers) {
+    if (officers.size === 1) vehicleOfficer.set(vehicleId, [...officers][0]);
+  }
 
   for (const f of fuelRows) {
     const officerId = vehicleOfficer.get(f.vehicle_id);
@@ -197,9 +217,9 @@ export async function rollupDay(
            events_forward_collision, events_lane_departure, events_close_following,
            events_harsh_brake, events_harsh_accel, events_speeding,
            attribution_recorded_pct, attribution_inferred_pct,
-           fuel_cost, fuel_gallons, maintenance_cost, damage_cost,
+           fuel_cost, fuel_gallons, maintenance_cost,
            score, score_version, computed_at
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
          ON CONFLICT(officer_id, perf_date) DO UPDATE SET
            miles_driven=excluded.miles_driven, drive_minutes=excluded.drive_minutes,
            trip_count=excluded.trip_count,
@@ -214,7 +234,7 @@ export async function rollupDay(
            attribution_recorded_pct=excluded.attribution_recorded_pct,
            attribution_inferred_pct=excluded.attribution_inferred_pct,
            fuel_cost=excluded.fuel_cost, fuel_gallons=excluded.fuel_gallons,
-           maintenance_cost=excluded.maintenance_cost, damage_cost=excluded.damage_cost,
+           maintenance_cost=excluded.maintenance_cost,
            score=excluded.score, score_version=excluded.score_version,
            computed_at=datetime('now')`,
         officerId, perfDate, a.miles, a.minutes, a.trips,
@@ -222,7 +242,7 @@ export async function rollupDay(
         a.events.forwardCollision, a.events.laneDeparture, a.events.closeFollowing,
         a.events.harshBrake, a.events.harshAccel, a.events.speeding,
         recordedPct, inferredPct,
-        a.fuelCost, a.fuelGallons, a.maintenanceCost, a.damageCost,
+        a.fuelCost, a.fuelGallons, a.maintenanceCost,
         score, SCORE_VERSION,
       );
     } catch (err) {

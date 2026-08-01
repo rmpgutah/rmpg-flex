@@ -36,7 +36,6 @@ CREATE TABLE IF NOT EXISTS driver_performance_daily (
   fuel_cost REAL NOT NULL DEFAULT 0,
   fuel_gallons REAL NOT NULL DEFAULT 0,
   maintenance_cost REAL NOT NULL DEFAULT 0,
-  damage_cost REAL NOT NULL DEFAULT 0,
 
   score REAL,
   score_version TEXT NOT NULL,
