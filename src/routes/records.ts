@@ -2215,7 +2215,7 @@ records.get('/ncic-query', async (c) => {
         const persons = await query<Record<string, any>>(db, `
           SELECT * FROM persons
           WHERE ${mp.sql}
-          ORDER BY last_name, first_name LIMIT 5
+          ORDER BY last_name, first_name LIMIT 10
         `, ...mp.binds(q));
 
         // Normalize live column-name drift to the field names the NCIC client
@@ -2230,17 +2230,32 @@ records.get('/ncic-query', async (c) => {
           if (p.drivers_license == null && p.dl_number != null) p.drivers_license = p.dl_number;
         }
 
-        const results = [];
-        for (const p of persons) {
-          const criminalHistory = await soft('criminal history', () => query<Record<string, any>>(db,
-            `SELECT * FROM criminal_history WHERE person_id = ? ORDER BY offense_date DESC LIMIT 50`,
-            p.id));
-          const warrants = await soft('warrants', () => query<Record<string, any>>(db,
-            `SELECT ${WARRANT_COLS} FROM warrants
-             WHERE subject_person_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 50`,
-            p.id));
-          results.push({ person: p, criminalHistory, warrants });
-        }
+        // Fan the per-person sub-queries out in PARALLEL rather than awaiting
+        // each in sequence.
+        //
+        // This loop issues TWO round-trips per person, so at the previous
+        // LIMIT 5 it was 10 sequential awaits; raising the limit to 10 would
+        // have made it 20 and roughly doubled the terminal's response time.
+        // The sequential fan-out is what made the low limit necessary in the
+        // first place — a QH on a common surname silently returned 5 of N
+        // matches, which for a name lookup at a stop is the wrong trade.
+        //
+        // Promise.all keeps wall time at roughly one round-trip pair while
+        // doubling coverage. Each sub-query is already wrapped in soft(), so a
+        // single failure still degrades to [] for that person instead of
+        // rejecting the whole batch.
+        const results = await Promise.all(persons.map(async (p) => {
+          const [criminalHistory, warrants] = await Promise.all([
+            soft('criminal history', () => query<Record<string, any>>(db,
+              `SELECT * FROM criminal_history WHERE person_id = ? ORDER BY offense_date DESC LIMIT 50`,
+              p.id)),
+            soft('warrants', () => query<Record<string, any>>(db,
+              `SELECT ${WARRANT_COLS} FROM warrants
+               WHERE subject_person_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 50`,
+              p.id)),
+          ]);
+          return { person: p, criminalHistory, warrants };
+        }));
         return respond(results);
       }
       case 'warrant': {
