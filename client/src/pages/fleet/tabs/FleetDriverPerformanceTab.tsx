@@ -105,18 +105,7 @@ function RosterRow({
         onKeyDown={handleKeyDown}
       >
         <td className="py-[2px] pr-2">{r.rank}</td>
-        <td className="py-[2px] pr-2">
-          <button
-            type="button"
-            className="underline text-left"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpen(r.officer_id);
-            }}
-          >
-            {r.officer_name ?? '—'}
-          </button>
-        </td>
+        <td className="py-[2px] pr-2 underline">{r.officer_name ?? '—'}</td>
         <td className="py-[2px] pr-2">{r.badge_number ?? '—'}</td>
         <td className={`py-[2px] pr-2 font-semibold ${BAND_CLASS[r.result.band ?? ''] ?? ''}`}>
           {r.result.score?.toFixed(1)}
@@ -155,18 +144,7 @@ function RosterRow({
       onClick={() => onOpen(r.officer_id)}
       onKeyDown={handleKeyDown}
     >
-      <td className="py-[2px] pr-2">
-        <button
-          type="button"
-          className="underline text-left"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpen(r.officer_id);
-          }}
-        >
-          {r.officer_name ?? '—'}
-        </button>
-      </td>
+      <td className="py-[2px] pr-2 underline">{r.officer_name ?? '—'}</td>
       <td className="py-[2px] pr-2">{r.badge_number ?? '—'}</td>
       <td className="py-[2px] pr-2">{r.miles_driven.toFixed(0)} mi</td>
       <td className="py-[2px] pr-2">{r.event_count} events</td>
@@ -250,6 +228,27 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
       {!summary ? (
         <div className="border border-rmpg-700 p-3 text-xs text-fg-secondary">
           No data for this officer in this window.
+        </div>
+      ) : summary.result.status !== 'scored' ? (
+        // Below the exposure floor: too few miles to distinguish driving behavior
+        // from chance. Same treatment as the daily table's "not scored" and the
+        // roster's insufficient-exposure section — never a band, rate, or
+        // confidence label, since confidence in an unscored result is meaningless.
+        <div className="space-y-1">
+          <div className="text-[9px] font-semibold text-fg-secondary uppercase">Summary</div>
+          <div className="text-[11px] text-rmpg-100">
+            {summary.officer_name ?? '—'} · Badge {summary.badge_number ?? '—'}
+          </div>
+          <div className="border border-[color:var(--sev-warn)] p-3 text-xs text-rmpg-100">
+            <div className="font-semibold text-[color:var(--sev-warn)] mb-1">
+              Insufficient exposure — not scored
+            </div>
+            <div>
+              This officer drove {summary.miles_driven.toFixed(0)} miles in this window —
+              too few miles to distinguish driving behavior from chance. No score, band, rate,
+              or confidence is shown because none was computed.
+            </div>
+          </div>
         </div>
       ) : (
         <>
