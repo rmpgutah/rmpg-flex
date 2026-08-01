@@ -19,10 +19,9 @@ import { tryReloadForChunkFailure, normalizeChunkError } from './utils/chunkRetr
 import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
+import { prefetchRoute, ROLE_PREFETCH_ROUTES } from './hooks/useRoutePrefetch';
+import { importDashboard } from './routes/routeModules';
 import LoginPage from './pages/LoginPage';
-import DownloadsPage from './pages/DownloadsPage';
-// Dashboard is the immediate post-login landing view, so it stays eager.
-import DashboardPage from './pages/DashboardPage';
 // Dispatch + Map are the two heaviest field screens (~6k lines each plus deep
 // import trees). They're lazy-split to keep them OUT of the login/critical
 // bundle — but because they're the most-navigated-to pages, they're also
@@ -32,6 +31,25 @@ const importDispatch = () => import('./pages/dispatch');
 const importMap = () => import('./pages/map');
 const DispatchPage = lazyRetry(importDispatch);
 const MapPage = lazyRetry(importMap);
+// Dashboard is the post-login landing view. It used to be a STATIC import to
+// keep that first navigation instant — but that put 167.9 KB (plus
+// NewCallModal, IncidentFormModal and DashboardMiniMap, which it statically
+// imports) into the entry chunk, so every LOGIN paid for it too. It's lazy
+// now, and warmed the instant auth succeeds (see AppRoutes below), which
+// keeps the landing instant without taxing the login path.
+//
+// The factory itself lives in routes/routeModules.ts (imported above), not
+// here — routeModules.ts is also imported (transitively, via useRoutePrefetch)
+// by THIS file, so defining it here would make it a circular import that
+// reads an uninitialized `const` at module-eval time (TDZ ReferenceError,
+// breaks `npm run dev`; production's Rollup bundling hides the same cycle by
+// flattening scopes). There must be exactly ONE factory for DashboardPage in
+// the app — do not add a second inline `() => import('./pages/DashboardPage')`
+// here, or the prefetch and the router would warm two different chunks.
+const DashboardPage = lazyRetry(importDashboard);
+// Public downloads/marketing route — 25.3 KB plus KioskOsInstallGuide's
+// 15.5 KB. It was static, so every LOGIN downloaded and parsed it.
+const DownloadsPage = lazyRetry(() => import('./pages/DownloadsPage'));
 // Lazy import with auto-retry on chunk load failure (stale cache after deploys)
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
@@ -453,39 +471,34 @@ function RedirectKeepQuery({ to }: { to: string }) {
   return <Navigate to={`${to}${loc.search}${loc.hash}`} replace />;
 }
 
-// Roles that actually navigate to Dispatch/Map in normal use. Prefetching
-// for every role (including client_viewer, contract_manager, human_resources
-// — none of which have Dispatch/Map in their nav) was downloading the two
-// heaviest chunks in the app (Dispatch + Map, which pull in the ~2.3MB
-// mapbox-gl/deck.gl bundle) on every authenticated session regardless of
-// need — a self-inflicted "system load" spike ~1.5s after every page load.
-const DISPATCH_MAP_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
-
 function AppRoutes() {
   const { isAuthenticated, isLoading, user } = useAuth();
 
-  // Idle-prefetch the heaviest field routes once authenticated, so the first
-  // navigation to Dispatch/Map is instant rather than showing the loading
-  // splash while the chunk downloads over cellular. Scheduled during idle time
-  // (requestIdleCallback) so it never competes with the initial paint or the
-  // landing Dashboard's data fetches. import() is deduped, so this just warms
-  // the module cache — React.lazy then resolves synchronously on navigation.
-  // Skipped for roles that never see these routes, and for Save-Data /
-  // slow-connection sessions where the bandwidth is better spent elsewhere.
+  // Warm the Dashboard chunk the moment auth flips to true. This is what makes
+  // DashboardPage's lazy() free: the landing navigation resolves from the
+  // module cache instead of showing "Loading module". NOT idle-deferred and
+  // NOT role-gated — every authenticated role lands here, and by the time this
+  // fires the login-critical work is already done.
   React.useEffect(() => {
-    if (!isAuthenticated || !user || !DISPATCH_MAP_ROLES.has(user.role)) return;
+    if (!isAuthenticated) return;
+    importDashboard().catch(() => {});
+  }, [isAuthenticated]);
+
+  // Idle-prefetch the current role's most-navigated routes so the first
+  // navigation is instant rather than showing the module splash over cellular.
+  // Scheduled during idle so it never competes with first paint or the landing
+  // Dashboard's fetches. Was a hardcoded Dispatch+Map set; it's a role table
+  // now (ROLE_PREFETCH_ROUTES) so roles that never open those two stop paying
+  // for the ~2.3 MB mapbox/deck.gl download. prefetchRoute owns the saveData /
+  // slow-connection guard and swallows failures.
+  React.useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    const routes = ROLE_PREFETCH_ROUTES[user.role] ?? [];
+    if (routes.length === 0) return;
     const w = window as any;
-    const conn = (navigator as any).connection;
-    if (conn && (conn.saveData || /^(slow-2g|2g)$/.test(conn.effectiveType || ''))) return;
     const schedule: (cb: () => void) => number =
       w.requestIdleCallback || ((cb: () => void) => w.setTimeout(cb, 1500));
-    // Swallow prefetch failures — a transient cellular blip here is harmless;
-    // the real navigation still goes through lazyRetry (which reloads on a
-    // genuine chunk-load failure). We just don't want an unhandled rejection.
-    const id = schedule(() => {
-      importDispatch().catch(() => {});
-      importMap().catch(() => {});
-    });
+    const id = schedule(() => routes.forEach(prefetchRoute));
     return () => {
       if (w.cancelIdleCallback) w.cancelIdleCallback(id);
       else w.clearTimeout(id);

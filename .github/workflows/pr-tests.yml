@@ -120,3 +120,30 @@ jobs:
       - run: cd client && npx vite build
         env:
           VITE_MAPBOX_ACCESS_TOKEN: ${{ secrets.VITE_MAPBOX_ACCESS_TOKEN }}
+
+  client-entry-size:
+    name: client-entry-size
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: cd client && npm ci --legacy-peer-deps
+      - name: Build with sourcemaps
+        working-directory: client
+        run: npx vite build --sourcemap
+        env:
+          VITE_MAPBOX_ACCESS_TOKEN: ${{ secrets.VITE_MAPBOX_ACCESS_TOKEN }}
+      # Ratchet on the ENTRY chunk only — it is what gates first paint.
+      # Ceiling is the 2026-07-31 optimized size (433,810 B) plus ~5% headroom.
+      # If a change legitimately needs more, raise this deliberately in the
+      # same PR and say why; do not silently bump it. `node scripts/measure-entry.mjs`
+      # (no flag) prints the top 25 eager modules, which is usually enough to
+      # see what got pulled in.
+      - name: Assert entry chunk under ceiling
+        working-directory: client
+        run: node scripts/measure-entry.mjs --max-raw 455500
