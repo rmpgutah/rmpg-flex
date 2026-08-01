@@ -21,6 +21,9 @@ import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
 import DownloadsPage from './pages/DownloadsPage';
+// Dev-only PDF audit harness. Lazy + DEV-gated at the route (see below) so
+// Vite tree-shakes the whole chunk out of the production bundle.
+const PdfGalleryPage = lazy(() => import('./devtools/pdfGallery/PdfGalleryPage'));
 // Dashboard is the immediate post-login landing view, so it stays eager.
 import DashboardPage from './pages/DashboardPage';
 // Dispatch + Map are the two heaviest field screens (~6k lines each plus deep
@@ -504,6 +507,13 @@ function AppRoutes() {
         <Routes>
           {/* Public routes */}
           <Route path="/downloads" element={<DownloadsPage />} />
+          {/* Dev-only PDF audit harness. Gated on import.meta.env.DEV so Vite
+              tree-shakes it out of the production bundle entirely — it must never
+              reach Cloudflare Pages. See docs/superpowers/specs/
+              2026-07-31-pdf-forms-audit-and-repair-design.md */}
+          {import.meta.env.DEV && (
+            <Route path="/__pdf-gallery" element={<PdfGalleryPage />} />
+          )}
           <Route
             path="/login"
             element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
