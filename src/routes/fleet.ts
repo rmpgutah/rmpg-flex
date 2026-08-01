@@ -3352,17 +3352,41 @@ fleet.get('/overdue-inspections', async (c) => {
 fleet.get('/inspection-stats', async (c) => {
   try {
     const db = getDb(c.env);
-    const passCount = (await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM fleet_inspections WHERE overall_result = 'pass'"))?.n ?? 0;
-    const failCount = (await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM fleet_inspections WHERE overall_result = 'fail'"))?.n ?? 0;
-    const total = passCount + failCount;
+    // Counted with ONE grouped query rather than a COUNT per known result.
+    // `overall_result` is not a two-value column: live D1 also carries
+    // 'needs_attention' (2 of 18 rows on 2026-08-01). The previous pair of
+    // WHERE-scoped counts derived `total = pass + fail`, so every row outside
+    // those two literals was invisible AND uncounted — the panel reported 16
+    // inspections when there were 18, and a 75% pass rate (12/16) instead of
+    // the true 67% (12/18). Grouping means a new result value shows up in
+    // `other` instead of silently shrinking the denominator.
+    const byResult = await query<{ overall_result: string | null; n: number }>(
+      db, 'SELECT overall_result, COUNT(*) as n FROM fleet_inspections GROUP BY overall_result',
+    );
+    let passCount = 0, failCount = 0, otherCount = 0;
+    const other_breakdown: Record<string, number> = {};
+    for (const r of byResult) {
+      const n = Number(r.n ?? 0);
+      const key = (r.overall_result ?? '').toLowerCase();
+      if (key === 'pass') passCount += n;
+      else if (key === 'fail') failCount += n;
+      else {
+        otherCount += n;
+        other_breakdown[r.overall_result ?? 'unspecified'] = n;
+      }
+    }
+    // Denominator is EVERY inspection, so total always reconciles as
+    // pass + fail + other. A 'needs_attention' result is not a pass.
+    const total = passCount + failCount + otherCount;
     const pass_rate = total > 0 ? Math.round((passCount / total) * 100) : 0;
     // FleetAnalyticsTab reads total_inspections/pass_count/fail_count;
     // keep the short keys too for any older consumer.
     return c.json({
       total, pass: passCount, fail: failCount, pass_rate, recent: [],
       total_inspections: total, pass_count: passCount, fail_count: failCount,
+      other_count: otherCount, other_breakdown,
     });
-  } catch (err) { console.error('GET /fleet/inspection-stats failed:', err); return c.json({ total: 0, pass: 0, fail: 0, pass_rate: 0, recent: [], total_inspections: 0, pass_count: 0, fail_count: 0 }); }
+  } catch (err) { console.error('GET /fleet/inspection-stats failed:', err); return c.json({ total: 0, pass: 0, fail: 0, pass_rate: 0, recent: [], total_inspections: 0, pass_count: 0, fail_count: 0, other_count: 0, other_breakdown: {} }); }
 });
 
 fleet.get('/cost-trends', async (c) => {
@@ -3382,14 +3406,48 @@ fleet.get('/driver-performance', async (c) => {
     const fuelRows = await query<{
       officer_name: string; trips: number; gallons: number; cost: number; miles: number;
       call_sign: string | null; unit_id: number | null;
-    }>(db, `SELECT a.officer_name, MAX(a.unit_call_sign) as call_sign, MAX(a.unit_id) as unit_id, COUNT(*) as trips,
-              COALESCE(SUM(f.gallons),0) as gallons, COALESCE(SUM(f.total_cost),0) as cost,
-              COALESCE(MAX(f.odometer)-MIN(f.odometer),0) as miles
-            FROM fleet_assignments a
-            LEFT JOIN fleet_fuel_log f ON f.vehicle_id = a.vehicle_id
-              AND f.fuel_date >= a.assigned_at AND (a.unassigned_at IS NULL OR f.fuel_date <= a.unassigned_at)
-            WHERE a.officer_name IS NOT NULL AND a.assigned_at >= datetime('now', '-90 days')
-            GROUP BY a.officer_name ORDER BY miles DESC LIMIT 50`);
+    }>(db, `WITH win AS (
+              SELECT * FROM fleet_assignments
+              WHERE officer_name IS NOT NULL AND assigned_at >= datetime('now', '-90 days')
+            ),
+            -- Trips counted over ASSIGNMENTS only. The previous single-query
+            -- form did COUNT(*) across a LEFT JOIN onto fleet_fuel_log, so it
+            -- counted joined rows, not assignments: on live D1 (2026-08-01)
+            -- that reported 19 trips against 16 real assignments.
+            trips AS (
+              SELECT officer_name, COUNT(*) AS trips,
+                     MAX(unit_call_sign) AS call_sign, MAX(unit_id) AS unit_id
+              FROM win GROUP BY officer_name
+            ),
+            -- Each fuel row counted ONCE per officer. Assignment windows can
+            -- overlap (a vehicle reassigned mid-day, or an open-ended row with
+            -- unassigned_at IS NULL), and every overlapping window re-matched
+            -- the same fuel row, so SUM(gallons)/SUM(total_cost) double-counted
+            -- it. DISTINCT on the fuel row id collapses that fanout before any
+            -- aggregate runs. Currently latent on live (no row matches two
+            -- windows yet) but wrong by construction.
+            officer_fuel AS (
+              SELECT DISTINCT w.officer_name, f.id AS fuel_id,
+                     f.gallons, f.total_cost, f.odometer
+              FROM win w
+              JOIN fleet_fuel_log f ON f.vehicle_id = w.vehicle_id
+                AND f.fuel_date >= w.assigned_at
+                AND (w.unassigned_at IS NULL OR f.fuel_date <= w.unassigned_at)
+            ),
+            fuel AS (
+              SELECT officer_name,
+                     COALESCE(SUM(gallons),0) AS gallons,
+                     COALESCE(SUM(total_cost),0) AS cost,
+                     COALESCE(MAX(odometer)-MIN(odometer),0) AS miles
+              FROM officer_fuel GROUP BY officer_name
+            )
+            SELECT t.officer_name, t.call_sign, t.unit_id, t.trips,
+                   COALESCE(fu.gallons,0) as gallons,
+                   COALESCE(fu.cost,0) as cost,
+                   COALESCE(fu.miles,0) as miles
+            FROM trips t
+            LEFT JOIN fuel fu ON fu.officer_name = t.officer_name
+            ORDER BY miles DESC LIMIT 50`);
     // GPS-derived behavior — gps_breadcrumbs.officer_name is NULL on live,
     // but unit_id is always set, so aggregate per UNIT (idle %, average
     // moving speed, max speed, active minutes) and map to each officer via
