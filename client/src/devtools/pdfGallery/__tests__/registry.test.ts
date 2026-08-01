@@ -29,6 +29,13 @@ describe('PDF_REGISTRY', () => {
     );
   });
 
+  it('contains the batch-3 use-of-force & internal affairs entries', () => {
+    const ids = entriesByCriticality('use-of-force').map((e) => e.id).sort();
+    expect(ids).toEqual(
+      ['affairs-complaint', 'cleared-summary', 'dar', 'use-of-force-report'].sort(),
+    );
+  });
+
   it('looks up by id', () => {
     expect(getEntry('trespass-order')?.label).toBe('Trespass Order');
     expect(getEntry('does-not-exist')).toBeUndefined();

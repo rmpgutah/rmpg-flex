@@ -22,6 +22,16 @@ import {
   jailBookingSheetFixtures,
   jailRosterSnapshotFixtures,
 } from './fixtures/evidenceCustody';
+import { generateUseOfForceReportPdf } from '../../utils/useOfForceReportPdf';
+import { generateAffairsComplaintPdf } from '../../utils/affairsComplaintPdf';
+import { generateClearedSummaryPdf } from '../../utils/clearedSummaryPdf';
+import { buildDarPdf } from '../../utils/darPdf';
+import {
+  useOfForceReportFixtures,
+  affairsComplaintFixtures,
+  clearedSummaryFixtures,
+  darFixtures,
+} from './fixtures/useOfForce';
 import { createEntry } from './types';
 import type { Criticality, PdfRegistryEntry } from './types';
 
@@ -99,6 +109,38 @@ export const PDF_REGISTRY: PdfRegistryEntry[] = [
     module: 'client/src/utils/jailBookingSheetPdf.ts',
     generate: generateJailRosterSnapshotPdf,
     fixtures: jailRosterSnapshotFixtures,
+  }),
+  createEntry({
+    id: 'use-of-force-report',
+    label: 'Use of Force Report',
+    criticality: 'use-of-force',
+    module: 'client/src/utils/useOfForceReportPdf.ts',
+    generate: generateUseOfForceReportPdf,
+    fixtures: useOfForceReportFixtures,
+  }),
+  createEntry({
+    id: 'affairs-complaint',
+    label: 'Internal Affairs Complaint',
+    criticality: 'use-of-force',
+    module: 'client/src/utils/affairsComplaintPdf.ts',
+    generate: generateAffairsComplaintPdf,
+    fixtures: affairsComplaintFixtures,
+  }),
+  createEntry({
+    id: 'cleared-summary',
+    label: 'Cleared Calls Summary',
+    criticality: 'use-of-force',
+    module: 'client/src/utils/clearedSummaryPdf.ts',
+    generate: generateClearedSummaryPdf,
+    fixtures: clearedSummaryFixtures,
+  }),
+  createEntry({
+    id: 'dar',
+    label: 'Daily Activity Report',
+    criticality: 'use-of-force',
+    module: 'client/src/utils/darPdf.ts',
+    generate: buildDarPdf,
+    fixtures: darFixtures,
   }),
 ];
 
