@@ -256,6 +256,7 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const READ_ONLY_DENIED_PREFIXES = [
   '/api/affairs', '/api/alpr', '/api/arrests', '/api/billing', '/api/cases',
   '/api/citations', '/api/comms/bolos', '/api/dispatch/bolos', '/api/dl-records',
+  '/api/driver-performance',
   '/api/evidence', '/api/flexcam', '/api/gang-intel', '/api/hr', '/api/incidents',
   '/api/intel', '/api/invoices', '/api/jail', '/api/nsopw', '/api/person-intel',
   '/api/personnel', '/api/process-server', '/api/records', '/api/serve',
