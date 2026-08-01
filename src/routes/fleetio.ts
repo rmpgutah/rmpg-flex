@@ -766,6 +766,10 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
   // vehicle's fuel_entries shouldn't block importing the rest.
   type FuelPullOutcome =
     | { fleetio_vehicle_id: number; fleetio_fuel_id: number; status: 'fuel_created'; rmpg_id: number }
+    // Adopted a pre-existing native RMPG row via the natural-key dedupe
+    // instead of inserting a duplicate. Distinct from 'fuel_linked_existing',
+    // which means the Fleet.io id was already in fleetio_links.
+    | { fleetio_vehicle_id: number; fleetio_fuel_id: number; status: 'fuel_matched_existing'; rmpg_id: number }
     | { fleetio_vehicle_id: number; fleetio_fuel_id: number; status: 'fuel_linked_existing' }
     | { fleetio_vehicle_id: number; status: 'fuel_pull_failed'; error: string };
   const fuelOutcomes: FuelPullOutcome[] = [];
@@ -806,25 +810,74 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
             continue;
           }
           const insertRow = buildFuelLogInsertFromFleetio(fioFuel);
-          // Not wrapped in db.batch() — matches the vehicle-linking phase's
-          // pattern above; a crash between these two writes could leave an
-          // unlinked fuel row that re-imports as a duplicate on the next
-          // /pull. Acceptable for now since fleet_fuel_log has no natural
-          // dedup key to enforce this at the DB level either way.
-          const result = await execute(
+
+          // ── Natural-key dedupe ───────────────────────────────────────
+          // `fleetio_links` answers "did I import this Fleet.io id before?",
+          // NOT "does this fill already exist in RMPG?". Any fill entered by
+          // an officer AND present in Fleet.io therefore imported as a SECOND
+          // row carrying only gallons/date — no odometer, driver, or cost.
+          // Live D1 accumulated 22 such rows (2026-08-01), inflating the
+          // dashboard's 30-day gallons from a true 36.4 to 107.9 (~3x) and
+          // skewing utilization, cost-per-mile and the fuel z-scores.
+          //
+          // Match on the physical fill: same vehicle, same gallons (to 0.01 —
+          // gallons is recorded to 3dp, so an accidental collision would need
+          // two fills of identical volume within hours), close in time. Only
+          // rows NOT already bound to a different Fleet.io entry are eligible.
+          const twin = insertRow.gallons == null ? null : await queryFirst<{ id: number }>(
             db,
-            `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon) VALUES (?, ?, ?, ?, ?)`,
-            link.rmpg_id, insertRow.fuel_date, insertRow.gallons, insertRow.total_cost, insertRow.cost_per_gallon,
+            `SELECT f.id
+               FROM fleet_fuel_log f
+               LEFT JOIN fleetio_links fl
+                 ON fl.rmpg_table = 'fleet_fuel_log' AND fl.rmpg_id = f.id
+              WHERE f.vehicle_id = ?
+                AND f.gallons IS NOT NULL
+                AND ABS(f.gallons - ?) < 0.01
+                AND ABS(julianday(f.fuel_date) - julianday(?)) * 24 <= 6
+                AND fl.rmpg_id IS NULL
+              ORDER BY ABS(julianday(f.fuel_date) - julianday(?))
+              LIMIT 1`,
+            link.rmpg_id, insertRow.gallons, insertRow.fuel_date, insertRow.fuel_date,
           );
-          const newFuelId = Number(result.meta?.last_row_id);
+
+          let fuelRowId: number;
+          let outcome: 'fuel_created' | 'fuel_matched_existing';
+          if (twin) {
+            // Adopt the existing native row rather than duplicating it, and
+            // fill ONLY columns it is missing — an officer-entered value is
+            // authoritative and must never be overwritten by Fleet.io.
+            await execute(
+              db,
+              `UPDATE fleet_fuel_log
+                  SET total_cost      = COALESCE(total_cost, ?),
+                      cost_per_gallon = COALESCE(cost_per_gallon, ?)
+                WHERE id = ?`,
+              insertRow.total_cost, insertRow.cost_per_gallon, twin.id,
+            );
+            fuelRowId = twin.id;
+            outcome = 'fuel_matched_existing';
+          } else {
+            // Not wrapped in db.batch() — matches the vehicle-linking phase's
+            // pattern above; a crash between these two writes could leave an
+            // unlinked fuel row. The dedupe above now absorbs that row on the
+            // next /pull instead of duplicating it.
+            const result = await execute(
+              db,
+              `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon) VALUES (?, ?, ?, ?, ?)`,
+              link.rmpg_id, insertRow.fuel_date, insertRow.gallons, insertRow.total_cost, insertRow.cost_per_gallon,
+            );
+            fuelRowId = Number(result.meta?.last_row_id);
+            outcome = 'fuel_created';
+          }
+
           await execute(
             db,
             `INSERT OR IGNORE INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pulled_at)
              VALUES ('fleet_fuel_log', ?, ?, ?, datetime('now'))`,
-            newFuelId, FLEETIO_LINK_RESOURCE.fuel_entry, fioFuel.id,
+            fuelRowId, FLEETIO_LINK_RESOURCE.fuel_entry, fioFuel.id,
           );
           alreadyLinkedFuelIds.add(fioFuel.id);
-          fuelOutcomes.push({ fleetio_vehicle_id: link.fleetio_id, fleetio_fuel_id: fioFuel.id, status: 'fuel_created', rmpg_id: newFuelId });
+          fuelOutcomes.push({ fleetio_vehicle_id: link.fleetio_id, fleetio_fuel_id: fioFuel.id, status: outcome, rmpg_id: fuelRowId });
         }
       }
     } catch (err) {
@@ -837,6 +890,9 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
     total: fuelOutcomes.length,
     created: fuelOutcomes.filter((o) => o.status === 'fuel_created').length,
     already_linked: fuelOutcomes.filter((o) => o.status === 'fuel_linked_existing').length,
+    // Reported separately from `created`: a nonzero value means the dedupe
+    // caught fills that would previously have become duplicate rows.
+    matched_existing: fuelOutcomes.filter((o) => o.status === 'fuel_matched_existing').length,
     failed: fuelOutcomes.filter((o) => o.status === 'fuel_pull_failed').length,
   };
 
