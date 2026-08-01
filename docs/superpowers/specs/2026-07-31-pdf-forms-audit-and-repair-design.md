@@ -1,8 +1,10 @@
-# PDF Forms & Documents — Render-First Audit and Repair
+# PDF Forms & Documents — Render-First Audit, then v2 Migration
 
 **Date:** 2026-07-31
-**Status:** Approved for spec review.
-**Scope:** Every PDF document RMPG Flex produces, on the existing v1 engine.
+**Status:** Approved. Revised 2026-07-31 — v2 migration reinstated as stage 2.
+**Scope:** Every PDF document RMPG Flex produces, whichever engine renders it
+today. Stage 1 (this spec's deliverable) audits them all; stage 2 migrates them
+onto v2 and is speced separately.
 
 ## Background
 
@@ -57,9 +59,30 @@ still imported directly — bypassing the facade — by `PrintRecordButton.tsx`,
 `PersonDossierPage.tsx`, `CaseManagementPage.tsx`, and `MileageAuditTab.tsx`,
 plus the 11 blank government forms under `v2/blankForms/`.
 
-**This program does not migrate anything onto v2 and does not un-park it.**
-Forms currently rendered by v2 are audited and fixed in place on v2; forms on
-v1 are fixed in place on v1. Engine consolidation is out of scope.
+**REVISED 2026-07-31 (operator decision): v2 IS the destination.** The original
+revision of this spec listed migration as a non-goal and kept v2 parked. The
+operator reversed that after review, having been shown that it contradicts the
+non-goal as written. The program is therefore two-stage:
+
+1. **Audit first** (this spec's first deliverable, unchanged) — inventory every
+   document type, render it, catalogue its defects. Engine-agnostic.
+2. **Then migrate** — move document types onto the v2 engine, using the audit
+   harness as the verification gate for each one.
+
+Sequencing is not optional. Migrating a renderer before you know what its
+current output is wrong about means you cannot tell a migration regression from
+a pre-existing defect. The catalogue is what makes the migration reviewable: for
+each form it says what v2 must reproduce, what it must fix, and what was already
+broken.
+
+The v2 engine is a genuine target, not a stub — 2,032 lines across seven engine
+modules (`renderer`, `primitives`, `types`, `style`, `sidecar`, `watermark`,
+`severityMeter`), with 8 forms and 11 blank government forms already on it.
+
+Migration phases are **not speced here.** They follow the 2026-07-02 roadmap's
+shape (`docs/superpowers/specs/2026-07-02-pdf-visual-upgrade-phase0-1-design.md`
+— Phase 0 engine hardening, then phased form groups) and each gets its own
+brainstorm and spec once the catalogue exists.
 
 ## Goals
 
@@ -76,8 +99,17 @@ Audit and repair every PDF output type against four defect lenses:
 
 ## Non-goals
 
-- Migrating any form to the v2 engine, or reviving the parked v2 facade route.
-- Changing what a document legally asserts. See "Stop conditions".
+- ~~Migrating any form to the v2 engine~~ — **reversed 2026-07-31**, see the
+  Engine decision above. Migration is now the program's second stage; it is
+  still out of scope for *this spec's* deliverable, which is the audit.
+- Changing what a document legally asserts. See "Stop conditions". This
+  constraint survives the reversal and binds the migration too: a form rendered
+  by v2 must assert exactly what the v1 form asserted, minus catalogued defects.
+- Bumping the printed revision marker (`FORM_REVISION`, currently `'Rev. 2026-03'`
+  in `pdfAssets.ts:242`) or the `FORM_NUMBERS` catalogue. Held until the audit
+  and migration land, per operator decision 2026-07-31, so that a version bump
+  designates genuinely corrected forms rather than preceding them. Archived
+  copies already in court and client hands carry the current markers.
 - Altering the fixed CAD severity palette or the classification banner content.
 - Refactoring generators that render correctly, purely for consistency.
 
@@ -224,6 +256,28 @@ Work halts and returns to the operator, rather than proceeding, when:
   scheme, not eliminated.
 - **The dev route is not a CI gate.** It relies on a human looking. Layering
   Playwright on top later would close this; it is out of scope here.
+
+## Stage 2 — migration (shape only; speced separately)
+
+Recorded here so the audit is built to serve it, not re-derived later.
+
+- **The harness gains a side-by-side mode.** `/__pdf-gallery` renders the same
+  fixture through v1 and v2 simultaneously. A migration is reviewable when a
+  human can see both outputs at once; it is not reviewable from a diff of
+  renderer code.
+- **The text-layer assertion library is the automated half.** It is
+  engine-agnostic — it reads any jsPDF output — so the same
+  `expectNoPlaceholderLeaks` gate applies to a v2 form unchanged. A migrated
+  form must pass it at least as well as the v1 form did.
+- **The catalogue is the per-form acceptance criteria.** For each document:
+  what v2 must reproduce exactly, what it must fix (a catalogued defect), and
+  what was already broken and stays out of scope.
+- **Per-form, behind the facade, one PR each** — the routing point is
+  `client/src/utils/pdf/facade.ts`, which is the single seam that decides engine
+  per form type. The 2026-07-02 spec's warning stands: do this as scoped PRs
+  with side-by-side review, never a global flip.
+- **Forms already on v2** (citation, dossier, case report, trip log, and the 11
+  blank government forms) are audited like any other and need no migration.
 
 ## First deliverable
 
