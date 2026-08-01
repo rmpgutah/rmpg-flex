@@ -21,9 +21,15 @@ import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
 import DownloadsPage from './pages/DownloadsPage';
-// Dev-only PDF audit harness. Lazy + DEV-gated at the route (see below) so
-// Vite tree-shakes the whole chunk out of the production bundle.
-const PdfGalleryPage = lazy(() => import('./devtools/pdfGallery/PdfGalleryPage'));
+// Dev-only PDF audit harness. `import.meta.env.DEV` is statically replaced
+// with `false` in a production build, so this ternary's dead branch —
+// including the dynamic import() itself — is eliminated by Vite/Rollup and
+// no chunk is emitted at all. Gating only the <Route> below (and not this
+// import) still lets Vite discover and bundle the chunk unconditionally,
+// which is what shipped fixture data to Cloudflare Pages the first time.
+const PdfGalleryPage = import.meta.env.DEV
+  ? lazy(() => import('./devtools/pdfGallery/PdfGalleryPage'))
+  : null;
 // Dashboard is the immediate post-login landing view, so it stays eager.
 import DashboardPage from './pages/DashboardPage';
 // Dispatch + Map are the two heaviest field screens (~6k lines each plus deep
@@ -511,7 +517,7 @@ function AppRoutes() {
               tree-shakes it out of the production bundle entirely — it must never
               reach Cloudflare Pages. See docs/superpowers/specs/
               2026-07-31-pdf-forms-audit-and-repair-design.md */}
-          {import.meta.env.DEV && (
+          {import.meta.env.DEV && PdfGalleryPage && (
             <Route path="/__pdf-gallery" element={<PdfGalleryPage />} />
           )}
           <Route
