@@ -105,9 +105,24 @@ describe('decideMatchAction', () => {
 });
 
 describe('buildFuelLogInsertFromFleetio', () => {
-  it('maps date/gallons/cost and derives cost_per_gallon', () => {
+  it('maps date/gallons/cost, derives cost_per_gallon, and canonicalizes the date to UTC', () => {
     const row = buildFuelLogInsertFromFleetio({ id: 900, vehicle_id: 501, date: '2026-07-01', liters: null, us_gallons: 12.5, cost: 43.75 });
-    expect(row).toEqual({ fuel_date: '2026-07-01', gallons: 12.5, total_cost: 43.75, cost_per_gallon: 3.5 });
+    // fuel_date is no longer a raw passthrough. A pulled row lands in the same
+    // column as operator entries and CSV imports, and storing each source's
+    // own format is how fleet_fuel_log ended up holding four incompatible
+    // representations (live audit 2026-07-31). A date-only value is read as
+    // Denver midnight, which is 06:00Z in MDT.
+    expect(row).toEqual({ fuel_date: '2026-07-01 06:00:00', gallons: 12.5, total_cost: 43.75, cost_per_gallon: 3.5 });
+  });
+
+  it('preserves the instant when Fleet.io sends an offset-bearing timestamp', () => {
+    const row = buildFuelLogInsertFromFleetio({ id: 901, vehicle_id: 501, date: '2026-07-01T18:30:00-06:00', liters: null, us_gallons: 10, cost: 30 });
+    expect(row.fuel_date).toBe('2026-07-02 00:30:00');
+  });
+
+  it('falls back to the raw value rather than dropping an unparseable date', () => {
+    const row = buildFuelLogInsertFromFleetio({ id: 902, vehicle_id: 501, date: 'not-a-date', liters: null, us_gallons: 10, cost: 30 });
+    expect(row.fuel_date).toBe('not-a-date');
   });
 
   it('nulls out cost_per_gallon when gallons is missing or zero', () => {
