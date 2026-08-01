@@ -9,9 +9,15 @@
 // React client share no build, no tsconfig and no package.json, so a Worker
 // module cannot import from client/src without dragging a client module into
 // the Worker bundle. The duplication is guarded against drift by the parity
-// test in tests/displayLabelParity.test.ts, which imports BOTH copies and
-// asserts identical output — if you add an acronym here, add it there too (or
-// vice versa) and that test will tell you if you forgot.
+// test at client/src/utils/__tests__/displayLabelParity.test.ts, which imports
+// BOTH copies and asserts identical output — if you add an acronym here, add it
+// there too (or vice versa) and that test will tell you if you forgot.
+//
+// ⚠️ That parity test MUST stay on the CLIENT side. tsconfig.test.json
+// type-checks tests/** with `types: ["node", "@cloudflare/workers-types"]` and
+// no DOM, so a worker-side test importing the client formatters detonates the
+// Worker typecheck. The client tsconfig is the permissive one, so the import
+// only goes client -> worker, never the reverse.
 //
 // Before this existed, src/routes/voice.ts carried a local
 //   toTitleCase = s.replace(/\b\w/g, c => c.toUpperCase())
