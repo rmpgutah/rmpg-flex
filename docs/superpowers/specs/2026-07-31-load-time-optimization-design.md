@@ -102,20 +102,33 @@ smallest measured win).
 
 ### Half 1 — entry chunk diet (cold load)
 
+**Lazy-loading cascades.** A lazy parent carries its entire static import
+subtree out of the entry with it. Verified against the entry sourcemap
+2026-07-31, this collapses what looked like six edits into three:
+
 | Change | Files | Entry source removed |
 |---|---|---|
-| `lazy()` `NewCallModal`, `IncidentFormModal`, `UserProfileModal`, `SignaturePad` | `DashboardPage.tsx`, `Layout.tsx` | ~240 KB |
-| `lazy()` `DashboardPage`, prefetch on login success | `App.tsx`, `AuthContext.tsx` | ~168 KB |
-| `lazy()` `DownloadsPage` (+ `KioskOsInstallGuide`) | `App.tsx` | ~41 KB |
-| `lazy()` `DashboardMiniMap`, `DispatchMiniMap` | their call sites | ~34 KB |
+| `lazy()` `DashboardPage`, prefetch on login success | `App.tsx` | ~355 KB — `DashboardPage` (168) + `NewCallModal` (77) + `IncidentFormModal` (76) + `DashboardMiniMap` + `mapMarkers` (18), all of which it statically imports |
+| `lazy()` `UserProfileModal` | `Layout.tsx` | ~89 KB — `UserProfileModal` (67) + `SignaturePad` (22), whose only eager path is through it |
+| `lazy()` `DownloadsPage` | `App.tsx` | ~41 KB — incl. `KioskOsInstallGuide` (16) |
 | Defer `preloadSoundAssets()` to `requestIdleCallback` | `main.tsx` | 0 KB, removes 22 fetches + decodes from first paint |
 
-The three modals already render behind `{open && <Modal/>}`, so lazying them
-is a pure win — the bundler cannot infer that conditionality from a static
-import.
+The modals already render behind `{open && <Modal/>}`, so lazying them is a
+pure win — the bundler cannot infer that conditionality from a static import.
 
 Lazying `DashboardPage` is only free because of the login-success prefetch
 (see below). Without it, this trades login speed for a post-login stall.
+
+Two corrections to earlier drafts of this table, both from sourcemap
+verification:
+
+- **`DispatchMiniMap` is not in the entry chunk** — only `DashboardMiniMap`
+  is, and it arrives via `DashboardPage`, so it needs no edit of its own.
+- **`mapboxLoader` (16.5 KB) is NOT recoverable.** `useMapRouting.ts` imports
+  it, and `useMapRouting` is eager via `NavTripContext → useNavGuidanceEngine`.
+  This is precisely why the build's `INEFFECTIVE_DYNAMIC_IMPORT` warning for
+  that module is irreducible without restructuring the nav engine, which is
+  out of scope. Those bytes stay.
 
 ### Half 2 — intent-driven route prefetch (navigation)
 
