@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Eraser, Check, X, Type, PenTool, Undo2 } from 'lucide-react';
 import '../signatureFonts.css';
+import { makeSignatureTransparent } from '../utils/pdf/signatureImage';
 
 interface SignaturePadProps {
   /** Current signature data URL (PNG base64) or null */
@@ -46,8 +47,8 @@ interface StrokePoint { x: number; y: number; time: number; pressure: number; }
 export default function SignaturePad({
   value,
   onChange,
-  width = 400,
-  height = 150,
+  width = 420,
+  height = 124,
   label = 'Digital Signature',
   compact = false,
 }: SignaturePadProps) {
@@ -77,9 +78,13 @@ export default function SignaturePad({
   const lastWidthRef = useRef(2);
   const movedRef = useRef(false);
 
-  // Canvas display dimensions (CSS px)
-  const cW = compact ? 280 : width;
-  const cH = compact ? 100 : height;
+  // Canvas display dimensions (CSS px). Widened vs. the original 280x100 /
+  // 400x150 boxes — a real signature runs long and shallow, and a captured
+  // pad that's nearly square imports into the PDF signature line looking
+  // cramped/oversized-tall. ~3.6:1 (compact) / ~3.4:1 (default) reads closer
+  // to a real signature strip.
+  const cW = compact ? 320 : width;
+  const cH = compact ? 88 : height;
 
   // Configure the 2D context to draw in CSS-px coordinates on a
   // RENDER_SCALE-times-larger backing store (crisp export).
@@ -313,15 +318,11 @@ export default function SignaturePad({
     if (!ctx) return null;
     ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
 
-    // White background + baseline.
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, cW, cH);
-    ctx.strokeStyle = '#cccccc';
-    ctx.lineWidth = 0.6;
-    ctx.beginPath();
-    ctx.moveTo(20, cH - 25);
-    ctx.lineTo(cW - 20, cH - 25);
-    ctx.stroke();
+    // Deliberately transparent — no white fill, no baseline rule. This is
+    // an OFFSCREEN export canvas (separate from the on-screen preview div
+    // above it, which keeps its own white surface + line for usability), so
+    // the exported PNG never bakes in a background or the grey rule that
+    // used to double up against the PDF's own signature line.
 
     // Typed name, auto-scaled to fit and centered on the baseline.
     ctx.fillStyle = '#161616';
@@ -353,7 +354,13 @@ export default function SignaturePad({
     } else {
       const canvas = canvasRef.current;
       if (!canvas || !hasContent) return;
-      onChange(canvas.toDataURL('image/png'));
+      // The on-screen canvas keeps its white surface + baseline for
+      // usability (drawing on an invisible pad is unusable) — the exported
+      // PNG has both stripped out via the transparency pass so the stored
+      // signature is ink-only, no white box, no doubled baseline rule.
+      const raw = canvas.toDataURL('image/png');
+      const transparent = await makeSignatureTransparent(raw);
+      onChange(transparent);
       setShowPad(false);
     }
   };

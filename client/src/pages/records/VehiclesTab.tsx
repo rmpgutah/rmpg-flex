@@ -940,8 +940,12 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {renderInfoRow('State', selectedVehicle.plate_state)}
             {renderInfoRow('Plate Type', selectedVehicle.plate_type)}
             {renderInfoRow('Year', selectedVehicle.year ? String(selectedVehicle.year) : null)}
-            {renderInfoRow('Make', selectedVehicle.make ? titleCase(selectedVehicle.make) : undefined)}
-            {renderInfoRow('Model', selectedVehicle.model ? titleCase(selectedVehicle.model) : undefined)}
+            {/* Make/model are proper nouns and model designations (e.g. "CLA 250"),
+                not enum labels — toDisplayLabel/titleCase would title-case them into
+                "Cla 250". Render the stored value verbatim; fall back to undefined
+                (renderInfoRow's own em-dash) when absent. */}
+            {renderInfoRow('Make', selectedVehicle.make || undefined)}
+            {renderInfoRow('Model', selectedVehicle.model || undefined)}
             {renderInfoRow('Trim', selectedVehicle.trim)}
             {renderInfoRow('Color', `${selectedVehicle.color}${selectedVehicle.secondary_color ? ` / ${selectedVehicle.secondary_color}` : ''}`)}
             {renderInfoRow('Body Style', selectedVehicle.body_style)}
