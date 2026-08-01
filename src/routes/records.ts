@@ -66,15 +66,26 @@ records.get('/properties', async (c) => {
   try {
     const db = getDb(c.env);
     const { search, client_id, archived } = c.req.query();
-    let sql = 'SELECT * FROM properties';
+    // LEFT JOIN clients for client_name: PropertiesTab displays it, searches it
+    // and sorts by it, but `properties` has only client_id — so before this join
+    // client_name was ALWAYS undefined and all three silently did nothing.
+    // Every bare column below must stay p.-qualified: clients also has a `name`,
+    // so an unqualified `name` is ambiguous and D1 rejects the statement.
+    let sql = 'SELECT p.*, c.name AS client_name FROM properties p LEFT JOIN clients c ON p.client_id = c.id';
     const params: unknown[] = [];
     const wheres: string[] = [];
-    if (search) { const m = containsAnyClause(['name', 'address']); wheres.push(m.sql); params.push(...m.binds(search)); }
-    if (client_id) { wheres.push('client_id = ?'); params.push(client_id); }
-    if (archived === 'true') wheres.push('archived_at IS NOT NULL');
-    else if (archived !== 'all') wheres.push('(archived_at IS NULL)');
+    // client_name is searched on BOTH sides deliberately. Server-side (c.name
+    // here) so a client-name search reaches every property rather than only the
+    // 500 this endpoint returns; client-side (PropertiesTab.tsx:284) so the
+    // narrowing still feels instant with no round-trip. The two must stay in
+    // sync — a column searchable here but not there returns rows the local
+    // filter then hides, which reads as "search is broken".
+    if (search) { const m = containsAnyClause(['p.name', 'p.address', 'c.name']); wheres.push(m.sql); params.push(...m.binds(search)); }
+    if (client_id) { wheres.push('p.client_id = ?'); params.push(client_id); }
+    if (archived === 'true') wheres.push('p.archived_at IS NOT NULL');
+    else if (archived !== 'all') wheres.push('(p.archived_at IS NULL)');
     if (wheres.length) sql += ' WHERE ' + wheres.join(' AND ');
-    sql += ' ORDER BY name LIMIT 500';
+    sql += ' ORDER BY p.name LIMIT 500';
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     return c.json(rows);
   } catch (err) {
@@ -166,7 +177,11 @@ records.get('/properties/export', async (c): Promise<Response> => {
 records.get('/properties/:id', async (c): Promise<Response> => {
   try {
     const db = getDb(c.env);
-    const row = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', c.req.param('id'));
+    // client_name via LEFT JOIN — see GET /properties for why (detail panel
+    // renders the Client block from it).
+    const row = await queryFirst(db,
+      'SELECT p.*, c.name AS client_name FROM properties p LEFT JOIN clients c ON p.client_id = c.id WHERE p.id = ?',
+      c.req.param('id'));
     if (!row) return c.json({ error: 'Not found' }, 404);
     return c.json(row);
   } catch (err) {
@@ -1587,8 +1602,12 @@ records.get('/evidence', async (c) => {
     const params: unknown[] = [];
     if (q) { const m = containsAnyClause(['e.evidence_number', 'e.description']); where += ` AND ${m.sql}`; params.push(...m.binds(q)); }
     if (status) { where += ' AND e.status = ?'; params.push(status); }
-    const FROM = 'FROM evidence e LEFT JOIN users u ON e.collected_by = u.id';
-    const sql = `SELECT e.*, u.full_name as collected_by_name ${FROM}${where} ORDER BY e.created_at DESC LIMIT 500`;
+    // incidents joined for incident_number: EvidenceTab displays and searches it
+    // but `evidence` stores only incident_id, so it was always undefined. The
+    // join is on the incidents PK, so it cannot multiply rows (COUNT below is
+    // still the true match count).
+    const FROM = 'FROM evidence e LEFT JOIN users u ON e.collected_by = u.id LEFT JOIN incidents i ON e.incident_id = i.id';
+    const sql = `SELECT e.*, u.full_name as collected_by_name, i.incident_number AS incident_number ${FROM}${where} ORDER BY e.created_at DESC LIMIT 500`;
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     // pagination.total must be the MATCHING row count, not the returned page
     // size. `total: rows.length` silently caps at the LIMIT, so once the table
@@ -1624,7 +1643,7 @@ records.get('/evidence/locations', async (c) => {
 records.get('/evidence/aging-report', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, "SELECT e.*, u.full_name as collected_by_name, julianday('now') - julianday(e.created_at) as age_days FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.status IN ('received', 'in_storage') ORDER BY e.created_at ASC LIMIT 200");
+    const rows = await query<Record<string, unknown>>(db, "SELECT e.*, u.full_name as collected_by_name, i.incident_number AS incident_number, julianday('now') - julianday(e.created_at) as age_days FROM evidence e LEFT JOIN users u ON e.collected_by = u.id LEFT JOIN incidents i ON e.incident_id = i.id WHERE e.status IN ('received', 'in_storage') ORDER BY e.created_at ASC LIMIT 200");
     return c.json(rows);
   } catch (err) {
     log.error('GET /evidence/aging-report failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
@@ -1634,7 +1653,7 @@ records.get('/evidence/aging-report', async (c) => {
 records.get('/evidence/export', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id ORDER BY e.created_at DESC LIMIT 50000');
+    const rows = await query<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name, i.incident_number AS incident_number FROM evidence e LEFT JOIN users u ON e.collected_by = u.id LEFT JOIN incidents i ON e.incident_id = i.id ORDER BY e.created_at DESC LIMIT 50000');
     if (rows.length === 0) return c.json([]);
     const keys = Object.keys(rows[0] as object);
     const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
@@ -1648,7 +1667,7 @@ records.get('/evidence/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const row = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    const row = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name, i.incident_number AS incident_number FROM evidence e LEFT JOIN users u ON e.collected_by = u.id LEFT JOIN incidents i ON e.incident_id = i.id WHERE e.id = ?', id);
     if (!row) return c.json({ error: 'Evidence not found' }, 404);
     return c.json(row);
   } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
@@ -2825,6 +2844,23 @@ records.get('/links', async (c) => {
             active_warrants: (wRow?.cnt ?? 0) > 0 ? 1 : 0,
           };
         }
+      } else if (linkedType === 'property') {
+        // Address for the PS-203 LINKED PROPERTIES table. Without this the PDF's
+        // ADDRESS column was structurally always blank: getRecordLabel returns
+        // the property NAME only, and no linked_meta was emitted for properties,
+        // so nothing ever carried the address to the form.
+        // Street address only: the PS-203 ADDRESS column is ~90pt and does not
+        // wrap, so appending city/state/zip would clip mid-token.
+        const prop = await queryFirst<{ address?: string }>(
+          db, 'SELECT address FROM properties WHERE id = ?', linkedId,
+        );
+        if (prop) linked_meta = prop as Record<string, unknown>;
+      } else if (linkedType === 'business') {
+        // Businesses share the PDF's property table, so they need the same shape.
+        const biz = await queryFirst<{ address?: string }>(
+          db, 'SELECT address FROM businesses WHERE id = ?', linkedId,
+        );
+        if (biz) linked_meta = biz as Record<string, unknown>;
       }
       return {
         ...link,
