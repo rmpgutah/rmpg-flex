@@ -4,6 +4,8 @@ import {
   extractPdfText,
   findPlaceholderLeaks,
   expectNoPlaceholderLeaks,
+  extractTextFromItems,
+  isTextItem,
 } from '../textLayer';
 
 function docWith(lines: string[]): jsPDF {
@@ -32,6 +34,38 @@ describe('extractPdfText', () => {
     const leaks = findPlaceholderLeaks(pages);
     // Should detect the leak even if the items are split and joined with space
     expect(leaks.some((l) => l.token.match(/Invalid.*Date/i))).toBe(true);
+  });
+});
+
+describe('extractTextFromItems (text extraction helper)', () => {
+  it('filters out marked-content entries, keeping only text items', () => {
+    // Simulate pdfjs items array with mixed TextItem and TextMarkedContent
+    const items = [
+      { str: 'Officer' },
+      { str: ':' },
+      { type: 'beginMarkedContent' }, // marked-content, no str
+      { str: 'undefined' },
+      { type: 'endMarkedContent' }, // marked-content, no str
+    ] as unknown[];
+
+    const text = extractTextFromItems(items);
+    // Should join text items with space, skip marked-content entirely.
+    // Marked-content entries are filtered out BEFORE join, so no empty-string
+    // blanks that would create spurious spaces.
+    expect(text).toBe('Officer : undefined');
+    expect(text).not.toContain('[object Object]'); // no stringified object markers
+  });
+
+  it('isTextItem correctly identifies text items vs marked-content', () => {
+    const textItem = { str: 'hello' };
+    const markedContent = { type: 'beginMarkedContent' };
+    const noStr = { foo: 'bar' };
+
+    expect(isTextItem(textItem)).toBe(true);
+    expect(isTextItem(markedContent)).toBe(false);
+    expect(isTextItem(noStr)).toBe(false);
+    expect(isTextItem(null)).toBe(false);
+    expect(isTextItem(undefined)).toBe(false);
   });
 });
 

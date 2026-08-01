@@ -33,6 +33,23 @@ export interface PlaceholderLeak {
 export const PLACEHOLDER_LEAK_PATTERN =
   /(?<=undefined)null|(?<=null)undefined|(?<=NaN)undefined|(?<=undefined)NaN|(?<=NaN)null|(?<=null)NaN|undefined(?=NaN)|undefined(?=null)|NaN(?=undefined)|NaN(?=null)|null(?=undefined)|null(?=NaN)|(?<![a-zA-Z])undefined(?![a-zA-Z])|(?<![a-zA-Z])null(?!\s+[aA][nN][dD]\s+[vV][oO][iI][dD])(?![a-zA-Z])|(?<![a-zA-Z])NaN(?![a-zA-Z])|Invalid\s+Date|\[object Object\]/g;
 
+// Type guard: filter pdfjs TextItem (has str) from TextMarkedContent (does not).
+// pdfjs.getTextContent().items is a union; marked-content entries must be
+// filtered out BEFORE the join to avoid spurious spaces when marked-content
+// boundaries separate tokens (e.g., "Invalid" and "Date" split by a marker).
+export function isTextItem(item: unknown): item is { str: string } {
+  return typeof item === 'object' && item !== null && typeof (item as Record<string, unknown>).str === 'string';
+}
+
+// Extract text from PDF items, filtering out marked-content entries.
+// Returns a space-joined string of text items only (no empty-string blanks for markers).
+export function extractTextFromItems(items: unknown[]): string {
+  return items
+    .filter(isTextItem)
+    .map((item) => item.str)
+    .join(' ');
+}
+
 export async function extractPdfText(doc: jsPDF): Promise<string[]> {
   const data = new Uint8Array(doc.output('arraybuffer') as ArrayBuffer);
   const pdf = await pdfjs.getDocument({ data }).promise;
@@ -40,7 +57,7 @@ export async function extractPdfText(doc: jsPDF): Promise<string[]> {
   for (let n = 1; n <= pdf.numPages; n += 1) {
     const page = await pdf.getPage(n);
     const content = await page.getTextContent();
-    pages.push(content.items.map((item: { str?: string }) => item.str ?? '').join(' '));
+    pages.push(extractTextFromItems(content.items));
   }
   return pages;
 }
