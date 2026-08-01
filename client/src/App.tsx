@@ -21,8 +21,6 @@ import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
 import DownloadsPage from './pages/DownloadsPage';
-// Dashboard is the immediate post-login landing view, so it stays eager.
-import DashboardPage from './pages/DashboardPage';
 // Dispatch + Map are the two heaviest field screens (~6k lines each plus deep
 // import trees). They're lazy-split to keep them OUT of the login/critical
 // bundle — but because they're the most-navigated-to pages, they're also
@@ -32,6 +30,14 @@ const importDispatch = () => import('./pages/dispatch');
 const importMap = () => import('./pages/map');
 const DispatchPage = lazyRetry(importDispatch);
 const MapPage = lazyRetry(importMap);
+// Dashboard is the post-login landing view. It used to be a STATIC import to
+// keep that first navigation instant — but that put 167.9 KB (plus
+// NewCallModal, IncidentFormModal and DashboardMiniMap, which it statically
+// imports) into the entry chunk, so every LOGIN paid for it too. It's lazy
+// now, and warmed the instant auth succeeds (see AppRoutes below), which
+// keeps the landing instant without taxing the login path.
+export const importDashboard = () => import('./pages/DashboardPage');
+const DashboardPage = lazyRetry(importDashboard);
 // Lazy import with auto-retry on chunk load failure (stale cache after deploys)
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
@@ -463,6 +469,16 @@ const DISPATCH_MAP_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer',
 
 function AppRoutes() {
   const { isAuthenticated, isLoading, user } = useAuth();
+
+  // Warm the Dashboard chunk the moment auth flips to true. This is what makes
+  // DashboardPage's lazy() free: the landing navigation resolves from the
+  // module cache instead of showing "Loading module". NOT idle-deferred and
+  // NOT role-gated — every authenticated role lands here, and by the time this
+  // fires the login-critical work is already done.
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+    importDashboard().catch(() => {});
+  }, [isAuthenticated]);
 
   // Idle-prefetch the heaviest field routes once authenticated, so the first
   // navigation to Dispatch/Map is instant rather than showing the loading
