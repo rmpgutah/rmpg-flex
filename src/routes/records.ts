@@ -2172,8 +2172,23 @@ records.get('/ncic-query', async (c) => {
   try {
     switch (type) {
       case 'person': {
-        const mp = nq('first_name', 'last_name',
-          "first_name || ' ' || last_name", "last_name || ', ' || first_name");
+        // Aliases and middle names are searchable, not just the legal first/last.
+        //
+        // Same defect class as the QW warrant query (#3222): the matcher named
+        // fewer columns than the data actually lives in, so records that were
+        // present answered NO RECORD FOUND. A subject known to officers by a
+        // nickname was unreachable, even though `persons.alias_nickname` and
+        // `persons.aliases` hold exactly that — and records.ts already exposes
+        // a dedicated /persons/alias-search endpoint that this query never used.
+        //
+        // Live D1: 4 persons carry alias_nickname, 1 carries aliases, 43 carry
+        // a middle_name.
+        //
+        // Purely additive — this can only return MORE matches, never fewer.
+        const mp = nq('first_name', 'last_name', 'middle_name',
+          'alias_nickname', 'aliases',
+          "first_name || ' ' || last_name", "last_name || ', ' || first_name",
+          "first_name || ' ' || COALESCE(middle_name,'') || ' ' || last_name");
         const persons = await query<Record<string, any>>(db, `
           SELECT * FROM persons
           WHERE ${mp.sql}
@@ -2260,7 +2275,15 @@ records.get('/ncic-query', async (c) => {
         return respond(results);
       }
       case 'phone': {
-        const mph = nq('phone');
+        // persons stores FOUR phone columns; this searched one.
+        //
+        // Live D1: 17 persons have a primary phone, but 4 have phone_secondary,
+        // 4 home_phone and 3 work_phone — and 2 persons have ONLY a non-primary
+        // number, making them entirely unreachable by a QT lookup. Dialling a
+        // number that is on file returned NO RECORD FOUND.
+        //
+        // Purely additive.
+        const mph = nq('phone', 'phone_secondary', 'home_phone', 'work_phone');
         const results = await soft('persons by phone', () => query<Record<string, any>>(db,
           `SELECT * FROM persons WHERE ${mph.sql} ORDER BY last_name, first_name LIMIT 10`,
           ...mph.binds(q)));
