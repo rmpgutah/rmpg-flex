@@ -475,3 +475,30 @@ export async function ensureJurisdictionAndPhotoColumns(db: D1Database): Promise
   ).first().then((row) => row !== null).catch(() => false);
   _jurisdictionPhotoColumnsEnsured = columnsOk && propertyPhotosOk;
 }
+
+// ── Driver Performance reconciler (mig 0222) ───────────────
+// deploy.yml applies migrations with continue-on-error, and D1 has no
+// IF NOT EXISTS on ADD COLUMN — gate each ALTER with columnExists().
+let _driverPerformanceEnsured = false;
+
+export async function ensureDriverPerformanceColumns(db: D1Database): Promise<void> {
+  if (_driverPerformanceEnsured) return;
+  const COLUMNS: Array<[string, string, string]> = [
+    ['fleet_assignments', 'officer_id', 'INTEGER'],
+    ['dashcam_events', 'officer_id', 'INTEGER'],
+    ['dashcam_events', 'officer_attribution_source', 'TEXT'],
+  ];
+  for (const [table, col, type] of COLUMNS) {
+    try {
+      if (!(await columnExists(db, table, col))) {
+        await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`).run();
+      }
+    } catch {
+      // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+    }
+  }
+  const columnsOk = await Promise.all(
+    COLUMNS.map(([t, c]) => columnExists(db, t, c)),
+  ).then((r) => r.every(Boolean));
+  _driverPerformanceEnsured = columnsOk;
+}
