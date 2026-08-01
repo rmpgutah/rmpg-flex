@@ -1550,7 +1550,10 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <CheckCircle className="w-3 h-3" /> Inspection Pass/Fail Summary
           </h4>
-          <div className="grid grid-cols-4 gap-2 mb-2">
+          {/* Five columns only when a non-pass/fail result exists. Without the
+              "Needs Attn" tile the tiles cannot reconcile: Total counts every
+              inspection, so Pass + Fail alone silently fell short of it. */}
+          <div className={`grid ${inspectionStats.other_count > 0 ? 'grid-cols-5' : 'grid-cols-4'} gap-2 mb-2`}>
             <div className="text-center p-1.5 bg-surface-sunken rounded">
               <div className="text-sm font-bold font-mono text-rmpg-400">{inspectionStats.total_inspections}</div>
               <div className="text-[7px] text-rmpg-500 uppercase">Total</div>
@@ -1563,6 +1566,19 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               <div className="text-sm font-bold font-mono text-red-400">{inspectionStats.fail_count}</div>
               <div className="text-[7px] text-rmpg-500 uppercase">Fail</div>
             </div>
+            {inspectionStats.other_count > 0 && (
+              <div
+                className="text-center p-1.5 bg-surface-sunken rounded"
+                title={Object.entries(inspectionStats.other_breakdown ?? {})
+                  .map(([k, v]) => `${toDisplayLabel(k)}: ${v}`).join(', ')}
+              >
+                <div className="text-sm font-bold font-mono text-amber-400">{inspectionStats.other_count}</div>
+                {/* Uses the muted foreground token rather than the sibling
+                    tiles' rmpg ramp: that ramp is sub-AA and under a CI
+                    ratchet (accentTokens.test.ts). */}
+                <div className="text-[7px] text-fg-muted uppercase">Needs Attn</div>
+              </div>
+            )}
             <div className="text-center p-1.5 bg-surface-sunken rounded">
               <div className="text-sm font-bold font-mono text-brand-400">{inspectionStats.pass_rate}%</div>
               <div className="text-[7px] text-rmpg-500 uppercase">Pass Rate</div>
