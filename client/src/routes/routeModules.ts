@@ -19,6 +19,7 @@ export type RouteImporter = () => Promise<unknown>;
 
 export const ROUTE_MODULES: Readonly<Record<string, RouteImporter>> = {
   '/': importDashboard,
+  '/downloads': () => import('../pages/DownloadsPage'),
   '/dispatch': () => import('../pages/dispatch'),
   '/map': () => import('../pages/map'),
   '/mdt': () => import('../pages/MdtPage'),
@@ -43,15 +44,20 @@ export const ROUTE_MODULES: Readonly<Record<string, RouteImporter>> = {
   '/national-warrant-search': () => import('../pages/NationalWarrantSearchPage'),
   '/citations': () => import('../pages/CitationsPage'),
   '/law-book': () => import('../pages/LawBookPage'),
+  '/knowledge-base': () => import('../pages/KnowledgeBasePage'),
   '/trespass-orders': () => import('../pages/TrespassOrdersPage'),
   '/code-enforcement': () => import('../pages/CodeEnforcementPage'),
   '/court': () => import('../pages/CourtTrackerPage'),
-  // Both registry redirect targets warm the page they land on
-  // (App.tsx: <Route path="/offender-registry"|"/sex-offender-registry" element={<RedirectKeepQuery to="/nsopw" />} />).
+  // Canonical route. Both registry redirect targets below warm the same page
+  // they land on (App.tsx: <Route path="/offender-registry"|"/sex-offender-registry"
+  // element={<RedirectKeepQuery to="/nsopw" />} />).
+  '/nsopw': () => import('../pages/NsopwLookupPage'),
   '/offender-registry': () => import('../pages/NsopwLookupPage'),
   '/sex-offender-registry': () => import('../pages/NsopwLookupPage'),
   '/serve': () => import('../pages/ServePage'),
   '/serve-intake': () => import('../pages/ServeIntakePage'),
+  '/my-id': () => import('../pages/wallet/MyIdPage'),
+  '/verify-id': () => import('../pages/wallet/VerifyIdPage'),
   '/personnel': () => import('../pages/personnel'),
   '/hr': () => import('../pages/hr/HrPage'),
   '/fleet': () => import('../pages/fleet'),
@@ -59,6 +65,7 @@ export const ROUTE_MODULES: Readonly<Record<string, RouteImporter>> = {
   '/dash-cameras': () => import('../pages/DashCamerasPage'),
   '/dashcams': () => import('../pages/DashcamPage'),
   '/dashcam-ai': () => import('../pages/DashcamAiPage'),
+  '/flexcam': () => import('../pages/FlexCamPage'),
   '/training': () => import('../pages/TrainingPage'),
   '/training-docs': () => import('../pages/TrainingDocsPage'),
   '/training-mgmt': () => import('../pages/TrainingManagementPage'),
@@ -68,6 +75,7 @@ export const ROUTE_MODULES: Readonly<Record<string, RouteImporter>> = {
   '/patrol': () => import('../pages/PatrolPage'),
   '/reports': () => import('../pages/ReportsPage'),
   '/shift-plans': () => import('../pages/ShiftPlansPage'),
+  '/scheduler': () => import('../pages/SchedulerPage'),
   '/statute-analytics': () => import('../pages/StatuteAnalyticsPage'),
   '/reports/custom': () => import('../pages/CustomReportBuilder'),
   '/crime-analysis': () => import('../pages/CrimeAnalysisPage'),

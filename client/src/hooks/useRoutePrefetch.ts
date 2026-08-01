@@ -44,8 +44,15 @@ export function prefetchRoute(path: string): void {
     const importer = getRouteImporter(path);
     if (!importer) return;
 
+    // Call the importer BEFORE marking `path` as warmed. import() itself is
+    // synchronous up to returning its promise (module fetching happens async),
+    // so there's no gap here for a second call to slip through unmarked —
+    // this ordering only protects against the theoretical case of `importer`
+    // throwing synchronously, which would otherwise leave the marker set with
+    // nothing in flight and no import ever retried for this path.
+    const pending = importer();
     warmed.add(path);
-    void importer().catch(() => {
+    void pending.catch(() => {
       // A transient blip must not poison the cache — drop the marker so a
       // later hover can try again. The user may well navigate here anyway,
       // and lazyRetry handles the real load.

@@ -925,7 +925,7 @@ export default function MenuBar({
           { type: 'action', path: '/admin', label: 'Disposition Codes', icon: Hash, action: () => navigate('/admin?tab=system') },
           { type: 'action', path: '/admin', label: 'Incident Types', icon: FileText, action: () => navigate('/admin?tab=system') },
           { type: 'separator' },
-          { type: 'action', label: 'Law Book', icon: Scale, action: () => { navigate('/law-book'); } },
+          { type: 'action', path: '/law-book', label: 'Law Book', icon: Scale, action: () => { navigate('/law-book'); } },
         ],
       },
       {
@@ -1007,6 +1007,10 @@ export default function MenuBar({
       },
       {
         type: 'action',
+        // Fallback path only (openWindowsInstaller opens an external URL when
+        // one resolved from /api/downloads/info; navigates to /downloads only
+        // when it didn't). Harmless to prefetch either way — best-effort.
+        path: '/downloads',
         label: 'Download Installer (Windows)',
         icon: Download,
         action: openWindowsInstaller,
