@@ -491,7 +491,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
                 )}
                 {prop.property_type && (
                   <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-rmpg-700 text-rmpg-300 border border-rmpg-600">
-                    {prop.property_type}
+                    {formatEnumValue(prop.property_type)}
                   </span>
                 )}
               </div>
@@ -574,7 +574,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
             {selectedProperty.is_active ? 'ACTIVE' : 'INACTIVE'}
           </RecordBadge>
           {selectedProperty.property_type && (
-            <RecordBadge tone="gray" glow={false}>{selectedProperty.property_type}</RecordBadge>
+            <RecordBadge tone="gray" glow={false}>{formatEnumValue(selectedProperty.property_type)}</RecordBadge>
           )}
         </RecordHero>
         <div className="px-4">
@@ -792,3 +792,4 @@ export default function PropertiesTab(props: PropertiesTabProps) {
   );
 }
 import { safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
+import { formatEnumValue } from '../../utils/formatters';

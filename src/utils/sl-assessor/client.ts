@@ -14,6 +14,9 @@
 import { AssessorConfigError, AssessorHttpError, AssessorTimeoutError } from './types';
 import type { Parcel, ParcelSummary } from './types';
 import { parseParcelList, parseParcelDetail } from './parser';
+import { fetchCamaParcel, toParcelId } from './camaClient';
+import type { CamaParcel } from './camaParser';
+import { log } from '../logger';
 
 const RESULTS_URL = 'https://apps.saltlakecounty.gov/assessor/new/resultsMain.cfm';
 const DETAIL_BASE  = 'https://apps.saltlakecounty.gov/assessor/new/valuationInfoExpanded.cfm';
@@ -106,9 +109,17 @@ export function parseAddressComponents(address: string): AddressComponents {
   return { street_Num, street_dir, street_name, street_type };
 }
 
-/** Convert "16-18-355-003-0000" → "16183550030000" for valuationInfoExpanded URLs. */
+/**
+ * Convert "16-18-355-003-0000" → "16183550030000" for the detail URLs.
+ *
+ * ⚠️ The id MUST end up 14 digits. A 10-digit id addresses a BLOCK, and the
+ * county answers it with HTTP 200 + the SEARCH FORM rather than an error —
+ * so a short id used to produce a page that parsed to nothing, with no
+ * status code to notice. normalizeParcelNumber pads the 4-digit encumbrance
+ * suffix; toParcelId throws on anything it cannot normalize.
+ */
 function parcelNoToId(parcelNo: string): string {
-  return parcelNo.replace(/-/g, '');
+  return toParcelId(parcelNo);
 }
 
 /** Manual search page link surfaced to users when automated lookup fails. */
@@ -274,5 +285,88 @@ export async function getParcel(env: AssessorEnv, parcelNo: string): Promise<Par
   const html = await fetchDetailHtml(parcelId);
   const parcel = parseParcelDetail(html);
   parcel.source_url = url;
+
+  // ── Full CAMA build ────────────────────────────────────────────────────
+  // Best-effort by design: a CAMA failure must never turn a working parcel
+  // lookup into an error for the officer. The flat Parcel above is already
+  // a usable answer; this only ever adds to it.
+  try {
+    const { parcel: cama } = await fetchCamaParcel(parcelNo);
+    parcel.cama = cama;
+    applyCamaToFlatParcel(parcel, cama);
+  } catch (err) {
+    log.warn('[sl-assessor] CAMA build failed — returning summary-only parcel', {
+      parcel: parcelNo, error: err instanceof Error ? err.message : String(err),
+    });
+  }
   return parcel;
+}
+
+/**
+ * Fill the flat Parcel's typed slots from the CAMA build.
+ *
+ * FILL-ONLY — CAMA never overwrites a value the expanded-page parser already
+ * produced. In practice it fills a great deal: the residence block is
+ * rendered as value-before-label <div>s on the expanded page, so
+ * `parseParcelDetail` returns null for bedrooms, bathrooms, stories,
+ * year_built, and every floor area on EVERY real Salt Lake County parcel.
+ * Those are the fields officers actually read.
+ */
+export function applyCamaToFlatParcel(parcel: Parcel, cama: CamaParcel): void {
+  const res = cama.residence;
+  const par = cama.parcel;
+  const land0 = cama.land_records[0] ?? {};
+
+  const fill = <K extends keyof Parcel>(key: K, value: unknown) => {
+    if (parcel[key] == null && value != null) (parcel as any)[key] = value;
+  };
+
+  fill('owner_of_record', cama.owner_of_record);
+  fill('situs_address', cama.situs_address);
+  fill('legal_description', cama.legal_description);
+  fill('tax_district', par.par_tax_district);
+  fill('year_built', res.year_built);
+  fill('effective_year_built', res.effective_year_built);
+  fill('stories', res.number_of_stories);
+  fill('bedrooms', res.bedrooms);
+  fill('construction_type', res.exterior_wall_type);
+  fill('improvement_class', res.assessment_classification);
+  fill('total_bldg_sqft', res.above_grade_area);
+  fill('finished_sqft', res.above_grade_area);
+  fill('basement_sqft', res.basement_area);
+  fill('garage_sqft', res.builtin_garage_sqft ?? res.attached_garage_sqft);
+  fill('land_acres', par.par_total_acreage);
+  fill('zoning', land0.zone);
+  fill('market_value_land', par.val_land_value);
+  fill('market_value_improvement', par.val_building_value);
+  fill('market_value_total', par.val_final_value);
+  fill('improvement_value', par.val_building_value);
+
+  // Bathrooms is a DERIVED total — the county reports full / three-quarter /
+  // half separately and never publishes a single "bathrooms" figure. Counting
+  // a half bath as 0.5 and a 3/4 bath as 0.75 matches the residential
+  // appraisal convention the assessor's own grades assume.
+  const full = numOrNull(res.full_baths);
+  const three = numOrNull(res.three_quarter_baths);
+  const half = numOrNull(res.half_baths);
+  if (parcel.bathrooms == null && (full != null || three != null || half != null)) {
+    parcel.bathrooms = (full ?? 0) + (three ?? 0) * 0.75 + (half ?? 0) * 0.5;
+  }
+
+  // land_sqft: prefer the county's own Sqr. Feet, else convert acres.
+  // 43,560 ft² per acre.
+  if (parcel.land_sqft == null) {
+    const sqft = numOrNull(land0.sqr_feet);
+    const acres = numOrNull(par.par_total_acreage);
+    if (sqft != null) parcel.land_sqft = sqft;
+    else if (acres != null) parcel.land_sqft = Math.round(acres * 43_560);
+  }
+
+  // Merge CAMA's labelled pairs into raw_data_json without clobbering
+  // anything the expanded-page scan already captured.
+  parcel.raw_data_json = { ...cama.raw_data_json, ...parcel.raw_data_json };
+}
+
+function numOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }

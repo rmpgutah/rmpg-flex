@@ -23,7 +23,7 @@ import { openTrainingCertificatePdf } from '../utils/trainingCertificatePdf';
 import type {
   TrainingRecord, TrainingRequirement, TrainingCategory, TrainingStatus,
 } from '../types';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 // ── Constants ──────────────────────────────────────────────
 const CATEGORIES: TrainingCategory[] = [
@@ -969,7 +969,7 @@ function TrainingMaterialsPanel() {
                     {m.description && <div className="text-[9px] text-rmpg-500 truncate">{m.description}</div>}
                   </div>
                   <span className={`text-[8px] uppercase border px-1.5 py-0.5 ${CATEGORY_COLORS[m.category] || CATEGORY_COLORS.other}`}>
-                    {m.category}
+                    {formatEnumValue(m.category)}
                   </span>
                   {m.file_url && (
                     <a href={m.file_url} target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:text-brand-300">

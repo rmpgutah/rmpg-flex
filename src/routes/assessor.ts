@@ -40,6 +40,8 @@ import {
   dispatchSearchByAddress, dispatchGetParcel, resolveCountyFromAddress, resolveEffectiveCounty,
   buildManualUrl, COUNTY_LABELS, isOverridableCounty,
 } from '../utils/parcel-lookup/lookup';
+import { persistCama } from '../utils/sl-assessor/camaPersist';
+import type { CamaParcel } from '../utils/sl-assessor/camaParser';
 
 const app = new Hono<Env>();
 
@@ -372,6 +374,13 @@ app.post('/apply', async (c) => {
     parcel.photo_url, parcel.layout_url,
     JSON.stringify(parcel.raw_data_json),
   ).run();
+
+  // Persist the full CAMA build alongside the flat record. Runs AFTER the
+  // parcel_records upsert because it attaches by parcel_record_id, and it
+  // never throws — a CAMA failure must not undo a successful apply.
+  if (parcel.cama) {
+    await persistCama(db, parcel.parcel_number, parcel.cama as CamaParcel);
+  }
 
   // Replace sales history. DELETE before INSERT so a partial failure leaves
   // the table in a coherent state (worst case: no sales rather than stale rows).

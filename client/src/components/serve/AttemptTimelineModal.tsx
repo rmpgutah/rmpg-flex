@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface TimelineEntry {
   type: 'attempt' | 'activity';
@@ -79,7 +80,7 @@ export default function AttemptTimelineModal({ queueId, onClose }: AttemptTimeli
                 <span className={`text-[8px] uppercase font-semibold px-1.5 py-0.5 rounded-[2px] ${
                   entry.type === 'attempt' ? 'bg-brand-900/50 text-brand-400' : 'bg-rmpg-800 text-rmpg-400'
                 }`}>
-                  {entry.type}
+                  {formatEnumValue(entry.type)}
                 </span>
               </div>
               {entry.type === 'attempt' ? (

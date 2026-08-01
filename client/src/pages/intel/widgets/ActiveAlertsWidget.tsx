@@ -1,5 +1,6 @@
 import WidgetFrame from './WidgetFrame';
 import type { IntelOverview } from '../useIntelOverview';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 type Row = IntelOverview['alerts'][number];
 const TAG: Record<string, string> = {
@@ -17,7 +18,7 @@ export default function ActiveAlertsWidget(
         <button key={i} disabled={!r.person_id} onClick={() => r.person_id && onSelect('person', r.person_id, r.label)}
           className="w-full flex items-center gap-2 py-[5px] border-b border-border-subtle last:border-b-0 text-left disabled:cursor-default">
           <span className={`font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] tracking-wide ${TAG[r.kind] || 'bg-surface-raised text-rmpg-400'}`}>
-            {r.kind.replace('_', ' ').toUpperCase()}
+            {toDisplayLabel(r.kind).toUpperCase()}
           </span>
           <span className="text-[11px] text-rmpg-200 min-w-0 flex-1 truncate">{r.label}</span>
           <span className="text-[10px] text-rmpg-500 truncate max-w-[120px]">{r.detail}</span>

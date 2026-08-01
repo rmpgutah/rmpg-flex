@@ -289,23 +289,102 @@ mapbox.get('/boundaries', async (c) => {
   try {
     const data = await mbFetch(`${MB}/boundaries/v4/adm2/tilequery/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json?${params}`);
     const feature = (data?.features ?? [])[0];
-    if (!feature) {
-      return c.json({ county: null, municipality: null, place: null, source: 'mapbox-boundaries' });
+    if (feature) {
+      // Boundaries resolves the county but carries no municipality layer at
+      // adm2, so fill that half from reverse geocoding rather than shipping
+      // a permanent null (the previous behaviour).
+      const ctx = await reverseGeocodeJurisdiction(tk, lng, lat).catch(() => null);
+      return c.json({
+        county: feature.properties?.name ?? ctx?.county ?? null,
+        municipality: ctx?.municipality ?? null,
+        place: ctx?.place ?? null,
+        source: 'mapbox-boundaries',
+      });
     }
-    return c.json({
-      county: feature.properties?.name ?? null,
-      municipality: null,
-      place: null,
-      source: 'mapbox-boundaries',
-    });
+    // Entitled but no feature at this point — still try geocoding.
   } catch (err: any) {
-    if (err?.status === 401 || err?.status === 403 || err?.status === 404) {
-      console.warn('[mapbox/boundaries] upstream returned', err?.status, '— treating as entitlement gap. If this persists, verify the adm2 tileset ID is correct for this account.');
-      return notConfigured(c, 'Mapbox Boundaries API not enabled on this account token');
+    if (err?.status !== 401 && err?.status !== 403 && err?.status !== 404) {
+      return fail(c, err, 'boundaries');
     }
-    return fail(c, err, 'boundaries');
+    // 401/403/404 = the account lacks the Boundaries entitlement. Boundaries
+    // v4 is a paid enterprise add-on and the `adm2` tileset id here was
+    // never verified against a provisioned account, so this is the NORMAL
+    // path on a standard token, not an exception. It used to return the
+    // 503 skip shape, which is why the Properties/Warrants panels rendered
+    // a permanent "Jurisdiction unavailable" badge.
+    log.info('[mapbox/boundaries] no Boundaries entitlement — falling back to reverse geocoding', {
+      status: err?.status,
+    });
+  }
+
+  // ── Fallback: Geocoding v5 context ────────────────────────────────────
+  // Free, on the same token that already backs every other route in this
+  // file, and it carries exactly what the panel needs: `district` is the
+  // US county and `place` is the incorporated municipality. No extra
+  // entitlement, no extra secret, no new failure mode.
+  try {
+    const ctx = await reverseGeocodeJurisdiction(tk, lng, lat);
+    if (!ctx) {
+      return c.json({ county: null, municipality: null, place: null, source: 'mapbox-geocoding' });
+    }
+    return c.json({ ...ctx, source: 'mapbox-geocoding' });
+  } catch (err: any) {
+    // BOTH sources are unavailable. Keep the original 200 skip shape rather
+    // than propagating the upstream status: a jurisdiction lookup is an
+    // advisory side-panel badge, and failing it must not surface as a hard
+    // error on the Properties/Warrants page. The client already renders
+    // `skipped` as an "unavailable" badge, so this preserves the contract
+    // that predates the geocoding fallback — the fallback only ever REPLACES
+    // that shape when it actually resolves something.
+    log.warn('[mapbox/boundaries] geocoding fallback also failed — reporting unavailable', {
+      status: err?.status,
+    });
+    return notConfigured(c, 'Jurisdiction lookup unavailable — Mapbox Boundaries not enabled and reverse geocoding failed');
   }
 });
+
+/**
+ * Resolve county / municipality for a point from Geocoding v5 `context`.
+ *
+ * Mapbox context entries are typed by an `id` PREFIX (`district.1234`,
+ * `place.5678`), so match on the prefix before the dot — an exact-equality
+ * check against "district" never matches anything.
+ *
+ * `district` is the county in the US ("Salt Lake County"); `place` is the
+ * incorporated city ("Millcreek"); `locality` is a neighbourhood or
+ * unincorporated community and is reported separately rather than being
+ * mistaken for a municipality.
+ */
+async function reverseGeocodeJurisdiction(
+  token: string, lng: string, lat: string,
+): Promise<{ county: string | null; municipality: string | null; place: string | null } | null> {
+  const params = new URLSearchParams({
+    access_token: token,
+    limit: '1',
+    types: 'address,place,district,locality,neighborhood',
+  });
+  const data = await mbFetch(
+    `${MB}/geocoding/v5/mapbox.places/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json?${params}`,
+  );
+  const feature = (data?.features ?? [])[0];
+  if (!feature) return null;
+
+  // The matched feature itself counts as context — reverse-geocoding a
+  // point inside a city returns that city as the FEATURE, with only the
+  // county above it in `context`. Reading `context` alone loses it.
+  const entries: Array<{ id?: string; text?: string }> = [
+    { id: feature.id, text: feature.text },
+    ...(feature.context ?? []),
+  ];
+  const byType = (t: string) =>
+    entries.find((e) => typeof e.id === 'string' && e.id.split('.')[0] === t)?.text ?? null;
+
+  return {
+    county: byType('district'),
+    municipality: byType('place'),
+    place: byType('locality') ?? byType('neighborhood'),
+  };
+}
 
 // ── Static map ─────────────────────────────────────────────
 // GET /api/mapbox/static-map?lng=&lat=&zoom=&width=&height=&style=  → { url, attribution }

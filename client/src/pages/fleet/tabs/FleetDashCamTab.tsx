@@ -8,7 +8,7 @@ import { Camera, Video, Loader2, Play, FileText } from 'lucide-react';
 import type { DashCamera, DashCamVideo } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
 import VideoPlayer from '../../../components/VideoPlayer';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   vehicleId: string | number;
@@ -140,7 +140,7 @@ export default function FleetDashCamTab({ vehicleId }: Props) {
                   vid.classification === 'restricted' ? 'bg-red-900/40 text-red-400' :
                   'bg-rmpg-700 text-rmpg-400'
                 }`}>
-                  {vid.classification}
+                  {formatEnumValue(vid.classification)}
                 </span>
               </button>
             ))}

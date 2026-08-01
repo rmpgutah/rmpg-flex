@@ -129,7 +129,7 @@ export default function ServeQueueToolsPanel() {
                 {g.matches.map((m) => (
                   <div key={m.queueId} className="flex items-center gap-2 text-[9px] pl-2 border-l-2 border-amber-600/40 py-0.5">
                     <span className={`px-1 rounded-[2px] border ${MATCH_STYLE[m.matchType]}`}>
-                      {m.matchType.replace('_', ' ')}
+                      {toDisplayLabel(m.matchType)}
                     </span>
                     <span className="text-rmpg-200">#{m.queueId}</span>
                     <span className="text-fg-secondary truncate">{m.defendantName}</span>

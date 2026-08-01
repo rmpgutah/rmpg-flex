@@ -8,6 +8,7 @@ import { asArray } from '../../utils/asArray';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 import { withAlpha } from '../../utils/withAlpha';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -230,7 +231,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
                         className="px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider border"
                         style={{ color: getCategoryColor(source.category), borderColor: withAlpha(getCategoryColor(source.category), '44') }}
                       >
-                        {source.category}
+                        {formatEnumValue(source.category)}
                       </span>
                     </div>
                     <div className="flex items-center gap-3 mt-0.5">

@@ -21,6 +21,7 @@ import SignaturePad from './SignaturePad';
 import { PdfEmailDialog } from './PdfEmailDialog';
 import { emailBlob } from '../utils/emailPdf';
 import { useToast } from './ToastProvider';
+import { activeWarrantFlagFromLinkedMeta } from '../utils/recordLinks';
 
 interface PrintRecordButtonProps {
   /** Record type to generate PDF for */
@@ -233,7 +234,7 @@ export default function PrintRecordButton({
               name: l.linked_label || '',
               relationship: l.relationship,
               dob: l.linked_meta?.dob || '',
-              flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
+              flags: activeWarrantFlagFromLinkedMeta(l.linked_meta),
             }));
           // Evidence items cross-referenced to this person
           enriched.linked_evidence = links
@@ -278,7 +279,7 @@ export default function PrintRecordButton({
             name: l.linked_label || '',
             relationship: l.relationship,
             dob: l.linked_meta?.dob || '',
-            flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
+            flags: activeWarrantFlagFromLinkedMeta(l.linked_meta),
           }));
           enriched.linked_properties = links
             .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
@@ -335,7 +336,7 @@ export default function PrintRecordButton({
             name: l.linked_label || '',
             relationship: l.relationship,
             dob: l.linked_meta?.dob || '',
-            flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
+            flags: activeWarrantFlagFromLinkedMeta(l.linked_meta),
           }));
           enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => splitVehicleLabel(l));
         }

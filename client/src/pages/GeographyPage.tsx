@@ -33,7 +33,7 @@ import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import type { Area, Beat, Sector, TierId, Zone } from '../types/geography';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -1096,7 +1096,7 @@ export default function GeographyPage() {
             <>
               <div>
                 <span className="text-rmpg-500">Tier</span>{' '}
-                <span className="text-rmpg-100 capitalize">{deletePending.tier}</span>
+                <span className="text-rmpg-100 capitalize">{formatEnumValue(deletePending.tier)}</span>
               </div>
               <div>
                 <span className="text-rmpg-500">Code</span>{' '}

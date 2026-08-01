@@ -11,6 +11,7 @@
 import jsPDF from 'jspdf';
 import type { FleetVehicle, FleetMaintenance } from '../../../types';
 import { safeDateStr } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 export interface Args {
   vehicle: FleetVehicle;
@@ -69,7 +70,7 @@ export function buildFleetMaintenanceHistoryPdf({ vehicle, records, periodLabel 
     ['Total Records', String(records.length)],
     ['Total Cost', fmtCurrency(totalCost)],
     ['Average Cost', fmtCurrency(avgCost)],
-    ['Types', Object.entries(typeCounts).map(([t, c]) => `${t.replace('_', ' ')}(${c})`).join(', ') || '-'],
+    ['Types', Object.entries(typeCounts).map(([t, c]) => `${toDisplayLabel(t)}(${c})`).join(', ') || '-'],
   ];
   for (const [label, value] of summaryItems) {
     doc.setFont('helvetica', 'bold');
@@ -118,7 +119,7 @@ export function buildFleetMaintenanceHistoryPdf({ vehicle, records, periodLabel 
       y += 12;
     }
     doc.text(r.performed_at ? safeDateStr(r.performed_at, '-') : '-', colDate, y);
-    doc.text((r.type || 'other').replace('_', ' '), colType, y);
+    doc.text(toDisplayLabel(r.type || 'other'), colType, y);
     doc.text(truncate(r.description || '', 28), colDesc, y);
     doc.text(truncate(r.vendor || '-', 14), colVendor, y);
     doc.text(r.mileage_at_service != null ? r.mileage_at_service.toLocaleString() : '-', colMileage, y);

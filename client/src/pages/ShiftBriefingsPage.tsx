@@ -4,7 +4,7 @@ import { asArray } from '../utils/asArray';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { parseTimestamp } from '../utils/dateUtils';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import {
   FileText, Clock, Users, Shield, AlertTriangle,
   Plus, RefreshCw, Check, Sun, Moon, Sunset
@@ -263,7 +263,7 @@ export default function ShiftBriefingsPage() {
               ) : (
                 generated.critical_calls.map((c) => (
                   <div key={c.call_number} className="text-xs text-neutral-300 py-0.5 border-b border-[#1a1a1a] last:border-0">
-                    <span className="font-mono text-neutral-400">{c.call_number}</span> {c.incident_type}
+                    <span className="font-mono text-neutral-400">{c.call_number}</span> {formatEnumValue(c.incident_type)}
                     <span className="ml-1 text-neutral-500">{c.time}</span>
                   </div>
                 ))

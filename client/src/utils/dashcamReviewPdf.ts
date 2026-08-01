@@ -16,7 +16,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
-import { toDisplayLabel } from './formatters';
+import { formatEnumValue, toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -233,7 +233,7 @@ export function generateDashcamReviewPdf(input: DashcamReviewPdfInput): jsPDF {
     ['Title', video.title || '—'],
     ['Classification', (video.classification || '—').toString()],
     ['Camera', channelLabel(video.cpg_channel)],
-    ['Event Type', video.cpg_event_type || 'Manual'],
+    ['Event Type', formatEnumValue(video.cpg_event_type) || 'Manual'],
     ['Recorded', fmtDateTime(video.recorded_at)],
     ['Duration', formatDuration(video.duration_seconds)],
     ['File Size', formatFileSize(video.file_size)],

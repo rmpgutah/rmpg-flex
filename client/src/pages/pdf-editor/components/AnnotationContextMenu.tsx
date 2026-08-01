@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Copy, Lock, Unlock, Trash2, ArrowUp, ArrowDown, Layers as LayerIcon, MousePointer2, RotateCw } from 'lucide-react';
 import { Annotation } from '../types';
+import { formatEnumValue } from '../../../utils/formatters';
 
 // Right-click context menu for annotations. Lives at a fixed (clientX, clientY)
 // and dismisses on outside-click or Escape. Wired by PageCanvas via the
@@ -52,7 +53,7 @@ export default function AnnotationContextMenu(p: Props) {
     <div ref={ref} className="fixed z-50 bg-surface-base border border-border-default rounded-[2px] shadow-lg py-1 min-w-[180px]"
       style={{ left: p.x, top: p.y }}>
       <div className="px-2 py-0.5 text-[9px] uppercase tracking-wider text-rmpg-500">
-        <MousePointer2 className="w-3 h-3 inline mr-1" /> {ann.type}
+        <MousePointer2 className="w-3 h-3 inline mr-1" /> {formatEnumValue(ann.type)}
       </div>
       <div className="border-t border-border-default my-0.5" />
       <button type="button" onClick={() => { p.onDuplicate(); p.onClose(); }} className={itemCls}>

@@ -245,7 +245,7 @@ export default function GrievancesTab() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[g.status] || STATUS_COLORS.filed}`}>{toDisplayLabel(g.status)}</span>
-                    <span className="text-[10px] text-rmpg-400 uppercase">{g.type}</span>
+                    <span className="text-[10px] text-rmpg-400 uppercase">{formatEnumValue(g.type)}</span>
                     <span className={`text-[10px] font-medium ${PRIORITY_COLORS[g.priority] || 'text-rmpg-500'}`}>{toDisplayLabel(g.priority)}</span>
                   </div>
                   <h3 className="text-xs font-bold text-rmpg-100 truncate max-w-md">{g.subject}</h3>

@@ -8,6 +8,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { formatDate } from '../utils/dateUtils';
+import { formatEnumValue } from '../utils/formatters';
 
 interface IntelSeed {
   name?: string;
@@ -388,7 +389,7 @@ export default function PersonIntelPage() {
           <>
             <div><span className="text-rmpg-400">Subject:</span> {deleteTarget.subject_name}</div>
             <div><span className="text-rmpg-400">Data points:</span> {deleteTarget.data_points_found}</div>
-            <div><span className="text-rmpg-400">Status:</span> {deleteTarget.status}</div>
+            <div><span className="text-rmpg-400">Status:</span> {formatEnumValue(deleteTarget.status)}</div>
           </>
         )}
         confirmLabel="Delete"

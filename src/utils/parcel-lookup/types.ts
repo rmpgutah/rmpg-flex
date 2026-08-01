@@ -81,6 +81,18 @@ export interface Parcel {
   layout_url: string | null;
   sales: ParcelSale[];
   raw_data_json: Record<string, string>;
+  /**
+   * Full CAMA build — every field the county publishes, not just the ~40
+   * this flat shape can hold. Populated for Salt Lake County only; the other
+   * three county packages leave it null.
+   *
+   * Typed as `unknown` here rather than importing CamaParcel because
+   * parcel-lookup is the COUNTY-AGNOSTIC layer and must not depend on any
+   * one county's package (sl-assessor already imports from here — the
+   * reverse edge would be a cycle). Consumers narrow it via
+   * `import type { CamaParcel } from '../sl-assessor/camaParser'`.
+   */
+  cama?: unknown | null;
 }
 
 export class AssessorError extends Error {}

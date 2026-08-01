@@ -1,3 +1,4 @@
+import { PROMOTED_RECORD_FIELDS } from '../src/utils/sl-assessor/camaFields';
 import { describe, it, expect } from 'vitest';
 import { applyParcelToRecord, AUTOFILL_FIELDS } from '../src/utils/sl-assessor/autofill';
 import type { Parcel } from '../src/utils/parcel-lookup/types';
@@ -45,7 +46,13 @@ describe('applyParcelToRecord — Tooele recorder-only source', () => {
     expect(skipped).toContain('owner_of_record');
   });
 
-  it('AUTOFILL_FIELDS still lists all 11 shared columns (unchanged for full-data counties)', () => {
-    expect(AUTOFILL_FIELDS).toHaveLength(11);
+  it('AUTOFILL_FIELDS still lists all 11 shared columns, plus the promoted CAMA set', () => {
+    // The 11 shared columns are what a recorder-only county (Tooele) can
+    // fill. The promoted CAMA fields are Salt Lake-only and stay null
+    // elsewhere — they are additive and must not change the shared set.
+    expect(AUTOFILL_FIELDS).toHaveLength(11 + PROMOTED_RECORD_FIELDS.length);
+    for (const col of ['parcel_number', 'owner_of_record', 'legal_description']) {
+      expect(AUTOFILL_FIELDS).toContain(col);
+    }
   });
 });

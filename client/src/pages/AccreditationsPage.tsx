@@ -18,7 +18,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { safeDateStr, localToday, parseTimestamp } from '../utils/dateUtils';
 import { asArray } from '../utils/asArray';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -304,7 +304,7 @@ export default function AccreditationsPage() {
                   className={`border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors ${rowHighlight(r)}`}
                 >
                   <td className="px-2 py-[2px] text-gray-300">{r.officer_name} <span className="text-gray-600">({r.badge_number})</span></td>
-                  <td className="px-2 py-[2px] text-gray-300">{r.type}</td>
+                  <td className="px-2 py-[2px] text-gray-300">{formatEnumValue(r.type)}</td>
                   <td className="px-2 py-[2px] text-gray-400">{r.issuing_body}</td>
                   <td className="px-2 py-[2px] text-[#d4a017] font-mono">{r.certificate_number}</td>
                   <td className="px-2 py-[2px] text-gray-400">{safeDateStr(r.issued_date)}</td>

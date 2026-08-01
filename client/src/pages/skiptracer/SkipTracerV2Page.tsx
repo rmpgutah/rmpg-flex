@@ -17,7 +17,7 @@ import { apiFetch } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import IconButton from '../../components/IconButton';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { toDisplayLabel } from '../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 import { withAlpha } from '../../utils/withAlpha';
@@ -1815,7 +1815,7 @@ export default function SkipTracerV2Page() {
                         className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
                         style={{ backgroundColor: withAlpha(INPUT_BADGE_COLORS[badgeType], '22'), color: INPUT_BADGE_COLORS[badgeType] }}
                       >
-                        {h.search_type}
+                        {formatEnumValue(h.search_type)}
                       </span>
                       <span className="text-[11px] text-rmpg-100 font-mono truncate">{queryDisplay}</span>
                     </div>
