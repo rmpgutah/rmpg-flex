@@ -99,7 +99,6 @@ CREATE TABLE IF NOT EXISTS driver_performance_daily (
   fuel_cost REAL NOT NULL DEFAULT 0,
   fuel_gallons REAL NOT NULL DEFAULT 0,
   maintenance_cost REAL NOT NULL DEFAULT 0,
-  damage_cost REAL NOT NULL DEFAULT 0,
 
   score REAL,
   score_version TEXT NOT NULL,
@@ -673,7 +672,6 @@ interface Acc {
   fuelCost: number;
   fuelGallons: number;
   maintenanceCost: number;
-  damageCost: number;
 }
 
 const newAcc = (): Acc => ({
@@ -681,7 +679,7 @@ const newAcc = (): Acc => ({
   severity: { critical: 0, high: 0, moderate: 0, low: 0 },
   recorded: 0, inferred: 0,
   miles: 0, minutes: 0, trips: 0,
-  fuelCost: 0, fuelGallons: 0, maintenanceCost: 0, damageCost: 0,
+  fuelCost: 0, fuelGallons: 0, maintenanceCost: 0,
 });
 
 const METERS_PER_MILE = 1609.344;
@@ -770,21 +768,42 @@ export async function rollupDay(
   // ── Cost, attributed through the same assignment windows (lens 4) ──
   // Displayed beside the safety score, never folded into it: a driver
   // assigned an older, thirstier vehicle must not score as unsafe.
+  // ⚠️ fuel_date holds a FULL 'YYYY-MM-DD HH:MM:SS' UTC timestamp, never a bare
+  // date — normalizeToUtcTimestamp (src/utils/denverTime.ts:195) converts even a
+  // date-only input to Denver-midnight-as-UTC. `WHERE fuel_date = ?` against a
+  // bare date matches ZERO rows and silently reports $0 for every officer.
   const fuelRows = await query<{ vehicle_id: number; total_cost: number | null; gallons: number | null }>(
     db,
-    `SELECT vehicle_id, total_cost, gallons FROM fleet_fuel_log WHERE fuel_date = ?`,
-    perfDate,
+    `SELECT vehicle_id, total_cost, gallons
+       FROM fleet_fuel_log WHERE fuel_date >= ? AND fuel_date <= ?`,
+    dayStart, dayEnd,
   );
+
+  // Cost attaches to a vehicle only when exactly ONE officer held it that day.
+  // On a mid-shift swap the day's fuel belongs to one of them and we cannot
+  // tell which, so it goes to NEITHER — the same rule resolveAttribution
+  // applies to ambiguous events. Two rows for the SAME officer are not
+  // ambiguous. Guessing here would put a wrong dollar figure on a named person.
   const vehicleOfficer = new Map<number, number>();
+  const ambiguousVehicles = new Set<number>();
   const vehAssign = await query<{ vehicle_id: number; officer_id: number | null }>(
     db,
-    `SELECT vehicle_id, officer_id FROM fleet_assignments
+    `SELECT DISTINCT vehicle_id, officer_id FROM fleet_assignments
       WHERE officer_id IS NOT NULL
         AND (assigned_at IS NULL OR assigned_at <= ?)
         AND (unassigned_at IS NULL OR unassigned_at >= ?)`,
     dayEnd, dayStart,
   );
-  for (const v of vehAssign) if (v.officer_id != null) vehicleOfficer.set(v.vehicle_id, v.officer_id);
+  for (const v of vehAssign) {
+    if (v.officer_id == null) continue;
+    const seen = vehicleOfficer.get(v.vehicle_id);
+    if (seen != null && seen !== v.officer_id) {
+      ambiguousVehicles.add(v.vehicle_id);
+      vehicleOfficer.delete(v.vehicle_id);
+    } else if (!ambiguousVehicles.has(v.vehicle_id)) {
+      vehicleOfficer.set(v.vehicle_id, v.officer_id);
+    }
+  }
 
   for (const f of fuelRows) {
     const officerId = vehicleOfficer.get(f.vehicle_id);
@@ -823,9 +842,9 @@ export async function rollupDay(
            events_forward_collision, events_lane_departure, events_close_following,
            events_harsh_brake, events_harsh_accel, events_speeding,
            attribution_recorded_pct, attribution_inferred_pct,
-           fuel_cost, fuel_gallons, maintenance_cost, damage_cost,
+           fuel_cost, fuel_gallons, maintenance_cost,
            score, score_version, computed_at
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
          ON CONFLICT(officer_id, perf_date) DO UPDATE SET
            miles_driven=excluded.miles_driven, drive_minutes=excluded.drive_minutes,
            trip_count=excluded.trip_count,
@@ -840,7 +859,7 @@ export async function rollupDay(
            attribution_recorded_pct=excluded.attribution_recorded_pct,
            attribution_inferred_pct=excluded.attribution_inferred_pct,
            fuel_cost=excluded.fuel_cost, fuel_gallons=excluded.fuel_gallons,
-           maintenance_cost=excluded.maintenance_cost, damage_cost=excluded.damage_cost,
+           maintenance_cost=excluded.maintenance_cost,
            score=excluded.score, score_version=excluded.score_version,
            computed_at=datetime('now')`,
         officerId, perfDate, a.miles, a.minutes, a.trips,
@@ -848,7 +867,7 @@ export async function rollupDay(
         a.events.forwardCollision, a.events.laneDeparture, a.events.closeFollowing,
         a.events.harshBrake, a.events.harshAccel, a.events.speeding,
         recordedPct, inferredPct,
-        a.fuelCost, a.fuelGallons, a.maintenanceCost, a.damageCost,
+        a.fuelCost, a.fuelGallons, a.maintenanceCost,
         score, SCORE_VERSION,
       );
     } catch (err) {
@@ -1044,7 +1063,7 @@ interface AggRow {
   miles: number; minutes: number; trips: number;
   fc: number; ld: number; cf: number; hb: number; ha: number; sp: number;
   recorded_events: number; inferred_events: number;
-  fuel_cost: number; fuel_gallons: number; maintenance_cost: number; damage_cost: number;
+  fuel_cost: number; fuel_gallons: number; maintenance_cost: number;
 }
 
 const AGG_SQL = `
@@ -1067,8 +1086,7 @@ const AGG_SQL = `
            d.events_harsh_brake + d.events_harsh_accel + d.events_speeding)),0) AS inferred_events,
          COALESCE(SUM(d.fuel_cost),0)        AS fuel_cost,
          COALESCE(SUM(d.fuel_gallons),0)     AS fuel_gallons,
-         COALESCE(SUM(d.maintenance_cost),0) AS maintenance_cost,
-         COALESCE(SUM(d.damage_cost),0)      AS damage_cost
+         COALESCE(SUM(d.maintenance_cost),0) AS maintenance_cost
     FROM driver_performance_daily d
     LEFT JOIN users u ON u.id = d.officer_id
    WHERE d.perf_date >= ? AND d.perf_date <= ?
@@ -1096,7 +1114,7 @@ function shape(r: AggRow) {
     events: { forward_collision: r.fc, lane_departure: r.ld, close_following: r.cf,
               harsh_brake: r.hb, harsh_accel: r.ha, speeding: r.sp },
     cost: { fuel: r.fuel_cost, fuel_gallons: r.fuel_gallons,
-            maintenance: r.maintenance_cost, damage: r.damage_cost },
+            maintenance: r.maintenance_cost },
     result,
   };
 }
@@ -1320,7 +1338,7 @@ interface RosterEntry {
   badge_number: string | null;
   miles_driven: number;
   event_count: number;
-  cost: { fuel: number; maintenance: number; damage: number };
+  cost: { fuel: number; maintenance: number };
   result: ScoreResult;
   rank?: number;
 }
@@ -1410,7 +1428,6 @@ export default function FleetDriverPerformanceTab() {
             <th className="py-[3px] pr-2">Attribution</th>
             <th className="py-[3px] pr-2 border-l border-rmpg-700 pl-2">Fuel</th>
             <th className="py-[3px] pr-2">Maint.</th>
-            <th className="py-[3px] pr-2">Damage</th>
           </tr>
         </thead>
         <tbody>
@@ -1437,7 +1454,6 @@ export default function FleetDriverPerformanceTab() {
               </td>
               <td className="py-[2px] pr-2 border-l border-rmpg-700 pl-2">${r.cost.fuel.toFixed(0)}</td>
               <td className="py-[2px] pr-2">${r.cost.maintenance.toFixed(0)}</td>
-              <td className="py-[2px] pr-2">${r.cost.damage.toFixed(0)}</td>
             </tr>
           ))}
         </tbody>
