@@ -1,7 +1,16 @@
 name: "Auto-merge Dependabot"
 
+# `pull_request_target` (not `pull_request`) is required: for Dependabot-authored
+# events GitHub issues a read-only GITHUB_TOKEN and IGNORES the `permissions:`
+# block below, so `gh pr merge` would 403. `pull_request_target` runs in the base
+# repo's context with the declared write permissions.
+#
+# SECURITY: this job must NEVER check out or execute PR head code. It only reads
+# Dependabot metadata and calls the merge API. Adding an `actions/checkout` of
+# `github.event.pull_request.head.*` here would be a remote-code-execution hole.
 on:
-  pull_request:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: write
@@ -11,7 +20,9 @@ jobs:
   auto-merge:
     name: Auto-merge safe Dependabot PRs
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    # Non-Dependabot PRs report this job as "skipped". That is expected and
+    # harmless — it is a neutral conclusion and is not a required status check.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
 
     steps:
       - name: Fetch Dependabot metadata
@@ -20,10 +31,21 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: Auto-merge patch and minor updates
+      # Policy: auto-merge patch/minor bumps ONLY for development and indirect
+      # dependencies. Every `direct:production` bump (jose, bcryptjs, hono,
+      # react, ...) is left open for human review — this system holds live
+      # law-enforcement data and an unreviewed auth-library change is not an
+      # acceptable trade for a shorter PR queue.
+      #
+      # --auto queues the merge behind branch protection's required checks
+      # (Worker/Client typecheck, tests, integration tests, client build), so a
+      # failing bump still cannot land.
+      - name: Auto-merge safe patch and minor updates
         if: >-
-          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
-          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+          (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+           steps.metadata.outputs.update-type == 'version-update:semver-minor') &&
+          (steps.metadata.outputs.dependency-type == 'direct:development' ||
+           steps.metadata.outputs.dependency-type == 'indirect')
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: "${{ github.event.pull_request.html_url }}"
