@@ -25,22 +25,27 @@ setupNativeAppShell();
 // Spillman-console key ticks on interactive clicks (document-level,
 // capture phase — works on login page and across all React routes)
 initUiClickSounds();
-// Decode the sampled console sounds up front so the first click/chime/login
-// plays the actual asset instead of the synth fallback (decode works while
-// the AudioContext is still gesture-suspended; playback resumes on gesture).
-// Beyond the UI five, warm the high-traffic dispatch library tones; the
-// rest of the library lazy-loads on first play (synth covers that play).
-preloadSoundAssets();
-// The system sounds that are NOT in preloadSoundAssets()'s default five.
-// These MUST be preloaded: uiClickSounds is deliberately sample-only with no
-// oscillator fallback, so an undecoded key plays SILENCE rather than a synth
-// approximation. Adding a system sound without adding it here makes it
-// silently silent on first use.
-preloadSoundAssets(['navigate', 'ui_open', 'ui_close', 'ui_error']);
-preloadSoundAssets([
-  'info', 'chirp', 'double_chirp', 'error', 'caution', 'warning',
-  'alert', 'alarm', 'descending', 'p1_alert', 'key_up', 'key_out', 'data_chirp',
-]);
+// Decode the sampled console sounds off the critical path. These were three
+// top-level calls, which fetched and WebAudio-decoded 22 assets (from a 1.3 MB
+// public/sounds/) before React rendered — pure contention with first paint.
+// Nothing is lost by deferring: the AudioContext is gesture-suspended anyway,
+// so no sound can play until the user interacts, and decode is fast once it
+// runs. uiClickSounds is sample-only with no oscillator fallback, so an
+// undecoded key plays SILENCE — that is why the full list is preloaded rather
+// than left to lazy-load on first play.
+{
+  const w = window as any;
+  const schedule: (cb: () => void) => unknown =
+    w.requestIdleCallback || ((cb: () => void) => w.setTimeout(cb, 1200));
+  schedule(() => {
+    preloadSoundAssets();
+    preloadSoundAssets(['navigate', 'ui_open', 'ui_close', 'ui_error']);
+    preloadSoundAssets([
+      'info', 'chirp', 'double_chirp', 'error', 'caution', 'warning',
+      'alert', 'alarm', 'descending', 'p1_alert', 'key_up', 'key_out', 'data_chirp',
+    ]);
+  });
+}
 // Ctrl+Alt+D fail-safe diagnostic — captures UI trap state when the
 // app freezes (clicks/typing dead). Installed at the document level
 // so it fires even if React/focus traps are stuck.

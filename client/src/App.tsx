@@ -20,7 +20,6 @@ import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
-import DownloadsPage from './pages/DownloadsPage';
 // Dispatch + Map are the two heaviest field screens (~6k lines each plus deep
 // import trees). They're lazy-split to keep them OUT of the login/critical
 // bundle — but because they're the most-navigated-to pages, they're also
@@ -38,6 +37,9 @@ const MapPage = lazyRetry(importMap);
 // keeps the landing instant without taxing the login path.
 export const importDashboard = () => import('./pages/DashboardPage');
 const DashboardPage = lazyRetry(importDashboard);
+// Public downloads/marketing route — 25.3 KB plus KioskOsInstallGuide's
+// 15.5 KB. It was static, so every LOGIN downloaded and parsed it.
+const DownloadsPage = lazyRetry(() => import('./pages/DownloadsPage'));
 // Lazy import with auto-retry on chunk load failure (stale cache after deploys)
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
