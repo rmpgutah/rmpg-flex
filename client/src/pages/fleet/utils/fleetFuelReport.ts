@@ -21,7 +21,7 @@ import { parseTimestamp } from '../../../utils/dateUtils';
 import { toDisplayLabel } from '../../../utils/formatters';
 import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 
-interface Args {
+export interface Args {
   vehicle: FleetVehicle;
   fuelLogs: FleetFuelLog[];
   summary: FleetFuelSummary | null;
@@ -54,7 +54,7 @@ function asciify(s: string): string {
   return s.replace(/→/g, ' to ').replace(/—/g, ' - ').replace(/–/g, ' - ');
 }
 
-export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabel }: Args): void {
+export function buildFleetFuelReport({ vehicle, fuelLogs, summary, periodLabel }: Args): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 40;
@@ -318,7 +318,13 @@ export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabe
     y += 11;
   }
 
-  // ── Save ──────────────────────────────────────────────────
-  const filename = `fuel-report-${vehicle.vehicle_number || 'vehicle'}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  return doc;
+}
+
+/** Build the fuel report PDF and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder + saver). */
+export function generateFleetFuelReport(args: Args): void {
+  const doc = buildFleetFuelReport(args);
+  const filename = `fuel-report-${args.vehicle.vehicle_number || 'vehicle'}-${new Date().toISOString().slice(0, 10)}.pdf`;
   doc.save(filename);
 }
