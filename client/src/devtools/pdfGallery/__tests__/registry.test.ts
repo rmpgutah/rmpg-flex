@@ -15,6 +15,20 @@ describe('PDF_REGISTRY', () => {
     );
   });
 
+  it('contains the batch-2 evidence & custody entries', () => {
+    const ids = entriesByCriticality('evidence-custody').map((e) => e.id).sort();
+    expect(ids).toEqual(
+      [
+        'bodycam-video-custody',
+        'equipment-custody',
+        'evidence-item',
+        'forensic-case',
+        'jail-booking-sheet',
+        'jail-roster-snapshot',
+      ].sort(),
+    );
+  });
+
   it('looks up by id', () => {
     expect(getEntry('trespass-order')?.label).toBe('Trespass Order');
     expect(getEntry('does-not-exist')).toBeUndefined();
