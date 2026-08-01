@@ -53,8 +53,34 @@ import {
   navTripDetailFixtures,
   mapSituationReportFixtures,
 } from './fixtures/dispatchPatrol';
+import { generateInvoicePdf } from '../../utils/invoicePdfGenerator';
+import { generateDocumentIntakePdf } from '../../utils/documentIntakePdf';
+import { generateTrainingCertificatePdf } from '../../utils/trainingCertificatePdf';
+import { generateSkipTracerReportPdf } from '../../utils/skipTracerReportPdf';
+import { buildProposalPdf } from '../../utils/proposalPdf';
+import {
+  invoiceFixtures,
+  documentIntakeFixtures,
+  trainingCertificateFixtures,
+  skipTracerReportFixtures,
+  proposalFixtures,
+} from './fixtures/clientFacing';
+import type { SkipTracerFixtureInput, ProposalFixtureInput } from './fixtures/clientFacing';
 import { createEntry } from './types';
 import type { Criticality, PdfRegistryEntry } from './types';
+
+// generateSkipTracerReportPdf takes two positional args (subject, ctx); the
+// registry's `generate` contract is single-argument, so this adapter unpacks
+// the bundled fixture input rather than changing the generator's signature.
+function skipTracerAdapter(input: SkipTracerFixtureInput) {
+  return generateSkipTracerReportPdf(input.subject, input.ctx);
+}
+
+// buildProposalPdf takes two positional args (proposal, client); same
+// single-argument adapter pattern as skipTracerAdapter above.
+function proposalAdapter(input: ProposalFixtureInput) {
+  return buildProposalPdf(input.proposal, input.client);
+}
 
 // One entry per PDF output type. This is the inventory: no complete
 // list of RMPG Flex's PDF outputs existed before this file.
@@ -242,6 +268,46 @@ export const PDF_REGISTRY: PdfRegistryEntry[] = [
     module: 'client/src/utils/mapSituationReportPdf.ts',
     generate: buildMapSituationReportPdf,
     fixtures: mapSituationReportFixtures,
+  }),
+  createEntry({
+    id: 'invoice',
+    label: 'Client Invoice',
+    criticality: 'client-facing',
+    module: 'client/src/utils/invoicePdfGenerator.ts',
+    generate: generateInvoicePdf,
+    fixtures: invoiceFixtures,
+  }),
+  createEntry({
+    id: 'document-intake',
+    label: 'Document Intake Review',
+    criticality: 'client-facing',
+    module: 'client/src/utils/documentIntakePdf.ts',
+    generate: generateDocumentIntakePdf,
+    fixtures: documentIntakeFixtures,
+  }),
+  createEntry({
+    id: 'training-certificate',
+    label: 'Training Certificate',
+    criticality: 'client-facing',
+    module: 'client/src/utils/trainingCertificatePdf.ts',
+    generate: generateTrainingCertificatePdf,
+    fixtures: trainingCertificateFixtures,
+  }),
+  createEntry({
+    id: 'skip-tracer-report',
+    label: 'Skip Tracer Report',
+    criticality: 'client-facing',
+    module: 'client/src/utils/skipTracerReportPdf.ts',
+    generate: skipTracerAdapter,
+    fixtures: skipTracerReportFixtures,
+  }),
+  createEntry({
+    id: 'proposal',
+    label: 'Client Proposal',
+    criticality: 'client-facing',
+    module: 'client/src/utils/proposalPdf.ts',
+    generate: proposalAdapter,
+    fixtures: proposalFixtures,
   }),
 ];
 

@@ -31,7 +31,7 @@ import { registerArialFont } from './pdf/fonts/registerArial';
 
 // ── Data interface ────────────────────────────────────────
 
-interface InvoicePdfData {
+export interface InvoicePdfData {
   invoice_number: string;
   status: string;
   client_name?: string;

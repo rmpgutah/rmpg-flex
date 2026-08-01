@@ -54,6 +54,23 @@ describe('PDF_REGISTRY', () => {
     );
   });
 
+  it('contains the batch-5e client-facing entries', () => {
+    const ids = entriesByCriticality('client-facing').map((e) => e.id).sort();
+    expect(ids).toEqual(
+      [
+        'document-intake',
+        'invoice',
+        'proposal',
+        'skip-tracer-report',
+        'training-certificate',
+      ].sort(),
+    );
+  });
+
+  it('has the expected total registry size', () => {
+    expect(PDF_REGISTRY.length).toBe(28);
+  });
+
   it('looks up by id', () => {
     expect(getEntry('trespass-order')?.label).toBe('Trespass Order');
     expect(getEntry('does-not-exist')).toBeUndefined();
