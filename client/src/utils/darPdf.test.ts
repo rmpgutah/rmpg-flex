@@ -13,10 +13,24 @@ vi.mock('jspdf', async (importOriginal) => {
   class PatchedJsPDF extends actual.jsPDF {
     constructor(...args: ConstructorParameters<typeof actual.jsPDF>) {
       super(...args);
-      this.save = ((filename?: string) => {
+      const self = this;
+      // jsPDF#save is overloaded — sync, returning `jsPDF`, by default, or
+      // `Promise<void>` when called with `{ returnPromise: true }`. A single
+      // arrow function can't satisfy both overload signatures at once (that's
+      // the TS2352 the coordinator hit), so this is declared with real
+      // overload signatures, same as the library's own type, instead of
+      // casting past the mismatch — a lossy cast here would be the one place
+      // proving generateDarPdf's save behaviour didn't change.
+      function patchedSave(filename?: string): PatchedJsPDF;
+      function patchedSave(filename: string, options: { returnPromise: true }): Promise<void>;
+      function patchedSave(
+        filename?: string,
+        options?: { returnPromise: true },
+      ): PatchedJsPDF | Promise<void> {
         saveSpy(filename);
-        return this;
-      }) as typeof this.save;
+        return options?.returnPromise ? Promise.resolve() : self;
+      }
+      this.save = patchedSave;
     }
   }
   return { ...actual, default: PatchedJsPDF, jsPDF: PatchedJsPDF };
