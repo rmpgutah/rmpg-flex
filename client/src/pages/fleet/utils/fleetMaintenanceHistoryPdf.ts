@@ -12,13 +12,13 @@ import jsPDF from 'jspdf';
 import type { FleetVehicle, FleetMaintenance } from '../../../types';
 import { safeDateStr } from '../../../utils/dateUtils';
 
-interface Args {
+export interface Args {
   vehicle: FleetVehicle;
   records: FleetMaintenance[];
   periodLabel?: string;
 }
 
-export function generateFleetMaintenanceHistoryPdf({ vehicle, records, periodLabel }: Args): void {
+export function buildFleetMaintenanceHistoryPdf({ vehicle, records, periodLabel }: Args): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const marginX = 40;
   const pageW = doc.internal.pageSize.getWidth();
@@ -137,6 +137,13 @@ export function generateFleetMaintenanceHistoryPdf({ vehicle, records, periodLab
     doc.setTextColor(0);
   }
 
-  const filename = `maintenance-history-${vehicle.vehicle_number || 'vehicle'}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  return doc;
+}
+
+/** Build the maintenance history PDF and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder + saver). */
+export function generateFleetMaintenanceHistoryPdf(args: Args): void {
+  const doc = buildFleetMaintenanceHistoryPdf(args);
+  const filename = `maintenance-history-${args.vehicle.vehicle_number || 'vehicle'}-${new Date().toISOString().slice(0, 10)}.pdf`;
   doc.save(filename);
 }
