@@ -19,6 +19,7 @@ import { tryReloadForChunkFailure, normalizeChunkError } from './utils/chunkRetr
 import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
+import { prefetchRoute, ROLE_PREFETCH_ROUTES } from './hooks/useRoutePrefetch';
 import LoginPage from './pages/LoginPage';
 // Dispatch + Map are the two heaviest field screens (~6k lines each plus deep
 // import trees). They're lazy-split to keep them OUT of the login/critical
@@ -461,14 +462,6 @@ function RedirectKeepQuery({ to }: { to: string }) {
   return <Navigate to={`${to}${loc.search}${loc.hash}`} replace />;
 }
 
-// Roles that actually navigate to Dispatch/Map in normal use. Prefetching
-// for every role (including client_viewer, contract_manager, human_resources
-// — none of which have Dispatch/Map in their nav) was downloading the two
-// heaviest chunks in the app (Dispatch + Map, which pull in the ~2.3MB
-// mapbox-gl/deck.gl bundle) on every authenticated session regardless of
-// need — a self-inflicted "system load" spike ~1.5s after every page load.
-const DISPATCH_MAP_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
-
 function AppRoutes() {
   const { isAuthenticated, isLoading, user } = useAuth();
 
@@ -482,28 +475,21 @@ function AppRoutes() {
     importDashboard().catch(() => {});
   }, [isAuthenticated]);
 
-  // Idle-prefetch the heaviest field routes once authenticated, so the first
-  // navigation to Dispatch/Map is instant rather than showing the loading
-  // splash while the chunk downloads over cellular. Scheduled during idle time
-  // (requestIdleCallback) so it never competes with the initial paint or the
-  // landing Dashboard's data fetches. import() is deduped, so this just warms
-  // the module cache — React.lazy then resolves synchronously on navigation.
-  // Skipped for roles that never see these routes, and for Save-Data /
-  // slow-connection sessions where the bandwidth is better spent elsewhere.
+  // Idle-prefetch the current role's most-navigated routes so the first
+  // navigation is instant rather than showing the module splash over cellular.
+  // Scheduled during idle so it never competes with first paint or the landing
+  // Dashboard's fetches. Was a hardcoded Dispatch+Map set; it's a role table
+  // now (ROLE_PREFETCH_ROUTES) so roles that never open those two stop paying
+  // for the ~2.3 MB mapbox/deck.gl download. prefetchRoute owns the saveData /
+  // slow-connection guard and swallows failures.
   React.useEffect(() => {
-    if (!isAuthenticated || !user || !DISPATCH_MAP_ROLES.has(user.role)) return;
+    if (!isAuthenticated || !user) return;
+    const routes = ROLE_PREFETCH_ROUTES[user.role] ?? [];
+    if (routes.length === 0) return;
     const w = window as any;
-    const conn = (navigator as any).connection;
-    if (conn && (conn.saveData || /^(slow-2g|2g)$/.test(conn.effectiveType || ''))) return;
     const schedule: (cb: () => void) => number =
       w.requestIdleCallback || ((cb: () => void) => w.setTimeout(cb, 1500));
-    // Swallow prefetch failures — a transient cellular blip here is harmless;
-    // the real navigation still goes through lazyRetry (which reloads on a
-    // genuine chunk-load failure). We just don't want an unhandled rejection.
-    const id = schedule(() => {
-      importDispatch().catch(() => {});
-      importMap().catch(() => {});
-    });
+    const id = schedule(() => routes.forEach(prefetchRoute));
     return () => {
       if (w.cancelIdleCallback) w.cancelIdleCallback(id);
       else w.clearTimeout(id);
