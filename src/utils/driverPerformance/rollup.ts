@@ -4,7 +4,7 @@
 // need attribution resolution — that asymmetry is why the denominator is
 // trustworthy from day one while the numerator carries a confidence flag.
 
-import { query, execute } from '../db';
+import { query, execute, ensureDriverPerformanceColumns } from '../db';
 import { log } from '../logger';
 import { parseD1TimestampMs } from '../fleetio/sync';
 import { resolveAttribution, type AssignmentWindow } from './attribution';
@@ -70,6 +70,16 @@ export async function rollupDay(
   db: D1Database,
   perfDate: string,
 ): Promise<{ officersProcessed: number; failures: number }> {
+  // Schema self-heal: covers EVERY caller (nightly cron, admin POST
+  // /recompute, and any future one) from this single seam. Idempotent and
+  // cached per-isolate (src/utils/db.ts), so the steady-state cost is one
+  // PRAGMA check on a cold start — not a query per call. Without this, a
+  // migration (e.g. 0222) that fails to reach live D1 silently (deploy.yml's
+  // migration step is continue-on-error) turns into a permanent gap: the
+  // cron only trails 3 days, so once a failed day ages out of that window
+  // nothing ever recomputes it again.
+  await ensureDriverPerformanceColumns(db);
+
   const dayStart = `${perfDate} 00:00:00`;
   const dayEnd = `${perfDate} 23:59:59`;
 

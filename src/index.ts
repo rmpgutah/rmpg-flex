@@ -594,8 +594,16 @@ export default {
                 day, officersProcessed: r.officersProcessed, failures: r.failures,
               });
             } catch (err) {
-              // One bad day must not abort the other two.
-              log.error('driver-performance rollup day failed', { day }, err as Error);
+              // One bad day must not abort the other two. Greppable so an
+              // operator can find exactly which perf_date needs a manual
+              // POST /api/driver-performance/recompute — perf_date is
+              // unambiguous in the context object (single ISO date, no
+              // other date-shaped keys nearby).
+              log.error(
+                `driver-performance rollup failed for perf_date=${day} — manual recompute required via POST /api/driver-performance/recompute`,
+                { perf_date: day },
+                err as Error,
+              );
             }
           }
         }).catch((err) => log.error('driver-performance rollup import failed', {}, err as Error)),
