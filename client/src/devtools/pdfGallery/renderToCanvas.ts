@@ -1,10 +1,20 @@
 import type { jsPDF } from 'jspdf';
-// The legacy build works in both the browser and plain Node (vitest) — see
-// client/src/utils/pdf/audit/textLayer.ts for the same choice and rationale.
-// The non-legacy build references DOMMatrix at module scope, which throws
-// under vitest's environment before a single test runs.
-import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+// Plain pdfjs-dist, matching the two existing call sites:
+// client/src/lib/rmpg-pdf-engine/backends/pdfjs.ts and
+// client/src/pages/ServeIntakePage.tsx. This module does real canvas
+// rasterization in the browser, so it must use the same build the product
+// actually ships with — no second, divergent pdfjs build for a harness
+// whose entire value is "what renders here is what prints."
+import * as pdfjs from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { PRINT_SCALE, marginGuideRect } from './renderGeometry';
+import type { GuideRect } from './renderGeometry';
+
+// Re-exported so existing/future imports of these from renderToCanvas.ts
+// keep working; the canonical, pdfjs-free definitions live in
+// renderGeometry.ts.
+export { PRINT_SCALE, marginGuideRect };
+export type { GuideRect };
 
 // Module-level worker registration, same pattern as
 // client/src/lib/rmpg-pdf-engine/backends/pdfjs.ts and
@@ -15,31 +25,6 @@ try {
 } catch (err) {
   // eslint-disable-next-line no-console
   console.warn('[pdf-gallery] Failed to set pdfjs worker URL.', err);
-}
-
-// pdfjs measures at 72 DPI; 150 DPI is the lowest scale at which 6pt
-// form-label text is legible enough to judge clipping by eye.
-export const PRINT_SCALE = 150 / 72;
-
-export interface GuideRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-export function marginGuideRect(
-  pageWidthPt: number,
-  pageHeightPt: number,
-  marginPt: number,
-  scale: number,
-): GuideRect {
-  return {
-    x: marginPt * scale,
-    y: marginPt * scale,
-    width: Math.max(0, (pageWidthPt - marginPt * 2) * scale),
-    height: Math.max(0, (pageHeightPt - marginPt * 2) * scale),
-  };
 }
 
 export async function renderPdfToCanvases(doc: jsPDF, scale = PRINT_SCALE): Promise<HTMLCanvasElement[]> {

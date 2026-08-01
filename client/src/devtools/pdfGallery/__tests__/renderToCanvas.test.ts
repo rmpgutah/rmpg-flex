@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PRINT_SCALE, marginGuideRect } from '../renderToCanvas';
+import { PRINT_SCALE, marginGuideRect } from '../renderGeometry';
 
 describe('PRINT_SCALE', () => {
   it('renders at 150 DPI relative to pdfjs 72-DPI baseline', () => {

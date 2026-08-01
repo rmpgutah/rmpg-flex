@@ -1,9 +1,50 @@
 import type { jsPDF } from 'jspdf';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 // The legacy build's text extraction path needs no canvas — only
 // rasterization does. That is what makes this assertion runnable in
 // plain Node under vitest, and therefore usable as a CI gate.
+
+// This module runs in BOTH plain Node (CI text-layer assertions, via
+// vitest) and the browser (the /__pdf-gallery page, via PdfGalleryPage.tsx
+// calling extractPdfText for the placeholder-leak panel). It used to have
+// no worker configuration of its own: it relied on renderToCanvas.ts —
+// which, until a 2026-07-31 review, imported this *same* legacy specifier —
+// mutating the shared `GlobalWorkerOptions` as an accidental side effect.
+// When renderToCanvas.ts was switched to the standard `pdfjs-dist` build
+// (for rasterization-fidelity reasons — the gallery must render with the
+// same build the app ships, which text extraction has no reason to share),
+// that side effect vanished and this module broke standalone in the
+// browser with "No GlobalWorkerOptions.workerSrc specified". vitest never
+// caught it because pdfjs falls back to a fake, in-process worker under
+// Node when no browser Worker constructor exists, which is the CORRECT
+// behavior there — a real asset URL doesn't resolve under Node anyway.
+// So the guard below must only assign a browser asset URL when actually
+// running in a browser-like environment, must never fire under Node, and
+// must never clobber a workerSrc some other module already set. Removing
+// or "simplifying" this guard will silently reintroduce the exact bug
+// above the next time some other file stops importing the legacy build.
+//
+// The decision itself is pulled out as `shouldConfigureWorkerSrc` and
+// exported so a test can drive it directly with fake inputs. Testing it
+// through the REAL `pdfjs.GlobalWorkerOptions` object end-to-end doesn't
+// work: pdfjs-dist's own `PDFWorker` static initializer treats ANY run
+// under a real Node `process` global — including vitest's jsdom
+// environment, which does not remove `process` — as "Node mode" and
+// pre-seeds `GlobalWorkerOptions.workerSrc` with its own internal default
+// before this guard ever runs. That masks whether OUR guard fired at all,
+// the same masking this whole bug already lived behind once.
+export function shouldConfigureWorkerSrc(
+  hasBrowserWindow: boolean,
+  existingWorkerSrc: string | undefined,
+): boolean {
+  return hasBrowserWindow && !existingWorkerSrc;
+}
+
+if (shouldConfigureWorkerSrc(typeof window !== 'undefined', pdfjs.GlobalWorkerOptions.workerSrc)) {
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+}
 
 export interface PlaceholderLeak {
   page: number;
