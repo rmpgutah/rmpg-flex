@@ -656,7 +656,18 @@ records.get('/persons/search', async (c) => {
     const db = getDb(c.env);
     const q = c.req.query('q');
     if (!q || q.length < 2) return c.json([]);
-    const mq = containsAnyClause(['last_name', 'first_name', 'phone']);
+    // Three person-search paths in this file each named a DIFFERENT column set:
+    // this one (last/first/phone), /persons/alias-search (first/last only), and
+    // the bulk /persons list (first/last/alias_nickname/phone/email/dl_number).
+    // The bulk list was the most complete, so the two dedicated SEARCH
+    // endpoints — the ones an officer actually types into — were the narrowest.
+    // Aligned here, plus the alias and secondary-phone columns none of them had.
+    const mq = containsAnyClause([
+      'last_name', 'first_name', 'middle_name',
+      'alias_nickname', 'aliases',
+      'phone', 'phone_secondary', 'home_phone', 'work_phone',
+      'email', 'dl_number',
+    ]);
     const rows = await query<Record<string, unknown>>(db, `
       SELECT * FROM persons
       WHERE ${mq.sql}
@@ -749,15 +760,27 @@ records.post('/persons/merge', async (c) => {
   } catch (err) { return dbErrorResponse(c, err, 'Merge failed'); }
 });
 
-// GET /records/persons/alias-search — search by potential alias (name match).
+// GET /records/persons/alias-search — search by potential alias.
+//
+// This searched ONLY first_name and last_name, which made it functionally
+// identical to a plain name search: the one endpoint whose entire purpose is
+// finding people by alias could not match an alias at all. `persons` stores
+// them in alias_nickname and aliases.
+//
+// Verified live: 'NIKITA' and 'BRAYDEN' are real alias_nickname values that
+// returned 0 rows here. Same defect class as #3222/#3223 — a matcher naming
+// fewer columns than the data lives in.
 records.get('/persons/alias-search', async (c) => {
   try {
     const db = getDb(c.env);
     const q = c.req.query('q');
     if (!q || q.length < 2) return c.json([]);
-    const ma = containsAnyClause(['first_name', 'last_name']);
+    const ma = containsAnyClause([
+      'alias_nickname', 'aliases',
+      'first_name', 'last_name', 'middle_name',
+    ]);
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT id, first_name, last_name, dob, gender FROM persons WHERE ${ma.sql} ORDER BY last_name, first_name LIMIT 50`,
+      `SELECT id, first_name, last_name, dob, gender, alias_nickname FROM persons WHERE ${ma.sql} ORDER BY last_name, first_name LIMIT 50`,
       ...ma.binds(q));
     return c.json(rows);
   } catch (err) { return c.json([]); }
