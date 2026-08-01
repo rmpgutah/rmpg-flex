@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- ***   You must remove 'https://staging.slco.org' from this before going onto the test or prod servers *** -->
+
+<head>
+        <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=11" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    
+    <link href="../../" rel="canonical" />
+    <link href="../../" hreflang="en" rel="alternate" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="description" content="Assessor Parcel Search" />
+    <meta property="og:description" content="Assessor Parcel Search" />
+    <meta property="og:title" content="Assessor Parcel Search" />
+    <meta property="og:url" content="../../" />
+    <!-- *** You may want to change these times  just set the date and keep everything from the T -->
+    <meta property="article:published_time" content="2022-02-01T14:09:35.0000000-07:00" />
+    <meta propery="idio:saved_time" content="2022-02-15T14:47:06.0000000-07:00" /> 
+    <meta propery="idio:page_type" content="Application" />
+    <meta propery="idio:page_lang" content="en" />
+    <meta propery="idio:page_disable" content="True" />
+    <meta property="article:category" content="Assessor" />
+    <meta property="article:category" content="Business Resources" />
+    <!-- *** This is the single stylesheet we have to rule them all *** -->
+    <link href="https://slco.org/Static/scss/styles.min.css" type="text/css" rel="stylesheet" />
+    <script src="https://www.google.com/recaptcha/api.js?render=6Lc63FYeAAAAAC3LIke1A-YvSj4StB8ntNCOJmg3"></script>
+    <link rel="apple-touch-icon" sizes="180x180" href="https://slco.org/static/favicons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="https://slco.org/static/favicons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="https://slco.org/static/favicons/favicon-16x16.png">
+    <link rel="mask-icon" href="https://slco.org/static/favicons/safari-pinned-tab.svg" color="#5bbad5">
+    <meta name="msapplication-TileColor" content="#b91d47">
+    <meta name="theme-color" content="#ffffff">
+    <link rel="stylesheet" href="https://slco.org/Static/scss/styles.min.css">
+    <link rel="stylesheet" href="css/AssNifTic.css?v6" type="text/css">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script><script src="js/Untitled4.js?v=14" type="text/javascript"></script>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+   
+    <script src="https://www.saltlakecounty.gov/js/jqueryExt.js" type="text/javascript"></script>
+    <script src="https://www.saltlakecounty.gov/js/cookie.min.js" type="text/javascript"></script>
+    <script src="https://www.saltlakecounty.gov/js/BootstrapBreakpoint.js" type="text/javascript"></script>
+    <script src="https://www.saltlakecounty.gov/js/jquery-accessibleMegaMenu.js" type="text/javascript"></script>
+    <script src="https://www.saltlakecounty.gov/js/Niftic-Main.js" type="text/javascript"></script>
+
+
+    <script src="https://www.saltlakecounty.gov/js/jqueryExt.js"></script>
+<script src="https://www.saltlakecounty.gov/js/jquery-ui.min.js"></script>
+<script src="https://www.saltlakecounty.gov/js/ParcelTools.js"></script>
+<script src="https://www.saltlakecounty.gov/js/jquery.mask.min.js"></script>
+
+<script src="Query/newwin.js" type="text/javascript"></script>
+
+
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-1MHYCTTD43"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-1MHYCTTD43');
+</script>
+
+<!-- Clarity -->
+<script type="text/javascript">
+  (function(c,l,a,r,i,t,y){
+      c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+      t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+      y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+  })(window, document, "clarity", "script", "ov2lirtqxp");
+</script>
+<!-- Datadog -->
+<script>
+  (function(h,o,u,n,d) {
+    h=h[d]=h[d]||{q:[],onReady:function(c){h.q.push(c)}}
+    d=o.createElement(u);d.async=1;d.src=n;d.crossOrigin=''
+    n=o.getElementsByTagName(u)[0];n.parentNode.insertBefore(d,n)
+  })(window,document,'script','https://www.datadoghq-browser-agent.com/us3/v6/datadog-rum.js','DD_RUM')
+  window.DD_RUM.onReady(function() {
+    window.DD_RUM.init({
+      clientToken: 'pub28dd965cc3ccf5d354a389bfe921db61',
+      applicationId: 'eaab632b-070c-4734-af14-70ae3c3b7456',
+      site: 'us3.datadoghq.com',
+      service: 'apps.saltlakecounty.gov',
+      env: 'prod',
+      // Specify a version number to identify the deployed version of your application in Datadog
+      // version: '1.0.0',
+      sessionSampleRate: 100,
+      sessionReplaySampleRate: 20,
+      trackBfcacheViews: true,
+      defaultPrivacyLevel: 'mask-user-input',
+    });
+  })
+</script></head>
+
+<body>
+   <!-- start header -->
+	<header class="sticky-top">
+        <div class="container">
+            <!-- *** The links in the Navbar WILL change - so this too will need to change to keep it consistant *** -->
+            <nav class="navbar navbar-expand-lg " role="navigation" id="MainNavigation" aria-label="Main Navigation">
+                <div class="container">
+                    <a class="navbar-brand" href="/">
+                        <img src="/static/svg/slcoHozLogoColor.svg"
+                            alt="Salt Lake County Home Page" class="Logo d-inline-block align-text-top" />
+                    </a>
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#main-nav"
+                        aria-label="Open Navigation">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    
+                </div>
+            </nav>
+        </div>
+    </header>
+        <section class="banner" aria-label="Banner">
+        <div class="container">
+            <div class="alert-container">
+            </div>
+            <div class="d-flex flex-column flex-sm-row align-items-start align-items-sm-center">
+                <p class="PageHeader">Assessor</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- end header + main nav-->
+<!-- end Banner -->
+ <section class="py-2" role="navigation">
+        <div class="container">
+            <nav aria-label="breadcrumb" class="accMenu">
+                <ol class="breadcrumb am" id="Breadcrumb" role="menu">
+                    <li class="breadcrumb-item am-item" role="menuitem"><a href="https://slco.org/">SLCo</a>
+                    </li>
+                    <li class="breadcrumb-item am-item" role="menuitem"><a
+                            href="/assessor/">Assessor</a></li>
+                            <li class="breadcrumb-item am-item" role="menuitem"><a
+                            href="query.cfm">Parcel Search</a></li>
+                    <li class="breadcrumb-item active am-item" aria-current="page" role="menuitem">Parcel 16-31-127-029-0000</li>
+                </ol>
+            </nav>
+        </div>
+    </section>
+    <section>
+        <div class="container">
+            <div class="row">
+                <div class="col-12">
+                    <div class="alert-container">
+                      
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+ 
+
+   
+    
+
+
+
+<section class="main">
+        <div class="container" id="skipto">
+            <h2 id="MainTitle" class="mainTitle">Parcel Details</h2>
+            <div class="row align-items-start">
+                <main class="col-12 col-lg-8">
+                    <section class="overview">
+
+                     
+                        <div class="tXl">
+                        <div id="sketch" style="display:none"></div>
+	<div id="detailDiv">
+     
+        <form name="parcelsearch" action="resultsMain.cfm" method="post" id="parcelsearch" onsubmit="displaySearchMask();detailChoice2('resultsMain.cfm');return checkvalue1();">
+        <div class="accordion accordion-flush" id="stack-ParcelSearch">
+        
+
+
+    <div class="accordion-item rack" id="s-42131324">
+        <div class="container">
+            <h3 class="accordion-header" id="headingS-42131324">
+               
+                <button class="accordion-button collapsed ps-0" type="button" data-bs-toggle="collapse" data-bs-target="#collapseS-42131324" aria-expanded="false" aria-controls="collapseS-42131324">
+                    Parcel Search form
+                </button>
+            </h3>
+       
+                <div id="collapseS-42131324" class="accordion-collapse collapse" aria-labelledby="headingS-42131324" data-bs-parent="#stack-ParcelSearch">
+            <div class="accordion-body">
+                <div class="container w-50">
+ 
+          <p>
+          <label for="itemname">Owner:</label>  <input name="itemname" id="itemname" type="text" class="search-box  form-control"  maxlength="30" tabindex="2" onchange="return checkvalue1();"  style="width:12em" placeholder="Smith, Joe"/></span>
+					</p>
+        <p>
+          <label for="address">Address:</label>
+        <input id="address" name="address" id="address" class="search-box form-control" autocomplete="off" type="text" 
+			</p>
+           <p>                 
+           
+               <label for="parcelid">Parcel ID:</label><input name="parcelid" id="parcelid" type="text" class="search-box  form-control" accesskey="p" tabindex="7" title="Parcel Id Search field"  style="width:12em" placeholder="00-00-000-000-0000" maxlength="18" /><span style="font-size:0.75em">6 - 14 digits</span></span>
+           </p>
+            
+         
+
+          <input id="Submit" type="submit" class="btn btn-primary"  value="Submit Search" title="Submit Query" alt="Submit" accesskey="s" tabindex="8"/>
+          <input id="reset" type="button"  class="btn btn-primary" value="Clear Entries" title="Clear fields" accesskey="c" alt="clear" tabindex="9" onclick="clearEntries()"/>
+          
+			 <div> &nbsp;<span style="font-size:0.95em;">When viewing Parcel Details: 
+		 <div><input id="classicPage" name="classicPage" type="checkbox" tabindex="10"	 onclick="viewSelect(1)">
+		 <label for="classicPage"> View classic page </label></div>
+        <div> <input id="printable" name="printable" type="checkbox" tabindex="11"   onclick="viewSelect(2)">
+         <label for="printable">View printable version </label> </div>	
+		 </div>
+			   </div>
+			   
+			 </div>
+			</div>
+			</div>       
+        </div>
+		</div>
+   
+        
+    </form>
+	
+	
+	
+          <h4>This page shows the assessor's CAMA data, 
+			  as it was, on May 22, 2026. </h4>  
+    
+		
+     
+    
+    <div id="parcelFieldNames" style=" text-align:left; padding:3px;border:1px solid #EBEBEB"> 
+       
+        <div style="background-color:#f3ebe5;font-weight:bold"> 
+          <div style="float:right;">&nbsp; &nbsp; 16-31-127-029-0000</div>
+          Parcel</div>
+        <div class="valueSummBox" style="float:left;width:100%;"> 
+		<div> 
+			
+		<table width="100%">
+		<tbody><tr><td valign="top" scope="row">Owner </td><td style="text-align:right"> GARLUTZO, ANDREW </td></tr>
+			<tr class="greyBackground"><td scope="row">Address</td><td style="text-align:right;">3533 S TERRA SOL DR</td></tr>
+			<tr><td>Total Acreage</td><td style="text-align:right;"><a href="javascript:newwin('par','ParcelRecord','totacres');" title="description" >0.07</a></td></tr>
+			<tr class="greyBackground"><td nowrap>Above Grade sqft.</td><td style="text-align:right;"><a href="javascript:newwin('res','ParcelRecord','abovegrade');" title="description">1604</a></td></tr>
+			
+			<tr><td scope="row" style="font-weight: normal">Property Type</td><td style="text-align:right;">119 - <a href="javascript:newwin('par','ParcelRecord','propertytype');" title="description">PUD</a></td></tr>
+			<tr class="greyBackground"><td scope="row">Tax District</td><td style="text-align:right;"><a href="javascript:newwin('par','ParcelRecord','taxdistrict');" title="description">14B</a></td></tr>
+			<tr><td>Tax District location</td><td style="text-align:right;">SSALTLAKE/G</td></tr>
+			<tr class="greyBackground"><td scope="row">2026 Land Value</td><td style="text-align:right;font-size:1.1em;">$          85,400</td></tr>
+			<tr><td scope="row">2026 Building Value</td><td style="text-align:right;font-size:1.1em;">$         511,200</td></tr>
+			<tr class="greyBackground"><td scope="row">2026 Market Value</td><td style="text-align:right;font-size:1.1em;font-weight:bold;">$         596,600</td></tr>
+			<tr ><td scope="row">2026 Taxable Value</td><td style="text-align:right;font-size:1.1em;font-;">$         328,130</td></tr>
+			
+		</tbody></table>
+       </div>
+        
+        
+        
+       </div> 
+	   <div class="valueSummBox" style="float:left;width:320px;overflow:auto;">
+          <div style="height:200px;width:300px;"> 
+			  
+                
+						No images found
+					
+			  <br/>
+            
+			</div> 
+			</div>
+       
+      
+	 
+	 <div id="googlemap"  class="valueSummBox" style="float:left;font-size:0.7em;line-height:0.9em"> 
+       
+	   
+          <a href="http://maps.google.com/maps?hl=en&rls=com.microsoft:en-us:IE-SearchBox&q=40.694540870,-111.882090920&um=1&ie=UTF-8&sa=N&tab=il" target="_blank" title="Link to Google Maps">
+		  
+		  <iframe src="StaticMap.cfm?polyx=40.694540870&polyy=-111.882090920" frameborder="0" height="220" title="location map image"></iframe>
+		  
+		  <var id="polyx" hidden="true">40.694540870</var><var id="polyy" hidden="true">-111.882090920</var>
+		  <br /> 
+           40.694540870<br />-111.882090920</a>
+          
+      </div>
+	
+	<div style="clear: both;"> </div>
+    </div> 
+
+	
+	  
+        
+      <div id="valuehistory" style="position:relative; border:1px solid #EBEBEB;"> 
+        <table >
+         <thead><tr> 
+            <td colspan="6" bgcolor="#f3ebe5" scope="col" ><strong>Value History </strong> 
+            </td>
+          </tr>
+          <tr> 
+            <td width="10%" scope="col">&nbsp;</td>
+            <td width="1%" style="" scope="col"></td>
+            <td width="18%" style="text-align: right"scope="col" ><a href="javascript:newwin('val','ParcelRecord','landvalue');" style="">Land 
+              Value </a> </td>
+            <td width="23%"  style="text-align: right" scope="col"><a href="javascript:newwin('val','ParcelRecord','buildvalue');" style="" >Building 
+              Value </a> </td>
+            <td width="25%"  style="text-align: right"scope="col"><a href="javascript:newwin('val','ParcelRecord','finallvalue');" >Market 
+              Value </a> </td>
+			<td width="25%"  style="text-align: right"scope="col"><a href="javascript:newwin('val','ParcelRecord','finallvalue');" >Taxable
+				Value<sup>*</sup> </td>
+            
+          </tr>
+          </thead>
+          
+          
+          <tbody> 
+            <tr> 
+                <td scope="row">2025</td>
+                
+              <td style="">1</td>
+              <td align="right"style="">$          82,700</td>
+              <td align="right"style="">$         482,000</td>
+              <td align="right">$         564,700</td>
+			<td align="right">$         310,585</td>
+              
+            </tr>
+          
+            <tr  bgcolor="#F4F4F4"> 
+              
+                <td scope="row">2024</td>
+                
+              <td style="">1</td>
+              <td align="right"style="">$          78,300</td>
+              <td align="right"style="">$         451,200</td>
+              <td align="right">$         529,500</td>
+			<td align="right">$         291,225</td>
+              
+            </tr>
+          
+            <tr> 
+                <td scope="row">2023</td>
+                
+              <td style="">1</td>
+              <td align="right"style="">$          80,200</td>
+              <td align="right"style="">$         423,400</td>
+              <td align="right">$         503,600</td>
+			<td align="right">$         276,980</td>
+              
+            </tr>
+          
+            <tr  bgcolor="#F4F4F4"> 
+              
+                <td scope="row">2022</td>
+                
+              <td style="">1</td>
+              <td align="right"style="">$          78,600</td>
+              <td align="right"style="">$         367,500</td>
+              <td align="right">$         446,100</td>
+			<td align="right">$         245,355</td>
+              
+            </tr>
+          
+            <tr> 
+                <td scope="row">2021</td>
+                
+              <td style="">1</td>
+              <td align="right"style="">$          61,300</td>
+              <td align="right"style="">$         286,000</td>
+              <td align="right">$         347,300</td>
+			<td align="right">$         171,435</td>
+              
+            </tr>
+          
+        </table></tbody>
+		<span style="font-size: 0.9em"><sup>*</sup>before Board of Equalization</span></a>
+      </div>
+
+	
+         
+           <div name="landtable" id="landtable"> 
+            
+			   <style>#landtable th{font-weight: normal}</style>
+              
+		<table width="100%" border="0" cellpadding="0" cellspacing="0" id="landrecord">
+		<thead><tr style="Background-color:#f3ebe5;">
+				<th colspan="40" scope="col" align=""style="font-weight:bold;font-size:1.05em;" >Land Record<div style="float:right;">&nbsp; &nbsp; 16-31-127-029-0000</div>
+       </th>
+				</tr>
+				<tr  bgcolor="#F4F4F4">
+				<th scope="col">Record ID		</th>
+				
+					<td  align="right">1</td>
+				
+					<td  align="right">2</td>
+					</tr>
+				</thead><tbody>
+				<tr>
+		<th scope="row">Lot Use</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','lotuse') title="RESIDENTIAL"; >RESIDENTIAL</a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','lotuse') title="RESIDENTIAL"; >RESIDENTIAL</a></td></tr>
+				<tr bgcolor="#F4F4F4"><th scope="row">Lot Type</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','lottype') title="PRIMARY-LOT"; >PRIMARY-LOT</a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','lottype') title="RESIDUL-ACRE"; >RESIDUL-ACRE</a></td></tr>
+				<tr><th scope="row">Land Class</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','landclass') title=""; ></a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','landclass') title=""; ></a></td></tr>
+				<tr bgcolor="#F4F4F4"><th scope="row">Income Flag</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','incomeflag') title=""; ></a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','incomeflag') title=""; ></a></td></tr>
+				<tr><th scope="row">Seasonal use</th><td align="right"><a href=javascript:newwin('lnd','landRecord','seasonaluse');></a></td><td align="right"><a href=javascript:newwin('lnd','landRecord','seasonaluse');></a></td></tr>
+				<tr bgcolor="#F4F4F4"><th scope="row">Influence Type</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','inftype') title=""; ></a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','inftype') title=""; ></a></td></tr>
+				<tr><th scope="row">Influence Effect</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','infeffect') title=""; ></a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','infeffect') title=""; ></a></td></tr>
+				<tr bgcolor="#F4F4F4"><th scope="row">L Assessment Class</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','lndassesscls') title="RES-PRIMARY"; >RES-PRIMARY</a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','lndassesscls') title="RES-PRIMARY"; >RES-PRIMARY</a></td></tr>
+				<tr><th scope="row">Lot Depth</th><td align="right"><a href=javascript:newwin('lnd','landRecord','lotdepth'); ></a></td><td align="right"><a href=javascript:newwin('lnd','landRecord','lotdepth'); ></a></td></tr>
+				<tr bgcolor="#F4F4F4"><th scope="row">Acres</th><td align="right"><a href=javascript:newwin('lnd','landRecord','arces'); >0.06</a></td><td align="right"><a href=javascript:newwin('lnd','landRecord','arces'); >0.01</a></td></tr>
+				<tr><th scope="row">Zone</th><td align="right"><a href=javascript:newwin('lnd','landRecord','zone'); >1106</a></td><td align="right"><a href=javascript:newwin('lnd','landRecord','zone'); >1106</a></td></tr>
+				<tr bgcolor="#F4F4F4"><th scope="row">Sewer</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','sewer') title="PUBLIC"; >PUBLIC</a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','sewer') title="PUBLIC"; >PUBLIC</a></td></tr>
+				<tr><th scope="row">Number Lots</th><td align="right"><a href=javascript:newwin('lnd','landRecord','numblots'); >1</a></td><td align="right"><a href=javascript:newwin('lnd','landRecord','numblots'); ></a></td></tr>
+				<tr bgcolor="#F4F4F4"><th scope="row">Lot Shape</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','lotshape') title="REGULAR"; >REGULAR</a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','lotshape') title="REGULAR"; >REGULAR</a></td></tr>
+				<tr><th scope="row">Lot Location</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','lotlocation') title="INTERIOR"; >INTERIOR</a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','lotlocation') title="INTERIOR"; >INTERIOR</a></td></tr>
+				<tr bgcolor="#F4F4F4"><th scope="row">Neighborhood</th><td align="right"><a href=javascript:newwin('lnd','landRecord','nbhd'); >265</a></td><td align="right"><a href=javascript:newwin('lnd','landRecord','nbhd'); >265</a></td></tr>
+				<tr><th scope="row">Nbhd Type</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','nbhdtype') title="STATIC"; >STATIC</a></td>
+				
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','nbhdtype') title="STATIC"; >STATIC</a></td>
+				</tr>
+				<tr bgcolor="#F4F4F4"><th scope="row">Nbhd Effect</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','nbhdeffect') title="TYPICAL"; >TYPICAL</a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','nbhdeffect') title="TYPICAL"; >TYPICAL</a></td></tr>
+				<tr><th scope="row">Topography</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','topography') title="LEVEL"; >LEVEL</a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','topography') title="LEVEL"; >LEVEL</a></td></tr>
+				<tr bgcolor="#F4F4F4"><th scope="row">Traffic</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','traffic') title="LIGHT"; >LIGHT</a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','traffic') title="LIGHT"; >LIGHT</a></td></tr><tr><th scope="row">Traffic Influence</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','trfinfl') title="TYPICAL"; >TYPICAL</a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','trfinfl') title="TYPICAL"; >TYPICAL</a></td></tr><tr bgcolor="#F4F4F4"><th scope="row">Street type</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','streettype') title="PRVATE/COURT"; >PRVATE/COURT</a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','streettype') title="PRVATE/COURT"; >PRVATE/COURT</a></td></tr><tr><th scope="row">Street Finish</th>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','streetfinish') title="PAVED"; >PAVED</a></td>
+			<td align="right"><a href=javascript:newwin('lnd','landRecord','streetfinish') title="PAVED"; >PAVED</a></td></tr><tr bgcolor="#F4F4F4"><th scope="row">Curb Gutter</th><td align="right"><a href=javascript:newwin('lnd','landRecord','curbgutter'); >N</a></td><td align="right"><a href=javascript:newwin('lnd','landRecord','curbgutter'); >N</a></td></tr><tr><th scope="row">Sidewalk</th><td align="right"><a href=javascript:newwin('lnd','landRecord','sidewalk'); >N</a></td><td align="right"><a href=javascript:newwin('lnd','landRecord','sidewalk'); >N</a></td></tr>
+			</tbody>
+        </table>
+
+        
+         
+	 	</div>
+	
+				  
+    
+          <div name="residencetable" id="residencetable" style="margin-top:3px;"> 
+           <div style="font-weight:bold;font-size:1.05em;Background-color:#f3ebe5;">Residence Record<div style="float:right;">16-31-127-029-0000</div>
+        </div>
+
+<div style="border:1px solid #EBEBEB;padding:3px; margin-top:3px;">
+<div>
+<div class="residenceTableWidth">	
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','bldstyle'); class="links">RE</a></div>Building Style</div>
+
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','resclass'); class="links">P</a></div>Assessment Classification</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','extwall'); class="links">STUCCO</a></div>Exterior Wall Type</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','roofing'); class="links">PERMANENT</a></div>Roofing</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','cac'); class="links">YES-FA DUCT</a></div>Central AC</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','heattype'); class="links">PRIMRY-CNTRL</a></div>Heating</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','owenerocc'); class="links"></a></div>Owner Occupied</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','numstories'); class="links">2.0</a></div>Number of Stories</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','totrooms'); class="links">13</a></div>Total Rooms</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','numbedrooms'); class="links">4</a></div>Bedrooms</div>
+</div>
+<div class="residenceTableWidth">
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','fullbaths'); class="links">3</a></div>Full Baths</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','tqbths'); class="links"></a></div>3/4 Baths</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','halfbaths'); class="links">1</a></div>Half Baths</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','numkitchens'); class="links">1</a></div>Number of Kitchens</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','finfire'); class="links"></a></div>Finished Fire places</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','yearbuilt'); class="links">2012</a></div>Year Built</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','effyb'); class="links">2020</a></div>Effective Year Built</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','intgrd'); class="links">AVERAGE</a></div>Interior Grade</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','extgrad'); class="links">AVERAGE</a></div>Exterior Grade</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','overallg'); class="links">AVERAGE</a></div>Overall Grade</div>
+</div>
+
+<div class="residenceTableWidth">
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','intcond'); class="links">EXCELLENT</a></div>Interior Condition</div>
+<div class="landTable"><div ><a href=javascript:newwin('res','ParcelRecord','extcond'); class="links">VERY-GOOD</a></div>Exterior Condition</div>
+
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','overallcond'); class="links">VERY-GOOD</a></div>Overall Condition</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','visual_app'); class="links">AVERAGE</a></div>Visual Appeal</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','maintenace'); class="links">MINIMUM</a></div>Maintenance</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','comformity'); class="links">EQUAL-IMPRVD</a></div>Conformity</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','livability'); class="links">AVERAGE</a></div>Livability</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','prikitqual'); class="links">STANDARD</a></div>Primary Kitchen Quality</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','pribathq'); class="links">BASIC</a></div>Primary Bath Quality</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','percentcomplete'); class="links">100</a></div>Percent Complete</div>
+</div>
+<div class="residenceTableWidth">
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','mainarea'); class="links">600</a></div>Main Floor Area</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','uperarea'); class="links">1004</a></div>Upper Floor Area</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','finattic'); class="links"></a></div>Finished Attic Area</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','abovegrade'); class="links">1604</a></div>Above Ground Area</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','basementarea'); class="links">605</a></div>Basement Area</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','finbasearea'); class="links">575</a></div>Finished Basement Area</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','finbasegrade'); class="links">A</a></div>Finished Basement Grade</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','carportarea'); class="links"></a></div>Carport Surface Area</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','attachedgarea'); class="links"></a></div>Attached Garage S. Area</div>
+<div class="landTable"><div><a href=javascript:newwin('res','ParcelRecord','bltingrarea'); class="links">460</a></div>Builtin Garage S. Area</div>
+<div class="landTable greyBackground"><div><a href=javascript:newwin('res','ParcelRecord','basegrarea'); class="links"></a></div>Basement Garage S. Area</div>
+
+</div>
+
+</div>
+<div style="float:left;width:100%;text-align:right;">Above Grade Area + Basement Area: <span class="landTable" style="font-weight:bold">2209</span></div>
+<div style="clear:both"></div>
+</div>
+
+			</div>
+              
+          
+         
+		 
+		<div id="LegalDesription" style="margin-top:3px;">
+		<div style="font-weight:bold;font-size:1.05em;Background-color:#f3ebe5;"><div style="float:right;"> 16-31-127-029-0000</div>
+          Legal Description</div>
+		  <div style="border:1px solid #EBEBEB;padding:3px; margin-top:3px;font-weight:normal">
+            LOT 16, TERRA SOL PUD. 10030-5248 10065-8910 10925-2011
+		  
+			</div>
+			</div> 
+			
+			<div style="clear:both;"></div>
+			
+          
+	
+  	<div id="largeImages">
+	
+	<br/><a id="images"></a>
+		
+	
+	</div>
+	     
+   </div> 
+  </div>
+ </section>
+ </main>
+  <aside class="d-none d-lg-flex col-lg-4 flex-column align-items-center align-items-md-start align-items-lg-end">
+            <div class="col address">
+                    <div class="card slcoContact" aria-labelledby="ThisContactHeader-39830724">
+                        <div class="card-body p-0">
+                            <div class="w-100">
+
+                                <h4 class="ltNavHeading">Resources</h4>
+ <ul class='nav nav-list flex-column'>
+		
+            <li><a title="Printer Friendly Version" href="Query/valuationinfoPrint.cfm?parcel_id=16311270290000&nbhd=265" alt="Printer Friendly Version">Printer Friendly Version</a></li>
+          
+            <li><a title="Show Parcel Details" href="detailNew.cfm?parcel_id=16311270290000&nbhd=265" alt="Show Parcel Details">Classic Parcel View</a></li>
+          
+          <li><a target="_blank" href="##" title="Show the Property Tax Valuation Notice">Property Tax 
+            Information</a><button class="btn btn-link DLFile" type="button" data-year="2021" data-parcel="16311270290000" data-type="ENov" aria-lable="2021 ENov">2021</button>&nbsp;&nbsp;<button class="btn btn-link DLFile" type="button" data-year="2022" data-parcel="16311270290000" data-type="ENov" aria-lable="2022 ENov">2022</button>&nbsp;&nbsp;<button class="btn btn-link DLFile" type="button" data-year="2023" data-parcel="16311270290000" data-type="ENov" aria-lable="2023 ENov">2023</button>&nbsp;&nbsp;<button class="btn btn-link DLFile" type="button" data-year="2024" data-parcel="16311270290000" data-type="ENov" aria-lable="2024 ENov">2024</button><span></span>&nbsp;&nbsp;<button class="btn btn-link DLFile" type="button" data-year="2025" data-parcel="16311270290000" data-type="ENov" aria-lable="2025 ENov">2025</button><span></span></li>
+			<li><a title="Legal Description" href="javascript:;" onClick="showSketch('Query/legal.cfm?link_id=1114243')" >Legal Description</a></li>
+			
+			<li><a title="Building Sketch" href="javascript:;" onClick="showSketch('Query/sketch1.cfm?parcel_id=16311270290000')" value="Sketch" >Building Sketch</a>
+			
+			
+          <li><a title="Property Type Search" href="QueryPropType.cfm?parcelid=16311270290000&gisx=1534460&gisy=7421962&proptype=119">Property 
+              Type Search</a></li>
+          <li>
+           <a title="Interactive Parcel Map" href="ParcelViewer/index.html?query=Parcel_Viewer_external_3634_5,parcel_id,16311270290000&" target="_blank">Interactive 
+            Parcel Map</a></li>
+          
+            <li><a href="NeighboringValues.cfm?parcelid=16311270290000&nbhd=265&pt=119" title="Show the value of parcels located in the same neighborhood" onclick='displaySearchMask();'>Neighborhood 
+              Values</a></li>
+            <li><a href="NeighboringValues.cfm?parcelid=16311270290000&pt=119&nbhd=" title="Show value of parcels located on the same block" onclick='displaySearchMask();'>Adjoining 
+              Values</a></li>
+            
+        </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+       </aside>
+            </div>  
+        </div>
+    </section>
+        <footer class="footer mt-auto" aria-label="Footer">
+        <nav class="container" aria-label="Footer Navigation">
+            <div class="row">
+                <div class="col-12">
+                    <ul>
+                        <li><a href="/tty/">TTY</a></li>
+                        <li><a href="/disclaimer/">Disclaimer</a></li>
+                        <li><a href="/non-discrimination/">Non Discrimination</a></li>
+                        <li><a href="/accessibility/">Accessibility</a></li>
+                        <li><a href="/privacy-policy/">Privacy Statement</a></li>
+                        <li><a href="saltlakecountyut.nextrequest.com/">GRAMA</a></li>
+                        <li><a href="/contact/">County Directory</a></li>
+                        <li><a href="/econnect/">Employee Connect</a></li>
+                    </ul>
+                </div>
+            </div>
+            <!-- *** Comment on will not work outside of epi  so i had to remove it here ***-->
+            <p class="copyright"><a href="/copyright/">&#169; Salt Lake Countyâ€”All rights
+                    reserved</a> </p>
+        </nav>
+    </footer>
+    <script src="/Static/js/bootstrap501.es5.min.js"></script>
+    <!-- *** The Script Bundle version will change   THis bundle also includes Jquery*** -->
+    <script src="/bundles/nifticjs?v=9FjFDwXPT7YUfm5qLBdQaztn-J1lVQ_m8y2j5_fdwYY1"></script>
+    <!--<script src="kit.fontawesome.com/247f03a612.js" crossorigin="anonymous"></script> removed per Valina Request-->
+    <!-- *** ADDITIONAL JAVASCRIPT *** -->
+
+    
+   </body>
+   <!--<script src="/bundles/js?v=sycghUpwq8-9rOfrkoWFyC0yAmtBfdoHyNMjrW7P4oA1"></script>-->
+<script type="application/javascript">
+	
+	var friendlyError = '<p class="red">There was an error retrieving the data. Please try again later.</p>',
+    friendlyNotFound = '<p class="red">No results returned for this parcel number.</p>',
+    friendlyFileNotFound = '<span class="red"> There was an error retrieving this file. Please try again later.</span>',
+    minLengthNotMet = '<p class="red">Parcel Number needs to be in correct format: 00-00-000-000-0000</p>',
+  
+    fileServer = '/services/tr/tr_previous_year_enotice_service/api/v1/Enotice/GetEnotice/',
+    
+    yearsServer = '/services/tr/tr_previous_year_enotice_service/api/v1/Enotice/GetYears',
+    yearsAvaliable = [];
+$(document).on('click', '.DLFile', function () {
+    //$("#fileDLError").html('');
+    downloadFile($(this).data("parcel"), $(this).data("year"), $(this).data("type"), this);
+});
+
+
+//download PDF file  
+// send parcel, year or type (ENov or ETaxNotice)
+function downloadFile(parcel, year, type, thisObj) {
+   
+    var fileData;
+    $.ajax({
+        url: fileServer + parcel + '/' + year + '/' + type,
+        type: 'get',
+        dataType: '',
+        async: true,
+        beforeSend: function () {
+           // $("#fileDLError").html('');
+            $(thisObj).attr("disabled", true);
+            $(thisObj).next('span').html(" Loading " );
+        },
+
+        success: function (data) {
+            fileData = data;
+           console.log("success")
+
+        },
+        complete: function () {
+          
+            if (fileData.success) {
+
+                var FileAsBlob = $.base64toBlob(fileData.pdf, 'application/pdf');
+                var fileName = type + '-' + parcel + '-' + year + '.pdf';
+                window.open(window.URL.createObjectURL(FileAsBlob));
+              $(thisObj).next('span').html('File loaded in new tab.');
+              // $(thisObj).removeAttr('disabled');
+
+            }
+            else {
+                $("#fileDLError").html(friendlyFileNotFound);
+                $(thisObj).next('span').html(friendlyFileNotFound);
+                $(thisObj).removeAttr('disabled');
+            }
+        },
+        error: function () {
+            // $("#fileDLError").html(friendlyFileNotFound);
+            $(thisObj).next('span').html(friendlyFileNotFound);
+            $(thisObj).removeAttr('disabled');
+        }
+    });
+}
+scrolltoTop();
+	
+	
+				  </script>
+</html>
