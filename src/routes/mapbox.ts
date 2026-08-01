@@ -329,7 +329,17 @@ mapbox.get('/boundaries', async (c) => {
     }
     return c.json({ ...ctx, source: 'mapbox-geocoding' });
   } catch (err: any) {
-    return fail(c, err, 'boundaries');
+    // BOTH sources are unavailable. Keep the original 200 skip shape rather
+    // than propagating the upstream status: a jurisdiction lookup is an
+    // advisory side-panel badge, and failing it must not surface as a hard
+    // error on the Properties/Warrants page. The client already renders
+    // `skipped` as an "unavailable" badge, so this preserves the contract
+    // that predates the geocoding fallback — the fallback only ever REPLACES
+    // that shape when it actually resolves something.
+    log.warn('[mapbox/boundaries] geocoding fallback also failed — reporting unavailable', {
+      status: err?.status,
+    });
+    return notConfigured(c, 'Jurisdiction lookup unavailable — Mapbox Boundaries not enabled and reverse geocoding failed');
   }
 });
 
