@@ -59,8 +59,8 @@ export type ScoreResult =
  * These encode how much worse one risky behavior is than another. That is a
  * policy judgment about Rocky Mountain Protective Group's risk tolerance, not
  * a technical default. The values below are ordered sensibly but are NOT
- * authoritative. Review them, then update SCORE_VERSION to 'v1' and delete
- * the `it.fails('has owner-reviewed weights')` gate in the test file.
+ * authoritative. Review them, then update SCORE_VERSION to 'v1'. The route
+ * will then stop refusing to serve scores (it keys off weightsPendingReview()).
  */
 const WEIGHTS: Record<keyof EventCounts, number> = {
   forwardCollision: 10, // imminent-collision warning — highest real-crash proximity
@@ -95,6 +95,17 @@ function bandFor(score: number): ScoreBand {
 }
 
 /**
+ * Safely coerce event counts to non-negative integers.
+ * Negative, NaN, Infinity, and undefined counts become 0.
+ * This prevents upstream bugs (e.g., delta underflow) from fabricating perfect scores.
+ */
+function sanitizeEventCount(count: number | undefined): number {
+  if (!Number.isFinite(count)) return 0;
+  const n = count || 0;
+  return n < 0 ? 0 : n;
+}
+
+/**
  * Score is anchored to a FIXED reference rate, not to the current roster.
  * An officer's score must never move because a colleague drove badly —
  * that would make a snapshot unreproducible and the ranking incoherent.
@@ -111,7 +122,7 @@ export function computeScore(input: ScoreInput): ScoreResult {
   }
 
   const weightedEvents = (Object.keys(WEIGHTS) as (keyof EventCounts)[])
-    .reduce((sum, k) => sum + WEIGHTS[k] * (events[k] || 0), 0);
+    .reduce((sum, k) => sum + WEIGHTS[k] * sanitizeEventCount(events[k]), 0);
 
   const weightedRatePer100Miles = weightedEvents / (milesDriven / 100);
 

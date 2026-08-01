@@ -33,6 +33,36 @@ describe('exposure floor', () => {
   });
 });
 
+describe('event count sanitization', () => {
+  it('a negative event count does not increase score above the same input with that count at 0', () => {
+    const withNegative = computeScore({ milesDriven: 1000, events: ev({ harshBrake: -5 }), recordedPct: 1 });
+    const withZero = computeScore({ milesDriven: 1000, events: ev({ harshBrake: 0 }), recordedPct: 1 });
+    if (withNegative.status !== 'scored' || withZero.status !== 'scored') throw new Error('both should score');
+    expect(withNegative.score).toBeLessThanOrEqual(withZero.score);
+  });
+
+  it('a negative event count produces the same score as 0 for that event type', () => {
+    const withNegative = computeScore({ milesDriven: 1000, events: ev({ harshBrake: -5 }), recordedPct: 1 });
+    const withZero = computeScore({ milesDriven: 1000, events: ev({ harshBrake: 0 }), recordedPct: 1 });
+    if (withNegative.status !== 'scored' || withZero.status !== 'scored') throw new Error('both should score');
+    expect(withNegative.score).toBe(withZero.score);
+  });
+
+  it('NaN event counts are treated as 0', () => {
+    const withNaN = computeScore({ milesDriven: 1000, events: { ...NO_EVENTS, harshBrake: NaN }, recordedPct: 1 });
+    const withZero = computeScore({ milesDriven: 1000, events: ev({ harshBrake: 0 }), recordedPct: 1 });
+    if (withNaN.status !== 'scored' || withZero.status !== 'scored') throw new Error('both should score');
+    expect(withNaN.score).toBe(withZero.score);
+  });
+
+  it('Infinity event counts are treated as 0', () => {
+    const withInfinity = computeScore({ milesDriven: 1000, events: { ...NO_EVENTS, harshBrake: Infinity }, recordedPct: 1 });
+    const withZero = computeScore({ milesDriven: 1000, events: ev({ harshBrake: 0 }), recordedPct: 1 });
+    if (withInfinity.status !== 'scored' || withZero.status !== 'scored') throw new Error('both should score');
+    expect(withInfinity.score).toBe(withZero.score);
+  });
+});
+
 describe('scoring', () => {
   it('gives a clean driver the maximum score', () => {
     const r = computeScore({ milesDriven: 1000, events: NO_EVENTS, recordedPct: 1 });
@@ -81,6 +111,12 @@ describe('attribution confidence', () => {
 
   it('flags a majority-recorded score as recorded', () => {
     const r = computeScore({ milesDriven: 1000, events: ev({ harshBrake: 2 }), recordedPct: 0.9 });
+    if (r.status !== 'scored') throw new Error('should score');
+    expect(r.confidence).toBe('recorded');
+  });
+
+  it('flags exactly 0.5 recordedPct as recorded (at-or-above threshold)', () => {
+    const r = computeScore({ milesDriven: 1000, events: ev({ harshBrake: 2 }), recordedPct: 0.5 });
     if (r.status !== 'scored') throw new Error('should score');
     expect(r.confidence).toBe('recorded');
   });
