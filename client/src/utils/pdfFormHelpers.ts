@@ -7,7 +7,7 @@
 
 import jsPDF from 'jspdf';
 import bwipjs from 'bwip-js/browser';
-import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText, getActiveBranding, hexToRgb, resolveSectionAccentColor } from './pdfGenerator';
+import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText, getActiveBranding, hexToRgb, resolveSectionAccentColor, isEmailOrUrlPdfValue } from './pdfGenerator';
 import { getCachedSealBase64 } from './pdfAssets';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { computeSignatureRect, getCachedTransparentSignature } from './pdf/signatureImage';
@@ -41,6 +41,10 @@ export interface FormCell {
   valueBold?: boolean;
   /** Override font size for value */
   valueFontSize?: number;
+  /** Override the shrink-to-fit floor (default 5pt) — use a lower floor for
+   *  values (e.g. a person's name) that must never fall back to ellipsis
+   *  truncation in a narrow cell. */
+  minFontSize?: number;
 }
 
 /** Row of cells in a form grid */
@@ -129,7 +133,14 @@ export function fitTextToWidth(
     if (doc.getTextWidth(text.slice(0, mid) + ELL) <= maxW) lo = mid;
     else hi = mid - 1;
   }
-  return { text: `${text.slice(0, lo).trimEnd()}${ELL}`, fontSize };
+  // Strip trailing whitespace AND any dangling separator punctuation
+  // (comma, hyphen, middot, slash) before appending the ellipsis — a
+  // prefix that happens to end mid-address/mid-entity-name otherwise
+  // prints "...SOUTH SALT LAKE -..." or "...GROUP,..." (a naked
+  // separator right before the ellipsis reads as a rendering fault,
+  // not a truncation marker).
+  const trimmed = text.slice(0, lo).replace(/[\s,\-·/]+$/, '');
+  return { text: `${trimmed}${ELL}`, fontSize };
 }
 
 /**
@@ -206,8 +217,9 @@ export function drawFormCell(
     // the cell edge.
     const baseFontSize = cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE;
     const maxW = w - 2 * pad;
+    const valueForDisplay = isEmailOrUrlPdfValue(cell.value) ? cell.value : cell.value.toUpperCase();
     const { text: displayVal, fontSize } = fitTextToWidth(
-      doc, cell.value.toUpperCase(), maxW, baseFontSize,
+      doc, valueForDisplay, maxW, baseFontSize, cell.minFontSize,
     );
     doc.setFontSize(fontSize);
 

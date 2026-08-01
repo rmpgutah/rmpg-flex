@@ -25,6 +25,7 @@ import {
   getContentWidth, getRemainingPageHeight,
 } from './pdfTokens';
 import { sanitizePdfText } from './pdfGenerator';
+import { fitTextToWidth } from './pdfFormHelpers';
 import type { BadgeTone, PostureLevel } from '../components/records/recordVisuals';
 
 // ── Quick-reference banner ──────────────────────────────
@@ -142,8 +143,18 @@ export function addQuickReferenceBanner(
     // wide the primary text actually rendered.
     const secondaryX = Math.max(textX + primaryTextW + 4, textX + cw * 0.5);
     const maxSecondaryW = Math.max(20, pillLeftEdge - secondaryX - 2);
-    const lines = doc.splitTextToSize(sanitizePdfText(cfg.secondary), maxSecondaryW) as string[];
-    doc.text(lines[0] || '', secondaryX, primaryTextY);
+    // Previously used splitTextToSize + lines[0], which silently dropped the
+    // overflow (a long address or "DBA: <legal entity>" cut off mid-word with
+    // no ellipsis and no cleanup of the separator left dangling at the cut —
+    // e.g. "..., SOUTH SALT LAKE -" or "DBA: ... GROUP,"). fitTextToWidth
+    // shrinks the font to fit first and only ellipsis-truncates as a last
+    // resort, stripping any trailing separator before the ellipsis.
+    const { text: secondaryText, fontSize: secondaryFontSize } = fitTextToWidth(
+      doc, sanitizePdfText(cfg.secondary), maxSecondaryW, 8, 5.5,
+    );
+    doc.setFontSize(secondaryFontSize);
+    doc.text(secondaryText, secondaryX, primaryTextY);
+    doc.setFontSize(8);
   }
 
   // Reset state

@@ -219,6 +219,7 @@ export const FORM_NUMBERS: Record<string, string> = {
   personnel: 'FORM PS-207',
   property: 'FORM PS-208',
   citation: 'FORM PS-209',
+  business: 'FORM PS-210',
   // Fleet operational forms (PS-206-*)
   'FORM PS-206-PTI': 'FORM PS-206-PTI',  // Pre-Trip Inspection
   'FORM PS-206-CKO': 'FORM PS-206-CKO',  // Vehicle Check-Out

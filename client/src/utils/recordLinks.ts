@@ -147,6 +147,18 @@ const ROLE_OF_RELATIONSHIPS = new Set([
   'witness', 'suspect', 'victim', 'involved_party',
 ]);
 
+/**
+ * Derive the linked-person PDF flag text from the backend's `linked_meta`
+ * cross-reference payload. The backend (`GET /records/links`) already
+ * gates its `active_warrants` count on `LOWER(status) = 'active'`, so this
+ * stays a thin, testable pass-through rather than re-deriving status logic
+ * client-side — a person whose warrants are all served/recalled/closed
+ * must never print "ACTIVE WARRANT" on a distributed record.
+ */
+export function activeWarrantFlagFromLinkedMeta(linked_meta: { active_warrants?: number } | undefined | null): string {
+  return (linked_meta?.active_warrants ?? 0) > 0 ? 'ACTIVE WARRANT' : '';
+}
+
 /** Plain-English one-line description of a link, e.g.
  *  "John Smith — Owner of 325 S Melrose Cir". Direction is source → target. */
 export function linkSentence(

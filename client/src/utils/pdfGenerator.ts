@@ -573,6 +573,20 @@ function isNarrativeLikePdfText(text: string, width: number): boolean {
   return width > 160 || trimmed.length > 120 || /[\n.!?;:]/.test(trimmed);
 }
 
+// Email addresses and URLs are case-sensitive in principle (and the UI
+// renders them lowercase, as stored) — exempt them from the blanket
+// uppercasing every other field value gets so printed records match the
+// screen instead of shouting `CHZAMO@RMPGUTAH.US`. Shape-based rather than
+// per-call-site so any field renderer sharing this path (not just the
+// business record's Email/Website cells) benefits automatically.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const URL_RE = /^(https?:\/\/|www\.)\S+$/i;
+export function isEmailOrUrlPdfValue(text: string): boolean {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return false;
+  return EMAIL_RE.test(trimmed) || URL_RE.test(trimmed);
+}
+
 function getPdfTextLineHeight(fontSize: number, readable = false): number {
   return readable ? fontSize * 0.44 + 0.35 : fontSize * 0.35 + 0.2;
 }
@@ -1073,7 +1087,12 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
   const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
   const baseBoxH = useReadableText ? 2.8 : 2.3;  // condensed 2026-05-31 (3.2/2.6 → 2.8/2.3)
-  const displayText = isEmpty ? 'N/A' : sanitized.toUpperCase();
+  // Email addresses and URLs are case-sensitive in principle and the UI
+  // renders them as stored (e.g. `chzamo@rmpgutah.us`) — the blanket
+  // .toUpperCase() below (applied to every other field so forms read like
+  // a real police form) was also stamping these, producing
+  // `CHZAMO@RMPGUTAH.US` / `HTTPS://RMPGUTAHPS.US` on printed records.
+  const displayText = isEmpty ? 'N/A' : (isEmailOrUrlPdfValue(sanitized) ? sanitized : sanitized.toUpperCase());
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const allFieldLines = isEmpty ? [displayText] : wordWrapText(doc, displayText, maxW - 1);
@@ -1498,8 +1517,17 @@ export function addSignatureBlock(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(0, 0, 0);
+  // The pure cap-height center formula puts the baseline within ~0.4mm of
+  // the bar's bottom border at this font size/bar height — close enough
+  // that the "OFFICER"/"ENTERING OFFICER" caption visually sits ON the
+  // rule instead of clear of it. Bias the baseline up by a fixed margin so
+  // there's real breathing room above the border regardless of label text.
   const roleCapH = FONT.SIZE_SECTION_TITLE * 0.35;
-  const roleTextY = y + (roleBarH + roleCapH) / 2;
+  const roleBottomMargin = 0.9;
+  const roleTextY = Math.min(
+    y + (roleBarH + roleCapH) / 2,
+    y + roleBarH - roleBottomMargin,
+  );
   doc.text(sanitizePdfText(roleLabel.toUpperCase()), x + SPACING.CONTENT_INSET, roleTextY);
 
   // ── Signature area (very light tint — low ink) ──

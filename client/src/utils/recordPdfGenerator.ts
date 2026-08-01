@@ -71,7 +71,7 @@ import {
   drawDispatchTimelineStrip, drawChainOfCustodyTable, drawFormRow,
   type TimelineEvent, type CustodyTransfer, type FormCell,
 } from './pdfFormHelpers';
-import { toDisplayLabel } from './formatters';
+import { toDisplayLabel, formatCurrency } from './formatters';
 
 // ── Active Officer Signature (set per-generation, cleared after) ─
 
@@ -1725,7 +1725,7 @@ export async function addLocationMapSection(
     priority?: string;
     /** Extra labeled cells appended to the LOCATION DATA strip's top row
      *  (cross street, property, suite, ...). */
-    details?: { label: string; value: string; ratio?: number }[];
+    details?: { label: string; value: string; ratio?: number; minFontSize?: number }[];
     /** Incident timestamp (ISO) driving the light-condition readout —
      *  defaults to generation time. */
     eventIso?: string | null;
@@ -2047,7 +2047,7 @@ export async function addLocationMapSection(
   };
   const topCells: FormCell[] = [
     { label: 'TARGET ADDRESS', value: opts.caption || opts.address || '', ratio: 2.6 },
-    ...(opts.details || []).map((c) => ({ label: c.label, value: c.value || EMPTY_FIELD, ratio: c.ratio ?? 1 })),
+    ...(opts.details || []).map((c) => ({ label: c.label, value: c.value || EMPTY_FIELD, ratio: c.ratio ?? 1, minFontSize: c.minFontSize })),
   ];
   const frameM = Math.round(mPerMm * drawW);
   const botCells: FormCell[] = [
@@ -6267,7 +6267,12 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
       { label: 'PROPERTY',  value: data.name || '', ratio: 1.2 },
       { label: 'STATUS',    value: data.is_active === false ? 'INACTIVE' : 'ACTIVE', ratio: 0.65 },
       { label: 'TYPE',      value: (data.property_type || data.business_type || '').replace(/_/g, ' ').toUpperCase(), ratio: 0.95 },
-      ...(data.owner_name ? [{ label: 'OWNER', value: data.owner_name, ratio: 1.0 }] : []),
+      // Widened ratio (1.0 -> 1.5) + a lower shrink-to-fit floor (4pt) so a
+      // long owner name (e.g. "ANDREW GARLUTZO") gets enough room to fully
+      // fit instead of falling back to fitTextToWidth's last-resort
+      // ellipsis-truncate ("ANDREW GARLUT...") — a person's name should
+      // never clip on a legal record when shrinking the font can avoid it.
+      ...(data.owner_name ? [{ label: 'OWNER', value: data.owner_name, ratio: 1.5, minFontSize: 4 }] : []),
     ],
     eventIso: data.created_at,
   }, y);
@@ -6548,7 +6553,13 @@ async function generateBusinessReport(doc: jsPDF, data: BusinessPdfData) {
     y = Math.max(r2a, r2b, r2c, r2d);
     // Row 3: Employee Count, Annual Revenue, Status, Record ID
     const r3a = addFieldPair(doc, 'Employees', data.employee_count || '', lx, y, qw);
-    const r3b = addFieldPair(doc, 'Annual Revenue', data.annual_revenue || '', lx + qw, y, qw);
+    // annual_revenue is a raw integer (the UI prints it unformatted too, but
+    // a business record should read as currency — thousands separators + $
+    // marker, matching how the fleet reports render cost figures).
+    const annualRevenueDisplay = data.annual_revenue != null && data.annual_revenue !== ''
+      ? formatCurrency(Number(data.annual_revenue), { decimals: 0 })
+      : '';
+    const r3b = addFieldPair(doc, 'Annual Revenue', annualRevenueDisplay, lx + qw, y, qw);
     const r3c = addFieldPair(doc, 'Status', (data.status || 'active').toUpperCase(), lx + 2 * qw, y, qw);
     const r3d = addFieldPair(doc, 'Record ID', data.id || '', lx + 3 * qw, y, qw);
     y = Math.max(r3a, r3b, r3c, r3d);
