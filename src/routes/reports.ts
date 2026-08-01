@@ -425,6 +425,17 @@ reports.get('/statute-analytics', async (c) => {
     log.error('GET /statute-analytics failed', { src: 'src/routes/reports.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
+/**
+ * Response-time SLA target, in minutes. Single source of truth.
+ *
+ * Returned to the client as `overall.slaTargetMinutes` so the dashboard tile
+ * and the trend chart's target line cannot drift from the value the compliance
+ * percentage is actually computed against — ReportsPage previously hardcoded
+ * `<= 5` in one place and `targetMinutes: 5` in another, with nothing tying
+ * them to the server.
+ */
+const SLA_TARGET_MINUTES = 5;
+
 // GET /api/reports/response-times?days=N
 // Computes avg/min/max response minutes from calls_for_service using
 // COALESCE(response_time_seconds/60, onscene_at-created_at) with ?days=N
@@ -442,12 +453,14 @@ reports.get('/response-times', async (c) => {
       minResp: number | null;
       maxResp: number | null;
       total: number;
+      slaMetCount: number;
     }>(db, `
       SELECT
         ROUND(AVG(${RESP}), 1) AS avgTotal,
         ROUND(MIN(${RESP}), 1) AS minResp,
         ROUND(MAX(${RESP}), 1) AS maxResp,
-        COUNT(*) AS total
+        COUNT(*) AS total,
+        SUM(CASE WHEN ${RESP} <= ${SLA_TARGET_MINUTES} THEN 1 ELSE 0 END) AS slaMetCount
       FROM calls_for_service
       WHERE created_at >= datetime('now', ?)
         AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)
@@ -487,12 +500,20 @@ reports.get('/response-times', async (c) => {
         minResponseMinutes: overall?.minResp ?? 0,
         maxResponseMinutes: overall?.maxResp ?? 0,
         totalCalls: overall?.total ?? 0,
+        // PER-CALL SLA compliance. ReportsPage previously derived this from
+        // dailyTrend by counting a whole day's calls as met when that DAY'S
+        // AVERAGE was <= target -- wrong in both directions: a day averaging
+        // 4.9 credited every call even if several took 20 minutes, and a day
+        // averaging 5.1 credited none even if most were under target. The
+        // client cannot fix it alone, because dailyTrend carries only averages.
+        slaMetCount: overall?.slaMetCount ?? 0,
+        slaTargetMinutes: SLA_TARGET_MINUTES,
       },
       byPriority,
       dailyTrend,
     });
   } catch {
-    return c.json({ overall: { avgDispatchMinutes: 0, avgTotalResponseMinutes: 0, minResponseMinutes: 0, maxResponseMinutes: 0, totalCalls: 0 }, byPriority: [], dailyTrend: [] });
+    return c.json({ overall: { avgDispatchMinutes: 0, avgTotalResponseMinutes: 0, minResponseMinutes: 0, maxResponseMinutes: 0, totalCalls: 0, slaMetCount: 0, slaTargetMinutes: SLA_TARGET_MINUTES }, byPriority: [], dailyTrend: [] });
   }
 });
 
