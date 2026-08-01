@@ -133,3 +133,50 @@ describe('/api/fleet-viz schema-drift regression', () => {
     expect(all).not.toContain('driver_id');
   });
 });
+
+// ============================================================
+// /kpi — Avg MPG is DERIVED, not read off fleet_fuel_log.mpg
+// ============================================================
+// The column is a manual override that is NULL on 100% of the last 30 days
+// on live, so `AVG(mpg)` returned NULL -> 0 and the KPI ribbon showed
+// "0.0 MPG" while the Fleet page showed 11.3 for the same vehicle.
+describe('/api/fleet-viz/kpi — avg MPG derivation', () => {
+  it('does not average the raw mpg column', async () => {
+    const { db, queries } = inspectingDb();
+    await buildApp(db)('/api/fleet-viz/kpi');
+    const all = queries.join('\n');
+    expect(all).not.toMatch(/AVG\(mpg\)/i);
+    // Derives from the odometer delta instead.
+    expect(all).toMatch(/odometer\s*-\s*prev_odo/i);
+  });
+
+  it('requires BOTH ends of a segment to be full tanks', async () => {
+    const { db, queries } = inspectingDb();
+    await buildApp(db)('/api/fleet-viz/kpi');
+    const all = queries.join('\n');
+    // Checking only the current row let 635 miles / a 1.257-gal splash fill
+    // report 505 MPG, and the next segment report 2.6.
+    expect(all).toMatch(/is_full_tank\s*!=\s*0/i);
+    expect(all).toMatch(/prev_full\s*!=\s*0/i);
+  });
+
+  it('discards segments that run backwards in time', async () => {
+    const { db, queries } = inspectingDb();
+    await buildApp(db)('/api/fleet-viz/kpi');
+    // Rows are ordered by odometer, but live has entries whose dates
+    // disagree with that order; differencing non-adjacent fills produced
+    // 253.9 MPG.
+    expect(queries.join('\n')).toMatch(/julianday\(fuel_date\)\s*>=\s*julianday\(prev_date\)/i);
+  });
+
+  it('reports avg_mpg as null — not 0 — when nothing is measurable', async () => {
+    // inspectingDb().first() yields {}, i.e. no usable segments.
+    const { db } = inspectingDb();
+    const res = await buildApp(db)('/api/fleet-viz/kpi');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { avg_mpg: number | null; avg_mpg_samples: number };
+    // "No measurable data" and "zero miles per gallon" are different claims.
+    expect(body.avg_mpg).toBeNull();
+    expect(body.avg_mpg_samples).toBe(0);
+  });
+});

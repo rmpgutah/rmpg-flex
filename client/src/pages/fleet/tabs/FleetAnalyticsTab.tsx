@@ -1533,13 +1533,27 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <Clock className="w-3 h-3" /> Service Intervals Due ({serviceAlerts.length})
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-            {serviceAlerts.slice(0, 8).map((a: any) => (
-              <div key={a.vehicle_id} className={`flex items-center justify-between px-2 py-1.5 rounded text-[10px] border ${a.severity === 'overdue' ? 'bg-red-900/20 border-red-800/40 text-red-400' : a.severity === 'critical' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' : 'bg-surface-sunken/20 border-border-subtle/40 text-rmpg-400'}`}>
-                <span className="font-mono font-bold">{a.vehicle_number}</span>
-                <span>{toDisplayLabel(a.service_type || '')}</span>
-                <span className="font-mono">{a.days_until < 0 ? `${Math.abs(a.days_until)}d overdue` : `${a.days_until}d`}</span>
-              </div>
-            ))}
+            {serviceAlerts.slice(0, 8).map((a: any, i: number) => {
+              // Never interpolate a possibly-absent value straight into a
+              // template string: `${undefined}d` rendered the literal
+              // "undefinedd" on live until the server started sending
+              // days_until. Fall back to the due date, then to an em dash.
+              const days = typeof a.days_until === 'number' && Number.isFinite(a.days_until)
+                ? a.days_until : null;
+              const due = days != null
+                ? (days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`)
+                : (a.due_date ? parseTimestamp(a.due_date).toLocaleDateString() : '—');
+              // vehicle_id alone is not unique — one vehicle can raise an
+              // insurance AND a registration alert, which collided as a key.
+              const label = toDisplayLabel(a.service_type || a.type || a.issue || '');
+              return (
+                <div key={`${a.vehicle_id ?? a.id ?? i}-${a.service_type ?? a.type ?? i}`} className={`flex items-center justify-between px-2 py-1.5 rounded text-[10px] border ${a.severity === 'overdue' ? 'bg-red-900/20 border-red-800/40 text-red-400' : a.severity === 'critical' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' : 'bg-surface-sunken/20 border-border-subtle/40 text-rmpg-400'}`}>
+                  <span className="font-mono font-bold">{a.vehicle_number}</span>
+                  <span>{label}</span>
+                  <span className="font-mono">{due}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

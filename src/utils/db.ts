@@ -1,4 +1,9 @@
 import type { D1Database, D1Result } from '@cloudflare/workers-types';
+import {
+  RESIDENCE_FIELDS, PARCEL_RECORD_EXTRA_FIELDS,
+  PARCEL_RECORD_STRUCTURAL_COLUMNS, PROMOTED_RECORD_FIELDS,
+  PROMOTED_TARGET_TABLES, sqlType,
+} from './sl-assessor/camaFields';
 
 export function getDb(env: { DB: D1Database }) {
   return env.DB;
@@ -150,6 +155,12 @@ export async function executeBatch(
 // columnExists() check. Mirrors the pattern used by routes like alpr.ts and
 // clearpathAlpr.ts. Idempotent: safe to call on every assessor route invocation.
 const ASSESSOR_COLUMNS: Array<[string, string, string]> = [
+  // Curated CAMA fields promoted onto the operational record cards (mig
+  // 0221). Generated from the registry so this list and the migration
+  // cannot drift apart.
+  ...PROMOTED_TARGET_TABLES.flatMap((t) =>
+    PROMOTED_RECORD_FIELDS.map((f) => [t, f.col, f.sql] as [string, string, string]),
+  ),
   ['businesses', 'parcel_number', 'TEXT'],
   ['businesses', 'owner_of_record', 'TEXT'],
   ['businesses', 'owner_type', 'TEXT'],
@@ -277,10 +288,33 @@ export async function ensureAssessorColumns(db: D1Database): Promise<void> {
     }
   }
 
-  // ── parcel_records-only columns (multi-county additions, mig 0188) ──
+  // ── parcel_residence: full CAMA residence block (mig 0221) ──
+  // Self-heals for the same reason as the tables above: the deploy's
+  // migration step is continue-on-error, so a missing table here would
+  // surface only as a runtime "no such table" inside a try/catch that
+  // degrades silently.
+  try {
+    await db.prepare(`CREATE TABLE IF NOT EXISTS parcel_residence (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      parcel_record_id INTEGER NOT NULL UNIQUE,
+      ${RESIDENCE_FIELDS.map((f) => `${f.col} ${sqlType(f.type)}`).join(',\n      ')},
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (parcel_record_id) REFERENCES parcel_records(id) ON DELETE CASCADE
+    )`).run();
+  } catch { /* race or pre-existing — tolerated */ }
+  try {
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_parcel_residence_record ON parcel_residence(parcel_record_id)`).run();
+  } catch { /* ignore */ }
+
+  // ── parcel_records-only columns (multi-county additions, mig 0188;
+  //    full CAMA build, mig 0221) ──
   const PARCEL_RECORD_COLUMNS: Array<[string, string]> = [
     ['recorded_document_url', 'TEXT'],
     ['recorded_document_type', 'TEXT'],
+    // Generated from the CAMA field registry so the reconciler and the
+    // migration can never disagree about which columns exist.
+    ...PARCEL_RECORD_EXTRA_FIELDS.map((f) => [f.col, sqlType(f.type)] as [string, string]),
+    ...PARCEL_RECORD_STRUCTURAL_COLUMNS,
   ];
   for (const [col, type] of PARCEL_RECORD_COLUMNS) {
     try {

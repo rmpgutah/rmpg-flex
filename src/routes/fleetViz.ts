@@ -77,11 +77,66 @@ viz.get('/kpi', async (c) => {
                   AND current_mileage > next_service_mileage)`,
     );
     // Avg MPG and cost-per-mile use the (server-rolled) mpg on the row + period totals.
-    const fuelTotals = await queryFirst<{ gallons: number; total_cost: number; avg_mpg: number }>(
+    const fuelTotals = await queryFirst<{ gallons: number; total_cost: number }>(
       db, `SELECT COALESCE(SUM(gallons), 0) AS gallons,
-                  COALESCE(SUM(total_cost), 0) AS total_cost,
-                  COALESCE(AVG(mpg), 0) AS avg_mpg
+                  COALESCE(SUM(total_cost), 0) AS total_cost
            FROM fleet_fuel_log WHERE 1=1 ${fuelWin.whereClause}`,
+    );
+    // ─── Avg MPG is DERIVED, not read off the column ───────────────
+    // `fleet_fuel_log.mpg` is a MANUAL OVERRIDE, not the canonical value:
+    // src/routes/fleet.ts computes MPG from odometer deltas at read time and
+    // only lets a stored value override it. On live the column is NULL on
+    // 100% of the last 30 days (populated only by a one-off 2026-06-01
+    // backfill), so `AVG(mpg)` returned NULL -> 0 and the KPI read "0.0 MPG"
+    // while the Fleet page showed 11.3 for the same vehicle.
+    //
+    // Three guards, each of which a naive odometer delta gets wrong here:
+    //
+    //  1. BOTH ENDS MUST BE FULL TANKS (is_full_tank on the current AND the
+    //     previous row). MPG is only meaningful tank-to-tank. Checking just
+    //     the current row — which fleet.ts does — let a 635-mile span divided
+    //     by a 1.257-gallon splash fill report 505 MPG, and the next segment,
+    //     which ended full but STARTED from that splash, report 2.6.
+    //  2. CHRONOLOGY MUST AGREE WITH THE ODOMETER. Rows are ordered by
+    //     odometer, but live has entries whose dates disagree with that order
+    //     (id 79 dated 2026-05-08 at 90994 sits before id 77 dated
+    //     2026-04-19 at 91075). Differencing non-adjacent fills produced
+    //     253.9 MPG. A segment that runs backwards in time is discarded.
+    //  3. SANITY BAND 0 < mpg < 200, matching fleet.ts.
+    //
+    // When nothing survives, the result is NULL — not 0. "No measurable data"
+    // and "zero miles per gallon" are different claims, and rendering the
+    // second for the first is what made this look like a working metric.
+    const mpgRow = await queryFirst<{ usable: number; avg_mpg: number | null }>(
+      db, `
+      WITH ordered AS (
+        SELECT vehicle_id, fuel_date, gallons, odometer, is_full_tank, mpg,
+               LAG(odometer)     OVER w AS prev_odo,
+               LAG(fuel_date)    OVER w AS prev_date,
+               LAG(is_full_tank) OVER w AS prev_full
+          FROM fleet_fuel_log
+         WHERE odometer IS NOT NULL
+        WINDOW w AS (PARTITION BY vehicle_id ORDER BY odometer, fuel_date, id)
+      ),
+      derived AS (
+        SELECT o.*,
+               CASE WHEN prev_odo IS NOT NULL
+                     AND odometer > prev_odo
+                     AND gallons > 0
+                     AND is_full_tank != 0
+                     AND prev_full   != 0
+                     AND julianday(fuel_date) >= julianday(prev_date)
+                    THEN (odometer - prev_odo) / gallons END AS derived_mpg
+          FROM ordered o
+      )
+      SELECT COUNT(effective) AS usable, AVG(effective) AS avg_mpg
+        FROM (
+          SELECT CASE WHEN COALESCE(mpg, derived_mpg) > 0
+                       AND COALESCE(mpg, derived_mpg) < 200
+                      THEN COALESCE(mpg, derived_mpg) END AS effective
+            FROM derived
+           WHERE 1=1 ${fuelWin.whereClause}
+        )`,
     );
     const maintTotals = await queryFirst<{ total_cost: number }>(
       db, `SELECT COALESCE(SUM(cost), 0) AS total_cost
@@ -105,7 +160,10 @@ viz.get('/kpi', async (c) => {
       in_service: inService?.n ?? 0,
       in_shop: inShop?.n ?? 0,
       overdue_pms: overdue?.n ?? 0,
-      avg_mpg: Math.round((fuelTotals?.avg_mpg ?? 0) * 10) / 10,
+      // null (not 0) when no full-tank-to-full-tank segment survived the
+      // guards above — the UI renders that as an em dash.
+      avg_mpg: mpgRow?.avg_mpg == null ? null : Math.round(Number(mpgRow.avg_mpg) * 10) / 10,
+      avg_mpg_samples: mpgRow?.usable ?? 0,
       cost_per_mile: cost.cost_per_mile,
       total_cost: cost.total,
       miles_driven: miles?.miles ?? 0,
@@ -114,7 +172,8 @@ viz.get('/kpi', async (c) => {
     console.error('[fleetViz] /kpi failed', err);
     return c.json({
       period: 'unknown', in_service: 0, in_shop: 0, overdue_pms: 0,
-      avg_mpg: 0, cost_per_mile: null, total_cost: 0, miles_driven: 0,
+      // null, not 0 — an aggregation failure is "unknown", not "zero MPG".
+      avg_mpg: null, avg_mpg_samples: 0, cost_per_mile: null, total_cost: 0, miles_driven: 0,
       error: 'aggregation failure',
     }, 500);
   }

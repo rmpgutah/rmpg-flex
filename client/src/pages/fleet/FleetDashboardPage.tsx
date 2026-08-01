@@ -41,7 +41,11 @@ interface KpiData {
   in_service: number;
   in_shop: number;
   overdue_pms: number;
-  avg_mpg: number;
+  /** null when no full-tank-to-full-tank segment survived the derivation
+   *  guards — distinct from a measured 0. Render as an em dash. */
+  avg_mpg: number | null;
+  /** How many fuel segments contributed to avg_mpg. 0 means "not measurable". */
+  avg_mpg_samples?: number;
   cost_per_mile: number | null;
   total_cost: number;
   miles_driven: number;
@@ -334,7 +338,12 @@ export default function FleetDashboardPage() {
             <StatsCard icon={Car} label="In Service" value={kpi?.in_service ?? 0} accent="green" />
             <StatsCard icon={Wrench} label="In Shop" value={kpi?.in_shop ?? 0} accent="amber" />
             <StatsCard icon={AlertTriangle} label="Overdue PMs" value={kpi?.overdue_pms ?? 0} accent={kpi && kpi.overdue_pms > 0 ? 'red' : 'gray'} />
-            <StatsCard icon={Fuel} label="Avg MPG" value={kpi?.avg_mpg ?? 0} accent="blue" />
+            {/* Em dash, not 0, when no full-tank-to-full-tank segment exists
+                in the window — same convention as Cost / Mile beside it.
+                Rendering 0 asserted a measured "0.0 MPG" that was really
+                "not measurable", which is how this read 0 while the Fleet
+                page showed 11.3 for the same vehicle. */}
+            <StatsCard icon={Fuel} label="Avg MPG" value={kpi?.avg_mpg != null ? kpi.avg_mpg : '—'} accent="blue" />
             <StatsCard icon={DollarSign} label="Cost / Mile" value={kpi?.cost_per_mile != null ? `$${kpi.cost_per_mile.toFixed(2)}` : '—'} accent="purple" />
             <StatsCard icon={Wallet} label="Total Cost" value={`$${(kpi?.total_cost ?? 0).toLocaleString()}`} accent="gold" />
             <StatsCard icon={Route} label="Miles Driven" value={(kpi?.miles_driven ?? 0).toLocaleString()} accent="blue" />
