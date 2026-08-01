@@ -461,7 +461,7 @@ export const knowledgeBaseSearchFixtures: PdfFixture<KnowledgeBaseSearchPdfInput
       officerName: MAXIMAL_NAME,
       badgeNumber: '4417',
       caseNumber: '2026-004417',
-      generatedAt: new Date(YEAR_BOUNDARY),
+      generatedAt: new Date(YEAR_BOUNDARY), // new-date-ok: YEAR_BOUNDARY is an explicit ISO-8601 UTC literal ending in Z, not a naive server timestamp
     },
   },
 ];
@@ -501,7 +501,7 @@ export const ncicReferenceFixtures: PdfFixture<NcicReferenceFixtureInput>[] = [
   {
     variant: 'maximal',
     label: 'Year-boundary generation timestamp',
-    input: { now: new Date(YEAR_BOUNDARY) },
+    input: { now: new Date(YEAR_BOUNDARY) }, // new-date-ok: YEAR_BOUNDARY is an explicit ISO-8601 UTC literal ending in Z, not a naive server timestamp
   },
 ];
 
