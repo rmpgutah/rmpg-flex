@@ -189,17 +189,28 @@ const STUBS: StubRule[] = [
   // Categorized by page to make removal triage obvious — when a real
   // handler lands for a subsystem, drop ALL its stubs together.
   //
-  // ── Fleet sub-tabs that aren't ported yet ─────────────────────────────
-  // Bare /api/fleet, /api/fleet/:id, /api/fleet/map, /api/fleet/analytics,
-  // and /api/fleet/dashcam-videos[/:id[/neighbors]] are now real handlers
-  // in src/routes/fleet.ts. The list below is sub-paths the rewrite still
-  // doesn't implement; they 404 from the rewrite without a stub.
-  {
-    match: /^\/api\/fleet\/(fuel-cards|fuel|fuel\/.*|recalls|health-scores|maintenance-schedule|driver-performance|service-alerts|cost-trends|vehicle-lifecycle|fleet-cost-analytics|inspection-stats|notifications|overdue-inspections|dash-cameras|pretrip)(\/.*)?$/,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    body: { data: [], total: 0 },
-    reason: 'fleet sub-tab handler not ported; tab renders empty until implemented',
-  },
+  // (removed 2026-08-01) The single /api/fleet/(fuel-cards|fuel|fuel/*|recalls|
+  // health-scores|maintenance-schedule|driver-performance|service-alerts|
+  // cost-trends|vehicle-lifecycle|fleet-cost-analytics|inspection-stats|
+  // notifications|overdue-inspections|dash-cameras|pretrip) stub — its
+  // "handler not ported" reason was STALE. Every one of those 15 paths has a
+  // real handler in src/routes/fleet.ts (verified by grep, 2026-08-01: each
+  // resolves to >= 1 fleet.get/post/put/delete registration). Routed to
+  // env.API below.
+  //
+  // Because the rule listed methods GET/POST/PUT/DELETE, it did not merely
+  // render tabs empty — it silently swallowed WRITES. `PUT /api/fleet/fuel/:id`
+  // and `DELETE /api/fleet/fuel/:id` returned 200 {data:[],total:0} without
+  // ever reaching the Worker, so the Fuel tab reported "updated successfully"
+  // while the row never changed (confirmed live: a PUT setting notes on row
+  // 115 left notes NULL in D1). Every fleet analytics panel reading one of
+  // these endpoints likewise rendered stub data no matter what the Worker
+  // returned.
+  //
+  // A stub that answers a mutating method is strictly worse than a 404: a 404
+  // surfaces as a visible error, whereas a 200 with an empty body is
+  // indistinguishable from success. If a future stub is genuinely needed here,
+  // restrict it to ['GET'] so writes fail loudly instead of vanishing.
   // Howen handlers now live in src/routes/howen.ts (devices, events, status,
   // devices/:id). Stub removed; requests reach the rewrite via the API_ROUTES
   // rule below.
