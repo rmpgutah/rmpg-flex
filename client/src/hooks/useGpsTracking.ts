@@ -412,6 +412,28 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   /** Heartbeat restart counter — prevents infinite restart loops */
   const heartbeatRestartCountRef = useRef(0);
   const MAX_HEARTBEAT_RESTARTS = 5;
+  /**
+   * Independent rate limit for the staleness WARNING.
+   *
+   * The restart counter cannot throttle this log, because a successful fix
+   * resets it to 0 (see the success handlers). Under INTERMITTENT GPS — fix,
+   * 31s of silence, fix, 31s of silence — the counter never reaches
+   * MAX_HEARTBEAT_RESTARTS, so every staleness event logged at warn level,
+   * forever. Measured on a live console: 120 identical
+   * "[GPS] No position callback in 31s" warnings in one session.
+   *
+   * The throttle was therefore defeated by exactly the condition it existed to
+   * handle: no GPS at all goes quiet after 5 events, but FLAKY GPS (the real
+   * vehicle case) warns indefinitely. A CAD console stays open all shift, and
+   * that volume buries genuine errors.
+   *
+   * This gates only the LOG. Restart/retry behaviour is deliberately untouched:
+   * a vehicle CAD must keep trying to reacquire, and the surrounding code says
+   * so emphatically. Staleness is still reported every time at debug level, and
+   * the UI `error` string still surfaces the degradation.
+   */
+  const lastStaleWarnAtRef = useRef(0);
+  const STALE_WARN_INTERVAL_MS = 5 * 60 * 1000;
   // True while a one-shot "restart on the next user gesture" listener is armed,
   // so a heartbeat firing every 27s can't stack dozens of duplicate listeners.
   const gestureRestartArmedRef = useRef(false);
@@ -1232,9 +1254,18 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         if (permissionDeniedRef.current) {
           return;
         }
-        // Throttle log noise: warn while still in the aggressive phase, then
-        // drop to debug so a perpetually-stale console doesn't flood the log.
-        const log = heartbeatRestartCountRef.current >= MAX_HEARTBEAT_RESTARTS ? console.debug : console.warn;
+        // Throttle log noise. Two independent conditions must BOTH hold to warn:
+        //   - still in the aggressive restart phase, AND
+        //   - we have not already warned within STALE_WARN_INTERVAL_MS.
+        // The second is what actually bounds the volume: the restart counter is
+        // reset by every successful fix, so under intermittent GPS it never
+        // reaches the cap and the first condition alone warned on every cycle.
+        const now = Date.now();
+        const withinAggressivePhase = heartbeatRestartCountRef.current < MAX_HEARTBEAT_RESTARTS;
+        const warnIntervalElapsed = now - lastStaleWarnAtRef.current >= STALE_WARN_INTERVAL_MS;
+        const shouldWarn = withinAggressivePhase && warnIntervalElapsed;
+        if (shouldWarn) lastStaleWarnAtRef.current = now;
+        const log = shouldWarn ? console.warn : console.debug;
         log(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s (connection: ${connType})`);
         // On Electron desktop, use IP fallback instead of endlessly restarting
         if (IS_ELECTRON) {
