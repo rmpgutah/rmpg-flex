@@ -57,7 +57,12 @@ interface AggRow {
   fuel_cost: number; fuel_gallons: number; maintenance_cost: number;
 }
 
-const AGG_SQL = `
+/**
+ * Exported (not just used internally) so tests can execute the EXACT SQL the
+ * route runs against a real D1, rather than duplicating the string and
+ * risking a passing test that verifies nothing about the live query.
+ */
+export const AGG_SQL = `
   SELECT d.officer_id,
          u.full_name AS officer_name, u.badge_number,
          COALESCE(SUM(d.miles_driven),0)  AS miles,
