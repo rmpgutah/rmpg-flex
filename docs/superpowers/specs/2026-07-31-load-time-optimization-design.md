@@ -23,7 +23,7 @@ Production build of this worktree (`npx vite build`), 2026-07-31:
 
 | Artifact | Raw | gzip | brotli |
 |---|---|---|---|
-| `index-*.js` (entry) | 941.2 KB | 230.6 KB | 177.6 KB |
+| `index-*.js` (entry) | 941,244 B (919.2 KiB) | 230.6 KB | 177.6 KB |
 | `index-*.css` | 437.3 KB | 72.3 KB | 55.6 KB |
 
 Total build: 18 MB of JS across 306 chunks. The entry chunk is what gates

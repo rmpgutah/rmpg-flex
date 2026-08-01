@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Cut the client entry chunk from 941 KB raw to under 620 KB and make nav-bar routes prefetch on hover/focus, so cold login and page navigation stop lagging on FZ-55 toughbooks.
+**Goal:** Cut the client entry chunk from 919 KiB raw (941,244 B) to under 610 KiB and make nav-bar routes prefetch on hover/focus, so cold login and page navigation stop lagging on FZ-55 toughbooks.
 
 **Architecture:** Two independent halves. (1) Evict conditionally-rendered code from the entry chunk by converting four static imports to `React.lazy`, exploiting the fact that lazy-loading cascades — a lazy parent takes its whole static import subtree with it. (2) Introduce a `routeModules.ts` path→`import()` registry so any component can warm a route chunk, then wire nav hover/focus to it.
 
@@ -26,7 +26,7 @@
 
 | Artifact | Raw | brotli |
 |---|---|---|
-| `dist/assets/index-*.js` | 941.2 KB | 177.6 KB |
+| `dist/assets/index-*.js` | 941,244 B (919.2 KiB) | 177.6 KB |
 | `dist/assets/index-*.css` | 437.3 KB | 55.6 KB |
 
 Entry chunk contains 1,971 KB of source across 186 modules.
@@ -157,7 +157,8 @@ In `client/package.json`, add to `"scripts"`:
 cd client && npx vite build --sourcemap && npm run measure:entry
 ```
 
-Expected: `raw: 941.2 KB`, `brotli: 177.6 KB`, `modules: 186 (1971 KB of source)`, with `src/pages/DashboardPage.tsx` at ~167.9 KB on top.
+Expected: `raw: 919.2 KB`, `brotli: 173.5 KB`, `modules: 186 (1971 KB of source)`
+(the script divides by 1024, so it prints KiB under a `KB` label; 919.2 KiB == 941,244 B), with `src/pages/DashboardPage.tsx` at ~167.9 KB on top.
 
 If the numbers differ materially from the spec's table, **stop and report** — the baseline moved and the rest of the plan's estimates need revisiting.
 
@@ -289,7 +290,7 @@ Expected: typecheck clean; suite matches the clean baseline. Any failure is your
 cd client && npx vite build --sourcemap && npm run measure:entry
 ```
 
-Expected: raw drops from 941.2 KB to roughly 590-620 KB. `DashboardPage.tsx`, `NewCallModal.tsx`, `IncidentFormModal.tsx`, `DashboardMiniMap.tsx` and `mapMarkers.ts` must all be **absent** from the top-25 list. Record the actual number in the commit message.
+Expected: raw drops from 919.2 KB to roughly 575-600 KB (script units, KiB). `DashboardPage.tsx`, `NewCallModal.tsx`, `IncidentFormModal.tsx`, `DashboardMiniMap.tsx` and `mapMarkers.ts` must all be **absent** from the top-25 list. Record the actual number in the commit message.
 
 - [ ] **Step 8: Commit**
 
@@ -301,7 +302,7 @@ Takes NewCallModal, IncidentFormModal, DashboardMiniMap and mapMarkers out
 of the entry chunk with it — a lazy parent carries its static import subtree.
 Warmed the instant auth succeeds so the landing navigation stays instant.
 
-Entry chunk: 941.2 KB -> <ACTUAL> KB raw."
+Entry chunk: 919.2 -> <ACTUAL> KB raw (measure:entry units)."
 ```
 
 ---
@@ -1087,7 +1088,7 @@ No new code. This is the honest accounting step — the numbers in the PR body m
 cd client && rm -rf dist && npx vite build --sourcemap && npm run measure:entry
 ```
 
-Record raw, brotli, module count, and source bytes. Compare against the baseline (941.2 KB / 177.6 KB / 186 / 1,971 KB). If raw is not under ~620 KB, report the shortfall with the top-25 list rather than declaring success.
+Record raw, brotli, module count, and source bytes. Compare against the baseline (919.2 KB / 173.5 KB / 186 / 1,971 KB, all in measure:entry units). If raw is not under ~600 KB (script units), report the shortfall with the top-25 list rather than declaring success.
 
 - [ ] **Step 2: Run both gates serially**
 
@@ -1136,7 +1137,7 @@ gh pr create -R rmpgutah/rmpg-flex --base main \
 
 Cold login and page navigation were lagging. Measured the cause rather than guessing: the entry chunk carried 1,971 KB of source across 186 eager modules.
 
-**Entry chunk: 941.2 KB -> <ACTUAL> KB raw (177.6 -> <ACTUAL> KB brotli).**
+**Entry chunk: 919.2 KB -> <ACTUAL> KB raw (173.5 -> <ACTUAL> KB brotli), as reported by `npm run measure:entry`.**
 
 Raw bytes matter more than compressed here — the fleet runs FZ-55 toughbooks, and the felt cost is JS parse/execute, not download.
 
