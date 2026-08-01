@@ -347,6 +347,25 @@ function personPdfPostureFlags(data: PersonPdfData): Array<string | null | undef
   return flags;
 }
 
+/** Is a vehicle actually impounded / held per its tow_status?
+ *
+ *  Single source of truth for the banner pill AND the posture band, which used
+ *  to decide this two different ways. The band tested for the substrings below;
+ *  the pill tested `tow_status && tow_status !== 'none'` — case-sensitively,
+ *  against a column that live D1 stores capitalized ('None'). So the 2 vehicles
+ *  that explicitly recorded "no tow" were the only ones stamped IMPOUNDED on
+ *  the form, while '' / NULL rows were correctly blank. Recording the negative
+ *  was punished.
+ *
+ *  Matching by substring (not equality) because tow_status is free text on live:
+ *  'Impounded', 'Police Hold', 'Evidence Hold' must all read as held.
+ */
+export function isVehicleImpounded(towStatus: unknown): boolean {
+  const ts = (typeof towStatus === 'string' ? towStatus : '').toLowerCase().trim();
+  if (!ts || ts === 'none' || ts === 'not towed' || ts === 'n/a') return false;
+  return ['impound', 'hold', 'evidence'].some(t => ts.includes(t));
+}
+
 function vehiclePdfPostureFlags(data: VehiclePdfData): Array<string | null | undefined> {
   const flags: Array<string | null | undefined> = [];
   const ss = (data.stolen_status || '').toLowerCase();
@@ -359,8 +378,7 @@ function vehiclePdfPostureFlags(data: VehiclePdfData): Array<string | null | und
   }
   if (data.hazmat) flags.push('HAZMAT');
   if (ss && !notStolen) flags.push('STOLEN');
-  const ts = (data.tow_status || '').toLowerCase();
-  if (ts && ['impound', 'hold', 'evidence'].some(t => ts.includes(t))) flags.push('IMPOUND');
+  if (isVehicleImpounded(data.tow_status)) flags.push('IMPOUND');
   return flags;
 }
 
@@ -4362,7 +4380,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
       ? { label: 'STOLEN', tone: 'high' }
       : stolen === 'recovered'
         ? { label: 'RECOVERED', tone: 'elevated' }
-        : (data.tow_status && data.tow_status !== 'none')
+        : isVehicleImpounded(data.tow_status)
           ? { label: 'IMPOUNDED', tone: 'elevated' }
           : undefined;
     y = addQuickReferenceBanner(doc, {
