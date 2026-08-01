@@ -63,7 +63,7 @@ export default function BodyCameraDetailTab({
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  const statusLabel = (status: string) => status.replace(/_/g, ' ').toUpperCase();
+  const statusLabel = (status: string) => toDisplayLabel(status).toUpperCase();
   const classLabel = (cls: string) => toDisplayLabel(cls);
 
   const topBorderColor = (status: string) => {

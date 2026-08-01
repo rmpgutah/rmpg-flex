@@ -34,6 +34,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import usePersistedState from '../hooks/usePersistedState';
 import { parseTimestamp } from '../utils/dateUtils';
 import { getSignedParams, buildSignedQuerySync } from '../utils/signedUrls';
+import { toDisplayLabel } from '../utils/formatters';
 
 const PAGE_SIZE = 25;
 
@@ -996,7 +997,7 @@ export default function DashCamerasPage() {
               className="select-dark text-[10px] py-1 w-auto max-w-[150px]">
               <option value="all">All Events</option>
               {eventTypes.map(et => (
-                <option key={et} value={et}>{et.replace(/_/g, ' ').toUpperCase()}</option>
+                <option key={et} value={et}>{toDisplayLabel(et).toUpperCase()}</option>
               ))}
             </select>
             <div className="h-4 w-px bg-rmpg-700" />

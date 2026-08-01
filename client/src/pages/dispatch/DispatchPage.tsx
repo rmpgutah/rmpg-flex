@@ -2893,7 +2893,7 @@ export default function DispatchPage() {
                               if (!isFinite(d) || d <= 0) return null;
                               const m = Math.floor(d / 60000);
                               const s = Math.floor((d % 60000) / 1000);
-                              return <span className="text-rmpg-500 font-mono text-[9px] tabular-nums" title={`+${m}m ${s}s since ${prevField.replace(/_at$/, '').replace(/_/g, ' ')}`}>(+{m > 0 ? `${m}m ` : ''}{s}s)</span>;
+                              return <span className="text-rmpg-500 font-mono text-[9px] tabular-nums" title={`+${m}m ${s}s since ${toDisplayLabel(prevField.replace(/_at$/, ''))}`}>(+{m > 0 ? `${m}m ` : ''}{s}s)</span>;
                             })()}
                           </span>
                         )}
@@ -5273,7 +5273,7 @@ export default function DispatchPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callPersons.map((cp: any) => (
                                 <span key={cp.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
-                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cp.role || '').replace(/_/g, ' ')}</span>
+                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{toDisplayLabel(cp.role || '')}</span>
                                   {cp.last_name}, {cp.first_name}
                                   <WarrantBadge flags={cp.flags} size="sm" />
                                   {cp.dob && <span className="text-rmpg-500">DOB:{cp.dob}</span>}
@@ -5321,7 +5321,7 @@ export default function DispatchPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callVehicles.map((cv: any) => (
                                 <span key={cv.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
-                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cv.role || '').replace(/_/g, ' ')}</span>
+                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{toDisplayLabel(cv.role || '')}</span>
                                   {[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}
                                   {cv.plate_number && <span className="text-brand-400 ml-0.5">PLT:{cv.plate_number}</span>}
                                   <button type="button" onClick={() => unlinkVehicleFromCall(selectedCall.id, cv.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
@@ -5429,7 +5429,7 @@ export default function DispatchPage() {
                             <span className="text-[9px] text-brand-gold-500 font-semibold uppercase">Linked Persons ({callPersons.length})</span>
                             {callPersons.map((cp: any) => (
                               <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
-                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{(cp.role || '').replace(/_/g, ' ')}</span>
+                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{toDisplayLabel(cp.role || '')}</span>
                                 <span className="text-rmpg-100 font-semibold">{cp.last_name}, {cp.first_name}</span>
                                 <WarrantBadge flags={cp.flags} size="sm" />
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
@@ -5445,10 +5445,10 @@ export default function DispatchPage() {
                             <span className="text-[9px] text-brand-gold-500 font-semibold uppercase">Linked Vehicles ({callVehicles.length})</span>
                             {callVehicles.map((cv: any) => (
                               <div key={cv.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
-                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{(cv.role || '').replace(/_/g, ' ')}</span>
+                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{toDisplayLabel(cv.role || '')}</span>
                                 <span className="text-rmpg-100 font-semibold">{[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}</span>
                                 {cv.plate_number && <span className="text-brand-400">PLT: {cv.plate_number}{cv.plate_state ? `/${cv.plate_state}` : ''}</span>}
-                                {cv.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(cv.stolen_status.toLowerCase()) && <span className="text-red-400 font-bold uppercase">{cv.stolen_status.replace(/_/g, ' ')}</span>}
+                                {cv.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(cv.stolen_status.toLowerCase()) && <span className="text-red-400 font-bold uppercase">{toDisplayLabel(cv.stolen_status)}</span>}
                               </div>
                             ))}
                           </div>
@@ -5842,7 +5842,7 @@ export default function DispatchPage() {
                             ? 'bg-red-900/40 border border-red-700/50 text-red-400'
                             : 'bg-amber-900/40 border border-amber-700/50 text-amber-400'
                         }`}>
-                          {selectedCall.process_service_result.replace(/_/g, ' ').toUpperCase()}
+                          {toDisplayLabel(selectedCall.process_service_result).toUpperCase()}
                         </span>
                       )}
                       {!isEditing && (selectedCall.process_attempts || 0) > 0 && (
@@ -6104,7 +6104,7 @@ export default function DispatchPage() {
                                   {(visit.status || '').toUpperCase()}
                                 </span>
                                 {visit.disposition && (
-                                  <span className="text-[9px] text-rmpg-300">{(visit.disposition || '').replace(/_/g, ' ').toUpperCase()}</span>
+                                  <span className="text-[9px] text-rmpg-300">{toDisplayLabel(visit.disposition || '').toUpperCase()}</span>
                                 )}
                               </div>
                               {unitsList.length > 0 && (
@@ -6389,7 +6389,7 @@ export default function DispatchPage() {
                         >
                           <span className="font-mono text-green-400 text-xs font-bold tabular-nums" style={{ textShadow: '0 0 6px rgb(var(--sev-ok-rgb) / 0.15)' }}>{inc.incident_number}</span>
                           <span className="min-w-0 text-xs text-rmpg-200 truncate">{formatIncidentType(inc.type || inc.incident_type || '--')}</span>
-                          <span className="text-xs text-rmpg-400 uppercase font-semibold">{(inc.status || '--').replace(/_/g, ' ')}</span>
+                          <span className="text-xs text-rmpg-400 uppercase font-semibold">{toDisplayLabel(inc.status) || '--'}</span>
                           {inc.officer_name && (
                             <span className="text-xs text-rmpg-300 ml-auto flex items-center gap-1">
                               <User className="w-3 h-3" /> {inc.officer_name}
@@ -7146,7 +7146,7 @@ export default function DispatchPage() {
                 // Voice announce ETA — announce unit status as proxy (GPS ETA would need server)
                 const unit = units.find(u => u.call_sign === action.callSign);
                 if (unit) {
-                  const statusLabel = unit.status === 'enroute' ? 'en route' : unit.status.replace(/_/g, ' ').toUpperCase();
+                  const statusLabel = unit.status === 'enroute' ? 'en route' : toDisplayLabel(unit.status).toUpperCase();
                   speakDispatcherResponse(`Unit ${unit.call_sign} is currently ${statusLabel}`);
                 }
                 break;
@@ -7199,9 +7199,9 @@ export default function DispatchPage() {
                 if (unit && unit.current_call_id) {
                   const call = calls.find(c => c.id === String(unit.current_call_id));
                   const loc = call?.location || 'unknown location';
-                  speakDispatcherResponse(`Unit ${unit.call_sign} last reported at ${loc}. Status: ${unit.status.replace(/_/g, ' ').toUpperCase()}.`);
+                  speakDispatcherResponse(`Unit ${unit.call_sign} last reported at ${loc}. Status: ${toDisplayLabel(unit.status).toUpperCase()}.`);
                 } else if (unit) {
-                  speakDispatcherResponse(`Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ').toUpperCase()}. No active call assigned.`);
+                  speakDispatcherResponse(`Unit ${unit.call_sign} is ${toDisplayLabel(unit.status).toUpperCase()}. No active call assigned.`);
                 }
                 break;
               }
@@ -7284,7 +7284,7 @@ export default function DispatchPage() {
                 if (pending.length === 0) {
                   speakDispatcherResponse('No pending calls.');
                 } else {
-                  const details = pending.slice(0, 5).map(c => `${c.call_number}, ${c.incident_type?.replace(/_/g, ' ').toUpperCase() || 'unknown'}`).join('. ');
+                  const details = pending.slice(0, 5).map(c => `${c.call_number}, ${toDisplayLabel(c.incident_type).toUpperCase() || 'unknown'}`).join('. ');
                   speakDispatcherResponse(`${pending.length} pending calls. ${details}.`);
                 }
                 break;

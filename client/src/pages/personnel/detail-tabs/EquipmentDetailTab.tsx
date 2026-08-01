@@ -143,7 +143,7 @@ export default function EquipmentDetailTab({
     toDisplayLabel(type);
 
   const statusLabel = (status: string) =>
-    status.replace(/_/g, ' ').toUpperCase();
+    toDisplayLabel(status).toUpperCase();
 
   return (
     <div className="space-y-4">

@@ -349,7 +349,7 @@ export default function IncidentDetailWindow() {
                   <tr key={p.id || `person-${i}`} className="border-t border-rmpg-700/50">
                     <td className="py-1.5">
                       <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold border border-brand-600/40">
-                        {(p.role || '').replace(/_/g, ' ').toUpperCase()}
+                        {toDisplayLabel(p.role || '').toUpperCase()}
                       </span>
                     </td>
                     <td className="py-1.5 text-rmpg-100 font-medium">{p.last_name}, {p.first_name}</td>
@@ -384,7 +384,7 @@ export default function IncidentDetailWindow() {
                 <tr key={v.id || `vehicle-${i}`} className="border-t border-rmpg-700/50">
                   <td className="py-1.5">
                     <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-600/40">
-                      {(v.role || '').replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(v.role || '').toUpperCase()}
                     </span>
                   </td>
                   <td className="py-1.5 text-rmpg-100 font-mono">{v.plate_number || 'N/A'}{v.state ? ` (${v.state})` : ''}</td>

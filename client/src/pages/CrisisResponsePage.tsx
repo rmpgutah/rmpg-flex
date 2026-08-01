@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { Brain, Heart, PhoneCall, Users, Plus, Pencil, Trash2 } from 'lucide-react';
 
 import ConfirmDialog from '../components/ConfirmDialog';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface CrisisIncident {
   id: number;
@@ -228,7 +229,7 @@ export default function CrisisResponsePage() {
     {
       key: 'incident_type',
       label: 'Type',
-      render: (r: CrisisIncident) => r.incident_type?.replace(/_/g, ' ') || '--',
+      render: (r: CrisisIncident) => toDisplayLabel(r.incident_type) || '--',
     },
     { key: 'subject_name', label: 'Subject' },
     { key: 'location', label: 'Location' },
@@ -510,7 +511,7 @@ export default function CrisisResponsePage() {
             <>
               {deleteTarget.incident_number && <div>Incident #{deleteTarget.incident_number}</div>}
               {deleteTarget.subject_name && <div>Subject: {deleteTarget.subject_name}</div>}
-              {deleteTarget.incident_type && <div>{deleteTarget.incident_type.replace(/_/g, ' ')}</div>}
+              {deleteTarget.incident_type && <div>{toDisplayLabel(deleteTarget.incident_type)}</div>}
               {deleteTarget.location && <div className="text-rmpg-500">{deleteTarget.location}</div>}
               {deleteTarget.disposition && (
                 <div className="text-rmpg-500">Disposition: {deleteTarget.disposition}</div>

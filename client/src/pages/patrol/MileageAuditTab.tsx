@@ -525,8 +525,8 @@ export default function MileageAuditTab() {
                 value={fixField}
                 onChange={(e) => setFixField(e.target.value as 'starting_mileage' | 'ending_mileage')}
               >
-                <option value="ending_mileage">ending_mileage</option>
-                <option value="starting_mileage">starting_mileage</option>
+                <option value="ending_mileage">Ending Mileage</option>
+                <option value="starting_mileage">Starting Mileage</option>
               </select>
             </div>
             <div>

@@ -14,6 +14,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { BodyCamVideo } from '../types';
 import { parseTimestamp } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -31,7 +32,7 @@ function formatHudTimestamp(baseDate: string | null, offsetSec: number): string 
 
 function interactionLabel(type: string | null | undefined): string {
   if (!type) return '';
-  return type.replace(/_/g, ' ').toUpperCase();
+  return toDisplayLabel(type).toUpperCase();
 }
 
 /** Color for the interaction type badge — severity-based */

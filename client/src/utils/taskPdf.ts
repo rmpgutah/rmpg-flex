@@ -24,6 +24,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { describeDueDate } from './taskDueCountdown';
+import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -268,7 +269,7 @@ export function generateTasksPdf(input: TaskPdfInput): jsPDF {
     // Priority — uppercase for scannability
     doc.text((t.priority || '—').toUpperCase(), x, y + 11); x += cols[2].width;
     // Status
-    doc.text((t.status || '—').replace(/_/g, ' '), x, y + 11); x += cols[3].width;
+    doc.text(toDisplayLabel(t.status || '—'), x, y + 11); x += cols[3].width;
     // Assignee
     doc.text(t.assigned_to_name || 'Unassigned', x, y + 11); x += cols[4].width;
     // Due — colour the overdue label

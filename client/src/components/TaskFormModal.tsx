@@ -4,6 +4,7 @@ import FormModal from '../components/FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
 import OfficerPicker from '../components/OfficerPicker';
 import RecordPicker, { type LinkableRecordType } from '../components/RecordPicker';
+import { toDisplayLabel } from '../utils/formatters';
 
 export interface TaskFormData {
   task_title: string; description: string; priority: string;
@@ -72,7 +73,7 @@ export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting,
             </select></div>
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Status</label>
             <select name="status" className="select-dark mt-1" value={form.status} onChange={handleChange}>
-              {['pending','in_progress','review','completed','cancelled'].map(s=><option key={s} value={s}>{s.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</option>)}
+              {['pending','in_progress','review','completed','cancelled'].map(s=><option key={s} value={s}>{toDisplayLabel(s)}</option>)}
             </select></div>
         </div>
         <div className="grid grid-cols-2 gap-3">

@@ -10,6 +10,7 @@ import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
 import type { ContextMenuItem } from '../context/ContextMenuContext';
 import { Award, CheckCircle, Clock, FileText, Plus, Pencil, Trash2, Eye, Loader2 } from 'lucide-react';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface Standard {
   id: number;
@@ -247,7 +248,7 @@ export default function AccreditationPage() {
                 : 'badge-pending'
           }`}
         >
-          {r.compliance_status?.replace(/_/g, ' ')}
+          {toDisplayLabel(r.compliance_status)}
         </span>
       ),
     },

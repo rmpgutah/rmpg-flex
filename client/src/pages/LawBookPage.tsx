@@ -27,6 +27,7 @@ import { useToast } from '../components/ToastProvider';
 import { OffenseLevelBadge, type StatuteResult } from '../components/StatuteLookup';
 import { parseOutline } from '../utils/statuteOutline';
 import { generateStatutePdf, printStatuteSection, printStatuteChapter } from '../utils/statutePdfGenerator';
+import { toDisplayLabel } from '../utils/formatters';
 
 // Roles allowed to add/edit/delete statutes.
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
@@ -65,7 +66,7 @@ const CATEGORY_META: Record<string, CatMeta> = {
 };
 const CATEGORY_ORDER = ['criminal', 'fraud', 'procedure', 'vehicle', 'controlled', 'public_safety', 'juvenile', 'wildlife', 'alcohol', 'protective', 'licensing'];
 function getCatMeta(cat: string): CatMeta {
-  return CATEGORY_META[cat] || { label: cat.replace(/_/g, ' '), short: cat, blurb: '', icon: Layers, accent: 'var(--spm-text-muted)' };
+  return CATEGORY_META[cat] || { label: toDisplayLabel(cat), short: cat, blurb: '', icon: Layers, accent: 'var(--spm-text-muted)' };
 }
 
 // Offense-level filter chips, ordered most→least severe, color-coded.
@@ -387,7 +388,7 @@ export default function LawBookPage() {
     if (showingSearch) {
       generateStatutePdf({
         docTitle: 'Search Results',
-        subtitle: query.trim() ? `"${query.trim()}"${level ? ` · ${level.replace(/_/g, ' ')}` : ''}` : 'Filtered results',
+        subtitle: query.trim() ? `"${query.trim()}"${level ? ` · ${toDisplayLabel(level)}` : ''}` : 'Filtered results',
         sections: visibleSections,
         fileName: 'RMPG-LawBook-Search',
       });

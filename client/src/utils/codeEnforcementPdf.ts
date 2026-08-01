@@ -23,6 +23,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import type { CodeViolation, VehicleTow } from '../types';
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -96,13 +97,13 @@ export function classifySeverity(sev: string | undefined | null): {
 }
 
 function violationTypeLabel(t: string | undefined | null): string {
-  const v = String(t ?? '').replace(/_/g, ' ').trim();
+  const v = toDisplayLabel(String(t ?? ''));
   if (!v) return '—';
   return v.charAt(0).toUpperCase() + v.slice(1);
 }
 
 function statusLabel(s: string | undefined | null): string {
-  return String(s ?? '').replace(/_/g, ' ').toUpperCase() || '—';
+  return toDisplayLabel(String(s ?? '')).toUpperCase() || '—';
 }
 
 export function generateCodeViolationNoticePdf(v: CodeViolation): jsPDF {
@@ -356,7 +357,7 @@ export function generateTowOrderPdf(t: VehicleTow): jsPDF {
   doc.setTextColor(TEXT_DARK);
   doc.text(`STATUS: ${statusLabel(t.status)}`, M, y);
   doc.text(
-    `REASON: ${String(t.tow_reason || '').replace(/_/g, ' ').toUpperCase() || '—'}`,
+    `REASON: ${toDisplayLabel(String(t.tow_reason || '')).toUpperCase() || '—'}`,
     M + 200, y,
   );
   y += 16;

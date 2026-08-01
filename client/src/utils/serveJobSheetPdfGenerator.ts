@@ -33,6 +33,7 @@ import {
 import { drawNibrsHeader } from './pdfFormHelpers';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { addLocationMapSection } from './recordPdfGenerator';
+import { toDisplayLabel } from './formatters';
 
 // ── Data Interface ───────────────────────────────────────────
 
@@ -143,7 +144,7 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
   { const sec = openAutoSection(doc, '1. Job Information', y); y = sec.contentY;
     const r1a = addFieldPair(doc, 'Job ID', `JOB-${data.jobId}`, lx, y, qw);
     const r1b = addFieldPair(doc, 'Priority', PRIORITY_LABEL[data.priority] || (data.priority || 'N/A').toUpperCase(), lx + qw + SPACING.SM, y, qw);
-    const r1c = addFieldPair(doc, 'Status', (data.status || 'N/A').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
+    const r1c = addFieldPair(doc, 'Status', toDisplayLabel(data.status || 'N/A').toUpperCase(), rx, y, hfw);
     y = Math.max(r1a, r1b, r1c);
     const r2a = addFieldPair(doc, 'Serve Date', data.serveDate || 'N/A', lx, y, hfw);
     const r2b = addFieldPair(doc, 'Deadline', data.deadline || 'N/A', rx, y, hfw);
@@ -243,7 +244,7 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
         sanitizePdfText(a.date || '—'),
         sanitizePdfText(a.time || '—'),
         sanitizePdfText((a.type || '').toUpperCase()),
-        sanitizePdfText((a.result || '—').toUpperCase().replace(/_/g, ' ')),
+        sanitizePdfText(toDisplayLabel(a.result || '—').toUpperCase()),
         sanitizePdfText(a.officerName || '—'),
         sanitizePdfText(a.notes || ''),
       ]);

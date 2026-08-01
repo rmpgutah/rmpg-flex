@@ -6,6 +6,7 @@ import {
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── Types ──
 interface Tip {
@@ -217,7 +218,7 @@ export default function TipsPage() {
                   >
                     <td className="px-3 py-[2px] text-rmpg-100 font-mono">{tip.tracking_number}</td>
                     <td className="px-3 py-[2px] text-rmpg-400">{tip.received_at}</td>
-                    <td className="px-3 py-[2px] text-rmpg-400 capitalize">{tip.tip_type.replace(/_/g, ' ')}</td>
+                    <td className="px-3 py-[2px] text-rmpg-400 capitalize">{toDisplayLabel(tip.tip_type)}</td>
                     <td className="px-3 py-[2px] text-rmpg-400 max-w-[200px] truncate">{tip.description}</td>
                     <td className={`px-3 py-[2px] font-semibold capitalize ${URGENCY_COLORS[tip.urgency] || 'text-rmpg-400'}`}>
                       {tip.urgency}
@@ -252,7 +253,7 @@ export default function TipsPage() {
                 </div>
                 <div>
                   <span className="text-[10px] text-rmpg-400 uppercase block">Type</span>
-                  <span className="text-white capitalize">{selectedTip.tip_type.replace(/_/g, ' ')}</span>
+                  <span className="text-white capitalize">{toDisplayLabel(selectedTip.tip_type)}</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-rmpg-400 uppercase block">Urgency</span>

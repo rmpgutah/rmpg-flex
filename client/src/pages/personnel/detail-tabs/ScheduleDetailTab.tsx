@@ -5,6 +5,7 @@
 import { Calendar, Plus, Trash2, MapPin, Sun, Moon } from 'lucide-react';
 import type { Schedule } from '../../../types';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   schedules: Schedule[];
@@ -124,7 +125,7 @@ export default function ScheduleDetailTab({
                     {/* Status badge */}
                     <div className="flex items-center gap-2">
                       <span className={`text-[9px] px-1.5 py-0.5 font-bold uppercase ${statusClass}`}>
-                        {sched.status.replace(/_/g, ' ').toUpperCase()}
+                        {toDisplayLabel(sched.status).toUpperCase()}
                       </span>
                     </div>
 
