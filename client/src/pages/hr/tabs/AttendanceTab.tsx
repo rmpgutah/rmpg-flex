@@ -6,7 +6,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
-import { formatEnumValue } from '../../../utils/formatters';
+import { toDisplayLabel, formatEnumValue } from '../../../utils/formatters';
 import { coded } from '../../../utils/searchText';
 
 interface AttendanceRecord {
@@ -58,7 +58,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
 
   const buildAttendanceMenu = (r: AttendanceRecord): ContextMenuItem[] => [
     m.copy('Copy officer name', r.officer_name),
-    m.copy('Copy type', r.type.replace(/_/g, ' ')),
+    m.copy('Copy type', toDisplayLabel(r.type)),
     ...(r.reason ? [m.copy('Copy reason', r.reason)] : []),
     m.copyId(r.id),
   ];
@@ -113,7 +113,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
           </div>
           {summary.by_type.map(t => (
             <div key={t.type} className="panel-beveled p-2 text-center">
-              <p className="field-label">{t.type.replace(/_/g, ' ')}</p>
+              <p className="field-label">{toDisplayLabel(t.type)}</p>
               <p className="text-lg font-bold font-mono text-rmpg-100">{t.count} <span className="text-[10px] text-rmpg-400">({t.excused_count} excused)</span></p>
             </div>
           ))}
@@ -196,7 +196,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
           }).map(r => (
             <div key={r.id} role="listitem" onContextMenu={(e) => openMenu(e, buildAttendanceMenu(r))} className="panel-beveled p-2.5 flex items-center justify-between hover:bg-surface-raised/30 hover:shadow-sm transition-all duration-150">
               <div className="flex items-center gap-3">
-                <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${TYPE_COLORS[r.type] || TYPE_COLORS.absent}`}>{r.type.replace(/_/g, ' ')}</span>
+                <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${TYPE_COLORS[r.type] || TYPE_COLORS.absent}`}>{toDisplayLabel(r.type)}</span>
                 <span className="text-xs text-rmpg-100">{r.officer_name}</span>
                 <span className="text-[10px] text-rmpg-400">{r.date ? parseTimestamp(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : r.date}</span>
                 {r.minutes_late > 0 && <span className="text-[10px] text-amber-400">{r.minutes_late}m late</span>}

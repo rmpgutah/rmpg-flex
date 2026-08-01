@@ -3514,7 +3514,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     ];
     const tableRows = persons.map((p) => [
       `${(p.last_name || '').toUpperCase()}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || '—',
-      capFirst(p.role?.replace(/_/g, ' ') || '').toUpperCase() || '—',
+      capFirst(toDisplayLabel(p.role) || '').toUpperCase() || '—',
       (p.dob || '—').toUpperCase(),
     ]);
     y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
@@ -3537,7 +3537,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         { label: 'COLOR', x: colPositions[3] },
       ];
       const tableRows = vehicles.map((v) => [
-        capFirst(v.role?.replace(/_/g, ' ').toUpperCase() || ''),
+        capFirst(toDisplayLabel(v.role).toUpperCase() || ''),
         `${v.plate_number || 'N/A'}${v.state ? ' (' + v.state + ')' : ''}`,
         [v.year, v.make, v.model].filter(Boolean).join(' '),
         v.color || '',

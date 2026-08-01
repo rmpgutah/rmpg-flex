@@ -5,6 +5,7 @@
 import { Activity } from 'lucide-react';
 import { ACTION_COLORS } from '../utils/personnelConstants';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface ActivityEntry {
   id: string;
@@ -93,7 +94,7 @@ export default function ActivityDetailTab({ activity }: Props) {
                         <span
                           className={`font-mono uppercase text-[10px] font-bold tracking-wider ${actionColor}`}
                         >
-                          {entry.action.replace(/_/g, ' ').toUpperCase()}
+                          {toDisplayLabel(entry.action).toUpperCase()}
                         </span>
                       </span>
                       <span className="font-mono text-[9px] text-rmpg-500 flex-shrink-0">

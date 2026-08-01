@@ -25,6 +25,7 @@
 import { useState } from 'react';
 import { CopyCheck, ListOrdered, Loader2, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface DuplicateMatch {
   queueId: number;
@@ -183,7 +184,7 @@ export default function ServeQueueToolsPanel() {
                       {Math.round(s.priority)}
                     </td>
                     <td className="py-[2px] pl-3 text-fg-muted truncate">
-                      {drivers.map(([k, v]) => `${k.replace(/_/g, ' ')} ${Math.round(v)}`).join(' · ') || '—'}
+                      {drivers.map(([k, v]) => `${toDisplayLabel(k)} ${Math.round(v)}`).join(' · ') || '—'}
                     </td>
                   </tr>
                 );

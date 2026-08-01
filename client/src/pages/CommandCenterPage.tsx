@@ -11,6 +11,7 @@ import StatusBadge from '../components/StatusBadge';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface CommandCenterData {
   active_calls: any[];
@@ -360,7 +361,7 @@ export default function CommandCenterPage() {
                         <div className="min-w-0">
                           <span className="text-[10px] font-bold font-mono text-rmpg-100 block truncate">{callSign}</span>
                           <span className={`text-[8px] uppercase font-bold ${tok.label}`}>
-                            {unit.status.replace(/_/g, ' ')}
+                            {toDisplayLabel(unit.status)}
                           </span>
                         </div>
                       </div>

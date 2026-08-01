@@ -18,6 +18,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { safeDateStr, localToday, parseTimestamp } from '../utils/dateUtils';
 import { asArray } from '../utils/asArray';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -248,7 +249,7 @@ export default function AccreditationsPage() {
         >
           <option value="">All Statuses</option>
           {STATUS_OPTIONS.map(s => (
-            <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>
+            <option key={s} value={s}>{toDisplayLabel(s).toUpperCase()}</option>
           ))}
         </select>
         <select
@@ -310,7 +311,7 @@ export default function AccreditationsPage() {
                   <td className="px-2 py-[2px] text-gray-400">{safeDateStr(r.expiration_date)}</td>
                   <td className="px-2 py-[2px]">
                     <span className={`inline-block px-1.5 py-0.5 rounded-sm text-[10px] ${STATUS_COLORS[r.status] || 'text-gray-400'}`}>
-                      {r.status.replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(r.status).toUpperCase()}
                     </span>
                   </td>
                   <td className="px-2 py-[2px] text-gray-400 text-center">{r.reminders_sent}</td>

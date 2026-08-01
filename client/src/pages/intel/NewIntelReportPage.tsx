@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../../hooks/useApi';
+import { toDisplayLabel } from '../../utils/formatters';
 
 const THREATS = ['low', 'medium', 'high', 'critical'];
 const SOURCE_TYPES = ['officer_observation', 'confidential_informant', 'anonymous_tip', 'public', 'other_agency', 'osint', 'technical', 'victim', 'witness', 'suspect'];
@@ -73,7 +74,7 @@ export default function NewIntelReportPage() {
       <label className="block text-[10px] text-[#888] uppercase tracking-wider">Source type
         <select aria-label="source type" value={sourceType} onChange={(e) => setSourceType(e.target.value)}
           className="mt-1 w-full bg-surface-overlay border border-border-default rounded-[2px] px-2 py-[6px] text-[12px] text-rmpg-200">
-          {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+          {SOURCE_TYPES.map((s) => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
         </select>
       </label>
 

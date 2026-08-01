@@ -183,7 +183,7 @@ export default function GrievancesTab() {
           </div>
           <select id="ff-grievancestab-1" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field text-xs py-1 px-2">
             <option value="all">All Statuses</option>
-            {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>)}
+            {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{toDisplayLabel(s).toUpperCase()}</option>)}
           </select>
           <button type="button" data-hr-new-btn onClick={() => { setShowForm(!showForm); if (!showForm) snapshot(); }} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> File Grievance</button>
         </div>
@@ -244,7 +244,7 @@ export default function GrievancesTab() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[g.status] || STATUS_COLORS.filed}`}>{g.status.replace(/_/g, ' ')}</span>
+                    <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[g.status] || STATUS_COLORS.filed}`}>{toDisplayLabel(g.status)}</span>
                     <span className="text-[10px] text-rmpg-400 uppercase">{g.type}</span>
                     <span className={`text-[10px] font-medium ${PRIORITY_COLORS[g.priority] || 'text-rmpg-500'}`}>{toDisplayLabel(g.priority)}</span>
                   </div>

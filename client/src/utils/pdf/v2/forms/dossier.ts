@@ -3,6 +3,7 @@
 // section can never take down the rest of the export.
 import type { FormSchema } from '../engine/types';
 import { drawBadge } from '../engine/badge';
+import { toDisplayLabel } from '../../../formatters';
 
 export interface LinkedIntelEntry {
   id: number;
@@ -153,7 +154,7 @@ export const dossierSchema: FormSchema<DossierData> = {
           ctx.section(`Contact Timeline (${data.timeline.length})`, (inner) => {
             for (const e of data.timeline.slice(0, 150)) {
               const date = e.date ? String(e.date).slice(0, 10) : '—';
-              const kind = (e.kind ?? '').replace(/_/g, ' ').toUpperCase();
+              const kind = toDisplayLabel(e.kind ?? '').toUpperCase();
               inner.narrative({
                 kind: 'narrative', label: '',
                 accessor: () => `${date}  [${kind}]  ${e.title ?? ''}${e.status ? `  (${e.status})` : ''}${e.subtitle ? `  —  ${e.subtitle}` : ''}`,

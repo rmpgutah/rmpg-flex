@@ -758,7 +758,7 @@ const AuditLogPage: React.FC = () => {
             >
               <option value="">All Actions</option>
               {uniqueActions.map(action => (
-                <option key={action} value={action}>{action.replace(/_/g, ' ').toUpperCase()}</option>
+                <option key={action} value={action}>{toDisplayLabel(action).toUpperCase()}</option>
               ))}
             </select>
           </div>
@@ -773,7 +773,7 @@ const AuditLogPage: React.FC = () => {
             >
               <option value="">All Types</option>
               {uniqueEntityTypes.map(type => (
-                <option key={type} value={type}>{type.replace(/_/g, ' ').toUpperCase()}</option>
+                <option key={type} value={type}>{toDisplayLabel(type).toUpperCase()}</option>
               ))}
             </select>
           </div>

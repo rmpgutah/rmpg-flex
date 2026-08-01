@@ -352,13 +352,13 @@ export default function CommunityPage() {
   const eventColumns = [
     { key: 'event_name', label: 'Event' },
     { key: 'event_type', label: 'Type', render: (row: CommunityEvent) => (
-      <span className="capitalize">{row.event_type?.replace(/_/g, ' ')}</span>
+      <span className="capitalize">{toDisplayLabel(row.event_type)}</span>
     )},
     { key: 'location', label: 'Location' },
     { key: 'start_date', label: 'Date' },
     { key: 'status', label: 'Status', render: (row: CommunityEvent) => (
       <span className={`capitalize ${row.status === 'completed' ? 'text-green-400' : row.status === 'cancelled' ? 'text-red-400' : row.status === 'in_progress' ? 'text-amber-400' : 'text-rmpg-300'}`}>
-        {row.status?.replace(/_/g, ' ')}
+        {toDisplayLabel(row.status)}
       </span>
     )},
     ...(canWrite ? [{
@@ -417,7 +417,7 @@ export default function CommunityPage() {
   const alertColumns = [
     { key: 'alert_title', label: 'Title' },
     { key: 'alert_type', label: 'Type', render: (row: CommunityAlert) => (
-      <span className="capitalize">{row.alert_type?.replace(/_/g, ' ')}</span>
+      <span className="capitalize">{toDisplayLabel(row.alert_type)}</span>
     )},
     { key: 'severity', label: 'Severity', render: (row: CommunityAlert) => (
       <span className={`capitalize ${row.severity === 'critical' ? 'text-red-400' : row.severity === 'warning' ? 'text-amber-400' : 'text-rmpg-300'}`}>
@@ -586,7 +586,7 @@ export default function CommunityPage() {
                     onChange={(e) => setFormData({ ...formData, event_type: e.target.value })}
                   >
                     {EVENT_TYPES.map((t) => (
-                      <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+                      <option key={t} value={t}>{toDisplayLabel(t)}</option>
                     ))}
                   </select>
                 </div>
@@ -622,7 +622,7 @@ export default function CommunityPage() {
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                   >
                     {EVENT_STATUSES.map((s) => (
-                      <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                      <option key={s} value={s}>{toDisplayLabel(s)}</option>
                     ))}
                   </select>
                 </div>

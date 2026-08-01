@@ -4,7 +4,19 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/rmpg flex.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!--
+      Pinch-zoom is deliberately ALLOWED. `maximum-scale=1.0, user-scalable=no`
+      was set app-wide here, so every page on every device — not just the MDT,
+      which is how it had been recorded — refused to zoom. That fails WCAG 1.4.4
+      (Resize Text), and the app's own densest type sits at 9-11px on tables,
+      which is exactly where an operator most needs to magnify.
+
+      Removed at the operator's direction 2026-08-01. If a specific
+      touch surface ever needs gesture suppression (e.g. to stop an accidental
+      pinch while driving), scope it to that surface with CSS `touch-action`
+      rather than reinstating a global zoom lock.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0d1722" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

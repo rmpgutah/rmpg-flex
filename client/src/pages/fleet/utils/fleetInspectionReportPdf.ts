@@ -12,12 +12,12 @@
 import jsPDF from 'jspdf';
 import type { FleetVehicle, FleetInspection, InspectionItem } from '../../../types';
 
-interface Args {
+export interface Args {
   vehicle: FleetVehicle;
   inspection: FleetInspection;
 }
 
-export function generateFleetInspectionReportPdf({ vehicle, inspection }: Args): void {
+export function buildFleetInspectionReportPdf({ vehicle, inspection }: Args): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const marginX = 40;
   const pageW = doc.internal.pageSize.getWidth();
@@ -170,6 +170,14 @@ export function generateFleetInspectionReportPdf({ vehicle, inspection }: Args):
     doc.setTextColor(0);
   }
 
+  return doc;
+}
+
+/** Build the inspection report PDF and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder + saver). */
+export function generateFleetInspectionReportPdf(args: Args): void {
+  const doc = buildFleetInspectionReportPdf(args);
+  const { vehicle, inspection } = args;
   const typeLabel = (inspection.inspection_type || 'inspection').replace('_', '-');
   const filename = `inspection-${typeLabel}-${vehicle.vehicle_number || 'vehicle'}-${inspection.inspection_date ? inspection.inspection_date.slice(0, 10) : 'undated'}.pdf`;
   doc.save(filename);

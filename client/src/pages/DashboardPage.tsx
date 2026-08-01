@@ -63,6 +63,7 @@ import TrainingCompliance from '../components/dashboard/TrainingCompliance';
 import AlarmStatus from '../components/dashboard/AlarmStatus';
 import IASummary from '../components/dashboard/IASummary';
 import { withAlpha } from '../utils/withAlpha';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ─── Backend Response Types ──────────────────────────────
 
@@ -1956,7 +1957,7 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-1.5 mb-1">
                       <span className="led-dot flex-shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }} />
                       <span className="text-xs font-bold font-mono text-rmpg-100 tabular-nums truncate">{u.call_sign ?? '—'}</span>
-                      <span className="text-[8px] uppercase font-bold tracking-wider ml-auto truncate" style={{ color }}>{(u.status ?? '').replace(/_/g, ' ')}</span>
+                      <span className="text-[8px] uppercase font-bold tracking-wider ml-auto truncate" style={{ color }}>{toDisplayLabel(u.status ?? '')}</span>
                     </div>
                     <div className="text-[9px] text-rmpg-400 truncate">
                       {u.officer_name ?? 'Unassigned'}{u.badge_number ? ` · #${u.badge_number}` : ''}
@@ -2336,7 +2337,7 @@ export default function DashboardPage() {
                 const colorMap: Record<string, string> = { draft: 'var(--spm-text-muted)', submitted: 'var(--spm-text-muted)', under_review: 'var(--stat-accent-amber)', approved: 'var(--stat-accent-green)', closed: 'var(--pri-scheduled)', open: 'var(--stat-accent-red-bright)' };
                 return (
                   <div key={s.status} className="flex items-center gap-2">
-                    <span className="text-[9px] text-rmpg-400 capitalize w-20 truncate">{(s.status || '').replace(/_/g, ' ')}</span>
+                    <span className="text-[9px] text-rmpg-400 capitalize w-20 truncate">{toDisplayLabel(s.status || '')}</span>
                     <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
                       <div className="h-full" style={{ width: `${Math.min(100, (s.count / Math.max(1, (unifiedStats.incidents?.by_status || []).reduce((a: number, b: any) => a + b.count, 0))) * 100)}%`, background: colorMap[s.status] || 'var(--spm-text-muted)' }} />
                     </div>
@@ -2358,7 +2359,7 @@ export default function DashboardPage() {
                 const maxCount = (unifiedStats.incidents?.by_type || [])[0]?.count || 1;
                 return (
                   <div key={t.incident_type || i} className="flex items-center gap-2">
-                    <span className="text-[9px] text-rmpg-400 w-24 truncate capitalize">{(t.incident_type || 'Unknown').replace(/_/g, ' ')}</span>
+                    <span className="text-[9px] text-rmpg-400 w-24 truncate capitalize">{toDisplayLabel(t.incident_type || 'Unknown')}</span>
                     <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
                       <div className="h-full" style={{ width: `${(t.count / maxCount) * 100}%`, background: chartSeriesColors()[2], opacity: 1 - i * 0.08 }} />
                     </div>
@@ -2591,7 +2592,7 @@ export default function DashboardPage() {
                         const pct = psoStats.monthCalls > 0 ? Math.round((st.count / psoStats.monthCalls) * 100) : 0;
                         return (
                           <div key={st.pso_service_type} className="flex items-center gap-2 group hover:bg-surface-raised/50 rounded-sm px-1 py-0.5 transition-colors">
-                            <span className="text-[10px] text-rmpg-300 w-28 truncate capitalize group-hover:text-rmpg-200 transition-colors">{SERVICE_TYPE_LABELS[st.pso_service_type] || st.pso_service_type.replace(/_/g, ' ')}</span>
+                            <span className="text-[10px] text-rmpg-300 w-28 truncate capitalize group-hover:text-rmpg-200 transition-colors">{SERVICE_TYPE_LABELS[st.pso_service_type] || toDisplayLabel(st.pso_service_type)}</span>
                             <div className="flex-1 h-1.5 bg-rmpg-700 rounded-full overflow-hidden shadow-inner">
                               <div className="h-full bg-brand-500 transition-all duration-500 ease-out rounded-full" style={{ width: `${pct}%` }} />
                             </div>

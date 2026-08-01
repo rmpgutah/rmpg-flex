@@ -11,7 +11,7 @@ import type { VoiceMode } from './edgeTTS';
 import { renderCallNarrative, type Terseness, type CallSlots } from './narrativeRenderer';
 // Spoken-label formatter: spells acronyms letter-by-letter so the voice says
 // "P. S. O. Client Request", not the mangled word "Pso Client Request".
-import { toSpokenLabel } from './formatters';
+import { toDisplayLabel, toSpokenLabel } from './formatters';
 
 // ─── Terseness adapter (Task 1.6) ───────────────────────────
 // Reads the user's voice persona terseness from localStorage (written
@@ -34,7 +34,7 @@ function priorityToNumber(p?: string): number | undefined {
 
 function humanizeType(t?: string): string | undefined {
   if (!t) return undefined;
-  return t.replace(/_/g, ' ').toUpperCase();
+  return toDisplayLabel(t).toUpperCase();
 }
 
 function toCallSlots(call: {
@@ -952,10 +952,10 @@ export async function announceStatusChange(callOrSign: string | { call_sign?: st
     enqueuePhrases([{ text: `Unit ${callSign}, on scene${location ? ` at ${location}` : callNumber ? ` on call ${callNumber}` : ''}.` }]);
   } else if (statusNorm === 'cleared' || statusNorm === 'closed') {
     enqueuePhrases([{
-      text: `Unit ${callSign}, clear${callNumber ? ` from call ${callNumber}` : ''}.${disposition ? ` Disposition: ${disposition.replace(/_/g, ' ').toUpperCase()}.` : ''}`
+      text: `Unit ${callSign}, clear${callNumber ? ` from call ${callNumber}` : ''}.${disposition ? ` Disposition: ${toDisplayLabel(disposition).toUpperCase()}.` : ''}`
     }]);
   } else {
-    const status = newStatus.replace(/_/g, ' ').toUpperCase();
+    const status = toDisplayLabel(newStatus).toUpperCase();
     enqueuePhrases([{ text: `Unit ${callSign}, now ${status}.` }]);
   }
 }
@@ -1283,7 +1283,7 @@ export async function announceCallArchived(callNumber: string, disposition?: str
     { text: `Call ${callNumber} archived.` },
   ];
   if (disposition) {
-    phrases.push({ text: `Disposition: ${disposition.replace(/_/g, ' ').toUpperCase()}.` });
+    phrases.push({ text: `Disposition: ${toDisplayLabel(disposition).toUpperCase()}.` });
   }
   if (responseTimeMin != null && responseTimeMin > 0) {
     phrases.push({ text: `Response time: ${responseTimeMin} minutes.` });
@@ -1376,10 +1376,10 @@ export async function announceServeComplete(name: string, address: string, docTy
   await delay(200);
 
   const phrases: VoicePhrase[] = [
-    { text: `Service complete. ${result.replace(/_/g, ' ').toUpperCase()} on ${name}${address ? ` at ${address}` : ''}.` },
+    { text: `Service complete. ${toDisplayLabel(result).toUpperCase()} on ${name}${address ? ` at ${address}` : ''}.` },
   ];
   if (docType) {
-    phrases.push({ text: `Documents: ${docType.replace(/_/g, ' ').toUpperCase()}.` });
+    phrases.push({ text: `Documents: ${toDisplayLabel(docType).toUpperCase()}.` });
   }
   phrases.push({ text: `Attempt ${attempt}.` });
   enqueuePhrases(phrases);

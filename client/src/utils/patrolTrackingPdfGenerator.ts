@@ -13,6 +13,7 @@ import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBl
 import { COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, applyPrintTarget, topMarginY, type PrintTarget } from './pdfTokens';
 import { localToday, parseTimestamp } from './dateUtils';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { toDisplayLabel } from './formatters';
 
 export interface PatrolTrackingPdfOptions {
   printTarget?: PrintTarget;
@@ -572,9 +573,9 @@ export async function buildPatrolTrackingPdf(data: PatrolTrackingReportData, opt
         pt.speed_mph != null ? `${pt.speed_mph}` : 'N/A',                // Speed
         (pt.heading_cardinal || 'N/A').toUpperCase(),                      // Heading
         (pt.source || 'UNK').toUpperCase().slice(0, 4),                // Source
-        (pt.status || 'N/A').replace(/_/g, ' ').toUpperCase(),            // Status
+        toDisplayLabel(pt.status || 'N/A').toUpperCase(),            // Status
         (pt.current_call_number || 'N/A').toUpperCase(),                   // Call #
-        (pt.current_call_type || 'N/A').replace(/_/g, ' ').toUpperCase(), // Call Type
+        toDisplayLabel(pt.current_call_type || 'N/A').toUpperCase(), // Call Type
         pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : 'N/A',  // Dist
         pt.lat != null && pt.lng != null ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}` : 'N/A',  // Lat/Lng
       ];
@@ -632,7 +633,7 @@ export async function buildPatrolTrackingPdf(data: PatrolTrackingReportData, opt
         let rxOff = margin;
         const rRowData = [
           (seg.call_number || 'N/A').toUpperCase(),
-          (seg.incident_type || 'N/A').replace(/_/g, ' ').toUpperCase(),
+          toDisplayLabel(seg.incident_type || 'N/A').toUpperCase(),
           (seg.priority ? (String(seg.priority).toUpperCase().startsWith('P') ? String(seg.priority).toUpperCase() : `P${seg.priority}`.toUpperCase()) : 'N/A'),
           seg.dispatched_at ? formatDateTime(seg.dispatched_at).toUpperCase() : 'N/A',
           seg.onscene_at ? formatDateTime(seg.onscene_at).toUpperCase() : 'N/A',
@@ -743,7 +744,7 @@ export async function buildPatrolTrackingPdf(data: PatrolTrackingReportData, opt
       doc.text(pt.speed_mph != null ? fmtNum(pt.speed_mph, 1) : '-',      cSpd, y);
       doc.text((pt.heading_cardinal || '-').toString(),                   cHdg, y);
       doc.text(abbrevSource(pt.source),                                   cSrc, y);
-      doc.text(truncate((pt.status || '-').replace(/_/g, ' ').toUpperCase(), 10), cStat, y);
+      doc.text(truncate((toDisplayLabel(pt.status) || '-').toUpperCase(), 10), cStat, y);
       doc.text(truncate(callLabel, 18),                                   cCall, y);
       doc.text(pt.cumulative_distance_miles != null ? fmtNum(pt.cumulative_distance_miles, 1) : '-', cDist, y);
       doc.text(

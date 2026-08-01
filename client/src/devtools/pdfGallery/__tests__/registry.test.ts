@@ -63,12 +63,59 @@ describe('PDF_REGISTRY', () => {
         'proposal',
         'skip-tracer-report',
         'training-certificate',
+        'flagged-fuel-audit',
+        'fleet-budget-variance',
+        'fleet-cost-ownership',
+        'fleet-damage-report',
+        'fleet-expenses-report',
+        'fleet-fuel-analytics',
+        'fleet-fuel-report',
+        'fleet-inspection-report',
+        'fleet-maintenance-history',
+        'fleet-vehicle-summary',
+        'fleet-status-report',
+        'fleet-maintenance-report',
+        'fleet-cost-report',
+        'fleet-lifecycle-report',
+        'fleet-compliance-report',
+        'fleet-utilization-report',
+        'fleet-fuel-consumption-report',
+        'fleet-accident-report',
+        'fleet-budget-report',
+        'fleet-replacement-report',
+        'fleet-depreciation-report',
+        'fleet-key-report',
+        'fleet-scorecard-report',
+        'personnel-productivity-report',
+        'inspection-analysis-report',
+        'cost-per-mile-report',
+        'maintenance-forecast-report',
+        'compliance-audit-report',
+      ].sort(),
+    );
+  });
+
+  it('contains the batch-6 internal & reference entries', () => {
+    const ids = entriesByCriticality('internal-reference').map((e) => e.id).sort();
+    expect(ids).toEqual(
+      [
+        'audit-log',
+        'conversation-transcript',
+        'email-thread',
+        'help-quick-reference',
+        'knowledge-base-search',
+        'ncic-reference',
+        'statute',
+        'task-list',
+        'dispatch-guide',
+        'web-research-report',
+        'dl-safety-sheet',
       ].sort(),
     );
   });
 
   it('has the expected total registry size', () => {
-    expect(PDF_REGISTRY.length).toBe(28);
+    expect(PDF_REGISTRY.length).toBe(67);
   });
 
   it('looks up by id', () => {
