@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { AlertTriangle, Clock } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { safeTimeStr } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface DuplicateCall {
   id: number;
@@ -69,7 +70,7 @@ export default function DuplicateCallWarning({ address }: DuplicateCallWarningPr
         {duplicates.slice(0, 3).map((d) => (
           <div key={d.id} className="flex items-center gap-2 text-[9px] text-rmpg-300 font-mono">
             <span className="text-amber-500 font-bold">{d.call_number}</span>
-            <span>{d.incident_type?.replace(/_/g, ' ').toUpperCase()}</span>
+            <span>{toDisplayLabel(d.incident_type).toUpperCase()}</span>
             <span className="text-fg-muted">({(d.status || '').toUpperCase()})</span>
             <span className="text-fg-muted flex items-center gap-0.5">
               <Clock style={{ width: 8, height: 8 }} />

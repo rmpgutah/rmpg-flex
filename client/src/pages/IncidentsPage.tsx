@@ -1514,7 +1514,7 @@ export default function IncidentsPage() {
                 const pdfData = await buildIncidentPdfData();
                 const blobUrl = await generatePdfReportBlobUrl(reportType, pdfData);
                 setPdfBlobUrl(blobUrl);
-                setPdfViewerTitle(`${selectedIncident.incident_number} — ${reportType.replace(/_/g, ' ').toUpperCase()}`);
+                setPdfViewerTitle(`${selectedIncident.incident_number} — ${toDisplayLabel(reportType).toUpperCase()}`);
                 setPdfViewerOpen(true);
               } catch (err: any) {
                 console.error('[IncidentsPage] PDF preview failed:', err);
@@ -1532,7 +1532,7 @@ export default function IncidentsPage() {
                 const pdfData = await buildIncidentPdfData();
                 const blobUrl = await generatePdfReportBlobUrl(reportType, pdfData, { printTarget: 'mobile' });
                 setPdfBlobUrl(blobUrl);
-                setPdfViewerTitle(`${selectedIncident.incident_number} — ${reportType.replace(/_/g, ' ').toUpperCase()} (MOBILE)`);
+                setPdfViewerTitle(`${selectedIncident.incident_number} — ${toDisplayLabel(reportType).toUpperCase()} (MOBILE)`);
                 setPdfViewerOpen(true);
               } catch (err) {
                 console.error('[IncidentsPage] Mobile PDF preview failed:', err);
@@ -1717,7 +1717,7 @@ export default function IncidentsPage() {
                 <label className="field-label">Disposition:</label>
                 <p className="text-sm text-rmpg-200">
                   <span className="inline-block px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1">
-                    {(inc.disposition || '').replace(/_/g, ' ').toUpperCase()}
+                    {toDisplayLabel(inc.disposition || '').toUpperCase()}
                   </span>
                   {(() => {
                     const match = dispositionCodes.find((d) => d.code === inc.disposition);
@@ -1896,7 +1896,7 @@ export default function IncidentsPage() {
                   <div key={lp.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                     <div className="flex items-center gap-3">
                       <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold border border-brand-600/40">
-                        {(lp.role || 'involved').replace(/_/g, ' ')}
+                        {toDisplayLabel(lp.role || 'involved')}
                       </span>
                       <span className="text-sm text-rmpg-100 font-medium">{lp.last_name}, {lp.first_name}</span>
                       <WarrantBadge flags={lp.flags || '[]'} size="sm" />
@@ -1949,7 +1949,7 @@ export default function IncidentsPage() {
                 <div key={lv.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                   <div className="flex items-center gap-3">
                     <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-600/40">
-                      {(lv.role || 'involved').replace(/_/g, ' ')}
+                      {toDisplayLabel(lv.role || 'involved')}
                     </span>
                     <span className="text-sm text-rmpg-100 font-medium">
                       {lv.plate_number || 'No Plate'}{lv.state ? ` (${lv.state})` : ''}
@@ -2351,7 +2351,7 @@ export default function IncidentsPage() {
                           <span className="text-xs text-rmpg-100 font-mono font-bold">{sup.report_number || 'N/A'}</span>
                           {(sup.report_type || sup.type) && (
                             <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[9px] uppercase font-bold border border-brand-600/40">
-                              {(sup.report_type || sup.type || '').replace(/_/g, ' ').toUpperCase()}
+                              {toDisplayLabel(sup.report_type || sup.type || '').toUpperCase()}
                             </span>
                           )}
                           {sup.status && (

@@ -387,7 +387,7 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
               <div className="text-[11px] text-rmpg-100 font-medium truncate">{t.name}</div>
               <div className="text-[9px] text-rmpg-500 truncate">{t.subject}</div>
               <div className="flex items-center gap-1 mt-0.5">
-                <span className="text-[8px] text-rmpg-600 capitalize bg-surface-sunken px-1 rounded-sm">{(t.category || '').replace(/_/g, ' ')}</span>
+                <span className="text-[8px] text-rmpg-600 capitalize bg-surface-sunken px-1 rounded-sm">{toDisplayLabel(t.category || '')}</span>
                 {t.is_system ? <span className="text-[8px] text-amber-600">system</span> : null}
               </div>
             </button>

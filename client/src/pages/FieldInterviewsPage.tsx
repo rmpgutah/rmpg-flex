@@ -568,7 +568,7 @@ export default function FieldInterviewsPage() {
                   <span className="text-[11px] font-bold font-mono text-brand-400">{fi.fi_number}</span>
                   <div className="flex items-center gap-1">
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${REASON_COLORS[fi.contact_reason] || REASON_COLORS.other}`}>
-                      {(fi.contact_reason || '').replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(fi.contact_reason || '').toUpperCase()}
                     </span>
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${STATUS_COLORS[fi.status]}`}>
                       {(fi.status || '').toUpperCase()}
@@ -691,7 +691,7 @@ export default function FieldInterviewsPage() {
               {((selectedFi as any).section_id || (selectedFi as any).zone_id || (selectedFi as any).beat_id) && (
                 <div className="col-span-2"><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Section / Zone / Beat</span><div className="text-rmpg-100 mt-0.5">{[(selectedFi as any).section_id, (selectedFi as any).zone_id, (selectedFi as any).beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
               )}
-              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Reason</span><div className="text-rmpg-100 mt-0.5 capitalize">{selectedFi.contact_reason.replace(/_/g, ' ')}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Reason</span><div className="text-rmpg-100 mt-0.5 capitalize">{toDisplayLabel(selectedFi.contact_reason)}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Type</span><div className="text-rmpg-100 mt-0.5">{formatLabel(selectedFi.contact_type)}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Action Taken</span><div className="text-rmpg-100 mt-0.5 capitalize">{toDisplayLabel(selectedFi.action_taken)}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Officer</span><div className="text-rmpg-100 mt-0.5">{selectedFi.officer_name || selectedFi.officer_display_name || '—'}</div></div>

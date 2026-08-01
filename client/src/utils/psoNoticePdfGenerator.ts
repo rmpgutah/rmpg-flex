@@ -25,6 +25,7 @@ import { sanitizePdfText } from './pdfGenerator';
 import { generateNoticeOfAttempt } from './servePdfGenerator';
 import type { NoticeOfAttemptData } from './servePdfGenerator';
 import { lookupPsoCode, formatCodeFull } from '../constants/processServiceCodes';
+import { toDisplayLabel } from './formatters';
 
 export interface NoticeOfCommunicationAttempt {
   number: number;
@@ -109,7 +110,7 @@ export function psoResultLabel(result: string): string {
     case 'ps unknown':
     case 'unknown': return 'Outcome pending';
     case 'other': return 'Other (see notes)';
-    default: return result ? sanitizePdfText(result).replace(/_/g, ' ') : 'Service not completed';
+    default: return result ? toDisplayLabel(sanitizePdfText(result)) : 'Service not completed';
   }
 }
 

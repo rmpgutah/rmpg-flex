@@ -6,6 +6,7 @@ import {
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── Types ──
 interface CrashReport {
@@ -156,12 +157,12 @@ export default function CrashReportsPage() {
         <select value={filterType} onChange={e => setFilterType(e.target.value)}
           className="bg-surface-sunken border border-border-default rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-accent-silver-600 outline-none">
           <option value="">All Types</option>
-          {CRASH_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+          {CRASH_TYPES.map(t => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
         </select>
         <select value={filterSeverity} onChange={e => setFilterSeverity(e.target.value)}
           className="bg-surface-sunken border border-border-default rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-accent-silver-600 outline-none">
           <option value="">All Severity</option>
-          {SEVERITY_LEVELS.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+          {SEVERITY_LEVELS.map(s => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
         </select>
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
           className="bg-surface-sunken border border-border-default rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-accent-silver-600 outline-none" />
@@ -195,8 +196,8 @@ export default function CrashReportsPage() {
                   <td className="px-3 py-[2px] text-rmpg-100 font-mono">{report.report_number}</td>
                   <td className="px-3 py-[2px] text-rmpg-400">{report.crash_date}</td>
                   <td className="px-3 py-[2px] text-rmpg-400">{report.location}</td>
-                  <td className="px-3 py-[2px] text-rmpg-400 capitalize">{report.crash_type.replace(/_/g, ' ')}</td>
-                  <td className="px-3 py-[2px] text-rmpg-400 capitalize">{report.severity.replace(/_/g, ' ')}</td>
+                  <td className="px-3 py-[2px] text-rmpg-400 capitalize">{toDisplayLabel(report.crash_type)}</td>
+                  <td className="px-3 py-[2px] text-rmpg-400 capitalize">{toDisplayLabel(report.severity)}</td>
                   <td className="px-3 py-[2px] text-rmpg-400 text-center">{report.vehicles_involved}</td>
                   <td className="px-3 py-[2px] text-rmpg-400 text-center">{report.injuries}</td>
                   <td className="px-3 py-[2px] text-center">
@@ -205,7 +206,7 @@ export default function CrashReportsPage() {
                       : <span className="text-rmpg-400">0</span>}
                   </td>
                   <td className={`px-3 py-[2px] font-semibold capitalize ${STATUS_COLORS[report.status] || 'text-rmpg-400'}`}>
-                    {report.status.replace(/_/g, ' ')}
+                    {toDisplayLabel(report.status)}
                   </td>
                 </tr>
               ))}
@@ -258,7 +259,7 @@ export default function CrashReportsPage() {
                       <label className="text-[10px] text-rmpg-400 uppercase">Crash Type</label>
                       <select value={step1.crash_type} onChange={e => setStep1(p => ({ ...p, crash_type: e.target.value }))}
                         className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none">
-                        {CRASH_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+                        {CRASH_TYPES.map(t => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
                       </select>
                     </div>
                   </div>
@@ -271,7 +272,7 @@ export default function CrashReportsPage() {
                     <label className="text-[10px] text-rmpg-400 uppercase">Severity</label>
                     <select value={step1.severity} onChange={e => setStep1(p => ({ ...p, severity: e.target.value }))}
                       className="w-full px-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none">
-                      {SEVERITY_LEVELS.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+                      {SEVERITY_LEVELS.map(s => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
                     </select>
                   </div>
                   <div className="grid grid-cols-2 gap-3">

@@ -818,7 +818,7 @@ export default function CourtRecordsPage() {
                                 <Scale className="w-3 h-3" /> Outcome
                               </h4>
                               <div className="space-y-1 text-[10px]">
-                                <DetailRow label="Outcome" value={ev.outcome?.replace(/_/g, ' ').toUpperCase()} />
+                                <DetailRow label="Outcome" value={toDisplayLabel(ev.outcome).toUpperCase()} />
                                 <DetailRow label="Sentence" value={ev.sentence} />
                                 {ev.fine_amount != null && (
                                   <DetailRow label="Fine" value={`$${Number(ev.fine_amount).toFixed(2)}`} mono />

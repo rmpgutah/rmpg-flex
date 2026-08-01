@@ -1513,7 +1513,7 @@ const PatrolPage: React.FC = () => {
                         <div className="flex items-center justify-between mb-1">
                           <div className={`flex items-center gap-2 text-[11px] ${getStatusColor(scan.status)}`}>
                             {getStatusIcon(scan.status)}
-                            <span className="capitalize font-bold">{scan.status.replace(/_/g, ' ')}</span>
+                            <span className="capitalize font-bold">{toDisplayLabel(scan.status)}</span>
                           </div>
                           <span className="text-[10px] text-rmpg-400 font-mono">
                             {formatDateTime(scan.scanned_at)}
@@ -1556,7 +1556,7 @@ const PatrolPage: React.FC = () => {
                         <td>
                           <div className={`flex items-center gap-2 text-xs ${getStatusColor(scan.status)}`}>
                             {getStatusIcon(scan.status)}
-                            <span className="capitalize">{scan.status.replace(/_/g, ' ')}</span>
+                            <span className="capitalize">{toDisplayLabel(scan.status)}</span>
                           </div>
                         </td>
                         <td className="text-xs text-rmpg-200 max-w-[200px] truncate">{scan.notes || '-'}</td>

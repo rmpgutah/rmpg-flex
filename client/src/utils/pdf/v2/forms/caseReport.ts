@@ -62,7 +62,7 @@ function rowLine(key: string, r: Record<string, any>): string {
     case 'evidence':   return [r.evidence_number, r.description, r.evidence_type, r.status].filter(Boolean).join('  ·  ');
     case 'warrants':   return [r.warrant_number, r.subject_name, r.charge_description, r.status].filter(Boolean).join('  ·  ');
     case 'citations':  return [r.citation_number, r.violation, r.violator_name, r.status].filter(Boolean).join('  ·  ');
-    case 'tasks':       return [r.title, (r.status || '').replace(/_/g, ' '), r.priority, r.assignee_name, r.due_date ? `due ${r.due_date}` : ''].filter(Boolean).join('  ·  ');
+    case 'tasks':       return [r.title, toDisplayLabel(r.status || ''), r.priority, r.assignee_name, r.due_date ? `due ${r.due_date}` : ''].filter(Boolean).join('  ·  ');
     case 'notes':       return `${r.author_name ? `${r.author_name} — ` : ''}${safe(r.content, '')}`;
     case 'related':     return [r.case_number, r.title, r.link_type || 'related', r.status].filter(Boolean).join('  ·  ');
     case 'activity': {
@@ -90,9 +90,9 @@ export const caseReportSchema: FormSchema<CaseReportData> = {
         hour: '2-digit', minute: '2-digit',
       });
       ctx.section('Overview', (inner) => {
-        inner.labeledField({ kind: 'labeled', label: 'Status', accessor: () => safe(c.status, '').replace(/_/g, ' ').toUpperCase() }, data);
+        inner.labeledField({ kind: 'labeled', label: 'Status', accessor: () => toDisplayLabel(safe(c.status, '')).toUpperCase() }, data);
         inner.labeledField({ kind: 'labeled', label: 'Priority', accessor: () => safe(c.priority, '').toUpperCase() }, data);
-        inner.labeledField({ kind: 'labeled', label: 'Type', accessor: () => safe(c.case_type, '').replace(/_/g, ' ').toUpperCase() }, data);
+        inner.labeledField({ kind: 'labeled', label: 'Type', accessor: () => toDisplayLabel(safe(c.case_type, '')).toUpperCase() }, data);
         inner.labeledField({ kind: 'labeled', label: 'Lead Investigator', accessor: () => safe(c.lead_investigator_name) }, data);
         inner.labeledField({ kind: 'labeled', label: 'Opened', accessor: () => safeDate(c.opened_date) }, data);
         if (c.closed_date) inner.labeledField({ kind: 'labeled', label: 'Closed', accessor: () => safeDate(c.closed_date) }, data);

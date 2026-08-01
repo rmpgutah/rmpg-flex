@@ -33,6 +33,7 @@ import { INCIDENT_TYPE_CODES, INCIDENT_TYPE_CATEGORIES, type IncidentCategory } 
 import { OffenseLevelBadge } from '../../components/StatuteLookup';
 import NotEnforcedNotice from './NotEnforcedNotice';
 import type { User, Unit, UnitStatus } from '../../types';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ============================================================
 // Types (same as in AdminPage)
@@ -1957,7 +1958,7 @@ export default function AdminSystemTab({
                                       unit.status === 'busy' ? 'bg-red-900/40 text-red-400 border-red-700/50' :
                                       'bg-rmpg-700/40 text-rmpg-400 border-rmpg-600/50'
                                     }`}>
-                                      {unit.status.replace(/_/g, ' ').toUpperCase()}
+                                      {toDisplayLabel(unit.status).toUpperCase()}
                                     </span>
                                   </td>
                                   <td className="text-xs font-mono text-rmpg-300">{unit.current_call_number || <span className="text-rmpg-500">-</span>}</td>

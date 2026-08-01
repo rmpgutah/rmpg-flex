@@ -992,7 +992,7 @@ export default function DashCamDetailPage() {
                         'bg-rmpg-500'
                       }`} />
                       <span className="text-[10px] text-rmpg-200 capitalize font-mono">
-                        {(video.unit_status || '').replace(/_/g, ' ').toUpperCase()}
+                        {toDisplayLabel(video.unit_status || '').toUpperCase()}
                       </span>
                     </div>
                   </div>
@@ -1095,13 +1095,13 @@ export default function DashCamDetailPage() {
                   {incidentLink.status && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Status</span>
-                      <span className="text-[11px] text-rmpg-200 capitalize">{(incidentLink.status || '').replace(/_/g, ' ')}</span>
+                      <span className="text-[11px] text-rmpg-200 capitalize">{toDisplayLabel(incidentLink.status || '')}</span>
                     </div>
                   )}
                   {incidentLink.disposition && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Disposition</span>
-                      <span className="text-[11px] text-rmpg-200">{(incidentLink.disposition || '').replace(/_/g, ' ').toUpperCase()}</span>
+                      <span className="text-[11px] text-rmpg-200">{toDisplayLabel(incidentLink.disposition || '').toUpperCase()}</span>
                     </div>
                   )}
                 </div>

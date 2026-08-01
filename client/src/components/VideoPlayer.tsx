@@ -22,6 +22,7 @@ import {
 } from '../utils/bodycamVideoCustodyPdf';
 import { sampleFramesForAnalysis } from '../utils/videoAiAnalyze';
 import type { AnalysisResult } from '../utils/videoAiAnalyze';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface Props {
   isOpen: boolean;
@@ -154,7 +155,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
     return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
-  const classLabel = (cls: string) => cls.replace(/_/g, ' ').toUpperCase();
+  const classLabel = (cls: string) => toDisplayLabel(cls).toUpperCase();
 
   // Prefer this-session's freshly-run analysis over whatever was already
   // persisted on the row.
@@ -265,7 +266,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   const classColor = VIDEO_CLASSIFICATION_COLORS[video.classification] || 'bg-rmpg-700 text-rmpg-300';
 
   const overlayInfo = video.overlay_status ? {
-    label: video.overlay_status.replace(/_/g, ' ').toUpperCase(),
+    label: toDisplayLabel(video.overlay_status).toUpperCase(),
     cls: video.overlay_status === 'complete' ? 'border-green-500 text-green-400' : video.overlay_status === 'error' ? 'border-red-500 text-red-400' : 'border-amber-500 text-amber-400'
   } : null;
 
@@ -418,7 +419,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
             <span>DUR: <span className="text-rmpg-200">{formatDuration(video.duration_seconds)}</span></span>
             <span>SIZE: <span className="text-rmpg-200">{formatSize(video.file_size)}</span></span>
             <span>REC: <span className="text-rmpg-200">{formatDate(video.recorded_at)}</span></span>
-            <span>RETENTION: <span className="text-rmpg-200 capitalize">{video.retention_status?.replace(/_/g, ' ') || '-'}</span></span>
+            <span>RETENTION: <span className="text-rmpg-200 capitalize">{toDisplayLabel(video.retention_status) || '-'}</span></span>
           </div>
           {video.notes && (
             <p className="text-[9px] text-fg-muted italic mt-1 truncate">{video.notes}</p>

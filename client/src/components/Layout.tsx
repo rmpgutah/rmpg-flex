@@ -1406,7 +1406,7 @@ export default function Layout() {
         {/* 19: Operator info with distinct badge highlight */}
         <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 flex-shrink-0 whitespace-nowrap ml-4">
           <span>
-            OPR: <span className="text-rmpg-300">{user?.badge_number ? `#${user.badge_number}` : '---'}</span> {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} <span className="text-fg-muted">|</span> <span className="text-brand-400">{toDisplayLabel(user?.role || '---').toUpperCase()}</span>
+            OPR: <span className="text-rmpg-300">{user?.badge_number ? `#${user.badge_number}` : '---'}</span> {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} <span className="text-fg-muted">|</span> <span className="text-brand-400">{(toDisplayLabel(user?.role) || '---').toUpperCase()}</span>
           </span>
         </div>
       </div>

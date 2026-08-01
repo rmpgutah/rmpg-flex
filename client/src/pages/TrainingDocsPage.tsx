@@ -28,6 +28,7 @@ import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { safeDateStr, parseTimestamp } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── Category config ─────────────────────────────────────────
 const CATEGORIES: { key: CompanyDocCategory | 'all'; label: string }[] = [
@@ -437,7 +438,7 @@ export default function TrainingDocsPage() {
                     <span className={`inline-block px-1.5 py-0.5 text-[8px] font-bold uppercase border flex-shrink-0 ${
                       CATEGORY_COLORS[doc.category] || CATEGORY_COLORS.general
                     }`}>
-                      {doc.category?.replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(doc.category).toUpperCase()}
                     </span>
                   </div>
 
@@ -513,7 +514,7 @@ export default function TrainingDocsPage() {
             <div className="space-y-0.5">
               <div className="font-medium text-rmpg-100">{docToDelete.title}</div>
               {docToDelete.category && (
-                <div className="text-rmpg-500">{String(docToDelete.category).replace(/_/g, ' ')}</div>
+                <div className="text-rmpg-500">{toDisplayLabel(String(docToDelete.category))}</div>
               )}
             </div>
           )

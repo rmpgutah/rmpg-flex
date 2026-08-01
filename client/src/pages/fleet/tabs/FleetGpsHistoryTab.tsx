@@ -5,6 +5,7 @@ import {
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { withAlpha } from '../../../utils/withAlpha';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Breadcrumb {
   id: number;
@@ -220,7 +221,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
                     <td className="px-2 py-1">
                       <span className="flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5" style={{ color, background: withAlpha(color, '15'), border: `1px solid ${withAlpha(color, '30')}` }}>
                         {icon}
-                        {ev.event_type.replace(/_/g, ' ').toUpperCase()}
+                        {toDisplayLabel(ev.event_type).toUpperCase()}
                       </span>
                     </td>
                     <td className="px-2 py-1 text-rmpg-200 text-[9px]">

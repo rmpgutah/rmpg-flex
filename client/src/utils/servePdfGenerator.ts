@@ -44,6 +44,7 @@ import {
 import { drawNibrsHeader } from './pdfFormHelpers';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 
 // ── Data Interfaces ──────────────────────────────────────────
 
@@ -801,7 +802,7 @@ export function serveResultLabel(result: string): string {
     case 'moved': return 'Recipient has moved';
     case 'served': return 'Served';
     case 'other': return 'Other (see notes)';
-    default: return result ? result.replace(/_/g, ' ') : 'Unsuccessful';
+    default: return result ? toDisplayLabel(result) : 'Unsuccessful';
   }
 }
 

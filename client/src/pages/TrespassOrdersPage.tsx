@@ -687,7 +687,7 @@ export default function TrespassOrdersPage() {
                   <span className="text-[11px] font-bold font-mono text-brand-400">{order.order_number}</span>
                   <div className="flex items-center gap-1">
                     <span className={`text-[8px] font-bold px-1.5 py-0 border rounded-sm ${TYPE_COLORS[order.order_type] || TYPE_COLORS.trespass_warning}`}>
-                      {(order.order_type || '').replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(order.order_type || '').toUpperCase()}
                     </span>
                     <span className={`text-[8px] font-bold px-1.5 py-0 border rounded-sm ${STATUS_COLORS[order.status]}`}>
                       {(order.status || '').toUpperCase()}
@@ -796,8 +796,8 @@ export default function TrespassOrdersPage() {
               <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-rmpg-100">{selectedOrder.subject_dob ? parseTimestamp(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Property</span><div className="text-rmpg-100">{selectedOrder.property_name || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-rmpg-100 flex items-center gap-1.5">{formatAddressDisplay(selectedOrder.location)}<ViewOnMapLink address={selectedOrder.location} label={selectedOrder.property_name} /></div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-rmpg-100 capitalize">{selectedOrder.order_type.replace(/_/g, ' ')}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Status</span><div className="text-rmpg-100 capitalize">{selectedOrder.status.replace(/_/g, ' ')}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-rmpg-100 capitalize">{toDisplayLabel(selectedOrder.order_type)}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Status</span><div className="text-rmpg-100 capitalize">{toDisplayLabel(selectedOrder.status)}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-rmpg-100">{selectedOrder.effective_date ? parseTimestamp(selectedOrder.effective_date).toLocaleDateString() : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-rmpg-100">{selectedOrder.expiration_date ? parseTimestamp(selectedOrder.expiration_date).toLocaleDateString() : 'Permanent'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Issued By</span><div className="text-rmpg-100">{selectedOrder.issued_by_name || selectedOrder.issued_by_display || '—'}</div></div>

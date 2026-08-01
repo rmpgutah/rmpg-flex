@@ -83,6 +83,7 @@ import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml } from './m
 // exemption the map basemap uses.
 import { TACTICAL_BRAND_GOLD } from './map/utils/tacticalPalette';
 import { withAlpha } from '../utils/withAlpha';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -2210,7 +2211,7 @@ export default function NavigationPage() {
         if (!seen.has(c.call_number)) {
           seen.add(c.call_number);
           fireAlert(c.priority === 'P1' ? 'p1_alert' : 'warning',
-            `${c.priority} ${c.incident_type.replace(/_/g, ' ')} · ${c.distMi.toFixed(1)}mi ${String(Math.round(c.bearing)).padStart(3, '0')}°`,
+            `${c.priority} ${toDisplayLabel(c.incident_type)} · ${c.distMi.toFixed(1)}mi ${String(Math.round(c.bearing)).padStart(3, '0')}°`,
             'var(--sev-critical)');
         }
       }
@@ -2913,7 +2914,7 @@ export default function NavigationPage() {
                   <span className="text-[8px] font-mono text-rmpg-600">{callContacts.length}</span>
                 </div>
                 {callContacts.slice(0, 4).map((c, i) => (
-                  <ContactRow key={`c${i}`} id={`${c.priority} · ${c.call_number || '—'}`} sub={c.incident_type.replace(/_/g, ' ')} color={PRIO_COLOR[c.priority] || '#888888'} bearing={c.bearing} distMi={c.distMi} heading={dir} threat={c.priority === 'P1' || c.priority === 'P2'} />
+                  <ContactRow key={`c${i}`} id={`${c.priority} · ${c.call_number || '—'}`} sub={toDisplayLabel(c.incident_type)} color={PRIO_COLOR[c.priority] || '#888888'} bearing={c.bearing} distMi={c.distMi} heading={dir} threat={c.priority === 'P1' || c.priority === 'P2'} />
                 ))}
               </>
             )}
@@ -2924,7 +2925,7 @@ export default function NavigationPage() {
                   <span className="text-[8px] font-mono text-rmpg-600">{unitContacts.length}</span>
                 </div>
                 {unitContacts.slice(0, 3).map((u, i) => (
-                  <ContactRow key={`u${i}`} id={u.call_sign} sub={u.status.replace(/_/g, ' ')} color={statusColor(u.status)} bearing={u.bearing} distMi={u.distMi} heading={dir} />
+                  <ContactRow key={`u${i}`} id={u.call_sign} sub={toDisplayLabel(u.status)} color={statusColor(u.status)} bearing={u.bearing} distMi={u.distMi} heading={dir} />
                 ))}
               </>
             )}

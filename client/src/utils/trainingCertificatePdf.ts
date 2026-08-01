@@ -22,7 +22,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
-import { stripHtmlForPdf } from './formatters';
+import { toDisplayLabel, stripHtmlForPdf } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -95,13 +95,13 @@ function fmtDateTime(input: string | undefined | null): string {
 /** Public for testing. Pretty-print a training category code for the PDF. */
 export function prettyCategory(category: string | undefined | null): string {
   if (!category) return '—';
-  return category.replace(/_/g, ' ').toUpperCase();
+  return toDisplayLabel(category).toUpperCase();
 }
 
 /** Public for testing. Pretty-print a status code for the PDF. */
 export function prettyStatus(status: string | undefined | null): string {
   if (!status) return '—';
-  return status.replace(/_/g, ' ').toUpperCase();
+  return toDisplayLabel(status).toUpperCase();
 }
 
 /** Public for testing. Format a numeric score as "92 / 100" or em-dash. */
@@ -374,7 +374,7 @@ export function generateTrainingCertificatePdf(input: TrainingCertificatePdfInpu
     const reqFields: Array<[string, string]> = [
       ['Minimum Hours', requirement.minimum_hours != null ? `${requirement.minimum_hours}h` : '—'],
       ['Renewal Cadence', formatRenewal(requirement.renewal_period_months)],
-      ['Required For', roles.length > 0 ? roles.map(r => r.replace(/_/g, ' ')).join(', ') : '—'],
+      ['Required For', roles.length > 0 ? roles.map(r => toDisplayLabel(r)).join(', ') : '—'],
       ['Mandatory', requirement.is_mandatory ? 'YES' : 'No'],
     ];
     for (let i = 0; i < reqFields.length; i += 2) {

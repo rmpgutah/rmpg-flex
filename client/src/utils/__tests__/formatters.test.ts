@@ -68,6 +68,38 @@ describe('formatPhone (display formatter)', () => {
 // Regression guard for the "weak lowercase acronym" bug: any label that
 // presents as PSO Client Request must show "PSO Client Request" visually
 // and announce "P. S. O. Client Request" when spoken.
+// toDisplayLabel treats '-' as a word separator, so a hyphen-only placeholder
+// collapses to ''. This matters whenever a fallback is written INSIDE the call:
+// `toDisplayLabel(status || '--')` renders nothing, silently blanking the cell.
+// The fallback must sit OUTSIDE: `toDisplayLabel(status) || '--'`. Caught during
+// the 2026-08-01 sweep that centralized 265 replace(/_/g,' ') sites onto
+// toDisplayLabel — three call sites had the fallback on the wrong side.
+describe('toDisplayLabel placeholder handling', () => {
+  it('collapses hyphen-only placeholders — keep such fallbacks OUTSIDE the call', () => {
+    expect(toDisplayLabel('-')).toBe('');
+    expect(toDisplayLabel('--')).toBe('');
+    expect(toDisplayLabel('---')).toBe('');
+  });
+
+  it('preserves em-dash and N/A placeholders', () => {
+    expect(toDisplayLabel('—')).toBe('—');
+    expect(toDisplayLabel('N/A')).toBe('N/A');
+  });
+
+  it('returns empty string for null/undefined so `|| fallback` still fires', () => {
+    expect(toDisplayLabel(null)).toBe('');
+    expect(toDisplayLabel(undefined)).toBe('');
+  });
+
+  // The 123 badge sites rewritten as toDisplayLabel(x).toUpperCase() must be
+  // byte-identical to the old x.replace(/_/g,' ').toUpperCase() they replaced.
+  it('uppercase path matches the legacy replace chain exactly', () => {
+    for (const s of ['in_progress', 'pso_client_request', 'not_stolen', 'dui_arrest', 'pending_review']) {
+      expect(toDisplayLabel(s).toUpperCase()).toBe(s.replace(/_/g, ' ').toUpperCase());
+    }
+  });
+});
+
 describe('acronym-aware display labels', () => {
   it('toDisplayLabel keeps acronyms ALL-CAPS', () => {
     expect(toDisplayLabel('pso_client_request')).toBe('PSO Client Request');

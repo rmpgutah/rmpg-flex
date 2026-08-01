@@ -9,6 +9,7 @@ import { formatMilitary, daysUntilExpiry, expiryProgress } from '../utils/fleetF
 import { parseTimestamp, safeDateStr } from '../../../utils/dateUtils';
 import FleetioConflictBadge from '../../../components/FleetioConflictBadge';
 import type { ConflictBadgeConflict } from '../../../components/FleetioConflictBadge';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green',
@@ -406,7 +407,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
               <div className="mt-2 space-y-0.5">
                 {maintenanceCosts.by_type.slice(0, 5).map((t: any) => (
                   <div key={t.type} className="flex justify-between text-[9px] px-1 py-0.5 bg-surface-sunken/50 rounded">
-                    <span className="text-rmpg-300 capitalize">{t.type?.replace(/_/g, ' ') || 'Other'}</span>
+                    <span className="text-rmpg-300 capitalize">{toDisplayLabel(t.type) || 'Other'}</span>
                     <span className="text-green-400 font-mono">${t.total_cost?.toFixed(0)} ({t.count})</span>
                   </div>
                 ))}
@@ -495,7 +496,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                       <div className="flex items-center gap-2 justify-between">
                         <div className="flex items-center gap-2">
                           <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase border bg-brand-900/30 text-brand-400 border-brand-700/30">
-                            {m.type.replace(/_/g, ' ').toUpperCase()}
+                            {toDisplayLabel(m.type).toUpperCase()}
                           </span>
                           <span className="text-[10px] text-rmpg-300 font-mono">
                             {formatMilitary(m.performed_at)}

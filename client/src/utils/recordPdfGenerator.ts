@@ -312,7 +312,7 @@ function renderRecordPostureBand(
   const seen = new Set<string>();
   for (const f of flags) {
     if (!f) continue;
-    const c = truncatePostureChip(String(f).replace(/_/g, ' ').toUpperCase().trim());
+    const c = truncatePostureChip(toDisplayLabel(String(f)).toUpperCase());
     if (c && !seen.has(c)) { seen.add(c); chips.push(c); }
   }
   return drawThreatPostureBand(doc, {
@@ -1667,9 +1667,9 @@ function addConnectionsSection(
   y = checkPageBreak(doc, y, 25, priority);
   { const sec = openAutoSection(doc, 'Connected Profiles', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
   const rows = connections.map((c: any) => [
-    titleCase(c.type.replace(/_/g, ' ')),
+    titleCase(toDisplayLabel(c.type)),
     c.label || 'N/A',
-    titleCase(c.relationship.replace(/_/g, ' ')),
+    titleCase(toDisplayLabel(c.relationship)),
   ]);
   y = addTableWithShading(doc,
     [{ label: 'TYPE', x: lx }, { label: 'NAME / IDENTIFIER', x: lx + 30 }, { label: 'RELATIONSHIP', x: lx + 130 }],
@@ -3986,7 +3986,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       flagList = rf.map((f: any) => typeof f === 'string' ? f : (f?.type || f?.name || f?.label || '')).filter(Boolean);
     }
     // Clean up: replace underscores with spaces
-    flagList = flagList.map(f => f.replace(/_/g, ' ').toUpperCase());
+    flagList = flagList.map(f => toDisplayLabel(f).toUpperCase());
 
     // Dedup against the checkbox flags above.
     const alreadyShown = new Set<string>();
@@ -5193,7 +5193,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     const r1a = addFieldPair(doc, 'Evidence Number', data.evidence_number || '', lx, y, fifthW * 2);
     const r1b = addFieldPair(doc, 'Type', formatEnumValue(data.evidence_type), lx + fifthW * 2, y, fifthW);
     const r1c = addFieldPair(doc, 'Category', data.category || '', lx + fifthW * 3, y, fifthW);
-    const r1d = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ').toUpperCase()), lx + fifthW * 4, y, fifthW);
+    const r1d = addFieldPair(doc, 'Status', displayStatus(toDisplayLabel(data.status || '').toUpperCase()), lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c, r1d);
     // Row 2: Related Incident, Serial Number, Brand, Model (4 cols)
     const r2a = addFieldPair(doc, 'Related Incident', data.incident_number || '', lx, y, quarterW);
@@ -5393,7 +5393,7 @@ function expiryStatusTag(dateStr: string | null | undefined, warnWithinDays = 30
 function buildFleetCautionText(data: FleetPdfData, flags: string[]): string {
   const parts: string[] = [];
   if (flags.includes('OUT OF SERVICE') || flags.includes('IN REPAIR')) {
-    parts.push(`Vehicle ${data.vehicle_number} is currently ${data.status?.replace(/_/g, ' ').toUpperCase()} — not available for deployment.`);
+    parts.push(`Vehicle ${data.vehicle_number} is currently ${toDisplayLabel(data.status).toUpperCase()} — not available for deployment.`);
   }
   if (flags.includes('REGISTRATION EXPIRED') || flags.includes('INSURANCE EXPIRED')) {
     parts.push('CRITICAL: Expired compliance documents — vehicle may not be legally operable on public roadways until renewed.');
@@ -5468,7 +5468,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     // Row 3: Plate Number, Plate State, Status (3 cols)
     const r3a = addFieldPair(doc, 'Plate Number', data.plate_number || '', lx, y, thirdW);
     const r3b = addFieldPair(doc, 'Plate State', data.plate_state || '', lx + thirdW, y, thirdW);
-    const r3c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ').toUpperCase()), lx + thirdW * 2, y, thirdW);
+    const r3c = addFieldPair(doc, 'Status', displayStatus(toDisplayLabel(data.status || '').toUpperCase()), lx + thirdW * 2, y, thirdW);
     y = Math.max(r3a, r3b, r3c);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -6266,12 +6266,12 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     details: [
       { label: 'PROPERTY',  value: data.name || '', ratio: 1.2 },
       { label: 'STATUS',    value: data.is_active === false ? 'INACTIVE' : 'ACTIVE', ratio: 0.65 },
-      { label: 'TYPE',      value: (data.property_type || data.business_type || '').replace(/_/g, ' ').toUpperCase(), ratio: 0.95 },
+      { label: 'TYPE',      value: toDisplayLabel(data.property_type || data.business_type || '').toUpperCase(), ratio: 0.95 },
       // Widened ratio (1.0 -> 1.5) + a lower shrink-to-fit floor (4pt) so a
-      // long owner name (e.g. "ANDREW GARLUTZO") gets enough room to fully
-      // fit instead of falling back to fitTextToWidth's last-resort
-      // ellipsis-truncate ("ANDREW GARLUT...") — a person's name should
-      // never clip on a legal record when shrinking the font can avoid it.
+      // long owner name (e.g. a hyphenated double surname) gets enough room to
+      // fully fit instead of falling back to fitTextToWidth's last-resort
+      // ellipsis-truncate — a person's name should never clip on a legal
+      // record when shrinking the font can avoid it.
       ...(data.owner_name ? [{ label: 'OWNER', value: data.owner_name, ratio: 1.5, minFontSize: 4 }] : []),
     ],
     eventIso: data.created_at,
@@ -6808,7 +6808,7 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     // Row 1: Citation Number (2/4), Type (1/4), Status (1/4)
     const r1a = addFieldPair(doc, 'Citation Number', data.citation_number || '', lx, y, quarterW * 2);
     const r1b = addFieldPair(doc, 'Type', formatEnumValue(data.type), lx + quarterW * 2, y, quarterW);
-    const r1c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ').toUpperCase()), lx + quarterW * 3, y, quarterW);
+    const r1c = addFieldPair(doc, 'Status', displayStatus(toDisplayLabel(data.status || '').toUpperCase()), lx + quarterW * 3, y, quarterW);
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Date of Violation, Time, Location
     const r2a = addFieldPair(doc, 'Date of Violation', data.violation_date || '', lx, y, quarterW);
@@ -7721,7 +7721,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     doc.setFontSize(6.5);
     for (const [label, count] of entries) {
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text(titleCase(label.replace(/_/g, ' ')), x + 2, ty + 3);
+      doc.text(titleCase(toDisplayLabel(label)), x + 2, ty + 3);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(String(count), x + w - 2, ty + 3, { align: 'right' });
       ty += 5;

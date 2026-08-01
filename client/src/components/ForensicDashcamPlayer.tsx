@@ -37,6 +37,7 @@ import {
   loadPlateDetector, detectPlateBboxes, plateBoxToFrame, bestPlate, type PlateDetectorStatus,
 } from '../utils/fastAlpr';
 import { aggressionScore, detectAnomalies, proximity, type RiskScore, type Anomaly } from '../utils/tacticalIntel';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface VehicleAttrs { state?: string | null; make?: string | null; model?: string | null; color?: string | null; year?: number | null }
 interface MediaResp {
@@ -498,7 +499,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     const vehDesc = [vTag, plate ? `plate ${plate}` : null].filter(Boolean).join(' · ') || 'Unknown vehicle';
     const where = media?.address || address || null;
     const descParts = [
-      `Flagged from dashcam forensic review (event #${eventId}${evType ? `, ${evType.replace(/_/g, ' ')}` : ''}).`,
+      `Flagged from dashcam forensic review (event #${eventId}${evType ? `, ${toDisplayLabel(evType)}` : ''}).`,
       `Driving-risk ${risk.score}/100 (${risk.level})${risk.factors.length ? `: ${risk.factors.join(', ')}` : ''}.`,
       `Peak ${Math.round(stats.maxSpeed)} mph.`,
       anomalies.length ? `Anomalies: ${anomalies.map((a) => a.label).join(', ')}.` : '',
@@ -554,7 +555,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
         <div className="flex items-center gap-2 min-w-0">
           <Car className="w-4 h-4 text-[#d4a017] shrink-0" />
           <span className="text-[11px] font-semibold tracking-wider text-[#d4a017]">FORENSIC PLAYBACK</span>
-          {evType && <span className="text-[10px] uppercase px-1.5 py-0.5 border border-amber-700/50 bg-amber-900/30 text-amber-300">{evType.replace(/_/g, ' ')}</span>}
+          {evType && <span className="text-[10px] uppercase px-1.5 py-0.5 border border-amber-700/50 bg-amber-900/30 text-amber-300">{toDisplayLabel(evType)}</span>}
           {media?.footage_request_id && (
             <a href={`/flexcam/${media.footage_request_id}`} target="_blank" rel="noreferrer"
               className="text-[9px] font-bold uppercase px-1.5 py-0.5 border border-blue-700/50 bg-blue-900/30 text-blue-300 hover:border-blue-400 transition-colors whitespace-nowrap">
