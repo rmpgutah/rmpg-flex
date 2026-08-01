@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { formatEnumValue } from '../../../utils/formatters';
 
 // Matches the real /dispatch/queue response shape — see ActiveCall in
 // client/src/pages/map/utils/mapConstants.ts and LIST_VIEW_COLUMNS in
@@ -39,7 +40,7 @@ export default function DesktopPinnedCallTicker() {
       ) : (
         calls.map(c => (
           <div key={c.id} className="text-[11px] py-0.5" style={{ color: 'var(--text-primary)' }}>
-            <span className="font-semibold">{c.incident_type}</span>
+            <span className="font-semibold">{formatEnumValue(c.incident_type)}</span>
             <span style={{ color: 'var(--text-muted)' }}> — {c.location_address}</span>
           </div>
         ))

@@ -13,6 +13,7 @@
 import jsPDF from 'jspdf';
 import type { FleetVehicle } from '../../../types';
 import { safeDateStr } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface CostTotals {
   fuel: number;
@@ -73,7 +74,7 @@ export function buildFleetVehicleSummaryPdf({ vehicle, assignedOfficer, assigned
   doc.setFontSize(10);
   const infoFields: [string, string][] = [
     ['Vehicle Number', `#${vehicle.vehicle_number}`],
-    ['Status', (vehicle.status || 'unknown').replace('_', ' ').toUpperCase()],
+    ['Status', toDisplayLabel(vehicle.status || 'unknown').toUpperCase()],
     ['Year / Make / Model', [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || '-'],
     ['Color', vehicle.color || '-'],
     ['VIN', vehicle.vin || '-'],
@@ -179,7 +180,7 @@ export function buildFleetVehicleSummaryPdf({ vehicle, assignedOfficer, assigned
     doc.setFont('helvetica', 'normal');
     for (const m of recentMaintenance.slice(0, 5)) {
       doc.text(m.performed_at ? safeDateStr(m.performed_at, '-') : '-', marginX, y);
-      doc.text((m.type || 'service').replace('_', ' '), marginX + 100, y);
+      doc.text(toDisplayLabel(m.type || 'service'), marginX + 100, y);
       doc.text(m.cost != null ? fmtCurrency(m.cost) : '-', marginX + 250, y);
       y += 11;
     }

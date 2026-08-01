@@ -10,6 +10,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { queryFirst, query, execute, executeBatch, executeInChunks } from './db';
 import { log } from './logger';
 import { denverHourExpr, denverStrftimeExpr } from './denverTime';
+import { toDisplayLabel } from './displayLabel';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -877,13 +878,13 @@ async function _deprecatedNotifyServeCompletion(
 
     if (sender) {
       const who = job.defendant_name ?? `Job #${queueId}`;
-      const docType = (job.document_type ?? 'documents').replace(/_/g, ' ');
+      const docType = toDisplayLabel(job.document_type ?? 'documents');
       const caseRef = job.case_number ? ` (Case ${job.case_number})` : '';
       const subject = `Service Update: ${who}${caseRef}`;
 
       const body = `<p>Dear ${clientName ?? 'Client'},</p>
 <p>Service status has been updated for <strong>${who}</strong>${caseRef}.</p>
-<p>Status: <strong>${attempt.result ?? job.status}</strong></p>
+<p>Status: <strong>${toDisplayLabel(attempt.result ?? job.status)}</strong></p>
 <p>Thank you for choosing RMPG Flex Process Services.</p>`;
 
       const payload = JSON.stringify({

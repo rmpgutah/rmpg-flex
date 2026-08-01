@@ -11,6 +11,7 @@ import jsPDF from 'jspdf';
 import { parseTimestamp, safeDateStr } from '../../../utils/dateUtils';
 import type { FleetVehicle, FleetFuelLog, FleetFuelSummary, FleetMaintenance, FleetInspection, FleetAssignment, FleetInsurancePolicy, FleetAnalytics } from '../../../types';
 import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
+import { formatEnumValue } from '../../../utils/formatters';
 
 const RMPG_GRAY = '#888888';
 
@@ -566,7 +567,7 @@ export function buildFleetBudgetReport(data: {
     const pct = b.allocated_amount > 0 ? Math.round((b.spent_amount / b.allocated_amount) * 100) : 0;
     const barW = Math.min(pct, 100) * 3.2;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-    doc.text(b.category, 40, y);
+    doc.text(formatEnumValue(b.category), 40, y);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
     doc.text(`$${b.spent_amount.toLocaleString()} of $${b.allocated_amount.toLocaleString()} (${pct}%)`, 160, y);
     if (pct > 90) doc.setTextColor('#ef4444'); else if (pct > 70) doc.setTextColor('#d4a017'); else doc.setTextColor('#10b981');

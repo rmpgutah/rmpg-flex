@@ -9,6 +9,7 @@ import IconButton from '../components/IconButton';
 import ViewOnMapLink from '../components/ViewOnMapLink';
 import { apiFetch } from '../hooks/useApi';
 import { asArray } from '../utils/asArray';
+import { formatEnumValue } from '../utils/formatters';
 
 // ─── Types ───────────────────────────────────────────────────
 interface PawnTransaction {
@@ -347,7 +348,7 @@ export default function PawnTrackingPage() {
                       className={`inline-block px-1.5 py-[1px] text-[10px] font-semibold uppercase border ${STATUS_BADGES[txn.status] || 'text-rmpg-400 border-rmpg-600'}`}
                       style={{ borderRadius: 2 }}
                     >
-                      {txn.status}
+                      {formatEnumValue(txn.status)}
                     </span>
                   </td>
                   <td className="px-3 py-[2px]" onClick={e => e.stopPropagation()}>

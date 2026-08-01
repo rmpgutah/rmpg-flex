@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query } from '../utils/db';
+import { toDisplayLabel } from '../utils/displayLabel';
 
 // ============================================================
 // Crime data layers (for the NAVIGATE tactical map)
@@ -131,7 +132,7 @@ crime.get('/local', async (c) => {
           id: `local:${r.call_number}`,
           source: 'local',
           category: r.priority || 'CFS',
-          label: String(r.incident_type || 'call').replace(/_/g, ' '),
+          label: toDisplayLabel(String(r.incident_type || 'call')),
           date: r.created_at || null,
           lat,
           lng,

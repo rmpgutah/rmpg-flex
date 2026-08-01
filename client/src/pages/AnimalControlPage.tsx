@@ -14,7 +14,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 // ── Types ──
 interface AnimalControlCase {
@@ -360,7 +360,7 @@ export default function AnimalControlPage() {
                     <span className="font-mono text-brand-400 truncate">{ac.case_number}</span>
                     <span className="text-rmpg-400 truncate">{safeDateStr(ac.created_at)}</span>
                     <span className="text-rmpg-300 truncate capitalize">{toDisplayLabel(ac.case_type)}</span>
-                    <span className="text-white truncate">{ac.animal_type}</span>
+                    <span className="text-white truncate">{formatEnumValue(ac.animal_type)}</span>
                     <span className="text-rmpg-300 truncate">{ac.breed}</span>
                     <span className="text-rmpg-300 truncate">{ac.owner_last_name ? `${ac.owner_last_name}, ${ac.owner_first_name}` : '\u2014'}</span>
                     <span className="text-rmpg-400 truncate">{ac.location}</span>

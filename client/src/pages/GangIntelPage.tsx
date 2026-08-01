@@ -251,7 +251,7 @@ export default function GangIntelPage() {
               : 'badge-p3'
           }`}
         >
-          {r.threat_level}
+          {formatEnumValue(r.threat_level)}
         </span>
       ),
     },

@@ -23,7 +23,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 
-import { toDisplayLabel, stripHtmlForPdf } from './formatters';
+import { formatEnumValue, toDisplayLabel, stripHtmlForPdf } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -323,7 +323,7 @@ export function generateJailBookingSheetPdf(input: JailBookingSheetInput): jsPDF
     ['Arresting Agency', inmate.arresting_agency || '—'],
     ['Arresting Officer', inmate.arresting_officer_name || (inmate.arresting_officer_id ? String(inmate.arresting_officer_id) : '—')],
     ['Bail Amount', formatBail(inmate.bail_amount)],
-    ['Bond Type', inmate.bond_type || '—'],
+    ['Bond Type', formatEnumValue(inmate.bond_type) || '—'],
     ['Linked Incident', inmate.arrest_incident_id ? String(inmate.arrest_incident_id) : '—'],
     ['Release Reason', inmate.release_reason || '—'],
   ]);

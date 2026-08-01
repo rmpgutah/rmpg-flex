@@ -293,7 +293,7 @@ export default function PersonIntelDossierPage() {
           <div className="flex gap-1 flex-wrap">
             {riskFlags.map(f => (
               <span key={f} className="text-[10px] bg-red-600/20 text-red-400 border border-red-600/40 rounded px-1.5 py-0.5">
-                {f.toUpperCase().replace('_', ' ')}
+                {toDisplayLabel(f).toUpperCase()}
               </span>
             ))}
           </div>

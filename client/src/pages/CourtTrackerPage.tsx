@@ -1178,7 +1178,7 @@ export default function CourtTrackerPage() {
                     <div key={i} className="flex items-center gap-2 py-1 border-b border-rmpg-800 last:border-0">
                       <FileText style={{ width: 10, height: 10 }} className="text-brand-400" />
                       <span className="text-[10px] text-rmpg-100">{d.file_name}</span>
-                      <span className="text-[9px] text-rmpg-500">{d.doc_type}</span>
+                      <span className="text-[9px] text-rmpg-500">{formatEnumValue(d.doc_type)}</span>
                     </div>
                   ));
                 })()}

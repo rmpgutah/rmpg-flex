@@ -25,7 +25,7 @@ import { asArray } from '../utils/asArray';
 import { openEmailThreadPdf } from '../utils/emailThreadPdf';
 import sanitizeHtml from 'sanitize-html';
 import ForwardRedactionModal from '../components/email/ForwardRedactionModal';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { withAlpha } from '../utils/withAlpha';
 
 // ─── Per-user localStorage scoping ──────────────────────────────────────
@@ -615,7 +615,7 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
               <div key={link.id} className="flex items-center gap-1 px-2 py-0.5 bg-surface-sunken border border-border-subtle rounded-sm text-[10px] text-rmpg-300 group">
                 <Icon className="w-3 h-3 text-brand-400" />
                 <span>{getLinkLabel(link)}</span>
-                {link.link_type && <span className="text-[8px] text-rmpg-600 capitalize">{link.link_type}</span>}
+                {link.link_type && <span className="text-[8px] text-rmpg-600 capitalize">{formatEnumValue(link.link_type)}</span>}
                 <button aria-label="Unlink" type="button" onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
                   <X className="w-2.5 h-2.5" />
                 </button>

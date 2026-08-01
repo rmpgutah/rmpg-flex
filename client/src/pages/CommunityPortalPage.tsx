@@ -17,6 +17,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
 import { asArray } from '../utils/asArray';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -203,7 +204,7 @@ export default function CommunityPortalPage() {
         >
           <option value="">All Statuses</option>
           {STATUS_OPTIONS.map(s => (
-            <option key={s} value={s}>{s.replace('_', ' ').toUpperCase()}</option>
+            <option key={s} value={s}>{toDisplayLabel(s).toUpperCase()}</option>
           ))}
         </select>
         <select
@@ -253,7 +254,7 @@ export default function CommunityPortalPage() {
                   <td className="px-2 py-[2px] text-gray-400 max-w-[200px] truncate">{r.description}</td>
                   <td className="px-2 py-[2px]">
                     <span className={`inline-block px-1.5 py-0.5 rounded-sm text-[10px] ${STATUS_COLORS[r.status] || 'text-gray-400'}`}>
-                      {r.status.replace('_', ' ').toUpperCase()}
+                      {toDisplayLabel(r.status).toUpperCase()}
                     </span>
                   </td>
                   <td className="px-2 py-[2px] text-gray-400">{r.assigned_to || '—'}</td>
@@ -328,7 +329,7 @@ export default function CommunityPortalPage() {
                     className="w-full bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 mt-1 focus:border-[#d4a017] focus:outline-none"
                   >
                     {STATUS_OPTIONS.map(s => (
-                      <option key={s} value={s}>{s.replace('_', ' ').toUpperCase()}</option>
+                      <option key={s} value={s}>{toDisplayLabel(s).toUpperCase()}</option>
                     ))}
                   </select>
                 </div>

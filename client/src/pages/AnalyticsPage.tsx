@@ -723,7 +723,7 @@ export default function AnalyticsPage() {
                       <table className="w-full text-left">
                         <thead className="sticky top-0 bg-surface-raised">
                           <tr className="text-[9px] uppercase tracking-wider text-rmpg-500 border-b border-border-default">
-                            {Object.keys(rawRows[0]).map((k) => <th key={k} className="py-[3px] pr-2 font-semibold">{k}</th>)}
+                            {Object.keys(rawRows[0]).map((k) => <th key={k} className="py-[3px] pr-2 font-semibold">{toDisplayLabel(k)}</th>)}
                           </tr>
                         </thead>
                         <tbody>
