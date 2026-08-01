@@ -1,6 +1,6 @@
 import { PROMOTED_RECORD_FIELDS, PROMOTED_TARGET_TABLES, RESIDENCE_FIELDS, PARCEL_RECORD_EXTRA_FIELDS, PARCEL_RECORD_STRUCTURAL_COLUMNS, sqlType, TOTAL_CAMA_FIELDS } from '../src/utils/sl-assessor/camaFields.ts';
 const L=[];
-L.push(`-- migrations/0221_assessor_full_cama_build.sql`);
+L.push(`-- migrations/0222_assessor_full_cama_build.sql`);
 L.push(`-- Full Salt Lake County CAMA column build. Generated from`);
 L.push(`-- src/utils/sl-assessor/camaFields.ts (${TOTAL_CAMA_FIELDS} fields) against the live`);
 L.push(`-- PubMore/detail.cfm rendering captured 2026-08-01 for 16-31-127-029-0000.`);

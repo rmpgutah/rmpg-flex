@@ -1,4 +1,14 @@
--- migrations/0221_assessor_full_cama_build.sql
+-- migrations/0222_assessor_full_cama_build.sql
+-- ⚠️ RENUMBERED 0221 → 0222: 0221 was taken by 0221_fleetio_fuel_ghost_merge.sql
+-- (PR #3230), which merged to main while this branch was open.
+--
+-- This file was ALREADY APPLIED to live D1 785de7ae on 2026-08-01 under its
+-- old name, and d1_migrations holds a row for '0221_assessor_full_cama_build.sql'.
+-- Under the new name it is untracked, so wrangler will run it once more. That
+-- is harmless — every statement is CREATE TABLE IF NOT EXISTS or an ADD COLUMN
+-- that raises "duplicate column name" on an already-present column, and the
+-- deploy step is continue-on-error. No data is touched.
+--
 -- Full Salt Lake County CAMA column build. Generated from
 -- src/utils/sl-assessor/camaFields.ts (146 fields) against the live
 -- PubMore/detail.cfm rendering captured 2026-08-01 for 16-31-127-029-0000.
