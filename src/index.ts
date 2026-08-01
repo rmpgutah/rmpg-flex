@@ -207,6 +207,7 @@ export default {
   //   "* * * * *"     every minute              → serve attempt notifications, daily rebalance
   //   "*/30 * * * *"  every 30 min              → ServeManager job poller, email outbox drain + inbox poll
   //   "0 3 1 * *"     1st of month 03:00 UTC    → NHTSA vPIC refresh
+  //   "0 9 * * *"     nightly 09:00 UTC         → driver-performance rollup (trailing 3 days)
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     // ── Every 4 hours (UTC 00:00, 04:00, 08:00, 12:00, 16:00, 20:00) ──
     if (event.cron === '0 */4 * * *') {
@@ -574,6 +575,30 @@ export default {
             console.log(`[retention-reminder] eligible=${JSON.stringify(r.eligible)} notified=${r.notified}`),
           ).catch((err) => console.error('Retention reminder sweep failed:', err)),
         ).catch(() => {}),
+      );
+    }
+
+    // ── Nightly, 09:00 UTC (02:00/03:00 Denver, after the day is fully closed) ──
+    // Driver Performance nightly rollup. Recomputes the TRAILING 3 DAYS,
+    // not just yesterday: late-arriving ClearPath events and assignment
+    // corrections are routine, and a 3-day window absorbs them without a
+    // manual recompute. Upserts are idempotent, so re-running is safe.
+    if (event.cron === '0 9 * * *') {
+      ctx.waitUntil(
+        import('./utils/driverPerformance/rollup').then(async (m) => {
+          for (let back = 1; back <= 3; back++) {
+            const day = new Date(Date.now() - back * 86400000).toISOString().slice(0, 10);
+            try {
+              const r = await m.rollupDay(env.DB, day);
+              log.info('driver-performance rollup complete', {
+                day, officersProcessed: r.officersProcessed, failures: r.failures,
+              });
+            } catch (err) {
+              // One bad day must not abort the other two.
+              log.error('driver-performance rollup day failed', { day }, err as Error);
+            }
+          }
+        }).catch((err) => log.error('driver-performance rollup import failed', {}, err as Error)),
       );
     }
   },
