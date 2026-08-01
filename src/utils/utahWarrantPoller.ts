@@ -438,6 +438,86 @@ async function syncLocalWarrantRecord(
     console.warn(`[Utah Warrants] local record sync skipped for ${w.utah_warrant_id}:`,
       err instanceof Error ? err.message : String(err));
   }
+
+  // A manually-entered row may describe THIS SAME warrant under the bare
+  // number, with no UTW- prefix. The lookup above cannot see it — it matches
+  // on external_warrant_id, which a hand-typed record never has — so the two
+  // rows coexist and drift apart. Record the disagreement.
+  await recordSourceConflict(db, w);
+}
+
+/**
+ * Flag a manually-entered warrant whose status disagrees with the state source.
+ *
+ * NEVER overwrites the local status. An officer-entered value is not silently
+ * replaced by a scraper; the conflict is recorded for a human to resolve.
+ *
+ * Matching is deliberately conservative — the bare number ALONE is not enough,
+ * since numbering is only unique per issuing court. A match additionally
+ * requires the same issued_date or the same court (case-insensitive: live data
+ * had "Davis County Justice Cou" against "DAVIS COUNTY JUSTICE COU").
+ *
+ * Found live 2026-08-01: warrants 3149919 and 3155534 each had a UTW- twin
+ * agreeing on issued_date AND court, while the manual rows read 'active' and
+ * the state read 'recalled' with last_check_result='cleared'. Two of the 23
+ * warrants the system reported ACTIVE had been recalled by Utah.
+ *
+ * Best-effort: a failure here must never abort the scan.
+ */
+async function recordSourceConflict(db: D1Database, w: FetchedWarrant): Promise<void> {
+  try {
+    const scraped = await queryFirst<{ id: number; status: string }>(
+      db,
+      'SELECT id, status FROM warrants WHERE external_warrant_id = ? AND external_source_key = ?',
+      w.utah_warrant_id, SOURCE_KEY,
+    );
+    if (!scraped) return;
+
+    const bare = String(w.utah_warrant_id);
+    const local = await queryFirst<{ id: number; status: string; basis: string }>(
+      db,
+      `SELECT id, status,
+              CASE WHEN issued_date = ? AND UPPER(TRIM(COALESCE(issuing_court,''))) = UPPER(TRIM(COALESCE(?,'')))
+                     THEN 'issued_date+court'
+                   WHEN issued_date = ? THEN 'issued_date'
+                   ELSE 'court' END AS basis
+         FROM warrants
+        WHERE warrant_number = ?
+          AND id != ?
+          AND (external_source_key IS NULL OR external_source_key != ?)
+          AND (issued_date = ?
+               OR UPPER(TRIM(COALESCE(issuing_court,''))) = UPPER(TRIM(COALESCE(?,''))))
+        LIMIT 1`,
+      w.issue_date, w.court_name, w.issue_date,
+      bare, scraped.id, SOURCE_KEY, w.issue_date, w.court_name,
+    );
+    if (!local || local.status === scraped.status) return;
+
+    // Upsert: the poller runs on a schedule, so re-detecting the same open
+    // conflict must refresh it rather than stack a row every cycle.
+    await execute(
+      db,
+      `INSERT INTO warrant_source_conflicts
+         (local_warrant_id, scraped_warrant_id, normalized_number,
+          local_status, scraped_status, match_basis, source_key, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(local_warrant_id, scraped_warrant_id) DO UPDATE SET
+         local_status = excluded.local_status,
+         scraped_status = excluded.scraped_status,
+         match_basis = excluded.match_basis,
+         detected_at = excluded.detected_at`,
+      local.id, scraped.id, bare, local.status, scraped.status, local.basis, SOURCE_KEY,
+    );
+
+    console.warn(
+      `[Utah Warrants] status conflict on ${bare}: local warrant ${local.id} is `
+      + `'${local.status}' but the state source reports '${scraped.status}' `
+      + `(matched on ${local.basis}). Flagged for review; local status unchanged.`,
+    );
+  } catch (err) {
+    console.warn('[Utah Warrants] conflict check failed:',
+      err instanceof Error ? err.message : String(err));
+  }
 }
 
 // Append a warrant_watch_log event — the warrant subsystem's notification

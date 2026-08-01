@@ -173,7 +173,30 @@
       // can never prevent the reload it is meant to enable.
       (function () {
         var el = document.getElementById('rmpg-entry');
-        if (!el) return;
+        // ⚠️ DO NOT reduce this to getElementById('rmpg-entry') alone.
+        //
+        // Vite REWRITES the entry script tag at build time and does not carry
+        // the `id` across. Source ships the tag with id="rmpg-entry" pointing at
+        // /src/main.tsx; the build emits an otherwise-equivalent tag carrying
+        // type="module" + crossorigin + src="/assets/index-<hash>.js" and NO id.
+        // (Written prose rather than literal tags on purpose: the stampCfAsync
+        // vite plugin rewrites anything matching a script tag, comments
+        // included, and literal examples here would also pollute greps.)
+        //
+        // So in every production build getElementById returned null, this
+        // function returned early, and THE ENTIRE SAFETY NET WAS NEVER
+        // INSTALLED — silently, since a missing listener throws nothing. That
+        // is why the INITIALIZING wedge kept requiring a manual hard-refresh
+        // even though this recovery has existed since the 2026-07-13 incident.
+        // Confirmed live 2026-07-31 by evaluating document.getElementById(
+        // 'rmpg-entry') on a wedged production tab: null.
+        //
+        // Grepping dist/ for the handler's own source is NOT sufficient
+        // verification — the code shipped, but the element it depends on did
+        // not. Assert on the built <script> tag instead (see
+        // entryRecovery.test.ts).
+        if (!el) el = document.querySelector('script[type="module"][src*="/assets/"]');
+        if (!el) el = document.querySelector('script[type="module"][src]');
 
         function purgeThenReload() {
           var reloaded = false;
@@ -238,7 +261,10 @@
           Promise.all(tasks).then(go, go);
         }
 
-        el.addEventListener('error', function () {
+        // Shared once-per-30s gate. Returns true if recovery may run now.
+        // sessionStorage unavailable (private mode / blocked storage) => the
+        // guard cannot be enforced, so we decline rather than risk a loop.
+        function mayRecover() {
           try {
             var KEY = 'rmpg_chunk_reload';
             var WINDOW_MS = 30000;
@@ -247,14 +273,54 @@
             if (lastAt !== null && isNaN(lastAt)) lastAt = null;
             if (lastAt === null || Date.now() - lastAt > WINDOW_MS) {
               sessionStorage.setItem(KEY, String(Date.now()));
-              purgeThenReload();
+              return true;
             }
+            return false;
           } catch (e) {
-            // sessionStorage unavailable (private mode / blocked storage): we
-            // cannot enforce the once-per-30s guard, so do NOT reload — an
-            // unguarded reload here could loop.
+            return false;
           }
-        });
+        }
+
+        if (el) {
+          el.addEventListener('error', function () {
+            if (mayRecover()) purgeThenReload();
+          });
+        }
+
+        // Boot watchdog — the backstop that does not depend on ANY error event.
+        //
+        // The listener above only helps when the browser actually fires `error`
+        // on the entry script. Two of the three known causes of a stranded
+        // INITIALIZING splash do not:
+        //
+        //   1. Rocket Loader rewrites type="module" -> type="<hash>-module".
+        //      The bundle is fetched with a clean 200 and simply NEVER
+        //      EXECUTES. There is no error, by construction, so no listener
+        //      can fire. (Zone-level fix is #3186's data-cfasync stamping;
+        //      this is the client-side net if that ever regresses.)
+        //   2. A static import of the entry graph resolving to a 0-byte body
+        //      (observed live 2026-07-31: AuthContext-<hash>.js, decodedBodySize
+        //      0, React never mounted, no console error).
+        //
+        // So: if React has not replaced #pre-splash within the timeout, treat
+        // the boot as failed and run the same purge+refetch recovery. Uses the
+        // SAME once-per-30s gate, so a genuinely slow boot recovers once and a
+        // persistently broken origin cannot loop.
+        //
+        // 15s is deliberately well past a cold boot on a slow connection —
+        // this must never fire on a page that was merely going to be late.
+        var BOOT_TIMEOUT_MS = 15000;
+        setTimeout(function () {
+          try {
+            var splash = document.getElementById('pre-splash');
+            // Splash gone => React mounted and cleaned up. Nothing to do.
+            if (!splash) return;
+            var root = document.getElementById('root');
+            var mounted = root && root.children.length > 0 && !root.contains(splash);
+            if (mounted) return;
+            if (mayRecover()) purgeThenReload();
+          } catch (e) { /* never let the watchdog itself throw */ }
+        }, BOOT_TIMEOUT_MS);
       })();
     </script>
     <!-- Service worker registration handled by useServiceWorker hook in React -->

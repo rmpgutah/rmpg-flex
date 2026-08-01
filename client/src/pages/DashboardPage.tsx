@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Phone, Users, FileText, Clock, AlertTriangle, Plus, Activity, Shield, Loader2,
-  Radio, MapPin, Eye, ArrowRight, TrendingUp, Gavel, Briefcase, Target,
+  Radio, MapPin, Eye, ArrowRight, TrendingUp, Gavel, Briefcase, Target, Minus,
   CheckCircle, XCircle, Sun, Cloud, CloudRain, CloudSnow, CloudLightning,
   CloudDrizzle, CloudFog, Snowflake, Navigation, RefreshCw, Droplets, Wind,
   ArrowUpRight, ArrowDownRight, Zap, Mail, ClipboardList,
@@ -945,8 +945,18 @@ export default function DashboardPage() {
   const todayCount = weeklyTrend?.today ?? stats.calls_today;
   const yesterdayCount = weeklyTrend?.yesterday ?? 0;
   const lastWeekCount = weeklyTrend?.lastWeekSameDay ?? 0;
-  const vsYesterday = yesterdayCount > 0 ? Math.round(((todayCount - yesterdayCount) / yesterdayCount) * 100) : 0;
-  const vsLastWeek = lastWeekCount > 0 ? Math.round(((todayCount - lastWeekCount) / lastWeekCount) * 100) : 0;
+  // A ZERO baseline means "no comparison is possible", NOT "no change" — those
+  // are different statements and returning 0 conflated them. Observed live:
+  // CALLS TODAY 6 rendered as "0% vs yesterday (0 calls)", i.e. a flat neutral
+  // indicator on a day that went from nothing to six. A percentage change from
+  // zero is undefined, so the tile now says so instead of inventing 0%.
+  //
+  // null (not 0) so the render can distinguish it — see the `=== null` branches
+  // below. Genuine no-change days still show 0% with the neutral indicator.
+  const pctChange = (now: number, base: number): number | null =>
+    base > 0 ? Math.round(((now - base) / base) * 100) : null;
+  const vsYesterday = pctChange(todayCount, yesterdayCount);
+  const vsLastWeek = pctChange(todayCount, lastWeekCount);
 
   // ─── Incident clearance donut data ─────────────────────
   const incidentPieData = clearanceRate ? [
@@ -1163,9 +1173,12 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 gap-2">
               <div className="panel-beveled bg-surface-sunken p-2.5 text-center">
                 <div className="flex items-center justify-center gap-1 mb-1">
-                  {vsYesterday > 0 ? <ArrowUpRight className="w-3 h-3 text-red-400" /> : vsYesterday < 0 ? <ArrowDownRight className="w-3 h-3 text-green-400" /> : <TrendingUp className="w-3 h-3 text-rmpg-500" />}
-                  <span className={`text-sm font-bold font-mono tabular-nums ${vsYesterday > 0 ? 'text-red-400' : vsYesterday < 0 ? 'text-green-400' : 'text-rmpg-400'}`}>
-                    {vsYesterday > 0 ? '+' : ''}{vsYesterday}%
+                  {vsYesterday === null ? <Minus className="w-3 h-3 text-fg-muted" /> : vsYesterday > 0 ? <ArrowUpRight className="w-3 h-3 text-red-400" /> : vsYesterday < 0 ? <ArrowDownRight className="w-3 h-3 text-green-400" /> : <TrendingUp className="w-3 h-3 text-rmpg-500" />}
+                  <span
+                    className={`text-sm font-bold font-mono tabular-nums ${vsYesterday === null ? 'text-fg-muted' : vsYesterday > 0 ? 'text-red-400' : vsYesterday < 0 ? 'text-green-400' : 'text-rmpg-400'}`}
+                    title={vsYesterday === null ? 'No calls yesterday — percentage change from zero is undefined' : undefined}
+                  >
+                    {vsYesterday === null ? '—' : `${vsYesterday > 0 ? '+' : ''}${vsYesterday}%`}
                   </span>
                 </div>
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold">vs Yesterday</div>
@@ -1173,9 +1186,12 @@ export default function DashboardPage() {
               </div>
               <div className="panel-beveled bg-surface-sunken p-2.5 text-center">
                 <div className="flex items-center justify-center gap-1 mb-1">
-                  {vsLastWeek > 0 ? <ArrowUpRight className="w-3 h-3 text-red-400" /> : vsLastWeek < 0 ? <ArrowDownRight className="w-3 h-3 text-green-400" /> : <TrendingUp className="w-3 h-3 text-rmpg-500" />}
-                  <span className={`text-sm font-bold font-mono tabular-nums ${vsLastWeek > 0 ? 'text-red-400' : vsLastWeek < 0 ? 'text-green-400' : 'text-rmpg-400'}`}>
-                    {vsLastWeek > 0 ? '+' : ''}{vsLastWeek}%
+                  {vsLastWeek === null ? <Minus className="w-3 h-3 text-fg-muted" /> : vsLastWeek > 0 ? <ArrowUpRight className="w-3 h-3 text-red-400" /> : vsLastWeek < 0 ? <ArrowDownRight className="w-3 h-3 text-green-400" /> : <TrendingUp className="w-3 h-3 text-rmpg-500" />}
+                  <span
+                    className={`text-sm font-bold font-mono tabular-nums ${vsLastWeek === null ? 'text-fg-muted' : vsLastWeek > 0 ? 'text-red-400' : vsLastWeek < 0 ? 'text-green-400' : 'text-rmpg-400'}`}
+                    title={vsLastWeek === null ? 'No calls on the same day last week — percentage change from zero is undefined' : undefined}
+                  >
+                    {vsLastWeek === null ? '—' : `${vsLastWeek > 0 ? '+' : ''}${vsLastWeek}%`}
                   </span>
                 </div>
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold">vs Last Week</div>
