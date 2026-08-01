@@ -22,6 +22,17 @@ describe('extractPdfText', () => {
     expect(pages[0]).toContain('Page one text');
     expect(pages[1]).toContain('Page two text');
   });
+
+  it('handles Invalid Date split across two separate text() calls', async () => {
+    const doc = new jsPDF();
+    // Render "Invalid" and "Date" as two separate calls, simulating PDF item split
+    doc.text('Served: Invalid', 20, 20);
+    doc.text('Date', 20, 30);
+    const pages = await extractPdfText(doc);
+    const leaks = findPlaceholderLeaks(pages);
+    // Should detect the leak even if the items are split and joined with space
+    expect(leaks.some((l) => l.token.match(/Invalid.*Date/i))).toBe(true);
+  });
 });
 
 describe('findPlaceholderLeaks', () => {
@@ -44,6 +55,10 @@ describe('findPlaceholderLeaks', () => {
       'Annulled by court order',
       'Nullification hearing scheduled',
       'The undefinedness doctrine',
+      'Nullable fields allowed',
+      'System behaves undefinedly',
+      'Motion of annulment filed',
+      'Wrote a novel for NaNoWriMo',
     ]);
     expect(leaks).toEqual([]);
   });

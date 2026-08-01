@@ -22,7 +22,7 @@ export interface PlaceholderLeak {
 // using `.test()` or `.exec()` without resetting lastIndex get non-deterministic results.
 // Use `findPlaceholderLeaks()` (which resets per page) instead of calling this pattern directly.
 export const PLACEHOLDER_LEAK_PATTERN =
-  /(?<=undefined)null|(?<=null)undefined|(?<=NaN)undefined|(?<=undefined)NaN|(?<=NaN)null|(?<=null)NaN|undefined(?=NaN)|undefined(?=null)|NaN(?=undefined)|NaN(?=null)|null(?=undefined)|null(?=NaN)|(?<![a-zA-Z])undefined(?!ness)|(?<![a-zA-Z])null(?!ification)|(?<![a-zA-Z])NaN(?![a-zA-Z])|Invalid\s+Date|\[object Object\]/gi;
+  /(?<=undefined)null|(?<=null)undefined|(?<=NaN)undefined|(?<=undefined)NaN|(?<=NaN)null|(?<=null)NaN|undefined(?=NaN)|undefined(?=null)|NaN(?=undefined)|NaN(?=null)|null(?=undefined)|null(?=NaN)|(?<![a-zA-Z])undefined(?![a-zA-Z])|(?<![a-zA-Z])null(?![a-zA-Z])|(?<![a-zA-Z])NaN(?![a-zA-Z])|Invalid\s+Date|\[object Object\]/gi;
 
 export async function extractPdfText(doc: jsPDF): Promise<string[]> {
   const data = new Uint8Array(doc.output('arraybuffer') as ArrayBuffer);
