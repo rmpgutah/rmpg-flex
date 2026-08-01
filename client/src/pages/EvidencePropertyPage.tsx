@@ -30,7 +30,7 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 import type { BodyCamVideo } from '../types';
 import { parseTimestamp, mtDatetimeLocalToUtc } from '../utils/dateUtils';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 // ─── Constants ─────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
@@ -841,7 +841,7 @@ export default function EvidencePropertyPage() {
                     </span>
                     {selected.category && (
                       <span className="text-[10px] px-2 py-1 border bg-rmpg-700/30 text-rmpg-400 border-rmpg-700/30">
-                        {selected.category}
+                        {formatEnumValue(selected.category)}
                       </span>
                     )}
                   </div>

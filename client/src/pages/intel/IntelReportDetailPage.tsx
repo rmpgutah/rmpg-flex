@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../hooks/useApi';
 import { generateIntelProductPdf } from '../../utils/intelProductPdf';
+import { toDisplayLabel } from '../../utils/formatters';
 
 const REL = ['A', 'B', 'C', 'D', 'E', 'F'];
 const CRED = [1, 2, 3, 4, 5, 6];
@@ -70,7 +71,7 @@ export default function IntelReportDetailPage() {
         <h1 className="text-sm font-semibold" style={{ color: '#d4a017' }}>
           {r.report_number} — {r.title}
         </h1>
-        <span className="uppercase text-[11px]" style={{ color: '#888' }}>{r.status?.replace('_', ' ')}</span>
+        <span className="uppercase text-[11px]" style={{ color: '#888' }}>{toDisplayLabel(r.status)}</span>
       </div>
       <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
         Grade: {r.grade_label} · Confidence: {r.confidence} · Handling: {r.handling_code || '—'} · Threat: {r.threat_level}

@@ -9,7 +9,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { formatDateTime } from '../utils/dateUtils';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 interface SecurityStatus {
   twoFactorEnabled: boolean; passwordAge: number; trustedDevices: number;
@@ -409,7 +409,7 @@ export default function SecurityDashboardPage() {
               <tbody>
                 {threats.map((t, i) => (
                   <tr key={i} className="border-b border-rmpg-800 hover:bg-surface-raised">
-                    <td className="px-3 py-[2px]"><span className={`text-[9px] font-bold uppercase ${t.severity === 'critical' ? 'text-red-400' : t.severity === 'high' ? 'text-amber-400' : 'text-rmpg-400'}`}>{t.severity}</span></td>
+                    <td className="px-3 py-[2px]"><span className={`text-[9px] font-bold uppercase ${t.severity === 'critical' ? 'text-red-400' : t.severity === 'high' ? 'text-amber-400' : 'text-rmpg-400'}`}>{formatEnumValue(t.severity)}</span></td>
                     <td className="px-3 py-[2px] text-[11px] text-rmpg-100 capitalize">{toDisplayLabel(t.type || '')}</td>
                     <td className="px-3 py-[2px] text-[10px] text-rmpg-300">{t.description}</td>
                     <td className="px-3 py-[2px] text-[10px] text-rmpg-400 font-mono">{t.ip_address || '—'}</td>

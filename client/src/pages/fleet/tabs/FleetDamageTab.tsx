@@ -6,7 +6,7 @@ import { useToast } from '../../../components/ToastProvider';
 import FloatingSaveBar from '../../../components/FloatingSaveBar';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 
 import RichTextArea from '../../../components/RichTextArea';
 interface DamageReport {
@@ -190,8 +190,8 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
           <div className="flex items-start justify-between">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase ${SEVERITY_COLORS[r.severity] || ''}`}>{r.severity}</span>
-                <span className="text-[10px] text-rmpg-100 font-bold">{r.damage_type}</span>
+                <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase ${SEVERITY_COLORS[r.severity] || ''}`}>{formatEnumValue(r.severity)}</span>
+                <span className="text-[10px] text-rmpg-100 font-bold">{formatEnumValue(r.damage_type)}</span>
                 {(r.location_on_vehicle || (r as any).location) && <span className="text-[10px] text-rmpg-400">({r.location_on_vehicle || (r as any).location})</span>}
               </div>
               <p className="text-[10px] text-rmpg-300">{r.description}</p>

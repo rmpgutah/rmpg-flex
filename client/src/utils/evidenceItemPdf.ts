@@ -10,7 +10,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
-import { toDisplayLabel } from './formatters';
+import { formatEnumValue, toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -180,7 +180,7 @@ export function generateEvidenceItemPdf(input: EvidencePdfInput): jsPDF {
   const fields: Array<[string, string]> = [
     ['Description', item.description || '—'],
     ['Type / Category', [item.evidence_type, item.category].filter(Boolean).join(' / ') || '—'],
-    ['Status', item.status || '—'],
+    ['Status', formatEnumValue(item.status) || '—'],
     ['Storage', item.storage_location || '—'],
     ['Serial #', item.serial_number || '—'],
     ['Brand / Model', [item.brand, item.model].filter(Boolean).join(' / ') || '—'],
@@ -217,7 +217,7 @@ export function generateEvidenceItemPdf(input: EvidencePdfInput): jsPDF {
     doc.text('OUTCOME', M, y);
     doc.text('METHOD', M + colW, y);
     doc.setTextColor(TEXT_DARK);
-    doc.text(item.disposition, M, y + 11);
+    doc.text(formatEnumValue(item.disposition), M, y + 11);
     doc.text(item.disposition_method || '—', M + colW, y + 11);
     y += 24;
     if (item.disposition_date) {

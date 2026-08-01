@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Lock, LockOpen, MessageSquare, RotateCw, Trash2 } from 'lucide-react';
 import { Annotation, AnnotationReply, BatesConfig, DocumentMeta, PageNumbersConfig, WatermarkConfig, StampLabel, StickyCategory, STICKY_CATEGORIES } from '../types';
 import { safeDateTimeStr } from '../../../utils/dateUtils';
+import { formatEnumValue } from '../../../utils/formatters';
 
 const STAMPS: StampLabel[] = ['CONFIDENTIAL', 'EVIDENCE', 'COPY', 'ORIGINAL', 'DRAFT', 'APPROVED', 'VOID', 'FILED', 'RECEIVED'];
 
@@ -72,7 +73,7 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <div className="text-[10px] text-rmpg-300">Type: <span className="text-rmpg-100 font-mono">{ann.type}</span></div>
+        <div className="text-[10px] text-rmpg-300">Type: <span className="text-rmpg-100 font-mono">{formatEnumValue(ann.type)}</span></div>
         <button type="button" onClick={() => onChange({ ...ann, locked: !ann.locked })}
           title={ann.locked ? 'Unlock annotation' : 'Lock annotation (blocks move/resize/delete)'}
           className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded-sm border ${ann.locked ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-border-default text-rmpg-400 hover:text-rmpg-100'}`}>

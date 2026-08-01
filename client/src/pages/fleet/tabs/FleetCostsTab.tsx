@@ -20,7 +20,7 @@ import type {
 } from '../../../types';
 import type { CostCategory } from '../modals/FleetCostFormModal';
 import { parseTimestamp } from '../../../utils/dateUtils';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 import { toNum, fmtFixed } from '../utils/fleetFormatters';
 import OpenWorkOrdersPanel from './OpenWorkOrdersPanel';
 
@@ -129,7 +129,7 @@ export default function FleetCostsTab({
             <div className="px-2 pb-2 space-y-1">
               {alerts.map((a, i) => (
                 <div key={i} className="flex items-center gap-2 text-[10px] text-amber-300 font-mono">
-                  <span className="w-32 text-amber-400">{a.kind}</span>
+                  <span className="w-32 text-amber-400">{formatEnumValue(a.kind)}</span>
                   <span className="min-w-0 flex-1 truncate">{a.label}</span>
                   <span className="text-rmpg-400">{a.date}</span>
                   <span className="text-amber-500 w-16 text-right">{a.days}d</span>

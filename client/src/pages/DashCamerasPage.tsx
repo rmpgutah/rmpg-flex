@@ -34,7 +34,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import usePersistedState from '../hooks/usePersistedState';
 import { parseTimestamp } from '../utils/dateUtils';
 import { getSignedParams, buildSignedQuerySync } from '../utils/signedUrls';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 const PAGE_SIZE = 25;
 
@@ -398,7 +398,7 @@ export default function DashCamerasPage() {
                   <span className={`absolute top-1 right-1 px-1.5 py-0.5 text-[8px] font-bold ${
                     EVENT_TYPE_COLORS[v.cpg_event_type] || EVENT_TYPE_COLORS.default
                   }`}>
-                    {v.cpg_event_type}
+                    {formatEnumValue(v.cpg_event_type)}
                   </span>
                 )}
 
@@ -430,7 +430,7 @@ export default function DashCamerasPage() {
                   <span className={`inline-flex px-1 py-0.5 text-[8px] font-bold border capitalize ${
                     CLASSIFICATION_COLORS[v.classification] || CLASSIFICATION_COLORS.routine
                   }`}>
-                    {v.classification}
+                    {formatEnumValue(v.classification)}
                   </span>
                   {v.case_number && (
                     <span className="text-[8px] font-mono text-rmpg-500">Case: {v.case_number}</span>
@@ -517,7 +517,7 @@ export default function DashCamerasPage() {
                   <span className={`inline-flex px-1 py-0.5 text-[8px] font-bold border capitalize ${
                     CLASSIFICATION_COLORS[v.classification] || CLASSIFICATION_COLORS.routine
                   }`}>
-                    {v.classification}
+                    {formatEnumValue(v.classification)}
                   </span>
                 </td>
               </tr>
@@ -604,7 +604,7 @@ export default function DashCamerasPage() {
                 <span className={`inline-flex px-1 py-0.5 text-[8px] font-bold ${
                   EVENT_TYPE_COLORS[selectedVideo.cpg_event_type] || EVENT_TYPE_COLORS.default
                 }`}>
-                  {selectedVideo.cpg_event_type}
+                  {formatEnumValue(selectedVideo.cpg_event_type)}
                 </span>
               ) : <span className="text-rmpg-400 font-mono">Manual</span>}
             </div>
@@ -613,7 +613,7 @@ export default function DashCamerasPage() {
               <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold border capitalize ${
                 CLASSIFICATION_COLORS[selectedVideo.classification] || CLASSIFICATION_COLORS.routine
               }`}>
-                {selectedVideo.classification}
+                {formatEnumValue(selectedVideo.classification)}
               </span>
             </div>
             <div>

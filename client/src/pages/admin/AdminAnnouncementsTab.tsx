@@ -10,7 +10,7 @@ import { formatDateTime, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../.
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
-import { toDisplayLabel } from '../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 
 // ============================================================
 // System Announcements Management Tab
@@ -265,7 +265,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="text-xs font-bold text-rmpg-100 truncate">{a.title}</span>
                       <span className={`text-[9px] px-1.5 py-0.5 rounded-sm font-bold uppercase ${priorityColor}`}>{toDisplayLabel(a.priority)}</span>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded-sm uppercase ${typeColor}`}>{a.type}</span>
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-sm uppercase ${typeColor}`}>{formatEnumValue(a.type)}</span>
                       {!a.is_active && <span className="text-[9px] text-rmpg-500 italic">Inactive</span>}
                     </div>
                     <p className="text-[10px] text-rmpg-300 line-clamp-2">{a.body}</p>

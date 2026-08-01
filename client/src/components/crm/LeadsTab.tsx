@@ -12,7 +12,7 @@ import {
   DollarSign, Target, Send,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { formatPhoneInput, toDisplayLabel } from '../../utils/formatters';
+import { formatEnumValue, formatPhoneInput, toDisplayLabel } from '../../utils/formatters';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
 import ScraperAdminPanel from './ScraperAdminPanel';
@@ -638,7 +638,7 @@ export default function LeadsTab() {
                 )}
                 {selectedLead.business_type && (
                   <div className="flex items-center gap-1.5 text-xs text-rmpg-300">
-                    <Building2 className="w-3 h-3 text-fg-muted" /> {selectedLead.business_type}
+                    <Building2 className="w-3 h-3 text-fg-muted" /> {formatEnumValue(selectedLead.business_type)}
                   </div>
                 )}
                 {selectedLead.industry && (

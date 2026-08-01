@@ -29,6 +29,7 @@ import { getSaveBuilder, hasSaveHandler, requiresIncident } from '../utils/docum
 import IncidentPicker, { type IncidentSummary } from './IncidentPicker';
 import ConfirmDialog from './ConfirmDialog';
 import { generateDocumentIntakePdf, suggestFilename } from '../utils/documentIntakePdf';
+import { formatEnumValue } from '../utils/formatters';
 
 export interface ExtractedField {
   key: string;
@@ -225,7 +226,7 @@ export default function DocumentIntakeReviewer({ extraction, filename, onReset }
         <div className="flex items-center gap-3 flex-wrap">
           <div>
             <div className="text-[10px] uppercase text-rmpg-400">Detected Kind</div>
-            <div className="text-[15px] font-semibold text-brand-gold-500">{extraction.kind}</div>
+            <div className="text-[15px] font-semibold text-brand-gold-500">{formatEnumValue(extraction.kind)}</div>
           </div>
           <div className="border-l border-border-default pl-3">
             <div className="text-[10px] uppercase text-rmpg-400">Tier</div>

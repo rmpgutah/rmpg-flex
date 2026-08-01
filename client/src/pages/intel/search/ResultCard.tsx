@@ -1,5 +1,6 @@
 import { authedImageUrl } from '../../../hooks/useApi';
 import type { ClusteredHit } from '../clusterHits';
+import { formatEnumValue } from '../../../utils/formatters';
 
 // Entity-type label colours — use CSS-variable-backed Tailwind tokens so the
 // card re-themes between night and day without edits here. Semantic mapping:
@@ -29,7 +30,7 @@ export default function ResultCard({ clustered, onSelect, onOpen, highlighted }:
       )}
       <button className="flex-1 min-w-0 text-left" onClick={() => onSelect(h.type, h.id, h.label)}>
         <div className="flex items-center gap-2">
-          <span className={`font-mono text-[8px] uppercase ${TYPE_TAG[h.type] || 'text-rmpg-400'}`}>{h.type}</span>
+          <span className={`font-mono text-[8px] uppercase ${TYPE_TAG[h.type] || 'text-rmpg-400'}`}>{formatEnumValue(h.type)}</span>
           {clustered.linkedCount > 1 && (
             <span className="font-mono text-[8px] text-brand-400 border border-brand-900 rounded-[2px] px-[4px]">{clustered.linkedCount} linked</span>
           )}

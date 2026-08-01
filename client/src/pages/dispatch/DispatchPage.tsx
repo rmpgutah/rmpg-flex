@@ -35,7 +35,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { formatIncidentType, INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../../utils/caseNumbers';
-import { formatPhoneInput, toDisplayLabel } from '../../utils/formatters';
+import { formatEnumValue, formatPhoneInput, toDisplayLabel } from '../../utils/formatters';
 import { ORGANIZATION } from '../../constants/organizationConstants';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import RmpgLogo from '../../components/RmpgLogo';
@@ -4738,7 +4738,7 @@ export default function DispatchPage() {
                         <label className="field-label">Disposition:</label>
                         <p className="text-sm text-rmpg-200">
                           <span className="inline-block px-2 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1.5 rounded-sm tracking-wide">
-                            {selectedCall.disposition}
+                            {formatEnumValue(selectedCall.disposition)}
                           </span>
                           {(() => {
                             const match = dispositionCodes.find((d) => d.code === selectedCall.disposition);

@@ -1800,7 +1800,7 @@ export default function WarrantsPage() {
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-bold text-rmpg-100">{w.warrant_number}</span>
                             <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${STATUS_COLORS[w.status] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>{toDisplayLabel(w.status)}</span>
-                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${TYPE_COLORS[w.type] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>{w.type}</span>
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${TYPE_COLORS[w.type] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>{formatEnumValue(w.type)}</span>
                           </div>
                           <div className="text-xs text-rmpg-300 mt-1">{w.charge_description}</div>
                           <div className="text-[10px] text-rmpg-400 mt-1">
@@ -1855,7 +1855,7 @@ export default function WarrantsPage() {
                               </button>
                               {w.offense_level ? (
                                 <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${SEVERITY_COLORS[w.offense_level] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>
-                                  {w.offense_level}
+                                  {formatEnumValue(w.offense_level)}
                                 </span>
                               ) : (
                                 <span className="text-[9px] bg-red-900/30 text-red-400 border border-red-700/40 px-1.5 py-0.5 rounded font-bold uppercase">ACTIVE</span>
@@ -1907,7 +1907,7 @@ export default function WarrantsPage() {
                               </button>
                               {w.offense_level && (
                                 <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${SEVERITY_COLORS[w.offense_level] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>
-                                  {w.offense_level}
+                                  {formatEnumValue(w.offense_level)}
                                 </span>
                               )}
                             </div>
@@ -2202,7 +2202,7 @@ export default function WarrantsPage() {
                                   <span className="text-sm font-bold text-rmpg-100">{p.last_name}, {p.first_name}</span>
                                   {p.warrant_severity && (
                                     <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${severityBg}`}>
-                                      {p.warrant_severity}
+                                      {formatEnumValue(p.warrant_severity)}
                                     </span>
                                   )}
                                   {p.local_warrant_count > 0 && (
@@ -2265,7 +2265,7 @@ export default function WarrantsPage() {
                                       {allWarrants.map(w => (
                                         <div key={w.id} className="flex items-center gap-2 text-[10px] p-1.5 rounded bg-surface-sunken/50">
                                           <span className="font-mono text-rmpg-200">{w.warrant_number}</span>
-                                          <span className="text-rmpg-400">{w.type}</span>
+                                          <span className="text-rmpg-400">{formatEnumValue(w.type)}</span>
                                           <span className="text-rmpg-200 flex-1 min-w-0 truncate">{w.charge_description}</span>
                                           {w.issuing_court && <span className="text-rmpg-400 truncate">{w.issuing_court}</span>}
                                           {w.bail_amount != null && w.bail_amount > 0 && (
@@ -2276,7 +2276,7 @@ export default function WarrantsPage() {
                                               w.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
                                               w.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                                               'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                                            }`}>{w.offense_level}</span>
+                                            }`}>{formatEnumValue(w.offense_level)}</span>
                                           )}
                                         </div>
                                       ))}
@@ -3139,7 +3139,7 @@ export default function WarrantsPage() {
                     {utahDetailWarrant.warrant_type && (
                       <div>
                         <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Type</span>
-                        <div className="font-mono text-rmpg-100 mt-0.5 uppercase">{utahDetailWarrant.warrant_type}</div>
+                        <div className="font-mono text-rmpg-100 mt-0.5 uppercase">{formatEnumValue(utahDetailWarrant.warrant_type)}</div>
                       </div>
                     )}
                     <div>

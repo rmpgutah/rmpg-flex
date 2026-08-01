@@ -10,7 +10,7 @@ import { useFormDraft } from '../../../hooks/useFormDraft';
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { asArray } from '../../../utils/asArray';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 interface PIP {
   id: number;
   officer_id: number;
@@ -242,7 +242,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
                       <span className="text-xs font-bold text-rmpg-100">{p.officer_name}</span>
                       {p.status === 'active' && <span className={`text-[10px] ${days <= 7 ? 'text-red-400' : days <= 14 ? 'text-amber-400' : 'text-rmpg-400'}`}><Clock className="w-3 h-3 inline" /> {days}d remaining</span>}
                     </div>
-                    <p className="text-[10px] text-rmpg-300">{p.reason}</p>
+                    <p className="text-[10px] text-rmpg-300">{formatEnumValue(p.reason)}</p>
                     <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
                       <span>{fmtDate(p.start_date)} to {fmtDate(p.end_date)}</span>
                       <span>Supervisor: {p.supervisor_name}</span>

@@ -12,6 +12,7 @@ import { tryRepairAndRetry } from '../utils/repairFts';
 import { upsertDlRecord } from './dlRecords';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { toDisplayLabel } from '../utils/displayLabel';
 const records = new Hono<Env>();
 
 // Inline role gate — same pattern as admin.ts. Destructive / chain-of-custody
@@ -406,7 +407,7 @@ records.post('/from-dl-scan', async (c) => {
       const docType = str(scan.doc_type);
       const docNumber = str(scan.document_number);
       const note = docType && docType !== 'license'
-        ? `Created from ${docType.replace('_', ' ')} scan${docNumber ? ` (doc# ${docNumber}${str(scan.issuing_country) ? `, ${str(scan.issuing_country)}` : ''})` : ''}`
+        ? `Created from ${toDisplayLabel(docType)} scan${docNumber ? ` (doc# ${docNumber}${str(scan.issuing_country) ? `, ${str(scan.issuing_country)}` : ''})` : ''}`
         : 'Created from DL scan';
       // Booleans arrive from AamvaResult as `boolean | null`; coerce to
       // 0/1/null explicitly rather than binding a JS boolean (D1's bind()

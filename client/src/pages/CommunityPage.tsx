@@ -31,7 +31,7 @@ import StatsCard from '../components/StatsCard';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import {
   Users, Calendar, MessageSquare, Bell, Plus, Pencil, Trash2,
   AlertCircle, Eye, RefreshCw,
@@ -397,7 +397,7 @@ export default function CommunityPage() {
     )},
     { key: 'priority', label: 'Priority', render: (row: PublicTip) => (
       <span className={`capitalize ${row.priority === 'urgent' ? 'text-red-400' : row.priority === 'high' ? 'text-amber-400' : 'text-rmpg-300'}`}>
-        {row.priority}
+        {formatEnumValue(row.priority)}
       </span>
     )},
     { key: 'status', label: 'Status', render: (row: PublicTip) => (
@@ -421,7 +421,7 @@ export default function CommunityPage() {
     )},
     { key: 'severity', label: 'Severity', render: (row: CommunityAlert) => (
       <span className={`capitalize ${row.severity === 'critical' ? 'text-red-400' : row.severity === 'warning' ? 'text-amber-400' : 'text-rmpg-300'}`}>
-        {row.severity}
+        {formatEnumValue(row.severity)}
       </span>
     )},
     { key: 'target_area', label: 'Target Area' },

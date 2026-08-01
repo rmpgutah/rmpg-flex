@@ -11,6 +11,7 @@ import {
   Upload, X, ChevronDown, ChevronRight, Check, AlertCircle, Film, Plus,
   ArrowLeft, ArrowRight, Loader2, Copy,
 } from 'lucide-react';
+import { formatEnumValue } from '../utils/formatters';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -849,7 +850,7 @@ export default function DashCamUploadWizard({
                   <div className="flex items-center gap-2 text-[9px] text-fg-muted">
                     {vehicle && <span>#{vehicle.vehicle_number}</span>}
                     {unit && <span className="text-brand-400 font-mono">{unit.call_sign}</span>}
-                    <span className="capitalize">{entry.classification}</span>
+                    <span className="capitalize">{formatEnumValue(entry.classification)}</span>
                     <span>{formatSize(entry.file.size)}</span>
                   </div>
 

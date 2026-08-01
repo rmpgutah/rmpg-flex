@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar, Pencil, Trash2, TrendingUp, TrendingDown, Route, FileText, AlertTriangle, User, CreditCard, Copy } from 'lucide-react';
 import type { FleetFuelLog, FleetFuelSummary, FuelType } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 import FleetioConflictBadge from '../../../components/FleetioConflictBadge';
 import type { ConflictBadgeConflict } from '../../../components/FleetioConflictBadge';
 import { apiFetch } from '../../../hooks/useApi';
@@ -514,7 +514,7 @@ export default function FleetFuelTab({
                       {log.gallons != null ? log.gallons.toFixed(3) : '-'} gal
                     </span>
                     <span className={`px-1 py-0.5 text-[8px] font-bold uppercase border ${badge.bg} ${badge.text} ${badge.border}`}>
-                      {log.fuel_type}
+                      {formatEnumValue(log.fuel_type)}
                     </span>
                     {log.total_cost != null && (
                       <span className="text-[10px] text-green-400 font-mono">${log.total_cost.toFixed(2)}</span>

@@ -33,7 +33,7 @@ import { INCIDENT_TYPE_CODES, INCIDENT_TYPE_CATEGORIES, type IncidentCategory } 
 import { OffenseLevelBadge } from '../../components/StatuteLookup';
 import NotEnforcedNotice from './NotEnforcedNotice';
 import type { User, Unit, UnitStatus } from '../../types';
-import { toDisplayLabel } from '../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 
 // ============================================================
 // Types (same as in AdminPage)
@@ -1676,7 +1676,7 @@ export default function AdminSystemTab({
                           onChange={(e) => updatePriority(i, 'color', e.target.value)}
                           className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent"
                         />
-                        <span className="text-sm font-bold text-rmpg-100 font-mono">{p.level}</span>
+                        <span className="text-sm font-bold text-rmpg-100 font-mono">{formatEnumValue(p.level)}</span>
                       </div>
                       <div>
                         <label htmlFor="ff-adminsystemtab-7" className="text-[9px] text-rmpg-400 uppercase">Label</label>
@@ -1823,7 +1823,7 @@ export default function AdminSystemTab({
                               onKeyDown={(e) => { if (e.key === 'Enter') saveEditUnitType(); if (e.key === 'Escape') cancelEditUnitType(); }}
                               autoFocus
                             />
-                            <div className="text-[10px] text-rmpg-500 font-mono mt-0.5">{ut.type}</div>
+                            <div className="text-[10px] text-rmpg-500 font-mono mt-0.5">{formatEnumValue(ut.type)}</div>
                           </div>
                           <div className="flex flex-col gap-0.5 flex-shrink-0">
                             <IconButton onClick={saveEditUnitType} className="p-0.5 text-green-400 hover:text-green-300" title="Save" aria-label="Save unit type">
@@ -1839,7 +1839,7 @@ export default function AdminSystemTab({
                           <div className="w-4 h-4 rounded-sm flex-shrink-0" style={{ backgroundColor: ut.color }} />
                           <div className="flex-1 min-w-0">
                             <div className="text-xs text-rmpg-100 font-medium truncate">{ut.label}</div>
-                            <div className="text-[10px] text-rmpg-500 font-mono">{ut.type}</div>
+                            <div className="text-[10px] text-rmpg-500 font-mono">{formatEnumValue(ut.type)}</div>
                           </div>
                           <div className="flex items-center gap-0.5 flex-shrink-0">
                             <button type="button" onClick={() => startEditUnitType(ut)} className="text-rmpg-400 hover:text-brand-400" title="Edit">
@@ -2164,7 +2164,7 @@ export default function AdminSystemTab({
                                   <td>
                                     <select id="ff-adminsystemtab-31" className="select-dark text-xs" value={editTemplatePriority} onChange={(e) => setEditTemplatePriority(e.target.value)}>
                                       {priorities.map((p) => (
-                                        <option key={p.level} value={p.level}>{p.level}</option>
+                                        <option key={p.level} value={p.level}>{formatEnumValue(p.level)}</option>
                                       ))}
                                     </select>
                                   </td>

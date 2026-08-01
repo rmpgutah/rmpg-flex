@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { agendaItemToEvent, isDraggableSource, SOURCE_COLORS, type AgendaItem, type AgendaSource } from './scheduler/agendaToCalendarEvents';
 import { rescheduleAgendaItem } from './scheduler/agendaMutations';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface Officer { id: number; full_name: string; badge_number?: string }
 
@@ -273,7 +274,7 @@ export default function SchedulerPage() {
                 </select>
                 <select className={inputCls} value={form.category}
                   onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                  {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat.replace('_', ' ')}</option>)}
+                  {CATEGORIES.map((cat) => <option key={cat} value={cat}>{toDisplayLabel(cat)}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-[1fr_120px] gap-2">

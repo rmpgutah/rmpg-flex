@@ -13,7 +13,7 @@ import {
 import type { DashCamera, DashCamVideo, DashCameraStatus, VideoClassification } from '../../types';
 import PrintButton from '../../components/PrintButton';
 import RmpgLogo from '../../components/RmpgLogo';
-import { toDisplayLabel } from '../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 
 // ── Filters ──────────────────────────────────────────────────
 
@@ -385,7 +385,7 @@ export default function DashCameraTab({
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-rmpg-200 truncate">{vid.title}</span>
                     <span className={`text-[9px] px-1.5 py-0.5 rounded uppercase ${CLASS_COLORS[vid.classification] || 'text-rmpg-400 bg-rmpg-800'}`}>
-                      {vid.classification}
+                      {formatEnumValue(vid.classification)}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-500">

@@ -12,6 +12,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { safeDateStr, safeDateTimeStr, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import { asArray } from '../utils/asArray';
+import { formatEnumValue } from '../utils/formatters';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -378,7 +379,7 @@ export default function AlarmTrackingPage() {
               ) : permitActivations.map(a => (
                 <tr key={a.id} className="border-b border-border-subtle hover:bg-surface-raised transition-colors">
                   <td className="px-2 py-[2px] text-[11px] text-gray-300 font-mono">{safeDateTimeStr(a.activation_date)}</td>
-                  <td className="px-2 py-[2px] text-[11px] text-gray-300">{a.alarm_type}</td>
+                  <td className="px-2 py-[2px] text-[11px] text-gray-300">{formatEnumValue(a.alarm_type)}</td>
                   <td className="px-2 py-[2px] text-[11px] text-gray-300 font-mono">{a.response_time_minutes != null ? `${a.response_time_minutes} min` : '—'}</td>
                   <td className="px-2 py-[2px] text-[11px]">
                     {a.is_false_alarm ? <span className="text-red-400 font-bold">YES</span> : <span className="text-gray-500">No</span>}
@@ -502,7 +503,7 @@ export default function AlarmTrackingPage() {
                     </td>
                     <td className="px-2 py-[2px] text-[11px] text-gray-300">{p.alarm_company}</td>
                     <td className="px-2 py-[2px] text-[11px] text-gray-300">{p.contact_name}</td>
-                    <td className="px-2 py-[2px] text-[11px] text-gray-300">{p.alarm_type}</td>
+                    <td className="px-2 py-[2px] text-[11px] text-gray-300">{formatEnumValue(p.alarm_type)}</td>
                     <td className="px-2 py-[2px] text-[11px] font-mono">{falseAlarmText(p.false_alarm_count, p.billing_threshold)}</td>
                     <td className="px-2 py-[2px] text-[11px] text-gray-400 font-mono">{p.billing_threshold}</td>
                     <td className="px-2 py-[2px]">{statusBadge(p.status)}</td>
@@ -582,7 +583,7 @@ export default function AlarmTrackingPage() {
                       <span className="text-rmpg-100 font-mono">{a.permit_number || '—'}</span>
                       {a.location_name && <span className="text-gray-400 ml-1.5">{a.location_name}</span>}
                     </td>
-                    <td className="px-2 py-[2px] text-[11px] text-gray-300">{a.alarm_type}</td>
+                    <td className="px-2 py-[2px] text-[11px] text-gray-300">{formatEnumValue(a.alarm_type)}</td>
                     <td className="px-2 py-[2px] text-[11px] text-gray-300 font-mono">{a.response_time_minutes != null ? `${a.response_time_minutes} min` : '—'}</td>
                     <td className="px-2 py-[2px] text-[11px]">
                       {a.is_false_alarm ? <span className="text-red-400 font-bold">YES</span> : <span className="text-gray-500">No</span>}

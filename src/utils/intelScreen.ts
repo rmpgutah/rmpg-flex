@@ -13,6 +13,7 @@ import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, execute } from './db';
 import { isRealValue, isVehicleStolen } from './intelMatch';
+import { toDisplayLabel } from './displayLabel';
 
 export interface ScreenHit {
   kind: string;                       // active_warrant | watchlist | trespass_active | stolen | sor | caution | gang
@@ -56,7 +57,7 @@ export async function screenPerson(db: D1Database, personId: number): Promise<Sc
       const sev = a.severity === 'danger' ? 'critical' : 'warning';
       const isSor = String(a.alert_type) === 'sex_offender';
       const label = isSor ? 'Registered sex offender (registry alert)'
-                          : `Offender alert${isRealValue(a.alert_type) ? ` (${String(a.alert_type).replace(/_/g, ' ')})` : ''}`;
+                          : `Offender alert${isRealValue(a.alert_type) ? ` (${toDisplayLabel(String(a.alert_type))})` : ''}`;
       hits.push({ kind: isSor ? 'sor' : 'caution', severity: sev,
         detail: `${label}${isRealValue(a.description) ? ` — ${a.description}` : ''}`.trim() });
     }
