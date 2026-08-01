@@ -221,7 +221,7 @@ export default function PrintRecordButton({
           // Properties (real-estate only, not businesses)
           enriched.linked_properties = links
             .filter((l: any) => l.linked_type === 'property')
-            .map((l: any) => ({ name: l.linked_label || '', relationship: l.relationship }));
+            .map((l: any) => ({ name: l.linked_label || '', address: l.linked_meta?.address || '', relationship: l.relationship }));
           // Businesses (separate table since migration 0125)
           enriched.linked_businesses = links
             .filter((l: any) => l.linked_type === 'business')
@@ -284,6 +284,7 @@ export default function PrintRecordButton({
             .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
             .map((l: any) => ({
               name: l.linked_label || '',
+              address: l.linked_meta?.address || '',
               relationship: l.relationship,
             }));
         }

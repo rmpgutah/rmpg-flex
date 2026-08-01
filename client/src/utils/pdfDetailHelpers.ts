@@ -161,10 +161,23 @@ export function addQuickReferenceBanner(
 // returns startY unchanged.
 
 export interface CrossRefBadge {
+  /** Singular noun (e.g. 'property', 'warrant', 'person') — pluralized for display based on count. */
   label: string;
   count: number;
   /** Tone overrides default coloring — 'risk' uses red. */
   tone?: 'risk' | 'standard';
+}
+
+// Small irregular-plural map for the noun set this bar actually renders.
+// Everything else falls back to the regular "+s" rule.
+const IRREGULAR_PLURALS: Record<string, string> = {
+  property: 'properties',
+  trespass: 'trespasses',
+};
+
+export function pluralizeBadgeLabel(label: string, count: number): string {
+  if (count === 1) return label;
+  return IRREGULAR_PLURALS[label.toLowerCase()] || `${label}s`;
 }
 
 export function addCrossRefBadgeBar(
@@ -224,10 +237,11 @@ export function addCrossRefBadgeBar(
     doc.text(countText, cursorX + countW / 2, chipY + (chipH + chipCapH) / 2, { align: 'center' });
     cursorX += countW + 1.5;
 
-    // Label
+    // Label — pluralized to agree with the count (e.g. "1 PROPERTY" vs "2 PROPERTIES")
+    const displayLabel = pluralizeBadgeLabel(b.label, b.count).toUpperCase();
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.text(b.label.toUpperCase(), cursorX, labelY);
-    cursorX += doc.getTextWidth(b.label.toUpperCase());
+    doc.text(displayLabel, cursorX, labelY);
+    cursorX += doc.getTextWidth(displayLabel);
 
     // [Improvement 60] Separator dot slightly larger for visibility
     if (i < visible.length - 1) {
@@ -550,35 +564,41 @@ export function addLinkedRecordsStrip(
   const badges: CrossRefBadge[] = [];
   if (Array.isArray(data?.warrants) && data.warrants.length > 0) {
     badges.push({
-      label: 'warrants',
+      label: 'warrant',
       count: data.warrants.length,
       tone: data.warrants.some((w: any) => w.status === 'active') ? 'risk' : 'standard',
     });
   }
   if (Array.isArray(data?.incidents) && data.incidents.length > 0) {
-    badges.push({ label: 'incidents', count: data.incidents.length });
+    badges.push({ label: 'incident', count: data.incidents.length });
   }
   if (Array.isArray(data?.calls) && data.calls.length > 0) {
-    badges.push({ label: 'calls', count: data.calls.length });
+    badges.push({ label: 'call', count: data.calls.length });
   }
   if (Array.isArray(data?.citations) && data.citations.length > 0) {
-    badges.push({ label: 'citations', count: data.citations.length });
+    badges.push({ label: 'citation', count: data.citations.length });
   }
   if (Array.isArray(data?.criminal_records) && data.criminal_records.length > 0) {
     badges.push({
-      label: 'arrests',
+      label: 'arrest',
       count: data.criminal_records.length,
       tone: 'risk',
     });
   }
+  // Linked persons — e.g. a vehicle record's LINKED PERSONS table. Previously
+  // omitted entirely from this strip, so the header's LINKED count silently
+  // excluded every associated person.
+  if (Array.isArray(data?.linked_persons) && data.linked_persons.length > 0) {
+    badges.push({ label: 'person', count: data.linked_persons.length });
+  }
   if (Array.isArray(data?.linked_vehicles) && data.linked_vehicles.length > 0) {
-    badges.push({ label: 'vehicles', count: data.linked_vehicles.length });
+    badges.push({ label: 'vehicle', count: data.linked_vehicles.length });
   }
   if (Array.isArray(data?.linked_properties) && data.linked_properties.length > 0) {
-    badges.push({ label: 'properties', count: data.linked_properties.length });
+    badges.push({ label: 'property', count: data.linked_properties.length });
   }
   if (Array.isArray(data?.trespass_orders) && data.trespass_orders.length > 0) {
-    badges.push({ label: 'trespasses', count: data.trespass_orders.length, tone: 'risk' });
+    badges.push({ label: 'trespass', count: data.trespass_orders.length, tone: 'risk' });
   }
   return addCrossRefBadgeBar(doc, badges, startY);
 }

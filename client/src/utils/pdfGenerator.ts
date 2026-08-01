@@ -2327,7 +2327,7 @@ export function addNarrativeSection(
   const estimatedH = totalLines * lineH + Math.max(0, paraCount - 1) * paragraphGap + SPACING.SM + 2;
 
   // Page break callback: draw section continuation sub-header
-  const contTitle = title.toUpperCase() + ' -- CONTINUED';
+  const contTitle = title.toUpperCase() + ' — CONTINUED';
   const narrativePageBreak = (newY: number): number => {
     // Section continuation sub-header — thin outline (low ink)
     const cw = getContentWidth(doc);
@@ -2385,7 +2385,7 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
     if (sup.narrative) {
       y += SPACING.LG;
       const fontSize = FONT.SIZE_FIELD_VALUE;
-      const contTitle = supTitle.toUpperCase() + ' -- CONTINUED';
+      const contTitle = supTitle.toUpperCase() + ' — CONTINUED';
       const supPageBreak = (newY: number): number => {
         const cw = getContentWidth(doc);
         doc.setFont('helvetica', 'bold');
@@ -2600,7 +2600,7 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(0, 0, 0);
-    doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
+    doc.text(sanitizePdfText(`${activeBranding.report_header_text} — CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
 
     // Form number + case number on right
     const rightParts: string[] = [];
@@ -2758,7 +2758,7 @@ export function addTableWithShading(
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
         const subTextY = y + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
         doc.text(
-          sanitizePdfText(`${opts.sectionTitle.toUpperCase()} -- CONTINUED`),
+          sanitizePdfText(`${opts.sectionTitle.toUpperCase()} — CONTINUED`),
           LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET,
           subTextY,
         );
@@ -3717,7 +3717,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_SECTION_TITLE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text('NARRATIVE / SERVICE NOTES -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+      doc.text('NARRATIVE / SERVICE NOTES — CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
       const nRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       doc.setLineWidth(BORDER.SECTION_OUTER);

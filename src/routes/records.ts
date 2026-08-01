@@ -2824,6 +2824,19 @@ records.get('/links', async (c) => {
             active_warrants: (wRow?.cnt ?? 0) > 0 ? 1 : 0,
           };
         }
+      } else if (linkedType === 'property') {
+        // The property's address was already available (getRecordLabel queries
+        // it) but never passed through to the PDF's LINKED PROPERTIES table,
+        // which left the ADDRESS column blank even when the address existed.
+        const prop = await queryFirst<{ address?: string }>(
+          db, 'SELECT address FROM properties WHERE id = ?', linkedId,
+        );
+        if (prop?.address) linked_meta = { address: prop.address };
+      } else if (linkedType === 'business') {
+        const biz = await queryFirst<{ address?: string }>(
+          db, 'SELECT address FROM businesses WHERE id = ?', linkedId,
+        );
+        if (biz?.address) linked_meta = { address: biz.address };
       }
       return {
         ...link,

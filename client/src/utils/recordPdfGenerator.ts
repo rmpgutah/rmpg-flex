@@ -262,6 +262,18 @@ function personCrossRefTags(name: string, data: CallPdfData): string[] {
 // recordPosture() engine the UI uses and draws the band — skipped for a 'clear'
 // posture so low-risk records print exactly as before (no added length).
 
+// Non-values a tow_status column may hold that mean "not actually towed."
+// tow_status is stored title-cased per TOW_STATUS_OPTIONS ('None', 'Police
+// Hold', ...); this must be normalized before comparison or the vehicle
+// quick-ref banner falsely stamps IMPOUNDED on every non-empty tow_status,
+// including the default 'None'.
+const NON_TOW_VALUES = new Set(['none', 'n/a', 'na', 'not towed', '-']);
+
+export function isVehicleActivelyTowed(towStatus: string | null | undefined): boolean {
+  const norm = (towStatus || '').trim().toLowerCase();
+  return norm !== '' && !NON_TOW_VALUES.has(norm);
+}
+
 const POSTURE_CHIP_MAX_CHARS = 22;
 
 /** Truncate a posture-chip label to POSTURE_CHIP_MAX_CHARS, cutting at the
@@ -3032,7 +3044,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_SECTION_TITLE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text('INCIDENT DETAILS -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+      doc.text('INCIDENT DETAILS — CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
       const idRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       doc.setLineWidth(BORDER.SECTION_OUTER);
@@ -3255,7 +3267,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       const entryLead = continued
-        ? `ENTRY ${entryNum} OF ${total} -- CONTINUED`
+        ? `ENTRY ${entryNum} OF ${total} — CONTINUED`
         : `ENTRY ${entryNum} OF ${total}  .  ${timestamp}`;
       doc.text(entryLead, lx + 2, strip_y + headerH - 1.5);
       doc.setFontSize(6);
@@ -4363,7 +4375,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
       ? { label: 'STOLEN', tone: 'high' }
       : stolen === 'recovered'
         ? { label: 'RECOVERED', tone: 'elevated' }
-        : (data.tow_status && data.tow_status !== 'none')
+        : isVehicleActivelyTowed(data.tow_status)
           ? { label: 'IMPOUNDED', tone: 'elevated' }
           : undefined;
     y = addQuickReferenceBanner(doc, {
