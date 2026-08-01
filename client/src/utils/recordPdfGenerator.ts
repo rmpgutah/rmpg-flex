@@ -52,6 +52,7 @@ import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, resetActiveFieldCounter } from './pdfGenerator';
 import { cleanAddressText } from './addressClean';
 import { fetchLocationMapImage, fetchTacticalContext } from './pdfStaticMap';
+import { preloadSignatureTransparency } from './pdf/signatureImage';
 import { toMgrs } from './mgrs';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
@@ -7241,6 +7242,11 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
       badgeNumber: badgeNum,
       date: sigDateStr,
     });
+    // Warm the transparency cache BEFORE the (synchronous) jsPDF drawing
+    // calls run — addSignatureBlock/drawSignatureSlot can't be async
+    // themselves without rippling across every document generator, so the
+    // conversion happens here, at the one place the signature is loaded.
+    await preloadSignatureTransparency(anyData._officerSignature);
 
     const payloadHash = await computePayloadHash(data);
     setActivePayloadHash(payloadHash);
@@ -7305,6 +7311,11 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
       badgeNumber: badgeNum,
       date: sigDateStr,
     });
+    // Warm the transparency cache BEFORE the (synchronous) jsPDF drawing
+    // calls run — addSignatureBlock/drawSignatureSlot can't be async
+    // themselves without rippling across every document generator, so the
+    // conversion happens here, at the one place the signature is loaded.
+    await preloadSignatureTransparency(anyData._officerSignature);
 
     const payloadHash = await computePayloadHash(data);
     setActivePayloadHash(payloadHash);

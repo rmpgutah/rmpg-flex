@@ -18,6 +18,7 @@ import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts
 import { loadSealBase64, loadLogoDarkBase64, getCachedSealBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
+import { computeSignatureRect, getCachedTransparentSignature } from './pdf/signatureImage';
 // Document hashing infrastructure (pdfIntegrity.ts, pdfSigner.ts) is
 // dormant as of 2026-05-04 per user request. The trailer page +
 // per-page footer hash prefix are removed; payload-hash computation +
@@ -1537,22 +1538,34 @@ export function addSignatureBlock(
 
       const maxW = Math.min(width * 0.5, 70);
       const maxH = sigRowH - 3.5; // breathing room inside the row
-      let imgW = maxW;
-      let imgH = maxH;
-      try {
-        const props = doc.getImageProperties(sigData.signatureImage);
-        if (props?.width && props?.height) {
-          const scale = Math.min(maxW / props.width, maxH / props.height);
-          imgW = props.width * scale;
-          imgH = props.height * scale;
-        }
-      } catch { /* unknown dims — fall back to box fit */ }
-      // Bottom edge sits just above the baseline (ink touches the line).
       // Align the ink to the rule's own left edge rather than an arbitrary
       // +4 offset, so a signed block and an unsigned one share a left edge.
       const imgX = x + SPACING.MD + 1;
-      const imgY = sigLineY - 0.5 - imgH;
-      doc.addImage(sigData.signatureImage, 'PNG', imgX, imgY, imgW, imgH);
+      // Dynamic, aspect-preserving fit via computeSignatureRect (was a
+      // fixed-box stretch) with a bounded overshoot so ink can realistically
+      // run slightly past the box — hardLimits keeps it inside the
+      // certification text above and the info row below. Runs through the
+      // transparency cache so pre-existing white-boxed signatures render
+      // clean too, with no re-sign and no migration.
+      const img = getCachedTransparentSignature(sigData.signatureImage) ?? sigData.signatureImage;
+      let rect = { x: imgX, y: sigLineY - 0.5 - maxH, w: maxW, h: maxH };
+      try {
+        const props = doc.getImageProperties(img);
+        if (props?.width && props?.height) {
+          rect = computeSignatureRect(
+            { width: props.width, height: props.height },
+            { x: imgX, y: row1Y + 0.5, w: maxW, h: sigLineY - 0.5 - (row1Y + 0.5) },
+            {
+              anchor: 'bottom',
+              align: 'left',
+              hardLimits: { x: x + SPACING.MD, y: row1Y + 0.5, w: width - SPACING.MD * 2, h: sigLineY + 0.5 - (row1Y + 0.5) },
+            },
+          );
+        }
+      } catch { /* unknown dims — fall back to box fit */ }
+      if (rect.w > 0 && rect.h > 0) {
+        doc.addImage(img, 'PNG', rect.x, rect.y, rect.w, rect.h);
+      }
     } catch { /* skip */ }
   } else {
     // ── Unsigned: a real signature rule, captioned clear of the border ──

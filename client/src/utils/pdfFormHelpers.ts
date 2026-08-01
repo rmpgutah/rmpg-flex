@@ -10,6 +10,7 @@ import bwipjs from 'bwip-js/browser';
 import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText, getActiveBranding, hexToRgb, resolveSectionAccentColor } from './pdfGenerator';
 import { getCachedSealBase64 } from './pdfAssets';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { computeSignatureRect, getCachedTransparentSignature } from './pdf/signatureImage';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   PDF_VALUE_FONT,
@@ -1677,10 +1678,29 @@ function drawSignatureSlot(
   doc.setLineWidth(BORDER.SIGNATURE_LINE);
   doc.line(x + 1.5, sigY, x + w - 1.5, sigY);
 
-  // Optional signature image
+  // Optional signature image — dynamic, aspect-preserving fit (was a fixed
+  // 4.2mm-tall stretch, which squashed every signature). Anchored bottom on
+  // the signature line, with a bounded overshoot allowance so it reads like
+  // real ink running slightly over the rule; hardLimits keeps it from ever
+  // colliding with the role label strip above or the printed-name/badge/date
+  // row below. Runs through the transparency cache so a legacy white-boxed
+  // signature (captured before this fix) renders clean too, with no re-sign.
   if (slot.signatureImg) {
     try {
-      doc.addImage(slot.signatureImg, 'PNG', x + 3, y + 3, w - 6, 4.2);
+      const img = getCachedTransparentSignature(slot.signatureImg) ?? slot.signatureImg;
+      const props = doc.getImageProperties(img);
+      const rect = computeSignatureRect(
+        { width: props.width, height: props.height },
+        { x: x + 3, y: y + 3, w: w - 6, h: sigY - (y + 3) },
+        {
+          anchor: 'bottom',
+          align: 'left',
+          hardLimits: { x: x + 1.5, y: y + 3, w: w - 3, h: sigY + 3 - (y + 3) },
+        },
+      );
+      if (rect.w > 0 && rect.h > 0) {
+        doc.addImage(img, 'PNG', rect.x, rect.y, rect.w, rect.h);
+      }
     } catch { /* skip on failure */ }
   } else {
     // X marker on line
