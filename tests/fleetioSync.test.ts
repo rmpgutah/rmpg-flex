@@ -8,6 +8,9 @@ import {
   getQueueHealth,
   isFleetioQueueUnhealthy,
   shouldFireUnhealthyAlert,
+  isPermanentFleetioFailure,
+  isPermanentFailureMessage,
+  formatFleetioError,
 } from '../src/utils/fleetio/sync';
 import {
   FleetioRateLimitError,
@@ -111,9 +114,12 @@ function makeDb(state: FleetTables) {
               ev.processed_at = new Date().toISOString();
               ev.attempts += 1;
             } else if (/CASE/.test(sql)) {
-              const [maxAttempts_, error_msg] = ctx.bindings as [number, string, number];
+              // "SET status = CASE WHEN ? = 1 OR attempts + 1 >= ? THEN 'failed'
+              //  ELSE 'pending' END, attempts = attempts+1, error = ? WHERE id = ?"
+              // The leading flag is the permanent-failure short circuit.
+              const [permanent_, maxAttempts_, error_msg] = ctx.bindings as [number, number, string, number];
               ev.attempts += 1;
-              ev.status = ev.attempts >= maxAttempts_ ? 'failed' : 'pending';
+              ev.status = permanent_ === 1 || ev.attempts >= maxAttempts_ ? 'failed' : 'pending';
               ev.error = error_msg;
             } else if (/status='completed'/.test(sql) || /processed_at=datetime/.test(sql)) {
               ev.status = 'completed';
@@ -226,7 +232,7 @@ describe('applyOutbound', () => {
     expect(state.events[0].attempts).toBe(1);
   });
 
-  it('adapter throws non-rate-limit — row stays pending, attempts++', async () => {
+  it('adapter throws a TRANSIENT error — row stays pending, attempts++', async () => {
     const state: FleetTables = {
       events: [baseEvent({})],
       links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999 }],
@@ -234,7 +240,8 @@ describe('applyOutbound', () => {
     };
     const { db } = makeDb(state);
     const adapter = {
-      async updateVehicle() { throw new FleetioHttpError('Bad Request', 400, 'invalid payload'); },
+      // 5xx — Fleet.io is unwell, not the payload. Retryable.
+      async updateVehicle() { throw new FleetioHttpError('Fleet.io 503', 503, 'unavailable'); },
       async createFuelEntry() { throw new Error('not used'); },
     };
     const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
@@ -243,6 +250,99 @@ describe('applyOutbound', () => {
     expect(result.errors).toHaveLength(1);
     expect(state.events[0].status).toBe('pending');
     expect(state.events[0].attempts).toBe(1);
+  });
+
+  // ── Regression: 2026-08-01 Fleet.io incident ──
+  // Live event id=23 (fuel_entry/create, fleet_fuel_log 117) 422'd seven times
+  // and dead-lettered, because (a) the row was ALREADY linked so the create
+  // should never have dispatched, and (b) a 422 was treated as retryable.
+
+  it('fuel_entry/create for an ALREADY-LINKED row is an idempotent no-op', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({
+        resource: 'fuel_entry', action: 'create', resource_id: 115,
+        payload_json: JSON.stringify({ vehicle_id: 1, gallons: 12.5, odometer: 94590 }),
+      })],
+      links: [
+        { rmpg_table: 'fleet_fuel_log', rmpg_id: 115, fleetio_id: 219997437, fleetio_resource: 'fuel_entries' },
+        { rmpg_table: 'fleet_vehicles', rmpg_id: 1, fleetio_id: 555, fleetio_resource: 'vehicles' },
+      ],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    let createCalls = 0;
+    const adapter = {
+      async updateVehicle() { throw new Error('not used'); },
+      async createFuelEntry() { createCalls++; return { id: 999999 }; },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+
+    // The whole point: no duplicate POST to Fleet.io.
+    expect(createCalls).toBe(0);
+    expect(result.completed).toBe(1);
+    expect(state.events[0].status).toBe('completed');
+    // And the original link is untouched — not overwritten by a new remote id.
+    expect(state.links.filter(l => l.rmpg_table === 'fleet_fuel_log')).toHaveLength(1);
+    expect(state.links.find(l => l.rmpg_table === 'fleet_fuel_log')?.fleetio_id).toBe(219997437);
+  });
+
+  it('an UNLINKED fuel_entry/create still dispatches and records its link', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({
+        resource: 'fuel_entry', action: 'create', resource_id: 200,
+        payload_json: JSON.stringify({ vehicle_id: 1, gallons: 12.5, odometer: 94590 }),
+      })],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 1, fleetio_id: 555, fleetio_resource: 'vehicles' }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    let createCalls = 0;
+    const adapter = {
+      async updateVehicle() { throw new Error('not used'); },
+      async createFuelEntry() { createCalls++; return { id: 777 }; },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(createCalls).toBe(1);
+    expect(result.completed).toBe(1);
+    expect(state.links.find(l => l.rmpg_table === 'fleet_fuel_log' && l.rmpg_id === 200)?.fleetio_id).toBe(777);
+  });
+
+  it('a PERMANENT 4xx fails on attempt 1 instead of burning the retry budget', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({})],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    const adapter = {
+      async updateVehicle() {
+        throw new FleetioHttpError('Fleet.io 422', 422, { errors: ['Meter value must be greater than 93918.8'] });
+      },
+      async createFuelEntry() { throw new Error('not used'); },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+
+    expect(state.events[0].status).toBe('failed');
+    expect(state.events[0].attempts).toBe(1);     // NOT maxAttempts()
+    expect(result.failed).toBe(1);                // drain accounting mirrors the DB
+    // Fleet.io's actual reason must survive to the Health tab, not just "Fleet.io 422".
+    expect(state.events[0].error).toContain('Meter value must be greater than 93918.8');
+    expect(isPermanentFailureMessage(state.events[0].error)).toBe(true);
+  });
+
+  it('408 and 429 are 4xx but transient — still retried', () => {
+    expect(isPermanentFleetioFailure(new FleetioHttpError('Fleet.io 408', 408))).toBe(false);
+    expect(isPermanentFleetioFailure(new FleetioHttpError('Fleet.io 429', 429))).toBe(false);
+    expect(isPermanentFleetioFailure(new FleetioHttpError('Fleet.io 422', 422))).toBe(true);
+    expect(isPermanentFleetioFailure(new FleetioHttpError('Fleet.io 404', 404))).toBe(true);
+    expect(isPermanentFleetioFailure(new FleetioHttpError('Fleet.io 500', 500))).toBe(false);
+    expect(isPermanentFleetioFailure(new Error('socket hang up'))).toBe(false);
+  });
+
+  it('formatFleetioError keeps a transient error unmarked and detail-rich', () => {
+    const msg = formatFleetioError(new FleetioHttpError('Fleet.io 503', 503, { message: 'upstream down' }));
+    expect(msg).toContain('upstream down');
+    expect(isPermanentFailureMessage(msg)).toBe(false);
   });
 
   it('after maxAttempts failures, row transitions to failed', async () => {
