@@ -19,13 +19,13 @@ import type {
   FuelAnalyticsOverview, FuelAnalyticsByOfficer, FuelAnalyticsByCard,
 } from '../../../types';
 
-interface Args {
+export interface Args {
   overview: FuelAnalyticsOverview;
   byOfficer: FuelAnalyticsByOfficer[];
   byCard: FuelAnalyticsByCard[];
 }
 
-export function generateFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: Args): void {
+export function buildFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: Args): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 36;
@@ -244,6 +244,13 @@ export function generateFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: A
     doc.setTextColor(0);
   }
 
+  return doc;
+}
+
+/** Build the fuel analytics PDF and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder + saver). */
+export function generateFleetFuelAnalyticsPdf(args: Args): void {
+  const doc = buildFleetFuelAnalyticsPdf(args);
   const filename = `fuel-analytics-${new Date().toISOString().slice(0, 10)}.pdf`;
   doc.save(filename);
 }

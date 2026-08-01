@@ -20,7 +20,7 @@ import type { FleetFuelLog } from '../../../types';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 
-interface Args {
+export interface Args {
   logs: FleetFuelLog[];         // caller pre-filters to flagged rows
   scopeLabel: string;           // "#47 Explorer" or "Fleet-wide"
   dateRange: { from?: string; to?: string };
@@ -33,7 +33,7 @@ const FLAG_LEGEND: Record<string, string> = {
   'rapid-duplicate': 'Another fill within 30 min at a different station',
 };
 
-export function generateFlaggedAuditPdf({ logs, scopeLabel, dateRange }: Args): void {
+export function buildFlaggedAuditPdf({ logs, scopeLabel, dateRange }: Args): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 36;
@@ -193,6 +193,13 @@ export function generateFlaggedAuditPdf({ logs, scopeLabel, dateRange }: Args): 
     doc.setTextColor(0);
   }
 
+  return doc;
+}
+
+/** Build the flagged-audit PDF and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder + saver). */
+export function generateFlaggedAuditPdf(args: Args): void {
+  const doc = buildFlaggedAuditPdf(args);
   const filename = `fuel-flagged-audit-${new Date().toISOString().slice(0, 10)}.pdf`;
   doc.save(filename);
 }
