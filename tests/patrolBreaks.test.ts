@@ -98,6 +98,39 @@ describe('POST /api/patrol/breaks/start', () => {
     expect(inserts(executed)).toHaveLength(0);
   });
 
+  // ── Stale-break window ──────────────────────────────────────────────
+  // The idempotency guard is time-scoped. Without the window, an officer who
+  // forgot to press End left a row open forever, and every later "start"
+  // returned that abandoned row — permanently blocking the Break button.
+  // Live D1 had 7 such rows for officer 1 (oldest 2026-06-09).
+  it('scopes the open-break lookup to a recent window', async () => {
+    const { db, executed } = makeFakeDb([
+      { match: /SELECT id, break_start, break_type FROM patrol_breaks/, rows: [] },
+      { match: /SELECT break_start FROM patrol_breaks WHERE id = \?/, rows: [{ break_start: '2026-07-31 10:00:00' }] },
+    ]);
+    await buildApp(db)('/api/patrol/breaks/start', startReq);
+
+    const lookup = executed.find((s) => /SELECT id, break_start, break_type FROM patrol_breaks/.test(s));
+    expect(lookup).toBeDefined();
+    // The bound window is what stops an abandoned row blocking the button.
+    expect(lookup).toMatch(/break_start >= datetime\('now', \?\)/);
+  });
+
+  it('starts a NEW break when the only open row is older than the window', async () => {
+    // The fake returns [] for the windowed lookup, which is what live D1 does
+    // once the stale row falls outside `datetime('now', '-12 hours')`.
+    const { db, executed } = makeFakeDb([
+      { match: /SELECT id, break_start, break_type FROM patrol_breaks/, rows: [] },
+      { match: /SELECT break_start FROM patrol_breaks WHERE id = \?/, rows: [{ break_start: '2026-07-31 10:00:00' }] },
+    ]);
+    const res = await buildApp(db)('/api/patrol/breaks/start', startReq);
+
+    expect(res.status).toBe(201);
+    expect((await res.json() as { already_open: boolean }).already_open).toBe(false);
+    // A stale row must NOT suppress the insert — that was the regression.
+    expect(inserts(executed)).toHaveLength(1);
+  });
+
   it('rejects an unauthenticated start', async () => {
     const { db } = makeFakeDb([]);
     const app = new Hono<Env>();

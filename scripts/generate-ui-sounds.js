@@ -42,6 +42,139 @@ function writeWav(filePath, samples) {
 
 const make = (seconds) => new Float64Array(Math.ceil(seconds * SR));
 
+// ============================================================
+// PHYSICAL MODELLING — system/UI sounds only.
+//
+// A pure sine at a documented Motorola frequency IS that frequency, but it
+// does not sound like a recording of it. What a recording adds is the
+// CHANNEL: harmonic content (a driven reed or oscillator is never a pure
+// sine), mechanical pitch and amplitude instability, transducer resonance,
+// a noise floor, and a non-instant onset.
+//
+// Added 2026-07-31 after the pure-tone build was judged synthetic. This is
+// NOT the 22.05kHz/8-bit "workstation" chain that was rejected earlier —
+// that worked by REMOVING fidelity. This adds character AT full 44.1kHz
+// /16-bit fidelity. Different axis.
+//
+// ⚠️ Pitch is unchanged by design. The drift is ±0.15%, well inside
+// measurement tolerance, so every SOURCED frequency still measures correct.
+// physicalModelling.test.ts asserts this.
+// ============================================================
+
+/**
+ * Seeded LCG in [-1,1). Used for every stochastic element of the SYSTEM
+ * sounds so re-running the generator produces byte-identical output.
+ *
+ * This matters: the Motorola dispatch tones below use Math.random via
+ * bandNoise/noiseBurst, which is why simply re-running this script dirties
+ * squelch_tail.wav and static_burst.wav even with no source change. The
+ * system sounds deliberately do not have that property.
+ */
+function makeRand(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return (s / 4294967296) * 2 - 1;
+  };
+}
+
+/** Deterministic filtered noise transient (mechanical key character). */
+function physNoise(out, { at = 0, dur, gain, lowpass = 3000, seed }) {
+  const rand = makeRand(seed);
+  const start = Math.floor(at * SR);
+  const len = Math.floor(dur * SR);
+  let lp = 0;
+  const a = Math.exp(-2 * Math.PI * lowpass / SR);
+  for (let i = 0; i < len && start + i < out.length; i++) {
+    const t = i / SR;
+    lp = a * lp + (1 - a) * rand();
+    out[start + i] += lp * gain * Math.exp(-t / (dur / 6));
+  }
+}
+
+/** Deterministic -62dB noise floor across the whole buffer. */
+function noiseFloor(x, seed, gain = 0.0008) {
+  const rand = makeRand(seed);
+  for (let i = 0; i < x.length; i++) x[i] += rand() * gain;
+  return x;
+}
+
+/** RBJ biquad, applied in place. type: 'hp' | 'lp' | 'peak'. */
+function biquad(x, { type, f0, Q = 0.707, gainDb = 0 }) {
+  const w0 = 2 * Math.PI * f0 / SR, cs = Math.cos(w0), sn = Math.sin(w0);
+  const alpha = sn / (2 * Q);
+  let b0, b1, b2, a0, a1, a2;
+  if (type === 'hp') {
+    b0 = (1 + cs) / 2; b1 = -(1 + cs); b2 = (1 + cs) / 2;
+    a0 = 1 + alpha; a1 = -2 * cs; a2 = 1 - alpha;
+  } else if (type === 'lp') {
+    b0 = (1 - cs) / 2; b1 = 1 - cs; b2 = (1 - cs) / 2;
+    a0 = 1 + alpha; a1 = -2 * cs; a2 = 1 - alpha;
+  } else {
+    const A = Math.pow(10, gainDb / 40);
+    b0 = 1 + alpha * A; b1 = -2 * cs; b2 = 1 - alpha * A;
+    a0 = 1 + alpha / A; a1 = -2 * cs; a2 = 1 - alpha / A;
+  }
+  b0 /= a0; b1 /= a0; b2 /= a0; a1 /= a0; a2 /= a0;
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < x.length; i++) {
+    const xn = x[i];
+    const yn = b0 * xn + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1; x1 = xn; y2 = y1; y1 = yn;
+    x[i] = yn;
+  }
+  return x;
+}
+
+/**
+ * A physically-modelled steady tone. Same contract as steadyTone (fixed
+ * pitch, flat top, linear edges) plus:
+ *   - odd harmonics: 3rd at -21dB, 5th at -31dB, a little 2nd for asymmetry
+ *   - ±0.15% pitch drift at 4.3Hz  (mechanical instability)
+ *   - 3.5% amplitude wobble at 7.1Hz
+ *   - 6ms onset instead of a near-square edge
+ * `f1` allows a glide for the electronically-generated tones (click), where
+ * a sweep is correct — a mechanical reed cannot sweep, a P25 grant tone can.
+ */
+function physTone(out, { at, dur, f0, f1 = f0, gain, edge = 0.006, harm = true }) {
+  const start = Math.floor(at * SR);
+  const len = Math.floor(dur * SR);
+  const e = Math.min(edge, dur / 3) * SR;
+  let ph = 0, ph2 = 0, ph3 = 0, ph5 = 0;
+  for (let i = 0; i < len && start + i < out.length; i++) {
+    const t = i / SR;
+    let f = f0 * Math.pow(f1 / f0, t / dur);
+    // Deterministic drift — no Math.random, so the generator stays
+    // reproducible for these files (unlike the noise-based tones).
+    f *= 1 + 0.0015 * Math.sin(2 * Math.PI * 4.3 * t);
+    ph += 2 * Math.PI * f / SR;
+    let s = Math.sin(ph);
+    if (harm) {
+      ph3 += 2 * Math.PI * f * 3 / SR;
+      ph5 += 2 * Math.PI * f * 5 / SR;
+      ph2 += 2 * Math.PI * f * 2 / SR;
+      s += 0.085 * Math.sin(ph3) + 0.028 * Math.sin(ph5) + 0.020 * Math.sin(ph2);
+      s *= 1 + 0.035 * Math.sin(2 * Math.PI * 7.1 * t);
+    }
+    let env = 1;
+    if (i < e) env = i / e;
+    else if (i > len - e) env = Math.max(0, (len - i) / e);
+    out[start + i] += s * gain * env;
+  }
+}
+
+/**
+ * Transducer + enclosure colour, applied to a finished buffer:
+ * two resonant peaks (cone 1.1kHz, box 2.7kHz) and a 170Hz highpass —
+ * a small speaker has no output below that. Call ONCE per sound, last.
+ */
+function cabinet(x) {
+  biquad(x, { type: 'peak', f0: 1100, Q: 1.6, gainDb: 4.5 });
+  biquad(x, { type: 'peak', f0: 2700, Q: 2.2, gainDb: 3.0 });
+  biquad(x, { type: 'hp',   f0: 170,  Q: 0.707 });
+  return x;
+}
+
 /** Add a tone partial: freq can glide (f0→f1), exp attack/decay envelope. */
 function tone(out, { at = 0, dur, f0, f1 = f0, gain, attack = 0.004, type = 'sine', harmonics = 0 }) {
   const start = Math.floor(at * SR);
@@ -111,8 +244,12 @@ console.log('Rendering Spillman-style console sounds →', outDir);
 // window. radio_grant.wav is UNTOUCHED — this is a separate asset.
 {
   const s = make(0.075);
-  noiseBurst(s, { at: 0, dur: 0.008, gain: 0.10, lowpass: 3000 });
-  tone(s, { at: 0, dur: 0.060, f0: 600, f1: 1200, gain: 0.55, attack: 0.004 });
+  physNoise(s, { at: 0, dur: 0.008, gain: 0.10, lowpass: 3000, seed: 1001 });
+  // glide is CORRECT here: a P25 channel-grant tone is electronically
+  // generated, unlike a mechanical reed. harm=false keeps the sweep clean.
+  physTone(s, { at: 0, dur: 0.060, f0: 600, f1: 1200, gain: 0.55, edge: 0.003, harm: false });
+  noiseFloor(s, 1002);
+  cabinet(s);
   writeWav(path.join(outDir, 'click.wav'), s);
 }
 
@@ -120,8 +257,10 @@ console.log('Rendering Spillman-style console sounds →', outDir);
 // DERIVED: single 40ms pip. Previously an ALIAS of click.wav.
 {
   const s = make(0.07);
-  noiseBurst(s, { at: 0, dur: 0.005, gain: 0.05, lowpass: 5000 });
-  steadyTone(s, { at: 0, dur: 0.040, f0: 1153.4, gain: 0.45, detune: 0.003 });
+  physNoise(s, { at: 0, dur: 0.005, gain: 0.05, lowpass: 5000, seed: 2001 });
+  physTone(s, { at: 0, dur: 0.040, f0: 1153.4, gain: 0.45, edge: 0.004 });
+  noiseFloor(s, 2002);
+  cabinet(s);
   writeWav(path.join(outDir, 'navigate.wav'), s);
 }
 
@@ -130,8 +269,10 @@ console.log('Rendering Spillman-style console sounds →', outDir);
 // tone A straight into tone B). Previously an ALIAS of submit.wav.
 {
   const s = make(0.15);
-  steadyTone(s, { at: 0,     dur: 0.060, f0: 600.9, gain: 0.40, detune: 0.003 });
-  steadyTone(s, { at: 0.060, dur: 0.060, f0: 928.1, gain: 0.40, detune: 0.003 });
+  physTone(s, { at: 0,     dur: 0.060, f0: 600.9, gain: 0.40 });
+  physTone(s, { at: 0.060, dur: 0.060, f0: 928.1, gain: 0.40 });
+  noiseFloor(s, 3001);
+  cabinet(s);
   writeWav(path.join(outDir, 'ui_open.wav'), s);
 }
 
@@ -141,8 +282,10 @@ console.log('Rendering Spillman-style console sounds →', outDir);
 // key_out.wav is untouched; uiClickSounds now points here instead.
 {
   const s = make(0.15);
-  steadyTone(s, { at: 0,     dur: 0.060, f0: 928.1, gain: 0.40, detune: 0.003 });
-  steadyTone(s, { at: 0.060, dur: 0.060, f0: 600.9, gain: 0.40, detune: 0.003 });
+  physTone(s, { at: 0,     dur: 0.060, f0: 928.1, gain: 0.40 });
+  physTone(s, { at: 0.060, dur: 0.060, f0: 600.9, gain: 0.40 });
+  noiseFloor(s, 4001);
+  cabinet(s);
   writeWav(path.join(outDir, 'ui_close.wav'), s);
 }
 
@@ -151,9 +294,11 @@ console.log('Rendering Spillman-style console sounds →', outDir);
 // which is what a POST is.
 {
   const s = make(0.14);
-  noiseBurst(s, { at: 0, dur: 0.005, gain: 0.04, lowpass: 6000 });
-  steadyTone(s, { at: 0,     dur: 0.055, f0: 1200, gain: 0.40, detune: 0.002 });
-  steadyTone(s, { at: 0.055, dur: 0.055, f0: 1800, gain: 0.36, detune: 0.002 });
+  physNoise(s, { at: 0, dur: 0.005, gain: 0.04, lowpass: 6000, seed: 5001 });
+  physTone(s, { at: 0,     dur: 0.055, f0: 1200, gain: 0.40 });
+  physTone(s, { at: 0.055, dur: 0.055, f0: 1800, gain: 0.36 });
+  noiseFloor(s, 5002);
+  cabinet(s);
   writeWav(path.join(outDir, 'submit.wav'), s);
 }
 
@@ -162,8 +307,10 @@ console.log('Rendering Spillman-style console sounds →', outDir);
 // rather than sequential — "amended, not new".
 {
   const s = make(0.11);
-  steadyTone(s, { at: 0, dur: 0.070, f0: 1200, gain: 0.34, detune: 0.002 });
-  steadyTone(s, { at: 0, dur: 0.070, f0: 1800, gain: 0.22, detune: 0.002 });
+  physTone(s, { at: 0, dur: 0.070, f0: 1200, gain: 0.34 });
+  physTone(s, { at: 0, dur: 0.070, f0: 1800, gain: 0.22 });
+  noiseFloor(s, 6001);
+  cabinet(s);
   writeWav(path.join(outDir, 'update.wav'), s);
 }
 
@@ -172,8 +319,10 @@ console.log('Rendering Spillman-style console sounds →', outDir);
 // by Genave as a real page. DERIVED: 55ms + 90ms, second tone held to land.
 {
   const s = make(0.19);
-  steadyTone(s, { at: 0,     dur: 0.055, f0: 539.0, gain: 0.38, detune: 0.004 });
-  steadyTone(s, { at: 0.055, dur: 0.090, f0: 330.5, gain: 0.42, detune: 0.004 });
+  physTone(s, { at: 0,     dur: 0.055, f0: 539.0, gain: 0.38 });
+  physTone(s, { at: 0.055, dur: 0.090, f0: 330.5, gain: 0.42 });
+  noiseFloor(s, 7001);
+  cabinet(s);
   writeWav(path.join(outDir, 'delete.wav'), s);
 }
 
@@ -188,8 +337,10 @@ console.log('Rendering Spillman-style console sounds →', outDir);
 // points here; Motorola's error.wav is left entirely alone.
 {
   const s = make(0.24);
-  steadyTone(s, { at: 0,     dur: 0.100, f0: 368.5, gain: 0.40, detune: 0.005 });
-  steadyTone(s, { at: 0.105, dur: 0.100, f0: 330.5, gain: 0.42, detune: 0.005 });
+  physTone(s, { at: 0,     dur: 0.100, f0: 368.5, gain: 0.40 });
+  physTone(s, { at: 0.105, dur: 0.100, f0: 330.5, gain: 0.42 });
+  noiseFloor(s, 8001);
+  cabinet(s);
   writeWav(path.join(outDir, 'ui_error.wav'), s);
 }
 
@@ -202,8 +353,10 @@ console.log('Rendering Spillman-style console sounds →', outDir);
 // 150ms / 450ms — the authentic 1:3 ratio preserved at UI scale.
 {
   const s = make(0.72);
-  steadyTone(s, { at: 0,     dur: 0.150, f0: 349.0, gain: 0.38, detune: 0.003 });
-  steadyTone(s, { at: 0.150, dur: 0.450, f0: 928.1, gain: 0.40, detune: 0.003 });
+  physTone(s, { at: 0,     dur: 0.150, f0: 349.0, gain: 0.38, edge: 0.010 });
+  physTone(s, { at: 0.150, dur: 0.450, f0: 928.1, gain: 0.40, edge: 0.010 });
+  noiseFloor(s, 9001);
+  cabinet(s);
   writeWav(path.join(outDir, 'login.wav'), s);
 }
 
