@@ -11,11 +11,18 @@ export interface PlaceholderLeak {
   context: string;
 }
 
-// Word-bounded so "Annulled" does not match "null" and "undefinedness"
-// does not match "undefined". `[object Object]` is bracket-delimited so
-// it needs its own alternative rather than a \b guard.
+// Matches placeholders while excluding legitimate words and handling adjacent tokens.
+// Filters out "Annulled", "Nullification", "undefinedness" by checking preceding
+// letter + legitimate-word suffixes ("ness", "ification"). Catches concatenated
+// placeholders like "undefinednull" and "NaNundefined" via lookbehind/lookahead.
+// `Invalid Date` uses \s+ for multi-item splits from PDF rendering. `[object Object]`
+// is bracket-delimited and needs its own alternative.
+//
+// WARNING: This pattern has the /g flag and is stateful (lastIndex). Direct callers
+// using `.test()` or `.exec()` without resetting lastIndex get non-deterministic results.
+// Use `findPlaceholderLeaks()` (which resets per page) instead of calling this pattern directly.
 export const PLACEHOLDER_LEAK_PATTERN =
-  /\[object Object\]|\bInvalid Date\b|\bundefined\b|\bNaN\b|\bnull\b/g;
+  /(?<=undefined)null|(?<=null)undefined|(?<=NaN)undefined|(?<=undefined)NaN|(?<=NaN)null|(?<=null)NaN|undefined(?=NaN)|undefined(?=null)|NaN(?=undefined)|NaN(?=null)|null(?=undefined)|null(?=NaN)|(?<![a-zA-Z])undefined(?!ness)|(?<![a-zA-Z])null(?!ification)|(?<![a-zA-Z])NaN(?![a-zA-Z])|Invalid\s+Date|\[object Object\]/gi;
 
 export async function extractPdfText(doc: jsPDF): Promise<string[]> {
   const data = new Uint8Array(doc.output('arraybuffer') as ArrayBuffer);

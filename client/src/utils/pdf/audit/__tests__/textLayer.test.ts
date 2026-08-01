@@ -57,6 +57,30 @@ describe('findPlaceholderLeaks', () => {
   it('returns empty for clean pages', () => {
     expect(findPlaceholderLeaks(['Rocky Mountain Protective Group'])).toEqual([]);
   });
+
+  it('catches adjacent placeholder tokens (no separator between them)', () => {
+    const leaks = findPlaceholderLeaks([
+      'undefinednull',
+      'NaNundefined',
+      'Officer: nullNaN, unit 1',
+    ]);
+    const tokens = leaks.map((l) => l.token).sort();
+    expect(tokens).toContain('undefined');
+    expect(tokens).toContain('null');
+    expect(tokens).toContain('NaN');
+    expect(leaks.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('detects Invalid Date split across multiple items', () => {
+    const leaks = findPlaceholderLeaks(['Served:  Invalid    Date']);
+    expect(leaks.length).toBeGreaterThanOrEqual(1);
+    expect(leaks[0].token).toMatch(/Invalid.*Date/i);
+  });
+
+  it('detects multiple leaks on the same page in order', () => {
+    const leaks = findPlaceholderLeaks(['Field one: undefined, field two: null, field three: NaN']);
+    expect(leaks.map((l) => l.token)).toEqual(['undefined', 'null', 'NaN']);
+  });
 });
 
 describe('expectNoPlaceholderLeaks', () => {
