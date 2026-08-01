@@ -36,6 +36,24 @@ describe('PDF_REGISTRY', () => {
     );
   });
 
+  it('contains the batch-4 dispatch & patrol entries', () => {
+    const ids = entriesByCriticality('dispatch-patrol').map((e) => e.id).sort();
+    expect(ids).toEqual(
+      [
+        'fi-card',
+        'map-situation-report',
+        'nav-briefing',
+        'nav-trip-detail',
+        'nav-trip-report',
+        'patrol-tracking',
+        'plate-capture',
+        'pso-notice',
+        'shift-plan',
+        'shift-report',
+      ].sort(),
+    );
+  });
+
   it('looks up by id', () => {
     expect(getEntry('trespass-order')?.label).toBe('Trespass Order');
     expect(getEntry('does-not-exist')).toBeUndefined();

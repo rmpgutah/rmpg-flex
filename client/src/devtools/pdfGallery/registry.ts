@@ -32,6 +32,27 @@ import {
   clearedSummaryFixtures,
   darFixtures,
 } from './fixtures/useOfForce';
+import { generateShiftReportPdf } from '../../utils/shiftReportPdf';
+import { generateShiftPlanPdf } from '../../utils/shiftPlanPdf';
+import { generatePlateCapturePdf } from '../../utils/plateCapturePdf';
+import { generateFiCardPdf } from '../../utils/fiCardPdf';
+import { generateNoticeOfCommunication } from '../../utils/psoNoticePdfGenerator';
+import { buildPatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
+import { buildNavBriefingPdf } from '../../utils/navBriefingPdf';
+import { buildNavTripReportPdf, buildNavSingleTripReportPdf } from '../../utils/navTripPdf';
+import { buildMapSituationReportPdf } from '../../utils/mapSituationReportPdf';
+import {
+  shiftReportFixtures,
+  shiftPlanFixtures,
+  plateCaptureFixtures,
+  fiCardFixtures,
+  psoNoticeFixtures,
+  patrolTrackingFixtures,
+  navBriefingFixtures,
+  navTripReportFixtures,
+  navTripDetailFixtures,
+  mapSituationReportFixtures,
+} from './fixtures/dispatchPatrol';
 import { createEntry } from './types';
 import type { Criticality, PdfRegistryEntry } from './types';
 
@@ -141,6 +162,86 @@ export const PDF_REGISTRY: PdfRegistryEntry[] = [
     module: 'client/src/utils/darPdf.ts',
     generate: buildDarPdf,
     fixtures: darFixtures,
+  }),
+  createEntry({
+    id: 'shift-report',
+    label: 'End-of-Shift Report',
+    criticality: 'dispatch-patrol',
+    module: 'client/src/utils/shiftReportPdf.ts',
+    generate: generateShiftReportPdf,
+    fixtures: shiftReportFixtures,
+  }),
+  createEntry({
+    id: 'shift-plan',
+    label: 'Shift Briefing — Deployment Plan',
+    criticality: 'dispatch-patrol',
+    module: 'client/src/utils/shiftPlanPdf.ts',
+    generate: generateShiftPlanPdf,
+    fixtures: shiftPlanFixtures,
+  }),
+  createEntry({
+    id: 'plate-capture',
+    label: 'ALPR Plate Capture',
+    criticality: 'dispatch-patrol',
+    module: 'client/src/utils/plateCapturePdf.ts',
+    generate: generatePlateCapturePdf,
+    fixtures: plateCaptureFixtures,
+  }),
+  createEntry({
+    id: 'fi-card',
+    label: 'Field Interview Card',
+    criticality: 'dispatch-patrol',
+    module: 'client/src/utils/fiCardPdf.ts',
+    generate: generateFiCardPdf,
+    fixtures: fiCardFixtures,
+  }),
+  createEntry({
+    id: 'pso-notice',
+    label: 'PSO Notice of Communication',
+    criticality: 'dispatch-patrol',
+    module: 'client/src/utils/psoNoticePdfGenerator.ts',
+    generate: generateNoticeOfCommunication,
+    fixtures: psoNoticeFixtures,
+  }),
+  createEntry({
+    id: 'patrol-tracking',
+    label: 'Patrol Tracking Report',
+    criticality: 'dispatch-patrol',
+    module: 'client/src/utils/patrolTrackingPdfGenerator.ts',
+    generate: buildPatrolTrackingPdf,
+    fixtures: patrolTrackingFixtures,
+  }),
+  createEntry({
+    id: 'nav-briefing',
+    label: 'Pre-Trip Route Briefing',
+    criticality: 'dispatch-patrol',
+    module: 'client/src/utils/navBriefingPdf.ts',
+    generate: buildNavBriefingPdf,
+    fixtures: navBriefingFixtures,
+  }),
+  createEntry({
+    id: 'nav-trip-report',
+    label: 'Nav Trip Report',
+    criticality: 'dispatch-patrol',
+    module: 'client/src/utils/navTripPdf.ts',
+    generate: buildNavTripReportPdf,
+    fixtures: navTripReportFixtures,
+  }),
+  createEntry({
+    id: 'nav-trip-detail',
+    label: 'Nav Trip — Detail',
+    criticality: 'dispatch-patrol',
+    module: 'client/src/utils/navTripPdf.ts',
+    generate: buildNavSingleTripReportPdf,
+    fixtures: navTripDetailFixtures,
+  }),
+  createEntry({
+    id: 'map-situation-report',
+    label: 'Tactical Situation Report',
+    criticality: 'dispatch-patrol',
+    module: 'client/src/utils/mapSituationReportPdf.ts',
+    generate: buildMapSituationReportPdf,
+    fixtures: mapSituationReportFixtures,
   }),
 ];
 
