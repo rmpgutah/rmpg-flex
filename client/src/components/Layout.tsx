@@ -819,6 +819,21 @@ export default function Layout() {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [profileModalTab, setProfileModalTab] = useState<'profile' | 'password' | 'sessions'>('profile');
+  // Latch: once the profile modal has ever been opened, keep it mounted forever
+  // after (never unmount on close). UserProfileModal is React.lazy — a lazy
+  // component fetches its chunk the moment it is COMMITTED to the tree, not
+  // when isOpen becomes true. If we mounted it unconditionally (as before),
+  // Layout mounting on every authenticated page load would fetch the
+  // UserProfileModal + SignaturePad chunk on every boot, defeating the whole
+  // point of deferring it. Gating on a bare `profileModalOpen` instead would
+  // unmount the modal the instant it closes, killing any close/exit
+  // transition and resetting its internal state mid-animation. This latch
+  // fetches the chunk once, on first open, and never unmounts after — do not
+  // "simplify" this back to a plain boolean check.
+  const [profileModalEverOpened, setProfileModalEverOpened] = useState(false);
+  useEffect(() => {
+    if (profileModalOpen) setProfileModalEverOpened(true);
+  }, [profileModalOpen]);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchHeaderStats = useCallback(async () => {
@@ -1747,14 +1762,16 @@ export default function Layout() {
       {/* Dispatcher Transcript Drawer — toggles with 'T' key */}
       <DispatcherTranscript />
 
-      {/* Profile Modal */}
-      <React.Suspense fallback={null}>
-        <UserProfileModal
-          isOpen={profileModalOpen}
-          onClose={() => setProfileModalOpen(false)}
-          initialTab={profileModalTab}
-        />
-      </React.Suspense>
+      {/* Profile Modal — mount latched on first open (see profileModalEverOpened above) */}
+      {profileModalEverOpened && (
+        <React.Suspense fallback={null}>
+          <UserProfileModal
+            isOpen={profileModalOpen}
+            onClose={() => setProfileModalOpen(false)}
+            initialTab={profileModalTab}
+          />
+        </React.Suspense>
+      )}
 
       {/* Force Password Change Modal — blocks UI until password changed */}
       <ForcePasswordChangeModal />
