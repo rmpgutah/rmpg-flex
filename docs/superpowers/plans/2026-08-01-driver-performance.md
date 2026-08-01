@@ -347,7 +347,8 @@ Create `tests/driverPerformanceScore.test.ts`:
 ```ts
 import { describe, it, expect } from 'vitest';
 import {
-  computeScore, severityWeight, MIN_EXPOSURE_MILES, SCORE_VERSION,
+  computeScore, severityWeight, weightsPendingReview,
+  MIN_EXPOSURE_MILES, SCORE_VERSION,
   type EventCounts,
 } from '../src/utils/driverPerformance/score';
 
@@ -442,11 +443,11 @@ describe('severity weights', () => {
       .forEach((k) => expect(severityWeight(k)).toBeGreaterThan(0));
   });
 
-  // ⚠️ OWNER GATE — see the note in the plan. Delete this test only after the
-  // weights in score.ts have been reviewed and set by Rocky Mountain
-  // Protective Group. It exists so placeholder weights cannot ship unnoticed.
-  it.fails('has owner-reviewed weights', () => {
-    expect(SCORE_VERSION).not.toContain('placeholder');
+  it('reports weights as pending review while the version is a placeholder', () => {
+    // The runtime guard in the route keys off this. It is a normal assertion:
+    // it documents current state and flips to a real, meaningful failure the
+    // moment SCORE_VERSION is set to 'v1' without the guard being removed.
+    expect(weightsPendingReview()).toBe(SCORE_VERSION.includes('placeholder'));
   });
 });
 ```
@@ -536,6 +537,18 @@ const WEIGHTS: Record<keyof EventCounts, number> = {
 
 export function severityWeight(event: keyof EventCounts): number {
   return WEIGHTS[event];
+}
+
+/**
+ * True while the severity weights are still placeholders.
+ *
+ * The route uses this to refuse to serve scores: a number derived from
+ * unreviewed weights must not reach a supervisor, because it would look
+ * exactly like a reviewed one. Fails loudly where someone will notice,
+ * rather than in a CI suite nobody reads.
+ */
+export function weightsPendingReview(): boolean {
+  return SCORE_VERSION.includes('placeholder');
 }
 
 function bandFor(score: number): ScoreBand {
@@ -921,7 +934,39 @@ describe('driver-performance RBAC', () => {
   });
 });
 
-describe('roster shape', () => {
+describe('weights owner gate', () => {
+  // While SCORE_VERSION contains 'placeholder', no score is served. Once the
+  // owner sets real weights, DELETE this test and un-skip the roster-shape
+  // tests below — that swap is the intended, visible handover.
+  it('refuses to serve scores while severity weights are unreviewed', async () => {
+    const res = await makeRequest('/api/driver-performance/roster', {
+      headers: { Authorization: `Bearer ${await tokenFor('supervisor')}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { ok: boolean; code: string };
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe('weights_pending_review');
+  });
+
+  it('gates the officer detail endpoint too', async () => {
+    const res = await makeRequest('/api/driver-performance/officer/1', {
+      headers: { Authorization: `Bearer ${await tokenFor('supervisor')}` },
+    });
+    const body = await res.json() as { code?: string };
+    expect(body.code).toBe('weights_pending_review');
+  });
+
+  it('applies RBAC BEFORE the weights gate — a denied role still gets 403', async () => {
+    // Order matters: if the gate ran first, client_viewer would receive a 200
+    // instead of a 403, and the RBAC tests above would pass for the wrong reason.
+    const res = await makeRequest('/api/driver-performance/roster', {
+      headers: { Authorization: `Bearer ${await tokenFor('client_viewer')}` },
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe.skip('roster shape (un-skip once weights are reviewed)', () => {
   it('separates unranked insufficient-exposure officers from the ranked list', async () => {
     const res = await makeRequest('/api/driver-performance/roster?from=2026-03-01&to=2026-03-31', {
       headers: { Authorization: `Bearer ${await tokenFor('supervisor')}` },
@@ -956,13 +1001,33 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, ensureDriverPerformanceColumns } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { log } from '../utils/logger';
-import { computeScore, MIN_EXPOSURE_MILES } from '../utils/driverPerformance/score';
+import { computeScore, MIN_EXPOSURE_MILES, weightsPendingReview, SCORE_VERSION } from '../utils/driverPerformance/score';
 import { rollupDay } from '../utils/driverPerformance/rollup';
 
 const driverPerformance = new Hono<Env>();
 
 const VIEW_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'] as const;
 const canView = requireRole(...VIEW_ROLES);
+
+/**
+ * Runtime owner gate. While the severity weights are placeholders, no score
+ * is served — a number from unreviewed weights is indistinguishable from a
+ * reviewed one once it is on a supervisor's screen, and this feature's whole
+ * risk is confident wrong numbers about named people.
+ *
+ * Follows the house not_configured convention: 200 with ok:false and a code,
+ * never a 503, so the client can render an explanatory banner instead of an
+ * error state.
+ */
+function weightsGate(c: { json: (o: unknown) => Response }): Response | null {
+  if (!weightsPendingReview()) return null;
+  return c.json({
+    ok: false,
+    code: 'weights_pending_review',
+    message: 'Driver performance scoring is unavailable: severity weights have not been reviewed and approved by Rocky Mountain Protective Group.',
+    score_version: SCORE_VERSION,
+  });
+}
 
 /** Default window: trailing 30 days. */
 function windowFrom(c: { req: { query: (k: string) => string | undefined } }) {
@@ -1039,6 +1104,7 @@ function shape(r: AggRow) {
 // GET /roster — ranked scored officers; insufficient-exposure officers returned
 // SEPARATELY so they can never sort to the bottom of a leaderboard.
 driverPerformance.get('/roster', canView, async (c) => {
+  const gated = weightsGate(c); if (gated) return gated;
   const db = getDb(c.env);
   await ensureDriverPerformanceColumns(db);
   const { from, to } = windowFrom(c);
@@ -1065,6 +1131,7 @@ driverPerformance.get('/roster', canView, async (c) => {
 });
 
 driverPerformance.get('/officer/:id', canView, async (c) => {
+  const gated = weightsGate(c); if (gated) return gated;
   const db = getDb(c.env);
   await ensureDriverPerformanceColumns(db);
   const officerId = Number(c.req.param('id'));
@@ -1259,6 +1326,9 @@ interface RosterEntry {
 }
 
 interface RosterResponse {
+  ok?: boolean;
+  code?: string;
+  message?: string;
   from: string; to: string;
   min_exposure_miles: number;
   ranked: RosterEntry[];
@@ -1302,6 +1372,21 @@ export default function FleetDriverPerformanceTab() {
     );
   }
   if (!data) return null;
+
+  // Runtime owner gate: severity weights not yet reviewed, so no score exists
+  // to show. Explain why rather than rendering an empty table, which would
+  // read as "everyone drove cleanly".
+  if (data.ok === false) {
+    return (
+      <div className="p-4 space-y-3">
+        <PanelTitleBar title="DRIVER PERFORMANCE" icon={Gauge} />
+        <div className="border border-[color:var(--sev-warn)] p-3 text-xs text-rmpg-100">
+          <div className="font-semibold text-[color:var(--sev-warn)] mb-1">Scoring unavailable</div>
+          <div>{data.message}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4">
@@ -1430,6 +1515,7 @@ Append to `src/routes/driverPerformance.ts`, before `export default`:
 // window, score_version, attribution confidence, generation time — so the
 // document is reproducible and cannot be read out of context.
 driverPerformance.get('/officer/:id/export', canView, async (c) => {
+  const gated = weightsGate(c); if (gated) return gated;
   const db = getDb(c.env);
   await ensureDriverPerformanceColumns(db);
   const officerId = Number(c.req.param('id'));
@@ -1649,4 +1735,4 @@ gh pr create -R rmpgutah/rmpg-flex --title "feat: Driver Performance" --body "Se
 4. Backfill history: `POST /api/driver-performance/recompute` with the desired range, as an admin.
 5. Confirm in a real browser at rmpgutah.us that the tab renders in the fleet shell.
 6. Confirm RBAC on live: a `client_viewer` token must receive 403 from `/api/driver-performance/roster`.
-7. **Review the severity weights** in `src/utils/driverPerformance/score.ts`, set `SCORE_VERSION` to `'v1'`, and delete the owner-gate test. Until then every score carries a placeholder-weights version string.
+7. **Review the severity weights** in `src/utils/driverPerformance/score.ts`, set `SCORE_VERSION` to `'v1'`, then remove the weights-gate tests and un-skip the roster-shape tests. Until that happens the API serves `ok:false, code:"weights_pending_review"` and the tab shows a "Scoring unavailable" banner — by design.
