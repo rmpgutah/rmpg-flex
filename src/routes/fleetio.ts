@@ -34,7 +34,7 @@ import { matchLocalVehicle, buildLocalInsertFromFleetio, decideMatchAction, buil
 import type { RmpgFleetVehicleRow, SeedOutcome, SeedSummary } from '../utils/fleetio/types';
 import { recordAudit } from '../utils/auditLog';
 import fleetioWebhook from './fleetioWebhook';
-import { rmpgTableToResource, getQueueHealth } from '../utils/fleetio/sync';
+import { rmpgTableToResource, getQueueHealth, isPermanentFailureMessage } from '../utils/fleetio/sync';
 import { emitFleetioEvent, type FleetioEmitKind } from '../utils/fleetio/events';
 
 const fleetio = new Hono<Env>();
@@ -174,6 +174,28 @@ fleetio.post('/events/:id{[0-9]+}/retry', requireRole('admin'), async (c) => {
   const id = parseInt(c.req.param('id') ?? '0', 10);
   if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
+
+  // Refuse to re-arm a PERMANENT failure. A 4xx is Fleet.io's verdict on the
+  // payload, so replaying it burns the retry budget and re-pages an operator
+  // for a rejection that was correct every time — the loop observed live on
+  // 2026-08-01 with fuel_entry event id=23. The fix for one of these is to
+  // correct the source record in RMPG, which emits a fresh event naturally.
+  const existing = await queryFirst<{ status: string; error: string | null }>(
+    db,
+    `SELECT status, error FROM fleetio_events WHERE id = ?`,
+    id,
+  );
+  if (!existing || existing.status !== 'failed') {
+    return c.json({ error: 'Event not found or not in failed state' }, 404);
+  }
+  if (isPermanentFailureMessage(existing.error)) {
+    return c.json({
+      error: 'This event failed permanently and cannot be retried — Fleet.io rejected the data itself. Correct the source record in RMPG; saving it queues a fresh event.',
+      code: 'permanent_failure',
+      reason: existing.error,
+    }, 409);
+  }
+
   const result = await execute(
     db,
     `UPDATE fleetio_events SET status = 'pending', attempts = 0, error = NULL

@@ -326,15 +326,27 @@ export default function AdminFleetioHealthTab() {
                   </td>
                   <td className="py-1 pl-2 text-right whitespace-nowrap">
                     {e.status === 'failed' && e.direction === 'outbound' && (
-                      <button
-                        type="button"
-                        disabled={retrying === (e.id as number)}
-                        onClick={() => retryEvent(e.id as number)}
-                        className="text-[9px] px-1.5 py-0.5 border border-rmpg-700 rounded-sm hover:bg-rmpg-800 disabled:opacity-50"
-                        aria-label="Retry failed event"
-                      >
-                        {retrying === (e.id as number) ? 'Retrying…' : 'Retry'}
-                      </button>
+                      // A PERMANENT failure is Fleet.io rejecting the data itself, so
+                      // retrying it is guaranteed to fail (the API returns 409). Offer
+                      // the real remedy instead of a button that re-arms the loop.
+                      isPermanentError(e.error as string | null) ? (
+                        <span
+                          className="text-[9px] text-amber-400"
+                          title="Fleet.io rejected this data. Correct the source record in RMPG — saving it queues a fresh event."
+                        >
+                          Fix source record
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={retrying === (e.id as number)}
+                          onClick={() => retryEvent(e.id as number)}
+                          className="text-[9px] px-1.5 py-0.5 border border-rmpg-700 rounded-sm hover:bg-rmpg-800 disabled:opacity-50"
+                          aria-label="Retry failed event"
+                        >
+                          {retrying === (e.id as number) ? 'Retrying…' : 'Retry'}
+                        </button>
+                      )
                     )}
                   </td>
                 </tr>
@@ -481,6 +493,19 @@ function StatusBadge({ status }: { status: string }) {
       {status}
     </span>
   );
+}
+
+/**
+ * Mirrors `PERMANENT_ERROR_PREFIX` in src/utils/fleetio/sync.ts — the marker the
+ * sync engine stamps onto `fleetio_events.error` when Fleet.io returned a 4xx,
+ * i.e. rejected the payload itself rather than failing transiently. Kept as a
+ * literal because the Worker and the SPA share no build; the prefix is asserted
+ * on both sides so a rename can't silently un-hide the Retry button.
+ */
+export const PERMANENT_ERROR_PREFIX = 'PERMANENT: ';
+
+export function isPermanentError(error: string | null | undefined): boolean {
+  return typeof error === 'string' && error.startsWith(PERMANENT_ERROR_PREFIX);
 }
 
 /** Coarse human delta: "Just now", "5m", "2h", "3d". Pure for tests. */
