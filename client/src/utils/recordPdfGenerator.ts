@@ -52,6 +52,7 @@ import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, resetActiveFieldCounter } from './pdfGenerator';
 import { cleanAddressText } from './addressClean';
 import { fetchLocationMapImage, fetchTacticalContext } from './pdfStaticMap';
+import { preloadSignatureTransparency } from './pdf/signatureImage';
 import { toMgrs } from './mgrs';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
@@ -70,7 +71,7 @@ import {
   drawDispatchTimelineStrip, drawChainOfCustodyTable, drawFormRow,
   type TimelineEvent, type CustodyTransfer, type FormCell,
 } from './pdfFormHelpers';
-import { toDisplayLabel } from './formatters';
+import { toDisplayLabel, formatCurrency } from './formatters';
 
 // ── Active Officer Signature (set per-generation, cleared after) ─
 
@@ -260,6 +261,18 @@ function personCrossRefTags(name: string, data: CallPdfData): string[] {
 // own data shape; renderRecordPostureBand() runs it through the SAME
 // recordPosture() engine the UI uses and draws the band — skipped for a 'clear'
 // posture so low-risk records print exactly as before (no added length).
+
+// Non-values a tow_status column may hold that mean "not actually towed."
+// tow_status is stored title-cased per TOW_STATUS_OPTIONS ('None', 'Police
+// Hold', ...); this must be normalized before comparison or the vehicle
+// quick-ref banner falsely stamps IMPOUNDED on every non-empty tow_status,
+// including the default 'None'.
+const NON_TOW_VALUES = new Set(['none', 'n/a', 'na', 'not towed', '-']);
+
+export function isVehicleActivelyTowed(towStatus: string | null | undefined): boolean {
+  const norm = (towStatus || '').trim().toLowerCase();
+  return norm !== '' && !NON_TOW_VALUES.has(norm);
+}
 
 const POSTURE_CHIP_MAX_CHARS = 22;
 
@@ -1730,7 +1743,7 @@ export async function addLocationMapSection(
     priority?: string;
     /** Extra labeled cells appended to the LOCATION DATA strip's top row
      *  (cross street, property, suite, ...). */
-    details?: { label: string; value: string; ratio?: number }[];
+    details?: { label: string; value: string; ratio?: number; minFontSize?: number }[];
     /** Incident timestamp (ISO) driving the light-condition readout —
      *  defaults to generation time. */
     eventIso?: string | null;
@@ -2052,7 +2065,7 @@ export async function addLocationMapSection(
   };
   const topCells: FormCell[] = [
     { label: 'TARGET ADDRESS', value: opts.caption || opts.address || '', ratio: 2.6 },
-    ...(opts.details || []).map((c) => ({ label: c.label, value: c.value || EMPTY_FIELD, ratio: c.ratio ?? 1 })),
+    ...(opts.details || []).map((c) => ({ label: c.label, value: c.value || EMPTY_FIELD, ratio: c.ratio ?? 1, minFontSize: c.minFontSize })),
   ];
   const frameM = Math.round(mPerMm * drawW);
   const botCells: FormCell[] = [
@@ -3049,7 +3062,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_SECTION_TITLE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text('INCIDENT DETAILS -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+      doc.text('INCIDENT DETAILS — CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
       const idRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       doc.setLineWidth(BORDER.SECTION_OUTER);
@@ -3272,7 +3285,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       const entryLead = continued
-        ? `ENTRY ${entryNum} OF ${total} -- CONTINUED`
+        ? `ENTRY ${entryNum} OF ${total} — CONTINUED`
         : `ENTRY ${entryNum} OF ${total}  .  ${timestamp}`;
       doc.text(entryLead, lx + 2, strip_y + headerH - 1.5);
       doc.setFontSize(6);
@@ -6272,7 +6285,12 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
       { label: 'PROPERTY',  value: data.name || '', ratio: 1.2 },
       { label: 'STATUS',    value: data.is_active === false ? 'INACTIVE' : 'ACTIVE', ratio: 0.65 },
       { label: 'TYPE',      value: toDisplayLabel(data.property_type || data.business_type || '').toUpperCase(), ratio: 0.95 },
-      ...(data.owner_name ? [{ label: 'OWNER', value: data.owner_name, ratio: 1.0 }] : []),
+      // Widened ratio (1.0 -> 1.5) + a lower shrink-to-fit floor (4pt) so a
+      // long owner name (e.g. a hyphenated double surname) gets enough room to
+      // fully fit instead of falling back to fitTextToWidth's last-resort
+      // ellipsis-truncate — a person's name should never clip on a legal
+      // record when shrinking the font can avoid it.
+      ...(data.owner_name ? [{ label: 'OWNER', value: data.owner_name, ratio: 1.5, minFontSize: 4 }] : []),
     ],
     eventIso: data.created_at,
   }, y);
@@ -6553,7 +6571,13 @@ async function generateBusinessReport(doc: jsPDF, data: BusinessPdfData) {
     y = Math.max(r2a, r2b, r2c, r2d);
     // Row 3: Employee Count, Annual Revenue, Status, Record ID
     const r3a = addFieldPair(doc, 'Employees', data.employee_count || '', lx, y, qw);
-    const r3b = addFieldPair(doc, 'Annual Revenue', data.annual_revenue || '', lx + qw, y, qw);
+    // annual_revenue is a raw integer (the UI prints it unformatted too, but
+    // a business record should read as currency — thousands separators + $
+    // marker, matching how the fleet reports render cost figures).
+    const annualRevenueDisplay = data.annual_revenue != null && data.annual_revenue !== ''
+      ? formatCurrency(Number(data.annual_revenue), { decimals: 0 })
+      : '';
+    const r3b = addFieldPair(doc, 'Annual Revenue', annualRevenueDisplay, lx + qw, y, qw);
     const r3c = addFieldPair(doc, 'Status', (data.status || 'active').toUpperCase(), lx + 2 * qw, y, qw);
     const r3d = addFieldPair(doc, 'Record ID', data.id || '', lx + 3 * qw, y, qw);
     y = Math.max(r3a, r3b, r3c, r3d);
@@ -7259,6 +7283,11 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
       badgeNumber: badgeNum,
       date: sigDateStr,
     });
+    // Warm the transparency cache BEFORE the (synchronous) jsPDF drawing
+    // calls run — addSignatureBlock/drawSignatureSlot can't be async
+    // themselves without rippling across every document generator, so the
+    // conversion happens here, at the one place the signature is loaded.
+    await preloadSignatureTransparency(anyData._officerSignature);
 
     const payloadHash = await computePayloadHash(data);
     setActivePayloadHash(payloadHash);
@@ -7323,6 +7352,11 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
       badgeNumber: badgeNum,
       date: sigDateStr,
     });
+    // Warm the transparency cache BEFORE the (synchronous) jsPDF drawing
+    // calls run — addSignatureBlock/drawSignatureSlot can't be async
+    // themselves without rippling across every document generator, so the
+    // conversion happens here, at the one place the signature is loaded.
+    await preloadSignatureTransparency(anyData._officerSignature);
 
     const payloadHash = await computePayloadHash(data);
     setActivePayloadHash(payloadHash);

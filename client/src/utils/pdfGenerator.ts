@@ -18,6 +18,7 @@ import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts
 import { loadSealBase64, loadLogoDarkBase64, getCachedSealBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
+import { computeSignatureRect, getCachedTransparentSignature } from './pdf/signatureImage';
 // Document hashing infrastructure (pdfIntegrity.ts, pdfSigner.ts) is
 // dormant as of 2026-05-04 per user request. The trailer page +
 // per-page footer hash prefix are removed; payload-hash computation +
@@ -280,6 +281,24 @@ export function applyFieldNumber(label: string): string {
  */
 export function sanitizePdfText(text: string, opts: { preserveMarkers?: boolean; preserveCase?: boolean } = {}): string {
   if (!text) return text;
+  // Coerce non-strings before touching string methods.
+  //
+  // The signature says `string`, but record data reaches this function from
+  // `any`-typed D1 rows, so a numeric column arrives as a NUMBER at runtime and
+  // TypeScript never sees it. `generateBusinessReport` passing `employee_count`
+  // straight through threw `TypeError: text.replace is not a function` and
+  // aborted the whole Business Record PDF — a document that simply failed to
+  // generate, with no partial output and no clue why. Found 2026-08-01 by the
+  // audit harness; the record the operator happened to print stored its count
+  // as a string, which is why it had never surfaced in production.
+  //
+  // This is the single choke point every generator's text passes through, so
+  // guarding here protects all ~81 documents rather than one field on one form.
+  // Deliberately NOT `String(text)` at the top: the `!text` guard above must
+  // keep returning falsy input untouched (callers rely on '' staying '').
+  if (typeof text !== 'string') {
+    text = String(text);
+  }
   let s = text
     // HTML entity decode — narrative text occasionally arrives still
     // escaped from upstream rich-text editors / scrapers (e.g.
@@ -570,6 +589,20 @@ function isNarrativeLikePdfText(text: string, width: number): boolean {
   const trimmed = (text || '').trim();
   if (!trimmed) return false;
   return width > 160 || trimmed.length > 120 || /[\n.!?;:]/.test(trimmed);
+}
+
+// Email addresses and URLs are case-sensitive in principle (and the UI
+// renders them lowercase, as stored) — exempt them from the blanket
+// uppercasing every other field value gets so printed records match the
+// screen instead of shouting `CHZAMO@RMPGUTAH.US`. Shape-based rather than
+// per-call-site so any field renderer sharing this path (not just the
+// business record's Email/Website cells) benefits automatically.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const URL_RE = /^(https?:\/\/|www\.)\S+$/i;
+export function isEmailOrUrlPdfValue(text: string): boolean {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return false;
+  return EMAIL_RE.test(trimmed) || URL_RE.test(trimmed);
 }
 
 function getPdfTextLineHeight(fontSize: number, readable = false): number {
@@ -1072,7 +1105,12 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
   const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
   const baseBoxH = useReadableText ? 2.8 : 2.3;  // condensed 2026-05-31 (3.2/2.6 → 2.8/2.3)
-  const displayText = isEmpty ? 'N/A' : sanitized.toUpperCase();
+  // Email addresses and URLs are case-sensitive in principle and the UI
+  // renders them as stored (e.g. `chzamo@rmpgutah.us`) — the blanket
+  // .toUpperCase() below (applied to every other field so forms read like
+  // a real police form) was also stamping these, producing
+  // `CHZAMO@RMPGUTAH.US` / `HTTPS://RMPGUTAHPS.US` on printed records.
+  const displayText = isEmpty ? 'N/A' : (isEmailOrUrlPdfValue(sanitized) ? sanitized : sanitized.toUpperCase());
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const allFieldLines = isEmpty ? [displayText] : wordWrapText(doc, displayText, maxW - 1);
@@ -1497,8 +1535,17 @@ export function addSignatureBlock(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(0, 0, 0);
+  // The pure cap-height center formula puts the baseline within ~0.4mm of
+  // the bar's bottom border at this font size/bar height — close enough
+  // that the "OFFICER"/"ENTERING OFFICER" caption visually sits ON the
+  // rule instead of clear of it. Bias the baseline up by a fixed margin so
+  // there's real breathing room above the border regardless of label text.
   const roleCapH = FONT.SIZE_SECTION_TITLE * 0.35;
-  const roleTextY = y + (roleBarH + roleCapH) / 2;
+  const roleBottomMargin = 0.9;
+  const roleTextY = Math.min(
+    y + (roleBarH + roleCapH) / 2,
+    y + roleBarH - roleBottomMargin,
+  );
   doc.text(sanitizePdfText(roleLabel.toUpperCase()), x + SPACING.CONTENT_INSET, roleTextY);
 
   // ── Signature area (very light tint — low ink) ──
@@ -1537,22 +1584,34 @@ export function addSignatureBlock(
 
       const maxW = Math.min(width * 0.5, 70);
       const maxH = sigRowH - 3.5; // breathing room inside the row
-      let imgW = maxW;
-      let imgH = maxH;
-      try {
-        const props = doc.getImageProperties(sigData.signatureImage);
-        if (props?.width && props?.height) {
-          const scale = Math.min(maxW / props.width, maxH / props.height);
-          imgW = props.width * scale;
-          imgH = props.height * scale;
-        }
-      } catch { /* unknown dims — fall back to box fit */ }
-      // Bottom edge sits just above the baseline (ink touches the line).
       // Align the ink to the rule's own left edge rather than an arbitrary
       // +4 offset, so a signed block and an unsigned one share a left edge.
       const imgX = x + SPACING.MD + 1;
-      const imgY = sigLineY - 0.5 - imgH;
-      doc.addImage(sigData.signatureImage, 'PNG', imgX, imgY, imgW, imgH);
+      // Dynamic, aspect-preserving fit via computeSignatureRect (was a
+      // fixed-box stretch) with a bounded overshoot so ink can realistically
+      // run slightly past the box — hardLimits keeps it inside the
+      // certification text above and the info row below. Runs through the
+      // transparency cache so pre-existing white-boxed signatures render
+      // clean too, with no re-sign and no migration.
+      const img = getCachedTransparentSignature(sigData.signatureImage) ?? sigData.signatureImage;
+      let rect = { x: imgX, y: sigLineY - 0.5 - maxH, w: maxW, h: maxH };
+      try {
+        const props = doc.getImageProperties(img);
+        if (props?.width && props?.height) {
+          rect = computeSignatureRect(
+            { width: props.width, height: props.height },
+            { x: imgX, y: row1Y + 0.5, w: maxW, h: sigLineY - 0.5 - (row1Y + 0.5) },
+            {
+              anchor: 'bottom',
+              align: 'left',
+              hardLimits: { x: x + SPACING.MD, y: row1Y + 0.5, w: width - SPACING.MD * 2, h: sigLineY + 0.5 - (row1Y + 0.5) },
+            },
+          );
+        }
+      } catch { /* unknown dims — fall back to box fit */ }
+      if (rect.w > 0 && rect.h > 0) {
+        doc.addImage(img, 'PNG', rect.x, rect.y, rect.w, rect.h);
+      }
     } catch { /* skip */ }
   } else {
     // ── Unsigned: a real signature rule, captioned clear of the border ──
@@ -2314,7 +2373,7 @@ export function addNarrativeSection(
   const estimatedH = totalLines * lineH + Math.max(0, paraCount - 1) * paragraphGap + SPACING.SM + 2;
 
   // Page break callback: draw section continuation sub-header
-  const contTitle = title.toUpperCase() + ' -- CONTINUED';
+  const contTitle = title.toUpperCase() + ' — CONTINUED';
   const narrativePageBreak = (newY: number): number => {
     // Section continuation sub-header — thin outline (low ink)
     const cw = getContentWidth(doc);
@@ -2372,7 +2431,7 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
     if (sup.narrative) {
       y += SPACING.LG;
       const fontSize = FONT.SIZE_FIELD_VALUE;
-      const contTitle = supTitle.toUpperCase() + ' -- CONTINUED';
+      const contTitle = supTitle.toUpperCase() + ' — CONTINUED';
       const supPageBreak = (newY: number): number => {
         const cw = getContentWidth(doc);
         doc.setFont('helvetica', 'bold');
@@ -2587,7 +2646,7 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(0, 0, 0);
-    doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
+    doc.text(sanitizePdfText(`${activeBranding.report_header_text} — CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
 
     // Form number + case number on right
     const rightParts: string[] = [];
@@ -2745,7 +2804,7 @@ export function addTableWithShading(
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
         const subTextY = y + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
         doc.text(
-          sanitizePdfText(`${opts.sectionTitle.toUpperCase()} -- CONTINUED`),
+          sanitizePdfText(`${opts.sectionTitle.toUpperCase()} — CONTINUED`),
           LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET,
           subTextY,
         );
@@ -3704,7 +3763,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_SECTION_TITLE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text('NARRATIVE / SERVICE NOTES -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+      doc.text('NARRATIVE / SERVICE NOTES — CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
       const nRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       doc.setLineWidth(BORDER.SECTION_OUTER);
