@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { relTime } from '../AdminFleetioHealthTab';
+import { relTime, isPermanentError, PERMANENT_ERROR_PREFIX } from '../AdminFleetioHealthTab';
 
 // Pin Date.now so the relative-time math is deterministic.
 const FROZEN = new Date('2026-06-21T18:00:00Z').getTime();
@@ -36,5 +36,25 @@ describe('relTime', () => {
 
   it('clamps future timestamps to "just now" (rather than negative numbers)', () => {
     expect(relTime('2026-06-21T19:00:00Z')).toBe('just now');
+  });
+});
+
+describe('isPermanentError', () => {
+  // The Worker stamps this prefix in src/utils/fleetio/sync.ts. The two
+  // codebases share no build, so this literal is the contract — if it drifts,
+  // the Retry button reappears on events that can only ever 409.
+  it('pins the prefix the Worker writes', () => {
+    expect(PERMANENT_ERROR_PREFIX).toBe('PERMANENT: ');
+  });
+
+  it('detects a permanent failure and its Fleet.io reason', () => {
+    expect(isPermanentError('PERMANENT: Fleet.io 422: {"errors":["Meter value too low"]}')).toBe(true);
+  });
+
+  it('treats transient failures and empty values as retryable', () => {
+    expect(isPermanentError('Fleet.io 503: upstream down')).toBe(false);
+    expect(isPermanentError('')).toBe(false);
+    expect(isPermanentError(null)).toBe(false);
+    expect(isPermanentError(undefined)).toBe(false);
   });
 });
