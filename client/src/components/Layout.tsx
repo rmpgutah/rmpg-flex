@@ -107,7 +107,10 @@ import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
 import AnnouncementBanner from './AnnouncementBanner';
 import PanicButton from './PanicButton';
-import UserProfileModal from './UserProfileModal';
+// Lazy: 66.6 KB (plus SignaturePad's 21.9 KB, which it statically imports) and
+// it renders behind a boolean. Layout wraps every authenticated route, so a
+// static import here landed both in the entry chunk on every cold load.
+const UserProfileModal = React.lazy(() => import('./UserProfileModal'));
 import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
 import CommandPalette from './CommandPalette';
@@ -1745,11 +1748,13 @@ export default function Layout() {
       <DispatcherTranscript />
 
       {/* Profile Modal */}
-      <UserProfileModal
-        isOpen={profileModalOpen}
-        onClose={() => setProfileModalOpen(false)}
-        initialTab={profileModalTab}
-      />
+      <React.Suspense fallback={null}>
+        <UserProfileModal
+          isOpen={profileModalOpen}
+          onClose={() => setProfileModalOpen(false)}
+          initialTab={profileModalTab}
+        />
+      </React.Suspense>
 
       {/* Force Password Change Modal — blocks UI until password changed */}
       <ForcePasswordChangeModal />
