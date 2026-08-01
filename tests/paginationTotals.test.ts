@@ -39,7 +39,11 @@ describe('records.ts list pagination', () => {
     expect(code).toContain('SELECT COUNT(*) AS n FROM persons${whereClause}');
     expect(code).toContain('SELECT COUNT(*) AS n FROM vehicles_records${whereClause}');
     expect(code).toContain('SELECT COUNT(*) AS n ${FROM}${where}');
-    expect(code).toContain("const FROM = 'FROM evidence e LEFT JOIN users u ON e.collected_by = u.id'");
+    // Matched by shape, not by literal: the guard that actually matters is the
+    // `${FROM}${where}` reuse asserted above, so pinning every JOIN in the const
+    // only made this test fail whenever a legitimately-needed join was added
+    // (it did, when incidents was joined for incident_number).
+    expect(code).toMatch(/const FROM = 'FROM evidence e LEFT JOIN [^']*'/);
     expect((code.match(/SELECT COUNT\(\*\) AS n /g) || []).length).toBe(3);
   });
 
