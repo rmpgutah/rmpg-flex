@@ -13,6 +13,7 @@ import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { getSectorColor, getZoneColor, formatBeatLabel } from '../utils/geographyLabels';
+import { toDisplayLabel } from '../utils/formatters';
 
 // Tactical-dark fallback when a config color won't parse as a Mapbox color
 // (most commonly a leaked `var(--…)` string). Keeps the layer rendered while
@@ -196,7 +197,7 @@ function buildDefaultInfoHtml(name: string, cfg: GeoLayerConfig, props: Record<s
   if (cfg.detailProps) {
     for (const p of cfg.detailProps) {
       if (props[p] !== undefined && props[p] !== null && props[p] !== '') {
-        const label = p.replace(/_/g, ' ').toUpperCase().replace(/^(POP_CURRESTIMATE|POPLASTESTIMATE)$/i, 'Population');
+        const label = toDisplayLabel(p).toUpperCase().replace(/^(POP_CURRESTIMATE|POPLASTESTIMATE)$/i, 'Population');
         html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">${escapeForHtml(label)}:</span> ${escapeForHtml(String(props[p]))}</div>`;
       }
     }

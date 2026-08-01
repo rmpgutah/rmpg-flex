@@ -33,6 +33,7 @@ import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import type { Area, Beat, Sector, TierId, Zone } from '../types/geography';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -1305,7 +1306,7 @@ function DetailPane({
         <div className="space-y-2 mb-6">
           {fields.map(([k, v]) => {
             const isReadOnly = READ_ONLY.has(k);
-            const label = k.replace(/_/g, ' ').toUpperCase();
+            const label = toDisplayLabel(k).toUpperCase();
 
             if (isReadOnly) {
               return (
@@ -1392,7 +1393,7 @@ function DetailPane({
           {fields.map(([k, v]) => (
             <div key={k} className="contents">
               <dt className="text-[var(--text-muted)] uppercase text-[9px] pt-0.5">
-                {k.replace(/_/g, ' ')}
+                {toDisplayLabel(k)}
               </dt>
               <dd className="text-[var(--text-primary)] break-words">
                 {v == null || v === '' ? (

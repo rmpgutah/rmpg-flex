@@ -378,7 +378,7 @@ export default function AdminGodModeTab() {
           <div className="mt-2 grid grid-cols-3 md:grid-cols-5 lg:grid-cols-7 gap-1">
             {Object.entries(systemOverview.record_counts ?? {}).filter(([, v]) => typeof v === 'number' && v >= 0).map(([table, count]) => (
               <div key={table} className="bg-surface-sunken px-2 py-1 rounded-sm">
-                <div className="text-[9px] text-rmpg-500 uppercase truncate">{table.replace(/_/g, ' ')}</div>
+                <div className="text-[9px] text-rmpg-500 uppercase truncate">{toDisplayLabel(table)}</div>
                 <div className="text-[11px] font-mono text-rmpg-100">{formatNumber(count)}</div>
               </div>
             ))}
@@ -615,7 +615,7 @@ export default function AdminGodModeTab() {
               <option value="">Target unit...</option>
               {units.map((u: any) => (
                 <option key={u.id} value={u.id}>
-                  {u.call_sign}{u.officer_name ? ` — ${u.officer_name}` : ' — unstaffed'}{u.status ? ` (${String(u.status).replace(/_/g, ' ')})` : ''}
+                  {u.call_sign}{u.officer_name ? ` — ${u.officer_name}` : ' — unstaffed'}{u.status ? ` (${toDisplayLabel(String(u.status))})` : ''}
                 </option>
               ))}
             </select>

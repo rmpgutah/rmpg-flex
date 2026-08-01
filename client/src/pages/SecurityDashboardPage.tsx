@@ -9,6 +9,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { formatDateTime } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface SecurityStatus {
   twoFactorEnabled: boolean; passwordAge: number; trustedDevices: number;
@@ -98,7 +99,7 @@ export default function SecurityDashboardPage() {
       // them here rather than rendering blank text for every threat entry.
       if (t) setThreats((t.data || []).map((raw: any) => ({
         ...raw,
-        description: raw.description || [raw.username, (raw.reason || '').replace(/_/g, ' ')].filter(Boolean).join(' — '),
+        description: raw.description || [raw.username, toDisplayLabel(raw.reason || '')].filter(Boolean).join(' — '),
         severity: raw.severity || (raw.reason === 'user_not_found' ? 'high' : 'medium'),
         ip_address: raw.ip_address || raw.ip,
       })));
@@ -409,7 +410,7 @@ export default function SecurityDashboardPage() {
                 {threats.map((t, i) => (
                   <tr key={i} className="border-b border-rmpg-800 hover:bg-surface-raised">
                     <td className="px-3 py-[2px]"><span className={`text-[9px] font-bold uppercase ${t.severity === 'critical' ? 'text-red-400' : t.severity === 'high' ? 'text-amber-400' : 'text-rmpg-400'}`}>{t.severity}</span></td>
-                    <td className="px-3 py-[2px] text-[11px] text-rmpg-100 capitalize">{(t.type || '').replace(/_/g, ' ')}</td>
+                    <td className="px-3 py-[2px] text-[11px] text-rmpg-100 capitalize">{toDisplayLabel(t.type || '')}</td>
                     <td className="px-3 py-[2px] text-[10px] text-rmpg-300">{t.description}</td>
                     <td className="px-3 py-[2px] text-[10px] text-rmpg-400 font-mono">{t.ip_address || '—'}</td>
                     <td className="px-3 py-[2px] text-[10px] text-rmpg-400">{formatDateTime(t.timestamp)}</td>
@@ -431,7 +432,7 @@ export default function SecurityDashboardPage() {
               <div className="space-y-2 text-xs">
                 {Object.entries(sessionAnalytics.data || sessionAnalytics || {}).map(([k, v]) => (
                   <div key={k} className="flex justify-between">
-                    <span className="text-rmpg-400 capitalize">{k.replace(/_/g, ' ')}</span>
+                    <span className="text-rmpg-400 capitalize">{toDisplayLabel(k)}</span>
                     <span className="text-rmpg-100 font-mono">{typeof v === 'number' ? v : String(v)}</span>
                   </div>
                 ))}

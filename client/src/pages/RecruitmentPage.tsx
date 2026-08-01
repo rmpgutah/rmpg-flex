@@ -10,6 +10,7 @@ import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { localToday, safeDateStr } from '../utils/dateUtils';
 import { UserPlus, Users, CheckCircle, GraduationCap, Clock, Plus, Pencil, Trash2 } from 'lucide-react';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface Candidate {
   id: number;
@@ -219,7 +220,7 @@ export default function RecruitmentPage() {
       key: 'stage', label: 'Stage',
       render: (r: Candidate) => (
         <span className={`badge ${r.stage === 'hired' ? 'badge-available' : r.stage === 'rejected' || r.stage === 'withdrawn' ? 'badge-busy' : 'badge-pending'}`}>
-          {r.stage?.replace(/_/g, ' ')}
+          {toDisplayLabel(r.stage)}
         </span>
       ),
     },
@@ -375,7 +376,7 @@ export default function RecruitmentPage() {
                   onChange={(e) => setFormData({ ...formData, stage: e.target.value })}
                   className="input-dark w-full mt-1 text-xs"
                 >
-                  {STAGES.map((s) => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+                  {STAGES.map((s) => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
                 </select>
               </div>
               <div>
@@ -431,7 +432,7 @@ export default function RecruitmentPage() {
           <>
             <div><span className="text-rmpg-400">Name:</span> {deleteTarget.candidate_name}</div>
             <div><span className="text-rmpg-400">Position:</span> {deleteTarget.position || '—'}</div>
-            <div><span className="text-rmpg-400">Stage:</span> {deleteTarget.stage?.replace(/_/g, ' ')}</div>
+            <div><span className="text-rmpg-400">Stage:</span> {toDisplayLabel(deleteTarget.stage)}</div>
           </>
         )}
         confirmLabel="Delete"

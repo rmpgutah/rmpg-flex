@@ -1541,7 +1541,7 @@ export default function CommunicationsPage() {
                   {boloStats.byCategory.slice(0, 2).map((cat) => (
                     <div key={cat.category} className="bg-surface-sunken p-2 text-center">
                       <div className="text-lg font-bold text-rmpg-200">{cat.active_count}</div>
-                      <div className="text-[9px] text-rmpg-400 uppercase">{(cat.category || '').replace(/_/g, ' ')}</div>
+                      <div className="text-[9px] text-rmpg-400 uppercase">{toDisplayLabel(cat.category || '')}</div>
                     </div>
                   ))}
                 </div>

@@ -5,6 +5,7 @@ import { useToast } from '../../../components/ToastProvider';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 
 import RichTextArea from '../../../components/RichTextArea';
+import { toDisplayLabel } from '../../../utils/formatters';
 interface Recall {
   id: number;
   vehicle_id: number;
@@ -155,7 +156,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[r.status] || ''}`}>{r.status.replace(/_/g, ' ')}</span>
+                    <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[r.status] || ''}`}>{toDisplayLabel(r.status)}</span>
                     <span className="text-[10px] text-rmpg-100 font-bold font-mono">{r.recall_number || (r as any).nhtsa_number}</span>
                     {!vehicleId && <span className="text-[10px] text-rmpg-300">{r.vehicle_number} ({r.year} {r.make} {r.model})</span>}
                   </div>

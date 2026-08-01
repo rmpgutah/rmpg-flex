@@ -20,6 +20,7 @@ import StatsCard from '../components/StatsCard';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import { parseTimestamp } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface HealthResp {
   ok: boolean; query_ready: boolean; pipeline_bound: boolean;
@@ -554,7 +555,7 @@ export default function AnalyticsPage() {
                     onClick={() => loadEventsFiltered(String(t.event_type ?? ''))}
                     className="text-left bg-surface-sunken border border-border-subtle rounded-sm p-2 hover:border-brand-600 transition-colors"
                   >
-                    <div className="text-[10px] uppercase text-rmpg-400 truncate">{(t.event_type || '—').replace(/_/g, ' ')}</div>
+                    <div className="text-[10px] uppercase text-rmpg-400 truncate">{toDisplayLabel(t.event_type || '—')}</div>
                     <div className="text-lg font-mono text-brand-400">{Number(t.events || 0).toLocaleString()}</div>
                   </button>
                 ))}
@@ -587,7 +588,7 @@ export default function AnalyticsPage() {
                     {events.map((e, i) => (
                       <tr key={i} className="text-[11px] text-rmpg-200 border-b border-border-subtle hover:bg-surface-sunken">
                         <td className="py-[2px] pr-2 whitespace-nowrap font-mono">{fmtTs(e.occurred_at)}</td>
-                        <td className="py-[2px] pr-2 uppercase text-brand-400">{(e.event_type || '—').replace(/_/g, ' ')}</td>
+                        <td className="py-[2px] pr-2 uppercase text-brand-400">{toDisplayLabel(e.event_type || '—')}</td>
                         <td className="py-[2px] pr-2">{e.entity_type ? `${e.entity_type} ${e.entity_id ?? ''}`.trim() : '—'}</td>
                         <td className="py-[2px] pr-2 max-w-[240px] truncate">{e.label || '—'}{e.priority ? ` · ${e.priority}` : ''}</td>
                         <td className="py-[2px] pr-2">{e.status || '—'}</td>

@@ -32,6 +32,7 @@ import {
   addQuickReferenceBanner, addLinkedRecordsStrip, addSeverityMeter,
   type QuickRefBannerConfig,
 } from './pdfDetailHelpers';
+import { toDisplayLabel } from './formatters';
 
 // ── Data Interfaces ──────────────────────────────────────
 
@@ -357,9 +358,9 @@ export async function generateFieldInterviewReport(doc: jsPDF, data: FieldInterv
       .filter(Boolean).join(', ').toUpperCase() || 'UNIDENTIFIED SUBJECT';
     const reason = (data.contact_reason || '').toLowerCase();
     const pill: QuickRefBannerConfig['pill'] | undefined = reason === 'suspicious_activity' || reason === 'investigative_stop'
-      ? { label: reason.replace(/_/g, ' ').toUpperCase(), tone: 'elevated' }
+      ? { label: toDisplayLabel(reason).toUpperCase(), tone: 'elevated' }
       : reason
-        ? { label: reason.replace(/_/g, ' ').toUpperCase(), tone: 'standard' }
+        ? { label: toDisplayLabel(reason).toUpperCase(), tone: 'standard' }
         : undefined;
     y = addQuickReferenceBanner(doc, {
       primary: data.fi_number,

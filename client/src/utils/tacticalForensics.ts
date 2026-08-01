@@ -7,6 +7,7 @@
 // ============================================================
 
 import { positionAtTime, type GpsPoint } from './dashcamForensics';
+import { toDisplayLabel } from './formatters';
 
 const MPH_TO_MS = 0.44704;
 const G = 9.80665;
@@ -97,7 +98,7 @@ export function evidenceStampLines(m: EvidenceMeta): string[] {
   const lines: string[] = [];
   lines.push(`RMPG FLEX — FORENSIC EVIDENCE CAPTURE`);
   const id: string[] = [];
-  if (m.eventType) id.push(m.eventType.replace(/_/g, ' '));
+  if (m.eventType) id.push(toDisplayLabel(m.eventType));
   if (m.device) id.push(`UNIT ${m.device}`);
   if (m.caseLabel) id.push(m.caseLabel);
   if (id.length) lines.push(id.join('  ·  '));

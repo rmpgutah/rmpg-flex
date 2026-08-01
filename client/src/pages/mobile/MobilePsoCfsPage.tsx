@@ -268,7 +268,7 @@ export default function MobilePsoCfsPage() {
             <div className="text-rmpg-100 text-lg font-mono">{call?.call_number}</div>
             <div className="text-sm text-rmpg-300 mt-1">{call?.location}</div>
             {call?.pso_service_type && (
-              <div className="text-xs text-rmpg-400 mt-1 uppercase">{call.pso_service_type.replace(/_/g, ' ')}</div>
+              <div className="text-xs text-rmpg-400 mt-1 uppercase">{toDisplayLabel(call.pso_service_type)}</div>
             )}
           </div>
           <div className="bg-surface-base border border-border-default p-3 space-y-3">
@@ -326,7 +326,7 @@ export default function MobilePsoCfsPage() {
         <div className="bg-surface-base border border-border-default p-3">
           <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Location</div>
           <div className="text-sm text-rmpg-100">{call?.location}</div>
-          {call?.pso_service_type && <div className="text-xs text-rmpg-400 mt-1 uppercase">{call.pso_service_type.replace(/_/g, ' ')}</div>}
+          {call?.pso_service_type && <div className="text-xs text-rmpg-400 mt-1 uppercase">{toDisplayLabel(call.pso_service_type)}</div>}
           {call?.contract_id && <div className="text-[10px] text-rmpg-500 mt-0.5">Contract {call.contract_id}</div>}
           <div className="text-[10px] text-rmpg-500 mt-1 uppercase">Current status: <span className="text-[#d4a017]">{toDisplayLabel(call?.status)}</span></div>
         </div>

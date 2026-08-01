@@ -18,6 +18,7 @@
 // ============================================================
 
 import { toPhonetic } from './voiceAlerts';
+import { toDisplayLabel } from './formatters';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -410,7 +411,7 @@ export function composeDispatchNarrative(
  * @returns Natural speech text
  */
 export function composeStatusNarrative(callSign: string, status: string): string {
-  const label = status.replace(/_/g, ' ').toUpperCase();
+  const label = toDisplayLabel(status).toUpperCase();
   return `${callSign}, ${label}.`;
 }
 

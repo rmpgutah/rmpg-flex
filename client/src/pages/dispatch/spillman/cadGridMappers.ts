@@ -5,6 +5,7 @@ import type { CallForService, CallPriority, Unit } from '../../../types';
 import { unitStatusColor } from '../../../components/spillman';
 import type { StatusColumn } from '../../../components/spillman';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 /** RMPG P1..P4 → Spillman fixed priority number (1 red … 4 light green). */
 export function spillmanPriorityNumber(priority: CallPriority): number {
@@ -103,12 +104,12 @@ export function callToRow(call: CallForService): CadCallRow {
     call,
     pri: spillmanPriorityNumber(call.priority),
     call_number: call.call_number,
-    type: (call.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+    type: toDisplayLabel(call.incident_type || '').toUpperCase(),
     location: call.location || '',
     zone: call.beat_name || call.zone_name || call.zone_beat || '',
     time: timeHHMM(call.created_at),
     units: (call.assigned_units || []).join(' '),
-    status: (call.status || '').replace(/_/g, ' ').toUpperCase(),
+    status: toDisplayLabel(call.status || '').toUpperCase(),
   };
 }
 

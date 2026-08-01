@@ -1,3 +1,4 @@
+import { toDisplayLabel } from './formatters';
 // ============================================================
 // RMPG Flex — Evidence Chain of Custody (Spillman Flex Standard)
 // 10 evidence & property features: chain of custody tracking,
@@ -236,7 +237,7 @@ export function checkDispositionEligibility(
   }
 
   if (item.status === 'checked_out' || item.status === 'lab' || item.status === 'court') {
-    blockers.push(`Evidence currently ${item.status.replace(/_/g, ' ')} — cannot dispose`);
+    blockers.push(`Evidence currently ${toDisplayLabel(item.status)} — cannot dispose`);
   }
 
   let releaseDate: Date | null = null;

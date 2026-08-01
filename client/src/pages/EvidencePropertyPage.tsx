@@ -722,7 +722,7 @@ export default function EvidencePropertyPage() {
                     {item.evidence_number || `EV-${item.id}`}
                   </span>
                   <span className={`text-[9px] px-1.5 py-0.5 border font-semibold whitespace-nowrap ${STATUS_COLORS[item.status] || STATUS_COLORS.in_storage}`}>
-                    {(item.status || 'unknown').replace(/_/g, ' ').toUpperCase()}
+                    {toDisplayLabel(item.status || 'unknown').toUpperCase()}
                   </span>
                 </div>
                 <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{item.description || 'No description'}</div>
@@ -834,7 +834,7 @@ export default function EvidencePropertyPage() {
                   {/* Status + Type badges */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-[10px] px-2 py-1 border font-bold ${STATUS_COLORS[selected.status] || ''}`}>
-                      {(selected.status || '').replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(selected.status || '').toUpperCase()}
                     </span>
                     <span className="text-[10px] px-2 py-1 border bg-rmpg-700/50 text-rmpg-300 border-rmpg-700/50 font-semibold">
                       {TYPE_LABELS[selected.type] || TYPE_LABELS[selected.evidence_type] || selected.type || selected.evidence_type}
@@ -957,7 +957,7 @@ export default function EvidencePropertyPage() {
                         )}
                       </div>
                     ) : (
-                      <div className="text-[10px] text-rmpg-500">Item already {selected.status.replace(/_/g, ' ').toUpperCase()}</div>
+                      <div className="text-[10px] text-rmpg-500">Item already {toDisplayLabel(selected.status).toUpperCase()}</div>
                     )}
                   </div>
                 </div>
@@ -1495,7 +1495,7 @@ export default function EvidencePropertyPage() {
         onClose={() => setConfirmDispose(false)}
         onConfirm={handleDispositionConfirmed}
         title="Confirm Disposition"
-        message={`Record "${dispositionType.replace(/_/g, ' ')}" disposition? This is an irreversible action and will be logged in the chain of custody.`}
+        message={`Record "${toDisplayLabel(dispositionType)}" disposition? This is an irreversible action and will be logged in the chain of custody.`}
         details={selected && (
           <span>{selected.evidence_number || `EV-${selected.id}`} — {selected.description}</span>
         )}

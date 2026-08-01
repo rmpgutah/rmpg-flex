@@ -23,7 +23,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 
-import { stripHtmlForPdf } from './formatters';
+import { toDisplayLabel, stripHtmlForPdf } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -153,7 +153,7 @@ export function formatBail(amount: number | string | null | undefined): string {
 /** Public for testing. snake_case status → uppercase label. */
 export function prettyStatus(status: string | undefined | null): string {
   if (!status) return '—';
-  return status.replace(/_/g, ' ').toUpperCase();
+  return toDisplayLabel(status).toUpperCase();
 }
 
 /** Public for testing. The inmate is "in custody" (not yet

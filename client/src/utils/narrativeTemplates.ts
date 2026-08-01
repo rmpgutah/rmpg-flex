@@ -1,3 +1,4 @@
+import { toDisplayLabel } from './formatters';
 // ============================================================
 // RMPG Flex — Spillman Narrative Templates & Composer
 // 10 records management features: narrative templates, report
@@ -338,7 +339,7 @@ export function buildSupplementalReport(supplement: SupplementalReport): string 
     `Original Report: ${supplement.originalReportNumber}`,
     `Date: ${supplement.date}`,
     `Reporting Officer: ${supplement.officerName} (${supplement.badgeNumber})`,
-    `Supplement Type: ${supplement.supplementType.toUpperCase().replace(/_/g, ' ')}`,
+    `Supplement Type: ${toDisplayLabel(supplement.supplementType).toUpperCase()}`,
     '',
     '--- NARRATIVE ---',
     '',

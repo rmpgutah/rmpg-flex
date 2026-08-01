@@ -1,3 +1,4 @@
+import { toDisplayLabel } from './formatters';
 // ============================================================
 // RMPG Flex — Photo data stamp (forensic metadata burn-in)
 // ============================================================
@@ -63,7 +64,7 @@ export function contextLabelForEntity(entityType: string, caseNumber?: string): 
   if (/serve/.test(t)) return 'SERVICE OF PROCESS';
   if (/citation/.test(t)) return 'CITATION';
   if (/warrant/.test(t)) return 'WARRANT SERVICE';
-  return entityType ? entityType.toUpperCase().replace(/_/g, ' ') + ' RECORD' : 'FIELD PHOTO';
+  return entityType ? toDisplayLabel(entityType).toUpperCase() + ' RECORD' : 'FIELD PHOTO';
 }
 
 /** The three stamp lines as plain strings (for tests / non-canvas use). */

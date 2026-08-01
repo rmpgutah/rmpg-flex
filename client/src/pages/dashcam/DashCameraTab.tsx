@@ -13,6 +13,7 @@ import {
 import type { DashCamera, DashCamVideo, DashCameraStatus, VideoClassification } from '../../types';
 import PrintButton from '../../components/PrintButton';
 import RmpgLogo from '../../components/RmpgLogo';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ── Filters ──────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ function formatDate(dateStr?: string): string {
 }
 
 function statusLabel(status: string): string {
-  return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return toDisplayLabel(status);
 }
 
 function formatFileSize(bytes: number): string {

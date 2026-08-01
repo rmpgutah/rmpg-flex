@@ -53,6 +53,7 @@ import AISearchButton from '../../components/AISearchButton';
 import { humanizeGender, humanizeRace, formatPhoneDisplay, formatAddressDisplay, humanizeFlag } from '../../utils/statusLabels';
 import { coded } from '../../utils/searchText';
 import { hasValue } from '../../utils/sentinel';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -1117,7 +1118,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                   </div>
                   {selectedPerson.id_type && (
                     <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-surface-sunken/40 text-rmpg-400 border border-border-default/40 text-center w-full">
-                      {selectedPerson.id_type.replace(/_/g, ' ')}
+                      {toDisplayLabel(selectedPerson.id_type)}
                     </span>
                   )}
                 </div>
@@ -1157,7 +1158,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                 )}
                 {selectedPerson.id_number && (
                   <FieldGrid cols={2}>
-                    <RecordField label={selectedPerson.id_type ? selectedPerson.id_type.replace(/_/g, ' ').toUpperCase() : 'ID'} value={selectedPerson.id_number} mono copyable />
+                    <RecordField label={selectedPerson.id_type ? toDisplayLabel(selectedPerson.id_type).toUpperCase() : 'ID'} value={selectedPerson.id_number} mono copyable />
                     <RecordField label="State" value={selectedPerson.id_state} />
                     <RecordField label="Expiry" value={selectedPerson.id_expiry ? safeDateDisplay(selectedPerson.id_expiry) : undefined} />
                   </FieldGrid>
