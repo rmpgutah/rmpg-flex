@@ -75,7 +75,8 @@ CREATE INDEX IF NOT EXISTS idx_parcel_residence_yearbuilt ON parcel_residence(ye
 CREATE INDEX IF NOT EXISTS idx_parcel_residence_beds ON parcel_residence(bedrooms);
 
 -- Parcel Record + Valuation blocks widen parcel_records.
--- ⚠️ COLUMN BUDGET: 46 existing + 42 + 6 = 94.
+-- ⚠️ COLUMN BUDGET: 47 existing + 42 + 6 = 95 (VERIFIED on live D1
+-- 785de7ae, 2026-08-01, via pragma_table_info). Only 5 columns of headroom.
 -- D1's SELECT cap is ~100. Do NOT add further columns here without
 -- moving a block out, and never SELECT * from parcel_records.
 ALTER TABLE parcel_records ADD COLUMN par_total_acreage REAL;

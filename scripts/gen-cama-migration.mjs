@@ -24,7 +24,7 @@ L.push(`CREATE INDEX IF NOT EXISTS idx_parcel_residence_yearbuilt ON parcel_resi
 L.push(`CREATE INDEX IF NOT EXISTS idx_parcel_residence_beds ON parcel_residence(bedrooms);`);
 L.push(``);
 L.push(`-- Parcel Record + Valuation blocks widen parcel_records.`);
-L.push(`-- ⚠️ COLUMN BUDGET: 46 existing + ${PARCEL_RECORD_EXTRA_FIELDS.length} + ${PARCEL_RECORD_STRUCTURAL_COLUMNS.length} = ${46+PARCEL_RECORD_EXTRA_FIELDS.length+PARCEL_RECORD_STRUCTURAL_COLUMNS.length}.`);
+L.push(`-- ⚠️ COLUMN BUDGET: 47 existing (measured live) + ${PARCEL_RECORD_EXTRA_FIELDS.length} + ${PARCEL_RECORD_STRUCTURAL_COLUMNS.length} = ${47+PARCEL_RECORD_EXTRA_FIELDS.length+PARCEL_RECORD_STRUCTURAL_COLUMNS.length}.`);
 L.push(`-- D1's SELECT cap is ~100. Do NOT add further columns here without`);
 L.push(`-- moving a block out, and never SELECT * from parcel_records.`);
 for (const f of PARCEL_RECORD_EXTRA_FIELDS) L.push(`ALTER TABLE parcel_records ADD COLUMN ${f.col} ${sqlType(f.type)};`);

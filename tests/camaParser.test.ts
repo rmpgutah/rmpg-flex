@@ -352,8 +352,15 @@ describe('field registry', () => {
   });
 
   it('keeps parcel_records under the D1 100-column cap', () => {
-    // 46 pre-existing + parcel + valuation + 6 structural.
-    const total = 46 + PARCEL_FIELDS.length + VALUATION_FIELDS.length + 6;
+    // 47 pre-existing, MEASURED on live D1 785de7ae after applying mig 0221
+    // (pragma_table_info reported 95 total = 47 + 42 + 6). An earlier value
+    // of 46 was derived by reading the migration files, which undercounted
+    // by one — so this guard was reporting 6 columns of headroom when the
+    // real figure is 5. Derive schema constants from the live schema, not
+    // from what the migrations appear to say.
+    const LIVE_PREEXISTING_COLS = 47;
+    const total = LIVE_PREEXISTING_COLS + PARCEL_FIELDS.length + VALUATION_FIELDS.length + 6;
+    expect(total).toBe(95);
     expect(total).toBeLessThan(100);
   });
 
