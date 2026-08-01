@@ -60,6 +60,47 @@ const html = (raw.match(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g) || 
   .map((line) => line.replace(/\/\*[^*]*\*\//g, ' ')) // single-line block comments only
   .join('\n');
 
+describe('the recovery actually INSTALLS in a production build', () => {
+  // The bug this guards is the one that made every other test in this file
+  // meaningless: Vite rewrites the entry script tag and DROPS its `id`, so
+  // `getElementById('rmpg-entry')` returned null in prod, the IIFE returned
+  // early, and the whole safety net was silently never installed. Confirmed
+  // live 2026-07-31 on a wedged tab: getElementById('rmpg-entry') === null.
+  //
+  // Grepping dist/ for the handler's own source does NOT catch this — the code
+  // shipped, its precondition did not. So assert on the RESOLUTION STRATEGY.
+
+  it('does not depend on an id the build strips', () => {
+    // A src-less fallback selector must exist. If someone "simplifies" this
+    // back to getElementById alone, prod silently loses the net again.
+    expect(html).toContain('script[type="module"][src*="/assets/"]');
+  });
+
+  it('never returns early when the id is absent', () => {
+    // The old code was `if (!el) return;`. Any bare early-return on a missing
+    // element re-introduces the bug.
+    expect(html).not.toMatch(/if\s*\(\s*!el\s*\)\s*return\s*;/);
+  });
+
+  it('guards the listener attachment rather than aborting the whole IIFE', () => {
+    expect(html).toMatch(/if\s*\(\s*el\s*\)\s*\{/);
+  });
+
+  it('has a boot watchdog that needs no error event at all', () => {
+    // Rocket Loader mangles type="module" so the bundle is fetched but never
+    // executed -- there is NO error event, by construction. Only a timeout can
+    // catch that, and a 0-byte static import (observed live) too.
+    expect(html).toContain('BOOT_TIMEOUT_MS');
+    expect(html).toMatch(/setTimeout\(function \(\) \{[\s\S]*pre-splash/);
+  });
+
+  it('the watchdog shares the once-per-30s gate so it cannot loop', () => {
+    expect(html).toContain('function mayRecover()');
+    // Both paths must go through it.
+    expect((html.match(/mayRecover\(\)/g) || []).length).toBeGreaterThanOrEqual(3);
+  });
+});
+
 describe('entry-script recovery path in index.html', () => {
   it('purges the service worker registration and its caches', () => {
     expect(html).toContain('getRegistrations');
@@ -92,9 +133,15 @@ describe('entry-script recovery path in index.html', () => {
   });
 
   it('does NOT reload when sessionStorage is unavailable', () => {
-    // The guard cannot be enforced without storage, and an unguarded reload
-    // could loop. The catch block must stay empty of a reload call.
-    const catchBlock = html.slice(html.indexOf('} catch (e) {', html.indexOf('rmpg_chunk_reload')));
-    expect(catchBlock.slice(0, 400)).not.toContain('purgeThenReload()');
+    // The once-per-30s guard cannot be enforced without storage, and an
+    // unguarded reload could loop. mayRecover() therefore returns FALSE from
+    // its catch rather than defaulting to true, and both recovery paths are
+    // gated on it. (Previously this assertion inspected an inline catch block;
+    // the gate is now a named function shared by the listener and watchdog.)
+    const fn = html.slice(html.indexOf('function mayRecover()'));
+    const body = fn.slice(0, fn.indexOf('\n        }') + 10);
+    expect(body).toContain('catch (e) {');
+    expect(body).toMatch(/catch \(e\) \{\s*return false;/);
+    expect(body).not.toContain('purgeThenReload()');
   });
 });
