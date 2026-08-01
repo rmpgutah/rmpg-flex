@@ -12,17 +12,26 @@ export interface PlaceholderLeak {
 }
 
 // Matches placeholders while excluding legitimate words and handling adjacent tokens.
-// Filters out "Annulled", "Nullification", "undefinedness" by checking preceding
-// letter + legitimate-word suffixes ("ness", "ification"). Catches concatenated
+// General pattern: tokens must not be preceded/followed by letters. Catches concatenated
 // placeholders like "undefinednull" and "NaNundefined" via lookbehind/lookahead.
 // `Invalid Date` uses \s+ for multi-item splits from PDF rendering. `[object Object]`
 // is bracket-delimited and needs its own alternative.
+//
+// SPECIAL CASE: "null and void" legal boilerplate exclusion.
+// "null and void" is standard legal text in trespass orders, court notices, and process
+// documents — exactly the highest-criticality forms this gate protects. A correctly-
+// rendered legal order would fail the gate on its own legal text (false positive on the
+// documents we care most about). Bare `null` in data fields remains a genuine defect we
+// must catch. Excluding the bounded idiom preserves both: legal text passes, data nulls
+// fail. The idiom check is case-insensitive via character classes ([aA][nN][dD]) without
+// reintroducing /i flag globally (which would resurrect false positives on "Nan" as a
+// person's name in police records).
 //
 // WARNING: This pattern has the /g flag and is stateful (lastIndex). Direct callers
 // using `.test()` or `.exec()` without resetting lastIndex get non-deterministic results.
 // Use `findPlaceholderLeaks()` (which resets per page) instead of calling this pattern directly.
 export const PLACEHOLDER_LEAK_PATTERN =
-  /(?<=undefined)null|(?<=null)undefined|(?<=NaN)undefined|(?<=undefined)NaN|(?<=NaN)null|(?<=null)NaN|undefined(?=NaN)|undefined(?=null)|NaN(?=undefined)|NaN(?=null)|null(?=undefined)|null(?=NaN)|(?<![a-zA-Z])undefined(?![a-zA-Z])|(?<![a-zA-Z])null(?![a-zA-Z])|(?<![a-zA-Z])NaN(?![a-zA-Z])|Invalid\s+Date|\[object Object\]/gi;
+  /(?<=undefined)null|(?<=null)undefined|(?<=NaN)undefined|(?<=undefined)NaN|(?<=NaN)null|(?<=null)NaN|undefined(?=NaN)|undefined(?=null)|NaN(?=undefined)|NaN(?=null)|null(?=undefined)|null(?=NaN)|(?<![a-zA-Z])undefined(?![a-zA-Z])|(?<![a-zA-Z])null(?!\s+[aA][nN][dD]\s+[vV][oO][iI][dD])(?![a-zA-Z])|(?<![a-zA-Z])NaN(?![a-zA-Z])|Invalid\s+Date|\[object Object\]/g;
 
 export async function extractPdfText(doc: jsPDF): Promise<string[]> {
   const data = new Uint8Array(doc.output('arraybuffer') as ArrayBuffer);

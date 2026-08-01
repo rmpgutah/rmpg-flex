@@ -63,6 +63,27 @@ describe('findPlaceholderLeaks', () => {
     expect(leaks).toEqual([]);
   });
 
+  it('does not flag uppercase variants and null-and-void idiom (case-sensitive)', () => {
+    const leaks = findPlaceholderLeaks([
+      'Nan Whitlock, reporting party',
+      'The order is null and void',
+      'This authorization is NULL AND VOID upon expiration',
+      'Subject NULL-marked in source system',
+      'Nullable fields allowed',
+      'System behaves undefinedly',
+      'Wrote a novel for NaNoWriMo',
+    ]);
+    expect(leaks).toEqual([]);
+  });
+
+  it('still detects bare null in data fields (not part of null-and-void idiom)', () => {
+    const leaks = findPlaceholderLeaks([
+      'Supervisor: null',
+      'Status: null.',
+    ]);
+    expect(leaks.map((l) => l.token)).toEqual(['null', 'null']);
+  });
+
   it('returns surrounding context for each leak', () => {
     const leaks = findPlaceholderLeaks(['Issuing officer: undefined, badge 4417']);
     expect(leaks).toHaveLength(1);
