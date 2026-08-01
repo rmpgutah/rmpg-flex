@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, Loader2, FileText, AlertTriangle, Search } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface Source { type: string; id: number; label: string; snippet?: string; }
 interface AskResult { answer: string; citations: Source[]; sources: Source[]; engine?: 'claude' | 'workers-ai'; }
@@ -163,7 +164,7 @@ export default function IntelAiAnalyst() {
                   <div key={`${s.type}:${s.id}`} className={`border rounded-sm p-2 ${cited ? 'border-brand-600/50 bg-brand-900/10' : 'border-rmpg-800/60'}`}>
                     <div className="flex items-center gap-2">
                       <span className="text-[9px] font-bold text-rmpg-500">[{i + 1}]</span>
-                      <span className="text-[9px] uppercase text-rmpg-500">{s.type}</span>
+                      <span className="text-[9px] uppercase text-rmpg-500">{formatEnumValue(s.type)}</span>
                       <span className="text-[12px] font-semibold text-rmpg-100">{s.label}</span>
                       {cited && <span className="text-[8px] font-bold text-brand-400 ml-auto">CITED</span>}
                       {s.type === 'person' && (

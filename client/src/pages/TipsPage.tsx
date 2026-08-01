@@ -6,7 +6,7 @@ import {
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { apiFetch } from '../hooks/useApi';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 // ── Types ──
 interface Tip {
@@ -224,7 +224,7 @@ export default function TipsPage() {
                       {tip.urgency}
                     </td>
                     <td className={`px-3 py-[2px] font-semibold capitalize ${STATUS_COLORS[tip.status] || 'text-rmpg-400'}`}>
-                      {tip.status}
+                      {formatEnumValue(tip.status)}
                     </td>
                     <td className="px-3 py-[2px] text-rmpg-400">{tip.assigned_to_name || '—'}</td>
                   </tr>
@@ -264,7 +264,7 @@ export default function TipsPage() {
                 <div>
                   <span className="text-[10px] text-rmpg-400 uppercase block">Status</span>
                   <span className={`font-semibold capitalize ${STATUS_COLORS[selectedTip.status] || 'text-white'}`}>
-                    {selectedTip.status}
+                    {formatEnumValue(selectedTip.status)}
                   </span>
                 </div>
                 <div>

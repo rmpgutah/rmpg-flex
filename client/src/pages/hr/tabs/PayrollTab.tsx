@@ -16,7 +16,7 @@ import { useMenuActions } from '../../../utils/contextMenuActions';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 import { useToast } from '../../../components/ToastProvider';
 import ConfirmDialog from '../../../components/ConfirmDialog';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 import { withAlpha } from '../../../utils/withAlpha';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -740,7 +740,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                     <tr key={rate.id} onContextMenu={(e) => openMenu(e, buildRateMenu(rate))} className="border-b border-rmpg-700/50 hover:bg-brand-500/5">
                       <td className="px-3 py-2 text-rmpg-100 font-medium">{rate.officer_name}</td>
                       <td className="px-3 py-2">
-                        <span className="px-1.5 py-0.5 text-[9px] rounded-sm bg-brand-500/15 text-brand-400 uppercase font-bold">{rate.pay_type}</span>
+                        <span className="px-1.5 py-0.5 text-[9px] rounded-sm bg-brand-500/15 text-brand-400 uppercase font-bold">{formatEnumValue(rate.pay_type)}</span>
                       </td>
                       <td className="px-3 py-2 text-right text-green-400 font-mono">{formatCurrency(rate.rate)}</td>
                       <td className="px-3 py-2 text-right text-rmpg-300 font-mono">{rate.overtime_rate}x</td>

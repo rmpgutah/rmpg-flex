@@ -7,7 +7,7 @@ import {
   Activity, RotateCcw, Pencil, Hash,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { toDisplayLabel } from '../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
@@ -815,7 +815,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                           {/* Type badge */}
                           <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-sm ${
                             county.roster_type === 'pdf' ? 'bg-amber-900/40 text-amber-400' : 'bg-surface-sunken/40 text-rmpg-400'
-                          }`}>{county.roster_type}</span>
+                          }`}>{formatEnumValue(county.roster_type)}</span>
 
                           {/* Enable/Disable toggle */}
                           <button type="button"

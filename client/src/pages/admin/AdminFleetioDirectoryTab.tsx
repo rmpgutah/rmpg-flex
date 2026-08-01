@@ -16,6 +16,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../../components/ToastProvider';
 import FleetioConflictBadge from '../../components/FleetioConflictBadge';
 import type { ConflictBadgeConflict } from '../../components/FleetioConflictBadge';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface VendorRow {
   id: number;
@@ -214,7 +215,7 @@ export default function AdminFleetioDirectoryTab() {
           ) : vendors.map((v) => (
             <div key={v.id} className="flex items-center justify-between px-2 py-1 bg-surface-sunken rounded text-[10px]">
               <span className="font-mono text-rmpg-100 font-bold flex-1">{v.name}</span>
-              <span className="text-rmpg-500 uppercase w-16">{v.kind}</span>
+              <span className="text-rmpg-500 uppercase w-16">{formatEnumValue(v.kind)}</span>
               <span className="text-rmpg-400 flex-1">{[v.city, v.state].filter(Boolean).join(', ') || '—'}</span>
               <span className={`w-14 text-center ${v.active ? 'text-emerald-400' : 'text-rmpg-600'}`}>{v.active ? 'active' : 'inactive'}</span>
               <div className="flex items-center gap-1">

@@ -36,6 +36,7 @@ import { type AudioMode, getLocalAudioMode, persistAudioMode, syncAudioModeFromS
 import { formatDateTime, localToday, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { useToast } from '../components/ToastProvider';
 import { openShiftReportPdf } from '../utils/shiftReportPdf';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 // ── Quick Status Buttons ────────────────────────────────────
 
@@ -1299,7 +1300,7 @@ export default function MdtPage() {
                           className="text-[8px] font-black px-1 rounded-sm"
                           style={{ background: prioColor(call.priority), color: '#fff' }}
                         >
-                          {call.priority}
+                          {formatEnumValue(call.priority)}
                         </span>
                       </div>
                       <span className="text-[8px] font-mono text-rmpg-500">
@@ -1660,7 +1661,7 @@ export default function MdtPage() {
           </span>
           {myUnit && (
             <span className="text-[8px] font-mono uppercase" style={{ color: UNIT_STATUSES.find(s => s.status === myUnit.status)?.color || '#666' }}>
-              {myUnit.status?.replace('_', ' ')}
+              {toDisplayLabel(myUnit.status)}
             </span>
           )}
         </div>

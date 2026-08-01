@@ -36,6 +36,7 @@ import {
   Megaphone, FileText, Send, CheckCircle, Plus, Pencil, Trash2, Eye,
   Filter as FilterIcon, X,
 } from 'lucide-react';
+import { formatEnumValue } from '../utils/formatters';
 
 interface NotificationTemplate {
   id: number;
@@ -384,7 +385,7 @@ export default function AlertsPage() {
             <div><span className="text-rmpg-500">Name:</span> {deleteTarget.template_name}</div>
             {deleteTarget.subject && <div><span className="text-rmpg-500">Subject:</span> {deleteTarget.subject}</div>}
             <div><span className="text-rmpg-500">Channel:</span> {deleteTarget.channel}</div>
-            {deleteTarget.category && <div><span className="text-rmpg-500">Category:</span> {deleteTarget.category}</div>}
+            {deleteTarget.category && <div><span className="text-rmpg-500">Category:</span> {formatEnumValue(deleteTarget.category)}</div>}
           </>
         )}
         confirmLabel="Delete"

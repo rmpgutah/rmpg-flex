@@ -41,7 +41,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { toNum } from '../utils/sentinel';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useAuth } from '../context/AuthContext';
@@ -1217,7 +1217,7 @@ export default function CitationsPage() {
                       <div key={p.id} className="flex items-center gap-2 text-[10px] border-b border-rmpg-800/30 pb-1">
                         <span className="text-rmpg-500">{formatDate(p.payment_date)}</span>
                         <span className="text-green-400 font-bold">{formatCurrency(p.amount)}</span>
-                        {p.payment_method && <span className="text-rmpg-500 capitalize">{p.payment_method}</span>}
+                        {p.payment_method && <span className="text-rmpg-500 capitalize">{formatEnumValue(p.payment_method)}</span>}
                         {p.reference_number && <span className="text-rmpg-500 font-mono">{p.reference_number}</span>}
                       </div>
                     ))}

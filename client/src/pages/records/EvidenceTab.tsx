@@ -683,7 +683,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                           {entry.from_person && entry.to_person && <ArrowRight className="w-3 h-3 inline mx-1 text-rmpg-500" />}
                           {entry.to_person && <span className="text-rmpg-200">To: {entry.to_person}</span>}
                         </div>
-                        {entry.reason && <p className="text-[10px] text-rmpg-400 mt-0.5">{entry.reason}</p>}
+                        {entry.reason && <p className="text-[10px] text-rmpg-400 mt-0.5">{formatEnumValue(entry.reason)}</p>}
                       </div>
                     </div>
                   );

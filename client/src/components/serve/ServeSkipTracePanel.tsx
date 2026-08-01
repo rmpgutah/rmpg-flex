@@ -6,6 +6,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob, ServeSkipAddress, ServeSkipTrace } from '../../types';
 import { safeDateStr } from '../../utils/dateUtils';
+import { formatEnumValue } from '../../utils/formatters';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -197,7 +198,7 @@ export default function ServeSkipTracePanel({
                         <span className="text-rmpg-300">
                           {safeDateStr(trace.created_at)}
                         </span>
-                        <span className="text-fg-muted">{trace.search_type}</span>
+                        <span className="text-fg-muted">{formatEnumValue(trace.search_type)}</span>
                       </div>
                       <p className="text-fg-muted mt-0.5">
                         {trace.addresses_found?.length || 0} address(es) found

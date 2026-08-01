@@ -30,7 +30,7 @@ import { useToast } from '../components/ToastProvider';
 import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { openForensicCasePdf } from '../utils/forensicCasePdf';
 import { computePayloadHash } from '../utils/pdfIntegrity';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { withAlpha } from '../utils/withAlpha';
 
 // ─── Constants ───────────────────────────────────────────
@@ -1820,7 +1820,7 @@ export default function ForensicLabPage() {
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Analysis Turnaround</div>
                       {turnaroundData.analysis_turnaround.map((a: any) => (
                         <div key={a.analysis_type} className="flex justify-between text-[10px] py-0.5">
-                          <span className="text-rmpg-300">{a.analysis_type}</span>
+                          <span className="text-rmpg-300">{formatEnumValue(a.analysis_type)}</span>
                           <span className="text-rmpg-400 font-mono">{a.avg_days}d avg ({a.completed})</span>
                         </div>
                       ))}

@@ -29,7 +29,7 @@ import { apiFetch } from '../../hooks/useApi';
 import ServeStatusFolder from '../../components/serve/ServeStatusFolder';
 import type { ServeFolder, ServeJob } from '../../types';
 import { deriveServeFolder, SERVE_FOLDER_CONFIG } from '../../types';
-import { toDisplayLabel } from '../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -161,7 +161,7 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps
             {job.recipient_name}
           </span>
           <span className={`text-[9px] uppercase font-semibold ${priorityColor(job.priority)}`}>
-            {job.priority}
+            {formatEnumValue(job.priority)}
           </span>
           {isNext && !isClosed && (
             <span className="text-[9px] font-bold text-brand-400 uppercase tracking-wide">
@@ -266,7 +266,7 @@ function NextJobCard({ job, onOptimisticUpdate, navigate }: { job: ServeJob; onO
         <MapPin size={13} className="text-brand-400 flex-shrink-0" aria-hidden />
         <span className="text-[10px] font-bold text-brand-400 uppercase tracking-wider">Next Stop</span>
         <span className={`ml-auto text-[9px] uppercase font-bold ${priorityColor(job.priority)}`}>
-          {job.priority}
+          {formatEnumValue(job.priority)}
         </span>
       </div>
 

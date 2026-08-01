@@ -15,6 +15,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { getReferenceTables, getReferenceOffenses } from '../constants/ncicCodes';
+import { formatEnumValue } from './formatters';
 
 // ── Page geometry (points; US Letter = 612 x 792) ────────────────────────────
 const PAGE_W = 612;
@@ -295,7 +296,7 @@ function renderOffenseTable(doc: jsPDF, y0: number): number {
     const offenseText = (doc.splitTextToSize(o.offense, wOffense - 3) as string[])[0] || o.offense;
     doc.text(offenseText, cOffense + 1, y + 7);
     doc.text(o.utahStatute, cStatute + 1, y + 7);
-    doc.text(o.severity, cClass + 1, y + 7);
+    doc.text(formatEnumValue(o.severity), cClass + 1, y + 7);
     doc.text(o.ncicCode, cNcic + 1, y + 7);
     setDraw(doc, RULE_GREY);
     doc.setLineWidth(0.3);

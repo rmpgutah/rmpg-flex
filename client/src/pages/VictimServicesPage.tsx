@@ -480,7 +480,7 @@ export default function VictimServicesPage() {
             <>
               <div className="font-semibold">{deleteTarget.victim_name}</div>
               {deleteTarget.case_number && <div>Case {deleteTarget.case_number}</div>}
-              {deleteTarget.crime_type  && <div>{deleteTarget.crime_type}</div>}
+              {deleteTarget.crime_type  && <div>{formatEnumValue(deleteTarget.crime_type)}</div>}
               {deleteTarget.status      && <div className="text-rmpg-500">Status: {deleteTarget.status}</div>}
             </>
           )

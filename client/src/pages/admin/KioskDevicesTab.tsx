@@ -7,6 +7,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 import { Plus, Trash2, Copy } from 'lucide-react';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface DeviceRow {
   id: string;
@@ -114,7 +115,7 @@ export default function KioskDevicesTab() {
           {rows.map((row) => (
             <tr key={row.id} style={{ fontSize: '11px' }}>
               <td className="py-[2px]">{row.label}</td>
-              <td className="py-[2px]">{row.status}</td>
+              <td className="py-[2px]">{formatEnumValue(row.status)}</td>
               <td className="py-[2px]">{row.os_version ?? '—'}</td>
               <td className="py-[2px]">{row.last_seen_at ?? 'never'}</td>
               <td className="py-[2px]">

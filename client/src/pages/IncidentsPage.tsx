@@ -55,7 +55,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { openIncidentWindow } from '../utils/windowManager';
 import ReportTypeSelector from '../components/ReportTypeSelector';
@@ -2170,7 +2170,7 @@ export default function IncidentsPage() {
                     )}
                     {link.detail?.incident_type && <span className="text-[10px] text-rmpg-400">{toDisplayLabel(link.detail.incident_type)}</span>}
                     {link.detail?.status && <span className="text-[10px] text-rmpg-500 capitalize">{toDisplayLabel(link.detail.status)}</span>}
-                    {link.link_reason && <span className="text-[9px] text-rmpg-400 italic ml-auto truncate max-w-[150px]">{link.link_reason}</span>}
+                    {link.link_reason && <span className="text-[9px] text-rmpg-400 italic ml-auto truncate max-w-[150px]">{formatEnumValue(link.link_reason)}</span>}
                     {(isAdmin || isGodMode) && (
                       <IconButton onClick={() => {
                         const linkLabel = [link.linked_type, link.detail?.incident_number || link.detail?.call_number || link.detail?.case_number || `#${link.linked_id}`].filter(Boolean).join(' ');

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useFeatureFlags, type FeatureFlags } from '../../context/FeatureFlagsContext';
 import { apiFetch } from '../../hooks/useApi';
 import { getLog, clearLog, type LogEntry } from '../../utils/apiLogger';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface Props { role: string; }
 
@@ -145,7 +146,7 @@ export default function AdminDevSettingsTab({ role }: Props) {
           )}
           {apiLog.map((entry, i) => (
             <div key={i} className="flex gap-2 text-[10px] font-mono">
-              <span className="text-rmpg-400 shrink-0">{entry.method}</span>
+              <span className="text-rmpg-400 shrink-0">{formatEnumValue(entry.method)}</span>
               <span className={`shrink-0 ${
                 entry.status >= 500 ? 'text-red-400' : entry.status >= 400 ? 'text-yellow-400' : 'text-green-400'
               }`}>{entry.status}</span>

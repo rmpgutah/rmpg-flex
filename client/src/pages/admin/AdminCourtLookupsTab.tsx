@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Gavel, Plus, Pencil, Trash2, Save, X, Eye, EyeOff, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
+import { formatEnumValue } from '../../utils/formatters';
 
 // AdminCourtLookupsTab — manages every editable dropdown in the Court Tracker.
 //
@@ -154,7 +155,7 @@ export default function AdminCourtLookupsTab({ setError: setOuterError }: Props)
             className={`px-2 py-0.5 text-[10px] rounded-sm ${
               activeCategory === c.category ? 'bg-accent-silver-500/20 text-accent-silver-500' : 'text-rmpg-300 hover:bg-rmpg-700/40'
             }`}>
-            {c.category} <span className="text-rmpg-500">({c.count})</span>
+            {formatEnumValue(c.category)} <span className="text-rmpg-500">({c.count})</span>
           </button>
         ))}
         <div className="flex-1" />

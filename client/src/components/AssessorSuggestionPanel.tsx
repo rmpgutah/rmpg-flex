@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import type { LookupCode, LookupSource, ParcelSummary } from '../hooks/useAssessorLookup';
+import { formatEnumValue } from '../utils/formatters';
 
 interface Props {
   parcels: ParcelSummary[] | null;
@@ -148,7 +149,7 @@ export function AssessorSuggestionPanel({
               {p.recorded_document_url ? (
                 <div className="text-rmpg-400">
                   {p.recorded_document_type && (
-                    <span className="mr-1 font-semibold">{p.recorded_document_type}</span>
+                    <span className="mr-1 font-semibold">{formatEnumValue(p.recorded_document_type)}</span>
                   )}
                   <a
                     href={p.recorded_document_url}
