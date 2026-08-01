@@ -17,6 +17,7 @@
 // ============================================================
 
 import type { FleetioVehicle, RmpgFleetVehicleRow } from './types';
+import { normalizeToUtcTimestamp } from '../denverTime';
 
 export interface LocalVehicleForMatch {
   id: number;
@@ -137,7 +138,13 @@ export function buildFuelLogInsertFromFleetio(entry: FleetioFuelEntryForPull): L
     ? Math.round((totalCost / gallons) * 1000) / 1000
     : null;
   return {
-    fuel_date: entry.date,
+    // Canonicalize to UTC on the way in. Fleet.io's `date` is ISO-8601 and
+    // usually carries an offset, but a pulled row landed in the same column as
+    // operator entries and CSV imports, which is how fleet_fuel_log ended up
+    // with four incompatible timestamp formats. Normalizing at every write
+    // path is what keeps date bucketing correct. Falls back to the raw value
+    // if unparseable so a pull never silently drops the timestamp.
+    fuel_date: normalizeToUtcTimestamp(entry.date) ?? entry.date,
     gallons,
     total_cost: totalCost,
     cost_per_gallon: costPerGallon,

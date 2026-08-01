@@ -54,6 +54,13 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
 const SCAN_STATUSES = new Set(['on_time', 'late', 'missed']);
 const BREAK_TYPES = new Set(['break', 'meal', 'rest']);
 
+// How long an un-ended break is still considered the officer's CURRENT break
+// by POST /breaks/start. Past this it is treated as abandoned (someone forgot
+// to press End) and a new break is started instead. 12h comfortably covers a
+// long shift, including one that crosses midnight, while guaranteeing a stale
+// row can never permanently block the Break button. See the query below.
+const OPEN_BREAK_WINDOW_HOURS = 12;
+
 // ─────────────────────────────────────────────────────────────
 // Static / specific paths first (Hono trie still prefers literals,
 // but explicit ordering documents the contract).
@@ -463,10 +470,22 @@ pt.post('/breaks/start', async (c) => {
   // client-side disabled guard alone cannot achieve across tabs or devices.
   const open = await queryFirst<{ id: number; break_start: string; break_type: string }>(
     db,
+    // The window is load-bearing, not a nicety. "Has an open break" was
+    // originally unbounded in time, but an officer who forgets to press End
+    // leaves a row open forever — and an unbounded guard then treats that
+    // abandoned row as the officer's CURRENT break and never lets them start
+    // a new one again. Live D1 had 7 such rows for officer 1, the oldest from
+    // 2026-06-09, so /breaks/start would have returned a two-day-old break on
+    // every click and the Break button would have looked broken.
+    //
+    // A break older than the window is abandoned, not open: ignore it and
+    // start a fresh one. Deliberately NOT scoped to shift_date — a night shift
+    // legitimately spans midnight, so a date comparison would split it.
     `SELECT id, break_start, break_type FROM patrol_breaks
        WHERE officer_id = ? AND break_end IS NULL
+         AND break_start >= datetime('now', ?)
        ORDER BY id DESC LIMIT 1`,
-    user.id,
+    user.id, `-${OPEN_BREAK_WINDOW_HOURS} hours`,
   );
   if (open) {
     return c.json({

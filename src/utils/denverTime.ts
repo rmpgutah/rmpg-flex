@@ -152,3 +152,93 @@ export function denverStrftimeExpr(format: string, column: string, d: Date = new
 export function denverHourExpr(column: string, d: Date = new Date()): string {
   return denverStrftimeExpr('%H', column, d);
 }
+
+// ============================================================
+// Timestamp normalization for operator/import-supplied values
+// ============================================================
+
+/** Canonical D1 storage form: UTC, `YYYY-MM-DD HH:MM:SS`, matching `datetime('now')`. */
+function toSqlUtc(ms: number): string {
+  return new Date(ms).toISOString().replace('T', ' ').replace(/\..*$/, '');
+}
+
+/**
+ * Normalize any operator- or import-supplied timestamp to canonical UTC
+ * `YYYY-MM-DD HH:MM:SS` for storage.
+ *
+ * WHY THIS EXISTS — live audit 2026-07-31. `fleet_fuel_log.fuel_date` held
+ * FOUR incompatible formats in one column because all three write paths stored
+ * the caller's string verbatim:
+ *
+ *   87 rows  `2026-06-25T14:14:50`                  ISO, no offset
+ *   22 rows  `2026-07-28T20:33:39.000000-06:00`     ISO, with offset
+ *    3 rows  `2026-07-29 02:33:03`                  naive, space-separated
+ *    1 row   `2026-07-17`                           date only
+ *
+ * SQLite reads an offset-less string as UTC. The naive values are Denver
+ * wall-clock (evidenced: rows entered promptly sat 6.06h / 6.11h ahead of
+ * their UTC `created_at`, i.e. exactly the MDT offset), so every one of them
+ * was being read 6-7 hours early — the same conflation `denverOffsetHours`
+ * documents. Concretely, `date('2026-07-17T19:28:00-06:00')` yields
+ * **2026-07-18**, so evening fills land in the next day's bucket.
+ *
+ * Rules, in order:
+ *  - explicit offset or `Z` present -> the instant is unambiguous; convert to UTC
+ *  - offset-less date+time          -> DENVER wall-clock (DST-aware via
+ *                                      `denverDateStringToEpochMs`)
+ *  - date only                      -> Denver midnight that day
+ *  - unparseable / empty            -> null (caller decides; never guess)
+ *
+ * Returns null rather than throwing so a bad import row can be skipped or
+ * defaulted without failing the whole batch.
+ */
+export function normalizeToUtcTimestamp(input: unknown): string | null {
+  if (input == null) return null;
+  const raw = String(input).trim();
+  if (!raw) return null;
+
+  // 1. Carries its own zone (…Z, …+HH:MM, …-HH:MM). Note the offset test must
+  //    look only AFTER the time part — a bare date `2026-07-17` also contains
+  //    '-' characters and would false-positive on a naive substring search.
+  const hasZone = /[Zz]$/.test(raw) || /\d{2}:\d{2}(:\d{2}(\.\d+)?)?\s*[+-]\d{2}:?\d{2}$/.test(raw);
+  if (hasZone) {
+    const ms = new Date(raw).getTime();
+    return Number.isNaN(ms) ? null : toSqlUtc(ms);
+  }
+
+  // 2. Offset-less date + time. THE SEPARATOR IDENTIFIES THE PRODUCER, and the
+  //    two producers mean different zones — conflating them corrupts data:
+  //
+  //      'YYYY-MM-DD HH:MM:SS' (space) <- SQLite datetime('now')  => already UTC
+  //      'YYYY-MM-DDTHH:MM:SS' (T)     <- toDenverWallClock()     => Denver local
+  //
+  //    Proven on live data by the three double-logged fills, where the same
+  //    fill exists once with an explicit -06:00 offset and once space-separated:
+  //      id 114 20:33:39-06:00 -> 02:33:39Z   vs  id 115 '2026-07-29 02:33:03'
+  //      id 113 14:42:00-06:00 -> 20:42:00Z   vs  id 116 '2026-07-21 20:42:31'
+  //      id  94 19:28:00-06:00 -> 01:28:00Z   vs  id 117 '2026-07-18 01:28:47'
+  //    All three align only if the space form is read as UTC. Treating it as
+  //    Denver would have shifted those rows a further +6h into the future.
+  const spaceForm = raw.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}(?::\d{2})?)$/);
+  if (spaceForm) {
+    const hhmmss = spaceForm[2].length === 5 ? `${spaceForm[2]}:00` : spaceForm[2];
+    const ms = Date.parse(`${spaceForm[1]}T${hhmmss}Z`);
+    return Number.isNaN(ms) ? null : toSqlUtc(ms);
+  }
+
+  const dt = raw.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}(?::\d{2})?)/);
+  if (dt) {
+    const hhmmss = dt[2].length === 5 ? `${dt[2]}:00` : dt[2];
+    const ms = denverDateStringToEpochMs(dt[1], hhmmss);
+    return Number.isNaN(ms) ? null : toSqlUtc(ms);
+  }
+
+  // 3. Date only -> Denver midnight.
+  const dOnly = raw.match(/^(\d{4}-\d{2}-\d{2})$/);
+  if (dOnly) {
+    const ms = denverDateStringToEpochMs(dOnly[1], '00:00:00');
+    return Number.isNaN(ms) ? null : toSqlUtc(ms);
+  }
+
+  return null;
+}

@@ -85,6 +85,10 @@ interface ResponseTimesData {
     minResponseMinutes: number;
     maxResponseMinutes: number;
     totalCalls: number;
+    /** Calls meeting the SLA, counted PER CALL in SQL — not derived from daily averages. */
+    slaMetCount: number;
+    /** Server's SLA target, so the tile and the chart's target line cannot drift from it. */
+    slaTargetMinutes: number;
   };
   byPriority: Array<{ priority: string; avg_response_minutes: number; count: number }>;
   dailyTrend: Array<{ date: string; avg_response_minutes: number; count: number }>;
@@ -1197,8 +1201,16 @@ export default function ReportsPage() {
     avgResponse: responseTimesData?.overall?.avgTotalResponseMinutes
       ? `${responseTimesData.overall.avgTotalResponseMinutes.toFixed(1)}m`
       : '0.0m',
+    // PER-CALL SLA compliance, straight from the server.
+    //
+    // This used to be derived from dailyTrend by crediting a whole day's calls
+    // when that DAY'S AVERAGE was <= 5 — wrong in both directions: a day
+    // averaging 4.9 counted every call as met even if several took 20 minutes,
+    // and a day averaging 5.1 counted none even if most were under target.
+    // dailyTrend carries only averages, so the correct figure is not derivable
+    // here at all; overall.slaMetCount is computed per row in SQL.
     slaMet: responseTimesData?.overall?.totalCalls
-      ? `${Math.round(((responseTimesData.dailyTrend || []).reduce((acc, d) => acc + (d.avg_response_minutes <= 5 ? d.count : 0), 0) / responseTimesData.overall.totalCalls) * 100)}%`
+      ? `${Math.round(((responseTimesData.overall.slaMetCount ?? 0) / responseTimesData.overall.totalCalls) * 100)}%`
       : '0%',
     activeOfficers: dashboardData?.officersOnDuty?.length || 0,
   };
@@ -1231,10 +1243,14 @@ export default function ReportsPage() {
     fill: chartPriorityColor(item.priority),
   }));
 
+  // The chart's target line reads the SAME server value the SLA tile is scored
+  // against, so the dashed line can never disagree with the percentage beside
+  // it. Both were independently hardcoded to 5 before.
+  const slaTarget = responseTimesData?.overall?.slaTargetMinutes ?? 5;
   const responseTimeChartData = (Array.isArray(responseTimesData?.dailyTrend) ? responseTimesData.dailyTrend : []).map(item => ({
     date: formatDateLabel(item.date),
     avgMinutes: parseFloat((Number(item.avg_response_minutes) || 0).toFixed(1)),
-    targetMinutes: 5,
+    targetMinutes: slaTarget,
   }));
 
   const officerChartData = officerActivity.map(officer => ({
