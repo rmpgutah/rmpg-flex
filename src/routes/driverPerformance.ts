@@ -13,6 +13,7 @@ import { requireRole } from '../middleware/auth';
 import { log } from '../utils/logger';
 import { computeScore, MIN_EXPOSURE_MILES, weightsPendingReview, SCORE_VERSION } from '../utils/driverPerformance/score';
 import { rollupDay } from '../utils/driverPerformance/rollup';
+import { renderDriverPerformancePdf } from '../utils/driverPerformance/pdf';
 
 const driverPerformance = new Hono<Env>();
 
@@ -162,10 +163,53 @@ driverPerformance.get('/officer/:id', canView, async (c) => {
         ORDER BY perf_date`,
       officerId, from, to,
     );
-    return c.json({ from, to, summary: agg ? shape(agg) : null, daily });
+    return c.json({ from, to, min_exposure_miles: MIN_EXPOSURE_MILES, summary: agg ? shape(agg) : null, daily });
   } catch (err) {
     log.error('driver-performance officer detail failed', { officerId, from, to }, err as Error);
     return c.json({ error: 'Failed to load officer detail', code: 'DETAIL_FAILED' }, 500);
+  }
+});
+
+// GET /officer/:id/export — evidence-grade PDF snapshot. Liability lens: this
+// document may outlive the session that generated it and be read by someone
+// who never saw the UI (insurer, counsel). Every element that affects
+// interpretation — window, score_version, attribution confidence, generation
+// time — is stamped on the page, and the unscored case is handled explicitly
+// (see renderDriverPerformancePdf) rather than printing a bare/blank score.
+driverPerformance.get('/officer/:id/export', canView, async (c) => {
+  const gated = weightsGate(c); if (gated) return gated;
+  const db = getDb(c.env);
+  await ensureDriverPerformanceColumns(db);
+  const officerId = Number(c.req.param('id'));
+  if (!Number.isInteger(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
+  const { from, to } = windowFrom(c);
+  try {
+    const agg = await queryFirst<AggRow>(db, `${AGG_SQL} HAVING d.officer_id = ?`, from, to, officerId);
+    if (!agg) return c.json({ error: 'No data for this officer in the window' }, 404);
+    const summary = shape(agg);
+    const versionRow = await queryFirst<{ v: string }>(
+      db,
+      `SELECT score_version AS v FROM driver_performance_daily
+        WHERE officer_id = ? AND perf_date >= ? AND perf_date <= ?
+        ORDER BY perf_date DESC LIMIT 1`,
+      officerId, from, to,
+    );
+    const bytes = await renderDriverPerformancePdf({
+      summary,
+      window: { from, to },
+      scoreVersion: versionRow?.v ?? SCORE_VERSION,
+      generatedAt: new Date().toISOString(),
+      organization: 'Rocky Mountain Protective Group',
+    });
+    return new Response(bytes, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="driver-performance-${officerId}-${from}-to-${to}.pdf"`,
+      },
+    });
+  } catch (err) {
+    log.error('driver-performance export failed', { officerId, from, to }, err as Error);
+    return c.json({ error: 'Failed to generate export', code: 'EXPORT_FAILED' }, 500);
   }
 });
 

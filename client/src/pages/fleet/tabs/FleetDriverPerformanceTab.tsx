@@ -58,6 +58,7 @@ interface NormalOfficerResponse {
   ok?: undefined;
   from: string;
   to: string;
+  min_exposure_miles: number;
   summary: RosterEntry | null;
   daily: DailyEntry[];
 }
@@ -214,7 +215,7 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
     );
   }
 
-  const { summary, daily } = data;
+  const { summary, daily, min_exposure_miles } = data;
 
   return (
     <div className="p-4 space-y-4">
@@ -244,9 +245,10 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
               Insufficient exposure — not scored
             </div>
             <div>
-              This officer drove {summary.miles_driven.toFixed(0)} miles in this window —
-              too few miles to distinguish driving behavior from chance. No score, band, rate,
-              or confidence is shown because none was computed.
+              This officer drove {summary.miles_driven.toFixed(0)} miles — below the{' '}
+              {min_exposure_miles}-mile floor required to score, so behavior can't be
+              distinguished from chance. No score, band, rate, or confidence is shown because
+              none was computed.
             </div>
           </div>
         </div>
