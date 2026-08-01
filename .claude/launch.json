@@ -39,6 +39,20 @@
       "port": 5183
     },
     {
+      "name": "client-dev-gallery",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5199",
+        "--strictPort"
+      ],
+      "cwd": "client",
+      "port": 5199
+    },
+    {
       "name": "client-preview",
       "runtimeExecutable": "npx",
       "runtimeArgs": [
