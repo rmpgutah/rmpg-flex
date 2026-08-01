@@ -255,25 +255,70 @@ citations.get('/calculate-fine', async (c) => {
     const offenseLevel = c.req.query('offense_level');
     const type = c.req.query('type') || 'traffic';
     let baseFine = 0;
+    // `source` makes the basis of the number explicit. These are the app's own
+    // schedule buckets, NOT Utah statutory maximums — a real citation amount
+    // comes from the court's fine schedule, so the caller must be able to tell
+    // an estimate from an authority.
+    let source: 'statute_fine' | 'offense_level' | 'default' = 'default';
+    let levelUsed: string | null = (offenseLevel as string) || null;
+
     if (statuteId) {
-      const statute = await queryFirst<{ default_fine: number | null; offense_level: string }>(
-        // utah_statutes stores the scheduled fine as `citation_fine`.
+      const statute = await queryFirst<{ default_fine: number | null; offense_level: string | null }>(
+        // utah_statutes stores the scheduled fine as `citation_fine` — which is
+        // populated on ZERO of 4,315 live rows, so this branch never fires
+        // today. Kept because it is the correct shape if that data ever lands.
         db, 'SELECT citation_fine AS default_fine, offense_level FROM utah_statutes WHERE id = ?', statuteId,
       ).catch(() => null);
-      if (statute?.default_fine) baseFine = statute.default_fine;
+      if (statute?.default_fine) {
+        baseFine = statute.default_fine;
+        source = 'statute_fine';
+      }
+      // The statute's own offense_level was SELECTed and then never read, so a
+      // caller passing statute_id alone always fell through to the flat
+      // default even though 911 live statutes carry a level.
+      if (!levelUsed && statute?.offense_level) levelUsed = statute.offense_level;
     }
+
     if (!baseFine) {
       const fineSchedule: Record<string, number> = {
         felony: 1000, misdemeanor_a: 500, misdemeanor_b: 350,
         misdemeanor_c: 250, misdemeanor: 350, infraction: 150, violation: 100,
       };
-      baseFine = fineSchedule[offenseLevel as string] || 100;
+      // Live utah_statutes.offense_level uses Utah's statutory vocabulary
+      // ('class_b_misdemeanor', 'third_degree_felony'), which shares only ONE
+      // key with the schedule above ('infraction'). So 738 of the 911 levelled
+      // statutes matched nothing and silently returned the flat 100. Mapping is
+      // onto the EXISTING buckets — no new dollar figures are introduced here.
+      const LEVEL_ALIASES: Record<string, string> = {
+        capital_felony: 'felony',
+        first_degree_felony: 'felony',
+        second_degree_felony: 'felony',
+        third_degree_felony: 'felony',
+        class_a_misdemeanor: 'misdemeanor_a',
+        class_b_misdemeanor: 'misdemeanor_b',
+        class_c_misdemeanor: 'misdemeanor_c',
+      };
+      const key = levelUsed ? (LEVEL_ALIASES[levelUsed] ?? levelUsed) : '';
+      if (key && fineSchedule[key] !== undefined) {
+        baseFine = fineSchedule[key];
+        source = 'offense_level';
+      } else {
+        baseFine = 100;
+        source = 'default';
+      }
     }
+
     const typeMultipliers: Record<string, number> = { traffic: 1.0, criminal: 1.5, parking: 0.5, warning: 0 };
-    const multiplier = typeMultipliers[type] || 1.0;
+    // `|| 1.0` was a falsy-zero bug: the warning multiplier IS 0, so a warning
+    // citation fell through to 1.0 and quoted the FULL fine. `??` only replaces
+    // an unknown type.
+    const multiplier = typeMultipliers[type] ?? 1.0;
     const calculatedFine = Math.round(baseFine * multiplier * 100) / 100;
-    return c.json({ data: { base_fine: baseFine, multiplier, calculated_fine: calculatedFine, type } });
-  } catch { return c.json({ data: { base_fine: 100, multiplier: 1.0, calculated_fine: 100, type: 'traffic' } }); }
+    return c.json({ data: {
+      base_fine: baseFine, multiplier, calculated_fine: calculatedFine, type,
+      source, offense_level_used: levelUsed,
+    } });
+  } catch { return c.json({ data: { base_fine: 100, multiplier: 1.0, calculated_fine: 100, type: 'traffic', source: 'default', offense_level_used: null } }); }
 });
 
 // ── Vehicle plate lookup (for auto-filling vehicle details) ──

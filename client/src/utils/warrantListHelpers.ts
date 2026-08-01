@@ -1,9 +1,29 @@
 export type PriorityBucket = 'critical' | 'high' | 'medium' | 'low';
 
+/**
+ * Bucket a priority score for display.
+ *
+ * ⚠️ These boundaries are COUPLED to computePriorityScore's base values in
+ * src/routes/warrants.ts (felony 60 / misdemeanor 30 / infraction 10 / civil 5,
+ * plus up to 60 of modifiers). Changing either side without the other silently
+ * decouples the label from the model.
+ *
+ * `high` is 60, NOT 70, deliberately: the scorer's documented intent is that a
+ * felony reads as high priority "before anything else applies", and a felony with
+ * no modifiers scores exactly 60. With a 70 boundary that intent was not honored
+ * — measured live 2026-07-31, a felony warrant scoring 61 was rendering as
+ * `medium`, which understates a felony on an officer's service queue. 60 makes
+ * every felony `high` and keeps `critical` (90) for a felony that has genuinely
+ * stacked aggravating factors.
+ *
+ * A maximally stale misdemeanor tops out at 45 (30 + the 15 staleness cap), so it
+ * stays `medium` and cannot reach `high` on age alone — severity still sets the
+ * band, which is the whole design.
+ */
 export function priorityBucket(score: number | null | undefined): PriorityBucket {
   if (score == null) return 'low';
   if (score >= 90) return 'critical';
-  if (score >= 70) return 'high';
+  if (score >= 60) return 'high';
   if (score >= 40) return 'medium';
   return 'low';
 }

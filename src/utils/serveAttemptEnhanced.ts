@@ -91,8 +91,18 @@ export async function checkNcicAtAttempt(
   // ── 1a. Search local warrants ──
   try {
     const warrantQuery = firstName
+      // warrants.issuing_agency, .severity and .description are 100% NULL on
+      // live D1 (0 of 49 rows) while issuing_court/source, offense_level/priority
+      // and charge_description are populated. Reading the dead trio made this
+      // safety briefing report agency "Unknown" and severity 'low' for EVERY
+      // warrant, which is the worst possible default for a process server
+      // walking up to an address. mapWarrantSeverity already understands
+      // 'felony'/'misdemeanor' (offense_level) and 'p1'/'p2' (priority), so the
+      // COALESCE feeds it real values with no mapper change.
       ? `SELECT id, warrant_number, type, status, subject_name,
-                charge_description, issuing_agency, severity, description
+                charge_description,
+                COALESCE(issuing_court, source) AS issuing_agency,
+                COALESCE(offense_level, priority) AS severity
            FROM warrants
           WHERE status = 'active'
             AND (
@@ -104,7 +114,9 @@ export async function checkNcicAtAttempt(
             issued_date DESC
           LIMIT 20`
       : `SELECT id, warrant_number, type, status, subject_name,
-                charge_description, issuing_agency, severity, description
+                charge_description,
+                COALESCE(issuing_court, source) AS issuing_agency,
+                COALESCE(offense_level, priority) AS severity
            FROM warrants
           WHERE status = 'active'
             AND (
@@ -127,7 +139,6 @@ export async function checkNcicAtAttempt(
       charge_description: string | null;
       issuing_agency: string | null;
       severity: string | null;
-      description: string | null;
     }>(db, warrantQuery, ...warrantBindings);
 
     for (const w of warrants) {
@@ -139,7 +150,6 @@ export async function checkNcicAtAttempt(
         details: [
           w.warrant_number ? `#${w.warrant_number}` : null,
           w.type ? `(${w.type})` : null,
-          w.description || null,
         ].filter(Boolean).join(' '),
       });
     }
