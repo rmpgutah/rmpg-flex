@@ -126,7 +126,9 @@ function drawGridBox(doc: jsPDF, x: number, y: number, w: number, h: number, lab
   doc.text(value, x + 6, y + 30);
 }
 
-export function generateNavTripReport({ trips, officerName, vehicleLabel, periodLabel }: Args): void {
+/** Build the multi-trip Nav Trip Report and return the jsPDF document
+ *  without saving it. */
+export function buildNavTripReportPdf({ trips, officerName, vehicleLabel, periodLabel }: Args): jsPDF {
   // Landscape — wider page fits the breadcrumb + path summary columns
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
@@ -411,8 +413,15 @@ export function generateNavTripReport({ trips, officerName, vehicleLabel, period
     footerStrip(doc, p, total);
   }
 
-  // ── Save ──────────────────────────────────────────────────
-  const officerSlug = (officerName || 'officer').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
+  return doc;
+}
+
+/** Build the multi-trip Nav Trip Report and immediately save it to disk
+ *  (same filename/behaviour as before this function was split into a
+ *  builder + saver). */
+export function generateNavTripReport(args: Args): void {
+  const doc = buildNavTripReportPdf(args);
+  const officerSlug = (args.officerName || 'officer').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
   const dateStr = new Date().toISOString().slice(0, 10);
   doc.save(`nav-trip-report-${officerSlug}-${dateStr}.pdf`);
 }
@@ -434,12 +443,14 @@ function formatDuration(seconds: number | null | undefined): string {
 /** Single trip in landscape: header, big stats, breadcrumb path table,
  *  start/end map data.  Mirrors the multi-trip report style but with
  *  one trip in focus and the route table given the full width. */
-export function generateNavSingleTripReport({
+/** Build the single-trip detail PDF and return the jsPDF document without
+ *  saving it. */
+export function buildNavSingleTripReportPdf({
   trip, officerName,
 }: {
   trip: NavTrip;
   officerName?: string;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 40;
@@ -645,8 +656,15 @@ export function generateNavSingleTripReport({
     footerStrip(doc, p, total);
   }
 
-  // Save
-  const dateStr = parseTimestamp(trip.start_time).toISOString().slice(0, 10);
-  const officerSlug = (officerName || 'officer').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
-  doc.save(`nav-trip-${officerSlug}-${dateStr}-${trip.id}.pdf`);
+  return doc;
+}
+
+/** Build the single-trip detail PDF and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder +
+ *  saver). */
+export function generateNavSingleTripReport(args: { trip: NavTrip; officerName?: string }): void {
+  const doc = buildNavSingleTripReportPdf(args);
+  const dateStr = parseTimestamp(args.trip.start_time).toISOString().slice(0, 10);
+  const officerSlug = (args.officerName || 'officer').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
+  doc.save(`nav-trip-${officerSlug}-${dateStr}-${args.trip.id}.pdf`);
 }

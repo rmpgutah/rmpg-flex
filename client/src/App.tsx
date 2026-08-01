@@ -50,6 +50,18 @@ const DashboardPage = lazyRetry(importDashboard);
 // Public downloads/marketing route — 25.3 KB plus KioskOsInstallGuide's
 // 15.5 KB. It was static, so every LOGIN downloaded and parsed it.
 const DownloadsPage = lazyRetry(() => import('./pages/DownloadsPage'));
+// Dev-only PDF audit harness (/__pdf-gallery). `import.meta.env.DEV` is
+// statically replaced with `false` in a production build, so this ternary's
+// dead branch — including the dynamic import() itself — is eliminated by
+// Vite/Rollup and no chunk is emitted at all. Gating only the <Route> below
+// (and not this import) still lets Vite discover and bundle the chunk
+// unconditionally, which is what shipped fixture data to Cloudflare Pages the
+// first time. Deliberately plain `lazy`, not `lazyRetry`: the retry wrapper
+// exists for chunk-load failures on deployed builds, and this chunk never
+// reaches a deployed build.
+const PdfGalleryPage = import.meta.env.DEV
+  ? lazy(() => import('./devtools/pdfGallery/PdfGalleryPage'))
+  : null;
 // Lazy import with auto-retry on chunk load failure (stale cache after deploys)
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
@@ -517,6 +529,13 @@ function AppRoutes() {
         <Routes>
           {/* Public routes */}
           <Route path="/downloads" element={<DownloadsPage />} />
+          {/* Dev-only PDF audit harness. Gated on import.meta.env.DEV so Vite
+              tree-shakes it out of the production bundle entirely — it must never
+              reach Cloudflare Pages. See docs/superpowers/specs/
+              2026-07-31-pdf-forms-audit-and-repair-design.md */}
+          {import.meta.env.DEV && PdfGalleryPage && (
+            <Route path="/__pdf-gallery" element={<PdfGalleryPage />} />
+          )}
           <Route
             path="/login"
             element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}

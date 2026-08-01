@@ -184,8 +184,10 @@ function formatPointTime(isoStr: string): string {
 
 // ── Generator ────────────────────────────────────────────────
 
-export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, options: PatrolTrackingPdfOptions = {}): Promise<void> {
-  try {
+/** Build the Patrol Tracking Report and return the jsPDF document without
+ *  saving it. Extracted from generatePatrolTrackingPdf so the gallery/audit
+ *  harness can render the doc without triggering a file download. */
+export async function buildPatrolTrackingPdf(data: PatrolTrackingReportData, options: PatrolTrackingPdfOptions = {}): Promise<jsPDF> {
   const branding = await fetchPdfBranding();
   const primaryRgb = hexToRgb(branding.primary_color || DEFAULT_PDF_BRANDING.primary_color);
   const accentRgb = hexToRgb(branding.accent_color || DEFAULT_PDF_BRANDING.accent_color);
@@ -755,6 +757,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
       rowsOnPage += 1;
     }
   }
+  } // close per-trail `for (let ti ...)` loop — page numbers/finalize run once below
 
   // ── Page numbers (N of M) on every page ──────────────────────
   // Drawn after all content so we know the final page count. Bottom-right
@@ -785,18 +788,25 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
     },
   });
 
-  // ── Save the PDF ─────────────────────────────────────
+  return doc;
+}
+
+/** Build the Patrol Tracking Report and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder +
+ *  saver). */
+export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, options: PatrolTrackingPdfOptions = {}): Promise<void> {
   try {
-    const dateStr = localToday().replace(/-/g, '');
-    const firstCallSign = data.trails[0]?.call_sign || 'ALL';
-    const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
-    const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
-    doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}${targetSuffix}.pdf`);
-  } catch (err) {
-    console.error('Patrol tracking PDF generation failed:', err);
-    throw new Error(`Failed to generate patrol tracking PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
-  }
-  }
+    const doc = await buildPatrolTrackingPdf(data, options);
+    try {
+      const dateStr = localToday().replace(/-/g, '');
+      const firstCallSign = data.trails[0]?.call_sign || 'ALL';
+      const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
+      const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
+      doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}${targetSuffix}.pdf`);
+    } catch (err) {
+      console.error('Patrol tracking PDF generation failed:', err);
+      throw new Error(`Failed to generate patrol tracking PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
   } catch (err) {
     throw err;
   }

@@ -54,7 +54,7 @@ export function darSectionRows(items: any[], kind: SectionKind): string[][] {
 }
 
 // ── PDF rendering ───────────────────────────────────────────────
-export function generateDarPdf(r: DailyActivityReport): void {
+export function buildDarPdf(r: DailyActivityReport): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
   registerArialFont(doc);
   const W = doc.internal.pageSize.getWidth();
@@ -154,5 +154,12 @@ export function generateDarPdf(r: DailyActivityReport): void {
   text('Reviewed' + (r.reviewed_by_name ? ` by ${r.reviewed_by_name}` : '') + (r.reviewed_at ? ` ${r.reviewed_at}` : ''),
        W - M - 200, 8, GRAY);
 
+  return doc;
+}
+
+/** Build the DAR PDF and immediately save it to disk (same filename/behaviour
+ *  as before this function was split into a builder + saver). */
+export function generateDarPdf(r: DailyActivityReport): void {
+  const doc = buildDarPdf(r);
   doc.save(`DAR_${(r.dar_number || r.id).toString().replace(/[^\w-]/g, '_')}.pdf`);
 }

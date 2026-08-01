@@ -75,7 +75,9 @@ const PRI_RGB: Record<string, [number, number, number]> = {
   P4: [122, 106, 63],
 };
 
-export async function generateMapSituationReport(data: MapSituationReportData): Promise<void> {
+/** Build the Tactical Situation Report and return the jsPDF document
+ *  without saving it. */
+export async function buildMapSituationReportPdf(data: MapSituationReportData): Promise<jsPDF> {
   const branding = await fetchPdfBranding().catch(() => DEFAULT_PDF_BRANDING);
   const logoB64 = await loadLogoDarkBase64().catch(() => null);
   const accent = hexToRgb(branding.accent_color || DEFAULT_PDF_BRANDING.accent_color);
@@ -298,6 +300,14 @@ export async function generateMapSituationReport(data: MapSituationReportData): 
 
   finalizePoliceReport(doc, { watermark: 'CONFIDENTIAL' });
 
-  const dateStr = now.toISOString().slice(0, 10);
+  return doc;
+}
+
+/** Build the Tactical Situation Report and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder +
+ *  saver). */
+export async function generateMapSituationReport(data: MapSituationReportData): Promise<void> {
+  const doc = await buildMapSituationReportPdf(data);
+  const dateStr = new Date().toISOString().slice(0, 10);
   doc.save(`RMPG_Situation_Report_${dateStr}.pdf`);
 }
