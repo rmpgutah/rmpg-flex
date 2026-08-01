@@ -1918,8 +1918,16 @@ export interface FleetServiceAlert {
   model: string;
   year: number;
   issue: string;
+  /** Same value as `issue`/`type` — the alert category. The Analytics panel
+   *  reads this name, which the API did not send until 2026-08-01. */
+  service_type: string;
   due_date: string;
-  severity: 'critical' | 'warning';
+  /** Days until `due_date`; NEGATIVE means overdue. Sent by
+   *  GET /fleet/service-alerts. Optional because older cached responses and
+   *  other alert producers may omit it — render defensively, never
+   *  `${a.days_until}d` (that printed the literal "undefinedd" on live). */
+  days_until?: number | null;
+  severity: 'overdue' | 'critical' | 'warning';
 }
 
 export interface FleetServiceAlerts {
