@@ -1559,13 +1559,19 @@ records.get('/evidence', async (c) => {
     const db = getDb(c.env);
     const q = c.req.query('q');
     const status = c.req.query('status');
-    let sql = 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE 1=1';
+    let where = ' WHERE 1=1';
     const params: unknown[] = [];
-    if (q) { const m = containsAnyClause(['e.evidence_number', 'e.description']); sql += ` AND ${m.sql}`; params.push(...m.binds(q)); }
-    if (status) { sql += ' AND e.status = ?'; params.push(status); }
-    sql += ' ORDER BY e.created_at DESC LIMIT 500';
+    if (q) { const m = containsAnyClause(['e.evidence_number', 'e.description']); where += ` AND ${m.sql}`; params.push(...m.binds(q)); }
+    if (status) { where += ' AND e.status = ?'; params.push(status); }
+    const FROM = 'FROM evidence e LEFT JOIN users u ON e.collected_by = u.id';
+    const sql = `SELECT e.*, u.full_name as collected_by_name ${FROM}${where} ORDER BY e.created_at DESC LIMIT 500`;
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
-    return c.json({ data: rows, pagination: { total: rows.length, limit: 500 } });
+    // pagination.total must be the MATCHING row count, not the returned page
+    // size. `total: rows.length` silently caps at the LIMIT, so once the table
+    // outgrows the page the UI reports a wrong total and cannot tell that the
+    // list was truncated.
+    const totalRow = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n ${FROM}${where}`, ...params).catch(() => null);
+    return c.json({ data: rows, pagination: { total: totalRow?.n ?? rows.length, limit: 500, returned: rows.length } });
   } catch (err) {
     log.error('GET /evidence failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
@@ -2200,11 +2206,40 @@ records.get('/ncic-query', async (c) => {
         return respond(results);
       }
       case 'warrant': {
-        const mw = nq('w.warrant_number', 'p.first_name', 'p.last_name',
-          "p.last_name || ', ' || p.first_name");
+        // Match the warrant's OWN subject name, not just the joined person's.
+        //
+        // This searched only w.warrant_number and the LEFT JOINed persons row.
+        // A warrant whose subject was never linked to a persons record
+        // (subject_person_id IS NULL) has NULL for every p.* column, so it was
+        // unreachable by name — even though the warrant itself carries
+        // subject_name / subject_first_name / subject_last_name.
+        //
+        // Measured on live D1: 19 of the 21 ACTIVE warrants are unlinked, and
+        // all 19 carry a subject name. A `QW GONZALEZ` at a traffic stop
+        // returned 1 of 9 active Gonzalez warrants — and that one hit only by
+        // coincidence, because its warrant_number string
+        // ("natrona-county-wy-natrona:gonz…") happens to contain "gonz".
+        // Everything else answered NO RECORD FOUND for subjects with live
+        // arrest warrants.
+        //
+        // Purely additive: this can only ever return MORE warrants, never
+        // fewer, so no existing hit is lost.
+        const mw = nq(
+          'w.warrant_number',
+          'w.subject_name', 'w.subject_first_name', 'w.subject_last_name',
+          "COALESCE(w.subject_last_name,'') || ', ' || COALESCE(w.subject_first_name,'')",
+          'p.first_name', 'p.last_name',
+          "p.last_name || ', ' || p.first_name",
+        );
         const results = await soft('warrants', () => query<Record<string, any>>(db, `
           SELECT ${WARRANT_COLS.split(',').map(s => 'w.' + s.trim()).join(', ')},
-                 p.first_name AS subject_first_name, p.last_name AS subject_last_name
+                 -- Fall back to the warrant's own subject fields when there is
+                 -- no linked person. Aliasing p.* alone SHADOWED the warrant's
+                 -- columns, so an unlinked hit came back with a NULL name and
+                 -- the terminal printed no NAM/ line at all — an officer saw a
+                 -- warrant hit with no indication of WHO it was for.
+                 COALESCE(p.first_name, w.subject_first_name) AS subject_first_name,
+                 COALESCE(p.last_name, w.subject_last_name, w.subject_name) AS subject_last_name
           FROM warrants w
           LEFT JOIN persons p ON p.id = w.subject_person_id
           WHERE w.status = 'active'
@@ -2908,9 +2943,14 @@ records.get('/persons', async (c) => {
     }
     const whereClause = wheres.length ? ' WHERE ' + wheres.join(' AND ') : '';
     const sql = `SELECT ${PERSONS_BULK_COLUMNS} FROM persons${whereClause} ORDER BY last_name, first_name LIMIT ?`;
+    // Snapshot the predicate bindings BEFORE the LIMIT is appended — the count
+    // query shares the WHERE clause but must not receive the limit parameter.
+    const whereParams = [...params];
     params.push(limit);
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
-    return c.json({ data: rows, pagination: { total: rows.length, limit } });
+    // See the evidence handler: total is the MATCHING count, not the page size.
+    const totalRow = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM persons${whereClause}`, ...whereParams).catch(() => null);
+    return c.json({ data: rows, pagination: { total: totalRow?.n ?? rows.length, limit, returned: rows.length } });
   } catch (err) {
     console.error('GET /records/persons failed:', err);
     return c.json({ error: 'Failed to list persons' }, 500);
@@ -2939,9 +2979,12 @@ records.get('/vehicles', async (c) => {
     }
     const whereClause = wheres.length ? ' WHERE ' + wheres.join(' AND ') : '';
     const sql = `SELECT ${VEHICLES_BULK_COLUMNS} FROM vehicles_records${whereClause} ORDER BY updated_at DESC LIMIT ?`;
+    // Snapshot before LIMIT is appended — see the persons handler above.
+    const whereParams = [...params];
     params.push(limit);
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
-    return c.json({ data: rows, pagination: { total: rows.length, limit } });
+    const totalRow = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM vehicles_records${whereClause}`, ...whereParams).catch(() => null);
+    return c.json({ data: rows, pagination: { total: totalRow?.n ?? rows.length, limit, returned: rows.length } });
   } catch (err) {
     console.error('GET /records/vehicles failed:', err);
     return c.json({ error: 'Failed to list vehicles' }, 500);

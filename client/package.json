@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "measure:entry": "node scripts/measure-entry.mjs",
     "lint": "tsc --noEmit",
     "cap:android": "npx cap sync android",
     "cap:open:android": "npx cap open android"

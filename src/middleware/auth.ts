@@ -221,13 +221,63 @@ export async function authMiddleware(c: Context, next: Next) {
 const READ_ONLY_ROLES = new Set(['client_viewer']);
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+// ── Sensitive-read deny-list for read-only roles ────────────────
+//
+// The mutation backstop above covers WRITES ONLY. Reads had no floor at all,
+// and `requireRole` is opt-in per handler — so a GET written as a plain
+// `get(path, handler)` was reachable by EVERY authenticated role, including
+// client_viewer (a hiring client with a login).
+//
+// Audited 2026-07-31 across the sensitive routers. The asymmetry was total:
+//   jail.ts 10 GETs / 0 gated      records.ts 39 / 0      intel.ts 17 / 0
+//   warrants.ts 13 / 0             billing.ts  7 / 0      useOfForce.ts 4 / 0
+//   flexcam.ts 9 / 0
+// Every write in those files was gated; not one read was. That left ~120
+// endpoints exposing inmate medical screenings, visitor PII, full person
+// records, intel products, warrant subjects, every client's invoices, and
+// video evidence. (affairs.ts and dlRecords.ts gate all their reads, which is
+// the precedent this follows — the practice existed, it was just not applied
+// consistently.)
+//
+// ⚠️ This is a PREFIX floor, not row-level authorization. "A client may see
+// their own contract data" is NOT implementable today: `users` has no
+// client_id/org_id, and billing.ts takes client_id from a QUERY PARAMETER
+// (`?client_id=`) with conditions starting at `1=1` — so /api/billing/invoices
+// returns EVERY client's invoices by default. A real client portal needs a
+// user->client linkage plus row filtering; until that exists, denying is the
+// only correct answer, so /api/billing and /api/invoices are on this list.
+//
+// Deliberately NOT listed (not client-sensitive): /api/assessor (public parcel
+// data), /api/inspection-templates (fleet config), /api/voice-persona (the
+// caller's own preferences), /api/code-enforcement.
+//
+// Prefix match, so a parent covers its children: '/api/intel' also denies
+// /api/intel/ai, '/api/serve' also denies /api/serve-queue, and so on.
+const READ_ONLY_DENIED_PREFIXES = [
+  '/api/affairs', '/api/alpr', '/api/arrests', '/api/billing', '/api/cases',
+  '/api/citations', '/api/comms/bolos', '/api/dispatch/bolos', '/api/dl-records',
+  '/api/evidence', '/api/flexcam', '/api/gang-intel', '/api/hr', '/api/incidents',
+  '/api/intel', '/api/invoices', '/api/jail', '/api/nsopw', '/api/person-intel',
+  '/api/personnel', '/api/process-server', '/api/records', '/api/serve',
+  '/api/sor-sources', '/api/use-of-force', '/api/warrants',
+];
+
 export async function readOnlyRoleGuard(c: Context, next: Next) {
   const user = c.get('user') as { role?: string } | undefined;
-  if (user?.role && READ_ONLY_ROLES.has(user.role) && MUTATING_METHODS.has(c.req.method)) {
-    return c.json({ error: 'Read-only role cannot modify data', code: 'FORBIDDEN' }, 403);
+  if (user?.role && READ_ONLY_ROLES.has(user.role)) {
+    if (MUTATING_METHODS.has(c.req.method)) {
+      return c.json({ error: 'Read-only role cannot modify data', code: 'FORBIDDEN' }, 403);
+    }
+    const path = c.req.path;
+    if (READ_ONLY_DENIED_PREFIXES.some((p) => path === p || path.startsWith(p + '/'))) {
+      return c.json({ error: 'Read-only role cannot access this resource', code: 'FORBIDDEN' }, 403);
+    }
   }
   await next();
 }
+
+/** Exported for the RBAC ratchet in tests/readOnlyRoleGuard.test.ts. */
+export const __readOnlyGuardInternals = { READ_ONLY_ROLES, MUTATING_METHODS, READ_ONLY_DENIED_PREFIXES };
 
 export function requireRole(...roles: string[]) {
   return async (c: Context, next: Next) => {

@@ -161,15 +161,35 @@ been applied to `totalCalls` on the same page; this chart was left behind.
   the map renders correctly (canvas 488×984, navy basemap, call marker). Same on
   the Dashboard. Log as latency, alongside known F-009 (Warrants KPIs ~30s).
 
+## ❌ RETRACTED — "duplicate request storms" (F-006) is NOT a defect
+
+An earlier revision of this document reported `/api/mdt/inbox` firing 7x and
+"49 requests, 21 redundant" on one load. **That was a measurement error and
+should not be re-investigated.**
+
+Re-measured 2026-07-31 from `performance.getEntriesByType('resource')`, reading
+the GAPS rather than the count:
+
+| endpoint | calls | min gap | verdict |
+|---|---|---|---|
+| `/api/mdt/inbox` | 8 | **7999 ms** | clean 8 s poller |
+| `/api/notifications/unread-count` | 3 | 30002 ms | clean 30 s poller |
+| `/api/comms/activity-feed` | 3 | 30009 ms | clean 30 s poller |
+| `/api/dispatch/stats` | 3 | 30043 ms | clean 30 s poller |
+| `/api/email/unread-count` | 3 | 29587 ms | clean 30 s poller |
+| `/api/comms/bolos/active` | 5 | 1461 ms | one marginal pair |
+
+The original count was taken on a tab that had been open ~56 s. At an 8-second
+interval that is *exactly* 7 calls. **A cumulative request count is a function
+of how long the tab was open, not of a bug** — always read inter-request gaps
+before calling polling a storm. Only `bolos/active` has a sub-2 s pair, and
+1.46 s apart is more likely two consumers than a double-fetch.
+
 ## Open — found, not fixed
 
-- **Pagination totals misreport.** `records.ts:1564`, `:2905`, `:2936` return
-  `pagination: { total: rows.length }` — the PAGE size, not the true count.
-  Harmless today (81 persons < 500 default limit); silently truncates and
-  reports a wrong total once any of those tables exceeds the limit.
 - **GPS warning flood.** 120 console warnings in one session, all
   `[GPS] No position callback in 31s (connection: cellular)`, repeating every
-  31s. Consoles stay open all shift (cf. known F-006).
+  31s. Consoles stay open all shift.
 - **Reports "SLA MET 0%"** with 23 calls and a 31.9m average — plausible if the
   SLA target is 5 min (`targetMinutes: 5` in the trend chart), but unverified.
 
