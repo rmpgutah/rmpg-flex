@@ -2206,11 +2206,40 @@ records.get('/ncic-query', async (c) => {
         return respond(results);
       }
       case 'warrant': {
-        const mw = nq('w.warrant_number', 'p.first_name', 'p.last_name',
-          "p.last_name || ', ' || p.first_name");
+        // Match the warrant's OWN subject name, not just the joined person's.
+        //
+        // This searched only w.warrant_number and the LEFT JOINed persons row.
+        // A warrant whose subject was never linked to a persons record
+        // (subject_person_id IS NULL) has NULL for every p.* column, so it was
+        // unreachable by name — even though the warrant itself carries
+        // subject_name / subject_first_name / subject_last_name.
+        //
+        // Measured on live D1: 19 of the 21 ACTIVE warrants are unlinked, and
+        // all 19 carry a subject name. A `QW GONZALEZ` at a traffic stop
+        // returned 1 of 9 active Gonzalez warrants — and that one hit only by
+        // coincidence, because its warrant_number string
+        // ("natrona-county-wy-natrona:gonz…") happens to contain "gonz".
+        // Everything else answered NO RECORD FOUND for subjects with live
+        // arrest warrants.
+        //
+        // Purely additive: this can only ever return MORE warrants, never
+        // fewer, so no existing hit is lost.
+        const mw = nq(
+          'w.warrant_number',
+          'w.subject_name', 'w.subject_first_name', 'w.subject_last_name',
+          "COALESCE(w.subject_last_name,'') || ', ' || COALESCE(w.subject_first_name,'')",
+          'p.first_name', 'p.last_name',
+          "p.last_name || ', ' || p.first_name",
+        );
         const results = await soft('warrants', () => query<Record<string, any>>(db, `
           SELECT ${WARRANT_COLS.split(',').map(s => 'w.' + s.trim()).join(', ')},
-                 p.first_name AS subject_first_name, p.last_name AS subject_last_name
+                 -- Fall back to the warrant's own subject fields when there is
+                 -- no linked person. Aliasing p.* alone SHADOWED the warrant's
+                 -- columns, so an unlinked hit came back with a NULL name and
+                 -- the terminal printed no NAM/ line at all — an officer saw a
+                 -- warrant hit with no indication of WHO it was for.
+                 COALESCE(p.first_name, w.subject_first_name) AS subject_first_name,
+                 COALESCE(p.last_name, w.subject_last_name, w.subject_name) AS subject_last_name
           FROM warrants w
           LEFT JOIN persons p ON p.id = w.subject_person_id
           WHERE w.status = 'active'
