@@ -65,3 +65,60 @@ describe('prefetchRoute', () => {
     expect(importer).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('createPrefetchIntentController', () => {
+  beforeEach(async () => {
+    importer.mockClear();
+    const m = await import('../useRoutePrefetch');
+    m.__resetPrefetchCacheForTests();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    delete (navigator as any).connection;
+    vi.useRealTimers();
+  });
+
+  it('does not prefetch when hover is cancelled before the intent delay elapses', async () => {
+    const { createPrefetchIntentController } = await import('../useRoutePrefetch');
+    const controller = createPrefetchIntentController();
+
+    controller.schedule('item-1', '/known');
+    vi.advanceTimersByTime(60);
+    controller.cancel('item-1');
+    vi.advanceTimersByTime(200);
+
+    expect(importer).not.toHaveBeenCalled();
+  });
+
+  it('prefetches exactly once when hover survives the intent delay', async () => {
+    const { createPrefetchIntentController } = await import('../useRoutePrefetch');
+    const controller = createPrefetchIntentController();
+
+    controller.schedule('item-1', '/known');
+    vi.advanceTimersByTime(200);
+
+    expect(importer).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancelAll clears every pending timer', async () => {
+    const { createPrefetchIntentController } = await import('../useRoutePrefetch');
+    const controller = createPrefetchIntentController();
+
+    controller.schedule('a', '/known');
+    controller.schedule('b', '/known');
+    controller.cancelAll();
+    vi.advanceTimersByTime(200);
+
+    expect(importer).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when path is missing or falsy', async () => {
+    const { createPrefetchIntentController } = await import('../useRoutePrefetch');
+    const controller = createPrefetchIntentController();
+
+    controller.schedule('item-1', undefined);
+    vi.advanceTimersByTime(200);
+
+    expect(importer).not.toHaveBeenCalled();
+  });
+});

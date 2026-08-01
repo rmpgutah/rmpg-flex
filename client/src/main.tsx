@@ -34,9 +34,10 @@ initUiClickSounds();
 // undecoded key plays SILENCE — that is why the full list is preloaded rather
 // than left to lazy-load on first play.
 {
-  const w = window as any;
-  const schedule: (cb: () => void) => unknown =
-    w.requestIdleCallback || ((cb: () => void) => w.setTimeout(cb, 1200));
+  const ric = window.requestIdleCallback;
+  const schedule: (cb: () => void) => unknown = ric
+    ? (cb: () => void) => ric(cb, { timeout: 3000 })
+    : (cb: () => void) => window.setTimeout(cb, 1200);
   schedule(() => {
     preloadSoundAssets();
     preloadSoundAssets(['navigate', 'ui_open', 'ui_close', 'ui_error']);

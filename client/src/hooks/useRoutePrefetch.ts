@@ -63,6 +63,55 @@ export function prefetchRoute(path: string): void {
   }
 }
 
+/** Hover/focus must survive this long before a chunk is actually warmed. Keeps
+ *  a fast pointer sweep through a long menu (e.g. the 54-item "Open Module"
+ *  submenu) from firing ~50 real imports in under a second. */
+const PREFETCH_INTENT_DELAY_MS = 120;
+
+/**
+ * Per-key hover/focus intent timers, keyed by an arbitrary caller-chosen
+ * string (typically the path itself). Not a React hook — call sites like
+ * MenuBar's `renderMenuItem` are plain closures invoked from `.map()`, not
+ * components, so a `useRef`-based hook cannot legally live there. A single
+ * controller instance is meant to be created once per owning component
+ * (e.g. `useRef(createPrefetchIntentController()).current`) and every
+ * pending timer cancelled via `cancelAll()` in that component's unmount
+ * cleanup — see MenuBar.tsx.
+ */
+export function createPrefetchIntentController() {
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  function cancel(key: string): void {
+    const t = timers.get(key);
+    if (t !== undefined) {
+      clearTimeout(t);
+      timers.delete(key);
+    }
+  }
+
+  /** Start (or restart) the intent timer for `key` → `path`. No-op without
+   *  a real path, so callers can wire this unconditionally and let a falsy
+   *  `path` (missing, or the item is disabled) make the handler inert. */
+  function schedule(key: string, path?: string | null): void {
+    cancel(key);
+    if (!path) return;
+    timers.set(
+      key,
+      setTimeout(() => {
+        timers.delete(key);
+        prefetchRoute(path);
+      }, PREFETCH_INTENT_DELAY_MS),
+    );
+  }
+
+  function cancelAll(): void {
+    timers.forEach((t) => clearTimeout(t));
+    timers.clear();
+  }
+
+  return { schedule, cancel, cancelAll };
+}
+
 /**
  * Routes worth warming during idle time, by role. Replaces the old hardcoded
  * DISPATCH_MAP_ROLES set, which prefetched Dispatch + Map (and their ~2.3 MB

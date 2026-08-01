@@ -27,7 +27,7 @@ import {
 } from '../utils/voiceChannel';
 import { setDetailLevel, getDetailLevel, type NarrativeDetail } from '../utils/narrativeComposer';
 import { apiFetch } from '../hooks/useApi';
-import { prefetchRoute } from '../hooks/useRoutePrefetch';
+import { createPrefetchIntentController } from '../hooks/useRoutePrefetch';
 
 // ============================================================
 // Types
@@ -111,6 +111,18 @@ export default function MenuBar({
   const location = useLocation();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [winInstallerUrl, setWinInstallerUrl] = useState<string | null>(null);
+
+  // Hover/focus-intent gate in front of prefetchRoute (see Finding 1 of the
+  // 2026-07-31 load-time fix wave): a fast pointer sweep through the 54-item
+  // "Open Module" submenu must NOT fire ~50 real chunk imports. One
+  // controller instance per MenuBar mount; every pending timer is cancelled
+  // on unmount so nothing fires after the menu (and its `path` closures) is
+  // gone.
+  const prefetchIntentRef = useRef(createPrefetchIntentController());
+  useEffect(() => {
+    const controller = prefetchIntentRef.current;
+    return () => controller.cancelAll();
+  }, []);
 
   // Resolve the current Windows installer from the API instead of hardcoding a
   // filename. The previous literal — https://rmpgutah.us/downloads/RMPG-Flex-Setup-5.8.1.exe
@@ -1112,14 +1124,21 @@ export default function MenuBar({
     // Regular action. `item.path` is only set for plain navigate('/x') actions
     // (see MenuAction.path) — warm that route's chunk on hover/focus so the
     // click resolves from the module cache instead of showing "Loading
-    // module". Best-effort: prefetchRoute swallows everything itself.
+    // module". Gated behind a 120ms hover/focus-intent timer (see the
+    // prefetchIntentRef controller above) so sweeping past this item doesn't
+    // fire a real import(); never wired for a disabled item or one with no
+    // path. Best-effort either way: prefetchRoute swallows everything itself.
+    const prefetchKey = `action-${index}-${item.path ?? ''}`;
+    const canPrefetch = Boolean(item.path) && !isDisabled;
     return (
       <button type="button"
         key={`action-${index}`}
         className={`menu-item transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none ${isDisabled ? 'menu-item-disabled' : ''}`}
         onClick={() => !isDisabled && handleAction(item.action)}
-        onMouseEnter={item.path ? () => prefetchRoute(item.path as string) : undefined}
-        onFocus={item.path ? () => prefetchRoute(item.path as string) : undefined}
+        onMouseEnter={canPrefetch ? () => prefetchIntentRef.current.schedule(prefetchKey, item.path) : undefined}
+        onMouseLeave={canPrefetch ? () => prefetchIntentRef.current.cancel(prefetchKey) : undefined}
+        onFocus={canPrefetch ? () => prefetchIntentRef.current.schedule(prefetchKey, item.path) : undefined}
+        onBlur={canPrefetch ? () => prefetchIntentRef.current.cancel(prefetchKey) : undefined}
         disabled={isDisabled}
         role="menuitem"
       >
