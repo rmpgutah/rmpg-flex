@@ -20,6 +20,7 @@ import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import { prefetchRoute, ROLE_PREFETCH_ROUTES } from './hooks/useRoutePrefetch';
+import { importDashboard } from './routes/routeModules';
 import LoginPage from './pages/LoginPage';
 // Dispatch + Map are the two heaviest field screens (~6k lines each plus deep
 // import trees). They're lazy-split to keep them OUT of the login/critical
@@ -36,7 +37,15 @@ const MapPage = lazyRetry(importMap);
 // imports) into the entry chunk, so every LOGIN paid for it too. It's lazy
 // now, and warmed the instant auth succeeds (see AppRoutes below), which
 // keeps the landing instant without taxing the login path.
-export const importDashboard = () => import('./pages/DashboardPage');
+//
+// The factory itself lives in routes/routeModules.ts (imported above), not
+// here — routeModules.ts is also imported (transitively, via useRoutePrefetch)
+// by THIS file, so defining it here would make it a circular import that
+// reads an uninitialized `const` at module-eval time (TDZ ReferenceError,
+// breaks `npm run dev`; production's Rollup bundling hides the same cycle by
+// flattening scopes). There must be exactly ONE factory for DashboardPage in
+// the app — do not add a second inline `() => import('./pages/DashboardPage')`
+// here, or the prefetch and the router would warm two different chunks.
 const DashboardPage = lazyRetry(importDashboard);
 // Public downloads/marketing route — 25.3 KB plus KioskOsInstallGuide's
 // 15.5 KB. It was static, so every LOGIN downloaded and parsed it.

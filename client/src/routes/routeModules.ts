@@ -13,9 +13,20 @@
 // prefetch warms the one the router doesn't use. routeModules.test.ts pins
 // coverage against navCatalog, but it cannot catch a specifier that points at
 // the wrong-but-real module — copy, don't retype.
-import { importDashboard } from '../App';
-
+//
+// importDashboard is defined HERE, not in App.tsx, and imported BY App.tsx.
+// App.tsx also imports this module transitively (via useRoutePrefetch), so if
+// the factory lived
+// in App.tsx as `export const importDashboard = ...` this file would import
+// App.tsx back, and App.tsx's own import of it would read the binding while
+// still in its temporal dead zone -> ReferenceError at module-eval time,
+// breaking `npm run dev` (production's Rollup bundling papers over the same
+// cycle by flattening scopes, so only dev surfaces it). Keeping the one true
+// DashboardPage factory in this leaf module (which imports nothing from
+// App.tsx) breaks the cycle instead of hiding it.
 export type RouteImporter = () => Promise<unknown>;
+
+export const importDashboard = () => import('../pages/DashboardPage');
 
 export const ROUTE_MODULES: Readonly<Record<string, RouteImporter>> = {
   '/': importDashboard,
