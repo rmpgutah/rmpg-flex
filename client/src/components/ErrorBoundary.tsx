@@ -5,7 +5,17 @@
 
 import React, { Component, type ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
-import { CHUNK_RELOAD_KEY, CHUNK_RELOAD_WINDOW_MS, isChunkLoadError } from '../utils/chunkRetry';
+import {
+  CHUNK_RELOAD_KEY,
+  CHUNK_RELOAD_WINDOW_MS,
+  isChunkLoadError,
+  repairPoisonedChunkInBrowser,
+  evictPoisonedChunkCachesInBrowser,
+} from '../utils/chunkRetry';
+
+/** Ceiling on the pre-reload repair fetch, so a hung network can never make the
+ *  Reload button feel dead. Mirrors index.html's 3s entry-recovery ceiling. */
+const RECOVERY_FETCH_CEILING_MS = 3_000;
 
 interface Props {
   children: ReactNode;
@@ -71,6 +81,37 @@ export default class ErrorBoundary extends Component<Props, State> {
     // Clear the chunk-reload guard so the fresh load can auto-retry if chunks
     // still fail (e.g. during a multi-minute CF Pages propagation window).
     try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* private mode */ }
+
+    // A PLAIN reload cannot fix the HTTP-cache-poison failure class — this
+    // button was a guaranteed no-op for it (same current index → same poisoned
+    // cached chunk → this same card, forever; the user's only escape was
+    // knowing to press Cmd+Shift+R). So when the error that got us here is a
+    // chunk failure, bypass-refetch the chunk FIRST to overwrite the poisoned
+    // cache entry, then reload. Bounded by RECOVERY_FETCH_CEILING_MS so a hung
+    // network can never make the Reload button feel dead — the same reasoning
+    // as index.html's 3s ceiling on its entry recovery.
+    const err = this.state.error;
+    if (err && isChunkLoadError(err)) {
+      // BROAD purge, then repair, then reload — and the ORDER is load-bearing.
+      // The eviction must run FIRST: a `fetch(..., {cache:'reload'})` bypasses
+      // the HTTP cache but is still dispatched through the service worker's
+      // fetch handler, so repairing while a poisoned SW is registered lets that
+      // same SW answer the repair request from its own bad cache. Unregistering
+      // first means the repair fetch reaches the network.
+      //
+      // Purging is deliberately confined to this explicit, user-initiated
+      // button — it costs offline capability until the next online load, which
+      // is not a price to pay silently on an automatic retry path.
+      const recover = async () => {
+        await evictPoisonedChunkCachesInBrowser();
+        await repairPoisonedChunkInBrowser(err);
+      };
+      void Promise.race([
+        recover(),
+        new Promise((r) => setTimeout(r, RECOVERY_FETCH_CEILING_MS)),
+      ]).then(() => window.location.reload(), () => window.location.reload());
+      return;
+    }
     window.location.reload();
   };
 
