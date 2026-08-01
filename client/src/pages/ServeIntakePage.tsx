@@ -18,6 +18,7 @@ import { parseDefendants, type DetectedDefendant } from '../utils/serveIntakeDef
 import type { FieldVerdict } from '../types/serveIntakeJudge';
 import DefendantsPicker from '../components/serve-intake/DefendantsPicker';
 import JudgeFlagChip from '../components/serve-intake/JudgeFlagChip';
+import { toDisplayLabel } from '../utils/formatters';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -1333,7 +1334,7 @@ export default function ServeIntakePage() {
                   <div key={key} className="flex items-start gap-2 p-2 bg-surface-sunken rounded-sm">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1">
-                        <span className="text-[9px] text-rmpg-500 uppercase font-mono">{key.replace(/_/g, ' ')}</span>
+                        <span className="text-[9px] text-rmpg-500 uppercase font-mono">{toDisplayLabel(key)}</span>
                         <span className={`text-[8px] font-bold ${confidenceColor(field.confidence)}`}>
                           {(field.confidence * 100).toFixed(0)}%
                         </span>
@@ -1516,7 +1517,7 @@ export default function ServeIntakePage() {
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Serve Queue</span>
                 </div>
                 <p className="text-sm font-bold text-rmpg-100 font-mono">{result.call_number}</p>
-                <p className="text-[10px] text-rmpg-400">{result.extracted?.processType ? result.extracted.processType.charAt(0).toUpperCase() + result.extracted.processType.slice(1).replace(/_/g, ' ') : 'PSO Client Request'} — Pending</p>
+                <p className="text-[10px] text-rmpg-400">{result.extracted?.processType ? result.extracted.processType.charAt(0).toUpperCase() + toDisplayLabel(result.extracted.processType.slice(1)) : 'PSO Client Request'} — Pending</p>
                 <button onClick={() => navigate('/dispatch')} className="text-[9px] text-brand-400 mt-1 hover:underline">
                   View in Dispatch →
                 </button>
@@ -1546,7 +1547,7 @@ export default function ServeIntakePage() {
                     <span className="text-rmpg-300 truncate max-w-[260px]">{d.file_name}</span>
                     {d.success !== false ? (
                       <>
-                        <span className="text-rmpg-500">{(d.doc_type || 'unclassified').replace(/_/g, ' ')}</span>
+                        <span className="text-rmpg-500">{toDisplayLabel(d.doc_type || 'unclassified')}</span>
                         <span className="text-rmpg-500">{(d.ocr_engine && OCR_ENGINE_LABELS[d.ocr_engine]) || d.ocr_engine || ''}</span>
                         <span className={`font-bold ${confidenceColor(d.confidence ?? 0)}`}>{Math.round((d.confidence ?? 0) * 100)}%</span>
                       </>

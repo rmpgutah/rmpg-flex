@@ -13,6 +13,7 @@ import {
   PSO_CATEGORIES, codesInCategory, lookupPsoCode,
   type PsoCategory,
 } from '../../constants/processServiceCodes';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -980,7 +981,7 @@ export default function ServeAttemptModal({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-rmpg-400">Type</span>
-                    <span className="text-rmpg-100 capitalize">{attemptType?.replace(/_/g, ' ')}</span>
+                    <span className="text-rmpg-100 capitalize">{toDisplayLabel(attemptType)}</span>
                   </div>
                   {attemptType === 'failed' && failedReason && (
                     <div className="flex justify-between">
@@ -988,7 +989,7 @@ export default function ServeAttemptModal({
                       <span className="text-rmpg-100 capitalize">
                         {failedReason === 'other' && customReason.trim()
                           ? customReason.trim()
-                          : failedReason.replace(/_/g, ' ')}
+                          : toDisplayLabel(failedReason)}
                       </span>
                     </div>
                   )}

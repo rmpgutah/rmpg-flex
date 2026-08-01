@@ -6,6 +6,7 @@ import {
 import { apiFetch } from '../../../hooks/useApi';
 import { HealthMetric, CleanupSection } from './AISharedComponents';
 import { humanizeType, humanizeStatus } from '../../../utils/statusLabels';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   setError: (e: string | null) => void;
@@ -144,7 +145,7 @@ export default function AIIntelligencePanel({ setError }: Props) {
                     {Object.entries(healthReport.database.record_counts).map(([table, count]) => (
                       <div key={table} className="text-center px-2 py-1.5 bg-surface-sunken border border-border-default rounded">
                         <div className="text-xs font-mono text-rmpg-100">{String(count)}</div>
-                        <div className="text-[9px] text-rmpg-600 mt-0.5 truncate">{table.replace(/_/g, ' ')}</div>
+                        <div className="text-[9px] text-rmpg-600 mt-0.5 truncate">{toDisplayLabel(table)}</div>
                       </div>
                     ))}
                   </div>

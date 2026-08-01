@@ -216,7 +216,7 @@ export default function CriminalHistoryPage() {
           type: 'incident',
           date: inc.created_at || '',
           reference_number: inc.incident_number || '',
-          description: `${(inc.incident_type || '').replace(/_/g, ' ').toUpperCase()}${inc.location_address ? ` — ${inc.location_address}` : ''}`,
+          description: `${toDisplayLabel(inc.incident_type || '').toUpperCase()}${inc.location_address ? ` — ${inc.location_address}` : ''}`,
           status: inc.status || '',
           location: inc.location_address,
         });
@@ -229,7 +229,7 @@ export default function CriminalHistoryPage() {
           type: 'call',
           date: call.created_at || '',
           reference_number: call.call_number || '',
-          description: `${(call.incident_type || 'Call').replace(/_/g, ' ').toUpperCase()}${call.location_address ? ` — ${call.location_address}` : ''}`,
+          description: `${toDisplayLabel(call.incident_type || 'Call').toUpperCase()}${call.location_address ? ` — ${call.location_address}` : ''}`,
           status: call.status || '',
           location: call.location_address,
         });
@@ -648,7 +648,7 @@ export default function CriminalHistoryPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className={`text-[8px] font-bold uppercase px-1 py-0.5 border ${typeColor(entry.type)}`}>
-                              {entry.type.replace(/_/g, ' ').toUpperCase()}
+                              {toDisplayLabel(entry.type).toUpperCase()}
                             </span>
                             <span className="text-[10px] font-mono font-bold text-rmpg-200">{entry.reference_number}</span>
                             <span className="text-[9px] text-rmpg-500">{entry.date ? parseTimestamp(entry.date).toLocaleDateString() : ''}</span>
@@ -686,7 +686,7 @@ export default function CriminalHistoryPage() {
                             <div className="flex items-center gap-2">
                               {typeIcon(entry.type)}
                               <span className={`text-[8px] font-bold uppercase px-1 py-0.5 border ${typeColor(entry.type)}`}>
-                                {entry.type.replace(/_/g, ' ').toUpperCase()}
+                                {toDisplayLabel(entry.type).toUpperCase()}
                               </span>
                               <span className="text-[10px] font-mono font-bold text-rmpg-200">{entry.reference_number}</span>
                             </div>

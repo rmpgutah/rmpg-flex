@@ -7,6 +7,7 @@ import type { DocRecord, DocRevisionMeta } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/ToastProvider';
 import { parseTimestamp } from '../../utils/dateUtils';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface Props {
   documentId: number;
@@ -122,7 +123,7 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
           placeholder="Document title"
         />
         <span className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm font-bold ${doc.status === 'finalized' ? 'text-rmpg-950 bg-[#d4a017]' : 'text-[#d4a017] border border-[#d4a017]/40'}`}>
-          {doc.status.replace(/_/g, ' ')}
+          {toDisplayLabel(doc.status)}
         </span>
         <span className="text-[9px] text-rmpg-500 font-mono">r{doc.revision}</span>
         <button type="button" aria-label="Revisions" title="Revisions" className="toolbar-btn p-1" onClick={openRevisions}><History className="w-3.5 h-3.5" /></button>

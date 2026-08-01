@@ -33,6 +33,7 @@ import ExportButton from '../components/ExportButton';
 import { safeDateStr } from '../utils/dateUtils';
 import { openSkipTracerReportPdf } from '../utils/skipTracerReportPdf';
 import { withAlpha } from '../utils/withAlpha';
+import { toDisplayLabel } from '../utils/formatters';
 
 // Search modes
 type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
@@ -878,7 +879,7 @@ function renderAllFields(obj: any, renderFieldRow: (label: string, value: any, c
       if (value === null || value === undefined || value === '') return null;
       if (typeof value === 'object' && !Array.isArray(value)) return null; // skip nested objects
       if (Array.isArray(value) && value.length === 0) return null;
-      const label = key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim().toUpperCase();
+      const label = toDisplayLabel(key).replace(/([A-Z])/g, ' $1').trim().toUpperCase();
       const displayValue = Array.isArray(value) ? value.join(', ') : value;
       return <React.Fragment key={key}>{renderFieldRow(label, displayValue, key)}</React.Fragment>;
     });
@@ -925,7 +926,7 @@ function renderArraySection(
           ) : typeof item === 'object' ? (
             Object.entries(item).map(([k, v]) => {
               if (!v) return null;
-              return <React.Fragment key={k}>{renderFieldRow(k.replace(/_/g, ' ').toUpperCase(), v)}</React.Fragment>;
+              return <React.Fragment key={k}>{renderFieldRow(toDisplayLabel(k).toUpperCase(), v)}</React.Fragment>;
             })
           ) : (
             <span className="text-[11px] text-rmpg-200 font-mono">{String(item)}</span>

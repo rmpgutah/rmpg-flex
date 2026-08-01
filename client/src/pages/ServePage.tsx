@@ -1403,7 +1403,7 @@ export default function ServePage() {
               <div style="color:var(--text-primary);background:var(--surface-raised);padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
                 <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${escapeHtml(job.recipient_name)}</div>
                 <div style="font-size:11px;color:var(--text-secondary);">${escapeHtml(fullAddr) || 'No address'}</div>
-                <div style="font-size:10px;color:var(--text-muted);margin-top:4px;text-transform:uppercase;">${escapeHtml(job.status.replace(/_/g, ' '))} &middot; ${escapeHtml((job.document_type || '').replace(/_/g, ' '))}</div>
+                <div style="font-size:10px;color:var(--text-muted);margin-top:4px;text-transform:uppercase;">${escapeHtml(toDisplayLabel(job.status))} &middot; ${escapeHtml(toDisplayLabel(job.document_type || ''))}</div>
                 <div style="margin-top:8px;display:flex;gap:6px;">
                   <button data-action="trail" data-job-id="${job.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">History</button>
                   <button data-action="preview" data-job-id="${job.id}" data-lng="${job.recipient_lng}" data-lat="${job.recipient_lat}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:monospace;">Preview drive time</button>

@@ -1061,7 +1061,7 @@ export default function CitationsPage() {
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-[11px] font-mono font-bold text-rmpg-100">{c.citation_number}</span>
                 <span className={`inline-flex items-center px-1.5 py-0 text-[9px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
-                  {c.status.replace(/_/g, ' ').toUpperCase()}
+                  {toDisplayLabel(c.status).toUpperCase()}
                 </span>
                 <span className={`inline-flex items-center px-1.5 py-0 text-[9px] font-bold uppercase border panel-beveled ${TYPE_BADGE[c.type] || ''}`}>
                   {toDisplayLabel(c.type)}
@@ -1110,7 +1110,7 @@ export default function CitationsPage() {
           <Hash size={14} className="text-rmpg-400" />
           <h2 className="text-sm font-mono font-bold text-rmpg-100">{c.citation_number}</h2>
           <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
-            {c.status.replace(/_/g, ' ').toUpperCase()}
+            {toDisplayLabel(c.status).toUpperCase()}
           </span>
           <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase border panel-beveled ${TYPE_BADGE[c.type] || ''}`}>
             {toDisplayLabel(c.type)}
@@ -1185,7 +1185,7 @@ export default function CitationsPage() {
                     c.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
                     c.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                     'bg-surface-sunken text-rmpg-400 border-border-default'
-                  }`}>{c.offense_level.replace(/_/g, ' ')}</span>
+                  }`}>{toDisplayLabel(c.offense_level)}</span>
                 </div>
               )}
               {c.fine_amount != null && (
@@ -1389,7 +1389,7 @@ export default function CitationsPage() {
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {(c as any).plea && <div><span className="text-rmpg-400">Plea:</span> <span className="text-rmpg-200 capitalize">{(c as any).plea}</span></div>}
-                {(c as any).verdict && <div><span className="text-rmpg-400">Verdict:</span> <span className={`font-bold capitalize ${(c as any).verdict === 'guilty' ? 'text-red-400' : (c as any).verdict === 'not_guilty' ? 'text-green-400' : 'text-rmpg-200'}`}>{(c as any).verdict.replace(/_/g, ' ')}</span></div>}
+                {(c as any).verdict && <div><span className="text-rmpg-400">Verdict:</span> <span className={`font-bold capitalize ${(c as any).verdict === 'guilty' ? 'text-red-400' : (c as any).verdict === 'not_guilty' ? 'text-green-400' : 'text-rmpg-200'}`}>{toDisplayLabel((c as any).verdict)}</span></div>}
                 {(c as any).sentence && <div><span className="text-rmpg-400">Sentence:</span> <span className="text-rmpg-200">{(c as any).sentence}</span></div>}
                 {(c as any).disposition_date && <div><span className="text-rmpg-400">Disposition Date:</span> <span className="text-rmpg-200">{formatDate((c as any).disposition_date)}</span></div>}
               </div>

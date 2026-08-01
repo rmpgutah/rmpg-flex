@@ -9,6 +9,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { safeTimeStr, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -1150,7 +1151,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                   >
                     <Camera className="w-3 h-3 text-rmpg-400 shrink-0" />
                     <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-mono uppercase border ${typeColor}`}>
-                      {evt.event_type.replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(evt.event_type).toUpperCase()}
                     </span>
                     {evt.call_sign && (
                       <span className="text-brand-400 font-mono font-medium">{evt.call_sign}</span>

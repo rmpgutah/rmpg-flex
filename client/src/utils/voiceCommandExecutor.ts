@@ -63,7 +63,7 @@ export async function executeVoiceCommand(
 // ─── Helpers ────────────────────────────────────────────────
 
 function formatAction(action: string): string {
-  return action.replace(/_/g, ' ');
+  return toDisplayLabel(action);
 }
 
 /** Find the current user's assigned unit */

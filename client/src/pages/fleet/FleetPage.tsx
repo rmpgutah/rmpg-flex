@@ -43,6 +43,7 @@ import type {
   FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
   FleetPersonnelData, FuelType,
 } from '../../types';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ============================================================
 // RMPG Flex — Fleet Vehicle Management Page (Refactored)
@@ -1366,7 +1367,7 @@ export default function FleetPage() {
         onClose={() => setDeletingMaintenance(null)}
         onConfirm={handleDeleteMaintenance}
         title="Delete Maintenance Record"
-        message={`Delete the ${deletingMaintenance?.type?.replace(/_/g, ' ').toUpperCase() || ''} record: "${deletingMaintenance?.description || ''}"? This cannot be undone.`}
+        message={`Delete the ${toDisplayLabel(deletingMaintenance?.type).toUpperCase() || ''} record: "${deletingMaintenance?.description || ''}"? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}
@@ -1377,7 +1378,7 @@ export default function FleetPage() {
         onClose={() => setDeletingInspection(null)}
         onConfirm={handleDeleteInspection}
         title="Delete Inspection"
-        message={`Delete the ${deletingInspection?.inspection_type?.replace(/_/g, ' ') || ''} inspection from ${deletingInspection?.inspection_date ? parseTimestamp(deletingInspection.inspection_date).toLocaleDateString() : ''}? This cannot be undone.`}
+        message={`Delete the ${toDisplayLabel(deletingInspection?.inspection_type) || ''} inspection from ${deletingInspection?.inspection_date ? parseTimestamp(deletingInspection.inspection_date).toLocaleDateString() : ''}? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}

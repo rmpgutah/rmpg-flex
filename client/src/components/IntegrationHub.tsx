@@ -13,6 +13,7 @@ import PanelTitleBar from './PanelTitleBar';
 import IntegrationWizardModal from './IntegrationWizardModal';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ─── Icon & Health Mappings ──────────────────────────────
 
@@ -41,7 +42,7 @@ const HEALTH_LABEL: Record<string, { text: string; color: string }> = {
 
 function formatStats(stats: Record<string, number>): string {
   return Object.entries(stats)
-    .map(([key, val]) => `${val.toLocaleString()} ${key.replace(/_/g, ' ').toUpperCase()}`)
+    .map(([key, val]) => `${val.toLocaleString()} ${toDisplayLabel(key).toUpperCase()}`)
     .join(' · ');
 }
 

@@ -264,7 +264,7 @@ export function generateShiftReportPdf(input: ShiftReportInput): jsPDF {
       row(cols, {
         incident_number: i.incident_number ?? '—',
         incident_type: ellipsize(toDisplayLabel(i.incident_type), 26),
-        status: ellipsize((i.status ?? '—').replace(/_/g, ' '), 14),
+        status: ellipsize(toDisplayLabel(i.status ?? '—'), 14),
         location: ellipsize(i.location_address ?? '—', 42),
       }, idx % 2 === 1);
     });

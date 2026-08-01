@@ -1142,7 +1142,7 @@ export default function CaseManagementPage() {
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <SlaBadge caseRow={c} />
                     <span className={`text-[9px] px-1.5 py-0.5 border ${getStatusColor(c.status)}`}>
-                      {c.status.replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(c.status).toUpperCase()}
                     </span>
                   </div>
                 </div>
@@ -1210,7 +1210,7 @@ export default function CaseManagementPage() {
                   {/* Status + Priority badges */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-[10px] px-2 py-1 border font-bold ${getStatusColor(selected.status)}`}>
-                      {selected.status.replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(selected.status).toUpperCase()}
                     </span>
                     <span className={`text-[10px] px-2 py-1 border bg-rmpg-700/30 border-rmpg-600/50 font-bold ${getPriorityColor(selected.priority)}`}>
                       {formatEnumValue(selected.priority)}
@@ -1283,7 +1283,7 @@ export default function CaseManagementPage() {
                       {(selected as any).approval_status && (
                         <div className="flex items-center gap-2 mb-2">
                           <span className={`text-[10px] px-2 py-0.5 border font-bold ${APPROVAL_STATUS_COLORS[(selected as any).approval_status] || ''}`}>
-                            {((selected as any).approval_status || '').replace(/_/g, ' ').toUpperCase()}
+                            {toDisplayLabel((selected as any).approval_status || '').toUpperCase()}
                           </span>
                           {(selected as any).return_reason && (
                             <span className="text-[10px] text-red-400 italic">Reason: {(selected as any).return_reason}</span>

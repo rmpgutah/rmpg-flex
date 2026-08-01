@@ -12,7 +12,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { downloadPdfV2 } from '../utils/pdf/v2';
 import { dossierSchema, type DossierData, type LinkedIntelEntry } from '../utils/pdf/v2/forms/dossier';
-import { formatLabel } from '../utils/formatters';
+import { toDisplayLabel, formatLabel } from '../utils/formatters';
 import { formatDate } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 
@@ -335,7 +335,7 @@ export default function PersonDossierPage() {
             <div key={`${e.kind}:${e.id}`} className="flex items-baseline gap-2 text-[11px] py-[2px] border-b border-border-default last:border-b-0">
               <span className="text-rmpg-400 w-20 shrink-0">{formatDate(e.date)}</span>
               <span className={`w-28 shrink-0 text-[9px] font-semibold ${KIND_COLOR[e.kind] || 'text-rmpg-400'}`}>
-                {e.kind.replace(/_/g, ' ').toUpperCase()}
+                {toDisplayLabel(e.kind).toUpperCase()}
               </span>
               <span className="text-rmpg-200">{e.title}</span>
               {e.status && <span className="text-rmpg-400 text-[9px]">({formatLabel(e.status)})</span>}

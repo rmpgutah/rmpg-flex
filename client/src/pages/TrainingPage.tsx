@@ -23,6 +23,7 @@ import { openTrainingCertificatePdf } from '../utils/trainingCertificatePdf';
 import type {
   TrainingRecord, TrainingRequirement, TrainingCategory, TrainingStatus,
 } from '../types';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── Constants ──────────────────────────────────────────────
 const CATEGORIES: TrainingCategory[] = [
@@ -561,7 +562,7 @@ export default function TrainingPage() {
               {recordToDelete.certificate_number && (
                 <div className="text-rmpg-500">Cert #{recordToDelete.certificate_number}</div>
               )}
-              <div className="text-rmpg-500">Status: {String(recordToDelete.status).replace(/_/g, ' ')}</div>
+              <div className="text-rmpg-500">Status: {toDisplayLabel(String(recordToDelete.status))}</div>
             </div>
           )
         }
@@ -581,7 +582,7 @@ export default function TrainingPage() {
           requirementToDelete && (
             <div className="space-y-0.5">
               <div className="font-medium text-rmpg-100">{requirementToDelete.course_name}</div>
-              <div>Category: {String(requirementToDelete.category).replace(/_/g, ' ')}</div>
+              <div>Category: {toDisplayLabel(String(requirementToDelete.category))}</div>
               {requirementToDelete.is_mandatory ? (
                 <div className="text-red-400">Mandatory — deleting drops the compliance gate</div>
               ) : (
@@ -620,7 +621,7 @@ export default function TrainingPage() {
                 <div>
                   <label htmlFor="ff-trainingpage-1" className="text-[9px] text-rmpg-400 uppercase font-bold">Category</label>
                   <select id="ff-trainingpage-1" value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} className="input-dark w-full mt-1 text-xs">
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+                    {CATEGORIES.map(c => <option key={c} value={c}>{toDisplayLabel(c)}</option>)}
                   </select>
                 </div>
                 <div>
@@ -810,7 +811,7 @@ function DashboardTab({ records, requirements, officers }: {
               return (
                 <div key={cat.category} className="flex items-center gap-3">
                   <span className={`w-24 text-[10px] font-bold uppercase border px-1.5 py-0.5 ${CATEGORY_COLORS[cat.category]}`}>
-                    {cat.category.replace(/_/g, ' ').toUpperCase()}
+                    {toDisplayLabel(cat.category).toUpperCase()}
                   </span>
                   <div className="flex-1 h-1.5 bg-rmpg-700 rounded-sm overflow-hidden">
                     <div
@@ -885,7 +886,7 @@ function DashboardTab({ records, requirements, officers }: {
                   <span className="text-rmpg-500">—</span>
                   <span className="text-rmpg-300">{r.course_name}</span>
                   <span className={`ml-auto text-[9px] font-bold uppercase px-1.5 py-0.5 ${STATUS_COLORS[r.status].bg} ${STATUS_COLORS[r.status].text} border ${STATUS_COLORS[r.status].border}`}>
-                    {String(r.status).replace(/_/g, ' ').toUpperCase()}
+                    {toDisplayLabel(String(r.status)).toUpperCase()}
                   </span>
                 </div>
               ))}
@@ -1177,7 +1178,7 @@ function RecordsTab({
         >
           <option value="all">All Categories</option>
           {CATEGORIES.map(c => (
-            <option key={c} value={c}>{c.replace(/_/g, ' ').toUpperCase()}</option>
+            <option key={c} value={c}>{toDisplayLabel(c).toUpperCase()}</option>
           ))}
         </select>
         <select id="ff-trainingpage-8"
@@ -1245,7 +1246,7 @@ function RecordsTab({
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{record.course_name}</td>
                   <td className="py-1.5 px-2">
                     <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase border ${CATEGORY_COLORS[record.category] || CATEGORY_COLORS.other}`}>
-                      {record.category.replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(record.category).toUpperCase()}
                     </span>
                   </td>
                   <td className="py-1.5 px-2 text-rmpg-400">{record.provider || '—'}</td>
@@ -1350,7 +1351,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                     <h3 className="text-sm font-bold text-rmpg-100">{req.course_name}</h3>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase border ${CATEGORY_COLORS[req.category] || CATEGORY_COLORS.other}`}>
-                        {req.category.replace(/_/g, ' ').toUpperCase()}
+                        {toDisplayLabel(req.category).toUpperCase()}
                       </span>
                       {req.is_mandatory && (
                         <span className="text-[8px] font-bold uppercase bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5">
@@ -1378,7 +1379,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                 <div className="grid grid-cols-3 gap-2 text-[10px] text-rmpg-400 mb-2">
                   <div>
                     <span className="text-rmpg-500">Roles: </span>
-                    <span className="text-rmpg-300">{(Array.isArray(req.required_for_roles) ? req.required_for_roles : (() => { try { return JSON.parse(req.required_for_roles || '[]'); } catch { return []; } })()).map((r: string) => r.replace(/_/g, ' ').toUpperCase()).join(', ') || '—'}</span>
+                    <span className="text-rmpg-300">{(Array.isArray(req.required_for_roles) ? req.required_for_roles : (() => { try { return JSON.parse(req.required_for_roles || '[]'); } catch { return []; } })()).map((r: string) => toDisplayLabel(r).toUpperCase()).join(', ') || '—'}</span>
                   </div>
                   <div>
                     <span className="text-rmpg-500">Min Hours: </span>
@@ -1560,7 +1561,7 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase ${s.bg} ${s.text} border ${s.border}`}>
       <Icon className="w-2.5 h-2.5" />
-      {status.replace(/_/g, ' ').toUpperCase()}
+      {toDisplayLabel(status).toUpperCase()}
     </span>
   );
 }
@@ -1692,7 +1693,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
                 className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               >
                 {CATEGORIES.map(c => (
-                  <option key={c} value={c}>{c.replace(/_/g, ' ').toUpperCase()}</option>
+                  <option key={c} value={c}>{toDisplayLabel(c).toUpperCase()}</option>
                 ))}
               </select>
             </div>
@@ -1882,7 +1883,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
                 className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               >
                 {CATEGORIES.map(c => (
-                  <option key={c} value={c}>{c.replace(/_/g, ' ').toUpperCase()}</option>
+                  <option key={c} value={c}>{toDisplayLabel(c).toUpperCase()}</option>
                 ))}
               </select>
             </div>
@@ -1913,7 +1914,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
                     form.required_for_roles.includes(role) ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
                   }`}
                 >
-                  {role.replace(/_/g, ' ').toUpperCase()}
+                  {toDisplayLabel(role).toUpperCase()}
                 </button>
               ))}
             </div>

@@ -546,7 +546,7 @@ export default function CodeEnforcementPage() {
               </div>
               <select id="ff-codeenforcementpage-1" value={vFilterStatus} onChange={e => { setVFilterStatus(e.target.value); setVPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
                 <option value="">All</option>
-                {Object.keys(VIOLATION_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>)}
+                {Object.keys(VIOLATION_STATUS_COLORS).map(s => <option key={s} value={s}>{toDisplayLabel(s).toUpperCase()}</option>)}
               </select>
             </>
           ) : (
@@ -557,7 +557,7 @@ export default function CodeEnforcementPage() {
               </div>
               <select id="ff-codeenforcementpage-3" value={tFilterStatus} onChange={e => { setTFilterStatus(e.target.value); setTPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
                 <option value="">All</option>
-                {Object.keys(TOW_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>)}
+                {Object.keys(TOW_STATUS_COLORS).map(s => <option key={s} value={s}>{toDisplayLabel(s).toUpperCase()}</option>)}
               </select>
             </>
           )}
@@ -597,7 +597,7 @@ export default function CodeEnforcementPage() {
                     )}
                   </div>
                   <span className={`text-[9px] px-1.5 py-0.5 border ${VIOLATION_STATUS_COLORS[v.status] || ''}`}>
-                    {v.status.replace(/_/g, ' ').toUpperCase()}
+                    {toDisplayLabel(v.status).toUpperCase()}
                   </span>
                 </div>
                 <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{v.description}</div>
@@ -631,7 +631,7 @@ export default function CodeEnforcementPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-mono font-bold text-rmpg-100">{t.tow_number}</span>
                   <span className={`text-[9px] px-1.5 py-0.5 border ${TOW_STATUS_COLORS[t.status] || ''}`}>
-                    {t.status.replace(/_/g, ' ').toUpperCase()}
+                    {toDisplayLabel(t.status).toUpperCase()}
                   </span>
                 </div>
                 <div className="text-[10px] text-rmpg-300 truncate mt-0.5">
@@ -665,7 +665,7 @@ export default function CodeEnforcementPage() {
             <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border font-bold ${VIOLATION_STATUS_COLORS[selectedViolation.status] || ''}`}>
-                  {selectedViolation.status.replace(/_/g, ' ').toUpperCase()}
+                  {toDisplayLabel(selectedViolation.status).toUpperCase()}
                 </span>
                 <span className="text-[10px] px-2 py-1 border bg-rmpg-700/30 text-rmpg-300 border-rmpg-600/50">
                   {VIOLATION_TYPES.find(v => v.value === selectedViolation.violation_type)?.label || selectedViolation.violation_type}
@@ -697,7 +697,7 @@ export default function CodeEnforcementPage() {
                       className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`}
                       style={isMobile ? { minHeight: 48 } : undefined}
                     >
-                      {s.replace(/_/g, ' ')}
+                      {toDisplayLabel(s)}
                     </button>
                   ))}
                   {!canEnforce && (
@@ -801,7 +801,7 @@ export default function CodeEnforcementPage() {
             <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border font-bold ${TOW_STATUS_COLORS[selectedTow.status] || ''}`}>
-                  {selectedTow.status.replace(/_/g, ' ').toUpperCase()}
+                  {toDisplayLabel(selectedTow.status).toUpperCase()}
                 </span>
                 <span className="text-[10px] px-2 py-1 border bg-rmpg-700/30 text-rmpg-300 border-rmpg-600/50">
                   {TOW_REASONS.find(r => r.value === selectedTow.tow_reason)?.label || selectedTow.tow_reason}
@@ -832,7 +832,7 @@ export default function CodeEnforcementPage() {
                       className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`}
                       style={isMobile ? { minHeight: 48 } : undefined}
                     >
-                      {s.replace(/_/g, ' ')}
+                      {toDisplayLabel(s)}
                     </button>
                   ))}
                   {!canEnforce && (
