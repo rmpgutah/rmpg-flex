@@ -281,6 +281,24 @@ export function applyFieldNumber(label: string): string {
  */
 export function sanitizePdfText(text: string, opts: { preserveMarkers?: boolean; preserveCase?: boolean } = {}): string {
   if (!text) return text;
+  // Coerce non-strings before touching string methods.
+  //
+  // The signature says `string`, but record data reaches this function from
+  // `any`-typed D1 rows, so a numeric column arrives as a NUMBER at runtime and
+  // TypeScript never sees it. `generateBusinessReport` passing `employee_count`
+  // straight through threw `TypeError: text.replace is not a function` and
+  // aborted the whole Business Record PDF — a document that simply failed to
+  // generate, with no partial output and no clue why. Found 2026-08-01 by the
+  // audit harness; the record the operator happened to print stored its count
+  // as a string, which is why it had never surfaced in production.
+  //
+  // This is the single choke point every generator's text passes through, so
+  // guarding here protects all ~81 documents rather than one field on one form.
+  // Deliberately NOT `String(text)` at the top: the `!text` guard above must
+  // keep returning falsy input untouched (callers rely on '' staying '').
+  if (typeof text !== 'string') {
+    text = String(text);
+  }
   let s = text
     // HTML entity decode — narrative text occasionally arrives still
     // escaped from upstream rich-text editors / scrapers (e.g.

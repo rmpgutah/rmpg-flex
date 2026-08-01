@@ -146,15 +146,20 @@ describe('PDF_REGISTRY', () => {
 // fixtures without throwing, and without leaking placeholder tokens
 // into the text layer. Failures here ARE the defect catalogue's
 // correctness lens.
-// AUDIT-DEFECT: business-record/typical — generateBusinessReport passes a
-// numeric employee_count straight to addFieldPair, which calls
-// sanitizePdfText(text) expecting a string; sanitizePdfText's
-// `.replace(/&(amp|lt|gt|quot|apos|nbsp|#39);/gi, ...)` then throws
-// "TypeError: text.replace is not a function" for any real (non-string)
-// employee_count. Not fixed here per audit scope — generator output is
-// out of bounds for this task. Skipped rather than weakening the fixture
-// (the fixture's employee_count: 62 reflects the real column type).
-const KNOWN_GENERATION_DEFECTS = new Set<string>(['business-record::typical']);
+// RESOLVED 2026-08-01 — this set is intentionally empty.
+//
+// It briefly held 'business-record::typical'. The harness caught
+// generateBusinessReport passing a numeric employee_count into
+// sanitizePdfText(), which is typed `string` but reached at runtime from
+// `any`-typed D1 rows — `.replace()` then threw and the whole Business Record
+// PDF failed to generate. Fixed at the choke point (sanitizePdfText now
+// coerces non-strings), so the skip was removed rather than left to rot.
+//
+// Keep the mechanism: a future batch will find generators that genuinely
+// cannot be repaired inside an audit task, and a greppable skip beats a
+// weakened fixture. Add entries as `<form-id>::<variant>` with an
+// AUDIT-DEFECT comment saying what throws and why it is not fixed here.
+const KNOWN_GENERATION_DEFECTS = new Set<string>();
 
 describe.each(PDF_REGISTRY.map((e) => [e.id, e] as const))('%s', (_id, entry) => {
   for (const variant of REQUIRED_VARIANTS) {
