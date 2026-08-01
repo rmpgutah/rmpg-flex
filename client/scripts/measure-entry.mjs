@@ -34,7 +34,16 @@ function attribute(mapPath) {
 
 const args = process.argv.slice(2);
 const maxRawIdx = args.indexOf('--max-raw');
-const maxRaw = maxRawIdx === -1 ? null : Number(args[maxRawIdx + 1]);
+let maxRaw = null;
+if (maxRawIdx !== -1) {
+  const rawArg = args[maxRawIdx + 1];
+  const parsed = Number(rawArg);
+  if (rawArg === undefined || !Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+    console.error(`FAIL: --max-raw requires a positive integer byte count, got ${JSON.stringify(rawArg)}`);
+    process.exit(1);
+  }
+  maxRaw = parsed;
+}
 const asJson = args.includes('--json');
 
 const entry = findEntry();
