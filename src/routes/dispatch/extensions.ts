@@ -23,6 +23,7 @@ import { getDb, query, queryFirst, execute, columnExists } from '../../utils/db'
 import { log } from '../../utils/logger';
 import { requireRole } from '../../middleware/auth';
 import { broadcastAll } from '../ws';
+import { toDisplayLabel } from '../../utils/displayLabel';
 
 const READ_ROLES  = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'];
@@ -1695,7 +1696,7 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
 
     const np: string[] = [];
     np.push(`Incident generated from dispatch call ${call.call_number}.`);
-    np.push(`\nCall Type: ${(call.incident_type || '').replace(/_/g, ' ').toUpperCase()}`);
+    np.push(`\nCall Type: ${toDisplayLabel(call.incident_type || '').toUpperCase()}`);
     np.push(`Priority: ${call.priority}`);
     np.push(`Location: ${call.location_address || 'Unknown'}`);
     if (call.caller_name) np.push(`Caller: ${call.caller_name}${call.caller_phone ? ` (${call.caller_phone})` : ''}`);

@@ -63,7 +63,7 @@ import TrainingCompliance from '../components/dashboard/TrainingCompliance';
 import AlarmStatus from '../components/dashboard/AlarmStatus';
 import IASummary from '../components/dashboard/IASummary';
 import { withAlpha } from '../utils/withAlpha';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 // ─── Backend Response Types ──────────────────────────────
 
@@ -1570,7 +1570,7 @@ export default function DashboardPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-baseline gap-2">
                             <span className="text-[11px] font-bold font-mono tabular-nums" style={{ color: p.color }}>
-                              {call.priority}
+                              {formatEnumValue(call.priority)}
                             </span>
                             <span className="text-[11px] font-mono text-rmpg-200 tabular-nums">{call.call_number}</span>
                             <span className="ml-auto text-[10px] font-mono text-brand-400 tabular-nums">

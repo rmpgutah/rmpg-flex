@@ -1,4 +1,5 @@
 import type { Facets } from '../useIntelQuery';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 export default function FacetSidebar({ facets, activeType, activeFlags, onToggleType, onToggleFlag }: {
   facets: Facets;
@@ -12,7 +13,7 @@ export default function FacetSidebar({ facets, activeType, activeFlags, onToggle
   const Row = ({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) => (
     <button onClick={onClick}
       className={`w-full flex items-center justify-between px-2 py-[4px] rounded-[2px] text-[11px] ${active ? 'bg-surface-sunken text-brand-400' : 'text-rmpg-300 hover:bg-surface-sunken'}`}>
-      <span className="capitalize truncate">{label.replace('_', ' ')}</span>
+      <span className="capitalize truncate">{toDisplayLabel(label)}</span>
       <span className="font-mono text-[9px] text-rmpg-500">{count}</span>
     </button>
   );

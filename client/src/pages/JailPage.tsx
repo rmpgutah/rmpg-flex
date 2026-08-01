@@ -20,6 +20,7 @@ import {
   type InmateChargeRow,
 } from '../utils/jailBookingSheetPdf';
 import { parseTimestamp } from '../utils/dateUtils';
+import { formatEnumValue } from '../utils/formatters';
 
 interface Inmate {
   id: number; booking_number: string; last_name: string; first_name: string;
@@ -566,7 +567,7 @@ export default function JailPage() {
           <>
             <div><span className="text-rmpg-500">Booking #</span> {deleteTarget.booking_number}</div>
             <div><span className="text-rmpg-500">Name</span> {[deleteTarget.last_name, deleteTarget.first_name].filter(Boolean).join(', ')}</div>
-            <div><span className="text-rmpg-500">Status</span> {deleteTarget.status}</div>
+            <div><span className="text-rmpg-500">Status</span> {formatEnumValue(deleteTarget.status)}</div>
             {deleteTarget.housing_unit && (
               <div><span className="text-rmpg-500">Housing</span> {deleteTarget.housing_unit}{deleteTarget.housing_cell ? ` / ${deleteTarget.housing_cell}` : ''}</div>
             )}

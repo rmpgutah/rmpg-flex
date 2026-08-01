@@ -15,7 +15,7 @@ import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import { resolveDispatchAccess } from './pages/dispatch/dispatchAccess';
 import { isCompanyBrowserBlockedRole } from './utils/companyBrowserAccess';
-import { tryReloadForChunkFailure, normalizeChunkError } from './utils/chunkRetry';
+import { tryReloadForChunkFailure, normalizeChunkError, repairPoisonedChunkInBrowser } from './utils/chunkRetry';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
@@ -74,7 +74,19 @@ function lazyRetry<T extends React.ComponentType<any>>(
   // lands inside the 30s guard, and the ErrorBoundary card strands the user
   // (seen live 2026-06-10, fleet chunk 500 for ~15 min after 4 back-to-back
   // deploys). Two delayed re-imports (1.5s, 4s) ride out that window.
+  // Rung 0 (before the sleeps): the failure may be a POISONED HTTP-CACHE entry
+  // for this chunk — a Pages SPA-fallback `index.html` stored under the chunk's
+  // URL for 4h by its own cache-control header. Sleeping and re-importing can
+  // never fix that (a bare `import()` re-reads the same cached bytes), and
+  // neither can the reload below (index.html is already current). Only a
+  // cache-bypassing re-request can. When it works, recovery is INSTANT instead
+  // of impossible; when it doesn't apply, we rethrow and the original
+  // propagation-window ladder runs completely unchanged. See chunkRetry.ts.
   const withRetry = () => factory()
+    .catch((err) => repairPoisonedChunkInBrowser(err).then((repaired) => {
+      if (!repaired) throw err;
+      return factory();
+    }))
     .catch(() => sleep(1500).then(factory))
     .catch(() => sleep(4000).then(factory));
   return lazy(() => withRetry().catch((err) => {

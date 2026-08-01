@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../hooks/useApi';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 
 interface ReportRow {
   id: number; report_number: string; title: string; status: string;
@@ -52,7 +53,7 @@ export default function IntelReportsPage() {
           <button key={s} onClick={() => setStatus(s)}
             className="px-2 py-1 uppercase"
             style={{ background: status === s ? '#d4a017' : 'var(--surface-overlay)', color: status === s ? '#000' : '#888', borderRadius: 2 }}>
-            {s.replace('_', ' ')}
+            {toDisplayLabel(s)}
           </button>
         ))}
       </div>
@@ -74,11 +75,11 @@ export default function IntelReportsPage() {
               style={{ cursor: 'pointer', borderTop: '1px solid var(--border-subtle)' }}>
               <td className="py-[2px]" style={{ color: '#d4a017' }}>{r.report_number}</td>
               <td className="py-[2px]">{r.title}</td>
-              <td className="py-[2px] uppercase">{r.status.replace('_', ' ')}
+              <td className="py-[2px] uppercase">{toDisplayLabel(r.status)}
                 {r.retention_status === 'due_review' && <span style={{ color: '#f59e0b' }}> ⚑</span>}</td>
               <td className="py-[2px]">{r.grade_label === 'UNGRADED' ? '—' : r.grade_label.split(' — ')[0]}</td>
               <td className="py-[2px]">{r.confidence || '—'}</td>
-              <td className="py-[2px] uppercase" style={{ color: THREAT_COLOR[r.threat_level] || '#888' }}>{r.threat_level}</td>
+              <td className="py-[2px] uppercase" style={{ color: THREAT_COLOR[r.threat_level] || '#888' }}>{formatEnumValue(r.threat_level)}</td>
             </tr>
           ))}
           {!rows.length && !loading && (

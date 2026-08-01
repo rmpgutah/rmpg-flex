@@ -11,6 +11,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle, FleetInspection, InspectionItem } from '../../../types';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 export interface Args {
   vehicle: FleetVehicle;
@@ -37,7 +38,7 @@ export function buildFleetInspectionReportPdf({ vehicle, inspection }: Args): js
   doc.text(`Vehicle: ${vehicleLabel}`, marginX, y); y += 14;
   doc.text(`Inspector: ${inspection.inspector_name}`, marginX, y); y += 14;
   doc.text(`Date: ${inspection.inspection_date ? inspection.inspection_date.slice(0, 10) : '-'}`, marginX, y); y += 14;
-  doc.text(`Type: ${(inspection.inspection_type || '').replace('_', ' ').toUpperCase()}`, marginX, y); y += 14;
+  doc.text(`Type: ${toDisplayLabel(inspection.inspection_type || '').toUpperCase()}`, marginX, y); y += 14;
   if (inspection.mileage) {
     doc.text(`Mileage: ${inspection.mileage.toLocaleString()}`, marginX, y); y += 14;
   }
@@ -55,7 +56,7 @@ export function buildFleetInspectionReportPdf({ vehicle, inspection }: Args): js
   doc.setTextColor(255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
-  doc.text(`OVERALL RESULT: ${(inspection.overall_result || 'UNKNOWN').replace('_', ' ').toUpperCase()}`, marginX + 12, y + 17);
+  doc.text(`OVERALL RESULT: ${toDisplayLabel(inspection.overall_result || 'UNKNOWN').toUpperCase()}`, marginX + 12, y + 17);
   doc.setTextColor(0);
   y += 38;
 

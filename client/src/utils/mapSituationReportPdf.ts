@@ -17,7 +17,7 @@ import {
   hexToRgb,
 } from './pdfGenerator';
 import { LAYOUT, COLOR } from './pdfTokens';
-import { toDisplayLabel } from './formatters';
+import { formatEnumValue, toDisplayLabel } from './formatters';
 import { registerArialFont } from './pdf/fonts/registerArial';
 
 export interface SitRepCall {
@@ -219,7 +219,7 @@ export async function buildMapSituationReportPdf(data: MapSituationReportData): 
       doc.setFillColor(pr[0], pr[1], pr[2]);
       doc.roundedRect(cx + 1.5, y + 1, 11, 3.2, 0.4, 0.4, 'F');
       doc.setTextColor(255, 255, 255); doc.setFontSize(5.5); doc.setFont('helvetica', 'bold');
-      doc.text(call.priority || '—', cx + 7, y + 3.3, { align: 'center' });
+      doc.text(formatEnumValue(call.priority) || '—', cx + 7, y + 3.3, { align: 'center' });
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(20, 20, 20);
       cx += cols[1].w;
       doc.text(toDisplayLabel(call.incident_type).slice(0, 26) || '—', cx + 1.5, y + 3.5); cx += cols[2].w;

@@ -200,7 +200,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
                 <span className="text-xs text-rmpg-100">{r.officer_name}</span>
                 <span className="text-[10px] text-rmpg-400">{r.date ? parseTimestamp(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : r.date}</span>
                 {r.minutes_late > 0 && <span className="text-[10px] text-amber-400">{r.minutes_late}m late</span>}
-                {r.reason && <span className="text-[10px] text-rmpg-400 italic truncate max-w-[200px]">{r.reason}</span>}
+                {r.reason && <span className="text-[10px] text-rmpg-400 italic truncate max-w-[200px]">{formatEnumValue(r.reason)}</span>}
               </div>
               <span className={`text-[10px] ${r.excused ? 'text-green-400' : 'text-red-400'}`}>{r.excused ? 'Excused' : 'Unexcused'}</span>
             </div>

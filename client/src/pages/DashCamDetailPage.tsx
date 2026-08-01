@@ -22,7 +22,7 @@ import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { parseTimestamp } from '../utils/dateUtils';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 // ── GPS Track Types ─────────────────────────────────────────
 
@@ -836,7 +836,7 @@ export default function DashCamDetailPage() {
             {/* Classification badge */}
             <span className={`font-bold uppercase tracking-wider ${CLASSIFICATION_BADGE[video.classification] || CLASSIFICATION_BADGE.routine}`}
               style={{ fontSize: 9 }}>
-              {video.classification}
+              {formatEnumValue(video.classification)}
             </span>
 
             {/* Address */}
@@ -1126,7 +1126,7 @@ export default function DashCamDetailPage() {
                   <span className="text-[9px] text-rmpg-500 uppercase block">Classification</span>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className={`text-[10px] font-bold uppercase ${CLASSIFICATION_BADGE[video.classification] || ''}`}>
-                      {video.classification}
+                      {formatEnumValue(video.classification)}
                     </span>
                     {/* Role gate: admin/manager only may reclassify */}
                     {isAdminOrManager && (

@@ -7,6 +7,7 @@ import AttemptTimelineModal from '../../components/serve/AttemptTimelineModal';
 import type { ServeJob } from '../../types';
 import { safeDateStr } from '../../utils/dateUtils';
 import ServeQueueToolsPanel from '../../components/serve/ServeQueueToolsPanel';
+import { formatEnumValue } from '../../utils/formatters';
 
 type RangeDays = 7 | 30 | 90;
 
@@ -590,7 +591,7 @@ export default function AnalyticsTab() {
               <tbody>
                 {successByType!.types.map((t) => (
                   <tr key={t.attempt_type} className="border-b border-rmpg-800 last:border-0">
-                    <td className="px-3 py-[2px] text-rmpg-200 capitalize">{t.attempt_type}</td>
+                    <td className="px-3 py-[2px] text-rmpg-200 capitalize">{formatEnumValue(t.attempt_type)}</td>
                     <td className="px-3 py-[2px] text-right text-rmpg-400 tabular-nums">{t.total}</td>
                     <td className={`px-3 py-[2px] text-right tabular-nums font-mono font-semibold ${rateColor(t.success_rate)}`}>
                       {t.success_rate}%
@@ -988,7 +989,7 @@ function OfficerJobsPanel({ jobs, loading, officerId, onOpenTimeline, onBulkActi
               </td>
               <td className="px-2 py-[2px] text-rmpg-300">{a.jobRecipient}</td>
               <td className="px-2 py-[2px] text-rmpg-400 tabular-nums">{a.attempt_number}</td>
-              <td className="px-2 py-[2px] text-rmpg-300">{a.result}</td>
+              <td className="px-2 py-[2px] text-rmpg-300">{formatEnumValue(a.result)}</td>
               <td className="px-2 py-[2px] text-rmpg-500 tabular-nums">{safeDateStr(a.attempt_at, "")}</td>
               <td className="px-2 py-[2px] text-right">
                 <button

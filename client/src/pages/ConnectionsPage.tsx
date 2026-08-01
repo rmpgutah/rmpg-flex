@@ -16,6 +16,7 @@ import { useAuth } from '../context/AuthContext';
 import RichTextArea from '../components/RichTextArea';
 import { NODE_COLORS, NODE_RADIUS } from '../utils/connectionsGraphStyle';
 import ConnectionsMapPanel from '../components/ConnectionsMapPanel';
+import { formatEnumValue } from '../utils/formatters';
 
 interface SearchResult { id: number; type: string; label: string; }
 interface Seed { id: number; type: string; label: string; }
@@ -672,7 +673,7 @@ export default function ConnectionsPage() {
                 onClick={() => pickSeed(r)}
                 className="px-3 py-2 text-sm text-rmpg-200 cursor-pointer hover:bg-surface-sunken border-b border-border-subtle last:border-b-0"
               >
-                <span className="text-brand-400 text-xs uppercase mr-2">{r.type}</span>
+                <span className="text-brand-400 text-xs uppercase mr-2">{formatEnumValue(r.type)}</span>
                 {r.label}
               </li>
             ))}
@@ -703,7 +704,7 @@ export default function ConnectionsPage() {
           className="px-3 py-2 bg-surface-raised border border-brand-400 text-sm text-rmpg-200 flex items-center gap-3"
           style={{ borderRadius: 2 }}
         >
-          <span className="text-brand-400 text-xs uppercase font-semibold">{seed.type}</span>
+          <span className="text-brand-400 text-xs uppercase font-semibold">{formatEnumValue(seed.type)}</span>
           <span className="font-semibold">{seed.label}</span>
           <span className="text-rmpg-500 text-xs ml-auto">#{seed.id}</span>
           <div className="flex items-center gap-2 border-l border-rmpg-700 pl-3">

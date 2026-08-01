@@ -49,6 +49,7 @@ import { scheduleFitsDeadline } from './serveAttemptWindows';
 import { log } from './logger';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 import type { FieldConflict } from './serveIntakeArbitrate';
+import { toDisplayLabel } from './displayLabel';
 
 // ── Sentinel client for intake-generated properties ──────────
 // properties.client_id is NOT NULL and FKs to clients(id). Process-
@@ -1227,7 +1228,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
         || [recipientFirst, recipientLast].filter(Boolean).join(' ').trim()
         || 'Unknown recipient';
       const docTypeLabel = queueRow.document_type
-        ? queueRow.document_type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+        ? toDisplayLabel(queueRow.document_type)
         : 'Service of Process';
       const title = `Service: ${recipientLabel} — ${docTypeLabel}`;
 

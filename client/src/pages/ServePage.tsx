@@ -870,7 +870,7 @@ export default function ServePage() {
         method: 'PUT',
         body: JSON.stringify({ status: newStatus }),
       });
-      addToast(`Moved to ${newStatus === 'cancelled' ? 'Archive' : newStatus.replace('_', ' ')}`, 'success');
+      addToast(`Moved to ${newStatus === 'cancelled' ? 'Archive' : toDisplayLabel(newStatus)}`, 'success');
       setTimeout(refreshJobs, 600);
     } catch (e) {
       // Revert optimistic update on failure.

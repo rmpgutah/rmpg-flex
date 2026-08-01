@@ -10,6 +10,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Siren, ExternalLink } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { playTone } from '../utils/dispatchTones';
+import { formatEnumValue } from '../utils/formatters';
 
 interface BoloMatch {
   id: number;
@@ -108,7 +109,7 @@ export default function BoloAlertBanner({ address, subject, vehicle, onViewBolo 
                 color: '#fff',
               }}
             >
-              {bolo.priority}
+              {formatEnumValue(bolo.priority)}
             </span>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1">

@@ -33,7 +33,7 @@ import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles 
 import { getDirections } from '../utils/mapboxServices';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { escapeHtml } from '../utils/sanitize';
 import { withAlpha } from '../utils/withAlpha';
 
@@ -762,7 +762,7 @@ export default function RouteBuilderPage() {
                         backgroundColor: withAlpha(PRIORITY_COLORS[wp.priority] || '#888', '20'),
                       }}
                     >
-                      {wp.priority}
+                      {formatEnumValue(wp.priority)}
                     </span>
                   </div>
                   <div className="text-[11px] text-[#e5e5e5] truncate">{toDisplayLabel(wp.incident_type)}</div>

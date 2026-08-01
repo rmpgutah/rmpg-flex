@@ -4,7 +4,7 @@ import { asArray } from '../utils/asArray';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import { Shield, AlertTriangle, Plus, Search, Eye, Check, X, Clock, MapPin, User } from 'lucide-react';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 interface Bulletin {
   id: number;
@@ -235,7 +235,7 @@ export default function IntelBulletinsPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-sm ${priorityColors[b.priority]}`}>
-                    {b.priority}
+                    {formatEnumValue(b.priority)}
                   </span>
                   <span className="font-mono text-xs text-gray-400">{b.bulletin_number}</span>
                   <span className="px-1.5 py-0.5 text-[9px] bg-[#222222] text-gray-300 rounded-sm uppercase">
@@ -301,7 +301,7 @@ export default function IntelBulletinsPage() {
             <div className="p-4 space-y-3 text-xs">
               <div className="flex items-center gap-2">
                 <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-sm ${priorityColors[selectedBulletin.priority]}`}>
-                  {selectedBulletin.priority}
+                  {formatEnumValue(selectedBulletin.priority)}
                 </span>
                 <span className="font-mono text-gray-400">{selectedBulletin.bulletin_number}</span>
                 <span className="px-1.5 py-0.5 text-[9px] bg-[#222222] text-gray-300 rounded-sm uppercase">

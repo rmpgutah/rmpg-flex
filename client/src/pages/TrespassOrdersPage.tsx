@@ -27,7 +27,7 @@ import { formatAddressDisplay } from '../utils/statusLabels';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { openTrespassOrderPdf } from '../utils/trespassOrderPdf';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
   { value: 'trespass_warning', label: 'Trespass Warning' },
@@ -816,7 +816,7 @@ export default function TrespassOrdersPage() {
             {selectedOrder.reason && (
               <div className="mt-3 pt-2 border-t border-rmpg-700">
                 <span className="text-brand-gold-500 text-[10px] uppercase font-bold tracking-wider">Reason</span>
-                <p className="text-xs text-rmpg-200 mt-1">{selectedOrder.reason}</p>
+                <p className="text-xs text-rmpg-200 mt-1">{formatEnumValue(selectedOrder.reason)}</p>
               </div>
             )}
             {selectedOrder.conditions && (
