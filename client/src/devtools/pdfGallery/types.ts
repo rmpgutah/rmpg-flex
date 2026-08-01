@@ -39,6 +39,19 @@ export interface PdfRegistryEntry<T = unknown> {
   fixtures: PdfFixture<T>[];
 }
 
+/**
+ * Creates a typed registry entry while widening it to the uniform array element type.
+ *
+ * Without this helper, heterogeneous arrays like `[trespassEntry, invoiceEntry]`
+ * require a cast on each entry due to TypeScript's contravariant function parameter
+ * checking: `PdfRegistryEntry<Trespass>` is not assignable to `PdfRegistryEntry<unknown>`
+ * even though their runtime shapes are identical. This helper performs the widening once,
+ * centrally, so callers get full per-entry type checking without scattered casts.
+ */
+export function createEntry<T>(entry: PdfRegistryEntry<T>): PdfRegistryEntry {
+  return entry as PdfRegistryEntry;
+}
+
 export function validateRegistry(entries: PdfRegistryEntry[]): string[] {
   const problems: string[] = [];
   const seen = new Set<string>();
