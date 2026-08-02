@@ -585,7 +585,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
 
-    if (!map.getSource(HIGHLIGHT_SOURCE)) {
+    const ensureHighlightLayers = () => {
+      if (map.getSource(HIGHLIGHT_SOURCE)) return;
       map.addSource(HIGHLIGHT_SOURCE, {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -602,12 +603,28 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           'circle-stroke-color': '#f0f4f9', 'circle-stroke-width': 2,
         },
       });
-    }
+    };
 
-    const src = map.getSource(HIGHLIGHT_SOURCE) as mapboxgl.GeoJSONSource;
-    src?.setData(hoveredFeature
-      ? { type: 'Feature', properties: {}, geometry: hoveredFeature.geometry as any }
-      : { type: 'FeatureCollection', features: [] });
+    const setHighlightData = () => {
+      const src = map.getSource(HIGHLIGHT_SOURCE) as mapboxgl.GeoJSONSource | undefined;
+      src?.setData(hoveredFeature
+        ? { type: 'Feature', properties: {}, geometry: hoveredFeature.geometry as any }
+        : { type: 'FeatureCollection', features: [] });
+    };
+
+    ensureHighlightLayers();
+    setHighlightData();
+
+    // changeStyle() (MapCore.ts) calls map.setStyle(), which wipes every
+    // source/layer and fires 'style.load' again — re-add the highlight
+    // source/layers then too, or a basemap switch during an active hover
+    // silently loses the highlight until hoveredFeature happens to change.
+    const onStyleLoad = () => {
+      ensureHighlightLayers();
+      setHighlightData();
+    };
+    map.on('style.load', onStyleLoad);
+    return () => { map.off('style.load', onStyleLoad); };
   }, [mapLoaded, hoveredFeature]);
 
   // A panel puts the answer away from the point the officer clicked; the marker
