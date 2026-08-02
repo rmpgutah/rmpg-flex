@@ -5,7 +5,7 @@ const mockApiFetch = vi.fn();
 const mockNavigate = vi.fn();
 
 vi.mock('../../../../hooks/useApi', () => ({ apiFetch: (...a: any[]) => mockApiFetch(...a) }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
+vi.mock('react-router', () => ({ useNavigate: () => mockNavigate }));
 
 describe('QuickSearchCard (smoke)', () => {
   it('module loads', async () => {

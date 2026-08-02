@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Shield, Lock, AlertTriangle, Globe, Users, Key, Loader2,
   RefreshCw, XCircle, CheckCircle, Monitor, Activity,

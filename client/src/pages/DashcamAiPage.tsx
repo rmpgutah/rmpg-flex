@@ -13,7 +13,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Activity, AlertTriangle, Camera, Cpu, Filter, MapPin, PlayCircle, RefreshCw,
   Shield, Signal, Video, Zap,

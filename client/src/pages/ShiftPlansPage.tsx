@@ -45,7 +45,7 @@
 // ============================================================
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Calendar, Plus, Trash2, Copy, Play, CheckCircle, Archive, Users, MapPin,
   ChevronRight, ChevronLeft, X, Shield, BarChart3, Save, AlertTriangle,

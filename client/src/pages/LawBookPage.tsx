@@ -13,7 +13,7 @@
 // section. Any section or whole chapter can be printed to a formatted PDF.
 // ============================================================
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Scale, Search, ChevronRight, ChevronDown, ExternalLink, Loader2, BookOpen,
   Gavel, Car, ShieldCheck, FileText, X, ArrowLeft, Layers, Printer, Sparkles,

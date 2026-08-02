@@ -5,7 +5,7 @@
 // Optimized for iPhone 17 Pro (393×852, 34px bottom safe area)
 // ============================================================
 
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import { LayoutDashboard, Map, Bell, Menu, LayoutList } from 'lucide-react';
 
 const NAV_ITEMS = [

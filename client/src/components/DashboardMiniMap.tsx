@@ -11,7 +11,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import mapboxgl from 'mapbox-gl';
 import { Maximize2, Loader2 } from 'lucide-react';
 import { getMapboxToken } from '../utils/mapboxApiKey';

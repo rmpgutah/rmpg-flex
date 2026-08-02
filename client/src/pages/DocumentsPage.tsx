@@ -7,7 +7,7 @@ import {
   FileImage, File as FileIcon,
 } from 'lucide-react';
 import DossierGrid from './documents/DossierGrid';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import DocumentsAppsShelf from './documents/DocumentsAppsShelf';
 import PanelTitleBar from '../components/PanelTitleBar';

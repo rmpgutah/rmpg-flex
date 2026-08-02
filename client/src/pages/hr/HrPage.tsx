@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { UserCog } from 'lucide-react';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import { usePersistedTab } from '../../hooks/usePersistedState';

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import {
   Gavel, Plus, Search, Loader2, ChevronDown, ChevronLeft, ChevronRight, Calendar,

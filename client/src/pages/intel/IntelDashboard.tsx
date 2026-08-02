@@ -11,7 +11,7 @@
 //     of whether the request had succeeded recently.
 //   • Distinct error vs empty-data states.
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { useIntelOverview } from './useIntelOverview';
 import { useIntelContext } from './IntelContext';
 import StatTiles from './widgets/StatTiles';

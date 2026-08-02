@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import {
   Package, Search, Plus, MapPin, Clock, User, ArrowRightLeft, CheckCircle,

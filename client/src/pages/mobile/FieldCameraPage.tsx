@@ -18,7 +18,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { ArrowLeft, Camera, Loader2, MapPin, RefreshCw, X, Check, ScanLine, Car, AlertTriangle, Radar, IdCard } from 'lucide-react';
 import { apiPostForm, apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { downscaleImage } from '../../utils/downscaleImage';

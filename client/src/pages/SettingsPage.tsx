@@ -18,7 +18,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Mic, Map as MapIcon, Volume2, Gauge, SlidersHorizontal,
   Play, RotateCcw, Radio, Crosshair, MapPin, RadioTower,

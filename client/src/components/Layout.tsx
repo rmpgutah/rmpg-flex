@@ -1,6 +1,6 @@
 import React, { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { parseTimestamp } from '../utils/dateUtils';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard,
   LayoutGrid,

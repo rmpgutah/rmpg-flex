@@ -80,7 +80,7 @@
     "react-dom": "^19.2.8",
     "react-force-graph-2d": "^1.29.1",
     "react-is": "^19.2.8",
-    "react-router-dom": "^7.18.0",
+    "react-router": "^8.3.0",
     "recharts": "^3.9.2",
     "sanitize-html": "^2.17.5",
     "set-cookie-parser": "^3.1.1",

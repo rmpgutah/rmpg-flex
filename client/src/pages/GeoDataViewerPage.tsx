@@ -7,7 +7,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Layers, MapPin, Search, ChevronLeft,
   RefreshCw, Download, Info, Grid3X3, Globe,
