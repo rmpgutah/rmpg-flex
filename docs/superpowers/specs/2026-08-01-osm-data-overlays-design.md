@@ -294,10 +294,20 @@ and popups have a stable schema. Unlisted tags are dropped at export time.
 
 ### 4.3 Tippecanoe settings
 
-- **Point groups** (A, C, E, F, H): `--drop-densest-as-needed` disabled; instead
-  per-category `--minimum-zoom` matching the tables above, so features are never
-  silently dropped. A rendered layer must be complete for its zoom range or the
-  absence-vs-nonexistence problem becomes unbounded.
+- **Point groups** (A, C, E, F, H): `--drop-densest-as-needed` disabled, so
+  features are never silently dropped. A rendered layer must be complete for its
+  zoom range or the absence-vs-nonexistence problem becomes unbounded.
+- **Zoom gating is split across two layers of the stack.** Tippecanoe's
+  `--minimum-zoom` is *per tile-layer*, not per feature category, and all of a
+  group's categories share one tile layer. So:
+  - **Archive** `--minimum-zoom` = the **lowest** min zoom among the group's
+    categories (the archive must carry a feature at any zoom some category wants
+    to draw it).
+  - **Per-category gating** is enforced client-side by each category's own Mapbox
+    layer `minzoom` (§5.1 `categoryFilter`).
+
+  Setting the archive minzoom to a per-category value would silently omit
+  features from tiles that a lower-gated category needs.
 - **Line groups** (B `maxspeed`, D pipelines, F clearances, G drivability):
   `--simplification=4`, `--no-tiny-polygon-reduction`.
 - **Polygon group** (I jurisdiction): `--no-tiny-polygon-reduction` plus
