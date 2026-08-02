@@ -93,7 +93,6 @@ import { useMapPrintExport } from '../../hooks/useMapPrintExport';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../../hooks/useGeoJsonLayers';
 import { useDistrictHierarchyLayers } from '../../hooks/useDistrictHierarchyLayers';
 import { useVectorTileLayers } from '../../hooks/useVectorTileLayers';
-import { useOsmIdentify } from '../../hooks/useOsmIdentify';
 import { useActivityChoropleth } from '../../hooks/useActivityChoropleth';
 import { useMapFeatureInspect } from '../../hooks/useMapFeatureInspect';
 import { useMapMatchTrace } from '../../hooks/useMapMatchTrace';
@@ -592,7 +591,14 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   const vectorTiles = useVectorTileLayers({
     map: mapRef.current,
-    popup: null,
+    // MUST be a real popup instance. Every click handler in this hook opens
+    // with `if (!pop) return;`, so `popup: null` silently disables ALL of them
+    // — the OSM detail popup with its captured tags and EDIT/VERIFY button,
+    // and the UGRC road/address popups including their "Use This Location"
+    // action that feeds an address into dispatch. None of that is reachable
+    // without this. A merge that reverts this line to null turns the whole
+    // popup layer back off, with no test failure to show for it.
+    popup: osmPopupRef.current,
     osmOverrides: osmOverrides.byOsmId,
     osmHiddenIds: osmOverrides.hiddenIds,
     onEditOsmFeature: setOsmEditTarget,

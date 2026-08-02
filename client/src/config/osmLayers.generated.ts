@@ -16,7 +16,6 @@ export interface OsmGroup {
   geometry: 'point' | 'line' | 'polygon' | 'mixed';
   coverage: 'sparse' | 'incomplete' | 'attribute' | 'boundary';
   assignment: 'first-match' | 'multi';
-  properties: string[];
   categories: OsmCategory[];
 }
 
@@ -28,7 +27,6 @@ export const OSM_GROUPS: OsmGroup[] = [
     geometry: 'point',
     coverage: 'sparse',
     assignment: 'first-match',
-    properties: ["name","surveillance","surveillance:type","surveillance:zone","camera:direction","camera:mount","camera:type","operator"],
     categories: [
       { cat: 'alpr', label: 'Cameras (ALPR)', minzoom: 14, render: 'point' },
       { cat: 'camera', label: 'Cameras (public)', minzoom: 15, render: 'point' },
@@ -44,7 +42,6 @@ export const OSM_GROUPS: OsmGroup[] = [
     geometry: 'mixed',
     coverage: 'incomplete',
     assignment: 'multi',
-    properties: ["name","ref","highway","maxspeed","oneway","maxheight","maxweight","traffic_calming","crossing","hazard","enforcement"],
     categories: [
       { cat: 'control', label: 'Traffic control', minzoom: 14, render: 'point' },
       { cat: 'maxspeed', label: 'Speed limits', minzoom: 13, render: 'line' },
@@ -62,7 +59,6 @@ export const OSM_GROUPS: OsmGroup[] = [
     geometry: 'mixed',
     coverage: 'incomplete',
     assignment: 'first-match',
-    properties: ["name","emergency","amenity","aeroway","fire_hydrant:type","colour","couplings","fire_hydrant:diameter","flow_rate","operator","ref"],
     categories: [
       { cat: 'hydrant', label: 'Fire hydrants', minzoom: 14, render: 'point' },
       { cat: 'water', label: 'Alt water sources', minzoom: 13, render: 'point' },
@@ -79,7 +75,6 @@ export const OSM_GROUPS: OsmGroup[] = [
     geometry: 'mixed',
     coverage: 'incomplete',
     assignment: 'first-match',
-    properties: ["name","power","man_made","waterway","amenity","operator","voltage","substation","generator:source","communication:mobile_phone","tower:type"],
     categories: [
       { cat: 'power', label: 'Substations & lines', minzoom: 10, render: 'line' },
       { cat: 'pole', label: 'Power poles', minzoom: 16, render: 'point' },
@@ -99,7 +94,6 @@ export const OSM_GROUPS: OsmGroup[] = [
     geometry: 'mixed',
     coverage: 'incomplete',
     assignment: 'multi',
-    properties: ["name","amenity","shop","tourism","office","operator","entrance","building:levels","height","addr:housenumber","addr:street"],
     categories: [
       { cat: 'school', label: 'Schools & childcare', minzoom: 12, render: 'point' },
       { cat: 'financial', label: 'Financial', minzoom: 14, render: 'point' },
@@ -119,7 +113,6 @@ export const OSM_GROUPS: OsmGroup[] = [
     geometry: 'mixed',
     coverage: 'incomplete',
     assignment: 'multi',
-    properties: ["name","barrier","access","railway","amenity","parking","highway","maxheight","bridge","tunnel","public_transport","operator","ref"],
     categories: [
       { cat: 'barrier', label: 'Gates & barriers', minzoom: 15, render: 'point' },
       { cat: 'control_pt', label: 'Controlled passages', minzoom: 14, render: 'point' },
@@ -138,7 +131,6 @@ export const OSM_GROUPS: OsmGroup[] = [
     geometry: 'line',
     coverage: 'attribute',
     assignment: 'multi',
-    properties: ["name","ref","highway","surface","tracktype","smoothness","4wd_only","ford","seasonal","access","motor_vehicle","snowmobile"],
     categories: [
       { cat: 'fourwd', label: '4WD-only', minzoom: 10, render: 'line' },
       { cat: 'ford', label: 'Fords', minzoom: 12, render: 'point' },
@@ -155,7 +147,6 @@ export const OSM_GROUPS: OsmGroup[] = [
     geometry: 'mixed',
     coverage: 'sparse',
     assignment: 'multi',
-    properties: ["name","natural","man_made","historic","hazard","operator","ele"],
     categories: [
       { cat: 'cliff', label: 'Cliffs & steep terrain', minzoom: 12, render: 'line' },
       { cat: 'cave', label: 'Cave entrances & sinkholes', minzoom: 12, render: 'point' },
@@ -171,7 +162,6 @@ export const OSM_GROUPS: OsmGroup[] = [
     geometry: 'polygon',
     coverage: 'boundary',
     assignment: 'multi',
-    properties: ["name","boundary","protect_class","landuse","military","leisure","operator","ownership"],
     categories: [
       { cat: 'protected', label: 'Protected areas & parks', minzoom: 8, render: 'polygon' },
       { cat: 'tribal', label: 'Tribal lands', minzoom: 8, render: 'polygon' },

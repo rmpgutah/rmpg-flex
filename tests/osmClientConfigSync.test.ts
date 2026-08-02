@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 // @ts-expect-error - untyped .mjs module
 import { loadCatalog } from '../scripts/osm/catalog.mjs';
-import { OSM_GROUPS } from '../client/src/config/osmLayers.generated';
 
 const GENERATED = 'client/src/config/osmLayers.generated.ts';
 
@@ -61,30 +60,5 @@ describe('osm client config', () => {
     }
     // Synthetic camera_cone (not in the JSON catalog) must also carry a valid render.
     expect(['point', 'line', 'polygon']).toContain(byCat['camera_cone']);
-  });
-});
-
-describe('generated OSM config carries popup properties', () => {
-  const source = JSON.parse(readFileSync('config/osm-layers.json', 'utf8'));
-  const groups = Array.isArray(source) ? source : source.groups;
-
-  it('every group exposes a properties array', () => {
-    for (const g of OSM_GROUPS) {
-      expect(Array.isArray(g.properties), `${g.name} missing properties`).toBe(true);
-      expect(g.properties.length, `${g.name} has no properties`).toBeGreaterThan(0);
-    }
-  });
-
-  it('properties match config/osm-layers.json exactly', () => {
-    for (const g of OSM_GROUPS) {
-      const src = groups.find((s: { name: string }) => s.name === g.name);
-      expect(src, `${g.name} absent from osm-layers.json`).toBeDefined();
-      expect(g.properties).toEqual(src.properties);
-    }
-  });
-
-  it('the traffic group carries maxspeed, since the map must answer what the HUD does', () => {
-    const traffic = OSM_GROUPS.find((g) => g.name === 'traffic');
-    expect(traffic!.properties).toContain('maxspeed');
   });
 });

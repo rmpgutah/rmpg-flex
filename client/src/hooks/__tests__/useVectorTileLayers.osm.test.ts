@@ -159,11 +159,19 @@ describe('osmInteractiveLayerIds', () => {
     expect(ids.some((id) => id.endsWith('-fill'))).toBe(true);
   });
 
-  it('returns the single id for point and line categories', () => {
-    const pt = OSM_VECTOR_CONFIGS.find((c) => c.categoryRender === 'point')!;
-    expect(osmInteractiveLayerIds(pt, false)).toHaveLength(1);
-    const ln = OSM_VECTOR_CONFIGS.find((c) => c.categoryRender === 'line')!;
-    expect(osmInteractiveLayerIds(ln, false)).toHaveLength(1);
+  it('covers every emitted id for point and line categories too', () => {
+    // Deliberately NOT a hardcoded count. A point category emits a circle AND
+    // an icon symbol layer, and that number has already changed once (icons
+    // were added after this helper was written). The invariant that actually
+    // matters is "every emitted layer is bound", so assert that directly —
+    // a count assertion just breaks whenever the renderer gains a layer, and
+    // tells you nothing about whether the feature is clickable.
+    for (const render of ['point', 'line'] as const) {
+      const cfg = OSM_VECTOR_CONFIGS.find((c) => c.categoryRender === render)!;
+      expect(cfg, `expected an OSM category rendering as ${render}`).toBeDefined();
+      const specIds = buildOsmLayerSpecs(cfg, false).map((s) => s.id);
+      expect(osmInteractiveLayerIds(cfg, false).sort()).toEqual([...new Set(specIds)].sort());
+    }
   });
 
   it('returns no duplicate ids', () => {
