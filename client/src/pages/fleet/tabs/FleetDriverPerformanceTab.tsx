@@ -1,22 +1,12 @@
 import { useEffect, useState } from 'react';
 import { apiFetch, apiFetchBlob } from '../../../hooks/useApi';
 import PanelTitleBar from '../../../components/PanelTitleBar';
-import { toDisplayLabel } from '../../../utils/formatters';
 import { Gauge, ArrowLeft, FileDown } from 'lucide-react';
-
-/**
- * Attribution shares are stored as 0..1 FRACTIONS, not percentages. Rendering
- * them straight through `.toFixed(0)}%` printed a fully-recorded day as "1%"
- * — a number that reads as near-total attribution failure on a day where
- * attribution was perfect. Every render site goes through this helper.
- */
-function pct(fraction: number | null | undefined): string {
-  if (typeof fraction !== 'number' || !Number.isFinite(fraction)) return '—';
-  return `${Math.round(fraction * 100)}%`;
-}
 
 interface ScoreResult {
   status: 'scored' | 'insufficient_data';
+  /** Only present when status is 'insufficient_data'. The two reasons mean opposite things. */
+  reason?: 'below_exposure_floor' | 'no_breadcrumb_samples';
   score?: number;
   band?: 'excellent' | 'good' | 'needs_attention' | 'at_risk';
   weightedRatePer100Miles?: number;
@@ -32,7 +22,9 @@ interface RosterEntry {
   drive_minutes: number;
   trip_count: number;
   event_count: number;
-  events: Record<string, number>;
+  events: { speed_high: number; speed_very_high: number; speed_extreme: number };
+  /** GPS position samples behind the counts. 0 with miles > 0 means a dead feed. */
+  breadcrumb_samples: number;
   severity: { critical: number; high: number; moderate: number; low: number };
   /** Events on a vehicle this officer drove that could not be tied to any driver. */
   unattributed_events: number;
@@ -41,28 +33,30 @@ interface RosterEntry {
   rank?: number;
 }
 
-const UNATTRIBUTED_TITLE =
-  'Driving events were recorded on a vehicle this officer drove, but could not be tied to any ' +
-  'driver. They are not counted in the event total and not reflected in the score — the counts ' +
-  'shown are a floor, not a complete record.';
+/**
+ * Plain-English tier labels. These are speed thresholds, not enum names —
+ * "70+ mph" is what a supervisor needs to read, and it is also the only
+ * label that makes the number defensible, because it states the observation
+ * rather than a judgement about it.
+ */
+const TIER_LABEL: Record<keyof RosterEntry['events'], string> = {
+  speed_high: '70+ mph',
+  speed_very_high: '80+ mph',
+  speed_extreme: '90+ mph',
+};
 
-interface GatedResponse {
-  ok: false;
-  code: string;
-  message: string;
-  score_version: string;
-}
+const SAMPLES_TITLE =
+  'GPS position samples recorded for this officer in this window. Each event is one SUSTAINED ' +
+  'run above the stated speed, counted once and tiered by its peak. A zero here with miles ' +
+  'driven means the feed was silent — not that driving was clean.';
 
-interface NormalRosterResponse {
-  ok?: undefined;
+interface RosterResponse {
   from: string;
   to: string;
   min_exposure_miles: number;
   ranked: RosterEntry[];
   insufficient_data: RosterEntry[];
 }
-
-type RosterResponse = GatedResponse | NormalRosterResponse;
 
 interface DailyEntry {
   perf_date: string;
@@ -72,22 +66,23 @@ interface DailyEntry {
   attribution_recorded_pct: number;
   attribution_inferred_pct: number;
   unattributed_events: number;
+  breadcrumb_samples: number;
+  events_speed_high: number;
+  events_speed_very_high: number;
+  events_speed_extreme: number;
   events_critical: number;
   events_high: number;
   events_moderate: number;
   events_low: number;
 }
 
-interface NormalOfficerResponse {
-  ok?: undefined;
+interface OfficerResponse {
   from: string;
   to: string;
   min_exposure_miles: number;
   summary: RosterEntry | null;
   daily: DailyEntry[];
 }
-
-type OfficerResponse = GatedResponse | NormalOfficerResponse;
 
 // Severity tokens, not brand chrome — risk IS severity semantics here.
 const BAND_CLASS: Record<string, string> = {
@@ -143,15 +138,13 @@ function RosterRow({
         <td className="py-[2px] pr-2">{r.result.weightedRatePer100Miles?.toFixed(2)}</td>
         <td className="py-[2px] pr-2">{r.miles_driven.toFixed(0)}</td>
         <td className="py-[2px] pr-2">{r.event_count}</td>
-        {/* The doubt sits directly beside the event count. A "0 events" row is
-            only good news when this cell is also 0. */}
-        <td className="py-[2px] pr-2">
-          {r.unattributed_events > 0 ? (
-            <span className="text-[color:var(--sev-warn)]" title={UNATTRIBUTED_TITLE}>
-              {r.unattributed_events}
-            </span>
+        {/* Observation volume sits directly beside the event count. A "0 events"
+            row is only good news when this cell is non-zero. */}
+        <td className="py-[2px] pr-2" title={SAMPLES_TITLE}>
+          {r.breadcrumb_samples > 0 ? (
+            r.breadcrumb_samples.toLocaleString()
           ) : (
-            <span className="text-fg-muted">0</span>
+            <span className="text-[color:var(--sev-warn)]">no GPS data</span>
           )}
         </td>
         <td className="py-[2px] pr-2">
@@ -184,13 +177,11 @@ function RosterRow({
       <td className="py-[2px] pr-2">{r.badge_number ?? '—'}</td>
       <td className="py-[2px] pr-2">{r.miles_driven.toFixed(0)} mi</td>
       <td className="py-[2px] pr-2">{r.event_count} events</td>
-      <td className="py-[2px] pr-2">
-        {r.unattributed_events > 0 ? (
-          <span className="text-[color:var(--sev-warn)]" title={UNATTRIBUTED_TITLE}>
-            {r.unattributed_events} unattributed
-          </span>
+      <td className="py-[2px] pr-2" title={SAMPLES_TITLE}>
+        {r.breadcrumb_samples > 0 ? (
+          `${r.breadcrumb_samples.toLocaleString()} GPS samples`
         ) : (
-          <span className="text-fg-muted">0 unattributed</span>
+          <span className="text-[color:var(--sev-warn)]">no GPS data</span>
         )}
       </td>
     </tr>
@@ -218,7 +209,7 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
   // as a blob (not apiFetch, which forces JSON) so the authenticated PDF can be
   // handed to the browser as a download.
   const handleExport = async () => {
-    const win = data && data.ok !== false ? `?from=${data.from}&to=${data.to}` : '';
+    const win = data ? `?from=${data.from}&to=${data.to}` : '';
     setExporting(true);
     setExportError(null);
     try {
@@ -290,19 +281,6 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
 
   if (!data) return null;
 
-  if (data.ok === false) {
-    return (
-      <div className="p-4 space-y-3">
-        <PanelTitleBar title="OFFICER DRIVER PERFORMANCE" icon={Gauge} />
-        {backButton}
-        <div className="border border-[color:var(--sev-warn)] p-3 text-xs text-rmpg-100">
-          <div className="font-semibold text-[color:var(--sev-warn)] mb-1">Scoring unavailable</div>
-          <div>{data.message}</div>
-        </div>
-      </div>
-    );
-  }
-
   const { summary, daily, min_exposure_miles } = data;
 
   return (
@@ -346,17 +324,35 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
           <div className="text-[11px] text-rmpg-100">
             {summary.officer_name ?? '—'} · Badge {summary.badge_number ?? '—'}
           </div>
-          <div className="border border-[color:var(--sev-warn)] p-3 text-xs text-rmpg-100">
-            <div className="font-semibold text-[color:var(--sev-warn)] mb-1">
-              Insufficient exposure — not scored
+          {/* The two unscored reasons mean OPPOSITE things and must never share
+              wording. Below the floor is about this officer's exposure; a dead
+              feed is about OUR instrumentation, and showing the mileage excuse
+              for a monitoring outage quietly blames the wrong party. */}
+          {summary.result.reason === 'no_breadcrumb_samples' ? (
+            <div className="border border-[color:var(--sev-critical)] p-3 text-xs text-rmpg-100">
+              <div className="font-semibold text-[color:var(--sev-critical)] mb-1">
+                No GPS data recorded — not scored
+              </div>
+              <div>
+                This officer drove {summary.miles_driven.toFixed(0)} miles in this window, but the
+                position-reporting feed recorded no GPS samples for that driving. Their driving was
+                not observed at all. This is a gap in monitoring, not a finding about this officer
+                — do not read it as either good or bad performance.
+              </div>
             </div>
-            <div>
-              This officer drove {summary.miles_driven.toFixed(0)} miles — below the{' '}
-              {min_exposure_miles}-mile floor required to score, so behavior can't be
-              distinguished from chance. No score, band, rate, or confidence is shown because
-              none was computed.
+          ) : (
+            <div className="border border-[color:var(--sev-warn)] p-3 text-xs text-rmpg-100">
+              <div className="font-semibold text-[color:var(--sev-warn)] mb-1">
+                Insufficient exposure — not scored
+              </div>
+              <div>
+                This officer drove {summary.miles_driven.toFixed(0)} miles — below the{' '}
+                {min_exposure_miles}-mile floor required to score, so behavior can't be
+                distinguished from chance. No score, band, rate, or confidence is shown because
+                none was computed.
+              </div>
             </div>
-          </div>
+          )}
         </div>
       ) : (
         <>
@@ -418,20 +414,25 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
             <table className="w-full">
               <thead>
                 <tr className="text-left text-[9px] font-semibold text-fg-secondary border-b border-rmpg-700">
-                  {Object.keys(summary.events).map((k) => (
+                  {(Object.keys(TIER_LABEL) as (keyof typeof TIER_LABEL)[]).map((k) => (
                     <th key={k} className="py-[3px] pr-2">
-                      {toDisplayLabel(k)}
+                      Sustained {TIER_LABEL[k]}
                     </th>
                   ))}
+                  <th className="py-[3px] pr-2">GPS Samples</th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="text-[11px] text-rmpg-100">
-                  {Object.entries(summary.events).map(([k, v]) => (
+                  {(Object.keys(TIER_LABEL) as (keyof typeof TIER_LABEL)[]).map((k) => (
                     <td key={k} className="py-[2px] pr-2">
-                      {v}
+                      {summary.events[k]}
                     </td>
                   ))}
+                  {/* Observation volume never leaves the counts' side. */}
+                  <td className="py-[2px] pr-2" title={SAMPLES_TITLE}>
+                    {summary.breadcrumb_samples.toLocaleString()}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -484,8 +485,8 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
                 <th className="py-[3px] pr-2">Date</th>
                 <th className="py-[3px] pr-2">Miles</th>
                 <th className="py-[3px] pr-2">Score</th>
-                <th className="py-[3px] pr-2">Attribution (Recorded / Inferred)</th>
-                <th className="py-[3px] pr-2">Unattributed</th>
+                <th className="py-[3px] pr-2">Speed Events (70 / 80 / 90+)</th>
+                <th className="py-[3px] pr-2">GPS Samples</th>
               </tr>
             </thead>
             <tbody>
@@ -504,13 +505,15 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
                     )}
                   </td>
                   <td className="py-[2px] pr-2">
-                    {pct(d.attribution_recorded_pct)} / {pct(d.attribution_inferred_pct)}
+                    {d.events_speed_high} / {d.events_speed_very_high} / {d.events_speed_extreme}
                   </td>
-                  <td className="py-[2px] pr-2">
-                    {d.unattributed_events > 0 ? (
-                      <span className="text-[color:var(--sev-warn)]">{d.unattributed_events}</span>
+                  {/* A day with miles but no samples is a silent feed, not a
+                      clean shift — it is called out here, not left blank. */}
+                  <td className="py-[2px] pr-2" title={SAMPLES_TITLE}>
+                    {d.breadcrumb_samples > 0 ? (
+                      d.breadcrumb_samples.toLocaleString()
                     ) : (
-                      <span className="text-fg-muted">0</span>
+                      <span className="text-[color:var(--sev-warn)]">no GPS data</span>
                     )}
                   </td>
                 </tr>
@@ -559,21 +562,6 @@ export default function FleetDriverPerformanceTab() {
 
   if (!data) return null;
 
-  // Runtime owner gate: severity weights not yet reviewed, so no score exists
-  // to show. Explain why rather than rendering an empty table, which would
-  // read as "everyone drove cleanly".
-  if (data.ok === false) {
-    return (
-      <div className="p-4 space-y-3">
-        <PanelTitleBar title="DRIVER PERFORMANCE" icon={Gauge} />
-        <div className="border border-[color:var(--sev-warn)] p-3 text-xs text-rmpg-100">
-          <div className="font-semibold text-[color:var(--sev-warn)] mb-1">Scoring unavailable</div>
-          <div>{data.message}</div>
-        </div>
-      </div>
-    );
-  }
-
   const noRoster = data.ranked.length === 0 && data.insufficient_data.length === 0;
 
   return (
@@ -601,8 +589,8 @@ export default function FleetDriverPerformanceTab() {
                 <th className="py-[3px] pr-2">Band</th>
                 <th className="py-[3px] pr-2">Rate / 100 mi</th>
                 <th className="py-[3px] pr-2">Miles</th>
-                <th className="py-[3px] pr-2">Events</th>
-                <th className="py-[3px] pr-2">Unattributed</th>
+                <th className="py-[3px] pr-2">Speed Events</th>
+                <th className="py-[3px] pr-2">GPS Samples</th>
                 <th className="py-[3px] pr-2">Attribution</th>
                 <th className="py-[3px] pr-2 border-l border-rmpg-700 pl-2">Fuel</th>
                 <th className="py-[3px] pr-2">Maint.</th>
