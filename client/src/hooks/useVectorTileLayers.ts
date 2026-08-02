@@ -158,6 +158,7 @@ const OSM_COVERAGE_CAPTION: Record<OsmGroup['coverage'], string> = {
 
 const OSM_ATTRIBUTION = `© OpenStreetMap contributors (ODbL) · extract ${OSM_EXTRACT_DATE}`;
 
+
 // Geometry -> render kind. 'mixed' groups carry both point and line/polygon
 // categories; the per-category kind is refined below by inspecting the cat.
 function osmKindFor(geometry: OsmGroup['geometry']): VectorLayerKind {
@@ -194,6 +195,10 @@ export const OSM_VECTOR_CONFIGS: VectorTileLayerConfig[] = OSM_GROUPS.flatMap((g
     minzoom: cat.minzoom,
     color: OSM_COLOR_BY_GROUP[group.name] ?? '#c3ccd6',
     labelProp: 'name',
+    // Intentionally empty for OSM: the OSM popup is built by
+    // buildOsmPopupHtml (client/src/utils/osmPopup.ts), which renders EVERY
+    // captured tag in US units rather than a per-category field list.
+    // detailProps remains in use by the UGRC branch's buildPopupHtml.
     detailProps: [],
     defaultVisible: false,
     source: 'osm' as const,
@@ -431,6 +436,19 @@ export function buildOsmLayerSpecs(cfg: VectorTileLayerConfig, isLight: boolean)
   return specs;
 }
 
+/**
+ * Every layer id that should carry click/hover for one OSM config.
+ *
+ * Polygon categories emit BOTH a `-fill` and a `-outline` layer. The original
+ * implementation bound interaction to `specs[specs.length - 1]`, described in a
+ * comment as "the topmost/interactive one" — but for a polygon that is the 1px
+ * outline, so clicking anywhere inside the polygon hit nothing. Binding every
+ * emitted id is also correct for any future category that emits more layers.
+ */
+export function osmInteractiveLayerIds(cfg: VectorTileLayerConfig, isLight: boolean): string[] {
+  return Array.from(new Set(buildOsmLayerSpecs(cfg, isLight).map((s) => s.id)));
+}
+
 export interface VectorLayerState {
   visible: boolean;
   loaded: boolean;
@@ -587,13 +605,22 @@ export function useVectorTileLayers({
             }
           }
 
-          // Topmost spec is the interactive one (icon/circle sits above its
-          // fill, e.g. camera_cone's fill + the camera icon layer added
-          // separately) — bind click/hover there.
-          const primaryLayerId = specs[specs.length - 1]?.id;
-          if (primaryLayerId && !clickBoundRef.current.has(cfg.id)) {
-            clickBoundRef.current.add(cfg.id);
-            map.on('click', primaryLayerId, (e) => {
+          // Bind click + hover on EVERY layer this config emits, not just the
+          // topmost spec. A polygon category emits [fill, outline], and the
+          // previous `specs[specs.length - 1]` put the target on the 1px
+          // OUTLINE — so clicking inside the polygon, which is the whole
+          // polygon, hit nothing. Binding every emitted id is also correct for
+          // any future category that emits more than two layers.
+          //
+          // The popup body below is the rich OSM popup (every captured tag in
+          // US units, RMPG overrides merged over the tile data, EDIT/VERIFY).
+          // It is bound here per-layer rather than via a map-level identify
+          // handler: two handlers writing the same popup instance on one click
+          // renders twice, with the winner decided by registration order.
+          for (const layerId of osmInteractiveLayerIds(cfg, isLightRef.current)) {
+            if (clickBoundRef.current.has(layerId)) continue;
+            clickBoundRef.current.add(layerId);
+            map.on('click', layerId, (e) => {
               const pop = popupRef.current;
               if (!pop || !e.features || e.features.length === 0) return;
               const rawProps = e.features[0].properties || {};
@@ -647,8 +674,8 @@ export function useVectorTileLayers({
                 }
               }
             });
-            map.on('mouseenter', primaryLayerId, () => { map.getCanvas().style.cursor = 'pointer'; });
-            map.on('mouseleave', primaryLayerId, () => { map.getCanvas().style.cursor = ''; });
+            map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer'; });
+            map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
           }
 
           if (layerStatesRef.current[cfg.id]?.visible) {
@@ -970,8 +997,12 @@ export function useVectorTileLayers({
     return () => { map.off('idle', ensure); };
   }, [map, addLayer, setLayerVisibility]);
 
-  // Re-color labels live when the basemap light/dark theme changes (for layers
-  // already on the map — newly added ones pick up the current theme in addLayer).
+  // Re-color live when the basemap light/dark theme changes, for layers already
+  // on the map (newly added ones pick up the current theme in addLayer).
+  //
+  // This previously looped VECTOR_TILE_CONFIGS only, so OSM circle layers — whose
+  // circle-stroke-color is derived from isLight at add time — kept a dark stroke
+  // after a switch to a light basemap and lost their outline against it.
   useEffect(() => {
     if (!map) return;
     const lp = labelPaint(isLight);
@@ -983,6 +1014,18 @@ export function useVectorTileLayers({
           map.setPaintProperty(id, 'text-halo-color', lp.halo);
         }
       } catch { /* style not ready */ }
+    }
+    for (const cfg of OSM_VECTOR_CONFIGS) {
+      for (const spec of buildOsmLayerSpecs(cfg, isLight)) {
+        if (spec.type !== 'circle') continue;
+        try {
+          if (hasLayer(map, spec.id)) {
+            map.setPaintProperty(
+              spec.id, 'circle-stroke-color', spec.paint['circle-stroke-color'] as any,
+            );
+          }
+        } catch { /* style not ready */ }
+      }
     }
   }, [map, isLight]);
 

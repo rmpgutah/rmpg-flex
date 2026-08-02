@@ -243,6 +243,8 @@ export function useNavGuidanceEngine() {
         steps,
         trafficAware: true,
         worstCongestion: worst,
+        // This path doesn't request the maxspeed annotation.
+        postedLimitMph: null,
       };
 
       geomRef.current = { coords, cum, totalMeters: total, totalSec: duration };

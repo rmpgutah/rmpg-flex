@@ -88,6 +88,7 @@ import { useMapPlacesSearch, PLACE_CATEGORIES } from '../../hooks/useMapPlacesSe
 import { useMapDirectionsPanel } from '../../hooks/useMapDirectionsPanel';
 import { useMapCoordinateGrid } from '../../hooks/useMapCoordinateGrid';
 import { useMapWeatherRadar } from '../../hooks/useMapWeatherRadar';
+import { useMapWeatherAlerts } from '../../hooks/useMapWeatherAlerts';
 import { useMapBookmarks } from '../../hooks/useMapBookmarks';
 import { useMapPrintExport } from '../../hooks/useMapPrintExport';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../../hooks/useGeoJsonLayers';
@@ -365,6 +366,20 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const tilequery = useMapboxTilequery(mapLoaded ? mapRef.current : null);
   const [identifyEnabled, setIdentifyEnabled] = useState(false);
   const identifyPopupRef = useRef<mapboxgl.Popup | null>(null);
+  // Persistent popup for OSM vector-tile feature clicks. Deliberately NOT
+  // identifyPopupRef: that one is created and destroyed per click by the
+  // Identify tool, so it is null whenever Identify is not mid-interaction.
+  // useVectorTileLayers was previously passed `popup: null`, which made every
+  // OSM click handler return before rendering anything.
+  const osmPopupRef = useRef<mapboxgl.Popup | null>(null);
+  if (osmPopupRef.current === null && typeof window !== 'undefined') {
+    osmPopupRef.current = new mapboxgl.Popup({
+      closeButton: true,
+      closeOnClick: true,
+      className: 'mapbox-popup-dark',
+      maxWidth: '280px',
+    });
+  }
   // Buffer Ring — built, tested (BufferRingTool.test.tsx).
   const [activeFloatingTool, setActiveFloatingTool] = useState<'buffer-ring' | 'annotation' | 'draw-geofence' | 'gps-replay' | 'nav-overlay' | null>(null);
   const [multiStopQueue, setMultiStopQueue] = useState<QueuedStop[]>([]);
@@ -563,6 +578,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const directionsPanel = useMapDirectionsPanel(mapRef.current, mapLoaded);
   const coordGrid = useMapCoordinateGrid(mapRef.current, mapLoaded);
   const weatherRadar = useMapWeatherRadar(mapRef.current, mapLoaded);
+  const weatherAlerts = useMapWeatherAlerts(mapRef.current, mapLoaded);
   const mapBookmarks = useMapBookmarks(mapRef.current, mapLoaded);
   const printExport = useMapPrintExport(mapRef.current, mapLoaded);
   const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
@@ -579,7 +595,14 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   const vectorTiles = useVectorTileLayers({
     map: mapRef.current,
-    popup: null,
+    // MUST be a real popup instance. Every click handler in this hook opens
+    // with `if (!pop) return;`, so `popup: null` silently disables ALL of them
+    // — the OSM detail popup with its captured tags and EDIT/VERIFY button,
+    // and the UGRC road/address popups including their "Use This Location"
+    // action that feeds an address into dispatch. None of that is reachable
+    // without this. A merge that reverts this line to null turns the whole
+    // popup layer back off, with no test failure to show for it.
+    popup: osmPopupRef.current,
     osmOverrides: osmOverrides.byOsmId,
     osmHiddenIds: osmOverrides.hiddenIds,
     onEditOsmFeature: setOsmEditTarget,
@@ -1241,6 +1264,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     // ── Live Conditions ──
     traffic: { active: traffic.enabled, onToggle: traffic.toggle },
     weather: { active: weatherRadar.enabled, onToggle: weatherRadar.toggle },
+    'weather-alerts': {
+      active: weatherAlerts.enabled,
+      onToggle: weatherAlerts.toggle,
+      loading: weatherAlerts.loading,
+      error: weatherAlerts.error ?? undefined,
+    },
     p1audio: { active: p1AudioEnabled, onToggle: () => setP1AudioEnabled((v: boolean) => !v) },
     autopan: { active: autoPanEnabled, onToggle: () => setAutoPanEnabled((v: boolean) => !v) },
     geofences: { active: geofenceAlerts.enabled, onToggle: geofenceAlerts.toggle },
