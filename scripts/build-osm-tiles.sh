@@ -48,6 +48,7 @@ need() {
 need osmium     "brew install osmium-tool"
 need tippecanoe "brew install tippecanoe"
 need jq         "brew install jq"
+need shasum     "ships with macOS/perl; on Linux use coreutils sha256sum"
 need node       "https://nodejs.org (v20+)"
 if [[ $COUNT_ONLY -eq 0 ]]; then
   need npx      "ships with node"
@@ -78,6 +79,8 @@ check_opt() {
 
 OSMIUM_EXPORT_HELP="$(osmium export --help 2>&1 || true)"
 check_opt osmium "$OSMIUM_EXPORT_HELP" "-e"
+check_opt osmium "$OSMIUM_EXPORT_HELP" "--add-unique-id"
+check_opt osmium "$OSMIUM_EXPORT_HELP" "--attributes"
 
 TIPPECANOE_HELP="$(tippecanoe --help 2>&1 || true)"
 check_opt tippecanoe "$TIPPECANOE_HELP" "--drop-rate"
@@ -154,7 +157,15 @@ for g in $OSM_GROUPS; do
   # earlier revision of this script invented one and aborted every real run
   # with "unrecognised option '--error-file'"). Feature data goes to -o, so
   # stdout is free to redirect to an errors file.
+  # --add-unique-id=type_id stamps each feature with its real OpenStreetMap
+  # element id ("n83099358" / "w1234" / "r567") — the same id in an
+  # openstreetmap.org URL. Without it every feature is ANONYMOUS, which makes
+  # it impossible to attach an internal RMPG edit to a specific hydrant, to
+  # link a feature to a CAD record, or to diff one extract against the next.
+  # --attributes adds the standard OSM metadata the website itself displays.
   osmium export -f geojsonseq --overwrite -e \
+    --add-unique-id=type_id \
+    --attributes=version,timestamp \
     -o "${WORK}/${g}.raw.geojsonseq" \
     "${WORK}/${g}.osm.pbf" > "${WORK}/${g}.export-errors.txt"
   if [[ -s "${WORK}/${g}.export-errors.txt" ]]; then
@@ -312,11 +323,17 @@ echo "==> Writing manifest"
     # manifest's claimed size against the object actually in R2, so a partial
     # upload is detectable instead of only a stale-vs-fresh timestamp guess.
     BYTES="$(wc -c < "${WORK}/osm-${g}.pmtiles" | tr -d ' ')"
+    # Size alone cannot prove the bytes in R2 are the bytes we built — a
+    # truncated-then-padded object, or an upload of the WRONG archive of a
+    # similar size, both pass a length check. A digest makes the manifest's
+    # claim verifiable rather than merely plausible.
+    SHA="$(shasum -a 256 "${WORK}/osm-${g}.pmtiles" | awk '{print $1}')"
     printf '    "%s": ' "$g"
-    jq -c --argjson bytes "$BYTES" \
+    jq -c --argjson bytes "$BYTES" --arg sha "$SHA" \
       '{feature_count: (.counts | to_entries | map(.value) | add),
         categories: (.counts | to_entries | map(select(.value > 0)) | map(.key)),
-        bytes: $bytes}' \
+        bytes: $bytes,
+        sha256: $sha}' \
       "${WORK}/${g}.counts.json" | tr -d '\n'
   done
   echo ""

@@ -76,6 +76,7 @@ import StreetViewLightbox from './components/StreetViewLightbox';
 import type { StreetViewTarget } from './components/StreetViewLightbox';
 import { useScaleControl, useFullscreenControl } from './components/ScaleFullscreenControls';
 import MinimapControl from './components/MinimapControl';
+import WeatherRadarControl from './components/WeatherRadarControl';
 import { useMapBreadcrumbs } from '../../hooks/useMapBreadcrumbs';
 import { useMapGeofenceAlerts } from '../../hooks/useMapGeofenceAlerts';
 import { useMapInfoPanel } from '../../hooks/useMapInfoPanel';
@@ -107,6 +108,8 @@ import { LEFT_DOCK_GROUPS, RIGHT_DOCK_GROUPS } from './config/layerRegistry';
 import { MapDensityProvider } from './hooks/useMapDensity';
 import MapTopToolbar from './components/MapTopToolbar';
 import UnifiedMapLegend from './components/UnifiedMapLegend';
+import OsmFeatureEditor from '../../components/OsmFeatureEditor';
+import { useOsmOverrides } from '../../hooks/useOsmOverrides';
 import MapBottomTray from './components/MapBottomTray';
 import SafetyAlertTicker from './components/SafetyAlertTicker';
 import BufferRingTool from './components/BufferRingTool';
@@ -577,20 +580,37 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const printExport = useMapPrintExport(mapRef.current, mapLoaded);
   const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
   const districtHierarchy = useDistrictHierarchyLayers({ map: mapRef.current, popup: null });
-  const vectorTiles = useVectorTileLayers({ map: mapRef.current, popup: osmPopupRef.current });
-  // Click-anywhere identify across every visible OSM layer. Complements the
-  // per-layer click binding in useVectorTileLayers: with 57 categories an
-  // operator can't be expected to know which layer owns a feature first.
-  // Shares osmPopupRef with the per-layer binding so the two can never render
-  // two stacked popups for one click.
-  useOsmIdentify({
+  // ── OSM override layer ──
+  // Overrides are fetched only for the groups actually switched on; there is no
+  // point pulling corrections for layers that are not drawn.
+  const [osmEditTarget, setOsmEditTarget] = useState<{
+    osmId: string; group: string; cat: string | null;
+    categoryLabel: string; featureName: string; osmTags: Record<string, unknown>;
+  } | null>(null);
+  const [visibleOsmGroups, setVisibleOsmGroups] = useState<string[]>([]);
+  const osmOverrides = useOsmOverrides(visibleOsmGroups);
+
+  const vectorTiles = useVectorTileLayers({
     map: mapRef.current,
-    popup: osmPopupRef.current,
-    visibleIds: Object.entries(vectorTiles.vectorLayerStates)
-      .filter(([, s]) => s.visible)
-      .map(([id]) => id),
-    isLight: false,
+    popup: null,
+    osmOverrides: osmOverrides.byOsmId,
+    osmHiddenIds: osmOverrides.hiddenIds,
+    onEditOsmFeature: setOsmEditTarget,
   });
+
+  // Derive the visible OSM groups from the layer states. Sorted+joined into a
+  // string so a re-render with the same set in a different order does not
+  // re-trigger the fetch.
+  const visibleOsmGroupKey = vectorTiles.vectorConfigs
+    .filter((c) => c.source === 'osm' && vectorTiles.vectorLayerStates[c.id]?.visible)
+    .map((c) => c.archive?.replace(/^osm-/, '') ?? '')
+    .filter(Boolean)
+    .filter((g, i, a) => a.indexOf(g) === i)
+    .sort()
+    .join(',');
+  useEffect(() => {
+    setVisibleOsmGroups(visibleOsmGroupKey ? visibleOsmGroupKey.split(',') : []);
+  }, [visibleOsmGroupKey]);
   const activityChoropleth = useActivityChoropleth({
     map: mapRef.current,
     calls,
@@ -1751,6 +1771,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         <MinimapControl parentMap={mapRef.current} onClose={() => setMinimapOpen(false)} />
       )}
 
+      {/* Radar timeline / opacity / legend — only while the Weather layer is on.
+          The layer toggle itself stays in the Live Conditions dock section. */}
+      {weatherRadar.enabled && <WeatherRadarControl radar={weatherRadar} />}
+
       {snapshotGalleryOpen && (
         <div
           className="absolute top-11 right-3 z-30 bg-surface-raised/95 border border-border-default backdrop-blur-sm font-mono overflow-hidden"
@@ -1965,6 +1989,25 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
         {/* ── Region: Info & Tools right dock (desktop/tablet only) ── */}
         {!isDockNarrow && <MapRightDock sections={mapRightDockSections} />}
+
+        {/* OSM override editor. Anchored over the map rather than in a portal
+            so it sits inside the map's stacking context alongside the docks. */}
+        {osmEditTarget && (
+          <div className="absolute top-16 right-4 z-40">
+            <OsmFeatureEditor
+              osmId={osmEditTarget.osmId}
+              group={osmEditTarget.group}
+              cat={osmEditTarget.cat}
+              categoryLabel={osmEditTarget.categoryLabel}
+              featureName={osmEditTarget.featureName}
+              osmTags={osmEditTarget.osmTags}
+              existing={osmOverrides.byOsmId.get(osmEditTarget.osmId) ?? null}
+              onSave={(patch) => osmOverrides.saveOverride(osmEditTarget.osmId, patch)}
+              onClear={() => osmOverrides.clearOverride(osmEditTarget.osmId)}
+              onClose={() => setOsmEditTarget(null)}
+            />
+          </div>
+        )}
       </div>
       {/* /Middle row */}
 

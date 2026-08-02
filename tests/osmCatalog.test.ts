@@ -66,7 +66,20 @@ describe('osm layer catalog', () => {
 
   it('always captures cat-independent identity properties', () => {
     for (const g of loadCatalog().groups) {
+      // '*' captures every non-noise tag, so `name` is inherently included.
+      // An explicit allow-list must name it, or the feature renders unlabelled.
+      if (g.properties === '*') continue;
       expect(g.properties, `${g.name} must capture name`).toContain('name');
+    }
+  });
+
+  it('restricts the two enormous way-based groups to an explicit allow-list', () => {
+    // traffic (22 MB) and drivability (134 MB) are by far the largest archives.
+    // Unbounded tag capture there would balloon every tile, so they must stay
+    // on a named list even though the point groups capture everything.
+    for (const name of ['traffic', 'drivability']) {
+      const g = loadCatalog().groups.find((x: any) => x.name === name);
+      expect(Array.isArray(g.properties), `${name} must keep an explicit allow-list`).toBe(true);
     }
   });
 
