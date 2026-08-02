@@ -153,6 +153,38 @@ const OSM_COVERAGE_CAPTION: Record<OsmGroup['coverage'], string> = {
 
 const OSM_ATTRIBUTION = `© OpenStreetMap contributors (ODbL) · extract ${OSM_EXTRACT_DATE}`;
 
+// Human labels for the OSM tag keys declared per group in config/osm-layers.json.
+// A key with no entry falls back to a title-cased version of itself, so adding a
+// property to the JSON never leaves a blank label in a popup.
+const OSM_PROP_LABELS: Record<string, string> = {
+  name: 'Name',
+  ref: 'Ref',
+  operator: 'Operator',
+  highway: 'Road type',
+  maxspeed: 'Speed limit',
+  oneway: 'One-way',
+  maxheight: 'Max height',
+  maxweight: 'Max weight',
+  traffic_calming: 'Calming',
+  crossing: 'Crossing',
+  hazard: 'Hazard',
+  enforcement: 'Enforcement',
+  surface: 'Surface',
+  access: 'Access',
+  emergency: 'Emergency',
+  amenity: 'Amenity',
+  man_made: 'Structure',
+  barrier: 'Barrier',
+  natural: 'Natural',
+  boundary: 'Boundary',
+  landuse: 'Land use',
+};
+
+function osmPropLabel(key: string): string {
+  return OSM_PROP_LABELS[key]
+    ?? key.replace(/[_:]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 // Geometry -> render kind. 'mixed' groups carry both point and line/polygon
 // categories; the per-category kind is refined below by inspecting the cat.
 function osmKindFor(geometry: OsmGroup['geometry']): VectorLayerKind {
@@ -189,7 +221,13 @@ export const OSM_VECTOR_CONFIGS: VectorTileLayerConfig[] = OSM_GROUPS.flatMap((g
     minzoom: cat.minzoom,
     color: OSM_COLOR_BY_GROUP[group.name] ?? '#c3ccd6',
     labelProp: 'name',
-    detailProps: [],
+    // Real popup fields, sourced from the same config/osm-layers.json group
+    // `properties` list that decides what the tiles carry — so the popup can
+    // never ask for a tag the pipeline did not emit. `name` is excluded here
+    // because it is already rendered as the popup title (labelProp).
+    detailProps: (group.properties ?? [])
+      .filter((p) => p !== 'name')
+      .map((p) => ({ key: p, label: osmPropLabel(p) })),
     defaultVisible: false,
     source: 'osm' as const,
     attribution: OSM_ATTRIBUTION,
