@@ -934,7 +934,8 @@
         "seasonal",
         "access",
         "motor_vehicle",
-        "snowmobile"
+        "snowmobile",
+        "winter_road"
       ],
       "categories": [
         {
@@ -994,14 +995,12 @@
         },
         {
           "cat": "seasonal",
-          "label": "Seasonal / restricted",
+          "label": "Seasonal closure",
           "minzoom": 11,
           "filters": [
             "w/seasonal",
             "w/snowmobile",
-            "w/motor_vehicle=no",
-            "w/access=private",
-            "w/access=no"
+            "w/winter_road"
           ],
           "match": [
             {
@@ -1012,6 +1011,23 @@
               "key": "snowmobile",
               "present": true
             },
+            {
+              "key": "winter_road",
+              "present": true
+            }
+          ],
+          "matchMode": "any"
+        },
+        {
+          "cat": "restricted",
+          "label": "Restricted access",
+          "minzoom": 11,
+          "filters": [
+            "w/motor_vehicle=no",
+            "w/access=private",
+            "w/access=no"
+          ],
+          "match": [
             {
               "key": "motor_vehicle",
               "values": [
