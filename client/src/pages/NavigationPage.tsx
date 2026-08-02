@@ -40,7 +40,7 @@ import {
   HudMuteToggle, HudMapControls, HudSourceChip, HudArrivedBanner, HudParkedBadge, HudPausedBadge,
   HudDeviceHealthBadge, HudOverSpeedBanner, HudZoneAlertBanner, HudWeatherBadge,
 } from './navigation/hud/HudInstruments';
-import { useSpeedLimit, shouldFireOverSpeedAlert } from './navigation/hud/useSpeedLimit';
+import { useSpeedLimit, shouldFireOverSpeedAlert } from '../hooks/useSpeedLimit';
 import { loadNavPrefs, saveNavPrefs, NAV_PREFS_CHANGED_EVENT, getEffectiveBrightness, type NavPrefs } from './navigation/NavSettingsPanel';
 import { gpxExport, navCsvExport } from './navigation/hud/trackExport';
 import { playNavTone } from './navigation/hud/navTone';
