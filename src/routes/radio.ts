@@ -27,7 +27,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { verifySignedResource } from '../utils/signedAccess';
 import { getDecrypted } from '../utils/encryptedR2';
-import { sliceByteRange } from '../utils/byteRange';
+import { sliceByteRange, rangeNotSatisfiableInit } from '../utils/byteRange';
 import {
   ocrImage,
   ocrExtractStructured,
@@ -270,6 +270,15 @@ rt.get('/transmissions/:id/audio', async (c) => {
   // supported `bytes=start-end` / `bytes=start-` form. RFC 7233: an
   // unparseable Range header must be treated as absent — plain 200, full
   // body, no Content-Range — not a 206 with a bogus 0-{total-1} range.
+  // Unlike the R2-backed streams, this path decrypts into memory and slices,
+  // so a bad range can't throw — but sliceByteRange() clamps, so "bytes=100-50"
+  // used to return a 206 with an empty body and a nonsensical
+  // "Content-Range: bytes 100-50/<total>". Answer 416 instead, matching the
+  // other range-serving routes.
+  if (r2Range && (rangeStart >= bytes.length || (rangeEnd >= 0 && rangeStart > rangeEnd))) {
+    const init = rangeNotSatisfiableInit(bytes.length);
+    return c.json(init.body, init.status, init.headers);
+  }
   const sliced = sliceByteRange(bytes, r2Range ? { start: rangeStart, end: rangeEnd } : null);
   const headers: Record<string, string> = {
     'Content-Type': contentType || 'audio/webm',

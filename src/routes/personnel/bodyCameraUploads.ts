@@ -37,6 +37,7 @@ import {
   ensureBodycamArtifactColumns,
 } from './bodyCameras';
 import { getDb, queryFirst, execute } from '../../utils/db';
+import { getR2Range, rangeNotSatisfiableInit } from '../../utils/byteRange';
 import { verifySignedResource } from '../../utils/signedAccess';
 import { transcribeTransmission } from '../../utils/aiDispatcher';
 import { tryParseModelJson } from '../../utils/serveIntakeExtract';
@@ -455,10 +456,16 @@ bodycamVideosRouter.get('/:id/stream', async (c) => {
       }
     }
 
-    const obj = r2Range
-      ? await c.env.UPLOADS.get(row.file_path, { range: r2Range })
-      : await c.env.UPLOADS.get(row.file_path);
-    if (!obj) return c.json({ error: 'File not in storage' }, 404);
+    // getR2Range() instead of a bare get(): R2 THROWS on an unsatisfiable
+    // range (start > end, or start past EOF), which the catch below would
+    // report as a 500 on what is really a client error. See byteRange.ts.
+    const got = await getR2Range(c.env.UPLOADS, row.file_path, r2Range);
+    if (got.kind === 'missing') return c.json({ error: 'File not in storage' }, 404);
+    if (got.kind === 'unsatisfiable') {
+      const init = rangeNotSatisfiableInit(got.total);
+      return c.json(init.body, init.status, init.headers);
+    }
+    const obj = got.obj;
 
     const totalSize = obj.size;
     const mime = row.mime_type || obj.httpMetadata?.contentType || 'video/mp4';
