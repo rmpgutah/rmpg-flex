@@ -63,8 +63,8 @@ describe('MAP_LAYER_REGISTRY', () => {
     }
   });
 
-  it('contains all 56 toggles', () => {
-    expect(MAP_LAYER_REGISTRY.length).toBe(56);
+  it('contains all 112 toggles (56 pre-existing + 56 OSM categories)', () => {
+    expect(MAP_LAYER_REGISTRY.length).toBe(112);
   });
 
   // The six GeoJSON boundary layers (geo-*) previously all collapsed onto one

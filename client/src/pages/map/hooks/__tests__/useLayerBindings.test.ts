@@ -112,7 +112,7 @@ describe('MapboxMapPage binding coverage', () => {
     );
     expect(bindingBlock.length, 'layerBindings block not found').toBeGreaterThan(0);
 
-    const dynamic = new Set(['district-', 'geo-']);
+    const dynamic = new Set(['district-', 'geo-', 'osm_']);
     const missing = MAP_LAYER_REGISTRY
       .filter((l) => ![...dynamic].some((p) => l.id.startsWith(p)))
       .filter((l) => !bindingBlock.includes(`'${l.id}'`) && !new RegExp(`\\b${l.id}\\s*:`).test(bindingBlock))
@@ -149,5 +149,20 @@ describe('MapboxMapPage binding coverage', () => {
       bindingBlock,
       'geo-${cfg.id} spread (geoJsonLayers.configs) is missing from layerBindings — the Administrative Boundaries dock section will be missing its GeoJSON layer toggles',
     ).toContain('`geo-${cfg.id}`');
+  });
+
+  it('spreads vectorTiles configs (UGRC + OSM) into cfg.id-keyed bindings', () => {
+    const src = readFileSync(
+      resolve(__dirname, '../../MapboxMapPage.tsx'),
+      'utf8',
+    );
+    const bindingBlock = src.slice(
+      src.indexOf('const layerBindings'),
+      src.indexOf('const mapLeftDockSections'),
+    );
+    expect(
+      bindingBlock,
+      'vectorTiles.vectorConfigs spread is missing from layerBindings — every OSM overlay dock section would be missing its toggles',
+    ).toContain('vectorTiles.vectorConfigs.map');
   });
 });
