@@ -558,6 +558,31 @@ export default {
           ).catch(() => {}),
         );
       }
+
+      // Daily blotter at 00:05 America/Denver. Same hour+minute gate as the
+      // 04:00 tasks above — an hour-only gate would fire ~60x. Self-contained
+      // try/catch so a blotter failure cannot abort the rest of the cron.
+      if (denverHour === 0 && denverMinute === 5) {
+        ctx.waitUntil(
+          (async () => {
+            if (!env.DOWNLOADS) {
+              console.warn('[blotter] DOWNLOADS bucket unbound; skipping nightly run');
+              return;
+            }
+            const { runNightlyBlotter } = await import('./utils/dailyReport/nightly');
+            const res = await runNightlyBlotter(env.DB, env.DOWNLOADS, Date.now());
+            console.log(`[blotter] generated=${res.generated.join(',') || 'none'} skipped=${res.skipped.length}`);
+          })().catch((err) => {
+            console.error('[blotter] nightly run failed:', err);
+            logErrorToDb(env.DB, {
+              severity: 'error',
+              category: 'cron',
+              message: err instanceof Error ? err.message : String(err),
+              source: 'scheduled:daily-blotter',
+            }, ctx);
+          }),
+        );
+      }
     }
 
     // ── 1st of month, 03:00 UTC ──
