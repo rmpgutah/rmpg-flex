@@ -5381,6 +5381,33 @@ html, body {
 .rounded-t-md { border-top-left-radius: 2px !important; border-top-right-radius: 2px !important; }
 .rounded-b-md { border-bottom-left-radius: 2px !important; border-bottom-right-radius: 2px !important; }
 
+/* --- 1b. MAPBOX CONTAINER POSITION COLLISION ---
+   mapbox-gl.css ships `.mapboxgl-map { position: relative }` and Mapbox stamps
+   that class onto OUR container div at construction. Tailwind's `.absolute`
+   lives in the app stylesheet, mapbox-gl's rule lives in the vendor-mapbox
+   chunk, and the vendor chunk loads LAST — both selectors are a single class,
+   so specificity ties and SOURCE ORDER decides. The result: a container
+   written as `absolute inset-0` computes `position: relative`, `inset: 0`
+   becomes inert for sizing, and the box collapses to its content height.
+
+   Measured on live 2026-08-01 (/serve → Map tab): parent 798px, map container
+   12px — Mapbox then sized its canvas to that 12px box, which is the clipped
+   sliver on the Map tab and the apparently-blank pane in the Route Planner.
+
+   Six surfaces relied on the bare `absolute inset-0` (ServePage, PatrolPage,
+   NavigationPage, ServeRoutePlanner, ServeIntakeMap, NavMapView). MapboxMapPage
+   escaped it only because it carries a redundant-looking inline
+   `width:100%;height:100%` — a local workaround for this exact bug that was
+   never traced to its cause. Fix it once, by specificity (0,2,0 beats 0,1,0)
+   rather than by import order, so it holds no matter how the chunks are
+   emitted and so a NEW map surface can't reintroduce it.
+
+   Deliberately NOT `!important`: a map that genuinely wants a different
+   position should still be able to say so with a more specific rule. */
+.mapboxgl-map.absolute { position: absolute; }
+.mapboxgl-map.fixed { position: fixed; }
+.mapboxgl-map.sticky { position: sticky; }
+
 /* --- 2. SUBTLE SHADOWS ONLY ---
    Replace web-app drop shadows with CAD console depth via borders. */
 .shadow-lg {
