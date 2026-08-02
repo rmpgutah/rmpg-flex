@@ -6,6 +6,7 @@ import {
   ArrowUpDown, Filter, Shield, FileText, Eye, Navigation,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { buildAssessorFormPatch, type AssessorParcelDetail } from '../../utils/assessorFormPatch';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import { withOneRetry } from '../../utils/retryTransient';
 import { useAuth } from '../../context/AuthContext';
@@ -553,7 +554,33 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
   useEffect(() => () => { if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current); }, []);
 
   const onApplyAssessor = useCallback(async (parcelNumber: string) => {
-    if (!recordId) return; // Apply button is disabled in this branch; defensive guard.
+    // UNSAVED record: no row exists for /assessor/apply to write to, so fill
+    // the FORM instead. The old comment here claimed "Apply button is
+    // disabled in this branch" — it never was (the panel only disables on
+    // !picked), so clicking Apply on a new business silently did nothing.
+    if (!recordId) {
+      try {
+        const res = await apiFetch<{ ok: boolean; parcel: AssessorParcelDetail | null }>(
+          `/assessor/parcel/${encodeURIComponent(parcelNumber)}`,
+        );
+        if (!res?.parcel) return;
+        setForm((prev) => {
+          const { patch, skipped } = buildAssessorFormPatch(
+            res.parcel!, prev as unknown as Record<string, unknown>,
+          );
+          setSkippedCount(skipped.length);
+          if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current);
+          if (skipped.length > 0) {
+            skippedTimerRef.current = setTimeout(() => setSkippedCount(0), 5000);
+          }
+          return { ...prev, ...(patch as Partial<typeof prev>) };
+        });
+        assessor.dismiss();
+      } catch (err) {
+        console.error('Assessor apply (unsaved record) failed', err);
+      }
+      return;
+    }
     try {
       const res = await apiFetch<{ ok: boolean; patch: Record<string, unknown>; skipped: string[]; parcel_record_id: number | null }>(
         '/assessor/apply',
@@ -578,7 +605,7 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
     } catch (err) {
       console.error('Assessor apply failed', err);
     }
-  }, [recordId, assessor]);
+  }, [recordId, assessor, setForm]);
 
   // County resolution (resolveCountyFromAddress) needs a city/ZIP to route
   // correctly — a bare street ("10846 South Indigo Sky Way") always resolves
@@ -630,7 +657,9 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
               onRefresh={assessor.refresh}
             />
             {!recordSaved && assessor.parcels && assessor.parcels.length > 0 && (
-              <div className="text-xs text-rmpg-400 mt-1">Save record first, then apply parcel.</div>
+              <div className="text-xs text-rmpg-400 mt-1">
+                Applying fills these fields now; they save with the record.
+              </div>
             )}
             {skippedCount > 0 && (
               <div className="text-xs text-rmpg-400 mt-1">{skippedCount} field(s) skipped (already filled)</div>
