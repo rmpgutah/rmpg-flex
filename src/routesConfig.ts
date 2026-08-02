@@ -55,6 +55,7 @@ import auth from './routes/auth';
 import health from './routes/health';
 import mapData from './routes/mapData';
 import tiles from './routes/tiles';
+import osmOverrides from './routes/osmOverrides';
 import geo from './routes/geo';
 import admin from './routes/admin';
 import animalControl from './routes/animalControl';
@@ -295,6 +296,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Sign in with Dialer (dialer.rmpgutah.us OIDC): /dialer/check (identifier-first SSO probe, IP-rate-limited boolean), /dialer/login, /dialer/callback. Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
   { prefix: '/api/tiles', router: tiles, auth: 'public' },
+  { prefix: '/api/osm-overrides', router: osmOverrides, auth: 'required',
+    note: "RMPG's internal edit layer over the OSM overlays, keyed by OSM element id. Auth REQUIRED — unlike /api/tiles (public reference data), these are internal corrections attributable to a named user." },
   { prefix: '/api/geo', router: geo, auth: 'public' },
 
   // Per-shift QR-token-authed vehicle inspection page (/m/shift/<token>). The
