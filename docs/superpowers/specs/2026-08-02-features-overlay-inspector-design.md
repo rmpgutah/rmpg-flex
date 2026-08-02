@@ -152,8 +152,11 @@ the module docblock, because a value that is safe in JSX and unsafe in
   extra click.
 - Detail: `rows`, then `extras`, then the RMPG edit block, then provenance and
   the OSM link — the same order and content as the existing popup.
-- Hovering a row sets a Mapbox feature-state on that feature so its geometry
-  highlights on the map.
+- Hovering a row highlights that feature's geometry on the map. This uses a
+  dedicated GeoJSON highlight source fed the hovered feature's geometry —
+  **not** `setFeatureState`, which requires a stable per-feature `id` that the
+  OSM pmtiles archives do not guarantee. `queryRenderedFeatures` already hands
+  back WGS84 GeoJSON geometry, so the highlight source needs no id at all.
 - A marker drops at the clicked coordinate while a result is open.
 - Dismissible; also cleared when Identify is toggled off.
 
