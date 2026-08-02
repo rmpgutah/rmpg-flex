@@ -76,6 +76,7 @@ import StreetViewLightbox from './components/StreetViewLightbox';
 import type { StreetViewTarget } from './components/StreetViewLightbox';
 import { useScaleControl, useFullscreenControl } from './components/ScaleFullscreenControls';
 import MinimapControl from './components/MinimapControl';
+import WeatherRadarControl from './components/WeatherRadarControl';
 import { useMapBreadcrumbs } from '../../hooks/useMapBreadcrumbs';
 import { useMapGeofenceAlerts } from '../../hooks/useMapGeofenceAlerts';
 import { useMapInfoPanel } from '../../hooks/useMapInfoPanel';
@@ -1754,6 +1755,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {minimapOpen && mapRef.current && (
         <MinimapControl parentMap={mapRef.current} onClose={() => setMinimapOpen(false)} />
       )}
+
+      {/* Radar timeline / opacity / legend — only while the Weather layer is on.
+          The layer toggle itself stays in the Live Conditions dock section. */}
+      {weatherRadar.enabled && <WeatherRadarControl radar={weatherRadar} />}
 
       {snapshotGalleryOpen && (
         <div
