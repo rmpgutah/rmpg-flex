@@ -16,13 +16,24 @@ import type { Env } from '../types';
 
 const tiles = new Hono<Env>();
 
+// Thrown when the requested archive object isn't in R2 at all, as opposed to
+// the archive being present but having no tile at some coordinate. The tile
+// handler has to tell those apart: a missing archive is a 404, a missing tile
+// is a 204, and neither is a server fault.
+class ArchiveNotFoundError extends Error {
+  constructor(public archiveKey: string) {
+    super(`archive not found: ${archiveKey}`);
+    this.name = 'ArchiveNotFoundError';
+  }
+}
+
 // R2-backed PMTiles Source: range reads against the archive object.
 class R2Source implements Source {
   constructor(private bucket: R2Bucket, private archiveKey: string) {}
   getKey() { return this.archiveKey; }
   async getBytes(offset: number, length: number): Promise<RangeResponse> {
     const obj = await this.bucket.get(this.archiveKey, { range: { offset, length } });
-    if (!obj) throw new Error(`archive not found: ${this.archiveKey}`);
+    if (!obj) throw new ArchiveNotFoundError(this.archiveKey);
     const data = await obj.arrayBuffer();
     return { data };
   }
@@ -39,6 +50,14 @@ function getArchive(bucket: R2Bucket, name: string): PMTiles {
     archives.set(key, p);
   }
   return p;
+}
+
+// Drop a cached PMTiles instance. Called when the archive turns out to be
+// missing: the instance would otherwise sit in the per-isolate map holding
+// whatever partial header state it got before failing, so an archive uploaded
+// later would keep 404ing for the life of the isolate.
+function forgetArchive(name: string): void {
+  archives.delete(`tiles/${name}.pmtiles`);
 }
 
 // Deepest zoom the XYZ scheme addresses; 2^22 tiles per axis is already far
@@ -82,6 +101,13 @@ tiles.get('/:name/:z/:x/:y', async (c) => {
     }
     return new Response(tile.data, { headers: TILE_HEADERS });
   } catch (err) {
+    if (err instanceof ArchiveNotFoundError) {
+      // The archive object isn't in R2 — a client asking for a layer we don't
+      // serve, not a server fault. Same reasoning as the range check above:
+      // this must not land in error_log as a 500.
+      forgetArchive(name);
+      return c.json({ error: 'archive not found' }, 404);
+    }
     console.error(`tile ${name}/${z}/${x}/${y} error:`, err);
     return c.json({ error: 'tile failed' }, 500);
   }
@@ -102,6 +128,22 @@ tiles.get('/:file', async (c) => {
       if (!m) return c.json({ error: 'bad range' }, 416);
       const start = parseInt(m[1], 10);
       const end = m[2] ? Math.min(parseInt(m[2], 10), head.size - 1) : head.size - 1;
+      // An unsatisfiable range must be a 416, not a 500. Both of these make
+      // `end - start + 1` NEGATIVE, and R2's get() rejects a negative range
+      // length, which the catch-all below would report as a server fault:
+      //   - start > end        e.g. "bytes=100-50"
+      //   - start past EOF     e.g. "bytes=99999999999-" (end clamps to
+      //                        size-1, start doesn't, so the clamp protects
+      //                        only one side of the subtraction)
+      // RFC 9110 wants a "bytes */<size>" Content-Range on a 416 so the client
+      // learns the real length and can re-request correctly.
+      if (start > end || start >= head.size) {
+        return c.json({ error: 'range not satisfiable' }, 416, {
+          'Content-Range': `bytes */${head.size}`,
+          'Accept-Ranges': 'bytes',
+          'Access-Control-Allow-Origin': '*',
+        });
+      }
       const obj = await c.env.MAP_DATA.get(key, { range: { offset: start, length: end - start + 1 } });
       if (!obj) return c.json({ error: 'not found' }, 404);
       return new Response(obj.body, {
