@@ -35,8 +35,24 @@ export interface SpeedEventCounts {
   speedExtreme: number;
 }
 
-/** Tier floors, in MPH. A run is counted once, at the highest tier its peak reaches. */
-export const SPEED_THRESHOLDS = { high: 70, veryHigh: 80, extreme: 90 } as const;
+/**
+ * Tier floors, in MPH. A run is counted once, at the highest tier its peak reaches.
+ *
+ * ⚠️ DO NOT "TIDY" THESE BACK TO ROUND NUMBERS (70/80/90). The floor is set by
+ * law, not by aesthetics.
+ *
+ * Utah's MAXIMUM posted speed limit is 80 mph (rural I-15). 85 is therefore the
+ * lowest threshold that cannot flag lawful driving anywhere in the state — the
+ * 5 mph above 80 absorbs speedometer/GPS error rather than granting latitude.
+ *
+ * This was measured, not assumed. Officer 1's real distribution over 30 days
+ * (77,098 samples, correctly converted from the m/s the column stores):
+ *   70-79: 7,398 | 80-84: 2,779 | 85-89: 1,264 | 90-94: 174 | 95-99: 21 | 110+: 19
+ * A 70 mph floor would have branded the only officer in the system "At Risk"
+ * for ordinary legal cruising — a confident wrong number about a named person,
+ * which is the exact failure this feature exists to prevent.
+ */
+export const SPEED_THRESHOLDS = { high: 85, veryHigh: 95, extreme: 105 } as const;
 
 /**
  * A SINGLE sample above a threshold is NOT an event.
