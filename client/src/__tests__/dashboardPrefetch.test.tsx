@@ -1,5 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Stub DashboardPage so `importDashboard()` resolves immediately instead of
+// pulling its real dependency tree (Mapbox loader, mini-maps, many contexts).
+//
+// Without this the second test below started a real dynamic import and never
+// awaited it, so the load was still in flight when the environment tore down:
+//
+//   EnvironmentTeardownError: Cannot load '/node_modules/react/index.js'
+//   imported from src/pages/DashboardPage.tsx after the environment was torn down
+//
+// Every test still PASSED — vitest reports it as an unhandled error and exits
+// non-zero, which fails the whole run for a reason no failing assertion names.
+// Whether it surfaced depended on suite scheduling, so it lay dormant until an
+// unrelated new test file shifted the worker ordering.
+vi.mock('../pages/DashboardPage', () => ({ default: () => null }));
+
 // The Dashboard chunk must be warmed as soon as auth flips to true, so that
 // making DashboardPage lazy does not introduce a post-login stall.
 describe('dashboard prefetch on auth', () => {
@@ -19,12 +34,14 @@ describe('dashboard prefetch on auth', () => {
     expect(typeof mod.importDashboard).toBe('function');
   });
 
-  it('returns a promise from the import factory', async () => {
-    // A real dynamic import of DashboardPage pulls a deep tree (Mapbox
-    // loader, mini-maps, many contexts) that does not resolve cleanly under
-    // jsdom. The real module load is covered by the browser verification
-    // step instead; here we only assert the factory shape.
+  it('returns a promise from the import factory, and settles it', async () => {
     const { importDashboard } = await import('../routes/routeModules');
-    expect(importDashboard()).toBeInstanceOf(Promise);
+    const pending = importDashboard();
+    expect(pending).toBeInstanceOf(Promise);
+    // AWAIT it. Leaving the import in flight is what produced the teardown
+    // error; DashboardPage is mocked above so this resolves immediately rather
+    // than loading the real tree. Swallow a rejection — the assertion here is
+    // about the factory's shape, not about the chunk's contents.
+    await expect(pending.then(() => 'settled').catch(() => 'settled')).resolves.toBe('settled');
   });
 });
