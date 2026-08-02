@@ -252,3 +252,30 @@ Consequences:
 - Plan 2 should decide whether tile URLs carry a version/generation token so a data
   refresh invalidates cleanly instead of relying on a manual purge.
 
+
+---
+
+## Rebuild 2026-08-02 (2) — seasonal/restricted split
+
+`drivability/seasonal` previously matched both genuine seasonal closure and
+plain access restriction under one label. Splitting them shows how misleading
+that was:
+
+| Category | Features | What it means |
+|---|---:|---|
+| `seasonal` | 2,067 | Closes in winter (`seasonal`, `snowmobile`, `winter_road`) |
+| `restricted` | 60,160 | Private property / no motor vehicles |
+
+**97% of the old "Seasonal / restricted" layer was access restriction, not
+seasonal closure.** An officer checking whether a road was driveable got an
+answer that did not distinguish "closed until spring" from "someone's
+driveway". Because `drivability` is multi-emit, a road that is both now appears
+in both layers.
+
+This also closes the `access=no` gap — those ways previously matched no
+category at all and were absent from every layer.
+
+The manifest now carries a `sha256` per archive alongside `bytes`. Verified
+after this rebuild: the manifest digest for `osm-safety` matches the object
+actually served from R2, so a partial or wrong upload is now detectable rather
+than merely suspected.
