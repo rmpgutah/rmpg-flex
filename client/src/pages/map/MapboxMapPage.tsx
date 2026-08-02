@@ -92,6 +92,7 @@ import { useMapPrintExport } from '../../hooks/useMapPrintExport';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../../hooks/useGeoJsonLayers';
 import { useDistrictHierarchyLayers } from '../../hooks/useDistrictHierarchyLayers';
 import { useVectorTileLayers } from '../../hooks/useVectorTileLayers';
+import { useOsmIdentify } from '../../hooks/useOsmIdentify';
 import { useActivityChoropleth } from '../../hooks/useActivityChoropleth';
 import { useMapFeatureInspect } from '../../hooks/useMapFeatureInspect';
 import { useMapMatchTrace } from '../../hooks/useMapMatchTrace';
@@ -577,6 +578,19 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
   const districtHierarchy = useDistrictHierarchyLayers({ map: mapRef.current, popup: null });
   const vectorTiles = useVectorTileLayers({ map: mapRef.current, popup: osmPopupRef.current });
+  // Click-anywhere identify across every visible OSM layer. Complements the
+  // per-layer click binding in useVectorTileLayers: with 57 categories an
+  // operator can't be expected to know which layer owns a feature first.
+  // Shares osmPopupRef with the per-layer binding so the two can never render
+  // two stacked popups for one click.
+  useOsmIdentify({
+    map: mapRef.current,
+    popup: osmPopupRef.current,
+    visibleIds: Object.entries(vectorTiles.vectorLayerStates)
+      .filter(([, s]) => s.visible)
+      .map(([id]) => id),
+    isLight: false,
+  });
   const activityChoropleth = useActivityChoropleth({
     map: mapRef.current,
     calls,
