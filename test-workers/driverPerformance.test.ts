@@ -118,6 +118,65 @@ describe('weights owner gate', () => {
   });
 });
 
+describe('window validation (from/to)', () => {
+  // These run BEFORE the weights gate (see windowFrom() ordering in
+  // driverPerformance.ts), so they're reachable even while SCORE_VERSION is
+  // still a placeholder — a malformed window must 400 regardless of gate state.
+  const SUP = { id: 1, role: 'supervisor', username: 'supervisor', full_name: 'Supervisor' };
+
+  it('rejects an impossible calendar date (2026-13-45) with 400, not 200 or 500', async () => {
+    const res = await request(SUP, '/api/driver-performance/roster?from=2026-13-45&to=2026-03-31');
+    expect(res.status).toBe(400);
+    const body = await res.json() as { code?: string };
+    expect(body.code).toBe('INVALID_WINDOW');
+  });
+
+  it('rejects a from value containing a quote with 400, not 200 or 500', async () => {
+    const res = await request(
+      SUP,
+      `/api/driver-performance/roster?${new URLSearchParams({ from: '2026-03-01"', to: '2026-03-31' })}`,
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json() as { code?: string };
+    expect(body.code).toBe('INVALID_WINDOW');
+  });
+
+  it('rejects a malformed window on /officer/:id too', async () => {
+    const res = await request(SUP, '/api/driver-performance/officer/1?to=2026-02-30');
+    expect(res.status).toBe(400);
+    const body = await res.json() as { code?: string };
+    expect(body.code).toBe('INVALID_WINDOW');
+  });
+
+  it('rejects a malformed window on the export endpoint before any DB work, with a clean Content-Disposition', async () => {
+    const res = await request(
+      SUP,
+      `/api/driver-performance/officer/1/export?${new URLSearchParams({ to: '2026-03-01"\r\nX-Injected: 1' })}`,
+    );
+    expect(res.status).toBe(400);
+    // Never a malformed/injected header — the 400 must return before the
+    // Content-Disposition string is ever built.
+    expect(res.headers.get('X-Injected')).toBeNull();
+    const cd = res.headers.get('Content-Disposition');
+    expect(cd === null || !/[\r\n]/.test(cd)).toBe(true);
+  });
+
+  it('leaves the existing valid-window behavior unchanged (weights-pending JSON, not a validation error)', async () => {
+    const res = await request(SUP, '/api/driver-performance/roster?from=2026-03-01&to=2026-03-31');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { code?: string };
+    expect(body.code).toBe('weights_pending_review');
+  });
+
+  it('still returns 403 for a denied role even with a malformed window (RBAC runs first)', async () => {
+    const res = await request(
+      { id: 1, role: 'client_viewer', username: 'client_viewer', full_name: 'Client Viewer' },
+      '/api/driver-performance/roster?from=not-a-date',
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
 describe.skip('roster shape (un-skip once weights are reviewed)', () => {
   it('separates unranked insufficient-exposure officers from the ranked list', async () => {
     const res = await request(

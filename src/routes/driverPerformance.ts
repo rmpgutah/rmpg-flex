@@ -40,12 +40,52 @@ function weightsGate(c: { json: (o: unknown) => Response }): Response | null {
   });
 }
 
-/** Default window: trailing 30 days. */
-function windowFrom(c: { req: { query: (k: string) => string | undefined } }) {
-  const to = c.req.query('to') || new Date().toISOString().slice(0, 10);
-  const from = c.req.query('from')
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Strict `YYYY-MM-DD` validation, including real-calendar-date rejection
+ * (e.g. 2026-13-45). `Date.parse` alone is not enough — it silently rolls
+ * an invalid day/month forward (2026-02-30 → 2026-03-02) rather than
+ * rejecting it, which would substitute a different window than the one
+ * an evidence-grade PDF claims to cover.
+ */
+function isValidCalendarDate(s: string): boolean {
+  if (!DATE_RE.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
+/**
+ * Default window: trailing 30 days. `from`/`to` are caller-controlled query
+ * params that flow into a Content-Disposition header (export route) and
+ * onto the printed PDF itself — an evidence-grade document that may be read
+ * in litigation. Anything not a real `YYYY-MM-DD` date is rejected with a
+ * 400 rather than silently substituted, so a caller who passes garbage is
+ * told, not quietly given a different window than they asked for.
+ */
+function windowFrom(
+  c: { req: { query: (k: string) => string | undefined } },
+): { from: string; to: string; error?: undefined } | { from?: undefined; to?: undefined; error: Response } {
+  const toParam = c.req.query('to');
+  const fromParam = c.req.query('from');
+  if (toParam !== undefined && !isValidCalendarDate(toParam)) {
+    return { error: badWindowResponse('to') };
+  }
+  if (fromParam !== undefined && !isValidCalendarDate(fromParam)) {
+    return { error: badWindowResponse('from') };
+  }
+  const to = toParam || new Date().toISOString().slice(0, 10);
+  const from = fromParam
     || new Date(Date.parse(to) - 29 * 86400000).toISOString().slice(0, 10);
   return { from, to };
+}
+
+function badWindowResponse(field: 'from' | 'to'): Response {
+  return Response.json(
+    { error: `Invalid ${field}: must be a real calendar date in YYYY-MM-DD format`, code: 'INVALID_WINDOW' },
+    { status: 400 },
+  );
 }
 
 interface AggRow {
@@ -119,10 +159,14 @@ function shape(r: AggRow) {
 // GET /roster — ranked scored officers; insufficient-exposure officers returned
 // SEPARATELY so they can never sort to the bottom of a leaderboard.
 driverPerformance.get('/roster', canView, async (c) => {
+  // Input validation before the (unconditional-once-tripped) business gate,
+  // so a malformed request is told what's wrong with it rather than getting
+  // a generic "weights pending review" that never even looked at its input.
+  const win = windowFrom(c); if (win.error) return win.error;
+  const { from, to } = win;
   const gated = weightsGate(c); if (gated) return gated;
   const db = getDb(c.env);
   await ensureDriverPerformanceColumns(db);
-  const { from, to } = windowFrom(c);
   try {
     const rows = await query<AggRow>(db, AGG_SQL, from, to);
     const shaped = rows.map(shape);
@@ -146,12 +190,13 @@ driverPerformance.get('/roster', canView, async (c) => {
 });
 
 driverPerformance.get('/officer/:id', canView, async (c) => {
+  const officerId = Number(c.req.param('id'));
+  if (!Number.isInteger(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
+  const win = windowFrom(c); if (win.error) return win.error;
+  const { from, to } = win;
   const gated = weightsGate(c); if (gated) return gated;
   const db = getDb(c.env);
   await ensureDriverPerformanceColumns(db);
-  const officerId = Number(c.req.param('id'));
-  if (!Number.isInteger(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
-  const { from, to } = windowFrom(c);
   try {
     const agg = await queryFirst<AggRow>(db, `${AGG_SQL} HAVING d.officer_id = ?`, from, to, officerId);
     const daily = await query(
@@ -177,12 +222,13 @@ driverPerformance.get('/officer/:id', canView, async (c) => {
 // time — is stamped on the page, and the unscored case is handled explicitly
 // (see renderDriverPerformancePdf) rather than printing a bare/blank score.
 driverPerformance.get('/officer/:id/export', canView, async (c) => {
+  const officerId = Number(c.req.param('id'));
+  if (!Number.isInteger(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
+  const win = windowFrom(c); if (win.error) return win.error;
+  const { from, to } = win;
   const gated = weightsGate(c); if (gated) return gated;
   const db = getDb(c.env);
   await ensureDriverPerformanceColumns(db);
-  const officerId = Number(c.req.param('id'));
-  if (!Number.isInteger(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
-  const { from, to } = windowFrom(c);
   try {
     const agg = await queryFirst<AggRow>(db, `${AGG_SQL} HAVING d.officer_id = ?`, from, to, officerId);
     if (!agg) return c.json({ error: 'No data for this officer in the window' }, 404);
