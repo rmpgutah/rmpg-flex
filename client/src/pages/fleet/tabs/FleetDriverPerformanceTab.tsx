@@ -1,8 +1,19 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../../../hooks/useApi';
+import { apiFetch, apiFetchBlob } from '../../../hooks/useApi';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import { toDisplayLabel } from '../../../utils/formatters';
-import { Gauge, ArrowLeft } from 'lucide-react';
+import { Gauge, ArrowLeft, FileDown } from 'lucide-react';
+
+/**
+ * Attribution shares are stored as 0..1 FRACTIONS, not percentages. Rendering
+ * them straight through `.toFixed(0)}%` printed a fully-recorded day as "1%"
+ * — a number that reads as near-total attribution failure on a day where
+ * attribution was perfect. Every render site goes through this helper.
+ */
+function pct(fraction: number | null | undefined): string {
+  if (typeof fraction !== 'number' || !Number.isFinite(fraction)) return '—';
+  return `${Math.round(fraction * 100)}%`;
+}
 
 interface ScoreResult {
   status: 'scored' | 'insufficient_data';
@@ -22,10 +33,18 @@ interface RosterEntry {
   trip_count: number;
   event_count: number;
   events: Record<string, number>;
+  severity: { critical: number; high: number; moderate: number; low: number };
+  /** Events on a vehicle this officer drove that could not be tied to any driver. */
+  unattributed_events: number;
   cost: { fuel: number; fuel_gallons: number; maintenance: number };
   result: ScoreResult;
   rank?: number;
 }
+
+const UNATTRIBUTED_TITLE =
+  'Driving events were recorded on a vehicle this officer drove, but could not be tied to any ' +
+  'driver. They are not counted in the event total and not reflected in the score — the counts ' +
+  'shown are a floor, not a complete record.';
 
 interface GatedResponse {
   ok: false;
@@ -52,6 +71,11 @@ interface DailyEntry {
   score_version: string;
   attribution_recorded_pct: number;
   attribution_inferred_pct: number;
+  unattributed_events: number;
+  events_critical: number;
+  events_high: number;
+  events_moderate: number;
+  events_low: number;
 }
 
 interface NormalOfficerResponse {
@@ -119,6 +143,17 @@ function RosterRow({
         <td className="py-[2px] pr-2">{r.result.weightedRatePer100Miles?.toFixed(2)}</td>
         <td className="py-[2px] pr-2">{r.miles_driven.toFixed(0)}</td>
         <td className="py-[2px] pr-2">{r.event_count}</td>
+        {/* The doubt sits directly beside the event count. A "0 events" row is
+            only good news when this cell is also 0. */}
+        <td className="py-[2px] pr-2">
+          {r.unattributed_events > 0 ? (
+            <span className="text-[color:var(--sev-warn)]" title={UNATTRIBUTED_TITLE}>
+              {r.unattributed_events}
+            </span>
+          ) : (
+            <span className="text-fg-muted">0</span>
+          )}
+        </td>
         <td className="py-[2px] pr-2">
           {r.result.confidence === 'inferred' ? (
             <span
@@ -149,6 +184,15 @@ function RosterRow({
       <td className="py-[2px] pr-2">{r.badge_number ?? '—'}</td>
       <td className="py-[2px] pr-2">{r.miles_driven.toFixed(0)} mi</td>
       <td className="py-[2px] pr-2">{r.event_count} events</td>
+      <td className="py-[2px] pr-2">
+        {r.unattributed_events > 0 ? (
+          <span className="text-[color:var(--sev-warn)]" title={UNATTRIBUTED_TITLE}>
+            {r.unattributed_events} unattributed
+          </span>
+        ) : (
+          <span className="text-fg-muted">0 unattributed</span>
+        )}
+      </td>
     </tr>
   );
 }
@@ -157,6 +201,8 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
   const [data, setData] = useState<OfficerResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -168,15 +214,57 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
       .finally(() => setLoading(false));
   }, [officerId]);
 
+  // The export endpoint was complete but unreachable outside curl. It fetches
+  // as a blob (not apiFetch, which forces JSON) so the authenticated PDF can be
+  // handed to the browser as a download.
+  const handleExport = async () => {
+    const win = data && data.ok !== false ? `?from=${data.from}&to=${data.to}` : '';
+    setExporting(true);
+    setExportError(null);
+    try {
+      const blob = await apiFetchBlob(`/driver-performance/officer/${officerId}/export${win}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `driver-performance-${officerId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      // Surfaced, never swallowed — a silently missing document reads as
+      // "there was nothing to report".
+      setExportError((e as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const backButton = (
-    <button
-      type="button"
-      onClick={onBack}
-      className="flex items-center gap-1 text-[10px] text-fg-secondary hover:text-rmpg-100"
-    >
-      <ArrowLeft size={12} /> Back to roster
-    </button>
+    <div className="flex items-center justify-between gap-2">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex items-center gap-1 text-[10px] text-fg-secondary hover:text-rmpg-100"
+      >
+        <ArrowLeft size={12} /> Back to roster
+      </button>
+      <button
+        type="button"
+        onClick={handleExport}
+        disabled={exporting || loading || !!error}
+        className="flex items-center gap-1 border border-rmpg-700 px-2 py-[3px] text-[10px] text-rmpg-100 hover:bg-surface-raised disabled:opacity-50"
+      >
+        <FileDown size={12} /> {exporting ? 'Preparing PDF…' : 'Export PDF record'}
+      </button>
+    </div>
   );
+
+  const exportErrorBanner = exportError ? (
+    <div className="border border-[color:var(--sev-critical)] p-2 text-[10px] text-[color:var(--sev-critical)]">
+      Could not generate the PDF record: {exportError}
+    </div>
+  ) : null;
 
   if (loading) {
     return (
@@ -221,10 +309,28 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
     <div className="p-4 space-y-4">
       <PanelTitleBar title="OFFICER DRIVER PERFORMANCE" icon={Gauge} />
       {backButton}
+      {exportErrorBanner}
 
       <div className="text-[10px] text-fg-muted">
         {data.from} to {data.to}
       </div>
+
+      {/* The doubt is stated BEFORE any score or count, so it cannot be missed
+          by a supervisor who reads the top of the page and stops. */}
+      {summary && summary.unattributed_events > 0 && (
+        <div className="border border-[color:var(--sev-warn)] p-3 text-xs text-rmpg-100">
+          <div className="font-semibold text-[color:var(--sev-warn)] mb-1">
+            {summary.unattributed_events} event(s) could not be attributed to a driver
+          </div>
+          <div>
+            Driving events were recorded on vehicles this officer drove in this window, but could
+            not be tied to any specific driver — missing or ambiguous assignment records, or an
+            event type this system does not recognize. They are not counted in the event totals
+            below and are not reflected in the score. The counts below are a floor, not a complete
+            record: this window is not evidence of clean driving.
+          </div>
+        </div>
+      )}
 
       {!summary ? (
         <div className="border border-rmpg-700 p-3 text-xs text-fg-secondary">
@@ -330,6 +436,38 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
               </tbody>
             </table>
           </div>
+
+          {/* Severity breakdown — written by the nightly rollup since day one
+              but read by nothing until now (required by the spec). */}
+          <div className="space-y-1">
+            <div className="text-[9px] font-semibold text-fg-secondary uppercase">
+              Severity breakdown
+            </div>
+            <table className="w-full">
+              <thead>
+                <tr className="text-left text-[9px] font-semibold text-fg-secondary border-b border-rmpg-700">
+                  <th className="py-[3px] pr-2">Critical</th>
+                  <th className="py-[3px] pr-2">High</th>
+                  <th className="py-[3px] pr-2">Moderate</th>
+                  <th className="py-[3px] pr-2">Low</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="text-[11px] text-rmpg-100">
+                  <td className="py-[2px] pr-2 text-[color:var(--sev-critical)]">
+                    {summary.severity.critical}
+                  </td>
+                  <td className="py-[2px] pr-2 text-[color:var(--sev-high)]">
+                    {summary.severity.high}
+                  </td>
+                  <td className="py-[2px] pr-2 text-[color:var(--sev-warn)]">
+                    {summary.severity.moderate}
+                  </td>
+                  <td className="py-[2px] pr-2">{summary.severity.low}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </>
       )}
 
@@ -347,6 +485,7 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
                 <th className="py-[3px] pr-2">Miles</th>
                 <th className="py-[3px] pr-2">Score</th>
                 <th className="py-[3px] pr-2">Attribution (Recorded / Inferred)</th>
+                <th className="py-[3px] pr-2">Unattributed</th>
               </tr>
             </thead>
             <tbody>
@@ -365,7 +504,14 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
                     )}
                   </td>
                   <td className="py-[2px] pr-2">
-                    {d.attribution_recorded_pct.toFixed(0)}% / {d.attribution_inferred_pct.toFixed(0)}%
+                    {pct(d.attribution_recorded_pct)} / {pct(d.attribution_inferred_pct)}
+                  </td>
+                  <td className="py-[2px] pr-2">
+                    {d.unattributed_events > 0 ? (
+                      <span className="text-[color:var(--sev-warn)]">{d.unattributed_events}</span>
+                    ) : (
+                      <span className="text-fg-muted">0</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -456,6 +602,7 @@ export default function FleetDriverPerformanceTab() {
                 <th className="py-[3px] pr-2">Rate / 100 mi</th>
                 <th className="py-[3px] pr-2">Miles</th>
                 <th className="py-[3px] pr-2">Events</th>
+                <th className="py-[3px] pr-2">Unattributed</th>
                 <th className="py-[3px] pr-2">Attribution</th>
                 <th className="py-[3px] pr-2 border-l border-rmpg-700 pl-2">Fuel</th>
                 <th className="py-[3px] pr-2">Maint.</th>
@@ -464,7 +611,7 @@ export default function FleetDriverPerformanceTab() {
             <tbody>
               {data.ranked.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-[4px] text-[11px] text-fg-secondary">
+                  <td colSpan={12} className="py-[4px] text-[11px] text-fg-secondary">
                     No officers met the exposure floor to be ranked in this window.
                   </td>
                 </tr>
