@@ -24,7 +24,7 @@ describe('isNavGuidanceActive', () => {
 
 describe('speedComparison', () => {
   const now = 1_700_000_000_000;
-  const fresh = new Date(now - 5_000).toISOString();
+  const fresh = new Date(now - 5_000).toISOString(); // new-date-ok: epoch math, not a server string
 
   it('converts m/s to mph and pairs it with the limit', () => {
     // 25 m/s = 55.9 mph
@@ -48,14 +48,14 @@ describe('speedComparison', () => {
   it('suppresses the comparison when the fix is stale', () => {
     // A stale speed against a fresh limit reads as a confident fact and is not
     // one -- the unit may have stopped, or turned onto a different road.
-    const stale = new Date(now - SPEED_FIX_MAX_AGE_MS - 1).toISOString();
+    const stale = new Date(now - SPEED_FIX_MAX_AGE_MS - 1).toISOString(); // new-date-ok: epoch math
     expect(speedComparison({
       gpsSpeedMps: 25, gpsUpdatedAt: stale, postedLimitMph: 35, nowMs: now,
     })).toBeNull();
   });
 
   it('allows a fix exactly at the age limit', () => {
-    const edge = new Date(now - SPEED_FIX_MAX_AGE_MS).toISOString();
+    const edge = new Date(now - SPEED_FIX_MAX_AGE_MS).toISOString(); // new-date-ok: epoch math
     expect(speedComparison({
       gpsSpeedMps: 25, gpsUpdatedAt: edge, postedLimitMph: 35, nowMs: now,
     })).not.toBeNull();
