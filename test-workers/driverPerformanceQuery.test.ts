@@ -1,30 +1,16 @@
 // Query-layer execution coverage for the driver-performance route.
 //
-// Fix round 1: weightsGate() short-circuits GET /roster and GET /officer/:id
-// before any D1 access while SCORE_VERSION carries the placeholder marker,
-// which means AGG_SQL, the `HAVING d.officer_id = ?` variant, and both catch
-// paths had NEVER executed in CI — only ever verified by reading the SQL
-// string. This file runs the EXACT AGG_SQL the route uses (imported, not
-// retyped) against a real Miniflare D1, and — for the two tests that must
-// reach the route's own try/catch — mocks only `weightsPendingReview()` to
-// `false` so the real handlers execute for real. SCORE_VERSION itself is
-// never touched, and the weights-gate behavior is still fully covered by
-// test-workers/driverPerformance.test.ts, unmodified.
+// Runs the EXACT AGG_SQL the route uses (imported, not retyped) against a real
+// Miniflare D1, so a column renamed out from under the query fails here rather
+// than silently returning NULLs that shape() reads as zero events.
 //
 // Officer ids are synthetic 9-thousands numbers — no PII.
 import { env } from 'cloudflare:test';
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { Hono } from 'hono';
 import { execute, query, queryFirst } from '../src/utils/db';
 
-vi.mock('../src/utils/driverPerformance/score', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/utils/driverPerformance/score')>();
-  return { ...actual, weightsPendingReview: () => false };
-});
-
-// Imported AFTER the mock (vitest hoists vi.mock above these imports), so the
-// route module under test sees the mocked weightsPendingReview.
-const { default: driverPerformance, AGG_SQL } = await import('../src/routes/driverPerformance');
+import driverPerformance, { AGG_SQL } from '../src/routes/driverPerformance';
 
 type FakeUser = { id: number; role: string; username: string; full_name: string };
 
@@ -48,9 +34,10 @@ const FROM = '2026-03-01';
 const TO = '2026-03-31';
 
 // Officer 9001: two snapshot days, 300 total miles (above the 250-mile
-// exposure floor), a mix of event types across both days.
+// exposure floor), a mix of speed tiers across both days.
 // Officer 9002: one snapshot day, 100 miles — below the exposure floor.
-// Officer 9003: one snapshot day, 300 miles, zero events.
+// Officer 9003: one snapshot day, 300 miles, zero events, feed alive.
+// Officer 9005: 900 miles with ZERO breadcrumb samples — the dead-feed case.
 beforeAll(async () => {
   const db = (env as unknown as { DB: D1Database }).DB;
   await execute(db, `CREATE TABLE IF NOT EXISTS users (
@@ -63,12 +50,10 @@ beforeAll(async () => {
     miles_driven REAL NOT NULL DEFAULT 0,
     drive_minutes REAL NOT NULL DEFAULT 0,
     trip_count INTEGER NOT NULL DEFAULT 0,
-    events_forward_collision INTEGER NOT NULL DEFAULT 0,
-    events_lane_departure INTEGER NOT NULL DEFAULT 0,
-    events_close_following INTEGER NOT NULL DEFAULT 0,
-    events_harsh_brake INTEGER NOT NULL DEFAULT 0,
-    events_harsh_accel INTEGER NOT NULL DEFAULT 0,
-    events_speeding INTEGER NOT NULL DEFAULT 0,
+    events_speed_high INTEGER NOT NULL DEFAULT 0,
+    events_speed_very_high INTEGER NOT NULL DEFAULT 0,
+    events_speed_extreme INTEGER NOT NULL DEFAULT 0,
+    breadcrumb_samples INTEGER NOT NULL DEFAULT 0,
     events_critical INTEGER NOT NULL DEFAULT 0,
     events_high INTEGER NOT NULL DEFAULT 0,
     events_moderate INTEGER NOT NULL DEFAULT 0,
@@ -80,7 +65,7 @@ beforeAll(async () => {
     fuel_gallons REAL NOT NULL DEFAULT 0,
     maintenance_cost REAL NOT NULL DEFAULT 0,
     score REAL,
-    score_version TEXT NOT NULL DEFAULT 'v1-placeholder-weights',
+    score_version TEXT NOT NULL DEFAULT 'v1-speed',
     computed_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(officer_id, perf_date)
   )`);
@@ -91,12 +76,20 @@ beforeAll(async () => {
     (9003, 'Synthetic Officer 9003', 'T-9003')`);
 
   await execute(db, `INSERT INTO driver_performance_daily
-    (officer_id, perf_date, miles_driven, trip_count, events_forward_collision, events_harsh_brake, score_version)
+    (officer_id, perf_date, miles_driven, trip_count, events_speed_high,
+     events_speed_extreme, breadcrumb_samples, score_version)
     VALUES
-    (9001, '2026-03-05', 150, 4, 1, 0, 'v1-placeholder-weights'),
-    (9001, '2026-03-06', 150, 4, 0, 2, 'v1-placeholder-weights'),
-    (9002, '2026-03-05', 100, 2, 0, 0, 'v1-placeholder-weights'),
-    (9003, '2026-03-05', 300, 6, 0, 0, 'v1-placeholder-weights')`);
+    (9001, '2026-03-05', 150, 4, 1, 0, 900, 'v1-speed'),
+    (9001, '2026-03-06', 150, 4, 0, 2, 900, 'v1-speed'),
+    (9002, '2026-03-05', 100, 2, 0, 0, 400, 'v1-speed'),
+    (9003, '2026-03-05', 300, 6, 0, 0, 900, 'v1-speed')`);
+
+  // Dead feed: high mileage, no observations. Must NOT be scored 100.
+  await execute(db, `INSERT INTO users (id, full_name, badge_number) VALUES
+    (9005, 'Synthetic Officer 9005', 'T-9005')`);
+  await execute(db, `INSERT INTO driver_performance_daily
+    (officer_id, perf_date, miles_driven, trip_count, breadcrumb_samples, score_version)
+    VALUES (9005, '2026-03-08', 900, 20, 0, 'v1-speed')`);
 
   // C1 reproduction: officer 9004 is the high-mileage / zero-attributed-event
   // case. 900 miles, no attributed events, attribution_recorded_pct 1 — the
@@ -107,8 +100,8 @@ beforeAll(async () => {
     (9004, 'Synthetic Officer 9004', 'T-9004')`);
   await execute(db, `INSERT INTO driver_performance_daily
     (officer_id, perf_date, miles_driven, trip_count, attribution_recorded_pct,
-     unattributed_events, events_critical, events_high, score_version)
-    VALUES (9004, '2026-03-07', 900, 20, 1, 14, 0, 0, 'v1-placeholder-weights')`);
+     unattributed_events, breadcrumb_samples, events_critical, events_high, score_version)
+    VALUES (9004, '2026-03-07', 900, 20, 1, 14, 900, 0, 0, 'v1-speed')`);
 });
 
 describe('C1: high mileage with unattributed events is never reported as confidently clean', () => {
@@ -151,6 +144,28 @@ describe('C1: high mileage with unattributed events is never reported as confide
   });
 });
 
+describe('dead feed: miles with no GPS samples is never reported as a clean 100', () => {
+  it('places the zero-sample officer in insufficient_data with reason no_breadcrumb_samples', async () => {
+    const res = await request(`/api/driver-performance/roster?from=${FROM}&to=${TO}`);
+    const body = await res.json() as {
+      ranked: Array<{ officer_id: number }>;
+      insufficient_data: Array<{ officer_id: number; breadcrumb_samples: number; result: { status: string; reason: string } }>;
+    };
+    expect(body.ranked.some((r) => r.officer_id === 9005)).toBe(false);
+    const o = body.insufficient_data.find((r) => r.officer_id === 9005);
+    expect(o).toBeTruthy();
+    expect(o!.breadcrumb_samples).toBe(0);
+    expect(o!.result.status).toBe('insufficient_data');
+    expect(o!.result.reason).toBe('no_breadcrumb_samples');
+  });
+
+  it('reports the observation volume for an officer whose feed IS alive', async () => {
+    const res = await request(`/api/driver-performance/roster?from=${FROM}&to=${TO}`);
+    const body = await res.json() as { ranked: Array<{ officer_id: number; breadcrumb_samples: number }> };
+    expect(body.ranked.find((r) => r.officer_id === 9003)!.breadcrumb_samples).toBe(900);
+  });
+});
+
 describe('window validation: an inverted window is rejected, not silently emptied', () => {
   it('returns 400 when from is after to', async () => {
     const res = await request('/api/driver-performance/roster?from=2026-03-31&to=2026-03-01');
@@ -164,18 +179,20 @@ describe('AGG_SQL executes against a real D1', () => {
   it('sums miles and events across multiple days for one officer', async () => {
     const db = (env as unknown as { DB: D1Database }).DB;
     const rows = await query<{
-      officer_id: number; miles: number; fc: number; hb: number;
+      officer_id: number; miles: number; speed_high: number; speed_extreme: number;
+      breadcrumb_samples: number;
     }>(db, AGG_SQL, FROM, TO);
 
     const officer9001 = rows.find((r) => r.officer_id === 9001);
     expect(officer9001).toBeTruthy();
     expect(officer9001!.miles).toBe(300);
-    expect(officer9001!.fc).toBe(1);
-    expect(officer9001!.hb).toBe(2);
+    expect(officer9001!.speed_high).toBe(1);
+    expect(officer9001!.speed_extreme).toBe(2);
+    expect(officer9001!.breadcrumb_samples).toBe(1800);
 
-    // Confirms all four synthetic officers are actually returned, not just
-    // the one under close inspection.
-    expect(rows.map((r) => r.officer_id).sort()).toEqual([9001, 9002, 9003, 9004]);
+    // Confirms every synthetic officer is actually returned, not just the one
+    // under close inspection.
+    expect(rows.map((r) => r.officer_id).sort()).toEqual([9001, 9002, 9003, 9004, 9005]);
   });
 
   it('the HAVING d.officer_id = ? variant returns exactly that officer\'s aggregated row', async () => {
@@ -189,7 +206,7 @@ describe('AGG_SQL executes against a real D1', () => {
   });
 });
 
-describe('GET /roster and GET /officer/:id run AGG_SQL end-to-end (weights gate bypassed for this file only)', () => {
+describe('GET /roster and GET /officer/:id run AGG_SQL end-to-end', () => {
   it('places the above-floor officer in ranked and the below-floor officer in insufficient_data', async () => {
     const res = await request(`/api/driver-performance/roster?from=${FROM}&to=${TO}`);
     expect(res.status).toBe(200);

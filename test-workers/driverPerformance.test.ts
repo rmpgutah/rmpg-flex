@@ -7,7 +7,7 @@
 // makeRequest/tokenFor — that harness does not exist here, so this file
 // builds the same pattern auth.test.ts already uses instead of inventing one.
 import { env } from 'cloudflare:test';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { Hono } from 'hono';
 import { authMiddleware } from '../src/middleware/auth';
 import driverPerformance from '../src/routes/driverPerformance';
@@ -29,6 +29,16 @@ function appAs(user: FakeUser) {
 function request(user: FakeUser, path: string, init?: RequestInit) {
   return appAs(user).request(path, init, env as unknown as Record<string, unknown>);
 }
+
+// With the weights gate removed these handlers now reach D1 for real, so the
+// one table AGG_SQL joins has to exist. `driver_performance_daily` itself is
+// created on demand by ensureDriverPerformanceColumns(); `users` is not.
+beforeAll(async () => {
+  const db = (env as unknown as { DB: D1Database }).DB;
+  await db.prepare(
+    'CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, full_name TEXT, badge_number TEXT)',
+  ).run();
+});
 
 const DENIED = ['officer', 'dispatcher', 'client_viewer', 'contract_manager'];
 const ALLOWED = ['admin', 'manager', 'supervisor', 'human_resources'];
@@ -83,33 +93,36 @@ describe('driver-performance RBAC', () => {
   });
 });
 
-describe('weights owner gate', () => {
-  // While SCORE_VERSION contains 'placeholder', no score is served. Once the
-  // owner sets real weights, DELETE this test and un-skip the roster-shape
-  // tests below — that swap is the intended, visible handover.
-  it('refuses to serve scores while severity weights are unreviewed', async () => {
+describe('scoring is live (the weights gate is gone)', () => {
+  // The gate previously returned 200 {ok:false, code:'weights_pending_review'}
+  // for every read. Weights are approved and SCORE_VERSION is 'v1-speed', so
+  // the endpoints must now return real roster shape. A regression that
+  // reintroduced the gate would otherwise look like a healthy 200.
+  it('serves a real roster payload, not a pending-review stub', async () => {
     const res = await request(
       { id: 1, role: 'supervisor', username: 'supervisor', full_name: 'Supervisor' },
       '/api/driver-performance/roster',
     );
     expect(res.status).toBe(200);
-    const body = await res.json() as { ok: boolean; code: string };
-    expect(body.ok).toBe(false);
-    expect(body.code).toBe('weights_pending_review');
+    const body = await res.json() as { ok?: boolean; code?: string; ranked?: unknown[]; insufficient_data?: unknown[] };
+    expect(body.ok).toBeUndefined();
+    expect(body.code).toBeUndefined();
+    expect(Array.isArray(body.ranked)).toBe(true);
+    expect(Array.isArray(body.insufficient_data)).toBe(true);
   });
 
-  it('gates the officer detail endpoint too', async () => {
+  it('serves officer detail rather than a gate response', async () => {
     const res = await request(
       { id: 1, role: 'supervisor', username: 'supervisor', full_name: 'Supervisor' },
       '/api/driver-performance/officer/1',
     );
-    const body = await res.json() as { code?: string };
-    expect(body.code).toBe('weights_pending_review');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { code?: string; daily?: unknown[] };
+    expect(body.code).toBeUndefined();
+    expect(Array.isArray(body.daily)).toBe(true);
   });
 
-  it('applies RBAC BEFORE the weights gate — a denied role still gets 403', async () => {
-    // Order matters: if the gate ran first, client_viewer would receive a 200
-    // instead of a 403, and the RBAC tests above would pass for the wrong reason.
+  it('applies RBAC BEFORE anything else — a denied role still gets 403', async () => {
     const res = await request(
       { id: 1, role: 'client_viewer', username: 'client_viewer', full_name: 'Client Viewer' },
       '/api/driver-performance/roster',
@@ -119,9 +132,7 @@ describe('weights owner gate', () => {
 });
 
 describe('window validation (from/to)', () => {
-  // These run BEFORE the weights gate (see windowFrom() ordering in
-  // driverPerformance.ts), so they're reachable even while SCORE_VERSION is
-  // still a placeholder — a malformed window must 400 regardless of gate state.
+  // A malformed window must 400 before any DB work or PDF header construction.
   const SUP = { id: 1, role: 'supervisor', username: 'supervisor', full_name: 'Supervisor' };
 
   it('rejects an impossible calendar date (2026-13-45) with 400, not 200 or 500', async () => {
@@ -161,11 +172,12 @@ describe('window validation (from/to)', () => {
     expect(cd === null || !/[\r\n]/.test(cd)).toBe(true);
   });
 
-  it('leaves the existing valid-window behavior unchanged (weights-pending JSON, not a validation error)', async () => {
+  it('accepts a well-formed window and returns roster shape', async () => {
     const res = await request(SUP, '/api/driver-performance/roster?from=2026-03-01&to=2026-03-31');
     expect(res.status).toBe(200);
-    const body = await res.json() as { code?: string };
-    expect(body.code).toBe('weights_pending_review');
+    const body = await res.json() as { code?: string; ranked?: unknown[] };
+    expect(body.code).toBeUndefined();
+    expect(Array.isArray(body.ranked)).toBe(true);
   });
 
   it('still returns 403 for a denied role even with a malformed window (RBAC runs first)', async () => {
@@ -177,7 +189,7 @@ describe('window validation (from/to)', () => {
   });
 });
 
-describe.skip('roster shape (un-skip once weights are reviewed)', () => {
+describe('roster shape', () => {
   it('separates unranked insufficient-exposure officers from the ranked list', async () => {
     const res = await request(
       { id: 1, role: 'supervisor', username: 'supervisor', full_name: 'Supervisor' },
