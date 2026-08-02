@@ -22,6 +22,7 @@ Additionally, Dispatch has no speed or posted-limit context for enroute units.
 
 | Fact | Evidence |
 |---|---|
+| **OSM popups can never render at all** | `MapboxMapPage.tsx:565` mounts `useVectorTileLayers({ map, popup: null })`; every OSM click handler opens `if (!pop \|\| …) return;`. This is upstream of the polygon bug and is why it went unnoticed. |
 | Polygon click binds to the outline, not the fill | `useVectorTileLayers.ts:418` takes `specs[specs.length-1]`; `buildOsmLayerSpecs` returns `[fill, outline]` for polygons |
 | The comment there describes a layer that is never created | `:415-417` cites "camera_cone's fill + the camera icon layer added separately"; `buildOsmLayerSpecs` emits no icon layer |
 | All OSM popups are empty | `useVectorTileLayers.ts:192` — `detailProps: []` for every generated OSM config |
@@ -95,9 +96,16 @@ This resolves the two-hooks-one-name collision rather than adding a third.
 
 **4. Clickability**
 
-- **Bind click/hover to every spec id** for a config, deduped — not
+- **Give the hook a real popup.** `MapboxMapPage` passes `popup: null` today, so
+  no OSM click can render anything. A persistent `osmPopupRef` replaces it —
+  deliberately not the existing `identifyPopupRef`, which the Identify tool
+  creates and destroys per click and is therefore null most of the time.
+- **Bind hover to every spec id** for a config, deduped — not
   `specs[specs.length-1]`. Correct for 2-layer polygons today and for any future
   category emitting more.
+- **Identify owns the popup, not the per-layer binding.** Both firing on one
+  click would render two popups into the same instance, with the winner decided
+  by handler registration order.
 - **Real `detailProps`**, generated from the `properties` array each group already
   declares in `config/osm-layers.json` (traffic declares `maxspeed`, `oneway`,
   `maxheight`, `maxweight`, `hazard`, `enforcement`, …). Because that file is
@@ -125,9 +133,11 @@ Display: `Unit 12 · 58 in a 35 · ETA 4 min`.
 - **Staleness guard.** When the GPS fix backing `gps_speed` is older than 30 s, the
   comparison is suppressed and only the posted limit is shown. Comparing a stale
   speed against a freshly-fetched limit produces a confident-looking false reading.
-- **ETA trade-off:** `src/utils/eta.ts` must move from `overview=false` to
-  `overview=full` to carry the annotation, accepting the route-geometry payload.
-  The `useMapRouting` path needs no such change — it already sends `overview=full`.
+- **`src/utils/eta.ts` is unchanged.** It uses `overview=false`, which is
+  incompatible with `annotations` — but it does not need to carry one. The
+  Dispatch banner's route comes from `useMapRouting` (`:395`), which already
+  sends `overview=full`, so the annotation rides there instead and `eta.ts`
+  keeps its smaller no-geometry response.
 
 **6. Turn-by-turn lifecycle on the Dispatch map**
 
