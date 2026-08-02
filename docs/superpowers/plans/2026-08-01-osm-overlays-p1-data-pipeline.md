@@ -110,7 +110,11 @@ describe('osm layer catalog', () => {
     for (const g of loadCatalog().groups) {
       for (const c of g.categories) {
         for (const f of c.filters) {
-          expect(f, `${g.name}/${c.cat}: "${f}"`).toMatch(/^(n|w|r|nwr|nw)\/[a-zA-Z0-9_:]+(=[^\s]+)?$/);
+          // osmium tags-filter object-type prefixes: any combination of n(ode)/
+          // w(ay)/r(elation). `wr/` is used deliberately by the polygon-only
+          // jurisdiction group — do not broaden those to `nwr/`, it would admit
+          // point features into a polygon archive.
+          expect(f, `${g.name}/${c.cat}: "${f}"`).toMatch(/^(n|w|r|nw|nr|wr|nwr)\/[a-zA-Z0-9_:]+(=[^\s]+)?$/);
         }
       }
     }
