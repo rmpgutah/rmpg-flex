@@ -37,6 +37,9 @@ function validate(cat) {
     if (!Array.isArray(g.properties) || !g.properties.includes('name')) {
       throw new Error(`${g.name}: properties must include "name"`);
     }
+    if (g.assignment !== 'first-match' && g.assignment !== 'multi') {
+      throw new Error(`${g.name}: assignment must be "first-match" or "multi", got ${JSON.stringify(g.assignment)}`);
+    }
     if (!Array.isArray(g.categories) || g.categories.length === 0) {
       throw new Error(`${g.name}: no categories`);
     }
@@ -53,6 +56,9 @@ function validate(cat) {
       }
       if (!Array.isArray(c.match) || c.match.length === 0) {
         throw new Error(`${g.name}/${c.cat}: no match rules`);
+      }
+      if (c.render !== undefined && !['point', 'line', 'polygon'].includes(c.render)) {
+        throw new Error(`${g.name}/${c.cat}: render must be "point", "line", or "polygon", got ${JSON.stringify(c.render)}`);
       }
     }
   }

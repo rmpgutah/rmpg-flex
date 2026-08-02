@@ -526,7 +526,17 @@ These were surfaced by the final whole-branch review of the data pipeline. None
 affect the correctness of the archives already shipped, but each must be resolved
 before Plan 2 renders the affected layers.
 
-### 10.1 🔴 Category assignment is first-match-wins, but several categories are ATTRIBUTES, not types
+### 10.1 🔴 Category assignment is first-match-wins, but several categories are ATTRIBUTES, not types — RESOLVED
+
+Resolved via multi-emit: each group now declares an `assignment` field
+(`"first-match"` or `"multi"`) in `config/osm-layers.json`. `traffic`,
+`drivability`, `access`, `sites`, `terrain`, and `jurisdiction` are `"multi"` —
+`projectFeatures()` in `scripts/osm/project.mjs` emits one feature per matching
+category for those groups (e.g. a way tagged both `maxspeed` and `oneway=yes`
+now emits both `cat=maxspeed` and `cat=restriction`, each with its own
+per-category `tippecanoe.minzoom`). `surveillance`, `safety`, and `utility`
+stay `"first-match"` — see the note directly below on why `surveillance`
+specifically must never be switched to `multi`.
 
 `assignCategory` (`scripts/osm/project.mjs`) returns the **first** matching
 category in catalog order and assigns exactly one `cat` per feature. That is
@@ -553,17 +563,46 @@ under a different category."
 2. **Reorder** categories so narrower rules win. This only moves the loss to
    whichever category ends up last, so it is a mitigation, not a fix.
 
-Point-feature groups (`safety`, `surveillance`, `terrain`, `sites`,
-`jurisdiction`) are genuinely mutually exclusive and are unaffected.
+**Correction to an earlier claim in this section.** This spec previously asserted
+that `safety`, `surveillance`, `terrain`, `sites` and `jurisdiction` were "genuinely
+mutually exclusive and unaffected." That was too broad, and the implementer applying
+the fix correctly flagged the contradiction. Only three groups are truly exclusive:
 
-### 10.2 Camera cones are gated one zoom level below non-ALPR cameras
+- **`first-match` (exclusive types):** `surveillance`, `safety`, `utility`.
+  `surveillance` MUST stay first-match — `alpr` and `camera` are deliberately ordered
+  so an ALPR camera matches the narrower rule first. Under multi-emit it would match
+  BOTH (since `camera`'s rule is merely `man_made=surveillance`), double-counting every
+  ALPR camera into two layers at once. A regression test pins this.
+- **`multi` (co-occurring attributes):** `traffic`, `drivability`, `access`, `sites`,
+  `terrain`, `jurisdiction`. A school building carries `building:levels`; a cliff
+  carries `hazard=falling_rocks`; a protected area can overlap `landuse=military`.
+  Each of those should appear in both layers, not be arbitrarily filed under whichever
+  rule happens to sit earlier in the catalog.
+
+**⚠️ `surveillance` MUST stay `"first-match"`.** Its `alpr` and `camera`
+categories are deliberately ordered so an ALPR camera matches the narrower
+`alpr` rule first. Under multi-emit it would ALSO match the generic `camera`
+rule (`man_made=surveillance` alone, with no `surveillance:type` check), so
+every ALPR camera would be double-counted into both the ALPR and generic
+camera layers. `terrain`/`sites`/`jurisdiction` were marked `"multi"` too for
+uniformity even though the spec's own analysis above found them mutually
+exclusive in practice — that is harmless there (a feature that only ever
+matches one category still emits exactly one feature) but is NOT harmless for
+`surveillance`, where two categories share the same underlying tag and one is
+strictly narrower than the other.
+
+### 10.2 Camera cones are gated one zoom level below non-ALPR cameras — RESOLVED
 
 `transform.mjs` stamps `camera_cone` with the **group** minimum zoom (14), while
 the generic `camera` category is gated at 15. A cone for a non-ALPR camera
 therefore renders one zoom level before its own camera icon appears. Cosmetic, but
 pin the cone layer's `minzoom` per parent category in Plan 2.
 
-### 10.3 The manifest cannot actually detect a partial upload
+Resolved: `transform.mjs` now stamps each cone's `tippecanoe.minzoom` from its
+own parent feature's category (`minzoomFor(projected.properties.cat)`) instead
+of the group minimum — an `alpr` cone gets 14, a `camera` cone gets 15.
+
+### 10.3 The manifest cannot actually detect a partial upload — RESOLVED
 
 Archives upload before the manifest specifically so that a stale manifest beside
 fresh archives is detectable. But the manifest records only `feature_count` and
@@ -572,13 +611,23 @@ what the manifest claims against what is in R2. Add `bytes` (and ideally a hash)
 per group to make the stated invariant enforceable. Requires a manifest-format
 change that Plan 2's reader must tolerate.
 
-### 10.4 Smaller items already logged
+Resolved: `scripts/build-osm-tiles.sh` now records a `bytes` field per group
+in the manifest, taken from `wc -c < ${WORK}/osm-${g}.pmtiles` (portable —
+avoids the macOS/GNU `stat` flag mismatch). A hash was not added in this pass.
+
+### 10.4 Smaller items already logged — `access=no` gap RESOLVED
 
 - `access=no` ways (98 statewide) match no category; the `drivability/seasonal`
-  rule catches `access=private` only.
+  rule catches `access=private` only. **Resolved:** `w/access=no` was added to
+  `drivability/seasonal`'s `filters` and `match` values alongside
+  `w/access=private`.
 - `drivability/seasonal` (58,297) is dominated by `access=private` rather than
   genuine seasonal closure. These are operationally different and the category
-  likely wants splitting.
+  likely wants splitting — left as-is for now. With multi-emit (§10.1), an
+  unpaved private road correctly appears in BOTH `drivability/seasonal` and
+  `drivability/unpaved` going forward, which was the real complaint here; the
+  conceptual `seasonal`-vs-`access` split inside a single category is
+  unchanged.
 - Only **80 of 1,729** cameras (4.6%) carry `camera:direction`, so ~95% of camera
   markers will have no view cone. The legend must not let a missing cone read as
   "omnidirectional" — see §6.2.

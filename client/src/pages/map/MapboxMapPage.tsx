@@ -91,6 +91,7 @@ import { useMapBookmarks } from '../../hooks/useMapBookmarks';
 import { useMapPrintExport } from '../../hooks/useMapPrintExport';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../../hooks/useGeoJsonLayers';
 import { useDistrictHierarchyLayers } from '../../hooks/useDistrictHierarchyLayers';
+import { useVectorTileLayers } from '../../hooks/useVectorTileLayers';
 import { useActivityChoropleth } from '../../hooks/useActivityChoropleth';
 import { useMapFeatureInspect } from '../../hooks/useMapFeatureInspect';
 import { useMapMatchTrace } from '../../hooks/useMapMatchTrace';
@@ -561,6 +562,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const printExport = useMapPrintExport(mapRef.current, mapLoaded);
   const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
   const districtHierarchy = useDistrictHierarchyLayers({ map: mapRef.current, popup: null });
+  const vectorTiles = useVectorTileLayers({ map: mapRef.current, popup: null });
   const activityChoropleth = useActivityChoropleth({
     map: mapRef.current,
     calls,
@@ -1163,6 +1165,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       },
     ])),
 
+    // ── UGRC + OSM vector tile layers (ids match VectorTileLayerConfig.id / the
+    // layerRegistry.ts osm registry ids exactly) ──
+    ...Object.fromEntries(vectorTiles.vectorConfigs.map((cfg) => [
+      cfg.id,
+      {
+        active: vectorTiles.vectorLayerStates[cfg.id]?.visible ?? false,
+        onToggle: () => vectorTiles.toggleVectorLayer(cfg.id),
+      },
+    ])),
+
     // ── Risk & Coverage ──
     'coverage-gaps': { active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), loading: coverageGaps.loading, error: coverageGaps.error },
     'safety-zones': { active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), loading: safetyZones.loading, error: safetyZones.error },
@@ -1223,7 +1235,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     speedHeatmap.loading, speedHeatmap.error, speedViolationsEnabled, speedViolationsLayer.loading,
     speedViolationsLayer.error, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading,
     pursuitSegmentsLayer.error, responseTimeEnabled, responseTime.loading, responseTime.error,
-    districtHierarchy, geoJsonLayers, coverageGapsEnabled, coverageGaps.loading, coverageGaps.error,
+    districtHierarchy, geoJsonLayers, vectorTiles, coverageGapsEnabled, coverageGaps.loading, coverageGaps.error,
     safetyZonesEnabled, safetyZones.loading, safetyZones.error, isochroneEnabled, toggleIsochrone,
     terrainEnabled, setTerrainEnabled, buildings3dEnabled, setBuildings3dEnabled, daylight,
     projection, atmosphere, coordGrid, cameraAnimation, directionsPanel, activeFloatingTool,
@@ -1818,6 +1830,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           choro={activityChoropleth.choroLegend}
           categorical={[]}
           isLight={false}
+          visibleOsmConfigs={vectorTiles.vectorConfigs.filter(
+            (cfg) => cfg.source === 'osm' && vectorTiles.vectorLayerStates[cfg.id]?.visible,
+          )}
         />
       )}
 

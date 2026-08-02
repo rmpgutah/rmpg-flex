@@ -21,7 +21,7 @@ import { GEO_LAYER_CONFIGS } from '../../../../hooks/useGeoJsonLayers';
 
 /** Every registry layer bound `active: false` with a spyable onToggle,
  *  built by iterating MAP_LAYER_REGISTRY so it cannot drift from the
- *  real 56-entry set. */
+ *  real 112-entry set. */
 function buildAllBoundBindings(): LayerBindingMap {
   const bindings: LayerBindingMap = {};
   for (const layer of MAP_LAYER_REGISTRY) {
@@ -49,7 +49,7 @@ describe('Map dock render (registry-driven)', () => {
     }
   });
 
-  it('renders exactly 56 switch rows across both docks whose accessible names match the registry labels', () => {
+  it('renders exactly 112 switch rows across both docks whose accessible names match the registry labels', () => {
     const bindings = buildAllBoundBindings();
     const leftSections = buildDockSections(LEFT_DOCK_GROUPS, bindings);
     const rightSections = buildDockSections(RIGHT_DOCK_GROUPS, bindings);
@@ -66,7 +66,7 @@ describe('Map dock render (registry-driven)', () => {
     // confirmed by reading DockSection.tsx/MapLeftDock.tsx/MapRightDock.tsx.
     const switches = screen.getAllByRole('switch');
     expect(switches).toHaveLength(MAP_LAYER_REGISTRY.length);
-    expect(switches).toHaveLength(56);
+    expect(switches).toHaveLength(112);
 
     const renderedNames = new Set(switches.map((el) => el.textContent?.trim()));
     const registryLabels = new Set(MAP_LAYER_REGISTRY.map((l) => l.label));
@@ -86,7 +86,7 @@ describe('Map dock render (registry-driven)', () => {
     }
   });
 
-  it('gives every one of the 56 rows a leading lucide <svg> icon (never the loading/error icon)', () => {
+  it('gives every one of the 112 rows a leading lucide <svg> icon (never the loading/error icon)', () => {
     const bindings = buildAllBoundBindings();
     const leftSections = buildDockSections(LEFT_DOCK_GROUPS, bindings);
     const rightSections = buildDockSections(RIGHT_DOCK_GROUPS, bindings);
@@ -98,7 +98,7 @@ describe('Map dock render (registry-driven)', () => {
     );
 
     const switches = screen.getAllByRole('switch');
-    expect(switches).toHaveLength(56);
+    expect(switches).toHaveLength(112);
     for (const row of switches) {
       // The leading icon is the FIRST svg in the row (loading/error icons, when
       // present, render at the end). With no error/loading bound, exactly one

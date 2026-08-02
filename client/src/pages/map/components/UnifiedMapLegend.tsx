@@ -11,6 +11,8 @@ import React, { useState } from 'react';
 import { List, ChevronDown, ChevronUp } from 'lucide-react';
 import type { ChoroLegend } from '../../../hooks/useActivityChoropleth';
 import { roadLegendRows, propertyLegendRows } from '../utils/landTypes';
+import OsmAttribution from '../../../components/OsmAttribution';
+import type { VectorTileLayerConfig } from '../../../hooks/useVectorTileLayers';
 
 export interface UnifiedLegendProps {
   hierarchy: { area: boolean; sector: boolean; zone: boolean; beat: boolean };
@@ -24,6 +26,8 @@ export interface UnifiedLegendProps {
   bottomPx?: number;
   /** CSS left offset — shifts right of the LAYERS panel when it's open. */
   leftCss?: string;
+  /** Currently-visible OSM-sourced vector layer configs, for ODbL attribution + coverage captions. */
+  visibleOsmConfigs?: VectorTileLayerConfig[];
 }
 
 const HSWATCH: Record<string, string> = { area: '#d4a017', sector: '#f59e0b', zone: '#22c55e', beat: '#4ade80' };
@@ -42,7 +46,7 @@ const Swatch = ({ color, line, dot }: { color: string; line?: boolean; dot?: boo
   />
 );
 
-export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, choro, categorical, isLight, bottomPx = 28, leftCss = '12px' }: UnifiedLegendProps) {
+export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, choro, categorical, isLight, bottomPx = 28, leftCss = '12px', visibleOsmConfigs = [] }: UnifiedLegendProps) {
   const [open, setOpen] = useState(true);
 
   const geoLevels = ([
@@ -50,7 +54,7 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
   ] as const).filter(([k]) => hierarchy[k]);
 
   const anyActive = geoLevels.length > 0 || boundaries.county || boundaries.municipality
-    || statewide.roads || statewide.addresses || !!choro;
+    || statewide.roads || statewide.addresses || !!choro || visibleOsmConfigs.length > 0;
   if (!anyActive) return null;
 
   const bg = isLight ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,10,0.94)';
@@ -156,6 +160,8 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
               </div>
             </div>
           )}
+
+          <OsmAttribution visibleOsmConfigs={visibleOsmConfigs} />
         </div>
       )}
     </div>

@@ -85,6 +85,17 @@ describe('osm layer catalog', () => {
     }
   });
 
+  it('gives every group a valid assignment mode ("first-match" or "multi")', () => {
+    for (const g of loadCatalog().groups) {
+      expect(['first-match', 'multi'], `${g.name}`).toContain(g.assignment);
+    }
+  });
+
+  it('keeps surveillance as first-match (ALPR must never double-count into camera)', () => {
+    const surveillance = loadCatalog().groups.find((g: { name: string }) => g.name === 'surveillance');
+    expect(surveillance.assignment).toBe('first-match');
+  });
+
   it('does not declare landuse=quarry in more than one group', () => {
     const owners: string[] = [];
     for (const g of loadCatalog().groups) {

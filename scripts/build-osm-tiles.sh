@@ -58,6 +58,39 @@ if [[ $missing -ne 0 ]]; then
   exit 1
 fi
 
+# ── Option capability probe ─────────────────────────────────
+# An unrecognised osmium/tippecanoe option once aborted a full ~30-minute
+# production run 2 seconds in (osmium export --error-file — that option never
+# existed; see the comment on the export step below). `need` above only checks
+# that a binary EXISTS, not that the specific flags this script depends on are
+# still accepted by whatever version is installed. Check each option's own
+# --help output rather than running a real extract, so this stays sub-second.
+opt_missing=0
+check_opt() {
+  local tool="$1" helptext="$2" opt="$3"
+  if ! grep -qe "$opt" <<<"$helptext"; then
+    local ver
+    ver="$("$tool" --version 2>&1 | head -1)"
+    echo "MISSING OPTION: '$tool' does not accept '$opt' (version: ${ver:-unknown})" >&2
+    opt_missing=1
+  fi
+}
+
+OSMIUM_EXPORT_HELP="$(osmium export --help 2>&1 || true)"
+check_opt osmium "$OSMIUM_EXPORT_HELP" "-e"
+
+TIPPECANOE_HELP="$(tippecanoe --help 2>&1 || true)"
+check_opt tippecanoe "$TIPPECANOE_HELP" "--drop-rate"
+check_opt tippecanoe "$TIPPECANOE_HELP" "--no-feature-limit"
+check_opt tippecanoe "$TIPPECANOE_HELP" "--no-tile-size-limit"
+
+if [[ $opt_missing -ne 0 ]]; then
+  echo "" >&2
+  echo "One or more required options are not supported by the installed tool version." >&2
+  echo "Update the tool, or update this script's invocation, before running a full build." >&2
+  exit 1
+fi
+
 [[ -f "$CATALOG" ]] || { echo "catalog not found: $CATALOG" >&2; exit 1; }
 
 mkdir -p "$WORK"
@@ -116,13 +149,17 @@ for g in $OSM_GROUPS; do
   echo "==> [$g] exporting + transforming"
   # osmium export silently drops objects whose geometry cannot be assembled —
   # notably wr/ relations, and `jurisdiction` is wr/-only, where a silent drop
-  # is most consequential. --error-file surfaces those instead of letting them
-  # vanish with no trace.
-  osmium export -f geojsonseq --overwrite -o "${WORK}/${g}.raw.geojsonseq" \
-    --error-file "${WORK}/${g}.export-errors.txt" "${WORK}/${g}.osm.pbf"
+  # is most consequential. -e/--show-errors surfaces those on stdout instead of
+  # letting them vanish with no trace (there is no --error-file option — an
+  # earlier revision of this script invented one and aborted every real run
+  # with "unrecognised option '--error-file'"). Feature data goes to -o, so
+  # stdout is free to redirect to an errors file.
+  osmium export -f geojsonseq --overwrite -e \
+    -o "${WORK}/${g}.raw.geojsonseq" \
+    "${WORK}/${g}.osm.pbf" > "${WORK}/${g}.export-errors.txt"
   if [[ -s "${WORK}/${g}.export-errors.txt" ]]; then
     echo "[$g] ABORT: osmium export reported geometry errors — refusing to ship a short archive." >&2
-    echo "[$g] See ${WORK}/${g}.export-errors.txt" >&2
+    head -5 "${WORK}/${g}.export-errors.txt" >&2
     exit 1
   fi
 
@@ -270,9 +307,16 @@ echo "==> Writing manifest"
   for g in "${BUILT_GROUPS[@]}"; do
     [[ $first -eq 0 ]] && echo ","
     first=0
+    # Portable byte count — `wc -c` avoids macOS/GNU `stat` flag differences
+    # (`stat -f%z` vs `stat -c%s`). Lets a downstream reader compare the
+    # manifest's claimed size against the object actually in R2, so a partial
+    # upload is detectable instead of only a stale-vs-fresh timestamp guess.
+    BYTES="$(wc -c < "${WORK}/osm-${g}.pmtiles" | tr -d ' ')"
     printf '    "%s": ' "$g"
-    jq -c '{feature_count: (.counts | to_entries | map(.value) | add),
-            categories: (.counts | to_entries | map(select(.value > 0)) | map(.key))}' \
+    jq -c --argjson bytes "$BYTES" \
+      '{feature_count: (.counts | to_entries | map(.value) | add),
+        categories: (.counts | to_entries | map(select(.value > 0)) | map(.key)),
+        bytes: $bytes}' \
       "${WORK}/${g}.counts.json" | tr -d '\n'
   done
   echo ""
