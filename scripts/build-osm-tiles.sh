@@ -77,10 +77,14 @@ fi
 EXTRACT_DATE="$(osmium fileinfo -e -g data.timestamp.last "$EXTRACT" 2>/dev/null | cut -dT -f1 || echo unknown)"
 echo "==> Extract data timestamp: $EXTRACT_DATE"
 
-GROUPS="$(jq -r '.groups[].name' "$CATALOG")"
+# NOT `GROUPS` — that is a bash special variable holding the user's group IDs.
+# Assigning to it is silently ignored and $GROUPS then yields a numeric GID
+# (20 = staff on macOS), so every group name becomes "20". Passes bash -n and
+# code review; fails only at runtime.
+OSM_GROUPS="$(jq -r '.groups[].name' "$CATALOG")"
 if [[ -n "$ONLY_GROUP" ]]; then
-  echo "$GROUPS" | grep -qx "$ONLY_GROUP" || { echo "unknown group: $ONLY_GROUP" >&2; exit 2; }
-  GROUPS="$ONLY_GROUP"
+  echo "$OSM_GROUPS" | grep -qx "$ONLY_GROUP" || { echo "unknown group: $ONLY_GROUP" >&2; exit 2; }
+  OSM_GROUPS="$ONLY_GROUP"
 fi
 
 # ── Per-group filter + transform ────────────────────────────
@@ -88,7 +92,7 @@ fi
 # group. Both modes need this; only the full build goes on to tippecanoe.
 declare -a BUILT_GROUPS=()
 
-for g in $GROUPS; do
+for g in $OSM_GROUPS; do
   echo ""
   echo "==> [$g] filtering"
   # NOT `mapfile` — that is bash 4+, and macOS /bin/bash is 3.2. On 3.2 mapfile
