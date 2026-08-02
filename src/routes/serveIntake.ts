@@ -88,6 +88,7 @@ import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
 import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
+import { routeJsonColumn } from '../utils/serveRoutePayload';
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
 // One-shot per Worker instance (cold starts re-run, idempotent).
@@ -2678,8 +2679,11 @@ si.post('/routes', async (c) => {
       start_lat, start_lng, end_lat, end_lng, notes
     ) VALUES (?,?,?,?, ?,?, ?,?,?,?, ?)`,
     body.officer_id ?? user?.id, body.route_date ?? null,
-    JSON.stringify(body.optimized_order ?? []),
-    JSON.stringify(body.waypoints ?? []),
+    // Same dual-spelling normalization as POST /api/process-server/routes —
+    // see src/utils/serveRoutePayload.ts. Reading only the bare keys stored
+    // "[]" for any caller sending the *_json spelling.
+    routeJsonColumn(body.optimized_order_json, body.optimized_order),
+    routeJsonColumn(body.waypoints_json, body.waypoints),
     body.total_distance_miles ?? null, body.total_time_minutes ?? null,
     body.start_lat ?? null, body.start_lng ?? null,
     body.end_lat ?? null, body.end_lng ?? null,

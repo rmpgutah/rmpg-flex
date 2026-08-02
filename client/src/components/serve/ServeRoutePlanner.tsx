@@ -12,6 +12,10 @@ import { useGpsTracking } from '../../hooks/useGpsTracking';
 import type { ServeJob } from '../../types';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
+import {
+  resolveRouteOrigin, describeOrigin, describeOriginProblem,
+  type LastKnownFix,
+} from '../../utils/serveRouteOrigin';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -155,7 +159,14 @@ export function estimateDriveMinutes(distanceMiles: number): number {
 }
 
 /** Greedy nearest-neighbor reorder from an optional origin. Returns the
- *  reordered stops plus the total straight-line distance/time estimate. */
+ *  reordered stops plus the total straight-line distance/time estimate.
+ *
+ *  With NO origin, every candidate scores distance 0 on the first iteration, so
+ *  the first stop is whatever came first in the input and the chain is
+ *  nearest-neighbored from there. That yields a sensibly-shaped run but a
+ *  seed-dependent one, and the leg from the officer's actual position to stop 1
+ *  is not counted at all — which is why ServeRoutePlanner resolves a real origin
+ *  (utils/serveRouteOrigin.ts) and warns on screen when it cannot. */
 export function nearestNeighborOrder(
   selected: StopItem[],
   origin: { lat: number; lng: number } | null,
@@ -272,6 +283,59 @@ export default function ServeRoutePlanner({
     ? { lat: gps.latitude, lng: gps.longitude }
     : null;
   const gpsAccuracy = gps.accuracy;
+
+  // ─── Route starting location (origin) ───
+  // Optimization is only meaningful relative to an origin — see
+  // utils/serveRouteOrigin.ts for why, and for the freshness policy. The live
+  // browser fix is only valid when the planner IS the officer being planned
+  // for; a supervisor using the officer dropdown needs THAT officer's own last
+  // known position instead.
+  const [lastKnownFix, setLastKnownFix] = useState<LastKnownFix | null>(null);
+  const plannedOfficerId = selectedOfficerId || currentUserId;
+  const planningForSelf = plannedOfficerId != null && plannedOfficerId === currentUserId;
+
+  useEffect(() => {
+    if (!isOpen || plannedOfficerId == null) { setLastKnownFix(null); return; }
+    // Skip the round-trip when a live fix already settles it.
+    if (planningForSelf && currentLocation) { setLastKnownFix(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const fix = await apiFetch<LastKnownFix>(`/process-server/officer-start/${plannedOfficerId}`);
+        if (!cancelled) setLastKnownFix(fix ?? null);
+      } catch {
+        // Non-fatal: the planner still works unanchored, and the UI says so
+        // rather than pretending an origin exists.
+        if (!cancelled) setLastKnownFix({ found: false });
+      }
+    })();
+    return () => { cancelled = true; };
+    // currentLocation is intentionally reduced to a presence check — re-fetching
+    // on every GPS tick would hammer the endpoint once a fix starts streaming.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, plannedOfficerId, planningForSelf, currentLocation != null]);
+
+  const originResolution = resolveRouteOrigin({
+    planningForSelf,
+    liveGps: currentLocation ? { ...currentLocation, accuracyM: gpsAccuracy ?? null } : null,
+    lastKnown: lastKnownFix,
+  });
+  const routeOrigin = originResolution.origin;
+  const plannedOfficerName = officers?.find(o => o.id === plannedOfficerId)?.name ?? null;
+
+  // First leg: origin → first SELECTED stop, in list order. Straight-line
+  // (haversine) rather than the Directions leg distance, because this is shown
+  // before any optimize run and must not depend on a network call. Labelled as
+  // such in the row's tooltip so it isn't mistaken for driving distance.
+  const firstSelectedStop = stops.find(s => s.selected);
+  const firstLegMiles = routeOrigin
+    && firstSelectedStop?.job.recipient_lat != null
+    && firstSelectedStop.job.recipient_lng != null
+    ? haversineMiles(
+        routeOrigin.lat, routeOrigin.lng,
+        firstSelectedStop.job.recipient_lat, firstSelectedStop.job.recipient_lng,
+      )
+    : null;
 
   useEffect(() => {
     if (!isOpen || savedRouteLoaded) return;
@@ -469,7 +533,7 @@ export default function ServeRoutePlanner({
     // API. Fall back to a pure client-side nearest-neighbor estimate so
     // officers still get a usable (if less precise) route order.
     if (!mapReady || !mapRef.current) {
-      const { ordered, totalDistanceMiles, totalDurationMinutes } = nearestNeighborOrder(selected, currentLocation);
+      const { ordered, totalDistanceMiles, totalDurationMinutes } = nearestNeighborOrder(selected, routeOrigin);
       setTotalDistance(totalDistanceMiles);
       setTotalDuration(totalDurationMinutes);
       const unselected = stops.filter(s => !s.selected);
@@ -492,7 +556,7 @@ export default function ServeRoutePlanner({
       let degradedClusters = 0;
       // Running position for nearest-neighbor ordering — carries from one
       // cluster's last stop into the next, same as the offline fallback.
-      let runningPosition = currentLocation;
+      let runningPosition: { lat: number; lng: number } | null = routeOrigin;
 
       for (let ci = 0; ci < clusters.length; ci++) {
         const isFirstCluster = ci === 0;
@@ -507,8 +571,8 @@ export default function ServeRoutePlanner({
         const { ordered: orderedCluster } = nearestNeighborOrder(clusters[ci], runningPosition);
         const cluster = orderedCluster;
 
-        const origin = isFirstCluster && currentLocation
-          ? [currentLocation.lng, currentLocation.lat] as [number, number]
+        const origin = isFirstCluster && routeOrigin
+          ? [routeOrigin.lng, routeOrigin.lat] as [number, number]
           : [cluster[0].job.recipient_lng!, cluster[0].job.recipient_lat!] as [number, number];
 
         // The destination is passed separately as `destCoord`, so it must NOT
@@ -517,7 +581,7 @@ export default function ServeRoutePlanner({
         // producing a phantom zero-length leg — and, combined with the origin,
         // pushed a full cluster to 27 coordinates against the Directions API's
         // 25-coordinate ceiling, which fails the request outright.
-        const waypointStops = isFirstCluster && currentLocation
+        const waypointStops = isFirstCluster && routeOrigin
           ? cluster.slice(0, -1)
           : cluster.slice(1, -1);
         const waypointCoords = waypointStops.map(s => [s.job.recipient_lng!, s.job.recipient_lat!] as [number, number]);
@@ -615,13 +679,16 @@ export default function ServeRoutePlanner({
     } finally {
       setOptimizing(false);
     }
-  }, [stops, mapReady, currentLocation, clearRouteFromMap]);
+  }, [stops, mapReady, routeOrigin, clearRouteFromMap]);
 
   const handleApplyAndClose = useCallback(async () => {
     const selectedStops = stops.filter(s => s.selected);
     const selectedIds = selectedStops.map(s => s.job.id);
-    onRouteOptimized(selectedIds, { totalDistance, totalDuration, fuelCost: totalDistance * IRS_MILEAGE_RATE });
 
+    // Persist BEFORE notifying the parent. onRouteOptimized re-fetches
+    // GET /routes/:date to refresh the Route tab, so firing it first raced the
+    // INSERT below and reliably read the pre-save state — the freshly applied
+    // route did not appear until the operator changed the date and came back.
     const officerId = selectedOfficerId || currentUserId;
     if (officerId && selectedIds.length > 0) {
       try {
@@ -635,8 +702,8 @@ export default function ServeRoutePlanner({
             optimized_order_json: JSON.stringify(selectedIds),
             waypoints_json: JSON.stringify(waypoints),
             total_distance_miles: totalDistance, total_time_minutes: totalDuration,
-            start_lat: currentLocation?.lat ?? null,
-            start_lng: currentLocation?.lng ?? null,
+            start_lat: routeOrigin?.lat ?? null,
+            start_lng: routeOrigin?.lng ?? null,
             end_lat: selectedStops.length > 0 ? selectedStops[selectedStops.length - 1].job.recipient_lat ?? null : null,
             end_lng: selectedStops.length > 0 ? selectedStops[selectedStops.length - 1].job.recipient_lng ?? null : null,
           }),
@@ -645,8 +712,10 @@ export default function ServeRoutePlanner({
         setError('Route saved locally but failed to persist to server');
       }
     }
+
+    onRouteOptimized(selectedIds, { totalDistance, totalDuration, fuelCost: totalDistance * IRS_MILEAGE_RATE });
     onClose();
-  }, [stops, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, onRouteOptimized, onClose]);
+  }, [stops, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, routeOrigin, onRouteOptimized, onClose]);
 
   if (!isOpen) return null;
 
@@ -666,11 +735,22 @@ export default function ServeRoutePlanner({
                 {totalDistance.toFixed(1)} mi · {Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m
               </span>
             )}
-            {currentLocation && (
-              <span className={`text-[10px] ml-2 pl-2 border-l border-rmpg-700 font-mono ${gpsAccuracy && gpsAccuracy < 20 ? 'text-green-400' : gpsAccuracy && gpsAccuracy < 50 ? 'text-amber-400' : 'text-rmpg-400'}`}>
+            {/* The route's ANCHOR, not merely "where I am". Shows which position
+                the optimizer started from and how trustworthy it is, so an
+                unanchored or second-hand origin is never invisible. */}
+            {routeOrigin ? (
+              <span className={`text-[10px] ml-2 pl-2 border-l border-rmpg-700 font-mono ${
+                routeOrigin.source === 'last_known' ? 'text-amber-400'
+                : routeOrigin.accuracyM != null && routeOrigin.accuracyM < 20 ? 'text-green-400'
+                : routeOrigin.accuracyM != null && routeOrigin.accuracyM < 50 ? 'text-amber-400'
+                : 'text-rmpg-400'}`}>
                 <MapPin size={10} className="inline mr-0.5" />
-                {currentLocation.lat.toFixed(4)}, {currentLocation.lng.toFixed(4)}
-                {gpsAccuracy != null ? ` (±${Math.round(gpsAccuracy)}m)` : ''}
+                START {routeOrigin.lat.toFixed(4)}, {routeOrigin.lng.toFixed(4)} · {describeOrigin(routeOrigin)}
+              </span>
+            ) : (
+              <span className="text-[10px] ml-2 pl-2 border-l border-rmpg-700 font-mono text-red-400">
+                <MapPin size={10} className="inline mr-0.5" />
+                NO START LOCATION
               </span>
             )}
             {officers && officers.length > 0 && (
@@ -704,7 +784,39 @@ export default function ServeRoutePlanner({
             </div>
             {error && <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-300 text-[10px]">{error}</div>}
 
+            {/* An unanchored route is a QUIET accuracy problem: the stop order is
+                still produced, the mileage still looks plausible, and nothing on
+                screen says the drive to the first stop was never counted. Say it. */}
+            {!routeOrigin && (
+              <div className="px-3 py-1.5 bg-amber-900/25 border-b border-amber-700/40 text-amber-300 text-[10px] leading-snug">
+                {describeOriginProblem(originResolution)}
+              </div>
+            )}
+
             <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+              {/* Stop 0 — the origin the optimizer measured from. Rendered as a
+                  real row so the sequence reads START → 1 → 2 …, matching how the
+                  officer actually drives it, rather than starting at stop 1 with
+                  the first leg unaccounted for. */}
+              {routeOrigin && (
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-border-default bg-surface-overlay/40">
+                  <div className="flex-shrink-0 p-0.5"><MapPin size={16} className="text-brand-400" /></div>
+                  <span className="w-5 text-[10px] font-mono font-bold text-brand-400 flex-shrink-0">ST</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-rmpg-100 truncate">
+                      Start{!planningForSelf && plannedOfficerName ? ` — ${plannedOfficerName}` : ''}
+                    </div>
+                    <div className="text-[10px] text-fg-muted truncate font-mono">
+                      {routeOrigin.lat.toFixed(4)}, {routeOrigin.lng.toFixed(4)} · {describeOrigin(routeOrigin)}
+                    </div>
+                  </div>
+                  {firstLegMiles != null && (
+                    <span className="text-[10px] font-mono text-fg-secondary flex-shrink-0" title="Straight-line distance from the start to the first stop">
+                      {firstLegMiles.toFixed(1)} mi →
+                    </span>
+                  )}
+                </div>
+              )}
               {stops.map((stop, idx) => (
                 <div key={stop.job.id} className={`flex items-center gap-2 px-3 py-2 border-b border-border-default transition-colors ${stop.selected ? 'bg-surface-base' : 'opacity-50'}`}>
                   <button type="button" onClick={() => toggleStop(idx)} className="flex-shrink-0 p-0.5">
@@ -732,6 +844,20 @@ export default function ServeRoutePlanner({
             </div>
 
             <div className="px-4 py-3 border-t border-rmpg-700 bg-surface-sunken space-y-2">
+              {/* Start / anchor provenance, stated in the summary an operator
+                  reads before committing the route — not just in the header. */}
+              <div className="flex justify-between text-xs">
+                <span className="text-fg-muted flex items-center gap-1.5"><Navigation size={12} /> Start:</span>
+                <span className={`font-mono ${routeOrigin ? (routeOrigin.source === 'last_known' ? 'text-amber-400' : 'text-rmpg-100') : 'text-red-400'}`}>
+                  {routeOrigin ? describeOrigin(routeOrigin) : 'none'}
+                </span>
+              </div>
+              {firstLegMiles != null && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-fg-muted flex items-center gap-1.5"><MapPin size={12} /> First leg:</span>
+                  <span className="text-rmpg-100 font-mono">{firstLegMiles.toFixed(1)} mi</span>
+                </div>
+              )}
               <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><MapPin size={12} /> Distance:</span><span className="text-rmpg-100 font-mono">{totalDistance.toFixed(1)} mi</span></div>
               <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><Clock size={12} /> Est. Time:</span><span className="text-rmpg-100 font-mono">{Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m</span></div>
               <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-rmpg-100 font-mono">${fuelCost.toFixed(2)}</span></div>

@@ -802,8 +802,15 @@ export default function ServePage() {
   const fetchSavedRoute = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const route = await apiFetch<any>(`/process-server/routes/${selectedDate}?officer_id=${Number(user.id)}`);
-      setSavedRoute(route);
+      // GET /routes/:date returns a ROW ARRAY (src/routes/serve.ts uses
+      // query(), i.e. `T[]`), newest first. Assigning the array straight to
+      // savedRoute left `savedRoute.optimized_order_json` undefined, so the
+      // Route tab rendered "No route planned for this date." even when a
+      // route existed — unconditionally, for every date and officer. Take the
+      // newest row (ORDER BY id DESC) and keep the object fallback in case the
+      // endpoint is ever narrowed to a single row.
+      const resp = await apiFetch<any>(`/process-server/routes/${selectedDate}?officer_id=${Number(user.id)}`);
+      setSavedRoute(Array.isArray(resp) ? (resp[0] ?? null) : (resp ?? null));
     } catch { setSavedRoute(null); }
   }, [selectedDate, user?.id]);
 

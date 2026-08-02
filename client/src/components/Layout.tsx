@@ -405,9 +405,20 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Full-bleed pages (map, route-builder) need overflow-hidden on main so
-  // child height: 100% resolves correctly for Mapbox GL / map containers.
-  const isFullBleedPage = location.pathname === '/map' || location.pathname === '/route-builder' || location.pathname === '/geography';
+  // NOTE (2026-08-01): an `isFullBleedPage` flag used to be computed here,
+  // listing /map, /route-builder and /geography, with a comment claiming those
+  // pages needed `overflow-hidden` on <main> "so child height: 100% resolves
+  // correctly for Mapbox GL / map containers." It was never applied anywhere —
+  // dead since #2170 — and the premise was wrong: <main> already has a definite
+  // height (flex-1 + min-h-0 inside a 100dvh column), so `h-full` children
+  // resolve fine, measured live at 933px. The real reason map containers
+  // collapsed was a CSS specificity collision — mapbox-gl.css's
+  // `.mapboxgl-map { position: relative }` loads after Tailwind's `.absolute`
+  // and wins on source order, so `absolute inset-0` containers computed
+  // `relative` and shrank to ~12px. That is fixed by specificity in
+  // index.css ("MAPBOX CONTAINER POSITION COLLISION"). Removed rather than
+  // wired up, so nobody re-derives the wrong diagnosis from it. <main> keeps
+  // `overflow-auto` — the per-path scroll restore below depends on it.
 
   const gps = useGpsTracking();
   const presence = usePresence();
