@@ -11,7 +11,7 @@ import { buildQueryUrl, searchByAddress, getParcel } from './client';
 import {
   cacheKeyParcels, cacheKeyParcel,
   durableKeyParcels, durableKeyParcel,
-  getCached, putCached, putCachedDurable,
+  getCached, getCachedValidated, putCached, putCachedDurable,
 } from './cache';
 import type { Parcel, ParcelSummary } from './types';
 
@@ -66,7 +66,9 @@ export async function lookupParcelsWithFallback(
   let lastErr = '';
 
   // 0. Fresh cache hit.
-  const fresh = await getCached<ParcelSummary[]>({ KV: env.KV }, cacheKeyParcels(address));
+  const fresh = await getCachedValidated<ParcelSummary[]>(
+    { KV: env.KV }, cacheKeyParcels(address), (v) => (Array.isArray(v) ? v.map((p) => p.parcel_number) : []),
+  );
   if (fresh && Array.isArray(fresh) && fresh.length > 0) {
     return { parcels: fresh, source: 'cache', code: 'ok', degraded: false, manual_url };
   }
@@ -85,7 +87,9 @@ export async function lookupParcelsWithFallback(
   }
 
   // 2. Stale durable cache — last-known-good from any prior success.
-  const stale = await getCached<ParcelSummary[]>({ KV: env.KV }, durableKeyParcels(address));
+  const stale = await getCachedValidated<ParcelSummary[]>(
+    { KV: env.KV }, durableKeyParcels(address), (v) => (Array.isArray(v) ? v.map((p) => p.parcel_number) : []),
+  );
   if (stale && Array.isArray(stale) && stale.length > 0) {
     return {
       parcels: stale,
@@ -130,7 +134,9 @@ export async function lookupParcelWithFallback(
   let lastErr = '';
 
   // 0. Fresh cache.
-  const fresh = await getCached<Parcel>({ KV: env.KV }, cacheKeyParcel(parcelNo));
+  const fresh = await getCachedValidated<Parcel>(
+    { KV: env.KV }, cacheKeyParcel(parcelNo), (v) => [v?.parcel_number],
+  );
   if (fresh && fresh.parcel_number) {
     return { parcel: fresh, source: 'cache', code: 'ok', degraded: false, manual_url };
   }
@@ -146,7 +152,9 @@ export async function lookupParcelWithFallback(
   }
 
   // 2. Stale durable cache.
-  const stale = await getCached<Parcel>({ KV: env.KV }, durableKeyParcel(parcelNo));
+  const stale = await getCachedValidated<Parcel>(
+    { KV: env.KV }, durableKeyParcel(parcelNo), (v) => [v?.parcel_number],
+  );
   if (stale && stale.parcel_number) {
     return {
       parcel: stale,

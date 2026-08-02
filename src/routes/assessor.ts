@@ -28,7 +28,7 @@ import { recordAudit } from '../utils/auditLog';
 import { requireRole } from '../middleware/auth';
 import {
   cacheKeyParcel, cacheKeyParcels, durableKeyParcels, durableKeyParcel,
-  getCached, putCached, invalidate,
+  getCached, getCachedValidated, putCached, invalidate,
 } from '../utils/sl-assessor/cache';
 import { applyParcelToRecord } from '../utils/sl-assessor/autofill';
 import {
@@ -308,7 +308,11 @@ app.post('/apply', async (c) => {
 
   let parcel: Parcel;
   try {
-    const cached = await getCached<Parcel>(c.env, cacheKeyParcel(body.parcel_number));
+    // Validated read — a pre-fix cached parcel may carry a placeholder or
+    // 12-digit block number; serving one would write it onto the record.
+    const cached = await getCachedValidated<Parcel>(
+      c.env, cacheKeyParcel(body.parcel_number), (v) => [v?.parcel_number],
+    );
     const recordForCounty = record as { address?: string; jurisdiction_override?: string | null };
     const county = resolveEffectiveCounty(recordForCounty.address ?? '', recordForCounty.jurisdiction_override);
     parcel = cached ?? await dispatchGetParcel(c.env, body.parcel_number, county);

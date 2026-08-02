@@ -74,3 +74,63 @@ export async function putCachedDurable<T>(env: CacheEnv, key: string, value: T):
 export async function invalidate(env: CacheEnv, key: string): Promise<void> {
   await env.KV.delete(key);
 }
+
+// ── Poisoned-cache self-heal ─────────────────────────────────────────────
+//
+// Before the 2026-08-01 parser fix, the picker wrote summaries whose
+// parcel_number was the county search form's placeholder ("00-00-000-000")
+// or a 12-digit BLOCK id. Those payloads are still in KV, and clearing them
+// is NOT a matter of waiting them out: putCachedDurable() writes a companion
+// key with NO expirationTtl, so a poisoned durable entry survives forever and
+// is served as "last-known-good" the moment the fresh key is cleared. A
+// manual Refresh deletes the fresh key and the durable key answers with the
+// same corrupt value.
+//
+// So validate on READ. A cached payload carrying an impossible parcel number
+// is treated as a miss and deleted, which self-heals every affected record on
+// first access with no operator action and no KV enumeration.
+
+/** All-zero placeholder from <input id="parcelid" placeholder="00-00-000-000-0000">. */
+const PLACEHOLDER_PARCEL_RE = /^0{2}-0{2}-0{3}-0{3}(?:-0{4})?$/;
+/** The only shape the county actually issues: 14 digits, dashed. */
+const VALID_PARCEL_RE = /^\d{2}-\d{2}-\d{3}-\d{3}-\d{4}$/;
+
+/**
+ * True when a parcel number is one the county could really have issued.
+ *
+ * Rejects the placeholder AND the 12-digit block form — a block id is not
+ * merely cosmetic, it is the value the county answers with HTTP 200 + its
+ * search form, so caching one guarantees silent downstream failure.
+ */
+export function isValidParcelNumber(p: unknown): boolean {
+  return typeof p === 'string' && VALID_PARCEL_RE.test(p) && !PLACEHOLDER_PARCEL_RE.test(p);
+}
+
+/**
+ * Read a cached value, dropping it if it is poisoned.
+ *
+ * `extract` pulls every parcel number out of the payload. If ANY is invalid
+ * the whole entry is deleted and null is returned, so the caller falls
+ * through to a live fetch. Deleting the whole entry rather than filtering is
+ * deliberate: a summary list with one bad row was produced by the broken
+ * parser, so its other rows are not trustworthy either.
+ */
+export async function getCachedValidated<T>(
+  env: CacheEnv,
+  key: string,
+  extract: (value: T) => Array<unknown>,
+): Promise<T | null> {
+  const value = await getCached<T>(env, key);
+  if (value == null) return null;
+  let numbers: Array<unknown>;
+  try {
+    numbers = extract(value);
+  } catch {
+    return value;   // unexpected shape — leave it alone rather than deleting data
+  }
+  if (numbers.length === 0) return value;
+  if (numbers.every(isValidParcelNumber)) return value;
+  // Poisoned. Drop it so the next read repopulates from the live source.
+  await invalidate(env, key).catch(() => { /* best-effort */ });
+  return null;
+}
