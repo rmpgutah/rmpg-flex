@@ -26,7 +26,9 @@ const TIME_FMT = new Intl.DateTimeFormat('en-US', {
 
 function formatFrameTime(unixSeconds: number | undefined): string {
   if (unixSeconds == null || !Number.isFinite(unixSeconds)) return '--:--';
-  return TIME_FMT.format(new Date(unixSeconds * 1000));
+  // RainViewer frame times are epoch SECONDS, not a naive server timestamp
+  // string, so there is no local-vs-UTC ambiguity to parse.
+  return TIME_FMT.format(new Date(unixSeconds * 1000)); // new-date-ok
 }
 
 /** "12 min ago" / "now" — relative age of the displayed frame. */

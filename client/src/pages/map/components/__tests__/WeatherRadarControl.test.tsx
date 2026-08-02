@@ -31,7 +31,7 @@ function makeRadar(over: Partial<UseMapWeatherRadarResult> = {}): UseMapWeatherR
     resumeLive: vi.fn(),
     live: true,
     activeFrame: frames[1],
-    lastPolledAt: new Date(NOW_MS),
+    lastPolledAt: new Date(NOW_MS), // new-date-ok — NOW_MS is an epoch number from Date.UTC
     error: false,
     loading: false,
     ...over,
