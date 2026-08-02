@@ -48,11 +48,7 @@
           "match": [{ "key": "highway", "values": ["motorway_junction"] }] },
         { "cat": "access_pt", "label": "Rest & access points", "minzoom": 11,
           "filters": ["nwr/highway=rest_area", "nwr/highway=services", "n/highway=emergency_access_point"],
-          "match": [{ "key": "highway", "values": ["rest_area", "services", "emergency_access_point"] }] },
-        { "cat": "enforce", "label": "Enforcement devices", "minzoom": 14,
-          "filters": ["n/highway=speed_camera", "nwr/enforcement"],
-          "match": [{ "key": "highway", "values": ["speed_camera"] }, { "key": "enforcement", "present": true }],
-          "matchMode": "any" }
+          "match": [{ "key": "highway", "values": ["rest_area", "services", "emergency_access_point"] }] }
       ]
     },
     {
@@ -75,9 +71,6 @@
         { "cat": "inlet", "label": "Standpipe & riser inlets", "minzoom": 16,
           "filters": ["n/emergency=fire_service_inlet", "n/emergency=dry_riser_inlet", "n/emergency=wet_riser_inlet"],
           "match": [{ "key": "emergency", "values": ["fire_service_inlet", "dry_riser_inlet", "wet_riser_inlet"] }] },
-        { "cat": "fire_equip", "label": "Portable fire equipment", "minzoom": 17,
-          "filters": ["n/emergency=fire_extinguisher", "n/emergency=fire_hose"],
-          "match": [{ "key": "emergency", "values": ["fire_extinguisher", "fire_hose"] }] },
         { "cat": "heli", "label": "Helipads & airfields", "minzoom": 11,
           "filters": ["nwr/aeroway=helipad", "nwr/aeroway=aerodrome", "w/aeroway=runway", "n/aeroway=windsock", "nwr/emergency=landing_site"],
           "match": [{ "key": "aeroway", "values": ["helipad", "aerodrome", "runway", "windsock"] }, { "key": "emergency", "values": ["landing_site"] }],
