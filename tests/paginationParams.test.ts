@@ -57,8 +57,12 @@ describe('clampIntParam', () => {
 describe('the two guards this replaces were both broken', () => {
   it('documents why `parseInt(q || "50", 10)` fails', () => {
     // 'abc' is truthy, so the '50' default never applies.
-    expect(parseInt('abc' || '50', 10)).toBeNaN();
-    expect(clampIntParam('abc', 50, 1, 200)).toBe(50);
+    // Typed as `string` rather than written as a literal: TS2872 rejects
+    // `'abc' || '50'` outright ("this kind of expression is always truthy"),
+    // which is the compiler making the same point this test does.
+    const q: string = 'abc';
+    expect(parseInt(q || '50', 10)).toBeNaN();
+    expect(clampIntParam(q, 50, 1, 200)).toBe(50);
   });
 
   it('documents why a Math.min/Math.max clamp fails', () => {
