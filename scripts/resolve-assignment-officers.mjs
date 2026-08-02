@@ -11,11 +11,18 @@
 //   - Normalize both sides: trim, collapse internal whitespace to a single
 //     space, lowercase. No fuzzy matching, no edit distance, no nickname
 //     expansion, no substring/partial matching.
-//   - Write officer_id ONLY when exactly one user's normalized full name
-//     (users.first_name + ' ' + users.last_name) matches. Zero matches and
-//     2+ matches BOTH stay null — a wrong match here permanently attributes
-//     someone else's driving events to a named officer in a system that
-//     feeds performance review and may be read in litigation.
+//   - Candidate names come from users.full_name (NOT NULL, canonical — the
+//     live API route also reads officer_name from full_name, see
+//     src/routes/driverPerformance.ts) PLUS, as a secondary alias for the
+//     same user id, `first_name + ' ' + last_name` for any user where both
+//     parts are present. A user can therefore have more than one normalized
+//     alias; matches are deduped by user id before counting, so multiple
+//     aliases for the SAME person are one match, not an ambiguity.
+//   - Write officer_id ONLY when exactly one DISTINCT user id matches across
+//     all aliases. Zero matches and 2+ distinct user ids BOTH stay null — a
+//     wrong match here permanently attributes someone else's driving events
+//     to a named officer in a system that feeds performance review and may
+//     be read in litigation.
 //
 // SAFETY:
 //   - Defaults to a DRY RUN. Pass --apply to actually write.
@@ -87,9 +94,7 @@ function main() {
     assignments = d1(
       "SELECT id, officer_name FROM fleet_assignments WHERE officer_id IS NULL AND officer_name IS NOT NULL AND TRIM(officer_name) != ''"
     );
-    users = d1(
-      "SELECT id, first_name, last_name FROM users WHERE first_name IS NOT NULL AND last_name IS NOT NULL"
-    );
+    users = d1('SELECT id, full_name, first_name, last_name FROM users');
   } catch (err) {
     console.error(`✗ could not connect to D1 (${TARGET_FLAG}): ${err.message}`);
     console.error(
@@ -105,13 +110,34 @@ function main() {
     `Fetched ${assignments.length} unresolved assignment row(s) and ${users.length} candidate user row(s).`
   );
 
-  // Build normalized-name -> [user ids] index
+  if (users.length === 0) {
+    console.error(
+      '✗ ABORTING — candidate user set is EMPTY. An empty `users` table is not a plausible ' +
+        'real state for this system; this almost certainly means a configuration or ' +
+        `connectivity problem (target=${TARGET_FLAG}), not "no users to match against". ` +
+        'Refusing to print a normal 0-resolved summary or write an unresolved report — ' +
+        'that would misrepresent a broken query as "nothing matched."'
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  // Build normalized-name -> Set<user id> index. full_name is the primary,
+  // canonical, NOT-NULL source; first_name+' '+last_name is a secondary
+  // alias for the same user id where both parts are present. Multiple
+  // aliases pointing at the same user id must collapse to one match.
   const byName = new Map();
+  function addAlias(name, userId) {
+    const key = normalizeName(name);
+    if (!key) return;
+    if (!byName.has(key)) byName.set(key, new Set());
+    byName.get(key).add(userId);
+  }
   for (const u of users) {
-    const full = normalizeName(`${u.first_name} ${u.last_name}`);
-    if (!full) continue;
-    if (!byName.has(full)) byName.set(full, []);
-    byName.get(full).push(u.id);
+    addAlias(u.full_name, u.id);
+    if (u.first_name && u.last_name) {
+      addAlias(`${u.first_name} ${u.last_name}`, u.id);
+    }
   }
 
   const resolved = [];
@@ -120,13 +146,13 @@ function main() {
 
   for (const a of assignments) {
     const key = normalizeName(a.officer_name);
-    const matches = key ? byName.get(key) || [] : [];
-    if (matches.length === 1) {
-      resolved.push({ id: a.id, officer_name: a.officer_name, officer_id: matches[0] });
-    } else if (matches.length === 0) {
+    const matchIds = key ? [...(byName.get(key) || [])] : [];
+    if (matchIds.length === 1) {
+      resolved.push({ id: a.id, officer_name: a.officer_name, officer_id: matchIds[0] });
+    } else if (matchIds.length === 0) {
       noMatch.push({ id: a.id, officer_name: a.officer_name });
     } else {
-      ambiguous.push({ id: a.id, officer_name: a.officer_name, candidates: matches.length });
+      ambiguous.push({ id: a.id, officer_name: a.officer_name, candidates: matchIds.length });
     }
   }
 
