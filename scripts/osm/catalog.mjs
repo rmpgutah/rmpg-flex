@@ -34,8 +34,13 @@ function validate(cat) {
     if (g.archive !== `osm-${g.name}.pmtiles`) {
       throw new Error(`${g.name}: archive must be osm-${g.name}.pmtiles, got ${g.archive}`);
     }
-    if (!Array.isArray(g.properties) || !g.properties.includes('name')) {
-      throw new Error(`${g.name}: properties must include "name"`);
+    // `'*'` = capture every tag except known noise, matching what
+    // openstreetmap.org shows for the feature. An array = explicit allow-list,
+    // used for the two enormous way-based groups to keep tiles bounded.
+    if (g.properties !== '*') {
+      if (!Array.isArray(g.properties) || !g.properties.includes('name')) {
+        throw new Error(`${g.name}: properties must be '*' or an array including "name"`);
+      }
     }
     if (g.assignment !== 'first-match' && g.assignment !== 'multi') {
       throw new Error(`${g.name}: assignment must be "first-match" or "multi", got ${JSON.stringify(g.assignment)}`);

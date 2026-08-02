@@ -9,14 +9,46 @@
       "assignment": "first-match",
       "geometry": "point",
       "coverage": "sparse",
-      "properties": ["name", "surveillance", "surveillance:type", "surveillance:zone", "camera:direction", "camera:mount", "camera:type", "operator"],
+      "properties": "*",
       "categories": [
-        { "cat": "alpr", "label": "Cameras (ALPR)", "minzoom": 14,
-          "filters": ["nwr/man_made=surveillance"],
-          "match": [{ "key": "man_made", "values": ["surveillance"] }, { "key": "surveillance:type", "values": ["ALPR"] }] },
-        { "cat": "camera", "label": "Cameras (public)", "minzoom": 15,
-          "filters": ["nwr/man_made=surveillance"],
-          "match": [{ "key": "man_made", "values": ["surveillance"] }] }
+        {
+          "cat": "alpr",
+          "label": "Cameras (ALPR)",
+          "minzoom": 14,
+          "filters": [
+            "nwr/man_made=surveillance"
+          ],
+          "match": [
+            {
+              "key": "man_made",
+              "values": [
+                "surveillance"
+              ]
+            },
+            {
+              "key": "surveillance:type",
+              "values": [
+                "ALPR"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "camera",
+          "label": "Cameras (public)",
+          "minzoom": 15,
+          "filters": [
+            "nwr/man_made=surveillance"
+          ],
+          "match": [
+            {
+              "key": "man_made",
+              "values": [
+                "surveillance"
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -26,31 +58,155 @@
       "assignment": "multi",
       "geometry": "mixed",
       "coverage": "incomplete",
-      "properties": ["name", "ref", "highway", "maxspeed", "oneway", "maxheight", "maxweight", "traffic_calming", "crossing", "hazard", "enforcement"],
+      "properties": [
+        "name",
+        "ref",
+        "highway",
+        "maxspeed",
+        "oneway",
+        "maxheight",
+        "maxweight",
+        "traffic_calming",
+        "crossing",
+        "hazard",
+        "enforcement"
+      ],
       "categories": [
-        { "cat": "control", "label": "Traffic control", "minzoom": 14,
-          "filters": ["n/highway=stop", "n/highway=give_way", "n/highway=traffic_signals"],
-          "match": [{ "key": "highway", "values": ["stop", "give_way", "traffic_signals"] }] },
-        { "cat": "maxspeed", "label": "Speed limits", "minzoom": 13,
-          "filters": ["w/maxspeed"],
-          "match": [{ "key": "maxspeed", "present": true }] },
-        { "cat": "restriction", "label": "Restrictions", "minzoom": 14,
-          "filters": ["w/oneway=yes", "w/maxheight", "w/maxweight"],
-          "match": [{ "key": "oneway", "values": ["yes"] }, { "key": "maxheight", "present": true }, { "key": "maxweight", "present": true }],
-          "matchMode": "any" },
-        { "cat": "calming", "label": "Traffic calming", "minzoom": 15,
-          "filters": ["nwr/traffic_calming"],
-          "match": [{ "key": "traffic_calming", "present": true }] },
-        { "cat": "crossing", "label": "Crossings & school zones", "minzoom": 15,
-          "filters": ["nwr/highway=crossing", "nwr/hazard=school_zone"],
-          "match": [{ "key": "highway", "values": ["crossing"] }, { "key": "hazard", "values": ["school_zone"] }],
-          "matchMode": "any" },
-        { "cat": "junction", "label": "Exit numbers", "minzoom": 11,
-          "filters": ["n/highway=motorway_junction"],
-          "match": [{ "key": "highway", "values": ["motorway_junction"] }] },
-        { "cat": "access_pt", "label": "Rest & access points", "minzoom": 11,
-          "filters": ["nwr/highway=rest_area", "nwr/highway=services", "n/highway=emergency_access_point"],
-          "match": [{ "key": "highway", "values": ["rest_area", "services", "emergency_access_point"] }] }
+        {
+          "cat": "control",
+          "label": "Traffic control",
+          "minzoom": 14,
+          "filters": [
+            "n/highway=stop",
+            "n/highway=give_way",
+            "n/highway=traffic_signals"
+          ],
+          "match": [
+            {
+              "key": "highway",
+              "values": [
+                "stop",
+                "give_way",
+                "traffic_signals"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "maxspeed",
+          "label": "Speed limits",
+          "minzoom": 13,
+          "filters": [
+            "w/maxspeed"
+          ],
+          "match": [
+            {
+              "key": "maxspeed",
+              "present": true
+            }
+          ]
+        },
+        {
+          "cat": "restriction",
+          "label": "Restrictions",
+          "minzoom": 14,
+          "filters": [
+            "w/oneway=yes",
+            "w/maxheight",
+            "w/maxweight"
+          ],
+          "match": [
+            {
+              "key": "oneway",
+              "values": [
+                "yes"
+              ]
+            },
+            {
+              "key": "maxheight",
+              "present": true
+            },
+            {
+              "key": "maxweight",
+              "present": true
+            }
+          ],
+          "matchMode": "any"
+        },
+        {
+          "cat": "calming",
+          "label": "Traffic calming",
+          "minzoom": 15,
+          "filters": [
+            "nwr/traffic_calming"
+          ],
+          "match": [
+            {
+              "key": "traffic_calming",
+              "present": true
+            }
+          ]
+        },
+        {
+          "cat": "crossing",
+          "label": "Crossings & school zones",
+          "minzoom": 15,
+          "filters": [
+            "nwr/highway=crossing",
+            "nwr/hazard=school_zone"
+          ],
+          "match": [
+            {
+              "key": "highway",
+              "values": [
+                "crossing"
+              ]
+            },
+            {
+              "key": "hazard",
+              "values": [
+                "school_zone"
+              ]
+            }
+          ],
+          "matchMode": "any"
+        },
+        {
+          "cat": "junction",
+          "label": "Exit numbers",
+          "minzoom": 11,
+          "filters": [
+            "n/highway=motorway_junction"
+          ],
+          "match": [
+            {
+              "key": "highway",
+              "values": [
+                "motorway_junction"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "access_pt",
+          "label": "Rest & access points",
+          "minzoom": 11,
+          "filters": [
+            "nwr/highway=rest_area",
+            "nwr/highway=services",
+            "n/highway=emergency_access_point"
+          ],
+          "match": [
+            {
+              "key": "highway",
+              "values": [
+                "rest_area",
+                "services",
+                "emergency_access_point"
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -60,28 +216,146 @@
       "assignment": "first-match",
       "geometry": "mixed",
       "coverage": "incomplete",
-      "properties": ["name", "emergency", "amenity", "aeroway", "fire_hydrant:type", "colour", "couplings", "fire_hydrant:diameter", "flow_rate", "operator", "ref"],
+      "properties": "*",
       "categories": [
-        { "cat": "hydrant", "label": "Fire hydrants", "minzoom": 14,
-          "filters": ["n/emergency=fire_hydrant"],
-          "match": [{ "key": "emergency", "values": ["fire_hydrant"] }] },
-        { "cat": "water", "label": "Alt water sources", "minzoom": 13,
-          "filters": ["nwr/emergency=fire_water_pond", "n/emergency=suction_point", "nwr/emergency=water_tank"],
-          "match": [{ "key": "emergency", "values": ["fire_water_pond", "suction_point", "water_tank"] }] },
-        { "cat": "emerg", "label": "Emergency infrastructure", "minzoom": 13,
-          "filters": ["n/emergency=phone", "n/emergency=defibrillator", "n/emergency=siren", "nwr/emergency=assembly_point"],
-          "match": [{ "key": "emergency", "values": ["phone", "defibrillator", "siren", "assembly_point"] }] },
-        { "cat": "inlet", "label": "Standpipe & riser inlets", "minzoom": 16,
-          "filters": ["n/emergency=fire_service_inlet", "n/emergency=dry_riser_inlet", "n/emergency=wet_riser_inlet"],
-          "match": [{ "key": "emergency", "values": ["fire_service_inlet", "dry_riser_inlet", "wet_riser_inlet"] }] },
-        { "cat": "heli", "label": "Helipads & airfields", "minzoom": 11,
-          "filters": ["nwr/aeroway=helipad", "nwr/aeroway=aerodrome", "w/aeroway=runway", "n/aeroway=windsock", "nwr/emergency=landing_site"],
-          "match": [{ "key": "aeroway", "values": ["helipad", "aerodrome", "runway", "windsock"] }, { "key": "emergency", "values": ["landing_site"] }],
-          "matchMode": "any" },
-        { "cat": "station", "label": "Stations", "minzoom": 11,
-          "filters": ["nwr/amenity=fire_station", "nwr/amenity=police", "nwr/amenity=hospital", "nwr/amenity=clinic", "nwr/emergency=ambulance_station"],
-          "match": [{ "key": "amenity", "values": ["fire_station", "police", "hospital", "clinic"] }, { "key": "emergency", "values": ["ambulance_station"] }],
-          "matchMode": "any" }
+        {
+          "cat": "hydrant",
+          "label": "Fire hydrants",
+          "minzoom": 14,
+          "filters": [
+            "n/emergency=fire_hydrant"
+          ],
+          "match": [
+            {
+              "key": "emergency",
+              "values": [
+                "fire_hydrant"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "water",
+          "label": "Alt water sources",
+          "minzoom": 13,
+          "filters": [
+            "nwr/emergency=fire_water_pond",
+            "n/emergency=suction_point",
+            "nwr/emergency=water_tank"
+          ],
+          "match": [
+            {
+              "key": "emergency",
+              "values": [
+                "fire_water_pond",
+                "suction_point",
+                "water_tank"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "emerg",
+          "label": "Emergency infrastructure",
+          "minzoom": 13,
+          "filters": [
+            "n/emergency=phone",
+            "n/emergency=defibrillator",
+            "n/emergency=siren",
+            "nwr/emergency=assembly_point"
+          ],
+          "match": [
+            {
+              "key": "emergency",
+              "values": [
+                "phone",
+                "defibrillator",
+                "siren",
+                "assembly_point"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "inlet",
+          "label": "Standpipe & riser inlets",
+          "minzoom": 16,
+          "filters": [
+            "n/emergency=fire_service_inlet",
+            "n/emergency=dry_riser_inlet",
+            "n/emergency=wet_riser_inlet"
+          ],
+          "match": [
+            {
+              "key": "emergency",
+              "values": [
+                "fire_service_inlet",
+                "dry_riser_inlet",
+                "wet_riser_inlet"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "heli",
+          "label": "Helipads & airfields",
+          "minzoom": 11,
+          "filters": [
+            "nwr/aeroway=helipad",
+            "nwr/aeroway=aerodrome",
+            "w/aeroway=runway",
+            "n/aeroway=windsock",
+            "nwr/emergency=landing_site"
+          ],
+          "match": [
+            {
+              "key": "aeroway",
+              "values": [
+                "helipad",
+                "aerodrome",
+                "runway",
+                "windsock"
+              ]
+            },
+            {
+              "key": "emergency",
+              "values": [
+                "landing_site"
+              ]
+            }
+          ],
+          "matchMode": "any"
+        },
+        {
+          "cat": "station",
+          "label": "Stations",
+          "minzoom": 11,
+          "filters": [
+            "nwr/amenity=fire_station",
+            "nwr/amenity=police",
+            "nwr/amenity=hospital",
+            "nwr/amenity=clinic",
+            "nwr/emergency=ambulance_station"
+          ],
+          "match": [
+            {
+              "key": "amenity",
+              "values": [
+                "fire_station",
+                "police",
+                "hospital",
+                "clinic"
+              ]
+            },
+            {
+              "key": "emergency",
+              "values": [
+                "ambulance_station"
+              ]
+            }
+          ],
+          "matchMode": "any"
+        }
       ]
     },
     {
@@ -91,38 +365,182 @@
       "assignment": "first-match",
       "geometry": "mixed",
       "coverage": "incomplete",
-      "properties": ["name", "power", "man_made", "waterway", "amenity", "operator", "voltage", "substation", "generator:source", "communication:mobile_phone", "tower:type"],
+      "properties": "*",
       "categories": [
-        { "cat": "power", "label": "Substations & lines", "minzoom": 10,
-          "filters": ["nwr/power=substation", "n/power=tower", "w/power=line", "w/power=minor_line"],
-          "match": [{ "key": "power", "values": ["substation", "tower", "line", "minor_line"] }],
-          "render": "line" },
-        { "cat": "pole", "label": "Power poles", "minzoom": 16,
-          "filters": ["n/power=pole"],
-          "match": [{ "key": "power", "values": ["pole"] }] },
-        { "cat": "gen", "label": "Generation", "minzoom": 11,
-          "filters": ["nwr/power=generator", "nwr/power=plant"],
-          "match": [{ "key": "power", "values": ["generator", "plant"] }] },
-        { "cat": "comms", "label": "Comms masts", "minzoom": 13,
-          "filters": ["nwr/man_made=mast", "nwr/man_made=tower"],
-          "match": [{ "key": "man_made", "values": ["mast", "tower"] }] },
-        { "cat": "water_infra", "label": "Water towers & tanks", "minzoom": 13,
-          "filters": ["nwr/man_made=water_tower", "nwr/man_made=storage_tank"],
-          "match": [{ "key": "man_made", "values": ["water_tower", "storage_tank"] }] },
-        { "cat": "water_works", "label": "Water & wastewater works", "minzoom": 12,
-          "filters": ["nwr/man_made=pumping_station", "nwr/man_made=wastewater_plant", "nwr/man_made=water_works", "nwr/man_made=reservoir_covered"],
-          "match": [{ "key": "man_made", "values": ["pumping_station", "wastewater_plant", "water_works", "reservoir_covered"] }] },
-        { "cat": "dam", "label": "Dams & control structures", "minzoom": 11,
-          "filters": ["nwr/waterway=dam", "nwr/waterway=weir", "nwr/man_made=dyke"],
-          "match": [{ "key": "waterway", "values": ["dam", "weir"] }, { "key": "man_made", "values": ["dyke"] }],
+        {
+          "cat": "power",
+          "label": "Substations & lines",
+          "minzoom": 10,
+          "filters": [
+            "nwr/power=substation",
+            "n/power=tower",
+            "w/power=line",
+            "w/power=minor_line"
+          ],
+          "match": [
+            {
+              "key": "power",
+              "values": [
+                "substation",
+                "tower",
+                "line",
+                "minor_line"
+              ]
+            }
+          ],
+          "render": "line"
+        },
+        {
+          "cat": "pole",
+          "label": "Power poles",
+          "minzoom": 16,
+          "filters": [
+            "n/power=pole"
+          ],
+          "match": [
+            {
+              "key": "power",
+              "values": [
+                "pole"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "gen",
+          "label": "Generation",
+          "minzoom": 11,
+          "filters": [
+            "nwr/power=generator",
+            "nwr/power=plant"
+          ],
+          "match": [
+            {
+              "key": "power",
+              "values": [
+                "generator",
+                "plant"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "comms",
+          "label": "Comms masts",
+          "minzoom": 13,
+          "filters": [
+            "nwr/man_made=mast",
+            "nwr/man_made=tower"
+          ],
+          "match": [
+            {
+              "key": "man_made",
+              "values": [
+                "mast",
+                "tower"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "water_infra",
+          "label": "Water towers & tanks",
+          "minzoom": 13,
+          "filters": [
+            "nwr/man_made=water_tower",
+            "nwr/man_made=storage_tank"
+          ],
+          "match": [
+            {
+              "key": "man_made",
+              "values": [
+                "water_tower",
+                "storage_tank"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "water_works",
+          "label": "Water & wastewater works",
+          "minzoom": 12,
+          "filters": [
+            "nwr/man_made=pumping_station",
+            "nwr/man_made=wastewater_plant",
+            "nwr/man_made=water_works",
+            "nwr/man_made=reservoir_covered"
+          ],
+          "match": [
+            {
+              "key": "man_made",
+              "values": [
+                "pumping_station",
+                "wastewater_plant",
+                "water_works",
+                "reservoir_covered"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "dam",
+          "label": "Dams & control structures",
+          "minzoom": 11,
+          "filters": [
+            "nwr/waterway=dam",
+            "nwr/waterway=weir",
+            "nwr/man_made=dyke"
+          ],
+          "match": [
+            {
+              "key": "waterway",
+              "values": [
+                "dam",
+                "weir"
+              ]
+            },
+            {
+              "key": "man_made",
+              "values": [
+                "dyke"
+              ]
+            }
+          ],
           "matchMode": "any",
-          "render": "line" },
-        { "cat": "pipeline", "label": "Pipelines", "minzoom": 12,
-          "filters": ["w/man_made=pipeline"],
-          "match": [{ "key": "man_made", "values": ["pipeline"] }] },
-        { "cat": "charging", "label": "EV charging", "minzoom": 14,
-          "filters": ["nwr/amenity=charging_station"],
-          "match": [{ "key": "amenity", "values": ["charging_station"] }] }
+          "render": "line"
+        },
+        {
+          "cat": "pipeline",
+          "label": "Pipelines",
+          "minzoom": 12,
+          "filters": [
+            "w/man_made=pipeline"
+          ],
+          "match": [
+            {
+              "key": "man_made",
+              "values": [
+                "pipeline"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "charging",
+          "label": "EV charging",
+          "minzoom": 14,
+          "filters": [
+            "nwr/amenity=charging_station"
+          ],
+          "match": [
+            {
+              "key": "amenity",
+              "values": [
+                "charging_station"
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -132,38 +550,196 @@
       "assignment": "multi",
       "geometry": "mixed",
       "coverage": "incomplete",
-      "properties": ["name", "amenity", "shop", "tourism", "office", "operator", "entrance", "building:levels", "height", "addr:housenumber", "addr:street"],
+      "properties": "*",
       "categories": [
-        { "cat": "school", "label": "Schools & childcare", "minzoom": 12,
-          "filters": ["nwr/amenity=school", "nwr/amenity=kindergarten", "nwr/amenity=college", "nwr/amenity=university"],
-          "match": [{ "key": "amenity", "values": ["school", "kindergarten", "college", "university"] }] },
-        { "cat": "financial", "label": "Financial", "minzoom": 14,
-          "filters": ["nwr/amenity=bank", "nwr/amenity=atm"],
-          "match": [{ "key": "amenity", "values": ["bank", "atm"] }] },
-        { "cat": "regulated", "label": "Regulated retail", "minzoom": 14,
-          "filters": ["nwr/shop=pawnbroker", "nwr/shop=gun", "nwr/shop=jewelry", "nwr/amenity=pharmacy"],
-          "match": [{ "key": "shop", "values": ["pawnbroker", "gun", "jewelry"] }, { "key": "amenity", "values": ["pharmacy"] }],
-          "matchMode": "any" },
-        { "cat": "alcohol", "label": "Alcohol venues", "minzoom": 14,
-          "filters": ["nwr/amenity=bar", "nwr/amenity=pub", "nwr/amenity=nightclub"],
-          "match": [{ "key": "amenity", "values": ["bar", "pub", "nightclub"] }] },
-        { "cat": "gov", "label": "Government & detention", "minzoom": 12,
-          "filters": ["nwr/amenity=courthouse", "nwr/amenity=prison", "nwr/amenity=townhall", "nwr/amenity=post_office"],
-          "match": [{ "key": "amenity", "values": ["courthouse", "prison", "townhall", "post_office"] }] },
-        { "cat": "lodging", "label": "Lodging & fuel", "minzoom": 14,
-          "filters": ["nwr/tourism=hotel", "nwr/tourism=motel", "nwr/amenity=fuel"],
-          "match": [{ "key": "tourism", "values": ["hotel", "motel"] }, { "key": "amenity", "values": ["fuel"] }],
-          "matchMode": "any" },
-        { "cat": "social", "label": "Social services", "minzoom": 13,
-          "filters": ["nwr/amenity=shelter", "nwr/amenity=social_facility"],
-          "match": [{ "key": "amenity", "values": ["shelter", "social_facility"] }] },
-        { "cat": "entrance", "label": "Building entrances", "minzoom": 17,
-          "filters": ["n/entrance"],
-          "match": [{ "key": "entrance", "present": true }] },
-        { "cat": "bldg_height", "label": "Building height", "minzoom": 16,
-          "filters": ["w/building:levels", "w/height"],
-          "match": [{ "key": "building:levels", "present": true }, { "key": "height", "present": true }],
-          "matchMode": "any" }
+        {
+          "cat": "school",
+          "label": "Schools & childcare",
+          "minzoom": 12,
+          "filters": [
+            "nwr/amenity=school",
+            "nwr/amenity=kindergarten",
+            "nwr/amenity=college",
+            "nwr/amenity=university"
+          ],
+          "match": [
+            {
+              "key": "amenity",
+              "values": [
+                "school",
+                "kindergarten",
+                "college",
+                "university"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "financial",
+          "label": "Financial",
+          "minzoom": 14,
+          "filters": [
+            "nwr/amenity=bank",
+            "nwr/amenity=atm"
+          ],
+          "match": [
+            {
+              "key": "amenity",
+              "values": [
+                "bank",
+                "atm"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "regulated",
+          "label": "Regulated retail",
+          "minzoom": 14,
+          "filters": [
+            "nwr/shop=pawnbroker",
+            "nwr/shop=gun",
+            "nwr/shop=jewelry",
+            "nwr/amenity=pharmacy"
+          ],
+          "match": [
+            {
+              "key": "shop",
+              "values": [
+                "pawnbroker",
+                "gun",
+                "jewelry"
+              ]
+            },
+            {
+              "key": "amenity",
+              "values": [
+                "pharmacy"
+              ]
+            }
+          ],
+          "matchMode": "any"
+        },
+        {
+          "cat": "alcohol",
+          "label": "Alcohol venues",
+          "minzoom": 14,
+          "filters": [
+            "nwr/amenity=bar",
+            "nwr/amenity=pub",
+            "nwr/amenity=nightclub"
+          ],
+          "match": [
+            {
+              "key": "amenity",
+              "values": [
+                "bar",
+                "pub",
+                "nightclub"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "gov",
+          "label": "Government & detention",
+          "minzoom": 12,
+          "filters": [
+            "nwr/amenity=courthouse",
+            "nwr/amenity=prison",
+            "nwr/amenity=townhall",
+            "nwr/amenity=post_office"
+          ],
+          "match": [
+            {
+              "key": "amenity",
+              "values": [
+                "courthouse",
+                "prison",
+                "townhall",
+                "post_office"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "lodging",
+          "label": "Lodging & fuel",
+          "minzoom": 14,
+          "filters": [
+            "nwr/tourism=hotel",
+            "nwr/tourism=motel",
+            "nwr/amenity=fuel"
+          ],
+          "match": [
+            {
+              "key": "tourism",
+              "values": [
+                "hotel",
+                "motel"
+              ]
+            },
+            {
+              "key": "amenity",
+              "values": [
+                "fuel"
+              ]
+            }
+          ],
+          "matchMode": "any"
+        },
+        {
+          "cat": "social",
+          "label": "Social services",
+          "minzoom": 13,
+          "filters": [
+            "nwr/amenity=shelter",
+            "nwr/amenity=social_facility"
+          ],
+          "match": [
+            {
+              "key": "amenity",
+              "values": [
+                "shelter",
+                "social_facility"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "entrance",
+          "label": "Building entrances",
+          "minzoom": 17,
+          "filters": [
+            "n/entrance"
+          ],
+          "match": [
+            {
+              "key": "entrance",
+              "present": true
+            }
+          ]
+        },
+        {
+          "cat": "bldg_height",
+          "label": "Building height",
+          "minzoom": 16,
+          "filters": [
+            "w/building:levels",
+            "w/height"
+          ],
+          "match": [
+            {
+              "key": "building:levels",
+              "present": true
+            },
+            {
+              "key": "height",
+              "present": true
+            }
+          ],
+          "matchMode": "any"
+        }
       ]
     },
     {
@@ -173,33 +749,170 @@
       "assignment": "multi",
       "geometry": "mixed",
       "coverage": "incomplete",
-      "properties": ["name", "barrier", "access", "railway", "amenity", "parking", "highway", "maxheight", "bridge", "tunnel", "public_transport", "operator", "ref"],
+      "properties": "*",
       "categories": [
-        { "cat": "barrier", "label": "Gates & barriers", "minzoom": 15,
-          "filters": ["n/barrier=gate", "n/barrier=lift_gate", "n/barrier=swing_gate", "n/barrier=bollard", "n/barrier=block", "n/barrier=cycle_barrier", "n/barrier=chain", "n/barrier=spikes"],
-          "match": [{ "key": "barrier", "values": ["gate", "lift_gate", "swing_gate", "bollard", "block", "cycle_barrier", "chain", "spikes"] }] },
-        { "cat": "control_pt", "label": "Controlled passages", "minzoom": 14,
-          "filters": ["n/barrier=toll_booth", "n/barrier=border_control", "n/barrier=height_restrictor", "n/barrier=sally_port", "n/barrier=turnstile"],
-          "match": [{ "key": "barrier", "values": ["toll_booth", "border_control", "height_restrictor", "sally_port", "turnstile"] }] },
-        { "cat": "rail_x", "label": "Rail crossings", "minzoom": 13,
-          "filters": ["n/railway=level_crossing", "n/railway=crossing"],
-          "match": [{ "key": "railway", "values": ["level_crossing", "crossing"] }] },
-        { "cat": "rail_infra", "label": "Rail infrastructure", "minzoom": 15,
-          "filters": ["n/railway=signal", "n/railway=switch", "n/railway=buffer_stop"],
-          "match": [{ "key": "railway", "values": ["signal", "switch", "buffer_stop"] }] },
-        { "cat": "parking", "label": "Parking", "minzoom": 15,
-          "filters": ["nwr/amenity=parking"],
-          "match": [{ "key": "amenity", "values": ["parking"] }] },
-        { "cat": "clearance", "label": "Clearances", "minzoom": 14,
-          "filters": ["w/maxheight"],
-          "match": [{ "key": "maxheight", "present": true }] },
-        { "cat": "transit", "label": "Transit stations", "minzoom": 12,
-          "filters": ["nwr/public_transport=station", "nwr/railway=station"],
-          "match": [{ "key": "public_transport", "values": ["station"] }, { "key": "railway", "values": ["station"] }],
-          "matchMode": "any" },
-        { "cat": "lamp", "label": "Street lighting", "minzoom": 16,
-          "filters": ["n/highway=street_lamp"],
-          "match": [{ "key": "highway", "values": ["street_lamp"] }] }
+        {
+          "cat": "barrier",
+          "label": "Gates & barriers",
+          "minzoom": 15,
+          "filters": [
+            "n/barrier=gate",
+            "n/barrier=lift_gate",
+            "n/barrier=swing_gate",
+            "n/barrier=bollard",
+            "n/barrier=block",
+            "n/barrier=cycle_barrier",
+            "n/barrier=chain",
+            "n/barrier=spikes"
+          ],
+          "match": [
+            {
+              "key": "barrier",
+              "values": [
+                "gate",
+                "lift_gate",
+                "swing_gate",
+                "bollard",
+                "block",
+                "cycle_barrier",
+                "chain",
+                "spikes"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "control_pt",
+          "label": "Controlled passages",
+          "minzoom": 14,
+          "filters": [
+            "n/barrier=toll_booth",
+            "n/barrier=border_control",
+            "n/barrier=height_restrictor",
+            "n/barrier=sally_port",
+            "n/barrier=turnstile"
+          ],
+          "match": [
+            {
+              "key": "barrier",
+              "values": [
+                "toll_booth",
+                "border_control",
+                "height_restrictor",
+                "sally_port",
+                "turnstile"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "rail_x",
+          "label": "Rail crossings",
+          "minzoom": 13,
+          "filters": [
+            "n/railway=level_crossing",
+            "n/railway=crossing"
+          ],
+          "match": [
+            {
+              "key": "railway",
+              "values": [
+                "level_crossing",
+                "crossing"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "rail_infra",
+          "label": "Rail infrastructure",
+          "minzoom": 15,
+          "filters": [
+            "n/railway=signal",
+            "n/railway=switch",
+            "n/railway=buffer_stop"
+          ],
+          "match": [
+            {
+              "key": "railway",
+              "values": [
+                "signal",
+                "switch",
+                "buffer_stop"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "parking",
+          "label": "Parking",
+          "minzoom": 15,
+          "filters": [
+            "nwr/amenity=parking"
+          ],
+          "match": [
+            {
+              "key": "amenity",
+              "values": [
+                "parking"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "clearance",
+          "label": "Clearances",
+          "minzoom": 14,
+          "filters": [
+            "w/maxheight"
+          ],
+          "match": [
+            {
+              "key": "maxheight",
+              "present": true
+            }
+          ]
+        },
+        {
+          "cat": "transit",
+          "label": "Transit stations",
+          "minzoom": 12,
+          "filters": [
+            "nwr/public_transport=station",
+            "nwr/railway=station"
+          ],
+          "match": [
+            {
+              "key": "public_transport",
+              "values": [
+                "station"
+              ]
+            },
+            {
+              "key": "railway",
+              "values": [
+                "station"
+              ]
+            }
+          ],
+          "matchMode": "any"
+        },
+        {
+          "cat": "lamp",
+          "label": "Street lighting",
+          "minzoom": 16,
+          "filters": [
+            "n/highway=street_lamp"
+          ],
+          "match": [
+            {
+              "key": "highway",
+              "values": [
+                "street_lamp"
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -209,25 +922,154 @@
       "assignment": "multi",
       "geometry": "line",
       "coverage": "attribute",
-      "properties": ["name", "ref", "highway", "surface", "tracktype", "smoothness", "4wd_only", "ford", "seasonal", "access", "motor_vehicle", "snowmobile"],
+      "properties": [
+        "name",
+        "ref",
+        "highway",
+        "surface",
+        "tracktype",
+        "smoothness",
+        "4wd_only",
+        "ford",
+        "seasonal",
+        "access",
+        "motor_vehicle",
+        "snowmobile"
+      ],
       "categories": [
-        { "cat": "fourwd", "label": "4WD-only", "minzoom": 10,
-          "filters": ["w/4wd_only=yes", "w/tracktype=grade4", "w/tracktype=grade5", "w/smoothness=very_bad", "w/smoothness=horrible", "w/smoothness=impassable"],
-          "match": [{ "key": "4wd_only", "values": ["yes"] }, { "key": "tracktype", "values": ["grade4", "grade5"] }, { "key": "smoothness", "values": ["very_bad", "horrible", "impassable"] }],
-          "matchMode": "any" },
-        { "cat": "ford", "label": "Fords", "minzoom": 12,
-          "filters": ["nw/ford=yes", "nw/ford=stepping_stones"],
-          "match": [{ "key": "ford", "values": ["yes", "stepping_stones"] }] },
-        { "cat": "seasonal", "label": "Seasonal / restricted", "minzoom": 11,
-          "filters": ["w/seasonal", "w/snowmobile", "w/motor_vehicle=no", "w/access=private", "w/access=no"],
-          "match": [{ "key": "seasonal", "present": true }, { "key": "snowmobile", "present": true }, { "key": "motor_vehicle", "values": ["no"] }, { "key": "access", "values": ["private", "no"] }],
-          "matchMode": "any" },
-        { "cat": "unpaved", "label": "Unpaved roads", "minzoom": 11,
-          "filters": ["w/surface=unpaved", "w/surface=gravel", "w/surface=dirt", "w/surface=ground", "w/surface=sand", "w/surface=compacted"],
-          "match": [{ "key": "surface", "values": ["unpaved", "gravel", "dirt", "ground", "sand", "compacted"] }] },
-        { "cat": "track", "label": "Tracks", "minzoom": 12,
-          "filters": ["w/highway=track"],
-          "match": [{ "key": "highway", "values": ["track"] }] }
+        {
+          "cat": "fourwd",
+          "label": "4WD-only",
+          "minzoom": 10,
+          "filters": [
+            "w/4wd_only=yes",
+            "w/tracktype=grade4",
+            "w/tracktype=grade5",
+            "w/smoothness=very_bad",
+            "w/smoothness=horrible",
+            "w/smoothness=impassable"
+          ],
+          "match": [
+            {
+              "key": "4wd_only",
+              "values": [
+                "yes"
+              ]
+            },
+            {
+              "key": "tracktype",
+              "values": [
+                "grade4",
+                "grade5"
+              ]
+            },
+            {
+              "key": "smoothness",
+              "values": [
+                "very_bad",
+                "horrible",
+                "impassable"
+              ]
+            }
+          ],
+          "matchMode": "any"
+        },
+        {
+          "cat": "ford",
+          "label": "Fords",
+          "minzoom": 12,
+          "filters": [
+            "nw/ford=yes",
+            "nw/ford=stepping_stones"
+          ],
+          "match": [
+            {
+              "key": "ford",
+              "values": [
+                "yes",
+                "stepping_stones"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "seasonal",
+          "label": "Seasonal / restricted",
+          "minzoom": 11,
+          "filters": [
+            "w/seasonal",
+            "w/snowmobile",
+            "w/motor_vehicle=no",
+            "w/access=private",
+            "w/access=no"
+          ],
+          "match": [
+            {
+              "key": "seasonal",
+              "present": true
+            },
+            {
+              "key": "snowmobile",
+              "present": true
+            },
+            {
+              "key": "motor_vehicle",
+              "values": [
+                "no"
+              ]
+            },
+            {
+              "key": "access",
+              "values": [
+                "private",
+                "no"
+              ]
+            }
+          ],
+          "matchMode": "any"
+        },
+        {
+          "cat": "unpaved",
+          "label": "Unpaved roads",
+          "minzoom": 11,
+          "filters": [
+            "w/surface=unpaved",
+            "w/surface=gravel",
+            "w/surface=dirt",
+            "w/surface=ground",
+            "w/surface=sand",
+            "w/surface=compacted"
+          ],
+          "match": [
+            {
+              "key": "surface",
+              "values": [
+                "unpaved",
+                "gravel",
+                "dirt",
+                "ground",
+                "sand",
+                "compacted"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "track",
+          "label": "Tracks",
+          "minzoom": 12,
+          "filters": [
+            "w/highway=track"
+          ],
+          "match": [
+            {
+              "key": "highway",
+              "values": [
+                "track"
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -237,24 +1079,104 @@
       "assignment": "multi",
       "geometry": "mixed",
       "coverage": "sparse",
-      "properties": ["name", "natural", "man_made", "historic", "hazard", "operator", "ele"],
+      "properties": "*",
       "categories": [
-        { "cat": "cliff", "label": "Cliffs & steep terrain", "minzoom": 12,
-          "filters": ["w/natural=cliff", "w/natural=arete", "w/natural=ridge"],
-          "match": [{ "key": "natural", "values": ["cliff", "arete", "ridge"] }] },
-        { "cat": "cave", "label": "Cave entrances & sinkholes", "minzoom": 12,
-          "filters": ["nwr/natural=cave_entrance", "nwr/natural=sinkhole"],
-          "match": [{ "key": "natural", "values": ["cave_entrance", "sinkhole"] }] },
-        { "cat": "mine", "label": "Mine shafts & adits", "minzoom": 12,
-          "filters": ["nwr/man_made=mineshaft", "nwr/man_made=adit", "nwr/historic=mine"],
-          "match": [{ "key": "man_made", "values": ["mineshaft", "adit"] }, { "key": "historic", "values": ["mine"] }],
-          "matchMode": "any" },
-        { "cat": "spring", "label": "Springs & water sources", "minzoom": 13,
-          "filters": ["nwr/natural=spring", "nwr/natural=hot_spring"],
-          "match": [{ "key": "natural", "values": ["spring", "hot_spring"] }] },
-        { "cat": "hazard", "label": "Mapped hazards", "minzoom": 11,
-          "filters": ["nwr/hazard"],
-          "match": [{ "key": "hazard", "present": true }] }
+        {
+          "cat": "cliff",
+          "label": "Cliffs & steep terrain",
+          "minzoom": 12,
+          "filters": [
+            "w/natural=cliff",
+            "w/natural=arete",
+            "w/natural=ridge"
+          ],
+          "match": [
+            {
+              "key": "natural",
+              "values": [
+                "cliff",
+                "arete",
+                "ridge"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "cave",
+          "label": "Cave entrances & sinkholes",
+          "minzoom": 12,
+          "filters": [
+            "nwr/natural=cave_entrance",
+            "nwr/natural=sinkhole"
+          ],
+          "match": [
+            {
+              "key": "natural",
+              "values": [
+                "cave_entrance",
+                "sinkhole"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "mine",
+          "label": "Mine shafts & adits",
+          "minzoom": 12,
+          "filters": [
+            "nwr/man_made=mineshaft",
+            "nwr/man_made=adit",
+            "nwr/historic=mine"
+          ],
+          "match": [
+            {
+              "key": "man_made",
+              "values": [
+                "mineshaft",
+                "adit"
+              ]
+            },
+            {
+              "key": "historic",
+              "values": [
+                "mine"
+              ]
+            }
+          ],
+          "matchMode": "any"
+        },
+        {
+          "cat": "spring",
+          "label": "Springs & water sources",
+          "minzoom": 13,
+          "filters": [
+            "nwr/natural=spring",
+            "nwr/natural=hot_spring"
+          ],
+          "match": [
+            {
+              "key": "natural",
+              "values": [
+                "spring",
+                "hot_spring"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "hazard",
+          "label": "Mapped hazards",
+          "minzoom": 11,
+          "filters": [
+            "nwr/hazard"
+          ],
+          "match": [
+            {
+              "key": "hazard",
+              "present": true
+            }
+          ]
+        }
       ]
     },
     {
@@ -264,22 +1186,90 @@
       "assignment": "multi",
       "geometry": "polygon",
       "coverage": "boundary",
-      "properties": ["name", "boundary", "protect_class", "landuse", "military", "leisure", "operator", "ownership"],
+      "properties": "*",
       "categories": [
-        { "cat": "protected", "label": "Protected areas & parks", "minzoom": 8,
-          "filters": ["wr/boundary=protected_area", "wr/boundary=national_park", "wr/leisure=nature_reserve"],
-          "match": [{ "key": "boundary", "values": ["protected_area", "national_park"] }, { "key": "leisure", "values": ["nature_reserve"] }],
-          "matchMode": "any" },
-        { "cat": "tribal", "label": "Tribal lands", "minzoom": 8,
-          "filters": ["wr/boundary=aboriginal_lands"],
-          "match": [{ "key": "boundary", "values": ["aboriginal_lands"] }] },
-        { "cat": "military", "label": "Military", "minzoom": 8,
-          "filters": ["wr/landuse=military", "wr/military"],
-          "match": [{ "key": "landuse", "values": ["military"] }, { "key": "military", "present": true }],
-          "matchMode": "any" },
-        { "cat": "extraction", "label": "Industrial extraction & disposal", "minzoom": 11,
-          "filters": ["wr/landuse=quarry", "wr/landuse=landfill"],
-          "match": [{ "key": "landuse", "values": ["quarry", "landfill"] }] }
+        {
+          "cat": "protected",
+          "label": "Protected areas & parks",
+          "minzoom": 8,
+          "filters": [
+            "wr/boundary=protected_area",
+            "wr/boundary=national_park",
+            "wr/leisure=nature_reserve"
+          ],
+          "match": [
+            {
+              "key": "boundary",
+              "values": [
+                "protected_area",
+                "national_park"
+              ]
+            },
+            {
+              "key": "leisure",
+              "values": [
+                "nature_reserve"
+              ]
+            }
+          ],
+          "matchMode": "any"
+        },
+        {
+          "cat": "tribal",
+          "label": "Tribal lands",
+          "minzoom": 8,
+          "filters": [
+            "wr/boundary=aboriginal_lands"
+          ],
+          "match": [
+            {
+              "key": "boundary",
+              "values": [
+                "aboriginal_lands"
+              ]
+            }
+          ]
+        },
+        {
+          "cat": "military",
+          "label": "Military",
+          "minzoom": 8,
+          "filters": [
+            "wr/landuse=military",
+            "wr/military"
+          ],
+          "match": [
+            {
+              "key": "landuse",
+              "values": [
+                "military"
+              ]
+            },
+            {
+              "key": "military",
+              "present": true
+            }
+          ],
+          "matchMode": "any"
+        },
+        {
+          "cat": "extraction",
+          "label": "Industrial extraction & disposal",
+          "minzoom": 11,
+          "filters": [
+            "wr/landuse=quarry",
+            "wr/landuse=landfill"
+          ],
+          "match": [
+            {
+              "key": "landuse",
+              "values": [
+                "quarry",
+                "landfill"
+              ]
+            }
+          ]
+        }
       ]
     }
   ]
