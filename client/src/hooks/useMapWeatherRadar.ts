@@ -5,9 +5,14 @@
  * which republishes NOAA/global radar composites — no API key required.
  * Replaces the earlier OpenWeatherMap-backed version, which pointed at an
  * `appid=demo` placeholder key that OpenWeatherMap does not honor.
+ *
+ * Beyond the single latest frame, this hook exposes the full past + nowcast
+ * frame list with playback controls so the map can render a radar timeline
+ * (see pages/map/components/WeatherRadarControl.tsx). Playback is opt-in —
+ * nothing animates until `play()` is called.
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { hasLayer, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { devLog, devWarn } from '../utils/devLog';
@@ -17,6 +22,8 @@ import { devLog, devWarn } from '../utils/devLog';
 export interface RainviewerFrame {
   time: number; // unix seconds
   path: string; // e.g. "/v2/radar/1700000000"
+  /** 'past' = observed radar, 'nowcast' = RainViewer's short-range forecast. */
+  kind?: 'past' | 'nowcast';
 }
 
 interface RainviewerApiResponse {
@@ -30,8 +37,28 @@ export interface UseMapWeatherRadarResult {
   setEnabled: (v: boolean) => void;
   opacity: number;
   setOpacity: (v: number) => void;
-  /** Frames fetched from RainViewer's last poll — unused today, exposed for a future radar-timeline scrubber. */
+  /** Past frames followed by nowcast frames, oldest → newest. */
   frames: RainviewerFrame[];
+  /** Index into `frames` currently rendered on the map. -1 when none. */
+  frameIndex: number;
+  /** Scrub to a specific frame. Pins playback there until `resumeLive()`. */
+  setFrameIndex: (i: number) => void;
+  /** True while the overlay is auto-advancing through the loop. */
+  playing: boolean;
+  play: () => void;
+  pause: () => void;
+  togglePlay: () => void;
+  /** Drop the manual pin and follow the newest observed frame again. */
+  resumeLive: () => void;
+  /** False once the operator scrubs off the newest observed frame. */
+  live: boolean;
+  /** Frame currently on the map, or null before the first fetch resolves. */
+  activeFrame: RainviewerFrame | null;
+  /** Wall-clock time of the last successful RainViewer poll. */
+  lastPolledAt: Date | null;
+  /** True when the last poll failed — surfaced so the UI can say so. */
+  error: boolean;
+  loading: boolean;
 }
 
 // ── Constants ─────────────────────────────────────────────
@@ -43,10 +70,27 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000; // RainViewer publishes a new frame roug
 const TILE_SIZE = 256;
 const COLOR_SCHEME = 2; // "Universal Blue" — the common blue->green->red precip ramp
 const TILE_OPTIONS = '1_1'; // smooth=1, snow-color=1
+/** Per-frame dwell during playback. ~1.7 fps reads as motion without smearing. */
+const PLAYBACK_FRAME_MS = 600;
+/** Extra dwell on the newest frame so the loop has a readable "now" beat. */
+const PLAYBACK_LOOP_PAUSE_MS = 1200;
 
 function buildTileUrl(host: string, path: string): string {
   return `${host}${path}/${TILE_SIZE}/{z}/{x}/{y}/${COLOR_SCHEME}/${TILE_OPTIONS}.png`;
 }
+
+/**
+ * Radar reflectivity legend for RainViewer colour scheme 2 ("Universal Blue").
+ * Literal hex is correct here: these swatches must match the tile imagery,
+ * which does not re-theme with the app palette.
+ */
+export const RADAR_LEGEND: Array<{ label: string; color: string }> = [
+  { label: 'Light', color: '#67a9cf' },
+  { label: 'Moderate', color: '#3690c0' },
+  { label: 'Heavy', color: '#02818a' },
+  { label: 'Intense', color: '#fdae61' },
+  { label: 'Extreme', color: '#d7301f' },
+];
 
 // ── Hook ──────────────────────────────────────────────────
 
@@ -57,12 +101,33 @@ export function useMapWeatherRadar(
   const [enabled, setEnabled] = useState(false);
   const [opacity, setOpacity] = useState(0.6);
   const [frames, setFrames] = useState<RainviewerFrame[]>([]);
+  const [host, setHost] = useState<string | null>(null);
+  const [lastPolledAt, setLastPolledAt] = useState<Date | null>(null);
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  /** null = "follow the newest observed frame"; a number pins that index. */
+  const [pinnedIndex, setPinnedIndex] = useState<number | null>(null);
+
   const opacityRef = useRef(opacity);
   useEffect(() => { opacityRef.current = opacity; }, [opacity]);
   const renderedFrameKeyRef = useRef<string | null>(null);
   const hostRef = useRef<string | null>(null);
   const enabledRef = useRef(enabled);
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
+
+  // Index of the newest *observed* frame — the default "live" view. Nowcast
+  // frames sit after it in the array and are only reached by scrubbing or
+  // playback, so the map never silently shows a forecast as if it were an
+  // observation.
+  const liveIndex = useMemo(() => {
+    let last = -1;
+    frames.forEach((f, i) => { if (f.kind !== 'nowcast') last = i; });
+    return last === -1 ? frames.length - 1 : last;
+  }, [frames]);
+
+  const frameIndex = pinnedIndex ?? liveIndex;
+  const activeFrame = frames[frameIndex] ?? null;
 
   const removeLayer = useCallback(() => {
     if (!map) return;
@@ -71,13 +136,13 @@ export function useMapWeatherRadar(
     renderedFrameKeyRef.current = null;
   }, [map]);
 
-  const addOrReplaceLayer = useCallback((host: string, path: string) => {
+  const addOrReplaceLayer = useCallback((tileHost: string, path: string) => {
     if (!map) return;
     if (renderedFrameKeyRef.current === path) return; // already showing this frame
     removeLayer();
     map.addSource(WEATHER_SOURCE, {
       type: 'raster',
-      tiles: [buildTileUrl(host, path)],
+      tiles: [buildTileUrl(tileHost, path)],
       tileSize: TILE_SIZE,
       attribution: '&copy; <a href="https://www.rainviewer.com">RainViewer</a>',
     });
@@ -88,24 +153,34 @@ export function useMapWeatherRadar(
       paint: { 'raster-opacity': opacityRef.current, 'raster-fade-duration': 300 },
     });
     renderedFrameKeyRef.current = path;
-    hostRef.current = host;
+    hostRef.current = tileHost;
     devLog('[WeatherRadar] Rendering frame', path);
   }, [map, removeLayer]);
 
   const fetchFrames = useCallback(async (signal: AbortSignal) => {
+    setLoading(true);
     try {
       const res = await fetch(RAINVIEWER_FRAMES_URL, { signal });
       if (!res.ok) throw new Error(`RainViewer responded ${res.status}`);
       const data: RainviewerApiResponse = await res.json();
-      const past = data.radar?.past ?? [];
-      setFrames(past);
-      const latest = past[past.length - 1];
-      if (latest) addOrReplaceLayer(data.host, latest.path);
+      const past = (data.radar?.past ?? []).map((f) => ({ ...f, kind: 'past' as const }));
+      const nowcast = (data.radar?.nowcast ?? []).map((f) => ({ ...f, kind: 'nowcast' as const }));
+      const all = [...past, ...nowcast];
+      setHost(data.host);
+      setFrames(all);
+      setLastPolledAt(new Date());
+      setError(false);
+      // A poll that lands while the operator is scrubbing must not yank the
+      // view back to live — only clamp a pin that now points past the array.
+      setPinnedIndex((prev) => (prev == null ? null : Math.min(prev, all.length - 1)));
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') return;
+      setError(true);
       devWarn('[WeatherRadar] Failed to fetch RainViewer frames', err);
+    } finally {
+      setLoading(false);
     }
-  }, [addOrReplaceLayer]);
+  }, []);
 
   // Fetch on enable + poll every 5 min while enabled; tear down when disabled.
   useEffect(() => {
@@ -122,6 +197,31 @@ export function useMapWeatherRadar(
     };
   }, [map, mapLoaded, enabled, fetchFrames, removeLayer]);
 
+  // Render whichever frame is selected. Split out from fetching so scrubbing
+  // and playback re-render without touching the network.
+  useEffect(() => {
+    if (!map || !mapLoaded || !enabled) return;
+    if (!host || !activeFrame) return;
+    addOrReplaceLayer(host, activeFrame.path);
+  }, [map, mapLoaded, enabled, host, activeFrame, addOrReplaceLayer]);
+
+  // Playback loop. Advances the pin one frame per tick and wraps to the oldest
+  // frame at the end, dwelling a beat longer on the final frame.
+  useEffect(() => {
+    if (!playing || !enabled || frames.length < 2) return;
+    const atEnd = frameIndex >= frames.length - 1;
+    const delay = atEnd ? PLAYBACK_LOOP_PAUSE_MS : PLAYBACK_FRAME_MS;
+    const timer = setTimeout(() => {
+      setPinnedIndex(atEnd ? 0 : frameIndex + 1);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [playing, enabled, frames.length, frameIndex]);
+
+  // Switching the overlay off resets playback so re-enabling starts live.
+  useEffect(() => {
+    if (!enabled) { setPlaying(false); setPinnedIndex(null); }
+  }, [enabled]);
+
   // Live-update opacity on the rendered layer without refetching.
   useEffect(() => {
     if (!map || !hasLayer(map, WEATHER_LAYER)) return;
@@ -131,18 +231,18 @@ export function useMapWeatherRadar(
   // A basemap style swap (e.g. NavMapView's manual `map.setStyle()` path)
   // wipes all custom sources/layers but does NOT reset `mapLoaded` the way
   // a full map recreation does (that's how the main Map page picks up style
-  // swaps for free). Re-add the already-known latest frame from the cached
+  // swaps for free). Re-add the already-known frame from the cached
   // host/path instead of re-fetching RainViewer — the frame we had was
   // still valid, only the map's rendering of it was wiped.
   useEffect(() => {
     if (!map) return;
     const onStyleLoad = () => {
       if (!enabledRef.current) return;
-      const host = hostRef.current;
+      const tileHost = hostRef.current;
       const path = renderedFrameKeyRef.current;
-      if (!host || !path) return;
+      if (!tileHost || !path) return;
       renderedFrameKeyRef.current = null; // clear so addOrReplaceLayer's dedup guard doesn't skip the re-add
-      addOrReplaceLayer(host, path);
+      addOrReplaceLayer(tileHost, path);
     };
     map.on('style.load', onStyleLoad);
     return () => {
@@ -154,6 +254,33 @@ export function useMapWeatherRadar(
   useEffect(() => () => removeLayer(), [removeLayer]);
 
   const toggle = useCallback(() => setEnabled((v) => !v), []);
+  const play = useCallback(() => setPlaying(true), []);
+  const pause = useCallback(() => setPlaying(false), []);
+  const togglePlay = useCallback(() => setPlaying((v) => !v), []);
+  const resumeLive = useCallback(() => { setPlaying(false); setPinnedIndex(null); }, []);
+  const scrubTo = useCallback((i: number) => {
+    setPlaying(false);
+    setPinnedIndex(i);
+  }, []);
 
-  return { enabled, toggle, setEnabled, opacity, setOpacity, frames };
+  return {
+    enabled,
+    toggle,
+    setEnabled,
+    opacity,
+    setOpacity,
+    frames,
+    frameIndex,
+    setFrameIndex: scrubTo,
+    playing,
+    play,
+    pause,
+    togglePlay,
+    resumeLive,
+    live: pinnedIndex == null,
+    activeFrame,
+    lastPolledAt,
+    error,
+    loading,
+  };
 }

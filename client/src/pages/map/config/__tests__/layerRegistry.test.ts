@@ -3,6 +3,7 @@ import {
   MAP_LAYER_REGISTRY, LAYER_BY_ID, LEFT_DOCK_GROUPS, RIGHT_DOCK_GROUPS,
 } from '../layerRegistry';
 import { HIERARCHY_CONFIGS } from '../../../../hooks/useDistrictHierarchyLayers';
+import { OSM_VECTOR_CONFIGS } from '../../../../hooks/useVectorTileLayers';
 
 describe('MAP_LAYER_REGISTRY', () => {
   it('has a unique id for every entry', () => {
@@ -63,8 +64,24 @@ describe('MAP_LAYER_REGISTRY', () => {
     }
   });
 
-  it('contains all 112 toggles (56 pre-existing + 56 OSM categories)', () => {
-    expect(MAP_LAYER_REGISTRY.length).toBe(112);
+  it('derives a registry entry for EVERY OSM category, with none left over', () => {
+    // Derived from the catalog rather than pinned to a magic number: the
+    // catalog legitimately gains and loses categories (the seasonal/restricted
+    // split added one), and a hardcoded count turns every such change into a
+    // spurious failure that gets "fixed" by bumping the number — which would
+    // also mask a category genuinely going missing.
+    const osmEntries = MAP_LAYER_REGISTRY.filter((l) => l.group.startsWith('OSM'));
+    expect(osmEntries.length).toBe(OSM_VECTOR_CONFIGS.length);
+    for (const cfg of OSM_VECTOR_CONFIGS) {
+      expect(LAYER_BY_ID.has(cfg.id), `missing registry entry for ${cfg.id}`).toBe(true);
+    }
+  });
+
+  it('keeps the non-OSM toggles intact', () => {
+    // A floor on the pre-existing set, so a refactor that silently drops the
+    // original toggles cannot hide behind the derived OSM count above.
+    const nonOsm = MAP_LAYER_REGISTRY.filter((l) => !l.group.startsWith('OSM'));
+    expect(nonOsm.length).toBeGreaterThanOrEqual(56);
   });
 
   // The six GeoJSON boundary layers (geo-*) previously all collapsed onto one
