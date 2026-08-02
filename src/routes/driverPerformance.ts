@@ -11,7 +11,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, ensureDriverPerformanceColumns } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { log } from '../utils/logger';
-import { computeScore, MIN_EXPOSURE_MILES, SCORE_VERSION, SCORING_ENABLED } from '../utils/driverPerformance/score';
+import { computeScore, MIN_EXPOSURE_MILES, SCORE_VERSION } from '../utils/driverPerformance/score';
 import { rollupDay } from '../utils/driverPerformance/rollup';
 import { SPEED_THRESHOLDS } from '../utils/driverPerformance/speedEvents';
 import { renderDriverPerformancePdf } from '../utils/driverPerformance/pdf';
@@ -20,37 +20,6 @@ const driverPerformance = new Hono<Env>();
 
 const VIEW_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'] as const;
 const canView = requireRole(...VIEW_ROLES);
-
-/**
- * Runtime gate on CALL CONTEXT, not on weights. Scoring is technically live
- * (weights approved, SCORE_VERSION 'v1-speed') but a live audit found patrol
- * officers lawfully driving code-3 have no way to be excluded — the fields
- * that would do it (`current_call_id`, `unit_status`) are populated in ZERO
- * of 91,382 live gps_breadcrumbs rows. Publishing a score computed without
- * that exclusion risks a false accusation against a named officer, so this
- * gate runs on every read path until SCORING_ENABLED flips (see
- * src/utils/driverPerformance/score.ts for the two preconditions).
- *
- * Follows the house not_configured convention: 200 with ok:false and a code,
- * never a 503, so the client can render an explanatory banner instead of an
- * error state.
- *
- * ⚠️ MUST be called AFTER `canView` at every mount site below, never before.
- * A gate ahead of RBAC would return this 200 to a denied role — client_viewer
- * included — instead of a 403, and would make the RBAC test pass for the
- * wrong reason (never reaching the check it claims to prove).
- */
-function callContextGate(c: { json: (o: unknown) => Response }): Response | null {
-  if (SCORING_ENABLED) return null;
-  return c.json({
-    ok: false,
-    code: 'awaiting_call_context',
-    message: 'Driver performance scoring is unavailable: emergency-response context ' +
-      '(current call / unit status) is not yet captured on GPS breadcrumbs, so scores ' +
-      'cannot distinguish lawful code-3 driving from violations.',
-    score_version: SCORE_VERSION,
-  });
-}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -157,10 +126,7 @@ export const AGG_SQL = `
    GROUP BY d.officer_id`;
 
 // Exported so query-layer tests can exercise AGG_SQL + shape() directly
-// against a real D1, without going through the HTTP route — the route's
-// three read endpoints are gated on call context (see callContextGate
-// above) and a direct call is the only way left to test this shaping logic
-// end-to-end against real data.
+// against a real D1, without going through the HTTP route.
 export function shape(r: AggRow) {
   const totalEvents = r.recorded_events + r.inferred_events;
   const recordedPct = totalEvents > 0 ? r.recorded_events / totalEvents : 1;
@@ -214,12 +180,8 @@ export function shape(r: AggRow) {
 // GET /roster — ranked scored officers; insufficient-exposure officers returned
 // SEPARATELY so they can never sort to the bottom of a leaderboard.
 driverPerformance.get('/roster', canView, async (c) => {
-  // Input validation before the (unconditional-once-tripped) business gate,
-  // so a malformed request is told what's wrong with it rather than getting
-  // a generic "awaiting call context" that never even looked at its input.
   const win = windowFrom(c); if (win.error) return win.error;
   const { from, to } = win;
-  const gated = callContextGate(c); if (gated) return gated;
   const db = getDb(c.env);
   await ensureDriverPerformanceColumns(db);
   try {
@@ -254,7 +216,6 @@ driverPerformance.get('/officer/:id', canView, async (c) => {
   if (!Number.isInteger(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
   const win = windowFrom(c); if (win.error) return win.error;
   const { from, to } = win;
-  const gated = callContextGate(c); if (gated) return gated;
   const db = getDb(c.env);
   await ensureDriverPerformanceColumns(db);
   try {
@@ -295,7 +256,6 @@ driverPerformance.get('/officer/:id/export', canView, async (c) => {
   if (!Number.isInteger(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
   const win = windowFrom(c); if (win.error) return win.error;
   const { from, to } = win;
-  const gated = callContextGate(c); if (gated) return gated;
   const db = getDb(c.env);
   await ensureDriverPerformanceColumns(db);
   try {
