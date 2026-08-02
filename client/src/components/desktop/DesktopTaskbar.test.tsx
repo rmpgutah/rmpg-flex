@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { useEffect } from 'react';
 import { isAppPinned, pinApp, setTaskbarPosition, setTaskbarSize, setTaskbarAutoHide } from '../../utils/taskbarPreferences';
 
@@ -14,7 +14,7 @@ vi.mock('../ToastProvider', () => ({
   useToast: () => ({ addToast: addToastMock }),
 }));
 const navigateMock = vi.fn();
-vi.mock('react-router-dom', async (orig) => ({ ...(await orig<any>()), useNavigate: () => navigateMock }));
+vi.mock('react-router', async (orig) => ({ ...(await orig<any>()), useNavigate: () => navigateMock }));
 
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
 import DesktopTaskbar from './DesktopTaskbar';

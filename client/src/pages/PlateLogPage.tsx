@@ -7,7 +7,7 @@
 // source-tagged (FIELD CAMERA / DASHCAM / MANUAL), building a searchable,
 // mappable per-plate history. ClearPath dashcam reads land here automatically.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { AlertTriangle, Car, FileText, MapPin, ScanLine, Map as MapIcon } from 'lucide-react';
 import { apiFetch, apiPostForm, authedImageUrl } from '../hooks/useApi';
 import { downscaleImage } from '../utils/downscaleImage';

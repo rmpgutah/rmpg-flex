@@ -3,7 +3,7 @@
 // /api/scheduler/upcoming feed. Click-through opens each item's native
 // surface; header opens the full SchedulerPage.
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { apiFetch } from '../../hooks/useApi';
 import { CalendarDays, FileText, Users, Gavel, ChevronRight } from 'lucide-react';
 

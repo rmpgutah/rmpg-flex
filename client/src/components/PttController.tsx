@@ -14,7 +14,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { Radio, Mic, MicOff, RadioTower } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';

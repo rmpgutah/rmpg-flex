@@ -14,7 +14,7 @@
 // ============================================================
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Search, User, MapPin, Phone, Mail, Loader2, ChevronRight,
   AlertCircle, ExternalLink, Copy, CheckCircle2, Hash,

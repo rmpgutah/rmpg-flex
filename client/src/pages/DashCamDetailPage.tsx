@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router';
 import {
   Edit2, Flame, Download, Maximize2, Minimize2, Loader2, AlertTriangle,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info, SkipBack, SkipForward,

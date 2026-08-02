@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon, FileOutput, EyeOff, Heading, Bookmark as BookmarkIcon, FilePlus2, FileText as FileTextIcon, ChevronsLeft, ChevronsRight, Image as ImageDownIcon, Crop as CropIcon, RotateCw as RotateCwIcon, Scissors, Wrench, GitCompare, FileSignature, ClipboardList, Copy as CopyIcon, LayoutGrid, Grid2x2, Hash, Grid3x3, Layers2, MessageSquare, Square, Ruler, FileInput, Sun, Moon, Star, Type as TypeIcon, Maximize2, PenLine } from 'lucide-react';
 import { open as openPdf, RmpgPdfDocument, subscribeDiagnostics, diagnosticsSummary, getDiagnostics } from '../../lib/rmpg-pdf-engine';
 import { exportAnnotationsAsCsv, exportAnnotationsAsMarkdown, exportAnnotationsAsXfdf, downloadText } from './exporters';

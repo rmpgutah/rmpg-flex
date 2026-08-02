@@ -22,7 +22,7 @@ vi.mock('../../context/AuthContext', () => ({
 vi.mock('../../components/ToastProvider', () => ({
   useToast: () => ({ addToast: vi.fn() }),
 }));
-vi.mock('react-router-dom', () => ({
+vi.mock('react-router', () => ({
   useSearchParams: () => [new URLSearchParams(), vi.fn()],
 }));
 

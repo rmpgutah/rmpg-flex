@@ -22,7 +22,7 @@
 //   isGenerating, isBulkArchiving
 
 import { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import type { CallForService, CallStatus } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';

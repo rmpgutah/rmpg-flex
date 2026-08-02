@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { saveFavorites, pushRecent } from '../../../utils/navFavorites';
 import { NAV_CATEGORIES } from '../../../data/navCatalog';
 import DesktopQuickAccessWidget from './DesktopQuickAccessWidget';

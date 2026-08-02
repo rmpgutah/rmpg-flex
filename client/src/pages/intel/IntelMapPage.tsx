@@ -2,7 +2,7 @@
 // geocoded intel as toggleable circle layers; clicking a point selects the
 // entity into the shared context (right dossier panel) or navigates.
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import mapboxgl from 'mapbox-gl';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../../utils/mapboxApiKey';
 import { MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../../utils/mapboxLoader';

@@ -1,4 +1,4 @@
-import { useParams, Navigate } from 'react-router-dom';
+import { useParams, Navigate } from 'react-router';
 import CategoryPage from './CategoryPage';
 import { CATEGORY_REGISTRY } from './categories';
 

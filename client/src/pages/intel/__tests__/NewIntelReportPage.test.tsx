@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router';
 import { vi, describe, it, expect, afterEach } from 'vitest';
 import NewIntelReportPage from '../NewIntelReportPage';
 

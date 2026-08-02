@@ -19,7 +19,7 @@ vi.mock('../../../hooks/useApi', () => ({
   apiFetch: vi.fn().mockResolvedValue({}),
   authedImageUrl: (u: string) => u,
 }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+vi.mock('react-router', () => ({ useNavigate: () => vi.fn() }));
 
 import { __testables } from '../MyRunTab';
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router';
 import { ChevronDown } from 'lucide-react';
 
 // ---------- Types (mirrored from Layout.tsx, not exported there) ----------

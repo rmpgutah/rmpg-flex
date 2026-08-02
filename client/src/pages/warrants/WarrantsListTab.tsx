@@ -22,8 +22,8 @@
 import React, {
   forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState,
 } from 'react';
-import type { NavigateFunction } from 'react-router-dom';
-import { useSearchParams } from 'react-router-dom';
+import type { NavigateFunction } from 'react-router';
+import { useSearchParams } from 'react-router';
 import {
   AlertTriangle, Archive, Activity, CheckCircle, Clock, Edit, Eye, FileText,
   Gavel, Loader2, MapPin, Pencil, Plus, Printer, RotateCcw, Scale, Search,

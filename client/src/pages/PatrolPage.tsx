@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useId, useRef, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import {
   QrCode,

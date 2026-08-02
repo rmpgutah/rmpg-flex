@@ -2,7 +2,7 @@
 // Feature 21: Breadcrumb Navigation for admin pages
 // ═══════════════════════════════════════════════════════════════
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { ChevronRight, Home } from 'lucide-react';
 
 export interface BreadcrumbItem {

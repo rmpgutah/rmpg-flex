@@ -12,7 +12,7 @@
 // with the setup steps instead of scary errors.
 // ============================================================
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { ScanSearch, Search, RotateCcw, AlertTriangle, Database, Loader2, Car, MapPin, Terminal, Activity, Gauge } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
