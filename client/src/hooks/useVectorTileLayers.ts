@@ -280,6 +280,19 @@ export function buildOsmLayerSpecs(cfg: VectorTileLayerConfig, isLight: boolean)
   return specs;
 }
 
+/**
+ * Every layer id that should carry click/hover for one OSM config.
+ *
+ * Polygon categories emit BOTH a `-fill` and a `-outline` layer. The original
+ * implementation bound interaction to `specs[specs.length - 1]`, described in a
+ * comment as "the topmost/interactive one" — but for a polygon that is the 1px
+ * outline, so clicking anywhere inside the polygon hit nothing. Binding every
+ * emitted id is also correct for any future category that emits more layers.
+ */
+export function osmInteractiveLayerIds(cfg: VectorTileLayerConfig, isLight: boolean): string[] {
+  return Array.from(new Set(buildOsmLayerSpecs(cfg, isLight).map((s) => s.id)));
+}
+
 export interface VectorLayerState {
   visible: boolean;
   loaded: boolean;
@@ -412,21 +425,22 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
             }
           }
 
-          // Topmost spec is the interactive one (icon/circle sits above its
-          // fill, e.g. camera_cone's fill + the camera icon layer added
-          // separately) — bind click/hover there.
-          const primaryLayerId = specs[specs.length - 1]?.id;
-          if (primaryLayerId && !clickBoundRef.current.has(cfg.id)) {
+          // Hover affordance on EVERY layer this config emits. A polygon
+          // category emits [fill, outline]; binding only the last one put the
+          // target on the 1px outline and made the polygon body inert.
+          //
+          // The POPUP for OSM features is owned by useOsmIdentify (see
+          // client/src/hooks/useOsmIdentify.ts), which reports every layer
+          // under the cursor rather than just this one. Binding a popup here
+          // as well would render two popups into the same instance for a
+          // single click, with the winner decided by handler registration
+          // order. buildPopupHtml below is still used by the UGRC branch.
+          if (!clickBoundRef.current.has(cfg.id)) {
             clickBoundRef.current.add(cfg.id);
-            map.on('click', primaryLayerId, (e) => {
-              const pop = popupRef.current;
-              if (!pop || !e.features || e.features.length === 0) return;
-              const props = e.features[0].properties || {};
-              const html = buildPopupHtml(cfg, props);
-              pop.setLngLat(e.lngLat).setHTML(html).addTo(map);
-            });
-            map.on('mouseenter', primaryLayerId, () => { map.getCanvas().style.cursor = 'pointer'; });
-            map.on('mouseleave', primaryLayerId, () => { map.getCanvas().style.cursor = ''; });
+            for (const layerId of osmInteractiveLayerIds(cfg, isLightRef.current)) {
+              map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer'; });
+              map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
+            }
           }
 
           if (layerStatesRef.current[cfg.id]?.visible) {
@@ -744,8 +758,12 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
     return () => { map.off('idle', ensure); };
   }, [map, addLayer, setLayerVisibility]);
 
-  // Re-color labels live when the basemap light/dark theme changes (for layers
-  // already on the map — newly added ones pick up the current theme in addLayer).
+  // Re-color live when the basemap light/dark theme changes, for layers already
+  // on the map (newly added ones pick up the current theme in addLayer).
+  //
+  // This previously looped VECTOR_TILE_CONFIGS only, so OSM circle layers — whose
+  // circle-stroke-color is derived from isLight at add time — kept a dark stroke
+  // after a switch to a light basemap and lost their outline against it.
   useEffect(() => {
     if (!map) return;
     const lp = labelPaint(isLight);
@@ -757,6 +775,18 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
           map.setPaintProperty(id, 'text-halo-color', lp.halo);
         }
       } catch { /* style not ready */ }
+    }
+    for (const cfg of OSM_VECTOR_CONFIGS) {
+      for (const spec of buildOsmLayerSpecs(cfg, isLight)) {
+        if (spec.type !== 'circle') continue;
+        try {
+          if (hasLayer(map, spec.id)) {
+            map.setPaintProperty(
+              spec.id, 'circle-stroke-color', spec.paint['circle-stroke-color'] as any,
+            );
+          }
+        } catch { /* style not ready */ }
+      }
     }
   }, [map, isLight]);
 

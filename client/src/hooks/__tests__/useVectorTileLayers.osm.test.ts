@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VECTOR_TILE_CONFIGS, OSM_VECTOR_CONFIGS, buildOsmLayerSpecs } from '../useVectorTileLayers';
+import { VECTOR_TILE_CONFIGS, OSM_VECTOR_CONFIGS, buildOsmLayerSpecs, osmInteractiveLayerIds } from '../useVectorTileLayers';
 import { OSM_GROUPS } from '../../config/osmLayers.generated';
 // @ts-expect-error - untyped .mjs module
 import { loadCatalog } from '../../../../scripts/osm/catalog.mjs';
@@ -135,5 +135,41 @@ describe('osm layer specs', () => {
     // Sanity: OSM_GROUPS (the generated config actually consumed by the hook)
     // agrees with the catalog on every category present.
     expect(OSM_GROUPS.length).toBeGreaterThan(0);
+  });
+});
+
+describe('osmInteractiveLayerIds', () => {
+  it('returns EVERY emitted layer id for a polygon category', () => {
+    // Polygon categories emit [fill, outline]. Binding only the last one put
+    // the click target on a 1px outline, so clicking inside the polygon --
+    // which is the whole polygon -- did nothing.
+    const poly = OSM_VECTOR_CONFIGS.find((c) => c.categoryRender === 'polygon');
+    expect(poly, 'expected at least one polygon OSM category').toBeDefined();
+
+    const specs = buildOsmLayerSpecs(poly!, false);
+    expect(specs.length).toBeGreaterThan(1);
+
+    const ids = osmInteractiveLayerIds(poly!, false);
+    for (const s of specs) expect(ids).toContain(s.id);
+  });
+
+  it('includes the fill layer, not just the outline', () => {
+    const poly = OSM_VECTOR_CONFIGS.find((c) => c.categoryRender === 'polygon')!;
+    const ids = osmInteractiveLayerIds(poly, false);
+    expect(ids.some((id) => id.endsWith('-fill'))).toBe(true);
+  });
+
+  it('returns the single id for point and line categories', () => {
+    const pt = OSM_VECTOR_CONFIGS.find((c) => c.categoryRender === 'point')!;
+    expect(osmInteractiveLayerIds(pt, false)).toHaveLength(1);
+    const ln = OSM_VECTOR_CONFIGS.find((c) => c.categoryRender === 'line')!;
+    expect(osmInteractiveLayerIds(ln, false)).toHaveLength(1);
+  });
+
+  it('returns no duplicate ids', () => {
+    for (const cfg of OSM_VECTOR_CONFIGS) {
+      const ids = osmInteractiveLayerIds(cfg, false);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
   });
 });

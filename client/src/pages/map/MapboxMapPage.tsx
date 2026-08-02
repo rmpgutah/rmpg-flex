@@ -360,6 +360,20 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const tilequery = useMapboxTilequery(mapLoaded ? mapRef.current : null);
   const [identifyEnabled, setIdentifyEnabled] = useState(false);
   const identifyPopupRef = useRef<mapboxgl.Popup | null>(null);
+  // Persistent popup for OSM vector-tile feature clicks. Deliberately NOT
+  // identifyPopupRef: that one is created and destroyed per click by the
+  // Identify tool, so it is null whenever Identify is not mid-interaction.
+  // useVectorTileLayers was previously passed `popup: null`, which made every
+  // OSM click handler return before rendering anything.
+  const osmPopupRef = useRef<mapboxgl.Popup | null>(null);
+  if (osmPopupRef.current === null && typeof window !== 'undefined') {
+    osmPopupRef.current = new mapboxgl.Popup({
+      closeButton: true,
+      closeOnClick: true,
+      className: 'mapbox-popup-dark',
+      maxWidth: '280px',
+    });
+  }
   // Buffer Ring — built, tested (BufferRingTool.test.tsx).
   const [activeFloatingTool, setActiveFloatingTool] = useState<'buffer-ring' | 'annotation' | 'draw-geofence' | 'gps-replay' | 'nav-overlay' | null>(null);
   const [multiStopQueue, setMultiStopQueue] = useState<QueuedStop[]>([]);
@@ -562,7 +576,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const printExport = useMapPrintExport(mapRef.current, mapLoaded);
   const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
   const districtHierarchy = useDistrictHierarchyLayers({ map: mapRef.current, popup: null });
-  const vectorTiles = useVectorTileLayers({ map: mapRef.current, popup: null });
+  const vectorTiles = useVectorTileLayers({ map: mapRef.current, popup: osmPopupRef.current });
   const activityChoropleth = useActivityChoropleth({
     map: mapRef.current,
     calls,
