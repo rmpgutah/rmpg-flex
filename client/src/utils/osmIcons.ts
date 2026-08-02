@@ -1,154 +1,337 @@
 // ============================================================
-// RMPG Flex — Icons for OSM overlay categories
+// RMPG Flex — OSM overlay icon registration and map expressions
 // ============================================================
-// Every OSM point category rendered as an identical coloured circle, so a fire
-// hydrant, a surveillance camera and a power pole were indistinguishable on
-// scene. This module gives each category its own silhouette.
+// The artwork lives in osmIconArt.ts. This module owns sprite ids, rasterising
+// them into the map, and the Mapbox expressions that pick which sprite a given
+// feature gets.
 //
-// Two hard rules, both learned the hard way:
+// Three hard rules, all learned the hard way:
 //
 // 1. NEVER reference a bare `icon-image` name from the basemap sprite. If the
 //    sprite lacks that name Mapbox renders NOTHING — no error, no warning, no
-//    console line. Every icon here is registered by us via map.addImage first.
-// 2. Categories must differ by SHAPE, not colour alone. Colour-only coding
-//    fails colour-blind operators and washes out on a dark basemap at night.
-//    A test enforces this by stripping colour attributes and requiring the
-//    remaining geometry to still be unique.
-//
-// map.setStyle() (basemap switch) wipes registered images, so ensureOsmIcons
-// is idempotent and is re-run on every style.load.
+//    console line. Every id here is registered by us via map.addImage first,
+//    and every branch of every expression below resolves to one of them.
+// 2. Categories must differ by SHAPE, not colour. The set is single-ink line
+//    art precisely so this holds; a test strips colour attributes and requires
+//    the remaining geometry to still be unique.
+// 3. map.setStyle() (basemap switch, print mode) wipes registered images, so
+//    ensureOsmIcons is idempotent and is re-run on every style.load.
 // ============================================================
 
 import type mapboxgl from 'mapbox-gl';
-
-/** Palette derived from theme-palettes.css. Literal hex is required here —
- *  Mapbox cannot resolve var(), and the `rgb(r g b)` form blanks the map.
- *  Severity hues keep their CAD meaning: red = hazard, amber = caution. */
-const C = {
-  critical: '#ef4444',
-  warn: '#f59e0b',
-  ok: '#22c55e',
-  info: '#60a5fa',
-  special: '#a78bfa',
-  orange: '#f97316',
-  silver: '#c3ccd6',
-  gold: '#d9bd72',
-  slate: '#8a97a6',
-} as const;
+import { OSM_GROUPS } from '../config/osmLayers.generated';
+import {
+  GLYPHS, GROUP_TINT, NFPA_BONNET, CONTROL_VARIANTS, CAMERA_VARIANTS, MUTABLE_CATS,
+  hydrantWithBonnet, renderIcon, renderSimple, renderMuted,
+  type GlyphArt,
+} from './osmIconArt';
 
 export interface OsmIconSpec {
   id: string;
   svg: string;
+  /** Design-box edge in CSS px. Rasterised at RASTER_SCALE. */
   size: number;
 }
 
-const VB = 'viewBox="0 0 24 24"';
-/** Every icon shares a dark disc so it reads against both land and water. */
-const disc = (c: string) => `<circle cx="12" cy="12" r="11" fill="#0a1422" stroke="${c}" stroke-width="1.5"/>`;
-const wrap = (c: string, body: string) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" ${VB} width="24" height="24">${disc(c)}${body}</svg>`;
+/** Design box. Large enough that 3x supersampling still resolves 1.9px strokes. */
+const BOX = 64;
+/**
+ * Raster multiplier. Paired with `pixelRatio: RASTER_SCALE` on addImage so the
+ * bitmap is supersampled rather than upscaled — line art shows undersampling
+ * far more brutally than filled shapes do.
+ */
+const RASTER_SCALE = 3;
 
-/** cat -> icon. Shapes are deliberately dissimilar, not colour variants. */
-export const OSM_ICON_BY_CAT: Record<string, OsmIconSpec> = {
-  // ── Fire & life safety ──
-  hydrant: { id: 'osm-hydrant', size: 24, svg: wrap(C.critical,
-    `<rect x="10.5" y="8" width="3" height="9" fill="${C.critical}"/><rect x="7" y="10" width="10" height="3" rx="1" fill="${C.critical}"/><rect x="9" y="6" width="6" height="2.5" rx="1.2" fill="${C.critical}"/>`) },
-  inlet: { id: 'osm-inlet', size: 24, svg: wrap(C.critical,
-    `<circle cx="9.5" cy="12" r="2.6" fill="none" stroke="${C.critical}" stroke-width="1.6"/><circle cx="15" cy="12" r="2.6" fill="none" stroke="${C.critical}" stroke-width="1.6"/><rect x="8" y="16.5" width="8.5" height="1.8" fill="${C.critical}"/>`) },
-  water: { id: 'osm-water', size: 24, svg: wrap(C.info,
-    `<path d="M12 5 L16.5 12.5 A5 5 0 1 1 7.5 12.5 Z" fill="${C.info}"/>`) },
-  emerg: { id: 'osm-emerg', size: 24, svg: wrap(C.ok,
-    `<path d="M12 6 L13.6 11 L18.5 11 L14.6 14 L16 19 L12 16 L8 19 L9.4 14 L5.5 11 L10.4 11 Z" fill="${C.ok}"/>`) },
-  heli: { id: 'osm-heli', size: 24, svg: wrap(C.info,
-    `<circle cx="12" cy="12" r="6.5" fill="none" stroke="${C.info}" stroke-width="1.5"/><path d="M9.5 8.5 v7 M14.5 8.5 v7 M9.5 12 h5" stroke="${C.info}" stroke-width="1.8" fill="none"/>`) },
-  station: { id: 'osm-station', size: 24, svg: wrap(C.ok,
-    `<path d="M6 17 v-6 l6-4 6 4 v6 z" fill="none" stroke="${C.ok}" stroke-width="1.6"/><path d="M12 10.5 v4 M10 12.5 h4" stroke="${C.ok}" stroke-width="1.6"/>`) },
+/** cat -> owning OSM group, derived from the generated catalog. */
+const GROUP_BY_CAT: Record<string, string> = {};
+for (const group of OSM_GROUPS) {
+  for (const cat of group.categories) GROUP_BY_CAT[cat.cat] = group.name;
+}
 
-  // ── Surveillance ──
-  camera: { id: 'osm-camera', size: 24, svg: wrap(C.special,
-    `<rect x="5.5" y="9.5" width="9" height="5.5" rx="1" fill="${C.special}"/><path d="M14.5 11 L19 9 v6.5 l-4.5 -2 z" fill="${C.special}"/>`) },
-  alpr: { id: 'osm-alpr', size: 24, svg: wrap(C.ok,
-    `<rect x="4.5" y="9" width="10" height="6.5" rx="1" fill="none" stroke="${C.ok}" stroke-width="1.6"/><path d="M6.5 12.2 h6" stroke="${C.ok}" stroke-width="1.5"/><path d="M14.5 10.5 L19 8.5 v7 l-4.5 -2 z" fill="${C.ok}"/>`) },
+function tintFor(cat: string): string {
+  return GROUP_TINT[GROUP_BY_CAT[cat] ?? ''] ?? '#c3ccd6';
+}
 
-  // ── Traffic ──
-  control: { id: 'osm-control', size: 24, svg: wrap(C.warn,
-    `<path d="M9.4 6.5 h5.2 L18 9.9 v5.2 L14.6 18.5 H9.4 L6 15.1 V9.9 Z" fill="${C.warn}"/>`) },
-  calming: { id: 'osm-calming', size: 24, svg: wrap(C.warn,
-    `<path d="M5.5 15 q3.2 -5 6.5 0 q3.2 -5 6.5 0" fill="none" stroke="${C.warn}" stroke-width="2"/>`) },
-  crossing: { id: 'osm-crossing', size: 24, svg: wrap(C.info,
-    `<rect x="6.5" y="7.5" width="2.2" height="9" fill="${C.info}"/><rect x="10.9" y="7.5" width="2.2" height="9" fill="${C.info}"/><rect x="15.3" y="7.5" width="2.2" height="9" fill="${C.info}"/>`) },
-  junction: { id: 'osm-junction', size: 24, svg: wrap(C.gold,
-    `<path d="M12 5.5 L18 8 v5 q0 4 -6 5.5 Q6 17 6 13 V8 Z" fill="none" stroke="${C.gold}" stroke-width="1.8"/>`) },
-  access_pt: { id: 'osm-access-pt', size: 24, svg: wrap(C.slate,
-    `<circle cx="12" cy="12" r="5.5" fill="none" stroke="${C.slate}" stroke-width="1.6"/><path d="M12 8.5 v7" stroke="${C.slate}" stroke-width="1.8"/>`) },
+// ── Sprite id scheme ─────────────────────────────────────────
+// Every id below is registered. Nothing constructs an id at call time.
+export const baseId = (cat: string) => `osm-${cat}`;
+export const lowZoomId = (cat: string) => `osm-${cat}-lo`;
+export const mutedId = (cat: string) => `osm-${cat}-muted`;
+const variantId = (cat: string, variant: string) => `osm-${cat}-${variant}`;
 
-  // ── Access & passage ──
-  barrier: { id: 'osm-barrier', size: 24, svg: wrap(C.orange,
-    `<rect x="5" y="9" width="14" height="2.2" fill="${C.orange}"/><rect x="5" y="13" width="14" height="2.2" fill="${C.orange}"/><rect x="5.5" y="6.5" width="2" height="11" fill="${C.orange}"/>`) },
-  control_pt: { id: 'osm-control-pt', size: 24, svg: wrap(C.orange,
-    `<rect x="7" y="8" width="10" height="8" fill="none" stroke="${C.orange}" stroke-width="1.6"/><path d="M12 8 v8" stroke="${C.orange}" stroke-width="1.6"/>`) },
-  rail_x: { id: 'osm-rail-x', size: 24, svg: wrap(C.warn,
-    `<path d="M6.5 6.5 L17.5 17.5 M17.5 6.5 L6.5 17.5" stroke="${C.warn}" stroke-width="2.2"/>`) },
-  rail_infra: { id: 'osm-rail-infra', size: 24, svg: wrap(C.slate,
-    `<path d="M8.5 6 v12 M15.5 6 v12" stroke="${C.slate}" stroke-width="1.6"/><path d="M6.5 9 h11 M6.5 12.5 h11 M6.5 16 h11" stroke="${C.slate}" stroke-width="1.3"/>`) },
-  parking: { id: 'osm-parking', size: 24, svg: wrap(C.info,
-    `<rect x="6.5" y="6.5" width="11" height="11" rx="1.5" fill="none" stroke="${C.info}" stroke-width="1.6"/><path d="M10 15.5 V8.5 h2.8 a2.3 2.3 0 0 1 0 4.6 H10" fill="none" stroke="${C.info}" stroke-width="1.7"/>`) },
-  transit: { id: 'osm-transit', size: 24, svg: wrap(C.info,
-    `<rect x="7.5" y="6.5" width="9" height="9" rx="1.6" fill="none" stroke="${C.info}" stroke-width="1.6"/><path d="M9.5 17.5 l1.5 -2 M14.5 17.5 l-1.5 -2" stroke="${C.info}" stroke-width="1.5"/>`) },
-  lamp: { id: 'osm-lamp', size: 24, svg: wrap(C.silver,
-    `<rect x="11.2" y="11" width="1.6" height="7" fill="${C.silver}"/><path d="M8 10.5 q4 -5 8 0 z" fill="${C.silver}"/>`) },
-  entrance: { id: 'osm-entrance', size: 24, svg: wrap(C.slate,
-    `<rect x="8" y="6.5" width="8" height="11" fill="none" stroke="${C.slate}" stroke-width="1.6"/><circle cx="14" cy="12" r="1" fill="${C.slate}"/>`) },
+/**
+ * Every sprite, keyed by id. Built once at module load: the SVG strings are
+ * pure and deterministic, so there is no reason to rebuild them per map.
+ */
+export const OSM_ICON_SPECS: Record<string, OsmIconSpec> = {};
 
-  // ── Utility ──
-  pole: { id: 'osm-pole', size: 24, svg: wrap(C.silver,
-    `<rect x="11.3" y="6" width="1.5" height="12" fill="${C.silver}"/><path d="M7.5 8.5 h9" stroke="${C.silver}" stroke-width="1.5"/>`) },
-  power: { id: 'osm-power', size: 24, svg: wrap(C.silver,
-    `<path d="M8 18 L12 6 L16 18" fill="none" stroke="${C.silver}" stroke-width="1.6"/><path d="M9.3 13.5 h5.4 M8.6 16 h6.8" stroke="${C.silver}" stroke-width="1.3"/>`) },
-  comms: { id: 'osm-comms', size: 24, svg: wrap(C.silver,
-    `<path d="M12 9 v9" stroke="${C.silver}" stroke-width="1.6"/><path d="M8.5 8 a5 5 0 0 1 7 0" fill="none" stroke="${C.silver}" stroke-width="1.4"/><path d="M6.5 6 a8 8 0 0 1 11 0" fill="none" stroke="${C.silver}" stroke-width="1.2"/>`) },
-  gen: { id: 'osm-gen', size: 24, svg: wrap(C.ok,
-    `<circle cx="12" cy="12" r="2" fill="${C.ok}"/><path d="M12 10 V5.5 M13.7 13 L17.6 15.3 M10.3 13 L6.4 15.3" stroke="${C.ok}" stroke-width="1.6"/>`) },
-  water_infra: { id: 'osm-water-infra', size: 24, svg: wrap(C.info,
-    `<rect x="7.5" y="6.5" width="9" height="6" rx="1" fill="none" stroke="${C.info}" stroke-width="1.6"/><path d="M10 12.5 v5 M14 12.5 v5" stroke="${C.info}" stroke-width="1.5"/>`) },
-  water_works: { id: 'osm-water-works', size: 24, svg: wrap(C.info,
-    `<circle cx="12" cy="12" r="4.5" fill="none" stroke="${C.info}" stroke-width="1.6"/><path d="M12 7.5 v9 M7.5 12 h9" stroke="${C.info}" stroke-width="1.4"/>`) },
-  charging: { id: 'osm-charging', size: 24, svg: wrap(C.ok,
-    `<path d="M12.8 5.5 L8.5 13 h3 l-0.8 5.5 L16 11 h-3.2 z" fill="${C.ok}"/>`) },
+function register(id: string, svg: string): void {
+  OSM_ICON_SPECS[id] = { id, svg, size: BOX };
+}
 
-  // ── Sites ──
-  school: { id: 'osm-school', size: 24, svg: wrap(C.special,
-    `<path d="M5.5 11 L12 7.5 L18.5 11 L12 14.5 Z" fill="${C.special}"/><path d="M16.5 12.2 v4" stroke="${C.special}" stroke-width="1.4"/>`) },
-  financial: { id: 'osm-financial', size: 24, svg: wrap(C.gold,
-    `<path d="M6 10.5 L12 6.5 L18 10.5 Z" fill="none" stroke="${C.gold}" stroke-width="1.5"/><path d="M8 11.5 v5 M12 11.5 v5 M16 11.5 v5 M6.5 17.5 h11" stroke="${C.gold}" stroke-width="1.4"/>`) },
-  regulated: { id: 'osm-regulated', size: 24, svg: wrap(C.orange,
-    `<circle cx="12" cy="12" r="5.5" fill="none" stroke="${C.orange}" stroke-width="1.8"/><path d="M8.5 15.5 L15.5 8.5" stroke="${C.orange}" stroke-width="1.8"/>`) },
-  alcohol: { id: 'osm-alcohol', size: 24, svg: wrap(C.special,
-    `<path d="M9 6.5 h6 l-2.2 5.5 v4 h1.7 v1.5 h-4.9 v-1.5 h1.7 v-4 z" fill="${C.special}"/>`) },
-  gov: { id: 'osm-gov', size: 24, svg: wrap(C.silver,
-    `<rect x="7" y="10" width="10" height="7" fill="none" stroke="${C.silver}" stroke-width="1.5"/><path d="M12 6 l5 4 h-10 z" fill="${C.silver}"/>`) },
-  lodging: { id: 'osm-lodging', size: 24, svg: wrap(C.slate,
-    `<path d="M6 16.5 v-6 M6 13 h8 a3 3 0 0 1 3 3 v0.5 M18 16.5 v-1.5" fill="none" stroke="${C.slate}" stroke-width="1.7"/><circle cx="9.5" cy="10.5" r="1.6" fill="${C.slate}"/>`) },
-  social: { id: 'osm-social', size: 24, svg: wrap(C.info,
-    `<circle cx="9.5" cy="10" r="2" fill="${C.info}"/><circle cx="14.5" cy="10" r="2" fill="${C.info}"/><path d="M6 17 q3 -3.5 6 0 q3 -3.5 6 0" fill="none" stroke="${C.info}" stroke-width="1.5"/>`) },
+for (const [cat, art] of Object.entries(GLYPHS)) {
+  const tint = tintFor(cat);
+  register(baseId(cat), renderIcon(cat, tint, art));
+  register(lowZoomId(cat), renderSimple(`${cat}L`, tint, art));
+}
+for (const cat of MUTABLE_CATS) {
+  const art = GLYPHS[cat];
+  if (art) register(mutedId(cat), renderMuted(`${cat}M`, tintFor(cat), art));
+}
+for (const [name, colour] of Object.entries(NFPA_BONNET)) {
+  register(variantId('hydrant', name), renderIcon(`hyd${name}`, tintFor('hydrant'), hydrantWithBonnet(colour)));
+}
+for (const [name, art] of Object.entries(CONTROL_VARIANTS)) {
+  register(variantId('control', name), renderIcon(`ctl${name}`, tintFor('control'), art));
+  register(`${variantId('control', name)}-lo`, renderSimple(`ctl${name}L`, tintFor('control'), art));
+}
+for (const [name, art] of Object.entries(CAMERA_VARIANTS)) {
+  register(variantId('camera', name), renderIcon(`cam${name}`, tintFor('camera'), art));
+}
 
-  // ── Terrain ──
-  hazard: { id: 'osm-hazard', size: 24, svg: wrap(C.critical,
-    `<path d="M12 6 L18.5 17.5 H5.5 Z" fill="none" stroke="${C.critical}" stroke-width="1.8"/><path d="M12 10 v3.5" stroke="${C.critical}" stroke-width="1.8"/><circle cx="12" cy="15.5" r="0.9" fill="${C.critical}"/>`) },
-  cave: { id: 'osm-cave', size: 24, svg: wrap(C.slate,
-    `<path d="M6 17.5 q0 -8 6 -8 q6 0 6 8 z" fill="none" stroke="${C.slate}" stroke-width="1.6"/><path d="M10 17.5 q0 -3.5 2 -3.5 q2 0 2 3.5" fill="${C.slate}"/>`) },
-  mine: { id: 'osm-mine', size: 24, svg: wrap(C.orange,
-    `<path d="M6.5 8.5 L17.5 15.5 M17.5 8.5 L6.5 15.5" stroke="${C.orange}" stroke-width="1.6"/><rect x="9.5" y="16" width="5" height="2" fill="${C.orange}"/>`) },
-  spring: { id: 'osm-spring', size: 24, svg: wrap(C.info,
-    `<circle cx="12" cy="15" r="2.2" fill="${C.info}"/><path d="M12 12.5 V6.5 M9.5 9 q2.5 -2 5 0" fill="none" stroke="${C.info}" stroke-width="1.5"/>`) },
-  ford: { id: 'osm-ford', size: 24, svg: wrap(C.warn,
-    `<path d="M5 9.5 h14" stroke="${C.warn}" stroke-width="1.8"/><path d="M5 13 q2.3 -2 4.6 0 q2.3 2 4.6 0 q2.3 -2 4.6 0" fill="none" stroke="${C.info}" stroke-width="1.6"/><path d="M5 16.5 h14" stroke="${C.warn}" stroke-width="1.8"/>`) },
+/**
+ * Legacy shape, kept because callers and tests index it by category. Only the
+ * base sprite per category — use OSM_ICON_SPECS for the full set.
+ */
+export const OSM_ICON_BY_CAT: Record<string, OsmIconSpec> = Object.fromEntries(
+  Object.keys(GLYPHS).map((cat) => [cat, OSM_ICON_SPECS[baseId(cat)]]),
+);
+
+/** Registered base icon id for a category, or null when we have no icon. */
+export function iconIdForCat(cat: string): string | null {
+  return GLYPHS[cat] ? baseId(cat) : null;
+}
+
+/** Full-detail SVG string for a category — used by the map legend's icon key. */
+export function iconSvgForCat(cat: string): string | null {
+  return OSM_ICON_SPECS[baseId(cat)]?.svg ?? null;
+}
+
+/** The art for a category, exposed so the legend can label variants. */
+export function glyphArtForCat(cat: string): GlyphArt | null {
+  return GLYPHS[cat] ?? null;
+}
+
+// ============================================================
+// Dynamic icon selection
+// ============================================================
+
+/**
+ * Out-of-service test. Any of these tags means a unit arriving on scene cannot
+ * use the feature, which is exactly the thing worth showing before dispatch
+ * rather than after arrival.
+ *
+ * `access=private` is deliberately included alongside the hard-closed values:
+ * for a gate or a parking structure, private access is an operational
+ * obstacle, not a footnote.
+ */
+const MUTED_TEST: unknown[] = [
+  'any',
+  ['==', ['get', 'disused'], 'yes'],
+  ['==', ['get', 'abandoned'], 'yes'],
+  ['==', ['get', 'access'], 'private'],
+  ['==', ['get', 'access'], 'no'],
+  ['==', ['get', 'locked'], 'yes'],
+  ['==', ['get', 'operational_status'], 'closed'],
+];
+
+/**
+ * Hydrant NFPA 291 flow class from the OSM `colour` tag. Falls through to the
+ * uncoloured hydrant when the tag is absent or unrecognised — a missing flow
+ * class must read as "unknown", never as a fabricated one.
+ */
+function hydrantVariantExpr(): unknown[] {
+  return [
+    'match',
+    ['downcase', ['to-string', ['coalesce', ['get', 'colour'], ['get', 'color'], '']]],
+    'red', variantId('hydrant', 'red'),
+    'orange', variantId('hydrant', 'orange'),
+    'green', variantId('hydrant', 'green'),
+    'blue', variantId('hydrant', 'blue'),
+    baseId('hydrant'),
+  ];
+}
+
+/** Signal head / STOP / yield, from the OSM `highway` tag. */
+function controlVariantExpr(suffix = ''): unknown[] {
+  return [
+    'match',
+    ['to-string', ['coalesce', ['get', 'highway'], '']],
+    'stop', `${variantId('control', 'stop')}${suffix}`,
+    'give_way', `${variantId('control', 'yield')}${suffix}`,
+    `${baseId('control')}${suffix}`,
+  ];
+}
+
+/** Dome housings are a different object and carry no meaningful bearing. */
+function cameraVariantExpr(): unknown[] {
+  return [
+    'match',
+    ['downcase', ['to-string', ['coalesce', ['get', 'camera:type'], '']]],
+    'dome', variantId('camera', 'dome'),
+    baseId('camera'),
+  ];
+}
+
+/** The full-detail sprite selection for a category, before zoom tiering. */
+function detailedExpr(cat: string): unknown {
+  if (cat === 'hydrant') return hydrantVariantExpr();
+  if (cat === 'control') return controlVariantExpr();
+  if (cat === 'camera') return cameraVariantExpr();
+  return baseId(cat);
+}
+
+/** The low-zoom sprite selection. Only `control` varies below the tier line. */
+function simpleExpr(cat: string): unknown {
+  if (cat === 'control') return controlVariantExpr('-lo');
+  return lowZoomId(cat);
+}
+
+/**
+ * `icon-image` for a category: zoom-tiered, then dynamic within the high tier.
+ *
+ * Zoom tiering only applies to the plain sprites. Below the tier line an icon
+ * draws at roughly 16px, where an NFPA bonnet colour or a camera housing type
+ * is not resolvable anyway — spending sprite registrations on variants nobody
+ * can see would just slow every style.load down.
+ */
+export function iconImageExpression(cat: string, minzoom: number): unknown {
+  if (!GLYPHS[cat]) return null;
+  const detailed = MUTABLE_CATS.includes(cat)
+    ? ['case', MUTED_TEST, mutedId(cat), detailedExpr(cat)]
+    : detailedExpr(cat);
+  return ['step', ['zoom'], simpleExpr(cat), minzoom + 2.5, detailed];
+}
+
+// ============================================================
+// Placement priority
+// ============================================================
+
+/**
+ * `symbol-sort-key`. LOWER places FIRST, and with icon-allow-overlap off, the
+ * first symbol placed is the one that survives a collision.
+ *
+ * Ordered by what a responder needs when two features fight for the same
+ * pixels. Previously every category shared the default, so at z15 a street
+ * lamp could and did win placement over a fire hydrant.
+ */
+const SORT_KEY: Record<string, number> = {
+  // Life safety — always wins.
+  hydrant: 1, inlet: 2, emerg: 3, station: 4, water: 5, heli: 6,
+  // Immediate hazards rank with life safety, not with their own group.
+  hazard: 7, rail_x: 8,
+  // Surveillance — canvass value on scene.
+  camera: 10, alpr: 11,
+  // Traffic control affects the approach.
+  control: 20, crossing: 21, calming: 22, ford: 23, junction: 24, access_pt: 25,
+  // Access and passage.
+  barrier: 30, control_pt: 31, rail_infra: 32, parking: 33, transit: 34, entrance: 35,
+  // Sites.
+  school: 40, gov: 41, financial: 42, regulated: 43, alcohol: 44, lodging: 45, social: 46,
+  // Utility and terrain — context, yields to everything above.
+  charging: 50, water_infra: 51, water_works: 52, comms: 53, gen: 54,
+  cave: 60, mine: 61, spring: 62, lamp: 65, pole: 66,
 };
 
-/** Registered icon id for a category, or null when we have no icon for it. */
-export function iconIdForCat(cat: string): string | null {
-  return OSM_ICON_BY_CAT[cat]?.id ?? null;
+/** Placement priority for a category. Unknown categories sort last. */
+export function symbolSortKeyFor(cat: string): number {
+  return SORT_KEY[cat] ?? 99;
 }
+
+// ============================================================
+// Live text
+// ============================================================
+
+export interface OsmTextSpec {
+  /** Mapbox text-field expression. */
+  field: unknown;
+  /** Offset in ems from the icon anchor. */
+  offset: [number, number];
+  anchor: 'top' | 'left' | 'center';
+}
+
+/**
+ * Categories whose value is a NUMBER the operator would otherwise have to
+ * click the feature to read. These are rendered live with `text-field` rather
+ * than as sprite variants — the values are open-ended, so there is no finite
+ * set of images that could cover them.
+ */
+const TEXT_BY_CAT: Record<string, OsmTextSpec> = {
+  // An exit-number marker that does not show the exit number forces a click
+  // per feature, which is the whole job of this category.
+  junction: {
+    field: ['to-string', ['coalesce', ['get', 'ref'], ['get', 'exit_to'], '']],
+    offset: [0, 1.1],
+    anchor: 'top',
+  },
+  parking: {
+    field: ['case', ['has', 'capacity'], ['to-string', ['get', 'capacity']], ''],
+    offset: [0, 1.1],
+    anchor: 'top',
+  },
+  charging: {
+    field: ['case', ['has', 'capacity'], ['to-string', ['get', 'capacity']], ''],
+    offset: [0, 1.1],
+    anchor: 'top',
+  },
+};
+
+/** Live text for a point category, or null when it carries none. */
+export function textSpecForCat(cat: string): OsmTextSpec | null {
+  return TEXT_BY_CAT[cat] ?? null;
+}
+
+/**
+ * Live text for a LINE category, drawn along the way with
+ * `symbol-placement: 'line-center'`.
+ *
+ * Both values are US customary on purpose. `maxspeed` arrives as "45 mph" and
+ * clearance as metres; the clearance expression converts to feet and inches
+ * because that is what is painted on the actual bridge a driver is about to
+ * hit.
+ */
+const LINE_TEXT_BY_CAT: Record<string, unknown> = {
+  maxspeed: [
+    'case',
+    ['has', 'maxspeed'],
+    ['concat', ['slice', ['to-string', ['get', 'maxspeed']], 0, 3], ''],
+    '',
+  ],
+  clearance: [
+    'case',
+    ['has', 'maxheight'],
+    [
+      'concat',
+      ['to-string', ['floor', ['*', ['to-number', ['get', 'maxheight'], 0], 3.28084]]],
+      "' ",
+      ['to-string', ['round', ['*', 12, ['-',
+        ['*', ['to-number', ['get', 'maxheight'], 0], 3.28084],
+        ['floor', ['*', ['to-number', ['get', 'maxheight'], 0], 3.28084]],
+      ]]]],
+      '"',
+    ],
+    '',
+  ],
+};
+
+/** Live along-the-line text for a line category, or null. */
+export function lineTextForCat(cat: string): unknown | null {
+  return LINE_TEXT_BY_CAT[cat] ?? null;
+}
+
+// ============================================================
+// Registration
+// ============================================================
+
+/**
+ * Rasterised bitmaps, cached across maps and across style reloads.
+ *
+ * This cache is what makes the sprite count affordable. setStyle() wipes
+ * registered images but not this module, so a basemap switch re-adds ~100
+ * already-decoded bitmaps instead of re-running ~100 SVG decodes through
+ * canvas. Without it, every basemap switch stalled on image decoding.
+ */
+const rasterCache = new Map<string, ImageData>();
 
 /**
  * Register every icon with the map. Idempotent — safe to call on each
@@ -158,24 +341,29 @@ export function iconIdForCat(cat: string): string | null {
  */
 export async function ensureOsmIcons(map: mapboxgl.Map): Promise<string[]> {
   const registered: string[] = [];
-  await Promise.all(Object.values(OSM_ICON_BY_CAT).map(async (spec) => {
+  await Promise.all(Object.values(OSM_ICON_SPECS).map(async (spec) => {
     try {
       if (map.hasImage(spec.id)) { registered.push(spec.id); return; }
-      const img = await rasterise(spec.svg, spec.size);
+      let img = rasterCache.get(spec.id);
+      if (!img) {
+        img = await rasterise(spec.svg, spec.size);
+        rasterCache.set(spec.id, img);
+      }
+      // Re-check after the await: a concurrent call may have won the race, and
+      // addImage throws on a duplicate id rather than replacing it.
       if (map.hasImage(spec.id)) { registered.push(spec.id); return; }
-      map.addImage(spec.id, img, { pixelRatio: 2 });
+      map.addImage(spec.id, img, { pixelRatio: RASTER_SCALE });
       registered.push(spec.id);
     } catch {
-      // A single icon failing must not block the rest; the layer falls back to
-      // a circle rather than rendering nothing.
+      // A single icon failing must not block the rest; that category falls
+      // back to a circle rather than the whole set rendering nothing.
     }
   }));
   return registered;
 }
 
-/** SVG string -> ImageData at 2x, for map.addImage. */
+/** SVG string -> ImageData at RASTER_SCALE, for map.addImage. */
 async function rasterise(svg: string, size: number): Promise<ImageData> {
-  const scale = 2;
   const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   const bitmap = await new Promise<HTMLImageElement>((res, rej) => {
     const im = new Image();
@@ -184,10 +372,10 @@ async function rasterise(svg: string, size: number): Promise<ImageData> {
     im.src = url;
   });
   const canvas = document.createElement('canvas');
-  canvas.width = size * scale;
-  canvas.height = size * scale;
+  canvas.width = size * RASTER_SCALE;
+  canvas.height = size * RASTER_SCALE;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('no 2d context');
-  ctx.drawImage(bitmap, 0, 0, size * scale, size * scale);
-  return ctx.getImageData(0, 0, size * scale, size * scale);
+  ctx.drawImage(bitmap, 0, 0, size * RASTER_SCALE, size * RASTER_SCALE);
+  return ctx.getImageData(0, 0, size * RASTER_SCALE, size * RASTER_SCALE);
 }
