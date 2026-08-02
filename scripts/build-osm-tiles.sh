@@ -164,5 +164,103 @@ if [[ $COUNT_ONLY -eq 1 ]]; then
 fi
 
 echo ""
-echo "==> Tile generation is Task 6 — not yet implemented."
-exit 0
+# ── Tile generation ─────────────────────────────────────────
+for g in "${BUILT_GROUPS[@]}"; do
+  echo ""
+  echo "==> [$g] tiling"
+
+  GEOMETRY="$(jq -r --arg g "$g" '.groups[] | select(.name==$g) | .geometry' "$CATALOG")"
+  # Archive minzoom = LOWEST category minzoom in the group. Tippecanoe's
+  # minimum-zoom is per tile-LAYER, and all of a group's categories share one
+  # layer, so a per-category value here would omit features a lower-gated
+  # category needs. Per-category gating is client-side (Plan 2).
+  MINZOOM="$(node -e "import('${ROOT}/scripts/osm/catalog.mjs').then(m=>console.log(m.archiveMinZoom('$g')))")"
+
+  TIPPE_ARGS=(
+    -o "${WORK}/osm-${g}.pmtiles"
+    --force
+    --layer="${g}"
+    --minimum-zoom="${MINZOOM}"
+    --maximum-zoom=16
+    --read-parallel
+    # ── Statewide completeness: disable ALL THREE thinning mechanisms ──
+    # 1. --drop-rate=1 : tippecanoe's DEFAULT (~2.5) drops points at low zoom
+    #    even when nothing is specified. This is the one that silently thins a
+    #    statewide capture. `1` means keep every feature.
+    # 2/3. --no-feature-limit / --no-tile-size-limit : per-tile caps that
+    #    otherwise discard overflow features without an error.
+    # Affordable only because transform.mjs stamps per-feature tippecanoe.minzoom
+    # (see Task 4) — a pole is absent from a z10 tile because of its own gate, not
+    # because the tiler threw it away.
+    --drop-rate=1
+    --no-feature-limit
+    --no-tile-size-limit
+  )
+
+  case "$GEOMETRY" in
+    polygon)
+      # Independent simplification of adjacent jurisdiction polygons opens
+      # visible gaps along shared borders — a jurisdiction map that lies about
+      # where one agency's authority ends.
+      TIPPE_ARGS+=(--no-tiny-polygon-reduction --detect-shared-borders --simplification=2)
+      ;;
+    line)
+      TIPPE_ARGS+=(--no-tiny-polygon-reduction --simplification=4)
+      ;;
+    *)
+      # Points and mixed: NEVER --drop-densest-as-needed, and never rely on the
+      # default drop-rate (disabled above). Absence must mean "not mapped", not
+      # "dropped to fit a tile budget".
+      TIPPE_ARGS+=(--no-tiny-polygon-reduction --simplification=4)
+      ;;
+  esac
+
+  tippecanoe "${TIPPE_ARGS[@]}" "${WORK}/${g}.geojsonseq"
+
+  ls -lh "${WORK}/osm-${g}.pmtiles" | awk '{print "    archive size: " $5}'
+done
+
+# ── Upload archives ─────────────────────────────────────────
+# Archives FIRST, manifest LAST. A stale manifest beside fresh archives is
+# detectable; a fresh manifest beside a half-uploaded set is not.
+for g in "${BUILT_GROUPS[@]}"; do
+  echo "==> [$g] uploading"
+  npx wrangler r2 object put "${BUCKET}/tiles/osm-${g}.pmtiles" \
+    --file "${WORK}/osm-${g}.pmtiles" \
+    --content-type application/octet-stream \
+    --remote
+done
+
+# ── Manifest ────────────────────────────────────────────────
+echo ""
+echo "==> Writing manifest"
+{
+  echo "{"
+  echo "  \"generated_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
+  echo "  \"extract\": \"utah-latest.osm.pbf\","
+  echo "  \"extract_date\": \"${EXTRACT_DATE}\","
+  echo "  \"groups\": {"
+  first=1
+  for g in "${BUILT_GROUPS[@]}"; do
+    [[ $first -eq 0 ]] && echo ","
+    first=0
+    printf '    "%s": ' "$g"
+    jq -c '{feature_count: (.counts | to_entries | map(.value) | add),
+            categories: (.counts | to_entries | map(select(.value > 0)) | map(.key))}' \
+      "${WORK}/${g}.counts.json" | tr -d '\n'
+  done
+  echo ""
+  echo "  }"
+  echo "}"
+} > "${WORK}/osm-manifest.json"
+
+jq . "${WORK}/osm-manifest.json" > /dev/null || { echo "manifest is not valid JSON" >&2; exit 1; }
+
+npx wrangler r2 object put "${BUCKET}/tiles/osm-manifest.json" \
+  --file "${WORK}/osm-manifest.json" \
+  --content-type application/json \
+  --remote
+
+echo ""
+echo "==> Done. ${#BUILT_GROUPS[@]} archives + manifest uploaded."
+echo "    Verify: npx wrangler r2 object get ${BUCKET}/tiles/osm-manifest.json --remote --pipe"
