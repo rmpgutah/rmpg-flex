@@ -52,8 +52,18 @@ const MPH_PER_MPS = 2.2369362921;
 interface Acc {
   events: SpeedEventCounts;
   severity: { critical: number; high: number; moderate: number; low: number };
-  /** GPS samples observed for this officer on this day. 0 with miles = dead feed. */
+  /**
+   * RAW GPS samples observed for this officer on this day, BEFORE the
+   * emergency-response exclusion. This is what the dead-feed guard below
+   * uses: 0 here with miles > 0 means the FEED produced nothing. It must
+   * never be conflated with the post-exclusion count — an officer whose
+   * entire day was lawful code-3 response also lands at 0 post-exclusion,
+   * and that is a working feed on a legitimately unscoreable day, not a
+   * dead one.
+   */
   breadcrumbSamples: number;
+  /** Of `breadcrumbSamples`, how many were excluded as emergency response. */
+  excludedCallSamples: number;
   miles: number;
   minutes: number;
   trips: number;
@@ -66,6 +76,7 @@ const newAcc = (): Acc => ({
   events: EMPTY_EVENTS(),
   severity: { critical: 0, high: 0, moderate: 0, low: 0 },
   breadcrumbSamples: 0,
+  excludedCallSamples: 0,
   miles: 0, minutes: 0, trips: 0,
   fuelCost: 0, fuelGallons: 0, maintenanceCost: 0,
 });
@@ -176,6 +187,19 @@ export async function rollupDay(
     excludedForCallContext,
   });
 
+  // RAW per-officer sample counts — BEFORE exclusion. This, not the
+  // post-exclusion count, is what the dead-feed guard below must use: an
+  // officer whose day was entirely code-3 has every sample excluded and
+  // would otherwise land at 0, indistinguishable from a genuinely dead feed.
+  const rawSamplesByOfficer = new Map<number, number>();
+  for (const r of crumbRows) {
+    if (r.officer_id == null) continue;
+    rawSamplesByOfficer.set(r.officer_id, (rawSamplesByOfficer.get(r.officer_id) ?? 0) + 1);
+  }
+  for (const [officerId, count] of rawSamplesByOfficer) {
+    get(officerId).breadcrumbSamples = count;
+  }
+
   const samplesByOfficer = new Map<number, SpeedSample[]>();
   for (const r of filteredCrumbRows) {
     if (r.officer_id == null) continue;
@@ -193,11 +217,19 @@ export async function rollupDay(
 
   for (const [officerId, list] of samplesByOfficer) {
     const a = get(officerId);
-    a.breadcrumbSamples = list.length;
+    a.excludedCallSamples = a.breadcrumbSamples - list.length;
     a.events = deriveSpeedEvents(list);
     for (const tier of Object.keys(a.events) as (keyof SpeedEventCounts)[]) {
       a.severity[SEVERITY_OF[tier]] += a.events[tier];
     }
+  }
+  // An officer whose RAW samples were ALL excluded never appears in
+  // samplesByOfficer (the filtered list is empty), so excludedCallSamples
+  // would be left at its 0 default despite every raw sample having been
+  // excluded. Backfill from the raw count for exactly that case.
+  for (const [officerId, rawCount] of rawSamplesByOfficer) {
+    const a = get(officerId);
+    if (!samplesByOfficer.has(officerId)) a.excludedCallSamples = rawCount;
   }
 
   // ── Exposure (already officer-attributed) ──
@@ -216,12 +248,19 @@ export async function rollupDay(
     a.trips += 1;
   }
 
-  // ⚠️ DEAD-FEED DETECTION. Miles with zero breadcrumb samples is the same
-  // class of failure that made ClearPath unusable: the denominator kept
-  // flowing while the numerator went silent, and silence scores 100. It is
-  // recorded on the snapshot (breadcrumb_samples = 0), forces the day to be
-  // non-scoring via computeScore, and is warned about here so the outage is
-  // visible in logs rather than only inferable from a suspiciously clean roster.
+  // ⚠️ DEAD-FEED DETECTION uses the RAW sample count, never the post-exclusion
+  // one. Miles with zero RAW breadcrumb samples is the same class of failure
+  // that made ClearPath unusable: the denominator kept flowing while the
+  // numerator went silent, and silence scores 100. It is recorded on the
+  // snapshot (breadcrumb_samples = 0), forces the day to be non-scoring via
+  // computeScore, and is warned about here so the outage is visible in logs
+  // rather than only inferable from a suspiciously clean roster.
+  //
+  // A SEPARATE, non-dead-feed case: raw samples > 0 but every one of them was
+  // emergency response, so the post-exclusion count is 0. That is a working
+  // feed on a day with nothing scoreable — the officer's driving is genuinely
+  // unscoreable, but the INSTRUMENTATION is not at fault, and logging it as a
+  // dead feed would send someone hunting for a broken MDT that works fine.
   const deadFeedOfficers = [...acc.entries()]
     .filter(([, a]) => a.miles > 0 && a.breadcrumbSamples === 0)
     .map(([officerId]) => officerId);
@@ -229,6 +268,15 @@ export async function rollupDay(
     log.warn('driver-performance rollup: trip miles with NO GPS breadcrumbs (dead feed) — day forced non-scoring', {
       perfDate,
       officerIds: deadFeedOfficers,
+    });
+  }
+  const allEmergencyResponseOfficers = [...acc.entries()]
+    .filter(([, a]) => a.breadcrumbSamples > 0 && a.excludedCallSamples === a.breadcrumbSamples)
+    .map(([officerId]) => officerId);
+  if (allEmergencyResponseOfficers.length > 0) {
+    log.info('driver-performance rollup: every GPS sample this day was emergency response — feed is alive, day is unscoreable', {
+      perfDate,
+      officerIds: allEmergencyResponseOfficers,
     });
   }
 
@@ -319,11 +367,11 @@ export async function rollupDay(
            officer_id, perf_date, miles_driven, drive_minutes, trip_count,
            events_critical, events_high, events_moderate, events_low,
            events_speed_high, events_speed_very_high, events_speed_extreme,
-           breadcrumb_samples,
+           breadcrumb_samples, excluded_call_samples,
            attribution_recorded_pct, attribution_inferred_pct,
            fuel_cost, fuel_gallons, maintenance_cost,
            score, score_version, computed_at
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
          ON CONFLICT(officer_id, perf_date) DO UPDATE SET
            miles_driven=excluded.miles_driven, drive_minutes=excluded.drive_minutes,
            trip_count=excluded.trip_count,
@@ -333,6 +381,7 @@ export async function rollupDay(
            events_speed_very_high=excluded.events_speed_very_high,
            events_speed_extreme=excluded.events_speed_extreme,
            breadcrumb_samples=excluded.breadcrumb_samples,
+           excluded_call_samples=excluded.excluded_call_samples,
            attribution_recorded_pct=excluded.attribution_recorded_pct,
            attribution_inferred_pct=excluded.attribution_inferred_pct,
            fuel_cost=excluded.fuel_cost, fuel_gallons=excluded.fuel_gallons,
@@ -342,7 +391,7 @@ export async function rollupDay(
         officerId, perfDate, a.miles, a.minutes, a.trips,
         a.severity.critical, a.severity.high, a.severity.moderate, a.severity.low,
         a.events.speedHigh, a.events.speedVeryHigh, a.events.speedExtreme,
-        a.breadcrumbSamples,
+        a.breadcrumbSamples, a.excludedCallSamples,
         recordedPct, inferredPct,
         a.fuelCost, a.fuelGallons, a.maintenanceCost,
         score, SCORE_VERSION,

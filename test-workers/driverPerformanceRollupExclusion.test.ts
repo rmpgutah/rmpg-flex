@@ -178,3 +178,97 @@ describe('rollup.ts: emergency-response samples are excluded from speed-event de
     expect(total).toBe(1);
   });
 });
+
+describe('raw vs. post-exclusion sample counts: dead feed and all-emergency-response must not be confused', () => {
+  // The defect this covers: rollup.ts used to set breadcrumb_samples to the
+  // POST-exclusion count and treat ===0 as "dead feed". An officer whose
+  // entire day was lawful code-3 response would then ALSO read as a dead
+  // feed — a working sensor misreported as broken. breadcrumb_samples must
+  // stay the RAW (pre-exclusion) count; excluded_call_samples carries the
+  // exclusion separately, so the two states are distinguishable.
+  beforeEach(async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    await resetSchema(db);
+    await execute(
+      db,
+      'INSERT OR IGNORE INTO users (id, full_name, badge_number) VALUES (?, ?, ?)',
+      OFFICER_ID, 'Synthetic Officer 9401', 'T-9401',
+    );
+    await execute(
+      db,
+      'INSERT INTO unit_trips (officer_id, distance_m, duration_s, start_time) VALUES (?, ?, ?, ?)',
+      OFFICER_ID, 500000, 3600, ts(0),
+    );
+  });
+
+  it('case 1: raw>0, none excluded — normal scoreable day', async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    for (const offset of [0, 60]) {
+      await execute(
+        db,
+        `INSERT INTO gps_breadcrumbs (officer_id, recorded_at, speed, current_call_id, unit_status)
+         VALUES (?, ?, ?, NULL, ?)`,
+        OFFICER_ID, ts(offset), SPEED_MPS, 'available',
+      );
+    }
+    await rollupDay(db, PERF_DATE);
+    const rows = await query<{ breadcrumb_samples: number; excluded_call_samples: number }>(
+      db,
+      `SELECT breadcrumb_samples, excluded_call_samples
+         FROM driver_performance_daily WHERE officer_id = ? AND perf_date = ?`,
+      OFFICER_ID, PERF_DATE,
+    );
+    expect(rows[0].breadcrumb_samples).toBe(2);
+    expect(rows[0].excluded_call_samples).toBe(0);
+  });
+
+  it('case 2: raw>0, ALL excluded — a working feed on an all-emergency-response day, NOT a dead feed', async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    for (const offset of [0, 60]) {
+      await execute(
+        db,
+        `INSERT INTO gps_breadcrumbs (officer_id, recorded_at, speed, current_call_id, unit_status)
+         VALUES (?, ?, ?, ?, ?)`,
+        OFFICER_ID, ts(offset), SPEED_MPS, 8001, 'enroute',
+      );
+    }
+    await rollupDay(db, PERF_DATE);
+    const rows = await query<{
+      breadcrumb_samples: number; excluded_call_samples: number;
+      events_speed_high: number; events_speed_very_high: number; events_speed_extreme: number;
+    }>(
+      db,
+      `SELECT breadcrumb_samples, excluded_call_samples,
+              events_speed_high, events_speed_very_high, events_speed_extreme
+         FROM driver_performance_daily WHERE officer_id = ? AND perf_date = ?`,
+      OFFICER_ID, PERF_DATE,
+    );
+    // RAW count reflects the feed was alive...
+    expect(rows[0].breadcrumb_samples).toBe(2);
+    // ...and every one of those raw samples was excluded as emergency response.
+    expect(rows[0].excluded_call_samples).toBe(2);
+    // No events survive — there is nothing left to score, but that is
+    // because it was all lawful response, not because the feed was silent.
+    const total = rows[0].events_speed_high + rows[0].events_speed_very_high + rows[0].events_speed_extreme;
+    expect(total).toBe(0);
+  });
+
+  it('case 3: raw==0 — a genuinely dead feed, distinct from case 2 by the raw count alone', async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    // No gps_breadcrumbs rows at all this day — only the trip mileage from
+    // beforeEach. This is the actual dead-feed signature: miles with zero
+    // observations of any kind, call-context or otherwise.
+    await rollupDay(db, PERF_DATE);
+    const rows = await query<{ breadcrumb_samples: number; excluded_call_samples: number }>(
+      db,
+      `SELECT breadcrumb_samples, excluded_call_samples
+         FROM driver_performance_daily WHERE officer_id = ? AND perf_date = ?`,
+      OFFICER_ID, PERF_DATE,
+    );
+    expect(rows[0].breadcrumb_samples).toBe(0);
+    expect(rows[0].excluded_call_samples).toBe(0);
+    // Distinguishable from case 2 precisely because raw is 0 here vs. 2 there
+    // — the same excluded_call_samples value (0 here, but could coincide)
+    // is never sufficient on its own; breadcrumb_samples is the discriminator.
+  });
+});

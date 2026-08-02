@@ -551,6 +551,7 @@ export async function ensureDriverPerformanceColumns(db: D1Database): Promise<vo
       events_speed_very_high INTEGER NOT NULL DEFAULT 0,
       events_speed_extreme INTEGER NOT NULL DEFAULT 0,
       breadcrumb_samples INTEGER NOT NULL DEFAULT 0,
+      excluded_call_samples INTEGER NOT NULL DEFAULT 0,
       score REAL,
       score_version TEXT NOT NULL,
       computed_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -577,6 +578,12 @@ export async function ensureDriverPerformanceColumns(db: D1Database): Promise<vo
     ['driver_performance_daily', 'events_speed_very_high', 'INTEGER NOT NULL DEFAULT 0'],
     ['driver_performance_daily', 'events_speed_extreme', 'INTEGER NOT NULL DEFAULT 0'],
     ['driver_performance_daily', 'breadcrumb_samples', 'INTEGER NOT NULL DEFAULT 0'],
+    // 2026-08-01 — of `breadcrumb_samples` (RAW, pre-exclusion), how many were
+    // excluded as emergency-response (current_call_id set or unit_status in an
+    // active-response state). `breadcrumb_samples` alone cannot tell "feed
+    // dead" (raw=0) apart from "every sample was lawful code-3" (raw>0, all
+    // excluded) — see src/utils/driverPerformance/rollup.ts.
+    ['driver_performance_daily', 'excluded_call_samples', 'INTEGER NOT NULL DEFAULT 0'],
   ];
   for (const [table, col, type] of COLUMNS) {
     try {
