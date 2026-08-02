@@ -132,3 +132,15 @@ Plan 2:
 - **Dropped `safety` / `fire_equip`** (15 features) — portable extinguishers are not operationally actionable for this application.
 - **Kept as documented exceptions below the 50-feature threshold:** `safety` / `water` (20), `safety` / `inlet` (6), and `jurisdiction` / `tribal` (10 — Utah has only ~8 tribal land areas, so this is near-complete coverage rather than sparse data). Reasons are recorded in the table above.
 - **Net effect:** the catalog went from 57 categories to 55.
+
+## ⚠️ Known limitation of these counts
+
+Each feature is counted under exactly ONE category (`assignCategory` is
+first-match-wins). Where categories are attributes that co-occur on the same way —
+`traffic`/`maxspeed` vs `restriction`/`calming`/`crossing`, `drivability`/`seasonal`
+vs `unpaved`/`track`, `access`/`parking` vs `clearance` — the earlier category
+absorbs the feature and the later count is an UNDERCOUNT, not a measurement of how
+many such features Utah has.
+
+See §10.1 of the design spec: this must be resolved before Plan 2 renders those
+layers.

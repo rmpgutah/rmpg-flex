@@ -517,3 +517,70 @@ failures. Run serially.
 - Changes to UGRC layer *rendering* (only their default visibility changes).
 - Automated/scheduled OSM refresh — the script is operator-run.
 - Writing OSM features into D1 or cross-referencing them against RMPG records.
+
+---
+
+## 10. Plan 2 blockers — found during Plan 1 execution
+
+These were surfaced by the final whole-branch review of the data pipeline. None
+affect the correctness of the archives already shipped, but each must be resolved
+before Plan 2 renders the affected layers.
+
+### 10.1 🔴 Category assignment is first-match-wins, but several categories are ATTRIBUTES, not types
+
+`assignCategory` (`scripts/osm/project.mjs`) returns the **first** matching
+category in catalog order and assigns exactly one `cat` per feature. That is
+correct for mutually exclusive *types* — a feature is a hydrant or a camera, never
+both — but several categories are **attributes that co-occur on the same way**:
+
+| Group | Earlier category absorbs | Consequence |
+|---|---|---|
+| `traffic` | `maxspeed` precedes `restriction`, `calming`, `crossing` | A oneway or traffic-calmed road that also carries `maxspeed` is filed as `maxspeed` ONLY. The Restrictions and Traffic-calming layers will be materially incomplete on exactly the arterials most likely to carry them. |
+| `drivability` | `seasonal` (which matches `access=private`, 58,297 features) precedes `unpaved` and `track`; `unpaved` precedes `track` | An unpaved private road is filed as `seasonal` only. |
+| `access` | `parking` precedes `clearance` | A parking structure with a `maxheight` loses its clearance classification. |
+
+**This is the exact failure the provenance design exists to prevent** — a blank
+layer that reads as "not mapped in OSM" when the truth is "our pipeline filed it
+under a different category."
+
+**Resolution required before Plan 2 styles these layers.** Two viable options:
+
+1. **Multi-emit (recommended).** Emit one feature per matching category for
+   attribute-style groups, so a way with `maxspeed` + `oneway` appears once as
+   `cat=maxspeed` and once as `cat=restriction`. Requires marking groups (or
+   individual categories) as attribute-style in the catalog, changing
+   `projectFeature` to return an array, and re-running the pipeline.
+2. **Reorder** categories so narrower rules win. This only moves the loss to
+   whichever category ends up last, so it is a mitigation, not a fix.
+
+Point-feature groups (`safety`, `surveillance`, `terrain`, `sites`,
+`jurisdiction`) are genuinely mutually exclusive and are unaffected.
+
+### 10.2 Camera cones are gated one zoom level below non-ALPR cameras
+
+`transform.mjs` stamps `camera_cone` with the **group** minimum zoom (14), while
+the generic `camera` category is gated at 15. A cone for a non-ALPR camera
+therefore renders one zoom level before its own camera icon appears. Cosmetic, but
+pin the cone layer's `minzoom` per parent category in Plan 2.
+
+### 10.3 The manifest cannot actually detect a partial upload
+
+Archives upload before the manifest specifically so that a stale manifest beside
+fresh archives is detectable. But the manifest records only `feature_count` and
+`categories` — no per-archive byte size or hash — so nothing can actually compare
+what the manifest claims against what is in R2. Add `bytes` (and ideally a hash)
+per group to make the stated invariant enforceable. Requires a manifest-format
+change that Plan 2's reader must tolerate.
+
+### 10.4 Smaller items already logged
+
+- `access=no` ways (98 statewide) match no category; the `drivability/seasonal`
+  rule catches `access=private` only.
+- `drivability/seasonal` (58,297) is dominated by `access=private` rather than
+  genuine seasonal closure. These are operationally different and the category
+  likely wants splitting.
+- Only **80 of 1,729** cameras (4.6%) carry `camera:direction`, so ~95% of camera
+  markers will have no view cone. The legend must not let a missing cone read as
+  "omnidirectional" — see §6.2.
+- `alpr` (1,006) outnumbers generic `camera` (723). Plausible given Utah's ALPR
+  deployment, but worth confirming visually once rendered.
