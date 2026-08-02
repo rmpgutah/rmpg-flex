@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VECTOR_TILE_CONFIGS, OSM_VECTOR_CONFIGS, buildOsmLayerSpecs } from '../useVectorTileLayers';
+import { VECTOR_TILE_CONFIGS, OSM_VECTOR_CONFIGS, buildOsmLayerSpecs, osmInteractiveLayerIds } from '../useVectorTileLayers';
 import { OSM_GROUPS } from '../../config/osmLayers.generated';
 // @ts-expect-error - untyped .mjs module
 import { loadCatalog } from '../../../../scripts/osm/catalog.mjs';
@@ -135,5 +135,49 @@ describe('osm layer specs', () => {
     // Sanity: OSM_GROUPS (the generated config actually consumed by the hook)
     // agrees with the catalog on every category present.
     expect(OSM_GROUPS.length).toBeGreaterThan(0);
+  });
+});
+
+describe('osmInteractiveLayerIds', () => {
+  it('returns EVERY emitted layer id for a polygon category', () => {
+    // Polygon categories emit [fill, outline]. Binding only the last one put
+    // the click target on a 1px outline, so clicking inside the polygon --
+    // which is the whole polygon -- did nothing.
+    const poly = OSM_VECTOR_CONFIGS.find((c) => c.categoryRender === 'polygon');
+    expect(poly, 'expected at least one polygon OSM category').toBeDefined();
+
+    const specs = buildOsmLayerSpecs(poly!, false);
+    expect(specs.length).toBeGreaterThan(1);
+
+    const ids = osmInteractiveLayerIds(poly!, false);
+    for (const s of specs) expect(ids).toContain(s.id);
+  });
+
+  it('includes the fill layer, not just the outline', () => {
+    const poly = OSM_VECTOR_CONFIGS.find((c) => c.categoryRender === 'polygon')!;
+    const ids = osmInteractiveLayerIds(poly, false);
+    expect(ids.some((id) => id.endsWith('-fill'))).toBe(true);
+  });
+
+  it('covers every emitted id for point and line categories too', () => {
+    // Deliberately NOT a hardcoded count. A point category emits a circle AND
+    // an icon symbol layer, and that number has already changed once (icons
+    // were added after this helper was written). The invariant that actually
+    // matters is "every emitted layer is bound", so assert that directly —
+    // a count assertion just breaks whenever the renderer gains a layer, and
+    // tells you nothing about whether the feature is clickable.
+    for (const render of ['point', 'line'] as const) {
+      const cfg = OSM_VECTOR_CONFIGS.find((c) => c.categoryRender === render)!;
+      expect(cfg, `expected an OSM category rendering as ${render}`).toBeDefined();
+      const specIds = buildOsmLayerSpecs(cfg, false).map((s) => s.id);
+      expect(osmInteractiveLayerIds(cfg, false).sort()).toEqual([...new Set(specIds)].sort());
+    }
+  });
+
+  it('returns no duplicate ids', () => {
+    for (const cfg of OSM_VECTOR_CONFIGS) {
+      const ids = osmInteractiveLayerIds(cfg, false);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
   });
 });

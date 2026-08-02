@@ -27,6 +27,7 @@ import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { useNavTravel } from './useNavTravel';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { decodeMaxspeedAnnotation } from '../utils/speedLimit';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -59,6 +60,28 @@ export interface RouteStepLane {
   indications: string[];
 }
 
+/** How many leading segments to scan for a posted limit before giving up. */
+const MAXSPEED_LOOKAHEAD_SEGMENTS = 8;
+
+/**
+ * The posted limit for the segment the unit is on right now.
+ *
+ * `annotation.maxspeed` is per-segment along the route, and useMapRouting
+ * recomputes from the unit's LIVE origin, so index 0 is the segment under the
+ * vehicle. A short unmapped stub at the origin is common, so scan a few
+ * segments ahead — but only a few, since segments far down the route describe
+ * a different road.
+ */
+export function pickCurrentSegmentLimit(annotation: unknown[]): number | null {
+  if (!Array.isArray(annotation) || annotation.length === 0) return null;
+  const limit = Math.min(annotation.length, MAXSPEED_LOOKAHEAD_SEGMENTS);
+  for (let i = 0; i < limit; i++) {
+    const mph = decodeMaxspeedAnnotation(annotation[i]);
+    if (mph != null) return mph;
+  }
+  return null;
+}
+
 export interface RouteInfo {
   unitCallSign: string;
   callNumber: string;
@@ -72,6 +95,10 @@ export interface RouteInfo {
   trafficAware: boolean;
   /** Worst congestion class anywhere on the route, for a headline badge. */
   worstCongestion: CongestionLevel;
+  /** Posted speed limit (mph) for the segment being driven now, or null.
+   *  Sourced from Mapbox's `annotation.maxspeed`, which rides along in the
+   *  same Directions request that produces the ETA and the turn-by-turn steps. */
+  postedLimitMph: number | null;
 }
 
 /** Live progress of the routed unit toward the call. */
@@ -392,7 +419,9 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         // sibling engine that made this same change first.
         const data = await apiFetch<{ routes?: any[] }>(
           `/mapbox/directions?coordinates=${encodeURIComponent(coordStr)}` +
-          `&profile=driving-traffic&geometries=geojson&overview=full&steps=true&annotations=congestion`,
+          // maxspeed rides along with congestion — same request, and overview=full
+          // (already set) is Mapbox's precondition for any annotation.
+          `&profile=driving-traffic&geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed`,
         );
         const route = data.routes?.[0];
         if (!route) throw new Error('No route found');
@@ -519,6 +548,9 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
           steps,
           trafficAware: true,
           worstCongestion: worst,
+          postedLimitMph: pickCurrentSegmentLimit(
+            (route?.legs?.[0]?.annotation?.maxspeed ?? []) as unknown[],
+          ),
         };
 
         lastOriginRef.current = originLatLng;

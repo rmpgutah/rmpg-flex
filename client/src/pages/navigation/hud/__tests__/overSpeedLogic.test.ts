@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shouldFireOverSpeedAlert, OVER_SPEED_COOLDOWN_MS } from '../useSpeedLimit';
+import { shouldFireOverSpeedAlert, OVER_SPEED_COOLDOWN_MS } from '../../../../hooks/useSpeedLimit';
 
 describe('shouldFireOverSpeedAlert', () => {
   it('does not fire when speed is under the limit + threshold', () => {
