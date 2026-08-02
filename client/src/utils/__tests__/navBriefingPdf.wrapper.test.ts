@@ -33,6 +33,7 @@ function baseRoute(): RouteInfo {
     steps: [],
     trafficAware: false,
     worstCongestion: 'low' as RouteInfo['worstCongestion'],
+    postedLimitMph: null,
   };
 }
 
