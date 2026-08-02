@@ -33,17 +33,28 @@ interface RosterEntry {
   rank?: number;
 }
 
+interface SpeedThresholds { high: number; veryHigh: number; extreme: number }
+
+const TIER_KEYS = ['speed_high', 'speed_very_high', 'speed_extreme'] as const;
+
 /**
- * Plain-English tier labels. These are speed thresholds, not enum names —
- * "70+ mph" is what a supervisor needs to read, and it is also the only
- * label that makes the number defensible, because it states the observation
- * rather than a judgement about it.
+ * Plain-English tier labels, built from the thresholds the SERVER actually
+ * counted with — never from literals here.
+ *
+ * ⚠️ These captions were hardcoded as 70/80/90 while the engine was retuned to
+ * 85/95/105. Both sides still compiled and every test stayed green, but the
+ * screen would have told a supervisor that a named officer exceeded 70 mph a
+ * given number of times when the counts were produced at an 85 mph floor. A
+ * specific, quotable, false claim about a person is the worst output this tool
+ * can produce, so the label is now derived from the same source as the number.
  */
-const TIER_LABEL: Record<keyof RosterEntry['events'], string> = {
-  speed_high: '70+ mph',
-  speed_very_high: '80+ mph',
-  speed_extreme: '90+ mph',
-};
+function tierLabels(t: SpeedThresholds | undefined): Record<(typeof TIER_KEYS)[number], string> {
+  return {
+    speed_high: t ? `${t.high}+ mph` : 'high speed',
+    speed_very_high: t ? `${t.veryHigh}+ mph` : 'very high speed',
+    speed_extreme: t ? `${t.extreme}+ mph` : 'extreme speed',
+  };
+}
 
 const SAMPLES_TITLE =
   'GPS position samples recorded for this officer in this window. Each event is one SUSTAINED ' +
@@ -54,6 +65,7 @@ interface RosterResponse {
   from: string;
   to: string;
   min_exposure_miles: number;
+  speed_thresholds?: SpeedThresholds;
   ranked: RosterEntry[];
   insufficient_data: RosterEntry[];
 }
@@ -80,6 +92,7 @@ interface OfficerResponse {
   from: string;
   to: string;
   min_exposure_miles: number;
+  speed_thresholds?: SpeedThresholds;
   summary: RosterEntry | null;
   daily: DailyEntry[];
 }
@@ -282,6 +295,7 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
   if (!data) return null;
 
   const { summary, daily, min_exposure_miles } = data;
+  const labels = tierLabels(data.speed_thresholds);
 
   return (
     <div className="p-4 space-y-4">
@@ -414,9 +428,9 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
             <table className="w-full">
               <thead>
                 <tr className="text-left text-[9px] font-semibold text-fg-secondary border-b border-rmpg-700">
-                  {(Object.keys(TIER_LABEL) as (keyof typeof TIER_LABEL)[]).map((k) => (
+                  {TIER_KEYS.map((k) => (
                     <th key={k} className="py-[3px] pr-2">
-                      Sustained {TIER_LABEL[k]}
+                      Sustained {labels[k]}
                     </th>
                   ))}
                   <th className="py-[3px] pr-2">GPS Samples</th>
@@ -424,7 +438,7 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
               </thead>
               <tbody>
                 <tr className="text-[11px] text-rmpg-100">
-                  {(Object.keys(TIER_LABEL) as (keyof typeof TIER_LABEL)[]).map((k) => (
+                  {TIER_KEYS.map((k) => (
                     <td key={k} className="py-[2px] pr-2">
                       {summary.events[k]}
                     </td>
@@ -485,7 +499,10 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
                 <th className="py-[3px] pr-2">Date</th>
                 <th className="py-[3px] pr-2">Miles</th>
                 <th className="py-[3px] pr-2">Score</th>
-                <th className="py-[3px] pr-2">Speed Events (70 / 80 / 90+)</th>
+                <th className="py-[3px] pr-2">
+                  Speed Events ({labels.speed_high} / {labels.speed_very_high} /{' '}
+                  {labels.speed_extreme})
+                </th>
                 <th className="py-[3px] pr-2">GPS Samples</th>
               </tr>
             </thead>
@@ -563,6 +580,10 @@ export default function FleetDriverPerformanceTab() {
   if (!data) return null;
 
   const noRoster = data.ranked.length === 0 && data.insufficient_data.length === 0;
+  const rl = tierLabels(data.speed_thresholds);
+  const rosterLabels =
+    `Sustained runs above ${rl.speed_high} / ${rl.speed_very_high} / ${rl.speed_extreme}. ` +
+    'Each continuous stretch counts once, tiered by its peak.';
 
   return (
     <div className="p-4 space-y-4">
@@ -570,6 +591,9 @@ export default function FleetDriverPerformanceTab() {
 
       <div className="text-[10px] text-fg-muted">
         {data.from} to {data.to} · scored at or above {data.min_exposure_miles} miles of exposure
+        {data.speed_thresholds && (
+          <> · speed tiers {rl.speed_high} / {rl.speed_very_high} / {rl.speed_extreme}</>
+        )}
       </div>
 
       {noRoster ? (
@@ -589,7 +613,9 @@ export default function FleetDriverPerformanceTab() {
                 <th className="py-[3px] pr-2">Band</th>
                 <th className="py-[3px] pr-2">Rate / 100 mi</th>
                 <th className="py-[3px] pr-2">Miles</th>
-                <th className="py-[3px] pr-2">Speed Events</th>
+                <th className="py-[3px] pr-2" title={rosterLabels}>
+                  Speed Events
+                </th>
                 <th className="py-[3px] pr-2">GPS Samples</th>
                 <th className="py-[3px] pr-2">Attribution</th>
                 <th className="py-[3px] pr-2 border-l border-rmpg-700 pl-2">Fuel</th>
