@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 vi.mock('../../hooks/useApi', () => ({ apiFetch: vi.fn().mockResolvedValue({}) }));
 vi.mock('../../hooks/useClock', () => ({ useClock: () => ({ time: '12:00:00', date: 'Sat, Jul 18, 2026' }) }));
 vi.mock('../../hooks/useNavBadges', () => ({ useNavBadges: () => ({ badges: {} }) }));

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import VehicleFormModal from '../../src/components/VehicleFormModal';
 
 /** Contract test (spec §6.3): VehicleFormModal must still function when

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import { apiFetch } from '../../hooks/useApi';
 import { generateIntelProductPdf } from '../../utils/intelProductPdf';
 import { toDisplayLabel } from '../../utils/formatters';

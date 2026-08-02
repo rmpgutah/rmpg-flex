@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Monitor, Apple, Smartphone, Download, ChevronRight, HardDrive } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import WindowsInstallGuide from '../components/install/WindowsInstallGuide';
 import MacInstallGuide from '../components/install/MacInstallGuide';

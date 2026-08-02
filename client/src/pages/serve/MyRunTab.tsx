@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, type NavigateFunction } from 'react-router-dom';
+import { useNavigate, type NavigateFunction } from 'react-router';
 import {
   CheckCircle2,
   ClipboardCheck,

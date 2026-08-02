@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { LayoutDashboard, Map as MapIcon, Package, Radio } from 'lucide-react';
 import DesktopIconGrid from './DesktopIconGrid';
 import { DesktopWindowManagerProvider, useDesktopWindows, type DesktopWindowState } from './DesktopWindowManager';
@@ -15,8 +15,8 @@ import { isAppPinned } from '../../utils/taskbarPreferences';
 // factory ran during static import resolution, before `navigateSpy` had been
 // assigned, producing "ReferenceError: navigateSpy is not defined").
 const { navigateSpy } = vi.hoisted(() => ({ navigateSpy: vi.fn() }));
-vi.mock('react-router-dom', async (orig) => ({
-  ...(await orig<typeof import('react-router-dom')>()),
+vi.mock('react-router', async (orig) => ({
+  ...(await orig<typeof import('react-router')>()),
   useNavigate: () => navigateSpy,
 }));
 

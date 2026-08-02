@@ -23,7 +23,7 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   HelpCircle, Keyboard, BookOpen, Monitor, Radio, Map, Database, FileText, Users,
   MessageSquare, BarChart3, Search, AlertTriangle, Shield, Settings, ChevronRight,

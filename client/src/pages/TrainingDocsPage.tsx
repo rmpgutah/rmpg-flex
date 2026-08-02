@@ -3,7 +3,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import {
   BookOpen, Plus, Search, FileText, ExternalLink, Download, Trash2, Edit2,

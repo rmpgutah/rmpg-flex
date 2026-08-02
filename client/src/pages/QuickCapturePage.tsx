@@ -30,7 +30,7 @@
 //     the first fix is stale or wrong (mid-drive on-foot pattern).
 //   • Theme tokens throughout — no hardcoded #d4a017 / #888888 hex.
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router';
 import {
   ClipboardPen, MapPin, AlertTriangle, ArrowRight, Eye, EyeOff,
   Crosshair, X, Loader2,

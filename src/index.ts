@@ -20,6 +20,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
+import { jsonBodyGuard } from './middleware/jsonBodyGuard';
 import { apiRateLimit } from './middleware/rateLimit';
 import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
@@ -118,6 +119,19 @@ for (const prefix of authPrefixes) {
   app.use(`${prefix}/*`, apiRateLimit);
   app.use(prefix, readOnlyRoleGuard);
   app.use(`${prefix}/*`, readOnlyRoleGuard);
+}
+
+// Reject a malformed JSON body with 400 instead of letting the SyntaxError
+// become a 500 (see src/middleware/jsonBodyGuard.ts). Registered in its OWN
+// pass, AFTER the auth loop above, so ordering stays correct on both counts:
+// an unauthenticated caller sending garbage still gets 401 rather than a 400
+// that would confirm the endpoint exists, and the guard still runs before any
+// handler because Hono dispatches middleware in registration order and the
+// routers are mounted below.
+const bodyGuardPrefixes = new Set<string>(ROUTE_REGISTRY.map((m) => m.prefix));
+for (const prefix of bodyGuardPrefixes) {
+  app.use(prefix, jsonBodyGuard);
+  app.use(`${prefix}/*`, jsonBodyGuard);
 }
 
 // Mount routers in declared order — Hono dispatches in registration

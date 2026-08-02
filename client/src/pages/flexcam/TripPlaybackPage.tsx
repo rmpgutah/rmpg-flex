@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router';
 import { AlertTriangle, ChevronLeft, Clock, Video } from 'lucide-react';
 import { useFlexCamManifest } from '../../hooks/useFlexCamManifest';
 import { FlexCamTripPlayer } from '../../components/flexcam/FlexCamTripPlayer';

@@ -5,7 +5,7 @@
 // intel reports naming this person. PDF export via the schema-driven
 // pdf/v2 engine (steel/gold accents).
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, Link } from 'react-router';
 import { UserSearch, FileDown, Network, FolderOpen, Eye, EyeOff, X, FileText } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';

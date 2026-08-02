@@ -7,7 +7,7 @@
 // ============================================================
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   Search, Loader2, X, User, Building2, Calendar, Hash,
   AlertCircle, ChevronRight, Shield, FileText, Link2, Plus, UserCheck,

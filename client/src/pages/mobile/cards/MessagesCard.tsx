@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Eye, Copy } from 'lucide-react';
 import { parseTimestamp } from '../../../utils/dateUtils';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';

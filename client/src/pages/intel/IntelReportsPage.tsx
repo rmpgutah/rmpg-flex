@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { apiFetch } from '../../hooks/useApi';
 import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 

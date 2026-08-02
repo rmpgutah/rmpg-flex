@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import {
   Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2, Search, Reply,

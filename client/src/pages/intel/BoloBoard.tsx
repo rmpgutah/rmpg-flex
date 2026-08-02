@@ -19,7 +19,7 @@
 //   • Distinct empty state — when there are no active BOLOs at all, give
 //     the operator a way to act, not just a flat "No active BOLOs." string.
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Plus, Flag } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/ToastProvider';

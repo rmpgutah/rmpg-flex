@@ -1,5 +1,5 @@
 import { Camera, Plus } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export default function QuickActionsCard() {
   const navigate = useNavigate();

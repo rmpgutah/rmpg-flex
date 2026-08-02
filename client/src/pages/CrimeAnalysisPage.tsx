@@ -7,7 +7,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   TrendingUp, BarChart3, Clock, MapPin, Users, AlertTriangle, RefreshCw, Loader2,
   Calendar,

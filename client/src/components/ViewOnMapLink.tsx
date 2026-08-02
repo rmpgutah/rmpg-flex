@@ -12,7 +12,7 @@
 // ============================================================
 
 import { MapPin } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface ViewOnMapLinkProps {
   latitude?: number | null;

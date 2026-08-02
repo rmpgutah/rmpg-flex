@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Globe, Search, User, AlertTriangle, MapPin, Loader2, X, Shield, Gavel, ChevronDown, Printer } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';

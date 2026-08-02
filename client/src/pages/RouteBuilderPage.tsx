@@ -18,7 +18,7 @@
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import {
   Route, MapPin, Navigation, Clock, ChevronUp, ChevronDown,
   Play, Save, Trash2, RefreshCw, Loader2, AlertTriangle,
