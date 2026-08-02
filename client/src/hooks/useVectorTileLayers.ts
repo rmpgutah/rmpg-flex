@@ -20,6 +20,7 @@ import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { ensureOsmIcons, iconIdForCat } from '../utils/osmIcons';
+import { buildOsmPopupHtml } from '../utils/osmPopup';
 import {
   roadColorExpression, roadSortKeyExpression, ptTypeColorExpression,
   classifyCartocode, classifyPtType,
@@ -421,6 +422,12 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
           if (!cfg.archive || !cfg.categoryFilter) {
             throw new Error(`OSM config ${cfg.id} is missing archive/categoryFilter`);
           }
+          // Icons MUST be registered before any symbol layer referencing them is
+          // added — Mapbox renders nothing, silently, for an unknown icon-image.
+          // Fire-and-forget is safe: ensureOsmIcons is idempotent, the `idle`
+          // self-heal re-adds any layer that failed, and setStyle() wipes images
+          // so this also has to re-run from the style.load handler.
+          void ensureOsmIcons(map);
           const osmSource = osmSourceId(cfg.archive);
           if (!hasSource(map, osmSource)) {
             map.addSource(osmSource, {
@@ -457,7 +464,12 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
               const pop = popupRef.current;
               if (!pop || !e.features || e.features.length === 0) return;
               const props = e.features[0].properties || {};
-              const html = buildPopupHtml(cfg, props);
+              // OSM features get the detail popup: every captured tag, in US
+              // units, with the coverage caveat and a link to the OSM record.
+              const html = buildOsmPopupHtml(props, {
+                categoryLabel: cfg.label,
+                coverage: cfg.coverage,
+              });
               pop.setLngLat(e.lngLat).setHTML(html).addTo(map);
             });
             map.on('mouseenter', primaryLayerId, () => { map.getCanvas().style.cursor = 'pointer'; });
@@ -709,6 +721,10 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
   useEffect(() => {
     if (!map) return;
     const onStyleLoad = () => {
+      // setStyle() also wipes every image registered via map.addImage, so the
+      // OSM icons must be re-registered or every symbol layer silently renders
+      // nothing after a basemap switch. Idempotent, so this is safe to repeat.
+      void ensureOsmIcons(map);
       // setStyle() wipes layers/sources (so addedRef must be cleared to re-add
       // them) but Mapbox RETAINS map-level delegated listeners across a style
       // change. Do NOT clear clickBoundRef here: re-running addLayer would then
