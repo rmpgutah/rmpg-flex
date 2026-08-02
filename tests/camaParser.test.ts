@@ -19,7 +19,7 @@ import {
   parseCoordinate, parseLegalDescription,
 } from '../src/utils/sl-assessor/camaParser';
 import {
-  RESIDENCE_FIELDS, PARCEL_FIELDS, VALUATION_FIELDS, LAND_FIELDS,
+  RESIDENCE_FIELDS, PARCEL_FIELDS, VALUATION_FIELDS, LAND_FIELDS, matchAlias,
 } from '../src/utils/sl-assessor/camaFields';
 import { AssessorParseError } from '../src/utils/sl-assessor/types';
 
@@ -368,5 +368,49 @@ describe('field registry', () => {
     for (const fields of [RESIDENCE_FIELDS, PARCEL_FIELDS, VALUATION_FIELDS, LAND_FIELDS]) {
       for (const f of fields) expect(f.col, f.label).toMatch(/^[a-z][a-z0-9_]*$/);
     }
+  });
+});
+
+describe('cross-rendering label aliases', () => {
+  // The same datum is labelled differently on each page. Without aliases the
+  // expanded page alone leaves the whole valuation block empty, so a
+  // PubMore outage degrades much further than it needs to. These add NO new
+  // columns — every alias targets a field that already exists.
+  const p = parseCamaDetail(expanded);
+
+  it('populates the valuation block from the expanded page alone', () => {
+    expect(p.parcel.val_land_value).toBe(85400);
+    expect(p.parcel.val_building_value).toBe(511200);
+    expect(p.parcel.val_final_value).toBe(596600);
+    expect(p.parcel.val_taxable_value).toBe(328130);
+  });
+
+  it('maps "Above Grade sqft." to the residence Above Grade Area', () => {
+    expect(p.residence.above_grade_area).toBe(1604);
+  });
+
+  it('matches the year-prefixed labels by suffix, not a hardcoded year', () => {
+    // The labels read "2026 Market Value" today. Pinning the year would stop
+    // matching in January and silently blank the whole block.
+    expect(matchAlias('2027 Market Value')?.col).toBe('val_final_value');
+    expect(matchAlias('1999 Land Value')?.col).toBe('val_land_value');
+    expect(matchAlias('Market Value')).toBeNull();
+  });
+
+  it('leaves every label on both renderings mapped', () => {
+    expect(p.unmapped_labels).toEqual([]);
+  });
+});
+
+describe('coerce — malformed county cells', () => {
+  it('recovers a number from a cell that swallowed trailing markup', () => {
+    // Real cell text: unclosed <td>s make it absorb what follows.
+    expect(coerce('$ 328,130 No images found 40.694540870 -111.882090920', 'int')).toBe(328130);
+    expect(coerce('$ 171,435 * before Board of Equalization', 'int')).toBe(171435);
+  });
+
+  it('stays anchored — a digit appearing later does not become the value', () => {
+    expect(coerce('No images found 40.694', 'int')).toBeNull();
+    expect(coerce('not set', 'int')).toBeNull();
   });
 });

@@ -33,6 +33,7 @@
 
 import {
   SECTION_INDEX, LAND_FIELDS, CODE_SECTION_TO_SECTION, normalizeLabel,
+  matchAlias, aliasFieldType,
   type CamaField, type CamaSection, type CamaType,
 } from './camaFields';
 import { AssessorParseError } from './types';
@@ -69,8 +70,24 @@ export function coerce(raw: string | null | undefined, type: CamaType): string |
   // Strip currency, thousands separators, and stray percent signs before
   // parsing. "$          85,400" and "$ 0" both occur verbatim on the page.
   const cleaned = s.replace(/[$,%\s]/g, '');
-  if (!cleaned || !/^[-+]?\d*\.?\d+$/.test(cleaned)) return null;
-  const n = type === 'int' ? parseInt(cleaned, 10) : parseFloat(cleaned);
+  if (cleaned && /^[-+]?\d*\.?\d+$/.test(cleaned)) {
+    const n = type === 'int' ? parseInt(cleaned, 10) : parseFloat(cleaned);
+    return Number.isFinite(n) ? n : null;
+  }
+  // The county's tables are malformed in several places — unclosed <td>s and
+  // a stray </tr ...> mean a cell can swallow whatever follows it. The
+  // "2026 Taxable Value" cell reads
+  //   "$ 328,130 No images found 40.694540870 -111.882090920"
+  // and the last value-history row absorbs the "*before Board of
+  // Equalization" footnote. Rejecting the whole cell loses a real number
+  // that is sitting at the front of it, so fall back to the LEADING numeric
+  // token. Anchored at the start, so a cell that merely CONTAINS a digit
+  // later on still yields null rather than a wrong number.
+  const lead = s.match(/^[$\s]*([-+]?[\d,]*\.?\d+)/);
+  if (!lead) return null;
+  const n = type === 'int'
+    ? parseInt(lead[1].replace(/,/g, ''), 10)
+    : parseFloat(lead[1].replace(/,/g, ''));
   return Number.isFinite(n) ? n : null;
 }
 
@@ -271,6 +288,20 @@ export function parseCamaDetail(html: string): CamaParcel {
     if (/^record id$/i.test(row.label)) {
       if (Object.keys(landRecord).length) { out.land_records.push(landRecord); landRecord = {}; }
       landRecord.record_id = coerce(value, 'int');
+      continue;
+    }
+
+    // Cross-rendering aliases run BEFORE the section lookup, because the
+    // expanded page's summary rows carry no newwin() code and sit under
+    // whatever header last appeared — so section-scoped matching alone
+    // would miss them or file them under the wrong block.
+    const alias = matchAlias(row.label);
+    if (alias) {
+      const av = coerce(value, aliasFieldType(alias));
+      if (av != null) {
+        const target = alias.section === 'residence' ? out.residence : out.parcel;
+        if (target[alias.col] == null) target[alias.col] = av;   // fill-only
+      }
       continue;
     }
 
