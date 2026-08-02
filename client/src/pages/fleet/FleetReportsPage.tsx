@@ -11,8 +11,8 @@ import IconButton from '../../components/IconButton';
 // RMPG Flex — Fleet Daily Reports Archive
 // ------------------------------------------------------------
 // Browses the server-generated daily patrol PDFs, grouped by
-// month → day. Generated nightly at 00:05 MT by the existing
-// dailyReportGenerator, served from /api/reports/daily-reports.
+// month → day. Generated nightly at 00:05 America/Denver by
+// src/utils/dailyReport/nightly.ts, served from /api/reports/daily-reports.
 // Admins can also manually regenerate a specific day.
 // ============================================================
 
