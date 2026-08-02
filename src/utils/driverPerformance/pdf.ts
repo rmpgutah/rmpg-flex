@@ -18,6 +18,7 @@
 // take literal color arguments and are excluded from the theme-token rule.
 
 import { MIN_EXPOSURE_MILES } from './score';
+import { SPEED_THRESHOLDS } from './speedEvents';
 import type { ScoreResult } from './score';
 import { log } from '../logger';
 
@@ -356,9 +357,13 @@ export async function renderDriverPerformancePdf(
   // 4. Event breakdown by type
   pdf.text('Event breakdown', { bold: true, size: 12, gap: 3 });
   const rows: [string, number][] = [
-    ['Sustained speed 70+ mph', summary.events.speed_high],
-    ['Sustained speed 80+ mph', summary.events.speed_very_high],
-    ['Sustained speed 90+ mph', summary.events.speed_extreme],
+    // Labels are DERIVED from SPEED_THRESHOLDS, never restated as literals.
+    // A retune that left "70+ mph" printed beside counts produced at an 85 mph
+    // floor would put a false, specific, quotable claim about a named officer
+    // onto an evidence document.
+    [`Sustained speed ${SPEED_THRESHOLDS.high}+ mph`, summary.events.speed_high],
+    [`Sustained speed ${SPEED_THRESHOLDS.veryHigh}+ mph`, summary.events.speed_very_high],
+    [`Sustained speed ${SPEED_THRESHOLDS.extreme}+ mph`, summary.events.speed_extreme],
   ];
   for (const [label, count] of rows) pdf.text(`${label}: ${count}`, { size: 10 });
   pdf.text(`Total events: ${summary.event_count}`, { size: 10, bold: true, gap: 10 });

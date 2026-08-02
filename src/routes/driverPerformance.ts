@@ -13,6 +13,7 @@ import { requireRole } from '../middleware/auth';
 import { log } from '../utils/logger';
 import { computeScore, MIN_EXPOSURE_MILES, SCORE_VERSION } from '../utils/driverPerformance/score';
 import { rollupDay } from '../utils/driverPerformance/rollup';
+import { SPEED_THRESHOLDS } from '../utils/driverPerformance/speedEvents';
 import { renderDriverPerformancePdf } from '../utils/driverPerformance/pdf';
 
 const driverPerformance = new Hono<Env>();
@@ -192,6 +193,11 @@ driverPerformance.get('/roster', canView, async (c) => {
     return c.json({
       from, to,
       min_exposure_miles: MIN_EXPOSURE_MILES,
+      // Published so the UI LABELS the tiers from the same constants that
+      // COUNTED them. A client-side "70+ mph" caption over counts derived at
+      // an 85 mph floor is a specific, quotable, false claim about a named
+      // officer — the drift is invisible precisely because both sides compile.
+      speed_thresholds: SPEED_THRESHOLDS,
       ranked,
       insufficient_data: insufficient,
     });
@@ -224,7 +230,13 @@ driverPerformance.get('/officer/:id', canView, async (c) => {
         ORDER BY perf_date`,
       officerId, from, to,
     );
-    return c.json({ from, to, min_exposure_miles: MIN_EXPOSURE_MILES, summary: agg ? shape(agg) : null, daily });
+    return c.json({
+      from, to,
+      min_exposure_miles: MIN_EXPOSURE_MILES,
+      speed_thresholds: SPEED_THRESHOLDS,
+      summary: agg ? shape(agg) : null,
+      daily,
+    });
   } catch (err) {
     log.error('driver-performance officer detail failed', { officerId, from, to }, err as Error);
     return c.json({ error: 'Failed to load officer detail', code: 'DETAIL_FAILED' }, 500);
