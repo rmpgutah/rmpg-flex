@@ -6,7 +6,10 @@
 // src/routes/stubs.ts so the Reports dashboard renders real numbers.
 //
 // All handlers gated to admin/manager/supervisor — these expose
-// org-wide rollups, not officer-level data.
+// org-wide rollups, not officer-level data. Exceptions: /calls-near (the
+// patrol-view geo filter every officer hits from the dashboard) and
+// /daily-reports/* (the Fleet Daily Blotter, open to any authenticated
+// user for viewing — see the router-level gate below).
 //
 // Time windows are user-supplied via ?days=N (clamped to [1, 365]).
 // SQL filters on created_at (when the record entered the system) —
@@ -38,11 +41,18 @@ reports.use('*', async (c, next) => {
   // /calls-near is the patrol-view geo filter — every officer hits it from
   // the dashboard, not just analytics roles.
   if (c.req.path.endsWith('/calls-near')) return next();
-  // /daily-reports/* (Fleet Daily Blotter) is open to any authenticated
-  // user for viewing — its own sub-router (src/routes/dailyReports.ts)
-  // gates POST /generate to admin only. Excluded here or every officer
-  // GET would 403 before ever reaching that router.
-  if (c.req.path.includes('/daily-reports')) return next();
+  // /daily-reports/* (Fleet Daily Blotter) is open to any authenticated user
+  // for viewing — its own sub-router (src/routes/dailyReports.ts) gates
+  // POST /generate to admin. Excluded here or every officer GET would 403
+  // before reaching that router.
+  //
+  // ANCHORED deliberately: a bare `.includes('/daily-reports')` also matches
+  // any future sibling whose name merely contains that substring (e.g.
+  // /api/reports/non-daily-reports-summary), silently widening this gate.
+  // Verified c.req.path is the FULL request path (e.g.
+  // "/api/reports/daily-reports/by-month"), not a router-relative path, so
+  // startsWith with the full mount prefix is correct here.
+  if (c.req.path.startsWith('/api/reports/daily-reports')) return next();
   return requireRole(...ANALYTICS_ROLES)(c, next);
 });
 

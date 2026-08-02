@@ -120,6 +120,28 @@ describe('GET /api/reports/daily-reports/by-month', () => {
     const body = await res.json() as Record<string, unknown>;
     expect(body).toHaveProperty('months');
   });
+
+  // Pins the router-level RBAC gate's exclusion (reports.ts's `reports.use('*', ...)`
+  // otherwise restricts all of /api/reports/* to admin|manager|supervisor). The
+  // exclusion is anchored with startsWith('/api/reports/daily-reports') rather
+  // than a bare .includes() — this proves the anchored form actually matches at
+  // runtime and doesn't silently 403 every officer.
+  it('an officer can read daily-reports despite the analytics role gate', async () => {
+    const res = await SELF.fetch('https://x/api/reports/daily-reports/by-month', {
+      headers: await authHeaders('officer'),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  // Proves the exclusion did not widen past the blotter mount: a sibling
+  // reports.ts route with a similar-looking name must still be gated to
+  // ANALYTICS_ROLES for a non-elevated caller.
+  it('the analytics gate still blocks an officer on a sibling reports route', async () => {
+    const res = await SELF.fetch('https://x/api/reports/officer-activity', {
+      headers: await authHeaders('officer'),
+    });
+    expect(res.status).toBe(403);
+  });
 });
 
 describe('GET /api/reports/daily-reports/:filename', () => {
