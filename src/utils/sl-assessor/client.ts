@@ -237,11 +237,19 @@ export async function searchByAddress(env: AssessorEnv, address: string): Promis
   const attempts: AddressComponents[] = [comps];
   if (comps.street_type) attempts.push({ ...comps, street_type: '' });
 
+  // Track whether ANY attempt actually reached the county. Without this the
+  // function returns [] for both "searched, no such parcel" and "every
+  // request failed", and the caller cannot tell an answer from an outage —
+  // it would report "No matching parcels" for an unreachable assessor.
+  let reachedUpstream = false;
+  let lastNetworkErr: unknown = null;
+
   for (const fields of attempts) {
     let res: Response;
     try {
       res = await fetchPost(fields);
-    } catch { continue; }
+      reachedUpstream = true;
+    } catch (e) { lastNetworkErr = e; continue; }
 
     if (res.url.includes('valuationInfoExpanded.cfm')) {
       // Single-result redirect — fetch() resolved the 302 automatically.
@@ -273,6 +281,17 @@ export async function searchByAddress(env: AssessorEnv, address: string): Promis
     }
   }
 
+  // Every attempt failed to reach the county — surface it rather than
+  // returning an empty list that reads as "no such parcel".
+  if (!reachedUpstream) {
+    if (lastNetworkErr instanceof AssessorTimeoutError) throw lastNetworkErr;
+    throw new AssessorHttpError(
+      0,
+      lastNetworkErr instanceof Error
+        ? `assessor unreachable: ${lastNetworkErr.message}`
+        : 'assessor unreachable',
+    );
+  }
   return [];
 }
 
