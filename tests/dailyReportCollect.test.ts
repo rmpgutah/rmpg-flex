@@ -96,4 +96,27 @@ describe('collectDailyReport', () => {
     expect(trips).toBeDefined();
     expect(trips!.sql).toContain('CAST(t.vehicle_id AS TEXT)');
   });
+
+  it('normalizes date-only inspection_date values so they do not sort into the previous day', async () => {
+    const { db, calls } = makeDb(EMPTY);
+    await collectDailyReport(db, '2026-07-18', '2026-08-01T00:00:00.000Z');
+    const inspections = calls.find((c) => /FROM fleet_inspections/.test(c.sql));
+    expect(inspections).toBeDefined();
+    // A bare 'YYYY-MM-DD' sorts below its own day's ' 06:00:00' start bound —
+    // the CASE/length(...)=10 pin must be present in the WHERE bounds.
+    expect(inspections!.sql).toMatch(/CASE WHEN length\(.*inspection_date.*\) = 10/s);
+    expect(inspections!.sql).toContain("|| ' 12:00:00'");
+    // ...and in the ORDER BY, or filtering and ordering would disagree.
+    expect(inspections!.sql).toMatch(/ORDER BY CASE WHEN length\(performed_at\)/);
+  });
+
+  it('normalizes date-only citation_date values so they do not sort into the previous day', async () => {
+    const { db, calls } = makeDb(EMPTY);
+    await collectDailyReport(db, '2026-07-18', '2026-08-01T00:00:00.000Z');
+    const citations = calls.find((c) => /FROM citations/.test(c.sql));
+    expect(citations).toBeDefined();
+    expect(citations!.sql).toMatch(/CASE WHEN length\(.*citation_date.*\) = 10/s);
+    expect(citations!.sql).toContain("|| ' 12:00:00'");
+    expect(citations!.sql).toMatch(/ORDER BY CASE WHEN length\(.*citation_date.*\) = 10/s);
+  });
 });

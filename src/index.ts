@@ -510,7 +510,11 @@ export default {
       const denverNow = new Intl.DateTimeFormat('en-US', {
         timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false,
       }).formatToParts(new Date());
-      const denverHour = parseInt(denverNow.find((p) => p.type === 'hour')?.value ?? '-1', 10);
+      // hour12:false yields '24' at midnight in some ICU builds (see
+      // src/utils/dailyReport/dates.ts's tzOffsetMs for the same guard) —
+      // without % 24, denverHour would be 24 at midnight and the blotter's
+      // `denverHour === 0` gate below would silently never fire, forever.
+      const denverHour = parseInt(denverNow.find((p) => p.type === 'hour')?.value ?? '-1', 10) % 24;
       const denverMinute = parseInt(denverNow.find((p) => p.type === 'minute')?.value ?? '-1', 10);
       if (denverHour === 4 && denverMinute === 0) {
         ctx.waitUntil(

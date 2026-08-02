@@ -237,4 +237,17 @@ describe('POST /api/reports/daily-reports/generate', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  // DATE_RE only checks shape ('\d{4}-\d{2}-\d{2}') and admits a
+  // calendar-impossible date; without the parseReportKey round-trip this
+  // would write an R2 object that the download route later can never
+  // resolve back to a valid key.
+  it('rejects a calendar-impossible date', async () => {
+    const res = await SELF.fetch('https://x/api/reports/daily-reports/generate', {
+      method: 'POST',
+      headers: { ...(await authHeaders('admin')), 'content-type': 'application/json' },
+      body: JSON.stringify({ date: '2026-13-45' }),
+    });
+    expect(res.status).toBe(400);
+  });
 });

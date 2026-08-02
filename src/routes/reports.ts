@@ -8,8 +8,11 @@
 // All handlers gated to admin/manager/supervisor — these expose
 // org-wide rollups, not officer-level data. Exceptions: /calls-near (the
 // patrol-view geo filter every officer hits from the dashboard) and
-// /daily-reports/* (the Fleet Daily Blotter, open to any authenticated
-// user for viewing — see the router-level gate below).
+// /daily-reports/* (the Fleet Daily Blotter), which is NOT open to every
+// authenticated user — it is restricted to internal operational roles
+// (admin/manager/supervisor/officer/dispatcher; see BLOTTER_ROLES below)
+// because the PDF carries call addresses, dispositions, officer names,
+// and citations. See the router-level gate below.
 //
 // Time windows are user-supplied via ?days=N (clamped to [1, 365]).
 // SQL filters on created_at (when the record entered the system) —
@@ -60,8 +63,13 @@ reports.use('*', async (c, next) => {
   // /api/reports/non-daily-reports-summary), silently widening this gate.
   // Verified c.req.path is the FULL request path (e.g.
   // "/api/reports/daily-reports/by-month"), not a router-relative path, so
-  // startsWith with the full mount prefix is correct here.
-  if (c.req.path.startsWith('/api/reports/daily-reports')) {
+  // startsWith with the full mount prefix is correct here — but a bare
+  // startsWith('/api/reports/daily-reports') ALSO matches a hypothetical
+  // sibling like /api/reports/daily-reports-summary (no path-boundary
+  // check), so require an exact match or a '/'-delimited subpath.
+  const dailyReportsPath = c.req.path;
+  if (dailyReportsPath === '/api/reports/daily-reports'
+    || dailyReportsPath.startsWith('/api/reports/daily-reports/')) {
     return requireRole(...BLOTTER_ROLES)(c, next);
   }
   return requireRole(...ANALYTICS_ROLES)(c, next);

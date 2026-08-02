@@ -25,6 +25,14 @@ import type {
 const vehicleLabelSql = (alias: string): string =>
   `COALESCE(NULLIF(v.vehicle_name,''), NULLIF(v.vehicle_number,''), NULLIF(v.plate_number,''), 'Vehicle ' || CAST(${alias}.vehicle_id AS TEXT), 'Unassigned')`;
 
+/** Date-only values ('2026-06-21') sort BELOW that day's own start bound
+ *  ('2026-06-21 06:00:00') under lexical comparison, so they land on the
+ *  PREVIOUS Denver day. inspection_date is written unnormalized straight
+ *  from the client body, so this is reachable with real data. Pin a
+ *  date-only value to midday of its own date before comparing. */
+const dayNormalized = (expr: string): string =>
+  `CASE WHEN length(${expr}) = 10 THEN ${expr} || ' 12:00:00' ELSE ${expr} END`;
+
 async function all<T>(db: D1Database, sql: string, ...binds: unknown[]): Promise<T[]> {
   const rs = await db.prepare(sql).bind(...binds).all<T>();
   return rs.results ?? [];
@@ -52,8 +60,8 @@ export async function collectDailyReport(
     `SELECT citation_number, citation_date, violation_description, location_address,
             issuing_officer_name, fine_amount
        FROM citations
-      WHERE COALESCE(citation_date, created_at) >= ? AND COALESCE(citation_date, created_at) < ?
-      ORDER BY COALESCE(citation_date, created_at) ASC`,
+      WHERE ${dayNormalized('COALESCE(citation_date, created_at)')} >= ? AND ${dayNormalized('COALESCE(citation_date, created_at)')} < ?
+      ORDER BY ${dayNormalized('COALESCE(citation_date, created_at)')} ASC`,
     startUtc, endUtc,
   );
 
@@ -91,8 +99,8 @@ export async function collectDailyReport(
             i.inspector AS performed_by
        FROM fleet_inspections i
        LEFT JOIN fleet_vehicles v ON v.id = i.vehicle_id
-      WHERE COALESCE(i.inspection_date, i.created_at) >= ? AND COALESCE(i.inspection_date, i.created_at) < ?
-      ORDER BY performed_at ASC`,
+      WHERE ${dayNormalized('COALESCE(i.inspection_date, i.created_at)')} >= ? AND ${dayNormalized('COALESCE(i.inspection_date, i.created_at)')} < ?
+      ORDER BY ${dayNormalized('performed_at')} ASC`,
     startUtc, endUtc,
   );
 
