@@ -11,34 +11,15 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, ensureDriverPerformanceColumns } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { log } from '../utils/logger';
-import { computeScore, MIN_EXPOSURE_MILES, weightsPendingReview, SCORE_VERSION } from '../utils/driverPerformance/score';
+import { computeScore, MIN_EXPOSURE_MILES, SCORE_VERSION } from '../utils/driverPerformance/score';
 import { rollupDay } from '../utils/driverPerformance/rollup';
+import { SPEED_THRESHOLDS } from '../utils/driverPerformance/speedEvents';
 import { renderDriverPerformancePdf } from '../utils/driverPerformance/pdf';
 
 const driverPerformance = new Hono<Env>();
 
 const VIEW_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'] as const;
 const canView = requireRole(...VIEW_ROLES);
-
-/**
- * Runtime owner gate. While the severity weights are placeholders, no score
- * is served — a number from unreviewed weights is indistinguishable from a
- * reviewed one once it is on a supervisor's screen, and this feature's whole
- * risk is confident wrong numbers about named people.
- *
- * Follows the house not_configured convention: 200 with ok:false and a code,
- * never a 503, so the client can render an explanatory banner instead of an
- * error state.
- */
-function weightsGate(c: { json: (o: unknown) => Response }): Response | null {
-  if (!weightsPendingReview()) return null;
-  return c.json({
-    ok: false,
-    code: 'weights_pending_review',
-    message: 'Driver performance scoring is unavailable: severity weights have not been reviewed and approved by Rocky Mountain Protective Group.',
-    score_version: SCORE_VERSION,
-  });
-}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -104,7 +85,8 @@ interface AggRow {
   officer_name: string | null;
   badge_number: string | null;
   miles: number; minutes: number; trips: number;
-  fc: number; ld: number; cf: number; hb: number; ha: number; sp: number;
+  speed_high: number; speed_very_high: number; speed_extreme: number;
+  breadcrumb_samples: number;
   sev_critical: number; sev_high: number; sev_moderate: number; sev_low: number;
   recorded_events: number; inferred_events: number;
   unattributed_events: number;
@@ -122,23 +104,19 @@ export const AGG_SQL = `
          COALESCE(SUM(d.miles_driven),0)  AS miles,
          COALESCE(SUM(d.drive_minutes),0) AS minutes,
          COALESCE(SUM(d.trip_count),0)    AS trips,
-         COALESCE(SUM(d.events_forward_collision),0) AS fc,
-         COALESCE(SUM(d.events_lane_departure),0)    AS ld,
-         COALESCE(SUM(d.events_close_following),0)   AS cf,
-         COALESCE(SUM(d.events_harsh_brake),0)       AS hb,
-         COALESCE(SUM(d.events_harsh_accel),0)       AS ha,
-         COALESCE(SUM(d.events_speeding),0)          AS sp,
+         COALESCE(SUM(d.events_speed_high),0)      AS speed_high,
+         COALESCE(SUM(d.events_speed_very_high),0) AS speed_very_high,
+         COALESCE(SUM(d.events_speed_extreme),0)   AS speed_extreme,
+         COALESCE(SUM(d.breadcrumb_samples),0)     AS breadcrumb_samples,
          COALESCE(SUM(d.events_critical),0)  AS sev_critical,
          COALESCE(SUM(d.events_high),0)      AS sev_high,
          COALESCE(SUM(d.events_moderate),0)  AS sev_moderate,
          COALESCE(SUM(d.events_low),0)       AS sev_low,
          COALESCE(SUM(d.unattributed_events),0) AS unattributed_events,
          COALESCE(SUM(d.attribution_recorded_pct * (
-           d.events_forward_collision + d.events_lane_departure + d.events_close_following +
-           d.events_harsh_brake + d.events_harsh_accel + d.events_speeding)),0) AS recorded_events,
+           d.events_speed_high + d.events_speed_very_high + d.events_speed_extreme)),0) AS recorded_events,
          COALESCE(SUM(d.attribution_inferred_pct * (
-           d.events_forward_collision + d.events_lane_departure + d.events_close_following +
-           d.events_harsh_brake + d.events_harsh_accel + d.events_speeding)),0) AS inferred_events,
+           d.events_speed_high + d.events_speed_very_high + d.events_speed_extreme)),0) AS inferred_events,
          COALESCE(SUM(d.fuel_cost),0)        AS fuel_cost,
          COALESCE(SUM(d.fuel_gallons),0)     AS fuel_gallons,
          COALESCE(SUM(d.maintenance_cost),0) AS maintenance_cost
@@ -147,24 +125,29 @@ export const AGG_SQL = `
    WHERE d.perf_date >= ? AND d.perf_date <= ?
    GROUP BY d.officer_id`;
 
-function shape(r: AggRow) {
+// Exported so query-layer tests can exercise AGG_SQL + shape() directly
+// against a real D1, without going through the HTTP route.
+export function shape(r: AggRow) {
   const totalEvents = r.recorded_events + r.inferred_events;
   const recordedPct = totalEvents > 0 ? r.recorded_events / totalEvents : 1;
   const computed = computeScore({
     milesDriven: r.miles,
     events: {
-      forwardCollision: r.fc, laneDeparture: r.ld, closeFollowing: r.cf,
-      harshBrake: r.hb, harshAccel: r.ha, speeding: r.sp,
+      speedHigh: r.speed_high,
+      speedVeryHigh: r.speed_very_high,
+      speedExtreme: r.speed_extreme,
     },
     recordedPct,
+    // ⚠️ Passed through explicitly. Miles come from unit_trips and samples
+    // from the MDT feed; miles with zero samples is a dead feed, and a dead
+    // feed produces zero events, which scores 100. computeScore refuses to
+    // score that case — but only because this number reaches it.
+    breadcrumbSamples: r.breadcrumb_samples,
   });
-  // ⚠️ C1 — an officer-day carrying events that could not be tied to ANY driver
-  // must never be reported as confidently clean. `recordedPct` above is
-  // computed only over events that DID attribute, so a window whose events all
-  // failed attribution scores 1.0 ("Recorded") over an empty set. The
-  // unattributed count is the evidence that the empty set is not the whole
-  // story, so it forces the confidence label down to 'inferred'. The score
-  // itself is untouched: doubt is not blame, and we will not invent a penalty.
+  // Legacy dashcam-era doubt. New snapshots always write 0 here (breadcrumbs
+  // are officer-stamped at capture, so there is no unattributed bucket left),
+  // but pre-'v1-speed' rows can still carry a non-zero count and must not be
+  // reported as confidently clean.
   const unattributed = r.unattributed_events ?? 0;
   const result = computed.status === 'scored' && unattributed > 0
     ? { ...computed, confidence: 'inferred' as const }
@@ -176,14 +159,17 @@ function shape(r: AggRow) {
     miles_driven: Math.round(r.miles * 10) / 10,
     drive_minutes: Math.round(r.minutes),
     trip_count: r.trips,
-    event_count: r.fc + r.ld + r.cf + r.hb + r.ha + r.sp,
-    events: { forward_collision: r.fc, lane_departure: r.ld, close_following: r.cf,
-              harsh_brake: r.hb, harsh_accel: r.ha, speeding: r.sp },
-    // Severity rollup — written by the nightly job since day one but never
-    // read by any consumer until now (spec asks for it in officer detail).
+    event_count: r.speed_high + r.speed_very_high + r.speed_extreme,
+    events: {
+      speed_high: r.speed_high,
+      speed_very_high: r.speed_very_high,
+      speed_extreme: r.speed_extreme,
+    },
+    /** GPS samples behind the counts above. 0 with miles > 0 means a dead feed. */
+    breadcrumb_samples: r.breadcrumb_samples,
     severity: { critical: r.sev_critical, high: r.sev_high,
                 moderate: r.sev_moderate, low: r.sev_low },
-    /** Events on a unit this officer drove that could not be tied to a driver. */
+    /** Legacy: dashcam-era events that could not be tied to a driver. Always 0 for 'v1-speed' rows. */
     unattributed_events: unattributed,
     cost: { fuel: r.fuel_cost, fuel_gallons: r.fuel_gallons,
             maintenance: r.maintenance_cost },
@@ -194,12 +180,8 @@ function shape(r: AggRow) {
 // GET /roster — ranked scored officers; insufficient-exposure officers returned
 // SEPARATELY so they can never sort to the bottom of a leaderboard.
 driverPerformance.get('/roster', canView, async (c) => {
-  // Input validation before the (unconditional-once-tripped) business gate,
-  // so a malformed request is told what's wrong with it rather than getting
-  // a generic "weights pending review" that never even looked at its input.
   const win = windowFrom(c); if (win.error) return win.error;
   const { from, to } = win;
-  const gated = weightsGate(c); if (gated) return gated;
   const db = getDb(c.env);
   await ensureDriverPerformanceColumns(db);
   try {
@@ -213,6 +195,11 @@ driverPerformance.get('/roster', canView, async (c) => {
     return c.json({
       from, to,
       min_exposure_miles: MIN_EXPOSURE_MILES,
+      // Published so the UI LABELS the tiers from the same constants that
+      // COUNTED them. A client-side "70+ mph" caption over counts derived at
+      // an 85 mph floor is a specific, quotable, false claim about a named
+      // officer — the drift is invisible precisely because both sides compile.
+      speed_thresholds: SPEED_THRESHOLDS,
       ranked,
       insufficient_data: insufficient,
     });
@@ -229,7 +216,6 @@ driverPerformance.get('/officer/:id', canView, async (c) => {
   if (!Number.isInteger(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
   const win = windowFrom(c); if (win.error) return win.error;
   const { from, to } = win;
-  const gated = weightsGate(c); if (gated) return gated;
   const db = getDb(c.env);
   await ensureDriverPerformanceColumns(db);
   try {
@@ -238,14 +224,21 @@ driverPerformance.get('/officer/:id', canView, async (c) => {
       db,
       `SELECT perf_date, miles_driven, score, score_version,
               attribution_recorded_pct, attribution_inferred_pct,
-              unattributed_events,
+              unattributed_events, breadcrumb_samples,
+              events_speed_high, events_speed_very_high, events_speed_extreme,
               events_critical, events_high, events_moderate, events_low
          FROM driver_performance_daily
         WHERE officer_id = ? AND perf_date >= ? AND perf_date <= ?
         ORDER BY perf_date`,
       officerId, from, to,
     );
-    return c.json({ from, to, min_exposure_miles: MIN_EXPOSURE_MILES, summary: agg ? shape(agg) : null, daily });
+    return c.json({
+      from, to,
+      min_exposure_miles: MIN_EXPOSURE_MILES,
+      speed_thresholds: SPEED_THRESHOLDS,
+      summary: agg ? shape(agg) : null,
+      daily,
+    });
   } catch (err) {
     log.error('driver-performance officer detail failed', { officerId, from, to }, err as Error);
     return c.json({ error: 'Failed to load officer detail', code: 'DETAIL_FAILED' }, 500);
@@ -263,7 +256,6 @@ driverPerformance.get('/officer/:id/export', canView, async (c) => {
   if (!Number.isInteger(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
   const win = windowFrom(c); if (win.error) return win.error;
   const { from, to } = win;
-  const gated = weightsGate(c); if (gated) return gated;
   const db = getDb(c.env);
   await ensureDriverPerformanceColumns(db);
   try {
