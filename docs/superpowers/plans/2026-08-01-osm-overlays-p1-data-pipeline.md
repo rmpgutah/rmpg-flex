@@ -18,7 +18,17 @@
 - **Archive naming:** `tiles/osm-<group>.pmtiles` in R2 bucket `system-essentials` (binding `MAP_DATA`). Group names: `surveillance`, `traffic`, `safety`, `utility`, `sites`, `access`, `drivability`, `terrain`, `jurisdiction`.
 - **Tile-layer name inside each archive equals the group name** — this is what the client's `source-layer` binds to.
 - **Archive `--minimum-zoom` = the lowest `minzoom` among the group's categories.** Per-category zoom gating is client-side only (Plan 2). Never set archive minzoom to a per-category value.
-- **`--drop-densest-as-needed` is forbidden** on point groups. Silent feature loss defeats the entire provenance design.
+- **The capture is the WHOLE STATE of Utah, and no feature may be silently dropped.**
+  Three separate tippecanoe behaviors can thin features; all three must be disabled:
+  `--drop-densest-as-needed` (opt-in), `--drop-rate` (**defaults to ~2.5 — drops points
+  at low zoom even when you say nothing**), and the per-tile feature/size limits. Silent
+  feature loss defeats the entire provenance design: a thinned layer is indistinguishable
+  from "not mapped here."
+- **Per-feature zoom gating via `tippecanoe.minzoom` is what makes that affordable.**
+  Disabling the drop-rate alone would force a z10 `utility` tile to carry every power pole
+  in the Salt Lake metro. Instead the transform stamps each feature with its own category's
+  minzoom, so a pole first appears at z16 and a substation at z10 — from one archive, with
+  nothing dropped.
 - **Never commit the `.osm.pbf` extract or generated `.pmtiles`** — they are ~250 MB and ~100s of MB respectively. `.gitignore` must cover the work directory.
 - **Worker tests run under the root vitest config.** Never run root and client vitest concurrently — that fakes ~9 failures. Run serially.
 - Pre-commit hook runs the full Worker vitest suite. Under CPU contention `tests/pdfSign.test.ts` and `tests/footage/flexcamRoute.test.ts` can time out; that is contention, not a regression.
@@ -981,6 +991,15 @@ const wantCones = groupName === 'surveillance';
 
 const counts = Object.fromEntries(group.categories.map((c) => [c.cat, 0]));
 if (wantCones) counts.camera_cone = 0;
+
+const MINZOOM_BY_CAT = Object.fromEntries(group.categories.map((c) => [c.cat, c.minzoom]));
+// Cones ride with their camera — same gate as the most permissive camera category.
+if (wantCones) MINZOOM_BY_CAT.camera_cone = Math.min(...group.categories.map((c) => c.minzoom));
+function minzoomFor(cat) {
+  const z = MINZOOM_BY_CAT[cat];
+  if (z === undefined) throw new Error(`no minzoom for category ${cat} in group ${groupName}`);
+  return z;
+}
 let skipped = 0;
 let malformed = 0;
 
@@ -1015,6 +1034,14 @@ for await (const line of rl) {
   const projected = projectFeature(feature, groupName);
   if (!projected) { skipped++; continue; }
 
+  // Per-feature zoom gate. Tippecanoe reads a `tippecanoe` member on the feature
+  // and honors minzoom PER FEATURE, unlike --minimum-zoom which is per tile-layer.
+  // Without this, every category in a group would be forced into tiles from the
+  // group's LOWEST minzoom — a z10 utility tile carrying every power pole in the
+  // metro. With it, poles start at z16 and substations at z10 from one archive,
+  // and nothing has to be dropped to keep tiles small.
+  projected.tippecanoe = { minzoom: minzoomFor(projected.cat) };
+
   counts[projected.cat]++;
   write(projected);
 
@@ -1022,7 +1049,11 @@ for await (const line of rl) {
     // Cones need camera:direction, which projectFeature keeps only if it is in
     // the group's allow-list. Build from the PROJECTED feature so cat is set.
     const cone = coneFeature(projected);
-    if (cone) { counts.camera_cone++; write(cone); }
+    if (cone) {
+      cone.tippecanoe = { minzoom: minzoomFor('camera_cone') };
+      counts.camera_cone++;
+      write(cone);
+    }
   }
 }
 
@@ -1348,6 +1379,18 @@ for g in "${BUILT_GROUPS[@]}"; do
     --minimum-zoom="${MINZOOM}"
     --maximum-zoom=16
     --read-parallel
+    # ── Statewide completeness: disable ALL THREE thinning mechanisms ──
+    # 1. --drop-rate=1 : tippecanoe's DEFAULT (~2.5) drops points at low zoom
+    #    even when nothing is specified. This is the one that silently thins a
+    #    statewide capture. `1` means keep every feature.
+    # 2/3. --no-feature-limit / --no-tile-size-limit : per-tile caps that
+    #    otherwise discard overflow features without an error.
+    # Affordable only because transform.mjs stamps per-feature tippecanoe.minzoom
+    # (see Task 4) — a pole is absent from a z10 tile because of its own gate, not
+    # because the tiler threw it away.
+    --drop-rate=1
+    --no-feature-limit
+    --no-tile-size-limit
   )
 
   case "$GEOMETRY" in
@@ -1361,8 +1404,8 @@ for g in "${BUILT_GROUPS[@]}"; do
       TIPPE_ARGS+=(--no-tiny-polygon-reduction --simplification=4)
       ;;
     *)
-      # Points and mixed: NEVER --drop-densest-as-needed. Silent feature loss
-      # defeats the provenance design — absence must mean "not mapped", not
+      # Points and mixed: NEVER --drop-densest-as-needed, and never rely on the
+      # default drop-rate (disabled above). Absence must mean "not mapped", not
       # "dropped to fit a tile budget".
       TIPPE_ARGS+=(--no-tiny-polygon-reduction --simplification=4)
       ;;
