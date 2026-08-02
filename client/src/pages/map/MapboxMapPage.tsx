@@ -94,6 +94,8 @@ import { useDistrictHierarchyLayers } from '../../hooks/useDistrictHierarchyLaye
 import { useVectorTileLayers } from '../../hooks/useVectorTileLayers';
 import { useActivityChoropleth } from '../../hooks/useActivityChoropleth';
 import { useMapFeatureInspect } from '../../hooks/useMapFeatureInspect';
+import type { InspectedFeature } from '../../hooks/useMapFeatureInspect';
+import FeatureInspectorPanel from './components/FeatureInspectorPanel';
 import { useMapMatchTrace } from '../../hooks/useMapMatchTrace';
 import { useMapboxDraw } from '../../hooks/useMapboxDraw';
 import { initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay, createMapboxIncidentLayer, createMapboxUnitLayer, createMapboxArcLayer } from '../../integrations/deckMapboxLayers';
@@ -572,6 +574,56 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       : null,
   });
   const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded);
+  const [hoveredFeature, setHoveredFeature] = useState<InspectedFeature | null>(null);
+  const inspectMarkerRef = useRef<mapboxgl.Marker | null>(null);
+
+  const HIGHLIGHT_SOURCE = 'rmpg-inspect-highlight';
+
+  // Highlight the hovered inspector row on the map, so the panel and the
+  // geometry it describes stay visually tied.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+
+    if (!map.getSource(HIGHLIGHT_SOURCE)) {
+      map.addSource(HIGHLIGHT_SOURCE, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: `${HIGHLIGHT_SOURCE}-line`, type: 'line', source: HIGHLIGHT_SOURCE,
+        paint: { 'line-color': '#f0f4f9', 'line-width': 3, 'line-opacity': 0.9 },
+      });
+      map.addLayer({
+        id: `${HIGHLIGHT_SOURCE}-point`, type: 'circle', source: HIGHLIGHT_SOURCE,
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-radius': 9, 'circle-color': 'rgba(0,0,0,0)',
+          'circle-stroke-color': '#f0f4f9', 'circle-stroke-width': 2,
+        },
+      });
+    }
+
+    const src = map.getSource(HIGHLIGHT_SOURCE) as mapboxgl.GeoJSONSource;
+    src?.setData(hoveredFeature
+      ? { type: 'Feature', properties: {}, geometry: hoveredFeature.geometry as any }
+      : { type: 'FeatureCollection', features: [] });
+  }, [mapLoaded, hoveredFeature]);
+
+  // A panel puts the answer away from the point the officer clicked; the marker
+  // is what keeps the two connected.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    inspectMarkerRef.current?.remove();
+    inspectMarkerRef.current = null;
+    if (!featureInspect.result) return;
+    inspectMarkerRef.current = new mapboxgl.Marker({ color: '#c3ccd6' })
+      .setLngLat(featureInspect.result.lngLat)
+      .addTo(map);
+    return () => { inspectMarkerRef.current?.remove(); inspectMarkerRef.current = null; };
+  }, [featureInspect.result]);
+
   const mapMatchTrace = useMapMatchTrace(mapRef.current, mapLoaded);
   const glDraw = useMapboxDraw(mapRef.current, mapLoaded);
   const [deckEnabled, setDeckEnabled] = usePersistedState('rmpg_mapbox_deck', false);
@@ -1668,6 +1720,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             }}
           />
         </div>
+      )}
+
+      {featureInspect.enabled && featureInspect.result && (
+        <FeatureInspectorPanel
+          result={featureInspect.result}
+          selectedIndex={featureInspect.selectedIndex}
+          onSelect={featureInspect.select}
+          onClose={featureInspect.clear}
+          onHoverFeature={setHoveredFeature}
+        />
       )}
 
       {speedAnalyticsPanelOpen && (
