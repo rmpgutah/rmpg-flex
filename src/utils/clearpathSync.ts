@@ -14,7 +14,7 @@
 // ============================================================
 
 import type { Bindings } from '../types';
-import { getDb, query, queryFirst, execute, columnExists } from './db';
+import { getDb, query, queryFirst, execute, columnExists, ensureDriverPerformanceColumns } from './db';
 import {
   getCredentials, isEnabled, getConfigValue, setConfigValue, CPG_KEYS,
   listDevices, listCameras, listAllMedia,
@@ -172,14 +172,28 @@ async function upsertEvent(db: DB, m: MappingRow, event: CpgMediaEvent): Promise
     const first = event.mediaObject?.[0];
     const lat = first?.location?.lat ?? first?.gps?.[0]?.latitude ?? null;
     const lng = first?.location?.lng ?? first?.gps?.[0]?.longitude ?? null;
+
+    // Attribution stamped AT CAPTURE. units.officer_id is correct here and
+    // ONLY here — at ingest it is the officer in the vehicle right now, which
+    // is exactly what we want to freeze. Reading it later, at aggregation
+    // time, is the bug this feature exists to fix.
+    const crew = m.unit_id != null
+      ? await queryFirst<{ officer_id: number | null }>(
+          db, 'SELECT officer_id FROM units WHERE id = ?', m.unit_id,
+        )
+      : null;
+    const officerId = crew?.officer_id ?? null;
+
     const r = await execute(db, `
       INSERT INTO dashcam_events
         (cpg_device_id, unit_id, event_type, event_timestamp, cpg_media_timestamp,
-         latitude, longitude, speed_mph, address, video_available, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'clearpathgps')
+         latitude, longitude, speed_mph, address, video_available, source,
+         officer_id, officer_attribution_source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'clearpathgps', ?, ?)
     `,
       m.cpg_device_id, m.unit_id, first?.eventType || 'Camera Event', formatTs(ts), ts,
       lat, lng, kmhToMph(first?.gps?.[0]?.speed), event.address || null,
+      officerId, officerId != null ? 'recorded' : 'unattributed',
     );
     return Number(r.meta.last_row_id);
   } catch { return null; }
@@ -242,6 +256,7 @@ export async function syncClearpathMedia(env: Bindings): Promise<{ synced: numbe
   if (!(await isEnabled(db))) return { synced: 0, errors: 0, skipped: 'disabled' };
   if ((await getConfigValue(db, CPG_KEYS.mediaEnabled)) !== 'true') return { synced: 0, errors: 0, skipped: 'media_disabled' };
   await ensureMediaSchema(db);
+  await ensureDriverPerformanceColumns(db);
 
   // KV rate-limit cooldown.
   try {
