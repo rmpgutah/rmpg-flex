@@ -37,11 +37,23 @@ const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
 const out = [];
 const FLUSH_AT = 1000;
 
-function write(obj) {
+async function flush() {
+  if (!out.length) return;
+  const chunk = out.join('\n') + '\n';
+  out.length = 0;
+  // write() returns false when the internal buffer is over the high-water mark.
+  // Ignoring it lets producers outrun the consumer and grow the buffer without
+  // bound — on a statewide extract that is a memory-exhaustion risk, not a
+  // correctness one. Wait for 'drain' before producing more.
+  if (!process.stdout.write(chunk)) {
+    await new Promise((resolve) => process.stdout.once('drain', resolve));
+  }
+}
+
+async function write(obj) {
   out.push(JSON.stringify(obj));
   if (out.length >= FLUSH_AT) {
-    process.stdout.write(out.join('\n') + '\n');
-    out.length = 0;
+    await flush();
   }
 }
 
@@ -82,7 +94,7 @@ for await (const line of rl) {
   projected.tippecanoe = { minzoom: minzoomFor(projected.properties.cat) };
 
   counts[projected.properties.cat]++;
-  write(projected);
+  await write(projected);
 
   if (wantCones) {
     // Cones need camera:direction, which projectFeature keeps only if it is in
@@ -93,10 +105,10 @@ for await (const line of rl) {
       // cone.properties.tippecanoe.
       cone.tippecanoe = { minzoom: minzoomFor('camera_cone') };
       counts.camera_cone++;
-      write(cone);
+      await write(cone);
     }
   }
 }
 
-if (out.length) process.stdout.write(out.join('\n') + '\n');
+await flush();
 console.error(JSON.stringify({ group: groupName, counts, skipped, malformed }));
