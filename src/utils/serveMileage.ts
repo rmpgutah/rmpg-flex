@@ -129,8 +129,6 @@ export async function computeOfficerMileageSegments(
     const dist = haversineMiles(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
     if (dist > 50) continue; // GPS jump guard (device restart / data gap), same as before
 
-    const prevAttemptIdx = attemptIdx;
-
     // Advance to the attempt whose window covers curr.recorded_at. A
     // breadcrumb before the officer's first attempt never enters this loop
     // body meaningfully attributed (attemptIdx stays 0 but curr must also be
@@ -141,15 +139,6 @@ export async function computeOfficerMileageSegments(
     if (attemptIdx >= attempts.length) break; // past every attempt's window — unattributed, rest is too
 
     if (curr.recorded_at < attempts[attemptIdx].attempt_at) continue; // curr is before this segment — truly unattributed
-
-    // If edge crosses a segment boundary (prev in earlier segment, curr in this segment),
-    // skip if prev is too far before the new segment's start (prevents stale commute attribution).
-    if (attemptIdx > prevAttemptIdx && prev.recorded_at < attempts[attemptIdx].attempt_at) {
-      const prevTime = new Date(prev.recorded_at.replace(' ', 'T') + 'Z').getTime();
-      const attemptTime = new Date(attempts[attemptIdx].attempt_at.replace(' ', 'T') + 'Z').getTime();
-      const gapMs = attemptTime - prevTime;
-      if (gapMs > 60 * 60 * 1000) continue; // Skip if gap > 1 hour (large time gap indicates separate commute)
-    }
 
     segments[attemptIdx].miles += dist;
   }

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { computeOfficerMileageSegments, computeMileageForQueue, computeOfficerMileageForDay, haversineMiles } from '../src/utils/serveMileage';
 
 // In-memory fake D1: enough of the query() surface for these tests. Mirrors
@@ -136,8 +136,12 @@ describe('computeOfficerMileageForDay', () => {
     });
 
     const total = await computeOfficerMileageForDay(db, 7, '2026-08-01');
+    // Daily total includes all edges: (40.70→40.71) + (40.71→40.72) + (40.72→40.73)
+    // The middle edge crosses the segment boundary (09:20 to 11:10) and is
+    // attributed to job 2 per the design.
     const expected =
       haversineMiles(40.70, -111.89, 40.71, -111.89) +
+      haversineMiles(40.71, -111.89, 40.72, -111.89) +
       haversineMiles(40.72, -111.89, 40.73, -111.89);
 
     expect(total).toBeCloseTo(expected, 5);
