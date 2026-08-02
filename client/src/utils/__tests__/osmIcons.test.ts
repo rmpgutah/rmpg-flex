@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   OSM_ICON_BY_CAT, OSM_ICON_SPECS, iconIdForCat, iconSvgForCat,
-  iconImageExpression, symbolSortKeyFor, textSpecForCat, lineTextForCat,
-  baseId, lowZoomId, mutedId,
+  iconImageExpression, symbolSortKeyFor, baseId, lowZoomId, mutedId,
 } from '../osmIcons';
 import { GLYPHS, MUTABLE_CATS, NFPA_BONNET } from '../osmIconArt';
 import { OSM_GROUPS } from '../../config/osmLayers.generated';
@@ -191,26 +190,5 @@ describe('osm icons — placement priority', () => {
     for (const cat of POINT_CATS) {
       expect(symbolSortKeyFor(cat), `${cat} fell through to the default`).toBeLessThan(99);
     }
-  });
-});
-
-describe('osm icons — live text', () => {
-  it('prints the exit number on junction markers', () => {
-    const spec = textSpecForCat('junction');
-    expect(spec).not.toBeNull();
-    expect(JSON.stringify(spec!.field)).toContain('ref');
-  });
-
-  it('prints posted speed and bridge clearance along the way', () => {
-    expect(lineTextForCat('maxspeed')).not.toBeNull();
-    expect(lineTextForCat('clearance')).not.toBeNull();
-    // Clearance converts metres to feet and inches: that is what is painted on
-    // the bridge the driver is about to hit.
-    expect(JSON.stringify(lineTextForCat('clearance'))).toContain('3.28084');
-  });
-
-  it('carries no text for categories that have no number to show', () => {
-    expect(textSpecForCat('camera')).toBeNull();
-    expect(lineTextForCat('school')).toBeNull();
   });
 });

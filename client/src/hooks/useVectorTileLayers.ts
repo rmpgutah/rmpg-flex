@@ -20,13 +20,8 @@ import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import {
-  ensureOsmIcons, iconIdForCat, iconImageExpression,
-  symbolSortKeyFor, textSpecForCat, lineTextForCat,
+  ensureOsmIcons, iconIdForCat, iconImageExpression, symbolSortKeyFor,
 } from '../utils/osmIcons';
-// Live OSM labels are drawn in the SAME ink and halo as the glyphs they sit
-// under, sourced from the artwork module rather than repeated as literals so
-// the two can never drift apart.
-import { INK as OSM_INK, HALO as OSM_HALO } from '../utils/osmIconArt';
 import { buildOsmPopupHtml } from '../utils/osmPopup';
 import { mergeOverride, hiddenFilterClause, type OsmOverride } from './useOsmOverrides';
 import {
@@ -267,6 +262,16 @@ const OSM_LABEL_RULES: Record<string, LabelRule> = {
   school: { field: ['coalesce', ['get', 'name'], ''], minzoom: 15, placement: 'point', size: 10 },
   gov: { field: ['coalesce', ['get', 'name'], ''], minzoom: 15, placement: 'point', size: 10 },
   heli: { field: ['coalesce', ['get', 'name'], ''], minzoom: 13, placement: 'point', size: 10 },
+  // Space count and charger count are the one fact an operator wants off a
+  // parking structure or a charging site without opening the popup.
+  parking: {
+    field: ['case', ['has', 'capacity'], ['to-string', ['get', 'capacity']], ''],
+    minzoom: 16, placement: 'point', size: 10,
+  },
+  charging: {
+    field: ['case', ['has', 'capacity'], ['to-string', ['get', 'capacity']], ''],
+    minzoom: 16, placement: 'point', size: 10,
+  },
 };
 
 export function buildOsmLabelSpec(
@@ -357,34 +362,6 @@ export function buildOsmLayerSpecs(cfg: VectorTileLayerConfig, isLight: boolean)
         'line-opacity': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 0.55, cfg.minzoom + 5, 0.85, 18, 0.95],
       },
     });
-    // Posted speed and bridge clearance are the two line categories whose
-    // whole value is a number. Drawn along the way rather than as a sprite:
-    // the values are open-ended, so no finite set of images could cover them,
-    // and reading them off the map is the difference between routing a unit
-    // under a 12-foot bridge and not.
-    const lineText = lineTextForCat(cfg.categoryFilter ?? '');
-    if (lineText) {
-      specs.push({
-        id: `${idBase}-linetext`,
-        type: 'symbol',
-        ...base,
-        minzoom: cfg.minzoom + 1,
-        layout: {
-          ...base.layout,
-          'symbol-placement': 'line-center',
-          'text-field': lineText,
-          'text-size': ['interpolate', ['linear'], ['zoom'], cfg.minzoom + 1, 9.5, 18, 12.5],
-          'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
-          'text-allow-overlap': false,
-          'text-padding': 3,
-        },
-        paint: {
-          'text-color': OSM_INK,
-          'text-halo-color': isLight ? '#1a2332' : OSM_HALO,
-          'text-halo-width': 1.5,
-        },
-      });
-    }
   } else {
     // Point categories: use our own registered icon so a hydrant, a camera and
     // a power pole are distinguishable. iconIdForCat only returns ids that
@@ -394,7 +371,6 @@ export function buildOsmLayerSpecs(cfg: VectorTileLayerConfig, isLight: boolean)
     const iconId = iconIdForCat(cat);
     if (iconId) {
       const isCamera = cat === 'camera' || cat === 'alpr';
-      const text = textSpecForCat(cat);
       specs.push({
         id: `${idBase}-symbol`,
         type: 'symbol',
@@ -416,17 +392,6 @@ export function buildOsmLayerSpecs(cfg: VectorTileLayerConfig, isLight: boolean)
           // every category shared the default, so a street lamp could beat a
           // fire hydrant for the same pixels at z15.
           'symbol-sort-key': symbolSortKeyFor(cat),
-          ...(text
-            ? {
-              'text-field': text.field,
-              'text-size': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 9, 18, 12],
-              'text-offset': text.offset,
-              'text-anchor': text.anchor,
-              'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
-              'text-optional': true,
-              'text-allow-overlap': false,
-            }
-            : {}),
           // A camera icon must point where the camera actually points.
           // rotation-alignment MUST be 'map': the default ('viewport') pins the
           // icon to the screen, so the bearing becomes a lie the moment the
@@ -439,15 +404,9 @@ export function buildOsmLayerSpecs(cfg: VectorTileLayerConfig, isLight: boolean)
             }
             : {}),
         },
-        // The icon carries its own colour, baked in at registration. Paint is
-        // only needed when this layer also prints live text.
-        paint: text
-          ? {
-            'text-color': OSM_INK,
-            'text-halo-color': OSM_HALO,
-            'text-halo-width': 1.4,
-          }
-          : {},
+        // Symbol layers need no paint here — the icon carries its own colour,
+        // baked in at registration. `paint` is required by OsmLayerSpec.
+        paint: {},
       });
     } else {
       // No icon for this category yet — a plain circle still renders, rather

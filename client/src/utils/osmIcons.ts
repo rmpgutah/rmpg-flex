@@ -238,86 +238,12 @@ export function symbolSortKeyFor(cat: string): number {
   return SORT_KEY[cat] ?? 99;
 }
 
-// ============================================================
-// Live text
-// ============================================================
-
-export interface OsmTextSpec {
-  /** Mapbox text-field expression. */
-  field: unknown;
-  /** Offset in ems from the icon anchor. */
-  offset: [number, number];
-  anchor: 'top' | 'left' | 'center';
-}
-
-/**
- * Categories whose value is a NUMBER the operator would otherwise have to
- * click the feature to read. These are rendered live with `text-field` rather
- * than as sprite variants — the values are open-ended, so there is no finite
- * set of images that could cover them.
- */
-const TEXT_BY_CAT: Record<string, OsmTextSpec> = {
-  // An exit-number marker that does not show the exit number forces a click
-  // per feature, which is the whole job of this category.
-  junction: {
-    field: ['to-string', ['coalesce', ['get', 'ref'], ['get', 'exit_to'], '']],
-    offset: [0, 1.1],
-    anchor: 'top',
-  },
-  parking: {
-    field: ['case', ['has', 'capacity'], ['to-string', ['get', 'capacity']], ''],
-    offset: [0, 1.1],
-    anchor: 'top',
-  },
-  charging: {
-    field: ['case', ['has', 'capacity'], ['to-string', ['get', 'capacity']], ''],
-    offset: [0, 1.1],
-    anchor: 'top',
-  },
-};
-
-/** Live text for a point category, or null when it carries none. */
-export function textSpecForCat(cat: string): OsmTextSpec | null {
-  return TEXT_BY_CAT[cat] ?? null;
-}
-
-/**
- * Live text for a LINE category, drawn along the way with
- * `symbol-placement: 'line-center'`.
- *
- * Both values are US customary on purpose. `maxspeed` arrives as "45 mph" and
- * clearance as metres; the clearance expression converts to feet and inches
- * because that is what is painted on the actual bridge a driver is about to
- * hit.
- */
-const LINE_TEXT_BY_CAT: Record<string, unknown> = {
-  maxspeed: [
-    'case',
-    ['has', 'maxspeed'],
-    ['concat', ['slice', ['to-string', ['get', 'maxspeed']], 0, 3], ''],
-    '',
-  ],
-  clearance: [
-    'case',
-    ['has', 'maxheight'],
-    [
-      'concat',
-      ['to-string', ['floor', ['*', ['to-number', ['get', 'maxheight'], 0], 3.28084]]],
-      "' ",
-      ['to-string', ['round', ['*', 12, ['-',
-        ['*', ['to-number', ['get', 'maxheight'], 0], 3.28084],
-        ['floor', ['*', ['to-number', ['get', 'maxheight'], 0], 3.28084]],
-      ]]]],
-      '"',
-    ],
-    '',
-  ],
-};
-
-/** Live along-the-line text for a line category, or null. */
-export function lineTextForCat(cat: string): unknown | null {
-  return LINE_TEXT_BY_CAT[cat] ?? null;
-}
+// NOTE: on-map label text (posted speed, bridge clearance, exit number,
+// parking/charging capacity, facility names) is NOT owned by this module. It
+// lives in OSM_LABEL_RULES / buildOsmLabelSpec in useVectorTileLayers.ts,
+// which handles km/h -> mph conversion and fails closed on unparseable values
+// like "walk" or "40;60". Adding a second text layer here would double-draw
+// every label.
 
 // ============================================================
 // Registration
