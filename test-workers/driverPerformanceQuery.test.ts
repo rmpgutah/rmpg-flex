@@ -69,8 +69,13 @@ beforeAll(async () => {
     events_harsh_brake INTEGER NOT NULL DEFAULT 0,
     events_harsh_accel INTEGER NOT NULL DEFAULT 0,
     events_speeding INTEGER NOT NULL DEFAULT 0,
+    events_critical INTEGER NOT NULL DEFAULT 0,
+    events_high INTEGER NOT NULL DEFAULT 0,
+    events_moderate INTEGER NOT NULL DEFAULT 0,
+    events_low INTEGER NOT NULL DEFAULT 0,
     attribution_recorded_pct REAL NOT NULL DEFAULT 1,
     attribution_inferred_pct REAL NOT NULL DEFAULT 0,
+    unattributed_events INTEGER NOT NULL DEFAULT 0,
     fuel_cost REAL NOT NULL DEFAULT 0,
     fuel_gallons REAL NOT NULL DEFAULT 0,
     maintenance_cost REAL NOT NULL DEFAULT 0,
@@ -92,6 +97,67 @@ beforeAll(async () => {
     (9001, '2026-03-06', 150, 4, 0, 2, 'v1-placeholder-weights'),
     (9002, '2026-03-05', 100, 2, 0, 0, 'v1-placeholder-weights'),
     (9003, '2026-03-05', 300, 6, 0, 0, 'v1-placeholder-weights')`);
+
+  // C1 reproduction: officer 9004 is the high-mileage / zero-attributed-event
+  // case. 900 miles, no attributed events, attribution_recorded_pct 1 — the
+  // exact snapshot shape that used to render "100.0 · Excellent · 0 events ·
+  // Recorded" and rank ABOVE colleagues whose events DID attribute. The only
+  // difference is the 14 events that failed attribution.
+  await execute(db, `INSERT INTO users (id, full_name, badge_number) VALUES
+    (9004, 'Synthetic Officer 9004', 'T-9004')`);
+  await execute(db, `INSERT INTO driver_performance_daily
+    (officer_id, perf_date, miles_driven, trip_count, attribution_recorded_pct,
+     unattributed_events, events_critical, events_high, score_version)
+    VALUES (9004, '2026-03-07', 900, 20, 1, 14, 0, 0, 'v1-placeholder-weights')`);
+});
+
+describe('C1: high mileage with unattributed events is never reported as confidently clean', () => {
+  it('forces confidence to inferred and reports the unattributed count', async () => {
+    const res = await request(`/api/driver-performance/roster?from=${FROM}&to=${TO}`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      ranked: Array<{
+        officer_id: number; event_count: number; unattributed_events: number;
+        result: { status: string; score: number; confidence: string };
+      }>;
+    };
+    const o = body.ranked.find((r) => r.officer_id === 9004);
+    expect(o).toBeTruthy();
+    // The reassuring parts are all still true — which is exactly why the
+    // unattributed count has to be present and the confidence downgraded.
+    expect(o!.event_count).toBe(0);
+    expect(o!.result.status).toBe('scored');
+    expect(o!.result.score).toBe(100);
+    expect(o!.unattributed_events).toBe(14);
+    expect(o!.result.confidence).toBe('inferred');
+  });
+
+  it('leaves a genuinely clean officer (no events, no doubt) labelled recorded', async () => {
+    const res = await request(`/api/driver-performance/roster?from=${FROM}&to=${TO}`);
+    const body = await res.json() as {
+      ranked: Array<{ officer_id: number; unattributed_events: number; result: { confidence: string } }>;
+    };
+    const o = body.ranked.find((r) => r.officer_id === 9003);
+    expect(o!.unattributed_events).toBe(0);
+    expect(o!.result.confidence).toBe('recorded');
+  });
+
+  it('surfaces the severity breakdown on officer detail', async () => {
+    const res = await request(`/api/driver-performance/officer/9004?from=${FROM}&to=${TO}`);
+    const body = await res.json() as {
+      summary: { severity: { critical: number; high: number; moderate: number; low: number } } | null;
+    };
+    expect(body.summary!.severity).toEqual({ critical: 0, high: 0, moderate: 0, low: 0 });
+  });
+});
+
+describe('window validation: an inverted window is rejected, not silently emptied', () => {
+  it('returns 400 when from is after to', async () => {
+    const res = await request('/api/driver-performance/roster?from=2026-03-31&to=2026-03-01');
+    expect(res.status).toBe(400);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('INVALID_WINDOW');
+  });
 });
 
 describe('AGG_SQL executes against a real D1', () => {
@@ -107,9 +173,9 @@ describe('AGG_SQL executes against a real D1', () => {
     expect(officer9001!.fc).toBe(1);
     expect(officer9001!.hb).toBe(2);
 
-    // Confirms all three synthetic officers are actually returned, not just
+    // Confirms all four synthetic officers are actually returned, not just
     // the one under close inspection.
-    expect(rows.map((r) => r.officer_id).sort()).toEqual([9001, 9002, 9003]);
+    expect(rows.map((r) => r.officer_id).sort()).toEqual([9001, 9002, 9003, 9004]);
   });
 
   it('the HAVING d.officer_id = ? variant returns exactly that officer\'s aggregated row', async () => {

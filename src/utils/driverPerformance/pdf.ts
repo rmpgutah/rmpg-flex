@@ -19,6 +19,7 @@
 
 import { MIN_EXPOSURE_MILES } from './score';
 import type { ScoreResult } from './score';
+import { log } from '../logger';
 
 const PAGE_WIDTH = 612; // US Letter, points
 const PAGE_HEIGHT = 792;
@@ -47,6 +48,9 @@ export interface DriverPerformanceSummary {
     harsh_accel: number;
     speeding: number;
   };
+  severity?: { critical: number; high: number; moderate: number; low: number };
+  /** Events on a unit this officer drove that could not be tied to a driver. */
+  unattributed_events?: number;
   cost: { fuel: number; fuel_gallons: number; maintenance: number };
   result: ScoreResult;
 }
@@ -54,7 +58,10 @@ export interface DriverPerformanceSummary {
 export interface RenderDriverPerformancePdfParams {
   summary: DriverPerformanceSummary;
   window: { from: string; to: string };
+  /** The version that produced the score PRINTED here — not whatever the last stored snapshot happened to carry. */
   scoreVersion: string;
+  /** Distinct score_version values across the window's stored snapshots. More than one is disclosed on the page. */
+  storedVersions?: string[];
   generatedAt: string;
   organization: string;
 }
@@ -80,7 +87,18 @@ const WIN_ANSI_MAP: Record<number, number> = {
   0x2013: 0x96, 0x2014: 0x97, 0x2026: 0x85,
 };
 
-function toWinAnsiBytes(str: string): number[] {
+/**
+ * ⚠️ The `?` fallback SILENTLY RENAMES A PERSON. An officer named Nguyễn
+ * printed as "Nguy?n" on a document that may be read by an insurer or opposing
+ * counsel, with nothing anywhere saying a character had been substituted — a
+ * confident wrong name on an evidence record, which is the exact failure class
+ * this whole feature is built against.
+ *
+ * The substitution is still made (a raw non-WinAnsi byte would corrupt the PDF
+ * stream), but it is now REPORTED: `onFallback` fires per substituted
+ * character so the caller can log it and stamp a disclosure on the page.
+ */
+function toWinAnsiBytes(str: string, onFallback?: (cp: number) => void): number[] {
   const out: number[] = [];
   for (const ch of str) {
     const cp = ch.codePointAt(0)!;
@@ -89,7 +107,10 @@ function toWinAnsiBytes(str: string): number[] {
     // Windows-1252 (WinAnsiEncoding) matches Unicode directly for 0xA0-0xFF
     // (Latin-1 supplement, e.g. the middle dot U+00B7 used as a separator).
     if (cp >= 0xa0 && cp <= 0xff) { out.push(cp); continue; }
-    out.push(WIN_ANSI_MAP[cp] ?? 0x3f);
+    const mapped = WIN_ANSI_MAP[cp];
+    if (mapped !== undefined) { out.push(mapped); continue; }
+    onFallback?.(cp);
+    out.push(0x3f);
   }
   return out;
 }
@@ -98,8 +119,8 @@ function asciiBytes(str: string): Uint8Array {
   return new TextEncoder().encode(str);
 }
 
-function pdfLiteral(str: string): Uint8Array {
-  return Uint8Array.from([0x28, ...toWinAnsiBytes(str), 0x29]);
+function pdfLiteral(str: string, onFallback?: (cp: number) => void): Uint8Array {
+  return Uint8Array.from([0x28, ...toWinAnsiBytes(str, onFallback), 0x29]);
 }
 
 function concatBytes(chunks: Uint8Array[]): Uint8Array {
@@ -125,8 +146,13 @@ class PdfPage {
 class SimplePdfBuilder {
   private pages: PdfPage[] = [];
   private cur!: PdfPage;
+  /** Code points that could not be represented in WinAnsiEncoding and were printed as '?'. */
+  readonly substitutedCodePoints = new Set<number>();
 
   constructor() { this.newPage(); }
+
+  /** True when at least one character on this document was replaced by '?'. */
+  get hasSubstitutions(): boolean { return this.substitutedCodePoints.size > 0; }
 
   private newPage() {
     this.cur = new PdfPage();
@@ -142,7 +168,8 @@ class SimplePdfBuilder {
     const font = opts.bold ? 'F2' : 'F1';
     const [r, g, b] = opts.color ?? BLACK;
     const pre = `BT /${font} ${size} Tf ${r} ${g} ${b} rg ${MARGIN} ${y.toFixed(2)} Td `;
-    this.cur.ops.push(asciiBytes(pre), pdfLiteral(str), asciiBytes(' Tj ET\n'));
+    const literal = pdfLiteral(str, (cp) => this.substitutedCodePoints.add(cp));
+    this.cur.ops.push(asciiBytes(pre), literal, asciiBytes(' Tj ET\n'));
   }
 
   text(str: string, opts: TextOpts = {}) {
@@ -251,7 +278,13 @@ class SimplePdfBuilder {
     }
 
     const xrefOffset = cursor;
-    const totalObjs = firstContentObj + pageCount * 2; // highest obj number
+    // Highest object number actually written. Objects run 1..4 (Catalog, Pages,
+    // F1, F2) then a Page+Content PAIR per page starting at `firstContentObj`
+    // (=5), so the last object is 4 + pageCount*2 — NOT 5 + pageCount*2. The
+    // off-by-one declared one object more than existed in both the xref
+    // subsection header and /Size, leaving a phantom entry pointing at offset 0
+    // that strict PDF validators reject.
+    const totalObjs = firstContentObj - 1 + pageCount * 2;
     let xref = `xref\n0 ${totalObjs + 1}\n0000000000 65535 f \n`;
     for (let n = 1; n <= totalObjs; n++) {
       const off = offsets[n] ?? 0;
@@ -269,7 +302,7 @@ class SimplePdfBuilder {
 export async function renderDriverPerformancePdf(
   params: RenderDriverPerformancePdfParams,
 ): Promise<Uint8Array> {
-  const { summary, window, scoreVersion, generatedAt, organization } = params;
+  const { summary, window, scoreVersion, storedVersions, generatedAt, organization } = params;
   const pdf = new SimplePdfBuilder();
 
   // 1. Header
@@ -320,6 +353,33 @@ export async function renderDriverPerformancePdf(
   for (const [label, count] of rows) pdf.text(`${label}: ${count}`, { size: 10 });
   pdf.text(`Total events: ${summary.event_count}`, { size: 10, bold: true, gap: 10 });
 
+  // 4b. Severity breakdown — written by the nightly rollup since day one and
+  // required by the spec, but never surfaced anywhere until now.
+  if (summary.severity) {
+    pdf.text('Severity breakdown', { bold: true, size: 12, gap: 3 });
+    pdf.text(`Critical: ${summary.severity.critical}`, { size: 10 });
+    pdf.text(`High: ${summary.severity.high}`, { size: 10 });
+    pdf.text(`Moderate: ${summary.severity.moderate}`, { size: 10 });
+    pdf.text(`Low: ${summary.severity.low}`, { size: 10, gap: 10 });
+  }
+
+  // 4c. Unattributed events — the doubt. Printed on its own, in warning color,
+  // adjacent to the totals above so no reader can take "Total events: 0" as
+  // proof of clean driving when events exist that no driver could be tied to.
+  const unattributed = summary.unattributed_events ?? 0;
+  if (unattributed > 0) {
+    pdf.text('Events that could not be attributed to a driver', { bold: true, size: 12, gap: 3 });
+    pdf.text(`Unattributed events: ${unattributed}`, { size: 11, bold: true, color: WARN });
+    pdf.wrapText(
+      `${unattributed} driving event(s) were recorded on a vehicle this officer drove during this ` +
+      'window, but could not be tied to any specific driver (missing or ambiguous assignment ' +
+      'records, or an event type this system does not recognize). They are NOT counted in the ' +
+      'event totals above and are NOT reflected in the score. Their existence means the counts ' +
+      'above are a floor, not a complete record: this window is not evidence of clean driving.',
+      { size: 10, color: WARN, gap: 10 },
+    );
+  }
+
   // 5. Cost summary — visually separate block, exact required label.
   pdf.box('Cost attribution — not a factor in the safety score', [
     `Fuel cost: $${fmt(summary.cost.fuel, 2)} (${fmt(summary.cost.fuel_gallons, 1)} gal)`,
@@ -336,8 +396,9 @@ export async function renderDriverPerformancePdf(
     );
     if (result.confidence === 'inferred') {
       pdf.wrapText(
-        'Attribution for the majority of these events was inferred from vehicle assignment ' +
-        'history rather than recorded at capture. Treat as a lead to investigate, not a finding.',
+        'Attribution for these events was inferred from vehicle assignment history rather than ' +
+        'recorded at capture, and/or events exist on this officer\'s vehicles that could not be ' +
+        'tied to any driver. Treat as a lead to investigate, not a finding.',
         { size: 10, color: WARN, gap: 10 },
       );
     }
@@ -349,10 +410,48 @@ export async function renderDriverPerformancePdf(
   pdf.hr();
   pdf.text(`Score version: ${scoreVersion}`, { size: 8, color: GRAY });
   pdf.text(`Generated: ${generatedAt}`, { size: 8, color: GRAY });
-  pdf.wrapText(
-    'Generated from immutable daily snapshots. Reproducible for this window under this score version.',
-    { size: 8, color: GRAY },
-  );
+
+  // I4 — the version above is the one that produced the score printed on this
+  // page. If the stored daily snapshots behind it were not all computed under
+  // that single version, say so rather than letting the footer's
+  // reproducibility claim stand unqualified.
+  const distinctStored = [...new Set((storedVersions ?? []).filter(Boolean))];
+  const mixed = distinctStored.length > 1
+    || (distinctStored.length === 1 && distinctStored[0] !== scoreVersion);
+  if (mixed) {
+    pdf.wrapText(
+      `NOTICE: the score above was computed under ${scoreVersion}, but the stored daily ` +
+      `snapshots covering this window carry ${distinctStored.length > 1 ? 'multiple score versions' : 'a different score version'} ` +
+      `(${distinctStored.join(', ')}). The days behind this total were not all computed the same ` +
+      'way. Reproducibility is limited to the version stamped above.',
+      { size: 8, color: WARN },
+    );
+  } else {
+    pdf.wrapText(
+      'Generated from immutable daily snapshots. Reproducible for this window under this score version.',
+      { size: 8, color: GRAY },
+    );
+  }
+
+  // Character-substitution disclosure. Written LAST so it covers every string
+  // placed on the document above it — including the officer's own name.
+  if (pdf.hasSubstitutions) {
+    const codes = [...pdf.substitutedCodePoints]
+      .sort((a, b) => a - b)
+      .map((cp) => `U+${cp.toString(16).toUpperCase().padStart(4, '0')}`);
+    log.warn('driver-performance PDF substituted unrepresentable characters', {
+      officerId: summary.officer_id,
+      window: `${window.from}..${window.to}`,
+      codePoints: codes,
+    });
+    pdf.wrapText(
+      `NOTICE: this document uses WinAnsi (Windows-1252) encoding and could not represent ` +
+      `${codes.length} distinct character(s) (${codes.join(', ')}); each was printed as "?". ` +
+      'Any name or text containing "?" may be rendered incorrectly here — verify against the ' +
+      'system of record before relying on the spelling.',
+      { size: 8, color: WARN },
+    );
+  }
 
   return pdf.build();
 }

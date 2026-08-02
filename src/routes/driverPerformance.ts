@@ -78,6 +78,17 @@ function windowFrom(
   const to = toParam || new Date().toISOString().slice(0, 10);
   const from = fromParam
     || new Date(Date.parse(to) - 29 * 86400000).toISOString().slice(0, 10);
+  // An inverted window is not a smaller window — every BETWEEN below matches
+  // nothing, so the caller silently receives an empty roster, which reads as
+  // "nobody had events" i.e. everybody drove well. Reject it.
+  if (from > to) {
+    return {
+      error: Response.json(
+        { error: 'Invalid window: from must not be after to', code: 'INVALID_WINDOW' },
+        { status: 400 },
+      ),
+    };
+  }
   return { from, to };
 }
 
@@ -94,7 +105,9 @@ interface AggRow {
   badge_number: string | null;
   miles: number; minutes: number; trips: number;
   fc: number; ld: number; cf: number; hb: number; ha: number; sp: number;
+  sev_critical: number; sev_high: number; sev_moderate: number; sev_low: number;
   recorded_events: number; inferred_events: number;
+  unattributed_events: number;
   fuel_cost: number; fuel_gallons: number; maintenance_cost: number;
 }
 
@@ -115,6 +128,11 @@ export const AGG_SQL = `
          COALESCE(SUM(d.events_harsh_brake),0)       AS hb,
          COALESCE(SUM(d.events_harsh_accel),0)       AS ha,
          COALESCE(SUM(d.events_speeding),0)          AS sp,
+         COALESCE(SUM(d.events_critical),0)  AS sev_critical,
+         COALESCE(SUM(d.events_high),0)      AS sev_high,
+         COALESCE(SUM(d.events_moderate),0)  AS sev_moderate,
+         COALESCE(SUM(d.events_low),0)       AS sev_low,
+         COALESCE(SUM(d.unattributed_events),0) AS unattributed_events,
          COALESCE(SUM(d.attribution_recorded_pct * (
            d.events_forward_collision + d.events_lane_departure + d.events_close_following +
            d.events_harsh_brake + d.events_harsh_accel + d.events_speeding)),0) AS recorded_events,
@@ -132,7 +150,7 @@ export const AGG_SQL = `
 function shape(r: AggRow) {
   const totalEvents = r.recorded_events + r.inferred_events;
   const recordedPct = totalEvents > 0 ? r.recorded_events / totalEvents : 1;
-  const result = computeScore({
+  const computed = computeScore({
     milesDriven: r.miles,
     events: {
       forwardCollision: r.fc, laneDeparture: r.ld, closeFollowing: r.cf,
@@ -140,6 +158,17 @@ function shape(r: AggRow) {
     },
     recordedPct,
   });
+  // ⚠️ C1 — an officer-day carrying events that could not be tied to ANY driver
+  // must never be reported as confidently clean. `recordedPct` above is
+  // computed only over events that DID attribute, so a window whose events all
+  // failed attribution scores 1.0 ("Recorded") over an empty set. The
+  // unattributed count is the evidence that the empty set is not the whole
+  // story, so it forces the confidence label down to 'inferred'. The score
+  // itself is untouched: doubt is not blame, and we will not invent a penalty.
+  const unattributed = r.unattributed_events ?? 0;
+  const result = computed.status === 'scored' && unattributed > 0
+    ? { ...computed, confidence: 'inferred' as const }
+    : computed;
   return {
     officer_id: r.officer_id,
     officer_name: r.officer_name,
@@ -150,6 +179,12 @@ function shape(r: AggRow) {
     event_count: r.fc + r.ld + r.cf + r.hb + r.ha + r.sp,
     events: { forward_collision: r.fc, lane_departure: r.ld, close_following: r.cf,
               harsh_brake: r.hb, harsh_accel: r.ha, speeding: r.sp },
+    // Severity rollup — written by the nightly job since day one but never
+    // read by any consumer until now (spec asks for it in officer detail).
+    severity: { critical: r.sev_critical, high: r.sev_high,
+                moderate: r.sev_moderate, low: r.sev_low },
+    /** Events on a unit this officer drove that could not be tied to a driver. */
+    unattributed_events: unattributed,
     cost: { fuel: r.fuel_cost, fuel_gallons: r.fuel_gallons,
             maintenance: r.maintenance_cost },
     result,
@@ -202,7 +237,9 @@ driverPerformance.get('/officer/:id', canView, async (c) => {
     const daily = await query(
       db,
       `SELECT perf_date, miles_driven, score, score_version,
-              attribution_recorded_pct, attribution_inferred_pct
+              attribution_recorded_pct, attribution_inferred_pct,
+              unattributed_events,
+              events_critical, events_high, events_moderate, events_low
          FROM driver_performance_daily
         WHERE officer_id = ? AND perf_date >= ? AND perf_date <= ?
         ORDER BY perf_date`,
@@ -233,17 +270,36 @@ driverPerformance.get('/officer/:id/export', canView, async (c) => {
     const agg = await queryFirst<AggRow>(db, `${AGG_SQL} HAVING d.officer_id = ?`, from, to, officerId);
     if (!agg) return c.json({ error: 'No data for this officer in the window' }, 404);
     const summary = shape(agg);
-    const versionRow = await queryFirst<{ v: string }>(
+
+    // ⚠️ I4 — THE STAMPED VERSION MUST BE THE ONE THAT PRODUCED THE PRINTED
+    // NUMBER. This previously read score_version off the LAST STORED SNAPSHOT
+    // in the window, while the score on the page is recomputed live by
+    // shape()/computeScore under TODAY's weights. Retune the weights and the
+    // document would print a new score under an old version string, beneath a
+    // footer asserting "Reproducible for this window under this score version"
+    // — a false statement on a litigation document.
+    const printedVersion = summary.result.status === 'scored'
+      ? summary.result.scoreVersion
+      : SCORE_VERSION;
+
+    // Separately: the window's stored snapshots may themselves span several
+    // score versions (a retune mid-window). Silently picking one hides that
+    // the days behind this total were not all computed the same way, so it is
+    // stated on the document instead.
+    const versionRows = await query<{ v: string }>(
       db,
-      `SELECT score_version AS v FROM driver_performance_daily
+      `SELECT DISTINCT score_version AS v FROM driver_performance_daily
         WHERE officer_id = ? AND perf_date >= ? AND perf_date <= ?
-        ORDER BY perf_date DESC LIMIT 1`,
+        ORDER BY score_version`,
       officerId, from, to,
     );
+    const storedVersions = versionRows.map((r) => r.v).filter(Boolean);
+
     const bytes = await renderDriverPerformancePdf({
       summary,
       window: { from, to },
-      scoreVersion: versionRow?.v ?? SCORE_VERSION,
+      scoreVersion: printedVersion,
+      storedVersions,
       generatedAt: new Date().toISOString(),
       organization: 'Rocky Mountain Protective Group',
     });
@@ -264,6 +320,30 @@ driverPerformance.post('/recompute', requireRole('admin'), async (c) => {
   await ensureDriverPerformanceColumns(db);
   const body = await c.req.json<{ from?: string; to?: string }>().catch(() => ({} as { from?: string; to?: string }));
   if (!body.from || !body.to) return c.json({ error: 'from and to are required' }, 400);
+  // Reuse the SAME validator the GET handlers use. `Date.parse('yesterday')`
+  // is NaN, the loop condition `NaN <= NaN` is false, and the handler returned
+  // 200 {days: 0} — indistinguishable from a successful no-op recompute.
+  if (!isValidCalendarDate(body.from) || !isValidCalendarDate(body.to)) {
+    return c.json(
+      { error: 'from and to must be real calendar dates in YYYY-MM-DD format', code: 'INVALID_WINDOW' },
+      400,
+    );
+  }
+  if (body.from > body.to) {
+    return c.json({ error: 'from must not be after to', code: 'INVALID_WINDOW' }, 400);
+  }
+  // Each day is a SEQUENTIAL full rollup. `from=2000-01-01` would enqueue
+  // ~9,500 of them inside one request and blow the Worker's CPU wall long
+  // before finishing, leaving a partial recompute with no error.
+  const MAX_RECOMPUTE_DAYS = 366;
+  const spanDays = Math.round((Date.parse(body.to) - Date.parse(body.from)) / 86400000) + 1;
+  if (spanDays > MAX_RECOMPUTE_DAYS) {
+    return c.json({
+      error: `Window too large: ${spanDays} days requested, maximum is ${MAX_RECOMPUTE_DAYS}`,
+      code: 'WINDOW_TOO_LARGE',
+      max_days: MAX_RECOMPUTE_DAYS,
+    }, 400);
+  }
   const days: string[] = [];
   for (let t = Date.parse(body.from); t <= Date.parse(body.to); t += 86400000) {
     days.push(new Date(t).toISOString().slice(0, 10));
