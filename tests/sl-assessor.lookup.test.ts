@@ -59,9 +59,13 @@ describe('lookupParcelsWithFallback', () => {
       async () => new Response('upstream boom', { status: 502 }),
     );
     const kv = makeKv();
-    // Seed the durable / stale entry with two parcels from a prior run.
+    // Seed the durable / stale entry with a parcel from a prior run.
+    // NOTE the 14-digit parcel number: getCachedValidated() treats a
+    // 12-digit BLOCK id as poison and deletes the entry, because that is the
+    // value the county answers with HTTP 200 + its search form. A 12-digit
+    // fixture here would be testing that we serve unusable cached data.
     const stale = [
-      { parcel_number: '16-04-301-005', owner_of_record: 'SMITH JOHN', situs_address: '2200 S 500 E', land_sqft: 8000, total_market_value: 450000, detail_url: '?parcel=16-04-301-005' },
+      { parcel_number: '16-04-301-005-0000', owner_of_record: 'SMITH JOHN', situs_address: '2200 S 500 E', land_sqft: 8000, total_market_value: 450000, detail_url: '?parcel=16-04-301-005-0000' },
     ];
     kv._store.set('assessor:parcels:durable:2200 s 500 e', JSON.stringify(stale));
     const { lookupParcelsWithFallback } = await import('../src/utils/sl-assessor/lookup');

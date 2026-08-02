@@ -113,3 +113,39 @@ describe('parcel-number extraction — picker regressions (2026-08-01)', () => {
     expect(p.owner_of_record).toBe('GARLUTZO, ANDREW');
   });
 });
+
+describe('fillFromRawData — typed fields the label regexes missed', () => {
+  // Every one of these came back null on live parcels while raw_data_json
+  // held the value, which is why the picker rendered "— · — · $54,138,800".
+  // The county's labels are "Address" (not Situs), "Total Acreage" (not
+  // Acres) and "Above Grade sqft.".
+  const html = readFileSync(join(__dirname, 'fixtures/sl-assessor/detail-expanded.html'), 'utf8');
+  const p = parseParcelDetail(html);
+
+  it('resolves situs_address from the "Address" label', () => {
+    expect(p.situs_address).toBe('3533 S TERRA SOL DR');
+  });
+
+  it('resolves building area from "Above Grade sqft."', () => {
+    expect(p.total_bldg_sqft).toBe(1604);
+  });
+
+  it('uses TOTAL acreage, not one land record\'s share', () => {
+    // This parcel has two land records (0.06 + 0.01). pullByLabel(/acres/i)
+    // matched the first record's row and reported 0.06 as the parcel size.
+    expect(p.land_acres).toBeCloseTo(0.07, 2);
+    expect(p.land_sqft).toBe(Math.round(0.07 * 43560));
+  });
+
+  it('resolves the year-prefixed valuation labels without hardcoding a year', () => {
+    expect(p.market_value_total).toBe(596600);
+    expect(p.market_value_land).toBe(85400);
+    expect(p.market_value_improvement).toBe(511200);
+    expect(p.tax_year).toBe(2026);
+  });
+
+  it('resolves tax district and property type', () => {
+    expect(p.tax_district).toBe('14B');
+    expect(p.improvement_class).toBe('119 - PUD');
+  });
+});
