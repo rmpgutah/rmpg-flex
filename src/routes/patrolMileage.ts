@@ -34,6 +34,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
@@ -312,7 +313,7 @@ pm.get('/mileage/audit', async (c) => {
     const unitIdRaw = c.req.query('unit_id');
     const from = c.req.query('from');
     const to = c.req.query('to');
-    const limit = Math.min(500, Math.max(1, parseInt(c.req.query('limit') || '100', 10)));
+    const limit = clampIntParam(c.req.query('limit'), 100, 1, 500);
     const officerId = officerIdRaw ? parseInt(officerIdRaw, 10) : NaN;
     const unitId = unitIdRaw ? parseInt(unitIdRaw, 10) : NaN;
     if (!Number.isFinite(officerId) && !Number.isFinite(unitId)) {

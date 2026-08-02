@@ -11,6 +11,7 @@
 // ============================================================
 
 import { Hono, type Context } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { getR2Range, rangeNotSatisfiableInit } from '../utils/byteRange';
@@ -121,8 +122,8 @@ drivingEvents.get('/', async (c: Context<Env>): Promise<Response> => {
   const severity = (c.req.query('severity') || '').toLowerCase();
   const eventType = (c.req.query('event_type') || '').toLowerCase();
   const hasVideo = c.req.query('has_video');
-  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '200', 10), 1), 500);
-  const offset = Math.max(parseInt(c.req.query('offset') || '0', 10), 0);
+  const limit = clampIntParam(c.req.query('limit'), 200, 1, 500);
+  const offset = clampIntParam(c.req.query('offset'), 0, 0, 1000000);
 
   let rows = (await readEvents(db)).map(shapeEvent);
   if (source) rows = rows.filter((r) => r.source === source);

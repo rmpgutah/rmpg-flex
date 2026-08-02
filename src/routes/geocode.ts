@@ -18,6 +18,7 @@
 // We include a 24-hour KV cache so repeat queries don't burn the budget.
 
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { authMiddleware } from '../middleware/auth';
 
@@ -140,7 +141,7 @@ export async function geocodeAddress(
 // in the shape AddressAutocomplete expects (Nominatim raw shape works).
 geocode.get('/geocode/search', async (c) => {
   const q = c.req.query('q')?.trim() || '';
-  const limit = Math.min(10, Math.max(1, parseInt(c.req.query('limit') || '5', 10)));
+  const limit = clampIntParam(c.req.query('limit'), 5, 1, 10);
   if (q.length < 3) return c.json({ results: [] });
 
   // KV cache key — query+limit is the natural index. 24h TTL is

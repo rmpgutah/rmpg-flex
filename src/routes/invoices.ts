@@ -18,6 +18,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 
@@ -174,8 +175,8 @@ invoices.get('/', async (c) => {
     const db = getDb(c.env);
     const tbl = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='invoices'");
     if (!tbl?.n) return c.json({ data: [], total: 0 });
-    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
-    const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 200);
+    const page = clampIntParam(c.req.query('page'), 1, 1, 1000000);
+    const limit = clampIntParam(c.req.query('limit'), 50, 1, 200);
     const offset = (page - 1) * limit;
     const total = await queryFirst<{ cnt: number }>(db, 'SELECT COUNT(*) AS cnt FROM invoices');
     const rows = await query<Record<string, unknown>>(db,

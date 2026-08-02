@@ -16,6 +16,7 @@
 // ============================================================
 
 import { Hono, type Context } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
@@ -324,7 +325,7 @@ cpg.post('/media-sync-now', adminOnly, async (c) => {
 
 async function dashcamEventQuery(c: Context<Env>, where: string, ...params: unknown[]) {
   const db = getDb(c.env);
-  const limit = Math.max(1, Math.min(500, parseInt(c.req.query('limit') || '50', 10)));
+  const limit = clampIntParam(c.req.query('limit'), 50, 1, 500);
   try {
     const events = await query(db, `
       SELECT e.*, u.call_sign, ofc.full_name AS officer_name

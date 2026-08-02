@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 import { getR2Range, rangeNotSatisfiableInit } from '../utils/byteRange';
@@ -4595,7 +4596,7 @@ fleet.get('/:id/gps-history', async (c) => {
     if (!Number.isFinite(vehicleId)) return c.json({ error: 'Invalid vehicle id' }, 400);
     const db = getDb(c.env);
     const days = Math.min(90, Math.max(1, parseInt(c.req.query('days') || '7', 10)));
-    const limit = Math.min(5000, Math.max(1, parseInt(c.req.query('limit') || '1000', 10)));
+    const limit = clampIntParam(c.req.query('limit'), 1000, 1, 5000);
 
     const veh = await queryFirst<{ assigned_unit_id: number | null }>(db,
       'SELECT assigned_unit_id FROM fleet_vehicles WHERE id = ?', vehicleId);
@@ -4984,8 +4985,10 @@ fleet.get('/:id/call-history', async (c) => {
     const db = getDb(c.env);
     const vehicleId = Number(c.req.param('id'));
     if (!Number.isFinite(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
-    const limit = Math.min(Number(c.req.query('limit')) || 50, 200);
-    const offset = Number(c.req.query('offset')) || 0;
+    // clampIntParam, not `Number(...) || 0`: a huge finite value (1e20)
+    // is truthy, survives the `|| 0`, and D1 rejects it on OFFSET.
+    const limit = clampIntParam(c.req.query('limit'), 50, 1, 200);
+    const offset = clampIntParam(c.req.query('offset'), 0, 0, 1_000_000);
 
     const vehicle = await queryFirst<{ vehicle_number: string }>(
       db, 'SELECT vehicle_number FROM fleet_vehicles WHERE id = ?', vehicleId);
