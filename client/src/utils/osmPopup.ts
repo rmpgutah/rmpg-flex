@@ -14,6 +14,7 @@
 // ============================================================
 
 import { OSM_EXTRACT_DATE } from '../config/osmLayers.generated';
+import { parseTimestamp } from './dateUtils';
 
 export function escapeHtml(v: unknown): string {
   return String(v ?? '')
@@ -80,12 +81,21 @@ export function formatVoltage(raw: unknown): string | null {
   return v >= 1000 ? `${(v / 1000).toLocaleString()} kV` : `${v} V`;
 }
 
-/** Unix epoch or ISO -> a readable date. */
+/**
+ * OSM last-edited timestamp -> a readable date.
+ *
+ * osmium's `--attributes=timestamp` emits Unix EPOCH SECONDS (e.g.
+ * "1707809666"), not a server wall-clock string. Epoch is unambiguously UTC,
+ * so the numeric path constructs a Date directly. Any non-numeric value is a
+ * string form (ISO with Z, or naive) and goes through parseTimestamp, which
+ * knows the repo's naive-UTC convention — constructing a Date straight from a
+ * naive string would read it as device-local and land ~7h off in Mountain Time.
+ */
 export function formatOsmTimestamp(raw: unknown): string | null {
   const s = String(raw ?? '').trim();
   if (!s) return null;
   const n = Number(s);
-  const d = Number.isFinite(n) ? new Date(n * 1000) : new Date(s);
+  const d = Number.isFinite(n) ? new Date(n * 1000) : parseTimestamp(s); // new-date-ok: epoch ms, not a server string
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString().slice(0, 10);
 }
