@@ -61,7 +61,22 @@ const SAMPLES_TITLE =
   'run above the stated speed, counted once and tiered by its peak. A zero here with miles ' +
   'driven means the feed was silent — not that driving was clean.';
 
-interface RosterResponse {
+/**
+ * Gated response shape — same house convention as other not_configured
+ * endpoints: 200 with ok:false and a code, never a 503. `awaiting_call_context`
+ * is the only code this feature currently emits, but the field stays a plain
+ * string rather than a literal so a future gate code doesn't silently fail
+ * this type.
+ */
+interface GatedResponse {
+  ok: false;
+  code: string;
+  message: string;
+  score_version: string;
+}
+
+interface NormalRosterResponse {
+  ok?: undefined;
   from: string;
   to: string;
   min_exposure_miles: number;
@@ -69,6 +84,8 @@ interface RosterResponse {
   ranked: RosterEntry[];
   insufficient_data: RosterEntry[];
 }
+
+type RosterResponse = GatedResponse | NormalRosterResponse;
 
 interface DailyEntry {
   perf_date: string;
@@ -88,7 +105,8 @@ interface DailyEntry {
   events_low: number;
 }
 
-interface OfficerResponse {
+interface NormalOfficerResponse {
+  ok?: undefined;
   from: string;
   to: string;
   min_exposure_miles: number;
@@ -96,6 +114,8 @@ interface OfficerResponse {
   summary: RosterEntry | null;
   daily: DailyEntry[];
 }
+
+type OfficerResponse = GatedResponse | NormalOfficerResponse;
 
 // Severity tokens, not brand chrome — risk IS severity semantics here.
 const BAND_CLASS: Record<string, string> = {
@@ -222,7 +242,7 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
   // as a blob (not apiFetch, which forces JSON) so the authenticated PDF can be
   // handed to the browser as a download.
   const handleExport = async () => {
-    const win = data ? `?from=${data.from}&to=${data.to}` : '';
+    const win = data && data.ok !== false ? `?from=${data.from}&to=${data.to}` : '';
     setExporting(true);
     setExportError(null);
     try {
@@ -293,6 +313,19 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
   }
 
   if (!data) return null;
+
+  if (data.ok === false) {
+    return (
+      <div className="p-4 space-y-3">
+        <PanelTitleBar title="OFFICER DRIVER PERFORMANCE" icon={Gauge} />
+        {backButton}
+        <div className="border border-[color:var(--sev-warn)] p-3 text-xs text-rmpg-100">
+          <div className="font-semibold text-[color:var(--sev-warn)] mb-1">Scoring unavailable</div>
+          <div>{data.message}</div>
+        </div>
+      </div>
+    );
+  }
 
   const { summary, daily, min_exposure_miles } = data;
   const labels = tierLabels(data.speed_thresholds);
@@ -578,6 +611,18 @@ export default function FleetDriverPerformanceTab() {
   }
 
   if (!data) return null;
+
+  if (data.ok === false) {
+    return (
+      <div className="p-4 space-y-3">
+        <PanelTitleBar title="DRIVER PERFORMANCE" icon={Gauge} />
+        <div className="border border-[color:var(--sev-warn)] p-3 text-xs text-rmpg-100">
+          <div className="font-semibold text-[color:var(--sev-warn)] mb-1">Scoring unavailable</div>
+          <div>{data.message}</div>
+        </div>
+      </div>
+    );
+  }
 
   const noRoster = data.ranked.length === 0 && data.insufficient_data.length === 0;
   const rl = tierLabels(data.speed_thresholds);
