@@ -65,8 +65,24 @@ mkdir -p "$WORK"
 EXTRACT_URL="$(jq -r '.extract' "$CATALOG")"
 EXTRACT="${WORK}/utah-latest.osm.pbf"
 
+# NOT `GROUPS` — that is a bash special variable holding the user's group IDs.
+# Assigning to it is silently ignored and $GROUPS then yields a numeric GID
+# (20 = staff on macOS), so every group name becomes "20". Passes bash -n and
+# code review; fails only at runtime.
+#
+# Validated BEFORE the download below — a typo'd --group name should fail fast
+# rather than waste a ~160 MB download first.
+OSM_GROUPS="$(jq -r '.groups[].name' "$CATALOG")"
+if [[ -n "$ONLY_GROUP" ]]; then
+  echo "$OSM_GROUPS" | grep -qx "$ONLY_GROUP" || { echo "unknown group: $ONLY_GROUP" >&2; exit 2; }
+  OSM_GROUPS="$ONLY_GROUP"
+fi
+
 # ── Download ────────────────────────────────────────────────
 if [[ $SKIP_DOWNLOAD -eq 0 || ! -f "$EXTRACT" ]]; then
+  if [[ $SKIP_DOWNLOAD -eq 1 ]]; then
+    echo "==> --skip-download requested, but no cached extract found — downloading anyway" >&2
+  fi
   echo "==> Downloading Utah extract (~250 MB)"
   curl -fL --progress-bar -o "${EXTRACT}.tmp" "$EXTRACT_URL"
   mv "${EXTRACT}.tmp" "$EXTRACT"
@@ -76,16 +92,6 @@ fi
 
 EXTRACT_DATE="$(osmium fileinfo -e -g data.timestamp.last "$EXTRACT" 2>/dev/null | cut -dT -f1 || echo unknown)"
 echo "==> Extract data timestamp: $EXTRACT_DATE"
-
-# NOT `GROUPS` — that is a bash special variable holding the user's group IDs.
-# Assigning to it is silently ignored and $GROUPS then yields a numeric GID
-# (20 = staff on macOS), so every group name becomes "20". Passes bash -n and
-# code review; fails only at runtime.
-OSM_GROUPS="$(jq -r '.groups[].name' "$CATALOG")"
-if [[ -n "$ONLY_GROUP" ]]; then
-  echo "$OSM_GROUPS" | grep -qx "$ONLY_GROUP" || { echo "unknown group: $ONLY_GROUP" >&2; exit 2; }
-  OSM_GROUPS="$ONLY_GROUP"
-fi
 
 # ── Per-group filter + transform ────────────────────────────
 # Emits ${WORK}/<group>.geojsonseq and ${WORK}/<group>.counts.json for every
@@ -108,7 +114,17 @@ for g in $OSM_GROUPS; do
   osmium tags-filter --overwrite -o "${WORK}/${g}.osm.pbf" "$EXTRACT" "${FILTERS[@]}"
 
   echo "==> [$g] exporting + transforming"
-  osmium export -f geojsonseq --overwrite -o "${WORK}/${g}.raw.geojsonseq" "${WORK}/${g}.osm.pbf"
+  # osmium export silently drops objects whose geometry cannot be assembled —
+  # notably wr/ relations, and `jurisdiction` is wr/-only, where a silent drop
+  # is most consequential. --error-file surfaces those instead of letting them
+  # vanish with no trace.
+  osmium export -f geojsonseq --overwrite -o "${WORK}/${g}.raw.geojsonseq" \
+    --error-file "${WORK}/${g}.export-errors.txt" "${WORK}/${g}.osm.pbf"
+  if [[ -s "${WORK}/${g}.export-errors.txt" ]]; then
+    echo "[$g] ABORT: osmium export reported geometry errors — refusing to ship a short archive." >&2
+    echo "[$g] See ${WORK}/${g}.export-errors.txt" >&2
+    exit 1
+  fi
 
   node "${ROOT}/scripts/osm/transform.mjs" --group "$g" \
     < "${WORK}/${g}.raw.geojsonseq" \
@@ -118,6 +134,16 @@ for g in $OSM_GROUPS; do
   # transform.mjs writes its summary as the LAST stderr line; keep only that.
   tail -n 1 "${WORK}/${g}.counts.json" > "${WORK}/${g}.counts.tmp"
   mv "${WORK}/${g}.counts.tmp" "${WORK}/${g}.counts.json"
+
+  # A malformed line is a feature we silently did not write. Absence in a rendered
+  # layer must mean "not mapped in OSM", never "our pipeline dropped it" — so this
+  # fails the build rather than shipping a short archive.
+  MALFORMED_COUNT="$(jq -r '.malformed' "${WORK}/${g}.counts.json")"
+  if [[ "$MALFORMED_COUNT" != "0" ]]; then
+    echo "[$g] ABORT: ${MALFORMED_COUNT} malformed input line(s) — refusing to ship a short archive." >&2
+    echo "[$g] Inspect ${WORK}/${g}.raw.geojsonseq. Override only if you understand the loss." >&2
+    exit 1
+  fi
 
   jq -r '"    " + (.counts | to_entries | map("\(.key)=\(.value)") | join("  "))' "${WORK}/${g}.counts.json"
   BUILT_GROUPS+=("$g")

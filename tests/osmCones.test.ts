@@ -49,6 +49,27 @@ describe('conePolygon', () => {
     expect(mid[1] - ORIGIN[1]).toBeLessThan(0.0004);
   });
 
+  it('scales longitude by 1/cos(latitude) — an east cone must be wider (in degrees) than a north cone', () => {
+    // At 40.7608°N, cos(lat) ≈ 0.7566, so the east-pointing cone's longitude
+    // delta should be about 1/0.7566 ≈ 1.32x the north-pointing cone's latitude
+    // delta. A toBeCloseTo(…, 3) tolerance (0.001) is wider than the entire
+    // ~0.00027-degree cone, so it can't catch a removed cos() scaling — assert
+    // the ratio directly instead.
+    const north = conePolygon(ORIGIN[0], ORIGIN[1], 0);
+    const east = conePolygon(ORIGIN[0], ORIGIN[1], 90);
+    const northMid = north.coordinates[0][Math.floor(north.coordinates[0].length / 2)];
+    const eastMid = east.coordinates[0][Math.floor(east.coordinates[0].length / 2)];
+
+    const dLatNorth = northMid[1] - ORIGIN[1];
+    const dLngEast = eastMid[0] - ORIGIN[0];
+
+    const expectedRatio = 1 / Math.cos((ORIGIN[1] * Math.PI) / 180);
+    const actualRatio = dLngEast / dLatNorth;
+
+    expect(actualRatio).toBeGreaterThan(expectedRatio * 0.97);
+    expect(actualRatio).toBeLessThan(expectedRatio * 1.03);
+  });
+
   it('produces segments+2 ring points (apex, arc, closing apex)', () => {
     const ring = conePolygon(ORIGIN[0], ORIGIN[1], 0, 30, 60, 12).coordinates[0];
     expect(ring).toHaveLength(12 + 1 + 2);

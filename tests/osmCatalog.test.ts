@@ -79,6 +79,12 @@ describe('osm layer catalog', () => {
     }
   });
 
+  it('constrains every group name to a safe charset (flows into R2 keys/paths)', () => {
+    for (const g of loadCatalog().groups) {
+      expect(g.name, `${g.name}`).toMatch(/^[a-z][a-z0-9-]*$/);
+    }
+  });
+
   it('does not declare landuse=quarry in more than one group', () => {
     const owners: string[] = [];
     for (const g of loadCatalog().groups) {

@@ -24,6 +24,11 @@ function validate(cat) {
   const seenGroups = new Set();
   for (const g of cat.groups) {
     if (!g.name) throw new Error('group missing name');
+    // Group names flow into R2 object keys and filesystem paths — constrain the
+    // charset so a stray name can't traverse a path or produce a surprising key.
+    if (!/^[a-z][a-z0-9-]*$/.test(g.name)) {
+      throw new Error(`${g.name}: group name must match /^[a-z][a-z0-9-]*$/`);
+    }
     if (seenGroups.has(g.name)) throw new Error(`duplicate group: ${g.name}`);
     seenGroups.add(g.name);
     if (g.archive !== `osm-${g.name}.pmtiles`) {
