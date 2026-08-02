@@ -14,12 +14,37 @@ const workerPoolOptions = {
     compatibilityFlags: ['nodejs_compat'],
     d1Databases: { DB: 'alpr-test' },
     kvNamespaces: ['KV'],
-    r2Buckets: ['UPLOADS'],
+    r2Buckets: ['UPLOADS', 'DOWNLOADS'],
+    // Needed so authMiddleware (src/middleware/auth.ts) can verify JWTs when
+    // exercised end-to-end via SELF.fetch (test-workers/dailyReports.test.ts).
+    // Unlike test-workers/auth.test.ts — which calls authRouter.request()
+    // directly and can pass a per-call env override — SELF.fetch runs
+    // against the ambient worker env, so the secret has to be a real binding
+    // here rather than injected per request.
+    bindings: { JWT_SECRET: 'test-jwt-secret-do-not-use-in-prod' },
   },
 };
 
 export default defineConfig({
   plugins: [cloudflareTest(workerPoolOptions)],
+  // pdf-lib's default (CJS) build pulls in pako via a relative `require()`
+  // that the workerd/Miniflare module loader can't resolve (no Node-style
+  // relative CJS resolution) — every test importing anything that reaches
+  // src/utils/dailyReport/render.ts (pdf-lib) failed with "No such module
+  // .../pako/lib/utils/common" before this alias. pdf-lib ships a pure-ESM
+  // build under `es/` with no such require, so route around the CJS entry.
+  resolve: {
+    alias: {
+      // pako's default entry (index.js) does relative `require('./lib/...')`
+      // calls the workerd/Miniflare module loader can't resolve — every test
+      // reaching src/utils/dailyReport/render.ts (pdf-lib, which depends on
+      // pako for stream compression) failed with "No such module .../pako/
+      // lib/utils/common" before this alias. dist/pako.js is a single
+      // self-contained UMD bundle with no internal requires, so it loads
+      // cleanly under the same loader.
+      pako: 'pako/dist/pako.js',
+    },
+  },
   test: {
     include: ['test-workers/**/*.test.ts'],
     pool: cloudflarePool(workerPoolOptions),

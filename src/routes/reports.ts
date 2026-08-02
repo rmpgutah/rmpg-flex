@@ -22,6 +22,7 @@ import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
 import type { Env } from '../types';
 
 import { log } from '../utils/logger';
+import dailyReports from './dailyReports';
 const reports = new Hono<Env>();
 
 const ANALYTICS_ROLES = ['admin', 'manager', 'supervisor'];
@@ -37,6 +38,11 @@ reports.use('*', async (c, next) => {
   // /calls-near is the patrol-view geo filter — every officer hits it from
   // the dashboard, not just analytics roles.
   if (c.req.path.endsWith('/calls-near')) return next();
+  // /daily-reports/* (Fleet Daily Blotter) is open to any authenticated
+  // user for viewing — its own sub-router (src/routes/dailyReports.ts)
+  // gates POST /generate to admin only. Excluded here or every officer
+  // GET would 403 before ever reaching that router.
+  if (c.req.path.includes('/daily-reports')) return next();
   return requireRole(...ANALYTICS_ROLES)(c, next);
 });
 
@@ -1454,5 +1460,10 @@ reports.get('/overdue-reports', async (c) => {
     return c.json({ count: rows.length, items: rows });
   } catch { return c.json({ count: 0, items: [] }); }
 });
+
+// Mounted here rather than in routesConfig so it inherits /api/reports'
+// auth:'required'. Declaration order matters in Hono — verified 2026-08-01
+// that no route above is a bare /:param that could shadow this.
+reports.route('/daily-reports', dailyReports);
 
 export default reports;
