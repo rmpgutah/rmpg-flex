@@ -591,25 +591,31 @@ matches one category still emits exactly one feature) but is NOT harmless for
 `surveillance`, where two categories share the same underlying tag and one is
 strictly narrower than the other.
 
-### 10.2 Camera cones are gated one zoom level below non-ALPR cameras — RESOLVED
+### 10.2 ✅ RESOLVED — Camera cones gated one zoom below non-ALPR cameras — RESOLVED
 
-`transform.mjs` stamps `camera_cone` with the **group** minimum zoom (14), while
-the generic `camera` category is gated at 15. A cone for a non-ALPR camera
-therefore renders one zoom level before its own camera icon appears. Cosmetic, but
-pin the cone layer's `minzoom` per parent category in Plan 2.
+~~`transform.mjs` stamped `camera_cone` with the **group** minimum zoom (14),
+while the generic `camera` category is gated at 15, so a non-ALPR camera's cone
+rendered one zoom level before its own icon.~~
+
+**Fixed:** cones are stamped with `minzoomFor(projected.properties.cat)` — the
+parent category's own minzoom — so an `alpr` cone gates at 14 and a `camera`
+cone at 15.
 
 Resolved: `transform.mjs` now stamps each cone's `tippecanoe.minzoom` from its
 own parent feature's category (`minzoomFor(projected.properties.cat)`) instead
 of the group minimum — an `alpr` cone gets 14, a `camera` cone gets 15.
 
-### 10.3 The manifest cannot actually detect a partial upload — RESOLVED
+### 10.3 ✅ RESOLVED — The manifest could not detect a partial upload — RESOLVED
 
-Archives upload before the manifest specifically so that a stale manifest beside
-fresh archives is detectable. But the manifest records only `feature_count` and
-`categories` — no per-archive byte size or hash — so nothing can actually compare
-what the manifest claims against what is in R2. Add `bytes` (and ideally a hash)
-per group to make the stated invariant enforceable. Requires a manifest-format
-change that Plan 2's reader must tolerate.
+~~The manifest recorded only `feature_count` and `categories` — no per-archive
+size or hash — so nothing could compare its claim against what is actually in
+R2, making the "a stale manifest is detectable" invariant unenforceable.~~
+
+**Fixed:** each group now carries `bytes` and `sha256`. Size alone is not
+sufficient — a truncated-then-padded object, or an upload of the *wrong* archive
+of similar size, both pass a length check. The digest makes the claim verifiable
+rather than merely plausible. `shasum` is checked in preflight so a missing tool
+fails in under a second instead of 30 minutes in.
 
 Resolved: `scripts/build-osm-tiles.sh` now records a `bytes` field per group
 in the manifest, taken from `wc -c < ${WORK}/osm-${g}.pmtiles` (portable —

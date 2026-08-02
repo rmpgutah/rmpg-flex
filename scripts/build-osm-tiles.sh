@@ -48,6 +48,7 @@ need() {
 need osmium     "brew install osmium-tool"
 need tippecanoe "brew install tippecanoe"
 need jq         "brew install jq"
+need shasum     "ships with macOS/perl; on Linux use coreutils sha256sum"
 need node       "https://nodejs.org (v20+)"
 if [[ $COUNT_ONLY -eq 0 ]]; then
   need npx      "ships with node"
@@ -322,11 +323,17 @@ echo "==> Writing manifest"
     # manifest's claimed size against the object actually in R2, so a partial
     # upload is detectable instead of only a stale-vs-fresh timestamp guess.
     BYTES="$(wc -c < "${WORK}/osm-${g}.pmtiles" | tr -d ' ')"
+    # Size alone cannot prove the bytes in R2 are the bytes we built — a
+    # truncated-then-padded object, or an upload of the WRONG archive of a
+    # similar size, both pass a length check. A digest makes the manifest's
+    # claim verifiable rather than merely plausible.
+    SHA="$(shasum -a 256 "${WORK}/osm-${g}.pmtiles" | awk '{print $1}')"
     printf '    "%s": ' "$g"
-    jq -c --argjson bytes "$BYTES" \
+    jq -c --argjson bytes "$BYTES" --arg sha "$SHA" \
       '{feature_count: (.counts | to_entries | map(.value) | add),
         categories: (.counts | to_entries | map(select(.value > 0)) | map(.key)),
-        bytes: $bytes}' \
+        bytes: $bytes,
+        sha256: $sha}' \
       "${WORK}/${g}.counts.json" | tr -d '\n'
   done
   echo ""

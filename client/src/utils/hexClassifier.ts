@@ -13,7 +13,14 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   pdfGenerator: /(^|\/)[^/]*[Pp]df[^/]*\.(ts|tsx)$/,
   pdfEditorCanvas: /(^|\/)pdf-editor\//,
   // Mapbox GL rejects var(--x); these modules own resolved color strings.
-  mapboxPaint: /(^|\/)(mapboxBasemap|mapboxSafeLayer|mapMarkers|mapboxMap)\.ts$/,
+  //
+  // osmIconArt/osmIcons are the same case one step removed: their hex ends up
+  // inside SVG strings that are rasterized to ImageData and handed to
+  // map.addImage. A var() never resolves there — the icon decodes to a
+  // transparent bitmap and the symbol layer renders nothing, silently. The
+  // material ramps (7-stop cylinder shading, specular bands) are also art, not
+  // chrome: re-theming them onto a navy ramp would flatten the illustrations.
+  mapboxPaint: /(^|\/)(mapboxBasemap|mapboxSafeLayer|mapMarkers|mapboxMap|osmIconArt|osmIcons)\.ts$/,
   // Tests and fixtures assert on literal values on purpose.
   tests: /(__tests__|\.test\.|\.spec\.)/,
   // The audit tooling itself must keep literal reference values.

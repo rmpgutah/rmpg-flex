@@ -19,7 +19,9 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
-import { ensureOsmIcons, iconIdForCat } from '../utils/osmIcons';
+import {
+  ensureOsmIcons, iconIdForCat, iconImageExpression, symbolSortKeyFor,
+} from '../utils/osmIcons';
 import { buildOsmPopupHtml } from '../utils/osmPopup';
 import { mergeOverride, hiddenFilterClause, type OsmOverride } from './useOsmOverrides';
 import {
@@ -260,6 +262,16 @@ const OSM_LABEL_RULES: Record<string, LabelRule> = {
   school: { field: ['coalesce', ['get', 'name'], ''], minzoom: 15, placement: 'point', size: 10 },
   gov: { field: ['coalesce', ['get', 'name'], ''], minzoom: 15, placement: 'point', size: 10 },
   heli: { field: ['coalesce', ['get', 'name'], ''], minzoom: 13, placement: 'point', size: 10 },
+  // Space count and charger count are the one fact an operator wants off a
+  // parking structure or a charging site without opening the popup.
+  parking: {
+    field: ['case', ['has', 'capacity'], ['to-string', ['get', 'capacity']], ''],
+    minzoom: 16, placement: 'point', size: 10,
+  },
+  charging: {
+    field: ['case', ['has', 'capacity'], ['to-string', ['get', 'capacity']], ''],
+    minzoom: 16, placement: 'point', size: 10,
+  },
 };
 
 export function buildOsmLabelSpec(
@@ -355,19 +367,31 @@ export function buildOsmLayerSpecs(cfg: VectorTileLayerConfig, isLight: boolean)
     // a power pole are distinguishable. iconIdForCat only returns ids that
     // ensureOsmIcons registers via map.addImage — never a bare basemap sprite
     // name, because a missing sprite name renders NOTHING, silently.
-    const iconId = iconIdForCat(cfg.categoryFilter ?? '');
+    const cat = cfg.categoryFilter ?? '';
+    const iconId = iconIdForCat(cat);
     if (iconId) {
-      const isCamera = cfg.categoryFilter === 'camera' || cfg.categoryFilter === 'alpr';
+      const isCamera = cat === 'camera' || cat === 'alpr';
       specs.push({
         id: `${idBase}-symbol`,
         type: 'symbol',
         ...base,
         layout: {
           ...base.layout,
-          'icon-image': iconId,
-          'icon-size': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 0.45, 18, 0.85],
+          // A data expression, not a bare id: the sprite is chosen per feature
+          // from its own OSM tags (NFPA flow class, stop vs signal, dome vs
+          // bullet, out-of-service) and stepped down to a simplified sprite
+          // below the zoom where that detail is resolvable. Every branch
+          // resolves to an id ensureOsmIcons registers.
+          'icon-image': iconImageExpression(cat, cfg.minzoom) ?? iconId,
+          // The 64px design box is 2x the old one, so the size ramp is halved
+          // to keep the on-screen footprint the operator is used to.
+          'icon-size': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 0.26, 18, 0.5],
           'icon-allow-overlap': false,
           'icon-ignore-placement': false,
+          // Lower sorts first, and first-placed wins a collision. Without this
+          // every category shared the default, so a street lamp could beat a
+          // fire hydrant for the same pixels at z15.
+          'symbol-sort-key': symbolSortKeyFor(cat),
           // A camera icon must point where the camera actually points.
           // rotation-alignment MUST be 'map': the default ('viewport') pins the
           // icon to the screen, so the bearing becomes a lie the moment the
