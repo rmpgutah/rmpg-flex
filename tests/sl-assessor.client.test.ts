@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { searchByAddress, getParcel, buildQueryUrl, parseAddressComponents }
@@ -81,5 +81,46 @@ describe('searchByAddress', () => {
       searchByAddress({ FIRECRAWL_API_KEY: 'sk_test' }, '2200 S 500 E'),
     ).resolves.toEqual([]);
     fetchSpy.mockRestore();
+  });
+});
+
+describe('parseAddressComponents — spelled-out trailing direction', () => {
+  // "Could not reach the Assessor" on 10506 South 465 East, Sandy.
+  // SLC's grid names streets by DIRECTION ("465 East"), and the county's form
+  // wants that as street_type="E". Only TYPE_EXPAND was applied to the
+  // trailing token, so "EAST" stayed a literal word and street_name became
+  // "465 EAST" — the POST then returned the search form rather than the
+  // parcel, which the UI reports as an unreachable assessor.
+  //
+  // Verified live 2026-08-01 against resultsMain.cfm:
+  //   {name:'465', type:'E'}    → 302 to the detail page (43 KB)
+  //   {name:'465 EAST'}         → search form (16.8 KB)
+
+  it('expands a trailing EAST to the street_type the county expects', () => {
+    expect(parseAddressComponents('10506 South 465 East')).toEqual({
+      street_Num: '10506', street_dir: 'S', street_name: '465', street_type: 'E',
+    });
+  });
+
+  it('expands every spelled-out trailing direction', () => {
+    for (const [word, abbr] of [['North', 'N'], ['South', 'S'], ['East', 'E'], ['West', 'W']]) {
+      expect(parseAddressComponents(`1000 East 500 ${word}`).street_type).toBe(abbr);
+    }
+  });
+
+  it('still accepts the already-abbreviated form', () => {
+    expect(parseAddressComponents('10506 S 465 E')).toEqual({
+      street_Num: '10506', street_dir: 'S', street_name: '465', street_type: 'E',
+    });
+  });
+
+  it('does not mistake a street TYPE for a direction', () => {
+    const c = parseAddressComponents('3533 South Terra Sol Drive');
+    expect(c.street_name).toBe('TERRA SOL');
+    expect(c.street_type).toBe('DR');
+  });
+
+  it('leaves a named street with no trailing token alone', () => {
+    expect(parseAddressComponents('4000 South Redwood Road').street_name).toBe('REDWOOD');
   });
 });

@@ -174,7 +174,67 @@ export function parseParcelDetail(html: string): Parcel {
       });
     }
   }
-  return {
+
+/**
+ * Fill typed slots from the summary block's labelled key/value pairs.
+ *
+ * The pullByLabel() regexes below were written against synthetic fixtures and
+ * miss the county's real labels: the situs row is labelled "Address" (not
+ * "Situs"), lot size is "Total Acreage" (not "Acres"), and building area is
+ * "Above Grade sqft." — so situs_address, land_acres and the sqft fields came
+ * back null on every live parcel even though raw_data_json held all three.
+ *
+ * FILL-ONLY: a value pullByLabel already resolved always wins.
+ */
+function fillFromRawData(parcel: Parcel, raw: Record<string, string>): void {
+  const get = (...labels: string[]): string | null => {
+    for (const l of labels) {
+      const hit = Object.keys(raw).find((k) => k.toLowerCase().replace(/[^a-z0-9]/g, '') === l);
+      if (hit && raw[hit]?.trim()) return raw[hit].trim();
+    }
+    return null;
+  };
+  const setIfNull = <K extends keyof Parcel>(key: K, v: unknown) => {
+    if (parcel[key] == null && v != null) (parcel as any)[key] = v;
+  };
+
+  setIfNull('situs_address', get('address'));
+  setIfNull('owner_of_record', get('owner'));
+  setIfNull('tax_district', get('taxdistrict'));
+  setIfNull('improvement_class', get('propertytype'));
+  // OVERRIDE, not fill-only. pullByLabel(/acres/i) binds to the LAND RECORD's
+  // "Acres" row, which is one land record's share — 0.06 of this parcel's
+  // 0.07, because it has two land records. "Total Acreage" is the parcel
+  // total and is what land_acres means, so it wins outright.
+  const totalAcreage = toFloat(get('totalacreage'));
+  if (totalAcreage != null) {
+    parcel.land_acres = totalAcreage;
+    parcel.land_sqft = null;   // recomputed below from the corrected acreage
+  }
+  setIfNull('total_bldg_sqft', toInt(get('abovegradesqft')));
+  setIfNull('finished_sqft', toInt(get('abovegradesqft')));
+
+  // The county publishes the CURRENT tax year inline in these labels
+  // ("2026 Market Value"), so match on the suffix rather than a fixed year.
+  const bySuffix = (suffix: string): string | null => {
+    const hit = Object.keys(raw).find((k) => /^(19|20)\d{2}\s/.test(k)
+      && k.toLowerCase().replace(/[^a-z0-9]/g, '').endsWith(suffix));
+    return hit ? raw[hit] : null;
+  };
+  setIfNull('market_value_total', toInt(bySuffix('marketvalue')));
+  setIfNull('market_value_land', toInt(bySuffix('landvalue')));
+  setIfNull('market_value_improvement', toInt(bySuffix('buildingvalue')));
+  setIfNull('taxable_value', toInt(bySuffix('taxablevalue')));
+
+  // land_sqft: the county gives acreage, not square feet. 43,560 ft²/acre.
+  if (parcel.land_sqft == null && parcel.land_acres != null) {
+    parcel.land_sqft = Math.round(parcel.land_acres * 43_560);
+  }
+  const yr = Object.keys(raw).find((k) => /^(19|20)\d{2}\s/.test(k));
+  if (parcel.tax_year == null && yr) parcel.tax_year = toInt(yr.slice(0, 4));
+}
+
+  const parcel: Parcel = {
     parcel_number,
     source: 'sl_county_assessor',
     source_url: '',  // filled by client
@@ -221,4 +281,6 @@ export function parseParcelDetail(html: string): Parcel {
     sales,
     raw_data_json,
   };
+  fillFromRawData(parcel, raw_data_json);
+  return parcel;
 }

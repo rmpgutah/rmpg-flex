@@ -352,3 +352,50 @@ export const PROMOTED_RECORD_FIELDS: PromotedField[] = [
 
 /** Tables that receive the promoted columns. */
 export const PROMOTED_TARGET_TABLES = ['businesses', 'properties'] as const;
+
+// ── Cross-rendering label aliases ────────────────────────────────────────
+// The same datum is labelled differently on the expanded page than on the
+// More Details Report, so a registry keyed on the report's labels alone
+// leaves them unmapped when the report is unavailable and the expanded page
+// is all we have. These add NO new columns — each alias targets a field that
+// already exists.
+//
+// The valuation labels carry the CURRENT tax year inline ("2026 Market
+// Value"), so they are matched by SUFFIX rather than by a literal year;
+// hardcoding 2026 would silently stop matching next January.
+export interface CamaAlias {
+  /** Match on the normalized label, or on its suffix when yearPrefixed. */
+  match: string;
+  yearPrefixed?: boolean;
+  section: CamaSection;
+  col: string;
+}
+
+export const CAMA_LABEL_ALIASES: CamaAlias[] = [
+  { match: 'land value',     yearPrefixed: true, section: 'valuation', col: 'val_land_value' },
+  { match: 'building value', yearPrefixed: true, section: 'valuation', col: 'val_building_value' },
+  { match: 'market value',   yearPrefixed: true, section: 'valuation', col: 'val_final_value' },
+  { match: 'taxable value',  yearPrefixed: true, section: 'valuation', col: 'val_taxable_value' },
+  // "Above Grade sqft." on the summary block == "Above Grade Area" in the
+  // residence record. Same number, two spellings.
+  { match: 'above grade sqft', section: 'residence', col: 'above_grade_area' },
+  { match: 'total acreage',    section: 'parcel',    col: 'par_total_acreage' },
+  { match: 'tax district location', section: 'parcel', col: 'par_tax_district_location' },
+];
+
+/** Column type for an aliased target, so the parser coerces identically. */
+export function aliasFieldType(alias: CamaAlias): CamaType {
+  const field = SECTION_FIELDS[alias.section].find((f) => f.col === alias.col);
+  return field?.type ?? 'text';
+}
+
+/** Resolve a raw label to an alias, or null. */
+export function matchAlias(label: string): CamaAlias | null {
+  const norm = normalizeLabel(label);
+  for (const a of CAMA_LABEL_ALIASES) {
+    if (a.yearPrefixed) {
+      if (/^(19|20)\d{2} /.test(norm) && norm.endsWith(a.match)) return a;
+    } else if (norm === a.match) return a;
+  }
+  return null;
+}
