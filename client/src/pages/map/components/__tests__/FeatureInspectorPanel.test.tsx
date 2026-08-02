@@ -78,4 +78,21 @@ describe('FeatureInspectorPanel', () => {
     render(<FeatureInspectorPanel {...props} result={{ ...base, features: [school] }} />);
     expect(document.body.textContent).not.toContain('vt-osm_');
   });
+
+  it('falls back to a neutral marker glyph for UGRC layers with no icon category', () => {
+    // configIdFromLayerId(...).split('_').slice(2) yields '' for utah_roads /
+    // utah_addresses — OSM_ICON_BY_CAT[''] is undefined, so this must render
+    // a real glyph (lucide MapPin) instead of an empty gray square.
+    const road = {
+      key: 'r1', layerId: 'utah_roads',
+      categoryLabel: 'Roads', groupLabel: null,
+      properties: { name: 'State Street' },
+      geometry: { type: 'LineString', coordinates: [[-111.85, 40.64], [-111.86, 40.65]] } as any,
+    };
+    const { container } = render(<FeatureInspectorPanel {...props} result={{ ...base, features: [road] }} />);
+    const icon = container.querySelector('svg[aria-hidden]');
+    expect(icon).toBeInTheDocument();
+    expect(icon?.getAttribute('class')).toMatch(/lucide/);
+    expect(container.querySelector('span.bg-rmpg-600')).not.toBeInTheDocument();
+  });
 });

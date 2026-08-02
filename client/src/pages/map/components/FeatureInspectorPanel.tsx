@@ -6,7 +6,7 @@
 // popup can never drift apart on field selection or unit conversion.
 // ============================================================
 
-import { X } from 'lucide-react';
+import { MapPin, X } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 import { describeOsmFeature } from '../../../utils/osmFeatureDescription';
 import { OSM_ICON_BY_CAT } from '../../../utils/osmIcons';
@@ -25,9 +25,15 @@ export interface FeatureInspectorPanelProps {
  *  strings built for map.addImage, not React nodes — safe to inject only
  *  because they are in-repo constants, never OSM-derived text. */
 function CategoryIcon({ layerId }: { layerId: string }) {
+  // .split('_').slice(2) assumes no catalog group name contains an underscore
+  // (true of all 10 current groups). UGRC layers (utah_roads, utah_addresses)
+  // don't carry a category segment at all, so this resolves to '' for them —
+  // fall back to a neutral marker glyph rather than rendering nothing.
   const cat = (configIdFromLayerId(layerId) ?? '').split('_').slice(2).join('_');
   const svg = OSM_ICON_BY_CAT[cat]?.svg;
-  if (!svg) return <span className="w-3.5 h-3.5 shrink-0 rounded-[2px] bg-rmpg-600" aria-hidden />;
+  if (!svg) {
+    return <MapPin className="w-3.5 h-3.5 shrink-0 text-rmpg-400" aria-hidden />;
+  }
   return <span className="w-3.5 h-3.5 shrink-0" aria-hidden dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 

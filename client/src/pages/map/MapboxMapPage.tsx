@@ -579,6 +579,15 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   const HIGHLIGHT_SOURCE = 'rmpg-inspect-highlight';
 
+  // React never fires onMouseLeave on unmount (e.g. Identify toggled off from
+  // the toolbar while the cursor is still over a hovered row) — clear the
+  // highlight whenever the panel is going away so it can't outlive it.
+  useEffect(() => {
+    if (!featureInspect.enabled || !featureInspect.result) {
+      setHoveredFeature(null);
+    }
+  }, [featureInspect.enabled, featureInspect.result]);
+
   // Highlight the hovered inspector row on the map, so the panel and the
   // geometry it describes stay visually tied.
   useEffect(() => {
@@ -587,6 +596,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
     const ensureHighlightLayers = () => {
       if (map.getSource(HIGHLIGHT_SOURCE)) return;
+      // A hover can land in the window after map.setStyle() clears every
+      // source/layer but before 'style.load' fires — addSource would throw
+      // from inside this effect. Skip; the style.load listener below re-runs
+      // this setup once the new style is ready, so guarding costs nothing.
+      if (!map.isStyleLoaded()) return;
       map.addSource(HIGHLIGHT_SOURCE, {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
