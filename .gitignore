@@ -83,3 +83,6 @@ kiosk-linux/rmpg-shell/rmpg-shell
 kiosk-linux/rmpg-shell/rmpg-browser
 kiosk-linux/output/
 __pycache__/
+
+# OSM overlay build artifacts — 250 MB extract, generated tiles
+/.osm-build/
