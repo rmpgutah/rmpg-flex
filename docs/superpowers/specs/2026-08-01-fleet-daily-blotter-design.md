@@ -125,9 +125,15 @@ Sub-router mounted inside the existing `/api/reports` router at `/daily-reports`
 
 | Route | Auth | Behavior |
 |---|---|---|
-| `GET /by-month` | authenticated | `{ months: [{ month, days: [{ filename, date, size, generated_at }] }], total_reports }`, months newest-first, days newest-first — matching what the UI already renders |
-| `GET /:filename` | authenticated | PDF bytes, `Content-Type: application/pdf`, `Content-Disposition: inline`. 404 on unknown or malformed filename |
+| `GET /by-month` | `BLOTTER_ROLES` | `{ months: [{ month, days: [{ filename, date, size, generated_at }] }], total_reports }`, months newest-first, days newest-first — matching what the UI already renders |
+| `GET /:filename` | `BLOTTER_ROLES` | PDF bytes, `Content-Type: application/pdf`, `Content-Disposition: inline`. 404 on unknown or malformed filename |
 | `POST /generate` | `requireRole('admin')` | Body `{ date }`. Regenerates and overwrites. `{ ok: true, filename }`, or `{ ok: false, message }` when the day has no activity |
+
+**Access — amended 2026-08-01 after review.** The spec originally said viewing was open to "any authenticated user", reasoning that the parent `/api/reports` router is already `auth: 'required'`. Review surfaced that this admits ALL eight roles, including the outward-facing `client_viewer` and `contract_manager`. A blotter is not a rollup — it carries every call's street address, disposition and responding officer name, plus all citations for the day. The operator ruled that outward-facing accounts must not read it.
+
+`BLOTTER_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher']`. Explicitly denied: `client_viewer`, `contract_manager`, `human_resources` (403). The gate lives in `reports.ts`'s router-level middleware so it covers BOTH the listing and the PDF download — they are separate handlers, and gating one is not gating the other. `POST /generate` remains admin-only inside the sub-router, independent of this gate.
+
+The exclusion is anchored (`c.req.path.startsWith('/api/reports/daily-reports')`), not a substring test: a bare `.includes('/daily-reports')` would also match any future sibling route whose name merely contains that string, silently widening an access-control check.
 
 Missing `DOWNLOADS` binding returns `200 { ok: false, code: 'not_configured' }`, per the `503-not-configured-anti-pattern` memory — not a 503.
 
@@ -181,6 +187,7 @@ Indefinite. At 1–3 pages/day, a decade stays well under a gigabyte. A blotter 
 - `by-month` groups and orders correctly, and returns an empty shape (not a 500) when the bucket is empty.
 - `:filename` returns bytes with the right headers; unknown filename 404s.
 - `generate` is admin-only; a non-admin gets 403.
+- Every role in `BLOTTER_ROLES` gets 200 on the listing; `client_viewer`, `contract_manager` and `human_resources` get 403 on BOTH the listing and the PDF download. Denial must be by role, not by an absent user row — the test helper seeds a real `users` row per role because `authMiddleware` resolves role from the database, not from the JWT claim.
 - `/api/reports/daily-reports/by-month` resolves to this router, not a sibling route in `reports.ts`.
 
 ## Risks
