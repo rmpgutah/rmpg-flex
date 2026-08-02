@@ -21,6 +21,8 @@ import { apiFetch } from './useApi';
 import { parseMaxspeedMph } from '../utils/speedLimit';
 
 const MOVE_THRESHOLD_M = 80;
+/** Don't re-query faster than this even after 80 m (tunnels, GPS jitter). */
+const MIN_QUERY_INTERVAL_MS = 4_000;
 /** Safe-ceiling buffer (mph) added on top of the posted limit for the redline. */
 const REDLINE_BUFFER_MPH = 7;
 
@@ -61,6 +63,7 @@ export function useSpeedLimit(
   const [limitMph, setLimitMph] = useState<number | null>(null);
 
   const lastQueryPosRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastQueryTsRef = useRef(0);
   const inFlightRef = useRef(false);
 
   useEffect(() => {
@@ -68,13 +71,16 @@ export function useSpeedLimit(
     if (typeof lat !== 'number' || typeof lng !== 'number') return;
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
+    const now = Date.now();
     const prev = lastQueryPosRef.current;
     const distanceM = prev ? haversineMeters(prev.lat, prev.lng, lat, lng) : Infinity;
     const movedEnough = distanceM >= MOVE_THRESHOLD_M;
+    const cooledDown = now - lastQueryTsRef.current >= MIN_QUERY_INTERVAL_MS;
 
-    if (!movedEnough || inFlightRef.current) return;
+    if (!movedEnough || !cooledDown || inFlightRef.current) return;
 
     lastQueryPosRef.current = { lat, lng };
+    lastQueryTsRef.current = now;
     inFlightRef.current = true;
     let cancelled = false;
 

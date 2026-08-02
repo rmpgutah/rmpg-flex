@@ -34,6 +34,9 @@ describe('useSpeedLimit', () => {
   it('clears the limit when a SUCCESSFUL lookup reports none', async () => {
     // Driving from a posted road onto an unposted one must clear the badge --
     // keeping the old value would red-line the HUD against the wrong road.
+    // Advance the wall clock past the 4s interval gate (via Date.now spy,
+    // not a real wait) so the second render's query isn't throttled.
+    const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     apiFetch.mockResolvedValueOnce({ limitMph: 35 });
     const { result, rerender } = renderHook(
       ({ lat, lng }: { lat: number; lng: number }) => useSpeedLimit(lat, lng),
@@ -41,12 +44,15 @@ describe('useSpeedLimit', () => {
     );
     await waitFor(() => expect(result.current.limitMph).toBe(35));
 
+    dateSpy.mockReturnValue(1_000_000 + 5000); // >4s later
     apiFetch.mockResolvedValueOnce({ limitMph: null });
     rerender({ lat: 41.0, lng: -112.5 }); // far enough to beat the move threshold
     await waitFor(() => expect(result.current.limitMph).toBeNull());
+    dateSpy.mockRestore();
   });
 
   it('keeps the last known limit when the lookup THROWS', async () => {
+    const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     apiFetch.mockResolvedValueOnce({ limitMph: 35 });
     const { result, rerender } = renderHook(
       ({ lat, lng }: { lat: number; lng: number }) => useSpeedLimit(lat, lng),
@@ -54,10 +60,31 @@ describe('useSpeedLimit', () => {
     );
     await waitFor(() => expect(result.current.limitMph).toBe(35));
 
+    dateSpy.mockReturnValue(1_000_000 + 5000); // >4s later
     apiFetch.mockRejectedValueOnce(new Error('offline'));
     rerender({ lat: 41.0, lng: -112.5 });
     await new Promise((r) => setTimeout(r, 10));
     expect(result.current.limitMph).toBe(35);
+    dateSpy.mockRestore();
+  });
+
+  it('does not re-query within the 4s interval gate even past the move threshold', async () => {
+    // Two renders far enough apart to pass the distance gate, but with the
+    // clock advanced LESS than 4s, must produce only one apiFetch call --
+    // this is the GPS-jitter / tunnel-reacquisition guard.
+    const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(2_000_000);
+    apiFetch.mockResolvedValueOnce({ limitMph: 35 });
+    const { rerender } = renderHook(
+      ({ lat, lng }: { lat: number; lng: number }) => useSpeedLimit(lat, lng),
+      { initialProps: { lat: 40.76, lng: -111.89 } },
+    );
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
+
+    dateSpy.mockReturnValue(2_000_000 + 3999); // <4s later
+    rerender({ lat: 41.0, lng: -112.5 }); // well past the 80m distance gate
+    await new Promise((r) => setTimeout(r, 10));
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+    dateSpy.mockRestore();
   });
 
   it('does not query when disabled', async () => {
