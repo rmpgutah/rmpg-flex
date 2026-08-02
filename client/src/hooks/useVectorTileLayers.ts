@@ -28,6 +28,7 @@ import {
 // the two can never drift apart.
 import { INK as OSM_INK, HALO as OSM_HALO } from '../utils/osmIconArt';
 import { buildOsmPopupHtml } from '../utils/osmPopup';
+import { mergeOverride, hiddenFilterClause, type OsmOverride } from './useOsmOverrides';
 import {
   roadColorExpression, roadSortKeyExpression, ptTypeColorExpression,
   classifyCartocode, classifyPtType,
@@ -216,6 +217,93 @@ export const OSM_VECTOR_CONFIGS: VectorTileLayerConfig[] = OSM_GROUPS.flatMap((g
  * expressions (houseNumberExpr / ptTypeColorExpression) — those are
  * exclusive to the legacy 'point' branch in addLayer.
  */
+// ============================================================
+// On-map labels
+// ============================================================
+// Some values belong on the map rather than behind a click: an officer reading
+// a speed limit or a bridge clearance while moving should not have to tap.
+//
+// Mapbox expressions cannot call our formatters, so unit conversion happens in
+// expression form here. Both conversions FAIL CLOSED — an unparseable value
+// renders no label at all rather than a wrong number, because a wrong speed
+// limit or clearance is worse than none. The popup still carries full detail.
+
+/** OSM maxspeed -> a bare mph number. "45 mph" -> "45"; "80" (km/h) -> "50". */
+const MAXSPEED_MPH_EXPR: unknown = [
+  'case',
+  // Already imperial: take the digits before the space.
+  ['>=', ['index-of', 'mph', ['coalesce', ['get', 'maxspeed'], '']], 0],
+  ['slice', ['get', 'maxspeed'], 0, ['index-of', ' ', ['get', 'maxspeed']]],
+  // A bare number is km/h by OSM convention — convert.
+  ['>', ['to-number', ['coalesce', ['get', 'maxspeed'], 'x'], 0], 0],
+  ['to-string', ['round', ['*', ['to-number', ['get', 'maxspeed'], 0], 0.621371]]],
+  // Anything else ("walk", "RU:urban", "40;60") gets no label.
+  '',
+];
+
+/** OSM maxheight -> feet, rounded. Bare number = metres; `'` means imperial. */
+const CLEARANCE_FT_EXPR: unknown = [
+  'case',
+  ['>=', ['index-of', "'", ['coalesce', ['get', 'maxheight'], '']], 0],
+  ['get', 'maxheight'],
+  ['>', ['to-number', ['coalesce', ['get', 'maxheight'], 'x'], 0], 0],
+  ['concat', ['to-string', ['round', ['*', ['to-number', ['get', 'maxheight'], 0], 3.28084]]], ' ft'],
+  '',
+];
+
+/** Which categories get an on-map label, and from what. */
+interface LabelRule {
+  field: unknown;
+  minzoom: number;
+  placement: 'line' | 'point';
+  size?: number;
+}
+const OSM_LABEL_RULES: Record<string, LabelRule> = {
+  maxspeed: { field: MAXSPEED_MPH_EXPR, minzoom: 14, placement: 'line', size: 11 },
+  clearance: { field: CLEARANCE_FT_EXPR, minzoom: 15, placement: 'line', size: 10 },
+  junction: { field: ['coalesce', ['get', 'ref'], ''], minzoom: 12, placement: 'point', size: 11 },
+  transit: { field: ['coalesce', ['get', 'name'], ''], minzoom: 14, placement: 'point', size: 10 },
+  station: { field: ['coalesce', ['get', 'name'], ''], minzoom: 14, placement: 'point', size: 10 },
+  school: { field: ['coalesce', ['get', 'name'], ''], minzoom: 15, placement: 'point', size: 10 },
+  gov: { field: ['coalesce', ['get', 'name'], ''], minzoom: 15, placement: 'point', size: 10 },
+  heli: { field: ['coalesce', ['get', 'name'], ''], minzoom: 13, placement: 'point', size: 10 },
+};
+
+export function buildOsmLabelSpec(
+  cfg: VectorTileLayerConfig,
+  idBase: string,
+  base: { filter: unknown[]; 'source-layer': string; minzoom: number; layout: { visibility: 'none' } },
+  renderType: OsmLayerSpec['type'],
+): OsmLayerSpec | null {
+  const rule = OSM_LABEL_RULES[cfg.categoryFilter ?? ''];
+  if (!rule) return null;
+  return {
+    id: `${idBase}-label`,
+    type: 'symbol',
+    ...base,
+    // Labels are gated LATER than their geometry: a speed value at z13 is
+    // unreadable clutter even though the line itself is useful there.
+    minzoom: Math.max(base.minzoom, rule.minzoom),
+    layout: {
+      ...base.layout,
+      'text-field': rule.field,
+      'text-size': rule.size ?? 10,
+      'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
+      'text-allow-overlap': false,
+      ...(rule.placement === 'line' && renderType === 'line'
+        ? { 'symbol-placement': 'line-center' as const }
+        : { 'text-offset': [0, 1.1], 'text-anchor': 'top' as const }),
+    },
+    paint: {
+      'text-color': '#f0f4f9',
+      // Halo is what makes a label legible over the dark basemap AND over the
+      // overlay geometry beneath it.
+      'text-halo-color': '#0a1422',
+      'text-halo-width': 1.4,
+    },
+  };
+}
+
 export function buildOsmLayerSpecs(cfg: VectorTileLayerConfig, isLight: boolean): OsmLayerSpec[] {
   const filter = ['==', ['get', 'cat'], cfg.categoryFilter] as unknown[];
   const base = {
@@ -378,6 +466,9 @@ export function buildOsmLayerSpecs(cfg: VectorTileLayerConfig, isLight: boolean)
     }
   }
 
+  const labelSpec = buildOsmLabelSpec(cfg, idBase, base, type);
+  if (labelSpec) specs.push(labelSpec);
+
   return specs;
 }
 
@@ -397,6 +488,17 @@ interface UseVectorTileLayersOptions {
    * When provided, address-point/road popups gain a "Use this location" action.
    */
   onUseLocation?: (info: { lng: number; lat: number; label: string; kind: VectorLayerKind; props: Record<string, any> }) => void;
+  /** RMPG's internal overrides, keyed by OSM element id. Merged into the popup
+   *  at display time; the tile data itself is immutable. */
+  osmOverrides?: Map<string, OsmOverride>;
+  /** osm_ids an operator has hidden. Applied as a Mapbox filter. */
+  osmHiddenIds?: string[];
+  /** Opens the override editor for a feature. When absent, the popup shows no
+   *  edit affordance — read-only roles simply never get the callback. */
+  onEditOsmFeature?: (info: {
+    osmId: string; group: string; cat: string | null;
+    categoryLabel: string; featureName: string; osmTags: Record<string, unknown>;
+  }) => void;
 }
 
 function srcId(id: string) { return `vt-${id}`; }
@@ -413,7 +515,10 @@ function escapeHtml(s: string): string {
 }
 
 
-export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation }: UseVectorTileLayersOptions) {
+export function useVectorTileLayers({
+  map, popup, isLight = false, onUseLocation,
+  osmOverrides, osmHiddenIds, onEditOsmFeature,
+}: UseVectorTileLayersOptions) {
   const [layerStates, setLayerStates] = useState<Record<string, VectorLayerState>>(() => {
     const init: Record<string, VectorLayerState> = {};
     // Visibility is config-driven (cfg.defaultVisible) — every layer, UGRC or
@@ -426,6 +531,10 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
 
   const popupRef = useRef(popup);
   useEffect(() => { popupRef.current = popup; }, [popup]);
+  const osmOverridesRef = useRef(osmOverrides);
+  useEffect(() => { osmOverridesRef.current = osmOverrides; }, [osmOverrides]);
+  const onEditOsmFeatureRef = useRef(onEditOsmFeature);
+  useEffect(() => { onEditOsmFeatureRef.current = onEditOsmFeature; }, [onEditOsmFeature]);
   const isLightRef = useRef(isLight);
   useEffect(() => { isLightRef.current = isLight; }, [isLight]);
   const onUseLocationRef = useRef(onUseLocation);
@@ -528,14 +637,56 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
             map.on('click', primaryLayerId, (e) => {
               const pop = popupRef.current;
               if (!pop || !e.features || e.features.length === 0) return;
-              const props = e.features[0].properties || {};
+              const rawProps = e.features[0].properties || {};
+              const osmId = String(rawProps.osm_id ?? '').trim();
+              // Join RMPG's override over the immutable tile data at display
+              // time. Corrections overlay; the OSM tags underneath survive.
+              const props = mergeOverride(rawProps, osmOverridesRef.current?.get(osmId));
               // OSM features get the detail popup: every captured tag, in US
               // units, with the coverage caveat and a link to the OSM record.
-              const html = buildOsmPopupHtml(props, {
+              let html = buildOsmPopupHtml(props, {
                 categoryLabel: cfg.label,
                 coverage: cfg.coverage,
               });
+              const canEdit = Boolean(onEditOsmFeatureRef.current) && osmId !== '';
+              if (canEdit) {
+                html += `<button type="button" data-osm-edit="1" style="margin-top:6px;width:100%;`
+                  + `padding:4px;font-family:system-ui;font-size:10px;font-weight:600;`
+                  + `letter-spacing:0.4px;color:#0a1422;background:#c3ccd6;border:none;`
+                  + `border-radius:2px;cursor:pointer;">EDIT / VERIFY</button>`;
+              }
               pop.setLngLat(e.lngLat).setHTML(html).addTo(map);
+              if (canEdit) {
+                // DELEGATE. A setTimeout + getElementById attaches to nothing
+                // when it loses the race against Mapbox re-rendering the popup
+                // DOM — a documented failure in this codebase. Listening on the
+                // popup container and matching on the way up always wins.
+                const el = pop.getElement();
+                if (el && !el.dataset.osmEditBound) {
+                  el.dataset.osmEditBound = '1';
+                  el.addEventListener('click', (ev) => {
+                    const hit = (ev.target as HTMLElement | null)?.closest('[data-osm-edit]');
+                    if (!hit) return;
+                    const current = pop.getElement()?.dataset.osmCtx;
+                    if (!current) return;
+                    try {
+                      onEditOsmFeatureRef.current?.(JSON.parse(current));
+                    } catch { /* malformed context; ignore rather than throw in a click */ }
+                  });
+                }
+                // Context is re-stamped on EVERY open, so the one delegated
+                // listener always acts on the feature currently shown.
+                if (el) {
+                  el.dataset.osmCtx = JSON.stringify({
+                    osmId,
+                    group: cfg.archive?.replace(/^osm-/, '') ?? '',
+                    cat: cfg.categoryFilter ?? null,
+                    categoryLabel: cfg.label,
+                    featureName: String(rawProps.name ?? ''),
+                    osmTags: rawProps,
+                  });
+                }
+              }
             });
             map.on('mouseenter', primaryLayerId, () => { map.getCanvas().style.cursor = 'pointer'; });
             map.on('mouseleave', primaryLayerId, () => { map.getCanvas().style.cursor = ''; });
@@ -875,6 +1026,33 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
       } catch { /* style not ready */ }
     }
   }, [map, isLight]);
+
+  // ── Hidden-feature filter ──────────────────────────────────────────────
+  // An operator can suppress a feature (bad data, demolished, duplicate). The
+  // tiles are immutable, so suppression is a Mapbox filter re-applied whenever
+  // the hidden set changes. Re-applied on 'idle' too: a style swap resets every
+  // layer's filter back to the spec's base clause.
+  const hiddenKey = (osmHiddenIds ?? []).join(',');
+  useEffect(() => {
+    if (!map) return;
+    const apply = () => {
+      const extra = hiddenFilterClause(osmHiddenIds ?? []);
+      for (const cfg of OSM_VECTOR_CONFIGS) {
+        for (const spec of buildOsmLayerSpecs(cfg, isLightRef.current)) {
+          try {
+            if (!hasLayer(map, spec.id)) continue;
+            // Compose against the spec's OWN base filter rather than reading
+            // the live one back — reading it back and re-wrapping would nest
+            // an extra `all` on every pass until the expression exploded.
+            map.setFilter(spec.id, (extra ? ['all', spec.filter, extra] : spec.filter) as never);
+          } catch { /* style mid-swap; the idle handler retries */ }
+        }
+      }
+    };
+    apply();
+    map.on('idle', apply);
+    return () => { map.off('idle', apply); };
+  }, [map, hiddenKey, osmHiddenIds]);
 
   // Reset per-map tracking when the map instance changes (handlers/layers
   // live on the map; a new map needs fresh adds).

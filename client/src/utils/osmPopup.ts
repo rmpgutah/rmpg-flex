@@ -189,7 +189,12 @@ const FIELDS: Array<[string, FieldDef]> = [
 ];
 
 /** Tags handled structurally (title/provenance) rather than as detail rows. */
-const HANDLED_ELSEWHERE = new Set(['cat', 'name', 'osm_id', 'osm_version', 'osm_timestamp', 'parent_cat']);
+const HANDLED_ELSEWHERE = new Set([
+  'cat', 'name', 'osm_id', 'osm_version', 'osm_timestamp', 'parent_cat',
+  // Markers injected by mergeOverride — rendered as structured UI below, never
+  // as raw key/value rows.
+  '__rmpg_note', '__rmpg_verified', '__rmpg_verified_at', '__rmpg_overridden',
+]);
 
 const C = {
   panel: '#0f1a28', border: '#2a3646', title: '#f0f4f9',
@@ -240,6 +245,14 @@ export function buildOsmPopupHtml(
     .filter((k) => String(props[k] ?? '').trim() !== '')
     .slice(0, 8);
 
+  // ── RMPG's internal edit layer ──
+  // Rendered ABOVE the provenance line and visually distinct, so a correction
+  // is never mistaken for OpenStreetMap's own data.
+  const rmpgNote = String(props.__rmpg_note ?? '').trim();
+  const rmpgVerified = props.__rmpg_verified === true || props.__rmpg_verified === 'true';
+  const rmpgVerifiedAt = String(props.__rmpg_verified_at ?? '').trim();
+  const rmpgOverridden = String(props.__rmpg_overridden ?? '').trim();
+
   const osmId = String(props.osm_id ?? '').trim();
   const edited = formatOsmTimestamp(props.osm_timestamp);
 
@@ -265,6 +278,26 @@ export function buildOsmPopupHtml(
   if (opts.coverage) {
     html += `<div style="margin-top:6px;padding-top:5px;border-top:1px solid ${C.border};`
       + `color:${C.muted};font-size:8.5px;line-height:1.4;">${escapeHtml(opts.coverage)}</div>`;
+  }
+
+  if (rmpgVerified || rmpgNote || rmpgOverridden) {
+    html += `<div style="margin-top:6px;padding-top:5px;border-top:1px solid ${C.border};">`;
+    if (rmpgVerified) {
+      // The whole point of the edit layer: ground-truthed vs crowd-sourced.
+      html += `<div style="color:#22c55e;font-size:9px;font-weight:700;letter-spacing:0.4px;">`
+        + `\u2713 RMPG VERIFIED${rmpgVerifiedAt ? ` \u00b7 ${escapeHtml(rmpgVerifiedAt.slice(0, 10))}` : ''}</div>`;
+    }
+    if (rmpgNote) {
+      html += `<div style="color:${C.value};font-size:10px;line-height:1.45;margin-top:2px;">`
+        + `${escapeHtml(rmpgNote)}</div>`;
+    }
+    if (rmpgOverridden) {
+      // Name the corrected fields explicitly. Silently showing RMPG's value as
+      // if OSM published it would misattribute the data.
+      html += `<div style="color:${C.muted};font-size:8px;margin-top:2px;">`
+        + `Corrected by RMPG: ${escapeHtml(rmpgOverridden.split(',').join(', '))}</div>`;
+    }
+    html += `</div>`;
   }
 
   html += `<div style="margin-top:5px;color:${C.muted};font-size:8px;">`
