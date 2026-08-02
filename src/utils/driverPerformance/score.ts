@@ -18,40 +18,34 @@ export type { SpeedEventCounts };
  * (src/utils/driverPerformance/speedEvents.ts). The previous ClearPath
  * dashcam-event source was dropped — its credentials were absent, so it had
  * been feeding an empty numerator while miles kept accruing.
+ *
+ * 'v1-speed-r100': same event derivation, REFERENCE_RATE_AT_ZERO raised from
+ * 20 to 100 (see below). Snapshots from either version are NOT comparable —
+ * a score of 60 under 'v1-speed' and a score of 60 under 'v1-speed-r100'
+ * represent different underlying driving. Never silently mix them in a trend.
  */
-export const SCORE_VERSION = 'v1-speed';
+export const SCORE_VERSION = 'v1-speed-r100';
 
 /**
- * ⚠️ RE-GATED 2026-08-01. Do NOT flip this to `true` without BOTH of the
- * following being independently true first — not one, not "close enough":
+ * ⚠️ SCORING IS LIVE WITHOUT EMERGENCY-RESPONSE EXCLUSION DATA. Owner
+ * decision 2026-08-01, made with the gap below explicitly disclosed and
+ * accepted — this is not an oversight.
  *
- * (a) `gps_breadcrumbs.current_call_id` / `unit_status` are ACTUALLY BEING
- *     CAPTURED. Patrol officers lawfully exceed posted limits responding
- *     code-3 — that is a statutory exemption, not a violation. Today those
- *     two columns are populated in ZERO of 91,382 live rows, so nothing can
- *     tell "drove 95 mph to a domestic in progress" apart from "drove 95 mph
- *     home." A live audit found Officer 1 scoring 0 / At Risk on 127
- *     sustained runs above 85 mph in 30 days, entirely because of this gap —
- *     the detection is sound, the exclusion it needs does not exist yet.
- *     Publishing "At Risk" on that basis is a false accusation against a
- *     named officer. `rollup.ts` already excludes call-context samples so the
- *     exclusion activates the moment the fields start populating — but an
- *     exclusion filter over all-empty columns excludes nothing.
+ * `gps_breadcrumbs.current_call_id` / `unit_status` are populated in ZERO of
+ * 91,382 live rows, so `rollup.ts`'s emergency-response exclusion (it is
+ * already built and wired in) has nothing to exclude yet. Until those fields
+ * start being captured, a lawful code-3 response is counted exactly the same
+ * as any other high-speed run — the exclusion activates automatically, with
+ * no code change, the moment real call-context data starts landing.
  *
- * (b) `REFERENCE_RATE_AT_ZERO` below has been RECALIBRATED against real
- *     POST-EXCLUSION data. It is currently 20, while the observed
- *     PRE-EXCLUSION rate is 50 — i.e. every officer clamps to a score of 0
- *     with no gradation. A scale where the entire population sits on the
- *     floor conveys nothing, can't show improvement, and can't distinguish a
- *     bad driver from a slightly-less-bad one. Do NOT invent a replacement
- *     number now, either — a guessed reference rate is the same mistake
- *     (a confident wrong number about a named person) in a different place.
- *     It has to come from real data measured AFTER (a) is live.
- *
- * Flipping this flag while either precondition is unmet ships false
- * accusations against named officers. Both. Not one.
+ * This is why every surface that shows a score (roster, officer detail, PDF
+ * export) is REQUIRED to carry a prominent, non-dismissable caveat saying so
+ * — see the banner/PDF-block wiring in FleetDriverPerformanceTab.tsx and
+ * pdf.ts. A score without that caveat next to it is a defect, not a
+ * cosmetic miss: it is the only thing standing between this number and a
+ * false accusation against a named officer.
  */
-export const SCORING_ENABLED = false;
+export const SCORING_ENABLED = true;
 
 /** Below this, no score is produced. A blank is honest; a zero is a claim. */
 export const MIN_EXPOSURE_MILES = 250;
@@ -59,13 +53,24 @@ export const MIN_EXPOSURE_MILES = 250;
 /**
  * Weighted events per 100 miles that maps to a score of 0.
  *
- * ⚠️ DO NOT retune this value in isolation to "fix" the all-zero clamp
- * described in the SCORING_ENABLED comment above. The 20 here was already
- * measured against pre-exclusion data; the fix is recalibrating against
- * real post-exclusion data once (a) above is live, not picking a new number
- * now with no data behind it.
+ * ⚠️ PROVISIONAL — 100, raised from 20 on 2026-08-01. At 20, every officer
+ * above rate 20 clamped to exactly 0/At Risk with no gradation: the harshest
+ * possible verdict and simultaneously the least informative one, and a
+ * number that could never show improvement. 100 puts Officer 1's observed
+ * pre-exclusion rate (~50) at score ~50 ("Needs Attention"), with headroom on
+ * both sides.
+ *
+ * This is calibrated against ONE officer, which is circular by construction
+ * — there is no real population yet to calibrate against, so this number is
+ * a placeholder that makes the scale usable, not a validated threshold.
+ * MUST be revisited once there is a real multi-officer population to
+ * calibrate against, and once emergency-response exclusion is live (the
+ * rate that produced this "~50" figure includes lawfully-exempt code-3
+ * driving that hasn't been excluded yet — see SCORING_ENABLED above).
+ * Anyone changing this value moves every historical score comparison; bump
+ * SCORE_VERSION alongside it, same as any other weighting change.
  */
-const REFERENCE_RATE_AT_ZERO = 20;
+const REFERENCE_RATE_AT_ZERO = 100;
 
 /** Below this share of recorded (vs inferred) attribution, flag as inferred. */
 const RECORDED_CONFIDENCE_THRESHOLD = 0.5;
