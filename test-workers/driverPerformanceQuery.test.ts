@@ -4,13 +4,23 @@
 // Miniflare D1, so a column renamed out from under the query fails here rather
 // than silently returning NULLs that shape() reads as zero events.
 //
+// ⚠️ Scoring is re-gated on call context (SCORING_ENABLED = false, see
+// src/utils/driverPerformance/score.ts) — the route's read endpoints now
+// always return {ok:false, code:'awaiting_call_context'} regardless of what
+// is in driver_performance_daily. So the AGG_SQL/shape() assertions below
+// call the query layer DIRECTLY (query()/queryFirst() + the exported
+// `shape()`) rather than going through HTTP, which is the only way left to
+// exercise this shaping logic end-to-end against real data. HTTP is still
+// used for the tests that are actually about the route (window validation,
+// the gate itself).
+//
 // Officer ids are synthetic 9-thousands numbers — no PII.
 import { env } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { Hono } from 'hono';
 import { execute, query, queryFirst } from '../src/utils/db';
 
-import driverPerformance, { AGG_SQL } from '../src/routes/driverPerformance';
+import driverPerformance, { AGG_SQL, shape } from '../src/routes/driverPerformance';
 
 type FakeUser = { id: number; role: string; username: string; full_name: string };
 
@@ -28,6 +38,12 @@ function appAs(user: FakeUser) {
 function request(path: string) {
   const user: FakeUser = { id: 1, role: 'supervisor', username: 'supervisor', full_name: 'Supervisor' };
   return appAs(user).request(path, {}, env as unknown as Record<string, unknown>);
+}
+
+/** Runs the exact route AGG_SQL and shapes each row, exactly as the route would absent the gate. */
+async function shapedRoster(db: D1Database, from: string, to: string) {
+  const rows = await query(db, AGG_SQL, from, to);
+  return (rows as Parameters<typeof shape>[0][]).map(shape);
 }
 
 const FROM = '2026-03-01';
@@ -106,63 +122,50 @@ beforeAll(async () => {
 
 describe('C1: high mileage with unattributed events is never reported as confidently clean', () => {
   it('forces confidence to inferred and reports the unattributed count', async () => {
-    const res = await request(`/api/driver-performance/roster?from=${FROM}&to=${TO}`);
-    expect(res.status).toBe(200);
-    const body = await res.json() as {
-      ranked: Array<{
-        officer_id: number; event_count: number; unattributed_events: number;
-        result: { status: string; score: number; confidence: string };
-      }>;
-    };
-    const o = body.ranked.find((r) => r.officer_id === 9004);
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const shaped = await shapedRoster(db, FROM, TO);
+    const o = shaped.find((r) => r.officer_id === 9004);
     expect(o).toBeTruthy();
     // The reassuring parts are all still true — which is exactly why the
     // unattributed count has to be present and the confidence downgraded.
     expect(o!.event_count).toBe(0);
     expect(o!.result.status).toBe('scored');
-    expect(o!.result.score).toBe(100);
+    expect((o!.result as { score: number }).score).toBe(100);
     expect(o!.unattributed_events).toBe(14);
-    expect(o!.result.confidence).toBe('inferred');
+    expect((o!.result as { confidence: string }).confidence).toBe('inferred');
   });
 
   it('leaves a genuinely clean officer (no events, no doubt) labelled recorded', async () => {
-    const res = await request(`/api/driver-performance/roster?from=${FROM}&to=${TO}`);
-    const body = await res.json() as {
-      ranked: Array<{ officer_id: number; unattributed_events: number; result: { confidence: string } }>;
-    };
-    const o = body.ranked.find((r) => r.officer_id === 9003);
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const shaped = await shapedRoster(db, FROM, TO);
+    const o = shaped.find((r) => r.officer_id === 9003);
     expect(o!.unattributed_events).toBe(0);
-    expect(o!.result.confidence).toBe('recorded');
+    expect((o!.result as { confidence: string }).confidence).toBe('recorded');
   });
 
   it('surfaces the severity breakdown on officer detail', async () => {
-    const res = await request(`/api/driver-performance/officer/9004?from=${FROM}&to=${TO}`);
-    const body = await res.json() as {
-      summary: { severity: { critical: number; high: number; moderate: number; low: number } } | null;
-    };
-    expect(body.summary!.severity).toEqual({ critical: 0, high: 0, moderate: 0, low: 0 });
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const shaped = await shapedRoster(db, FROM, TO);
+    const o = shaped.find((r) => r.officer_id === 9004);
+    expect(o!.severity).toEqual({ critical: 0, high: 0, moderate: 0, low: 0 });
   });
 });
 
 describe('dead feed: miles with no GPS samples is never reported as a clean 100', () => {
   it('places the zero-sample officer in insufficient_data with reason no_breadcrumb_samples', async () => {
-    const res = await request(`/api/driver-performance/roster?from=${FROM}&to=${TO}`);
-    const body = await res.json() as {
-      ranked: Array<{ officer_id: number }>;
-      insufficient_data: Array<{ officer_id: number; breadcrumb_samples: number; result: { status: string; reason: string } }>;
-    };
-    expect(body.ranked.some((r) => r.officer_id === 9005)).toBe(false);
-    const o = body.insufficient_data.find((r) => r.officer_id === 9005);
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const shaped = await shapedRoster(db, FROM, TO);
+    const o = shaped.find((r) => r.officer_id === 9005);
     expect(o).toBeTruthy();
     expect(o!.breadcrumb_samples).toBe(0);
     expect(o!.result.status).toBe('insufficient_data');
-    expect(o!.result.reason).toBe('no_breadcrumb_samples');
+    expect((o!.result as { reason: string }).reason).toBe('no_breadcrumb_samples');
   });
 
   it('reports the observation volume for an officer whose feed IS alive', async () => {
-    const res = await request(`/api/driver-performance/roster?from=${FROM}&to=${TO}`);
-    const body = await res.json() as { ranked: Array<{ officer_id: number; breadcrumb_samples: number }> };
-    expect(body.ranked.find((r) => r.officer_id === 9003)!.breadcrumb_samples).toBe(900);
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const shaped = await shapedRoster(db, FROM, TO);
+    expect(shaped.find((r) => r.officer_id === 9003)!.breadcrumb_samples).toBe(900);
   });
 });
 
@@ -206,40 +209,44 @@ describe('AGG_SQL executes against a real D1', () => {
   });
 });
 
-describe('GET /roster and GET /officer/:id run AGG_SQL end-to-end', () => {
-  it('places the above-floor officer in ranked and the below-floor officer in insufficient_data', async () => {
-    const res = await request(`/api/driver-performance/roster?from=${FROM}&to=${TO}`);
-    expect(res.status).toBe(200);
-    const body = await res.json() as {
-      ranked: Array<{ officer_id: number }>;
-      insufficient_data: Array<{ officer_id: number }>;
-    };
-    expect(body.ranked.map((r) => r.officer_id)).toEqual(expect.arrayContaining([9001, 9003]));
-    expect(body.insufficient_data.map((r) => r.officer_id)).toEqual(expect.arrayContaining([9002]));
-    expect(body.ranked.some((r) => r.officer_id === 9002)).toBe(false);
+describe('AGG_SQL + shape() run end-to-end, matching what the route would compute absent the gate', () => {
+  it('places the above-floor officer scored and the below-floor officer insufficient', async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const shaped = await shapedRoster(db, FROM, TO);
+    const byId = new Map(shaped.map((s) => [s.officer_id, s]));
+    expect(byId.get(9001)!.result.status).toBe('scored');
+    expect(byId.get(9003)!.result.status).toBe('scored');
+    expect(byId.get(9002)!.result.status).toBe('insufficient_data');
   });
 
-  it('officer detail returns the same officer\'s aggregated summary via the HAVING variant', async () => {
-    const res = await request(`/api/driver-performance/officer/9001?from=${FROM}&to=${TO}`);
-    expect(res.status).toBe(200);
-    const body = await res.json() as { summary: { officer_id: number; miles_driven: number } | null };
-    expect(body.summary).toBeTruthy();
-    expect(body.summary!.officer_id).toBe(9001);
-    expect(body.summary!.miles_driven).toBe(300);
+  it('officer detail\'s HAVING variant returns exactly that officer\'s aggregated row', async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const row = await queryFirst(db, `${AGG_SQL} HAVING d.officer_id = ?`, FROM, TO, 9001);
+    expect(row).toBeTruthy();
+    const shaped = shape(row as Parameters<typeof shape>[0]);
+    expect(shaped.officer_id).toBe(9001);
+    expect(shaped.miles_driven).toBe(300);
   });
 });
 
-describe('roster failure never reads as an empty (good-driving) result', () => {
-  it('returns 500 with code ROSTER_FAILED when the underlying query breaks — not an empty roster', async () => {
+describe('roster route: the call-context gate wins over a query failure', () => {
+  // Now that /roster is gated on call context BEFORE it ever touches D1, a
+  // broken query underneath it can no longer surface as ROSTER_FAILED — the
+  // gate returns first. That failure mode is now the query layer's job to
+  // catch directly (below), and the route's error-handling path is exercised
+  // via the same gate-then-500-shape contract once SCORING_ENABLED flips.
+  it('still returns the gate response even when the underlying users table is gone', async () => {
     const db = (env as unknown as { DB: D1Database }).DB;
-    // Realistic failure: AGG_SQL joins `users`; drop it out from under the
-    // route to force a genuine D1 rejection, exactly as would happen if that
-    // table were ever renamed or migrated out from under this query.
     await execute(db, 'DROP TABLE users');
 
     const res = await request(`/api/driver-performance/roster?from=${FROM}&to=${TO}`);
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(200);
     const body = await res.json() as { code: string };
-    expect(body.code).toBe('ROSTER_FAILED');
+    expect(body.code).toBe('awaiting_call_context');
+  });
+
+  it('AGG_SQL itself rejects when the joined users table is missing — not an empty result', async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    await expect(query(db, AGG_SQL, FROM, TO)).rejects.toThrow();
   });
 });

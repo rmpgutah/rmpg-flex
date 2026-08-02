@@ -93,41 +93,59 @@ describe('driver-performance RBAC', () => {
   });
 });
 
-describe('scoring is live (the weights gate is gone)', () => {
-  // The gate previously returned 200 {ok:false, code:'weights_pending_review'}
-  // for every read. Weights are approved and SCORE_VERSION is 'v1-speed', so
-  // the endpoints must now return real roster shape. A regression that
-  // reintroduced the gate would otherwise look like a healthy 200.
-  it('serves a real roster payload, not a pending-review stub', async () => {
-    const res = await request(
-      { id: 1, role: 'supervisor', username: 'supervisor', full_name: 'Supervisor' },
-      '/api/driver-performance/roster',
-    );
+describe('scoring is re-gated on call context (awaiting_call_context)', () => {
+  // Re-gated 2026-08-01: gps_breadcrumbs.current_call_id/unit_status are
+  // populated in ZERO live rows, so a run above the speed floor cannot be
+  // told apart from a lawful code-3 response. Every read path must return
+  // the house not_configured shape — 200 {ok:false, code, message} — rather
+  // than a scored payload, until SCORING_ENABLED flips (see
+  // src/utils/driverPerformance/score.ts).
+  const SUP = { id: 1, role: 'supervisor', username: 'supervisor', full_name: 'Supervisor' };
+
+  it('gates /roster with 200 {ok:false, code:"awaiting_call_context"}', async () => {
+    const res = await request(SUP, '/api/driver-performance/roster');
     expect(res.status).toBe(200);
-    const body = await res.json() as { ok?: boolean; code?: string; ranked?: unknown[]; insufficient_data?: unknown[] };
-    expect(body.ok).toBeUndefined();
-    expect(body.code).toBeUndefined();
-    expect(Array.isArray(body.ranked)).toBe(true);
-    expect(Array.isArray(body.insufficient_data)).toBe(true);
+    const body = await res.json() as { ok?: boolean; code?: string; message?: string };
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe('awaiting_call_context');
+    expect(typeof body.message).toBe('string');
   });
 
-  it('serves officer detail rather than a gate response', async () => {
-    const res = await request(
-      { id: 1, role: 'supervisor', username: 'supervisor', full_name: 'Supervisor' },
-      '/api/driver-performance/officer/1',
-    );
+  it('gates /officer/:id with 200 {ok:false, code:"awaiting_call_context"}', async () => {
+    const res = await request(SUP, '/api/driver-performance/officer/1');
     expect(res.status).toBe(200);
-    const body = await res.json() as { code?: string; daily?: unknown[] };
-    expect(body.code).toBeUndefined();
-    expect(Array.isArray(body.daily)).toBe(true);
+    const body = await res.json() as { ok?: boolean; code?: string };
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe('awaiting_call_context');
   });
 
-  it('applies RBAC BEFORE anything else — a denied role still gets 403', async () => {
+  it('gates /officer/:id/export with 200 {ok:false, code:"awaiting_call_context"}, never a scored PDF', async () => {
+    const res = await request(SUP, '/api/driver-performance/officer/1/export');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).not.toBe('application/pdf');
+    const body = await res.json() as { ok?: boolean; code?: string };
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe('awaiting_call_context');
+  });
+
+  // The RBAC ordering is the entire point of this gate: it must never be the
+  // reason a denied role sees 200 instead of 403.
+  it('applies RBAC BEFORE the call-context gate — a denied role still gets 403, not the gated 200', async () => {
     const res = await request(
       { id: 1, role: 'client_viewer', username: 'client_viewer', full_name: 'Client Viewer' },
       '/api/driver-performance/roster',
     );
     expect(res.status).toBe(403);
+  });
+
+  it('denies officer/dispatcher/contract_manager with 403 too, not the gated 200', async () => {
+    for (const role of ['officer', 'dispatcher', 'contract_manager']) {
+      const res = await request(
+        { id: 1, role, username: role, full_name: role },
+        '/api/driver-performance/roster',
+      );
+      expect(res.status).toBe(403);
+    }
   });
 });
 
@@ -172,12 +190,11 @@ describe('window validation (from/to)', () => {
     expect(cd === null || !/[\r\n]/.test(cd)).toBe(true);
   });
 
-  it('accepts a well-formed window and returns roster shape', async () => {
+  it('accepts a well-formed window but still returns the call-context gate (window validation runs before the gate)', async () => {
     const res = await request(SUP, '/api/driver-performance/roster?from=2026-03-01&to=2026-03-31');
     expect(res.status).toBe(200);
-    const body = await res.json() as { code?: string; ranked?: unknown[] };
-    expect(body.code).toBeUndefined();
-    expect(Array.isArray(body.ranked)).toBe(true);
+    const body = await res.json() as { code?: string };
+    expect(body.code).toBe('awaiting_call_context');
   });
 
   it('still returns 403 for a denied role even with a malformed window (RBAC runs first)', async () => {
@@ -190,13 +207,19 @@ describe('window validation (from/to)', () => {
 });
 
 describe('roster shape', () => {
-  it('separates unranked insufficient-exposure officers from the ranked list', async () => {
+  // Roster ranked/insufficient_data SHAPING logic (AGG_SQL + shape()) is
+  // exercised directly against real D1 data in
+  // test-workers/driverPerformanceQuery.test.ts — this route is gated on
+  // call context for every read, so an HTTP call here can only ever prove
+  // the gate response, not the roster shape.
+  it('the roster route still returns the call-context gate, not a ranked/insufficient_data payload', async () => {
     const res = await request(
       { id: 1, role: 'supervisor', username: 'supervisor', full_name: 'Supervisor' },
       '/api/driver-performance/roster?from=2026-03-01&to=2026-03-31',
     );
-    const body = await res.json() as { ranked: unknown[]; insufficient_data: unknown[] };
-    expect(Array.isArray(body.ranked)).toBe(true);
-    expect(Array.isArray(body.insufficient_data)).toBe(true);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { code?: string; ranked?: unknown };
+    expect(body.code).toBe('awaiting_call_context');
+    expect(body.ranked).toBeUndefined();
   });
 });
