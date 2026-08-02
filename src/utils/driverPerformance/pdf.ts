@@ -17,7 +17,7 @@
 // Literal hex color values below are CORRECT per CLAUDE.md — PDF generators
 // take literal color arguments and are excluded from the theme-token rule.
 
-import { MIN_EXPOSURE_MILES } from './score';
+import { MIN_EXPOSURE_MILES, SCORING_ENABLED } from './score';
 import { SPEED_THRESHOLDS } from './speedEvents';
 import type { ScoreResult } from './score';
 import { log } from '../logger';
@@ -302,6 +302,18 @@ class SimplePdfBuilder {
 export async function renderDriverPerformancePdf(
   params: RenderDriverPerformancePdfParams,
 ): Promise<Uint8Array> {
+  // ⚠️ Belt-and-suspenders. The route's `callContextGate` already refuses
+  // this call while scoring is gated (src/routes/driverPerformance.ts), so
+  // in the live request path this branch never fires — but this function
+  // authors an evidence-grade document that may outlive the code that calls
+  // it, and it must never be able to print a scored PDF while
+  // SCORING_ENABLED is false regardless of what future caller reaches it.
+  if (!SCORING_ENABLED) {
+    throw new Error(
+      'renderDriverPerformancePdf: scoring is gated (awaiting_call_context) — refusing to render a ' +
+      'scored document. Callers must check the callContextGate response before invoking this.',
+    );
+  }
   const { summary, window, scoreVersion, storedVersions, generatedAt, organization } = params;
   const pdf = new SimplePdfBuilder();
 

@@ -21,10 +21,50 @@ export type { SpeedEventCounts };
  */
 export const SCORE_VERSION = 'v1-speed';
 
+/**
+ * ⚠️ RE-GATED 2026-08-01. Do NOT flip this to `true` without BOTH of the
+ * following being independently true first — not one, not "close enough":
+ *
+ * (a) `gps_breadcrumbs.current_call_id` / `unit_status` are ACTUALLY BEING
+ *     CAPTURED. Patrol officers lawfully exceed posted limits responding
+ *     code-3 — that is a statutory exemption, not a violation. Today those
+ *     two columns are populated in ZERO of 91,382 live rows, so nothing can
+ *     tell "drove 95 mph to a domestic in progress" apart from "drove 95 mph
+ *     home." A live audit found Officer 1 scoring 0 / At Risk on 127
+ *     sustained runs above 85 mph in 30 days, entirely because of this gap —
+ *     the detection is sound, the exclusion it needs does not exist yet.
+ *     Publishing "At Risk" on that basis is a false accusation against a
+ *     named officer. `rollup.ts` already excludes call-context samples so the
+ *     exclusion activates the moment the fields start populating — but an
+ *     exclusion filter over all-empty columns excludes nothing.
+ *
+ * (b) `REFERENCE_RATE_AT_ZERO` below has been RECALIBRATED against real
+ *     POST-EXCLUSION data. It is currently 20, while the observed
+ *     PRE-EXCLUSION rate is 50 — i.e. every officer clamps to a score of 0
+ *     with no gradation. A scale where the entire population sits on the
+ *     floor conveys nothing, can't show improvement, and can't distinguish a
+ *     bad driver from a slightly-less-bad one. Do NOT invent a replacement
+ *     number now, either — a guessed reference rate is the same mistake
+ *     (a confident wrong number about a named person) in a different place.
+ *     It has to come from real data measured AFTER (a) is live.
+ *
+ * Flipping this flag while either precondition is unmet ships false
+ * accusations against named officers. Both. Not one.
+ */
+export const SCORING_ENABLED = false;
+
 /** Below this, no score is produced. A blank is honest; a zero is a claim. */
 export const MIN_EXPOSURE_MILES = 250;
 
-/** Weighted events per 100 miles that maps to a score of 0. */
+/**
+ * Weighted events per 100 miles that maps to a score of 0.
+ *
+ * ⚠️ DO NOT retune this value in isolation to "fix" the all-zero clamp
+ * described in the SCORING_ENABLED comment above. The 20 here was already
+ * measured against pre-exclusion data; the fix is recalibrating against
+ * real post-exclusion data once (a) above is live, not picking a new number
+ * now with no data behind it.
+ */
 const REFERENCE_RATE_AT_ZERO = 20;
 
 /** Below this share of recorded (vs inferred) attribution, flag as inferred. */
