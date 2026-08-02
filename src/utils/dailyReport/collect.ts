@@ -17,9 +17,13 @@ import type {
   DailyReportData, CallRow, CitationRow, TripRow, FuelRow, CheckRow, WorkOrderRow,
 } from './types';
 
-/** `fleet_vehicles` has no single display column; prefer the most
- *  human-meaningful non-null of the three, then fall back to the id. */
-const VEHICLE_LABEL_SQL = `COALESCE(NULLIF(v.vehicle_name,''), NULLIF(v.vehicle_number,''), NULLIF(v.plate_number,''), 'Vehicle ' || v.id)`;
+/** Total label — never NULL. `alias` is the source table's alias, whose
+ *  vehicle_id survives a LEFT JOIN miss (v.id does not). SQLite's ||
+ *  yields NULL on a NULL operand, so a bare 'Vehicle ' || id is not a
+ *  usable fallback: 34% of live unit_trips rows have a NULL or orphaned
+ *  vehicle_id and would collapse into one blank GROUP BY bucket. */
+const vehicleLabelSql = (alias: string): string =>
+  `COALESCE(NULLIF(v.vehicle_name,''), NULLIF(v.vehicle_number,''), NULLIF(v.plate_number,''), 'Vehicle ' || CAST(${alias}.vehicle_id AS TEXT), 'Unassigned')`;
 
 async function all<T>(db: D1Database, sql: string, ...binds: unknown[]): Promise<T[]> {
   const rs = await db.prepare(sql).bind(...binds).all<T>();
@@ -55,7 +59,7 @@ export async function collectDailyReport(
 
   const trips = await all<TripRow>(
     db,
-    `SELECT ${VEHICLE_LABEL_SQL} AS vehicle_label,
+    `SELECT ${vehicleLabelSql('t')} AS vehicle_label,
             COUNT(*) AS trips,
             ROUND(SUM(COALESCE(t.distance_m, 0)) / 1609.344, 1) AS miles,
             SUM(COALESCE(t.duration_s, 0)) AS duration_s
@@ -69,7 +73,7 @@ export async function collectDailyReport(
 
   const fuel = await all<FuelRow>(
     db,
-    `SELECT ${VEHICLE_LABEL_SQL} AS vehicle_label,
+    `SELECT ${vehicleLabelSql('f')} AS vehicle_label,
             f.fuel_date, f.gallons, f.total_cost, f.odometer, f.station
        FROM fleet_fuel_log f
        LEFT JOIN fleet_vehicles v ON v.id = f.vehicle_id
@@ -80,7 +84,7 @@ export async function collectDailyReport(
 
   const inspections = await all<CheckRow>(
     db,
-    `SELECT ${VEHICLE_LABEL_SQL} AS vehicle_label,
+    `SELECT ${vehicleLabelSql('i')} AS vehicle_label,
             'inspection' AS kind,
             COALESCE(i.inspection_date, i.created_at) AS performed_at,
             COALESCE(i.overall_result, CASE WHEN i.passed = 1 THEN 'PASS' ELSE 'FAIL' END) AS result,
@@ -94,7 +98,7 @@ export async function collectDailyReport(
 
   const pretrips = await all<CheckRow>(
     db,
-    `SELECT ${VEHICLE_LABEL_SQL} AS vehicle_label,
+    `SELECT ${vehicleLabelSql('p')} AS vehicle_label,
             'pretrip' AS kind,
             COALESCE(p.check_date, p.created_at) AS performed_at,
             p.status AS result,
@@ -108,7 +112,7 @@ export async function collectDailyReport(
 
   const opened = await all<WorkOrderRow>(
     db,
-    `SELECT w.number, ${VEHICLE_LABEL_SQL} AS vehicle_label,
+    `SELECT w.number, ${vehicleLabelSql('w')} AS vehicle_label,
             'opened' AS event, w.opened_at AS at, w.summary, w.status
        FROM work_orders w
        LEFT JOIN fleet_vehicles v ON v.id = w.vehicle_id
@@ -119,7 +123,7 @@ export async function collectDailyReport(
 
   const closed = await all<WorkOrderRow>(
     db,
-    `SELECT w.number, ${VEHICLE_LABEL_SQL} AS vehicle_label,
+    `SELECT w.number, ${vehicleLabelSql('w')} AS vehicle_label,
             'closed' AS event, w.closed_at AS at, w.summary, w.status
        FROM work_orders w
        LEFT JOIN fleet_vehicles v ON v.id = w.vehicle_id

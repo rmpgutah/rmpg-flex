@@ -75,4 +75,25 @@ describe('collectDailyReport', () => {
     await collectDailyReport(db, '2026-07-18', '2026-08-01T00:00:00.000Z');
     for (const c of calls) expect(c.sql).not.toMatch(/\bcall_units\b/);
   });
+
+  it('vehicle label can never be NULL, even when the vehicle join misses', async () => {
+    const { db, calls } = makeDb(EMPTY);
+    await collectDailyReport(db, '2026-07-18', '2026-08-01T00:00:00.000Z');
+    const labelled = calls.filter((c) => /vehicle_label/.test(c.sql));
+    expect(labelled.length).toBeGreaterThan(0);
+    for (const c of labelled) {
+      // A bare "'Vehicle ' || v.id" is NULL on a LEFT JOIN miss — 34% of live
+      // unit_trips rows hit that path and collapsed into one blank group.
+      expect(c.sql).toContain(`'Unassigned'`);
+      expect(c.sql).not.toMatch(/'Vehicle ' \|\| v\.id/);
+    }
+  });
+
+  it('labels fall back to the SOURCE row vehicle_id, not the joined-away v.id', async () => {
+    const { db, calls } = makeDb(EMPTY);
+    await collectDailyReport(db, '2026-07-18', '2026-08-01T00:00:00.000Z');
+    const trips = calls.find((c) => /FROM unit_trips/.test(c.sql));
+    expect(trips).toBeDefined();
+    expect(trips!.sql).toContain('CAST(t.vehicle_id AS TEXT)');
+  });
 });
