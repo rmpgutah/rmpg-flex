@@ -55,7 +55,7 @@ One row per `(officer_id, perf_date)`.
 - **Events by type:** forward-collision, lane-departure, close-following,
   harsh-brake, harsh-accel, speeding
 - **Attribution provenance:** `attribution_recorded_pct`, `attribution_inferred_pct`
-- **Cost (lens 4):** `fuel_cost`, `fuel_gallons`, `maintenance_cost`, `damage_cost`
+- **Cost (lens 4):** `fuel_cost`, `fuel_gallons`, `maintenance_cost`
 - **Result:** `score`, `score_version`, `computed_at`
 
 **Cost is recorded and displayed but never folded into the safety score.** A driver
@@ -71,20 +71,24 @@ Unique index on `(officer_id, perf_date)`; upserts are idempotent.
 
 ### Schema changes
 
-**Migration `0222`** — `fleet_assignments.officer_id` (nullable FK to `users`).
-Required going forward. A one-time resolver matches existing `officer_name` free
-text to users and writes the FK **only on unambiguous single matches**; ambiguity
-stays null rather than guessing.
+All three schema changes ship in **one** migration,
+`0223_driver_performance_schema.sql`:
 
-**Migration `0223`** — `dashcam_events.officer_id` and
-`dashcam_events.officer_attribution_source`. Stamped at ingest from here forward.
-`dashcam_events` is far below the D1 100-column cap, so `ADD COLUMN` is safe here
-(unlike `calls_for_service` / `persons`).
+1. `fleet_assignments.officer_id` (nullable FK to `users`). Required going forward.
+   A one-time resolver matches existing `officer_name` free text to users and
+   writes the FK **only on unambiguous single matches**; ambiguity stays null
+   rather than guessing.
+2. `dashcam_events.officer_id` and `dashcam_events.officer_attribution_source`.
+   Stamped at ingest from here forward. `dashcam_events` is far below the D1
+   100-column cap, so `ADD COLUMN` is safe here (unlike `calls_for_service` /
+   `persons`).
+3. `driver_performance_daily` plus indexes.
 
-**Migration `0224`** — `driver_performance_daily` plus indexes.
+> Originally numbered `0222`. Renumbered to `0223` on 2026-08-01 after
+> `0222_assessor_full_cama_build.sql` landed on `main` first and took that prefix.
 
-Apply all three to live D1 `785de7ae` via `scripts/apply-migration.sh` after merge
-and verify with `pragma_table_info`; the deploy step is `continue-on-error`.
+Apply to live D1 `785de7ae` via `scripts/apply-migration.sh` after merge and verify
+with `pragma_table_info`; the deploy step is `continue-on-error`.
 
 ### Attribution resolution
 
@@ -153,7 +157,7 @@ call site will be prepared for the owner to supply.
 |---|---|
 | `GET /roster` | Scored roster for `?from=&to=`, ranked; `insufficient_data` officers returned in a separate unranked list |
 | `GET /officer/:id` | Daily trend, event breakdown, exposure, attribution confidence, linked events |
-| `GET /officer/:id/export` | PDF via the existing `pdfEngine` seam, stamped with window, `score_version`, attribution confidence, generation timestamp |
+| `GET /officer/:id/export` | PDF stamped with window, `score_version`, attribution confidence, generation timestamp. **Note:** no server-side PDF library exists in the Worker (`jspdf`/`pdf-lib` are client-only deps), so this uses a purpose-built minimal generator at `src/utils/driverPerformance/pdf.ts` rather than a shared seam |
 | `POST /recompute` | Admin-only, re-runs a date range. Explicit and audited, never automatic |
 
 ### Access control
@@ -244,7 +248,7 @@ Pure logic in `tests/`, routes in `test-workers/` (Miniflare).
 
 ## Post-merge checklist
 
-1. Apply `0222`, `0223`, `0224` to live D1 `785de7ae` via
+1. Apply `0223`, `0223`, `0224` to live D1 `785de7ae` via
    `scripts/apply-migration.sh`; verify with `pragma_table_info`.
 2. Run the `fleet_assignments.officer_id` resolver; review the unmatched report.
 3. Backfill `driver_performance_daily` for the desired history window.

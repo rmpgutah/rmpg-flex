@@ -14,7 +14,7 @@
 - **All D1 calls are async** — always `await` `.first()` / `.all()` / `.run()`.
 - **D1 100-bound-parameter cap** — every officer-list `IN (…)` uses `queryInChunks` / `executeInChunks` from `src/utils/db.ts`. Never hand-roll a page loop or an IN-list from an unbounded array.
 - **D1 100-column cap** — never `ALTER TABLE` `calls_for_service` or `persons`. `dashcam_events` (16 cols) and `fleet_assignments` (10 cols) are safe.
-- **Migrations start at `0222`** (high-water is `0221`). Idempotent DDL. D1 has no `IF NOT EXISTS` on `ADD COLUMN` — gate every `ALTER` with `columnExists()`.
+- **Migration is `0223`** (0222 was taken by the assessor CAMA build on main). Idempotent DDL. D1 has no `IF NOT EXISTS` on `ADD COLUMN` — gate every `ALTER` with `columnExists()`.
 - **Never hardcode hex** in client code. Use `surface-*` / `rmpg-*` / `--sev-*` tokens. 2px radius, never `rounded-lg`.
 - **Timestamps are UTC.** Parse D1 timestamps with `parseD1TimestampMs` (exported from `src/utils/fleetio/sync.ts:989`) — `datetime('now')` is zone-less and `Date.parse` reads it as local.
 - **Structured logging** via `log.info/warn/error` from `src/utils/logger.ts`, not `console.*`.
@@ -29,7 +29,7 @@
 
 | File | Responsibility |
 |---|---|
-| `migrations/0222_driver_performance_schema.sql` | All three schema changes (assignment FK, event attribution columns, snapshot table) |
+| `migrations/0223_driver_performance_schema.sql` | All three schema changes (assignment FK, event attribution columns, snapshot table) |
 | `src/utils/driverPerformance/score.ts` | Pure scoring: weights, exposure gate, 0–100 scale, banding. No D1. |
 | `src/utils/driverPerformance/attribution.ts` | Pure attribution resolution order. No D1. |
 | `src/utils/driverPerformance/rollup.ts` | D1 orchestration: gather events + exposure + cost, write snapshots |
@@ -49,7 +49,7 @@ Pure logic is split from D1 orchestration deliberately: the scoring module is th
 ### Task 1: Schema
 
 **Files:**
-- Create: `migrations/0222_driver_performance_schema.sql`
+- Create: `migrations/0223_driver_performance_schema.sql`
 - Modify: `src/utils/db.ts` (append reconciler function)
 
 **Interfaces:**
@@ -58,7 +58,7 @@ Pure logic is split from D1 orchestration deliberately: the scoring module is th
 
 - [ ] **Step 1: Write the migration**
 
-Create `migrations/0222_driver_performance_schema.sql`:
+Create `migrations/0223_driver_performance_schema.sql`:
 
 ```sql
 -- Driver Performance (spec 2026-08-01).
@@ -124,7 +124,7 @@ Expected: the column list above, including `score_version` and the four cost col
 Append to `src/utils/db.ts` (deploy applies migrations with `continue-on-error`, so the Worker self-heals):
 
 ```ts
-// ── Driver Performance reconciler (mig 0222) ───────────────
+// ── Driver Performance reconciler (mig 0223) ───────────────
 // deploy.yml applies migrations with continue-on-error, and D1 has no
 // IF NOT EXISTS on ADD COLUMN — gate each ALTER with columnExists().
 let _driverPerformanceEnsured = false;
@@ -160,7 +160,7 @@ Expected: no errors.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add migrations/0222_driver_performance_schema.sql src/utils/db.ts
+git add migrations/0223_driver_performance_schema.sql src/utils/db.ts
 git commit -m "feat(driver-performance): schema for attribution and daily snapshots"
 ```
 
@@ -1745,7 +1745,7 @@ gh pr create -R rmpgutah/rmpg-flex --title "feat: Driver Performance" --body "Se
 ## Post-merge checklist
 
 1. Apply the migration to live D1 `785de7ae`:
-   `scripts/apply-migration.sh 0222_driver_performance_schema.sql`
+   `scripts/apply-migration.sh 0223_driver_performance_schema.sql`
 2. Verify: `SELECT name FROM pragma_table_info('driver_performance_daily')` and confirm `fleet_assignments.officer_id` exists.
 3. Dry-run then apply `scripts/resolve-assignment-officers.mjs`; review the unresolved report.
 4. Backfill history: `POST /api/driver-performance/recompute` with the desired range, as an admin.
