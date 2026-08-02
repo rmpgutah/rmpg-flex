@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { R2Bucket, R2Object, D1Database } from '@cloudflare/workers-types';
 import { log } from '../utils/logger';
+import { getR2Range, rangeNotSatisfiableInit } from '../utils/byteRange';
 
 // ─── Helpers exported for use by src/index.ts (non-API paths) ──
 
@@ -45,8 +46,16 @@ export async function serveDownloadFile(bucket: R2Bucket, filename: string, c: a
     }
   }
 
-  const obj = await bucket.get(filename, range ? { range } : undefined);
-  if (!obj) return c.json({ error: 'File not found' }, 404);
+  // getR2Range() instead of a bare get(): R2 THROWS on an unsatisfiable range
+  // (start > end, or start past EOF), which would surface as a 500 mid-download
+  // instead of the 416 a download manager knows how to recover from.
+  const got = await getR2Range(bucket, filename, range);
+  if (got.kind === 'missing') return c.json({ error: 'File not found' }, 404);
+  if (got.kind === 'unsatisfiable') {
+    const init = rangeNotSatisfiableInit(got.total);
+    return c.json(init.body, init.status, init.headers);
+  }
+  const obj = got.obj;
 
   const mime = downloadMime(filename);
   const headers: Record<string, string> = {

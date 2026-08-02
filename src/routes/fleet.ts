@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
+import { getR2Range, rangeNotSatisfiableInit } from '../utils/byteRange';
 import { requireRole } from '../middleware/auth';
 import { verifySignedResource } from '../utils/signedAccess';
 import { summarizeInspection } from '../utils/vehicleInspection';
@@ -910,10 +911,16 @@ fleet.get('/dashcam-videos/:id{[0-9]+}/stream', async (c) => {
       }
     }
 
-    const obj = r2Range
-      ? await c.env.UPLOADS.get(row.file_path, { range: r2Range })
-      : await c.env.UPLOADS.get(row.file_path);
-    if (!obj) return c.json({ error: 'File not in storage' }, 404);
+    // getR2Range() instead of a bare get(): R2 THROWS on an unsatisfiable
+    // range (start > end, or start past EOF), which the catch below would
+    // report as a 500 on what is really a client error. See byteRange.ts.
+    const got = await getR2Range(c.env.UPLOADS, row.file_path, r2Range);
+    if (got.kind === 'missing') return c.json({ error: 'File not in storage' }, 404);
+    if (got.kind === 'unsatisfiable') {
+      const init = rangeNotSatisfiableInit(got.total);
+      return c.json(init.body, init.status, init.headers);
+    }
+    const obj = got.obj;
 
     const totalSize = obj.size;
     const headers: Record<string, string> = {

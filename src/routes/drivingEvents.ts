@@ -13,6 +13,7 @@
 import { Hono, type Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getR2Range, rangeNotSatisfiableInit } from '../utils/byteRange';
 import { classifyDrivingEvent, fleetStatusFor } from '../utils/drivingEvents';
 import { getApiConfig, listMediaForAsset, type CpgMediaObject } from '../utils/clearpathGps';
 import { recordAudit } from '../utils/auditLog';
@@ -282,8 +283,19 @@ function parseEventRange(header: string): { offset: number; length?: number } | 
 /** Serve a clip from R2 with Range-request support. */
 async function serveR2Clip(env: Env['Bindings'], r2Key: string, rangeHeader: string | undefined): Promise<Response> {
   const parsed = rangeHeader ? parseEventRange(rangeHeader) : null;
-  const obj = parsed ? await env.UPLOADS.get(r2Key, { range: parsed }) : await env.UPLOADS.get(r2Key);
-  if (!obj) return new Response('Not found', { status: 404 });
+  // getR2Range() instead of a bare get(): R2 THROWS on an unsatisfiable range
+  // (start > end, or start past EOF). serveR2Clip has no try/catch of its own,
+  // so that throw reached the global onError as a 500 on a client error.
+  const got = await getR2Range(env.UPLOADS, r2Key, parsed ?? undefined);
+  if (got.kind === 'missing') return new Response('Not found', { status: 404 });
+  if (got.kind === 'unsatisfiable') {
+    const init = rangeNotSatisfiableInit(got.total);
+    return new Response(JSON.stringify(init.body), {
+      status: init.status,
+      headers: { 'Content-Type': 'application/json', ...init.headers },
+    });
+  }
+  const obj = got.obj;
   const status = rangeHeader ? 206 : 200;
   const headers = new Headers({
     'Content-Type': obj.httpMetadata?.contentType || 'video/mp4',
