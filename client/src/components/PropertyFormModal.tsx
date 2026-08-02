@@ -8,6 +8,7 @@ import type { Property } from '../types';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 import { apiFetch } from '../hooks/useApi';
+import { buildAssessorFormPatch, type AssessorParcelDetail } from '../utils/assessorFormPatch';
 import { useAssessorLookup } from '../hooks/useAssessorLookup';
 import { AssessorSuggestionPanel } from './AssessorSuggestionPanel';
 import { JurisdictionButton } from './JurisdictionButton';
@@ -187,7 +188,34 @@ export default function PropertyFormModal({
   useEffect(() => () => { if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current); }, []);
 
   const onApplyAssessor = useCallback(async (parcelNumber: string) => {
-    if (!recordId) return;
+    // UNSAVED record: there is no row for /assessor/apply to write to, so
+    // fill the FORM instead. Previously this was a bare `if (!recordId)
+    // return;` while the panel still rendered an enabled Apply button —
+    // clicking it did nothing at all, with no request and no error, which
+    // is indistinguishable from a broken backend.
+    if (!recordId) {
+      try {
+        const res = await apiFetch<{ ok: boolean; parcel: AssessorParcelDetail | null }>(
+          `/assessor/parcel/${encodeURIComponent(parcelNumber)}`,
+        );
+        if (!res?.parcel) return;
+        setForm((prev) => {
+          const { patch, skipped } = buildAssessorFormPatch(
+            res.parcel!, prev as unknown as Record<string, unknown>,
+          );
+          setSkippedCount(skipped.length);
+          if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current);
+          if (skipped.length > 0) {
+            skippedTimerRef.current = setTimeout(() => setSkippedCount(0), 5000);
+          }
+          return { ...prev, ...(patch as Partial<typeof prev>) };
+        });
+        assessor.dismiss();
+      } catch (err) {
+        console.error('Assessor apply (unsaved record) failed', err);
+      }
+      return;
+    }
     try {
       const res = await apiFetch<{ ok: boolean; patch: Record<string, unknown>; skipped: string[]; parcel_record_id: number | null }>(
         '/assessor/apply',
@@ -388,7 +416,9 @@ export default function PropertyFormModal({
               onRefresh={assessor.refresh}
             />
             {!recordSaved && assessor.parcels && assessor.parcels.length > 0 && (
-              <div className="text-xs text-rmpg-400 mt-1">Save record first, then apply parcel.</div>
+              <div className="text-xs text-rmpg-400 mt-1">
+                Applying fills these fields now; they save with the record.
+              </div>
             )}
             {skippedCount > 0 && (
               <div className="text-xs text-rmpg-400 mt-1">{skippedCount} field(s) skipped (already filled)</div>
