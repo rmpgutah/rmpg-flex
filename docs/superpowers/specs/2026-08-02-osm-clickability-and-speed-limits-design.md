@@ -34,6 +34,11 @@ Additionally, Dispatch has no speed or posted-limit context for enroute units.
 | `src/utils/eta.ts` uses `overview=false` | `:91` — incompatible with `annotations`; must change to add maxspeed |
 | Dispatch already has unit speed + position | `src/routes/dispatch/gps.ts:230` mirrors `gps_speed` (m/s), `latitude`, `longitude` onto `units` |
 | maxspeed data is in the `osm-traffic` archive | `config/osm-layers.json` traffic group, `cat: "maxspeed"`, filter `w/maxspeed`, minzoom 13 |
+| **Turn-by-turn already renders on the Dispatch map** | `DispatchMiniMap.tsx:616` — maneuver banner with `ManeuverArrow`, instruction, distance, ETA |
+| **Voice guidance is already gated `enroute` → `onscene`** | `DispatchMiniMap.tsx:464` |
+| **The visual banner is deliberately NOT gated** | `DispatchMiniMap.tsx:457` comment: "the on-screen maneuver banner still render[s] at any status — this gate is voice-only" |
+| The Dispatch route call already meets the annotation preconditions | `useMapRouting.ts:395` — `overview=full&steps=true&annotations=congestion` |
+| `UnitStatus`/`CallStatus` both carry `enroute` + `onscene` | `client/src/types/index.ts:218,434`, with `enroute_at`/`onscene_at` timestamps |
 
 ## Design
 
@@ -43,7 +48,7 @@ Speed limits are needed in two shapes; each gets the mechanism suited to it.
 
 | Question | Shape | Source | Why |
 |---|---|---|---|
-| Limit **along a route** | Per-segment array, needed together with an ETA | Mapbox Directions `annotations=maxspeed` | The enroute path already calls Directions for the ETA. One round trip, and limits align to the driven geometry rather than "nearest way," which is wrong near interchanges. |
+| Limit **along a route** | Per-segment array, needed together with an ETA | Mapbox Directions `annotations=maxspeed` | Turn-by-turn requires a `steps=true` Directions call regardless, and `useMapRouting.ts:395` already sends `overview=full` — the annotation's precondition. Limits ride along in a request Dispatch already makes, aligned to the driven geometry rather than "nearest way," which is wrong near interchanges. |
 | Limit **at a point** | Single value at a coordinate | `osm-traffic` PMTiles in R2 | No route exists for map popups or off-route drive mode. This tier is what removes the Overpass dependency. |
 
 ### Components
@@ -122,6 +127,24 @@ Display: `Unit 12 · 58 in a 35 · ETA 4 min`.
   speed against a freshly-fetched limit produces a confident-looking false reading.
 - **ETA trade-off:** `src/utils/eta.ts` must move from `overview=false` to
   `overview=full` to carry the annotation, accepting the route-geometry payload.
+  The `useMapRouting` path needs no such change — it already sends `overview=full`.
+
+**6. Turn-by-turn lifecycle on the Dispatch map**
+
+Turn-by-turn already renders (`DispatchMiniMap.tsx:616`) and voice is already gated
+`enroute` → `onscene` (`:464`). The gap is that the **visual banner renders at any
+status** — an explicit prior decision (`:457`), reversed here at operator request.
+
+- Gate the maneuver banner on the same condition the voice gate uses, so
+  instructions appear when the unit goes `enroute` and clear when it goes `onscene`.
+- **The route line is deliberately NOT gated.** A dispatcher benefits from seeing
+  the path to a dispatched-but-not-yet-enroute call. Only the turn-by-turn
+  instructions follow the status.
+- Extract the shared predicate so the banner and the voice gate cannot drift apart —
+  today they are two independent reads of `call?.status`.
+- Add `maxspeed` to the existing annotation list at `useMapRouting.ts:395`
+  (`annotations=congestion,maxspeed`) so the posted limit for the current segment is
+  available to the banner without a second request.
 
 ### Error handling
 
