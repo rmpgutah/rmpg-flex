@@ -78,6 +78,8 @@ check_opt() {
 
 OSMIUM_EXPORT_HELP="$(osmium export --help 2>&1 || true)"
 check_opt osmium "$OSMIUM_EXPORT_HELP" "-e"
+check_opt osmium "$OSMIUM_EXPORT_HELP" "--add-unique-id"
+check_opt osmium "$OSMIUM_EXPORT_HELP" "--attributes"
 
 TIPPECANOE_HELP="$(tippecanoe --help 2>&1 || true)"
 check_opt tippecanoe "$TIPPECANOE_HELP" "--drop-rate"
@@ -154,7 +156,15 @@ for g in $OSM_GROUPS; do
   # earlier revision of this script invented one and aborted every real run
   # with "unrecognised option '--error-file'"). Feature data goes to -o, so
   # stdout is free to redirect to an errors file.
+  # --add-unique-id=type_id stamps each feature with its real OpenStreetMap
+  # element id ("n83099358" / "w1234" / "r567") — the same id in an
+  # openstreetmap.org URL. Without it every feature is ANONYMOUS, which makes
+  # it impossible to attach an internal RMPG edit to a specific hydrant, to
+  # link a feature to a CAD record, or to diff one extract against the next.
+  # --attributes adds the standard OSM metadata the website itself displays.
   osmium export -f geojsonseq --overwrite -e \
+    --add-unique-id=type_id \
+    --attributes=version,timestamp \
     -o "${WORK}/${g}.raw.geojsonseq" \
     "${WORK}/${g}.osm.pbf" > "${WORK}/${g}.export-errors.txt"
   if [[ -s "${WORK}/${g}.export-errors.txt" ]]; then

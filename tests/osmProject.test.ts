@@ -44,21 +44,65 @@ describe('assignCategory', () => {
 });
 
 describe('projectFeature', () => {
-  it('keeps only allow-listed properties and adds cat', () => {
+  it('keeps only allow-listed properties on an allow-list group', () => {
+    // `traffic` keeps an explicit array to bound tile size.
+    const way = {
+      type: 'Feature' as const,
+      geometry: { type: 'LineString' as const, coordinates: [[-111.89, 40.76], [-111.88, 40.77]] },
+      properties: { maxspeed: '45 mph', name: 'State St', 'some:unlisted:tag': 'dropped' },
+    };
+    const out = projectFeature(way, 'traffic')!;
+    expect(out.properties).toEqual({ cat: 'maxspeed', maxspeed: '45 mph', name: 'State St' });
+  });
+
+  it("captures EVERY non-noise tag on a '*' group, matching openstreetmap.org", () => {
+    // `safety` captures '*': the popup should be able to show the same detail
+    // the OSM website shows — full address, phone, website, operator.
     const f = pt({
       emergency: 'fire_hydrant',
       colour: 'yellow',
       'fire_hydrant:type': 'pillar',
-      'some:unlisted:tag': 'dropped',
-      'created_by': 'JOSM',
+      'addr:street': 'East 80 North',
+      'contact:phone': '+1 801-763-3020',
+      'some:unlisted:tag': 'kept now',
     });
     const out = projectFeature(f, 'safety')!;
-    expect(out.properties).toEqual({
-      cat: 'hydrant',
+    expect(out.properties['addr:street']).toBe('East 80 North');
+    expect(out.properties['contact:phone']).toBe('+1 801-763-3020');
+    expect(out.properties['some:unlisted:tag']).toBe('kept now');
+    expect(out.properties.cat).toBe('hydrant');
+  });
+
+  it("still drops noise tags under '*' so tiles do not carry editor cruft", () => {
+    const f = pt({
       emergency: 'fire_hydrant',
-      colour: 'yellow',
-      'fire_hydrant:type': 'pillar',
+      created_by: 'JOSM',
+      source: 'survey',
+      'tiger:tlid': '123456',
+      note: 'check this',
+      '@version': '7',
     });
+    const out = projectFeature(f, 'safety')!;
+    for (const junk of ['created_by', 'source', 'tiger:tlid', 'note', '@version']) {
+      expect(out.properties[junk], `${junk} should be dropped as noise`).toBeUndefined();
+    }
+  });
+
+  it('carries the OSM element id so a feature is addressable', () => {
+    // Without a stable id, an internal edit cannot attach to a specific
+    // feature, and nothing can be diffed across extract refreshes.
+    const f = { ...pt({ emergency: 'fire_hydrant' }), id: 'n83099358' };
+    const out = projectFeature(f as any, 'safety')!;
+    expect(out.properties.osm_id).toBe('n83099358');
+  });
+
+  it('re-exports OSM metadata under stable names', () => {
+    const f = { ...pt({ emergency: 'fire_hydrant', '@version': '15', '@timestamp': '1707809666' }), id: 'n1' };
+    const out = projectFeature(f as any, 'safety')!;
+    expect(out.properties.osm_version).toBe('15');
+    expect(out.properties.osm_timestamp).toBe('1707809666');
+    // The raw @-prefixed forms must not leak into the tiles.
+    expect(out.properties['@version']).toBeUndefined();
   });
 
   it('omits allow-listed properties that are absent or empty', () => {
