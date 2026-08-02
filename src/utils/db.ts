@@ -578,7 +578,7 @@ export async function ensureDriverPerformanceColumns(db: D1Database): Promise<vo
     ['driver_performance_daily', 'events_speed_very_high', 'INTEGER NOT NULL DEFAULT 0'],
     ['driver_performance_daily', 'events_speed_extreme', 'INTEGER NOT NULL DEFAULT 0'],
     ['driver_performance_daily', 'breadcrumb_samples', 'INTEGER NOT NULL DEFAULT 0'],
-    // 2026-08-01 — of `breadcrumb_samples` (RAW, pre-exclusion), how many were
+    // 0225 — of `breadcrumb_samples` (RAW, pre-exclusion), how many were
     // excluded as emergency-response (current_call_id set or unit_status in an
     // active-response state). `breadcrumb_samples` alone cannot tell "feed
     // dead" (raw=0) apart from "every sample was lawful code-3" (raw>0, all

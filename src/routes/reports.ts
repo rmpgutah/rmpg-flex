@@ -6,7 +6,13 @@
 // src/routes/stubs.ts so the Reports dashboard renders real numbers.
 //
 // All handlers gated to admin/manager/supervisor — these expose
-// org-wide rollups, not officer-level data.
+// org-wide rollups, not officer-level data. Exceptions: /calls-near (the
+// patrol-view geo filter every officer hits from the dashboard) and
+// /daily-reports/* (the Fleet Daily Blotter), which is NOT open to every
+// authenticated user — it is restricted to internal operational roles
+// (admin/manager/supervisor/officer/dispatcher; see BLOTTER_ROLES below)
+// because the PDF carries call addresses, dispositions, officer names,
+// and citations. See the router-level gate below.
 //
 // Time windows are user-supplied via ?days=N (clamped to [1, 365]).
 // SQL filters on created_at (when the record entered the system) —
@@ -22,9 +28,16 @@ import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
 import type { Env } from '../types';
 
 import { log } from '../utils/logger';
+import dailyReports from './dailyReports';
 const reports = new Hono<Env>();
 
 const ANALYTICS_ROLES = ['admin', 'manager', 'supervisor'];
+
+/** Internal operational roles. Deliberately excludes the outward-facing
+ *  client_viewer and contract_manager, and human_resources — a blotter is
+ *  operational law-enforcement detail, not a client-facing or personnel
+ *  document. */
+const BLOTTER_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 
 // All /reports/* routes are org-wide rollups → elevated roles only, EXCEPT
 // /shift-activity/:officerId, which is an officer's own end-of-shift report
@@ -37,6 +50,28 @@ reports.use('*', async (c, next) => {
   // /calls-near is the patrol-view geo filter — every officer hits it from
   // the dashboard, not just analytics roles.
   if (c.req.path.endsWith('/calls-near')) return next();
+  // /daily-reports/* (Fleet Daily Blotter) is not an analytics rollup, so it
+  // does not take ANALYTICS_ROLES — but it is NOT open to every authenticated
+  // user either. The PDF carries every call's address, disposition and
+  // responding officer plus all citations for the day, so outward-facing
+  // accounts (client_viewer, contract_manager) and human_resources are
+  // excluded. POST /generate is separately gated to admin inside the
+  // sub-router (src/routes/dailyReports.ts).
+  //
+  // ANCHORED deliberately: a bare `.includes('/daily-reports')` also matches
+  // any future sibling whose name merely contains that substring (e.g.
+  // /api/reports/non-daily-reports-summary), silently widening this gate.
+  // Verified c.req.path is the FULL request path (e.g.
+  // "/api/reports/daily-reports/by-month"), not a router-relative path, so
+  // startsWith with the full mount prefix is correct here — but a bare
+  // startsWith('/api/reports/daily-reports') ALSO matches a hypothetical
+  // sibling like /api/reports/daily-reports-summary (no path-boundary
+  // check), so require an exact match or a '/'-delimited subpath.
+  const dailyReportsPath = c.req.path;
+  if (dailyReportsPath === '/api/reports/daily-reports'
+    || dailyReportsPath.startsWith('/api/reports/daily-reports/')) {
+    return requireRole(...BLOTTER_ROLES)(c, next);
+  }
   return requireRole(...ANALYTICS_ROLES)(c, next);
 });
 
@@ -1454,5 +1489,10 @@ reports.get('/overdue-reports', async (c) => {
     return c.json({ count: rows.length, items: rows });
   } catch { return c.json({ count: 0, items: [] }); }
 });
+
+// Mounted here rather than in routesConfig so it inherits /api/reports'
+// auth:'required'. Declaration order matters in Hono — verified 2026-08-01
+// that no route above is a bare /:param that could shadow this.
+reports.route('/daily-reports', dailyReports);
 
 export default reports;

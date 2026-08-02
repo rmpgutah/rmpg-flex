@@ -18,6 +18,8 @@ import propertyPhotos from '../src/routes/property/photos';
 import workOrders from '../src/routes/workOrders';
 import serveIntake from '../src/routes/serveIntake';
 import records from '../src/routes/records';
+import reports from '../src/routes/reports';
+import { authMiddleware } from '../src/middleware/auth';
 
 const app = new Hono<{ Bindings: Record<string, unknown>; Variables: { user: { id: number; role: string; username: string }; userId: number } }>();
 app.use('*', async (c, next) => {
@@ -40,5 +42,14 @@ app.route('/api/property-photos', propertyPhotos);
 app.route('/api/work-orders', workOrders);
 app.route('/api/serve-intake', serveIntake);
 app.route('/api/records', records);
+
+// /api/reports is mounted with the REAL authMiddleware (not the fake-user
+// stub above) so dailyReports.test.ts can exercise real JWT + role-based
+// gating end-to-end via SELF.fetch, matching how src/index.ts mounts it
+// in production. The stub middleware above still runs first (registered
+// earlier) but authMiddleware overwrites c.var.user/userId with the real,
+// DB-backed identity once a valid token is presented.
+app.use('/api/reports/*', authMiddleware);
+app.route('/api/reports', reports);
 
 export default app;
