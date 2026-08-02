@@ -50,12 +50,27 @@ describe('buildQueryUrl', () => {
 describe('searchByAddress', () => {
   // The new client POSTs directly to resultsMain.cfm (no Firecrawl key needed
   // for the single-result path). Without a key it falls back to direct POST only.
-  test('returns empty array when all upstream calls fail (no key, POST errors)', async () => {
+  test('THROWS when it never reached the county (was: swallowed to [])', async () => {
+    // Contract change 2026-08-02. Returning [] here made an unreachable
+    // assessor indistinguishable from "the county has no such parcel", so
+    // the caller reported "No matching parcels" during an outage — stating
+    // as fact that no record exists when we never got an answer.
+    // The caller (lookupParcelsWithFallback) catches this, tries the stale
+    // cache, and only then reports upstream_error, so no route 500s.
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
       async () => new Response('connection refused', { status: 502 }),
     );
-    const out = await searchByAddress({}, '2200 S 500 E');
-    expect(out).toEqual([]);
+    await expect(searchByAddress({}, '2200 S 500 E')).rejects.toThrow(/unreachable/i);
+    fetchSpy.mockRestore();
+  });
+
+  test('returns [] when it DID reach the county and there was simply no match', async () => {
+    // The other half of the distinction: a 200 with no parcel rows is an
+    // answer, not a fault, and must not throw.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () => new Response('<html><body>no parcels</body></html>', { status: 200 }),
+    );
+    await expect(searchByAddress({}, '2200 S 500 E')).resolves.toEqual([]);
     fetchSpy.mockRestore();
   });
 
@@ -72,14 +87,15 @@ describe('searchByAddress', () => {
     fetchSpy.mockRestore();
   });
 
-  test('returns empty array when all fetches return 5xx (does not throw)', async () => {
+  test('a 5xx from every attempt is an outage, not a no-match', async () => {
+    // We reached the host but got no usable answer — same user-visible
+    // consequence as no connection at all, so it must not read as "no match".
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
       async () => new Response('boom', { status: 502 }),
     );
-    // New behaviour: errors are swallowed and empty array returned instead of throwing.
     await expect(
       searchByAddress({ FIRECRAWL_API_KEY: 'sk_test' }, '2200 S 500 E'),
-    ).resolves.toEqual([]);
+    ).rejects.toThrow(/unreachable/i);
     fetchSpy.mockRestore();
   });
 });
