@@ -21,6 +21,7 @@ import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { ensureOsmIcons, iconIdForCat } from '../utils/osmIcons';
 import { buildOsmPopupHtml } from '../utils/osmPopup';
+import { mergeOverride, hiddenFilterClause, type OsmOverride } from './useOsmOverrides';
 import {
   roadColorExpression, roadSortKeyExpression, ptTypeColorExpression,
   classifyCartocode, classifyPtType,
@@ -422,6 +423,17 @@ interface UseVectorTileLayersOptions {
    * When provided, address-point/road popups gain a "Use this location" action.
    */
   onUseLocation?: (info: { lng: number; lat: number; label: string; kind: VectorLayerKind; props: Record<string, any> }) => void;
+  /** RMPG's internal overrides, keyed by OSM element id. Merged into the popup
+   *  at display time; the tile data itself is immutable. */
+  osmOverrides?: Map<string, OsmOverride>;
+  /** osm_ids an operator has hidden. Applied as a Mapbox filter. */
+  osmHiddenIds?: string[];
+  /** Opens the override editor for a feature. When absent, the popup shows no
+   *  edit affordance — read-only roles simply never get the callback. */
+  onEditOsmFeature?: (info: {
+    osmId: string; group: string; cat: string | null;
+    categoryLabel: string; featureName: string; osmTags: Record<string, unknown>;
+  }) => void;
 }
 
 function srcId(id: string) { return `vt-${id}`; }
@@ -438,7 +450,10 @@ function escapeHtml(s: string): string {
 }
 
 
-export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation }: UseVectorTileLayersOptions) {
+export function useVectorTileLayers({
+  map, popup, isLight = false, onUseLocation,
+  osmOverrides, osmHiddenIds, onEditOsmFeature,
+}: UseVectorTileLayersOptions) {
   const [layerStates, setLayerStates] = useState<Record<string, VectorLayerState>>(() => {
     const init: Record<string, VectorLayerState> = {};
     // Visibility is config-driven (cfg.defaultVisible) — every layer, UGRC or
@@ -451,6 +466,10 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
 
   const popupRef = useRef(popup);
   useEffect(() => { popupRef.current = popup; }, [popup]);
+  const osmOverridesRef = useRef(osmOverrides);
+  useEffect(() => { osmOverridesRef.current = osmOverrides; }, [osmOverrides]);
+  const onEditOsmFeatureRef = useRef(onEditOsmFeature);
+  useEffect(() => { onEditOsmFeatureRef.current = onEditOsmFeature; }, [onEditOsmFeature]);
   const isLightRef = useRef(isLight);
   useEffect(() => { isLightRef.current = isLight; }, [isLight]);
   const onUseLocationRef = useRef(onUseLocation);
@@ -553,14 +572,56 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
             map.on('click', primaryLayerId, (e) => {
               const pop = popupRef.current;
               if (!pop || !e.features || e.features.length === 0) return;
-              const props = e.features[0].properties || {};
+              const rawProps = e.features[0].properties || {};
+              const osmId = String(rawProps.osm_id ?? '').trim();
+              // Join RMPG's override over the immutable tile data at display
+              // time. Corrections overlay; the OSM tags underneath survive.
+              const props = mergeOverride(rawProps, osmOverridesRef.current?.get(osmId));
               // OSM features get the detail popup: every captured tag, in US
               // units, with the coverage caveat and a link to the OSM record.
-              const html = buildOsmPopupHtml(props, {
+              let html = buildOsmPopupHtml(props, {
                 categoryLabel: cfg.label,
                 coverage: cfg.coverage,
               });
+              const canEdit = Boolean(onEditOsmFeatureRef.current) && osmId !== '';
+              if (canEdit) {
+                html += `<button type="button" data-osm-edit="1" style="margin-top:6px;width:100%;`
+                  + `padding:4px;font-family:system-ui;font-size:10px;font-weight:600;`
+                  + `letter-spacing:0.4px;color:#0a1422;background:#c3ccd6;border:none;`
+                  + `border-radius:2px;cursor:pointer;">EDIT / VERIFY</button>`;
+              }
               pop.setLngLat(e.lngLat).setHTML(html).addTo(map);
+              if (canEdit) {
+                // DELEGATE. A setTimeout + getElementById attaches to nothing
+                // when it loses the race against Mapbox re-rendering the popup
+                // DOM — a documented failure in this codebase. Listening on the
+                // popup container and matching on the way up always wins.
+                const el = pop.getElement();
+                if (el && !el.dataset.osmEditBound) {
+                  el.dataset.osmEditBound = '1';
+                  el.addEventListener('click', (ev) => {
+                    const hit = (ev.target as HTMLElement | null)?.closest('[data-osm-edit]');
+                    if (!hit) return;
+                    const current = pop.getElement()?.dataset.osmCtx;
+                    if (!current) return;
+                    try {
+                      onEditOsmFeatureRef.current?.(JSON.parse(current));
+                    } catch { /* malformed context; ignore rather than throw in a click */ }
+                  });
+                }
+                // Context is re-stamped on EVERY open, so the one delegated
+                // listener always acts on the feature currently shown.
+                if (el) {
+                  el.dataset.osmCtx = JSON.stringify({
+                    osmId,
+                    group: cfg.archive?.replace(/^osm-/, '') ?? '',
+                    cat: cfg.categoryFilter ?? null,
+                    categoryLabel: cfg.label,
+                    featureName: String(rawProps.name ?? ''),
+                    osmTags: rawProps,
+                  });
+                }
+              }
             });
             map.on('mouseenter', primaryLayerId, () => { map.getCanvas().style.cursor = 'pointer'; });
             map.on('mouseleave', primaryLayerId, () => { map.getCanvas().style.cursor = ''; });
@@ -900,6 +961,33 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
       } catch { /* style not ready */ }
     }
   }, [map, isLight]);
+
+  // ── Hidden-feature filter ──────────────────────────────────────────────
+  // An operator can suppress a feature (bad data, demolished, duplicate). The
+  // tiles are immutable, so suppression is a Mapbox filter re-applied whenever
+  // the hidden set changes. Re-applied on 'idle' too: a style swap resets every
+  // layer's filter back to the spec's base clause.
+  const hiddenKey = (osmHiddenIds ?? []).join(',');
+  useEffect(() => {
+    if (!map) return;
+    const apply = () => {
+      const extra = hiddenFilterClause(osmHiddenIds ?? []);
+      for (const cfg of OSM_VECTOR_CONFIGS) {
+        for (const spec of buildOsmLayerSpecs(cfg, isLightRef.current)) {
+          try {
+            if (!hasLayer(map, spec.id)) continue;
+            // Compose against the spec's OWN base filter rather than reading
+            // the live one back — reading it back and re-wrapping would nest
+            // an extra `all` on every pass until the expression exploded.
+            map.setFilter(spec.id, (extra ? ['all', spec.filter, extra] : spec.filter) as never);
+          } catch { /* style mid-swap; the idle handler retries */ }
+        }
+      }
+    };
+    apply();
+    map.on('idle', apply);
+    return () => { map.off('idle', apply); };
+  }, [map, hiddenKey, osmHiddenIds]);
 
   // Reset per-map tracking when the map instance changes (handlers/layers
   // live on the map; a new map needs fresh adds).
