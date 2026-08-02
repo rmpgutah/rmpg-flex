@@ -29,6 +29,13 @@
   in the Salt Lake metro. Instead the transform stamps each feature with its own category's
   minzoom, so a pole first appears at z16 and a substation at z10 — from one archive, with
   nothing dropped.
+- **Never name a shell variable `GROUPS`** — nor `PWD`, `UID`, `EUID`, `SECONDS`,
+  `LINENO`, `RANDOM`, `PIPESTATUS`, `FUNCNAME`, `IFS`, `PATH`, `HOME`, `REPLY`,
+  `OPTARG`, `OPTIND`, `COLUMNS`, `LINES`, or anything starting `BASH`. These are bash
+  built-ins. Assignment to `GROUPS` is silently IGNORED, and `$GROUPS` then yields the
+  user's first group id (`20` = staff on macOS), so a `for` loop over it iterates one
+  nonsense value. It passes `bash -n`, passes code review, and fails only at runtime.
+  Prefix script variables instead: `OSM_GROUPS`.
 - **Never commit the `.osm.pbf` extract or generated `.pmtiles`** — they are ~250 MB and ~100s of MB respectively. `.gitignore` must cover the work directory.
 - **Worker tests run under the root vitest config.** Never run root and client vitest concurrently — that fakes ~9 failures. Run serially.
 - Pre-commit hook runs the full Worker vitest suite. Under CPU contention `tests/pdfSign.test.ts` and `tests/footage/flexcamRoute.test.ts` can time out; that is contention, not a regression.
@@ -1214,10 +1221,14 @@ fi
 EXTRACT_DATE="$(osmium fileinfo -e -g data.timestamp.last "$EXTRACT" 2>/dev/null | cut -dT -f1 || echo unknown)"
 echo "==> Extract data timestamp: $EXTRACT_DATE"
 
-GROUPS="$(jq -r '.groups[].name' "$CATALOG")"
+# NOT `GROUPS` — that is a bash special variable holding the user's group IDs.
+# Assigning to it is silently ignored, and $GROUPS then yields ${GROUPS[0]}, a
+# numeric GID (20 = staff on macOS), so every group name becomes "20". This
+# passes `bash -n` AND code review — it only misbehaves at runtime, on bash.
+OSM_GROUPS="$(jq -r '.groups[].name' "$CATALOG")"
 if [[ -n "$ONLY_GROUP" ]]; then
-  echo "$GROUPS" | grep -qx "$ONLY_GROUP" || { echo "unknown group: $ONLY_GROUP" >&2; exit 2; }
-  GROUPS="$ONLY_GROUP"
+  echo "$OSM_GROUPS" | grep -qx "$ONLY_GROUP" || { echo "unknown group: $ONLY_GROUP" >&2; exit 2; }
+  OSM_GROUPS="$ONLY_GROUP"
 fi
 
 # ── Per-group filter + transform ────────────────────────────
@@ -1225,7 +1236,7 @@ fi
 # group. Both modes need this; only the full build goes on to tippecanoe.
 declare -a BUILT_GROUPS=()
 
-for g in $GROUPS; do
+for g in $OSM_GROUPS; do
   echo ""
   echo "==> [$g] filtering"
   # NOT `mapfile` — that is bash 4+, and macOS /bin/bash is 3.2. On 3.2 mapfile
