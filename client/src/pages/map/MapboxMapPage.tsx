@@ -88,6 +88,7 @@ import { useMapPlacesSearch, PLACE_CATEGORIES } from '../../hooks/useMapPlacesSe
 import { useMapDirectionsPanel } from '../../hooks/useMapDirectionsPanel';
 import { useMapCoordinateGrid } from '../../hooks/useMapCoordinateGrid';
 import { useMapWeatherRadar } from '../../hooks/useMapWeatherRadar';
+import { useMapWeatherAlerts } from '../../hooks/useMapWeatherAlerts';
 import { useMapBookmarks } from '../../hooks/useMapBookmarks';
 import { useMapPrintExport } from '../../hooks/useMapPrintExport';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../../hooks/useGeoJsonLayers';
@@ -561,6 +562,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const directionsPanel = useMapDirectionsPanel(mapRef.current, mapLoaded);
   const coordGrid = useMapCoordinateGrid(mapRef.current, mapLoaded);
   const weatherRadar = useMapWeatherRadar(mapRef.current, mapLoaded);
+  const weatherAlerts = useMapWeatherAlerts(mapRef.current, mapLoaded);
   const mapBookmarks = useMapBookmarks(mapRef.current, mapLoaded);
   const printExport = useMapPrintExport(mapRef.current, mapLoaded);
   const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
@@ -1158,6 +1160,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     // ── Live Conditions ──
     traffic: { active: traffic.enabled, onToggle: traffic.toggle },
     weather: { active: weatherRadar.enabled, onToggle: weatherRadar.toggle },
+    'weather-alerts': {
+      active: weatherAlerts.enabled,
+      onToggle: weatherAlerts.toggle,
+      loading: weatherAlerts.loading,
+      error: weatherAlerts.error ?? undefined,
+    },
     p1audio: { active: p1AudioEnabled, onToggle: () => setP1AudioEnabled((v: boolean) => !v) },
     autopan: { active: autoPanEnabled, onToggle: () => setAutoPanEnabled((v: boolean) => !v) },
     geofences: { active: geofenceAlerts.enabled, onToggle: geofenceAlerts.toggle },
