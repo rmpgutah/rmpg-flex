@@ -54,7 +54,10 @@ beforeAll(async () => {
 // version seeds (or reuses) a real users row per role and mints the JWT
 // against that row's real id, mirroring the DB-seeding pattern in
 // test-workers/auth.test.ts's account-lockout tests.
-async function authHeaders(role: 'admin' | 'officer'): Promise<Record<string, string>> {
+type TestRole = 'admin' | 'officer' | 'manager' | 'supervisor' | 'dispatcher'
+  | 'client_viewer' | 'contract_manager' | 'human_resources';
+
+async function authHeaders(role: TestRole): Promise<Record<string, string>> {
   const { SignJWT } = await import('jose');
   const db = getDb(env as unknown as { DB: D1Database });
   await execute(db, `CREATE TABLE IF NOT EXISTS users (
@@ -139,6 +142,40 @@ describe('GET /api/reports/daily-reports/by-month', () => {
   it('the analytics gate still blocks an officer on a sibling reports route', async () => {
     const res = await SELF.fetch('https://x/api/reports/officer-activity', {
       headers: await authHeaders('officer'),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  // BLOTTER_ROLES boundary (product requirement, fix round 2): the blotter
+  // carries call addresses/dispositions/officer names + all citations, so
+  // it is limited to internal operational roles — not "any authenticated
+  // user" as the earlier fix round assumed.
+  it('allows every internal operational role to read the blotter', async () => {
+    for (const role of ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const) {
+      const res = await SELF.fetch('https://x/api/reports/daily-reports/by-month', {
+        headers: await authHeaders(role),
+      });
+      expect(res.status, `role ${role} should be allowed`).toBe(200);
+    }
+  });
+
+  it('denies outward-facing and non-operational roles', async () => {
+    // A blotter carries call addresses, dispositions and officer names —
+    // client_viewer and contract_manager are client-facing accounts.
+    for (const role of ['client_viewer', 'contract_manager', 'human_resources'] as const) {
+      const res = await SELF.fetch('https://x/api/reports/daily-reports/by-month', {
+        headers: await authHeaders(role),
+      });
+      expect(res.status, `role ${role} should be denied`).toBe(403);
+    }
+  });
+
+  it('denies a disallowed role the PDF download too, not just the listing', async () => {
+    // The listing and the download are separate handlers — gating one is not
+    // gating the other.
+    await env.DOWNLOADS.put(reportKey('2026-07-18'), new TextEncoder().encode('%PDF-1.7 x'));
+    const res = await SELF.fetch('https://x/api/reports/daily-reports/rmpg-daily-2026-07-18.pdf', {
+      headers: await authHeaders('client_viewer'),
     });
     expect(res.status).toBe(403);
   });

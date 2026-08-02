@@ -30,6 +30,12 @@ const reports = new Hono<Env>();
 
 const ANALYTICS_ROLES = ['admin', 'manager', 'supervisor'];
 
+/** Internal operational roles. Deliberately excludes the outward-facing
+ *  client_viewer and contract_manager, and human_resources — a blotter is
+ *  operational law-enforcement detail, not a client-facing or personnel
+ *  document. */
+const BLOTTER_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
+
 // All /reports/* routes are org-wide rollups → elevated roles only, EXCEPT
 // /shift-activity/:officerId, which is an officer's own end-of-shift report
 // (an officer must be able to pull it from the MDT), and /dashboard, which
@@ -41,10 +47,13 @@ reports.use('*', async (c, next) => {
   // /calls-near is the patrol-view geo filter — every officer hits it from
   // the dashboard, not just analytics roles.
   if (c.req.path.endsWith('/calls-near')) return next();
-  // /daily-reports/* (Fleet Daily Blotter) is open to any authenticated user
-  // for viewing — its own sub-router (src/routes/dailyReports.ts) gates
-  // POST /generate to admin. Excluded here or every officer GET would 403
-  // before reaching that router.
+  // /daily-reports/* (Fleet Daily Blotter) is not an analytics rollup, so it
+  // does not take ANALYTICS_ROLES — but it is NOT open to every authenticated
+  // user either. The PDF carries every call's address, disposition and
+  // responding officer plus all citations for the day, so outward-facing
+  // accounts (client_viewer, contract_manager) and human_resources are
+  // excluded. POST /generate is separately gated to admin inside the
+  // sub-router (src/routes/dailyReports.ts).
   //
   // ANCHORED deliberately: a bare `.includes('/daily-reports')` also matches
   // any future sibling whose name merely contains that substring (e.g.
@@ -52,7 +61,9 @@ reports.use('*', async (c, next) => {
   // Verified c.req.path is the FULL request path (e.g.
   // "/api/reports/daily-reports/by-month"), not a router-relative path, so
   // startsWith with the full mount prefix is correct here.
-  if (c.req.path.startsWith('/api/reports/daily-reports')) return next();
+  if (c.req.path.startsWith('/api/reports/daily-reports')) {
+    return requireRole(...BLOTTER_ROLES)(c, next);
+  }
   return requireRole(...ANALYTICS_ROLES)(c, next);
 });
 
