@@ -16,7 +16,7 @@
 
 import {
   Activity, AlertTriangle, Anchor, Boxes, Brush, Camera, CircleDot, Cloud, Compass,
-  Crosshair, DoorOpen, Footprints, Gauge, Globe, Grid3x3, Hexagon,
+  CloudLightning, Crosshair, DoorOpen, Footprints, Gauge, Globe, Grid3x3, Hexagon,
   History, Landmark, Layers, LineChart, Locate, MapPin, Mountain, Move3d, Navigation,
   PenTool, PlayCircle, Plug, Radar, Radio, Route, Ruler, Search, Shield, Siren,
   SquareDashed, Star, Sun, Timer, TrafficCone, Volume2, Waypoints, Wrench,
@@ -63,6 +63,7 @@ const STATIC_LAYERS: MapLayerDef[] = [
   // ── Live Conditions ──
   { id: 'traffic', label: 'Live Traffic', icon: TrafficCone, group: 'Live Conditions', colorVar: 'var(--sev-ok)', description: 'Real-time congestion' },
   { id: 'weather', label: 'Weather Radar', icon: Cloud, group: 'Live Conditions', colorVar: 'var(--sev-info)', description: 'Precipitation overlay' },
+  { id: 'weather-alerts', label: 'Severe Weather', icon: CloudLightning, group: 'Live Conditions', colorVar: 'var(--sev-critical)', description: 'Active NWS warnings & advisories', pinned: true },
   { id: 'p1audio', label: 'P1 Audio Alert', icon: Volume2, group: 'Live Conditions', colorVar: 'var(--sev-critical)', description: 'Chirp on new P1 calls', pinned: true },
   { id: 'autopan', label: 'Auto-Pan P1', icon: Siren, group: 'Live Conditions', colorVar: 'var(--sev-critical)', description: 'Pan to new Priority 1 calls', pinned: true },
   { id: 'geofences', label: 'Geofence Zones', icon: Shield, group: 'Live Conditions', colorVar: 'var(--sev-critical)', description: 'Premise alerts on click', pinned: true },
