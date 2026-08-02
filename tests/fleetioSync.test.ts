@@ -11,6 +11,9 @@ import {
   isPermanentFleetioFailure,
   isPermanentFailureMessage,
   formatFleetioError,
+  isBackoffElapsed,
+  backoffDelayAfterFailures,
+  backoffDueSql,
 } from '../src/utils/fleetio/sync';
 import {
   FleetioRateLimitError,
@@ -54,8 +57,16 @@ function makeDb(state: FleetTables) {
           calls.push(ctx);
           if (/FROM fleetio_events\s+WHERE direction = 'outbound'/i.test(sql)) {
             const [maxAttempts, limit] = ctx.bindings as [number, number];
+            // Mirrors the `backoffDueSql()` predicate now in the real query —
+            // without this the stub would happily hand back rows the live
+            // drain would skip, and the backoff gate would be untested.
             const rows = state.events.filter(e =>
-              e.direction === 'outbound' && e.status === 'pending' && e.attempts < maxAttempts,
+              e.direction === 'outbound' && e.status === 'pending' && e.attempts < maxAttempts
+              && isBackoffElapsed(
+                e.attempts,
+                e.processed_at ? new Date(e.processed_at).getTime() : null,
+                Date.now(),
+              ),
             ).slice(0, limit);
             return { results: rows as unknown as T[] };
           }
@@ -189,6 +200,95 @@ describe('backoff schedule', () => {
 });
 
 // ─── applyOutbound ────────────────────────────────────────
+
+describe('retry backoff gate', () => {
+  // Before this existed, BACKOFF_SECONDS / nextAttemptDelaySeconds were dead
+  // code: exported, unit-tested, and never referenced by the drain, whose
+  // SELECT had no time predicate at all.
+
+  it('maps failure count to the declared schedule', () => {
+    expect(backoffDelayAfterFailures(0)).toBe(0);      // never tried → due now
+    expect(backoffDelayAfterFailures(1)).toBe(1);
+    expect(backoffDelayAfterFailures(2)).toBe(4);
+    expect(backoffDelayAfterFailures(6)).toBe(1800);   // 30m before the last try
+  });
+
+  it('holds a row back until its window elapses', () => {
+    const t0 = 1_000_000_000_000;
+    // 2 failures → 4s window.
+    expect(isBackoffElapsed(2, t0, t0 + 3_999)).toBe(false);
+    expect(isBackoffElapsed(2, t0, t0 + 4_000)).toBe(true);
+    // Never attempted, or no claim stamp → always due.
+    expect(isBackoffElapsed(0, t0, t0)).toBe(true);
+    expect(isBackoffElapsed(3, null, t0)).toBe(true);
+  });
+
+  it('generates SQL arms straight from BACKOFF_SECONDS (one source of truth)', () => {
+    const sql = backoffDueSql();
+    BACKOFF_SECONDS.forEach((secs, i) => {
+      expect(sql).toContain(`WHEN ${i + 1} THEN ${secs}`);
+    });
+    // Purely numeric literals — nothing request-derived can reach the string.
+    expect(sql).not.toMatch(/\?/);
+  });
+
+  it('drain SKIPS a row whose backoff window has not elapsed', async () => {
+    const justNow = new Date(Date.now() - 1_000).toISOString(); // 1s ago
+    const state: FleetTables = {
+      // 3 failures → 16s window, only 1s has passed.
+      events: [{
+        id: 1, direction: 'outbound', event_id: 'evt-b', resource: 'vehicle',
+        resource_id: 42, action: 'update', status: 'pending', attempts: 3,
+        payload_json: JSON.stringify({ vehicle_name: 'Patrol 12' }),
+        error: null, created_at: '2026-06-21T00:00:00Z', processed_at: justNow,
+      }],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db, calls: sqlCalls } = makeDb(state);
+    let calls = 0;
+    const adapter = {
+      async updateVehicle() { calls++; return { id: 999 }; },
+      async createFuelEntry() { throw new Error('not used'); },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(calls).toBe(0);
+    expect(result.attempted).toBe(0);
+    expect(state.events[0].status).toBe('pending');   // untouched, not consumed
+    expect(state.events[0].attempts).toBe(3);
+
+    // The stub filters in TS, so the assertions above would still hold if the
+    // production SELECT had no gate at all. Pin the real SQL: without this,
+    // deleting the predicate from the query leaves every test green.
+    const select = sqlCalls.find(c => /FROM fleetio_events\s+WHERE direction = 'outbound'/i.test(c.sql));
+    expect(select).toBeDefined();
+    expect(select!.sql).toContain('CASE attempts');
+    expect(select!.sql).toContain('processed_at IS NULL');
+  });
+
+  it('drain TAKES the same row once the window has elapsed', async () => {
+    const longAgo = new Date(Date.now() - 60_000).toISOString(); // 60s > 16s
+    const state: FleetTables = {
+      events: [{
+        id: 1, direction: 'outbound', event_id: 'evt-b', resource: 'vehicle',
+        resource_id: 42, action: 'update', status: 'pending', attempts: 3,
+        payload_json: JSON.stringify({ vehicle_name: 'Patrol 12' }),
+        error: null, created_at: '2026-06-21T00:00:00Z', processed_at: longAgo,
+      }],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    let calls = 0;
+    const adapter = {
+      async updateVehicle() { calls++; return { id: 999 }; },
+      async createFuelEntry() { throw new Error('not used'); },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(calls).toBe(1);
+    expect(result.completed).toBe(1);
+  });
+});
 
 describe('applyOutbound', () => {
   const baseEvent = (overrides: Partial<EventRow>): EventRow => ({
