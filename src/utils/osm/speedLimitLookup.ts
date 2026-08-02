@@ -35,7 +35,7 @@ export function parseMaxspeedMphServer(raw: unknown): number | null {
   }
   if (typeof raw !== 'string') return null;
   const s = raw.trim().toLowerCase();
-  const m = s.match(/(\d+(?:\.\d+)?)/);
+  const m = s.match(/(-?\d+(?:\.\d+)?)/);
   if (!m) return null;
   const val = parseFloat(m[1]);
   if (!Number.isFinite(val) || val <= 0) return null;

@@ -67,6 +67,9 @@ describe('parseMaxspeedMphServer', () => {
     expect(parseMaxspeedMphServer(45)).toBe(45);
     expect(parseMaxspeedMphServer('none')).toBeNull();
     expect(parseMaxspeedMphServer(null)).toBeNull();
+    expect(parseMaxspeedMphServer('-20')).toBeNull();
+    expect(parseMaxspeedMphServer('-20 km/h')).toBeNull();
+    expect(parseMaxspeedMphServer('-5')).toBeNull();
   });
 });
 
