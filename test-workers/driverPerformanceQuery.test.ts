@@ -4,15 +4,14 @@
 // Miniflare D1, so a column renamed out from under the query fails here rather
 // than silently returning NULLs that shape() reads as zero events.
 //
-// ⚠️ Scoring is re-gated on call context (SCORING_ENABLED = false, see
-// src/utils/driverPerformance/score.ts) — the route's read endpoints now
-// always return {ok:false, code:'awaiting_call_context'} regardless of what
-// is in driver_performance_daily. So the AGG_SQL/shape() assertions below
-// call the query layer DIRECTLY (query()/queryFirst() + the exported
-// `shape()`) rather than going through HTTP, which is the only way left to
-// exercise this shaping logic end-to-end against real data. HTTP is still
-// used for the tests that are actually about the route (window validation,
-// the gate itself).
+// Scoring is live (SCORING_ENABLED = true, see src/utils/driverPerformance/
+// score.ts — owner decision 2026-08-01, shipped without emergency-response
+// exclusion data and with a mandatory caveat on every score-bearing surface).
+// Some assertions below call the query layer DIRECTLY (query()/queryFirst()
+// + the exported `shape()`) rather than through HTTP, which is a fine way to
+// exercise this shaping logic end-to-end against real data without depending
+// on route wiring; others go through HTTP where the route itself is what's
+// under test (window validation, RBAC, failure handling).
 //
 // Officer ids are synthetic 9-thousands numbers — no PII.
 import { env } from 'cloudflare:test';
@@ -209,7 +208,7 @@ describe('AGG_SQL executes against a real D1', () => {
   });
 });
 
-describe('AGG_SQL + shape() run end-to-end, matching what the route would compute absent the gate', () => {
+describe('AGG_SQL + shape() run end-to-end', () => {
   it('places the above-floor officer scored and the below-floor officer insufficient', async () => {
     const db = (env as unknown as { DB: D1Database }).DB;
     const shaped = await shapedRoster(db, FROM, TO);
@@ -229,20 +228,18 @@ describe('AGG_SQL + shape() run end-to-end, matching what the route would comput
   });
 });
 
-describe('roster route: the call-context gate wins over a query failure', () => {
-  // Now that /roster is gated on call context BEFORE it ever touches D1, a
-  // broken query underneath it can no longer surface as ROSTER_FAILED — the
-  // gate returns first. That failure mode is now the query layer's job to
-  // catch directly (below), and the route's error-handling path is exercised
-  // via the same gate-then-500-shape contract once SCORING_ENABLED flips.
-  it('still returns the gate response even when the underlying users table is gone', async () => {
+describe('roster failure never reads as an empty (good-driving) result', () => {
+  it('returns 500 with code ROSTER_FAILED when the underlying query breaks — not an empty roster', async () => {
     const db = (env as unknown as { DB: D1Database }).DB;
+    // Realistic failure: AGG_SQL joins `users`; drop it out from under the
+    // route to force a genuine D1 rejection, exactly as would happen if that
+    // table were ever renamed or migrated out from under this query.
     await execute(db, 'DROP TABLE users');
 
     const res = await request(`/api/driver-performance/roster?from=${FROM}&to=${TO}`);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
     const body = await res.json() as { code: string };
-    expect(body.code).toBe('awaiting_call_context');
+    expect(body.code).toBe('ROSTER_FAILED');
   });
 
   it('AGG_SQL itself rejects when the joined users table is missing — not an empty result', async () => {

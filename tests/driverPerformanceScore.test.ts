@@ -126,7 +126,10 @@ describe('scoring', () => {
   });
 
   it('pins the live score version so a weight change cannot ship without bumping it', () => {
-    expect(SCORE_VERSION).toBe('v1-speed');
+    // Bumped to 'v1-speed-r100' 2026-08-01 alongside REFERENCE_RATE_AT_ZERO
+    // 20 -> 100 (see the PROVISIONAL calibration comment on that constant) —
+    // any future retune must bump this again.
+    expect(SCORE_VERSION).toBe('v1-speed-r100');
   });
 });
 
