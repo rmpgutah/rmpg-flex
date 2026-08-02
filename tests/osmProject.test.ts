@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error - untyped .mjs module
-import { assignCategory, projectFeature } from '../scripts/osm/project.mjs';
+import { assignCategory, projectFeature, projectFeatures } from '../scripts/osm/project.mjs';
 
 const pt = (props: Record<string, string>) => ({
   type: 'Feature' as const,
@@ -81,5 +81,49 @@ describe('projectFeature', () => {
     const f = pt({ emergency: 'fire_hydrant', 'created_by': 'JOSM' });
     projectFeature(f, 'safety');
     expect(f.properties['created_by']).toBe('JOSM');
+  });
+});
+
+describe('projectFeatures (multi-emit)', () => {
+  it('emits one feature per matching category for a `multi` group, with distinct cat and identical geometry', () => {
+    // traffic/maxspeed + traffic/restriction both match a way tagged with both.
+    const f = pt({ highway: 'residential', maxspeed: '25 mph', oneway: 'yes' });
+    const out = projectFeatures(f, 'traffic');
+    expect(out).toHaveLength(2);
+    const cats = out.map((o: any) => o.properties.cat).sort();
+    expect(cats).toEqual(['maxspeed', 'restriction']);
+    for (const o of out) {
+      expect(o.geometry).toEqual(f.geometry);
+    }
+  });
+
+  it('returns exactly one feature for a `first-match` group', () => {
+    const f = pt({ emergency: 'fire_hydrant' });
+    const out = projectFeatures(f, 'safety');
+    expect(out).toHaveLength(1);
+    expect(out[0].properties.cat).toBe('hydrant');
+  });
+
+  it('the surveillance regression: an ALPR camera returns exactly ONE feature (cat=alpr), never two', () => {
+    const f = pt({ man_made: 'surveillance', 'surveillance:type': 'ALPR' });
+    const out = projectFeatures(f, 'surveillance');
+    expect(out).toHaveLength(1);
+    expect(out[0].properties.cat).toBe('alpr');
+  });
+
+  it('returns [] when nothing matches', () => {
+    expect(projectFeatures(pt({ amenity: 'cafe' }), 'safety')).toEqual([]);
+  });
+});
+
+describe('projectFeature contract is unchanged by multi-emit', () => {
+  it('still returns only the first match for a `multi` group', () => {
+    const f = pt({ highway: 'residential', maxspeed: '25 mph', oneway: 'yes' });
+    const out = projectFeature(f, 'traffic');
+    expect(out!.properties.cat).toBe('maxspeed');
+  });
+
+  it('still returns null when nothing matches', () => {
+    expect(projectFeature(pt({ amenity: 'cafe' }), 'traffic')).toBeNull();
   });
 });

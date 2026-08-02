@@ -23,8 +23,9 @@ import {
   roadColorExpression, roadSortKeyExpression, ptTypeColorExpression,
   classifyCartocode, classifyPtType,
 } from '../pages/map/utils/landTypes';
+import { OSM_GROUPS, OSM_EXTRACT_DATE, type OsmGroup } from '../config/osmLayers.generated';
 
-export type VectorLayerKind = 'line' | 'point';
+export type VectorLayerKind = 'line' | 'point' | 'icon' | 'fill';
 
 export interface VectorTileLayerConfig {
   id: string;
@@ -46,6 +47,33 @@ export interface VectorTileLayerConfig {
   labelProp: string;
   /** Extra properties shown in the popup. */
   detailProps: { key: string; label: string }[];
+  /** Whether this layer starts enabled. Every layer — UGRC and OSM — defaults false. */
+  defaultVisible: boolean;
+  /** Data provenance, for attribution/legend grouping. */
+  source: 'ugrc' | 'osm';
+  /** Attribution string shown when the layer is visible (OSM only, ODbL requirement). */
+  attribution: string;
+  /** Coverage caveat caption shown in the legend (OSM only). */
+  coverage?: string;
+  /** The `cat` property value this layer filters to (OSM only — one shared source per archive). */
+  categoryFilter?: string;
+  /** Shared archive name for OSM configs — one Mapbox vector source per archive, e.g. 'osm-safety'. */
+  archive?: string;
+  /** Per-category render kind from the generated catalog (OSM only) — authoritative
+   * over the group-level `kind` for 'mixed' geometry groups. See buildOsmLayerSpecs. */
+  categoryRender?: 'point' | 'line' | 'polygon';
+}
+
+/** One Mapbox layer spec, as returned by buildOsmLayerSpecs. Loose/`any`-typed
+ * paint/layout so this stays a plain data shape testable without mapbox-gl. */
+export interface OsmLayerSpec {
+  id: string;
+  type: 'fill' | 'line' | 'circle' | 'symbol';
+  filter: unknown[];
+  'source-layer': string;
+  minzoom: number;
+  layout: Record<string, unknown>;
+  paint: Record<string, unknown>;
 }
 
 // Native XYZ tile template. Mapbox GL JS has no addProtocol (that's MapLibre),
@@ -68,7 +96,10 @@ export const VECTOR_TILE_CONFIGS: VectorTileLayerConfig[] = [
     sourceMaxzoom: 14,
     kind: 'line',
     minzoom: 9,
-    color: '#d4a017',
+    // Blue & Silver accent-silver-500 (client/src/styles/theme-palettes.css) —
+    // replaces the previous banned gold literal. Literal hex is correct here:
+    // mapbox-gl cannot resolve var() inside a paint property.
+    color: '#c3ccd6',
     labelProp: 'FULLNAME',
     detailProps: [
       { key: 'CARTOCODE', label: 'Class' },
@@ -76,6 +107,9 @@ export const VECTOR_TILE_CONFIGS: VectorTileLayerConfig[] = [
       { key: 'ZIPCODE_L', label: 'ZIP' },
       { key: 'COUNTY_L', label: 'County' },
     ],
+    defaultVisible: false,
+    source: 'ugrc',
+    attribution: 'Utah AGRC (UGRC)',
   },
   {
     id: 'utah_addresses',
@@ -87,7 +121,8 @@ export const VECTOR_TILE_CONFIGS: VectorTileLayerConfig[] = [
     sourceMaxzoom: 15,
     kind: 'point',
     minzoom: 14,
-    color: '#e8b84b',
+    // Blue & Silver accent-silver-600 — replaces the banned #e8b84b gold.
+    color: '#a0adbd',
     labelProp: 'FullAdd',
     detailProps: [
       { key: 'AddSystem', label: 'Addr System' },
@@ -96,8 +131,154 @@ export const VECTOR_TILE_CONFIGS: VectorTileLayerConfig[] = [
       { key: 'PtType', label: 'Type' },
       { key: 'ParcelID', label: 'Parcel' },
     ],
+    defaultVisible: false,
+    source: 'ugrc',
+    attribution: 'Utah AGRC (UGRC)',
   },
 ];
+
+// ============================================================
+// OSM layer configs — derived from the generated catalog (Task 1)
+// ============================================================
+// One config per (group, category). All share one Mapbox vector source per
+// archive (osm-<group>) — never one source per category, or 56 categories
+// would open 56 tile streams instead of 9.
+
+const OSM_COVERAGE_CAPTION: Record<OsmGroup['coverage'], string> = {
+  sparse: 'Crowd-sourced — only mapped features are shown. Expect unmapped features in the field.',
+  incomplete: 'Crowd-sourced — coverage is incomplete. Absence does not indicate none present.',
+  attribute: 'Crowd-sourced road attributes. Unstyled roads are untagged, not confirmed paved.',
+  boundary: 'Reference boundaries from OpenStreetMap. Not a legal determination of jurisdiction or authority.',
+};
+
+const OSM_ATTRIBUTION = `© OpenStreetMap contributors (ODbL) · extract ${OSM_EXTRACT_DATE}`;
+
+// Geometry -> render kind. 'mixed' groups carry both point and line/polygon
+// categories; the per-category kind is refined below by inspecting the cat.
+function osmKindFor(geometry: OsmGroup['geometry']): VectorLayerKind {
+  if (geometry === 'polygon') return 'fill';
+  if (geometry === 'line') return 'line';
+  return 'icon'; // 'point' and 'mixed' default to icon; buildOsmLayerSpecs
+  // further distinguishes fill/line categories within a 'mixed' group by cat.
+}
+
+// Blue & Silver theme literals (mapbox paint props cannot resolve var()).
+// Silver-family for neutral infrastructure, sev-* hues keep CAD meaning.
+const OSM_COLOR_BY_GROUP: Record<string, string> = {
+  surveillance: '#c3ccd6', // silver-500
+  traffic: '#d0d8e0',      // silver-400
+  safety: '#ef4444',       // sev-critical (fire/life safety)
+  utility: '#a0adbd',      // silver-600
+  sites: '#7c8b9e',        // silver-700
+  access: '#c3ccd6',       // silver-500
+  drivability: '#d9bd72',  // accent-gold-300 (text-safe) — surface attribute
+  terrain: '#f59e0b',      // sev-warn (natural hazard caution)
+  jurisdiction: '#a0adbd', // silver-600
+};
+
+export const OSM_VECTOR_CONFIGS: VectorTileLayerConfig[] = OSM_GROUPS.flatMap((group) =>
+  group.categories.map((cat) => ({
+    id: `osm_${group.name}_${cat.cat}`,
+    label: cat.label,
+    description: cat.label,
+    name: `osm-${group.name}`,
+    sourceLayer: group.name,
+    sourceMinzoom: Math.min(...group.categories.map((c) => c.minzoom)),
+    sourceMaxzoom: 16,
+    kind: osmKindFor(group.geometry),
+    minzoom: cat.minzoom,
+    color: OSM_COLOR_BY_GROUP[group.name] ?? '#c3ccd6',
+    labelProp: 'name',
+    detailProps: [],
+    defaultVisible: false,
+    source: 'osm' as const,
+    attribution: OSM_ATTRIBUTION,
+    coverage: OSM_COVERAGE_CAPTION[group.coverage],
+    categoryFilter: cat.cat,
+    archive: `osm-${group.name}`,
+    categoryRender: cat.render,
+  })),
+);
+
+/**
+ * Pure function building the Mapbox layer spec(s) for one OSM category
+ * config. Deliberately side-effect-free so paint/filter logic is testable
+ * without a live map instance. Never touches the UGRC address-point
+ * expressions (houseNumberExpr / ptTypeColorExpression) — those are
+ * exclusive to the legacy 'point' branch in addLayer.
+ */
+export function buildOsmLayerSpecs(cfg: VectorTileLayerConfig, isLight: boolean): OsmLayerSpec[] {
+  const filter = ['==', ['get', 'cat'], cfg.categoryFilter] as unknown[];
+  const base = {
+    filter,
+    'source-layer': cfg.sourceLayer,
+    minzoom: cfg.minzoom,
+    layout: { visibility: 'none' as const },
+  };
+
+  // The per-category `render` value from the generated catalog is authoritative
+  // for OSM configs — it already accounts for 'mixed' geometry groups (e.g.
+  // traffic/maxspeed and traffic/restriction are way-only and render as lines
+  // even though the traffic group as a whole is 'mixed').
+  let type: OsmLayerSpec['type'];
+  if (cfg.categoryRender === 'polygon') {
+    type = 'fill';
+  } else if (cfg.categoryRender === 'line') {
+    type = 'line';
+  } else {
+    type = 'circle';
+  }
+
+  const specs: OsmLayerSpec[] = [];
+  const idBase = `vt-${cfg.id}`;
+
+  if (type === 'fill') {
+    specs.push({
+      id: `${idBase}-fill`,
+      type: 'fill',
+      ...base,
+      paint: { 'fill-color': cfg.color, 'fill-opacity': 0.25 },
+    });
+    specs.push({
+      id: `${idBase}-outline`,
+      type: 'line',
+      ...base,
+      paint: { 'line-color': cfg.color, 'line-width': 1, 'line-opacity': 0.6 },
+    });
+  } else if (type === 'line') {
+    specs.push({
+      id: `${idBase}-line`,
+      type: 'line',
+      ...base,
+      layout: { ...base.layout, 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': cfg.color,
+        // Thin/dim right at the category's own minzoom (still visible against
+        // the basemap), thickening/opaquing as the operator zooms in — mirrors
+        // the point-category circle-radius interpolation just below.
+        'line-width': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 1, cfg.minzoom + 5, 2, 18, 3.5],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 0.55, cfg.minzoom + 5, 0.85, 18, 0.95],
+      },
+    });
+  } else {
+    // Point categories: prefer a named Mapbox sprite icon where one is
+    // available; fall back to a plain circle so the layer still renders if
+    // the sprite is missing (a missing named icon renders NOTHING silently).
+    specs.push({
+      id: `${idBase}-circle`,
+      type: 'circle',
+      ...base,
+      paint: {
+        'circle-color': cfg.color,
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 3, 18, 7],
+        'circle-stroke-color': isLight ? '#1a2332' : '#0a0a0a',
+        'circle-stroke-width': 1,
+      },
+    });
+  }
+
+  return specs;
+}
 
 export interface VectorLayerState {
   visible: boolean;
@@ -121,6 +302,10 @@ function srcId(id: string) { return `vt-${id}`; }
 function lineLayerId(id: string) { return `vt-${id}-line`; }
 function circleLayerId(id: string) { return `vt-${id}-circle`; }
 function labelLayerId(id: string) { return `vt-${id}-label`; }
+/** One shared Mapbox vector source per OSM archive — never per-category. */
+function osmSourceId(archive: string) { return `vt-src-${archive}`; }
+
+export const ALL_VECTOR_CONFIGS: VectorTileLayerConfig[] = [...VECTOR_TILE_CONFIGS, ...OSM_VECTOR_CONFIGS];
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -130,10 +315,11 @@ function escapeHtml(s: string): string {
 export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation }: UseVectorTileLayersOptions) {
   const [layerStates, setLayerStates] = useState<Record<string, VectorLayerState>>(() => {
     const init: Record<string, VectorLayerState> = {};
-    // Statewide DB is ALWAYS-ON: roads + address points default visible so the
-    // statewide data is present every session (auto-enabled on map ready below;
-    // still individually toggleable in-session, but returns on next load).
-    for (const cfg of VECTOR_TILE_CONFIGS) init[cfg.id] = { visible: true, loaded: false };
+    // Visibility is config-driven (cfg.defaultVisible) — every layer, UGRC or
+    // OSM, defaults OFF. A cfg with defaultVisible:true would still be brought
+    // up automatically on map ready (see the auto-enable effect below) without
+    // requiring an operator toggle; today no config sets that flag.
+    for (const cfg of ALL_VECTOR_CONFIGS) init[cfg.id] = { visible: cfg.defaultVisible, loaded: false };
     return init;
   });
 
@@ -191,6 +377,69 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
       const lp = labelPaint(isLightRef.current);
 
       try {
+        // OSM branch — one shared vector source per archive, one filtered
+        // layer per category (buildOsmLayerSpecs). Deliberately separate from
+        // the UGRC line/point branches below: those contain address-point
+        // logic (houseNumberExpr, ptTypeColorExpression) that is meaningless
+        // for OSM features, and OSM configs must never reach it.
+        if (cfg.source === 'osm') {
+          if (!cfg.archive || !cfg.categoryFilter) {
+            throw new Error(`OSM config ${cfg.id} is missing archive/categoryFilter`);
+          }
+          const osmSource = osmSourceId(cfg.archive);
+          if (!hasSource(map, osmSource)) {
+            map.addSource(osmSource, {
+              type: 'vector',
+              tiles: [tilesUrl(cfg.archive)],
+              minzoom: cfg.sourceMinzoom,
+              maxzoom: cfg.sourceMaxzoom,
+            } as any);
+          }
+
+          const specs = buildOsmLayerSpecs(cfg, isLightRef.current);
+          for (const spec of specs) {
+            if (!hasLayer(map, spec.id)) {
+              map.addLayer({
+                id: spec.id,
+                type: spec.type,
+                source: osmSource,
+                'source-layer': spec['source-layer'],
+                minzoom: spec.minzoom,
+                filter: spec.filter as any,
+                layout: spec.layout as any,
+                paint: spec.paint as any,
+              } as any);
+            }
+          }
+
+          // Topmost spec is the interactive one (icon/circle sits above its
+          // fill, e.g. camera_cone's fill + the camera icon layer added
+          // separately) — bind click/hover there.
+          const primaryLayerId = specs[specs.length - 1]?.id;
+          if (primaryLayerId && !clickBoundRef.current.has(cfg.id)) {
+            clickBoundRef.current.add(cfg.id);
+            map.on('click', primaryLayerId, (e) => {
+              const pop = popupRef.current;
+              if (!pop || !e.features || e.features.length === 0) return;
+              const props = e.features[0].properties || {};
+              const html = buildPopupHtml(cfg, props);
+              pop.setLngLat(e.lngLat).setHTML(html).addTo(map);
+            });
+            map.on('mouseenter', primaryLayerId, () => { map.getCanvas().style.cursor = 'pointer'; });
+            map.on('mouseleave', primaryLayerId, () => { map.getCanvas().style.cursor = ''; });
+          }
+
+          if (layerStatesRef.current[cfg.id]?.visible) {
+            for (const spec of specs) {
+              try { if (hasLayer(map, spec.id)) map.setLayoutProperty(spec.id, 'visibility', 'visible'); } catch { /* noop */ }
+            }
+          }
+
+          addedRef.current.add(cfg.id);
+          setLayerStates((prev) => ({ ...prev, [cfg.id]: { ...prev[cfg.id], loaded: true } }));
+          return;
+        }
+
         if (!hasSource(map, source)) {
           map.addSource(source, {
             type: 'vector',
@@ -387,6 +636,12 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
   const setLayerVisibility = useCallback((cfg: VectorTileLayerConfig, visible: boolean) => {
     if (!map) return;
     const vis = visible ? 'visible' : 'none';
+    if (cfg.source === 'osm') {
+      for (const spec of buildOsmLayerSpecs(cfg, isLightRef.current)) {
+        try { if (hasLayer(map, spec.id)) map.setLayoutProperty(spec.id, 'visibility', vis); } catch { /* style not ready */ }
+      }
+      return;
+    }
     const ids = cfg.kind === 'line'
       ? [lineLayerId(cfg.id), labelLayerId(cfg.id)]
       : [circleLayerId(cfg.id), labelLayerId(cfg.id)];
@@ -396,7 +651,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
   }, [map]);
 
   const toggleVectorLayer = useCallback((layerId: string) => {
-    const cfg = VECTOR_TILE_CONFIGS.find((c) => c.id === layerId);
+    const cfg = ALL_VECTOR_CONFIGS.find((c) => c.id === layerId);
     if (!cfg) return;
     setLayerStates((prev) => {
       const curr = prev[layerId];
@@ -428,7 +683,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
       // callbacks). Keeping clickBoundRef means the handlers bind exactly once
       // per layer for the life of the map instance.
       addedRef.current.clear();
-      for (const cfg of VECTOR_TILE_CONFIGS) {
+      for (const cfg of ALL_VECTOR_CONFIGS) {
         if (layerStatesRef.current[cfg.id]?.visible) {
           addLayer(cfg);
           setLayerVisibility(cfg, true);
@@ -448,7 +703,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
     if (!map) { autoEnabledRef.current = false; return; }
     if (autoEnabledRef.current) return;
     autoEnabledRef.current = true;
-    for (const cfg of VECTOR_TILE_CONFIGS) {
+    for (const cfg of ALL_VECTOR_CONFIGS) {
       if (layerStatesRef.current[cfg.id]?.visible) addLayer(cfg);
     }
   }, [map, addLayer]);
@@ -468,9 +723,12 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
   useEffect(() => {
     if (!map) return;
     const ensure = () => {
-      for (const cfg of VECTOR_TILE_CONFIGS) {
+      for (const cfg of ALL_VECTOR_CONFIGS) {
         if (!layerStatesRef.current[cfg.id]?.visible) continue;
-        const dataLayer = cfg.kind === 'line' ? lineLayerId(cfg.id) : circleLayerId(cfg.id);
+        const dataLayer = cfg.source === 'osm'
+          ? buildOsmLayerSpecs(cfg, isLightRef.current)[0]?.id
+          : (cfg.kind === 'line' ? lineLayerId(cfg.id) : circleLayerId(cfg.id));
+        if (!dataLayer) continue;
         try {
           if (!hasLayer(map, dataLayer)) {
             // Layer absent (never added, or wiped by a style swap and not
@@ -510,7 +768,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
     if (map) {
       setLayerStates((prev) => {
         const next = { ...prev };
-        for (const cfg of VECTOR_TILE_CONFIGS) next[cfg.id] = { ...next[cfg.id], loaded: false };
+        for (const cfg of ALL_VECTOR_CONFIGS) next[cfg.id] = { ...next[cfg.id], loaded: false };
         return next;
       });
     }
@@ -519,6 +777,6 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
   return {
     vectorLayerStates: layerStates,
     toggleVectorLayer,
-    vectorConfigs: VECTOR_TILE_CONFIGS,
+    vectorConfigs: ALL_VECTOR_CONFIGS,
   };
 }

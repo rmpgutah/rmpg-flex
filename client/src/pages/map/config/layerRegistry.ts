@@ -15,25 +15,30 @@
 // ============================================================
 
 import {
-  Activity, AlertTriangle, Anchor, Boxes, Brush, CircleDot, Cloud, Compass,
-  Crosshair, Footprints, Gauge, Globe, Grid3x3, Hexagon,
-  History, Layers, LineChart, Locate, MapPin, Mountain, Move3d, Navigation,
-  PenTool, PlayCircle, Radar, Radio, Route, Ruler, Search, Shield, Siren,
+  Activity, AlertTriangle, Anchor, Boxes, Brush, Camera, CircleDot, Cloud, Compass,
+  Crosshair, DoorOpen, Footprints, Gauge, Globe, Grid3x3, Hexagon,
+  History, Landmark, Layers, LineChart, Locate, MapPin, Mountain, Move3d, Navigation,
+  PenTool, PlayCircle, Plug, Radar, Radio, Route, Ruler, Search, Shield, Siren,
   SquareDashed, Star, Sun, Timer, TrafficCone, Volume2, Waypoints, Wrench,
   Zap, type LucideIcon,
 } from 'lucide-react';
 import { HIERARCHY_CONFIGS } from '../../../hooks/useDistrictHierarchyLayers';
 import { GEO_LAYER_CONFIGS } from '../../../hooks/useGeoJsonLayers';
+import { OSM_VECTOR_CONFIGS } from '../../../hooks/useVectorTileLayers';
 
 export type MapLayerGroup =
   | 'Live Conditions' | 'Units & Calls' | 'Historical Analysis'
   | 'Administrative Boundaries' | 'Risk & Coverage' | 'Terrain & 3D'
   | 'Dispatch Tools' | 'Measurement & Marking' | 'Drawing & Tracking'
-  | 'Diagnostics';
+  | 'Diagnostics'
+  | 'OSM Surveillance' | 'OSM Traffic' | 'OSM Fire & Safety' | 'OSM Utilities'
+  | 'OSM Sites' | 'OSM Access' | 'OSM Drivability' | 'OSM Terrain' | 'OSM Jurisdiction';
 
 export const LEFT_DOCK_GROUPS: MapLayerGroup[] = [
   'Live Conditions', 'Units & Calls', 'Historical Analysis',
   'Administrative Boundaries', 'Risk & Coverage', 'Terrain & 3D',
+  'OSM Surveillance', 'OSM Traffic', 'OSM Fire & Safety', 'OSM Utilities',
+  'OSM Sites', 'OSM Access', 'OSM Drivability', 'OSM Terrain', 'OSM Jurisdiction',
 ];
 
 export const RIGHT_DOCK_GROUPS: MapLayerGroup[] = [
@@ -157,7 +162,39 @@ const BOUNDARY_LAYERS: MapLayerDef[] = [
   })),
 ];
 
-export const MAP_LAYER_REGISTRY: MapLayerDef[] = [...STATIC_LAYERS, ...BOUNDARY_LAYERS];
+// OSM group name -> {dock group, icon, colorVar}. Never gold, never literal
+// hex — layerRegistry.test.ts enforces both. Silver/blue family for neutral
+// infrastructure; sev-* hues keep their existing CAD meaning.
+const OSM_GROUP_META: Record<string, { group: MapLayerGroup; icon: LucideIcon; colorVar: string }> = {
+  surveillance: { group: 'OSM Surveillance', icon: Camera, colorVar: 'var(--accent-silver-400)' },
+  traffic: { group: 'OSM Traffic', icon: TrafficCone, colorVar: 'var(--accent-silver-500)' },
+  safety: { group: 'OSM Fire & Safety', icon: Siren, colorVar: 'var(--sev-critical)' },
+  utility: { group: 'OSM Utilities', icon: Plug, colorVar: 'var(--accent-silver-600)' },
+  sites: { group: 'OSM Sites', icon: Landmark, colorVar: 'var(--accent-silver-700)' },
+  access: { group: 'OSM Access', icon: DoorOpen, colorVar: 'var(--accent-silver-400)' },
+  drivability: { group: 'OSM Drivability', icon: Route, colorVar: 'var(--sev-info)' },
+  terrain: { group: 'OSM Terrain', icon: Mountain, colorVar: 'var(--sev-warn)' },
+  jurisdiction: { group: 'OSM Jurisdiction', icon: Hexagon, colorVar: 'var(--accent-silver-600)' },
+};
+
+// One registry entry per (OSM group, category), derived from OSM_VECTOR_CONFIGS
+// (client/src/hooks/useVectorTileLayers.ts) so a new category can never leave
+// the registry stale. id matches the config id exactly — that id is also the
+// binding key used in MapboxMapPage's layerBindings.
+const OSM_LAYERS: MapLayerDef[] = OSM_VECTOR_CONFIGS.map((cfg): MapLayerDef => {
+  const groupName = cfg.name.replace(/^osm-/, '');
+  const meta = OSM_GROUP_META[groupName] ?? { group: 'OSM Sites', icon: Layers, colorVar: 'var(--accent-silver-400)' };
+  return {
+    id: cfg.id,
+    label: cfg.label,
+    icon: meta.icon,
+    group: meta.group,
+    colorVar: meta.colorVar,
+    description: cfg.coverage ?? cfg.description,
+  };
+});
+
+export const MAP_LAYER_REGISTRY: MapLayerDef[] = [...STATIC_LAYERS, ...BOUNDARY_LAYERS, ...OSM_LAYERS];
 
 export const LAYER_BY_ID: ReadonlyMap<string, MapLayerDef> = new Map(
   MAP_LAYER_REGISTRY.map((l) => [l.id, l]),

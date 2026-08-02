@@ -133,14 +133,122 @@ Plan 2:
 - **Kept as documented exceptions below the 50-feature threshold:** `safety` / `water` (20), `safety` / `inlet` (6), and `jurisdiction` / `tribal` (10 — Utah has only ~8 tribal land areas, so this is near-complete coverage rather than sparse data). Reasons are recorded in the table above.
 - **Net effect:** the catalog went from 57 categories to 55.
 
-## ⚠️ Known limitation of these counts
+## ⚠️ These counts predate multi-emit (§10.1 of the design spec) — expect them to rise
 
-Each feature is counted under exactly ONE category (`assignCategory` is
-first-match-wins). Where categories are attributes that co-occur on the same way —
+The counts above were measured under the OLD first-match-wins behavior, where
+each feature was counted under exactly ONE category (`assignCategory`
+first-match). Where categories are attributes that co-occur on the same way —
 `traffic`/`maxspeed` vs `restriction`/`calming`/`crossing`, `drivability`/`seasonal`
 vs `unpaved`/`track`, `access`/`parking` vs `clearance` — the earlier category
-absorbs the feature and the later count is an UNDERCOUNT, not a measurement of how
-many such features Utah has.
+absorbed the feature and the later count was an undercount, not a measurement of
+how many such features Utah has.
 
-See §10.1 of the design spec: this must be resolved before Plan 2 renders those
-layers.
+That has been fixed (`assignment: "multi"` per group, `projectFeatures()` in
+`scripts/osm/project.mjs`): a feature matching more than one category in a
+`"multi"` group (`traffic`, `drivability`, `access`, `sites`, `terrain`,
+`jurisdiction`) now emits one row per matching category. The next
+`--count-only` rebuild will raise the counts for every category that used to
+lose features to an earlier one in catalog order — the numbers in this
+document are stale until that rebuild runs. `surveillance`, `safety`, and
+`utility` stay `"first-match"` and are unaffected.
+
+---
+
+## Rebuild 2026-08-02 — multi-emit correction
+
+The counts above were measured while `assignCategory` was first-match-wins, which
+filed each feature under exactly ONE category. That silently undercounted every
+category whose rule co-occurs with an earlier one on the same way — see spec
+§10.1. After switching attribute-style groups to multi-emit and rebuilding, the
+archives gained **62,133 features** (752,580 → 814,713).
+
+The three `first-match` groups (`surveillance`, `safety`, `utility`) are unchanged
+to the feature, which is the control that confirms the change did what it should
+and nothing more.
+
+| Group | Mode | Category | Before | After | Recovered |
+|---|---|---|---:|---:|---|
+| surveillance | first-match | `alpr` | 1,006 | 1,006 | — |
+| surveillance | first-match | `camera` | 723 | 723 | — |
+| surveillance | first-match | `camera_cone` | 80 | 80 | — |
+| traffic | multi | `control` | 21,059 | 21,059 | — |
+| traffic | multi | `maxspeed` | 46,096 | 46,096 | — |
+| traffic | multi | `restriction` | 29,025 | 40,671 | **+11,646** (+40%) |
+| traffic | multi | `calming` | 4,014 | 4,035 | **+21** (+1%) |
+| traffic | multi | `crossing` | 113,712 | 113,885 | **+173** (+0%) |
+| traffic | multi | `junction` | 765 | 765 | — |
+| traffic | multi | `access_pt` | 170 | 170 | — |
+| safety | first-match | `hydrant` | 11,277 | 11,277 | — |
+| safety | first-match | `water` | 20 | 20 | — |
+| safety | first-match | `emerg` | 137 | 137 | — |
+| safety | first-match | `inlet` | 6 | 6 | — |
+| safety | first-match | `heli` | 615 | 615 | — |
+| safety | first-match | `station` | 1,158 | 1,158 | — |
+| utility | first-match | `power` | 49,064 | 49,064 | — |
+| utility | first-match | `pole` | 27,897 | 27,897 | — |
+| utility | first-match | `gen` | 15,418 | 15,418 | — |
+| utility | first-match | `comms` | 1,890 | 1,890 | — |
+| utility | first-match | `water_infra` | 3,865 | 3,865 | — |
+| utility | first-match | `water_works` | 466 | 466 | — |
+| utility | first-match | `dam` | 1,850 | 1,850 | — |
+| utility | first-match | `pipeline` | 825 | 825 | — |
+| utility | first-match | `charging` | 221 | 221 | — |
+| sites | multi | `school` | 2,605 | 2,605 | — |
+| sites | multi | `financial` | 1,378 | 1,378 | — |
+| sites | multi | `regulated` | 405 | 407 | **+2** (+0%) |
+| sites | multi | `alcohol` | 343 | 343 | — |
+| sites | multi | `gov` | 794 | 794 | — |
+| sites | multi | `lodging` | 3,911 | 3,911 | — |
+| sites | multi | `social` | 6,921 | 6,921 | — |
+| sites | multi | `entrance` | 5,002 | 5,002 | — |
+| sites | multi | `bldg_height` | 65,671 | 66,265 | **+594** (+1%) |
+| access | multi | `barrier` | 14,511 | 14,511 | — |
+| access | multi | `control_pt` | 80 | 80 | — |
+| access | multi | `rail_x` | 3,637 | 3,637 | — |
+| access | multi | `rail_infra` | 3,354 | 3,354 | — |
+| access | multi | `parking` | 43,943 | 43,943 | — |
+| access | multi | `clearance` | 329 | 364 | **+35** (+11%) |
+| access | multi | `transit` | 504 | 504 | — |
+| access | multi | `lamp` | 12,662 | 12,662 | — |
+| drivability | multi | `fourwd` | 17,617 | 17,617 | — |
+| drivability | multi | `ford` | 7,495 | 7,502 | **+7** (+0%) |
+| drivability | multi | `seasonal` | 58,297 | 62,158 | **+3,861** (+7%) |
+| drivability | multi | `unpaved` | 39,405 | 56,058 | **+16,653** (+42%) |
+| drivability | multi | `track` | 43,589 | 72,729 | **+29,140** (+67%) |
+| terrain | multi | `cliff` | 80,460 | 80,460 | — |
+| terrain | multi | `cave` | 113 | 113 | — |
+| terrain | multi | `mine` | 907 | 907 | — |
+| terrain | multi | `spring` | 4,475 | 4,475 | — |
+| terrain | multi | `hazard` | 211 | 212 | **+1** (+0%) |
+| jurisdiction | multi | `protected` | 679 | 679 | — |
+| jurisdiction | multi | `tribal` | 10 | 10 | — |
+| jurisdiction | multi | `military` | 952 | 952 | — |
+| jurisdiction | multi | `extraction` | 961 | 961 | — |
+
+### Biggest recoveries
+
+- `drivability`/`track` **+67%** (43,589 → 72,729) — tracks are overwhelmingly also
+  unpaved and/or access-restricted, so nearly every one was being absorbed.
+- `drivability`/`unpaved` **+42%** (39,405 → 56,058)
+- `traffic`/`restriction` **+40%** (29,025 → 40,671) — oneway/height/weight limits on
+  roads that also carry a `maxspeed` tag. These are arterials: exactly the roads a
+  restrictions layer most needs to show.
+
+
+### ⚠️ Operational note: refreshed tiles take up to 24h to reach clients
+
+`src/routes/tiles.ts:46` serves tiles with `Cache-Control: public, max-age=86400`.
+Re-uploading an archive therefore does NOT immediately change what browsers or the
+Cloudflare edge serve. Verified during this rebuild: the same tile URL returned a
+byte-identical stale response, while a cache-busted request returned the larger,
+correct tile (`osm-traffic` +8,754 bytes, `osm-drivability` +17,640 bytes).
+
+Consequences:
+
+- After refreshing OSM data, purge the Cloudflare cache for `/api/tiles/*` or expect
+  up to 24h of drift.
+- When verifying a rebuild, always cache-bust. An unchanged tile size is NOT evidence
+  that a rebuild failed, and an unchanged tile is NOT evidence that it succeeded.
+- Plan 2 should decide whether tile URLs carry a version/generation token so a data
+  refresh invalidates cleanly instead of relying on a manual purge.
+

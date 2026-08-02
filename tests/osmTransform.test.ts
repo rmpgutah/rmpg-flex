@@ -55,6 +55,21 @@ const alprCamera = JSON.stringify({
   },
 });
 
+const genericCamera = JSON.stringify({
+  type: 'Feature',
+  geometry: { type: 'Point', coordinates: [-111.89, 40.76] },
+  properties: {
+    man_made: 'surveillance',
+    'camera:direction': '90',
+  },
+});
+
+const maxspeedAndOneway = JSON.stringify({
+  type: 'Feature',
+  geometry: { type: 'LineString', coordinates: [[-111.89, 40.76], [-111.88, 40.77]] },
+  properties: { highway: 'residential', maxspeed: '25 mph', oneway: 'yes' },
+});
+
 describe('transform.mjs (spawned child process)', () => {
   it('stamps tippecanoe.minzoom at the TOP level of the feature, not inside properties', async () => {
     const { stdout } = await runTransform('safety', [hydrant]);
@@ -91,5 +106,30 @@ describe('transform.mjs (spawned child process)', () => {
     expect(cone.geometry.type).toBe('Polygon');
     expect(cone.tippecanoe).toBeDefined();
     expect(cone.properties.tippecanoe).toBeUndefined();
+  });
+
+  it('bug 2: stamps a camera_cone with its PARENT category minzoom, not the group minimum', async () => {
+    // alpr minzoom=14 (== group min, so this alone wouldn't catch the bug).
+    const { stdout: alprOut } = await runTransform('surveillance', [alprCamera]);
+    const [, alprCone] = parseFeatures(alprOut);
+    expect(alprCone.tippecanoe.minzoom).toBe(14);
+
+    // camera minzoom=15 — must NOT be pulled down to the group min of 14.
+    const { stdout: camOut } = await runTransform('surveillance', [genericCamera]);
+    const [cam, camCone] = parseFeatures(camOut);
+    expect(cam.properties.cat).toBe('camera');
+    expect(camCone.properties.parent_cat).toBe('camera');
+    expect(camCone.tippecanoe.minzoom).toBe(15);
+  });
+
+  it('bug 1: a way tagged with BOTH maxspeed and oneway=yes emits TWO features under a `multi` group, each with its own category minzoom', async () => {
+    const { stdout } = await runTransform('traffic', [maxspeedAndOneway]);
+    const features = parseFeatures(stdout);
+    expect(features).toHaveLength(2);
+
+    const byCat = Object.fromEntries(features.map((f: any) => [f.properties.cat, f]));
+    expect(Object.keys(byCat).sort()).toEqual(['maxspeed', 'restriction']);
+    expect(byCat.maxspeed.tippecanoe.minzoom).toBe(13);
+    expect(byCat.restriction.tippecanoe.minzoom).toBe(14);
   });
 });
