@@ -7,7 +7,7 @@
 // flip which element is "front" (z-10) — the browser never needs to re-parse,
 // giving near-zero gap between segments.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router';
 import {
   AlertTriangle, Camera, CheckCircle2, ChevronLeft, Clock, Download,
   FileText, Film, Keyboard, Lock, Maximize2, Pause, Play, RotateCcw,

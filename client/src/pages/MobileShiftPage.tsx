@@ -19,7 +19,7 @@
 // ShiftContext.officer.id to cross-reference against a server-returned role.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 // ── Inspection scope (defaults) ─────────────────────────────────────────────

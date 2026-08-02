@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import { humanizeCaseType } from '../utils/statusLabels';
 import { asArray } from '../utils/asArray';

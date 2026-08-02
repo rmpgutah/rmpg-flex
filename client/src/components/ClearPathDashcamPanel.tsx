@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { Video, Settings, Camera } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 
 interface CpgStatus {

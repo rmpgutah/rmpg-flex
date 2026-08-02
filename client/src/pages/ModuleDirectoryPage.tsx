@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Search, Star, Clock, ExternalLink, RefreshCw, Grid3X3 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isWindowablePath, openPageWindow } from '../utils/windowManager';

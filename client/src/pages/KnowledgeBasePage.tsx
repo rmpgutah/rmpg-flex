@@ -21,7 +21,7 @@
 // (knowledgeBase.ts unwraps .results); brand tokens clean (no raw hex).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   Search, Loader2, ArrowRight, BookOpen, X, User, Car, FileText, Phone,
   AlertTriangle, Shield, Building2, Users, Radio, Package, Scale, Receipt,

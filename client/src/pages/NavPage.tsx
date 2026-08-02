@@ -5,7 +5,7 @@ import {
   Download, FileText, Crosshair, MapPinned, Pin, Trash2, Compass, ExternalLink,
   Settings, Satellite, WifiOff, Star,
 } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../hooks/useApi';
 import { getMapboxToken } from '../utils/mapboxApiKey';

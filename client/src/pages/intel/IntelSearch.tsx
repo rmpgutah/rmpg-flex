@@ -20,7 +20,7 @@
 //   • ConfirmDialog for saved-search delete (admin/manager only).
 //   • Brand token cleanup in ResultCard, FacetSidebar, SearchBar.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { parseQuery } from './useQueryParser';
 import { useIntelQuery } from './useIntelQuery';
 import { clusterHits } from './clusterHits';

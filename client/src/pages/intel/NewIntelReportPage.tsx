@@ -1,7 +1,7 @@
 // New raw intel report. Fixes the previously-dead "+ NEW REPORT" button and
 // accepts ?from=<type>:<id>&label=<name> to pre-seed a report from a dossier.
 import { useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { apiFetch } from '../../hooks/useApi';
 import { toDisplayLabel } from '../../utils/formatters';
 

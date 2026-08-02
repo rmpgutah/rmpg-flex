@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 // DashboardMiniMap (wrapped by this widget) instantiates a real mapbox-gl
 // Map/Marker/Popup/LngLatBounds/AttributionControl and calls out to

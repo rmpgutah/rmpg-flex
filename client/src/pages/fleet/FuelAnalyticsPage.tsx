@@ -20,7 +20,7 @@ import {
   Users, CreditCard, MapPin, BarChart3, ArrowLeft, RefreshCw, FileText,
 } from 'lucide-react';
 import { Upload, Wallet } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../../components/ToastProvider';

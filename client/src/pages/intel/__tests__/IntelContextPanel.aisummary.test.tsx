@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { vi, describe, it, expect, afterEach } from 'vitest';
 import IntelContextPanel from '../IntelContextPanel';
 import { IntelProvider, useIntelContext } from '../IntelContext';

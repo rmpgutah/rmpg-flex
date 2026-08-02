@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router';
 import { useToast } from '../../components/ToastProvider';
 
 import RichTextArea from '../../components/RichTextArea';

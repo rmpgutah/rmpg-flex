@@ -1,6 +1,6 @@
 // client/src/pages/PersonIntelPage.tsx
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Search, Plus, Clock, AlertTriangle, CheckCircle2, Loader2, ChevronRight, User } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';

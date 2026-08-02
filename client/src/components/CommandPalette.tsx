@@ -10,7 +10,7 @@
 // ============================================================
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Search, Terminal, Database, User, Car, CornerDownLeft } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 

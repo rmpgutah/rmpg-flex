@@ -1,7 +1,7 @@
 // Right docked panel. Renders whatever is selected in IntelContext, flipping
 // between a compact Dossier Peek and an embedded Mini Graph. Collapsible.
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 import { apiFetch } from '../../hooks/useApi';
 import ConnectionsGraphPanel from '../../components/ConnectionsGraphPanel';
 import { useIntelContext } from './IntelContext';

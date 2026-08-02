@@ -1,6 +1,6 @@
 // client/src/pages/PersonIntelDossierPage.tsx
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router';
 import {
   Search, ArrowLeft, Loader2, AlertTriangle, CheckCircle2, Clock,
   Shield, MapPin, Phone, Mail, Car, User, Globe, Briefcase, Gavel,

@@ -13,7 +13,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { ShieldAlert, ShieldCheck, Loader2, RefreshCw, Search } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 
 interface ScreeningHit {

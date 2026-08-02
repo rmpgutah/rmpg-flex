@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import {
   Search, User, Car, FileText, Phone, AlertTriangle, X, ArrowRight, Clock,
   Loader2, Command, Shield, Building2, Users, Radio, Package, Scale, Receipt,

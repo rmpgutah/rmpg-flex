@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { Loader2 } from 'lucide-react';
 import DetachedLayout from '../../components/DetachedLayout';
 import ReportTypeSelector from '../../components/ReportTypeSelector';

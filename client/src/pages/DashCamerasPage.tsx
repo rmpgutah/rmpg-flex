@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Camera, Video, Upload, Search, Loader2, Trash2, Edit2, Link2, Filter, MapPin,
   FileText, ChevronLeft, ChevronRight, Plus, Grid, List, Film, HardDrive,
