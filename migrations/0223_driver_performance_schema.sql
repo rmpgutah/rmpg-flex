@@ -33,6 +33,14 @@ CREATE TABLE IF NOT EXISTS driver_performance_daily (
   attribution_recorded_pct REAL NOT NULL DEFAULT 0,
   attribution_inferred_pct REAL NOT NULL DEFAULT 0,
 
+  -- Driving events observed on a unit this officer drove that day which could
+  -- NOT be tied to any driver (failed attribution, or an event label we do not
+  -- recognize). Deliberately NOT scored: it is doubt, not blame. Its only jobs
+  -- are to force the day off "confidently clean" and to be reported as its own
+  -- visible number, so a supervisor never reads a clean roster row as proof of
+  -- clean driving. See src/utils/driverPerformance/rollup.ts (C1).
+  unattributed_events INTEGER NOT NULL DEFAULT 0,
+
   fuel_cost REAL NOT NULL DEFAULT 0,
   fuel_gallons REAL NOT NULL DEFAULT 0,
   maintenance_cost REAL NOT NULL DEFAULT 0,

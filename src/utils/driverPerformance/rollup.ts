@@ -7,6 +7,7 @@
 import { query, execute, ensureDriverPerformanceColumns } from '../db';
 import { log } from '../logger';
 import { parseD1TimestampMs } from '../fleetio/sync';
+import { denverDateStringToEpochMs } from '../denverTime';
 import { resolveAttribution, type AssignmentWindow } from './attribution';
 import { computeScore, SCORE_VERSION, type EventCounts } from './score';
 
@@ -15,7 +16,15 @@ const EMPTY_EVENTS = (): EventCounts => ({
   harshBrake: 0, harshAccel: 0, speeding: 0,
 });
 
-/** Maps raw ClearPath event labels onto our counted buckets. */
+/**
+ * Maps raw ClearPath event labels onto our counted buckets.
+ *
+ * ⚠️ Returning null is NOT "nothing happened" — it is "we saw a driving event
+ * and do not know what it was". The caller must count it as doubt, never drop
+ * it silently. ClearPath renaming "Harsh Braking" to "Hard Stop" would
+ * otherwise make every such event vanish and every officer's score IMPROVE,
+ * with no error anywhere.
+ */
 function bucketFor(rawType: string | null): keyof EventCounts | null {
   const t = (rawType || '').toLowerCase();
   if (t.includes('forward') || t.includes('fcw') || t.includes('collision')) return 'forwardCollision';
@@ -41,6 +50,8 @@ interface Acc {
   severity: { critical: number; high: number; moderate: number; low: number };
   recorded: number;
   inferred: number;
+  /** Events on a unit this officer drove that could NOT be tied to a driver. */
+  unattributed: number;
   miles: number;
   minutes: number;
   trips: number;
@@ -52,12 +63,17 @@ interface Acc {
 const newAcc = (): Acc => ({
   events: EMPTY_EVENTS(),
   severity: { critical: 0, high: 0, moderate: 0, low: 0 },
-  recorded: 0, inferred: 0,
+  recorded: 0, inferred: 0, unattributed: 0,
   miles: 0, minutes: 0, trips: 0,
   fuelCost: 0, fuelGallons: 0, maintenanceCost: 0,
 });
 
 const METERS_PER_MILE = 1609.344;
+
+/** Canonical D1 storage form: UTC, `YYYY-MM-DD HH:MM:SS`, matching `datetime('now')`. */
+function toSqlUtc(ms: number): string {
+  return new Date(ms).toISOString().replace('T', ' ').replace(/\..*$/, '');
+}
 
 /**
  * Recompute one day. Idempotent — upserts on (officer_id, perf_date).
@@ -80,8 +96,24 @@ export async function rollupDay(
   // nothing ever recomputes it again.
   await ensureDriverPerformanceColumns(db);
 
-  const dayStart = `${perfDate} 00:00:00`;
-  const dayEnd = `${perfDate} 23:59:59`;
+  // ⚠️ `perf_date` IS A DENVER OPERATIONAL DAY, not a UTC one.
+  //
+  // Rocky Mountain Protective Group operates in America/Denver, and every
+  // timestamp in D1 is stored as UTC. Bucketing a UTC calendar day splits a
+  // normal Denver evening shift across two rows: a shift starting 17:30 Denver
+  // (23:30 UTC) with harsh braking at 19:00 Denver (01:00 UTC the NEXT day)
+  // stored the whole trip's mileage on day 1 with zero events — a perfect
+  // 100.0 in the daily trend — and the events alone on day 2 with ~0 miles.
+  // The officer's worst shift rendered as his best day.
+  //
+  // So the Denver calendar day is defined first, and its UTC instant bounds are
+  // derived from it (DST-aware via denverDateStringToEpochMs — never hardcode
+  // -07:00). Those SAME bounds are then applied to events, trips, fuel AND
+  // maintenance, so all four sides of the ratio describe one operational day.
+  //
+  // Safe to change: no production snapshots exist yet.
+  const dayStart = toSqlUtc(denverDateStringToEpochMs(perfDate, '00:00:00'));
+  const dayEnd = toSqlUtc(denverDateStringToEpochMs(perfDate, '23:59:59'));
 
   // Assignment windows overlapping this day, for event attribution.
   const assignRows = await query<{ officer_id: number | null; unit_id: number | null; assigned_at: string | null; unassigned_at: string | null }>(
@@ -120,34 +152,102 @@ export async function rollupDay(
     dayStart, dayEnd,
   );
 
+  // ⚠️ C1 — THE NUMERATOR AND THE DENOMINATOR MUST SHARE AN ATTRIBUTION SYSTEM.
+  //
+  // Events go through resolveAttribution (assignment windows keyed on the
+  // NULLABLE fleet_assignments.unit_id). Miles come straight from
+  // unit_trips.officer_id, which needs no attribution at all. When event
+  // attribution failed, the events were dropped and the MILES SURVIVED — so an
+  // officer who drove 900 miles and triggered 14 dashcam events (2 of them
+  // forward-collision warnings) whose July assignment rows carried a NULL
+  // officer_id was written as 900 miles / 0 events / recordedPct 1, rendered as
+  // "100.0 · Excellent · 0 events · Recorded", and ranked ABOVE colleagues
+  // whose events WERE attributable. The exposure floor cannot catch this: the
+  // bug REQUIRES high mileage.
+  //
+  // The doubt is therefore counted per unit here, then (below) charged to the
+  // officers who actually drove that unit that day, and finally forces the
+  // day off "confidently clean". An honest "events exist that we could not tie
+  // to a driver" always beats a reassuring score.
+  const doubtByUnit = new Map<number, number>();
+  let orphanDoubt = 0;            // doubt on an event with no unit at all
+  const addDoubt = (unitId: number | null) => {
+    if (unitId == null) { orphanDoubt += 1; return; }
+    doubtByUnit.set(unitId, (doubtByUnit.get(unitId) ?? 0) + 1);
+  };
+  let unmatchedCount = 0;         // I1: events whose label we did not recognize
+  const unmatchedLabels = new Set<string>();
+
   for (const e of eventRows) {
     const bucket = bucketFor(e.event_type);
-    if (!bucket) continue;
+    if (!bucket) {
+      // I1: an unrecognized label is a KNOWN-UNKNOWN, not an absence. Count it,
+      // remember the distinct label for one warning per rollup (not one per
+      // event — a renamed ClearPath label would emit thousands), and charge it
+      // to the same doubt pool as an unattributed event.
+      unmatchedCount += 1;
+      unmatchedLabels.add((e.event_type ?? '(null)').slice(0, 80));
+      addDoubt(e.unit_id);
+      continue;
+    }
     const windows = e.unit_id != null ? (windowsByUnit.get(e.unit_id) ?? []) : [];
     const { officerId, source } = resolveAttribution(
       e.officer_id, parseD1TimestampMs(e.event_timestamp), windows,
     );
-    if (officerId == null) continue; // unattributed: excluded from BOTH sides
+    if (officerId == null) { addDoubt(e.unit_id); continue; }
     const a = get(officerId);
     a.events[bucket] += 1;
     a.severity[SEVERITY_OF[bucket]] += 1;
     if (source === 'recorded') a.recorded += 1; else a.inferred += 1;
   }
 
+  if (unmatchedCount > 0) {
+    log.warn('driver-performance rollup saw unrecognized dashcam event labels', {
+      perfDate,
+      unmatchedCount,
+      distinctLabels: [...unmatchedLabels].sort(),
+    });
+  }
+  if (orphanDoubt > 0) {
+    log.warn('driver-performance rollup saw events with no unit, chargeable to no driver', {
+      perfDate, orphanDoubt,
+    });
+  }
+
   // ── Exposure (already officer-attributed) ──
-  const tripRows = await query<{ officer_id: number | null; distance_m: number | null; duration_s: number | null }>(
+  // `unit_id` is selected as well: it is the ONLY link back from a driver to
+  // the vehicle whose unattributed events must be charged to them (verified
+  // against migrations/0075_unit_trips.sql — unit_trips.unit_id INTEGER NOT NULL).
+  const tripRows = await query<{ officer_id: number | null; unit_id: number | null; distance_m: number | null; duration_s: number | null }>(
     db,
-    `SELECT officer_id, distance_m, duration_s
+    `SELECT officer_id, unit_id, distance_m, duration_s
        FROM unit_trips
       WHERE officer_id IS NOT NULL AND start_time >= ? AND start_time <= ?`,
     dayStart, dayEnd,
   );
+  const driversOfUnit = new Map<number, Set<number>>();
   for (const t of tripRows) {
     if (t.officer_id == null) continue;
     const a = get(t.officer_id);
     a.miles += (t.distance_m ?? 0) / METERS_PER_MILE;
     a.minutes += (t.duration_s ?? 0) / 60;
     a.trips += 1;
+    if (t.unit_id != null) {
+      const set = driversOfUnit.get(t.unit_id) ?? new Set<number>();
+      set.add(t.officer_id);
+      driversOfUnit.set(t.unit_id, set);
+    }
+  }
+
+  // Charge each unit's doubt to EVERY officer who drove it that day. When two
+  // officers shared a unit we cannot say whose event it was — which is exactly
+  // why it is unattributed — so both carry the doubt. Doubt is never scored;
+  // it only downgrades confidence and is reported as its own number, so
+  // charging it twice overstates uncertainty rather than blame.
+  for (const [unitId, count] of doubtByUnit) {
+    const drivers = driversOfUnit.get(unitId);
+    if (!drivers || drivers.size === 0) continue; // nobody drove it: no one to warn
+    for (const officerId of drivers) get(officerId).unattributed += count;
   }
 
   // ── Cost, attributed through the same assignment windows (lens 4) ──
@@ -200,8 +300,11 @@ export async function rollupDay(
 
   const maintRows = await query<{ vehicle_id: number; cost: number | null }>(
     db,
-    `SELECT vehicle_id, cost FROM fleet_maintenance WHERE date(performed_at) = ?`,
-    perfDate,
+    // Same Denver-derived UTC bounds as events/trips/fuel. `date(performed_at)`
+    // would have bucketed on the UTC calendar day, putting a Denver-evening
+    // service record on the following operational day.
+    `SELECT vehicle_id, cost FROM fleet_maintenance WHERE performed_at >= ? AND performed_at <= ?`,
+    dayStart, dayEnd,
   );
   for (const m of maintRows) {
     const officerId = vehicleOfficer.get(m.vehicle_id);
@@ -213,9 +316,26 @@ export async function rollupDay(
   let failures = 0;
   for (const [officerId, a] of acc) {
     try {
+      // ⚠️ Do NOT default recordedPct to 1 on an empty set. `1` is an
+      // assertion that every event was recorded at capture; over zero events
+      // that is a confident claim about nothing, and it is precisely how the
+      // C1 officer above earned a "Recorded" badge for a day whose events had
+      // all failed attribution. When there is doubt and nothing attributed,
+      // the day is INFERRED. Only a day with neither attributed events nor
+      // doubt — genuinely nothing to be uncertain about — stays at 1.
       const totalAttributed = a.recorded + a.inferred;
-      const recordedPct = totalAttributed > 0 ? a.recorded / totalAttributed : 1;
-      const inferredPct = totalAttributed > 0 ? a.inferred / totalAttributed : 0;
+      let recordedPct: number;
+      let inferredPct: number;
+      if (totalAttributed > 0) {
+        recordedPct = a.recorded / totalAttributed;
+        inferredPct = a.inferred / totalAttributed;
+      } else if (a.unattributed > 0) {
+        recordedPct = 0;
+        inferredPct = 1;
+      } else {
+        recordedPct = 1;
+        inferredPct = 0;
+      }
       const result = computeScore({ milesDriven: a.miles, events: a.events, recordedPct });
       const score = result.status === 'scored' ? result.score : null;
 
@@ -226,10 +346,10 @@ export async function rollupDay(
            events_critical, events_high, events_moderate, events_low,
            events_forward_collision, events_lane_departure, events_close_following,
            events_harsh_brake, events_harsh_accel, events_speeding,
-           attribution_recorded_pct, attribution_inferred_pct,
+           attribution_recorded_pct, attribution_inferred_pct, unattributed_events,
            fuel_cost, fuel_gallons, maintenance_cost,
            score, score_version, computed_at
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
          ON CONFLICT(officer_id, perf_date) DO UPDATE SET
            miles_driven=excluded.miles_driven, drive_minutes=excluded.drive_minutes,
            trip_count=excluded.trip_count,
@@ -243,6 +363,7 @@ export async function rollupDay(
            events_speeding=excluded.events_speeding,
            attribution_recorded_pct=excluded.attribution_recorded_pct,
            attribution_inferred_pct=excluded.attribution_inferred_pct,
+           unattributed_events=excluded.unattributed_events,
            fuel_cost=excluded.fuel_cost, fuel_gallons=excluded.fuel_gallons,
            maintenance_cost=excluded.maintenance_cost,
            score=excluded.score, score_version=excluded.score_version,
@@ -251,7 +372,7 @@ export async function rollupDay(
         a.severity.critical, a.severity.high, a.severity.moderate, a.severity.low,
         a.events.forwardCollision, a.events.laneDeparture, a.events.closeFollowing,
         a.events.harshBrake, a.events.harshAccel, a.events.speeding,
-        recordedPct, inferredPct,
+        recordedPct, inferredPct, a.unattributed,
         a.fuelCost, a.fuelGallons, a.maintenanceCost,
         score, SCORE_VERSION,
       );
