@@ -547,6 +547,10 @@ export async function ensureDriverPerformanceColumns(db: D1Database): Promise<vo
       fuel_cost REAL NOT NULL DEFAULT 0,
       fuel_gallons REAL NOT NULL DEFAULT 0,
       maintenance_cost REAL NOT NULL DEFAULT 0,
+      events_speed_high INTEGER NOT NULL DEFAULT 0,
+      events_speed_very_high INTEGER NOT NULL DEFAULT 0,
+      events_speed_extreme INTEGER NOT NULL DEFAULT 0,
+      breadcrumb_samples INTEGER NOT NULL DEFAULT 0,
       score REAL,
       score_version TEXT NOT NULL,
       computed_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -565,6 +569,14 @@ export async function ensureDriverPerformanceColumns(db: D1Database): Promise<vo
     // Added after the table shipped: an existing (pre-0223-edit) table needs
     // the ALTER, a fresh one already has it from the CREATE above.
     ['driver_performance_daily', 'unattributed_events', 'INTEGER NOT NULL DEFAULT 0'],
+    // 0224 — speed-event source (gps_breadcrumbs) replacing ClearPath dashcam
+    // events. `breadcrumb_samples` is load-bearing, not decorative: 0 samples
+    // against non-zero miles is a DEAD FEED, and a dead feed scores 100 unless
+    // something records that nothing was observed.
+    ['driver_performance_daily', 'events_speed_high', 'INTEGER NOT NULL DEFAULT 0'],
+    ['driver_performance_daily', 'events_speed_very_high', 'INTEGER NOT NULL DEFAULT 0'],
+    ['driver_performance_daily', 'events_speed_extreme', 'INTEGER NOT NULL DEFAULT 0'],
+    ['driver_performance_daily', 'breadcrumb_samples', 'INTEGER NOT NULL DEFAULT 0'],
   ];
   for (const [table, col, type] of COLUMNS) {
     try {
