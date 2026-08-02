@@ -15,10 +15,12 @@
 import { useState, useCallback, useEffect } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import {
-  isOverlayLayer, humanLayerLabel, layerGroupLabel, configIdFromLayerId,
+  isOverlayLayer, humanLayerLabel, layerGroupLabel, configIdFromLayerId, metresToUsDistance,
 } from '../utils/osmLayerLabels';
 import { OSM_VECTOR_CONFIGS } from './useVectorTileLayers';
 import { OSM_GROUPS } from '../config/osmLayers.generated';
+import { haversineDistance } from '../utils/unitRecommendation';
+import { formatBearing } from '../utils/osmFeatureDescription';
 
 /** Half-width of the hit box, in screen pixels. An exact-point query makes a
  *  5px miss on a hydrant read as "no hydrant". */
@@ -97,6 +99,46 @@ export function collectOverlayFeatures(raw: any[]): InspectedFeature[] {
   });
 }
 
+/** Hit box half-widths, in screen pixels. The first is the normal path; the
+ *  rest widen only when nothing was found, so a near-miss on a hydrant is not
+ *  reported as "no hydrant". */
+export const WIDEN_STEPS_PX = [HIT_TOLERANCE_PX, 40, 120];
+
+const METRES_PER_MILE = 1609.344;
+
+/** A single lng/lat standing in for any geometry, for distance purposes. */
+export function representativePoint(geometry: GeoJSON.Geometry): [number, number] | null {
+  const coords: number[][] = [];
+  const walk = (c: any) => {
+    if (!Array.isArray(c)) return;
+    if (typeof c[0] === 'number' && typeof c[1] === 'number') { coords.push(c as number[]); return; }
+    for (const child of c) walk(child);
+  };
+  walk((geometry as any)?.coordinates);
+  if (!coords.length) return null;
+  const lng = coords.reduce((s, c) => s + c[0], 0) / coords.length;
+  const lat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+  return [lng, lat];
+}
+
+/** "90 ft NE" — distance and bearing from the click to a feature. */
+export function awayLabelFor(
+  from: [number, number],
+  geometry: GeoJSON.Geometry,
+): string | undefined {
+  const to = representativePoint(geometry);
+  if (!to) return undefined;
+  // ⚠️ haversineDistance returns MILES; metresToUsDistance takes METRES.
+  const metres = haversineDistance(from[1], from[0], to[1], to[0]) * METRES_PER_MILE;
+  if (!Number.isFinite(metres)) return undefined;
+  const dLng = (to[0] - from[0]) * Math.cos((from[1] * Math.PI) / 180);
+  const dLat = to[1] - from[1];
+  const deg = (Math.atan2(dLng, dLat) * 180) / Math.PI;
+  const bearing = formatBearing(String(deg))?.replace(/\s*\(.*\)$/, '') ?? '';
+  const dist = metresToUsDistance(metres);
+  return dist ? `${dist}${bearing ? ` ${bearing}` : ''}` : undefined;
+}
+
 export function useMapFeatureInspect(map: mapboxgl.Map | null, mapLoaded: boolean) {
   const [enabled, setEnabled] = useState(false);
   const [result, setResult] = useState<InspectionResult | null>(null);
@@ -107,9 +149,29 @@ export function useMapFeatureInspect(map: mapboxgl.Map | null, mapLoaded: boolea
 
     const handler = (e: mapboxgl.MapMouseEvent) => {
       const { lng, lat } = e.lngLat;
-      const raw = map.queryRenderedFeatures(boxAround(e.point, HIT_TOLERANCE_PX)) as any[];
-      const features = collectOverlayFeatures(raw);
-      setResult({ lngLat: [lng, lat], features, widened: false, timestamp: Date.now() });
+      const from: [number, number] = [lng, lat];
+
+      for (let step = 0; step < WIDEN_STEPS_PX.length; step++) {
+        const raw = map.queryRenderedFeatures(boxAround(e.point, WIDEN_STEPS_PX[step])) as any[];
+        const features = collectOverlayFeatures(raw);
+        if (!features.length) continue;
+        const widened = step > 0;
+        setResult({
+          lngLat: from,
+          // Distance is load-bearing only when we widened to find these.
+          features: widened
+            ? features.map((f) => ({ ...f, awayLabel: awayLabelFor(from, f.geometry) }))
+            : features,
+          widened,
+          timestamp: Date.now(),
+        });
+        setSelectedIndex(0);
+        return;
+      }
+
+      // Nothing anywhere near. Report it explicitly — silence is
+      // indistinguishable from the tool being broken or switched off.
+      setResult({ lngLat: from, features: [], widened: false, timestamp: Date.now() });
       setSelectedIndex(0);
     };
 

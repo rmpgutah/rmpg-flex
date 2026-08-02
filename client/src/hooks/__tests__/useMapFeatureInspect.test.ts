@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useMapFeatureInspect } from '../useMapFeatureInspect';
+import { representativePoint, awayLabelFor } from '../useMapFeatureInspect';
 
 /** The exact layer set a click on Woodstock Elementary returned in the
  *  reported screenshot: one real overlay hit buried under eleven rows of
@@ -105,5 +106,69 @@ describe('useMapFeatureInspect', () => {
     act(() => { result.current.toggle(); });
     act(() => { map._click(CLICK); });
     expect(result.current.selectedIndex).toBe(0);
+  });
+});
+
+describe('nearest-feature fallback', () => {
+  const HYDRANT = {
+    layer: { id: 'vt-osm_safety_hydrant-circle' },
+    properties: { name: 'Hydrant', osm_id: 'n55' },
+    // ~90 ft north-east of the click point.
+    geometry: { type: 'Point', coordinates: [-111.85333, 40.64218] },
+  };
+
+  it('widens the search when the exact point catches nothing', () => {
+    // Empty at 8px, the hydrant at 40px.
+    const map = makeMap((box: any) => {
+      const halfWidth = (box[1][0] - box[0][0]) / 2;
+      return halfWidth <= 8 ? [] : [HYDRANT];
+    });
+    const { result } = renderHook(() => useMapFeatureInspect(map, true));
+    act(() => { result.current.toggle(); });
+    act(() => { map._click(CLICK); });
+
+    expect(result.current.result?.widened).toBe(true);
+    expect(result.current.result?.features).toHaveLength(1);
+    expect(result.current.result?.features[0].awayLabel).toMatch(/ft/);
+  });
+
+  it('reports an empty result rather than going silent', () => {
+    // Silence is indistinguishable from the tool being broken or switched off.
+    const map = makeMap([]);
+    const { result } = renderHook(() => useMapFeatureInspect(map, true));
+    act(() => { result.current.toggle(); });
+    act(() => { map._click(CLICK); });
+
+    expect(result.current.result).not.toBeNull();
+    expect(result.current.result?.features).toHaveLength(0);
+    expect(result.current.result?.lngLat).toEqual([-111.85355, 40.64199]);
+  });
+
+  it('never attaches a distance on the exact-point path', () => {
+    // Everything inside an 8px box is a few feet away; a distance there is
+    // noise dressed as information.
+    const map = makeMap(SCREENSHOT_FEATURES);
+    const { result } = renderHook(() => useMapFeatureInspect(map, true));
+    act(() => { result.current.toggle(); });
+    act(() => { map._click(CLICK); });
+
+    expect(result.current.result?.widened).toBe(false);
+    expect(result.current.result?.features[0].awayLabel).toBeUndefined();
+  });
+
+  it('derives a representative point from any geometry type', () => {
+    expect(representativePoint({ type: 'Point', coordinates: [1, 2] } as any)).toEqual([1, 2]);
+    expect(representativePoint({
+      type: 'LineString', coordinates: [[0, 0], [2, 4]],
+    } as any)).toEqual([1, 2]);
+    expect(representativePoint({ type: 'Point', coordinates: [] } as any)).toBeNull();
+  });
+
+  it('reports distance in US units with a compass bearing', () => {
+    // haversineDistance returns MILES; feeding it to metresToUsDistance
+    // unconverted reports a 90 ft offset as "0 ft".
+    const label = awayLabelFor([-111.85355, 40.64199],
+      { type: 'Point', coordinates: [-111.85355, 40.64218] } as any);
+    expect(label).toMatch(/^\d+ ft N/);
   });
 });
