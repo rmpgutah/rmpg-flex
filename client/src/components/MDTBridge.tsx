@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from './ToastProvider';
 import { useAuth } from '../context/AuthContext';

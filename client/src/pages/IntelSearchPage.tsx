@@ -4,7 +4,7 @@
 // hot flags (ACTIVE WARRANT / OFFICER SAFETY / GANG) and entity-
 // resolution cluster info. Phase 1 of the Palantir-grade records work.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Search } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';

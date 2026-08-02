@@ -7,7 +7,7 @@
 // ============================================================
 
 import {useState, useCallback, useEffect, useRef} from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Loader2, X, Eye, ScanLine, UserCheck, Upload, History, Camera } from 'lucide-react';
 import { apiFetch, apiUploadFilesWithProgress } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';

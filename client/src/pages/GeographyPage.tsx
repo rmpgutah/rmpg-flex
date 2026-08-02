@@ -21,7 +21,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Download, Edit2, MapPin, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useGeographyTree } from '../hooks/useGeographyTree';

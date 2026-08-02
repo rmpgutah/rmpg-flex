@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, {useState, useCallback, useEffect, useRef} from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Database, Columns, Filter, Play, Download, ArrowUpDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { localToday } from '../utils/dateUtils';

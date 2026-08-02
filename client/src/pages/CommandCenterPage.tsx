@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Radio, Users, AlertTriangle, Shield, Activity, Clock, Phone, MapPin, Maximize,
   Minimize, ShieldAlert, TrendingUp, Loader2,

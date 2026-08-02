@@ -3,7 +3,7 @@
 // lines) that cross-hits every booking against known/flagged subjects,
 // and a recent-bookings list with match badges.
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router';
 import { Building2, Search, X, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';

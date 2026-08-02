@@ -1,6 +1,6 @@
 // Left rail nav for the Intel Portal. NavLink active state highlights the
 // current section; badge counts come from the dashboard overview poll.
-import { NavLink } from 'react-router-dom';
+import { NavLink } from 'react-router';
 
 export interface RailCounts { watchlist: number; bolos: number; alerts: number; queues: number; aiOnline: boolean }
 

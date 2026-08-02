@@ -9,7 +9,7 @@ vi.mock('../../../../hooks/useApi', () => ({ apiFetch: (...a: any[]) => mockApiF
 vi.mock('../../../../context/WebSocketContext', () => ({
   useWebSocket: () => ({ subscribe: (...a: any[]) => mockSubscribe(...a) }),
 }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
+vi.mock('react-router', () => ({ useNavigate: () => mockNavigate }));
 
 describe('MessagesCard (smoke)', () => {
   it('module loads', async () => {

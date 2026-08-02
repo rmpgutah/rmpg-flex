@@ -5,7 +5,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Video, Loader2, AlertTriangle } from 'lucide-react';
 import type { BodyCamera, BodyCamVideo, VideoClassification, VideoRetention } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';

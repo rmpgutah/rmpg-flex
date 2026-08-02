@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import {
   LayoutDashboard, Radio, Map, FileText, Database, Users, MessageSquare,

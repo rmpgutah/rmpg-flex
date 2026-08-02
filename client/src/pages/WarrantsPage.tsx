@@ -42,7 +42,7 @@ import CollapsibleSection from '../components/CollapsibleSection';
 import LinkedEmailsSection from '../components/LinkedEmailsSection';
 import EmailedDocuments from '../components/EmailedDocuments';
 import { displayUserName } from '../utils/userDisplay';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import ScrapersTab from './warrants/ScrapersTab';
 import WarrantsListTab, { type WarrantsListTabHandle } from './warrants/WarrantsListTab';
 // Canonical /warrants/scrapers row shape. See the note above ScraperSource's old

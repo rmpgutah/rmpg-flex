@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { Eye, Copy } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { apiFetch } from '../../../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { copyToClipboard, separator } from '../../../utils/contextMenuActions';

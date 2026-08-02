@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import '@testing-library/jest-dom';
 import { render, screen, within, fireEvent, cleanup } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { ToastProvider } from '../../../../components/ToastProvider';
 import { ContextMenuProvider } from '../../../../context/ContextMenuContext';
 import SpillmanCadBoard from '../SpillmanCadBoard';

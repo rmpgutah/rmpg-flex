@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import type { NavFunction } from '../../../data/navCatalog';
 import { loadFavorites, loadRecent } from '../../../utils/navFavorites';
 

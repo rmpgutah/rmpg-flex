@@ -39,7 +39,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Shield, Plus, Search, Loader2, CheckCircle, XCircle, Eye, Printer, FileText, Video, Trash2 } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import PanelTitleBar from '../components/PanelTitleBar';
 import SplitPanel from '../components/SplitPanel';
 import ConfirmDialog from '../components/ConfirmDialog';

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   Bell, BellOff, Check, CheckCheck, Clock, Settings, Trash2, AlertTriangle, X,
   Loader2, RefreshCw, ArrowUpRight, ExternalLink, Filter as FilterIcon,

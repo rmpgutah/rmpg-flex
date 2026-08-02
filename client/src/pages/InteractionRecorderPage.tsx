@@ -3,7 +3,7 @@
 // most the last 5 seconds. Playback concatenates the stored chunks.
 import { useEffect, useRef, useState } from 'react';
 import { Mic, Square, Loader2, Radio } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';

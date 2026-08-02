@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Monitor, Navigation, Eye, CheckCircle, MapPin, Clock, Send, AlertTriangle,
   MessageSquare, Shield, FileText, Loader2, ChevronRight, Hash, Search, X, Radio, History,

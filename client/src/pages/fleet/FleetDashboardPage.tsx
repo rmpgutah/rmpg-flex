@@ -10,7 +10,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import mapboxgl from 'mapbox-gl';
 import {
   ArrowLeft, Gauge, Wrench, AlertTriangle, Fuel, DollarSign, Route,

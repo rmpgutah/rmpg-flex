@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import WidgetFrame from './WidgetFrame';
 import type { IntelOverview } from '../useIntelOverview';
 

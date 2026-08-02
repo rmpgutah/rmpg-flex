@@ -9,7 +9,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {

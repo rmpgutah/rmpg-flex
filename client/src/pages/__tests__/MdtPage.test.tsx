@@ -38,7 +38,7 @@ vi.mock('../../context/AuthContext', () => ({
 // useSearchParams is used by the new ?call_id= deep-link effect. Mock returns
 // an empty URLSearchParams so the effect is a no-op in tests that don't
 // exercise the deep-link path.
-vi.mock('react-router-dom', () => ({
+vi.mock('react-router', () => ({
   useSearchParams: () => [new URLSearchParams(), vi.fn()],
 }));
 // The always-mounted modals subscribe to WS events we don't exercise here.
