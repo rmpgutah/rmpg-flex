@@ -6,43 +6,101 @@
 //
 // Spec: docs/superpowers/specs/2026-08-01-driver-performance-design.md
 
+import type { SpeedEventCounts } from './speedEvents';
+
+export type { SpeedEventCounts };
+
 /**
  * Bump on ANY weighting or formula change. Snapshots store the version they
  * were computed under so retuning never silently restates history.
  *
- * TODO(owner): rename to 'v1' once weights below are reviewed.
+ * 'v1-speed': events are derived from directly-observed MDT GPS speed
+ * (src/utils/driverPerformance/speedEvents.ts). The previous ClearPath
+ * dashcam-event source was dropped — its credentials were absent, so it had
+ * been feeding an empty numerator while miles kept accruing.
+ *
+ * 'v1-speed-r100': same event derivation, REFERENCE_RATE_AT_ZERO raised from
+ * 20 to 100 (see below). Snapshots from either version are NOT comparable —
+ * a score of 60 under 'v1-speed' and a score of 60 under 'v1-speed-r100'
+ * represent different underlying driving. Never silently mix them in a trend.
  */
-export const SCORE_VERSION = 'v1-placeholder-weights';
+export const SCORE_VERSION = 'v1-speed-r100';
+
+/**
+ * ⚠️ SCORING IS LIVE WITHOUT EMERGENCY-RESPONSE EXCLUSION DATA. Owner
+ * decision 2026-08-01, made with the gap below explicitly disclosed and
+ * accepted — this is not an oversight.
+ *
+ * `gps_breadcrumbs.current_call_id` / `unit_status` are populated in ZERO of
+ * 91,382 live rows, so `rollup.ts`'s emergency-response exclusion (it is
+ * already built and wired in) has nothing to exclude yet. Until those fields
+ * start being captured, a lawful code-3 response is counted exactly the same
+ * as any other high-speed run — the exclusion activates automatically, with
+ * no code change, the moment real call-context data starts landing.
+ *
+ * This is why every surface that shows a score (roster, officer detail, PDF
+ * export) is REQUIRED to carry a prominent, non-dismissable caveat saying so
+ * — see the banner/PDF-block wiring in FleetDriverPerformanceTab.tsx and
+ * pdf.ts. A score without that caveat next to it is a defect, not a
+ * cosmetic miss: it is the only thing standing between this number and a
+ * false accusation against a named officer.
+ */
+export const SCORING_ENABLED = true;
 
 /** Below this, no score is produced. A blank is honest; a zero is a claim. */
 export const MIN_EXPOSURE_MILES = 250;
 
-/** Weighted events per 100 miles that maps to a score of 0. */
-const REFERENCE_RATE_AT_ZERO = 20;
+/**
+ * Weighted events per 100 miles that maps to a score of 0.
+ *
+ * ⚠️ PROVISIONAL — 100, raised from 20 on 2026-08-01. At 20, every officer
+ * above rate 20 clamped to exactly 0/At Risk with no gradation: the harshest
+ * possible verdict and simultaneously the least informative one, and a
+ * number that could never show improvement. 100 puts Officer 1's observed
+ * pre-exclusion rate (~50) at score ~50 ("Needs Attention"), with headroom on
+ * both sides.
+ *
+ * This is calibrated against ONE officer, which is circular by construction
+ * — there is no real population yet to calibrate against, so this number is
+ * a placeholder that makes the scale usable, not a validated threshold.
+ * MUST be revisited once there is a real multi-officer population to
+ * calibrate against, and once emergency-response exclusion is live (the
+ * rate that produced this "~50" figure includes lawfully-exempt code-3
+ * driving that hasn't been excluded yet — see SCORING_ENABLED above).
+ * Anyone changing this value moves every historical score comparison; bump
+ * SCORE_VERSION alongside it, same as any other weighting change.
+ */
+const REFERENCE_RATE_AT_ZERO = 100;
 
 /** Below this share of recorded (vs inferred) attribution, flag as inferred. */
 const RECORDED_CONFIDENCE_THRESHOLD = 0.5;
 
-export interface EventCounts {
-  forwardCollision: number;
-  laneDeparture: number;
-  closeFollowing: number;
-  harshBrake: number;
-  harshAccel: number;
-  speeding: number;
-}
-
 export type ScoreBand = 'excellent' | 'good' | 'needs_attention' | 'at_risk';
+
+/** Why no score was produced. Never collapse these — they mean different things. */
+export type InsufficientReason = 'below_exposure_floor' | 'no_breadcrumb_samples';
 
 export interface ScoreInput {
   milesDriven: number;
-  events: EventCounts;
+  events: SpeedEventCounts;
   /** 0..1 — share of this window's events with recorded (not inferred) attribution. */
   recordedPct: number;
+  /**
+   * GPS breadcrumb samples observed for this officer-window.
+   *
+   * ⚠️ REQUIRED, and deliberately not optional. Miles come from `unit_trips`
+   * and breadcrumbs come from the MDT feed; those are independent pipelines.
+   * Miles with ZERO breadcrumbs means the feed was DEAD, not that the officer
+   * drove flawlessly — and a dead feed produces zero events, which scores 100.
+   * That is exactly how the retired ClearPath source would have handed every
+   * officer a perfect record. Making this a required field means no call site
+   * can reintroduce that failure by forgetting it.
+   */
+  breadcrumbSamples: number;
 }
 
 export type ScoreResult =
-  | { status: 'insufficient_data'; milesDriven: number }
+  | { status: 'insufficient_data'; reason: InsufficientReason; milesDriven: number }
   | {
       status: 'scored';
       score: number;
@@ -54,37 +112,21 @@ export type ScoreResult =
     };
 
 /**
- * ⚠️ PLACEHOLDER WEIGHTS — REQUIRES OWNER REVIEW.
+ * Severity weights, in force as of SCORE_VERSION 'v1-speed'.
  *
- * These encode how much worse one risky behavior is than another. That is a
- * policy judgment about Rocky Mountain Protective Group's risk tolerance, not
- * a technical default. The values below are ordered sensibly but are NOT
- * authoritative. Review them, then update SCORE_VERSION to 'v1'. The route
- * will then stop refusing to serve scores (it keys off weightsPendingReview()).
+ * These encode how much worse one speed tier is than another — a policy
+ * judgment about Rocky Mountain Protective Group's risk tolerance. Changing
+ * any value REQUIRES bumping SCORE_VERSION, or historical snapshots become
+ * silently incomparable to new ones.
  */
-const WEIGHTS: Record<keyof EventCounts, number> = {
-  forwardCollision: 10, // imminent-collision warning — highest real-crash proximity
-  harshBrake: 6,        // often the reaction to following too closely
-  closeFollowing: 4,    // sustained risk posture rather than a single moment
-  laneDeparture: 4,     // attention/fatigue signal
-  speeding: 3,
-  harshAccel: 2,        // wear and fuel more than crash risk
+const WEIGHTS: Record<keyof SpeedEventCounts, number> = {
+  speedHigh: 3,      // 70+ mph — sustained, above most posted limits
+  speedVeryHigh: 8,  // 80+ mph
+  speedExtreme: 20,  // 90+ mph — crash energy rises with the square of speed
 };
 
-export function severityWeight(event: keyof EventCounts): number {
+export function severityWeight(event: keyof SpeedEventCounts): number {
   return WEIGHTS[event];
-}
-
-/**
- * True while the severity weights are still placeholders.
- *
- * The route uses this to refuse to serve scores: a number derived from
- * unreviewed weights must not reach a supervisor, because it would look
- * exactly like a reviewed one. Fails loudly where someone will notice,
- * rather than in a CI suite nobody reads.
- */
-export function weightsPendingReview(): boolean {
-  return SCORE_VERSION.includes('placeholder');
 }
 
 function bandFor(score: number): ScoreBand {
@@ -115,13 +157,25 @@ function sanitizeEventCount(count: number | undefined): number {
  * the bottom of a leaderboard.
  */
 export function computeScore(input: ScoreInput): ScoreResult {
-  const { milesDriven, events, recordedPct } = input;
+  const { milesDriven, events, recordedPct, breadcrumbSamples } = input;
 
   if (!Number.isFinite(milesDriven) || milesDriven < MIN_EXPOSURE_MILES) {
-    return { status: 'insufficient_data', milesDriven: Math.max(0, milesDriven || 0) };
+    return {
+      status: 'insufficient_data',
+      reason: 'below_exposure_floor',
+      milesDriven: Math.max(0, milesDriven || 0),
+    };
   }
 
-  const weightedEvents = (Object.keys(WEIGHTS) as (keyof EventCounts)[])
+  // Dead-feed guard. Above the exposure floor with no observations at all is
+  // not clean driving — it is an unmonitored officer. Refusing to score is the
+  // only honest answer, and it is loud: the row shows up in the unscored block
+  // rather than at the top of the leaderboard.
+  if (!Number.isFinite(breadcrumbSamples) || breadcrumbSamples <= 0) {
+    return { status: 'insufficient_data', reason: 'no_breadcrumb_samples', milesDriven };
+  }
+
+  const weightedEvents = (Object.keys(WEIGHTS) as (keyof SpeedEventCounts)[])
     .reduce((sum, k) => sum + WEIGHTS[k] * sanitizeEventCount(events[k]), 0);
 
   const weightedRatePer100Miles = weightedEvents / (milesDriven / 100);

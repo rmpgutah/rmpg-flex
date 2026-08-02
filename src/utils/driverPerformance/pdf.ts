@@ -18,6 +18,7 @@
 // take literal color arguments and are excluded from the theme-token rule.
 
 import { MIN_EXPOSURE_MILES } from './score';
+import { SPEED_THRESHOLDS } from './speedEvents';
 import type { ScoreResult } from './score';
 import { log } from '../logger';
 
@@ -41,13 +42,12 @@ export interface DriverPerformanceSummary {
   trip_count: number;
   event_count: number;
   events: {
-    forward_collision: number;
-    lane_departure: number;
-    close_following: number;
-    harsh_brake: number;
-    harsh_accel: number;
-    speeding: number;
+    speed_high: number;
+    speed_very_high: number;
+    speed_extreme: number;
   };
+  /** GPS breadcrumb samples behind the counts above. 0 with miles > 0 = dead feed. */
+  breadcrumb_samples?: number;
   severity?: { critical: number; high: number; moderate: number; low: number };
   /** Events on a unit this officer drove that could not be tied to a driver. */
   unattributed_events?: number;
@@ -315,6 +315,21 @@ export async function renderDriverPerformancePdf(
   );
   pdf.text(`Reporting window: ${window.from} to ${window.to}`, { size: 10, gap: 10 });
 
+  // ⚠️ MANDATORY CAVEAT — placed BEFORE the score, not buried in a footer.
+  // gps_breadcrumbs.current_call_id/unit_status are populated in ZERO of
+  // 91,382 live rows, so the emergency-response exclusion rollup.ts already
+  // has wired in has nothing to exclude yet. This is the only thing standing
+  // between the number below and a false accusation against a named officer
+  // — it must be read before the score, not discovered after.
+  if (summary.result.status === 'scored') {
+    pdf.wrapText(
+      'Emergency-response driving is not excluded from this score. Vehicle call context is not ' +
+      'currently captured, so lawful code-3 response is counted the same as any other high-speed ' +
+      'driving. Treat this score as a prompt to review, not as a finding.',
+      { size: 10, bold: true, color: WARN, gap: 10 },
+    );
+  }
+
   // 3. Score/band/rate — ALWAYS with miles driven adjacent, or the explicit
   // unscored explanation. Never a bare score, never a band/rate/confidence
   // when the officer fell below MIN_EXPOSURE_MILES.
@@ -332,26 +347,51 @@ export async function renderDriverPerformancePdf(
     pdf.text(`Miles driven this window: ${fmt(result.milesDriven, 1)} mi`, { size: 10, gap: 10 });
   } else {
     pdf.text('No score computed for this window.', { bold: true, size: 11, color: WARN });
-    pdf.wrapText(
-      `Reason: this officer drove ${fmt(result.milesDriven, 1)} miles in the window, below the ` +
-      `${MIN_EXPOSURE_MILES}-mile minimum required to compute a score. No band, rate, or ` +
-      `confidence is shown because none was computed.`,
-      { size: 10, gap: 10 },
-    );
+    // The two unscored reasons mean OPPOSITE things about the officer and must
+    // never share a sentence. Below the floor is about the officer's exposure;
+    // a dead feed is about OUR instrumentation, and printing the mileage excuse
+    // for a monitoring outage would quietly blame the wrong party.
+    if (result.reason === 'no_breadcrumb_samples') {
+      pdf.wrapText(
+        `Reason: this officer drove ${fmt(result.milesDriven, 1)} miles in the window, but the ` +
+        'position-reporting feed recorded NO GPS samples for that driving. Driving behavior was ' +
+        'therefore not observed at all. This is a gap in monitoring, not a finding about this ' +
+        "officer's driving, and must not be read as either good or bad performance.",
+        { size: 10, color: WARN, gap: 10 },
+      );
+    } else {
+      pdf.wrapText(
+        `Reason: this officer drove ${fmt(result.milesDriven, 1)} miles in the window, below the ` +
+        `${MIN_EXPOSURE_MILES}-mile minimum required to compute a score. No band, rate, or ` +
+        `confidence is shown because none was computed.`,
+        { size: 10, gap: 10 },
+      );
+    }
   }
 
   // 4. Event breakdown by type
   pdf.text('Event breakdown', { bold: true, size: 12, gap: 3 });
   const rows: [string, number][] = [
-    ['Forward collision warning', summary.events.forward_collision],
-    ['Lane departure', summary.events.lane_departure],
-    ['Close following', summary.events.close_following],
-    ['Harsh brake', summary.events.harsh_brake],
-    ['Harsh acceleration', summary.events.harsh_accel],
-    ['Speeding', summary.events.speeding],
+    // Labels are DERIVED from SPEED_THRESHOLDS, never restated as literals.
+    // A retune that left "70+ mph" printed beside counts produced at an 85 mph
+    // floor would put a false, specific, quotable claim about a named officer
+    // onto an evidence document.
+    [`Sustained speed ${SPEED_THRESHOLDS.high}+ mph`, summary.events.speed_high],
+    [`Sustained speed ${SPEED_THRESHOLDS.veryHigh}+ mph`, summary.events.speed_very_high],
+    [`Sustained speed ${SPEED_THRESHOLDS.extreme}+ mph`, summary.events.speed_extreme],
   ];
   for (const [label, count] of rows) pdf.text(`${label}: ${count}`, { size: 10 });
   pdf.text(`Total events: ${summary.event_count}`, { size: 10, bold: true, gap: 10 });
+  // The counts above are only as meaningful as the observation volume behind
+  // them. Printing the sample count next to them is what stops a reader from
+  // taking "0 events" from a silent feed as evidence of clean driving.
+  pdf.wrapText(
+    `Each event is one SUSTAINED run above the stated speed (a continuous stretch counts once, ` +
+    `tiered by its peak), derived from ${summary.breadcrumb_samples ?? 0} GPS position sample(s) ` +
+    'recorded in this window. Harsh braking and harsh acceleration are deliberately NOT reported: ' +
+    'the sampling interval is too coarse to distinguish them from ordinary slowing.',
+    { size: 9, color: GRAY, gap: 10 },
+  );
 
   // 4b. Severity breakdown — written by the nightly rollup since day one and
   // required by the spec, but never surfaced anywhere until now.
