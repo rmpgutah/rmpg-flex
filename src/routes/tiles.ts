@@ -41,6 +41,11 @@ function getArchive(bucket: R2Bucket, name: string): PMTiles {
   return p;
 }
 
+// Deepest zoom the XYZ scheme addresses; 2^22 tiles per axis is already far
+// beyond anything our archives contain, and it keeps `2 ** z` well inside the
+// safe-integer range no matter what a client sends.
+const MAX_ZOOM = 22;
+
 const TILE_HEADERS: Record<string, string> = {
   'Content-Type': 'application/x-protobuf',
   'Cache-Control': 'public, max-age=86400',
@@ -55,6 +60,18 @@ tiles.get('/:name/:z/:x/:y', async (c) => {
   const x = parseInt(c.req.param('x'), 10);
   const y = parseInt(c.req.param('y').replace(/\.(mvt|pbf)$/i, ''), 10);
   if (![z, x, y].every(Number.isFinite)) return c.json({ error: 'bad zxy' }, 400);
+  // Range-check against the tile pyramid BEFORE touching the archive.
+  // PMTiles.getZxy() throws on a coordinate outside the 2^z x 2^z grid for the
+  // requested zoom, which the catch-all below would surface as a 500. Mapbox GL
+  // legitimately asks for out-of-range tiles at low zoom (near the antimeridian
+  // and the poles), so this has to read as "no such tile" (4xx), not as a server
+  // fault — a 500 here pollutes error_log and can trip alerting. Kept distinct
+  // from the 204 below, which means "this tile exists but has no features".
+  if (z < 0 || z > MAX_ZOOM) return c.json({ error: 'tile out of range' }, 400);
+  const gridSize = 2 ** z;
+  if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) {
+    return c.json({ error: 'tile out of range' }, 400);
+  }
 
   try {
     const arch = getArchive(c.env.MAP_DATA, name);
