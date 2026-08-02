@@ -20,7 +20,7 @@ describe('osm layer catalog', () => {
 
   it('gives every category a unique cat within its group', () => {
     for (const g of loadCatalog().groups) {
-      const cats = g.categories.map((c) => c.cat);
+      const cats = g.categories.map((c: { cat: string }) => c.cat);
       expect(new Set(cats).size, `${g.name} has duplicate cat values`).toBe(cats.length);
     }
   });
@@ -50,7 +50,7 @@ describe('osm layer catalog', () => {
 
   it('sets archive minzoom to the LOWEST category minzoom in the group', () => {
     for (const g of loadCatalog().groups) {
-      const lowest = Math.min(...g.categories.map((c) => c.minzoom));
+      const lowest = Math.min(...g.categories.map((c: { minzoom: number }) => c.minzoom));
       expect(archiveMinZoom(g.name), `${g.name}`).toBe(lowest);
     }
   });
