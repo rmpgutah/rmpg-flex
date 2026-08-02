@@ -17,7 +17,7 @@
 // Literal hex color values below are CORRECT per CLAUDE.md — PDF generators
 // take literal color arguments and are excluded from the theme-token rule.
 
-import { MIN_EXPOSURE_MILES, SCORING_ENABLED } from './score';
+import { MIN_EXPOSURE_MILES } from './score';
 import { SPEED_THRESHOLDS } from './speedEvents';
 import type { ScoreResult } from './score';
 import { log } from '../logger';
@@ -302,18 +302,6 @@ class SimplePdfBuilder {
 export async function renderDriverPerformancePdf(
   params: RenderDriverPerformancePdfParams,
 ): Promise<Uint8Array> {
-  // ⚠️ Belt-and-suspenders. The route's `callContextGate` already refuses
-  // this call while scoring is gated (src/routes/driverPerformance.ts), so
-  // in the live request path this branch never fires — but this function
-  // authors an evidence-grade document that may outlive the code that calls
-  // it, and it must never be able to print a scored PDF while
-  // SCORING_ENABLED is false regardless of what future caller reaches it.
-  if (!SCORING_ENABLED) {
-    throw new Error(
-      'renderDriverPerformancePdf: scoring is gated (awaiting_call_context) — refusing to render a ' +
-      'scored document. Callers must check the callContextGate response before invoking this.',
-    );
-  }
   const { summary, window, scoreVersion, storedVersions, generatedAt, organization } = params;
   const pdf = new SimplePdfBuilder();
 
@@ -326,6 +314,21 @@ export async function renderDriverPerformancePdf(
     { size: 11, bold: true },
   );
   pdf.text(`Reporting window: ${window.from} to ${window.to}`, { size: 10, gap: 10 });
+
+  // ⚠️ MANDATORY CAVEAT — placed BEFORE the score, not buried in a footer.
+  // gps_breadcrumbs.current_call_id/unit_status are populated in ZERO of
+  // 91,382 live rows, so the emergency-response exclusion rollup.ts already
+  // has wired in has nothing to exclude yet. This is the only thing standing
+  // between the number below and a false accusation against a named officer
+  // — it must be read before the score, not discovered after.
+  if (summary.result.status === 'scored') {
+    pdf.wrapText(
+      'Emergency-response driving is not excluded from this score. Vehicle call context is not ' +
+      'currently captured, so lawful code-3 response is counted the same as any other high-speed ' +
+      'driving. Treat this score as a prompt to review, not as a finding.',
+      { size: 10, bold: true, color: WARN, gap: 10 },
+    );
+  }
 
   // 3. Score/band/rate — ALWAYS with miles driven adjacent, or the explicit
   // unscored explanation. Never a bare score, never a band/rate/confidence

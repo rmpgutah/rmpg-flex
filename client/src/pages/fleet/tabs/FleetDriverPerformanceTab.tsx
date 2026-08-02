@@ -62,6 +62,28 @@ const SAMPLES_TITLE =
   'driven means the feed was silent — not that driving was clean.';
 
 /**
+ * ⚠️ MANDATORY, non-dismissable — not decoration. Emergency-response context
+ * (gps_breadcrumbs.current_call_id / unit_status) is not yet captured, so
+ * lawful code-3 response is counted the same as any other high-speed run.
+ * This is the only thing standing between a score on this screen and a false
+ * accusation against a named officer, and it must appear on every surface
+ * that shows a score: this roster, officer detail, and the PDF export
+ * (src/utils/driverPerformance/pdf.ts).
+ */
+const EMERGENCY_RESPONSE_CAVEAT =
+  'Emergency-response driving is not excluded from this score. Vehicle call context is not ' +
+  'currently captured, so lawful code-3 response is counted the same as any other high-speed ' +
+  'driving. Treat this score as a prompt to review, not as a finding.';
+
+function EmergencyResponseCaveatBanner() {
+  return (
+    <div className="border border-[color:var(--sev-warn)] p-2 text-[10px] text-[color:var(--sev-warn)] font-semibold">
+      {EMERGENCY_RESPONSE_CAVEAT}
+    </div>
+  );
+}
+
+/**
  * Gated response shape — same house convention as other not_configured
  * endpoints: 200 with ok:false and a code, never a 503. `awaiting_call_context`
  * is the only code this feature currently emits, but the field stays a plain
@@ -333,6 +355,7 @@ function OfficerDetail({ officerId, onBack }: { officerId: number; onBack: () =>
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="OFFICER DRIVER PERFORMANCE" icon={Gauge} />
+      <EmergencyResponseCaveatBanner />
       {backButton}
       {exportErrorBanner}
 
@@ -633,6 +656,7 @@ export default function FleetDriverPerformanceTab() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="DRIVER PERFORMANCE" icon={Gauge} />
+      <EmergencyResponseCaveatBanner />
 
       <div className="text-[10px] text-fg-muted">
         {data.from} to {data.to} · scored at or above {data.min_exposure_miles} miles of exposure
