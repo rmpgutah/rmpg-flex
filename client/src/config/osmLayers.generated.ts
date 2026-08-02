@@ -134,7 +134,8 @@ export const OSM_GROUPS: OsmGroup[] = [
     categories: [
       { cat: 'fourwd', label: '4WD-only', minzoom: 10, render: 'line' },
       { cat: 'ford', label: 'Fords', minzoom: 12, render: 'point' },
-      { cat: 'seasonal', label: 'Seasonal / restricted', minzoom: 11, render: 'line' },
+      { cat: 'seasonal', label: 'Seasonal closure', minzoom: 11, render: 'line' },
+      { cat: 'restricted', label: 'Restricted access', minzoom: 11, render: 'line' },
       { cat: 'unpaved', label: 'Unpaved roads', minzoom: 11, render: 'line' },
       { cat: 'track', label: 'Tracks', minzoom: 12, render: 'line' },
     ],
