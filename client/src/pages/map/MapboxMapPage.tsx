@@ -96,6 +96,8 @@ import { useDistrictHierarchyLayers } from '../../hooks/useDistrictHierarchyLaye
 import { useVectorTileLayers } from '../../hooks/useVectorTileLayers';
 import { useActivityChoropleth } from '../../hooks/useActivityChoropleth';
 import { useMapFeatureInspect } from '../../hooks/useMapFeatureInspect';
+import type { InspectedFeature } from '../../hooks/useMapFeatureInspect';
+import FeatureInspectorPanel from './components/FeatureInspectorPanel';
 import { useMapMatchTrace } from '../../hooks/useMapMatchTrace';
 import { useMapboxDraw } from '../../hooks/useMapboxDraw';
 import { initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay, createMapboxIncidentLayer, createMapboxUnitLayer, createMapboxArcLayer } from '../../integrations/deckMapboxLayers';
@@ -628,6 +630,87 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       : null,
   });
   const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded);
+  const [hoveredFeature, setHoveredFeature] = useState<InspectedFeature | null>(null);
+  const inspectMarkerRef = useRef<mapboxgl.Marker | null>(null);
+
+  const HIGHLIGHT_SOURCE = 'rmpg-inspect-highlight';
+
+  // React never fires onMouseLeave on unmount (e.g. Identify toggled off from
+  // the toolbar while the cursor is still over a hovered row) — clear the
+  // highlight whenever the panel is going away so it can't outlive it.
+  useEffect(() => {
+    if (!featureInspect.enabled || !featureInspect.result) {
+      setHoveredFeature(null);
+    }
+  }, [featureInspect.enabled, featureInspect.result]);
+
+  // Highlight the hovered inspector row on the map, so the panel and the
+  // geometry it describes stay visually tied.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+
+    const ensureHighlightLayers = () => {
+      if (map.getSource(HIGHLIGHT_SOURCE)) return;
+      // A hover can land in the window after map.setStyle() clears every
+      // source/layer but before 'style.load' fires — addSource would throw
+      // from inside this effect. Skip; the style.load listener below re-runs
+      // this setup once the new style is ready, so guarding costs nothing.
+      if (!map.isStyleLoaded()) return;
+      map.addSource(HIGHLIGHT_SOURCE, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: `${HIGHLIGHT_SOURCE}-line`, type: 'line', source: HIGHLIGHT_SOURCE,
+        paint: { 'line-color': '#f0f4f9', 'line-width': 3, 'line-opacity': 0.9 },
+      });
+      map.addLayer({
+        id: `${HIGHLIGHT_SOURCE}-point`, type: 'circle', source: HIGHLIGHT_SOURCE,
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-radius': 9, 'circle-color': 'rgba(0,0,0,0)',
+          'circle-stroke-color': '#f0f4f9', 'circle-stroke-width': 2,
+        },
+      });
+    };
+
+    const setHighlightData = () => {
+      const src = map.getSource(HIGHLIGHT_SOURCE) as mapboxgl.GeoJSONSource | undefined;
+      src?.setData(hoveredFeature
+        ? { type: 'Feature', properties: {}, geometry: hoveredFeature.geometry as any }
+        : { type: 'FeatureCollection', features: [] });
+    };
+
+    ensureHighlightLayers();
+    setHighlightData();
+
+    // changeStyle() (MapCore.ts) calls map.setStyle(), which wipes every
+    // source/layer and fires 'style.load' again — re-add the highlight
+    // source/layers then too, or a basemap switch during an active hover
+    // silently loses the highlight until hoveredFeature happens to change.
+    const onStyleLoad = () => {
+      ensureHighlightLayers();
+      setHighlightData();
+    };
+    map.on('style.load', onStyleLoad);
+    return () => { map.off('style.load', onStyleLoad); };
+  }, [mapLoaded, hoveredFeature]);
+
+  // A panel puts the answer away from the point the officer clicked; the marker
+  // is what keeps the two connected.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    inspectMarkerRef.current?.remove();
+    inspectMarkerRef.current = null;
+    if (!featureInspect.result) return;
+    inspectMarkerRef.current = new mapboxgl.Marker({ color: '#c3ccd6' })
+      .setLngLat(featureInspect.result.lngLat)
+      .addTo(map);
+    return () => { inspectMarkerRef.current?.remove(); inspectMarkerRef.current = null; };
+  }, [featureInspect.result]);
+
   const mapMatchTrace = useMapMatchTrace(mapRef.current, mapLoaded);
   const glDraw = useMapboxDraw(mapRef.current, mapLoaded);
   const [deckEnabled, setDeckEnabled] = usePersistedState('rmpg_mapbox_deck', false);
@@ -1730,6 +1813,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             }}
           />
         </div>
+      )}
+
+      {featureInspect.enabled && featureInspect.result && (
+        <FeatureInspectorPanel
+          result={featureInspect.result}
+          selectedIndex={featureInspect.selectedIndex}
+          onSelect={featureInspect.select}
+          onClose={featureInspect.clear}
+          onHoverFeature={setHoveredFeature}
+        />
       )}
 
       {speedAnalyticsPanelOpen && (
