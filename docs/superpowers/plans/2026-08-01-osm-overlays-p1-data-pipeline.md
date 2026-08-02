@@ -959,6 +959,9 @@ git commit -m "feat(osm): add camera view-cone geometry generation"
 
 **Interfaces:**
 - Consumes: `projectFeature` (Task 2), `coneFeature` (Task 3), `getGroup` (Task 1).
+  **`projectFeature` returns `{type, geometry, properties: {cat, ...allowlisted}}` — `cat`
+  is NESTED under `properties`, not top-level.** Read it as `projected.properties.cat`.
+  `coneFeature` reads the same nested path internally for `parent_cat`.
 - Produces: CLI `node scripts/osm/transform.mjs --group <name>` — reads GeoJSONSeq on stdin, writes GeoJSONSeq on stdout, prints a per-category count summary to stderr as JSON on the last line.
 
 GeoJSONSeq is one JSON object per line (what `osmium export -f geojsonseq` emits). Reading line-by-line keeps memory flat on a statewide extract; `JSON.parse` on the whole file would not fit.
@@ -1040,9 +1043,14 @@ for await (const line of rl) {
   // group's LOWEST minzoom — a z10 utility tile carrying every power pole in the
   // metro. With it, poles start at z16 and substations at z10 from one archive,
   // and nothing has to be dropped to keep tiles small.
-  projected.tippecanoe = { minzoom: minzoomFor(projected.cat) };
+  // NOTE the asymmetry, and do not "simplify" it: projectFeature returns `cat`
+  // NESTED under .properties, but tippecanoe reads its `tippecanoe` member at the
+  // feature's TOP level (sibling of geometry/properties). Putting `tippecanoe`
+  // inside properties makes tippecanoe treat it as ordinary data and ignore it —
+  // silently, with no error — and the per-feature zoom gating does nothing.
+  projected.tippecanoe = { minzoom: minzoomFor(projected.properties.cat) };
 
-  counts[projected.cat]++;
+  counts[projected.properties.cat]++;
   write(projected);
 
   if (wantCones) {
