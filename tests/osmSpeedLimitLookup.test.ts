@@ -78,7 +78,7 @@ describe('nearestMaxspeedInTile', () => {
     const tile = encodeTile({
       layer: 'traffic',
       extent: 4096,
-      props: { cat: 'maxspeed', maxspeed: '35 mph', name: 'S Main St' },
+      props: { cat: 'maxspeed', maxspeed: '35 mph', name: 'S Main St', highway: 'residential' },
       line: [[2000, 2000], [2100, 2000]],
     });
     // Query at the tile-local coordinate the line passes through.
@@ -128,11 +128,35 @@ describe('nearestMaxspeedInTile', () => {
     const tile = encodeTile({
       layer: 'traffic',
       extent: 4096,
-      props: { cat: 'maxspeed', maxspeed: '25 mph', name: 'Side St' },
+      props: { cat: 'maxspeed', maxspeed: '25 mph', name: 'Side St', highway: 'residential' },
       line: [[0, 0], [50, 0]],
     });
     const hit = nearestMaxspeedInTile(tile, Z, TX, TY, SLC.lng, SLC.lat, 'traffic');
     expect(hit).not.toBeNull();
     expect(hit!.distanceM).toBeGreaterThan(0);
+  });
+
+  it('ignores a railway carrying a maxspeed tag but no highway property (Salt Lake Subdivision)', () => {
+    // Verified against the real production tile: Union Pacific rail lines
+    // (e.g. "Salt Lake Subdivision", maxspeed="30 mph") carry cat='maxspeed'
+    // with no `highway` property. Reporting a train speed as a posted road
+    // limit is the exact regression this filter guards against.
+    const tile = encodeTile({
+      layer: 'traffic',
+      extent: 4096,
+      props: { cat: 'maxspeed', maxspeed: '30 mph', name: 'Salt Lake Subdivision' },
+      line: [[2000, 2000], [2100, 2000]],
+    });
+    expect(nearestMaxspeedInTile(tile, Z, TX, TY, SLC.lng, SLC.lat, 'traffic')).toBeNull();
+  });
+
+  it('ignores a maxspeed feature whose highway property is an empty string', () => {
+    const tile = encodeTile({
+      layer: 'traffic',
+      extent: 4096,
+      props: { cat: 'maxspeed', maxspeed: '35 mph', name: 'Blank Highway Tag', highway: '' },
+      line: [[2000, 2000], [2100, 2000]],
+    });
+    expect(nearestMaxspeedInTile(tile, Z, TX, TY, SLC.lng, SLC.lat, 'traffic')).toBeNull();
   });
 });

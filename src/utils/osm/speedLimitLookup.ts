@@ -80,6 +80,20 @@ export function nearestMaxspeedInTile(
     // One shared source per archive holds every category; filter to ours.
     if (props.cat !== 'maxspeed') continue;
 
+    // The archive's rule for cat='maxspeed' is "any way carrying a maxspeed
+    // tag" — and OSM railways carry maxspeed tags too (e.g. Union Pacific's
+    // "Salt Lake Subdivision" / "UP Lynndyl Subdivision" through downtown SLC,
+    // tagged maxspeed="30 mph" / "40 mph" with no `highway` property at all).
+    // Those are train speed limits, not posted road limits. Because this
+    // lookup takes the geometrically NEAREST maxspeed way within a 60 m
+    // radius, a rail corridor running parallel to (or crossing) a street can
+    // beat the actual road and get its train speed reported as the road's
+    // limit — a wrong number on a patrol vehicle's speed HUD, which is worse
+    // than the null this feature is supposed to degrade to. Do not remove
+    // this check "to simplify" — every real road feature carries `highway`.
+    const highway = props.highway;
+    if (typeof highway !== 'string' || highway.trim() === '') continue;
+
     const limitMph = parseMaxspeedMphServer(props.maxspeed);
     // Real OSM carries non-numeric maxspeed values ("signals", "walk"). Those
     // are not a posted limit and must not be reported as one.
