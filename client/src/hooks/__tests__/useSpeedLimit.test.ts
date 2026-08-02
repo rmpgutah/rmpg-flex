@@ -87,6 +87,32 @@ describe('useSpeedLimit', () => {
     dateSpy.mockRestore();
   });
 
+  it('does NOT discard an in-flight lookup when a small GPS tick arrives before it resolves', async () => {
+    // Regression test: the server lookup can take a while (up to 9 sequential
+    // R2 range reads), and GPS ticks arrive ~1Hz. A small tick (a few metres --
+    // NOT past the 80m move gate) must not abandon the pending request. The
+    // old effect-scoped `let cancelled = true` cleanup fired on every re-render
+    // (including ones that don't pass the move gate), permanently discarding
+    // the result once it landed.
+    let resolveFetch!: (v: { limitMph: number | null; roadName?: string | null }) => void;
+    apiFetch.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveFetch = resolve; }),
+    );
+    const { result, rerender } = renderHook(
+      ({ lat, lng }: { lat: number; lng: number }) => useSpeedLimit(lat, lng),
+      { initialProps: { lat: 40.76, lng: -111.89 } },
+    );
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
+
+    // A few metres of drift -- well under the 80m MOVE_THRESHOLD_M, so this is
+    // just an ordinary GPS tick re-rendering the hook while the request is
+    // still pending.
+    rerender({ lat: 40.76001, lng: -111.89 });
+
+    resolveFetch({ limitMph: 35, roadName: 'S Main St' });
+    await waitFor(() => expect(result.current.limitMph).toBe(35));
+  });
+
   it('does not query when disabled', async () => {
     renderHook(() => useSpeedLimit(40.76, -111.89, { enabled: false }));
     await new Promise((r) => setTimeout(r, 10));

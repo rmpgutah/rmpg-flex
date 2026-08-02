@@ -453,13 +453,15 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // instruction CHANGES (the moment it becomes current). Throttled to one
   // utterance per distinct instruction so we don't repeat on every re-render.
   //
-  // Both the spoken directions AND the on-screen banner are gated to the
-  // EN-ROUTE phase via isNavGuidanceActive: guidance begins when the call goes
+  // Both the spoken directions AND the on-screen turn-by-turn banner (its
+  // instruction text plus its own ETA/distance row) are gated to the EN-ROUTE
+  // phase via isNavGuidanceActive: guidance begins when the call goes
   // 'enroute' and ends once the unit is 'onscene'. The route LINE deliberately
-  // still draws at any status — a dispatcher benefits from seeing the path to a
-  // dispatched-but-not-yet-enroute call; only the turn-by-turn instructions
-  // follow the status. Resetting the throttle ref outside en-route means the
-  // first instruction is announced the instant status flips to 'enroute'.
+  // still draws at any status — a dispatcher benefits from seeing the path to
+  // a dispatched-but-not-yet-enroute call — and the separate, always-visible
+  // ETA badge below is not gated either; only the turn-by-turn banner follows
+  // the status. Resetting the throttle ref outside en-route means the first
+  // instruction is announced the instant status flips to 'enroute'.
   const lastSpokenRef = useRef<string>('');
   useEffect(() => {
     const isEnRoute = isNavGuidanceActive(call?.status);

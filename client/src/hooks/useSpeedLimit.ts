@@ -66,6 +66,23 @@ export function useSpeedLimit(
   const lastQueryTsRef = useRef(0);
   const inFlightRef = useRef(false);
 
+  // The cancel token is scoped to the COMPONENT LIFETIME, not to a single
+  // effect run. GPS ticks arrive at ~1Hz — far faster than the ~9 sequential
+  // R2 range reads the server does per lookup can complete — so an
+  // effect-scoped `let cancelled` (reset by every [lat,lng,enabled] re-run)
+  // discarded almost every in-flight result: the position that started the
+  // query had already been stamped into lastQueryPosRef/lastQueryTsRef, so
+  // the throttle then blocked any retry until the vehicle moved another 80m.
+  // Abandon a request ONLY on unmount or when `enabled` goes false — never on
+  // an ordinary position change.
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     if (!enabled) return;
     if (typeof lat !== 'number' || typeof lng !== 'number') return;
@@ -82,7 +99,6 @@ export function useSpeedLimit(
     lastQueryPosRef.current = { lat, lng };
     lastQueryTsRef.current = now;
     inFlightRef.current = true;
-    let cancelled = false;
 
     (async () => {
       try {
@@ -90,7 +106,9 @@ export function useSpeedLimit(
           `/dispatch/geography/road-speed?lat=${lat}&lng=${lng}`,
           { timeoutMs: 6000 } as any,
         );
-        if (cancelled) return;
+        // Only abandon the result on unmount or a since-disabled Drive Mode —
+        // NOT because a newer GPS tick arrived and re-ran this effect.
+        if (!mountedRef.current || !enabledRef.current) return;
         // Set unconditionally on a SUCCESSFUL query, including null: driving
         // from a posted road onto an unposted one must clear the badge, or the
         // HUD redlines against a limit that no longer applies.
@@ -98,14 +116,9 @@ export function useSpeedLimit(
       } catch {
         // Network error / offline / abort — keep the last known value.
       } finally {
-        if (!cancelled) inFlightRef.current = false;
+        inFlightRef.current = false;
       }
     })();
-
-    return () => {
-      cancelled = true;
-      inFlightRef.current = false;
-    };
   }, [lat, lng, enabled]);
 
   return { limitMph, buffer: REDLINE_BUFFER_MPH };

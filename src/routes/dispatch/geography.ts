@@ -479,8 +479,12 @@ geography.get('/road-speed', async (c) => {
       },
       200,
       // The archive is a static extract, so a coordinate's answer only changes
-      // when the extract is rebuilt. Same TTL as the tile route.
-      { 'Cache-Control': 'public, max-age=86400' },
+      // when the extract is rebuilt — hence the 24h TTL. `private` (not
+      // `public`) because this route sits behind JWT auth: `public` would let
+      // a shared/proxy cache store a response served under a user's
+      // credentials, even though the payload itself (a posted speed limit) is
+      // not sensitive.
+      { 'Cache-Control': 'private, max-age=86400' },
     );
   } catch (err) {
     log.error('road-speed lookup failed', { lat, lng }, err as Error);
