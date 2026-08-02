@@ -132,6 +132,7 @@ import crisisResponse from './routes/crisisResponse';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import fleetio from './routes/fleetio';
+import driverPerformance from './routes/driverPerformance';
 import legalDataHunter from './routes/legalDataHunter';
 import webBrowser from './routes/webBrowser';
 import documentFolders from './routes/documents/folders';
@@ -455,6 +456,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Full-trip dashcam footage backing FlexCamPage/FlexCamFootagePage — the mount was described as fixed in a comment above the import but never actually landed in this array until now (2026-07-02).' },
   { prefix: '/api/fleet', router: fleet, auth: 'required',
     note: 'Full fleet management: vehicles, fuel, maintenance, inspections, assignments, personnel, insurance, registration, tires, damage, recalls, parts, warranties, depreciation, accidents, keys, service providers, fuel cards, budgets, replacement plan, pretrip checklists, cost-per-mile, CSV export, analytics, map overlay, dashcam, utilization, emissions, lifecycle, scorecard. All sub-resource CRUD ported from legacy (May 2026).' },
+  { prefix: '/api/driver-performance', router: driverPerformance, auth: 'required',
+    note: 'Supervisor-only driver performance: ranked roster, officer detail, PDF export, admin recompute. Scores from driver_performance_daily snapshots. Distinct from /api/fleet/scorecard, which is vehicle-fleet health.' },
   { prefix: '/api/fleetio', router: fleetio, auth: 'required',
     note: 'Fleet.io integration: /test-connection (any authed user), /sync-status (admin), /seed (admin). 503 when FLEETIO_API_KEY is unset.' },
   { prefix: '/api/carxe', router: carxe, auth: 'required',
