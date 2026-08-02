@@ -129,9 +129,33 @@ export async function rollupDay(
   // day, and selects only the three columns the derivation actually reads.
   // ORDER BY officer_id, recorded_at gives deriveSpeedEvents the ascending
   // order it expects without a second in-memory sort per officer.
-  const crumbRows = await query<{ officer_id: number | null; recorded_at: string | null; speed: number | null }>(
+  // ⚠️ EMERGENCY-RESPONSE EXCLUSION. Patrol officers lawfully exceed posted
+  // limits responding code-3 — a statutory exemption, not a violation. A
+  // sample is excluded from event derivation when it carries `current_call_id`
+  // (actively assigned to a call) OR `unit_status` in one of the active
+  // response states. Vocabulary is the SAME string set the dispatch routes
+  // already write/validate against (src/routes/dispatch/units.ts:320,
+  // src/routes/dispatch/extensions.ts:480) — 'dispatched' (assigned, en
+  // route to be en route), 'enroute' (actively driving to the call), and
+  // 'onscene' (arrived, may still be maneuvering under call context). The
+  // other statuses ('available', 'busy', 'off_duty', 'out_of_service',
+  // 'on_patrol', 'unavailable') do not describe an active call response and
+  // are left in scope.
+  //
+  // As of 2026-08-01 BOTH columns are populated in ZERO of 91,382 live
+  // gps_breadcrumbs rows (see src/utils/driverPerformance/score.ts,
+  // SCORING_ENABLED), so this filter excludes nothing today. That is
+  // expected — it is not silently assumed to be working, it is measured and
+  // logged below so the day the feed starts populating shows up as a visible
+  // change in this count rather than as an unexplained score shift.
+  const ACTIVE_RESPONSE_STATUSES = new Set(['dispatched', 'enroute', 'onscene']);
+
+  const crumbRows = await query<{
+    officer_id: number | null; recorded_at: string | null; speed: number | null;
+    current_call_id: number | string | null; unit_status: string | null;
+  }>(
     db,
-    `SELECT officer_id, recorded_at, speed
+    `SELECT officer_id, recorded_at, speed, current_call_id, unit_status
        FROM gps_breadcrumbs
       WHERE officer_id IS NOT NULL
         AND recorded_at >= ? AND recorded_at <= ?
@@ -139,8 +163,21 @@ export async function rollupDay(
     dayStart, dayEnd,
   );
 
+  let excludedForCallContext = 0;
+  const filteredCrumbRows = crumbRows.filter((r) => {
+    const onCall = r.current_call_id != null
+      || (typeof r.unit_status === 'string' && ACTIVE_RESPONSE_STATUSES.has(r.unit_status));
+    if (onCall) excludedForCallContext += 1;
+    return !onCall;
+  });
+  log.info('driver-performance rollup: emergency-response samples excluded from speed-event derivation', {
+    perfDate,
+    totalSamples: crumbRows.length,
+    excludedForCallContext,
+  });
+
   const samplesByOfficer = new Map<number, SpeedSample[]>();
-  for (const r of crumbRows) {
+  for (const r of filteredCrumbRows) {
     if (r.officer_id == null) continue;
     const ms = parseD1TimestampMs(r.recorded_at);
     if (ms == null) continue;
