@@ -1,9 +1,10 @@
 // tests/sl-assessor.parser.test.ts
-import { describe, expect, test } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseParcelList, parseParcelDetail, inferOwnerType }
+import { describe, expect, test, it } from 'vitest';
+import { parseParcelList, parseParcelDetail, inferOwnerType, findParcelNumber }
   from '../src/utils/sl-assessor/parser';
+import { AssessorParseError } from '../src/utils/sl-assessor/types';
 
 const fixture = (name: string) =>
   readFileSync(join(__dirname, 'fixtures/sl-assessor', name), 'utf8');
@@ -12,7 +13,11 @@ describe('parseParcelList', () => {
   test('single match returns 1 ParcelSummary', () => {
     const out = parseParcelList(fixture('single.html'));
     expect(out).toHaveLength(1);
-    expect(out[0].parcel_number).toMatch(/^\d{2}-\d{2}-\d{3}-\d{3}$/);
+    // 14 digits, not 12. The 4-digit encumbrance suffix is part of the id;
+    // a 12-digit value is a BLOCK id that the county answers with HTTP 200 +
+    // the search form, so it fails silently downstream. This assertion used
+    // to require the truncated form — it pinned the bug in place.
+    expect(out[0].parcel_number).toMatch(/^\d{2}-\d{2}-\d{3}-\d{3}-\d{4}$/);
     expect(out[0].owner_of_record).toBeTruthy();
     expect(out[0].detail_url).toContain('parcel');
   });
@@ -28,7 +33,7 @@ describe('parseParcelList', () => {
 describe('parseParcelDetail', () => {
   test('extracts core fields', () => {
     const p = parseParcelDetail(fixture('detail.html'));
-    expect(p.parcel_number).toMatch(/^\d{2}-\d{2}-\d{3}-\d{3}$/);
+    expect(p.parcel_number).toMatch(/^\d{2}-\d{2}-\d{3}-\d{3}-\d{4}$/);
     expect(p.owner_of_record).toBeTruthy();
     expect(p.year_built).toBeGreaterThan(1800);
     expect(p.year_built!).toBeLessThan(2100);
@@ -65,5 +70,46 @@ describe('inferOwnerType', () => {
   test('empty → unknown', () => {
     expect(inferOwnerType('')).toBe('unknown');
     expect(inferOwnerType(null)).toBe('unknown');
+  });
+});
+
+describe('parcel-number extraction — picker regressions (2026-08-01)', () => {
+  // Both defects were visible in the Records assessor picker at once: it
+  // rendered "00-00-000-000  GARLUTZO, ANDREW" — an all-zero parcel number
+  // beside correct owner/value data.
+  const FORM = '<input id="parcelid" class="search-box" placeholder="00-00-000-000-0000" maxlength="18" />';
+
+  it('never returns the search form placeholder as a parcel number', () => {
+    // The county embeds its search form at the top of the detail page and
+    // serves it as the entire body of the no-match page. Its placeholder
+    // matches the parcel-number pattern exactly.
+    expect(findParcelNumber(FORM)).toBeNull();
+  });
+
+  it('skips the placeholder and finds the real parcel number after it', () => {
+    expect(findParcelNumber(`${FORM}<li>Parcel 16-31-127-029-0000</li>`)).toBe('16-31-127-029-0000');
+  });
+
+  it('keeps the 4-digit encumbrance suffix', () => {
+    // Truncating to 12 digits yields a 10-digit BLOCK id, which the county
+    // answers with HTTP 200 + the search form — a silent failure, not a 404.
+    expect(findParcelNumber('<td>16-31-127-029-0000</td>')).toBe('16-31-127-029-0000');
+  });
+
+  it('pads a bare 12-digit id rather than passing a block id downstream', () => {
+    expect(findParcelNumber('<td>16-31-127-029</td>')).toBe('16-31-127-029-0000');
+  });
+
+  it('throws on a page that is only the search form', () => {
+    // Must stay loud: silently returning a placeholder-derived parcel is how
+    // an all-zero row reached the picker.
+    expect(() => parseParcelDetail(FORM.padEnd(600, ' '))).toThrow(AssessorParseError);
+  });
+
+  it('parses the real detail page with the full parcel number', () => {
+    const html = readFileSync(join(__dirname, 'fixtures/sl-assessor/detail-expanded.html'), 'utf8');
+    const p = parseParcelDetail(html);
+    expect(p.parcel_number).toBe('16-31-127-029-0000');
+    expect(p.owner_of_record).toBe('GARLUTZO, ANDREW');
   });
 });

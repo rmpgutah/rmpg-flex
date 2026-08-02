@@ -16,7 +16,7 @@ import {
 } from 'recharts';
 import { apiFetch } from '../../../hooks/useApi';
 import { dateToLocalYMD } from '../../../utils/dateUtils';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 import type { Credential, TimeEntry, TrainingRecord } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 
@@ -296,7 +296,7 @@ export function CertWarningsPanel() {
         {data.warnings.slice(0, 8).map((w) => (
           <div key={w.credential_id} className="flex items-center justify-between px-2 py-0.5 bg-surface-sunken rounded text-[9px]">
             <span className="text-rmpg-200 min-w-0 flex-1 truncate">{w.officer_name}</span>
-            <span className="text-rmpg-400 min-w-0 flex-1 truncate">{w.credential_type}</span>
+            <span className="text-rmpg-400 min-w-0 flex-1 truncate">{formatEnumValue(w.credential_type)}</span>
             <span className={`font-mono ${w.severity === 'expired' ? 'text-red-400' : w.severity === 'critical' ? 'text-red-300' : 'text-amber-400'}`}>
               {w.days_until < 0 ? `${Math.abs(w.days_until)}d overdue` : `${w.days_until}d`}
             </span>

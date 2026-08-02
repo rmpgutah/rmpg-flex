@@ -15,6 +15,7 @@ import type {
   SMSyncLogEntry, SMCachedJob, SMPaginatedResponse, SMCachedAttempt,
   SMPollerStatus,
 } from '../../types/servemanager';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -454,7 +455,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                       entry.status === 'completed' ? 'bg-green-400' : entry.status === 'failed' ? 'bg-red-400' : 'bg-amber-400 animate-pulse'
                     }`} />
-                    <span className="text-rmpg-300 font-mono">{entry.sync_type}</span>
+                    <span className="text-rmpg-300 font-mono">{formatEnumValue(entry.sync_type)}</span>
                     <span className="text-rmpg-500">{entry.jobs_synced} jobs, {entry.attempts_synced} attempts</span>
                     <span className="ml-auto text-rmpg-500 whitespace-nowrap">{safeDateTimeStr(entry.started_at)}</span>
                     {entry.error_message && (

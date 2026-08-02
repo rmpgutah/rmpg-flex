@@ -913,7 +913,7 @@ export default function CrmPage() {
                     return (
                       <div key={s.pipeline_stage} className={`flex-1 ${stageColors[s.pipeline_stage] || 'bg-rmpg-700'} px-2 py-2 text-center hover:brightness-110 transition-all cursor-default`} style={{ borderRadius: '2px' }}>
                         <div className="text-sm font-bold text-rmpg-100 font-mono tabular-nums">{s.count}</div>
-                        <div className="text-[8px] text-rmpg-100/70 uppercase font-bold tracking-wider">{s.pipeline_stage}</div>
+                        <div className="text-[8px] text-rmpg-100/70 uppercase font-bold tracking-wider">{formatEnumValue(s.pipeline_stage)}</div>
                         {s.total_value > 0 && <div className="text-[8px] text-rmpg-100/50 font-mono">{formatCurrency(s.total_value)}</div>}
                       </div>
                     );

@@ -3,6 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import { Search, Link, Unlink, Clock, Network, ShieldAlert, ChevronRight, Loader2, X, AlertTriangle } from 'lucide-react';
 import IconButton from './IconButton';
 import PanelTitleBar from './PanelTitleBar';
+import { formatEnumValue } from '../utils/formatters';
 
 type ViewMode = 'timeline' | 'connections' | 'intelligence';
 
@@ -110,7 +111,7 @@ function ConnectionsView({ caseId }: { caseId: number }) {
               <div className="text-[11px] text-rmpg-200 truncate">
                 {ENTITY_TYPE_LABELS[remoteType] || remoteType} #{remoteId}
               </div>
-              <div className="text-[9px] text-fg-muted">{link.link_category}</div>
+              <div className="text-[9px] text-fg-muted">{formatEnumValue(link.link_category)}</div>
             </div>
             <ChevronRight className="w-3 h-3 text-fg-muted shrink-0" />
           </div>

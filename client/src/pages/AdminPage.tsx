@@ -90,6 +90,7 @@ import { Book } from 'lucide-react';
 import { AdminVmrsBrowser } from './admin/AdminVmrsBrowser';
 import AdminCourtLookupsTab from './admin/AdminCourtLookupsTab';
 import LinkageOptionsEditor from '../components/LinkageOptionsEditor';
+import { formatEnumValue } from '../utils/formatters';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
@@ -996,7 +997,7 @@ export default function AdminPage() {
                   className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.18em] select-none border-b border-border-subtle/60 mb-0.5 text-rmpg-500"
                   aria-hidden="true"
                 >
-                  {group.category}
+                  {formatEnumValue(group.category)}
                 </div>
                 {group.tabs.map((tab) => {
                   const Icon = tab.icon;

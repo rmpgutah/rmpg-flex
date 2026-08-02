@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, cloneElement } from 'react';
 import { openAndRenderPage, RmpgPdfDocument } from '../../../lib/rmpg-pdf-engine';
 import { Annotation, MeasureCalibration, PageCrop, PageMeta, Point, StampLabel, StickyCategory, STICKY_CATEGORIES, Tool, DEFAULT_RENDER_SCALE } from '../types';
+import { formatEnumValue } from '../../../utils/formatters';
 
 interface Props {
   pdfBytes: Uint8Array | null;
@@ -712,7 +713,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
         style={{ ...baseStyle, background: whiteOut ? '#fff' : '#000', border: whiteOut ? '1px solid #888' : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
         {ann.reason && (
           <span style={{ color: whiteOut ? '#000' : '#fff', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(7, Math.min(ann.h * zoom * 0.5, 11)), letterSpacing: '0.02em', whiteSpace: 'nowrap', userSelect: 'none', padding: '0 2px' }}>
-            {ann.reason}
+            {formatEnumValue(ann.reason)}
           </span>
         )}
       </div>

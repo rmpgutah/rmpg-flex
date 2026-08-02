@@ -63,6 +63,7 @@ import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { openShiftPlanPdf } from '../utils/shiftPlanPdf';
+import { formatEnumValue } from '../utils/formatters';
 
 // ── Role gate ──────────────────────────────────────────────
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
@@ -852,7 +853,7 @@ export default function ShiftPlansPage() {
               <div className={`text-sm font-bold font-mono ${level.is_understaffed ? 'text-red-400' : 'text-green-400'}`}>
                 {level.staff_count}/{level.min_required}
               </div>
-              <div className={`text-[8px] ${level.is_understaffed ? 'text-red-400' : 'text-green-400'}`}>{level.staffing_status}</div>
+              <div className={`text-[8px] ${level.is_understaffed ? 'text-red-400' : 'text-green-400'}`}>{formatEnumValue(level.staffing_status)}</div>
             </div>
           ))}
 

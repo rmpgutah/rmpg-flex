@@ -10,6 +10,7 @@ import IconButton from '../../components/IconButton';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 import type { User } from '../../types';
+import { formatEnumValue } from '../../utils/formatters';
 
 // ============================================================
 // Notification Rules / Alert Engine Tab
@@ -272,7 +273,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
                       </span>
                       <span className="flex items-center gap-0.5 text-[9px] text-rmpg-400">
                         <NotifIcon className="w-2.5 h-2.5" />
-                        {r.notification_type}
+                        {formatEnumValue(r.notification_type)}
                       </span>
                     </div>
                     {r.description && <p className="text-[10px] text-rmpg-400">{r.description}</p>}

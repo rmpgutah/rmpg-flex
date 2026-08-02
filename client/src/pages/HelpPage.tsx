@@ -35,7 +35,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { APP_VERSION } from '../utils/version';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import {
   SHORTCUT_GROUPS, PRIORITIES, UNIT_STATUSES, CAD_COMMANDS,
 } from '../utils/helpReferenceData';
@@ -648,7 +648,7 @@ export default function HelpPage() {
                         className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rmpg-200"
                         style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)' }}
                       >
-                        {h.kind}
+                        {formatEnumValue(h.kind)}
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
@@ -833,7 +833,7 @@ export default function HelpPage() {
                 <div className="space-y-1.5">
                   {PRIORITIES.map((p) => (
                     <div key={p.level} className="flex items-center gap-3">
-                      <span className="text-[10px] font-mono font-bold w-6" style={{ color: p.color }}>{p.level}</span>
+                      <span className="text-[10px] font-mono font-bold w-6" style={{ color: p.color }}>{formatEnumValue(p.level)}</span>
                       <span className="text-[10px] font-bold w-24" style={{ color: p.color }}>{p.label}</span>
                       <span className="text-[10px] text-rmpg-400">{p.desc}</span>
                     </div>

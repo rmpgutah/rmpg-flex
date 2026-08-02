@@ -11,6 +11,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle } from '../../../types';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface DamageRecord {
   id?: number | string;
@@ -111,7 +112,7 @@ export function buildFleetDamageReportPdf({ vehicle, damages }: Args): jsPDF {
     doc.setFontSize(9);
     const fields: [string, string][] = [
       ['Location', d.location_on_vehicle || '-'],
-      ['Repair Status', (d.repair_status || '-').replace('_', ' ')],
+      ['Repair Status', toDisplayLabel(d.repair_status) || '-'],
       ['Estimate', fmtCurrency(d.repair_estimate)],
       ['Actual Cost', fmtCurrency(d.repair_cost)],
     ];

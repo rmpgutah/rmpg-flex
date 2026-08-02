@@ -6,6 +6,7 @@ import { apiFetch } from '../../hooks/useApi';
 import ConnectionsGraphPanel from '../../components/ConnectionsGraphPanel';
 import { useIntelContext } from './IntelContext';
 import { useWatchToggle } from './useWatchToggle';
+import { formatEnumValue } from '../../utils/formatters';
 
 const SENTINELS = new Set(['', 'none', 'n/a', 'na', 'null', '0', 'unknown']);
 const real = (v: unknown) => v != null && !SENTINELS.has(String(v).trim().toLowerCase());
@@ -129,7 +130,7 @@ export default function IntelContextPanel() {
                         <div key={i} className="flex gap-[7px] py-[3px]">
                           <span className="w-[6px] h-[6px] rounded-full bg-[#d4a017] mt-[3px] shrink-0" />
                           <div>
-                            <div className="text-[10px] text-rmpg-300"><b className="text-rmpg-200">{t.kind}</b> {t.label || t.description || ''}</div>
+                            <div className="text-[10px] text-rmpg-300"><b className="text-rmpg-200">{formatEnumValue(t.kind)}</b> {t.label || t.description || ''}</div>
                             <div className="font-mono text-[8px] text-rmpg-500">{t.date || ''}</div>
                           </div>
                         </div>

@@ -20,6 +20,7 @@ import LeaveRequestModal, { type LeaveFormData } from '../modals/LeaveRequestMod
 import ExportButton from '../../../components/ExportButton';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { withAlpha } from '../../../utils/withAlpha';
+import { formatEnumValue } from '../../../utils/formatters';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -456,7 +457,7 @@ export default function LeaveTab() {
                 </div>
                 {req.reason && (
                   <p className="text-xs text-rmpg-300 bg-surface-sunken border border-rmpg-700 rounded-sm p-2">
-                    {req.reason}
+                    {formatEnumValue(req.reason)}
                   </p>
                 )}
                 <div className="flex items-center gap-2">

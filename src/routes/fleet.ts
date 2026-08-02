@@ -3333,11 +3333,47 @@ fleet.get('/fleet-lifecycle', async (c) => {
 fleet.get('/service-alerts', async (c) => {
   try {
     const db = getDb(c.env);
-    const now = new Date().toISOString().slice(0, 10);
-    const insurance = await query<Record<string, unknown>>(db, "SELECT id, vehicle_number, 'insurance' as type, insurance_expiry as due_date FROM fleet_vehicles WHERE archived_at IS NULL AND insurance_expiry IS NOT NULL AND date(insurance_expiry) <= date('now', '+30 days')");
-    const registration = await query<Record<string, unknown>>(db, "SELECT id, vehicle_number, 'registration' as type, registration_expiry as due_date FROM fleet_vehicles WHERE archived_at IS NULL AND registration_expiry IS NOT NULL AND date(registration_expiry) <= date('now', '+30 days')");
-    const service = await query<Record<string, unknown>>(db, "SELECT id, vehicle_number, 'service' as type, next_service_due as due_date FROM fleet_vehicles WHERE archived_at IS NULL AND next_service_due IS NOT NULL AND date(next_service_due) <= date('now', '+30 days')");
-    return c.json({ all_alerts: [...insurance, ...registration, ...service] });
+    // Every alert carries the SAME field set the UI actually reads:
+    // vehicle_id / service_type / days_until / severity. The previous shape
+    // (`id`, `type`, no days_until, no severity) matched neither the
+    // FleetServiceAlert type nor the panel, which reads `a.service_type` and
+    // `a.days_until` — so the Service Intervals Due panel rendered a blank
+    // middle column and the literal string "undefinedd" (`${undefined}d`) for
+    // every row. The panel casts to `any`, so TypeScript could not catch it.
+    // `make`/`model`/`year` are selected to satisfy the declared type.
+    //
+    // days_until is computed in SQL so it uses the same clock as the filter:
+    // negative = overdue.
+    const selectFor = (typeLiteral: string, column: string) =>
+      `SELECT id AS vehicle_id, id, vehicle_number, make, model, year,
+              '${typeLiteral}' AS type, '${typeLiteral}' AS service_type,
+              '${typeLiteral}' AS issue,
+              ${column} AS due_date,
+              CAST(julianday(date(${column})) - julianday(date('now')) AS INTEGER) AS days_until
+         FROM fleet_vehicles
+        WHERE archived_at IS NULL
+          AND ${column} IS NOT NULL
+          AND date(${column}) <= date('now', '+30 days')`;
+
+    const [insurance, registration, service] = await Promise.all([
+      query<Record<string, unknown>>(db, selectFor('insurance', 'insurance_expiry')),
+      query<Record<string, unknown>>(db, selectFor('registration', 'registration_expiry')),
+      query<Record<string, unknown>>(db, selectFor('service', 'next_service_due')),
+    ]);
+
+    // Severity drives the row's colour band in the panel. Past due outranks
+    // "due soon"; the panel's own branches are overdue → critical → neutral.
+    const withSeverity = [...insurance, ...registration, ...service].map((a) => {
+      const d = a.days_until == null ? null : Number(a.days_until);
+      return {
+        ...a,
+        days_until: d,
+        severity: d == null ? 'warning' : d < 0 ? 'overdue' : d <= 7 ? 'critical' : 'warning',
+      };
+    });
+    // Soonest first, so the panel's slice(0, 8) shows the most urgent.
+    withSeverity.sort((a, b) => (a.days_until ?? 9e9) - (b.days_until ?? 9e9));
+    return c.json({ all_alerts: withSeverity });
   } catch (err) { console.error('GET /fleet/service-alerts failed:', err); return c.json({ all_alerts: [] }); }
 });
 

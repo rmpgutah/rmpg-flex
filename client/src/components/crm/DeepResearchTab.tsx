@@ -10,6 +10,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
 import ConfirmDialog from '../ConfirmDialog';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface JobRow {
   id: string; subject: string; subject_type: string; status: string; progress: number;
@@ -211,7 +212,7 @@ export default function DeepResearchTab() {
               className={`cursor-pointer border p-2 ${activeId === j.id ? 'border-brand-500 bg-surface-raised' : 'border-rmpg-700 bg-surface-base'}`} style={{ borderRadius: '2px' }}>
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs text-rmpg-100 font-semibold truncate">{j.subject}</div>
-                <span className="text-[8px] text-rmpg-400 uppercase">{j.subject_type}</span>
+                <span className="text-[8px] text-rmpg-400 uppercase">{formatEnumValue(j.subject_type)}</span>
               </div>
               <div className="flex items-center justify-between mt-1">
                 <span className="text-[9px] text-rmpg-400">{ACTIVE.has(j.status) ? `${j.stage_detail || j.status} (${j.progress}%)` : j.status}</span>
@@ -246,7 +247,7 @@ export default function DeepResearchTab() {
                   {detail.findings.map((f) => (
                     <div key={f.id} className={`border p-2 ${f.status === 'dismissed' ? 'opacity-50 border-rmpg-800' : 'border-rmpg-700'} bg-surface-base`} style={{ borderRadius: '2px' }}>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[8px] uppercase text-fg-muted">{f.finding_type}</span>
+                        <span className="text-[8px] uppercase text-fg-muted">{formatEnumValue(f.finding_type)}</span>
                         <TrustBadge trust={f.trust} verdict={f.verdict} />
                         {f.is_delta ? <span className="text-[8px] text-rmpg-400">NEW</span> : null}
                         <span className="text-xs text-rmpg-100 font-semibold">{f.title}</span>
@@ -299,7 +300,7 @@ export default function DeepResearchTab() {
         details={jobToDelete ? (
           <div className="mt-2 text-[11px] text-rmpg-300">
             <div><span className="text-fg-muted">Subject:</span> {jobToDelete.subject}</div>
-            <div><span className="text-fg-muted">Type:</span> {jobToDelete.subject_type}</div>
+            <div><span className="text-fg-muted">Type:</span> {formatEnumValue(jobToDelete.subject_type)}</div>
             <div><span className="text-fg-muted">Sources / Findings:</span> {jobToDelete.source_count} · {jobToDelete.finding_count}</div>
           </div>
         ) : undefined}

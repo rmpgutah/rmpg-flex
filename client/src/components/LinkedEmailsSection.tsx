@@ -10,6 +10,7 @@ import { Mail, Loader2, RefreshCw } from 'lucide-react';
 import CollapsibleSection from './CollapsibleSection';
 import { apiFetch } from '../hooks/useApi';
 import { parseTimestamp } from '../utils/dateUtils';
+import { formatEnumValue } from '../utils/formatters';
 
 type EntityType = 'cfs' | 'call' | 'incident' | 'warrant' | 'person';
 
@@ -116,7 +117,7 @@ export default function LinkedEmailsSection({ entityType, entityId, onOpenEmail,
                   )}
                   {l.link_type && l.source !== 'autolinker' && (
                     <span className="text-[8px] uppercase font-bold px-1 py-0.5 bg-surface-base text-rmpg-300 border border-rmpg-700 rounded-sm">
-                      {l.link_type}
+                      {formatEnumValue(l.link_type)}
                     </span>
                   )}
                 </div>

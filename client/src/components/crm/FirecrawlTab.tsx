@@ -21,7 +21,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
-import { toDisplayLabel } from '../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 import { withAlpha } from '../../utils/withAlpha';
 
 // ── Safe Array Helper ─────────────────────────────────────────
@@ -3370,7 +3370,7 @@ function PdfInspectPanel() {
           {/* Header badges */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
-              {result.classification}
+              {formatEnumValue(result.classification)}
             </span>
             <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm ${
               result.is_scanned ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400' : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
@@ -3670,7 +3670,7 @@ function GraphsPanel() {
             <div key={g.id} className="bg-surface-raised border border-rmpg-600 rounded-sm p-2.5 space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
-                  {g.chart_type}
+                  {formatEnumValue(g.chart_type)}
                 </span>
                 <span className="text-[10px] text-rmpg-100 font-medium min-w-0 truncate flex-1">{g.title}</span>
                 <SmallBtn onClick={() => deleteGraph(g.id)} loading={deletingIds.has(g.id)} variant="danger">
@@ -4439,7 +4439,7 @@ function GenUiPanel() {
               >
                 <LayoutDashboard className="w-3 h-3 text-orange-400 shrink-0" />
                 <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url}</span>
-                <span className="text-[9px] text-rmpg-500 uppercase font-mono shrink-0">{item.component_type}</span>
+                <span className="text-[9px] text-rmpg-500 uppercase font-mono shrink-0">{formatEnumValue(item.component_type)}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
             ))
@@ -6748,7 +6748,7 @@ function DraftsPanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="flex items-center gap-3">
             <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400 uppercase">
-              {result.draft_type}
+              {formatEnumValue(result.draft_type)}
             </span>
             <span className="text-[10px] text-rmpg-400 font-mono">{result.word_count} words</span>
             <div className="flex-1" />
@@ -6789,7 +6789,7 @@ function DraftsPanel() {
                 <button onClick={() => viewDraft(d)} className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1 text-left hover:text-rmpg-100">
                   {d.topic}
                 </button>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-rmpg-700 text-rmpg-400 uppercase">{d.draft_type}</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-rmpg-700 text-rmpg-400 uppercase">{formatEnumValue(d.draft_type)}</span>
                 <span className="text-[10px] text-rmpg-500">{d.word_count}w</span>
                 <span className="text-[10px] text-rmpg-500">{fmtDate(d.created_at)}</span>
                 <SmallBtn onClick={() => deleteDraft(d.id)} loading={deletingIds.has(d.id)} variant="danger">
@@ -8463,7 +8463,7 @@ function GrokEnrichPanel() {
               >
                 <Zap className="w-3 h-3 text-orange-400 shrink-0" />
                 <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.name || item.url}</span>
-                <span className="text-[10px] text-rmpg-400 shrink-0">{item.type}</span>
+                <span className="text-[10px] text-rmpg-400 shrink-0">{formatEnumValue(item.type)}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
             ))
@@ -8476,7 +8476,7 @@ function GrokEnrichPanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-rmpg-100">{result.name}</span>
-            <span className="text-[9px] px-1.5 py-0.5 bg-orange-500/10 border border-orange-500/30 rounded-sm text-orange-300">{result.type}</span>
+            <span className="text-[9px] px-1.5 py-0.5 bg-orange-500/10 border border-orange-500/30 rounded-sm text-orange-300">{formatEnumValue(result.type)}</span>
           </div>
           {result.description && (
             <div className="text-[10px] text-rmpg-300 leading-relaxed">{result.description}</div>

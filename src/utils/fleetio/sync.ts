@@ -61,6 +61,71 @@ export function nextAttemptDelaySeconds(attemptCount: number): number {
 
 export function maxAttempts(): number { return BACKOFF_SECONDS.length; }
 
+// ─── Permanent vs transient failure ───────────────────────
+// A 4xx from Fleet.io is a verdict on the PAYLOAD, not on the connection:
+// replaying identical bytes cannot change the answer. Retrying one burns all
+// maxAttempts() attempts, dead-letters, and pages an operator ~3h after the
+// fact with an error string that no longer says why.
+//
+// Observed live 2026-08-01: fuel_entry/create event id=23 (fleet_fuel_log 117)
+// was rejected 422 because that row was ALREADY linked to Fleet.io fuel entry
+// 218945340 and its odometer (93,917 on 07-18) reads BACKWARD from the 07-17
+// entry's 93,918.8. Seven attempts, one dead letter, and a Retry button that
+// re-armed the whole cycle — for a rejection that was correct every time.
+//
+// 408 (Request Timeout) and 429 (Too Many Requests) are 4xx by number but
+// transient by meaning, so they stay retryable. 429 never reaches here anyway
+// — FleetioRateLimitError is its own class and aborts the drain — but the
+// carve-out is kept so this predicate is correct in isolation.
+const TRANSIENT_4XX = new Set([408, 429]);
+
+/** True when the failure can never succeed on replay, so the event should be
+ *  dead-lettered on attempt 1 instead of burning the retry budget. */
+export function isPermanentFleetioFailure(err: unknown): boolean {
+  if (err instanceof FleetioConfigError) return false; // config can be fixed; drain aborts anyway
+  if (!(err instanceof FleetioHttpError)) return false;
+  const status = err.status;
+  if (typeof status !== 'number') return false;
+  return status >= 400 && status < 500 && !TRANSIENT_4XX.has(status);
+}
+
+/** Marker prefix stamped onto `fleetio_events.error` for permanent failures.
+ *  The retry endpoint reads it back to refuse a retry that cannot succeed —
+ *  a shared seam so writer and reader can't drift. Preferred over a new
+ *  column: `fleetio_events` gains nothing from more schema for one bit. */
+export const PERMANENT_ERROR_PREFIX = 'PERMANENT: ';
+
+/** Reader half of `PERMANENT_ERROR_PREFIX`. */
+export function isPermanentFailureMessage(error: string | null | undefined): boolean {
+  return typeof error === 'string' && error.startsWith(PERMANENT_ERROR_PREFIX);
+}
+
+/**
+ * Flattens an error into the string persisted to `fleetio_events.error`.
+ *
+ * `FleetioHttpError.message` is only ever `"Fleet.io <status>"` — the actual
+ * validation text lives in `.detail` (the parsed response body) and was being
+ * dropped on the floor. That is why the Health tab could show a red failed
+ * event whose stated reason was the useless string "Fleet.io 422".
+ */
+export function formatFleetioError(err: unknown): string {
+  const base = err instanceof Error ? err.message : String(err);
+  let out = base;
+  if (err instanceof FleetioHttpError && err.detail !== undefined && err.detail !== null) {
+    const detail = typeof err.detail === 'string' ? err.detail : safeStringify(err.detail);
+    if (detail && detail !== '{}' && detail !== '""') out = `${base}: ${detail}`;
+  }
+  return isPermanentFleetioFailure(err) ? `${PERMANENT_ERROR_PREFIX}${out}` : out;
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 // ─── Shared types ─────────────────────────────────────────
 
 export interface FleetioEventRow {
@@ -210,18 +275,21 @@ export async function applyOutbound(deps: ApplyOutboundDeps): Promise<ApplyOutbo
       ).bind(row.id).run();
       result.completed++;
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
+      // Carries Fleet.io's own validation text (err.detail), plus the
+      // PERMANENT: marker when replay is provably futile.
+      const errMsg = formatFleetioError(err);
+      const permanent = isPermanentFleetioFailure(err);
       result.errors.push({ event_id: row.event_id, error: errMsg });
       try {
         await deps.db.prepare(
           `UPDATE fleetio_events
            SET status = CASE
-             WHEN attempts + 1 >= ? THEN 'failed' ELSE 'pending'
+             WHEN ? = 1 OR attempts + 1 >= ? THEN 'failed' ELSE 'pending'
            END,
            attempts = attempts + 1,
            error = ?
            WHERE id = ?`,
-        ).bind(maxAttempts(), errMsg.slice(0, 1000), row.id).run();
+        ).bind(permanent ? 1 : 0, maxAttempts(), errMsg.slice(0, 1000), row.id).run();
       } catch (markErr) {
         console.error('[fleetio.sync] failed to mark event status', { event_id: row.event_id, markErr });
       }
@@ -235,7 +303,9 @@ export async function applyOutbound(deps: ApplyOutboundDeps): Promise<ApplyOutbo
         result.skipped += pending.length - result.attempted;
         break;
       }
-      if (row.attempts + 1 >= maxAttempts()) result.failed++;
+      // Must mirror the CASE above, or a permanent failure would be marked
+      // 'failed' in the DB while the drain reported failed=0 to the cron log.
+      if (permanent || row.attempts + 1 >= maxAttempts()) result.failed++;
     }
   }
   return result;
@@ -397,6 +467,17 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     return deps.adapter.archiveVehicle({ fleetioId, archivedAtIso: now(deps).toISOString() });
   }
   if (row.resource === 'fuel_entry' && row.action === 'create') {
+    // Already linked? Idempotent no-op — mirrors the vehicle/create guard
+    // above. Its absence here is the root cause of the 2026-08-01 incident:
+    // `fleet_fuel_log` rows already pushed to Fleet.io were re-emitted as
+    // creates, so every replay either (a) POSTed a DUPLICATE remote fuel
+    // entry whose id `recordLink`'s INSERT OR IGNORE then silently discarded,
+    // orphaning it forever, or (b) got a 422 from Fleet.io's meter-entry
+    // validation and dead-lettered. Events 26/27 (fleet_fuel_log 115, already
+    // linked to 219997437) were queued and neutralized by hand before the
+    // cron could double-post them.
+    const existing = await lookupFleetioId(deps.db, FLEETIO_RMPG_TABLE.fuel_entry, row.resource_id);
+    if (existing) return null;
     const translated = await translateOutboundFks(deps.db, 'fuel_entry', filteredPayload);
     if (translated == null) return null;       // parent vehicle not linked yet
     const created = await deps.adapter.createFuelEntry({ payload: mapFuelEntryFieldsToFleetio(translated) });

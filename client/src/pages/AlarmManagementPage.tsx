@@ -241,7 +241,7 @@ export default function AlarmManagementPage() {
       label: 'Permit',
       render: (r: AlarmAccount) => (
         <span className={`badge ${r.permit_status === 'active' ? 'badge-available' : r.permit_status === 'expired' ? 'badge-busy' : 'badge-pending'}`}>
-          {r.permit_status}
+          {formatEnumValue(r.permit_status)}
         </span>
       ),
     },

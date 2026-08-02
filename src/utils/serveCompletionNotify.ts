@@ -11,6 +11,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { queryFirst, execute } from './db';
+import { toDisplayLabel } from './displayLabel';
 
 export async function notifyServeCompletion(
   db: D1Database,
@@ -76,7 +77,7 @@ export async function notifyServeCompletion(
   }
 
   const who = job.defendant_name || job.recipient_name || `Job #${serveQueueId}`;
-  const docType = (job.document_type ?? 'documents').replace(/_/g, ' ');
+  const docType = toDisplayLabel(job.document_type ?? 'documents');
   const caseRef = job.case_number ? ` (Case ${job.case_number})` : '';
   const attemptDate = lastAttempt?.attempt_at
     ? new Date(lastAttempt.attempt_at).toLocaleString('en-US', { timeZone: 'America/Denver', dateStyle: 'medium', timeStyle: 'short' })
