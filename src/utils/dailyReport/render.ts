@@ -18,6 +18,25 @@ const PAGE_H = 792;
 const MARGIN = 48;
 const LINE = 12;
 const NO_ACTIVITY = 'No activity recorded.';
+const MAX_TEXT_W = PAGE_W - MARGIN * 2;   // 516pt of usable line width
+
+/** Truncate to what actually fits, measured — not a character count.
+ *  A fixed char cap cannot work: 120 chars of 8pt Helvetica runs 480–530pt
+ *  depending on character mix, and real call rows concatenate to ~168 chars
+ *  (address alone reaches 77 on live data), so a digit- or uppercase-heavy
+ *  line silently ran off the right edge. */
+function fitToWidth(s: string, size: number, f: Awaited<ReturnType<PDFDocument['embedFont']>>): string {
+  if (f.widthOfTextAtSize(s, size) <= MAX_TEXT_W) return s;
+  const ellipsis = '…';
+  let lo = 0;
+  let hi = s.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (f.widthOfTextAtSize(s.slice(0, mid) + ellipsis, size) <= MAX_TEXT_W) lo = mid;
+    else hi = mid - 1;
+  }
+  return s.slice(0, lo) + ellipsis;
+}
 
 interface Cursor { page: ReturnType<PDFDocument['addPage']>; y: number; }
 
@@ -35,9 +54,10 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
 
   const text = (s: string, size: number, useBold: boolean): void => {
     if (cur.y < MARGIN + LINE) newPage();
-    cur.page.drawText(s.slice(0, 120), {
+    const useFont = useBold ? bold : font;
+    cur.page.drawText(fitToWidth(s, size, useFont), {
       x: MARGIN, y: cur.y, size,
-      font: useBold ? bold : font,
+      font: useFont,
       color: rgb(0.05, 0.05, 0.05),
     });
     cur.y -= size + 4;

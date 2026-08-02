@@ -49,4 +49,45 @@ describe('renderDailyReport', () => {
   it('is pure — no bindings, no globals, no throw on minimal input', async () => {
     await expect(renderDailyReport(emptyData)).resolves.toBeInstanceOf(Uint8Array);
   });
+
+  it('never draws a line wider than the printable area', async () => {
+    // 516pt usable width. A fixed character cap cannot guarantee this —
+    // real call rows concatenate to ~168 chars on live data.
+    const longData: DailyReportData = {
+      ...emptyData,
+      operations: {
+        calls: [{
+          call_number: 'C-9999999999',
+          received_at: '2026-07-18 20:00:00',
+          incident_type: 'SUSPICIOUS CIRCUMSTANCES INVESTIGATION',
+          priority: 1,
+          location_address: '12345 SOUTH REDWOOD ROAD BUILDING C SUITE 1200, WEST JORDAN, UTAH 84088',
+          disposition: 'REPORT TAKEN — REFERRED TO INVESTIGATIONS DIVISION',
+          status: 'CLOSED',
+          unit_call_signs: '1A1, 1A2, 2B7',
+          responding_officer: 'CHRISTOPHER ZAMORA',
+        }],
+        citations: [],
+      },
+    };
+    const bytes = await renderDailyReport(longData);
+    expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe('%PDF-');
+
+    const { extractText, getDocumentProxy } = await import('unpdf');
+    const doc = await getDocumentProxy(new Uint8Array(bytes));
+    const { text } = await extractText(doc, { mergePages: true });
+    const joined = Array.isArray(text) ? text.join('\n') : text;
+    // The over-long row must have been shortened rather than drawn past the edge.
+    expect(joined).toContain('…');
+  });
+
+  it('leaves short lines untouched — no gratuitous ellipsis', async () => {
+    const bytes = await renderDailyReport(fullData);
+    const { extractText, getDocumentProxy } = await import('unpdf');
+    const doc = await getDocumentProxy(new Uint8Array(bytes));
+    const { text } = await extractText(doc, { mergePages: true });
+    const joined = Array.isArray(text) ? text.join('\n') : text;
+    expect(joined).toContain('123 Main St');
+    expect(joined).not.toContain('…');
+  });
 });
