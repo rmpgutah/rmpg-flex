@@ -15,6 +15,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { toDenverWallClock } from '../utils/denverTime';
@@ -75,8 +76,8 @@ sqe.get('/enhanced', async (c) => {
   const dateTo = c.req.query('dateTo');
   const documentType = c.req.query('documentType');
   const search = c.req.query('search');
-  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
-  const limit = Math.min(Math.max(1, parseInt(c.req.query('limit') || '50', 10)), 500);
+  const page = clampIntParam(c.req.query('page'), 1, 1, 1000000);
+  const limit = clampIntParam(c.req.query('limit'), 50, 1, 500);
   const offset = (page - 1) * limit;
 
   const where: string[] = [];

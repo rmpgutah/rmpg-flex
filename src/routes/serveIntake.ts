@@ -35,6 +35,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import { getContainer } from '@cloudflare/containers';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
@@ -1562,7 +1563,7 @@ si.post('/documents/:docId/reprocess', async (c) => {
 si.post('/reprocess-failed', async (c) => {
   const user = c.get('user') as { id: number; role: string } | undefined;
   if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
-  const limit = Math.min(25, Math.max(1, parseInt(c.req.query('limit') || '10', 10)));
+  const limit = clampIntParam(c.req.query('limit'), 10, 1, 25);
   const docs = await query<any>(getDb(c.env),
     `SELECT * FROM serve_intake_documents
       WHERE serve_queue_id IS NULL AND (status = 'failed' OR confidence < 0.4)
@@ -1608,7 +1609,7 @@ si.get('/', async (c) => {
   const officerId = c.req.query('officer_id');
   const priority = c.req.query('priority');
   const search = c.req.query('q');
-  const limit = Math.min(parseInt(c.req.query('limit') || '100', 10), 500);
+  const limit = clampIntParam(c.req.query('limit'), 100, 1, 500);
 
   const where: string[] = [];
   const args: any[] = [];

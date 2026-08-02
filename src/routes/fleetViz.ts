@@ -31,6 +31,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { dbErrorResponse } from '../utils/dbErrors';
@@ -601,7 +602,7 @@ viz.get('/calls-per-gallon', async (c) => {
 viz.get('/pm-upcoming', async (c) => {
   try {
     const db = getDb(c.env);
-    const limit = Math.min(parseInt(c.req.query('limit') ?? '25', 10), 200);
+    const limit = clampIntParam(c.req.query('limit'), 25, 1, 200);
     const rows = await query<Record<string, unknown>>(
       db, `
       SELECT

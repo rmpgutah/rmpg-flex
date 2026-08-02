@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
@@ -470,8 +471,8 @@ nav.get('/trip/history', async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
-    const limit = Math.min(Number(c.req.query('limit') || '50'), 200);
-    const offset = Number(c.req.query('offset') || '0');
+    const limit = clampIntParam(c.req.query('limit'), 50, 1, 200);
+    const offset = clampIntParam(c.req.query('offset'), 0, 0, 1000000);
     const status = c.req.query('status'); // optional filter
 
     let whereClause = 'WHERE ntl.officer_id = ?';

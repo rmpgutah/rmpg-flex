@@ -7,6 +7,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { testConnection, setApiKey as smSetApiKey, clearApiKey as smClearApiKey } from '../utils/serveManagerClient';
@@ -146,7 +147,7 @@ sm.get('/poller/status', async (c) => {
 sm.get('/jobs', async (c) => {
   try {
     const db = getDb(c.env);
-    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
+    const page = clampIntParam(c.req.query('page'), 1, 1, 1000000);
     const perPage = Math.min(100, Math.max(1, parseInt(c.req.query('per_page') || '25', 10)));
     const q = c.req.query('q')?.trim();
 

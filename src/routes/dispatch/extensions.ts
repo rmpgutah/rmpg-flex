@@ -17,6 +17,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { clampIntParam } from '../../utils/paginationParams';
 import type { Context } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../../utils/db';
@@ -60,7 +61,7 @@ recommendedUnits.get('/:id/recommended-units', requireRole(...READ_ROLES), async
       return c.json({ callId: id, callNumber: call.call_number, recommended: [], reason: 'NO_CALL_GPS' });
     }
 
-    const limit = Math.min(25, Math.max(1, parseInt(c.req.query('limit') || '5', 10)));
+    const limit = clampIntParam(c.req.query('limit'), 5, 1, 25);
 
     // Pull available units with GPS. Lean schema stores lat/lng directly on
     // units (no separate gps_locations table on lean D1 — confirmed via

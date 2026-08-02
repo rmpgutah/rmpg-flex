@@ -41,6 +41,7 @@
 // ============================================================
 
 import { Hono, type Context } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists, queryInChunks, executeInChunks } from '../utils/db';
 import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/processServiceCodes';
@@ -687,7 +688,7 @@ sv.get('/', async (c) => {
   const officerId = c.req.query('officer_id');
   const priority = c.req.query('priority');
   const search = c.req.query('q');
-  const limit = Math.min(parseInt(c.req.query('limit') || '100', 10), 500);
+  const limit = clampIntParam(c.req.query('limit'), 100, 1, 500);
   const where: string[] = [];
   const args: any[] = [];
   if (status) { where.push('status = ?'); args.push(status); }
