@@ -23,6 +23,7 @@ import { apiFetch } from '../hooks/useApi';
 import { speak } from '../utils/edgeTTS';
 import { withAlpha } from '../utils/withAlpha';
 import ManeuverArrow from './ManeuverArrow';
+import { isNavGuidanceActive, speedComparison } from './dispatchNavGate';
 import type { CallForService, Unit } from '../types';
 
 // `call.assigned_units` can arrive as id strings/numbers OR as full unit
@@ -452,16 +453,16 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // instruction CHANGES (the moment it becomes current). Throttled to one
   // utterance per distinct instruction so we don't repeat on every re-render.
   //
-  // AUDIBLE nav is gated to the EN-ROUTE phase only: it starts speaking when
-  // the call goes 'enroute' and stops once the unit is 'onscene' (and never
-  // speaks while pending/dispatched/cleared). The route line + on-screen
-  // maneuver banner still render at any status — this gate is voice-only, so
-  // simply opening the dispatch screen no longer triggers spoken directions.
-  // Resetting the throttle ref outside en-route means the first instruction is
-  // announced the instant status flips to 'enroute'.
+  // Both the spoken directions AND the on-screen banner are gated to the
+  // EN-ROUTE phase via isNavGuidanceActive: guidance begins when the call goes
+  // 'enroute' and ends once the unit is 'onscene'. The route LINE deliberately
+  // still draws at any status — a dispatcher benefits from seeing the path to a
+  // dispatched-but-not-yet-enroute call; only the turn-by-turn instructions
+  // follow the status. Resetting the throttle ref outside en-route means the
+  // first instruction is announced the instant status flips to 'enroute'.
   const lastSpokenRef = useRef<string>('');
   useEffect(() => {
-    const isEnRoute = call?.status === 'enroute';
+    const isEnRoute = isNavGuidanceActive(call?.status);
     const current = activeRoute?.steps?.[0]?.instruction?.trim();
     if (!isEnRoute || !current) { lastSpokenRef.current = ''; return; }
     if (current === lastSpokenRef.current) return;
@@ -613,7 +614,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           steps[0] is always the current/next maneuver; it auto-advances as the
           unit drives, and each new instruction is announced by voice (effect
           below). */}
-      {activeRoute?.steps && activeRoute.steps.length > 0 && (
+      {isNavGuidanceActive(call?.status) && activeRoute?.steps && activeRoute.steps.length > 0 && (
         <div style={{
           position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 11,
           background: 'rgba(0,0,0,0.94)', borderTop: '1px solid var(--border-default)', pointerEvents: 'auto',
@@ -630,6 +631,38 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               {activeRoute.eta} <span style={{ fontSize: 8, color: '#16a34a' }}>ETA</span>
             </span>
             <span style={{ fontSize: 12, color: STATUS_COLORS.warning, fontWeight: 900 }}>{activeRoute.distance}</span>
+            {(() => {
+              // Display-only speed context for the responding unit. Suppressed
+              // when the GPS fix is stale (see dispatchNavGate.speedComparison)
+              // so a paused reading never renders as a live fact.
+              const assigned = units.find((u) => u.call_sign === activeRoute.unitCallSign);
+              const cmp = speedComparison({
+                gpsSpeedMps: assigned?.gps_speed,
+                gpsUpdatedAt: assigned?.gps_updated_at,
+                postedLimitMph: activeRoute.postedLimitMph,
+                nowMs: Date.now(),
+              });
+              if (!cmp) {
+                if (activeRoute.postedLimitMph == null) return null;
+                return (
+                  <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontWeight: 700 }}>
+                    {activeRoute.postedLimitMph} limit
+                  </span>
+                );
+              }
+              const over = cmp.speedMph > cmp.limitMph;
+              return (
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 900,
+                    color: over ? 'var(--sev-warn)' : 'var(--text-secondary)',
+                  }}
+                >
+                  {cmp.speedMph} in a {cmp.limitMph}
+                </span>
+              );
+            })()}
           </div>
           {/* Current direction, one at a time */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px' }}>
