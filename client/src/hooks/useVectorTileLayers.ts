@@ -19,6 +19,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { ensureOsmIcons, iconIdForCat } from '../utils/osmIcons';
 import {
   roadColorExpression, roadSortKeyExpression, ptTypeColorExpression,
   classifyCartocode, classifyPtType,
@@ -261,20 +262,54 @@ export function buildOsmLayerSpecs(cfg: VectorTileLayerConfig, isLight: boolean)
       },
     });
   } else {
-    // Point categories: prefer a named Mapbox sprite icon where one is
-    // available; fall back to a plain circle so the layer still renders if
-    // the sprite is missing (a missing named icon renders NOTHING silently).
-    specs.push({
-      id: `${idBase}-circle`,
-      type: 'circle',
-      ...base,
-      paint: {
-        'circle-color': cfg.color,
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 3, 18, 7],
-        'circle-stroke-color': isLight ? '#1a2332' : '#0a0a0a',
-        'circle-stroke-width': 1,
-      },
-    });
+    // Point categories: use our own registered icon so a hydrant, a camera and
+    // a power pole are distinguishable. iconIdForCat only returns ids that
+    // ensureOsmIcons registers via map.addImage — never a bare basemap sprite
+    // name, because a missing sprite name renders NOTHING, silently.
+    const iconId = iconIdForCat(cfg.categoryFilter ?? '');
+    if (iconId) {
+      const isCamera = cfg.categoryFilter === 'camera' || cfg.categoryFilter === 'alpr';
+      specs.push({
+        id: `${idBase}-symbol`,
+        type: 'symbol',
+        ...base,
+        layout: {
+          ...base.layout,
+          'icon-image': iconId,
+          'icon-size': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 0.45, 18, 0.85],
+          'icon-allow-overlap': false,
+          'icon-ignore-placement': false,
+          // A camera icon must point where the camera actually points.
+          // rotation-alignment MUST be 'map': the default ('viewport') pins the
+          // icon to the screen, so the bearing becomes a lie the moment the
+          // operator rotates the map. Absent camera:direction -> 0 (unrotated),
+          // which reads as "bearing unknown" rather than a fabricated north.
+          ...(isCamera
+            ? {
+              'icon-rotate': ['coalesce', ['to-number', ['get', 'camera:direction']], 0],
+              'icon-rotation-alignment': 'map',
+            }
+            : {}),
+        },
+        // Symbol layers need no paint here — the icon carries its own colour,
+        // baked in at registration. `paint` is required by OsmLayerSpec.
+        paint: {},
+      });
+    } else {
+      // No icon for this category yet — a plain circle still renders, rather
+      // than the layer silently drawing nothing.
+      specs.push({
+        id: `${idBase}-circle`,
+        type: 'circle',
+        ...base,
+        paint: {
+          'circle-color': cfg.color,
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 3, 18, 7],
+          'circle-stroke-color': isLight ? '#1a2332' : '#0a0a0a',
+          'circle-stroke-width': 1,
+        },
+      });
+    }
   }
 
   return specs;
