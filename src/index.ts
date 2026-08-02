@@ -608,6 +608,19 @@ export default {
           }
         }).catch((err) => log.error('driver-performance rollup import failed', {}, err as Error)),
       );
+
+      // serve_routes revision retention. POST /api/process-server/routes is
+      // append-only so a re-planned day keeps its full revision history; this
+      // collapses the superseded revisions once they age past the window,
+      // while keeping the newest row per (officer, date) forever. Separate
+      // waitUntil so a failure here can't take the rollup down with it.
+      ctx.waitUntil(
+        import('./utils/serveRouteRetention').then((m) =>
+          m.sweepServeRouteRevisions(env.DB).then((r) =>
+            log.info('serve-routes revision sweep complete', { deleted: r.deleted, cutoff: r.cutoff }),
+          ),
+        ).catch((err) => log.error('serve-routes revision sweep failed', {}, err as Error)),
+      );
     }
   },
 };

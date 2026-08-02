@@ -50,6 +50,8 @@ import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 import { geocodeAddress } from './geocode';
 import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
 import { autoAssignAllUnassigned } from '../utils/serveAutoAssign';
+import { routeJsonColumn } from '../utils/serveRoutePayload';
+import { parseD1TimestampMs } from '../utils/fleetio/sync';
 
 const sv = new Hono<Env>();
 
@@ -230,14 +232,74 @@ sv.post('/routes', async (c) => {
        start_lat, start_lng, end_lat, end_lng, notes
      ) VALUES (?,?,?,?, ?,?, ?,?,?,?, ?)`,
     officerId, body.route_date ?? null,
-    JSON.stringify(body.optimized_order ?? []),
-    JSON.stringify(body.waypoints ?? []),
+    routeJsonColumn(body.optimized_order_json, body.optimized_order),
+    routeJsonColumn(body.waypoints_json, body.waypoints),
     body.total_distance_miles ?? null, body.total_time_minutes ?? null,
     body.start_lat ?? null, body.start_lng ?? null,
     body.end_lat ?? null, body.end_lng ?? null,
     body.notes ?? null,
   );
   return c.json({ success: true, id: r.meta.last_row_id }, 201);
+});
+
+// GET /officer-start/:officerId — last known GPS fix for an officer.
+//
+// The route planner anchors optimization on the officer's STARTING position:
+// without one, the "first" stop is chosen arbitrarily and the officer's real
+// first leg (wherever they are → stop 1) is never counted, so the planned
+// mileage understates the run. Live GPS covers the officer planning their own
+// day, but the planner's officer dropdown lets a supervisor plan for SOMEONE
+// ELSE — and the browser's GPS is the supervisor's position, not theirs. This
+// endpoint supplies that other officer's own last known position.
+//
+// Deliberately returns the raw fix PLUS its age and lets the caller decide what
+// is too stale. Baking a cutoff in here would silently turn "your last fix is
+// 3 hours old" into an indistinguishable "no position on file", which are very
+// different things for an operator to see.
+//
+// Declared before sv.get('/:id') (line ~815) — a two-segment path can't be
+// caught by the single-segment '/:id', but keeping the specific routes above it
+// is the convention in this file and Hono matches in declaration order.
+sv.get('/officer-start/:officerId', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const officerId = parseInt(c.req.param('officerId'), 10);
+  if (!Number.isFinite(officerId)) return c.json({ error: 'officerId must be numeric' }, 400);
+
+  const db = getDb(c.env);
+  const row = await queryFirst<{
+    latitude: number; longitude: number; accuracy: number | null; recorded_at: string;
+  }>(
+    db,
+    `SELECT latitude, longitude, accuracy, recorded_at
+       FROM gps_breadcrumbs
+      WHERE officer_id = ? AND latitude IS NOT NULL AND longitude IS NOT NULL
+      ORDER BY recorded_at DESC, id DESC
+      LIMIT 1`,
+    officerId,
+  );
+
+  if (!row) return c.json({ found: false, officer_id: officerId });
+
+  // recorded_at is written by datetime('now'), which is UTC but zone-LESS —
+  // a bare Date.parse reads that as LOCAL time and skews the age by the host's
+  // offset (the same trap documented for Fleet.io's last-write-wins compare).
+  // parseD1TimestampMs is the canonical fix; utahWarrantPoller imports it the
+  // same way.
+  const recordedMs = parseD1TimestampMs(row.recorded_at);
+  const ageMinutes = recordedMs == null
+    ? null
+    : Math.max(0, Math.round((Date.now() - recordedMs) / 60000));
+
+  return c.json({
+    found: true,
+    officer_id: officerId,
+    lat: row.latitude,
+    lng: row.longitude,
+    accuracy_m: row.accuracy ?? null,
+    recorded_at: row.recorded_at,
+    age_minutes: ageMinutes,
+  });
 });
 
 // PUT /reorder — bulk sort_order update for drag-and-drop UIs
