@@ -1410,18 +1410,19 @@ In `client/src/hooks/useVectorTileLayers.ts`, replace lines 415-430 (the block
 beginning `// Topmost spec is the interactive one`) with:
 
 ```ts
-          // Bind interaction on EVERY layer this config emits. A polygon
+          // Hover affordance on EVERY layer this config emits. A polygon
           // category emits [fill, outline]; binding only the last one put the
-          // click target on the 1px outline and made the polygon body inert.
+          // target on the 1px outline and made the polygon body inert.
+          //
+          // The POPUP for OSM features is owned by useOsmIdentify (see
+          // client/src/hooks/useOsmIdentify.ts), which reports every layer
+          // under the cursor rather than just this one. Binding a popup here
+          // as well would render two popups into the same instance for a
+          // single click, with the winner decided by handler registration
+          // order. buildPopupHtml below is still used by the UGRC branch.
           if (!clickBoundRef.current.has(cfg.id)) {
             clickBoundRef.current.add(cfg.id);
             for (const layerId of osmInteractiveLayerIds(cfg, isLightRef.current)) {
-              map.on('click', layerId, (e) => {
-                const pop = popupRef.current;
-                if (!pop || !e.features || e.features.length === 0) return;
-                const props = e.features[0].properties || {};
-                pop.setLngLat(e.lngLat).setHTML(buildPopupHtml(cfg, props)).addTo(map);
-              });
               map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer'; });
               map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
             }
@@ -1967,47 +1968,21 @@ Task 6 changed to pass `osmPopupRef.current`), add:
 already passes to `UnifiedMapLegend` at line 1832 — the map page has no
 light-basemap state to read. Do not invent one.
 
-- [ ] **Step 6: Hand the popup to identify alone, keeping per-layer hover**
-
-Both systems now fire on the same click and both write to `osmPopupRef`, so a
-single click would render a popup twice — whichever handler runs last silently
-wins, which is exactly the kind of ordering dependence that breaks later.
-
-Identify supersedes the per-layer popup: it reports every layer under the
-cursor rather than one. Keep the per-layer handlers for the **hover cursor**,
-which identify does not provide, and drop their popup.
-
-In `client/src/hooks/useVectorTileLayers.ts`, replace the block Task 6 added
-(the `for (const layerId of osmInteractiveLayerIds(...))` loop) with:
-
-```ts
-          // Hover affordance only. The POPUP for OSM features is owned by
-          // useOsmIdentify, which reports every layer under the cursor instead
-          // of just this one. Binding a popup here as well would render two for
-          // a single click, with the winner decided by handler registration
-          // order.
-          if (!clickBoundRef.current.has(cfg.id)) {
-            clickBoundRef.current.add(cfg.id);
-            for (const layerId of osmInteractiveLayerIds(cfg, isLightRef.current)) {
-              map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer'; });
-              map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
-            }
-          }
-```
-
-`buildPopupHtml` stays in use by the UGRC (non-OSM) branch below it — do not
-delete it.
-
-- [ ] **Step 7: Typecheck and run the map test suite**
+- [ ] **Step 6: Typecheck and run the map test suite**
 
 Run: `cd client && npx tsc --noEmit && npx vitest run src/pages/map src/hooks`
-Expected: no type errors; all tests pass. The Task 6 tests still pass —
-`osmInteractiveLayerIds` is unchanged and still drives the hover binding.
+Expected: no type errors; all tests pass.
 
-- [ ] **Step 8: Commit**
+Task 6 already bound the OSM layers for **hover only**, leaving the popup to
+this hook — so there is nothing to remove here. If you find a `map.on('click', …)`
+inside the OSM branch of `useVectorTileLayers.ts`, Task 6 was implemented
+against a stale revision: remove it, or the same click renders two popups into
+`osmPopupRef` with the winner decided by handler registration order.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add client/src/hooks/useOsmIdentify.ts client/src/hooks/__tests__/useOsmIdentify.test.ts client/src/hooks/useVectorTileLayers.ts client/src/pages/map/MapboxMapPage.tsx
+git add client/src/hooks/useOsmIdentify.ts client/src/hooks/__tests__/useOsmIdentify.test.ts client/src/pages/map/MapboxMapPage.tsx
 git commit -m "feat(osm): click-anywhere identify across visible OSM layers"
 ```
 
