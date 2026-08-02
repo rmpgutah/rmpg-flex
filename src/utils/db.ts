@@ -509,3 +509,74 @@ export async function ensureJurisdictionAndPhotoColumns(db: D1Database): Promise
   ).first().then((row) => row !== null).catch(() => false);
   _jurisdictionPhotoColumnsEnsured = columnsOk && propertyPhotosOk;
 }
+
+// ── Driver Performance reconciler (mig 0222) ───────────────
+// deploy.yml applies migrations with continue-on-error, and D1 has no
+// IF NOT EXISTS on ADD COLUMN — gate each ALTER with columnExists().
+let _driverPerformanceEnsured = false;
+
+export async function ensureDriverPerformanceColumns(db: D1Database): Promise<void> {
+  if (_driverPerformanceEnsured) return;
+
+  // The three ALTERs below self-healed, but the TABLE they orbit did not — if
+  // 0223 never reached live D1 (the deploy step is continue-on-error), every
+  // rollup and every roster query failed with "no such table" and the feature
+  // simply never worked. Create it here too, from the same DDL as the
+  // migration, so a swallowed migration cannot leave a permanent hole.
+  try {
+    await db.prepare(`CREATE TABLE IF NOT EXISTS driver_performance_daily (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL REFERENCES users(id),
+      perf_date TEXT NOT NULL,
+      miles_driven REAL NOT NULL DEFAULT 0,
+      drive_minutes REAL NOT NULL DEFAULT 0,
+      trip_count INTEGER NOT NULL DEFAULT 0,
+      events_critical INTEGER NOT NULL DEFAULT 0,
+      events_high INTEGER NOT NULL DEFAULT 0,
+      events_moderate INTEGER NOT NULL DEFAULT 0,
+      events_low INTEGER NOT NULL DEFAULT 0,
+      events_forward_collision INTEGER NOT NULL DEFAULT 0,
+      events_lane_departure INTEGER NOT NULL DEFAULT 0,
+      events_close_following INTEGER NOT NULL DEFAULT 0,
+      events_harsh_brake INTEGER NOT NULL DEFAULT 0,
+      events_harsh_accel INTEGER NOT NULL DEFAULT 0,
+      events_speeding INTEGER NOT NULL DEFAULT 0,
+      attribution_recorded_pct REAL NOT NULL DEFAULT 0,
+      attribution_inferred_pct REAL NOT NULL DEFAULT 0,
+      unattributed_events INTEGER NOT NULL DEFAULT 0,
+      fuel_cost REAL NOT NULL DEFAULT 0,
+      fuel_gallons REAL NOT NULL DEFAULT 0,
+      maintenance_cost REAL NOT NULL DEFAULT 0,
+      score REAL,
+      score_version TEXT NOT NULL,
+      computed_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(officer_id, perf_date)
+    )`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_dpd_date ON driver_performance_daily(perf_date)`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_dpd_officer_date ON driver_performance_daily(officer_id, perf_date)`).run();
+  } catch {
+    // Race or pre-existing table — tolerated by design (CLAUDE.md rule #5).
+  }
+
+  const COLUMNS: Array<[string, string, string]> = [
+    ['fleet_assignments', 'officer_id', 'INTEGER'],
+    ['dashcam_events', 'officer_id', 'INTEGER'],
+    ['dashcam_events', 'officer_attribution_source', 'TEXT'],
+    // Added after the table shipped: an existing (pre-0223-edit) table needs
+    // the ALTER, a fresh one already has it from the CREATE above.
+    ['driver_performance_daily', 'unattributed_events', 'INTEGER NOT NULL DEFAULT 0'],
+  ];
+  for (const [table, col, type] of COLUMNS) {
+    try {
+      if (!(await columnExists(db, table, col))) {
+        await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`).run();
+      }
+    } catch {
+      // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+    }
+  }
+  const columnsOk = await Promise.all(
+    COLUMNS.map(([t, c]) => columnExists(db, t, c)),
+  ).then((r) => r.every(Boolean));
+  _driverPerformanceEnsured = columnsOk;
+}
