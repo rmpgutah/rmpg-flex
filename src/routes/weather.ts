@@ -2,6 +2,13 @@ import { Hono } from 'hono';
 import type { Bindings, Variables } from '../types';
 import { describeWeatherCode, degreesToCompass, isHazardousCode } from '../utils/weatherCodes';
 import { log } from '../utils/logger';
+import {
+  fetchActiveAlerts,
+  fetchZonesBounded,
+  zoneUrlFromKey,
+  type NwsAlert,
+  type NwsZoneGeometry,
+} from '../utils/nwsAlerts';
 
 const weather = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -270,6 +277,146 @@ weather.get('/', async (c) => {
   }
 
   return c.json({ ...payload, cached: false });
+});
+
+// ── Severe-weather alerts (NWS) ─────────────────────────────
+//
+// Two caches with deliberately different lifetimes:
+//   • the ALERT LIST changes by the minute      → 120 s
+//   • ZONE POLYGONS change on NWS restructures  → 30 days
+// Conflating them would either serve stale warnings or re-fetch ~36 polygons
+// every couple of minutes for data that is effectively immutable.
+
+const ALERTS_CACHE_TTL_SEC = 120;
+const ZONE_CACHE_TTL_SEC = 60 * 60 * 24 * 30; // 30 days
+/** Ceiling on cold-cache zone fetches per request; the rest fill in next poll. */
+const ZONE_FETCH_LIMIT = 60;
+const DEFAULT_AREA = 'UT';
+
+/** Only the NWS state/marine area codes — two uppercase letters. */
+function parseArea(raw: string | undefined): string {
+  if (!raw) return DEFAULT_AREA;
+  const up = raw.toUpperCase();
+  return /^[A-Z]{2}$/.test(up) ? up : DEFAULT_AREA;
+}
+
+function zoneCacheKey(zoneKey: string): string {
+  return `nws:zone:v1:${zoneKey}`;
+}
+
+/**
+ * Resolve polygons for every zone the given alerts reference, preferring KV.
+ * Returns a key → geometry map; missing entries simply mean "no polygon yet",
+ * which the client renders as a list-only alert rather than an error.
+ */
+async function resolveZones(
+  kv: KVNamespace | undefined,
+  alerts: NwsAlert[],
+  // Structurally typed rather than `ExecutionContext` — the Workers and Hono
+  // definitions of that interface diverge, and waitUntil is all we need.
+  ctx: { waitUntil(p: Promise<unknown>): void } | undefined,
+): Promise<Record<string, NwsZoneGeometry>> {
+  // Dedupe first — three Red Flag Warnings routinely share most of their
+  // zones, and fetching the same polygon once per alert would triple the
+  // cold-cache cost for identical data.
+  const wanted = [...new Set(alerts.flatMap((a) => a.zone_ids))];
+  const resolved: Record<string, NwsZoneGeometry> = {};
+  const missing: string[] = [];
+
+  if (kv) {
+    const hits = await Promise.all(
+      wanted.map(async (key) => {
+        try {
+          return [key, await kv.get(zoneCacheKey(key), 'json')] as const;
+        } catch {
+          return [key, null] as const;
+        }
+      }),
+    );
+    for (const [key, val] of hits) {
+      if (val) resolved[key] = val as NwsZoneGeometry;
+      else missing.push(key);
+    }
+  } else {
+    missing.push(...wanted);
+  }
+
+  if (missing.length === 0) return resolved;
+
+  const fetched = await fetchZonesBounded(missing.map(zoneUrlFromKey), { limit: ZONE_FETCH_LIMIT });
+  for (const zone of fetched) {
+    resolved[zone.key] = zone;
+    if (kv) {
+      ctx?.waitUntil(
+        kv.put(zoneCacheKey(zone.key), JSON.stringify(zone), { expirationTtl: ZONE_CACHE_TTL_SEC })
+          .catch(() => {}),
+      );
+    }
+  }
+
+  if (fetched.length < missing.length) {
+    log.info('nws zones partially resolved', {
+      wanted: wanted.length, missing: missing.length, fetched: fetched.length,
+    });
+  }
+  return resolved;
+}
+
+/** Severity rank for client-side sorting — highest first. */
+const SEVERITY_RANK: Record<string, number> = {
+  Extreme: 4, Severe: 3, Moderate: 2, Minor: 1, Unknown: 0,
+};
+
+weather.get('/alerts', async (c) => {
+  const area = parseArea(c.req.query('area'));
+  const kv = c.env.KV;
+  const listKey = `nws:alerts:v1:${area}`;
+
+  let alerts: NwsAlert[] | null = null;
+  if (kv) {
+    try {
+      alerts = (await kv.get(listKey, 'json')) as NwsAlert[] | null;
+    } catch (err) {
+      log.warn('nws alerts cache read failed', { area, err: String(err) });
+    }
+  }
+
+  const fromCache = alerts != null;
+  if (!alerts) {
+    try {
+      alerts = await fetchActiveAlerts(area);
+    } catch (err) {
+      log.error('nws alerts fetch failed', { area }, err as Error);
+      // Degrade to an explicit empty result rather than a 500 — a weather
+      // overlay outage must never break the map for a dispatcher.
+      return c.json({ ok: false, code: 'nws_unavailable', alerts: [], zones: {}, area }, 200);
+    }
+    if (kv) {
+      c.executionCtx.waitUntil(
+        kv.put(listKey, JSON.stringify(alerts), { expirationTtl: ALERTS_CACHE_TTL_SEC }).catch(() => {}),
+      );
+    }
+  }
+
+  const zones = await resolveZones(kv, alerts, c.executionCtx);
+
+  const sorted = [...alerts].sort(
+    (a, b) => (SEVERITY_RANK[b.severity] ?? 0) - (SEVERITY_RANK[a.severity] ?? 0),
+  );
+
+  return c.json({
+    ok: true,
+    area,
+    alerts: sorted,
+    zones,
+    counts: {
+      total: sorted.length,
+      with_geometry: sorted.filter(
+        (a) => a.geometry != null || a.zone_ids.some((z) => zones[z]),
+      ).length,
+    },
+    cached: fromCache,
+  });
 });
 
 export default weather;
