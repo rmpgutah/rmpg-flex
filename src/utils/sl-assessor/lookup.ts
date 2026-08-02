@@ -64,6 +64,8 @@ export async function lookupParcelsWithFallback(
 ): Promise<LookupResult> {
   const manual_url = buildQueryUrl(address);
   let lastErr = '';
+  /** True once a live search completed without throwing, even if empty. */
+  let searchedCleanly = false;
 
   // 0. Fresh cache hit.
   const fresh = await getCachedValidated<ParcelSummary[]>(
@@ -81,7 +83,13 @@ export async function lookupParcelsWithFallback(
       await putCachedDurable({ KV: env.KV }, durableKeyParcels(address), parcels);
       return { parcels, source: 'direct', code: 'ok', degraded: false, manual_url };
     }
-    lastErr = 'no match from direct POST or firecrawl';
+    // Searched successfully, found nothing. This is NOT an error — do not
+    // set lastErr, or the final return reports 'upstream_error' and the UI
+    // says "Could not reach the Assessor" for an address the county simply
+    // has no parcel for. Before this, lastErr was assigned here on the
+    // SUCCESS path, so it was always truthy by the time it was read and the
+    // 'no_match' branch below was unreachable dead code.
+    searchedCleanly = true;
   } catch (e) {
     lastErr = e instanceof Error ? e.message : String(e);
   }
@@ -101,11 +109,14 @@ export async function lookupParcelsWithFallback(
     };
   }
 
-  // 3. Nothing worked.
+  // 3. Nothing found. A clean search that returned zero rows is 'no_match';
+  //    only a thrown upstream failure is 'upstream_error'. The two render
+  //    very differently to an officer — "No matching parcels" is an answer,
+  //    "Could not reach the Assessor" is a fault report.
   return {
     parcels: [],
     source: 'none',
-    code: lastErr ? 'upstream_error' : 'no_match',
+    code: searchedCleanly ? 'no_match' : 'upstream_error',
     degraded: false,
     manual_url,
     diagnostic: lastErr || undefined,

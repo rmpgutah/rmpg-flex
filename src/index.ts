@@ -510,7 +510,11 @@ export default {
       const denverNow = new Intl.DateTimeFormat('en-US', {
         timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false,
       }).formatToParts(new Date());
-      const denverHour = parseInt(denverNow.find((p) => p.type === 'hour')?.value ?? '-1', 10);
+      // hour12:false yields '24' at midnight in some ICU builds (see
+      // src/utils/dailyReport/dates.ts's tzOffsetMs for the same guard) —
+      // without % 24, denverHour would be 24 at midnight and the blotter's
+      // `denverHour === 0` gate below would silently never fire, forever.
+      const denverHour = parseInt(denverNow.find((p) => p.type === 'hour')?.value ?? '-1', 10) % 24;
       const denverMinute = parseInt(denverNow.find((p) => p.type === 'minute')?.value ?? '-1', 10);
       if (denverHour === 4 && denverMinute === 0) {
         ctx.waitUntil(
@@ -556,6 +560,31 @@ export default {
               if (r.closed > 0) console.log(`[serve-auto-close] closed=${r.closed}`);
             }).catch((err) => console.error('Serve stale auto-close sweep failed:', err)),
           ).catch(() => {}),
+        );
+      }
+
+      // Daily blotter at 00:05 America/Denver. Same hour+minute gate as the
+      // 04:00 tasks above — an hour-only gate would fire ~60x. Self-contained
+      // try/catch so a blotter failure cannot abort the rest of the cron.
+      if (denverHour === 0 && denverMinute === 5) {
+        ctx.waitUntil(
+          (async () => {
+            if (!env.DOWNLOADS) {
+              console.warn('[blotter] DOWNLOADS bucket unbound; skipping nightly run');
+              return;
+            }
+            const { runNightlyBlotter } = await import('./utils/dailyReport/nightly');
+            const res = await runNightlyBlotter(env.DB, env.DOWNLOADS, Date.now());
+            console.log(`[blotter] generated=${res.generated.join(',') || 'none'} skipped=${res.skipped.length}`);
+          })().catch((err) => {
+            console.error('[blotter] nightly run failed:', err);
+            logErrorToDb(env.DB, {
+              severity: 'error',
+              category: 'cron',
+              message: err instanceof Error ? err.message : String(err),
+              source: 'scheduled:daily-blotter',
+            }, ctx);
+          }),
         );
       }
     }
