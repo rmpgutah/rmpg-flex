@@ -97,7 +97,15 @@ export function parseAddressComponents(address: string): AddressComponents {
 
   if (rest.length > 0) {
     const last = rest[rest.length - 1];
-    const normType = TYPE_EXPAND[last] ?? last;
+    // Expand a spelled-out trailing DIRECTION as well as a street type.
+    // SLC's grid names streets by direction ("465 East"), and the county's
+    // form wants that as street_type="E". Previously only TYPE_EXPAND was
+    // applied here, so "EAST" stayed a literal word, street_name became
+    // "465 EAST", and the POST returned the search form instead of the
+    // parcel — surfacing as "Could not reach the Assessor."
+    // Verified live 2026-08-01 for 10506 S 465 E: {name:'465', type:'E'}
+    // redirects to the detail page; {name:'465 EAST'} does not.
+    const normType = TYPE_EXPAND[last] ?? DIR_EXPAND[last] ?? last;
     if (STREET_TYPES.has(normType) || DIRS.has(normType)) {
       street_type = normType;
       street_name = rest.slice(0, -1).join(' ');
@@ -242,14 +250,7 @@ export async function searchByAddress(env: AssessorEnv, address: string): Promis
         const html = await res.text();
         const parcel = parseParcelDetail(html);
         parcel.source_url = res.url;
-        return [{
-          parcel_number: parcel.parcel_number,
-          owner_of_record: parcel.owner_of_record,
-          situs_address: parcel.situs_address,
-          land_sqft: parcel.land_sqft,
-          total_market_value: parcel.market_value_total,
-          detail_url: res.url,
-        }];
+        return [summarize(parcel, res.url)];
       } catch { continue; }
     }
 
@@ -273,6 +274,47 @@ export async function searchByAddress(env: AssessorEnv, address: string): Promis
   }
 
   return [];
+}
+
+/**
+ * Build the picker row from a parsed detail page.
+ *
+ * The picker renders "<parcel>  <owner>" over "<address> · <sqft> · <value>",
+ * and each of those had a single source that is frequently null on the
+ * expanded page — so rows rendered as "— · — · $54,138,800" even though the
+ * data exists elsewhere in the same response. Each field now falls back
+ * through every place the county actually publishes it.
+ */
+export function summarize(parcel: Parcel, detailUrl: string): ParcelSummary {
+  const cama = parcel.cama as CamaParcel | null | undefined;
+  const res = cama?.residence ?? {};
+  const par = cama?.parcel ?? {};
+  const land0 = cama?.land_records?.[0] ?? {};
+
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+
+  // "sqft" in the picker means BUILDING area — that is what an officer reads
+  // (the Garlutzo row shows 1604, the county's Above Grade Area), not lot size.
+  const sqft =
+    num(parcel.total_bldg_sqft) ?? num(parcel.finished_sqft) ??
+    num(res.above_grade_area) ?? num(res.main_floor_area) ??
+    num(parcel.land_sqft) ?? num(land0.sqr_feet);
+
+  const value =
+    num(parcel.market_value_total) ?? num(par.val_final_value) ??
+    num(parcel.taxable_value) ?? num(par.val_taxable_value);
+
+  return {
+    parcel_number: parcel.parcel_number,
+    owner_of_record: parcel.owner_of_record ?? cama?.owner_of_record ?? null,
+    situs_address:
+      parcel.situs_address ?? cama?.situs_address ??
+      (typeof par.par_site_name === 'string' ? par.par_site_name : null),
+    land_sqft: sqft,
+    total_market_value: value,
+    detail_url: detailUrl,
+  };
 }
 
 /**
