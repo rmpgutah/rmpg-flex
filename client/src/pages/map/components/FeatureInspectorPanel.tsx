@@ -32,7 +32,7 @@ function CategoryIcon({ layerId }: { layerId: string }) {
   const cat = (configIdFromLayerId(layerId) ?? '').split('_').slice(2).join('_');
   const svg = OSM_ICON_BY_CAT[cat]?.svg;
   if (!svg) {
-    return <MapPin className="w-3.5 h-3.5 shrink-0 text-rmpg-400" aria-hidden />;
+    return <MapPin className="w-3.5 h-3.5 shrink-0 text-fg-muted" aria-hidden />;
   }
   return <span className="w-3.5 h-3.5 shrink-0" aria-hidden dangerouslySetInnerHTML={{ __html: svg }} />;
 }
@@ -48,7 +48,7 @@ function DetailRows({ feature }: { feature: InspectedFeature }) {
     <div className="px-2 py-2 space-y-2">
       <div>
         <div className="text-[12px] font-semibold text-rmpg-100">{d.title}</div>
-        <div className="text-[8px] uppercase tracking-wider text-rmpg-400">{d.categoryLabel}</div>
+        <div className="text-[8px] uppercase tracking-wider text-fg-muted">{d.categoryLabel}</div>
       </div>
 
       {d.rows.length > 0 && (
@@ -66,15 +66,15 @@ function DetailRows({ feature }: { feature: InspectedFeature }) {
         <div className="pt-1 border-t border-border-default space-y-[1px]">
           {d.extras.map((r) => (
             <div key={r.key} className="flex gap-2 text-[9px] leading-[1.45]">
-              <span className="w-24 shrink-0 text-rmpg-500">{r.label}</span>
-              <span className="text-rmpg-400">{r.value}</span>
+              <span className="w-24 shrink-0 text-fg-muted">{r.label}</span>
+              <span className="text-fg-muted">{r.value}</span>
             </div>
           ))}
         </div>
       )}
 
       {d.coverage && (
-        <div className="pt-1 border-t border-border-default text-[8.5px] leading-[1.4] text-rmpg-500">
+        <div className="pt-1 border-t border-border-default text-[8.5px] leading-[1.4] text-fg-muted">
           {d.coverage}
         </div>
       )}
@@ -90,14 +90,14 @@ function DetailRows({ feature }: { feature: InspectedFeature }) {
           {d.rmpg.note && <div className="text-[10px] leading-[1.45] text-rmpg-200">{d.rmpg.note}</div>}
           {d.rmpg.overriddenFields.length > 0 && (
             // Naming the corrected fields keeps RMPG's value from reading as OSM's.
-            <div className="text-[8px] text-rmpg-500">
+            <div className="text-[8px] text-fg-muted">
               Corrected by RMPG: {d.rmpg.overriddenFields.join(', ')}
             </div>
           )}
         </div>
       )}
 
-      <div className="text-[8px] text-rmpg-500">
+      <div className="text-[8px] text-fg-muted">
         Source: OpenStreetMap · extract {d.provenance.extractDate}
         {d.provenance.editedDate ? ` · edited ${d.provenance.editedDate}` : ''}
       </div>
@@ -131,13 +131,13 @@ export default function FeatureInspectorPanel({
         </IconButton>
       </div>
 
-      <div className="px-2 py-1 text-[9px] text-rmpg-500 border-b border-border-default">
+      <div className="px-2 py-1 text-[9px] text-fg-muted border-b border-border-default">
         {lng.toFixed(5)}, {lat.toFixed(5)}
         {result.widened && <span className="ml-1">· nearest nearby</span>}
       </div>
 
       {result.features.length === 0 ? (
-        <div className="px-2 py-3 text-[10px] text-rmpg-300">
+        <div className="px-2 py-3 text-[10px] text-fg-secondary">
           No overlay features here. Turn on more overlays, or click closer to a mapped feature.
         </div>
       ) : (
@@ -152,19 +152,19 @@ export default function FeatureInspectorPanel({
                   onMouseEnter={() => onHoverFeature(f)}
                   onMouseLeave={() => onHoverFeature(null)}
                   className={`w-full flex items-center gap-2 px-2 py-1 text-left text-[10px]
-                    ${i === selectedIndex ? 'bg-surface-sunken text-rmpg-100' : 'text-rmpg-300'}`}
+                    ${i === selectedIndex ? 'bg-surface-sunken text-rmpg-100' : 'text-fg-secondary'}`}
                 >
                   <CategoryIcon layerId={f.layerId} />
                   <span className="truncate flex-1">
                     {String(f.properties.name ?? '') || f.categoryLabel}
                   </span>
-                  {f.awayLabel && <span className="text-[9px] text-rmpg-500">{f.awayLabel}</span>}
+                  {f.awayLabel && <span className="text-[9px] text-fg-muted">{f.awayLabel}</span>}
                 </button>
               ))}
             </div>
           )}
           {result.features.length === 1 && result.features[0].awayLabel && (
-            <div className="px-2 pt-1 text-[9px] text-rmpg-500">{result.features[0].awayLabel}</div>
+            <div className="px-2 pt-1 text-[9px] text-fg-muted">{result.features[0].awayLabel}</div>
           )}
           {selected && <DetailRows feature={selected} />}
         </div>
