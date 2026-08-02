@@ -105,3 +105,30 @@ Plan 2:
 - **`access=no` ways (98) are matched by no category** — the `seasonal` rule
   catches `access=private` only. A small, deliberate gap; candidate
   refinement for Plan 2.
+
+## Build log
+
+- **Date built:** 2026-08-01 (uploaded to R2 2026-08-02, manifest `generated_at: 2026-08-02T06:25:36Z`)
+- **Extract:** `utah-latest.osm.pbf` from Geofabrik, data timestamp 2026-08-01, 159 MB
+- **Destination:** R2 bucket `system-essentials`, `tiles/osm-<group>.pmtiles` (nine archives) plus `tiles/osm-manifest.json`
+- **Total features:** 752,580 across nine groups
+- **Verification:** all nine archives read back from R2 with a valid `PMTiles` magic header; `tiles/osm-manifest.json` verified as well-formed JSON; pre-existing `tiles/utah-roads.pmtiles` and `tiles/utah-address-points.pmtiles` confirmed intact after the upload.
+
+| Group | Feature count | Archive size |
+|---|---:|---:|
+| surveillance | 1,809 | 428K |
+| traffic | 214,841 | 22M |
+| safety | 13,213 | 1.7M |
+| utility | 101,496 | 16M |
+| sites | 87,030 | 5.7M |
+| access | 79,020 | 6.5M |
+| drivability | 166,403 | 134M |
+| terrain | 86,166 | 51M |
+| jurisdiction | 2,602 | 31M |
+
+### Drop-rule decisions
+
+- **Dropped `traffic` / `enforce`** (1 feature statewide) — Utah prohibits automated traffic enforcement by statute, so this category has no operational future in this jurisdiction.
+- **Dropped `safety` / `fire_equip`** (15 features) — portable extinguishers are not operationally actionable for this application.
+- **Kept as documented exceptions below the 50-feature threshold:** `safety` / `water` (20), `safety` / `inlet` (6), and `jurisdiction` / `tribal` (10 — Utah has only ~8 tribal land areas, so this is near-complete coverage rather than sparse data). Reasons are recorded in the table above.
+- **Net effect:** the catalog went from 57 categories to 55.
