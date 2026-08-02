@@ -61,6 +61,56 @@ export function nextAttemptDelaySeconds(attemptCount: number): number {
 
 export function maxAttempts(): number { return BACKOFF_SECONDS.length; }
 
+/**
+ * Seconds a row must sit idle after its Nth failure before the drain may take
+ * it again: failure 1 → BACKOFF_SECONDS[0], failure 2 → [1], and so on.
+ * `attempts = 0` (never tried) is always due immediately.
+ *
+ * The final element is unreachable by construction — `maxAttempts()` is the
+ * array length, so a row with `attempts === length` is already 'failed' and
+ * never re-selected. It is kept so the array reads as a complete schedule.
+ *
+ * ⚠️ Under the 30-minute cron this gate can only ever make retries LATER, never
+ * sooner: the drain runs once per tick, so the sub-30-minute steps (1s, 4s,
+ * 16s, 60s, 5m) are already dominated by tick granularity. What it actually
+ * buys is the tail — the 30m step is honored instead of collapsing to one
+ * attempt per tick. With 4xx now failing fast, everything still retrying is a
+ * 5xx or a timeout, i.e. exactly when backing off is the correct behavior.
+ */
+export function backoffDelayAfterFailures(attempts: number): number {
+  if (attempts <= 0) return 0;
+  return nextAttemptDelaySeconds(attempts - 1);
+}
+
+/** Pure mirror of `backoffDueSql()` — same verdict, in TS, for tests. */
+export function isBackoffElapsed(
+  attempts: number,
+  processedAtMs: number | null,
+  nowMs: number,
+): boolean {
+  if (attempts <= 0) return true;
+  if (processedAtMs === null) return true;
+  return nowMs - processedAtMs >= backoffDelayAfterFailures(attempts) * 1000;
+}
+
+/**
+ * SQL predicate form of `isBackoffElapsed`, generated FROM `BACKOFF_SECONDS`
+ * so the schedule has exactly one definition. Hand-writing the CASE arms is
+ * how the two would drift.
+ *
+ * Interpolation is safe: every value comes from a module-level numeric
+ * constant, never from a request. Kept as literals rather than bound
+ * parameters because D1 caps a statement at 100 bound params and this clause
+ * would spend one per arm for a value that never varies at runtime.
+ */
+export function backoffDueSql(): string {
+  const arms = BACKOFF_SECONDS
+    .map((secs, i) => `WHEN ${i + 1} THEN ${Number(secs)}`)
+    .join(' ');
+  const fallback = Number(BACKOFF_SECONDS[BACKOFF_SECONDS.length - 1]);
+  return `(attempts = 0 OR processed_at IS NULL OR datetime(processed_at, '+' || (CASE attempts ${arms} ELSE ${fallback} END) || ' seconds') <= datetime('now'))`;
+}
+
 // ─── Permanent vs transient failure ───────────────────────
 // A 4xx from Fleet.io is a verdict on the PAYLOAD, not on the connection:
 // replaying identical bytes cannot change the answer. Retrying one burns all
@@ -224,6 +274,7 @@ export async function applyOutbound(deps: ApplyOutboundDeps): Promise<ApplyOutbo
               attempts, payload_json, error, created_at, processed_at
        FROM fleetio_events
        WHERE direction = 'outbound' AND status = 'pending' AND attempts < ?
+         AND ${backoffDueSql()}
        ORDER BY id ASC
        LIMIT ?`,
     ).bind(maxAttempts(), limit).all<FleetioEventRow>();
