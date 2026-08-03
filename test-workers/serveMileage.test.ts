@@ -59,7 +59,15 @@ beforeAll(async () => {
     (1, 501, 40.7000, -111.8900, '2026-08-01 08:50:00'),
     (1, 501, 40.7150, -111.8900, '2026-08-01 09:05:00'),
     (1, 501, 40.7300, -111.8900, '2026-08-01 09:20:00'),
-    (1, 501, 40.7450, -111.8900, '2026-08-01 09:40:00')`);
+    (1, 501, 40.7450, -111.8900, '2026-08-01 09:40:00'),
+    (1, 501, 40.7600, -111.8900, '2026-08-01 09:45:00')`);
+  // NOTE (2026-08-02): the 09:45 point was added when the "hop must start
+  // inside the segment" guard was restored in serveMileage.ts. A hop is now
+  // attributed only when BOTH endpoints fall inside one attempt's window, so
+  // the 08:50->09:05 commute and the boundary-straddling 09:20->09:40 hop are
+  // unattributed. Without a second in-window point after 09:30, job 9002's
+  // share would legitimately be 0 and this fixture could no longer exercise
+  // the cross-job split it exists to pin.
 });
 
 describe('GET /api/serve/stats/summary', () => {

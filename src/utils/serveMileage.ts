@@ -24,6 +24,17 @@
 // last attempt's capped window, are not attributed to any job -- getting to
 // the first stop of the day isn't "for" that job any more than it's for any
 // other, and inventing an attribution rule for it is out of scope here.
+// Concretely: a hop is attributed only when BOTH of its endpoints fall at or
+// after the covering attempt's attempt_at. A hop that straddles a segment
+// boundary (prev before the window opened, curr inside it) is therefore
+// unattributed rather than billed forward — the same exclusion the pre-repair
+// `gb.recorded_at >= sa.attempt_at` filter produced, and the conservative
+// direction for a billing surface.
+//
+// Error handling: computeOfficerMileageSegments PROPAGATES D1 query failures.
+// The officer-facing/stats consumers want that (they render `null` rather
+// than a confident "0.0 miles"); the billing consumer
+// (computeMileageForQueue) catches per officer-day so it still fails open.
 // ============================================================
 
 import type { D1Database } from '@cloudflare/workers-types';
@@ -76,7 +87,7 @@ export async function computeOfficerMileageSegments(
      WHERE officer_id = ? AND attempt_at >= ? AND attempt_at <= ?
      ORDER BY attempt_at ASC, id ASC`,
     officerId, from, to,
-  ).catch(() => []);
+  );
 
   if (attempts.length === 0) return [];
 
@@ -106,7 +117,7 @@ export async function computeOfficerMileageSegments(
        AND latitude IS NOT NULL AND longitude IS NOT NULL
      ORDER BY recorded_at ASC`,
     officerId, from, to,
-  ).catch(() => []);
+  );
 
   let attemptIdx = 0;
 
@@ -139,6 +150,7 @@ export async function computeOfficerMileageSegments(
     if (attemptIdx >= attempts.length) break; // past every attempt's window — unattributed, rest is too
 
     if (curr.recorded_at < attempts[attemptIdx].attempt_at) continue; // curr is before this segment — truly unattributed
+    if (prev.recorded_at < attempts[attemptIdx].attempt_at) continue; // hop starts before this attempt's window opened — unattributed
 
     segments[attemptIdx].miles += dist;
   }
@@ -167,12 +179,19 @@ export async function computeMileageForQueue(
 
   let total = 0;
   for (const { officer_id, day } of officerDays) {
-    const segments = await computeOfficerMileageSegments(
-      db, officer_id, `${day} 00:00:00`, `${day} 23:59:59`,
-    );
-    total += segments
-      .filter((s) => s.serveQueueId === queueId)
-      .reduce((sum, s) => sum + s.miles, 0);
+    try {
+      const segments = await computeOfficerMileageSegments(
+        db, officer_id, `${day} 00:00:00`, `${day} 23:59:59`,
+      );
+      total += segments
+        .filter((s) => s.serveQueueId === queueId)
+        .reduce((sum, s) => sum + s.miles, 0);
+    } catch {
+      // One officer-day's breadcrumb query failing should not zero out or
+      // crash the whole job's billed mileage — skip just that officer-day's
+      // contribution and keep summing the rest (fail-open, matches this
+      // function's pre-existing contract for the billing consumer).
+    }
   }
   return total;
 }
