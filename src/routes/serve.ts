@@ -53,6 +53,7 @@ import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } f
 import { autoAssignAllUnassigned } from '../utils/serveAutoAssign';
 import { routeJsonColumn } from '../utils/serveRoutePayload';
 import { parseD1TimestampMs } from '../utils/fleetio/sync';
+import { computeOfficerMileageForDay, computeOfficerMileageSegments } from '../utils/serveMileage';
 
 const sv = new Hono<Env>();
 
@@ -149,17 +150,8 @@ sv.get('/stats/summary', async (c) => {
   const total = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM serve_queue');
 
   // Planned mileage lives on serve_routes.total_distance_miles (one row per
-  // officer per day) — verified against live D1, which has no actual_mileage
-  // or planned_mileage column despite the client's field names implying both.
-  // This is what the Stats tab's "Route Efficiency" card divides by, so it is
-  // the field that actually unblocks that card.
-  //
-  // `mileage` (ACTUAL driven miles) has no serve-side source: nothing on
-  // serve_routes or serve_attempts records odometer or driven distance. It is
-  // reported as null rather than aliased to the planned figure — labelling a
-  // planned number as actual would quietly overstate reimbursable mileage on a
-  // billing surface. The card already falls back to the client's live route
-  // distance, so this stays honest instead of guessing.
+  // officer per day) — this is what the Stats tab's "Route Efficiency" card
+  // divides by.
   let plannedMileage = 0;
   if (await columnExists(db, 'serve_routes', 'total_distance_miles')) {
     const m = await queryFirst<{ planned: number | null }>(
@@ -171,6 +163,31 @@ sv.get('/stats/summary', async (c) => {
     plannedMileage = Math.round((m?.planned ?? 0) * 10) / 10;
   }
 
+  // Actual driven mileage — sum computeOfficerMileageForDay (serveMileage.ts)
+  // across every officer with an attempt that day. This is the same
+  // attribution the billing line-item generator uses (serveBillingEnhanced.ts
+  // -> computeMileageForQueue), so this card can never show a number the
+  // eventual invoice disagrees with. A query failure falls back to null
+  // (never to the planned figure — labelling a planned number as actual
+  // would quietly overstate reimbursable mileage on a billing-adjacent
+  // surface).
+  let actualMileage: number | null = null;
+  try {
+    const officerRows = await query<{ officer_id: number }>(
+      db,
+      `SELECT DISTINCT officer_id FROM serve_attempts
+       WHERE date(attempt_at) = ? AND officer_id IS NOT NULL`,
+      day,
+    );
+    let sum = 0;
+    for (const { officer_id } of officerRows) {
+      sum += await computeOfficerMileageForDay(db, officer_id, day);
+    }
+    actualMileage = Math.round(sum * 10) / 10;
+  } catch {
+    actualMileage = null;
+  }
+
   return c.json({
     date: day,
     total: total?.n ?? 0,
@@ -180,9 +197,46 @@ sv.get('/stats/summary', async (c) => {
     failed: dayCounts?.failed ?? 0,
     overdue: openCounts?.overdue ?? 0,
     total_attempts: attempts?.n ?? 0,
-    mileage: null,
+    mileage: actualMileage,
     planned_mileage: plannedMileage,
   });
+});
+
+// GET /mileage/mine — officer-facing "mileage today" surface. Scoped to the
+// authenticated officer's own id only (never a query param) so this can
+// never leak another officer's driven mileage. Backs MyRunTab's pre-invoice
+// visibility line: the same number this endpoint returns is what
+// generateBillingLineItems (serveBillingEnhanced.ts) will later bill to the
+// client, computed from the same shared serveMileage.ts source.
+sv.get('/mileage/mine', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const user = c.get('user') as { id: number } | undefined;
+  if (!user?.id) return c.json({ error: 'Not authenticated' }, 401);
+
+  const dateParam = c.req.query('date');
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(dateParam ?? '')
+    ? dateParam!
+    : new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date());
+
+  const db = getDb(c.env);
+  try {
+    const segments = await computeOfficerMileageSegments(
+      db, user.id, `${day} 00:00:00`, `${day} 23:59:59`,
+    );
+    const byJobMap = new Map<number, number>();
+    for (const s of segments) {
+      byJobMap.set(s.serveQueueId, (byJobMap.get(s.serveQueueId) ?? 0) + s.miles);
+    }
+    const by_job = Array.from(byJobMap.entries()).map(([serve_queue_id, miles]) => ({
+      serve_queue_id,
+      miles: Math.round(miles * 10) / 10,
+    }));
+    const miles = Math.round(by_job.reduce((sum, j) => sum + j.miles, 0) * 10) / 10;
+    return c.json({ date: day, miles, by_job });
+  } catch {
+    return c.json({ date: day, miles: 0, by_job: [] });
+  }
 });
 
 // GET /active-routes — DispatchPage's process-server overlay. Returns
