@@ -658,9 +658,9 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
       {/* ── Progress bar ─────────────────────────────────────────── */}
       <ProgressBar served={servedToday} total={totalToday} />
       {mileageToday !== null && mileageToday > 0 && (
-        <div className="px-3 py-1 border-b border-rmpg-700 bg-surface-sunken text-[9px] text-rmpg-500 uppercase tracking-wider flex items-center justify-between">
+        <div className="px-3 py-1 border-b border-rmpg-700 bg-surface-sunken text-[9px] text-fg-muted uppercase tracking-wider flex items-center justify-between">
           <span>Mileage today</span>
-          <span className="font-mono tabular-nums text-rmpg-300">{mileageToday.toFixed(1)} mi</span>
+          <span className="font-mono tabular-nums text-rmpg-100">{mileageToday.toFixed(1)} mi</span>
         </div>
       )}
 
