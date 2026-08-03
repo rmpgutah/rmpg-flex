@@ -235,7 +235,7 @@ sv.get('/mileage/mine', async (c) => {
     const miles = Math.round(by_job.reduce((sum, j) => sum + j.miles, 0) * 10) / 10;
     return c.json({ date: day, miles, by_job });
   } catch {
-    return c.json({ date: day, miles: 0, by_job: [] });
+    return c.json({ date: day, miles: null, by_job: [] });
   }
 });
 
