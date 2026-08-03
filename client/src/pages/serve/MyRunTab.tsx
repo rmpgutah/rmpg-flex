@@ -496,6 +496,17 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
     fetchRun();
   }, [fetchRun]);
 
+  // ── Mileage today (read-only, pre-invoice visibility) ─────────────────
+  const [mileageToday, setMileageToday] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ miles: number }>(`/serve/mileage/mine?date=${today}`)
+      .then((res) => { if (!cancelled) setMileageToday(res?.miles ?? null); })
+      .catch(() => { if (!cancelled) setMileageToday(null); });
+    return () => { cancelled = true; };
+  }, [today]);
+
   // ── Listen for serve:statusChanged cross-tab events ─────────────────────
   // When running in standalone mode (no sharedJobs), we own localJobs and
   // must update it ourselves when another component fires this event.
@@ -646,6 +657,12 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
     <div className="flex flex-col h-full bg-surface-base">
       {/* ── Progress bar ─────────────────────────────────────────── */}
       <ProgressBar served={servedToday} total={totalToday} />
+      {mileageToday !== null && mileageToday > 0 && (
+        <div className="px-3 py-1 border-b border-rmpg-700 bg-surface-sunken text-[9px] text-fg-muted uppercase tracking-wider flex items-center justify-between">
+          <span>Mileage today</span>
+          <span className="font-mono tabular-nums text-rmpg-100">{mileageToday.toFixed(1)} mi</span>
+        </div>
+      )}
 
       {/* ── Scrollable body ──────────────────────────────────────── */}
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark">

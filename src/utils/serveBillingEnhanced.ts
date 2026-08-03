@@ -11,6 +11,7 @@ import { queryFirst, query, execute, executeBatch, executeInChunks } from './db'
 import { log } from './logger';
 import { denverHourExpr, denverStrftimeExpr } from './denverTime';
 import { toDisplayLabel } from './displayLabel';
+import { computeMileageForQueue, haversineMiles } from './serveMileage';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -1096,56 +1097,6 @@ export async function calculateMileageReimbursement(
     totalMiles: roundCents(totalMiles),
     reimbursementAmount: roundCents(totalMiles * mileageRate),
   };
-}
-
-// ── Internal helpers ────────────────────────────────────────
-
-/** Haversine distance in miles between two lat/lng points. */
-function haversineMiles(
-  lat1: number, lon1: number,
-  lat2: number, lon2: number,
-): number {
-  const R = 3958.8; // Earth radius in miles
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-    Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-/** Sum haversine distances for GPS breadcrumbs linked to a serve job. */
-async function computeMileageForQueue(db: D1Database, queueId: number): Promise<number> {
-  const rows = await query<{
-    latitude: number;
-    longitude: number;
-    recorded_at: string;
-  }>(
-    db,
-    `SELECT gb.latitude, gb.longitude, gb.recorded_at
-     FROM gps_breadcrumbs gb
-     JOIN serve_attempts sa ON sa.officer_id = gb.officer_id
-       AND gb.recorded_at >= sa.attempt_at
-       AND gb.recorded_at <= datetime(sa.attempt_at, '+2 hours')
-     WHERE sa.serve_queue_id = ?
-       AND gb.latitude IS NOT NULL
-       AND gb.longitude IS NOT NULL
-     ORDER BY gb.recorded_at ASC`,
-    queueId,
-  ).catch(() => []);
-
-  let totalMiles = 0;
-  for (let i = 1; i < rows.length; i++) {
-    const dist = haversineMiles(
-      rows[i - 1].latitude, rows[i - 1].longitude,
-      rows[i].latitude, rows[i].longitude,
-    );
-    if (dist <= 50) totalMiles += dist;
-  }
-  return totalMiles;
 }
 
 /** Total wait time in minutes across attempts for a serve job. */
