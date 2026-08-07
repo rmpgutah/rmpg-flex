@@ -470,17 +470,17 @@ function ContactRow({ id, sub, color, bearing, distMi, heading, threat }: {
 }) {
   const rel = heading != null ? ((bearing - heading) % 360 + 360) % 360 : bearing;
   return (
-    <div className={`flex items-center gap-1.5 px-2 py-1 ${threat ? 'bg-red-500/10' : ''}`}>
-      <svg width="13" height="13" viewBox="0 0 12 12" className="shrink-0" style={{ transform: `rotate(${rel}deg)`, transition: 'transform 0.4s ease-out' }} aria-hidden="true">
+    <div className={`flex items-center gap-1.5 px-2 py-1.5 ${threat ? 'bg-red-500/10' : ''}`}>
+      <svg width="14" height="14" viewBox="0 0 12 12" className="shrink-0" style={{ transform: `rotate(${rel}deg)`, transition: 'transform 0.4s ease-out' }} aria-hidden="true">
         <path d="M6 1 L9.5 10.5 L6 8 L2.5 10.5 Z" fill={color} />
       </svg>
       <div className="flex-1 min-w-0">
-        <div className="text-[10px] font-mono text-rmpg-100 truncate leading-tight">{id}</div>
-        <div className="text-[8px] text-rmpg-500 truncate leading-tight">{sub}</div>
+        <div className="text-[11px] font-mono text-rmpg-100 truncate leading-tight">{id}</div>
+        <div className="text-[10px] text-rmpg-500 truncate leading-tight">{sub}</div>
       </div>
       <div className="text-right shrink-0 leading-tight">
-        <div className="text-[10px] font-mono text-brand-300">{distMi.toFixed(1)}mi</div>
-        <div className="text-[8px] font-mono text-rmpg-600">{String(Math.round(bearing)).padStart(3, '0')}°</div>
+        <div className="text-[11px] font-mono text-brand-300">{distMi.toFixed(1)}mi</div>
+        <div className="text-[10px] font-mono text-rmpg-600">{String(Math.round(bearing)).padStart(3, '0')}°</div>
       </div>
     </div>
   );
@@ -2578,7 +2578,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => setCrimeOn((v) => !v)}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
           style={{ color: crimeOn ? 'var(--sev-warn)' : 'var(--text-muted)' }}
           title={crimeOn ? 'Hide crime layer' : 'Show crime layer (SLC + RMPG)'}
           aria-label={crimeOn ? 'Hide crime layer' : 'Show crime layer'}
@@ -2587,7 +2587,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => setCrashOn((v) => !v)}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
           style={{ color: crashOn ? 'var(--text-primary)' : 'var(--text-muted)' }}
           title={crashOn ? 'Hide traffic-crash layer' : 'Show SLC traffic crashes (travel hazards)'}
           aria-label={crashOn ? 'Hide traffic crashes' : 'Show traffic crashes'}
@@ -2605,7 +2605,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => { setTripOpen((v) => !v); if (!tripOpen) { setLogOpen(false); setTripsOpen(false); } }}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
           style={{ color: tripOpen ? 'var(--accent-active)' : 'var(--text-muted)' }}
           title="Movement report (speed, g-force, driving events)"
           aria-label="Toggle movement report"
@@ -2614,7 +2614,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => { setTripsOpen((v) => !v); if (!tripsOpen) { setTripOpen(false); setLogOpen(false); } }}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
           style={{ color: tripsOpen ? 'var(--accent-active)' : 'var(--text-muted)' }}
           title="Trip chain — per-trip movement reports for this unit"
           aria-label="Toggle trips drawer"
@@ -2623,7 +2623,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => { setLogOpen((v) => !v); if (!logOpen) { setTripOpen(false); setTripsOpen(false); } }}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
           style={{ color: logOpen ? 'var(--accent-active)' : 'var(--text-muted)' }}
           title="Call history log for this unit"
           aria-label="Toggle call history log"
@@ -2640,7 +2640,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => navigate('/map')}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase text-rmpg-300 hover:text-rmpg-100"
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase text-rmpg-300 hover:text-rmpg-100"
           title="Back to map"
           aria-label="Back to map"
         >
@@ -3180,9 +3180,9 @@ export default function NavigationPage() {
                   style={{ borderRadius: 2, background: nightTheme ? 'rgba(8,8,8,0.85)' : 'rgba(20,20,20,0.6)' }}
                   title={currentStreet || undefined}
                 >
-                  <div className={`text-[8px] uppercase tracking-wider leading-none ${nightTheme ? 'text-rmpg-500' : 'text-rmpg-600'}`}>Street</div>
-                  <div className={`font-bold text-[15px] leading-tight mt-0.5 truncate ${nightTheme ? 'text-rmpg-50' : 'text-rmpg-100'}`}>
-                    {truncateLabel(currentStreet, 30) || (hasFix ? 'Locating…' : 'Acquiring fix…')}
+                  <div className={`text-[10px] uppercase tracking-wider leading-none ${nightTheme ? 'text-rmpg-500' : 'text-rmpg-600'}`}>Street</div>
+                  <div className={`font-bold text-[18px] leading-tight mt-0.5 truncate ${nightTheme ? 'text-rmpg-50' : 'text-rmpg-100'}`}>
+                    {truncateLabel(currentStreet, 24) || (hasFix ? 'Locating…' : 'Acquiring fix…')}
                   </div>
                 </div>
                 {/* #31 — routed-remaining | crow-flies dual distance */}
@@ -3199,7 +3199,7 @@ export default function NavigationPage() {
               </div>
               <div
                 className="grid gap-1.5"
-                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(86px, 1fr))', opacity: parked ? 0.5 : 1, transition: 'opacity 0.4s' }}
+                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', opacity: parked ? 0.5 : 1, transition: 'opacity 0.4s' }}
               >
                 {/* #67 — avg speed tile; Max/Elapsed/Distance each have a dedicated tile below */}
                 <HudStatTile night={nightTheme} metrics={[
