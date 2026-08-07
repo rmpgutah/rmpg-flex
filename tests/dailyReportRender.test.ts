@@ -90,4 +90,23 @@ describe('renderDailyReport', () => {
     expect(joined).toContain('123 Main St');
     expect(joined).not.toContain('…');
   });
+
+  it('displays Mountain Time (MT), not raw UTC, for all timestamps', async () => {
+    // received_at '2026-07-18 20:00:00' is UTC = 14:00 MT (MDT, UTC-6).
+    // generatedAt '2026-08-01T12:00:00.000Z' is UTC = 06:00 MT.
+    // If the blotter shows '20:00' or '12:00' the UTC-to-MT conversion is broken.
+    const bytes = await renderDailyReport(fullData);
+    const { extractText, getDocumentProxy } = await import('unpdf');
+    const doc = await getDocumentProxy(new Uint8Array(bytes));
+    const { text } = await extractText(doc, { mergePages: true });
+    const joined = Array.isArray(text) ? text.join('\n') : text;
+
+    // Must contain the Mountain Time representation.
+    expect(joined).toContain('2026-07-18 14:00 MT');
+    expect(joined).toContain('2026-08-01 06:00:00 MT');
+
+    // Must NOT contain the raw UTC values.
+    expect(joined).not.toContain('20:00:00');
+    expect(joined).not.toContain('12:00:00Z');
+  });
 });

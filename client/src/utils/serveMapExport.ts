@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { localToday } from './dateUtils';
 
 export interface QueueMapItemForExport {
   id: number;
@@ -30,6 +31,6 @@ export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promi
     doc.text('No jobs match the current filter.', 14, y);
   }
 
-  const dateStr = new Date().toISOString().slice(0, 10);
+  const dateStr = localToday();
   doc.save(`serve-route-sheet-${dateStr}.pdf`);
 }

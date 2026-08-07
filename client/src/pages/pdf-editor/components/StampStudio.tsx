@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Stamp, X, Upload, Sparkles, Check, Save, AlertTriangle, RotateCcw } from 'lucide-react';
 import { addCustomStamp, type CustomStamp } from './CustomStampsGallery';
+import { localToday } from '../../../utils/dateUtils';
 
 // ============================================================
 // Stamp Studio — author transparent-PNG stamps two ways:
@@ -289,7 +290,7 @@ function renderDateStamp(s: TemplateState): HTMLCanvasElement {
   ctx.font = '15px Arial, sans-serif';
   ctx.fillText((s.dateLabel || 'RECEIVED').toUpperCase(), W / 2, 38);
   ctx.font = 'bold 36px "Courier New", monospace';
-  ctx.fillText(s.dateValue || new Date().toISOString().slice(0, 10), W / 2, 76);
+  ctx.fillText(s.dateValue || localToday(), W / 2, 76);
   return c;
 }
 
@@ -324,10 +325,10 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
   const [tpl, setTpl] = useState<TemplateState>({
     ink: '#c0392b',
     notaryName: 'NOTARY PUBLIC', notaryState: 'Utah', notaryCommission: '', notaryExpires: '',
-    decision: 'APPROVED', approvalDate: new Date().toISOString().slice(0, 10), approvalOfficer: officerName || '',
+    decision: 'APPROVED', approvalDate: localToday(), approvalOfficer: officerName || '',
     textWord: 'COPY',
     badgeOfficer: officerName || '', badgeNumber: badgeNumber || '',
-    dateValue: new Date().toISOString().slice(0, 10), dateLabel: 'RECEIVED',
+    dateValue: localToday(), dateLabel: 'RECEIVED',
   });
 
   const previewRef = useRef<HTMLCanvasElement | null>(null);

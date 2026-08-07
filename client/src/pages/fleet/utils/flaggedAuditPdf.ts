@@ -17,7 +17,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetFuelLog } from '../../../types';
-import { parseTimestamp } from '../../../utils/dateUtils';
+import { parseTimestamp, localToday } from '../../../utils/dateUtils';
 import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 
 export interface Args {
@@ -200,6 +200,6 @@ export function buildFlaggedAuditPdf({ logs, scopeLabel, dateRange }: Args): jsP
  *  filename/behaviour as before this function was split into a builder + saver). */
 export function generateFlaggedAuditPdf(args: Args): void {
   const doc = buildFlaggedAuditPdf(args);
-  const filename = `fuel-flagged-audit-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `fuel-flagged-audit-${localToday()}.pdf`;
   doc.save(filename);
 }
