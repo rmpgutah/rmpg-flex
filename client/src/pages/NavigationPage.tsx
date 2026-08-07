@@ -3189,12 +3189,9 @@ export default function NavigationPage() {
                 className="grid gap-1.5"
                 style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(86px, 1fr))', opacity: parked ? 0.5 : 1, transition: 'opacity 0.4s' }}
               >
-                {/* #67 — first tile cycles avg / max / elapsed / distance on long-press */}
+                {/* #67 — avg speed tile; Max/Elapsed/Distance each have a dedicated tile below */}
                 <HudStatTile night={nightTheme} metrics={[
                   { key: 'avg', label: 'Avg', value: formatSpeed(avgMph, speedUnit) },
-                  { key: 'max', label: 'Max', value: formatSpeed(maxMph, speedUnit) },
-                  { key: 'elapsed', label: 'Session', value: hudFormatDuration(sessionMs) },
-                  { key: 'distance', label: 'Distance', value: formatDistanceLong(distanceRef.current, speedUnit) },
                 ]} />
                 {/* #35 — current speed */}
                 <HudStatTile night={nightTheme} metrics={[{ key: 'cur', label: 'Speed', value: formatSpeed(liveMph, speedUnit), accent: liveMph != null && liveMph > 55 ? 'var(--sev-warn)' : undefined }]} />
