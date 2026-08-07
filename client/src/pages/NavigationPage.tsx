@@ -1251,25 +1251,37 @@ export default function NavigationPage() {
     if (effMph != null) {
       const p2 = accelRef.current;
       if (p2 && now > p2.t) {
-        const g = ((effMph - p2.mph) / ((now - p2.t) / 1000)) / 21.94;
-        setGForce(g);
-        if (g > 0) peakGRef.current.accel = Math.max(peakGRef.current.accel, g);
-        else if (g < 0) peakGRef.current.brake = Math.max(peakGRef.current.brake, -g);
-        // #32/#53 — hard-brake / hard-accel events (threshold 0.35 g), edge-
-        // triggered so one event counts once, with a transient amber G-ball flash.
-        const HARD = 0.35;
-        if (g <= -HARD && lastGSignRef.current > -HARD) {
-          hardBrakesRef.current += 1; forceEvents((n) => n + 1);
-          setGFlash('brake');
-          if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
-          gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
-        } else if (g >= HARD && lastGSignRef.current < HARD) {
-          hardAccelsRef.current += 1; forceEvents((n) => n + 1);
-          setGFlash('accel');
-          if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
-          gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
+        const dts = (now - p2.t) / 1000;
+        // Mirror the lateral guard: reject sub-50 ms or >10 s intervals where
+        // GPS speed noise dominates and produces spurious multi-G spikes.
+        if (dts > 0.05 && dts < 10) {
+          const g = ((effMph - p2.mph) / dts) / 21.94;
+          if (Number.isFinite(g)) {
+            setGForce(g);
+            // Gate peaks on ≤1.5 g — a GPS speed glitch (large Δv in one short
+            // sample) can spike far above any real patrol-vehicle maneuver and
+            // permanently corrupt the session max shown in the Movement Report.
+            if (Math.abs(g) <= 1.5) {
+              if (g > 0) peakGRef.current.accel = Math.max(peakGRef.current.accel, g);
+              else if (g < 0) peakGRef.current.brake = Math.max(peakGRef.current.brake, -g);
+            }
+            // #32/#53 — hard-brake / hard-accel events (threshold 0.35 g), edge-
+            // triggered so one event counts once, with a transient amber G-ball flash.
+            const HARD = 0.35;
+            if (g <= -HARD && lastGSignRef.current > -HARD) {
+              hardBrakesRef.current += 1; forceEvents((n) => n + 1);
+              setGFlash('brake');
+              if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
+              gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
+            } else if (g >= HARD && lastGSignRef.current < HARD) {
+              hardAccelsRef.current += 1; forceEvents((n) => n + 1);
+              setGFlash('accel');
+              if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
+              gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
+            }
+            lastGSignRef.current = g;
+          }
         }
-        lastGSignRef.current = g;
       }
       accelRef.current = { mph: effMph, t: now };
     }
@@ -1292,7 +1304,7 @@ export default function NavigationPage() {
         if (dts > 0.05 && dts < 10) {
           const omega = (dd / dts) * Math.PI / 180;     // rad/s, signed (+right / −left)
           let lg = (omega * (effMph / 2.237)) / 9.80665; // ω·v / g
-          if (!Number.isFinite(lg) || Math.abs(lg) > 2) lg = 0; // clamp GPS noise
+          if (!Number.isFinite(lg) || Math.abs(lg) > 1.5) lg = 0; // clamp GPS heading jitter
           setLatGLive(lg);
           peakGRef.current.lat = Math.max(peakGRef.current.lat, Math.abs(lg));
         }
