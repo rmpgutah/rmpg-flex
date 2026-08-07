@@ -1589,14 +1589,20 @@ hr.get('/attendance/summary/:officerId', requireRole(...ALL_ROLES), async (c) =>
     const db = getDb(c.env);
     const officerId = Number(c.req.param('officerId'));
     const year = c.req.query('year') || String(new Date().getFullYear());
-    const rows = await query<{ type: string; count: number }>(db,
-      `SELECT type, COUNT(*) AS count FROM hr_attendance
+    const by_type = await query<{ type: string; count: number; excused_count: number }>(db,
+      `SELECT type, COUNT(*) AS count,
+              SUM(CASE WHEN excused = 1 THEN 1 ELSE 0 END) AS excused_count
+       FROM hr_attendance
        WHERE officer_id = ? AND substr(date, 1, 4) = ?
        GROUP BY type`, officerId, year);
-    const total = rows.reduce((sum, r) => sum + r.count, 0);
-    const absent = rows.find(r => r.type === 'absent')?.count ?? 0;
-    const tardy = rows.find(r => r.type === 'tardy')?.count ?? 0;
-    return c.json({ officer_id: officerId, year: Number(year), total, absent, tardy, early_departure: rows.find(r => r.type === 'early_departure')?.count ?? 0, no_call_no_show: rows.find(r => r.type === 'no_call_no_show')?.count ?? 0 });
+    const total_incidents = by_type.reduce((sum, r) => sum + r.count, 0);
+    const mfRows = await query<{ mf_count: number }>(db,
+      `SELECT COUNT(*) AS mf_count FROM hr_attendance
+       WHERE officer_id = ? AND substr(date, 1, 4) = ?
+         AND strftime('%w', date) IN ('1', '5')`, officerId, year);
+    const monday_friday_count = mfRows[0]?.mf_count ?? 0;
+    const monday_friday_pattern = total_incidents > 0 && monday_friday_count >= 2 && (monday_friday_count / total_incidents) >= 0.4;
+    return c.json({ officer_id: officerId, year: Number(year), by_type, total_incidents, monday_friday_pattern, monday_friday_count });
   } catch (err) {
     console.error('[hr] GET /attendance/summary/:officerId', err);
     return c.json({ error: 'Failed to load attendance summary', code: 'HR_ATTEND_SUM_ERR' }, 500);
