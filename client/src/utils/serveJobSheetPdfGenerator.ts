@@ -322,11 +322,11 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
       'I certify that the information above is accurate and complete to the best of my knowledge, ' +
       'and that I am a licensed or authorized process server acting in an official capacity for ' +
       'Rocky Mountain Protective Group.';
-    y = addWrappedText(doc, certText, lx, y, ffw, FONT.SIZE_FIELD_LABEL);
+    y = addWrappedText(doc, certText, lx, y, ffw, FONT.SIZE_CERTIFICATION);
     y += SPACING.LG;
 
-    const fy1 = addFieldPair(doc, 'Officer Name', data.officerName, lx, y, hfw);
-    const fy2 = addFieldPair(doc, 'Badge / License #', data.officerBadge || 'N/A', rx, y, hfw);
+    const fy1 = addFieldPair(doc, 'Officer Name', data.officerName, lx, y, hfw, undefined, FONT.SIZE_FIELD_LABEL);
+    const fy2 = addFieldPair(doc, 'Badge / License #', data.officerBadge || 'N/A', rx, y, hfw, undefined, FONT.SIZE_FIELD_LABEL);
     y = Math.max(fy1, fy2);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }

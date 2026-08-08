@@ -1086,7 +1086,7 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
  * Shows "—" em-dash for empty/null values.
  * Returns Y position for next row.
  */
-export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
+export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number, valueFontSizeOverride?: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   // Height reserved for label above value. 2.7mm keeps the label clear of
@@ -1103,7 +1103,8 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const sanitized = sanitizePdfText(value);
   const isEmpty = !sanitized || sanitized.trim() === '';
   const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
-  const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
+  const valueFontSize = valueFontSizeOverride ?? FONT.SIZE_FIELD_VALUE;
+  const lineStep = getPdfTextLineHeight(valueFontSize, useReadableText);
   const baseBoxH = useReadableText ? 2.8 : 2.3;  // condensed 2026-05-31 (3.2/2.6 → 2.8/2.3)
   // Email addresses and URLs are case-sensitive in principle and the UI
   // renders them as stored (e.g. `chzamo@rmpgutah.us`) — the blanket
@@ -1112,7 +1113,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // `CHZAMO@RMPGUTAH.US` / `HTTPS://RMPGUTAHPS.US` on printed records.
   const displayText = isEmpty ? 'N/A' : (isEmailOrUrlPdfValue(sanitized) ? sanitized : sanitized.toUpperCase());
   doc.setFont(PDF_VALUE_FONT, 'normal');
-  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setFontSize(valueFontSize);
   const allFieldLines = isEmpty ? [displayText] : wordWrapText(doc, displayText, maxW - 1);
   const lines: string[] = allFieldLines.slice(0, maxLines);
   if (allFieldLines.length > maxLines && lines.length > 0) {
@@ -1154,7 +1155,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // Value text — vertically centered in box. Re-assert the value font
   // (the label above just switched to bold helvetica).
   doc.setFont(PDF_VALUE_FONT, 'normal');
-  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setFontSize(valueFontSize);
   const valColor = isEmpty ? COLOR.TEXT_TERTIARY : COLOR.TEXT_PRIMARY;
   doc.setTextColor(valColor[0], valColor[1], valColor[2]);
 
