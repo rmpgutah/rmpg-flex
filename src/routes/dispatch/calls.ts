@@ -1287,19 +1287,47 @@ calls.post('/:id/unarchive', async (c) => {
 });
 
 // POST /dispatch/calls/:id/hold
-// GUARDED: the live status CHECK constraint has no 'on_hold' value, so the
-// UPDATE below would fail with SQLITE_CONSTRAINT and return a 500. Until
-// migration 0040 adds 'on_hold' to the enum, return a clean 409 instead of
-// attempting the write. Restore the UPDATE after 0040 is applied to live D1.
+// Hold is the orthogonal calls_for_service_ext.held_at flag, NOT a status
+// enum value (migration 0041) — status is left untouched while held, and
+// dispatchMappers.ts/aggregates.ts synthesize status='on_hold' client-side
+// from held_at for any call that isn't already terminal. Migrations 0040 and
+// 0041 are both applied + tracked on live D1 (verified via
+// pragma_table_info('calls_for_service_ext') and the calls_for_service
+// status CHECK); the prior 409 stub predated that and was never removed.
 calls.post('/:id/hold', async (c) => {
-  return c.json({ error: 'Call hold is not yet enabled (pending schema migration 0040)', code: 'HOLD_NOT_ENABLED' }, 409);
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
+    await execute(db, "UPDATE calls_for_service_ext SET held_at = datetime('now') WHERE id = ?", id);
+    const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found' }, 404);
+    const ext = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+    const merged = { ...call, ...ext };
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged });
+    return c.json(merged);
+  } catch (err) {
+    log.error('POST /:id/hold failed', { src: 'src/routes/dispatch/calls.ts' }, err);
+    return c.json({ error: 'Hold failed' }, 500);
+  }
 });
 
 // POST /dispatch/calls/:id/resume
 calls.post('/:id/resume', async (c) => {
-  try { const db = getDb(c.env); await execute(db, "UPDATE calls_for_service SET status = 'pending' WHERE id = ? AND status = 'on_hold'", c.req.param('id')); return c.json({ message: 'Resumed' }); }
-  catch (err) {
-    log.error('POST /:id/resume failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Resume failed' }, 500); }
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    await execute(db, 'UPDATE calls_for_service_ext SET held_at = NULL WHERE id = ?', id);
+    const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found' }, 404);
+    const ext = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+    const merged = { ...call, ...ext };
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged });
+    return c.json(merged);
+  } catch (err) {
+    log.error('POST /:id/resume failed', { src: 'src/routes/dispatch/calls.ts' }, err);
+    return c.json({ error: 'Resume failed' }, 500);
+  }
 });
 
 // Columns work_orders gained in migration 0158_work_orders_scheduling.sql.
