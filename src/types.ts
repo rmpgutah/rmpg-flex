@@ -2,6 +2,7 @@
 // time the import is elided, so containers/pdfToolsContainer.ts → types.ts
 // stays one-way at runtime.
 import type { PdfToolsContainer } from './containers/pdfToolsContainer';
+import type { TesseractOcrContainer } from './containers/tesseractOcrContainer';
 import type { AnalyticsPipeline } from './utils/analytics';
 
 export type Bindings = {
@@ -83,6 +84,12 @@ export type Bindings = {
   // 'shared').fetch(req). Parameterized so getContainer<T> narrows
   // the stub type correctly.
   PDF_TOOLS: DurableObjectNamespace<PdfToolsContainer>;
+  // Custom Tesseract OCR sidecar — self-hosted, fine-tuned, data-sovereignty
+  // motivated (see docs/superpowers/specs/2026-08-08-custom-tesseract-ocr-design.md).
+  // NOT wired into production OCR — measurement-only via
+  // scripts/serve-intake-vision-ab.ts. Parameterized so getContainer<T>
+  // narrows the stub type correctly, matching the PDF_TOOLS pattern above.
+  TESSERACT_OCR: DurableObjectNamespace<TesseractOcrContainer>;
   // Workers AI — vision-LLM OCR + structured field extraction for
   // process-service intake. See src/routes/serveIntake.ts.
   AI: Ai;
