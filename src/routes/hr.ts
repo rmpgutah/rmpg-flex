@@ -21,10 +21,18 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks, ensureHrTables } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 
 const hr = new Hono<Env>();
+
+// Ensure all HR D1 tables exist before any route runs. The deploy step is
+// continue-on-error so migration 0157 may not have reached live D1.
+// ensureHrTables() is idempotent and caches via a module-level flag.
+hr.use('*', async (c, next) => {
+  await ensureHrTables(c.env.DB);
+  await next();
+});
 
 // Role tiers
 const MANAGER_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'] as const;
