@@ -266,11 +266,22 @@ export function findFailedChunkResourceUrls(
   return Array.from(out);
 }
 
-/** `findFailedChunkResourceUrls` bound to real browser globals. */
-export function findFailedChunkResourceUrlsInBrowser(now: number, lookbackMs?: number): string[] {
+/**
+ * `findFailedChunkResourceUrls` bound to real browser globals.
+ *
+ * ⚠️ The clock basis MUST be `performance.now()`, not `Date.now()`.
+ * `PerformanceResourceTiming.startTime` is relative to `performance.timeOrigin`
+ * (a small ms-since-navigation number), while `Date.now()` is Unix-epoch ms
+ * (~1.7e12). Passing epoch time here made `now - e.startTime` astronomically
+ * larger than `CHUNK_FAILURE_LOOKBACK_MS` for every entry, always — silently
+ * disabling the entire transitive-sub-chunk repair path in production despite
+ * green unit tests (which exercise the pure function with matched-basis mocks
+ * and never call this wrapper).
+ */
+export function findFailedChunkResourceUrlsInBrowser(lookbackMs?: number): string[] {
   if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') return [];
   const entries = performance.getEntriesByType('resource') as unknown as ResourceEntryLike[];
-  return findFailedChunkResourceUrls(entries, window.location.origin, now, lookbackMs);
+  return findFailedChunkResourceUrls(entries, window.location.origin, performance.now(), lookbackMs);
 }
 
 /**
@@ -297,7 +308,7 @@ export async function repairAllPoisonedChunks(
  *  transitive-chunk candidates from Resource Timing. */
 export function repairAllPoisonedChunksInBrowser(err: unknown): Promise<boolean> {
   const origin = window.location.origin;
-  const extraUrls = findFailedChunkResourceUrlsInBrowser(Date.now());
+  const extraUrls = findFailedChunkResourceUrlsInBrowser();
   return repairAllPoisonedChunks(err, { fetchImpl: (url, init) => window.fetch(url, init), origin }, extraUrls);
 }
 
