@@ -127,7 +127,10 @@ export interface SmJob {
   job_status: string;
   service_status: string;
   client: { company_name?: string; full_name?: string };
-  recipient: { full_name?: string; description?: string };
+  // The real /jobs list payload (confirmed live 2026-08-08) uses
+  // `recipient.name`, not `recipient.full_name` — `full_name` is kept as a
+  // fallback in case a different endpoint/version uses it.
+  recipient: { name?: string; full_name?: string; description?: string };
   service_instructions?: string;
   court_case_number?: string;
   due_date?: string;
