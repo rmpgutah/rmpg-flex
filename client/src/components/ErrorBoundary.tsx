@@ -9,7 +9,7 @@ import {
   CHUNK_RELOAD_KEY,
   CHUNK_RELOAD_WINDOW_MS,
   isChunkLoadError,
-  repairPoisonedChunkInBrowser,
+  repairAllPoisonedChunksInBrowser,
   evictPoisonedChunkCachesInBrowser,
 } from '../utils/chunkRetry';
 
@@ -96,6 +96,12 @@ export default class ErrorBoundary extends Component<Props, State> {
    * componentDidCatch safety net (which must still repair the HTTP cache —
    * a plain reload there was a guaranteed no-op — but shouldn't silently
    * strip offline support from a unit that never asked for a reload).
+   *
+   * Repairs via `repairAllPoisonedChunksInBrowser`, not just the one URL in
+   * `err`'s message: Chrome's dynamic-import rejection only ever names the
+   * TOP-LEVEL import target, never a transitive sub-chunk that top-level
+   * module statically imports. Resource Timing catches those regardless of
+   * what the rejection message says — see chunkRetry.ts.
    */
   private recoverThenReload(err: Error, purgeCaches = false) {
     // Ordering is load-bearing when purging: eviction must run FIRST, since a
@@ -105,7 +111,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     // request from its own bad cache.
     const recover = async () => {
       if (purgeCaches) await evictPoisonedChunkCachesInBrowser();
-      await repairPoisonedChunkInBrowser(err);
+      await repairAllPoisonedChunksInBrowser(err);
     };
     void Promise.race([
       recover(),
