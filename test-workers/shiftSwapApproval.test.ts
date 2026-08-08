@@ -316,4 +316,111 @@ describe('Shift swap target-acceptance workflow', () => {
     const rows = await listRes.json() as Array<{ id: number }>;
     expect(rows.length).toBe(0);
   });
+
+  it('POST /shift-swaps/:id/cancel lets the requester cancel a still-pending swap', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    const requesterId = await seedUser(db, 'cancel-req-1', 'officer', 'Officer Cancel Requester One');
+    const targetId = await seedUser(db, 'cancel-tgt-1', 'officer', 'Officer Cancel Target One');
+
+    const requesterToken = await mintAccessToken(requesterId, 'officer', 'cancel-req-1', 'Officer Cancel Requester One');
+    const swapId = await createTargetedSwap(db, requesterId, requesterToken, targetId, '2026-09-08');
+
+    const cancelRes = await shiftPlansRouter.request(`/shift-swaps/${swapId}/cancel`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${requesterToken}` },
+    }, testEnv());
+    expect(cancelRes.status).toBe(200);
+    const cancelBody = await cancelRes.json() as { success: boolean };
+    expect(cancelBody.success).toBe(true);
+
+    const row = await queryFirst<{ status: string }>(db, 'SELECT status FROM shift_swap_requests WHERE id = ?', swapId);
+    expect(row?.status).toBe('cancelled');
+
+    const logRow = await queryFirst<{ action: string }>(
+      db, `SELECT action FROM activity_log WHERE entity_type = 'shift_swap_request' AND entity_id = ? ORDER BY id DESC LIMIT 1`, swapId,
+    );
+    expect(logRow?.action).toBe('swap_cancelled');
+  });
+
+  it('POST /shift-swaps/:id/cancel also works from pending_supervisor (after target accepted)', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    const requesterId = await seedUser(db, 'cancel-req-2', 'officer', 'Officer Cancel Requester Two');
+    const targetId = await seedUser(db, 'cancel-tgt-2', 'officer', 'Officer Cancel Target Two');
+
+    const requesterToken = await mintAccessToken(requesterId, 'officer', 'cancel-req-2', 'Officer Cancel Requester Two');
+    const swapId = await createTargetedSwap(db, requesterId, requesterToken, targetId, '2026-09-09');
+
+    const targetToken = await mintAccessToken(targetId, 'officer', 'cancel-tgt-2', 'Officer Cancel Target Two');
+    await shiftPlansRouter.request(`/shift-swaps/${swapId}/respond`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${targetToken}` },
+      body: JSON.stringify({ accept: true }),
+    }, testEnv());
+
+    const cancelRes = await shiftPlansRouter.request(`/shift-swaps/${swapId}/cancel`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${requesterToken}` },
+    }, testEnv());
+    expect(cancelRes.status).toBe(200);
+
+    const row = await queryFirst<{ status: string }>(db, 'SELECT status FROM shift_swap_requests WHERE id = ?', swapId);
+    expect(row?.status).toBe('cancelled');
+  });
+
+  it('POST /shift-swaps/:id/cancel is requester-only -- 403 for the target and for admin', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    const requesterId = await seedUser(db, 'cancel-req-3', 'officer', 'Officer Cancel Requester Three');
+    const targetId = await seedUser(db, 'cancel-tgt-3', 'officer', 'Officer Cancel Target Three');
+    const adminId = await seedUser(db, 'cancel-admin-3', 'admin', 'Admin Cancel Three');
+
+    const requesterToken = await mintAccessToken(requesterId, 'officer', 'cancel-req-3', 'Officer Cancel Requester Three');
+    const swapId = await createTargetedSwap(db, requesterId, requesterToken, targetId, '2026-09-10');
+
+    const targetToken = await mintAccessToken(targetId, 'officer', 'cancel-tgt-3', 'Officer Cancel Target Three');
+    const targetCancelRes = await shiftPlansRouter.request(`/shift-swaps/${swapId}/cancel`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${targetToken}` },
+    }, testEnv());
+    expect(targetCancelRes.status).toBe(403);
+
+    const adminToken = await mintAccessToken(adminId, 'admin', 'cancel-admin-3', 'Admin Cancel Three');
+    const adminCancelRes = await shiftPlansRouter.request(`/shift-swaps/${swapId}/cancel`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${adminToken}` },
+    }, testEnv());
+    expect(adminCancelRes.status).toBe(403);
+
+    const row = await queryFirst<{ status: string }>(db, 'SELECT status FROM shift_swap_requests WHERE id = ?', swapId);
+    expect(row?.status).toBe('pending');
+  });
+
+  it('POST /shift-swaps/:id/cancel 400s once the swap has already been approved or denied', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    const requesterId = await seedUser(db, 'cancel-req-4', 'officer', 'Officer Cancel Requester Four');
+    const adminId = await seedUser(db, 'cancel-admin-4', 'admin', 'Admin Cancel Four');
+
+    const requesterToken = await mintAccessToken(requesterId, 'officer', 'cancel-req-4', 'Officer Cancel Requester Four');
+    const res = await shiftPlansRouter.request('/shift-swaps', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${requesterToken}` },
+      body: JSON.stringify({ shift_date: '2026-09-11', reason: 'test open swap' }),
+    }, testEnv());
+    const body = await res.json() as { id: number };
+
+    const adminToken = await mintAccessToken(adminId, 'admin', 'cancel-admin-4', 'Admin Cancel Four');
+    await shiftPlansRouter.request(`/shift-swaps/${body.id}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ status: 'approved' }),
+    }, testEnv());
+
+    const cancelRes = await shiftPlansRouter.request(`/shift-swaps/${body.id}/cancel`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${requesterToken}` },
+    }, testEnv());
+    expect(cancelRes.status).toBe(400);
+
+    const row = await queryFirst<{ status: string }>(db, 'SELECT status FROM shift_swap_requests WHERE id = ?', body.id);
+    expect(row?.status).toBe('approved');
+  });
 });

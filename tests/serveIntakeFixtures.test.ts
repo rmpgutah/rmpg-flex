@@ -75,6 +75,53 @@ describe('fixture corpus integrity', () => {
   });
 });
 
+describe('vision fixture corpus integrity', () => {
+  const VISION_DIR = join(__dirname, 'fixtures', 'serve-intake', 'vision');
+  const VISION_FIXTURES = ['watermark-bleed', 'homoglyph-address'];
+
+  function loadVisionSvg(name: string): string {
+    return readFileSync(join(VISION_DIR, `${name}.svg`), 'utf8');
+  }
+
+  it('carries no real client identities', () => {
+    const forbidden = ['Telarus', 'Anderson', 'Clough', 'Foothill', 'Telarus, LLC', 'Currie'];
+    for (const name of VISION_FIXTURES) {
+      const svg = loadVisionSvg(name);
+      for (const f of forbidden) {
+        expect(svg.toLowerCase()).not.toContain(f.toLowerCase());
+      }
+    }
+  });
+
+  it('every vision fixture has an expected-vision block', () => {
+    const expected = JSON.parse(readFileSync(join(VISION_DIR, 'expected-vision.json'), 'utf8'));
+    expect(Object.keys(expected).sort()).toEqual([...VISION_FIXTURES].sort());
+  });
+
+  // Content ratchet — same rationale as FIXTURE_HASHES above: pins the exact
+  // SVG source bytes so any edit (not just a re-paste of a known forbidden
+  // name) is caught and forces a deliberate, reviewed hash update.
+  const VISION_FIXTURE_HASHES: Record<string, string> = {
+    'watermark-bleed': 'e9ede417dc91f028630c344787dd6dd3bd04d45e1393c0d5fe5c045cd8e47a79',
+    'homoglyph-address': '92c84c504da242427ea58c777c086391cce37d3717e4a75ab53c01f680de0ff5',
+  };
+
+  it('vision fixture content matches its recorded hash (content ratchet)', () => {
+    for (const name of VISION_FIXTURES) {
+      const raw = readFileSync(join(VISION_DIR, `${name}.svg`));
+      const actual = createHash('sha256').update(raw).digest('hex');
+      expect(
+        actual,
+        `${name}.svg content changed (hash ${actual} != recorded ${VISION_FIXTURE_HASHES[name]}). ` +
+          `If this is an intentional, reviewed edit to SYNTHETIC content, verify the new SVG text ` +
+          `still contains no real names/case data, then update VISION_FIXTURE_HASHES['${name}'] in ` +
+          `tests/serveIntakeFixtures.test.ts to the new hash, and re-run ` +
+          `scripts/generate-vision-ab-fixtures.ts to regenerate the matching .png.`
+      ).toBe(VISION_FIXTURE_HASHES[name]);
+    }
+  });
+});
+
 describe('pre-clean against real hazards', () => {
   it('removes the RUSH watermark bleed from the business fixture', () => {
     const cleaned = precleanText(loadFixture('business-subpoena'));

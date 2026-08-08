@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="300" viewBox="0 0 900 300">
+  <rect width="900" height="300" fill="white"/>
+  <g font-family="Courier New, monospace" font-size="18" fill="black">
+    <text x="30" y="40">Superior Court of the State of Arizona</text>
+    <text x="30" y="70">Recipient: Dana Whitfield</text>
+    <text x="30" y="100">Address: 1220 E Baseline Rd</text>
+    <text x="30" y="130">Tempe, СA 85283</text>
+    <text x="30" y="160">Job: 51000042   Due: 09/02/2026</text>
+  </g>
+</svg>

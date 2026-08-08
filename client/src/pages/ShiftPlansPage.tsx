@@ -338,6 +338,19 @@ export default function ShiftPlansPage() {
     }
   };
 
+  const handleSwapCancel = async (swapId: number) => {
+    setSwapActionPending(swapId);
+    try {
+      await apiFetch(`/shift-swaps/${swapId}/cancel`, { method: 'POST' });
+      addToast('Swap request cancelled', 'success');
+      loadSwapModalData();
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to cancel swap', 'error');
+    } finally {
+      setSwapActionPending(null);
+    }
+  };
+
   const handleSwapReview = async (swapId: number, status: 'approved' | 'denied') => {
     setSwapActionPending(swapId);
     try {
@@ -1097,7 +1110,7 @@ export default function ShiftPlansPage() {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-[11px] font-semibold text-rmpg-100">{t.name}</div>
-                          <div className="text-[9px] text-rmpg-400 mt-0.5">
+                          <div className="text-[9px] text-fg-secondary mt-0.5">
                             {t.shift_type} · {(typeof t.pattern_json === 'string' ? JSON.parse(t.pattern_json) : t.pattern_json || []).length} slots
                           </div>
                         </div>
@@ -1171,6 +1184,8 @@ export default function ShiftPlansPage() {
                   .map((s: any) => {
                     const isTarget = s.target_id === user?.id && s.status === 'pending';
                     const isApprover = canManage && (s.status === 'pending_supervisor' || (s.status === 'pending' && !s.target_id));
+                    const isRequester = s.requester_id === user?.id;
+                    const isCancellable = isRequester && ['pending', 'pending_supervisor'].includes(s.status);
                     const busy = swapActionPending === s.id;
                     return (
                       <div key={s.id} className="p-2.5 bg-surface-base border border-rmpg-700 rounded-sm">
@@ -1207,6 +1222,12 @@ export default function ShiftPlansPage() {
                                   Deny
                                 </button>
                               </>
+                            )}
+                            {isCancellable && !isApprover && (
+                              <button type="button" disabled={busy} onClick={() => handleSwapCancel(s.id)}
+                                className="px-2 py-1 text-[9px] text-fg-muted border border-rmpg-600 rounded-sm hover:text-red-400 hover:border-red-600 disabled:opacity-40">
+                                Cancel
+                              </button>
                             )}
                           </div>
                         </div>
