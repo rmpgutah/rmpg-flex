@@ -203,7 +203,13 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text('SERVICE INSTRUCTIONS', lx, y + getCapHeight(FONT.SIZE_FIELD_LABEL));
-      y += SPACING.LG;
+      // addWrappedText treats its `y` as the first line's own BASELINE (it
+      // has no leading capHeight offset like addFieldPair's value renderer
+      // does), so advancing only SPACING.LG past the label's baseline left
+      // the value's first line landing almost on top of it — the label and
+      // "MUST ATTEMPT WITHIN 48 HOURS..." rendered on the same row (live PDF
+      // 2026-08-08). Clear the value font's own cap height too.
+      y += SPACING.LG + getCapHeight(FONT.SIZE_FIELD_VALUE ?? 9);
       y = addWrappedText(doc, sanitizePdfText(data.serviceInstructions), lx, y, ffw, FONT.SIZE_FIELD_VALUE ?? 9);
       y += SPACING.SM;
     }
@@ -212,7 +218,8 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text('NOTES', lx, y + getCapHeight(FONT.SIZE_FIELD_LABEL));
-      y += SPACING.LG;
+      // Same first-line-baseline clearance fix as SERVICE INSTRUCTIONS above.
+      y += SPACING.LG + getCapHeight(FONT.SIZE_FIELD_VALUE ?? 9);
       y = addWrappedText(doc, sanitizePdfText(data.notes), lx, y, ffw, FONT.SIZE_FIELD_VALUE ?? 9);
       y += SPACING.SM;
     }
