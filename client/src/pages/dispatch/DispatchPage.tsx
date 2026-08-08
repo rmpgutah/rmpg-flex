@@ -4524,7 +4524,7 @@ export default function DispatchPage() {
               )}
 
               {/* Detail Tabs */}
-              <div className="flex border-b border-[var(--spm-border)] flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
+              <div className="flex flex-nowrap overflow-x-auto border-b border-[var(--spm-border)] flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
                 {(['info', 'persons', 'timeline', 'notes', 'documents', 'attachments', 'flags', 'audit'] as const).map(tab => {
                   const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', documents: 'Documents', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
                   const icons: Record<string, React.ReactNode> = {
@@ -4549,7 +4549,7 @@ export default function DispatchPage() {
                     <button type="button"
                       key={tab}
                       onClick={() => setDetailTab(tab)}
-                      className="relative px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
+                      className="relative px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 flex-shrink-0 whitespace-nowrap"
                       style={{
                         color: isActive ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)',
                         background: isActive ? 'color-mix(in srgb, var(--surface-sunken) 60%, transparent)' : 'transparent',
