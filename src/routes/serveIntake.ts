@@ -2167,6 +2167,8 @@ si.get('/clients', async (c) => {
 // param-only branch to numeric ids. See properties.ts:43-45 for the
 // codebase's precedent fix for the same trap.
 si.get('/:id{[0-9]+}', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
@@ -2389,6 +2391,8 @@ si.delete('/:id', async (c) => {
 
 // ── GET /:id/attempts ───────────────────────────────────────
 si.get('/:id/attempts', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
@@ -2493,7 +2497,9 @@ si.post('/:id/attempts', async (c) => {
   // logAttempt(), but this intake path is the OTHER attempt-logging route and
   // never called it either — jobs completed here never notified anyone.
   if (newStatus === 'served' || newStatus === 'failed') {
-    notifyServeCompletion(db, id, newStatus).catch(() => {});
+    notifyServeCompletion(db, id, newStatus).catch((err) => {
+      log.error('notifyServeCompletion failed', { src: 'src/routes/serveIntake.ts', serveQueueId: id, newStatus }, err);
+    });
   }
 
   // Auto-replan on failure (PR 1) — spawn next slot, recompute tier
@@ -2652,6 +2658,8 @@ si.post('/:id/skip-trace', async (c) => {
 
 // ── GET /routes ─────────────────────────────────────────────
 si.get('/routes', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const officerId = c.req.query('officer_id');
   const date = c.req.query('date');
