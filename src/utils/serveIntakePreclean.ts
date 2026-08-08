@@ -37,6 +37,33 @@ export function normalizeHomoglyphs(s: string): string {
   return s.replace(/[Ͱ-ӿ]/g, (ch) => HOMOGLYPHS[ch] ?? ch);
 }
 
+export interface HomoglyphSubstitution {
+  char: string;        // original confusable character, e.g. 'С'
+  codePoint: string;   // e.g. 'U+0421'
+  replacement: string; // e.g. 'C'
+  count: number;       // occurrences in the input
+}
+
+// Pure detection counterpart to normalizeHomoglyphs — reports what WOULD be
+// substituted without mutating the string, so a caller with logging context
+// (traceId, document id) can record an audit trail of text the OCR pipeline
+// altered. Order of the returned array is insertion order of first sighting.
+export function detectHomoglyphs(s: string): HomoglyphSubstitution[] {
+  if (!s) return [];
+  const counts = new Map<string, number>();
+  for (const ch of s) {
+    if (HOMOGLYPHS[ch] !== undefined) {
+      counts.set(ch, (counts.get(ch) ?? 0) + 1);
+    }
+  }
+  return Array.from(counts.entries()).map(([char, count]) => ({
+    char,
+    codePoint: `U+${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`,
+    replacement: HOMOGLYPHS[char],
+    count,
+  }));
+}
+
 // Stamps we expect to see rendered as scattered glyphs. Matching is done
 // on the MULTISET of isolated letters, so the order the PDF emits them in
 // (which follows the diagonal, not reading order) does not matter.
