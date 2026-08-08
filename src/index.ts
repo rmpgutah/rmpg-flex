@@ -575,6 +575,18 @@ export default {
             }).catch((err) => console.error('Serve stale auto-close sweep failed:', err)),
           ).catch(() => {}),
         );
+        // Shift Plans understaffed/no-plan reminders — same on-demand-
+        // dashboard-only gap fleet maintenance and cert expirations had;
+        // fires via the notification-rule engine (2026-08-08 comms
+        // integration spec). Rules shift_understaffed/shift_no_active_plan
+        // are seeded active by default (migration 0228).
+        ctx.waitUntil(
+          import('./utils/shiftPlanNotifySweep').then((m) =>
+            m.sweepShiftPlanNotifications(env.DB, env).then((r) =>
+              console.log(`[shift-plan-notify] understaffed=${r.understaffed} noPlan=${r.noPlan} notified=${r.notified}`),
+            ).catch((err) => console.error('Shift plan notification sweep failed:', err)),
+          ).catch(() => {}),
+        );
       }
 
       // Daily blotter at 00:05 America/Denver. Same hour+minute gate as the
