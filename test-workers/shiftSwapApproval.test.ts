@@ -279,4 +279,41 @@ describe('Shift swap target-acceptance workflow', () => {
     }, testEnv());
     expect(respondRes.status).toBe(400);
   });
+
+  it('GET /shift-swaps: a plain officer who is the target of a swap can see it (not a blanket 403)', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    const requesterId = await seedUser(db, 'list-req-1', 'officer', 'Officer List Requester One');
+    const targetId = await seedUser(db, 'list-tgt-1', 'officer', 'Officer List Target One');
+
+    const requesterToken = await mintAccessToken(requesterId, 'officer', 'list-req-1', 'Officer List Requester One');
+    const swapId = await createTargetedSwap(db, requesterId, requesterToken, targetId, '2026-09-06');
+
+    const targetToken = await mintAccessToken(targetId, 'officer', 'list-tgt-1', 'Officer List Target One');
+    const listRes = await shiftPlansRouter.request('/shift-swaps', {
+      method: 'GET',
+      headers: { authorization: `Bearer ${targetToken}` },
+    }, testEnv());
+    expect(listRes.status).toBe(200);
+    const rows = await listRes.json() as Array<{ id: number }>;
+    expect(rows.some((r) => r.id === swapId)).toBe(true);
+  });
+
+  it('GET /shift-swaps: a plain officer who is neither requester nor target sees an empty list, not other people\'s swaps or a 403', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    const requesterId = await seedUser(db, 'list-req-2', 'officer', 'Officer List Requester Two');
+    const targetId = await seedUser(db, 'list-tgt-2', 'officer', 'Officer List Target Two');
+    const bystanderId = await seedUser(db, 'list-bystander-2', 'officer', 'Officer List Bystander Two');
+
+    const requesterToken = await mintAccessToken(requesterId, 'officer', 'list-req-2', 'Officer List Requester Two');
+    await createTargetedSwap(db, requesterId, requesterToken, targetId, '2026-09-07');
+
+    const bystanderToken = await mintAccessToken(bystanderId, 'officer', 'list-bystander-2', 'Officer List Bystander Two');
+    const listRes = await shiftPlansRouter.request('/shift-swaps', {
+      method: 'GET',
+      headers: { authorization: `Bearer ${bystanderToken}` },
+    }, testEnv());
+    expect(listRes.status).toBe(200);
+    const rows = await listRes.json() as Array<{ id: number }>;
+    expect(rows.length).toBe(0);
+  });
 });

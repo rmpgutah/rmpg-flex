@@ -437,12 +437,20 @@ sp.delete('/shift-plans/:id', async (c) => {
 // keep both registered until the client is converged on one path. Sharing
 // a handler so the two never drift apart.
 async function listShiftSwaps(c: any) {
-  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
-  if (denied) return c.json({ error: denied }, 403);
   const status = c.req.query('status');
   const date = c.req.query('date');
   const where: string[] = [];
   const args: any[] = [];
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) {
+    // Non-elevated callers (e.g. plain officers) don't get a blanket 403 —
+    // they can still see swaps where they're the requester or the target,
+    // which is exactly the data the client's accept/decline modal needs.
+    const user = c.get('user');
+    if (!user) return c.json({ error: denied }, 403);
+    where.push('(requester_id = ? OR target_id = ?)');
+    args.push(user.id, user.id);
+  }
   if (status) { where.push('status = ?'); args.push(status); }
   if (date) { where.push('shift_date = ?'); args.push(date); }
   const sql = `SELECT * FROM shift_swap_requests ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
