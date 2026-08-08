@@ -8,7 +8,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { loadSealBase64 } from './pdfAssets';
 import QRCode from 'qrcode';
-import { isPast, isWithinDays, parseTimestamp, formatDateTime } from './dateUtils';
+import { isPast, isWithinDays, parseTimestamp, formatDateTime, localToday } from './dateUtils';
 import { hasValue, toNum } from './sentinel';
 import { zsbComposite } from './dispatchCodeParts';
 import { humanizeRelationship } from './recordLinks';
@@ -7246,7 +7246,7 @@ export async function generateRecordPdf<T extends RecordPdfType>(
       caseNumber: meta.caseNumber,
       agency: 'RMPG',
       agencyOri: 'UT0180100',
-      reportDate: new Date().toISOString().slice(0, 10),
+      reportDate: localToday(),
     };
     finalizePoliceReport(doc, { barcode: { formMetadata: formMeta } });
   }
@@ -7617,7 +7617,7 @@ export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions
   // BOLO packet — form metadata with warrant/packet identifier
   const boloId = subjects.length === 1 && subjects[0].warrants[0]?.warrant_number
     ? `BOLO-${subjects[0].warrants[0].warrant_number}`
-    : `BOLO-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+    : `BOLO-${localToday().replace(/-/g, '')}`;
   finalizePoliceReport(doc, {
     barcode: {
       formMetadata: {
@@ -7625,7 +7625,7 @@ export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions
         caseNumber: boloId,
         agency: 'RMPG',
         agencyOri: 'UT0180100',
-        reportDate: new Date().toISOString().slice(0, 10),
+        reportDate: localToday(),
       },
     },
   });
@@ -7825,7 +7825,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
   // Warrant summary is agency-wide — encode as form metadata
   const periodLabel = data.period?.to
     ? `WRTSUM-${String(data.period.to).replace(/[^0-9]/g, '')}`
-    : `WRTSUM-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+    : `WRTSUM-${localToday().replace(/-/g, '')}`;
   finalizePoliceReport(doc, {
     barcode: {
       formMetadata: {
@@ -7833,7 +7833,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
         caseNumber: periodLabel,
         agency: 'RMPG',
         agencyOri: 'UT0180100',
-        reportDate: new Date().toISOString().slice(0, 10),
+        reportDate: localToday(),
       },
     },
   });
