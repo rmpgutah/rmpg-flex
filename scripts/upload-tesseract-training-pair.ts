@@ -10,7 +10,6 @@
 // Layout in the bucket: training-corpus/<doc-id>/image.<ext>,
 // training-corpus/<doc-id>/ground-truth.txt
 // ============================================================
-import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 

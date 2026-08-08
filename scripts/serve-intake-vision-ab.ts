@@ -120,7 +120,9 @@ async function runTesseractCustom(imageBase64: string): Promise<Record<string, s
     // comparison here is measuring raw text-extraction quality, which is
     // the correct signal for deciding whether fine-tuning is worth pursuing
     // further before investing in a structured-extraction layer on top).
-    console.log(`  tesseract-custom raw text: ${(body.text ?? '').slice(0, 200)}`);
+    // Diagnostic only: truncated to 40 chars — enough to confirm OCR is
+    // producing plausible English text, not enough to expose case content.
+    console.log(`  tesseract-custom raw text: ${(body.text ?? '').slice(0, 40)}`);
     return {};
   } catch (e) {
     console.error(`  tesseract-custom: ${e instanceof Error ? e.message : String(e)}`);
