@@ -200,11 +200,12 @@ describe('POST /:token — the variant conflict signal', () => {
     post(`/${token}`, {
       form_variant: 'individual',
       recipient_name: 'Jane Doe',
-      // Both required by validateReceiptSubmission: a proof of service
-      // whose signer cannot be reached afterwards is hard to stand behind
-      // if the service is ever contested.
+      // All required by validateReceiptSubmission: a proof of service
+      // whose signer cannot be reached afterwards — or verified — is hard
+      // to stand behind if the service is ever contested.
       recipient_phone: '(801) 555-0142',
       recipient_email: 'jane@example.com',
+      recipient_id_verified: true,
       recipient_age_confirmed: true,
       ack_received_documents: true,
       ack_information_true: true,
