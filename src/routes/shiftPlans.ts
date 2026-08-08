@@ -567,6 +567,32 @@ sp.post('/shift-swaps/:id/respond', async (c) => {
   return c.json({ success: true });
 });
 
+sp.post('/shift-swaps/:id/cancel', async (c) => {
+  const user = c.get('user') as { id: number; full_name?: string } | undefined;
+  if (!user) return c.json({ error: 'Unauthenticated' }, 401);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+
+  const swap = await queryFirst<{ requester_id: number; shift_date: string; status: string }>(
+    db,
+    'SELECT requester_id, shift_date, status FROM shift_swap_requests WHERE id = ?',
+    id,
+  );
+  if (!swap) return c.json({ error: 'Shift swap request not found' }, 404);
+  if (swap.requester_id !== user.id) {
+    return c.json({ error: 'Only the requester can cancel this swap' }, 403);
+  }
+  if (swap.status !== 'pending' && swap.status !== 'pending_supervisor') {
+    return c.json({ error: `Cannot cancel a swap in status '${swap.status}'` }, 400);
+  }
+
+  await execute(db, `UPDATE shift_swap_requests SET status = 'cancelled' WHERE id = ?`, id);
+  await writeSwapActivityLog(db, user.id, 'swap_cancelled', id, { shift_date: swap.shift_date });
+
+  return c.json({ success: true });
+});
+
 sp.put('/shift-swaps/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
