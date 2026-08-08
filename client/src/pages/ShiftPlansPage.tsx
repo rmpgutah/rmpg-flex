@@ -1156,15 +1156,15 @@ export default function ShiftPlansPage() {
                 <ArrowRightLeft className="w-4 h-4 text-brand-400" />
                 Shift Swap Requests
               </h2>
-              <button type="button" onClick={() => setShowSwapModal(false)} className="text-rmpg-400 hover:text-rmpg-100 p-1" aria-label="Close">
+              <button type="button" onClick={() => setShowSwapModal(false)} className="text-fg-secondary hover:text-rmpg-100 p-1" aria-label="Close">
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="p-4 space-y-2">
               {swapModalLoading ? (
-                <div className="text-xs text-rmpg-400 py-4 text-center">Loading…</div>
+                <div className="text-xs text-fg-secondary py-4 text-center">Loading…</div>
               ) : allSwaps.filter((s: any) => ['pending', 'pending_supervisor'].includes(s.status)).length === 0 ? (
-                <div className="text-xs text-rmpg-500 py-4 text-center">No open swap requests.</div>
+                <div className="text-xs text-fg-muted py-4 text-center">No open swap requests.</div>
               ) : (
                 allSwaps
                   .filter((s: any) => ['pending', 'pending_supervisor'].includes(s.status))
@@ -1179,7 +1179,7 @@ export default function ShiftPlansPage() {
                             <div className="text-[11px] font-semibold text-rmpg-100">
                               {s.requester_name ?? `Officer #${s.requester_id}`} — {s.shift_date}
                             </div>
-                            <div className="text-[9px] text-rmpg-400 mt-0.5">
+                            <div className="text-[9px] text-fg-secondary mt-0.5">
                               {s.target_name ? `to ${s.target_name}` : 'Open swap'} · {formatEnumValue(s.status)}
                             </div>
                           </div>
@@ -1191,7 +1191,7 @@ export default function ShiftPlansPage() {
                                   Accept
                                 </button>
                                 <button type="button" disabled={busy} onClick={() => handleSwapRespond(s.id, false)}
-                                  className="px-2 py-1 text-[9px] text-rmpg-500 border border-rmpg-600 rounded-sm hover:text-red-400 hover:border-red-600 disabled:opacity-40">
+                                  className="px-2 py-1 text-[9px] text-fg-muted border border-rmpg-600 rounded-sm hover:text-red-400 hover:border-red-600 disabled:opacity-40">
                                   Decline
                                 </button>
                               </>
@@ -1203,7 +1203,7 @@ export default function ShiftPlansPage() {
                                   Approve
                                 </button>
                                 <button type="button" disabled={busy} onClick={() => handleSwapReview(s.id, 'denied')}
-                                  className="px-2 py-1 text-[9px] text-rmpg-500 border border-rmpg-600 rounded-sm hover:text-red-400 hover:border-red-600 disabled:opacity-40">
+                                  className="px-2 py-1 text-[9px] text-fg-muted border border-rmpg-600 rounded-sm hover:text-red-400 hover:border-red-600 disabled:opacity-40">
                                   Deny
                                 </button>
                               </>
