@@ -14,6 +14,7 @@ import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { buildDotMarker, isValidLngLat } from '../utils/mapMarkers';
 import { positionAtTime, type GpsPoint } from '../utils/dashcamForensics';
 import { fetchMapboxMatchedPath } from '../utils/mapboxRouting';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 
 const GOLD = '#d4a017';
 
@@ -42,8 +43,10 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
   const posMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const readyRef = useRef(false);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { rebuildNonce, attach } = useWebglMapRecovery();
 
   // isValidLngLat rejects NaN/Infinity AND the exact (0,0) no-fix signature so
   // a ClearPath device's pre-fix frames never anchor the route line off-coast.
@@ -61,6 +64,7 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
         const map = new mapboxgl.Map({ container: containerRef.current, style: MAPBOX_STYLE_DARK, center, zoom: 15, attributionControl: false });
         mapRef.current = map;
         registerMapInstance(map);
+        webglRecoveryCleanupRef.current = attach(map, 'ForensicTrackMap');
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
         map.on('load', () => {
           if (cancelled) return;
@@ -130,11 +134,14 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
       markersRef.current.forEach((m) => { try { m.remove(); } catch { /* idempotent */ } });
       markersRef.current = [];
       posMarkerRef.current = null;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
       readyRef.current = false;
+      setLoaded(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gps.length]);
+  }, [gps.length, rebuildNonce]);
 
   // Sync the playback marker + predicted path to the current time.
   useEffect(() => {

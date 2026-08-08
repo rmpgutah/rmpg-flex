@@ -14,6 +14,7 @@ import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { buildDotMarker, isValidLngLat } from '../utils/mapMarkers';
 import { apiFetch } from '../hooks/useApi';
+import { installWebglContextRecovery } from '../utils/webglRecovery';
 
 const CYAN = '#06b6d4';
 
@@ -29,11 +30,68 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loading, setLoading] = useState(true);
   const [pointCount, setPointCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    // Draws the already-fetched track/points onto a (re)created map instance.
+    // Shared between the initial mount and a post-context-loss rebuild so a
+    // rebuild never re-hits the API for data it already has.
+    function drawMap(
+      container: HTMLElement,
+      token: string,
+      track: Array<{ lat: number; lng: number }>,
+      points: Array<{ lat: number; lng: number; label?: string }>,
+      camera: { center: [number, number]; zoom: number } | null,
+    ) {
+      initMapbox(token);
+      const first = track[0] || points[0];
+      const center: [number, number] = camera?.center
+        ?? (first ? [first.lng, first.lat] : [-111.891, 40.7608]);
+      const map = new mapboxgl.Map({ container, style: MAPBOX_STYLE_DARK, center, zoom: camera?.zoom ?? 12, attributionControl: false });
+      mapRef.current = map;
+      registerMapInstance(map);
+      map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
+      map.on('load', () => {
+        if (cancelled) return;
+        if (track.length > 1) {
+          const line = track.map((p) => [p.lng, p.lat]);
+          map.addSource('gps-track', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: line } } });
+          map.addLayer({ id: 'gps-track', type: 'line', source: 'gps-track', paint: { 'line-color': CYAN, 'line-width': 3, 'line-opacity': 0.85 } });
+        }
+        for (const p of points) {
+          const el = buildDotMarker({ color: '#ef4444', size: 10 });
+          const m = new mapboxgl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
+          markersRef.current.push(m);
+        }
+        if (!camera) {
+          const all = [...track, ...points];
+          if (all.length > 1) {
+            const b = all.reduce((acc, pt) => acc.extend([pt.lng, pt.lat]), new mapboxgl.LngLatBounds([all[0].lng, all[0].lat], [all[0].lng, all[0].lat]));
+            map.fitBounds(b, { padding: 32, maxZoom: 15, duration: 0 });
+          }
+        }
+      });
+      webglRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'ConnectionsMapPanel',
+        onRebuild: (recoveredCamera) => {
+          webglRecoveryCleanupRef.current?.();
+          webglRecoveryCleanupRef.current = null;
+          markersRef.current.forEach((m) => { try { m.remove(); } catch { /* idempotent */ } });
+          markersRef.current = [];
+          unregisterMapInstance(map);
+          map.remove();
+          mapRef.current = null;
+          if (!containerRef.current) return;
+          drawMap(containerRef.current, token, track, points, recoveredCamera
+            ? { center: recoveredCamera.center, zoom: recoveredCamera.zoom }
+            : null);
+        },
+      });
+    }
+
     (async () => {
       setLoading(true);
       try {

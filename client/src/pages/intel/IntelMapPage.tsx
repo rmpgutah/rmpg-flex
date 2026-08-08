@@ -12,6 +12,7 @@ import { useIntelContext } from './IntelContext';
 import { useIntelGeo } from './useIntelGeo';
 import { LAYER_DEFS, toGeoJSON } from './map/geoLayers';
 import { escapeHtml } from '../../utils/sanitize';
+import { useWebglMapRecovery } from '../../hooks/useWebglMapRecovery';
 
 const DAYS_OPTS = [1, 7, 30];
 
@@ -19,6 +20,8 @@ export default function IntelMapPage() {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+  const { rebuildNonce, attach } = useWebglMapRecovery();
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState('');
   const [active, setActive] = useState<Record<string, boolean>>(() => Object.fromEntries(LAYER_DEFS.map((l) => [l.key, true])));
@@ -26,7 +29,7 @@ export default function IntelMapPage() {
   const { selectEntity } = useIntelContext();
   const navigate = useNavigate();
 
-  // Create the map once.
+  // Create the map once (and again after a WebGL context-loss rebuild).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -40,15 +43,19 @@ export default function IntelMapPage() {
       });
       mapRef.current = map;
       registerMapInstance(map);
+      webglRecoveryCleanupRef.current = attach(map, 'IntelMapPage');
       map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
       popupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '260px' });
       map.on('load', () => { if (!cancelled) setReady(true); });
     })();
     return () => {
       cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
+      setReady(false);
     };
-  }, []);
+  }, [rebuildNonce]);
 
   // Sync layers whenever data / toggles change.
   useEffect(() => {
