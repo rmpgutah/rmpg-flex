@@ -27,7 +27,7 @@
 //     deliberately withholds narrative, notes, and prior attempts.
 // ============================================================
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import { Check, AlertTriangle, FileText, Loader2, Download, Printer, ShieldCheck, ScanLine } from 'lucide-react';
 import SignaturePad from '../../components/SignaturePad';
@@ -111,6 +111,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="field-label">{label}</span>
       {children}
     </label>
+  );
+}
+
+/** Inline "this is required" hint, shown next to the field it belongs to
+ *  instead of in a single wall-of-text list at the bottom of the page. */
+function RequiredHint({ text = 'This is required.' }: { text?: string }) {
+  return (
+    <p className="text-[12px] text-sev-critical mt-1 leading-snug flex items-center gap-1">
+      <AlertTriangle size={12} className="shrink-0" /> {text}
+    </p>
   );
 }
 
@@ -428,27 +438,40 @@ export default function ServeReceiptPage() {
   }, [attestations]);
 
   // ── Client-side mirror of the server's validation ──────────
-  // The server is the authority; this exists only so the recipient sees
-  // what is missing before tapping submit rather than after.
-  const missing = useMemo(() => {
-    const m: string[] = [];
-    if (!partyIsEntity && isNamedParty === null) m.push('Whether you are the person named');
-    if (!recipientName.trim()) m.push('Your name');
-    // Phone, email, and ID are all required, per operator instruction on
-    // the 2026-07-27 service. A proof of service whose signer cannot be
-    // reached afterwards — or verified — is hard to stand behind if the
-    // service is ever contested.
-    if (!phone.trim()) m.push('Your phone number');
-    if (!email.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) m.push('A valid email address');
-    if (!idVerified) m.push('A scanned photo ID');
-    if (variant === 'business' && !businessName.trim()) m.push('The business name');
-    if (isNamedParty === false && !residesAtAddress && !authorizedAgent && premisesType !== 'other') {
-      m.push('Whether you live here or are authorized to accept service');
-    }
-    for (const a of attestations) if (a.required && !accepted[a.id]) m.push(`“${a.text.slice(0, 48)}…”`);
-    if (!signature) m.push('Your signature');
-    return m;
+  // The server is the authority; this drives inline field hints instead
+  // of a single dumped list, so the recipient sees what's wrong next to
+  // where they'd fix it rather than reading a wall of quoted attestation
+  // text at the bottom of the page.
+  const fieldErrors = useMemo(() => {
+    const missingAttestationIds = new Set(
+      attestations.filter((a) => a.required && !accepted[a.id]).map((a) => a.id),
+    );
+    return {
+      whoIsSigning: !partyIsEntity && isNamedParty === null,
+      name: !recipientName.trim(),
+      // Phone, email, and ID are all required, per operator instruction on
+      // the 2026-07-27 service. A proof of service whose signer cannot be
+      // reached afterwards — or verified — is hard to stand behind if the
+      // service is ever contested.
+      phone: !phone.trim(),
+      email: !email.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()),
+      id: !idVerified,
+      businessName: variant === 'business' && !businessName.trim(),
+      authority: isNamedParty === false && !residesAtAddress && !authorizedAgent && premisesType !== 'other',
+      attestations: missingAttestationIds,
+      signature: !signature,
+    };
   }, [partyIsEntity, isNamedParty, recipientName, phone, email, idVerified, variant, businessName, residesAtAddress, authorizedAgent, premisesType, attestations, accepted, signature]);
+
+  const missingCount = Object.values(fieldErrors).reduce(
+    (n, v) => n + (v instanceof Set ? v.size : v ? 1 : 0), 0,
+  );
+
+  // Only nag with inline hints after the signer has tried to submit once —
+  // a form covered in red before anyone has touched it reads as broken,
+  // not helpful.
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const showHint = (broken: boolean) => attemptedSubmit && broken;
 
   const acceptedAttestations = useMemo(
     () => attestations.map((a) => ({ id: a.id, text: a.text, accepted: !!accepted[a.id] })),
@@ -564,7 +587,7 @@ export default function ServeReceiptPage() {
 
   // ── Submit ─────────────────────────────────────────────────
   const submit = useCallback(async () => {
-    if (missing.length || submitting) return;
+    if (missingCount || submitting) return;
     setSubmitting(true);
     setSubmitError(null);
 
@@ -691,7 +714,7 @@ export default function ServeReceiptPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [missing, submitting, token, apiBase, variant, formTitle, acceptedAttestations, recipientName,
+  }, [missingCount, submitting, token, apiBase, variant, formTitle, acceptedAttestations, recipientName,
       relationship, jobTitle, businessName, phone, email, accepted, premisesType, ctx, docCopies,
       partyLabel, residesAtAddress, authorizedAgent, expectedDelivery, signature, coords, buildPdfData]);
 
@@ -887,11 +910,14 @@ export default function ServeReceiptPage() {
               </p>
             </div>
           ) : (
-            <YesNo
-              label={`Are you ${namedParty}?`}
-              value={isNamedParty}
-              onChange={setIsNamedParty}
-            />
+            <>
+              <YesNo
+                label={`Are you ${namedParty}?`}
+                value={isNamedParty}
+                onChange={setIsNamedParty}
+              />
+              {showHint(fieldErrors.whoIsSigning) && <RequiredHint />}
+            </>
           )}
 
           {(partyIsEntity || isNamedParty === false) && (
@@ -923,6 +949,7 @@ export default function ServeReceiptPage() {
                 example, a registered agent, an office manager, or a
                 manager on duty).
               </CheckRow>
+              {showHint(fieldErrors.authority) && <RequiredHint text="Check one of the boxes above to continue." />}
 
               {premisesType === 'business' && (
                 <>
@@ -933,6 +960,7 @@ export default function ServeReceiptPage() {
                       onChange={(e) => setBusinessName(e.target.value)}
                       placeholder="Legal name of the business"
                     />
+                    {showHint(fieldErrors.businessName) && <RequiredHint />}
                   </Field>
                   <Field label="Your job title">
                     <input
@@ -971,6 +999,7 @@ export default function ServeReceiptPage() {
               autoComplete="name"
               placeholder="First and last name"
             />
+            {showHint(fieldErrors.name) && <RequiredHint />}
           </Field>
 
           {/* Required, per operator instruction on the 2026-07-27 service —
@@ -999,6 +1028,7 @@ export default function ServeReceiptPage() {
             </label>
           )}
           {idScanError && <p className="text-[13px] text-sev-warn leading-relaxed">{idScanError}</p>}
+          {showHint(fieldErrors.id) && <RequiredHint />}
 
           <Field label="Phone number *">
             <input
@@ -1009,6 +1039,7 @@ export default function ServeReceiptPage() {
               autoComplete="tel"
               placeholder="(801) 555-0100"
             />
+            {showHint(fieldErrors.phone) && <RequiredHint />}
           </Field>
 
           {answeredWhoIsSigning && (
@@ -1062,14 +1093,16 @@ export default function ServeReceiptPage() {
           ) : (
             <>
               {attestations.map((a) => (
-                <CheckRow
-                  key={a.id}
-                  checked={!!accepted[a.id]}
-                  onChange={(v) => setAccepted((prev) => ({ ...prev, [a.id]: v }))}
-                  required={a.required}
-                >
-                  {a.text}
-                </CheckRow>
+                <Fragment key={a.id}>
+                  <CheckRow
+                    checked={!!accepted[a.id]}
+                    onChange={(v) => setAccepted((prev) => ({ ...prev, [a.id]: v }))}
+                    required={a.required}
+                  >
+                    {a.text}
+                  </CheckRow>
+                  {showHint(fieldErrors.attestations.has(a.id)) && <RequiredHint text="Check this box to continue." />}
+                </Fragment>
               ))}
               <p className="text-[13px] text-fg-muted">
                 Statements marked <span className="text-sev-critical">*</span> are required.
@@ -1087,6 +1120,7 @@ export default function ServeReceiptPage() {
             width={340}
             height={140}
           />
+          {showHint(fieldErrors.signature) && <RequiredHint />}
 
           <Field label="Your email address *">
             <input
@@ -1099,6 +1133,7 @@ export default function ServeReceiptPage() {
               placeholder="you@example.com"
               required
             />
+            {showHint(fieldErrors.email) && <RequiredHint text="A valid email address is required." />}
           </Field>
           <p className="text-[11px] text-fg-muted leading-snug -mt-1">
             Your phone and email are required. They are recorded with this
@@ -1126,18 +1161,26 @@ export default function ServeReceiptPage() {
           padding the page instead previously let a long "still needed"
           list grow taller than the guess and cover whatever had scrolled
           to the bottom of the page (the "who is signing" Yes/No buttons,
-          in practice). */}
+          in practice).
+
+          No longer dumps every outstanding item as quoted attestation
+          text here — that read as broken, not helpful. Each field now
+          carries its own inline "Required" hint (see fieldErrors above),
+          and this bar just says how many remain. */}
       <div className="sticky bottom-0 mt-auto border-t border-rmpg-700 bg-surface-sunken p-3">
         <div className="max-w-lg mx-auto">
-          {missing.length > 0 && (
-            <p className="text-[11px] text-sev-warn mb-2 leading-snug">
-              Still needed: {missing.join(' · ')}
+          {attemptedSubmit && missingCount > 0 && (
+            <p className="text-[12px] text-sev-warn mb-2 leading-snug text-center">
+              {missingCount} required {missingCount === 1 ? 'item' : 'items'} above still need your attention.
             </p>
           )}
           <button
             type="button"
-            onClick={submit}
-            disabled={missing.length > 0 || submitting}
+            onClick={() => {
+              if (missingCount > 0) { setAttemptedSubmit(true); return; }
+              void submit();
+            }}
+            disabled={submitting}
             className="w-full py-3.5 rounded-[2px] font-semibold text-[15px] bg-brand-600 text-rmpg-50 disabled:opacity-40 flex items-center justify-center gap-2"
           >
             {submitting ? <><Loader2 size={16} className="animate-spin" /> Submitting…</> : 'Sign and submit'}
