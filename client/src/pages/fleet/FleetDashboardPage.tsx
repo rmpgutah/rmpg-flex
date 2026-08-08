@@ -27,6 +27,7 @@ import IconButton from '../../components/IconButton';
 import { getMapboxToken } from '../../utils/mapboxApiKey';
 import { injectMapboxStyles } from '../../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
+import { useWebglMapRecovery } from '../../hooks/useWebglMapRecovery';
 import { toDisplayLabel } from '../../utils/formatters';
 import { parseTimestamp } from '../../utils/dateUtils';
 
@@ -245,6 +246,8 @@ export default function FleetDashboardPage() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+  const { rebuildNonce, attach } = useWebglMapRecovery();
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
@@ -275,12 +278,20 @@ export default function FleetDashboardPage() {
         map.on('idle', markReady);
         map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setMapError(e.error?.message || 'Map error'); });
         mapRef.current = map;
+        webglRecoveryCleanupRef.current = attach(map, 'FleetDashboardPage');
       } catch (err) {
         if (!cancelled) setMapError(err instanceof Error ? err.message : 'Failed to load map');
       }
     })();
-    return () => { cancelled = true; mapRef.current?.remove(); mapRef.current = null; };
-  }, []);
+    return () => {
+      cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
+      mapRef.current?.remove();
+      mapRef.current = null;
+      setMapLoaded(false);
+    };
+  }, [rebuildNonce]);
 
   useEffect(() => {
     const map = mapRef.current;

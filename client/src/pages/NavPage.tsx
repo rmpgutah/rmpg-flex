@@ -12,6 +12,7 @@ import { getMapboxToken } from '../utils/mapboxApiKey';
 import { injectMapboxStyles } from '../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { useMapHeatmap, type HeatmapPoint } from '../hooks/useMapHeatmap';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 import { useNavFavorites, type NavFavorite } from '../hooks/useNavFavorites';
 import { useNavTrip, type NavTripContextValue } from '../context/NavTripContext';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -1019,6 +1020,8 @@ const ROUTE_HEATMAP_MAX_POINTS = 5_000;
 function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+  const { rebuildNonce, attach } = useWebglMapRecovery();
   const [mapLoaded, setMapLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1084,6 +1087,7 @@ function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
         map.on('load', () => { if (!cancelled) setMapLoaded(true); });
         map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error?.message || 'Map error'); });
         mapRef.current = map;
+        webglRecoveryCleanupRef.current = attach(map, 'NavPage-RouteHeatmap');
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load map');
       }
@@ -1091,12 +1095,16 @@ function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
 
     return () => {
       cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       mapRef.current?.remove();
       mapRef.current = null;
+      setMapLoaded(false);
     };
-    // Map is created once per panel mount; point data is synced separately below.
+    // Map is created once per panel mount (and again after a WebGL
+    // context-loss rebuild); point data is synced separately below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [rebuildNonce]);
 
   // Enable the heatmap layer + push points once the map + data are ready,
   // and fit the camera to the route bounds.

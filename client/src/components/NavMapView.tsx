@@ -18,6 +18,7 @@ import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapbo
 import { applyRmpgBasemap, type BasemapVariant } from '../utils/mapboxBasemap';
 import { useMapTraffic } from '../hooks/useMapTraffic';
 import { useMapWeatherRadar } from '../hooks/useMapWeatherRadar';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 import type { NavRoutePoint } from '../types';
 import {
   applyNavTheme, resolveNavTheme, navThemeStyleUrl, trailFilter, speedAdaptiveZoom,
@@ -115,6 +116,8 @@ export default function NavMapView({
   const insetEnabled = !lowPower && showInset;
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+  const { rebuildNonce, attach } = useWebglMapRecovery();
   const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [style, setStyle] = useState<'dark' | 'satellite' | 'streets'>(initialStyle);
@@ -291,6 +294,7 @@ export default function NavMapView({
             return;
           }
           mapRef.current = map;
+          webglRecoveryCleanupRef.current = attach(map, 'NavMapView');
           setMapReady(true);
         });
 
@@ -315,6 +319,8 @@ export default function NavMapView({
 
     return () => {
       cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -322,7 +328,7 @@ export default function NavMapView({
       setMapReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [rebuildNonce]);
 
   // ── Style change ───────────────────────────────────────────
   const handleStyleChange = useCallback((next: 'dark' | 'satellite' | 'streets') => {

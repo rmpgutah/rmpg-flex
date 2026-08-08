@@ -12,6 +12,7 @@ import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregiste
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { hasSource, safeRemoveLayer, safeRemoveSource, upsertGeoJsonSource } from '../utils/mapboxSafeLayer';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 
 interface GeoFeature {
   type: 'Feature';
@@ -49,10 +50,12 @@ export default function GeoDataMapView({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { rebuildNonce, attach } = useWebglMapRecovery();
 
-  // Init once.
+  // Init once (and again after a WebGL context-loss rebuild).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -72,16 +75,20 @@ export default function GeoDataMapView({
         map.on('load', () => { if (!cancelled) setLoaded(true); });
         mapRef.current = map;
         registerMapInstance(map);
+        webglRecoveryCleanupRef.current = attach(map, 'GeoDataMapView');
       } catch (err) {
         if (!cancelled) setError((err as Error)?.message || getMapboxTokenErrorMessage());
       }
     })();
     return () => {
       cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
+      setLoaded(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [rebuildNonce]);
 
   // Render the active layer's features whenever the data, color, or
   // selection changes. Feature index is baked into properties (Mapbox
