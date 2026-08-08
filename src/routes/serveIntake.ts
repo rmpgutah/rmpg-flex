@@ -58,7 +58,7 @@ import {
 } from '../utils/serveIntakeExtract';
 import { withTimeout, ocrImage, ocrText } from '../utils/serveIntakeOcr';
 import { estimateNeurons, estimatePacketNeurons, FREE_NEURONS_PER_DAY } from '../utils/serveIntakeNeurons';
-import { precleanText } from '../utils/serveIntakePreclean';
+import { precleanText, detectHomoglyphs } from '../utils/serveIntakePreclean';
 import { arbitrateFields, reconcileIdentityConflicts, type DocCandidate, type FieldConflict, type IdentityWinnerDoc } from '../utils/serveIntakeArbitrate';
 import { finalizeFields } from '../utils/serveIntakeValidate';
 import { judgeMerged } from '../utils/serveIntakeJudge';
@@ -366,7 +366,15 @@ async function scanDocumentHandler(c: any): Promise<Response> {
       // exact tier where the RUSH watermark and Cyrillic homoglyphs survive,
       // from reaching the model and the state/ZIP validator uncleaned.
       // Idempotent, so the already-cleaned toMarkdown/container text is safe.
+      const rawTextForHomoglyphCheck = text;
       text = precleanText(text);
+      const homoglyphSubstitutions = detectHomoglyphs(rawTextForHomoglyphCheck);
+      if (homoglyphSubstitutions.length > 0) {
+        log.info('scan-document: homoglyph substitutions detected', {
+          traceId: c.get('traceId'),
+          substitutions: homoglyphSubstitutions,
+        });
+      }
       // Same family-derivation as /upload — this is the pre-commit PREVIEW
       // the officer actually reviews, so it must use the SAME prompt guidance
       // the eventual /upload commit extraction gets. Without this, the two
