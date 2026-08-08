@@ -39,6 +39,7 @@ import {
   resolveReceiptVariant, receiptFormTitle, attestationsFor, formatServiceAddress, isEntityName,
   VARIANT_LABEL, type ReceiptVariant,
 } from '../../utils/serveReceiptVariant';
+import { formatPhoneInput } from '../../utils/formatters';
 
 // ── Types mirroring GET /api/serve-receipt/:token ────────────
 interface ReceiptJob {
@@ -1034,7 +1035,7 @@ export default function ServeReceiptPage() {
             <input
               className={inputCls}
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
               inputMode="tel"
               autoComplete="tel"
               placeholder="(801) 555-0100"
