@@ -932,9 +932,14 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   {
     const n = data.attempts.length;
     const bandH = 6.4;
+    // Drawn on the RAIL (getRailX/getRailWidth), not lx/ffw — every other
+    // full-bleed block on this page (section header bars, the I(a)/I(b)
+    // panels, the signature block) shares that same left/right edge. This
+    // band previously sat 1mm inset on both sides, reading as a wobble in
+    // the page's left margin when the eye tracks straight down.
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
     doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(lx, y, ffw, bandH);
+    doc.rect(getRailX(), y, getRailWidth(doc), bandH);
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1123,8 +1128,9 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     // Group, a private process service agency...". The 240/240/240 fill
     // by itself is enough callout — it already contrasts with the white
     // page and the dark IMPORTANT NOTICE header band above it.
+    // Rail-aligned (see status band above) — was inset 1mm on both sides.
     doc.setFillColor(240, 240, 240);
-    doc.rect(lx, bandY, ffw, bandH, 'F');
+    doc.rect(getRailX(), bandY, getRailWidth(doc), bandH, 'F');
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE + 2);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1172,6 +1178,11 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       // gets the same boxed treatment as the SERVICE NOT COMPLETED status
       // band above, instead of reading as a footnote hanging off the
       // disclaimer prose.
+      // Box drawn on the RAIL (getRailX/getRailWidth), matching the status
+      // band, the disclaimer band above, and every other full-bleed block on
+      // the page — not lx/ffw, which is inset 1mm on both sides.
+      const boxX = getRailX();
+      const boxW = getRailWidth(doc);
       const padX = SPACING.MD;
       const padY = 1.8;
       const lineH = 3.4;
@@ -1179,22 +1190,22 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       doc.setFontSize(NOTICE_FONT);
       const noteLines: string[] = doc.splitTextToSize(
         sanitizePdfText(data.nextAttemptNote, { preserveCase: true }),
-        ffw - padX * 2,
+        boxW - padX * 2,
       );
       const boxH = padY * 2 + lineH + noteLines.length * lineH;
       y = checkPageBreak(doc, y, boxH + SPACING.SM);
 
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       doc.setLineWidth(BORDER.SECTION_OUTER);
-      doc.rect(lx, y, ffw, boxH);
+      doc.rect(boxX, y, boxW, boxH);
 
       let cy = y + padY + lineH * 0.7;
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text('NEXT ATTEMPT', lx + padX, cy);
+      doc.text('NEXT ATTEMPT', boxX + padX, cy);
       cy += lineH;
       doc.setFont(PDF_VALUE_FONT, 'italic');
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      doc.text(noteLines, lx + padX, cy);
+      doc.text(noteLines, boxX + padX, cy);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
       y += boxH + SPACING.SM;
@@ -1307,9 +1318,11 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // reads as a legal citation, not a shouted disclaimer.
   y = checkPageBreak(doc, y, 9);
   const footerCiteWidth = doc.internal.pageSize.getWidth();
+  // Rule spans the RAIL (getRailX/getRailWidth), matching every other
+  // full-bleed rule on the page — was lx/ffw, inset 1mm on both sides.
   doc.setDrawColor(...COLOR.RULE_STRONG);
   doc.setLineWidth(BORDER.TABLE_OUTER);
-  doc.line(lx, y - 2, lx + ffw, y - 2);
+  doc.line(getRailX(), y - 2, getRailX() + getRailWidth(doc), y - 2);
   doc.setFont(PDF_VALUE_FONT, 'italic');
   doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY + 1.5);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
@@ -1886,20 +1899,26 @@ function drawPleadingCaption(
  */
 function drawInstrumentTitle(doc: jsPDF, y: number, title: string): number {
   const cx = doc.internal.pageSize.getWidth() / 2;
-  const lx = getLeftX();
-  const cw = getContentWidth(doc);
 
   // Filled gray banner instead of a double-ruled black-on-white line — this
   // matches the same gray header-bar language every numbered section (II,
   // III, IV, V) uses via openAutoSection/addSignatureBlock, so the
   // instrument title reads as the first header in that family rather than
   // a differently-styled caption sitting above it.
+  //
+  // Drawn on the RAIL (getRailX/getRailWidth) — those section header bars
+  // are drawn at LAYOUT.PAGE_MARGIN across getContentWidth. This bar
+  // previously used getLeftX() (PAGE_MARGIN + CONTENT_INSET) as its left
+  // edge but the FULL getContentWidth() as its span, so it started 1mm
+  // right of every header/panel/signature block below it and then
+  // overshot the right rail by that same 1mm — the exact "sized from
+  // getContentWidth but drawn from getLeftX" bug pdfTokens.ts warns about.
   const barH = SPACING.SECTION_HEADER_H + 1.5;
   y = checkPageBreak(doc, y, barH + SPACING.LG);
 
   const titleAccentRgb = resolveSectionAccentColor(title);
   doc.setFillColor(titleAccentRgb[0], titleAccentRgb[1], titleAccentRgb[2]);
-  doc.rect(lx, y, cw, barH, 'F');
+  doc.rect(getRailX(), y, getRailWidth(doc), barH, 'F');
 
   doc.setFont('Arial', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE + 2);
