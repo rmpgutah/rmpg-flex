@@ -164,12 +164,16 @@ export default function ShiftPlansPage() {
 
   // ── Enhanced: Swap requests, overtime, staffing, conflicts, notifications, templates ──
   const [swapRequests, setSwapRequests] = useState<any[]>([]);
+  const [allSwaps, setAllSwaps] = useState<any[]>([]);
+  const [swapModalLoading, setSwapModalLoading] = useState(false);
   const [overtimeData, setOvertimeData] = useState<any>(null);
   const [staffingLevels, setStaffingLevels] = useState<any>(null);
   const [conflicts, setConflicts] = useState<any[]>([]);
   const [shiftNotifs, setShiftNotifs] = useState<any[]>([]);
   const [overtimeLoading, setOvertimeLoading] = useState(true);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [showSwapModal, setShowSwapModal] = useState(false);
+  const [swapActionPending, setSwapActionPending] = useState<number | null>(null);
   const [templates, setTemplates] = useState<any[]>([]);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [saveTemplateName, setSaveTemplateName] = useState('');
@@ -242,6 +246,19 @@ export default function ShiftPlansPage() {
       .catch((err: any) => addToast(err?.message || 'Failed to load shift notifications', 'error'));
   }, [addToast]);
 
+  const loadSwapModalData = () => {
+    setSwapModalLoading(true);
+    apiFetch('/shift-swaps')
+      .then((r: any) => setAllSwaps(Array.isArray(r) ? r : []))
+      .catch((err: any) => addToast(err?.message || 'Failed to load shift swaps', 'error'))
+      .finally(() => setSwapModalLoading(false));
+  };
+
+  useEffect(() => {
+    if (showSwapModal) loadSwapModalData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSwapModal]);
+
   useEffect(() => {
     setOvertimeLoading(true);
     let pending = 3;
@@ -301,6 +318,52 @@ export default function ShiftPlansPage() {
       addToast('Shift plan saved', 'success');
     } catch {
       addToast('Failed to save shift plan', 'error');
+    }
+  };
+
+  // ── Swap actions ──
+  const handleSwapRespond = async (swapId: number, accept: boolean) => {
+    setSwapActionPending(swapId);
+    try {
+      await apiFetch(`/shift-swaps/${swapId}/respond`, {
+        method: 'POST',
+        body: JSON.stringify({ accept }),
+      });
+      addToast(accept ? 'Swap accepted' : 'Swap declined', 'success');
+      loadSwapModalData();
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to respond to swap', 'error');
+    } finally {
+      setSwapActionPending(null);
+    }
+  };
+
+  const handleSwapCancel = async (swapId: number) => {
+    setSwapActionPending(swapId);
+    try {
+      await apiFetch(`/shift-swaps/${swapId}/cancel`, { method: 'POST' });
+      addToast('Swap request cancelled', 'success');
+      loadSwapModalData();
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to cancel swap', 'error');
+    } finally {
+      setSwapActionPending(null);
+    }
+  };
+
+  const handleSwapReview = async (swapId: number, status: 'approved' | 'denied') => {
+    setSwapActionPending(swapId);
+    try {
+      await apiFetch(`/shift-swaps/${swapId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status }),
+      });
+      addToast(status === 'approved' ? 'Swap approved' : 'Swap denied', 'success');
+      loadSwapModalData();
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to review swap', 'error');
+    } finally {
+      setSwapActionPending(null);
     }
   };
 
@@ -868,11 +931,15 @@ export default function ShiftPlansPage() {
 
           {/* Pending Swap Requests */}
           {swapRequests.length > 0 && (
-            <div className="p-2 rounded border bg-surface-sunken/20 border-border-subtle/30 text-center">
+            <button
+              type="button"
+              onClick={() => setShowSwapModal(true)}
+              className="p-2 rounded border bg-surface-sunken/20 border-border-subtle/30 text-center hover:bg-surface-raised/30 transition-colors"
+            >
               <ArrowRightLeft className="w-3 h-3 text-rmpg-400 mx-auto mb-0.5" />
               <div className="text-sm font-bold font-mono text-rmpg-400">{swapRequests.length}</div>
               <div className="text-[8px] text-rmpg-400">Swap Requests</div>
-            </div>
+            </button>
           )}
 
           {/* Weekly Overtime */}
@@ -1043,7 +1110,7 @@ export default function ShiftPlansPage() {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-[11px] font-semibold text-rmpg-100">{t.name}</div>
-                          <div className="text-[9px] text-rmpg-400 mt-0.5">
+                          <div className="text-[9px] text-fg-secondary mt-0.5">
                             {t.shift_type} · {(typeof t.pattern_json === 'string' ? JSON.parse(t.pattern_json) : t.pattern_json || []).length} slots
                           </div>
                         </div>
@@ -1078,6 +1145,95 @@ export default function ShiftPlansPage() {
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── Swap Requests Modal ── */}
+      {showSwapModal ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="swap-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowSwapModal(false)}
+        >
+          <div
+            className="bg-surface-raised border border-rmpg-700 rounded-sm w-[560px] max-w-full mx-4 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700">
+              <h2 id="swap-title" className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
+                <ArrowRightLeft className="w-4 h-4 text-brand-400" />
+                Shift Swap Requests
+              </h2>
+              <button type="button" onClick={() => setShowSwapModal(false)} className="text-fg-secondary hover:text-rmpg-100 p-1" aria-label="Close">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              {swapModalLoading ? (
+                <div className="text-xs text-fg-secondary py-4 text-center">Loading…</div>
+              ) : allSwaps.filter((s: any) => ['pending', 'pending_supervisor'].includes(s.status)).length === 0 ? (
+                <div className="text-xs text-fg-muted py-4 text-center">No open swap requests.</div>
+              ) : (
+                allSwaps
+                  .filter((s: any) => ['pending', 'pending_supervisor'].includes(s.status))
+                  .map((s: any) => {
+                    const isTarget = s.target_id === user?.id && s.status === 'pending';
+                    const isApprover = canManage && (s.status === 'pending_supervisor' || (s.status === 'pending' && !s.target_id));
+                    const isRequester = s.requester_id === user?.id;
+                    const isCancellable = isRequester && ['pending', 'pending_supervisor'].includes(s.status);
+                    const busy = swapActionPending === s.id;
+                    return (
+                      <div key={s.id} className="p-2.5 bg-surface-base border border-rmpg-700 rounded-sm">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-[11px] font-semibold text-rmpg-100">
+                              {s.requester_name ?? `Officer #${s.requester_id}`} — {s.shift_date}
+                            </div>
+                            <div className="text-[9px] text-fg-secondary mt-0.5">
+                              {s.target_name ? `to ${s.target_name}` : 'Open swap'} · {formatEnumValue(s.status)}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {isTarget && (
+                              <>
+                                <button type="button" disabled={busy} onClick={() => handleSwapRespond(s.id, true)}
+                                  className="px-2 py-1 text-[9px] bg-green-900/50 text-green-400 border border-green-700/50 rounded-sm hover:bg-green-800/50 disabled:opacity-40">
+                                  Accept
+                                </button>
+                                <button type="button" disabled={busy} onClick={() => handleSwapRespond(s.id, false)}
+                                  className="px-2 py-1 text-[9px] text-fg-muted border border-rmpg-600 rounded-sm hover:text-red-400 hover:border-red-600 disabled:opacity-40">
+                                  Decline
+                                </button>
+                              </>
+                            )}
+                            {isApprover && (
+                              <>
+                                <button type="button" disabled={busy} onClick={() => handleSwapReview(s.id, 'approved')}
+                                  className="px-2 py-1 text-[9px] bg-green-900/50 text-green-400 border border-green-700/50 rounded-sm hover:bg-green-800/50 disabled:opacity-40">
+                                  Approve
+                                </button>
+                                <button type="button" disabled={busy} onClick={() => handleSwapReview(s.id, 'denied')}
+                                  className="px-2 py-1 text-[9px] text-fg-muted border border-rmpg-600 rounded-sm hover:text-red-400 hover:border-red-600 disabled:opacity-40">
+                                  Deny
+                                </button>
+                              </>
+                            )}
+                            {isCancellable && !isApprover && (
+                              <button type="button" disabled={busy} onClick={() => handleSwapCancel(s.id)}
+                                className="px-2 py-1 text-[9px] text-fg-muted border border-rmpg-600 rounded-sm hover:text-red-400 hover:border-red-600 disabled:opacity-40">
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
               )}
             </div>
           </div>

@@ -93,6 +93,29 @@ function csvEscape(v: unknown): string {
   return `"${String(v).replace(/"/g, '""')}"`;
 }
 
+// Every shift-swap status transition writes one row to the existing
+// generic activity_log table (migrations/0001_initial.sql) rather than a
+// new dedicated audit table -- entity_type='shift_swap_request' lets a
+// future "history for this swap" view query
+// activity_log WHERE entity_type = 'shift_swap_request' AND entity_id = ?
+// with no new schema.
+async function writeSwapActivityLog(
+  db: ReturnType<typeof getDb>,
+  actorUserId: number,
+  action: string,
+  swapId: number,
+  details: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await execute(
+      db,
+      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+       VALUES (?, ?, 'shift_swap_request', ?, ?, datetime('now'))`,
+      actorUserId, action, swapId, JSON.stringify(details),
+    );
+  } catch { /* audit-log failure must never block the swap action */ }
+}
+
 const SHIFT_TYPES = new Set(['day', 'swing', 'night', 'graveyard', 'custom']);
 const PLAN_STATUSES = new Set(['draft', 'active', 'completed', 'cancelled']);
 
@@ -414,12 +437,20 @@ sp.delete('/shift-plans/:id', async (c) => {
 // keep both registered until the client is converged on one path. Sharing
 // a handler so the two never drift apart.
 async function listShiftSwaps(c: any) {
-  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
-  if (denied) return c.json({ error: denied }, 403);
   const status = c.req.query('status');
   const date = c.req.query('date');
   const where: string[] = [];
   const args: any[] = [];
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) {
+    // Non-elevated callers (e.g. plain officers) don't get a blanket 403 —
+    // they can still see swaps where they're the requester or the target,
+    // which is exactly the data the client's accept/decline modal needs.
+    const user = c.get('user');
+    if (!user) return c.json({ error: denied }, 403);
+    where.push('(requester_id = ? OR target_id = ?)');
+    args.push(user.id, user.id);
+  }
   if (status) { where.push('status = ?'); args.push(status); }
   if (date) { where.push('shift_date = ?'); args.push(date); }
   const sql = `SELECT * FROM shift_swap_requests ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
@@ -453,6 +484,8 @@ sp.post('/shift-swaps', async (c) => {
 
   const swapId = Number(r.meta.last_row_id);
 
+  await writeSwapActivityLog(db, user.id, 'swap_requested', swapId, { shift_date: body.shift_date, target_id: body.target_id ?? null });
+
   try {
     await evaluateNotificationRules(db, 'shift_swap_requested', {
       title: 'Shift swap requested',
@@ -464,6 +497,100 @@ sp.post('/shift-swaps', async (c) => {
   } catch { /* notification failure must never block the swap request */ }
 
   return c.json({ success: true, id: swapId }, 201);
+});
+
+sp.post('/shift-swaps/:id/respond', async (c) => {
+  const user = c.get('user') as { id: number; full_name?: string } | undefined;
+  if (!user) return c.json({ error: 'Unauthenticated' }, 401);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const body = await c.req.json<{ accept?: boolean }>().catch(() => ({} as { accept?: boolean }));
+  if (typeof body.accept !== 'boolean') {
+    return c.json({ error: 'accept (boolean) is required' }, 400);
+  }
+  const db = getDb(c.env);
+
+  const swap = await queryFirst<{
+    requester_id: number; target_id: number | null; target_name: string | null;
+    shift_date: string; status: string;
+  }>(
+    db,
+    'SELECT requester_id, target_id, target_name, shift_date, status FROM shift_swap_requests WHERE id = ?',
+    id,
+  );
+  if (!swap) return c.json({ error: 'Shift swap request not found' }, 404);
+  if (swap.target_id === null) {
+    return c.json({ error: 'This swap has no target officer to respond' }, 400);
+  }
+  if (swap.target_id !== user.id) {
+    return c.json({ error: 'Only the target officer can respond to this swap' }, 403);
+  }
+  if (swap.status !== 'pending') {
+    return c.json({ error: 'This swap is not awaiting a response' }, 400);
+  }
+
+  if (body.accept) {
+    await execute(
+      db,
+      `UPDATE shift_swap_requests SET status = 'pending_supervisor', target_responded_at = datetime('now') WHERE id = ?`,
+      id,
+    );
+    await writeSwapActivityLog(db, user.id, 'swap_target_accepted', id, { shift_date: swap.shift_date });
+    try {
+      await evaluateNotificationRules(db, 'shift_swap_target_accepted', {
+        title: 'Shift swap accepted — ready for review',
+        message: `${swap.target_name ?? 'The target officer'} accepted a swap for ${swap.shift_date}`,
+        priority: 'normal',
+        entity_type: 'shift_swap_request',
+        entity_id: id,
+      }, c.env);
+    } catch { /* notification failure must never block the response */ }
+  } else {
+    const declineNote = `${swap.target_name ?? 'The target officer'} declined the swap`;
+    await execute(
+      db,
+      `UPDATE shift_swap_requests SET status = 'denied', target_responded_at = datetime('now'), review_notes = ? WHERE id = ?`,
+      declineNote, id,
+    );
+    await writeSwapActivityLog(db, user.id, 'swap_target_rejected', id, { shift_date: swap.shift_date });
+    try {
+      await evaluateNotificationRules(db, 'shift_swap_denied', {
+        title: 'Shift swap denied',
+        message: `Your swap request for ${swap.shift_date} was declined by the target officer`,
+        priority: 'normal',
+        entity_type: 'shift_swap_request',
+        entity_id: id,
+      }, c.env, [swap.requester_id]);
+    } catch { /* notification failure must never block the response */ }
+  }
+
+  return c.json({ success: true });
+});
+
+sp.post('/shift-swaps/:id/cancel', async (c) => {
+  const user = c.get('user') as { id: number; full_name?: string } | undefined;
+  if (!user) return c.json({ error: 'Unauthenticated' }, 401);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+
+  const swap = await queryFirst<{ requester_id: number; shift_date: string; status: string }>(
+    db,
+    'SELECT requester_id, shift_date, status FROM shift_swap_requests WHERE id = ?',
+    id,
+  );
+  if (!swap) return c.json({ error: 'Shift swap request not found' }, 404);
+  if (swap.requester_id !== user.id) {
+    return c.json({ error: 'Only the requester can cancel this swap' }, 403);
+  }
+  if (swap.status !== 'pending' && swap.status !== 'pending_supervisor') {
+    return c.json({ error: `Cannot cancel a swap in status '${swap.status}'` }, 400);
+  }
+
+  await execute(db, `UPDATE shift_swap_requests SET status = 'cancelled' WHERE id = ?`, id);
+  await writeSwapActivityLog(db, user.id, 'swap_cancelled', id, { shift_date: swap.shift_date });
+
+  return c.json({ success: true });
 });
 
 sp.put('/shift-swaps/:id', async (c) => {
@@ -478,12 +605,18 @@ sp.put('/shift-swaps/:id', async (c) => {
   const user = c.get('user') as { id: number; full_name?: string } | undefined;
   const db = getDb(c.env);
 
-  const swap = await queryFirst<{ requester_id: number | null; target_id: number | null; shift_date: string }>(
+  const swap = await queryFirst<{ requester_id: number | null; target_id: number | null; shift_date: string; status: string }>(
     db,
-    'SELECT requester_id, target_id, shift_date FROM shift_swap_requests WHERE id = ?',
+    'SELECT requester_id, target_id, shift_date, status FROM shift_swap_requests WHERE id = ?',
     id,
   );
   if (!swap) return c.json({ error: 'Shift swap request not found' }, 404);
+  if (swap.target_id !== null && swap.status === 'pending') {
+    return c.json({ error: "This swap is awaiting the target officer's response" }, 400);
+  }
+  if (swap.status !== 'pending' && swap.status !== 'pending_supervisor') {
+    return c.json({ error: `Cannot review a swap in status '${swap.status}'` }, 400);
+  }
 
   await execute(
     db,
@@ -492,6 +625,8 @@ sp.put('/shift-swaps/:id', async (c) => {
      WHERE id = ?`,
     body.status, user?.id ?? null, user?.full_name ?? null, body.review_notes ?? null, id,
   );
+
+  await writeSwapActivityLog(db, user?.id ?? 0, `swap_${body.status}`, id, { shift_date: swap.shift_date, review_notes: body.review_notes ?? null });
 
   try {
     const dynamicTargets = [swap.requester_id, swap.target_id]
