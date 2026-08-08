@@ -30,16 +30,25 @@ export interface HomoglyphSubstitution {
 export function detectHomoglyphs(s: string): HomoglyphSubstitution[] { ... }
 ```
 
-The call site is `src/routes/serveIntake.ts`, in the `scan-document` handler, immediately after the existing pre-clean step. It calls `detectHomoglyphs()` on the raw (pre-normalization) text and, only when the result is non-empty, emits:
+There are two call sites in `src/routes/serveIntake.ts`, each immediately after that handler's existing pre-clean step: the `/scan-document` handler (the pre-commit PREVIEW the officer reviews) and the `/upload` handler (the actual commit path that writes the record). Both call `detectHomoglyphs()` on the raw (pre-normalization) text and, only when the result is non-empty, emit a per-route-prefixed message:
 
 ```ts
-log.info('serve-intake: homoglyph substitutions detected', {
+// /scan-document
+log.info('scan-document: homoglyph substitutions detected', {
   traceId: c.get('traceId'),
   substitutions: result, // [{char, codePoint, replacement, count}, ...]
 });
+
+// /upload
+log.info('upload: homoglyph substitutions detected', {
+  traceId: c.get('traceId'),
+  substitutions: result,
+});
 ```
 
-This matches the existing `log.info(action, { traceId, ...context })` pattern already used at `serveIntake.ts:336`. No new table, no `error_log` entry — per the earlier scoping decision, this is a structured log only (`src/utils/logger.ts`), consistent with how the rest of this route reports pipeline events.
+This matches the existing `log.info(action, { traceId, ...context })` pattern already used at `serveIntake.ts:336` and its `/upload` counterpart. No new table, no `error_log` entry — per the earlier scoping decision, this is a structured log only (`src/utils/logger.ts`), consistent with how the rest of this route reports pipeline events.
+
+**Coverage note:** an earlier revision of this design scoped the audit log to `/scan-document` only, on the claim that it was "the one caller with traceId in scope." That claim was factually wrong — `/upload` also has `traceId` in scope and already logs other pipeline events with it (e.g. `'upload: toMarkdown structured extraction used'`). Since the actual committed document text is written via `/upload`, not `/scan-document`, the audit log now fires at both the preview and commit paths.
 
 ## 4. Non-goals
 

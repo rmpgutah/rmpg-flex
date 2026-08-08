@@ -593,7 +593,15 @@ si.post('/upload', async (c) => {
         // so applying it once here after tier selection covers every tier
         // (including the already-cleaned container text) with no double-
         // scrub risk, and no future tier can escape it.
+        const rawTextForHomoglyphCheck = text;
         text = precleanText(text);
+        const homoglyphSubstitutions = detectHomoglyphs(rawTextForHomoglyphCheck);
+        if (homoglyphSubstitutions.length > 0) {
+          log.info('upload: homoglyph substitutions detected', {
+            traceId: c.get('traceId'),
+            substitutions: homoglyphSubstitutions,
+          });
+        }
         // modelCalled is set true ONLY inside the branch that actually
         // invokes extractFromText — not derived from the outcome, so a
         // timeout/error caught below still counts as "reached the model"
