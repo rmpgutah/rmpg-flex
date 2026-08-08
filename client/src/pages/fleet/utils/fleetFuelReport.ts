@@ -17,7 +17,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle, FleetFuelLog, FleetFuelSummary } from '../../../types';
-import { parseTimestamp } from '../../../utils/dateUtils';
+import { parseTimestamp, localToday } from '../../../utils/dateUtils';
 import { toDisplayLabel } from '../../../utils/formatters';
 import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 
@@ -325,6 +325,6 @@ export function buildFleetFuelReport({ vehicle, fuelLogs, summary, periodLabel }
  *  filename/behaviour as before this function was split into a builder + saver). */
 export function generateFleetFuelReport(args: Args): void {
   const doc = buildFleetFuelReport(args);
-  const filename = `fuel-report-${args.vehicle.vehicle_number || 'vehicle'}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `fuel-report-${args.vehicle.vehicle_number || 'vehicle'}-${localToday()}.pdf`;
   doc.save(filename);
 }

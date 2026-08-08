@@ -12,7 +12,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle } from '../../../types';
-import { safeDateStr } from '../../../utils/dateUtils';
+import { safeDateStr, localToday } from '../../../utils/dateUtils';
 import { toDisplayLabel } from '../../../utils/formatters';
 
 interface CostTotals {
@@ -206,6 +206,6 @@ export function buildFleetVehicleSummaryPdf({ vehicle, assignedOfficer, assigned
  *  filename/behaviour as before this function was split into a builder + saver). */
 export function generateFleetVehicleSummaryPdf(args: Args): void {
   const doc = buildFleetVehicleSummaryPdf(args);
-  const filename = `vehicle-summary-${args.vehicle.vehicle_number || 'vehicle'}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `vehicle-summary-${args.vehicle.vehicle_number || 'vehicle'}-${localToday()}.pdf`;
   doc.save(filename);
 }
