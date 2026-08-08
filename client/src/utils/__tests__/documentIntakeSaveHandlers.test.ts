@@ -5,6 +5,7 @@ import {
   buildWitnessStatementSupplement, buildInfoFormSupplement,
   getSaveBuilder, hasSaveHandler, requiresIncident,
 } from '../documentIntakeSaveHandlers';
+import { localToday } from '../dateUtils';
 
 describe('splitPersonName', () => {
   it('splits "LAST, FIRST" form', () => {
@@ -134,7 +135,7 @@ describe('buildFiPayload', () => {
 
   it('defaults date to today when not in OCR', () => {
     const result = buildFiPayload({ subject_name: 'X' });
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
     expect((result.payload as any).date).toBe(today);
   });
 
