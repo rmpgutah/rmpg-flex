@@ -27,7 +27,7 @@
 //     deliberately withholds narrative, notes, and prior attempts.
 // ============================================================
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import { Check, AlertTriangle, FileText, Loader2, Download, Printer, ShieldCheck, ScanLine } from 'lucide-react';
 import SignaturePad from '../../components/SignaturePad';
@@ -434,11 +434,13 @@ export default function ServeReceiptPage() {
     const m: string[] = [];
     if (!partyIsEntity && isNamedParty === null) m.push('Whether you are the person named');
     if (!recipientName.trim()) m.push('Your name');
-    // Both required, per operator instruction on the 2026-07-27 service.
-    // A proof of service whose signer cannot be reached afterwards is
-    // hard to stand behind if the service is ever contested.
+    // Phone, email, and ID are all required, per operator instruction on
+    // the 2026-07-27 service. A proof of service whose signer cannot be
+    // reached afterwards — or verified — is hard to stand behind if the
+    // service is ever contested.
     if (!phone.trim()) m.push('Your phone number');
     if (!email.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) m.push('A valid email address');
+    if (!idVerified) m.push('A scanned photo ID');
     if (variant === 'business' && !businessName.trim()) m.push('The business name');
     if (isNamedParty === false && !residesAtAddress && !authorizedAgent && premisesType !== 'other') {
       m.push('Whether you live here or are authorized to accept service');
@@ -446,24 +448,7 @@ export default function ServeReceiptPage() {
     for (const a of attestations) if (a.required && !accepted[a.id]) m.push(`“${a.text.slice(0, 48)}…”`);
     if (!signature) m.push('Your signature');
     return m;
-  }, [partyIsEntity, isNamedParty, recipientName, phone, email, variant, businessName, residesAtAddress, authorizedAgent, premisesType, attestations, accepted, signature]);
-
-  // The "still needed" list can run to several lines (up to 5 attestations
-  // plus name/phone/email/signature), so the fixed footer's real height
-  // varies — a static pb-* reserve either wastes space or, once the list
-  // gets long enough, lets the footer cover whatever scrolled to the
-  // bottom of the page (the "who is signing" Yes/No buttons, in practice).
-  const footerRef = useRef<HTMLDivElement | null>(null);
-  const [footerHeight, setFooterHeight] = useState(160);
-  useLayoutEffect(() => {
-    const el = footerRef.current;
-    if (!el) return;
-    const measure = () => setFooterHeight(el.getBoundingClientRect().height);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [missing]);
+  }, [partyIsEntity, isNamedParty, recipientName, phone, email, idVerified, variant, businessName, residesAtAddress, authorizedAgent, premisesType, attestations, accepted, signature]);
 
   const acceptedAttestations = useMemo(
     () => attestations.map((a) => ({ id: a.id, text: a.text, accepted: !!accepted[a.id] })),
@@ -815,7 +800,7 @@ export default function ServeReceiptPage() {
     + (signature ? 1 : 0);
 
   return (
-    <div className="min-h-screen bg-surface-base" style={{ paddingBottom: footerHeight + 16 }}>
+    <div className="min-h-screen bg-surface-base flex flex-col">
       <header className="px-4 py-4 border-b border-rmpg-700 bg-surface-sunken">
         <p className="text-[10px] uppercase tracking-widest text-fg-muted">{ctx.agency}</p>
         <h1 className="text-rmpg-50 text-lg font-bold leading-tight">Acknowledgement of Service</h1>
@@ -847,7 +832,7 @@ export default function ServeReceiptPage() {
         </p>
       </header>
 
-      <div className="p-3 max-w-lg mx-auto">
+      <div className="p-3 max-w-lg mx-auto w-full flex-1">
         {/* The single most important sentence on this page. Recipients
             refuse to sign because they think it concedes something; say
             plainly that it does not, before anything else is asked. */}
@@ -988,9 +973,10 @@ export default function ServeReceiptPage() {
             />
           </Field>
 
-          {/* Offered, never demanded. Nobody is obliged to produce ID to
-              accept papers, and a form that insisted would block a service
-              that is otherwise perfectly good. */}
+          {/* Required, per operator instruction on the 2026-07-27 service —
+              a proof of service is more defensible in a contested hearing
+              when the signer's identity was verified against a photo ID
+              rather than self-attested. */}
           {idVerified ? (
             <p className="text-[13px] text-sev-ok leading-relaxed flex items-center gap-1.5">
               <Check size={14} /> Identity read from your licence.
@@ -999,21 +985,22 @@ export default function ServeReceiptPage() {
             <label className="block">
               <span className="flex items-center gap-1.5 text-[13px] text-fg-secondary cursor-pointer">
                 <ScanLine size={14} />
-                {idScanning ? 'Reading…' : 'Optional: scan the barcode on the back of your licence'}
+                {idScanning ? 'Reading…' : 'Required: scan the barcode on the back of your licence or state ID'}
+                <span className="text-sev-critical">*</span>
               </span>
               <input
                 type="file" accept="image/*" capture="environment" className="sr-only"
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) void scanId(f); }}
               />
               <span className="block text-[13px] text-fg-muted leading-relaxed mt-0.5">
-                Fills your name for you. You do not have to — you can simply
-                type it.
+                We need this to verify who signed. It also fills your name in
+                for you.
               </span>
             </label>
           )}
           {idScanError && <p className="text-[13px] text-sev-warn leading-relaxed">{idScanError}</p>}
 
-          <Field label="Phone number">
+          <Field label="Phone number *">
             <input
               className={inputCls}
               value={phone}
@@ -1101,7 +1088,7 @@ export default function ServeReceiptPage() {
             height={140}
           />
 
-          <Field label="Email me a copy (optional)">
+          <Field label="Your email address *">
             <input
               className={inputCls}
               type="email"
@@ -1133,8 +1120,14 @@ export default function ServeReceiptPage() {
       </div>
 
       {/* Sticky submit — the form is long and the action must never be
-          more than a thumb away on a doorstep. */}
-      <div ref={footerRef} className="fixed bottom-0 inset-x-0 border-t border-rmpg-700 bg-surface-sunken p-3">
+          more than a thumb away on a doorstep. Kept in normal document
+          flow (sticky, not fixed) so its real rendered height always
+          reserves its own space — a fixed bar with a guessed height
+          padding the page instead previously let a long "still needed"
+          list grow taller than the guess and cover whatever had scrolled
+          to the bottom of the page (the "who is signing" Yes/No buttons,
+          in practice). */}
+      <div className="sticky bottom-0 mt-auto border-t border-rmpg-700 bg-surface-sunken p-3">
         <div className="max-w-lg mx-auto">
           {missing.length > 0 && (
             <p className="text-[11px] text-sev-warn mb-2 leading-snug">

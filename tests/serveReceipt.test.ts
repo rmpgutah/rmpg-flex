@@ -41,6 +41,7 @@ function submission(over: Partial<ServeReceiptSubmission> = {}): ServeReceiptSub
     recipient_name: 'Jane Doe',
     recipient_phone: '(801) 555-0142',
     recipient_email: 'jane@example.com',
+    recipient_id_verified: 1,
     business_name: null,
     recipient_age_confirmed: 1,
     ack_received_documents: 1,
@@ -122,6 +123,9 @@ describe('validateReceiptSubmission — universal requirements', () => {
 
   it.each([
     ['recipient_name', { recipient_name: null }, /name is required/i],
+    ['phone', { recipient_phone: null }, /phone number is required/i],
+    ['email', { recipient_email: null }, /email address is required/i],
+    ['id verification', { recipient_id_verified: 0 }, /photo id is required/i],
     ['signature', { recipient_signature: null }, /signature is required/i],
     ['age', { recipient_age_confirmed: 0 }, /eighteen/i],
     ['receipt', { ack_received_documents: 0 }, /receiving the documents/i],

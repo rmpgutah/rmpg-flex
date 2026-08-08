@@ -322,6 +322,7 @@ export interface ServeReceiptSubmission {
   recipient_name: string | null;
   recipient_phone: string | null;
   recipient_email: string | null;
+  recipient_id_verified: number;
   business_name: string | null;
   recipient_age_confirmed: number;
   ack_received_documents: number;
@@ -372,6 +373,7 @@ export function validateReceiptSubmission(s: ServeReceiptSubmission): string | n
   if (!s.recipient_email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s.recipient_email)) {
     return 'A valid email address is required';
   }
+  if (!s.recipient_id_verified) return 'A scanned photo ID is required';
   if (!validSignature(s.recipient_signature)) return 'A signature is required';
   if (!s.recipient_age_confirmed) return 'You must confirm you are an adult over the age of eighteen';
   if (!s.ack_received_documents) return 'You must acknowledge receiving the documents';
@@ -621,6 +623,7 @@ serveReceipt.post('/:token', async (c) => {
     recipient_name: str(body.recipient_name, 200),
     recipient_phone: str(body.recipient_phone, 40),
     recipient_email: emailTo,
+    recipient_id_verified: bool(body.recipient_id_verified),
     business_name: str(body.business_name, 200),
     recipient_age_confirmed: bool(body.recipient_age_confirmed),
     ack_received_documents: bool(body.ack_received_documents),
