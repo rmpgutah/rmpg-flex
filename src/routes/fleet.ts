@@ -2352,10 +2352,7 @@ fleet.get('/:id{[0-9]+}/mileage-history', async (c) => {
 // GET /:id/fuel-efficiency — per-fill MPG trail + average.
 // Shape: { avg_mpg, data: [{ date, mpg, cost_per_mile }] }.
 //
-// TODO(you): implement the per-fill MPG calculation in the loop below.
-// This is a DOMAIN decision, not a mechanical one — how RMPG fuels its
-// fleet determines what makes a "good" MPG number here. Field fuel logs are
-// messy: partial fills, skipped fill-ups, odometer resets. Consider:
+// Per-fill MPG, implemented per the domain call below:
 //
 //   • Distance for a fill = thisReading.odometer − prevReading.odometer.
 //     MPG for that fill   = distance / thisReading.gallons.
