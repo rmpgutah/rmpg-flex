@@ -57,7 +57,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
     setLoading(true);
     try {
       const params = filterCat !== 'all' ? `?category=${filterCat}` : '';
-      try { const data = await apiFetch<any[]>(`/hr/documents${params}`); setDocs(data); } catch { addToast('Failed to load documents', 'error'); }
+      try { const data = await apiFetch<any[]>(`/hr/documents${params}`); setDocs(Array.isArray(data) ? data : []); } catch { addToast('Failed to load documents', 'error'); }
     } finally { setLoading(false); }
   };
 

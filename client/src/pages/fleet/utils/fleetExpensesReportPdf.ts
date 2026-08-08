@@ -11,6 +11,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle } from '../../../types';
+import { localToday } from '../../../utils/dateUtils';
 
 interface ExpenseRecord {
   id?: number | string;
@@ -191,6 +192,6 @@ export function buildFleetExpensesReportPdf({ vehicle, expenses, periodLabel }: 
 export function generateFleetExpensesReportPdf(args: Args): void {
   const doc = buildFleetExpensesReportPdf(args);
   const scopePart = args.vehicle ? args.vehicle.vehicle_number || 'vehicle' : 'fleet';
-  const filename = `expenses-report-${scopePart}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `expenses-report-${scopePart}-${localToday()}.pdf`;
   doc.save(filename);
 }
