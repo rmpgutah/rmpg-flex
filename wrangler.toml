@@ -297,6 +297,22 @@ instance_type = "basic"
 name = "PDF_TOOLS"
 class_name = "PdfToolsContainer"
 
+# ─── Custom Tesseract OCR Container ─────────────────────────
+# Self-hosted, fine-tuned OCR — data-sovereignty motivated (see
+# docs/superpowers/specs/2026-08-08-custom-tesseract-ocr-design.md).
+# NOT wired into production callAi()/extractVision() — this is a
+# measurable A/B candidate only (see scripts/serve-intake-vision-ab.ts),
+# per the design's evidence-gated non-goal.
+[[containers]]
+class_name = "TesseractOcrContainer"
+image = "./containers/tesseract-ocr/Dockerfile"
+max_instances = 3
+instance_type = "basic"
+
+[[durable_objects.bindings]]
+name = "TESSERACT_OCR"
+class_name = "TesseractOcrContainer"
+
 [[migrations]]
 tag = "v1-pdftools"
 new_sqlite_classes = ["PdfToolsContainer"]
@@ -342,6 +358,13 @@ new_sqlite_classes = ["PersonIntelDO"]
 [[migrations]]
 tag = "v7-webbrowsersession"
 new_sqlite_classes = ["WebBrowserSessionDO"]
+
+# TesseractOcrContainer — APPENDED (same prefix rule as v2-voicehub above:
+# live tags must be a prefix of this list, so new DO migrations go at the
+# END, never mid-list). SQLite-backed for free-plan compatibility.
+[[migrations]]
+tag = "v8-tesseractocr"
+new_sqlite_classes = ["TesseractOcrContainer"]
 
 # ─── Workers AI ────────────────────────────────────────────
 # Used by /api/serve-intake/scan-document + /api/serve-intake/upload
