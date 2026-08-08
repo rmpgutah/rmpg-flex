@@ -693,7 +693,13 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // (and the Phase 4 "enrolled" gate), and AdminEmailTab.tsx was narrowed to
   // app-registration config only — both dropped several text-rmpg-400/500
   // sites along with the removed UI.
-  const PIN = 10515;
+  //
+  // 10515 -> 10514: ShiftPlansPage's swap-requests modal (Close button,
+  // loading/empty states, per-row status caption, Decline/Deny buttons, and
+  // the new requester-only Cancel button added alongside the shift-swap
+  // cancel workflow) moved off text-rmpg-400/500 onto text-fg-secondary/
+  // text-fg-muted.
+  const PIN = 10514;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

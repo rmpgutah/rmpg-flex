@@ -15,7 +15,7 @@ import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import { resolveDispatchAccess } from './pages/dispatch/dispatchAccess';
 import { isCompanyBrowserBlockedRole } from './utils/companyBrowserAccess';
-import { tryReloadForChunkFailure, normalizeChunkError, repairPoisonedChunkInBrowser } from './utils/chunkRetry';
+import { tryReloadForChunkFailure, normalizeChunkError, repairAllPoisonedChunksInBrowser } from './utils/chunkRetry';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
@@ -82,8 +82,14 @@ function lazyRetry<T extends React.ComponentType<any>>(
   // cache-bypassing re-request can. When it works, recovery is INSTANT instead
   // of impossible; when it doesn't apply, we rethrow and the original
   // propagation-window ladder runs completely unchanged. See chunkRetry.ts.
+  // Uses repairAllPoisonedChunksInBrowser (not the single-URL variant) because
+  // Chrome's rejection only ever names the top-level import target — a poisoned
+  // TRANSITIVE sub-chunk it statically imports (mapboxLoader, a panel, etc.)
+  // never appears in the error message. Scanning Resource Timing catches those
+  // too (see chunkRetry.ts's "Transitive-chunk gap" section) — ErrorBoundary
+  // already used this variant (PR #3311); this call site was the missed twin.
   const withRetry = () => factory()
-    .catch((err) => repairPoisonedChunkInBrowser(err).then((repaired) => {
+    .catch((err) => repairAllPoisonedChunksInBrowser(err).then((repaired) => {
       if (!repaired) throw err;
       return factory();
     }))
