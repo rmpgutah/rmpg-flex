@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { saveMapPref } from '../../../utils/mapPreferences';
 import { applyRmpgBasemap } from '../../../utils/mapboxBasemap';
+import { useWebglMapRecovery } from '../../../hooks/useWebglMapRecovery';
 
 interface Props {
   parentMap: mapboxgl.Map;
@@ -10,6 +11,7 @@ interface Props {
 
 export default function MinimapControl({ parentMap, onClose }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const { rebuildNonce, attach } = useWebglMapRecovery();
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -29,12 +31,20 @@ export default function MinimapControl({ parentMap, onClose }: Props) {
       minimap.setZoom(Math.max(parentMap.getZoom() - 4, 1));
     };
 
+    // Continuously synced to the parent's camera, so a post-context-loss
+    // rebuild just needs a resync (via the parent's next 'move', or
+    // immediately here) rather than the captured-camera restore other
+    // surfaces use.
+    const detachRecovery = attach(minimap, 'MinimapControl');
+    minimap.once('load', syncToParent);
+
     parentMap.on('move', syncToParent);
     return () => {
       parentMap.off('move', syncToParent);
+      detachRecovery();
       minimap.remove();
     };
-  }, [parentMap]);
+  }, [parentMap, rebuildNonce, attach]);
 
   return (
     <div

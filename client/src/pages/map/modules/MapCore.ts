@@ -7,6 +7,7 @@ import {
 import { getMapboxTokenStatus } from '../../../utils/mapboxApiKey';
 import { applyRmpgBasemap, type BasemapVariant } from '../../../utils/mapboxBasemap';
 import { devLog, devWarn } from '../../../utils/devLog';
+import { installWebglContextRecovery, type MapCamera } from '../../../utils/webglRecovery';
 import type { MapStyleId } from '../utils/mapConstants';
 import { isLightMapStyle, isSatelliteStyle } from '../utils/mapConstants';
 
@@ -78,6 +79,9 @@ export function useMapCore({
   // the time, not whichever style was active when the listener was attached.
   const activeStyleRef = useRef<MapStyleId>(mapStyle);
   const [token, setToken] = useState<string | null>(null);
+  // Camera to restore once the post-context-loss rebuild's new map finishes
+  // loading — set by the webglRecovery onRebuild callback below.
+  const pendingRestoreCameraRef = useRef<MapCamera | null>(null);
 
   const [mapLoaded, setMapLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -98,6 +102,7 @@ export function useMapCore({
       return;
     }
     let cancelled = false;
+    let webglRecoveryCleanup: (() => void) | null = null;
 
     async function initMap() {
       // Reset error/loading state at the top of every (re-)run so the
@@ -180,9 +185,32 @@ export function useMapCore({
           // NavigationControl, ScaleControl, GeolocateControl, and AttributionControl
           // are already added by createMapboxMap() — don't duplicate them here.
           if (DARK_STYLES.includes(mapStyle)) addMapbox3DBuildings(map);
+          if (pendingRestoreCameraRef.current) {
+            const cam = pendingRestoreCameraRef.current;
+            pendingRestoreCameraRef.current = null;
+            map.jumpTo({ center: cam.center, zoom: cam.zoom, bearing: cam.bearing, pitch: cam.pitch });
+          }
           setMapLoaded(true);
           setLoading(false);
           devLog('[MapCore] map loaded');
+        });
+
+        // Mapbox's 'error' event never fires on WebGL context loss — that's a
+        // separate 'webglcontextlost' event Mapbox surfaces directly on the
+        // map. Without this, a lost GPU context (long shift, device sleep/
+        // wake, driver reset) leaves this page's canvas permanently blank and
+        // frozen with no error and no recovery path.
+        webglRecoveryCleanup = installWebglContextRecovery(map, {
+          label: 'MapPage',
+          onRebuild: (camera) => {
+            pendingRestoreCameraRef.current = camera;
+            cancelled = true;
+            webglRecoveryCleanup?.();
+            webglRecoveryCleanup = null;
+            destroyMapboxMap(mapRef.current);
+            mapRef.current = null;
+            onRetryNonceRequest();
+          },
         });
 
         map.on('error', (e) => {
@@ -301,6 +329,8 @@ export function useMapCore({
 
     return () => {
       cancelled = true;
+      webglRecoveryCleanup?.();
+      webglRecoveryCleanup = null;
       destroyMapboxMap(mapRef.current);
       mapRef.current = null;
     };

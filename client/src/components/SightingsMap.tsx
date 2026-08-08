@@ -13,6 +13,7 @@ import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { buildDotMarker, isValidLngLat } from '../utils/mapMarkers';
 import { sightingSource } from '../utils/alprSource';
 import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe, upsertGeoJsonSource } from '../utils/mapboxSafeLayer';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 
 // Above this many GPS-tagged sightings, individual DOM markers get dense
 // enough to occlude each other on a small panel (this component defaults to
@@ -52,8 +53,10 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
   // pattern caused visible jitter on live ALPR feeds and pushed the WebGL
   // context cap when the sightings list grew).
   const markersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { rebuildNonce, attach } = useWebglMapRecovery();
 
   // isValidLngLat rejects NaN/Infinity AND the exact (0,0) ClearPath no-fix
   // signature so a pre-GPS-lock sighting never anchors a dot off the African coast.
@@ -78,6 +81,7 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
         mapRef.current = map;
         registerMapInstance(map);
+        webglRecoveryCleanupRef.current = attach(map, 'SightingsMap');
         setLoaded(true);
       } catch (err) {
         if (!cancelled) setError((err as Error)?.message || getMapboxTokenErrorMessage());
@@ -87,10 +91,13 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
       cancelled = true;
       markersRef.current.forEach((m) => m.remove());
       markersRef.current.clear();
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
+      setLoaded(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [rebuildNonce]);
 
   const clustered = located.length > CLUSTER_THRESHOLD;
 

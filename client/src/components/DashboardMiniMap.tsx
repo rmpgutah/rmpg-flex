@@ -21,6 +21,7 @@ import { apiFetch } from '../hooks/useApi';
 import { buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from '../pages/map/utils/mapMarkers';
 import type { MapUnit, ActiveCall } from '../pages/map/utils/mapConstants';
 import IconButton from './IconButton';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 
 const DEFAULT_CENTER: [number, number] = [-111.891, 40.7608];
 const DEFAULT_ZOOM = 11;
@@ -31,10 +32,12 @@ export default function DashboardMiniMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [units, setUnits] = useState<MapUnit[]>([]);
   const [calls, setCalls] = useState<ActiveCall[]>([]);
+  const { rebuildNonce, attach } = useWebglMapRecovery();
 
   // Data fetch — same endpoints the full Map page uses.
   useEffect(() => {
@@ -84,6 +87,7 @@ export default function DashboardMiniMap() {
         map.on('idle', markReady);
         map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error?.message || 'Map error'); });
         mapRef.current = map;
+        webglRecoveryCleanupRef.current = attach(map, 'DashboardMiniMap');
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load map');
       }
@@ -91,10 +95,14 @@ export default function DashboardMiniMap() {
 
     return () => {
       cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       mapRef.current?.remove();
       mapRef.current = null;
+      setLoaded(false);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rebuildNonce]);
 
   // Marker sync + fit-bounds whenever units/calls/load-state change.
   useEffect(() => {
