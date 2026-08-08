@@ -47,6 +47,7 @@
     "@types/node": "^26.1.2",
     "@types/uuid": "^10.0.0",
     "husky": "^9.1.7",
+    "sharp": "^0.35.2",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10",
     "wrangler": "^4.120.0"
