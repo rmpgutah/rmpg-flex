@@ -51,7 +51,12 @@ export default class ErrorBoundary extends Component<Props, State> {
       const lastAt = lastReload ? parseInt(lastReload, 10) : null;
       if (lastAt === null || Number.isNaN(lastAt) || Date.now() - lastAt > CHUNK_RELOAD_WINDOW_MS) {
         sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
-        window.location.reload();
+        // A plain reload is a no-op against HTTP-cache-poisoned chunks (same
+        // current index.html -> same poisoned chunk URL -> same failure), so
+        // this auto-path must run the same bounded evict+repair dance as the
+        // manual "Reload Page" button before reloading. See ErrorBoundary's
+        // `recoverThenReload` for the shared ordering rationale.
+        this.recoverThenReload(error);
         return;
       }
     }
@@ -77,39 +82,45 @@ export default class ErrorBoundary extends Component<Props, State> {
     } catch { /* silent */ }
   }
 
+  /**
+   * Bypass-refetch the poisoned chunk (and, for the manual button, purge SW
+   * caches) before reloading. A PLAIN reload cannot fix the HTTP-cache-poison
+   * failure class — same current index -> same poisoned cached chunk -> same
+   * card, forever. Bounded by RECOVERY_FETCH_CEILING_MS so a hung network can
+   * never make recovery feel dead — the same reasoning as index.html's 3s
+   * ceiling on its entry recovery.
+   *
+   * `purgeCaches` is opt-in: the BROAD service-worker purge costs offline
+   * capability until the next online load, so it stays confined to the
+   * explicit user-initiated Reload button and is skipped on the automatic
+   * componentDidCatch safety net (which must still repair the HTTP cache —
+   * a plain reload there was a guaranteed no-op — but shouldn't silently
+   * strip offline support from a unit that never asked for a reload).
+   */
+  private recoverThenReload(err: Error, purgeCaches = false) {
+    // Ordering is load-bearing when purging: eviction must run FIRST, since a
+    // `fetch(..., {cache:'reload'})` bypasses the HTTP cache but is still
+    // dispatched through the service worker's fetch handler, so repairing
+    // while a poisoned SW is registered lets that same SW answer the repair
+    // request from its own bad cache.
+    const recover = async () => {
+      if (purgeCaches) await evictPoisonedChunkCachesInBrowser();
+      await repairPoisonedChunkInBrowser(err);
+    };
+    void Promise.race([
+      recover(),
+      new Promise((r) => setTimeout(r, RECOVERY_FETCH_CEILING_MS)),
+    ]).then(() => window.location.reload(), () => window.location.reload());
+  }
+
   handleReload = () => {
     // Clear the chunk-reload guard so the fresh load can auto-retry if chunks
     // still fail (e.g. during a multi-minute CF Pages propagation window).
     try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* private mode */ }
 
-    // A PLAIN reload cannot fix the HTTP-cache-poison failure class — this
-    // button was a guaranteed no-op for it (same current index → same poisoned
-    // cached chunk → this same card, forever; the user's only escape was
-    // knowing to press Cmd+Shift+R). So when the error that got us here is a
-    // chunk failure, bypass-refetch the chunk FIRST to overwrite the poisoned
-    // cache entry, then reload. Bounded by RECOVERY_FETCH_CEILING_MS so a hung
-    // network can never make the Reload button feel dead — the same reasoning
-    // as index.html's 3s ceiling on its entry recovery.
     const err = this.state.error;
     if (err && isChunkLoadError(err)) {
-      // BROAD purge, then repair, then reload — and the ORDER is load-bearing.
-      // The eviction must run FIRST: a `fetch(..., {cache:'reload'})` bypasses
-      // the HTTP cache but is still dispatched through the service worker's
-      // fetch handler, so repairing while a poisoned SW is registered lets that
-      // same SW answer the repair request from its own bad cache. Unregistering
-      // first means the repair fetch reaches the network.
-      //
-      // Purging is deliberately confined to this explicit, user-initiated
-      // button — it costs offline capability until the next online load, which
-      // is not a price to pay silently on an automatic retry path.
-      const recover = async () => {
-        await evictPoisonedChunkCachesInBrowser();
-        await repairPoisonedChunkInBrowser(err);
-      };
-      void Promise.race([
-        recover(),
-        new Promise((r) => setTimeout(r, RECOVERY_FETCH_CEILING_MS)),
-      ]).then(() => window.location.reload(), () => window.location.reload());
+      this.recoverThenReload(err, /* purgeCaches */ true);
       return;
     }
     window.location.reload();
