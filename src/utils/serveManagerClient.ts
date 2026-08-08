@@ -150,7 +150,13 @@ export async function fetchRecentJobs(db: D1Database, jwtSecret: string, since?:
     const params: Record<string, string> = { per_page: '50' };
     if (since) params.updated_since = since;
     const result = await smGet('/jobs', key, params);
-    return Array.isArray(result?.jobs) ? result.jobs : Array.isArray(result) ? result : [];
+    // ServeManager wraps every response — list endpoints included — in a
+    // JSON:API-style `{ data: [...] }` envelope (confirmed live 2026-08-08
+    // via GET /account, which returns `{ data: { ... } }`). There is no
+    // top-level `jobs` key, so `result?.jobs` was always undefined and every
+    // sync silently returned 0 jobs even with a valid key and real jobs in
+    // the account (`month_job_count` > 0 on the same live account).
+    return Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
   } catch (err) {
     console.error('[sm-client] Job fetch failed:', (err as Error).message);
     return [];
@@ -162,7 +168,8 @@ export async function fetchJobAttempts(db: D1Database, jwtSecret: string, jobNum
   if (!key) return [];
   try {
     const result = await smGet(`/jobs/${jobNumber}/attempts`, key);
-    return Array.isArray(result?.attempts) ? result.attempts : Array.isArray(result) ? result : [];
+    // Same JSON:API `data` envelope as /jobs — see fetchRecentJobs above.
+    return Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
   } catch (err) {
     console.error('[sm-client] Attempt fetch failed for job', jobNumber, (err as Error).message);
     return [];
