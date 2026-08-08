@@ -157,12 +157,7 @@ export interface ChunkRepairDeps {
  * Never throws: this is an opportunistic extra rung layered under the existing
  * ladder, and a failure here must not replace the caller's real error.
  */
-export async function repairPoisonedChunk(
-  err: unknown,
-  deps: ChunkRepairDeps,
-): Promise<boolean> {
-  const url = extractChunkUrl(err, deps.origin);
-  if (!url) return false;
+async function repairPoisonedChunkUrl(url: string, deps: ChunkRepairDeps): Promise<boolean> {
   try {
     // 'reload' (not 'no-store') so the fresh body REPLACES the poisoned cache
     // entry — see the block comment above.
@@ -179,12 +174,131 @@ export async function repairPoisonedChunk(
   }
 }
 
+export async function repairPoisonedChunk(
+  err: unknown,
+  deps: ChunkRepairDeps,
+): Promise<boolean> {
+  const url = extractChunkUrl(err, deps.origin);
+  if (!url) return false;
+  return repairPoisonedChunkUrl(url, deps);
+}
+
 /** `repairPoisonedChunk` bound to real browser globals. */
 export function repairPoisonedChunkInBrowser(err: unknown): Promise<boolean> {
   return repairPoisonedChunk(err, {
     fetchImpl: (url, init) => window.fetch(url, init),
     origin: window.location.origin,
   });
+}
+
+// ------------------------------------------------------------------
+// Transitive-chunk gap (found 2026-08-08 verifying the PR #3310 fix live).
+//
+// `extractChunkUrl` can only ever recover the ONE url Chrome names in the
+// top-level dynamic-import rejection — e.g. "DashboardPage-<hash>.js". When
+// DashboardPage's failure is actually a STATICALLY-imported sub-chunk it pulls
+// in (mapboxLoader, map, a print helper, a panel component — confirmed live:
+// each was individually healthy at the origin but poisoned in one browser's
+// HTTP cache), Chrome's error message still only names the top-level module.
+// `repairPoisonedChunk` then "repairs" the one chunk that was never broken,
+// and the reload lands right back on the real, still-poisoned sub-chunk.
+//
+// Resource Timing sees every sub-resource request the top-level rejection
+// message can't name. sw.js's poison guard answers a poisoned hashed asset
+// with a zero-byte 404 ("Stale chunk (HTML fallback)"), which shows up here
+// as a `/assets/*.js` resource entry with no bytes transferred. Scanning the
+// last CHUNK_FAILURE_LOOKBACK_MS of entries finds those failures directly,
+// independent of what the browser's rejection message happened to name.
+// ------------------------------------------------------------------
+
+/** Minimal shape of a PerformanceResourceTiming entry we depend on — kept
+ *  narrow and structural so tests can pass plain objects instead of real
+ *  performance entries. */
+export interface ResourceEntryLike {
+  name: string;
+  startTime: number;
+  transferSize?: number;
+  decodedBodySize?: number;
+  /** Chrome 109+ only; undefined on engines that don't expose it. */
+  responseStatus?: number;
+}
+
+const CHUNK_ASSET_PATTERN = /\/assets\/[^/]+\.m?js(?:[?#]|$)/i;
+
+/** Only scan resource entries that finished within this long before "now" —
+ *  bounds the scan to the failure that just happened, not every chunk the tab
+ *  has ever loaded since it opened. */
+export const CHUNK_FAILURE_LOOKBACK_MS = 15_000;
+
+/**
+ * Find same-origin `/assets/*.js` resource-timing entries from the last
+ * `lookbackMs` that look like a failed load — zero bytes transferred/decoded,
+ * with an HTTP error or network-error status when the engine reports one
+ * (Chrome 109+ `responseStatus`; falls back to the zero-byte heuristic alone
+ * on engines that don't expose it, since a genuinely cached hit for an
+ * immutable hashed asset also reports 0 transferSize but non-zero
+ * decodedBodySize).
+ */
+export function findFailedChunkResourceUrls(
+  entries: ResourceEntryLike[],
+  origin: string,
+  now: number,
+  lookbackMs: number = CHUNK_FAILURE_LOOKBACK_MS,
+): string[] {
+  const out = new Set<string>();
+  for (const e of entries) {
+    if (now - e.startTime > lookbackMs) continue;
+    let url: URL;
+    try {
+      url = new URL(e.name);
+    } catch {
+      continue;
+    }
+    if (url.origin !== origin) continue;
+    if (!CHUNK_ASSET_PATTERN.test(url.pathname)) continue;
+    const zeroBytes = (e.transferSize ?? 0) === 0 && (e.decodedBodySize ?? 0) === 0;
+    if (!zeroBytes) continue;
+    const failed = typeof e.responseStatus === 'number'
+      ? e.responseStatus === 0 || e.responseStatus >= 400
+      : true;
+    if (failed) out.add(url.href);
+  }
+  return Array.from(out);
+}
+
+/** `findFailedChunkResourceUrls` bound to real browser globals. */
+export function findFailedChunkResourceUrlsInBrowser(now: number, lookbackMs?: number): string[] {
+  if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') return [];
+  const entries = performance.getEntriesByType('resource') as unknown as ResourceEntryLike[];
+  return findFailedChunkResourceUrls(entries, window.location.origin, now, lookbackMs);
+}
+
+/**
+ * Repair every candidate chunk URL — the one (if any) extracted from the
+ * top-level error message, plus every recently-failed sub-resource found via
+ * Resource Timing. Runs all repairs concurrently; resolves `true` if ANY of
+ * them actually replaced a poisoned entry, so the caller knows a retry is
+ * worth attempting.
+ */
+export async function repairAllPoisonedChunks(
+  err: unknown,
+  deps: ChunkRepairDeps,
+  extraUrls: string[] = [],
+): Promise<boolean> {
+  const targets = new Set(extraUrls);
+  const primary = extractChunkUrl(err, deps.origin);
+  if (primary) targets.add(primary);
+  if (targets.size === 0) return false;
+  const results = await Promise.all(Array.from(targets).map((url) => repairPoisonedChunkUrl(url, deps)));
+  return results.some(Boolean);
+}
+
+/** `repairAllPoisonedChunks` bound to real browser globals, sourcing
+ *  transitive-chunk candidates from Resource Timing. */
+export function repairAllPoisonedChunksInBrowser(err: unknown): Promise<boolean> {
+  const origin = window.location.origin;
+  const extraUrls = findFailedChunkResourceUrlsInBrowser(Date.now());
+  return repairAllPoisonedChunks(err, { fetchImpl: (url, init) => window.fetch(url, init), origin }, extraUrls);
 }
 
 // ------------------------------------------------------------------
