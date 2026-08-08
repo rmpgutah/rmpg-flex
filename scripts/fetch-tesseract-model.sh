@@ -26,7 +26,7 @@ else
   # the same well-known stock file tesseract-ocr-eng installs, from the
   # official tessdata repo, so a fresh checkout with no trained model yet
   # still produces a working (stock-accuracy) container.
-  curl -sSL -o "$DEST_FILE" \
+  curl -sSLf --retry 3 --retry-delay 2 -o "$DEST_FILE" \
     "https://raw.githubusercontent.com/tesseract-ocr/tessdata/main/eng.traineddata"
 fi
 
