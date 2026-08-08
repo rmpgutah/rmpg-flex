@@ -155,10 +155,10 @@ export async function fetchRecentJobs(db: D1Database, jwtSecret: string, since?:
     const result = await smGet('/jobs', key, params);
     // TEMP DIAGNOSTIC (remove immediately after capturing one log line):
     const j0 = Array.isArray(result?.data) ? result.data[0] : undefined;
-    console.error('[sm-client] DIAGNOSTIC job keys+client+recipient:', JSON.stringify({
-      keys: j0 ? Object.keys(j0) : null,
-      client: j0?.client,
-      recipient: j0?.recipient,
+    console.error('[sm-client] DIAGNOSTIC client_company/client_contact/court_case:', JSON.stringify({
+      client_company: j0?.client_company,
+      client_contact: j0?.client_contact,
+      court_case: j0?.court_case,
     }));
     // ServeManager wraps every response — list endpoints included — in a
     // JSON:API-style `{ links: {...}, data: [...] }` envelope (confirmed
