@@ -34,6 +34,7 @@ import { drawNibrsHeader } from './pdfFormHelpers';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { addLocationMapSection } from './recordPdfGenerator';
 import { toDisplayLabel } from './formatters';
+import { localToday } from './dateUtils';
 
 // ── Data Interface ───────────────────────────────────────────
 
@@ -341,7 +342,7 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
         caseNumber: data.caseNumber || `JOB-${data.jobId}`,
         agency: 'RMPG',
         agencyOri: 'UT0180100',
-        reportDate: new Date().toISOString().slice(0, 10),
+        reportDate: localToday(),
         officer: data.officerName,
         badge: data.officerBadge,
       },
