@@ -15,6 +15,12 @@
 // dateToLocalYMD(parseTimestamp(x)) instead, which keeps the shape but fixes
 // the zone. A blind sweep to safeDateStr would have broken the Field
 // Interviews edit form for exactly that reason.
+//
+// A second pattern -- `new Date().toISOString().slice(0, 10)` -- produces the
+// UTC calendar date for "today", which is also wrong after ~17:00-18:00 MT
+// (depending on DST). The correct replacement is `localToday()` from dateUtils.
+// PDF generators that embed a report date or stamp a filename are the primary
+// risk; they run in the browser (Mountain Time user) and must stamp MT dates.
 // ============================================================
 
 import { describe, it, expect } from 'vitest';
@@ -54,6 +60,27 @@ describe('timestamp slicing', () => {
         if (code.startsWith('//') || code.startsWith('*') || code.startsWith('/*')) return;
         if (line.includes('new Date()')) return;               // local Date, not a server string
         if (/\b\w*_at\??\.slice\(0, ?10\)/.test(line)) {
+          offenders.push(`${f.replace(SRC, 'src')}:${i + 1}`);
+        }
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('no PDF-generating file uses new Date().toISOString().slice(0,10) for a report date', () => {
+    // `new Date().toISOString()` is UTC. After ~17:00-18:00 MT the UTC date is
+    // already tomorrow, so any document stamped with it shows the wrong day.
+    // Use `localToday()` from dateUtils instead — it reads America/Denver via Intl.
+    const PDF_GENERATORS = /Pdf|pdf|blotter|report|packet|guide|briefing|export|aamvaParser/i;
+    const offenders: string[] = [];
+    for (const f of walk(SRC)) {
+      if (f.includes('__tests__')) continue;
+      if (!PDF_GENERATORS.test(f)) continue;
+      const src = readFileSync(f, 'utf8');
+      src.split('\n').forEach((line, i) => {
+        const code = line.trim();
+        if (code.startsWith('//') || code.startsWith('*') || code.startsWith('/*')) return;
+        if (/new Date\(\)\.toISOString\(\)\.slice\(0, ?10\)/.test(line)) {
           offenders.push(`${f.replace(SRC, 'src')}:${i + 1}`);
         }
       });

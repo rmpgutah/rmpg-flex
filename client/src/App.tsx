@@ -770,7 +770,11 @@ function AppRoutes() {
 function DialerPanelMount() {
   const { isAuthenticated } = useAuth();
   const { addToast } = useToast();
-  if (!isAuthenticated) return null;
+  const location = useLocation();
+  // Navigation page is full-screen and manages its own z-stack; the floating
+  // Dialer chip at z-[9998] renders on top of every HUD element there and
+  // blocks map/instrument interaction — hide it for the duration of that route.
+  if (!isAuthenticated || location.pathname === '/navigate') return null;
   return (
     <DialerPanel
       onRinging={(message) => addToast(message, 'warning')}

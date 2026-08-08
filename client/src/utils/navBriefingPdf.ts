@@ -14,6 +14,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { localToday } from './dateUtils';
 import type { RouteInfo, RouteStep } from '../hooks/useMapRouting';
 import type { NavWaypoint } from '../hooks/waypointAdvance';
 import { fetchLocationMapImage } from './pdfStaticMap';
@@ -325,6 +326,6 @@ export async function buildNavBriefingPdf({
 export async function generateNavBriefing(args: NavBriefingArgs): Promise<void> {
   const doc = await buildNavBriefingPdf(args);
   const officerSlug = (args.officerName || 'officer').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
-  const dateStr = new Date().toISOString().slice(0, 10);
+  const dateStr = localToday();
   doc.save(`nav-briefing-${officerSlug}-${dateStr}.pdf`);
 }
