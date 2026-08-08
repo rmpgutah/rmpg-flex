@@ -12,6 +12,7 @@
 import jsPDF from 'jspdf';
 import type { FleetVehicle } from '../../../types';
 import { toDisplayLabel } from '../../../utils/formatters';
+import { localToday } from '../../../utils/dateUtils';
 
 interface DamageRecord {
   id?: number | string;
@@ -179,6 +180,6 @@ export function buildFleetDamageReportPdf({ vehicle, damages }: Args): jsPDF {
  *  filename/behaviour as before this function was split into a builder + saver). */
 export function generateFleetDamageReportPdf(args: Args): void {
   const doc = buildFleetDamageReportPdf(args);
-  const filename = `damage-report-${args.vehicle.vehicle_number || 'vehicle'}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `damage-report-${args.vehicle.vehicle_number || 'vehicle'}-${localToday()}.pdf`;
   doc.save(filename);
 }

@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { renderWarrantIntoDoc, type WarrantPdfData } from './recordPdfGenerator';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { localToday } from './dateUtils';
 
 // Isolated fetch (Pattern E fix, Wave 3.1): the pre-wave-3.1 code used
 // apiFetch from hooks/useApi, which is auth-coupled — on a 401 it
@@ -64,5 +65,5 @@ export async function buildWarrantPacketPdf(
       console.error(`[warrantPacket] warrant ${id} failed:`, err);
     }
   }
-  doc.save(`warrant-packet-${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`warrant-packet-${localToday()}.pdf`);
 }

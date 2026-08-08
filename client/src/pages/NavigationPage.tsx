@@ -470,17 +470,17 @@ function ContactRow({ id, sub, color, bearing, distMi, heading, threat }: {
 }) {
   const rel = heading != null ? ((bearing - heading) % 360 + 360) % 360 : bearing;
   return (
-    <div className={`flex items-center gap-1.5 px-2 py-1 ${threat ? 'bg-red-500/10' : ''}`}>
-      <svg width="13" height="13" viewBox="0 0 12 12" className="shrink-0" style={{ transform: `rotate(${rel}deg)`, transition: 'transform 0.4s ease-out' }} aria-hidden="true">
+    <div className={`flex items-center gap-1.5 px-2 py-1.5 ${threat ? 'bg-red-500/10' : ''}`}>
+      <svg width="14" height="14" viewBox="0 0 12 12" className="shrink-0" style={{ transform: `rotate(${rel}deg)`, transition: 'transform 0.4s ease-out' }} aria-hidden="true">
         <path d="M6 1 L9.5 10.5 L6 8 L2.5 10.5 Z" fill={color} />
       </svg>
       <div className="flex-1 min-w-0">
-        <div className="text-[10px] font-mono text-rmpg-100 truncate leading-tight">{id}</div>
-        <div className="text-[8px] text-rmpg-500 truncate leading-tight">{sub}</div>
+        <div className="text-[11px] font-mono text-rmpg-100 truncate leading-tight">{id}</div>
+        <div className="text-[10px] text-rmpg-500 truncate leading-tight">{sub}</div>
       </div>
       <div className="text-right shrink-0 leading-tight">
-        <div className="text-[10px] font-mono text-brand-300">{distMi.toFixed(1)}mi</div>
-        <div className="text-[8px] font-mono text-rmpg-600">{String(Math.round(bearing)).padStart(3, '0')}°</div>
+        <div className="text-[11px] font-mono text-brand-300">{distMi.toFixed(1)}mi</div>
+        <div className="text-[10px] font-mono text-rmpg-600">{String(Math.round(bearing)).padStart(3, '0')}°</div>
       </div>
     </div>
   );
@@ -1251,25 +1251,37 @@ export default function NavigationPage() {
     if (effMph != null) {
       const p2 = accelRef.current;
       if (p2 && now > p2.t) {
-        const g = ((effMph - p2.mph) / ((now - p2.t) / 1000)) / 21.94;
-        setGForce(g);
-        if (g > 0) peakGRef.current.accel = Math.max(peakGRef.current.accel, g);
-        else if (g < 0) peakGRef.current.brake = Math.max(peakGRef.current.brake, -g);
-        // #32/#53 — hard-brake / hard-accel events (threshold 0.35 g), edge-
-        // triggered so one event counts once, with a transient amber G-ball flash.
-        const HARD = 0.35;
-        if (g <= -HARD && lastGSignRef.current > -HARD) {
-          hardBrakesRef.current += 1; forceEvents((n) => n + 1);
-          setGFlash('brake');
-          if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
-          gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
-        } else if (g >= HARD && lastGSignRef.current < HARD) {
-          hardAccelsRef.current += 1; forceEvents((n) => n + 1);
-          setGFlash('accel');
-          if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
-          gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
+        const dts = (now - p2.t) / 1000;
+        // Mirror the lateral guard: reject sub-50 ms or >10 s intervals where
+        // GPS speed noise dominates and produces spurious multi-G spikes.
+        if (dts > 0.05 && dts < 10) {
+          const g = ((effMph - p2.mph) / dts) / 21.94;
+          if (Number.isFinite(g)) {
+            setGForce(g);
+            // Gate peaks on ≤1.5 g — a GPS speed glitch (large Δv in one short
+            // sample) can spike far above any real patrol-vehicle maneuver and
+            // permanently corrupt the session max shown in the Movement Report.
+            if (Math.abs(g) <= 1.5) {
+              if (g > 0) peakGRef.current.accel = Math.max(peakGRef.current.accel, g);
+              else if (g < 0) peakGRef.current.brake = Math.max(peakGRef.current.brake, -g);
+            }
+            // #32/#53 — hard-brake / hard-accel events (threshold 0.35 g), edge-
+            // triggered so one event counts once, with a transient amber G-ball flash.
+            const HARD = 0.35;
+            if (g <= -HARD && lastGSignRef.current > -HARD) {
+              hardBrakesRef.current += 1; forceEvents((n) => n + 1);
+              setGFlash('brake');
+              if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
+              gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
+            } else if (g >= HARD && lastGSignRef.current < HARD) {
+              hardAccelsRef.current += 1; forceEvents((n) => n + 1);
+              setGFlash('accel');
+              if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
+              gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
+            }
+            lastGSignRef.current = g;
+          }
         }
-        lastGSignRef.current = g;
       }
       accelRef.current = { mph: effMph, t: now };
     }
@@ -1292,7 +1304,7 @@ export default function NavigationPage() {
         if (dts > 0.05 && dts < 10) {
           const omega = (dd / dts) * Math.PI / 180;     // rad/s, signed (+right / −left)
           let lg = (omega * (effMph / 2.237)) / 9.80665; // ω·v / g
-          if (!Number.isFinite(lg) || Math.abs(lg) > 2) lg = 0; // clamp GPS noise
+          if (!Number.isFinite(lg) || Math.abs(lg) > 1.5) lg = 0; // clamp GPS heading jitter
           setLatGLive(lg);
           peakGRef.current.lat = Math.max(peakGRef.current.lat, Math.abs(lg));
         }
@@ -2566,7 +2578,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => setCrimeOn((v) => !v)}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
           style={{ color: crimeOn ? 'var(--sev-warn)' : 'var(--text-muted)' }}
           title={crimeOn ? 'Hide crime layer' : 'Show crime layer (SLC + RMPG)'}
           aria-label={crimeOn ? 'Hide crime layer' : 'Show crime layer'}
@@ -2575,7 +2587,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => setCrashOn((v) => !v)}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
           style={{ color: crashOn ? 'var(--text-primary)' : 'var(--text-muted)' }}
           title={crashOn ? 'Hide traffic-crash layer' : 'Show SLC traffic crashes (travel hazards)'}
           aria-label={crashOn ? 'Hide traffic crashes' : 'Show traffic crashes'}
@@ -2593,7 +2605,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => { setTripOpen((v) => !v); if (!tripOpen) { setLogOpen(false); setTripsOpen(false); } }}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
           style={{ color: tripOpen ? 'var(--accent-active)' : 'var(--text-muted)' }}
           title="Movement report (speed, g-force, driving events)"
           aria-label="Toggle movement report"
@@ -2602,7 +2614,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => { setTripsOpen((v) => !v); if (!tripsOpen) { setTripOpen(false); setLogOpen(false); } }}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
           style={{ color: tripsOpen ? 'var(--accent-active)' : 'var(--text-muted)' }}
           title="Trip chain — per-trip movement reports for this unit"
           aria-label="Toggle trips drawer"
@@ -2611,7 +2623,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => { setLogOpen((v) => !v); if (!logOpen) { setTripOpen(false); setTripsOpen(false); } }}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
           style={{ color: logOpen ? 'var(--accent-active)' : 'var(--text-muted)' }}
           title="Call history log for this unit"
           aria-label="Toggle call history log"
@@ -2628,7 +2640,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => navigate('/map')}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase text-rmpg-300 hover:text-rmpg-100"
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase text-rmpg-300 hover:text-rmpg-100"
           title="Back to map"
           aria-label="Back to map"
         >
@@ -3168,9 +3180,9 @@ export default function NavigationPage() {
                   style={{ borderRadius: 2, background: nightTheme ? 'rgba(8,8,8,0.85)' : 'rgba(20,20,20,0.6)' }}
                   title={currentStreet || undefined}
                 >
-                  <div className={`text-[8px] uppercase tracking-wider leading-none ${nightTheme ? 'text-rmpg-500' : 'text-rmpg-600'}`}>Street</div>
-                  <div className={`font-bold text-[15px] leading-tight mt-0.5 truncate ${nightTheme ? 'text-rmpg-50' : 'text-rmpg-100'}`}>
-                    {truncateLabel(currentStreet, 30) || (hasFix ? 'Locating…' : 'Acquiring fix…')}
+                  <div className={`text-[10px] uppercase tracking-wider leading-none ${nightTheme ? 'text-rmpg-500' : 'text-rmpg-600'}`}>Street</div>
+                  <div className={`font-bold text-[18px] leading-tight mt-0.5 truncate ${nightTheme ? 'text-rmpg-50' : 'text-rmpg-100'}`}>
+                    {truncateLabel(currentStreet, 24) || (hasFix ? 'Locating…' : 'Acquiring fix…')}
                   </div>
                 </div>
                 {/* #31 — routed-remaining | crow-flies dual distance */}
@@ -3187,14 +3199,11 @@ export default function NavigationPage() {
               </div>
               <div
                 className="grid gap-1.5"
-                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(86px, 1fr))', opacity: parked ? 0.5 : 1, transition: 'opacity 0.4s' }}
+                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', opacity: parked ? 0.5 : 1, transition: 'opacity 0.4s' }}
               >
-                {/* #67 — first tile cycles avg / max / elapsed / distance on long-press */}
+                {/* #67 — avg speed tile; Max/Elapsed/Distance each have a dedicated tile below */}
                 <HudStatTile night={nightTheme} metrics={[
                   { key: 'avg', label: 'Avg', value: formatSpeed(avgMph, speedUnit) },
-                  { key: 'max', label: 'Max', value: formatSpeed(maxMph, speedUnit) },
-                  { key: 'elapsed', label: 'Session', value: hudFormatDuration(sessionMs) },
-                  { key: 'distance', label: 'Distance', value: formatDistanceLong(distanceRef.current, speedUnit) },
                 ]} />
                 {/* #35 — current speed */}
                 <HudStatTile night={nightTheme} metrics={[{ key: 'cur', label: 'Speed', value: formatSpeed(liveMph, speedUnit), accent: liveMph != null && liveMph > 55 ? 'var(--sev-warn)' : undefined }]} />
