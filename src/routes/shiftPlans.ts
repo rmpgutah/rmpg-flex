@@ -29,6 +29,14 @@ import { evaluateNotificationRules } from './notificationEngine';
 
 const sp = new Hono<Env>();
 
+// Per-shift-type staffing minimums, shared by GET /staffing-levels and
+// GET /shift-notifications so the two surfaces never disagree on what
+// counts as understaffed (a graveyard shift needs only 1 officer; day/
+// swing need 2). GET /staffing-levels allows overriding these via query
+// params — that override is local to that handler and doesn't affect
+// this shared default.
+export const SHIFT_STAFFING_MINIMUMS: Record<string, number> = { day: 2, swing: 2, graveyard: 1 };
+
 // Auth is enforced INSIDE the router instead of via the registry's
 // per-prefix loop. The router mounts at the bare `/api` prefix so it
 // can serve `/api/shift-plans/*`, `/api/shift-swaps/*`, etc. under a
@@ -547,9 +555,9 @@ sp.get('/staffing-levels', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
   const targetDate = c.req.query('date') || new Date().toISOString().slice(0, 10);
   const minimums: Record<string, number> = {
-    day: parseInt(c.req.query('min_day') || '2', 10),
-    swing: parseInt(c.req.query('min_swing') || '2', 10),
-    graveyard: parseInt(c.req.query('min_grave') || '1', 10),
+    day: parseInt(c.req.query('min_day') || String(SHIFT_STAFFING_MINIMUMS.day), 10),
+    swing: parseInt(c.req.query('min_swing') || String(SHIFT_STAFFING_MINIMUMS.swing), 10),
+    graveyard: parseInt(c.req.query('min_grave') || String(SHIFT_STAFFING_MINIMUMS.graveyard), 10),
   };
   const plans = await query<any>(getDb(c.env), 'SELECT * FROM shift_plans WHERE date = ? ORDER BY shift_type', targetDate);
   const levels: any[] = [];
@@ -608,7 +616,8 @@ sp.get('/shift-notifications', async (c) => {
     let asgn: any[] = [];
     try { asgn = typeof p.assignments === 'string' ? JSON.parse(p.assignments) : (p.assignments || []); }
     catch { asgn = []; }
-    if (asgn.length < 2) {
+    const minRequired = SHIFT_STAFFING_MINIMUMS[p.shift_type] ?? 1;
+    if (asgn.length < minRequired) {
       notifications.push({
         type: 'understaffed', severity: 'warning',
         message: `${p.date} ${p.shift_type}: Only ${asgn.length} officer(s)`, date: p.date,
