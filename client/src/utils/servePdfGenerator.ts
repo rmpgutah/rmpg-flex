@@ -1159,41 +1159,39 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     y += SPACING.XS;
 
     if (data.nextAttemptNote) {
-      // Render the next-attempt sentence as a mixed-case italic call-out
-      // below the disclaimer prose. The field-pair pattern (NEXT ATTEMPT
-      // / WILL RETURN TUESDAY...) would force the value into ALL CAPS via
-      // addFieldPair's sanitization — that conflicts with the professional
-      // mixed-case body above it. Inline italic keeps the rhythm.
-      // Promoted from an inline italic sentence to an accent-barred call-out.
-      // This is the single most ACTIONABLE line on the page -- it is when the
-      // server is coming back, and it decides whether the recipient arranges
-      // delivery or gets knocked on again at an inconvenient hour. Set in the
-      // prose run it read as a footnote to the disclaimer.
-      //
-      // The accent bar is drawn in the left margin gutter and the text
-      // indents past it, so the call-out costs the same vertical space the
-      // inline sentence did. That matters: this notice must stay on one sheet
-      // of PJ-700 roll.
-      const barW = 0.8;
-      const indent = barW + 2.0;
-      doc.setFont(PDF_VALUE_FONT, 'bolditalic');
+      // Reformatted from an inline accent-barred sentence into a boxed
+      // call-out: the label sits on its own line, bold caps, with the note
+      // wrapped underneath inside a bordered box. This is the single most
+      // ACTIONABLE line on the page — when the server is coming back — so it
+      // gets the same boxed treatment as the SERVICE NOT COMPLETED status
+      // band above, instead of reading as a footnote hanging off the
+      // disclaimer prose.
+      const padX = SPACING.MD;
+      const padY = 1.8;
+      const lineH = 3.4;
+      doc.setFont(PDF_VALUE_FONT, 'bold');
       doc.setFontSize(NOTICE_FONT);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text('Next attempt:', lx + indent, y);
-      const labelW = doc.getTextWidth('Next attempt: ');
-      doc.setFont(PDF_VALUE_FONT, 'italic');
       const noteLines: string[] = doc.splitTextToSize(
         sanitizePdfText(data.nextAttemptNote, { preserveCase: true }),
-        ffw - labelW - indent - 2,
+        ffw - padX * 2,
       );
-      doc.text(noteLines, lx + indent + labelW, y);
-      // Bar spans the text block's own cap-height-to-baseline extent. The
-      // first pass drew it 1.2mm wide against a single 3.5mm line, which on
-      // the page read as a stray tick in the margin rather than an accent.
-      const blockH = noteLines.length * 3.5;
-      doc.setFillColor(...COLOR.TEXT_PRIMARY);
-      doc.rect(lx, y - 2.4, barW, blockH + 0.9, 'F');
-      y += blockH + 1.5;
+      const boxH = padY * 2 + lineH + noteLines.length * lineH;
+      y = checkPageBreak(doc, y, boxH + SPACING.SM);
+
+      doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+      doc.setLineWidth(BORDER.SECTION_OUTER);
+      doc.rect(lx, y, ffw, boxH);
+
+      let cy = y + padY + lineH * 0.7;
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text('NEXT ATTEMPT', lx + padX, cy);
+      cy += lineH;
+      doc.setFont(PDF_VALUE_FONT, 'italic');
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text(noteLines, lx + padX, cy);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+
+      y += boxH + SPACING.SM;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -1296,14 +1294,24 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   y += SPACING.XS;
 
   // ── Footer legal text ──
-  y = checkPageBreak(doc, y, 8);
-  doc.setFont(PDF_VALUE_FONT, 'normal');
-  doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
-  doc.setTextColor(...COLOR.TEXT_TERTIARY);
+  // Bumped from FONT.SIZE_FOOTER_SECONDARY (5pt) to 6.5pt and given a thin
+  // rule above it — at 5pt this citation read as a stray caption rather
+  // than the statutory authority line it is. Sentence case retained
+  // throughout (only the proper nouns/section symbol are capitalized) so it
+  // reads as a legal citation, not a shouted disclaimer.
+  y = checkPageBreak(doc, y, 9);
+  const footerCiteWidth = doc.internal.pageSize.getWidth();
+  doc.setDrawColor(...COLOR.RULE_STRONG);
+  doc.setLineWidth(BORDER.TABLE_OUTER);
+  doc.line(lx, y - 2, lx + ffw, y - 2);
+  doc.setFont(PDF_VALUE_FONT, 'italic');
+  doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY + 1.5);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(
-    'Process service pursuant to Utah R. Civ. P. 4 and Utah Code § 78B-8-302 (registered private process server)',
-    doc.internal.pageSize.getWidth() / 2, y, { align: 'center' },
+    'Process service pursuant to Utah R. Civ. P. 4 and Utah Code § 78B-8-302 (registered private process server).',
+    footerCiteWidth / 2, y + 1.5, { align: 'center' },
   );
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
@@ -1875,31 +1883,26 @@ function drawInstrumentTitle(doc: jsPDF, y: number, title: string): number {
   const lx = getLeftX();
   const cw = getContentWidth(doc);
 
-  y = checkPageBreak(doc, y, 12);
+  // Filled gray banner instead of a double-ruled black-on-white line — this
+  // matches the same gray header-bar language every numbered section (II,
+  // III, IV, V) uses via openAutoSection/addSignatureBlock, so the
+  // instrument title reads as the first header in that family rather than
+  // a differently-styled caption sitting above it.
+  const barH = SPACING.SECTION_HEADER_H + 1.5;
+  y = checkPageBreak(doc, y, barH + SPACING.LG);
 
-  doc.setDrawColor(...COLOR.RULE_STRONG);
-  doc.setLineWidth(BORDER.TABLE_OUTER);
-  doc.line(lx, y, lx + cw, y);
-  doc.setDrawColor(...COLOR.RULE_GOLD);
-  doc.setLineWidth(BORDER.ACCENT_HEADER);
-  doc.line(lx, y + 0.7, lx + cw, y + 0.7);
+  const titleAccentRgb = resolveSectionAccentColor(title);
+  doc.setFillColor(titleAccentRgb[0], titleAccentRgb[1], titleAccentRgb[2]);
+  doc.rect(lx, y, cw, barH, 'F');
 
-  y += tightLayout ? 4.0 : 4.6;
-  doc.setFont(PDF_VALUE_FONT, 'bold');
-  doc.setFontSize(FONT.SIZE_SECTION_TITLE + 1);
+  doc.setFont('Arial', 'bold');
+  doc.setFontSize(FONT.SIZE_SECTION_TITLE + 2);
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  const capH = (FONT.SIZE_SECTION_TITLE + 2) * 0.35;
+  doc.text(sanitizePdfText(title.toUpperCase()), cx, y + (barH + capH) / 2, { align: 'center' });
+
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.text(sanitizePdfText(title.toUpperCase()), cx, y, { align: 'center' });
-
-  // Copy designation rides the title's OWN baseline rather than claiming a
-  // row below it. The band already reserves this line, so three sheets are
-  // told apart at a glance for zero vertical cost — which matters on a
-  // layout that fits a single roll-printer sheet by ~4mm.
-  y += tightLayout ? 1.3 : 1.6;
-  doc.setDrawColor(...COLOR.RULE_STRONG);
-  doc.setLineWidth(BORDER.TABLE_OUTER);
-  doc.line(lx, y, lx + cw, y);
-
-  return y + (tightLayout ? SPACING.MD : SPACING.LG);
+  return y + barH + (tightLayout ? SPACING.MD : SPACING.LG);
 }
 
 interface SubjectRow {

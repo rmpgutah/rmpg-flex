@@ -1528,13 +1528,17 @@ export function addSignatureBlock(
   const infoRowH = overrideInfoRowH ?? 8;
   const totalH = roleBarH + sigRowH + infoRowH;
 
-  // ── Role label header bar (outline only — low ink) ──
-  doc.setDrawColor(...COLOR.BG_SECTION_HDR);
-  doc.setLineWidth(0.3);
-  doc.rect(x, y, width, roleBarH);
-  doc.setFont('helvetica', 'bold');
+  // ── Role label header bar (filled gray — matches the openAutoSection
+  // header-bar language every numbered section in the document already
+  // uses). Was outline-only with black text, so "V. PROCESS SERVER" read
+  // as a differently-styled caption sitting apart from "II./III./IV." above
+  // it rather than the closing section in the same family.
+  const roleAccentRgb = resolveSectionAccentColor(roleLabel);
+  doc.setFillColor(roleAccentRgb[0], roleAccentRgb[1], roleAccentRgb[2]);
+  doc.rect(x, y, width, roleBarH, 'F');
+  doc.setFont('Arial', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(0, 0, 0);
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
   // The pure cap-height center formula puts the baseline within ~0.4mm of
   // the bar's bottom border at this font size/bar height — close enough
   // that the "OFFICER"/"ENTERING OFFICER" caption visually sits ON the
@@ -1547,6 +1551,7 @@ export function addSignatureBlock(
     y + roleBarH - roleBottomMargin,
   );
   doc.text(sanitizePdfText(roleLabel.toUpperCase()), x + SPACING.CONTENT_INSET, roleTextY);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
   // ── Signature area (very light tint — low ink) ──
   const row1Y = y + roleBarH;
