@@ -22,6 +22,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildExtractionMessages, tryParseModelJson, familyFromFileName } from '../src/utils/serveIntakeExtract';
+import { callClaude, DEFAULT_CLAUDE_MODEL } from '../src/utils/anthropic';
+import { callOpenAi, DEFAULT_OPENAI_MODEL } from '../src/utils/openai';
 
 const FIXTURE_DIR = join(process.cwd(), 'tests', 'fixtures', 'serve-intake');
 const API = `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run`;
@@ -31,11 +33,11 @@ const CANDIDATES = [
   '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
   '@cf/meta/llama-4-scout-17b-16e-instruct',
   '@cf/mistralai/mistral-small-3.1-24b-instruct',
+  '@cf/zai-org/glm-4.7-flash',
 ];
 
 if (!TOKEN || !process.env.CLOUDFLARE_ACCOUNT_ID) {
-  console.error('Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.');
-  process.exit(1);
+  console.error('CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID not set — Workers AI candidates will fail per-call, Claude/OpenAI rows still run if their keys are set.');
 }
 
 async function runModel(model: string, text: string, docType: string | undefined): Promise<Record<string, string>> {
@@ -74,6 +76,42 @@ async function runModel(model: string, text: string, docType: string | undefined
   return (parsed as any).fields ?? parsed;
 }
 
+async function runClaude(text: string, docType: string | undefined): Promise<Record<string, string>> {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) { console.error('  claude: ANTHROPIC_API_KEY not set, skipping'); return {}; }
+  const [sys, user] = buildExtractionMessages(text, docType);
+  try {
+    const raw = await callClaude(key, { system: sys.content, text: user.content, model: DEFAULT_CLAUDE_MODEL, maxTokens: 2048 });
+    const parsed = tryParseModelJson({ response: raw });
+    if (!parsed || typeof parsed !== 'object' || Object.keys(parsed).length === 0) {
+      console.error('  claude: unparseable response');
+      return {};
+    }
+    return (parsed as any).fields ?? parsed;
+  } catch (e) {
+    console.error(`  claude: ${e instanceof Error ? e.message : String(e)}`);
+    return {};
+  }
+}
+
+async function runOpenAi(text: string, docType: string | undefined): Promise<Record<string, string>> {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) { console.error('  openai: OPENAI_API_KEY not set, skipping'); return {}; }
+  const [sys, user] = buildExtractionMessages(text, docType);
+  try {
+    const raw = await callOpenAi(key, { system: sys.content, text: user.content, model: DEFAULT_OPENAI_MODEL, maxTokens: 2048 });
+    const parsed = tryParseModelJson({ response: raw });
+    if (!parsed || typeof parsed !== 'object' || Object.keys(parsed).length === 0) {
+      console.error('  openai: unparseable response');
+      return {};
+    }
+    return (parsed as any).fields ?? parsed;
+  } catch (e) {
+    console.error(`  openai: ${e instanceof Error ? e.message : String(e)}`);
+    return {};
+  }
+}
+
 function scoreOne(got: Record<string, unknown>, want: Record<string, string>) {
   let hit = 0;
   const misses: string[] = [];
@@ -91,9 +129,15 @@ async function main() {
   const expected = JSON.parse(readFileSync(join(FIXTURE_DIR, 'expected.json'), 'utf8'));
   const fixtures = readdirSync(FIXTURE_DIR).filter((f) => f.endsWith('.txt'));
 
-  for (const model of CANDIDATES) {
+  const runners: Array<{ label: string; run: (text: string, docType: string | undefined) => Promise<Record<string, string>> }> = [
+    ...CANDIDATES.map((model) => ({ label: model, run: (text: string, docType: string | undefined) => runModel(model, text, docType) })),
+    { label: 'claude (Anthropic API)', run: runClaude },
+    { label: 'openai (OpenAI API)', run: runOpenAi },
+  ];
+
+  for (const { label, run } of runners) {
     let hit = 0, total = 0;
-    console.log(`\n=== ${model}`);
+    console.log(`\n=== ${label}`);
     for (const file of fixtures) {
       const name = file.replace(/\.txt$/, '');
       const want = expected[name];
@@ -107,7 +151,7 @@ async function main() {
       // still measures the untargeted prompt for now — but any fixture
       // added later with a conventionally-named file gets the SAME family
       // prompt production would send it, keeping this harness honest.
-      const got = await runModel(model, text, familyFromFileName(file));
+      const got = await run(text, familyFromFileName(file));
       const s = scoreOne(got, want);
       hit += s.hit; total += s.total;
       console.log(`  ${name}: ${s.hit}/${s.total}`);
