@@ -1131,8 +1131,14 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     const lead = 'THIS IS NOT A COURT ORDER, A SUMMONS, OR A DEMAND FOR PAYMENT.';
     // Center vertically inside the band: top + (band/2) + (cap-height/2).
     doc.text(lead, pageWidth / 2, bandY + bandH / 2 + 1.8, { align: 'center' });
-    // Compact gap after the band — 7 pt body text doesn't need the full LG clearance.
-    y = bandY + bandH + SPACING.SM;
+    // Clearance after the band must clear the body paragraph's OWN ascender
+    // height, not just separate the two baselines. addWrappedText's y is the
+    // first line's baseline, so a bare SPACING.SM (0.5mm) gap put that
+    // baseline only 0.5mm below the band's bottom edge — the 7pt body font's
+    // ~2.5mm cap height then reached back UP into the gray fill, rendering
+    // "Rocky Mountain Protective Group..." partially on top of the band's
+    // last few pixels. 3mm clears the ascender with a hair of daylight left.
+    y = bandY + bandH + 3.0;
 
     // ── Body prose in mixed case ──
     // ALL CAPS body text reads as shouting on a notice the subject must
