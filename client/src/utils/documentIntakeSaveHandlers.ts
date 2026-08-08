@@ -8,6 +8,8 @@
 //
 // Each handler takes the user-edited field bag (key→value strings,
 // post-review) and returns the JSON the server endpoint accepts.
+
+import { localToday } from './dateUtils';
 // Field kinds that don't have a direct save target are not listed
 // here — those use the "Download JSON" fallback in the UI.
 
@@ -125,7 +127,7 @@ export function buildFiPayload(bag: FieldBag): SaveResult {
     payload: {
       // /api/field-interviews requires `date` — pull from the
       // OCR contact_date or fall back to today's ISO date.
-      date: normalizeDate(get(bag, 'contact_date')) || new Date().toISOString().slice(0, 10),
+      date: normalizeDate(get(bag, 'contact_date')) || localToday(),
       location: get(bag, 'contact_location') || undefined,
       reason: get(bag, 'reason_for_contact') || 'other',
       disposition: get(bag, 'action_taken') || 'none',
