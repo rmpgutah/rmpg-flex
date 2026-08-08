@@ -2105,7 +2105,18 @@ export function addWrappedText(
       const line = lines[li];
       const isLastLine = li === lines.length - 1;
 
-      if (!isLastLine && line.trim().length > 0) {
+      // Only justify a line that was actually wrapped because it hit
+      // maxWidth. wordWrapText also breaks on hard `\n` in the source text
+      // (e.g. "WEEKDAYS BETWEEN 09:00 TO 15:30.\nROUTINE SERVICE..."), which
+      // produces short, deliberate lines that aren't the paragraph's last
+      // line either. Justifying those stretched a 5-word line across the
+      // full field width with huge inter-word gaps (live PDF 2026-08-08).
+      // A line that filled most of maxWidth naturally is the wrap case; a
+      // short line is a hard break and should stay left-aligned like the
+      // last line does.
+      const naturalWidth = doc.getTextWidth(line);
+      const wasWrapped = naturalWidth >= maxWidth * 0.85;
+      if (!isLastLine && wasWrapped && line.trim().length > 0) {
         // Justify: distribute extra space between words
         const words = line.split(/\s+/).filter(w => w.length > 0);
         if (words.length > 1) {
@@ -2619,6 +2630,19 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
   // at ≥ pageH-22 (2mm buffer above barcode top). Reserve = 22mm.
   const BARCODE_CLEARANCE = 15;  // extra space above barcode
   if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - BARCODE_CLEARANCE) {
+    // Snapshot the caller's font BEFORE we switch to bold/SIZE_SECTION_TITLE
+    // to draw the continuation header below. The old code restored the font
+    // FAMILY (PDF_VALUE_FONT) but never the SIZE, so any caller drawing
+    // wrapped/justified text across a page break (e.g. addWrappedText) kept
+    // measuring word widths at its own small size while jsPDF actually
+    // rendered them at the larger section-title size left behind here —
+    // the mismatch is exactly what made justified text on a fresh page
+    // render squished/overlapping (e.g. serve job sheet notes, live PDF
+    // 2026-08-08). Restore the exact pre-break font/size/color instead of
+    // a hardcoded guess.
+    const priorFont = doc.getFont();
+    const priorFontSize = doc.getFontSize();
+    const priorTextColor = (doc as any).getTextColor?.();
     doc.addPage();
     addConfidentialWatermark(doc);
     if (activeVoidWatermark) addVoidWatermark(doc);
@@ -2665,8 +2689,13 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setLineWidth(BORDER.SECTION_OUTER);
     doc.line(LAYOUT.PAGE_MARGIN, contRuleY, LAYOUT.PAGE_MARGIN + cw, contRuleY);
 
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.setFont(priorFont.fontName, priorFont.fontStyle);
+    doc.setFontSize(priorFontSize);
+    if (priorTextColor != null) {
+      doc.setTextColor(priorTextColor as any);
+    } else {
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    }
 
     // Content starts below continuation header.
     return contY + contH + SPACING.SECTION_GAP + 2.5;
