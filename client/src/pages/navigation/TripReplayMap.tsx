@@ -14,6 +14,7 @@ import {
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import type { ReplayPoint } from './tripReplay';
+import { useWebglMapRecovery } from '../../hooks/useWebglMapRecovery';
 
 const TRAVELED_SOURCE_ID = 'trip-replay-traveled-src';
 const TRAVELED_LAYER_ID = 'trip-replay-traveled-line';
@@ -39,6 +40,8 @@ interface TripReplayMapProps {
 export default function TripReplayMap({ points, replayIdx }: TripReplayMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+  const { rebuildNonce, attach } = useWebglMapRecovery();
   const [mapReady, setMapReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -119,6 +122,7 @@ export default function TripReplayMap({ points, replayIdx }: TripReplayMapProps)
           });
 
           mapRef.current = map;
+          webglRecoveryCleanupRef.current = attach(map, 'TripReplayMap');
           setMapReady(true);
         });
 
@@ -134,6 +138,8 @@ export default function TripReplayMap({ points, replayIdx }: TripReplayMapProps)
 
     return () => {
       cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -141,7 +147,7 @@ export default function TripReplayMap({ points, replayIdx }: TripReplayMapProps)
       setMapReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [rebuildNonce]);
 
   // ── Refit camera whenever the points set changes (new trip selected) ──
   useEffect(() => {
