@@ -20,8 +20,13 @@ jobs:
   auto-merge:
     name: Auto-merge safe Dependabot PRs
     runs-on: ubuntu-latest
-    # Non-Dependabot PRs report this job as "skipped". That is expected and
-    # harmless — it is a neutral conclusion and is not a required status check.
+    # `on:` cannot filter by PR author, so this `if` is what actually keeps
+    # the job from doing anything on a human/Claude-authored PR. It still
+    # reports a "skipped" run for every non-Dependabot PR (opened/synchronize/
+    # reopened/ready_for_review) — with ~10-20 non-Dependabot PR pushes an
+    # hour in this repo, that's a skipped run every few minutes, cluttering
+    # Actions history and the PR checks list. It is a neutral conclusion and
+    # NOT a required status check, so it never blocks a merge — just noise.
     if: github.event.pull_request.user.login == 'dependabot[bot]'
 
     steps:

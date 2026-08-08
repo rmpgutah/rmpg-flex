@@ -7,7 +7,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest';
-import { normalizeHomoglyphs, scrubWatermarkBleed } from '../src/utils/serveIntakePreclean';
+import { normalizeHomoglyphs, scrubWatermarkBleed, detectHomoglyphs } from '../src/utils/serveIntakePreclean';
 import { normalizeCheckboxes, normalizeTypography, precleanText } from '../src/utils/serveIntakePreclean';
 
 describe('normalizeHomoglyphs', () => {
@@ -27,6 +27,48 @@ describe('normalizeHomoglyphs', () => {
   it('is idempotent', () => {
     const once = normalizeHomoglyphs('Palo Alto, СA 94304');
     expect(normalizeHomoglyphs(once)).toBe(once);
+  });
+});
+
+describe('detectHomoglyphs', () => {
+  it('returns an empty array for text with no confusables', () => {
+    expect(detectHomoglyphs('Salt Lake City, UT 84101')).toEqual([]);
+  });
+
+  it('returns an empty array for empty input', () => {
+    expect(detectHomoglyphs('')).toEqual([]);
+  });
+
+  it('reports a single Cyrillic substitution with its code point and replacement', () => {
+    // Real hazard: Court Docket rendered "CA" with a Cyrillic С (U+0421).
+    const result = detectHomoglyphs('Palo Alto, СA 94304');
+    expect(result).toEqual([
+      { char: 'С', codePoint: 'U+0421', replacement: 'C', count: 1 },
+    ]);
+  });
+
+  it('aggregates repeated occurrences of the same confusable into one entry with a count', () => {
+    const result = detectHomoglyphs('СС are two Cyrillic Es: Е and Е');
+    const entries = result.filter((r) => r.char === 'С');
+    expect(entries).toEqual([{ char: 'С', codePoint: 'U+0421', replacement: 'C', count: 2 }]);
+    const eEntries = result.filter((r) => r.char === 'Е');
+    expect(eEntries).toEqual([{ char: 'Е', codePoint: 'U+0415', replacement: 'E', count: 2 }]);
+  });
+
+  it('reports multiple distinct confusables found in the same string', () => {
+    // Greek Kappa (Κ, U+039A) alongside Cyrillic С (U+0421).
+    const result = detectHomoglyphs('Κansas and СA');
+    expect(result).toEqual(
+      expect.arrayContaining([
+        { char: 'Κ', codePoint: 'U+039A', replacement: 'K', count: 1 },
+        { char: 'С', codePoint: 'U+0421', replacement: 'C', count: 1 },
+      ]),
+    );
+    expect(result).toHaveLength(2);
+  });
+
+  it('does not report genuine non-Latin text with no mapping', () => {
+    expect(detectHomoglyphs('中文')).toEqual([]);
   });
 });
 
