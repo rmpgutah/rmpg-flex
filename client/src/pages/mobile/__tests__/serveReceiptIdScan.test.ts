@@ -19,14 +19,14 @@ describe('driver licence scan', () => {
     expect(PAGE).toMatch(/from '\.\.\/\.\.\/utils\/aamvaParser'/);
   });
 
-  it('is offered, never demanded', () => {
-    // Nobody is obliged to produce ID to accept papers. A form that
-    // insisted would block a service that is otherwise perfectly good.
-    expect(PAGE).toMatch(/Optional: scan the barcode/);
-    expect(PAGE).toMatch(/You do not have to/);
-    // It must not appear in the blocking list.
-    const missingBlock = PAGE.slice(PAGE.indexOf('const missing'), PAGE.indexOf('const acceptedAttestations'));
-    expect(missingBlock).not.toMatch(/idVerified/);
+  it('is required, per operator instruction on the 2026-07-27 service', () => {
+    // A proof of service is more defensible in a contested hearing when
+    // the signer's identity was verified against a photo ID rather than
+    // self-attested.
+    expect(PAGE).toMatch(/Required: scan the barcode/);
+    // It must appear in the blocking checks.
+    const fieldErrorsBlock = PAGE.slice(PAGE.indexOf('const fieldErrors'), PAGE.indexOf('const acceptedAttestations'));
+    expect(fieldErrorsBlock).toMatch(/idVerified/);
   });
 
   it('populates the columns that existed and were never written', () => {
