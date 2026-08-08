@@ -1263,7 +1263,16 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // this block draws 4.5 role + 9 signature + 7 info = 20.5mm. Reserving the
   // default forced a page break the real content did not need -- the content
   // fit with room to spare and still landed on sheet two.
-  const SIG_ROW_H = 11;
+  //
+  // SIG_ROW_H was 11 here while the comment at the call site below (and this
+  // one) documented 9 -- the value drifted from its own stated intent at
+  // some point and nobody re-measured. On an unsigned notice (the common
+  // case -- these go out before the recipient ever signs anything) that
+  // extra 2mm reads as a visibly oversized blank gap between the
+  // certification sentence and the signature line, which looks unfinished
+  // on a document meant to stand as a court-facing record. Restored to 9 to
+  // match the documented design and tighten that gap.
+  const SIG_ROW_H = 9;
   const SIG_INFO_H = 7;
   const sigBlockH = SPACING.SIGNATURE_ROLE_H + SIG_ROW_H + SIG_INFO_H;
   y = checkPageBreak(doc, y, sigBlockH + SPACING.LG);

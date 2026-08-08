@@ -22,6 +22,10 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
+// No dynamic-import precedent exists elsewhere in this router (checked via
+// `grep -n "await import(" src/routes/shiftPlans.ts` — zero hits), so a
+// normal static import is used here per the task brief's fallback guidance.
+import { evaluateNotificationRules } from './notificationEngine';
 
 const sp = new Hono<Env>();
 
@@ -438,7 +442,20 @@ sp.post('/shift-swaps', async (c) => {
     body.plan_id ?? null, body.shift_date, body.original_shift ?? null,
     body.requested_shift ?? null, body.reason ?? null,
   );
-  return c.json({ success: true, id: r.meta.last_row_id }, 201);
+
+  const swapId = Number(r.meta.last_row_id);
+
+  try {
+    await evaluateNotificationRules(db, 'shift_swap_requested', {
+      title: 'Shift swap requested',
+      message: `${user.full_name ?? 'An officer'} requested a swap for ${body.shift_date}`,
+      priority: 'normal',
+      entity_type: 'shift_swap_request',
+      entity_id: swapId,
+    }, c.env);
+  } catch { /* notification failure must never block the swap request */ }
+
+  return c.json({ success: true, id: swapId }, 201);
 });
 
 sp.put('/shift-swaps/:id', async (c) => {
@@ -452,6 +469,14 @@ sp.put('/shift-swaps/:id', async (c) => {
   }
   const user = c.get('user') as { id: number; full_name?: string } | undefined;
   const db = getDb(c.env);
+
+  const swap = await queryFirst<{ requester_id: number | null; target_id: number | null; shift_date: string }>(
+    db,
+    'SELECT requester_id, target_id, shift_date FROM shift_swap_requests WHERE id = ?',
+    id,
+  );
+  if (!swap) return c.json({ error: 'Shift swap request not found' }, 404);
+
   await execute(
     db,
     `UPDATE shift_swap_requests SET status = ?, reviewed_by = ?, reviewed_by_name = ?,
@@ -459,6 +484,19 @@ sp.put('/shift-swaps/:id', async (c) => {
      WHERE id = ?`,
     body.status, user?.id ?? null, user?.full_name ?? null, body.review_notes ?? null, id,
   );
+
+  try {
+    const dynamicTargets = [swap.requester_id, swap.target_id]
+      .filter((x): x is number => typeof x === 'number');
+    await evaluateNotificationRules(db, `shift_swap_${body.status}`, {
+      title: body.status === 'approved' ? 'Shift swap approved' : 'Shift swap denied',
+      message: `Your swap request for ${swap.shift_date} was ${body.status}`,
+      priority: 'normal',
+      entity_type: 'shift_swap_request',
+      entity_id: id,
+    }, c.env, dynamicTargets);
+  } catch { /* notification failure must never block the swap review */ }
+
   return c.json({ success: true });
 });
 
