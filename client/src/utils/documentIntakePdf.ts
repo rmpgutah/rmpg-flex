@@ -26,7 +26,7 @@
 
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
-import { parseTimestamp } from './dateUtils';
+import { parseTimestamp, localToday } from './dateUtils';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -122,7 +122,7 @@ export function confidenceBand(c: number): { label: string; bg: string; pct: str
 export function suggestFilename(kind: string, source: string): string {
   const safeKind = (kind || 'unknown').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 24);
   const stem = (source || 'document').replace(/\.pdf$/i, '').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 24);
-  const ymd = new Date().toISOString().slice(0, 10);
+  const ymd = localToday();
   return `intake-${safeKind}-${stem}-${ymd}.pdf`;
 }
 

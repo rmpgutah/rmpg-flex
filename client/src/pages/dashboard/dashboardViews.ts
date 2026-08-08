@@ -47,8 +47,15 @@ const SWITCH_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 export const DASHBOARD_VIEW_STORAGE_KEY = 'rmpg_dashboard_view';
 
+// Roles not in ROLE_DEFAULT (contract_manager, client_viewer, human_resources,
+// and any future role) previously fell back to 'dispatch' — the most
+// operationally-detailed view (activeBolos, activeUnits, recentActivity).
+// 'patrol' is the least-detailed of the three defined views, so an
+// unrecognized/outward-facing role gets that instead of the full CAD board.
+const FALLBACK_VIEW: DashboardView = 'patrol';
+
 export function defaultViewForRole(role: string): DashboardView {
-  return ROLE_DEFAULT[role] ?? 'dispatch';
+  return ROLE_DEFAULT[role] ?? FALLBACK_VIEW;
 }
 
 export function canSwitchView(role: string): boolean {

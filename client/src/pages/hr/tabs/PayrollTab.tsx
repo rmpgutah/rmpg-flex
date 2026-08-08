@@ -147,7 +147,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
   const { addToast } = useToast();
 
-  const isManager = ['admin', 'manager'].includes(userRole);
+  const isManager = ['admin', 'manager', 'supervisor', 'human_resources'].includes(userRole);
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
@@ -185,7 +185,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const fetchOfficers = useCallback(async () => {
     try {
       const data = await apiFetch<any[]>('/personnel');
-      setOfficers(data.map((o: any) => ({ id: o.id, full_name: o.full_name })));
+      setOfficers((Array.isArray(data) ? data : []).map((o: any) => ({ id: o.id, full_name: o.full_name })));
     } catch { /* silent */ }
   }, []);
 

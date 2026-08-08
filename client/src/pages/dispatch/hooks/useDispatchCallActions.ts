@@ -178,10 +178,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
       }
     } catch (err) {
       console.error('Failed to hold call:', err);
-      // The server currently 409s every hold request with a specific reason
-      // (on_hold isn't in the live status enum yet, pending migration 0040) —
-      // surface that instead of a generic "failed" toast that implies a retry
-      // might succeed.
       addToast(err instanceof Error ? err.message : 'Failed to hold call', 'error');
     }
   }, [setCalls, setSelectedCall, addToast]);
