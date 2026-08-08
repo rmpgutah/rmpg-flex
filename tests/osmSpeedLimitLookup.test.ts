@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import Pbf from 'pbf';
+import { PbfWriter } from 'pbf';
 import { nearestMaxspeedInTile, parseMaxspeedMphServer } from '../src/utils/osm/speedLimitLookup';
 import { lngLatToTile } from '../src/utils/osm/tileGeometry';
 
@@ -17,14 +17,14 @@ function encodeTile(opts: {
   const keys = Object.keys(opts.props);
   const values = keys.map((k) => opts.props[k]);
 
-  const pbf = new Pbf();
-  pbf.writeMessage(3, (layerObj: typeof opts, p: Pbf) => {
+  const pbf = new PbfWriter();
+  pbf.writeMessage(3, (layerObj: typeof opts, p: PbfWriter) => {
     p.writeVarintField(15, 2);              // version
     p.writeStringField(1, layerObj.layer);  // name
     p.writeVarintField(5, layerObj.extent); // extent
 
     // feature
-    p.writeMessage(2, (_: unknown, fp: Pbf) => {
+    p.writeMessage(2, (_: unknown, fp: PbfWriter) => {
       fp.writeVarintField(1, 1); // id
       // tags: [keyIdx, valueIdx, ...]
       const tags: number[] = [];
@@ -49,7 +49,7 @@ function encodeTile(opts: {
 
     for (const k of keys) p.writeStringField(3, k);
     for (const v of values) {
-      p.writeMessage(4, (val: string, vp: Pbf) => { vp.writeStringField(1, val); }, v);
+      p.writeMessage(4, (val: string, vp: PbfWriter) => { vp.writeStringField(1, val); }, v);
     }
   }, opts);
 
