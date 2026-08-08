@@ -150,6 +150,13 @@ export async function fetchRecentJobs(db: D1Database, jwtSecret: string, since?:
     const params: Record<string, string> = { per_page: '50' };
     if (since) params.updated_since = since;
     const result = await smGet('/jobs', key, params);
+    // TEMP DIAGNOSTIC (remove immediately after capturing one log line):
+    const j0 = Array.isArray(result?.data) ? result.data[0] : undefined;
+    console.error('[sm-client] DIAGNOSTIC job keys+client+recipient:', JSON.stringify({
+      keys: j0 ? Object.keys(j0) : null,
+      client: j0?.client,
+      recipient: j0?.recipient,
+    }));
     // ServeManager wraps every response — list endpoints included — in a
     // JSON:API-style `{ links: {...}, data: [...] }` envelope (confirmed
     // live 2026-08-08 against the production account's real job data).
