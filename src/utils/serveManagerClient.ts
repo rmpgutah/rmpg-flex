@@ -126,13 +126,23 @@ export interface SmJob {
   job_number: string;
   job_status: string;
   service_status: string;
-  client: { company_name?: string; full_name?: string };
+  // `job.client` never existed on the real payload — confirmed dead code via
+  // the round-1 diagnostic (2026-08-08). The real fields are `client_company`
+  // (the billing/collaborating company — the one target-client filtering
+  // means to match) and `client_contact` (an individual on the account,
+  // observed null on real jobs but not necessarily always null). Neither
+  // has a confirmed shape for populated `client_contact`, so it mirrors
+  // `recipient`'s confirmed `name` field as the best-guess fallback.
+  client_company?: { name?: string };
+  client_contact?: { name?: string; full_name?: string };
   // The real /jobs list payload (confirmed live 2026-08-08) uses
   // `recipient.name`, not `recipient.full_name` — `full_name` is kept as a
   // fallback in case a different endpoint/version uses it.
   recipient: { name?: string; full_name?: string; description?: string };
   service_instructions?: string;
-  court_case_number?: string;
+  // Confirmed live 2026-08-08 (round-2 diagnostic): `court_case_number` is
+  // NOT a flat field — the real shape is a nested `court_case.number`.
+  court_case?: { number?: string };
   due_date?: string;
   rush?: number;
   addresses?: Array<{
@@ -153,13 +163,6 @@ export async function fetchRecentJobs(db: D1Database, jwtSecret: string, since?:
     const params: Record<string, string> = { per_page: '50' };
     if (since) params.updated_since = since;
     const result = await smGet('/jobs', key, params);
-    // TEMP DIAGNOSTIC (remove immediately after capturing one log line):
-    const j0 = Array.isArray(result?.data) ? result.data[0] : undefined;
-    console.error('[sm-client] DIAGNOSTIC client_company/client_contact/court_case:', JSON.stringify({
-      client_company: j0?.client_company,
-      client_contact: j0?.client_contact,
-      court_case: j0?.court_case,
-    }));
     // ServeManager wraps every response — list endpoints included — in a
     // JSON:API-style `{ links: {...}, data: [...] }` envelope (confirmed
     // live 2026-08-08 against the production account's real job data).

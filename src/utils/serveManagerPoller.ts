@@ -51,6 +51,15 @@ function guessProcessType(documents: any[]): string {
   return 'other';
 }
 
+// job.client never existed on the real payload (confirmed dead via the
+// round-1 diagnostic, 2026-08-08) — the real field is client_company, with
+// client_contact as an individual-account fallback. Shared by the
+// target-client filter and the dispatch-call mapper so both agree on what
+// "the client" means for a job.
+function getClientName(job: SmJob): string {
+  return job.client_company?.name || job.client_contact?.name || job.client_contact?.full_name || '';
+}
+
 function mapSmJobToCallData(job: SmJob) {
   const addresses = job.addresses || [];
   const primary = addresses.find((a) => a.primary) || addresses[0];
@@ -80,9 +89,9 @@ function mapSmJobToCallData(job: SmJob) {
     latitude: lat,
     longitude: lat && lng ? lng : null,
     description: descParts.join(' | '),
-    caller_name: job.client?.company_name || job.client?.full_name || null,
+    caller_name: getClientName(job) || null,
     caller_phone: null,
-    case_number: job.court_case_number || null,
+    case_number: job.court_case?.number || null,
     due_date: job.due_date || null,
     serve_job_number: job.job_number,
     process_type: guessProcessType(documents),
@@ -113,7 +122,7 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
     for (const job of jobs) {
       // Skip non-target-client jobs — an empty targetClient (admin explicitly
       // cleared the field) means "no filter", not "match nothing".
-      const clientName = job.client?.company_name || job.client?.full_name || '';
+      const clientName = getClientName(job);
       if (targetClient && !clientName.toLowerCase().includes(targetClient.toLowerCase())) continue;
 
       // Check if this job already has a linked call
@@ -178,7 +187,7 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
            process_type, addresses_json, documents_json, synced_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
         job.id, job.job_number, clientName, (job.recipient?.name || job.recipient?.full_name) || null,
-        job.job_status, job.service_status, job.court_case_number || null,
+        job.job_status, job.service_status, job.court_case?.number || null,
         job.due_date || null, callId,
         callData.process_type,
         JSON.stringify(job.addresses || []), JSON.stringify(job.documents || []),
