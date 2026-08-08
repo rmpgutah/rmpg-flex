@@ -587,6 +587,17 @@ export default {
             ).catch((err) => console.error('Shift plan notification sweep failed:', err)),
           ).catch(() => {}),
         );
+        // Shift swap escalation reminders — a swap stuck awaiting target
+        // response or supervisor approval for 24+ hours notifies
+        // admin/manager (2026-08-08 approval-workflow spec). Rule
+        // shift_swap_escalated is seeded active by default (migration 0229).
+        ctx.waitUntil(
+          import('./utils/shiftSwapEscalationSweep').then((m) =>
+            m.sweepShiftSwapEscalations(env.DB, env).then((r) =>
+              console.log(`[shift-swap-escalation] escalated=${r.escalated} notified=${r.notified}`),
+            ).catch((err) => console.error('Shift swap escalation sweep failed:', err)),
+          ).catch(() => {}),
+        );
       }
 
       // Daily blotter at 00:05 America/Denver. Same hour+minute gate as the
