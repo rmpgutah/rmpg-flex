@@ -14,7 +14,7 @@
 // references a chunk the CDN is still replicating (a reload there re-fails
 // instantly), then reload ONCE per 30s to pick up the fresh index.
 
-import { isChunkLoadError, tryReloadForChunkFailure, repairPoisonedChunkInBrowser } from './chunkRetry';
+import { isChunkLoadError, tryReloadForChunkFailure, repairAllPoisonedChunksInBrowser } from './chunkRetry';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -33,8 +33,11 @@ export async function importWithRetry<T>(factory: () => Promise<T>): Promise<T> 
     // its own cache-control header). Neither re-importing nor reloading can
     // clear that; only a cache-bypassing re-request can. If it doesn't apply,
     // we fall through and the original ladder runs unchanged.
+    // Uses the "All" variant (not the single-URL one) because the failure may
+    // be a transitive sub-chunk the error message never names — see the
+    // "Transitive-chunk gap" section in chunkRetry.ts.
     try {
-      if (await repairPoisonedChunkInBrowser(err)) return await factory();
+      if (await repairAllPoisonedChunksInBrowser(err)) return await factory();
     } catch {
       /* repaired but the re-import still failed — continue down the ladder */
     }
