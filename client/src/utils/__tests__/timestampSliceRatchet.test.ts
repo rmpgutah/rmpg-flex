@@ -74,14 +74,15 @@ describe('timestamp slicing', () => {
     const PDF_GENERATORS = /Pdf|pdf|blotter|report|packet|guide|briefing|export|aamvaParser/i;
     const offenders: string[] = [];
     for (const f of walk(SRC)) {
-      if (f.includes('__tests__')) continue;
-      if (!PDF_GENERATORS.test(f)) continue;
+      const relPath = f.replace(SRC, 'src');
+      if (relPath.includes('__tests__')) continue;
+      if (!PDF_GENERATORS.test(relPath)) continue;
       const src = readFileSync(f, 'utf8');
       src.split('\n').forEach((line, i) => {
         const code = line.trim();
         if (code.startsWith('//') || code.startsWith('*') || code.startsWith('/*')) return;
         if (/new Date\(\)\.toISOString\(\)\.slice\(0, ?10\)/.test(line)) {
-          offenders.push(`${f.replace(SRC, 'src')}:${i + 1}`);
+          offenders.push(`${relPath}:${i + 1}`);
         }
       });
     }
