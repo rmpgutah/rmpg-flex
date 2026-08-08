@@ -80,9 +80,9 @@ function mapSmJobToCallData(job: SmJob) {
     latitude: lat,
     longitude: lat && lng ? lng : null,
     description: descParts.join(' | '),
-    caller_name: job.client?.company_name || job.client?.full_name || null,
+    caller_name: job.client_company?.name || null,
     caller_phone: null,
-    case_number: job.court_case_number || null,
+    case_number: job.court_case?.number || null,
     due_date: job.due_date || null,
     serve_job_number: job.job_number,
     process_type: guessProcessType(documents),
@@ -112,8 +112,10 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
 
     for (const job of jobs) {
       // Skip non-target-client jobs — an empty targetClient (admin explicitly
-      // cleared the field) means "no filter", not "match nothing".
-      const clientName = job.client?.company_name || job.client?.full_name || '';
+      // cleared the field) means "no filter", not "match nothing". The real
+      // payload has no top-level `client` object (confirmed live 2026-08-08)
+      // — the client company lives under the nested `client_company.name`.
+      const clientName = job.client_company?.name || '';
       if (targetClient && !clientName.toLowerCase().includes(targetClient.toLowerCase())) continue;
 
       // Check if this job already has a linked call
@@ -178,7 +180,7 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
            process_type, addresses_json, documents_json, synced_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
         job.id, job.job_number, clientName, (job.recipient?.name || job.recipient?.full_name) || null,
-        job.job_status, job.service_status, job.court_case_number || null,
+        job.job_status, job.service_status, job.court_case?.number || null,
         job.due_date || null, callId,
         callData.process_type,
         JSON.stringify(job.addresses || []), JSON.stringify(job.documents || []),
