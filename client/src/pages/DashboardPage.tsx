@@ -737,7 +737,7 @@ export default function DashboardPage() {
     const safe = async <T,>(url: string): Promise<T | null> => {
       try { return await apiFetch<T>(url); } catch (err) { console.warn(`[Dashboard] widget fetch failed (${url}):`, err); failures++; return null; }
     };
-    const [sc, cr, pc, ep, uc, or_, ss, cd, ec, un, cv, cz] = await Promise.all([
+    const [sc, cr, pc, ep, uc, or_, ss, cd, ec, un, cv, cz, us_] = await Promise.all([
       safe<any>('/reports/shift-comparison'),
       safe<any>('/reports/clearance-rate'),
       safe<any>('/reports/patrol-coverage'),
@@ -750,6 +750,7 @@ export default function DashboardPage() {
       safe<any[]>('/dispatch/units'),
       safe<any>('/dispatch/call-volume?days=7'),
       safe<any>('/dispatch/by-zone?days=7'),
+      safe<any>('/reports/dashboard-unified-stats'),
     ]);
     setWidgetErrorCount(failures);
     if (sc) setShiftComparison(sc);
@@ -764,6 +765,7 @@ export default function DashboardPage() {
     if (Array.isArray(un)) setUnits(un);
     if (cv?.by_day) setCallVolume(cv.by_day);
     if (cz?.by_zone) setCallsByZone(cz.by_zone);
+    if (us_) setUnifiedStats(us_);
   }, []);
 
   // Fetch enhanced dashboard data (weekly trend, calls by type, unit status)
