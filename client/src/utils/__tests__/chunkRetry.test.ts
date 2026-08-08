@@ -10,9 +10,12 @@ import {
   isPoisonedChunkResponse,
   repairPoisonedChunk,
   evictPoisonedChunkCaches,
+  findFailedChunkResourceUrls,
+  repairAllPoisonedChunks,
   CHUNK_RELOAD_KEY,
   CHUNK_RELOAD_WINDOW_MS,
   CHUNK_RELOAD_HOLD_MS,
+  CHUNK_FAILURE_LOOKBACK_MS,
 } from '../chunkRetry';
 
 describe('isChunkLoadError', () => {
@@ -276,6 +279,129 @@ describe('evictPoisonedChunkCaches (BROAD policy)', () => {
 
   it('is a safe no-op when neither API exists (non-secure context)', async () => {
     await expect(evictPoisonedChunkCaches({})).resolves.toBeUndefined();
+  });
+});
+
+describe('findFailedChunkResourceUrls', () => {
+  const ORIGIN = 'https://rmpgutah.us';
+  const NOW = 1_000_000;
+
+  it('flags a zero-byte /assets/*.js entry with an HTTP error status (sw.js poison-guard 404)', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/mapboxLoader-CDOMyCGK.js`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([
+      `${ORIGIN}/assets/mapboxLoader-CDOMyCGK.js`,
+    ]);
+  });
+
+  it('flags a network-error entry (responseStatus 0)', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/map-CWZvsg5k.js`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 0, responseStatus: 0 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([`${ORIGIN}/assets/map-CWZvsg5k.js`]);
+  });
+
+  it('does NOT flag a healthy cache hit (0 transferSize but real decoded bytes)', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/fleet-Bo7wm5uF.js`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 393642, responseStatus: 200 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([]);
+  });
+
+  it('does NOT flag a successful network fetch', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/pdfStaticMap-D5WClHGb.js`, startTime: NOW - 100, transferSize: 5000, decodedBodySize: 12000, responseStatus: 200 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([]);
+  });
+
+  it('ignores off-origin, non-asset, and non-JS entries', () => {
+    const entries = [
+      { name: 'https://evil.example/assets/x-abc.js', startTime: NOW - 100, transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+      { name: `${ORIGIN}/api/health`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+      { name: `${ORIGIN}/assets/style-abc.css`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([]);
+  });
+
+  it('excludes entries outside the lookback window', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/old-abc.js`, startTime: NOW - (CHUNK_FAILURE_LOOKBACK_MS + 1), transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([]);
+  });
+
+  it('falls back to the zero-byte heuristic when responseStatus is unsupported (non-Chrome)', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/NcicQueryPanel-BQKY_wCa.js`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 0 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([
+      `${ORIGIN}/assets/NcicQueryPanel-BQKY_wCa.js`,
+    ]);
+  });
+
+  it('dedupes repeated failures of the same URL', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/x-abc.js`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+      { name: `${ORIGIN}/assets/x-abc.js`, startTime: NOW - 50, transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([`${ORIGIN}/assets/x-abc.js`]);
+  });
+});
+
+describe('repairAllPoisonedChunks (transitive-chunk gap fix)', () => {
+  const ORIGIN = 'https://rmpgutah.us';
+  const TOP_LEVEL_ERR = new Error(
+    'Failed to fetch dynamically imported module: https://rmpgutah.us/assets/DashboardPage-IK0YJXQZ.js',
+  );
+  const jsResponse = () => new Response('export default 1;', {
+    status: 200,
+    headers: { 'content-type': 'application/javascript' },
+  });
+
+  it('repairs BOTH the top-level error URL and a transitive sub-chunk the error message never named', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsResponse());
+    const subChunk = `${ORIGIN}/assets/mapboxLoader-CDOMyCGK.js`;
+    await expect(
+      repairAllPoisonedChunks(TOP_LEVEL_ERR, { fetchImpl, origin: ORIGIN }, [subChunk]),
+    ).resolves.toBe(true);
+    const requestedUrls = fetchImpl.mock.calls.map((c) => c[0]);
+    expect(requestedUrls).toContain('https://rmpgutah.us/assets/DashboardPage-IK0YJXQZ.js');
+    expect(requestedUrls).toContain(subChunk);
+  });
+
+  it('reports repaired=true when the top-level chunk was healthy but the sub-chunk needed repair', async () => {
+    // Mirrors the live bug: DashboardPage-IK0YJXQZ.js was ALWAYS healthy — the
+    // real poison was in a transitive sub-chunk only Resource Timing surfaces.
+    const fetchImpl = vi.fn().mockResolvedValue(jsResponse());
+    await expect(
+      repairAllPoisonedChunks(TOP_LEVEL_ERR, { fetchImpl, origin: ORIGIN }, [`${ORIGIN}/assets/map-CWZvsg5k.js`]),
+    ).resolves.toBe(true);
+  });
+
+  it('resolves false when there is nothing to repair', async () => {
+    const fetchImpl = vi.fn();
+    await expect(
+      repairAllPoisonedChunks(new Error('Importing a module script failed.'), { fetchImpl, origin: ORIGIN }, []),
+    ).resolves.toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('does not double-request a URL that is both the top-level target AND in extraUrls', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsResponse());
+    const url = 'https://rmpgutah.us/assets/DashboardPage-IK0YJXQZ.js';
+    await repairAllPoisonedChunks(TOP_LEVEL_ERR, { fetchImpl, origin: ORIGIN }, [url]);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('still reports true when one target fails to repair but another succeeds', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response('<!doctype html>', { status: 200, headers: { 'content-type': 'text/html' } }))
+      .mockResolvedValueOnce(jsResponse());
+    await expect(
+      repairAllPoisonedChunks(TOP_LEVEL_ERR, { fetchImpl, origin: ORIGIN }, [`${ORIGIN}/assets/map-CWZvsg5k.js`]),
+    ).resolves.toBe(true);
   });
 });
 
