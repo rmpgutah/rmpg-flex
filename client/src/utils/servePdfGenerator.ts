@@ -932,9 +932,14 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   {
     const n = data.attempts.length;
     const bandH = 6.4;
+    // Drawn on the RAIL (getRailX/getRailWidth), not lx/ffw — every other
+    // full-bleed block on this page (section header bars, the I(a)/I(b)
+    // panels, the signature block) shares that same left/right edge. This
+    // band previously sat 1mm inset on both sides, reading as a wobble in
+    // the page's left margin when the eye tracks straight down.
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
     doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(lx, y, ffw, bandH);
+    doc.rect(getRailX(), y, getRailWidth(doc), bandH);
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1123,16 +1128,23 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     // Group, a private process service agency...". The 240/240/240 fill
     // by itself is enough callout — it already contrasts with the white
     // page and the dark IMPORTANT NOTICE header band above it.
+    // Rail-aligned (see status band above) — was inset 1mm on both sides.
     doc.setFillColor(240, 240, 240);
-    doc.rect(lx, bandY, ffw, bandH, 'F');
+    doc.rect(getRailX(), bandY, getRailWidth(doc), bandH, 'F');
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE + 2);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const lead = 'THIS IS NOT A COURT ORDER, A SUMMONS, OR A DEMAND FOR PAYMENT.';
     // Center vertically inside the band: top + (band/2) + (cap-height/2).
     doc.text(lead, pageWidth / 2, bandY + bandH / 2 + 1.8, { align: 'center' });
-    // Compact gap after the band — 7 pt body text doesn't need the full LG clearance.
-    y = bandY + bandH + SPACING.SM;
+    // Clearance after the band must clear the body paragraph's OWN ascender
+    // height, not just separate the two baselines. addWrappedText's y is the
+    // first line's baseline, so a bare SPACING.SM (0.5mm) gap put that
+    // baseline only 0.5mm below the band's bottom edge — the 7pt body font's
+    // ~2.5mm cap height then reached back UP into the gray fill, rendering
+    // "Rocky Mountain Protective Group..." partially on top of the band's
+    // last few pixels. 3mm clears the ascender with a hair of daylight left.
+    y = bandY + bandH + 3.0;
 
     // ── Body prose in mixed case ──
     // ALL CAPS body text reads as shouting on a notice the subject must
@@ -1159,41 +1171,44 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     y += SPACING.XS;
 
     if (data.nextAttemptNote) {
-      // Render the next-attempt sentence as a mixed-case italic call-out
-      // below the disclaimer prose. The field-pair pattern (NEXT ATTEMPT
-      // / WILL RETURN TUESDAY...) would force the value into ALL CAPS via
-      // addFieldPair's sanitization — that conflicts with the professional
-      // mixed-case body above it. Inline italic keeps the rhythm.
-      // Promoted from an inline italic sentence to an accent-barred call-out.
-      // This is the single most ACTIONABLE line on the page -- it is when the
-      // server is coming back, and it decides whether the recipient arranges
-      // delivery or gets knocked on again at an inconvenient hour. Set in the
-      // prose run it read as a footnote to the disclaimer.
-      //
-      // The accent bar is drawn in the left margin gutter and the text
-      // indents past it, so the call-out costs the same vertical space the
-      // inline sentence did. That matters: this notice must stay on one sheet
-      // of PJ-700 roll.
-      const barW = 0.8;
-      const indent = barW + 2.0;
-      doc.setFont(PDF_VALUE_FONT, 'bolditalic');
+      // Reformatted from an inline accent-barred sentence into a boxed
+      // call-out: the label sits on its own line, bold caps, with the note
+      // wrapped underneath inside a bordered box. This is the single most
+      // ACTIONABLE line on the page — when the server is coming back — so it
+      // gets the same boxed treatment as the SERVICE NOT COMPLETED status
+      // band above, instead of reading as a footnote hanging off the
+      // disclaimer prose.
+      // Box drawn on the RAIL (getRailX/getRailWidth), matching the status
+      // band, the disclaimer band above, and every other full-bleed block on
+      // the page — not lx/ffw, which is inset 1mm on both sides.
+      const boxX = getRailX();
+      const boxW = getRailWidth(doc);
+      const padX = SPACING.MD;
+      const padY = 1.8;
+      const lineH = 3.4;
+      doc.setFont(PDF_VALUE_FONT, 'bold');
       doc.setFontSize(NOTICE_FONT);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text('Next attempt:', lx + indent, y);
-      const labelW = doc.getTextWidth('Next attempt: ');
-      doc.setFont(PDF_VALUE_FONT, 'italic');
       const noteLines: string[] = doc.splitTextToSize(
         sanitizePdfText(data.nextAttemptNote, { preserveCase: true }),
-        ffw - labelW - indent - 2,
+        boxW - padX * 2,
       );
-      doc.text(noteLines, lx + indent + labelW, y);
-      // Bar spans the text block's own cap-height-to-baseline extent. The
-      // first pass drew it 1.2mm wide against a single 3.5mm line, which on
-      // the page read as a stray tick in the margin rather than an accent.
-      const blockH = noteLines.length * 3.5;
-      doc.setFillColor(...COLOR.TEXT_PRIMARY);
-      doc.rect(lx, y - 2.4, barW, blockH + 0.9, 'F');
-      y += blockH + 1.5;
+      const boxH = padY * 2 + lineH + noteLines.length * lineH;
+      y = checkPageBreak(doc, y, boxH + SPACING.SM);
+
+      doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+      doc.setLineWidth(BORDER.SECTION_OUTER);
+      doc.rect(boxX, y, boxW, boxH);
+
+      let cy = y + padY + lineH * 0.7;
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text('NEXT ATTEMPT', boxX + padX, cy);
+      cy += lineH;
+      doc.setFont(PDF_VALUE_FONT, 'italic');
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text(noteLines, boxX + padX, cy);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+
+      y += boxH + SPACING.SM;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -1248,7 +1263,16 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // this block draws 4.5 role + 9 signature + 7 info = 20.5mm. Reserving the
   // default forced a page break the real content did not need -- the content
   // fit with room to spare and still landed on sheet two.
-  const SIG_ROW_H = 11;
+  //
+  // SIG_ROW_H was 11 here while the comment at the call site below (and this
+  // one) documented 9 -- the value drifted from its own stated intent at
+  // some point and nobody re-measured. On an unsigned notice (the common
+  // case -- these go out before the recipient ever signs anything) that
+  // extra 2mm reads as a visibly oversized blank gap between the
+  // certification sentence and the signature line, which looks unfinished
+  // on a document meant to stand as a court-facing record. Restored to 9 to
+  // match the documented design and tighten that gap.
+  const SIG_ROW_H = 9;
   const SIG_INFO_H = 7;
   const sigBlockH = SPACING.SIGNATURE_ROLE_H + SIG_ROW_H + SIG_INFO_H;
   y = checkPageBreak(doc, y, sigBlockH + SPACING.LG);
@@ -1296,14 +1320,26 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   y += SPACING.XS;
 
   // ── Footer legal text ──
-  y = checkPageBreak(doc, y, 8);
-  doc.setFont(PDF_VALUE_FONT, 'normal');
-  doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
-  doc.setTextColor(...COLOR.TEXT_TERTIARY);
+  // Bumped from FONT.SIZE_FOOTER_SECONDARY (5pt) to 6.5pt and given a thin
+  // rule above it — at 5pt this citation read as a stray caption rather
+  // than the statutory authority line it is. Sentence case retained
+  // throughout (only the proper nouns/section symbol are capitalized) so it
+  // reads as a legal citation, not a shouted disclaimer.
+  y = checkPageBreak(doc, y, 9);
+  const footerCiteWidth = doc.internal.pageSize.getWidth();
+  // Rule spans the RAIL (getRailX/getRailWidth), matching every other
+  // full-bleed rule on the page — was lx/ffw, inset 1mm on both sides.
+  doc.setDrawColor(...COLOR.RULE_STRONG);
+  doc.setLineWidth(BORDER.TABLE_OUTER);
+  doc.line(getRailX(), y - 2, getRailX() + getRailWidth(doc), y - 2);
+  doc.setFont(PDF_VALUE_FONT, 'italic');
+  doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY + 1.5);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(
-    'Process service pursuant to Utah R. Civ. P. 4 and Utah Code § 78B-8-302 (registered private process server)',
-    doc.internal.pageSize.getWidth() / 2, y, { align: 'center' },
+    'Process service pursuant to Utah R. Civ. P. 4 and Utah Code § 78B-8-302 (registered private process server).',
+    footerCiteWidth / 2, y + 1.5, { align: 'center' },
   );
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
@@ -1872,34 +1908,35 @@ function drawPleadingCaption(
  */
 function drawInstrumentTitle(doc: jsPDF, y: number, title: string): number {
   const cx = doc.internal.pageSize.getWidth() / 2;
-  const lx = getLeftX();
-  const cw = getContentWidth(doc);
 
-  y = checkPageBreak(doc, y, 12);
+  // Filled gray banner instead of a double-ruled black-on-white line — this
+  // matches the same gray header-bar language every numbered section (II,
+  // III, IV, V) uses via openAutoSection/addSignatureBlock, so the
+  // instrument title reads as the first header in that family rather than
+  // a differently-styled caption sitting above it.
+  //
+  // Drawn on the RAIL (getRailX/getRailWidth) — those section header bars
+  // are drawn at LAYOUT.PAGE_MARGIN across getContentWidth. This bar
+  // previously used getLeftX() (PAGE_MARGIN + CONTENT_INSET) as its left
+  // edge but the FULL getContentWidth() as its span, so it started 1mm
+  // right of every header/panel/signature block below it and then
+  // overshot the right rail by that same 1mm — the exact "sized from
+  // getContentWidth but drawn from getLeftX" bug pdfTokens.ts warns about.
+  const barH = SPACING.SECTION_HEADER_H + 1.5;
+  y = checkPageBreak(doc, y, barH + SPACING.LG);
 
-  doc.setDrawColor(...COLOR.RULE_STRONG);
-  doc.setLineWidth(BORDER.TABLE_OUTER);
-  doc.line(lx, y, lx + cw, y);
-  doc.setDrawColor(...COLOR.RULE_GOLD);
-  doc.setLineWidth(BORDER.ACCENT_HEADER);
-  doc.line(lx, y + 0.7, lx + cw, y + 0.7);
+  const titleAccentRgb = resolveSectionAccentColor(title);
+  doc.setFillColor(titleAccentRgb[0], titleAccentRgb[1], titleAccentRgb[2]);
+  doc.rect(getRailX(), y, getRailWidth(doc), barH, 'F');
 
-  y += tightLayout ? 4.0 : 4.6;
-  doc.setFont(PDF_VALUE_FONT, 'bold');
-  doc.setFontSize(FONT.SIZE_SECTION_TITLE + 1);
+  doc.setFont('Arial', 'bold');
+  doc.setFontSize(FONT.SIZE_SECTION_TITLE + 2);
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  const capH = (FONT.SIZE_SECTION_TITLE + 2) * 0.35;
+  doc.text(sanitizePdfText(title.toUpperCase()), cx, y + (barH + capH) / 2, { align: 'center' });
+
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.text(sanitizePdfText(title.toUpperCase()), cx, y, { align: 'center' });
-
-  // Copy designation rides the title's OWN baseline rather than claiming a
-  // row below it. The band already reserves this line, so three sheets are
-  // told apart at a glance for zero vertical cost — which matters on a
-  // layout that fits a single roll-printer sheet by ~4mm.
-  y += tightLayout ? 1.3 : 1.6;
-  doc.setDrawColor(...COLOR.RULE_STRONG);
-  doc.setLineWidth(BORDER.TABLE_OUTER);
-  doc.line(lx, y, lx + cw, y);
-
-  return y + (tightLayout ? SPACING.MD : SPACING.LG);
+  return y + barH + (tightLayout ? SPACING.MD : SPACING.LG);
 }
 
 interface SubjectRow {
