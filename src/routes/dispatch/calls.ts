@@ -1293,6 +1293,12 @@ calls.post('/:id/unarchive', async (c) => {
 // status from held_at while the real status is left untouched, so a held
 // call resumes to whatever status it actually held (dispatched/enroute/
 // onscene) instead of always bouncing back to 'pending'.
+//
+// NOTE: #3305 landed a competing fix that wrote status='on_hold' directly
+// and left the old /resume (SET status='pending' WHERE status='on_hold')
+// in place — that combination silently drops a held call's real status on
+// resume. Superseded here by the held_at design both this route and the
+// client already commit to.
 calls.post('/:id/hold', async (c) => {
   try {
     const db = getDb(c.env);
