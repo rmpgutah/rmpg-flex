@@ -11,6 +11,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
+import { useWebglMapRecovery } from '../../hooks/useWebglMapRecovery';
 import LocationNoteModal from './LocationNoteModal';
 import { escapeHtml } from '../../utils/sanitize';
 import { withAlpha } from '../../utils/withAlpha';
@@ -211,6 +212,8 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const unitMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+  const { rebuildNonce, attach } = useWebglMapRecovery();
 
   const [items, setItems] = useState<QueueMapItem[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -286,6 +289,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     });
     mapRef.current = map;
     registerMapInstance(map, MAPBOX_STYLE_DARK);
+    webglRecoveryCleanupRef.current = attach(map, 'ServeIntakeMap');
     map.on('load', () => {
       applyRmpgBasemap(map, { variant: 'dark' });
       setMapReady(true);
@@ -346,11 +350,15 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       container?.removeEventListener('mousedown', onMouseDown);
       container?.removeEventListener('mouseup', onMouseUp);
       container?.removeEventListener('mouseleave', onMouseLeave);
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       unregisterMapInstance(map);
       map.remove();
       mapRef.current = null;
+      setMapReady(false);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rebuildNonce]);
 
   // Fit bounds to the item set when the map first becomes ready or the
   // underlying items change — deliberately NOT dependent on currentZoom, so
