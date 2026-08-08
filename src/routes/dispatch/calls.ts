@@ -1287,12 +1287,13 @@ calls.post('/:id/unarchive', async (c) => {
 });
 
 // POST /dispatch/calls/:id/hold
-// GUARDED: the live status CHECK constraint has no 'on_hold' value, so the
-// UPDATE below would fail with SQLITE_CONSTRAINT and return a 500. Until
-// migration 0040 adds 'on_hold' to the enum, return a clean 409 instead of
-// attempting the write. Restore the UPDATE after 0040 is applied to live D1.
 calls.post('/:id/hold', async (c) => {
-  return c.json({ error: 'Call hold is not yet enabled (pending schema migration 0040)', code: 'HOLD_NOT_ENABLED' }, 409);
+  try {
+    const db = getDb(c.env);
+    await execute(db, "UPDATE calls_for_service SET status = 'on_hold' WHERE id = ?", c.req.param('id'));
+    return c.json({ message: 'On hold' });
+  } catch (err) {
+    log.error('POST /:id/hold failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Hold failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/resume
