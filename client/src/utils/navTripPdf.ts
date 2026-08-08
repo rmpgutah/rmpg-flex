@@ -14,7 +14,7 @@
 
 import jsPDF from 'jspdf';
 import type { NavTrip } from '../types';
-import { parseTimestamp } from './dateUtils';
+import { parseTimestamp, localToday } from './dateUtils';
 import { registerArialFont } from './pdf/fonts/registerArial';
 
 interface Args {
@@ -422,7 +422,7 @@ export function buildNavTripReportPdf({ trips, officerName, vehicleLabel, period
 export function generateNavTripReport(args: Args): void {
   const doc = buildNavTripReportPdf(args);
   const officerSlug = (args.officerName || 'officer').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
-  const dateStr = new Date().toISOString().slice(0, 10);
+  const dateStr = localToday();
   doc.save(`nav-trip-report-${officerSlug}-${dateStr}.pdf`);
 }
 

@@ -8,7 +8,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
-import { parseTimestamp, safeDateStr } from '../../../utils/dateUtils';
+import { parseTimestamp, safeDateStr, localToday } from '../../../utils/dateUtils';
 import type { FleetVehicle, FleetFuelLog, FleetFuelSummary, FleetMaintenance, FleetInspection, FleetAssignment, FleetInsurancePolicy, FleetAnalytics } from '../../../types';
 import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 import { formatEnumValue } from '../../../utils/formatters';
@@ -120,7 +120,7 @@ export function generateFleetStatusReport(data: {
   analytics: FleetAnalytics | null;
 }): void {
   const doc = buildFleetStatusReport(data);
-  doc.save(`fleet_status_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_status_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -171,7 +171,7 @@ export function generateFleetMaintenanceReport(data: {
   records: FleetMaintenance[];
 }): void {
   const doc = buildFleetMaintenanceReport(data);
-  doc.save(`fleet_maintenance_${data.vehicle.vehicle_number}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_maintenance_${data.vehicle.vehicle_number}_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -236,7 +236,7 @@ export function generateFleetCostReport(data: {
   maintenanceRecords: FleetMaintenance[];
 }): void {
   const doc = buildFleetCostReport(data);
-  doc.save(`fleet_cost_analysis_${data.vehicle.vehicle_number}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_cost_analysis_${data.vehicle.vehicle_number}_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -313,7 +313,7 @@ export function generateFleetLifecycleReport(data: {
   assignments: FleetAssignment[];
 }): void {
   const doc = buildFleetLifecycleReport(data);
-  doc.save(`fleet_lifecycle_${data.vehicle.vehicle_number}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_lifecycle_${data.vehicle.vehicle_number}_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -327,7 +327,7 @@ export function buildFleetComplianceReport(data: {
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  let y = headerStrip(doc, 'FLEET COMPLIANCE REPORT', `Generated: ${new Date().toISOString().slice(0, 10)}`);
+  let y = headerStrip(doc, 'FLEET COMPLIANCE REPORT', `Generated: ${localToday()}`);
   const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 20));
   let page = 1; let rowIdx = 0;
 
@@ -378,7 +378,7 @@ export function generateFleetComplianceReport(data: {
   vehicles: FleetVehicle[];
 }): void {
   const doc = buildFleetComplianceReport(data);
-  doc.save(`fleet_compliance_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_compliance_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -422,7 +422,7 @@ export function generateFleetUtilizationReport(data: {
   days?: number;
 }): void {
   const doc = buildFleetUtilizationReport(data);
-  doc.save(`fleet_utilization_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_utilization_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -479,7 +479,7 @@ export function generateFleetFuelConsumptionReport(data: {
   totalCo2?: number;
 }): void {
   const doc = buildFleetFuelConsumptionReport(data);
-  doc.save(`fleet_fuel_consumption_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_fuel_consumption_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -533,7 +533,7 @@ export function generateFleetAccidentReport(data: {
   accident: Record<string, unknown>;
 }): void {
   const doc = buildFleetAccidentReport(data);
-  doc.save(`fleet_accident_report_${data.vehicle.vehicle_number}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_accident_report_${data.vehicle.vehicle_number}_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -634,7 +634,7 @@ export function generateFleetReplacementReport(data: {
   vehicles: Array<FleetVehicle & { replacement_year?: number; replacement_reason?: string; estimated_replacement_cost?: number; rp_priority?: string; rp_status?: string }>;
 }): void {
   const doc = buildFleetReplacementReport(data);
-  doc.save(`fleet_replacement_plan_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_replacement_plan_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -687,7 +687,7 @@ export function generateFleetDepreciationReport(data: {
   vehicles: Array<FleetVehicle & { depreciation?: { purchase_price?: number; salvage_value?: number; useful_life_months?: number; monthly_depreciation?: number; accumulated_depreciation?: number; current_book_value?: number } | null }>;
 }): void {
   const doc = buildFleetDepreciationReport(data);
-  doc.save(`fleet_depreciation_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_depreciation_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -742,7 +742,7 @@ export function generateFleetKeyReport(data: {
   keys: Array<{ vehicle_number?: string; key_number?: string; key_type?: string; rfid_tag?: string; status?: string; current_holder?: string; last_checkout?: string; last_return?: string }>;
 }): void {
   const doc = buildFleetKeyReport(data);
-  doc.save(`fleet_key_management_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_key_management_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -802,7 +802,7 @@ export function generateFleetScorecardReport(data: {
   avg_mpg: number | null; health_score: number;
 }): void {
   const doc = buildFleetScorecardReport(data);
-  doc.save(`fleet_health_scorecard_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_health_scorecard_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -890,7 +890,7 @@ export function generatePersonnelProductivityReport(data: {
   days?: number;
 }): void {
   const doc = buildPersonnelProductivityReport(data);
-  doc.save(`personnel_productivity_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`personnel_productivity_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1008,7 +1008,7 @@ export function generateInspectionAnalysisReport(data: {
   overallPassRate?: number;
 }): void {
   const doc = buildInspectionAnalysisReport(data);
-  doc.save(`fleet_inspection_analysis_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_inspection_analysis_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1098,7 +1098,7 @@ export function generateCostPerMileReport(data: {
   totalCost?: number;
 }): void {
   const doc = buildCostPerMileReport(data);
-  doc.save(`fleet_cost_per_mile_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_cost_per_mile_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1195,7 +1195,7 @@ export function generateMaintenanceForecastReport(data: {
   upcomingCount?: number;
 }): void {
   const doc = buildMaintenanceForecastReport(data);
-  doc.save(`fleet_maintenance_forecast_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_maintenance_forecast_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1326,5 +1326,5 @@ export function generateComplianceAuditReport(data: {
   issuesCount?: number;
 }): void {
   const doc = buildComplianceAuditReport(data);
-  doc.save(`fleet_compliance_audit_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`fleet_compliance_audit_${localToday()}.pdf`);
 }

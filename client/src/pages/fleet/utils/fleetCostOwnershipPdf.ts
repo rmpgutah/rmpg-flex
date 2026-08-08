@@ -13,6 +13,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle } from '../../../types';
+import { localToday } from '../../../utils/dateUtils';
 
 interface CostCategory {
   label: string;
@@ -183,6 +184,6 @@ export function buildFleetCostOwnershipPdf({ vehicle, categories, monthlyTrend, 
  *  filename/behaviour as before this function was split into a builder + saver). */
 export function generateFleetCostOwnershipPdf(args: Args): void {
   const doc = buildFleetCostOwnershipPdf(args);
-  const filename = `tco-report-${args.vehicle.vehicle_number || 'vehicle'}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `tco-report-${args.vehicle.vehicle_number || 'vehicle'}-${localToday()}.pdf`;
   doc.save(filename);
 }
