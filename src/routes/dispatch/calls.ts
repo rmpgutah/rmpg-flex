@@ -1294,6 +1294,12 @@ calls.post('/:id/unarchive', async (c) => {
 // 0041 are both applied + tracked on live D1 (verified via
 // pragma_table_info('calls_for_service_ext') and the calls_for_service
 // status CHECK); the prior 409 stub predated that and was never removed.
+//
+// PR #3305 briefly landed an alternate fix that set status = 'on_hold'
+// directly and force-reset it to 'pending' on resume — that clobbers a
+// held call's real status (a 'dispatched' or 'onscene' call would come back
+// as 'pending' instead of its actual state). This held_at approach never
+// touches status, so a held call resumes to whatever it actually was.
 calls.post('/:id/hold', async (c) => {
   try {
     const db = getDb(c.env);
