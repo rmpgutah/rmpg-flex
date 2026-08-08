@@ -22,6 +22,7 @@ import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { UNIT_STATUS_HEX, priorityHex, CALL_MARKER_INK } from '../utils/statusColors';
 import { withAlpha } from '../utils/withAlpha';
 import IconButton from './IconButton';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 import type { CallForService, Unit, UnitStatus } from '../types';
 
 // `call.assigned_units` can arrive as id strings/numbers OR as full unit
@@ -137,8 +138,10 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const geocoderRef = useRef<MapboxGeocoder | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { rebuildNonce, attach } = useWebglMapRecovery();
 
   // With a call selected, show only units assigned to it (existing
   // behavior). With no call selected — e.g. the CAD board before a call is
@@ -227,6 +230,7 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
         });
 
         mapRef.current = map;
+        webglRecoveryCleanupRef.current = attach(map, 'MapboxMiniMap');
         // Registers this instance with mapboxLoader's shared print-swap
         // registry — its module-level `beforeprint`/`afterprint` listeners
         // (wired once at import time) swap every REGISTERED map to a light
@@ -269,6 +273,8 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
       for (const m of markersRef.current) m.remove();
       markersRef.current = [];
       geocoderRef.current = null;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) {
         unregisterMapInstance(mapRef.current);
         mapRef.current.remove();
@@ -276,7 +282,7 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
       }
       setLoaded(false);
     };
-  }, []);
+  }, [rebuildNonce]);
 
   // Update markers when call/units change
   useEffect(() => {
