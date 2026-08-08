@@ -111,7 +111,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
             <p className="field-label">Total Incidents</p>
             <p className="text-lg font-bold font-mono text-rmpg-100">{summary.total_incidents}</p>
           </div>
-          {summary.by_type.map(t => (
+          {(summary.by_type ?? []).map(t => (
             <div key={t.type} className="panel-beveled p-2 text-center">
               <p className="field-label">{toDisplayLabel(t.type)}</p>
               <p className="text-lg font-bold font-mono text-rmpg-100">{t.count} <span className="text-[10px] text-rmpg-400">({t.excused_count} excused)</span></p>

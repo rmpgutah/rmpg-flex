@@ -12,6 +12,53 @@
 
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { DailyReportData } from './types';
+import { toDenverWallClock } from '../denverTime';
+
+// ── Mountain-Time display helpers ────────────────────────────
+// render.ts is Workers-side; there is no client timezone shim here.
+// Every timestamp that arrives from D1 is UTC and must be converted to
+// America/Denver before it appears on the blotter — otherwise the
+// document shows times that are 6-7 hours ahead of what the operator
+// observed (the same class of bug as the "6-hour Notice-of-Attempt
+// regression" on the client side).
+
+/** Parse a D1 UTC timestamp string to a Date.
+ *  Returns null for date-only strings or unparseable input. */
+function parseUtcStr(s: string): Date | null {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return null; // date-only — no time to convert
+  let raw: string;
+  if (/[Zz]$/.test(s) || /[+-]\d{2}:?\d{2}$/.test(s.slice(-6))) {
+    raw = s; // has explicit zone — unambiguous
+  } else if (/^\d{4}-\d{2}-\d{2} /.test(s)) {
+    raw = s.replace(' ', 'T') + 'Z'; // space-sep = SQLite datetime('now') = UTC
+  } else if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    raw = s + 'Z'; // bare T-sep without offset — treat as UTC
+  } else {
+    return null;
+  }
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** Format a UTC timestamp string for blotter display in Mountain Time.
+ *  Output: "YYYY-MM-DD HH:MM MT". Date-only strings pass through unchanged. */
+function fmtMt(s: string | null): string {
+  if (!s) return '—';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // date-only: no tz conversion needed
+  const d = parseUtcStr(s);
+  if (!d) return s;
+  const wall = toDenverWallClock(d); // "YYYY-MM-DDTHH:MM:SS"
+  return `${wall.slice(0, 10)} ${wall.slice(11, 16)} MT`;
+}
+
+/** Format a full ISO UTC timestamp for the document header.
+ *  Output: "YYYY-MM-DD HH:MM:SS MT". */
+function fmtMtFull(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const wall = toDenverWallClock(d); // "YYYY-MM-DDTHH:MM:SS"
+  return `${wall.slice(0, 10)} ${wall.slice(11, 19)} MT`;
+}
 
 const PAGE_W = 612;   // US Letter, points
 const PAGE_H = 792;
@@ -69,20 +116,20 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
   // ── Header ──
   text('Rocky Mountain Protective Group', 16, true);
   text(`Daily Blotter — ${data.date}`, 12, true);
-  text(`Generated ${data.generatedAt}`, 8, false);
+  text(`Generated ${fmtMtFull(data.generatedAt)}`, 8, false);
 
   // ── Operations ──
   heading('OPERATIONS — Calls for Service');
   if (data.operations.calls.length === 0) row(NO_ACTIVITY);
   for (const c of data.operations.calls) {
-    row(`${c.received_at ?? '—'}  ${c.call_number ?? '—'}  ${c.incident_type ?? '—'}  P${c.priority ?? '—'}`);
+    row(`${fmtMt(c.received_at)}  ${c.call_number ?? '—'}  ${c.incident_type ?? '—'}  P${c.priority ?? '—'}`);
     row(`    ${c.location_address ?? '—'}  |  unit ${c.unit_call_signs ?? '—'}  |  ${c.responding_officer ?? '—'}  |  ${c.disposition ?? c.status ?? '—'}`);
   }
 
   heading('OPERATIONS — Citations');
   if (data.operations.citations.length === 0) row(NO_ACTIVITY);
   for (const c of data.operations.citations) {
-    row(`${c.citation_date ?? '—'}  ${c.citation_number ?? '—'}  ${c.violation_description ?? '—'}  $${c.fine_amount ?? 0}`);
+    row(`${fmtMt(c.citation_date)}  ${c.citation_number ?? '—'}  ${c.violation_description ?? '—'}  $${c.fine_amount ?? 0}`);
   }
 
   // ── Fleet ──
@@ -95,19 +142,19 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
   heading('FLEET — Fuel');
   if (data.fleet.fuel.length === 0) row(NO_ACTIVITY);
   for (const f of data.fleet.fuel) {
-    row(`${f.fuel_date ?? '—'}  ${f.vehicle_label}  ${f.gallons ?? 0} gal  $${f.total_cost ?? 0}  odo ${f.odometer ?? '—'}  ${f.station ?? ''}`);
+    row(`${fmtMt(f.fuel_date)}  ${f.vehicle_label}  ${f.gallons ?? 0} gal  $${f.total_cost ?? 0}  odo ${f.odometer ?? '—'}  ${f.station ?? ''}`);
   }
 
   heading('FLEET — Inspections & Pre-Trip Checks');
   if (data.fleet.checks.length === 0) row(NO_ACTIVITY);
   for (const c of data.fleet.checks) {
-    row(`${c.performed_at ?? '—'}  ${c.vehicle_label}  ${c.kind}  ${c.result ?? '—'}  ${c.performed_by ?? ''}`);
+    row(`${fmtMt(c.performed_at)}  ${c.vehicle_label}  ${c.kind}  ${c.result ?? '—'}  ${c.performed_by ?? ''}`);
   }
 
   heading('FLEET — Work Orders');
   if (data.fleet.workOrders.length === 0) row(NO_ACTIVITY);
   for (const w of data.fleet.workOrders) {
-    row(`${w.at ?? '—'}  ${w.number ?? '—'}  ${w.vehicle_label}  ${w.event}  ${w.summary ?? ''}`);
+    row(`${fmtMt(w.at)}  ${w.number ?? '—'}  ${w.vehicle_label}  ${w.event}  ${w.summary ?? ''}`);
   }
 
   // ── Footer page numbers ──

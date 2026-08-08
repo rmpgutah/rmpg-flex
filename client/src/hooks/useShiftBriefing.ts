@@ -9,6 +9,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { localToday } from '../utils/dateUtils';
 
 /* ── FEATURE 61: Shift Briefing Builder ─────────────────────
    Spillman Flex compiles a comprehensive shift briefing
@@ -152,7 +153,7 @@ export function generateCrimeBulletin(
 ): CrimeBulletin {
   return {
     id: `bulletin-${Date.now()}`,
-    date: new Date().toISOString().slice(0, 10),
+    date: localToday(),
     title: `${caseData.crimeType.toUpperCase()} — ${caseData.location}`,
     crimeType: caseData.crimeType,
     location: caseData.location,
