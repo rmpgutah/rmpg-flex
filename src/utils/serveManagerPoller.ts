@@ -25,6 +25,21 @@ async function getSmConfig(db: D1Database, key: string): Promise<string | null> 
   return row?.config_value ?? null;
 }
 
+// getSmConfig returns null both when a config row is absent AND when it exists
+// with an explicitly empty string — JS's `|| DEFAULT` treats those the same,
+// which silently re-applies DEFAULT_TARGET_CLIENT after an admin clears the
+// field on /admin?tab=servemanager expecting "no filter" (confirmed live
+// 2026-08-08: a real job was skipped because it didn't match ICU). Fetch the
+// row directly so an existing-but-empty value can mean "sync everything".
+async function getTargetClient(db: D1Database): Promise<string> {
+  const row = await queryFirst<{ config_value: string }>(
+    db,
+    "SELECT config_value FROM system_config WHERE config_key = 'servemanager_target_client' AND category = 'integrations' AND is_active = 1 LIMIT 1",
+  );
+  if (row === null) return DEFAULT_TARGET_CLIENT;
+  return row.config_value ?? '';
+}
+
 // ── Job upsert ────────────────────────────────────────────────
 
 function guessProcessType(documents: any[]): string {
@@ -49,7 +64,8 @@ function mapSmJobToCallData(job: SmJob) {
 
   const descParts: string[] = [];
   descParts.push(`ServeManager Job #${job.job_number}`);
-  if (job.recipient?.full_name) descParts.push(`Serve to: ${job.recipient.full_name}`);
+  const recipientName = job.recipient?.name || job.recipient?.full_name;
+  if (recipientName) descParts.push(`Serve to: ${recipientName}`);
   if (job.recipient?.description) descParts.push(`Description: ${job.recipient.description}`);
   if (docNames) descParts.push(`Documents: ${docNames}`);
   if (job.service_instructions) descParts.push(`Instructions: ${job.service_instructions}`);
@@ -64,9 +80,9 @@ function mapSmJobToCallData(job: SmJob) {
     latitude: lat,
     longitude: lat && lng ? lng : null,
     description: descParts.join(' | '),
-    caller_name: job.client?.company_name || job.client?.full_name || null,
+    caller_name: job.client_company?.name || null,
     caller_phone: null,
-    case_number: job.court_case_number || null,
+    case_number: job.court_case?.number || null,
     due_date: job.due_date || null,
     serve_job_number: job.job_number,
     process_type: guessProcessType(documents),
@@ -85,7 +101,7 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
     const enabled = await getSmConfig(db, 'servemanager_poller_enabled');
     if (enabled !== 'true') return { synced: 0, callsCreated: 0 };
 
-    const targetClient = (await getSmConfig(db, 'servemanager_target_client')) || DEFAULT_TARGET_CLIENT;
+    const targetClient = await getTargetClient(db);
     const lastPoll = await getSmConfig(db, 'servemanager_last_poll_at');
 
     const jobs = await fetchRecentJobs(db, jwtSecret, lastPoll || undefined);
@@ -95,9 +111,12 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
     let callsCreated = 0;
 
     for (const job of jobs) {
-      // Skip non-target-client jobs
-      const clientName = job.client?.company_name || job.client?.full_name || '';
-      if (!clientName.toLowerCase().includes(targetClient.toLowerCase())) continue;
+      // Skip non-target-client jobs — an empty targetClient (admin explicitly
+      // cleared the field) means "no filter", not "match nothing". The real
+      // payload has no top-level `client` object (confirmed live 2026-08-08)
+      // — the client company lives under the nested `client_company.name`.
+      const clientName = job.client_company?.name || '';
+      if (targetClient && !clientName.toLowerCase().includes(targetClient.toLowerCase())) continue;
 
       // Check if this job already has a linked call
       const existing = await queryFirst<{ id: number }>(
@@ -160,8 +179,8 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
            job_status, service_status, court_case_number, due_date, linked_call_id,
            process_type, addresses_json, documents_json, synced_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
-        job.id, job.job_number, clientName, job.recipient?.full_name || null,
-        job.job_status, job.service_status, job.court_case_number || null,
+        job.id, job.job_number, clientName, (job.recipient?.name || job.recipient?.full_name) || null,
+        job.job_status, job.service_status, job.court_case?.number || null,
         job.due_date || null, callId,
         callData.process_type,
         JSON.stringify(job.addresses || []), JSON.stringify(job.documents || []),
