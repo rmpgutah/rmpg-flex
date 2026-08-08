@@ -260,7 +260,7 @@ export function HudStatTile({
   const endPress = () => { if (pressTimer.current) { window.clearTimeout(pressTimer.current); pressTimer.current = null; } };
   return (
     <div
-      className={`relative border px-2 py-1 min-w-0 overflow-hidden ${cyclable ? 'cursor-pointer' : ''} ${night ? 'border-rmpg-700' : 'border-rmpg-800'}`}
+      className={`relative border px-2 py-1.5 min-w-0 overflow-hidden ${cyclable ? 'cursor-pointer' : ''} ${night ? 'border-rmpg-700' : 'border-rmpg-800'}`}
       style={{ borderRadius: 2, background: night ? 'rgba(8,8,8,0.85)' : 'rgba(20,20,20,0.6)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)' }}
       onMouseDown={startPress} onMouseUp={endPress} onMouseLeave={endPress}
       onTouchStart={startPress} onTouchEnd={endPress}
@@ -268,9 +268,9 @@ export function HudStatTile({
       title={cyclable ? 'Long-press to cycle metric' : undefined}
     >
       <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, #d4a01733 40%, #d4a01755 60%, transparent)' }} />
-      <div className={`text-[8px] uppercase tracking-wider leading-none truncate ${night ? 'text-rmpg-500' : 'text-rmpg-600'}`}>{m.label}</div>
+      <div className={`text-[10px] uppercase tracking-wider leading-none truncate ${night ? 'text-rmpg-500' : 'text-rmpg-600'}`}>{m.label}</div>
       <div
-        className={`font-mono ${night ? 'font-extrabold' : 'font-bold'} text-[13px] leading-tight mt-0.5 truncate tabular-nums`}
+        className={`font-mono ${night ? 'font-extrabold' : 'font-bold'} text-[15px] leading-tight mt-0.5 truncate tabular-nums`}
         style={{ color: m.accent || (m.dim ? '#6b6b6b' : (night ? '#e8e8e8' : '#d4d4d4')) }}
       >
         {m.value}

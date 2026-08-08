@@ -973,9 +973,6 @@ export default function Layout() {
       {/* Dispatch severity alert banners (panic, BOLO, pursuit, etc.) */}
       <DispatchAlertBanner alerts={dispatchAlerts} onDismiss={dismissDispatchAlert} onDismissAll={dismissAllDispatchAlerts} />
 
-      {/* Dispatch severity alert banners (panic, BOLO, pursuit, etc.) */}
-      <DispatchAlertBanner alerts={dispatchAlerts} onDismiss={dismissDispatchAlert} onDismissAll={dismissAllDispatchAlerts} />
-
       {/* GPS tracking runs silently — no blocking gate */}
 
       {/* ============================================================ */}
@@ -1372,7 +1369,7 @@ export default function Layout() {
       )}
 
       {/* Contract Manager Banner */}
-      {isClientViewer && (
+      {isContractManager && (
         <div
           className="flex items-center justify-center gap-2 px-4"
           style={{

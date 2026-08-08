@@ -15,6 +15,7 @@
 
 import jsPDF from 'jspdf';
 import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
+import { localToday } from '../../../utils/dateUtils';
 import type {
   FuelAnalyticsOverview, FuelAnalyticsByOfficer, FuelAnalyticsByCard,
 } from '../../../types';
@@ -251,6 +252,6 @@ export function buildFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: Args
  *  filename/behaviour as before this function was split into a builder + saver). */
 export function generateFleetFuelAnalyticsPdf(args: Args): void {
   const doc = buildFleetFuelAnalyticsPdf(args);
-  const filename = `fuel-analytics-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `fuel-analytics-${localToday()}.pdf`;
   doc.save(filename);
 }
