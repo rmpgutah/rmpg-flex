@@ -969,11 +969,11 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     // Persist disposition alongside the status transition — dropping it left the
     // call's outcome blank and the disposition column NULL after every clear.
     const { status, disposition } = await c.req.json<{ status: string; disposition?: string }>();
-    // NOTE: 'on_hold' is intentionally NOT in this list yet. The live
-    // calls_for_service.status CHECK constraint does not include 'on_hold', so
-    // writing it returns SQLITE_CONSTRAINT → a 500. Migration 0040 adds it to
-    // the enum; re-add 'on_hold' here only AFTER that migration is applied to
-    // live D1 (verify with: SELECT sql FROM sqlite_master WHERE name='calls_for_service').
+    // NOTE: 'on_hold' is intentionally NOT in this list. Hold is stored as
+    // calls_for_service_ext.held_at (migration 0041), an orthogonal flag set
+    // via POST /:id/hold and /:id/resume — not a real status value — so a
+    // direct write of 'on_hold' here would overwrite the call's true status
+    // instead of layering hold on top of it.
     const valid = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
     if (!valid.includes(status)) return c.json({ error: 'Invalid status', code: 'INVALID_STATUS' }, 400);
 
@@ -1287,19 +1287,18 @@ calls.post('/:id/unarchive', async (c) => {
 });
 
 // POST /dispatch/calls/:id/hold
-// Hold is the orthogonal calls_for_service_ext.held_at flag, NOT a status
-// enum value (migration 0041) — status is left untouched while held, and
-// dispatchMappers.ts/aggregates.ts synthesize status='on_hold' client-side
-// from held_at for any call that isn't already terminal. Migrations 0040 and
-// 0041 are both applied + tracked on live D1 (verified via
-// pragma_table_info('calls_for_service_ext') and the calls_for_service
-// status CHECK); the prior 409 stub predated that and was never removed.
+// Hold is stored as calls_for_service_ext.held_at (migration 0041), an
+// orthogonal flag — NOT calls_for_service.status='on_hold'. The client
+// (dispatchMappers.ts, CallCard.tsx) synthesizes the 'on_hold' display
+// status from held_at while the real status is left untouched, so a held
+// call resumes to whatever status it actually held (dispatched/enroute/
+// onscene) instead of always bouncing back to 'pending'.
 //
-// PR #3305 briefly landed an alternate fix that set status = 'on_hold'
-// directly and force-reset it to 'pending' on resume — that clobbers a
-// held call's real status (a 'dispatched' or 'onscene' call would come back
-// as 'pending' instead of its actual state). This held_at approach never
-// touches status, so a held call resumes to whatever it actually was.
+// NOTE: #3305 landed a competing fix that wrote status='on_hold' directly
+// and left the old /resume (SET status='pending' WHERE status='on_hold')
+// in place — that combination silently drops a held call's real status on
+// resume. Superseded here by the held_at design both this route and the
+// client already commit to.
 calls.post('/:id/hold', async (c) => {
   try {
     const db = getDb(c.env);
@@ -1307,9 +1306,9 @@ calls.post('/:id/hold', async (c) => {
     await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
     await execute(db, "UPDATE calls_for_service_ext SET held_at = datetime('now') WHERE id = ?", id);
     const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
-    if (!call) return c.json({ error: 'Call not found' }, 404);
     const ext = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
-    const merged = { ...call, ...ext };
+    const merged = call ? { ...(call || {}), ...(ext || {}) } : null;
+    if (!merged) return c.json({ error: 'Call not found' }, 404);
     await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged });
     return c.json(merged);
   } catch (err) {
@@ -1325,9 +1324,9 @@ calls.post('/:id/resume', async (c) => {
     const id = c.req.param('id');
     await execute(db, 'UPDATE calls_for_service_ext SET held_at = NULL WHERE id = ?', id);
     const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
-    if (!call) return c.json({ error: 'Call not found' }, 404);
     const ext = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
-    const merged = { ...call, ...ext };
+    const merged = call ? { ...(call || {}), ...(ext || {}) } : null;
+    if (!merged) return c.json({ error: 'Call not found' }, 404);
     await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged });
     return c.json(merged);
   } catch (err) {
