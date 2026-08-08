@@ -14,43 +14,22 @@
 // references a chunk the CDN is still replicating (a reload there re-fails
 // instantly), then reload ONCE per 30s to pick up the fresh index.
 
-import { isChunkLoadError, tryReloadForChunkFailure, repairAllPoisonedChunksInBrowser } from './chunkRetry';
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+import { isChunkLoadError, tryReloadForChunkFailure, retryChunkImportInBrowser } from './chunkRetry';
 
 /**
  * Dynamically import a module with stale-chunk resilience. Retries the import
  * in place, and on persistent failure reloads the page once to fetch the fresh
  * bundle. Returns a never-settling promise while a reload is in flight so the
  * caller doesn't surface a transient error to the user.
+ *
+ * The retry ladder itself (repair-then-retry, at 0/1.5s/4s) lives in
+ * `retryChunkImportInBrowser` (chunkRetry.ts) — shared with `lazyRetry` in
+ * App.tsx so a fix to the ladder (e.g. repairing on every rung, not just the
+ * first) applies to both call sites at once.
  */
 export async function importWithRetry<T>(factory: () => Promise<T>): Promise<T> {
   try {
-    return await factory();
-  } catch (err) {
-    // First failure — before the sleeps, check for a POISONED HTTP-CACHE entry
-    // (a Pages SPA-fallback index.html stored under this chunk's URL for 4h by
-    // its own cache-control header). Neither re-importing nor reloading can
-    // clear that; only a cache-bypassing re-request can. If it doesn't apply,
-    // we fall through and the original ladder runs unchanged.
-    // Uses the "All" variant (not the single-URL one) because the failure may
-    // be a transitive sub-chunk the error message never names — see the
-    // "Transitive-chunk gap" section in chunkRetry.ts.
-    try {
-      if (await repairAllPoisonedChunksInBrowser(err)) return await factory();
-    } catch {
-      /* repaired but the re-import still failed — continue down the ladder */
-    }
-  }
-  try {
-    await sleep(1500);
-    return await factory();
-  } catch {
-    /* fall through to the longer retry */
-  }
-  try {
-    await sleep(4000);
-    return await factory();
+    return await retryChunkImportInBrowser(factory);
   } catch (err) {
     if (isChunkLoadError(err)) {
       // Reload once per 30s to pick up the fresh index, holding this promise
