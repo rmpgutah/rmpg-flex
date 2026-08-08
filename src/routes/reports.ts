@@ -143,6 +143,66 @@ reports.get('/incidents-summary', async (c) => {
     log.error('GET /incidents-summary failed', { src: 'src/routes/reports.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
+// GET /api/reports/dashboard-unified-stats
+// Feeds the Dashboard's Warrants/Incidents summary panel
+// (client/src/pages/DashboardPage.tsx `unifiedStats`). That panel was built
+// against this exact shape but nothing ever fetched it, so it rendered
+// nothing — see project memory for the 2026-08 dispatch/dashboard audit.
+reports.get('/dashboard-unified-stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+
+    const warrantsActive = await queryFirst<{ n: number }>(
+      db,
+      `SELECT COUNT(*) AS n FROM warrants WHERE status = 'active'`
+    );
+    const warrantsByType = await query<{ type: string; count: number }>(
+      db,
+      `SELECT type, COUNT(*) AS count
+         FROM warrants
+        WHERE status = 'active'
+        GROUP BY type
+        ORDER BY count DESC`
+    );
+    const warrantsServed30d = await queryFirst<{ n: number }>(
+      db,
+      `SELECT COUNT(*) AS n FROM warrants WHERE status = 'served' AND served_at >= datetime('now', '-30 days')`
+    );
+
+    const incidentsByStatus = await query<{ status: string; count: number }>(
+      db,
+      `SELECT status, COUNT(*) AS count
+         FROM incidents
+        WHERE created_at >= datetime('now', '-30 days')
+        GROUP BY status
+        ORDER BY count DESC`
+    );
+    const incidentsByType = await query<{ type: string; count: number }>(
+      db,
+      `SELECT incident_type AS type, COUNT(*) AS count
+         FROM incidents
+        WHERE created_at >= datetime('now', '-30 days')
+        GROUP BY incident_type
+        ORDER BY count DESC`
+    );
+
+    return c.json({
+      warrants: {
+        active: warrantsActive?.n ?? 0,
+        by_type: Object.fromEntries(warrantsByType.map(r => [r.type, r.count])),
+        served_30d: warrantsServed30d?.n ?? 0,
+      },
+      incidents: {
+        by_status: incidentsByStatus,
+        by_type: incidentsByType,
+      },
+    });
+  } catch (err) {
+    log.error('GET /dashboard-unified-stats failed', { src: 'src/routes/reports.ts' }, err);
+    return c.json({ error: 'Failed' }, 500);
+  }
+});
+
 // GET /api/reports/crime-trends?days=90
 // trends[]: per-day incident_type rollup for stacked line charts.
 // top_categories[]: leaderboard of incident_type counts for the
@@ -1427,8 +1487,15 @@ reports.get('/clearance-rate', async (c) => {
       `SELECT COUNT(*) AS n FROM incidents WHERE status = 'closed' AND created_at >= datetime('now','-${days} days')`))?.n ?? 0;
     const total = (await queryFirst<{ n: number }>(db,
       `SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now','-${days} days')`))?.n ?? 1;
-    const active = total - cleared;
-    return c.json({ rate: Math.round((cleared / Math.max(total, 1)) * 100), cleared, total, active, days });
+    // "Pending" (report not yet submitted for review) vs. "Active" (submitted,
+    // awaiting disposition) — split out of the incidents.status CHECK enum
+    // ('draft','submitted','under_review','approved','returned') so the
+    // Dashboard clearance-rate donut (DashboardPage.tsx incidentPieData) can
+    // render its 3rd wedge instead of reading a field this endpoint never sent.
+    const pending = (await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(*) AS n FROM incidents WHERE status = 'draft' AND created_at >= datetime('now','-${days} days')`))?.n ?? 0;
+    const active = total - cleared - pending;
+    return c.json({ rate: Math.round((cleared / Math.max(total, 1)) * 100), cleared, total, active, pending, days });
   } catch { return c.json({ rate: 0, cleared: 0, total: 0, active: 0, days: 30 }); }
 });
 
@@ -1455,8 +1522,19 @@ reports.get('/evidence-pending', async (c) => {
     const total = (await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM field_photos'))?.n ?? 0;
     const reviewed = (await queryFirst<{ n: number }>(db,
       "SELECT COUNT(*) AS n FROM field_photos WHERE reviewed_at IS NOT NULL"))?.n ?? 0;
-    return c.json({ pending, total, reviewed });
-  } catch { return c.json({ pending: 0, total: 0, reviewed: 0 }); }
+    // checked_out / pending_disposal are the evidence-locker tab of this
+    // widget (client/src/pages/DashboardPage.tsx EvidenceSummary), distinct
+    // from the field_photos review-queue counts above. 'checked_out' is the
+    // status POST /records/evidence/:id/checkout writes, cleared back to
+    // 'checked_in' on check-in; 'pending_disposition' is the status
+    // PUT /records/evidence/:id/disposition writes for disposition==='pending'
+    // (see records.ts).
+    const checkedOut = (await queryFirst<{ n: number }>(db,
+      "SELECT COUNT(*) AS n FROM evidence WHERE status = 'checked_out'"))?.n ?? 0;
+    const pendingDisposal = (await queryFirst<{ n: number }>(db,
+      "SELECT COUNT(*) AS n FROM evidence WHERE status = 'pending_disposition'"))?.n ?? 0;
+    return c.json({ pending, total, reviewed, checked_out: checkedOut, pending_disposal: pendingDisposal });
+  } catch { return c.json({ pending: 0, total: 0, reviewed: 0, checked_out: 0, pending_disposal: 0 }); }
 });
 
 // GET /reports/upcoming-court

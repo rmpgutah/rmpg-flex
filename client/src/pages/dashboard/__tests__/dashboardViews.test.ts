@@ -20,12 +20,14 @@ describe('defaultViewForRole', () => {
     expect(defaultViewForRole('manager')).toBe('admin');
     expect(defaultViewForRole('supervisor')).toBe('admin');
   });
-  it('falls back to dispatch for non-operational/unknown roles', () => {
-    expect(defaultViewForRole('contract_manager')).toBe('dispatch');
-    expect(defaultViewForRole('client_viewer')).toBe('dispatch');
-    expect(defaultViewForRole('human_resources')).toBe('dispatch');
-    expect(defaultViewForRole('')).toBe('dispatch');
-    expect(defaultViewForRole('something_new')).toBe('dispatch');
+  it('falls back to the least-detailed view (patrol) for non-operational/unknown roles', () => {
+    // 'dispatch' surfaces activeBolos/activeUnits/recentActivity — full CAD
+    // detail. Outward-facing/unenumerated roles must not default into that.
+    expect(defaultViewForRole('contract_manager')).toBe('patrol');
+    expect(defaultViewForRole('client_viewer')).toBe('patrol');
+    expect(defaultViewForRole('human_resources')).toBe('patrol');
+    expect(defaultViewForRole('')).toBe('patrol');
+    expect(defaultViewForRole('something_new')).toBe('patrol');
   });
 });
 
