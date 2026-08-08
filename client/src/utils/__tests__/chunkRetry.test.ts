@@ -12,6 +12,7 @@ import {
   evictPoisonedChunkCaches,
   findFailedChunkResourceUrls,
   repairAllPoisonedChunks,
+  retryChunkImport,
   CHUNK_RELOAD_KEY,
   CHUNK_RELOAD_WINDOW_MS,
   CHUNK_RELOAD_HOLD_MS,
@@ -402,6 +403,78 @@ describe('repairAllPoisonedChunks (transitive-chunk gap fix)', () => {
     await expect(
       repairAllPoisonedChunks(TOP_LEVEL_ERR, { fetchImpl, origin: ORIGIN }, [`${ORIGIN}/assets/map-CWZvsg5k.js`]),
     ).resolves.toBe(true);
+  });
+});
+
+describe('retryChunkImport (repair on EVERY rung, not just the first)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('re-attempts poison repair before EACH retry rung — a sibling sub-chunk that fails asynchronously after the first Promise.all rejection must still get repaired before the later sleep-based retries', async () => {
+    // Mirrors the live 2026-08-08 DashboardPage incident: the top-level dynamic
+    // import rejects immediately (the first sibling sub-chunk to fail), but
+    // ~11 OTHER statically-imported siblings (map, mapboxLoader,
+    // DashboardMiniMap, NewCallModal, IncidentFormModal, ...) hadn't finished
+    // failing yet, so they weren't in Resource Timing for a repair pass run
+    // only once. Every later bare `factory()` retry then re-read the same
+    // still-poisoned HTTP cache entry for one of them and failed identically,
+    // exhausting all three rungs and reaching the ErrorBoundary red card
+    // despite the poison being repairable the whole time.
+    let attempt = 0;
+    const factory = vi.fn(() => {
+      attempt++;
+      return attempt < 4
+        ? Promise.reject(new Error('Failed to fetch dynamically imported module'))
+        : Promise.resolve('ok');
+    });
+    const repair = vi.fn().mockResolvedValue(false);
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    const pending = retryChunkImport(factory, { repair, sleep });
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toBe('ok');
+
+    // One repair attempt before the immediate retry, one before the 1.5s
+    // retry, one before the 4s retry — three total, not just the first.
+    expect(repair).toHaveBeenCalledTimes(3);
+    expect(factory).toHaveBeenCalledTimes(4);
+  });
+
+  it('skips the immediate repaired-retry rung when repair reports nothing to fix, but still runs later rungs', async () => {
+    const factory = vi.fn()
+      .mockRejectedValueOnce(new Error('Failed to fetch dynamically imported module'))
+      .mockResolvedValueOnce('ok');
+    const repair = vi.fn().mockResolvedValue(false);
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    const pending = retryChunkImport(factory, { repair, sleep });
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toBe('ok');
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
+
+  it('surfaces the final error when every rung is exhausted', async () => {
+    const err = new Error('Failed to fetch dynamically imported module');
+    const factory = vi.fn().mockRejectedValue(err);
+    const repair = vi.fn().mockResolvedValue(false);
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    const pending = retryChunkImport(factory, { repair, sleep });
+    const assertion = expect(pending).rejects.toThrow('Failed to fetch dynamically imported module');
+    await vi.runAllTimersAsync();
+    await assertion;
+  });
+
+  it('a repair() that itself rejects never replaces the real import error', async () => {
+    const err = new Error('Failed to fetch dynamically imported module');
+    const factory = vi.fn().mockRejectedValue(err);
+    const repair = vi.fn().mockRejectedValue(new Error('network down mid-repair'));
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    const pending = retryChunkImport(factory, { repair, sleep });
+    const assertion = expect(pending).rejects.toThrow('Failed to fetch dynamically imported module');
+    await vi.runAllTimersAsync();
+    await assertion;
   });
 });
 

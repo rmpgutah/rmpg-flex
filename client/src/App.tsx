@@ -15,7 +15,7 @@ import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import { resolveDispatchAccess } from './pages/dispatch/dispatchAccess';
 import { isCompanyBrowserBlockedRole } from './utils/companyBrowserAccess';
-import { tryReloadForChunkFailure, normalizeChunkError, repairAllPoisonedChunksInBrowser } from './utils/chunkRetry';
+import { tryReloadForChunkFailure, normalizeChunkError, retryChunkImportInBrowser } from './utils/chunkRetry';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
@@ -66,7 +66,6 @@ const PdfGalleryPage = import.meta.env.DEV
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
 ): React.LazyExoticComponent<T> {
-  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
   // Retry the import in place before escalating to a reload. A reload only
   // helps when OUR index.html is stale; during a Pages deploy-propagation
   // window the fresh index references a chunk the CDN is still replicating
@@ -74,27 +73,21 @@ function lazyRetry<T extends React.ComponentType<any>>(
   // lands inside the 30s guard, and the ErrorBoundary card strands the user
   // (seen live 2026-06-10, fleet chunk 500 for ~15 min after 4 back-to-back
   // deploys). Two delayed re-imports (1.5s, 4s) ride out that window.
-  // Rung 0 (before the sleeps): the failure may be a POISONED HTTP-CACHE entry
-  // for this chunk — a Pages SPA-fallback `index.html` stored under the chunk's
-  // URL for 4h by its own cache-control header. Sleeping and re-importing can
-  // never fix that (a bare `import()` re-reads the same cached bytes), and
-  // neither can the reload below (index.html is already current). Only a
-  // cache-bypassing re-request can. When it works, recovery is INSTANT instead
-  // of impossible; when it doesn't apply, we rethrow and the original
-  // propagation-window ladder runs completely unchanged. See chunkRetry.ts.
-  // Uses repairAllPoisonedChunksInBrowser (not the single-URL variant) because
-  // Chrome's rejection only ever names the top-level import target — a poisoned
-  // TRANSITIVE sub-chunk it statically imports (mapboxLoader, a panel, etc.)
-  // never appears in the error message. Scanning Resource Timing catches those
-  // too (see chunkRetry.ts's "Transitive-chunk gap" section) — ErrorBoundary
-  // already used this variant (PR #3311); this call site was the missed twin.
-  const withRetry = () => factory()
-    .catch((err) => repairAllPoisonedChunksInBrowser(err).then((repaired) => {
-      if (!repaired) throw err;
-      return factory();
-    }))
-    .catch(() => sleep(1500).then(factory))
-    .catch(() => sleep(4000).then(factory));
+  //
+  // Before EVERY rung: the failure may be a POISONED HTTP-CACHE entry for a
+  // chunk — a Pages SPA-fallback `index.html` stored under the chunk's URL for
+  // 4h by its own cache-control header. Sleeping and re-importing can never
+  // fix that (a bare `import()` re-reads the same cached bytes), and neither
+  // can the reload below (index.html is already current). Only a
+  // cache-bypassing re-request can, via retryChunkImport's `repair` hook —
+  // and it runs before every rung, not just the first, because a page like
+  // DashboardPage pulls in several statically-imported sub-chunks at once and
+  // Chrome's rejection only ever names the ONE that failed first; siblings
+  // still in flight at that instant haven't landed in Resource Timing yet, so
+  // a repair pass run only once misses them (see chunkRetry.ts's
+  // "Retry ladder — repair on EVERY rung" section for the live incident this
+  // fixed).
+  const withRetry = () => retryChunkImportInBrowser(factory);
   return lazy(() => withRetry().catch((err) => {
     // A lazy chunk failed to load — almost always a stale bundle after a
     // deploy: this long-lived tab requests an old hash the server no longer

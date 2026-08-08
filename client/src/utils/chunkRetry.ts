@@ -357,6 +357,77 @@ export function evictPoisonedChunkCachesInBrowser(): Promise<void> {
   });
 }
 
+// ------------------------------------------------------------------
+// Retry ladder — repair on EVERY rung, not just the first (found live
+// 2026-08-08, verifying #3325: DashboardPage-C20RsMi2.js).
+//
+// DashboardPage's dynamic import() statically pulls in several sub-chunks
+// (DashboardMiniMap → mapboxLoader/map, NewCallModal, IncidentFormModal, ...).
+// When ANY sibling 404s, the loader's combined promise rejects immediately —
+// but sibling requests still in flight haven't failed yet, so they haven't
+// landed in Resource Timing. A repair pass run only once, at that instant,
+// physically cannot see them. They stay poisoned in the HTTP cache for the
+// rest of the chunk's 4h `cache-control` TTL, and every later bare
+// `factory()` retry (the 1.5s/4s rungs) re-reads the same poisoned bytes for
+// one of them and fails identically — exhausting the whole ladder and
+// reaching the ErrorBoundary card despite the poison being repairable the
+// entire time. Live: ~11 of 12 sub-chunks 404'd across a 35ms spread, then
+// all three retry rungs still failed 5.5s later.
+//
+// Re-running the repair scan before EVERY rung (not just the first) closes
+// the gap: each later rung's fresh Resource Timing scan (bounded by
+// CHUNK_FAILURE_LOOKBACK_MS) picks up siblings that finished failing after
+// the previous rung's scan.
+// ------------------------------------------------------------------
+
+export interface RetryLadderDeps {
+  /** Real: repairAllPoisonedChunksInBrowser. Never allowed to replace the
+   *  real import error — callers must swallow its rejection. */
+  repair: (err: unknown) => Promise<boolean>;
+  /** Real: (ms) => new Promise(r => window.setTimeout(r, ms)). */
+  sleep: (ms: number) => Promise<void>;
+}
+
+/**
+ * Retry a dynamic-import factory across the fixed ladder shared by
+ * `lazyRetry` (App.tsx) and `importWithRetry`: an immediate repaired retry,
+ * then delayed retries at 1.5s and 4s to ride out a Pages deploy-propagation
+ * window. A poison-repair attempt runs before EVERY rung — see the block
+ * comment above. Resolves with the factory's result on any rung's success;
+ * rejects with the LAST rung's real error (never a `repair()` failure) when
+ * every rung is exhausted, leaving reload/reporting decisions to the caller.
+ */
+export async function retryChunkImport<T>(factory: () => Promise<T>, deps: RetryLadderDeps): Promise<T> {
+  let lastErr: unknown;
+  try {
+    return await factory();
+  } catch (err) {
+    lastErr = err;
+  }
+
+  for (const delayMs of [0, 1500, 4000]) {
+    if (delayMs > 0) await deps.sleep(delayMs);
+    try {
+      await deps.repair(lastErr);
+    } catch { /* repair itself failed — the raw retry below still runs */ }
+    try {
+      return await factory();
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  throw lastErr;
+}
+
+/** `retryChunkImport` bound to the real browser poison-repair + timers. */
+export function retryChunkImportInBrowser<T>(factory: () => Promise<T>): Promise<T> {
+  return retryChunkImport(factory, {
+    repair: (err) => repairAllPoisonedChunksInBrowser(err),
+    sleep: (ms) => new Promise<void>((r) => window.setTimeout(r, ms)),
+  });
+}
+
 /** Coerce an unknown thrown value into an Error with a stable chunk message. */
 export function normalizeChunkError(err: unknown): Error {
   return err instanceof Error ? err : new Error('Chunk load failed');
