@@ -17,6 +17,7 @@
 import jsPDF from 'jspdf';
 import type { FleetFuelBudgetSummary } from '../../../types';
 import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
+import { localToday } from '../../../utils/dateUtils';
 
 export interface Args {
   summary: FleetFuelBudgetSummary;
@@ -209,6 +210,6 @@ export function generateFleetBudgetVariancePdf(args: Args): void {
   const doc = buildFleetBudgetVariancePdf(args);
   const { budget } = args.summary;
   const scopePart = budget!.vehicle_id ? `vehicle-${budget!.vehicle_id}` : 'fleet';
-  const filename = `budget-variance-${scopePart}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `budget-variance-${scopePart}-${localToday()}.pdf`;
   doc.save(filename);
 }

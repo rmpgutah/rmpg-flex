@@ -10,6 +10,8 @@
 // the existing preview → person-record → dl-record pipeline.
 // ============================================================
 
+import { localToday } from './dateUtils';
+
 export interface AamvaResult {
   first_name: string;
   middle_name: string;
@@ -642,7 +644,7 @@ export function formatLawEnforcement(r: AamvaResult): LeField[] {
 /** Render the field set as a teletype-style block for copy/paste. */
 export function formatLeBlock(r: AamvaResult): string {
   const fields = formatLawEnforcement(r);
-  const header = `**DL SCAN ${r.dl_state || ''} ${new Date().toISOString().slice(0, 10)}**`;
+  const header = `**DL SCAN ${r.dl_state || ''} ${localToday()}**`;
   return [
     header,
     ...fields.map(f => `${f.tag.padEnd(4)}/${f.value}`),
