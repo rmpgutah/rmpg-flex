@@ -147,7 +147,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
   const { addToast } = useToast();
 
-  const isManager = ['admin', 'manager'].includes(userRole);
+  const isManager = ['admin', 'manager', 'supervisor', 'human_resources'].includes(userRole);
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
