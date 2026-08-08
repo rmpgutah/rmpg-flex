@@ -50,7 +50,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const isManager = ['admin', 'manager', 'supervisor'].includes(userRole);
+  const isManager = ['admin', 'manager', 'supervisor', 'human_resources'].includes(userRole);
 
   // ── Right-click context menu (read-only rows → copy-only) ──
   const { openMenu } = useContextMenu();
