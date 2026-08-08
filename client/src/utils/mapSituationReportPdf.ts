@@ -19,6 +19,7 @@ import {
 import { LAYOUT, COLOR } from './pdfTokens';
 import { formatEnumValue, toDisplayLabel } from './formatters';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { localToday } from './dateUtils';
 
 export interface SitRepCall {
   call_number: string;
@@ -308,6 +309,6 @@ export async function buildMapSituationReportPdf(data: MapSituationReportData): 
  *  saver). */
 export async function generateMapSituationReport(data: MapSituationReportData): Promise<void> {
   const doc = await buildMapSituationReportPdf(data);
-  const dateStr = new Date().toISOString().slice(0, 10);
+  const dateStr = localToday();
   doc.save(`RMPG_Situation_Report_${dateStr}.pdf`);
 }

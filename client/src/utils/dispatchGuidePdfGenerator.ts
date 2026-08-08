@@ -13,6 +13,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { localToday } from './dateUtils';
 import { applyPrintTarget, type PrintTarget } from './pdfTokens';
 import { SHOTS, type GuideShot } from './dispatchGuideShots';
 import { registerArialFont } from './pdf/fonts/registerArial';
@@ -4710,7 +4711,7 @@ export async function buildDispatchGuideDoc(options: DispatchGuidePdfOptions = {
 
 export async function generateDispatchGuidePdf(options: DispatchGuidePdfOptions = {}): Promise<void> {
   const doc = await buildDispatchGuideDoc(options);
-  const stamp = new Date().toISOString().slice(0, 10);
+  const stamp = localToday();
   const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
   doc.save(`RMPG-Dispatch-Guide-${stamp}${targetSuffix}.pdf`);
 }
