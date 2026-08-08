@@ -10,7 +10,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle, FleetMaintenance } from '../../../types';
-import { safeDateStr } from '../../../utils/dateUtils';
+import { safeDateStr, localToday } from '../../../utils/dateUtils';
 import { toDisplayLabel } from '../../../utils/formatters';
 
 export interface Args {
@@ -145,6 +145,6 @@ export function buildFleetMaintenanceHistoryPdf({ vehicle, records, periodLabel 
  *  filename/behaviour as before this function was split into a builder + saver). */
 export function generateFleetMaintenanceHistoryPdf(args: Args): void {
   const doc = buildFleetMaintenanceHistoryPdf(args);
-  const filename = `maintenance-history-${args.vehicle.vehicle_number || 'vehicle'}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `maintenance-history-${args.vehicle.vehicle_number || 'vehicle'}-${localToday()}.pdf`;
   doc.save(filename);
 }
