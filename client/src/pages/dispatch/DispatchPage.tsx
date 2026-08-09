@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from 
 import { useNavigate, useSearchParams } from 'react-router';
 import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
-  CheckCircle, XCircle, AlertTriangle, Loader2, FileText, FileSignature, ChevronDown, Link,
+  CheckCircle, XCircle, AlertTriangle, Loader2, FileText, FileSignature, ChevronDown, ChevronLeft, ChevronRight, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
   Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench, Route,
 } from 'lucide-react';
@@ -419,6 +419,16 @@ export default function DispatchPage() {
   const [detailTab, setDetailTab] = useState<'info' | 'persons' | 'timeline' | 'notes' | 'documents' | 'flags' | 'attachments' | 'audit'>('info');
   const [auditTrail, setAuditTrail] = useState<any[]>([]);
   const [auditTrailLoading, setAuditTrailLoading] = useState(false);
+  // Detail-tab bar overflows horizontally on narrower panels (scrolls instead
+  // of wrapping — see 2026-08-08's #3307). Audit sits last, so it can scroll
+  // fully out of view with no visual cue that it exists. detailTabBarRef +
+  // detailTabRefs back a "scroll the active tab into view" effect below, and
+  // canScrollTabs backs the fade/arrow affordance that makes the scroll itself
+  // discoverable — clicking a tab that's already invisible was the bug.
+  const detailTabBarRef = useRef<HTMLDivElement>(null);
+  const detailTabRefs = useRef<Partial<Record<string, HTMLButtonElement>>>({});
+  const [canScrollTabsLeft, setCanScrollTabsLeft] = useState(false);
+  const [canScrollTabsRight, setCanScrollTabsRight] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; call: CallForService } | null>(null);
   const [ncicInitialQuery, setNcicInitialQuery] = useState<{ type: 'person' | 'vehicle' | 'warrant'; query: string } | null>(null);
   // Timeline / activity log entries for selected call
@@ -1501,6 +1511,32 @@ export default function DispatchPage() {
       .finally(() => { if (!cancelled) setAuditTrailLoading(false); });
     return () => { cancelled = true; };
   }, [selectedCall?.id, detailTab]);
+
+  // Keep the active detail tab scrolled into view — clicking Timeline/Audit
+  // is not enough to prove they work if the tab itself can scroll out of
+  // sight with no indication it's still there (2026-08-09 report: Audit read
+  // as "not loading" because users couldn't find/click it, not because the
+  // data was broken).
+  useEffect(() => {
+    detailTabRefs.current[detailTab]?.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+  }, [detailTab]);
+
+  // Recompute the scroll-affordance arrows whenever the tab bar's scroll
+  // position or size changes, so the fade/arrows never lie about whether
+  // there's more to scroll to.
+  useEffect(() => {
+    const el = detailTabBarRef.current;
+    if (!el) return;
+    const update = () => {
+      setCanScrollTabsLeft(el.scrollLeft > 1);
+      setCanScrollTabsRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => { el.removeEventListener('scroll', update); ro.disconnect(); };
+  }, [selectedCall?.id]);
 
   // Fetch linked incidents and activity when a call is selected.
   // Same string-"undefined" guard as the persons/vehicles effect above —
@@ -4523,49 +4559,87 @@ export default function DispatchPage() {
                 </div>
               )}
 
-              {/* Detail Tabs */}
-              <div className="flex flex-nowrap overflow-x-auto border-b border-[var(--spm-border)] flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
-                {(['info', 'persons', 'timeline', 'notes', 'documents', 'attachments', 'flags', 'audit'] as const).map(tab => {
-                  const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', documents: 'Documents', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
-                  const icons: Record<string, React.ReactNode> = {
-                    info: <FileText style={{ width: 9, height: 9 }} />,
-                    persons: <User style={{ width: 9, height: 9 }} />,
-                    timeline: <Clock style={{ width: 9, height: 9 }} />,
-                    notes: <MessageSquare style={{ width: 9, height: 9 }} />,
-                    documents: <FileSignature style={{ width: 9, height: 9 }} />,
-                    attachments: <FileText style={{ width: 9, height: 9 }} />,
-                    flags: <Shield style={{ width: 9, height: 9 }} />,
-                    audit: <Shield style={{ width: 9, height: 9 }} />,
-                  };
-                  const counts: Record<string, number> = {
-                    persons: callPersons.length + callVehicles.length,
-                    timeline: activityEntries.length,
-                    notes: (selectedCall?.notes || []).length,
-                    audit: auditTrail.length,
-                  };
-                  const count = counts[tab];
-                  const isActive = detailTab === tab;
-                  return (
-                    <button type="button"
-                      key={tab}
-                      onClick={() => setDetailTab(tab)}
-                      className="relative px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 flex-shrink-0 whitespace-nowrap"
-                      style={{
-                        color: isActive ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)',
-                        background: isActive ? 'color-mix(in srgb, var(--surface-sunken) 60%, transparent)' : 'transparent',
-                        borderBottom: isActive ? '2px solid var(--brand-gold)' : '2px solid transparent',
-                      }}
-                      onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text-muted)'; (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--surface-sunken) 40%, transparent)'; } }}
-                      onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text-muted)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
+              {/* Detail Tabs — scrolls horizontally rather than wrapping (#3307).
+                  Left/right fade + arrow buttons make that scroll discoverable:
+                  Audit sits last, so on a narrower panel it could scroll fully
+                  out of view with zero visual hint it existed — the reported
+                  "Audit tab clipping" bug. canScrollTabsLeft/Right + the
+                  scrollIntoView effect above keep the active tab reachable
+                  and visible regardless of panel width. */}
+              <div className="relative flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
+                <div
+                  ref={detailTabBarRef}
+                  className="flex flex-nowrap overflow-x-auto border-b border-[var(--spm-border)] scroll-smooth"
+                  style={{ scrollbarWidth: 'none' }}
+                >
+                  {(['info', 'persons', 'timeline', 'notes', 'documents', 'attachments', 'flags', 'audit'] as const).map(tab => {
+                    const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', documents: 'Documents', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
+                    const icons: Record<string, React.ReactNode> = {
+                      info: <FileText style={{ width: 9, height: 9 }} />,
+                      persons: <User style={{ width: 9, height: 9 }} />,
+                      timeline: <Clock style={{ width: 9, height: 9 }} />,
+                      notes: <MessageSquare style={{ width: 9, height: 9 }} />,
+                      documents: <FileSignature style={{ width: 9, height: 9 }} />,
+                      attachments: <FileText style={{ width: 9, height: 9 }} />,
+                      flags: <Shield style={{ width: 9, height: 9 }} />,
+                      audit: <Shield style={{ width: 9, height: 9 }} />,
+                    };
+                    const counts: Record<string, number> = {
+                      persons: callPersons.length + callVehicles.length,
+                      timeline: activityEntries.length,
+                      notes: (selectedCall?.notes || []).length,
+                      audit: auditTrail.length,
+                    };
+                    const count = counts[tab];
+                    const isActive = detailTab === tab;
+                    return (
+                      <button type="button"
+                        key={tab}
+                        ref={(el) => { if (el) detailTabRefs.current[tab] = el; }}
+                        aria-label={`${labels[tab]} tab`}
+                        onClick={() => setDetailTab(tab)}
+                        className="relative px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-all duration-150 flex-shrink-0 whitespace-nowrap"
+                        style={{
+                          color: isActive ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)',
+                          background: isActive ? 'color-mix(in srgb, var(--surface-sunken) 60%, transparent)' : 'transparent',
+                          borderBottom: isActive ? '2px solid var(--brand-gold)' : '2px solid transparent',
+                        }}
+                        onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text-muted)'; (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--surface-sunken) 40%, transparent)'; } }}
+                        onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text-muted)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
+                      >
+                        <span className="flex items-center gap-1">
+                          {icons[tab]}
+                          {labels[tab]}
+                          {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? 'color-mix(in srgb, var(--spm-text-muted) 15%, transparent)' : 'color-mix(in srgb, var(--spm-border) 19%, transparent)', color: isActive ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)' }}>{count}</span> : ''}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {canScrollTabsLeft && (
+                  <>
+                    <div className="pointer-events-none absolute left-0 top-0 bottom-[2px] w-6" style={{ background: 'linear-gradient(to right, var(--surface-deep), transparent)' }} />
+                    <button type="button" aria-label="Scroll tabs left"
+                      onClick={() => detailTabBarRef.current?.scrollBy({ left: -120, behavior: 'smooth' })}
+                      className="absolute left-0 top-0 bottom-[2px] flex items-center px-0.5"
+                      style={{ background: 'color-mix(in srgb, var(--surface-deep) 70%, transparent)' }}
                     >
-                      <span className="flex items-center gap-1.5">
-                        {icons[tab]}
-                        {labels[tab]}
-                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? 'color-mix(in srgb, var(--spm-text-muted) 15%, transparent)' : 'color-mix(in srgb, var(--spm-border) 19%, transparent)', color: isActive ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)' }}>{count}</span> : ''}
-                      </span>
+                      <ChevronLeft style={{ width: 12, height: 12, color: 'var(--spm-text-muted)' }} />
                     </button>
-                  );
-                })}
+                  </>
+                )}
+                {canScrollTabsRight && (
+                  <>
+                    <div className="pointer-events-none absolute right-0 top-0 bottom-[2px] w-6" style={{ background: 'linear-gradient(to left, var(--surface-deep), transparent)' }} />
+                    <button type="button" aria-label="Scroll tabs right"
+                      onClick={() => detailTabBarRef.current?.scrollBy({ left: 120, behavior: 'smooth' })}
+                      className="absolute right-0 top-0 bottom-[2px] flex items-center px-0.5"
+                      style={{ background: 'color-mix(in srgb, var(--surface-deep) 70%, transparent)' }}
+                    >
+                      <ChevronRight style={{ width: 12, height: 12, color: 'var(--spm-text-muted)' }} />
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* Detail Body — Scrollable, tab-controlled. `.cad-detail-body`
