@@ -189,6 +189,7 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
           style: 'mapbox://styles/mapbox/dark-v11',
           center: DEFAULT_CENTER,
           zoom: MINI_ZOOM,
+          projection: 'mercator',
           interactive: true,
           attributionControl: false,
           dragRotate: false,

@@ -1233,6 +1233,11 @@ export default function ServePage() {
         style: MAPBOX_STYLE_DARK,
         center,
         zoom: 11,
+        // mapbox-gl v3 defaults new maps to the 3D Globe projection; a
+        // CAD/dispatch map must stay flat at every zoom level so job pins
+        // don't visually compress toward the center meridian once zoomed out
+        // past the globe/mercator threshold (~zoom 5) — see utils/mapboxMap.ts.
+        projection: 'mercator',
         attributionControl: false,
         // Disabled so shift-drag can be used for rectangle-select below without
         // also triggering Mapbox's native box-zoom on the same gesture.

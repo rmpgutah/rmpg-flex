@@ -21,6 +21,7 @@ export default function MinimapControl({ parentMap, onClose }: Props) {
       style: 'mapbox://styles/mapbox/dark-v11',
       center: parentMap.getCenter(),
       zoom: Math.max(parentMap.getZoom() - 4, 1),
+      projection: 'mercator',
       attributionControl: false,
       interactive: true,
     });

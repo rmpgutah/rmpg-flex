@@ -14,7 +14,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
-import { hasLayer, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { devLog, devWarn } from '../utils/devLog';
 
 // ── Types ─────────────────────────────────────────────────
@@ -70,6 +70,16 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000; // RainViewer publishes a new frame roug
 const TILE_SIZE = 256;
 const COLOR_SCHEME = 2; // "Universal Blue" — the common blue->green->red precip ramp
 const TILE_OPTIONS = '1_1'; // smooth=1, snow-color=1
+// RainViewer's tile API tops out at z7 ("Maximum zoom level is 7" —
+// https://www.rainviewer.com/api/weather-maps-api.html). Without declaring
+// that on the Mapbox source, GL requests tiles at whatever zoom the user is
+// actually viewing (city-level zooms are 11+), and RainViewer's own server
+// answers those with an error-placeholder image reading "Zoom Level Not
+// Supported" baked into the tile — which Mapbox then renders as if it were
+// real radar data. Declaring maxzoom makes GL stop at z7 and overzoom
+// (upscale) that tile for anything deeper, which is the correct fallback
+// for a low-resolution composite like weather radar anyway.
+const RAINVIEWER_MAX_ZOOM = 7;
 /** Per-frame dwell during playback. ~1.7 fps reads as motion without smearing. */
 const PLAYBACK_FRAME_MS = 600;
 /** Extra dwell on the newest frame so the loop has a readable "now" beat. */
@@ -139,19 +149,33 @@ export function useMapWeatherRadar(
   const addOrReplaceLayer = useCallback((tileHost: string, path: string) => {
     if (!map) return;
     if (renderedFrameKeyRef.current === path) return; // already showing this frame
-    removeLayer();
-    map.addSource(WEATHER_SOURCE, {
-      type: 'raster',
-      tiles: [buildTileUrl(tileHost, path)],
-      tileSize: TILE_SIZE,
-      attribution: '&copy; <a href="https://www.rainviewer.com">RainViewer</a>',
-    });
-    map.addLayer({
-      id: WEATHER_LAYER,
-      type: 'raster',
-      source: WEATHER_SOURCE,
-      paint: { 'raster-opacity': opacityRef.current, 'raster-fade-duration': 300 },
-    });
+
+    // Frame-to-frame playback swaps the tile URL on the EXISTING source via
+    // setTiles() instead of remove+re-add. Tearing down and rebuilding the
+    // source/layer every ~600ms (the old behavior) blanked the map between
+    // frames and defeated `raster-fade-duration` below — GL can only
+    // cross-fade tiles on a source it already has a previous frame loaded
+    // on, not across a source it just destroyed and recreated. Only the
+    // first render (or a re-add after the overlay was fully disabled) needs
+    // a real addSource/addLayer.
+    if (hasSource(map, WEATHER_SOURCE) && hasLayer(map, WEATHER_LAYER)) {
+      (map.getSource(WEATHER_SOURCE) as mapboxgl.RasterTileSource).setTiles([buildTileUrl(tileHost, path)]);
+    } else {
+      removeLayer();
+      map.addSource(WEATHER_SOURCE, {
+        type: 'raster',
+        tiles: [buildTileUrl(tileHost, path)],
+        tileSize: TILE_SIZE,
+        maxzoom: RAINVIEWER_MAX_ZOOM,
+        attribution: '&copy; <a href="https://www.rainviewer.com">RainViewer</a>',
+      });
+      map.addLayer({
+        id: WEATHER_LAYER,
+        type: 'raster',
+        source: WEATHER_SOURCE,
+        paint: { 'raster-opacity': opacityRef.current, 'raster-fade-duration': 300 },
+      });
+    }
     renderedFrameKeyRef.current = path;
     hostRef.current = tileHost;
     devLog('[WeatherRadar] Rendering frame', path);
