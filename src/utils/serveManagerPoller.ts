@@ -138,21 +138,28 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
       // Map and create dispatch call
       const callData = mapSmJobToCallData(job);
       const year = new Date().getFullYear().toString().slice(-2);
-      const seq = await queryFirst<{ max: string | null }>(
-        db, "SELECT MAX(call_number) AS max FROM calls_for_service WHERE call_number LIKE ?", `CFS${year}-%`,
-      );
-      // seq.max is e.g. "CFS26-00007" — the numeric suffix starts after the
-      // '-', not at a fixed offset from the start. slice(4) landed on "6-"
-      // (the tail of the year plus the dash), and parseInt("6-00007", 10)
-      // parses only the leading "6", so every job after the first
-      // recomputed the SAME seqNum forever and every insert after the first
-      // collided on the UNIQUE calls_for_service.call_number constraint
-      // (confirmed live 2026-08-09: every sync after the first ever call
-      // failed this way, dead-lettering the whole cycle).
-      const seqNum = seq?.max
-        ? String(parseInt(seq.max.split('-')[1], 10) + 1).padStart(5, '0')
-        : '00001';
-      callData.call_number = `CFS${year}-${seqNum}`;
+      const prefix = `CFS${year}-`;
+      // call_number carries a UNIQUE constraint, and this read-max-then-
+      // increment isn't atomic — two near-simultaneous poll cycles (a
+      // manual sync racing the cron poller, or two rapid manual syncs) can
+      // read the same MAX and collide on insert even with the slice bug
+      // above fixed. nextCallNumber() is re-run on that specific collision
+      // in the retry loop below, matching the pattern dispatch/calls.ts's
+      // nextCallNumber() already uses for new-call creation.
+      const nextCallNumber = async () => {
+        const seq = await queryFirst<{ max: string | null }>(
+          db, 'SELECT MAX(call_number) AS max FROM calls_for_service WHERE call_number LIKE ?', `${prefix}%`,
+        );
+        // seq.max is e.g. "CFS26-00007" — the numeric suffix starts after
+        // the '-', not at a fixed offset from the start (confirmed live
+        // 2026-08-09: a fixed slice(4) offset parsed only the leading digit
+        // of the year, recomputing the SAME seqNum forever).
+        const seqNum = seq?.max
+          ? String(parseInt(seq.max.split('-')[1], 10) + 1).padStart(5, '0')
+          : '00001';
+        return `${prefix}${seqNum}`;
+      };
+      callData.call_number = await nextCallNumber();
 
       // ⚠️ created_at / updated_at are supplied by the SQL below as
       // datetime('now') and must NOT appear here. Listing them produced:
@@ -175,10 +182,24 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
         callData.latitude, callData.longitude, callData.description,
         callData.caller_name];
       const placeholders = colNames.map(() => '?').join(',');
-      const result = await execute(db,
-        `INSERT INTO calls_for_service (${colNames.join(',')}, created_at, updated_at) VALUES (${placeholders}, datetime('now'), datetime('now'))`,
-        ...values,
-      );
+      let result;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          result = await execute(db,
+            `INSERT INTO calls_for_service (${colNames.join(',')}, created_at, updated_at) VALUES (${placeholders}, datetime('now'), datetime('now'))`,
+            ...values,
+          );
+          break;
+        } catch (raceErr: any) {
+          const raceMsg = String(raceErr?.message || raceErr || 'unknown');
+          if (attempt < 4 && /SQLITE_CONSTRAINT/i.test(raceMsg) && /call_number/i.test(raceMsg)) {
+            callData.call_number = await nextCallNumber();
+            values[0] = callData.call_number;
+            continue;
+          }
+          throw raceErr;
+        }
+      }
       const callId = Number(result.meta.last_row_id);
 
       // Cache the SM job link
