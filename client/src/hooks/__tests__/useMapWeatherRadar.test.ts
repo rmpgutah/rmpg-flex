@@ -4,14 +4,31 @@ import { useMapWeatherRadar } from '../useMapWeatherRadar';
 
 function makeMap() {
   const listeners: Record<string, Array<() => void>> = {};
+  // Tracks added source/layer state so getSource/getLayer reflect reality
+  // the way real Mapbox GL does (addSource/addLayer register something
+  // getSource/getLayer can then see; remove clears it). This lets
+  // hasSource/hasLayer-gated code under test — including the setTiles
+  // reuse path — behave the same in the test double as it would against a
+  // real map, instead of every test having to hand-flip a static mock
+  // return value to simulate "already added".
+  let sourceObj: { id: string; setTiles: ReturnType<typeof vi.fn> } | null = null;
+  let layerObj: { id: string } | null = null;
   return {
     style: {},
-    getLayer: vi.fn().mockReturnValue(null),
-    getSource: vi.fn().mockReturnValue(null),
-    addSource: vi.fn(),
-    addLayer: vi.fn(),
-    removeLayer: vi.fn(),
-    removeSource: vi.fn(),
+    getLayer: vi.fn(() => layerObj),
+    getSource: vi.fn(() => sourceObj),
+    addSource: vi.fn((id: string) => {
+      sourceObj = { id, setTiles: vi.fn() };
+    }),
+    addLayer: vi.fn((opts: { id: string }) => {
+      layerObj = { id: opts.id };
+    }),
+    removeLayer: vi.fn(() => {
+      layerObj = null;
+    }),
+    removeSource: vi.fn(() => {
+      sourceObj = null;
+    }),
     setPaintProperty: vi.fn(),
     on: vi.fn((event: string, cb: () => void) => {
       (listeners[event] ??= []).push(cb);
@@ -79,6 +96,20 @@ describe('useMapWeatherRadar', () => {
     }));
   });
 
+  it('caps the source at RainViewer\'s documented max zoom (7) so GL overzooms instead of requesting a "Zoom Level Not Supported" placeholder tile', async () => {
+    const map = makeMap();
+    const { result } = renderHook(() => useMapWeatherRadar(map, true));
+
+    await act(async () => {
+      result.current.setEnabled(true);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(map.addSource).toHaveBeenCalledWith('rmpg-weather-radar', expect.objectContaining({
+      maxzoom: 7,
+    }));
+  });
+
   it('polls again after 5 minutes and swaps in a newer frame', async () => {
     const map = makeMap();
     const { result } = renderHook(() => useMapWeatherRadar(map, true));
@@ -99,10 +130,14 @@ describe('useMapWeatherRadar', () => {
     });
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
-    expect(map.addSource).toHaveBeenCalledTimes(2);
-    expect(map.addSource).toHaveBeenLastCalledWith('rmpg-weather-radar', expect.objectContaining({
-      tiles: ['https://tilecache.rainviewer.com/v2/radar/1700001200/256/{z}/{x}/{y}/2/1_1.png'],
-    }));
+    // The source/layer already exist from the first render, so the newer
+    // frame swaps in via setTiles() on the SAME source — not a second
+    // addSource/addLayer teardown-and-rebuild, which would blank the map
+    // and defeat raster-fade-duration.
+    expect(map.addSource).toHaveBeenCalledTimes(1);
+    expect(map.getSource('rmpg-weather-radar').setTiles).toHaveBeenCalledWith(
+      ['https://tilecache.rainviewer.com/v2/radar/1700001200/256/{z}/{x}/{y}/2/1_1.png'],
+    );
   });
 
   it('removes the layer and source when disabled again', async () => {
@@ -229,9 +264,11 @@ describe('useMapWeatherRadar', () => {
 
       expect(global.fetch).toHaveBeenCalledTimes(1); // no network on scrub
       expect(result.current.live).toBe(false);
-      expect(map.addSource).toHaveBeenLastCalledWith('rmpg-weather-radar', expect.objectContaining({
-        tiles: ['https://tilecache.rainviewer.com/v2/radar/1700000000/256/{z}/{x}/{y}/2/1_1.png'],
-      }));
+      // Same source/layer reused via setTiles, not a second addSource.
+      expect(map.addSource).toHaveBeenCalledTimes(1);
+      expect(map.getSource('rmpg-weather-radar').setTiles).toHaveBeenCalledWith(
+        ['https://tilecache.rainviewer.com/v2/radar/1700000000/256/{z}/{x}/{y}/2/1_1.png'],
+      );
     });
 
     it('resumeLive snaps back to the newest observed frame', async () => {
@@ -260,6 +297,32 @@ describe('useMapWeatherRadar', () => {
       expect(result.current.frameIndex).toBe(2);
       await act(async () => { await vi.advanceTimersByTimeAsync(600); });
       expect(result.current.frameIndex).toBe(0);
+    });
+
+    it('playback swaps tiles on the existing source instead of tearing down and rebuilding the layer every frame', async () => {
+      const { map, result } = await enabledWithNowcast();
+      await act(async () => { result.current.setFrameIndex(0); result.current.play(); });
+
+      // One addSource/addLayer from the initial render above; nothing since.
+      expect(map.addSource).toHaveBeenCalledTimes(1);
+      expect(map.addLayer).toHaveBeenCalledTimes(1);
+      map.removeLayer.mockClear();
+      map.removeSource.mockClear();
+      const setTiles = map.getSource('rmpg-weather-radar').setTiles as ReturnType<typeof vi.fn>;
+      setTiles.mockClear();
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(600); }); // -> frame 1
+      await act(async () => { await vi.advanceTimersByTimeAsync(600); }); // -> frame 2 (nowcast)
+
+      // Tearing the source/layer down every ~600ms is exactly the choppy,
+      // flash-to-blank behavior this fix removes — during playback there
+      // must be zero remove calls, only setTiles on the one stable source.
+      expect(map.removeLayer).not.toHaveBeenCalled();
+      expect(map.removeSource).not.toHaveBeenCalled();
+      expect(map.addSource).toHaveBeenCalledTimes(1);
+      expect(map.addLayer).toHaveBeenCalledTimes(1);
+      expect(setTiles).toHaveBeenNthCalledWith(1, ['https://tilecache.rainviewer.com/v2/radar/1700000600/256/{z}/{x}/{y}/2/1_1.png']);
+      expect(setTiles).toHaveBeenNthCalledWith(2, ['https://tilecache.rainviewer.com/v2/radar/nowcast/1700001200/256/{z}/{x}/{y}/2/1_1.png']);
     });
 
     it('a poll landing mid-scrub does not yank the operator back to live', async () => {

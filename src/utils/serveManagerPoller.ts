@@ -11,6 +11,7 @@ import type { Bindings } from '../types';
 import { queryFirst, execute } from './db';
 import { fetchRecentJobs, extractJobAttempts, getStoredKey, type SmJob } from './serveManagerClient';
 import { broadcastAll } from '../routes/ws';
+import { recordAuditCore } from './auditLog';
 
 const DEFAULT_TARGET_CLIENT = 'ICU Investigations, LLC';
 
@@ -78,6 +79,16 @@ async function upsertJobAttempts(db: D1Database, job: SmJob): Promise<number> {
   return count;
 }
 
+// employee_process_server (in-house server) uses first_name/last_name, while
+// process_server_company/process_server_contact (external server) are name-
+// keyed like every other confirmed ServeManager resource. Confirmed live
+// 2026-08-09 against a real in-house-served job.
+function getProcessServerName(job: SmJob): string | null {
+  const emp = job.employee_process_server;
+  if (emp?.first_name || emp?.last_name) return [emp.first_name, emp.last_name].filter(Boolean).join(' ');
+  return job.process_server_company?.name || job.process_server_contact?.name || null;
+}
+
 function mapSmJobToCallData(job: SmJob) {
   const addresses = job.addresses || [];
   const primary = addresses.find((a) => a.primary) || addresses[0];
@@ -118,6 +129,139 @@ function mapSmJobToCallData(job: SmJob) {
   };
 }
 
+// Upserts the sm_jobs cache row for a job. `linkedCallId` is left untouched
+// on an UPDATE unless explicitly provided — cacheJob(db, job) (no call yet)
+// must never clobber a linked_call_id an earlier createDispatchCallForJob
+// call already set for the same job.
+async function cacheJob(db: D1Database, job: SmJob, linkedCallId?: number): Promise<void> {
+  const clientName = job.client_company?.name || '';
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM sm_jobs WHERE sm_job_id = ?', job.id);
+  const processType = guessProcessType(job.documents || []);
+  if (existing) {
+    const sets = ['job_status=?', 'service_status=?', 'sm_job_number=?', 'process_server_name=?', 'client_job_number=?', "updated_at=datetime('now')"];
+    const vals: unknown[] = [job.job_status ?? null, job.service_status ?? null, job.servemanager_job_number ?? null, getProcessServerName(job), job.client_job_number || null];
+    if (linkedCallId != null) { sets.push('linked_call_id=?'); vals.push(linkedCallId); }
+    await execute(db, `UPDATE sm_jobs SET ${sets.join(', ')} WHERE sm_job_id=?`, ...vals, job.id);
+    return;
+  }
+  await execute(db,
+    `INSERT INTO sm_jobs (sm_job_id, sm_job_number, client_company_name, recipient_name,
+       job_status, service_status, court_case_number, due_date, linked_call_id,
+       process_type, addresses_json, documents_json, process_server_name,
+       client_job_number, synced_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
+    job.id, job.servemanager_job_number ?? null, clientName, (job.recipient?.name || job.recipient?.full_name) || null,
+    job.job_status ?? null, job.service_status ?? null, job.court_case?.number || null,
+    job.due_date || null, linkedCallId ?? null,
+    processType,
+    JSON.stringify(job.addresses || []), JSON.stringify(job.documents || []),
+    getProcessServerName(job), job.client_job_number || null,
+  );
+}
+
+// Creates the dispatch call + linked serve_queue row for a job, and upserts
+// its sm_jobs cache row with the new linked_call_id. Extracted so the manual
+// "Create Dispatch" action (POST /servemanager/jobs/:jobId/create-dispatch)
+// shares the identical, comprehensive mapping instead of a second,
+// inevitably-divergent copy — every field-name bug this integration has hit
+// (job_number, client, court_case, recipient, process_server, ...) came from
+// exactly that kind of duplication. Caller must have already verified the
+// job isn't already linked (sm_jobs.linked_call_id is null or absent).
+export async function createDispatchCallForJob(
+  env: Bindings, job: SmJob,
+): Promise<{ callId: number; callNumber: string; queueId: number }> {
+  const db = env.DB;
+  const clientName = job.client_company?.name || '';
+  const callData = mapSmJobToCallData(job);
+  const year = new Date().getFullYear().toString().slice(-2);
+  const prefix = `CFS${year}-`;
+  const nextCallNumber = async () => {
+    const seq = await queryFirst<{ max: string | null }>(
+      db, 'SELECT MAX(call_number) AS max FROM calls_for_service WHERE call_number LIKE ?', `${prefix}%`,
+    );
+    const seqNum = seq?.max
+      ? String(parseInt(seq.max.split('-')[1], 10) + 1).padStart(5, '0')
+      : '00001';
+    return `${prefix}${seqNum}`;
+  };
+  callData.call_number = await nextCallNumber();
+
+  const colNames = ['call_number', 'incident_type', 'priority', 'status', 'source',
+    'location_address', 'latitude', 'longitude', 'description', 'caller_name', 'contract_id',
+    'pso_requestor_name', 'pso_requestor_email', 'pso_billing_code', 'pso_service_type'];
+  const values = [callData.call_number, callData.incident_type, callData.priority,
+    callData.status, callData.source, callData.location_address,
+    callData.latitude, callData.longitude, callData.description,
+    callData.caller_name, job.servemanager_job_number ?? null,
+    job.attorney_name || clientName || null, job.attorney_email || null,
+    job.client_job_number || null, callData.process_type];
+  const placeholders = colNames.map(() => '?').join(',');
+  let result;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      result = await execute(db,
+        `INSERT INTO calls_for_service (${colNames.join(',')}, created_at, updated_at) VALUES (${placeholders}, datetime('now'), datetime('now'))`,
+        ...values,
+      );
+      break;
+    } catch (raceErr: any) {
+      const raceMsg = String(raceErr?.message || raceErr || 'unknown');
+      if (attempt < 4 && /SQLITE_CONSTRAINT/i.test(raceMsg) && /call_number/i.test(raceMsg)) {
+        callData.call_number = await nextCallNumber();
+        values[0] = callData.call_number;
+        continue;
+      }
+      throw raceErr;
+    }
+  }
+  const callId = Number(result.meta.last_row_id);
+
+  // Audit trail entry — matches the CREATE row POST /dispatch/calls writes
+  // (dispatch/calls.ts). Without this, every ServeManager-created call (the
+  // majority of the queue) starts with zero audit_log rows, so its Timeline
+  // and Audit tabs both read as empty until a human takes some other action
+  // on the call. Best-effort: never block call creation on it.
+  try {
+    await recordAuditCore(env, {
+      action: 'CREATE',
+      entityType: 'call',
+      entityId: callId,
+      details: `Created call ${callData.call_number} from ServeManager job ${job.servemanager_job_number ?? job.id}`,
+    });
+  } catch (auditErr) {
+    console.warn('audit_log insert failed for ServeManager call create:', auditErr);
+  }
+
+  await cacheJob(db, job, callId);
+
+  const primaryAddr = (job.addresses || []).find((a) => a.primary) || (job.addresses || [])[0];
+  const queueResult = await execute(db,
+    `INSERT INTO serve_queue (
+       call_id, sm_job_id, serve_date,
+       recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip,
+       recipient_lat, recipient_lng, case_number, client_name, priority, deadline,
+       service_instructions, status
+     ) VALUES (?,?,?, ?,?,?,?,?, ?,?,?,?,?,?, ?,?)`,
+    callId, job.id, job.due_date || null,
+    (job.recipient?.name || job.recipient?.full_name) || null, primaryAddr?.address1 || null,
+    primaryAddr?.city || null, primaryAddr?.state || null, primaryAddr?.postal_code || null,
+    primaryAddr?.lat ?? primaryAddr?.latitude ?? null, primaryAddr?.lng ?? primaryAddr?.longitude ?? null,
+    job.court_case?.number || null, clientName || null, job.rush ? 'rush' : 'normal', job.due_date || null,
+    job.service_instructions || null, 'pending',
+  );
+
+  try {
+    broadcastAll('dispatch_update', {
+      action: 'call_created',
+      call: { id: callId, call_number: callData.call_number, priority: callData.priority,
+              incident_type: callData.incident_type, status: callData.status,
+              location_address: callData.location_address, description: callData.description },
+    });
+  } catch { /* best-effort */ }
+
+  return { callId, callNumber: callData.call_number as string, queueId: Number(queueResult.meta.last_row_id) };
+}
+
 // ── Main polling cycle ────────────────────────────────────────
 
 export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: number; callsCreated: number; attemptsSynced: number; error?: string }> {
@@ -150,146 +294,33 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
       // a job can accrue new service attempts after its call was created.
       attemptsSynced += await upsertJobAttempts(db, job);
 
-      // Check if this job already has a linked call
-      const existing = await queryFirst<{ id: number }>(
-        db, 'SELECT id FROM sm_jobs WHERE sm_job_id = ?', job.id,
+      // Check if this job is already cached and/or already has a linked call.
+      const existing = await queryFirst<{ linked_call_id: number | null }>(
+        db, 'SELECT linked_call_id FROM sm_jobs WHERE sm_job_id = ?', job.id,
       );
-      if (existing) {
-        // Update the cached job row. sm_job_number is included here (not
-        // just on the initial INSERT below) because a row cached before
-        // the servemanager_job_number field-name fix landed would
-        // otherwise be stuck showing a blank "Job #" forever — the
-        // existing-job branch never re-derives it once cached. Confirmed
-        // live 2026-08-09: the fix deployed, but a job cached moments
-        // earlier still showed sm_job_number: null until this refresh.
-        await execute(db,
-          `UPDATE sm_jobs SET job_status=?, service_status=?, sm_job_number=?, updated_at=datetime('now') WHERE sm_job_id=?`,
-          job.job_status ?? null, job.service_status ?? null, job.servemanager_job_number ?? null, job.id);
+      if (existing?.linked_call_id) {
+        // Refresh the cached fields only — sm_job_number is included here
+        // (not just on first cache) because a row cached before the
+        // servemanager_job_number field-name fix landed would otherwise be
+        // stuck showing a blank "Job #" forever. Confirmed live 2026-08-09.
+        await cacheJob(db, job);
         synced++;
         continue;
       }
 
-      // Auto-create calls only if configured
+      // Not yet linked to a call — cache it regardless of auto-create so it
+      // shows up in the Cached Jobs list either way (a job matching the
+      // target client but with auto-create off previously never got cached
+      // at all, so there was nothing for the manual "Create Dispatch" action
+      // to act on — confirmed live 2026-08-09).
+      if (!existing) await cacheJob(db, job);
+
       const autoCreate = await getSmConfig(db, 'servemanager_auto_create_calls');
-      if (autoCreate !== 'true') continue;
+      if (autoCreate !== 'true') { synced++; continue; }
 
-      // Map and create dispatch call
-      const callData = mapSmJobToCallData(job);
-      const year = new Date().getFullYear().toString().slice(-2);
-      const prefix = `CFS${year}-`;
-      // call_number carries a UNIQUE constraint, and this read-max-then-
-      // increment isn't atomic — two near-simultaneous poll cycles (a
-      // manual sync racing the cron poller, or two rapid manual syncs) can
-      // read the same MAX and collide on insert even with the slice bug
-      // above fixed. nextCallNumber() is re-run on that specific collision
-      // in the retry loop below, matching the pattern dispatch/calls.ts's
-      // nextCallNumber() already uses for new-call creation.
-      const nextCallNumber = async () => {
-        const seq = await queryFirst<{ max: string | null }>(
-          db, 'SELECT MAX(call_number) AS max FROM calls_for_service WHERE call_number LIKE ?', `${prefix}%`,
-        );
-        // seq.max is e.g. "CFS26-00007" — the numeric suffix starts after
-        // the '-', not at a fixed offset from the start (confirmed live
-        // 2026-08-09: a fixed slice(4) offset parsed only the leading digit
-        // of the year, recomputing the SAME seqNum forever).
-        const seqNum = seq?.max
-          ? String(parseInt(seq.max.split('-')[1], 10) + 1).padStart(5, '0')
-          : '00001';
-        return `${prefix}${seqNum}`;
-      };
-      callData.call_number = await nextCallNumber();
-
-      // ⚠️ created_at / updated_at are supplied by the SQL below as
-      // datetime('now') and must NOT appear here. Listing them produced:
-      //   INSERT INTO calls_for_service (…,created_at,updated_at, created_at, updated_at)
-      //   VALUES (12 placeholders, datetime('now'), datetime('now'))
-      // — 14 columns with two duplicated (a hard SQLite error on its own),
-      // 14 value expressions, and only 10 bindings supplied for 12 '?'.
-      //
-      // The statement could never succeed, and the blast radius is the whole
-      // cycle rather than the one call: the throw unwinds to the function's
-      // outer try/catch, so `synced` is discarded, the
-      // servemanager_last_poll_at watermark never advances, and the caller
-      // always sees {synced: 0, callsCreated: 0, error}. It is console-logged
-      // but never reaches error_log, so the only evidence was a line in
-      // Workers Logs saying the cycle failed.
-      const colNames = ['call_number', 'incident_type', 'priority', 'status', 'source',
-        'location_address', 'latitude', 'longitude', 'description', 'caller_name'];
-      const values = [callData.call_number, callData.incident_type, callData.priority,
-        callData.status, callData.source, callData.location_address,
-        callData.latitude, callData.longitude, callData.description,
-        callData.caller_name];
-      const placeholders = colNames.map(() => '?').join(',');
-      let result;
-      for (let attempt = 0; ; attempt++) {
-        try {
-          result = await execute(db,
-            `INSERT INTO calls_for_service (${colNames.join(',')}, created_at, updated_at) VALUES (${placeholders}, datetime('now'), datetime('now'))`,
-            ...values,
-          );
-          break;
-        } catch (raceErr: any) {
-          const raceMsg = String(raceErr?.message || raceErr || 'unknown');
-          if (attempt < 4 && /SQLITE_CONSTRAINT/i.test(raceMsg) && /call_number/i.test(raceMsg)) {
-            callData.call_number = await nextCallNumber();
-            values[0] = callData.call_number;
-            continue;
-          }
-          throw raceErr;
-        }
-      }
-      const callId = Number(result.meta.last_row_id);
-
-      // Cache the SM job link
-      await execute(db,
-        `INSERT INTO sm_jobs (sm_job_id, sm_job_number, client_company_name, recipient_name,
-           job_status, service_status, court_case_number, due_date, linked_call_id,
-           process_type, addresses_json, documents_json, synced_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
-        job.id, job.servemanager_job_number ?? null, clientName, (job.recipient?.name || job.recipient?.full_name) || null,
-        job.job_status ?? null, job.service_status ?? null, job.court_case?.number || null,
-        job.due_date || null, callId,
-        callData.process_type,
-        JSON.stringify(job.addresses || []), JSON.stringify(job.documents || []),
-      );
-
-      // Link the auto-created call into the Process Server queue. Without
-      // this, the call only ever existed as a plain calls_for_service row
-      // — GET /process-server (the module officers actually work from)
-      // reads exclusively from serve_queue, which nothing populated for
-      // ServeManager-sourced jobs. Confirmed live 2026-08-09: a
-      // ServeManager job's auto-created call never appeared in the
-      // Process Server queue; GET /process-server/cross-reference/dispatch
-      // (built specifically to find this exact gap) flagged it. Matches
-      // the column set POST /serve-intake uses for manual intake.
-      const primaryAddr = (job.addresses || []).find((a) => a.primary) || (job.addresses || [])[0];
-      await execute(db,
-        `INSERT INTO serve_queue (
-           call_id, sm_job_id, serve_date,
-           recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip,
-           recipient_lat, recipient_lng, case_number, client_name, priority, deadline,
-           service_instructions, status
-         ) VALUES (?,?,?, ?,?,?,?,?, ?,?,?,?,?,?, ?,?)`,
-        callId, job.id, job.due_date || null,
-        (job.recipient?.name || job.recipient?.full_name) || null, primaryAddr?.address1 || null,
-        primaryAddr?.city || null, primaryAddr?.state || null, primaryAddr?.postal_code || null,
-        primaryAddr?.lat ?? primaryAddr?.latitude ?? null, primaryAddr?.lng ?? primaryAddr?.longitude ?? null,
-        job.court_case?.number || null, clientName || null, job.rush ? 'rush' : 'normal', job.due_date || null,
-        job.service_instructions || null, 'pending',
-      );
-
+      await createDispatchCallForJob(env, job);
       synced++;
       callsCreated++;
-
-      // Broadcast the new dispatch call
-      try {
-        broadcastAll('dispatch_update', {
-          action: 'call_created',
-          call: { id: callId, call_number: callData.call_number, priority: callData.priority,
-                  incident_type: callData.incident_type, status: callData.status,
-                  location_address: callData.location_address, description: callData.description },
-        });
-      } catch { /* best-effort */ }
     }
 
     // Update last poll timestamp. system_config has a UNIQUE(config_key,
