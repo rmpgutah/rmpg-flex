@@ -11,6 +11,7 @@ import type { Bindings } from '../types';
 import { queryFirst, execute } from './db';
 import { fetchRecentJobs, getStoredKey, type SmJob } from './serveManagerClient';
 import { broadcastAll } from '../routes/ws';
+import { recordAuditCore } from './auditLog';
 
 const DEFAULT_TARGET_CLIENT = 'ICU Investigations, LLC';
 
@@ -201,6 +202,22 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
         }
       }
       const callId = Number(result.meta.last_row_id);
+
+      // Audit trail entry — matches the CREATE row POST /dispatch/calls writes
+      // (dispatch/calls.ts). Without this, every ServeManager-auto-created call
+      // (the majority of the queue) starts with zero audit_log rows, so its
+      // Timeline and Audit tabs both read as empty until a human takes some
+      // other action on the call. Best-effort: never block call creation on it.
+      try {
+        await recordAuditCore(env, {
+          action: 'CREATE',
+          entityType: 'call',
+          entityId: callId,
+          details: `Created call ${callData.call_number} from ServeManager job ${job.job_number ?? job.id}`,
+        });
+      } catch (auditErr) {
+        console.warn('audit_log insert failed for ServeManager call create:', auditErr);
+      }
 
       // Cache the SM job link
       await execute(db,
