@@ -95,6 +95,7 @@ import { useAuth } from '../context/AuthContext';
 import PttController from './PttController';
 import { initSettingsSync } from '../utils/settingsSync';
 import { loadSystemSettings } from '../utils/systemSettings';
+import { loadFeatureFlags } from '../utils/featureFlags';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
@@ -747,6 +748,7 @@ export default function Layout() {
     // settings to the document root. Branding/localization/report values
     // are read at their own call sites via getSystemSetting.
     loadSystemSettings();
+    loadFeatureFlags();
     return initSettingsSync();
     // Keyed on the user ID, NOT the user object. GET /api/settings is a pure
     // function of the actor id (src/routes/settings.ts: org is `WHERE id = 1`,
