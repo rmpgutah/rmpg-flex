@@ -41,8 +41,6 @@ const auth = new Hono<Env>();
 // earlier handlers referenced those and 500'd on every login + refresh.
 const ACCESS_TTL_SECONDS = 15 * 60;            // 15m — legacy config.jwt.accessExpiry
 const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;  // 7d  — legacy config.jwt.refreshExpiry
-const FAILED_LOGIN_THRESHOLD = 5;
-const LOCKOUT_DURATION_MINUTES = 15;
 
 // Live `users` uses must_change_password / totp_enabled — NOT the
 // force_password_change / totp_enrolled names the earlier handlers queried
@@ -217,6 +215,7 @@ auth.post('/login', async (c) => {
 
     const db = getDb(c.env);
     await ensureAccountLockoutColumns(db);
+    const securityPolicy = await getSecurityPolicy(db);
     const user = await queryFirst<any>(
       db,
       `SELECT ${USER_SELECT}, password_hash, failed_login_count, locked_until,
@@ -263,8 +262,8 @@ auth.post('/login', async (c) => {
         `UPDATE users SET
            failed_login_count = (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1,
            locked_until = CASE
-             WHEN (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1 >= ${FAILED_LOGIN_THRESHOLD}
-               THEN datetime('now', '+${LOCKOUT_DURATION_MINUTES} minutes')
+             WHEN (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1 >= ${securityPolicy.maxLoginAttempts}
+               THEN datetime('now', '+${securityPolicy.lockoutDurationMinutes} minutes')
              ELSE NULL
            END
          WHERE id = ?
@@ -275,9 +274,9 @@ auth.post('/login', async (c) => {
       if (updated?.locked_until) {
         await recordLoginAttempt(db, username, ip, false, 'account_locked');
         return c.json({
-          error: `Account locked due to repeated failed attempts. Try again in ${LOCKOUT_DURATION_MINUTES} minutes.`,
+          error: `Account locked due to repeated failed attempts. Try again in ${securityPolicy.lockoutDurationMinutes} minutes.`,
           code: 'ACCOUNT_LOCKED',
-          retry_after_seconds: LOCKOUT_DURATION_MINUTES * 60,
+          retry_after_seconds: securityPolicy.lockoutDurationMinutes * 60,
         }, 403);
       }
       await recordLoginAttempt(db, username, ip, false, 'invalid_password');

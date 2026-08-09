@@ -13,3 +13,12 @@ describe('auth.ts password policy integration', () => {
     expect(validatePassword('ValidPassword1!', DEFAULT_SECURITY_POLICY)).toBeNull();
   });
 });
+
+describe('lockout policy defaults', () => {
+  it('DEFAULT_SECURITY_POLICY.maxLoginAttempts matches the pre-existing FAILED_LOGIN_THRESHOLD (5)', () => {
+    expect(DEFAULT_SECURITY_POLICY.maxLoginAttempts).toBe(5);
+  });
+  it('DEFAULT_SECURITY_POLICY.lockoutDurationMinutes matches the pre-existing LOCKOUT_DURATION_MINUTES (15)', () => {
+    expect(DEFAULT_SECURITY_POLICY.lockoutDurationMinutes).toBe(15);
+  });
+});
