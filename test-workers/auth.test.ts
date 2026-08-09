@@ -7,7 +7,7 @@ import { Hono } from 'hono';
 import { authMiddleware, readOnlyRoleGuard, requireRole } from '../src/middleware/auth';
 import { hashSync } from 'bcryptjs';
 import authRouter from '../src/routes/auth';
-import { getDb, execute, queryFirst, columnExists } from '../src/utils/db';
+import { getDb, execute, queryFirst, query, columnExists } from '../src/utils/db';
 import { sign } from 'hono/jwt';
 
 describe('auth middleware — unauthenticated access', () => {
@@ -182,6 +182,24 @@ describe('POST /login — account lockout', () => {
       expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')),
       last_used_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`);
+    // Every /login call reaches getSecurityPolicy(db) (src/utils/securityPolicy.ts),
+    // which queries `system_config` unconditionally and has no try/catch of its
+    // own — without this table, EVERY login in this Miniflare suite 500s. This
+    // table was missing from this file's schema setup even though task 5
+    // (f2784230b3, "enforce max active sessions from saved policy") introduced
+    // the unconditional getSecurityPolicy() read on the standard /login path,
+    // which was silently failing every "account lockout" test below with a 500
+    // instead of the asserted 200/401/403.
+    await execute(db, `CREATE TABLE IF NOT EXISTS system_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      config_key TEXT NOT NULL,
+      config_value TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'general',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
   });
 
   // Runs first, deliberately, while the module-level reconciler cache flag
@@ -341,6 +359,102 @@ describe('POST /security/unlock-account', () => {
       body: JSON.stringify({ username: 'locked-target-1' }),
     }, { ...(env as unknown as Record<string, unknown>), JWT_SECRET: SECRET });
     expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /login — max active sessions cap (Security Policy enforcement)', () => {
+  const TEST_PASSWORD = 'CorrectHorseBattery1';
+  const TEST_PASSWORD_HASH = hashSync(TEST_PASSWORD, 4); // low cost — test speed only
+
+  function loginEnv() {
+    return { ...(env as unknown as Record<string, unknown>), JWT_SECRET: 'test-jwt-secret-do-not-use-in-prod' };
+  }
+
+  async function seedUser(db: D1Database, username: string): Promise<number> {
+    await execute(db,
+      `INSERT INTO users (username, password_hash, full_name, role, status) VALUES (?, ?, 'Test User', 'officer', 'active')`,
+      username, TEST_PASSWORD_HASH);
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM users WHERE username = ?', username);
+    return row!.id;
+  }
+
+  // `sessions.created_at` is second-precision (`datetime('now')`), so 3
+  // logins fired back-to-back in a single test can land in the same second
+  // and tie on the cap query's `ORDER BY created_at DESC`. After each login,
+  // stamp that session's created_at to a fixed point in the PAST (offset
+  // seconds relative to "now", strictly increasing toward 0 call-over-call)
+  // so it's already ordered correctly before the *next* login's cap-cleanup
+  // UPDATE runs and compares against it. The most-recent login is left with
+  // its real (offset 0 / unstamped) created_at, which is always >= any
+  // earlier stamped-into-the-past session.
+  async function login(db: D1Database, username: string, ip: string, pastOffsetSeconds: number) {
+    const res = await authRouter.request('/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'CF-Connecting-IP': ip },
+      body: JSON.stringify({ username, password: TEST_PASSWORD }),
+    }, loginEnv());
+    expect(res.status).toBe(200);
+    if (pastOffsetSeconds > 0) {
+      await execute(
+        db,
+        `UPDATE sessions SET created_at = datetime('now', ?) WHERE rowid = (SELECT MAX(rowid) FROM sessions)`,
+        `-${pastOffsetSeconds} seconds`,
+      );
+    }
+    return res;
+  }
+
+  async function activeSessionsFor(db: D1Database, userId: number) {
+    const rows = await query<{ session_id: string; is_active: number; created_at: string }>(
+      db,
+      'SELECT session_id, is_active, created_at FROM sessions WHERE user_id = ? ORDER BY created_at ASC, rowid ASC',
+      userId,
+    );
+    return rows;
+  }
+
+  // `system_config` is created once, up front, by the 'POST /login — account
+  // lockout' describe's beforeAll above (CREATE TABLE IF NOT EXISTS makes a
+  // second attempt here harmless, but it's unnecessary — this suite only
+  // ever needs to read/write rows, not the schema).
+
+  it('caps active sessions at the saved max_active_sessions policy value, deactivating the oldest', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    await execute(db,
+      `INSERT INTO system_config (config_key, category, config_value, is_active)
+       VALUES ('security_config', 'security_settings', ?, 1)`,
+      JSON.stringify({ max_active_sessions: '2' }));
+
+    const userId = await seedUser(db, 'session-cap-user-1');
+    await login(db, 'session-cap-user-1', '10.2.0.1', 4); // oldest
+    await login(db, 'session-cap-user-1', '10.2.0.1', 2); // middle
+    await login(db, 'session-cap-user-1', '10.2.0.1', 0); // newest
+
+    const sessions = await activeSessionsFor(db, userId);
+    expect(sessions).toHaveLength(3);
+    // Oldest (first-created) session must be deactivated; the 2 most recent stay active.
+    expect(sessions[0].is_active).toBe(0);
+    expect(sessions[1].is_active).toBe(1);
+    expect(sessions[2].is_active).toBe(1);
+  });
+
+  it('leaves all sessions active when no security_settings row is saved (0/absent = unenforced)', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    // getSecurityPolicy() reads a single GLOBAL row (no user scoping —
+    // `WHERE category='security_settings' AND config_key='security_config'
+    // AND is_active=1`), so the row the previous test saved would otherwise
+    // leak into this one. Deactivate it so getSecurityPolicy() falls back to
+    // DEFAULT_SECURITY_POLICY.maxActiveSessions === 0, which disables the cap
+    // entirely rather than capping at zero.
+    await execute(db, `UPDATE system_config SET is_active = 0 WHERE category = 'security_settings' AND config_key = 'security_config'`);
+    const userId = await seedUser(db, 'session-cap-user-2');
+    await login(db, 'session-cap-user-2', '10.2.0.2', 4);
+    await login(db, 'session-cap-user-2', '10.2.0.2', 2);
+    await login(db, 'session-cap-user-2', '10.2.0.2', 0);
+
+    const sessions = await activeSessionsFor(db, userId);
+    expect(sessions).toHaveLength(3);
+    expect(sessions.every(s => s.is_active === 1)).toBe(true);
   });
 });
 
