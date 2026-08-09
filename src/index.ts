@@ -57,8 +57,13 @@ app.use('*', cors({
   origin: (origin: string, c: any) => {
     const allowedOrigins = (c.env.CORS_ORIGINS || 'https://rmpgutah.us').split(',').map((s: string) => s.trim());
     if (allowedOrigins.includes('*')) return origin;
-    if (!origin || allowedOrigins.includes(origin)) return origin;
-    return allowedOrigins[0];
+    if (origin && allowedOrigins.includes(origin)) return origin;
+    // No match — omit Access-Control-Allow-Origin entirely rather than
+    // echoing an unrelated allowed origin (previously `allowedOrigins[0]`,
+    // which made every disallowed origin's preflight fail with a
+    // confusing "header has a value X that is not equal to the supplied
+    // origin" instead of a clean CORS rejection).
+    return undefined;
   },
   credentials: true,
 }));

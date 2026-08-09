@@ -14,7 +14,7 @@ import jsPDF from 'jspdf';
 import { toNum } from './sentinel';
 import { classifyLine, stripStrayMarkers } from './noteFormatting';
 import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType } from './caseNumbers';
-import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
+import { zoneLeaf, beatLeaf, sectionZoneBeatCombined, sectionPrefix } from './dispatchCodeParts';
 import { loadSealBase64, loadLogoDarkBase64, getCachedSealBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
@@ -3464,10 +3464,10 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       const lngStr = lngN != null ? lngN.toFixed(6) : '';
       const fy3 = addFieldPair(doc, 'Latitude', latStr, lx, y, w3);
       const fy4 = addFieldPair(doc, 'Longitude', lngStr, lx + w3, y, w3);
-      const fy5 = addFieldPair(doc, 'Section/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '', lx + w3 * 2, y, w3);
+      const fy5 = addFieldPair(doc, 'Sector/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '', lx + w3 * 2, y, w3);
       y = Math.max(fy3, fy4, fy5);
-      // Row 3: Section, Zone, Beat (each as leaf — no parent prefixes)
-      const fy6 = addFieldPair(doc, 'Section', data.sector_id || '', lx, y, w3);
+      // Row 3: Sector, Zone, Beat (each as leaf — no parent prefixes)
+      const fy6 = addFieldPair(doc, 'Sector', sectionPrefix(data.zone_id) || data.sector_id || '', lx, y, w3);
       const fy7 = addFieldPair(doc, 'Zone', zoneLeaf(data.zone_id), lx + w3, y, w3);
       const fy8 = addFieldPair(doc, 'Beat', beatLeaf(data.beat_id), lx + w3 * 2, y, w3);
       y = Math.max(fy6, fy7, fy8);
@@ -4275,12 +4275,12 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
   const ffw = getFullFieldWidth(doc);
   y = checkPageBreak(doc, y, 20);
   { const sec = openAutoSection(doc, 'Daily Activity Overview', y); y = sec.contentY;
-    // Row 1: Officer Name (2/5), Section (1/5), Zone (1/5), Beat (1/5)
+    // Row 1: Officer Name (2/5), Sector (1/5), Zone (1/5), Beat (1/5)
     const w5 = ffw / 5;
     const fy1 = addFieldPair(doc, 'Officer Name', data.officer_name || '', lx, y, w5 * 2);
-    const fy2 = addFieldPair(doc, 'Section', data.sector_id || '', lx + w5 * 2, y, w5);
-    const fy3 = addFieldPair(doc, 'Zone', data.zone_id || '', lx + w5 * 3, y, w5);
-    const fy4 = addFieldPair(doc, 'Beat', data.beat_id || '', lx + w5 * 4, y, w5);
+    const fy2 = addFieldPair(doc, 'Sector', sectionPrefix(data.zone_id) || data.sector_id || '', lx + w5 * 2, y, w5);
+    const fy3 = addFieldPair(doc, 'Zone', zoneLeaf(data.zone_id), lx + w5 * 3, y, w5);
+    const fy4 = addFieldPair(doc, 'Beat', beatLeaf(data.beat_id), lx + w5 * 4, y, w5);
     y = Math.max(fy1, fy2, fy3, fy4);
     // Row 2: Shift Date, Shift Start, Shift End
     const w3 = ffw / 3;
@@ -4583,9 +4583,9 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     const olFields = [
       { label: 'Officer', value: data.officer_name || '' },
       { label: 'Location', value: data.location || '' },
-      { label: 'Section ID', value: data.sector_id || '' },
-      { label: 'Zone ID', value: data.zone_id || '' },
-      { label: 'Beat ID', value: data.beat_id || '' },
+      { label: 'Sector', value: sectionPrefix(data.zone_id) || data.sector_id || '' },
+      { label: 'Zone', value: zoneLeaf(data.zone_id) },
+      { label: 'Beat', value: beatLeaf(data.beat_id) },
     ];
     const olRatios = [2, 3, 1, 1, 1]; // Officer wider, Location widest, IDs narrow
     const olTotal = olRatios.reduce((a, b) => a + b, 0);
