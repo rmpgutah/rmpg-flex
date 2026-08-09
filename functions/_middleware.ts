@@ -37,10 +37,17 @@ const ALLOWED_CONNECT = [
   'https://js.arcgis.com',
   'https://*.arcgisonline.com',
   'https://api.open-meteo.com',
-  // RainViewer live weather radar overlay (Map tab) — frame index JSON only;
-  // tiles themselves load via tilecache.rainviewer.com as an <img>/raster
-  // source, already covered by the permissive img-src directive below.
+  // RainViewer live weather radar overlay (Map tab): frame index JSON.
   'https://api.rainviewer.com',
+  // RainViewer radar TILES — a DIFFERENT host from the index above. Mapbox
+  // GL v3 pulls raster tiles via fetch() (for cancellation/CORS control),
+  // which connect-src governs, not img-src — despite img-src's permissive
+  // `https:` making tiles load fine as a bare <img>. Confirmed live 2026-08-09:
+  // this host was missing here (though present in index.html's meta-tag CSP,
+  // which loses to this enforced header), so the radar control panel showed
+  // live frame data while the map painted nothing, with no console error from
+  // our own code. See client/src/utils/__tests__/mapExternalTileHosts.test.ts.
+  'https://tilecache.rainviewer.com',
   'https://basemaps.cartocdn.com',
   'https://*.basemaps.cartocdn.com',
   'https://*.cartocdn.com',
@@ -48,6 +55,9 @@ const ALLOWED_CONNECT = [
   'https://overpass-api.de',
   'https://api.fbi.gov',
   'https://photon.komoot.io',
+  // Mapillary street-level imagery lookup (client/src/utils/locationImagery.ts)
+  // — same silent-block pattern as the RainViewer tile host above.
+  'https://graph.mapillary.com',
   'https://static.cloudflareinsights.com',
   // TensorFlow.js COCO-SSD (forensic dashcam AI vehicle tracking): the ESM
   // module CDN + the model-weights origin.
