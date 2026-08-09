@@ -83,10 +83,19 @@ describe('nearestNeighborOrder', () => {
     expect(one.ordered).toHaveLength(1);
   });
 
-  it('derives duration from the distance it computed', () => {
+  it('duration is drive time PLUS a fixed per-stop dwell time (5 min/stop)', () => {
+    // Duration now includes a per-stop dwell (knock/serve/paperwork) on top of
+    // drive time, so it's no longer a pure function of totalDistanceMiles —
+    // two stops means 10 minutes of dwell added to the drive-time estimate.
     const stops = [stop(1, 40.5, -111.9), stop(2, 40.9, -111.9)];
     const r = nearestNeighborOrder(stops, null);
-    expect(r.totalDurationMinutes).toBeCloseTo(estimateDriveMinutes(r.totalDistanceMiles), 6);
+    expect(r.totalDurationMinutes).toBeCloseTo(estimateDriveMinutes(r.totalDistanceMiles) + 2 * 5, 6);
+  });
+
+  it('never flags a job with no deadline as missed', () => {
+    const stops = [stop(1, 40.5, -111.9), stop(2, 40.9, -111.9)];
+    const r = nearestNeighborOrder(stops, { lat: 40.9, lng: -111.9 }, 1_000_000_000_000);
+    expect(r.missedDeadlineJobIds).toEqual([]);
   });
 });
 

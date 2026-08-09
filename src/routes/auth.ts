@@ -19,6 +19,8 @@ import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
 import { getSecurityPolicy, validatePassword, DEFAULT_SECURITY_POLICY, type SecurityPolicy } from '../utils/securityPolicy';
+import { parseUserAgentDetails } from '../utils/userAgent';
+import { getRequestGeo } from '../utils/requestGeo';
 import {
   generateTotpSecret, verifyTotpCode, buildOtpauthUrl,
   encryptTotpSecret, decryptTotpSecret,
@@ -131,15 +133,40 @@ function signRefreshToken(secret: string, claims: Record<string, unknown>): Prom
 
 // Insert a session row using the live (legacy-owned) schema and return the new
 // session_id. is_active / created_at / last_used_at come from column defaults.
+// Device (parsed from User-Agent) and network geo (from Cloudflare's free
+// per-request `cf` object — see requestGeo.ts) are captured at session
+// creation because that's the only point either is available; ip_address and
+// user_agent alone left the admin Active Sessions view unable to show
+// anything beyond a bare IP string.
+// Sec-CH-UA-Platform arrives quoted, e.g. `"Windows"` — strip the quotes.
+// This is a LOW-entropy Client Hint most Chromium browsers send unprompted;
+// it confirms the OS family but (per Chromium's own spec) never carries a
+// hardware vendor/model — see the 0232 migration comment for why "Panasonic
+// Toughbook FZ-55" isn't obtainable this way.
+function unquoteChHeader(v: string | undefined | null): string | null {
+  if (!v) return null;
+  return v.replace(/^"|"$/g, '') || null;
+}
+
 async function createSession(c: any, db: any, userId: number, refreshToken: string, securityPolicy?: SecurityPolicy): Promise<string> {
   const sessionId = uuidv4(); // full dashed UUID → matches live session_id (36 chars)
   const refreshHash = await sha256Hex(refreshToken);
+  const ua = c.req.header('user-agent') || '';
+  const { browser, os, deviceType } = parseUserAgentDetails(ua);
+  const geo = getRequestGeo(c);
+  const platform = unquoteChHeader(c.req.header('sec-ch-ua-platform'));
+  const platformVersion = unquoteChHeader(c.req.header('sec-ch-ua-platform-version'));
   await execute(
     db,
-    `INSERT INTO sessions (session_id, user_id, refresh_token_hash, ip_address, user_agent, expires_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now', '+7 days'))`,
+    `INSERT INTO sessions (session_id, user_id, refresh_token_hash, ip_address, user_agent, expires_at,
+                           device_type, browser, os, country, region, city, postal_code, timezone, latitude, longitude, asn, isp,
+                           http_protocol, tls_version, tls_cipher, likely_vpn_or_hosting, device_platform, device_platform_version)
+     VALUES (?, ?, ?, ?, ?, datetime('now', '+7 days'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     sessionId, userId, refreshHash,
-    c.req.header('cf-connecting-ip') || '', c.req.header('user-agent') || '',
+    c.req.header('cf-connecting-ip') || '', ua,
+    deviceType, browser, os,
+    geo.country, geo.region, geo.city, geo.postalCode, geo.timezone, geo.latitude, geo.longitude, geo.asn, geo.isp,
+    geo.httpProtocol, geo.tlsVersion, geo.tlsCipher, geo.likelyVpnOrHosting ? 1 : 0, platform, platformVersion,
   );
 
   // Enforce Security Policy → "Max Active Sessions". 0 means unenforced
@@ -194,6 +221,7 @@ function userPayload(user: any) {
 // so it joins to users.username exactly the way the dashboard queries expect;
 // failed attempts for unknown usernames are kept on purpose as probe intel.
 async function recordLoginAttempt(
+  c: any,
   db: any,
   username: unknown,
   ip: string,
@@ -201,14 +229,25 @@ async function recordLoginAttempt(
   failureReason: string | null,
 ): Promise<void> {
   try {
+    const ua = c.req.header('user-agent') || '';
+    const { browser, os, deviceType } = parseUserAgentDetails(ua);
+    const geo = getRequestGeo(c);
+    const platform = unquoteChHeader(c.req.header('sec-ch-ua-platform'));
+    const platformVersion = unquoteChHeader(c.req.header('sec-ch-ua-platform-version'));
     await execute(
       db,
-      `INSERT INTO login_attempts (username, ip_address, success, failure_reason)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO login_attempts (username, ip_address, success, failure_reason,
+                                    user_agent, device_type, browser, os,
+                                    country, region, city, postal_code, timezone, latitude, longitude, asn, isp,
+                                    http_protocol, tls_version, tls_cipher, likely_vpn_or_hosting, device_platform, device_platform_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       String(username ?? '').slice(0, 255),
       ip || null,
       success ? 1 : 0,
       success ? null : failureReason,
+      ua, deviceType, browser, os,
+      geo.country, geo.region, geo.city, geo.postalCode, geo.timezone, geo.latitude, geo.longitude, geo.asn, geo.isp,
+      geo.httpProtocol, geo.tlsVersion, geo.tlsCipher, geo.likelyVpnOrHosting ? 1 : 0, platform, platformVersion,
     );
   } catch { /* non-critical — never fail a login on an audit-write error */ }
 }
@@ -231,7 +270,7 @@ auth.post('/login', async (c) => {
       rateLimitAllow(c.env.KV, `login:user:${uname}`, 10, 300),
     ]);
     if (!ipOk || !userOk) {
-      await recordLoginAttempt(getDb(c.env), username, ip, false, 'rate_limited');
+      await recordLoginAttempt(c, getDb(c.env), username, ip, false, 'rate_limited');
       return c.json({ error: 'Too many login attempts. Try again in a few minutes.', code: 'RATE_LIMITED' }, 429);
     }
 
@@ -248,12 +287,12 @@ auth.post('/login', async (c) => {
     );
 
     if (!user) {
-      await recordLoginAttempt(db, username, ip, false, 'user_not_found');
+      await recordLoginAttempt(c, db, username, ip, false, 'user_not_found');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
 
     if (user.is_locked) {
-      await recordLoginAttempt(db, username, ip, false, 'account_locked');
+      await recordLoginAttempt(c, db, username, ip, false, 'account_locked');
       const minutes = Math.max(1, Math.ceil((user.lock_retry_seconds ?? 0) / 60));
       return c.json({
         error: `Account locked due to repeated failed attempts. Try again in ${minutes} minutes.`,
@@ -263,13 +302,13 @@ auth.post('/login', async (c) => {
     }
 
     if (user.status !== 'active') {
-      await recordLoginAttempt(db, username, ip, false, 'account_inactive');
+      await recordLoginAttempt(c, db, username, ip, false, 'account_inactive');
       return c.json({ error: 'Account is inactive', code: 'ACCOUNT_INACTIVE' }, 403);
     }
 
     if (!user.password_hash || !user.password_hash.startsWith('$2')) {
       console.error(`[auth] User "${username}" has an invalid password_hash (not a bcrypt hash). Use /api/auth/recover-all to reset.`);
-      await recordLoginAttempt(db, username, ip, false, 'invalid_hash');
+      await recordLoginAttempt(c, db, username, ip, false, 'invalid_hash');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
 
@@ -294,14 +333,14 @@ auth.post('/login', async (c) => {
       ).catch(() => null);
 
       if (updated?.locked_until) {
-        await recordLoginAttempt(db, username, ip, false, 'account_locked');
+        await recordLoginAttempt(c, db, username, ip, false, 'account_locked');
         return c.json({
           error: `Account locked due to repeated failed attempts. Try again in ${securityPolicy.lockoutDurationMinutes} minutes.`,
           code: 'ACCOUNT_LOCKED',
           retry_after_seconds: securityPolicy.lockoutDurationMinutes * 60,
         }, 403);
       }
-      await recordLoginAttempt(db, username, ip, false, 'invalid_password');
+      await recordLoginAttempt(c, db, username, ip, false, 'invalid_password');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
 
@@ -378,7 +417,7 @@ auth.post('/login', async (c) => {
       );
     } catch { /* non-critical */ }
 
-    await recordLoginAttempt(db, user.username, ip, true, null);
+    await recordLoginAttempt(c, db, user.username, ip, true, null);
 
     return c.json({
       token: accessToken,
@@ -448,7 +487,7 @@ export async function mintLoginTokens(c: any, db: any, user: any) {
     );
   } catch { /* non-fatal */ }
   const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
-  await recordLoginAttempt(db, user.username, ip, true, null);
+  await recordLoginAttempt(c, db, user.username, ip, true, null);
   return {
     token: accessToken,
     refreshToken,
@@ -610,6 +649,41 @@ auth.post('/logout', authMiddleware, async (c) => {
     }
   } catch { /* logout is best-effort — never block the client from clearing local state */ }
   return c.json({ message: 'Logged out' });
+});
+
+// POST /auth/session/device-location — best-effort device GPS attach.
+// Distinct from the IP-derived latitude/longitude captured at login
+// (Cloudflare's edge estimate of where the connecting IP is): this is the
+// browser's own navigator.geolocation reading, which the client only ever
+// sends after the browser's OWN permission prompt — this endpoint cannot
+// be used to silently geolocate anyone, since the browser gates it. Client
+// call is fire-and-forget post-login (see AuthContext) and never blocks or
+// retries login itself. Scoped to the CALLING session only, resolved from
+// the access token's own sessionId claim — a user can't stamp coordinates
+// onto a different session by guessing its id.
+auth.post('/session/device-location', authMiddleware, async (c) => {
+  const sessionId = c.get('sessionId');
+  if (!sessionId) return c.json({ error: 'No session bound to this token' }, 400);
+  try {
+    const body = await c.req.json<{ latitude?: number; longitude?: number; accuracyMeters?: number }>();
+    const lat = typeof body.latitude === 'number' ? body.latitude : null;
+    const lng = typeof body.longitude === 'number' ? body.longitude : null;
+    if (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng)) {
+      return c.json({ error: 'latitude and longitude are required' }, 400);
+    }
+    const db = getDb(c.env);
+    await execute(db,
+      `UPDATE sessions SET device_latitude = ?, device_longitude = ?, device_geo_accuracy_m = ?,
+              device_geo_captured_at = datetime('now')
+       WHERE session_id = ? AND user_id = ?`,
+      String(lat), String(lng),
+      typeof body.accuracyMeters === 'number' ? String(body.accuracyMeters) : null,
+      sessionId, c.get('userId'));
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[auth] POST session/device-location failed:', err);
+    return c.json({ error: 'Failed to record device location' }, 500);
+  }
 });
 
 auth.get('/me', authMiddleware, async (c) => {
@@ -1315,26 +1389,106 @@ auth.get('/security/status', async (c) => {
   }
 });
 
-// GET /api/auth/security/recent-threats — recent failed logins.
+// GET /api/auth/security/recent-threats — failed logins PLUS two
+// geo-derived threat types that only became possible once migration 0231
+// gave login_attempts real country/city/isp columns:
+//   • impossible_travel: the same username logged in successfully from two
+//     different countries within a window too short to physically travel
+//     between them (a strong compromised-credential signal — the classic
+//     "your account was accessed from a new location" alert every major SSO
+//     provider ships).
+//   • new_country_login: a successful login from a country that user's
+//     prior 90 days of successful logins never came from. Noisier than
+//     impossible travel (a real trip triggers it) but still worth surfacing
+//     — it's an admin dashboard, not an auto-block.
 auth.get('/security/recent-threats', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db,
-      "SELECT id, 'failed_login' AS type, username, ip_address AS ip, failure_reason AS reason, created_at AS timestamp FROM login_attempts WHERE COALESCE(success,0) = 0 ORDER BY created_at DESC LIMIT 50");
-    return c.json({ data: rows || [] });
-  } catch {
+    const failedLogins = await query<Record<string, unknown>>(db,
+      `SELECT id, 'failed_login' AS type, username, ip_address AS ip, failure_reason AS reason,
+              created_at AS timestamp, device_type, browser, os, country, region, city, isp, likely_vpn_or_hosting
+         FROM login_attempts WHERE COALESCE(success,0) = 0 ORDER BY created_at DESC LIMIT 50`);
+
+    // Self-join successes to their immediately-prior success for the same
+    // username, only where both sides have a country and the countries
+    // differ, within a 4-hour window (generous — a same-day domestic flight
+    // between distant cities is plausible; a country change inside 4 hours
+    // is not for anyone actually present at both logins).
+    const impossibleTravel = await query<Record<string, unknown>>(db,
+      `SELECT cur.id, 'impossible_travel' AS type, cur.username,
+              cur.ip_address AS ip, cur.created_at AS timestamp,
+              cur.device_type, cur.browser, cur.os,
+              cur.country, cur.city, cur.isp, cur.likely_vpn_or_hosting,
+              prev.country AS prev_country, prev.city AS prev_city, prev.created_at AS prev_timestamp,
+              CAST((julianday(cur.created_at) - julianday(prev.created_at)) * 1440 AS INTEGER) AS minutes_between
+         FROM login_attempts cur
+         JOIN login_attempts prev ON prev.username = cur.username
+           AND prev.id = (
+             SELECT id FROM login_attempts p2
+              WHERE p2.username = cur.username AND COALESCE(p2.success,0) = 1 AND p2.id < cur.id
+              ORDER BY p2.id DESC LIMIT 1
+           )
+        WHERE COALESCE(cur.success,0) = 1
+          AND cur.country IS NOT NULL AND prev.country IS NOT NULL
+          AND cur.country != prev.country
+          AND cur.created_at >= datetime('now', '-7 days')
+          AND (julianday(cur.created_at) - julianday(prev.created_at)) * 1440 < 240
+        ORDER BY cur.created_at DESC LIMIT 25`);
+
+    // New-country logins: successful login from a country not seen in that
+    // user's successful logins over the preceding 90 days (excluding itself).
+    const newCountryLogins = await query<Record<string, unknown>>(db,
+      `SELECT cur.id, 'new_country_login' AS type, cur.username,
+              cur.ip_address AS ip, cur.created_at AS timestamp,
+              cur.device_type, cur.browser, cur.os, cur.country, cur.city, cur.isp, cur.likely_vpn_or_hosting
+         FROM login_attempts cur
+        WHERE COALESCE(cur.success,0) = 1
+          AND cur.country IS NOT NULL
+          AND cur.created_at >= datetime('now', '-7 days')
+          AND NOT EXISTS (
+            SELECT 1 FROM login_attempts prior
+             WHERE prior.username = cur.username AND COALESCE(prior.success,0) = 1
+               AND prior.country = cur.country AND prior.id < cur.id
+               AND prior.created_at >= datetime(cur.created_at, '-90 days')
+          )
+          -- Exclude a user's very first-ever successful login — everyone's
+          -- first login is definitionally a "new" country and would
+          -- otherwise flag 100% of new accounts.
+          AND EXISTS (
+            SELECT 1 FROM login_attempts prior2
+             WHERE prior2.username = cur.username AND COALESCE(prior2.success,0) = 1 AND prior2.id < cur.id
+          )
+        ORDER BY cur.created_at DESC LIMIT 25`);
+
+    const data = [...(failedLogins || []), ...(impossibleTravel || []), ...(newCountryLogins || [])]
+      .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
+    return c.json({ data });
+  } catch (err) {
+    console.error('[auth] GET security/recent-threats failed:', err);
     return c.json({ data: [] });
   }
 });
 
-// GET /api/auth/security/blocked-ips — IPs with repeated failures (>=5/24h).
+// GET /api/auth/security/blocked-ips — IPs with repeated failures (>=5/24h),
+// now with the geo/device fingerprint of the most recent failed attempt from
+// that IP so an admin can tell "5 failed logins from a residential ISP in
+// the same city as the user" (probably a lockout, not an attack) apart from
+// "5 failed logins from a datacenter ASN on another continent."
 auth.get('/security/blocked-ips', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
-      "SELECT ip_address, COUNT(*) AS failed_attempts, MAX(created_at) AS last_attempt FROM login_attempts WHERE COALESCE(success,0) = 0 AND ip_address IS NOT NULL AND created_at >= datetime('now','-1 day') GROUP BY ip_address HAVING COUNT(*) >= 5 ORDER BY failed_attempts DESC LIMIT 100");
+      `SELECT la.ip_address, COUNT(*) AS failed_attempts, MAX(la.created_at) AS last_attempt,
+              (SELECT country FROM login_attempts WHERE ip_address = la.ip_address AND COALESCE(success,0)=0 ORDER BY id DESC LIMIT 1) AS country,
+              (SELECT city FROM login_attempts WHERE ip_address = la.ip_address AND COALESCE(success,0)=0 ORDER BY id DESC LIMIT 1) AS city,
+              (SELECT isp FROM login_attempts WHERE ip_address = la.ip_address AND COALESCE(success,0)=0 ORDER BY id DESC LIMIT 1) AS isp,
+              (SELECT GROUP_CONCAT(DISTINCT username) FROM login_attempts WHERE ip_address = la.ip_address AND COALESCE(success,0)=0 AND created_at >= datetime('now','-1 day')) AS usernames_tried
+         FROM login_attempts la
+        WHERE COALESCE(la.success,0) = 0 AND la.ip_address IS NOT NULL AND la.created_at >= datetime('now','-1 day')
+        GROUP BY la.ip_address HAVING COUNT(*) >= 5 ORDER BY failed_attempts DESC LIMIT 100`);
     return c.json({ data: rows || [] });
-  } catch {
+  } catch (err) {
+    console.error('[auth] GET security/blocked-ips failed:', err);
     return c.json({ data: [] });
   }
 });
@@ -1343,10 +1497,13 @@ auth.get('/security/blocked-ips', async (c) => {
 // live login_attempts table (this path was proxy-stubbed empty for months).
 // UNION SHAPE for two consumers:
 //   • LoginHistoryTable (ProfilePage) reads entries + total — the CALLER's own
-//     attempts, paginated. live table has no user_agent/device_fingerprint
-//     columns, so those return '' (the device parser tolerates empty).
+//     attempts, paginated.
 //   • SecurityDashboardPage reads data — org-wide recent attempts for
 //     admin/manager/supervisor, else the caller's own.
+// device_type/browser/os/country/region/city/isp are real columns as of
+// migration 0231 (recordLoginAttempt populates them via requestGeo.ts +
+// userAgent.ts) — this used to hardcode `'' AS user_agent` because neither
+// the column nor the capture existed yet.
 auth.get('/security/login-history', async (c) => {
   const empty = { entries: [], total: 0, data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 15 } };
   try {
@@ -1357,8 +1514,14 @@ auth.get('/security/login-history', async (c) => {
     const me = await queryFirst<{ username: string; role: string }>(db, 'SELECT username, role FROM users WHERE id = ?', userId);
     if (!me) return c.json(empty);
 
+    const DETAIL_COLUMNS = [
+      'user_agent', 'device_type', 'browser', 'os',
+      'country', 'region', 'city', 'postal_code', 'timezone', 'asn', 'isp',
+      'http_protocol', 'tls_version', 'likely_vpn_or_hosting', 'device_platform', 'device_platform_version',
+    ];
+
     const mine = await query<Record<string, unknown>>(db,
-      `SELECT id, ip_address, '' AS user_agent, '' AS device_fingerprint,
+      `SELECT id, ip_address, ${DETAIL_COLUMNS.join(', ')}, '' AS device_fingerprint,
               COALESCE(success,0) AS success, failure_reason, created_at
        FROM login_attempts WHERE username = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       me.username, limit, offset);
@@ -1367,7 +1530,7 @@ auth.get('/security/login-history', async (c) => {
 
     const orgWide = ['admin', 'manager', 'supervisor'].includes(me.role);
     const data = await query<Record<string, unknown>>(db,
-      `SELECT la.id, u.id AS user_id, la.ip_address, '' AS user_agent,
+      `SELECT la.id, u.id AS user_id, la.ip_address, ${DETAIL_COLUMNS.map(col => `la.${col}`).join(', ')},
               COALESCE(la.success,0) AS success, la.failure_reason AS reason,
               la.created_at, COALESCE(u.full_name, la.username) AS full_name
        FROM login_attempts la LEFT JOIN users u ON u.username = la.username
@@ -1406,7 +1569,10 @@ auth.get('/security/event-timeline', async (c) => {
     const db = getDb(c.env);
     const limit = Math.min(500, Math.max(1, parseInt(c.req.query('limit') || '100', 10) || 100));
     const rows = await query<Record<string, unknown>>(db,
-      "SELECT id, CASE WHEN COALESCE(success,0)=1 THEN 'login' ELSE 'failed_login' END AS event, username, ip_address AS ip, failure_reason AS reason, created_at AS timestamp FROM login_attempts ORDER BY created_at DESC LIMIT ?", limit);
+      `SELECT id, CASE WHEN COALESCE(success,0)=1 THEN 'login' ELSE 'failed_login' END AS event,
+              username, ip_address AS ip, failure_reason AS reason, created_at AS timestamp,
+              device_type, browser, os, country, region, city, isp, likely_vpn_or_hosting
+         FROM login_attempts ORDER BY created_at DESC LIMIT ?`, limit);
     return c.json({ data: rows || [] });
   } catch {
     return c.json({ data: [] });

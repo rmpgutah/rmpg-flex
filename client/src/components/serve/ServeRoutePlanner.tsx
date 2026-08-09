@@ -166,8 +166,27 @@ export function estimateDriveMinutes(distanceMiles: number): number {
   return (distanceMiles * ROAD_WINDING_FACTOR / URBAN_AVG_MPH) * 60;
 }
 
-/** Greedy nearest-neighbor reorder from an optional origin. Returns the
- *  reordered stops plus the total straight-line distance/time estimate.
+// ─── Deadline-Aware Ordering ─────────────────────────────────────────────
+// Extends the plain nearest-neighbor pass with a simulated clock: as the
+// route is built, elapsed time advances by estimated drive time plus a
+// fixed per-stop dwell (knock/serve/paperwork). A stop whose deadline sits
+// within DEADLINE_URGENCY_BUFFER_MS of its estimated arrival — or is already
+// past it — jumps the queue ahead of purely-nearest candidates, breaking
+// ties by earliest deadline. This is a greedy heuristic, NOT a proven-optimal
+// solver (distance + deadline routing is a variant of TSP with time windows,
+// which is NP-hard in general) — it will find a feasible ordering for
+// reasonably-spaced deadlines and flag genuine infeasibility via
+// missedDeadlineJobIds, but it does not guarantee a globally optimal route.
+const DEADLINE_URGENCY_BUFFER_MS = 60 * 60 * 1000; // 60 minutes
+const STOP_DWELL_MS = 5 * 60 * 1000; // 5 minutes — knock, serve, paperwork
+
+/** Greedy nearest-neighbor reorder from an optional origin, biased toward
+ *  approaching deadlines. Returns the reordered stops, the total
+ *  straight-line distance/time estimate (time now includes per-stop dwell),
+ *  any job ids whose deadline is unavoidably missed given everything
+ *  scheduled ahead of them, and the simulated clock time after the last
+ *  stop (so callers building a route across multiple legs — e.g. one
+ *  Directions cluster after another — can carry the clock forward).
  *
  *  With NO origin, every candidate scores distance 0 on the first iteration, so
  *  the first stop is whatever came first in the input and the chain is
@@ -178,29 +197,54 @@ export function estimateDriveMinutes(distanceMiles: number): number {
 export function nearestNeighborOrder(
   selected: StopItem[],
   origin: { lat: number; lng: number } | null,
-): { ordered: StopItem[]; totalDistanceMiles: number; totalDurationMinutes: number } {
+  startTimeMs: number = Date.now(),
+): {
+  ordered: StopItem[];
+  totalDistanceMiles: number;
+  totalDurationMinutes: number;
+  missedDeadlineJobIds: number[];
+  finalElapsedMs: number;
+} {
   const remaining = [...selected];
   const ordered: StopItem[] = [];
   let cursor = origin;
   let totalDistanceMiles = 0;
+  let elapsedMs = startTimeMs;
+  const missedDeadlineJobIds: number[] = [];
 
   while (remaining.length > 0) {
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    for (let i = 0; i < remaining.length; i++) {
-      const s = remaining[i];
-      const d = cursor
+    const candidates = remaining.map((s, idx) => {
+      const distanceMiles = cursor
         ? haversineMiles(cursor.lat, cursor.lng, s.job.recipient_lat!, s.job.recipient_lng!)
         : 0;
-      if (d < bestDist) { bestDist = d; bestIdx = i; }
+      const arrivalMs = elapsedMs + estimateDriveMinutes(distanceMiles) * 60_000;
+      const deadlineMs = s.job.deadline ? new Date(s.job.deadline).getTime() : NaN;
+      return { idx, distanceMiles, arrivalMs, deadlineMs: Number.isNaN(deadlineMs) ? null : deadlineMs };
+    });
+
+    const urgent = candidates.filter(c => c.deadlineMs != null && (c.deadlineMs - c.arrivalMs) <= DEADLINE_URGENCY_BUFFER_MS);
+    const chosen = urgent.length > 0
+      ? urgent.reduce((best, c) => c.deadlineMs! < best.deadlineMs! ? c : best)
+      : candidates.reduce((best, c) => c.distanceMiles < best.distanceMiles ? c : best);
+
+    if (chosen.deadlineMs != null && chosen.arrivalMs > chosen.deadlineMs) {
+      missedDeadlineJobIds.push(remaining[chosen.idx].job.id);
     }
-    const [next] = remaining.splice(bestIdx, 1);
-    if (cursor) totalDistanceMiles += bestDist;
+
+    const [next] = remaining.splice(chosen.idx, 1);
+    if (cursor) totalDistanceMiles += chosen.distanceMiles;
     cursor = { lat: next.job.recipient_lat!, lng: next.job.recipient_lng! };
+    elapsedMs = chosen.arrivalMs + STOP_DWELL_MS;
     ordered.push(next);
   }
 
-  return { ordered, totalDistanceMiles, totalDurationMinutes: estimateDriveMinutes(totalDistanceMiles) };
+  return {
+    ordered,
+    totalDistanceMiles,
+    totalDurationMinutes: (elapsedMs - startTimeMs) / 60_000,
+    missedDeadlineJobIds,
+    finalElapsedMs: elapsedMs,
+  };
 }
 
 // ─── Initial Selection ──────────────────────────────────────────────────
@@ -236,6 +280,21 @@ export function isJobPreselected(
 ): boolean {
   if (preselectedJobIds && preselectedJobIds.size > 0) return preselectedJobIds.has(jobId);
   return jobStatus !== 'served' && jobStatus !== 'failed';
+}
+
+/** Turns nearestNeighborOrder's missedDeadlineJobIds into a single warning
+ *  sentence naming the affected recipients, or null when nothing is missed.
+ *  Deduped and looked up against `stops` since the same job id can appear in
+ *  more than one nearestNeighborOrder call (e.g. a cluster's primary
+ *  ordering pass and its degraded-fallback re-estimate). */
+export function describeMissedDeadlines(missedDeadlineJobIds: number[], stops: StopItem[]): string | null {
+  if (missedDeadlineJobIds.length === 0) return null;
+  const uniqueIds = [...new Set(missedDeadlineJobIds)];
+  const names = uniqueIds
+    .map(id => stops.find(s => s.job.id === id)?.job.recipient_name)
+    .filter((n): n is string => !!n);
+  if (names.length === 0) return null;
+  return `${names.length} stop${names.length === 1 ? '' : 's'} may miss their deadline: ${names.join(', ')}.`;
 }
 
 // ─── Badge Components ───────────────────────────────────────────────────
@@ -588,7 +647,7 @@ export default function ServeRoutePlanner({
     // API. Fall back to a pure client-side nearest-neighbor estimate so
     // officers still get a usable (if less precise) route order.
     if (!mapReady || !mapRef.current) {
-      const { ordered, totalDistanceMiles, totalDurationMinutes } = nearestNeighborOrder(selected, routeOrigin);
+      const { ordered, totalDistanceMiles, totalDurationMinutes, missedDeadlineJobIds } = nearestNeighborOrder(selected, routeOrigin);
       setTotalDistance(totalDistanceMiles);
       setTotalDuration(totalDurationMinutes);
       const unselected = stops.filter(s => !s.selected);
@@ -596,7 +655,11 @@ export default function ServeRoutePlanner({
         ...ordered.map((s, i) => ({ ...s, order: i })),
         ...unselected.map((s, i) => ({ ...s, order: ordered.length + i })),
       ]);
-      setError('Map unavailable — used straight-line distance estimate instead of driving directions.');
+      const deadlineWarning = describeMissedDeadlines(missedDeadlineJobIds, selected);
+      setError(
+        'Map unavailable — used straight-line distance estimate instead of driving directions.'
+        + (deadlineWarning ? ` ${deadlineWarning}` : ''),
+      );
       setOptimizing(false);
       return;
     }
@@ -612,6 +675,16 @@ export default function ServeRoutePlanner({
       // Running position for nearest-neighbor ordering — carries from one
       // cluster's last stop into the next, same as the offline fallback.
       let runningPosition: { lat: number; lng: number } | null = routeOrigin;
+      // Simulated clock, carried the same way as runningPosition. The
+      // Directions API doesn't give us a clean per-stop arrival timestamp to
+      // reconcile against (it returns aggregate leg distances/durations, not
+      // a timestamp per waypoint), so deadline risk is judged against this
+      // straight-line simulation throughout — even once a cluster's actual
+      // driving distance/duration is known from Directions. That's a known
+      // approximation, consistent with the fact that the ordering DECISION
+      // for each cluster already happens before Directions is ever called.
+      let runningElapsedMs = Date.now();
+      const allMissedDeadlineJobIds: number[] = [];
 
       for (let ci = 0; ci < clusters.length; ci++) {
         const isFirstCluster = ci === 0;
@@ -623,8 +696,17 @@ export default function ServeRoutePlanner({
         // Nearest-neighbor-order each cluster first (mirrors the offline
         // fallback below) so the Directions call — and the resulting stop
         // list — actually reflects an optimized route.
-        const { ordered: orderedCluster } = nearestNeighborOrder(clusters[ci], runningPosition);
+        // Held apart from the outer `runningElapsedMs` (mirroring how
+        // `runningPosition` isn't reassigned until after this cluster's
+        // branch resolves below) — the degraded-fallback re-estimate a few
+        // lines down replays this SAME cluster from the SAME starting clock,
+        // and advancing the outer variable here first would double-count
+        // that cluster's elapsed time into it.
+        const clusterStartElapsedMs = runningElapsedMs;
+        const { ordered: orderedCluster, missedDeadlineJobIds: clusterMissed, finalElapsedMs: primaryFinalElapsedMs } =
+          nearestNeighborOrder(clusters[ci], runningPosition, clusterStartElapsedMs);
         const cluster = orderedCluster;
+        allMissedDeadlineJobIds.push(...clusterMissed);
 
         const origin = isFirstCluster && routeOrigin
           ? [routeOrigin.lng, routeOrigin.lat] as [number, number]
@@ -671,11 +753,13 @@ export default function ServeRoutePlanner({
 
         if (!route) {
           degradedClusters++;
-          const est = nearestNeighborOrder(cluster, runningPosition);
+          const est = nearestNeighborOrder(cluster, runningPosition, clusterStartElapsedMs);
+          allMissedDeadlineJobIds.push(...est.missedDeadlineJobIds);
           totalDistM += est.totalDistanceMiles / 0.000621371;
           totalDurS += est.totalDurationMinutes * 60;
           allOrderedStops.push(...cluster);
           runningPosition = { lat: destStop.job.recipient_lat!, lng: destStop.job.recipient_lng! };
+          runningElapsedMs = est.finalElapsedMs;
           continue;
         }
 
@@ -687,6 +771,7 @@ export default function ServeRoutePlanner({
 
         allOrderedStops.push(...cluster);
         runningPosition = { lat: destStop.job.recipient_lat!, lng: destStop.job.recipient_lng! };
+        runningElapsedMs = primaryFinalElapsedMs;
       }
 
       // Render route on map
@@ -723,11 +808,15 @@ export default function ServeRoutePlanner({
 
       // Never report a partly-estimated route as if it were fully routed —
       // the distance drives the mileage figure the officer bills against.
-      if (degradedClusters > 0) {
-        setError(
-          `${degradedClusters} of ${clusters.length} route segments used a straight-line estimate `
-          + '— driving directions were unavailable for those stops.',
-        );
+      // Similarly, a route that can't fit every deadline must say so rather
+      // than hand the officer a plausible-looking run that quietly blows one.
+      const degradedWarning = degradedClusters > 0
+        ? `${degradedClusters} of ${clusters.length} route segments used a straight-line estimate `
+          + '— driving directions were unavailable for those stops.'
+        : null;
+      const deadlineWarning = describeMissedDeadlines(allMissedDeadlineJobIds, newStops);
+      if (degradedWarning || deadlineWarning) {
+        setError([degradedWarning, deadlineWarning].filter(Boolean).join(' '));
       }
     } catch (err: any) {
       setError(err?.message || 'Route optimization failed');
