@@ -49,6 +49,28 @@ export interface AuditEntry {
   timestamp: string;
 }
 
+// audit_log.details is free-form — most action writers already store a
+// short human sentence, but a few (bulk imports, integration syncs) store
+// raw JSON, which used to leak straight into the Activity Log as an
+// unreadable blob. Render JSON as "key: value, key: value" instead.
+function formatActivityDetails(details: string): string {
+  if (!details) return '';
+  const trimmed = details.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return details;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return Object.entries(parsed)
+        .filter(([, v]) => v !== null && v !== undefined && v !== '')
+        .map(([k, v]) => `${toDisplayLabel(k)}: ${v}`)
+        .join(', ') || details;
+    }
+    return details;
+  } catch {
+    return details;
+  }
+}
+
 interface UserSession {
   id: number;
   user_id: number;
@@ -177,6 +199,12 @@ export default function AdminUsersTab({
   const [sqAdminQuestions, setSqAdminQuestions] = useState<string[]>([]);
   const [sqAdminLoading, setSqAdminLoading] = useState(false);
 
+  // Per-user Microsoft Graph mailbox connection status (Email Integration
+  // sub-tab) — mirrors what GET /email/connect/status shows an officer
+  // about their own account, read via an admin-scoped endpoint instead.
+  const [emailStatus, setEmailStatus] = useState<{ connected: boolean; mailbox: string | null } | null>(null);
+  const [emailStatusLoading, setEmailStatusLoading] = useState(false);
+
   // Centralized destructive-action ConfirmDialog state — replaces the four
   // window.confirm() prompts that scattered through Suspend / Reactivate /
   // Reset 2FA / Revoke Sessions. Each handler stores its title/message/
@@ -285,6 +313,24 @@ export default function AdminUsersTab({
       loadUserSecurity(selectedUser.id);
     }
   }, [selectedUser?.id, userDetailTab, loadUserSessions, loadUserSecurity]);
+
+  const loadEmailStatus = useCallback(async (userId: string) => {
+    setEmailStatusLoading(true);
+    try {
+      const status = await apiFetch<{ connected: boolean; mailbox: string | null }>(`/admin/users/${userId}/email-status`);
+      if (selectedUserIdRef.current === String(userId)) setEmailStatus(status);
+    } catch {
+      if (selectedUserIdRef.current === String(userId)) setEmailStatus(null);
+    }
+    setEmailStatusLoading(false);
+  }, []);
+
+  // Load email connection status when the Email Integration tab is opened
+  useEffect(() => {
+    if (selectedUser && userDetailTab === 'email') {
+      loadEmailStatus(selectedUser.id);
+    }
+  }, [selectedUser?.id, userDetailTab, loadEmailStatus]);
 
   const handleRevokeAllSessions = async (userId: string) => {
     setSecurityActionLoading('revoke-sessions');
@@ -1322,7 +1368,7 @@ export default function AdminUsersTab({
                           {safeDateTimeStr(entry.timestamp)}
                         </span>
                         <span className="text-brand-400 font-medium">{toDisplayLabel(entry.action)}</span>
-                        <span className="text-rmpg-300 min-w-0 flex-1 truncate">{entry.details}</span>
+                        <span className="text-rmpg-300 min-w-0 flex-1 truncate">{formatActivityDetails(entry.details)}</span>
                       </div>
                     ))}
                   </div>
@@ -1336,18 +1382,38 @@ export default function AdminUsersTab({
             {userDetailTab === 'email' && (
               <div className="panel-beveled p-3 bg-surface-base">
                 <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Microsoft 365 Business Email</h3>
-                <div className="py-8 text-center border border-dashed border-rmpg-700">
-                  <Settings className="w-8 h-8 text-rmpg-500 mx-auto mb-3" />
-                  <p className="text-sm text-rmpg-300 font-medium">Microsoft 365 Email Integration</p>
-                  <p className="text-[11px] text-rmpg-500 mt-1 max-w-sm mx-auto">
-                    Microsoft 365 integration requires Azure AD application registration and admin consent.
-                    Contact your system administrator to configure the OAuth2 app credentials for this deployment.
-                  </p>
-                  <div className="mt-3 text-[10px] text-rmpg-500 space-y-0.5">
-                    <p>Required: Azure AD App ID, Client Secret, Tenant ID</p>
-                    <p>Configure in Admin &rarr; System &rarr; Integrations</p>
+                {emailStatusLoading ? (
+                  <div className="flex items-center gap-2 text-[10px] text-fg-muted py-3">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Loading...
                   </div>
-                </div>
+                ) : emailStatus?.connected ? (
+                  <div className="py-6 text-center border border-dashed border-rmpg-700">
+                    <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-3" />
+                    <p className="text-sm text-rmpg-200 font-medium">Mailbox Connected</p>
+                    {emailStatus.mailbox && (
+                      <p className="text-[11px] text-fg-secondary mt-1">{emailStatus.mailbox}</p>
+                    )}
+                    <p className="text-[10px] text-fg-muted mt-2 max-w-sm mx-auto">
+                      This user has authorized RMPG Flex to access their Microsoft 365 mailbox for
+                      the in-app Email module. To disconnect it, the user must do so from their own
+                      Email settings — an admin cannot revoke another officer's mailbox grant here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="py-8 text-center border border-dashed border-rmpg-700">
+                    <Settings className="w-8 h-8 text-fg-muted mx-auto mb-3" />
+                    <p className="text-sm text-fg-secondary font-medium">Not Connected</p>
+                    <p className="text-[11px] text-fg-muted mt-1 max-w-sm mx-auto">
+                      This user has not connected a Microsoft 365 mailbox. They can do so from their
+                      own Email module ("Connect Mailbox"). Microsoft 365 integration requires Azure
+                      AD application registration and admin consent for this deployment.
+                    </p>
+                    <div className="mt-3 text-[10px] text-fg-muted space-y-0.5">
+                      <p>Required: Azure AD App ID, Client Secret, Tenant ID</p>
+                      <p>Configure in Admin &rarr; System &rarr; Integrations</p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

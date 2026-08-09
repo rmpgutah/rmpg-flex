@@ -699,7 +699,11 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // the new requester-only Cancel button added alongside the shift-swap
   // cancel workflow) moved off text-rmpg-400/500 onto text-fg-secondary/
   // text-fg-muted.
-  const PIN = 10514;
+  //
+  // 10514 -> 10510: AdminUsersTab.tsx's Email Integration sub-tab (real
+  // per-user Microsoft Graph connect status, replacing the old static
+  // placeholder) was built directly on text-fg-muted/text-fg-secondary.
+  const PIN = 10510;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
