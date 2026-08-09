@@ -128,9 +128,11 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [pwSaving, setPwSaving] = useState(false);
   const [pwMsg, setPwMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [pwPolicy, setPwPolicy] = useState<string[]>([]);
+  const [pwPolicyLoaded, setPwPolicyLoaded] = useState(false);
 
   // Sessions
   const [sessions, setSessions] = useState<any[]>([]);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
 
   // Digital Signature
   const [signature, setSignature] = useState<string | null>(null);
@@ -161,6 +163,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
   // Security tab state (remote)
   const [tfaStatus, setTfaStatus] = useState<{ enabled: boolean; backupCodesRemaining: number } | null>(null);
+  const [securityLoaded, setSecurityLoaded] = useState(false);
   const [regenLoading, setRegenLoading] = useState(false);
   const [regenPassword, setRegenPassword] = useState('');
   const [regenCodes, setRegenCodes] = useState<string[] | null>(null);
@@ -364,23 +367,34 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   };
 
   useEffect(() => {
-    if (isOpen && activeTab === 'password') {
+    // Quickly switching tabs (security -> password -> security, etc.) used to
+    // re-fire every one of these fetches on every visit with no cancellation,
+    // so an old in-flight response for a tab the user had already left could
+    // still land and flip that tab's state right as they switched back to
+    // it — visible as a flicker. `cancelled` lets each effect run ignore its
+    // own response once a newer run (tab switch, or unmount) has superseded
+    // it, and the *Loaded guards stop the redundant re-fetch in the first
+    // place for tabs whose data doesn't change per-visit.
+    let cancelled = false;
+
+    if (isOpen && activeTab === 'password' && !pwPolicyLoaded) {
       apiFetch<any>('/auth/password-policy')
-        .then(data => setPwPolicy(Array.isArray(data?.policy) ? data.policy : []))
+        .then(data => { if (!cancelled) { setPwPolicy(Array.isArray(data?.policy) ? data.policy : []); setPwPolicyLoaded(true); } })
         .catch((err) => { console.warn('[UserProfileModal] fetch password policy failed:', err); });
     }
-    if (isOpen && activeTab === 'sessions') {
+    if (isOpen && activeTab === 'sessions' && !sessionsLoaded) {
       apiFetch<any>('/auth/sessions')
-        .then(data => setSessions(Array.isArray(data) ? data : []))
-        .catch(() => setSessions([]));
+        .then(data => { if (!cancelled) { setSessions(Array.isArray(data) ? data : []); setSessionsLoaded(true); } })
+        .catch(() => { if (!cancelled) { setSessions([]); setSessionsLoaded(true); } });
     }
-    if (isOpen && activeTab === 'security') {
+    if (isOpen && activeTab === 'security' && !securityLoaded) {
       apiFetch<any>('/auth/2fa/status')
-        .then(data => setTfaStatus({ enabled: data.enabled, backupCodesRemaining: data.backupCodesRemaining }))
+        .then(data => { if (!cancelled) setTfaStatus({ enabled: data.enabled, backupCodesRemaining: data.backupCodesRemaining }); })
         .catch((err) => { console.warn('[UserProfileModal] fetch 2FA status failed:', err); });
       apiFetch<any>('/auth/security-questions')
-        .then(data => setSqConfigured(!!data.configured))
-        .catch((err) => { console.warn('[UserProfileModal] fetch security questions status failed:', err); setSqConfigured(null); });
+        .then(data => { if (!cancelled) setSqConfigured(!!data.configured); })
+        .catch((err) => { console.warn('[UserProfileModal] fetch security questions status failed:', err); if (!cancelled) setSqConfigured(null); })
+        .finally(() => { if (!cancelled) setSecurityLoaded(true); });
       setSecurityView('overview');
       setRegenCodes(null);
       setRegenPassword('');
@@ -393,10 +407,23 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
     }
     if (isOpen && activeTab === 'preferences' && !prefsLoaded) {
       apiFetch<UserPreferences>('/user/preferences')
-        .then(data => { setPrefs(data); setPrefsLoaded(true); })
-        .catch(() => setPrefsLoaded(true));
+        .then(data => { if (!cancelled) { setPrefs(data); setPrefsLoaded(true); } })
+        .catch(() => { if (!cancelled) setPrefsLoaded(true); });
     }
-  }, [isOpen, activeTab, prefsLoaded]);
+
+    return () => { cancelled = true; };
+  }, [isOpen, activeTab, prefsLoaded, pwPolicyLoaded, sessionsLoaded, securityLoaded]);
+
+  // Reset the per-visit *Loaded guards when the modal closes, so reopening
+  // it (e.g. for a different admin action) fetches fresh data instead of
+  // reusing a stale snapshot from the last time it was open.
+  useEffect(() => {
+    if (!isOpen) {
+      setPwPolicyLoaded(false);
+      setSessionsLoaded(false);
+      setSecurityLoaded(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen || !user) return null;
 
