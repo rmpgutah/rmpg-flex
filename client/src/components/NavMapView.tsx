@@ -179,6 +179,7 @@ export default function NavMapView({
           style: initialUrl,
           center: initialCenter,
           zoom: DEFAULT_ZOOM,
+          projection: 'mercator',
           attributionControl: false,
           // 2D-only — no pitch, no rotation, no 3D. The NavPage mini-map is for
           // glanceable position + breadcrumb, not a chase cam.
@@ -481,6 +482,7 @@ export default function NavMapView({
         style: insetUrl,
         center,
         zoom: 16,
+        projection: 'mercator',
         pitch: 60, // 3D look-ahead
         bearing: 0,
         attributionControl: false,

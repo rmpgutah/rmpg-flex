@@ -40,6 +40,7 @@ export default function IntelMapPage() {
       const map = new mapboxgl.Map({
         container: ref.current!, style: MAPBOX_STYLE_DARK,
         center: [-111.891, 40.7608], zoom: 11,
+        projection: 'mercator',
       });
       mapRef.current = map;
       registerMapInstance(map);
