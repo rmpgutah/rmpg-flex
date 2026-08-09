@@ -1077,6 +1077,7 @@ function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
           style: 'mapbox://styles/mapbox/dark-v11',
           center,
           zoom: 11,
+          projection: 'mercator',
           interactive: true,
           attributionControl: false,
           dragRotate: false,

@@ -70,6 +70,7 @@ export default function DashboardMiniMap() {
           style: 'mapbox://styles/mapbox/dark-v11',
           center: DEFAULT_CENTER,
           zoom: DEFAULT_ZOOM,
+          projection: 'mercator',
           interactive: true,
           attributionControl: false,
           dragRotate: false,
