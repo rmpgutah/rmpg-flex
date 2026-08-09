@@ -330,6 +330,28 @@ describe('call popup priority color', () => {
   });
 });
 
+describe('buildCallPopupHtml assigned-unit ETA/distance rows', () => {
+  const now = new Date('2026-08-09T12:14:32Z').getTime();
+
+  it('shows ETA and DISTANCE rows when an assigned unit with en-route data is passed', () => {
+    const html = buildCallPopupHtml(call, false, now, {
+      callSign: 'D190',
+      etaLabel: formatEtaSeconds(192),
+      distanceLabel: formatDistanceMiles(1.44),
+    });
+    expect(html).toContain('D190');
+    expect(html).toContain('ETA');
+    expect(html).toContain('03:12');
+    expect(html).toContain('DISTANCE');
+    expect(html).toContain('1.4 mi');
+  });
+
+  it('omits ETA/DISTANCE rows when no assigned unit is passed', () => {
+    const html = buildCallPopupHtml(call, false, now);
+    expect(html).not.toContain('DISTANCE');
+  });
+});
+
 describe('shouldAnimateMarkerMove', () => {
   it('animates a normal short move (under the jump threshold)', () => {
     // ~100m apart — a plausible move within one ~5s poll interval.
