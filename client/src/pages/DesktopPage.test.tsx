@@ -36,7 +36,13 @@ vi.mock('../components/ToastProvider', () => ({
   useToast: () => ({ addToast: vi.fn() }),
 }));
 
+vi.mock('../utils/featureFlags', () => ({
+  isFeatureEnabled: vi.fn(() => true),
+  useFeatureFlags: vi.fn(() => 0),
+}));
+
 import { saveFavorites } from '../utils/navFavorites';
+import { isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden } from '../utils/desktopIconPreferences';
 import DesktopPage from './DesktopPage';
 
@@ -48,6 +54,7 @@ describe('DesktopPage', () => {
     apiFetchMock.mockResolvedValue({});
     mockUseUserPreferences.mockReset();
     mockUseUserPreferences.mockReturnValue({ prefs: mockPrefs, reload: vi.fn(), isLoading: false, error: null });
+    vi.mocked(isFeatureEnabled).mockReturnValue(true);
   });
 
   it('auto-populates the icon grid from current favorites on first load', async () => {
@@ -327,5 +334,57 @@ describe('DesktopPage — hidden icons layer', () => {
     fireEvent.contextMenu(desktopSurface);
     fireEvent.click(screen.getByText('Hide icons'));
     expect(screen.queryByText(/star modules from Module Directory/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('DesktopPage — feature-toggle gating', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    apiFetchMock.mockClear();
+    apiFetchMock.mockResolvedValue({});
+    mockUseUserPreferences.mockReset();
+    mockUseUserPreferences.mockReturnValue({ prefs: mockPrefs, reload: vi.fn(), isLoading: false, error: null });
+  });
+
+  it('excludes the Fleet Management pinned icon from allFunctions/pinnedIcons when feature_fleet is disabled', async () => {
+    vi.mocked(isFeatureEnabled).mockImplementation((path: string) => path !== '/fleet');
+    saveFavorites(new Set(['/fleet']));
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByLabelText('Open app launcher')).toBeInTheDocument());
+    expect(screen.queryByText('Fleet Management')).not.toBeInTheDocument();
+  });
+
+  it('shows the Fleet Management pinned icon when feature_fleet is enabled', async () => {
+    vi.mocked(isFeatureEnabled).mockReturnValue(true);
+    saveFavorites(new Set(['/fleet']));
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getAllByText('Fleet Management').length).toBeGreaterThan(0));
+  });
+
+  it('recomputes allFunctions/pinnedIcons and hides Fleet Management after flagsTick changes on a rerender (no prop change)', async () => {
+    let mockTick = 0;
+    vi.mocked(useFeatureFlags).mockImplementation(() => mockTick);
+    vi.mocked(isFeatureEnabled).mockReturnValue(true);
+    saveFavorites(new Set(['/fleet']));
+
+    // A fresh element on each call (not a reused reference) — passing the
+    // literal same element object to rerender() lets React bail out via
+    // referential-equality of props and never re-invoke the component at
+    // all, which would make this test pass vacuously regardless of whether
+    // flagsTick is wired correctly.
+    const renderUi = () => <MemoryRouter><DesktopPage /></MemoryRouter>;
+    const { rerender } = render(renderUi());
+    await waitFor(() => expect(screen.getAllByText('Fleet Management').length).toBeGreaterThan(0));
+
+    // Simulate a real flag reload: isFeatureEnabled's underlying data changes
+    // AND the tick increments — then rerender with IDENTICAL prop VALUES. If
+    // flagsTick were ever dropped from allFunctions's dependency array, the
+    // memoized value would stay stale and Fleet Management would still show.
+    vi.mocked(isFeatureEnabled).mockImplementation((path: string) => path !== '/fleet');
+    mockTick = 1;
+    rerender(renderUi());
+
+    await waitFor(() => expect(screen.queryByText('Fleet Management')).not.toBeInTheDocument());
   });
 });

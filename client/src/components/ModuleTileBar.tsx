@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { ChevronDown } from 'lucide-react';
+import { isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 
 // ---------- Types (mirrored from Layout.tsx, not exported there) ----------
 interface NavChild {
@@ -54,6 +55,7 @@ export default function ModuleTileBar({
 }: ModuleTileBarProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const flagsTick = useFeatureFlags();
 
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -91,9 +93,10 @@ export default function ModuleTileBar({
       if (adminOnly && !isAdmin) return false;
       if (isClientViewer && CLIENT_VIEWER_BLOCKED.has(path)) return false;
       if (isContractManager && CONTRACT_MANAGER_BLOCKED.has(path)) return false;
+      if (!isFeatureEnabled(path)) return false;
       return true;
     },
-    [isAdmin, isClientViewer, isContractManager],
+    [isAdmin, isClientViewer, isContractManager, flagsTick],
   );
 
   // --- Dropdown open / close ---

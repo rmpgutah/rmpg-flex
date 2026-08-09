@@ -130,6 +130,7 @@ import connections from './routes/connections';
 import crm from './routes/crm';
 import deepResearch from './routes/deepResearch';
 import crisisResponse from './routes/crisisResponse';
+import featureFlags from './routes/featureFlags';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import fleetio from './routes/fleetio';
@@ -456,6 +457,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Local DL store CRUD over dl_records + dl_addresses. /verify + /ocr-scan (external APIs) stay on legacy — proxy routes only the bare path + numeric :id here.' },
   { prefix: '/api/cloudflare', router: cloudflare, auth: 'required',
     note: 'Admin Cloudflare platform integration — account telemetry (D1/R2/KV/Workers) + cache purge via an ADMIN-CONFIGURED least-privilege token in system_config (cf_api_token, never hardcoded).' },
+  { prefix: '/api/feature-flags', router: featureFlags, auth: 'required' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/flexcam', router: flexcam, auth: 'required',
     note: 'Full-trip dashcam footage backing FlexCamPage/FlexCamFootagePage — the mount was described as fixed in a comment above the import but never actually landed in this array until now (2026-07-02).' },
