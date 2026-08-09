@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove, computeAccuracyRingGeometry, CALL_MARKER_INK } from '../mapMarkers';
+import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove, computeAccuracyRingGeometry, CALL_MARKER_INK, formatCallAge } from '../mapMarkers';
 import { TACTICAL_SURFACE_RAISED, TACTICAL_BRAND_GOLD, TACTICAL_TEXT_PRIMARY } from '../tacticalPalette';
 import type { MapUnit, ActiveCall } from '../mapConstants';
 import { UNIT_STATUS_COLORS } from '../mapConstants';
@@ -84,7 +84,7 @@ describe('mapMarkers', () => {
   });
 
   it('builds call popup HTML containing the call number', () => {
-    expect(buildCallPopupHtml(call)).toContain('CFS-1');
+    expect(buildCallPopupHtml(call, false, Date.now())).toContain('CFS-1');
   });
 
   // ── "PP1" regression ────────────────────────────────────────────────────
@@ -106,7 +106,7 @@ describe('mapMarkers', () => {
     }
 
     it('renders the same label in the popup', () => {
-      const html = buildCallPopupHtml({ ...call, priority: 'P1' } as unknown as ActiveCall);
+      const html = buildCallPopupHtml({ ...call, priority: 'P1' } as unknown as ActiveCall, false, Date.now());
       expect(html).toContain('>P1<');
       expect(html).not.toContain('PP1');
     });
@@ -119,6 +119,59 @@ describe('mapMarkers', () => {
       expect(square(bare).textContent).toBe(square(prefixed).textContent);
       const fill = (el: HTMLElement) => square(el).style.background;
       expect(fill(bare)).toBe(fill(prefixed));
+    });
+  });
+
+  describe('formatCallAge', () => {
+    it('formats an elapsed duration as HH:MM:SS', () => {
+      const created = '2026-08-09T12:00:00Z';
+      const now = new Date('2026-08-09T12:14:32Z').getTime();
+      expect(formatCallAge(created, now)).toBe('00:14:32');
+    });
+
+    it('formats durations over an hour with a non-zero hours segment', () => {
+      const created = '2026-08-09T10:00:00Z';
+      const now = new Date('2026-08-09T12:05:09Z').getTime();
+      expect(formatCallAge(created, now)).toBe('02:05:09');
+    });
+
+    it('returns null when created_at is missing', () => {
+      expect(formatCallAge(null, Date.now())).toBeNull();
+      expect(formatCallAge(undefined, Date.now())).toBeNull();
+    });
+
+    it('returns null when created_at does not parse', () => {
+      expect(formatCallAge('not-a-date', Date.now())).toBeNull();
+    });
+  });
+
+  describe('buildCallPopupHtml header + field table', () => {
+    const now = new Date('2026-08-09T12:14:32Z').getTime();
+    const callWithAge: ActiveCall = { ...call, created_at: '2026-08-09T12:00:00Z' };
+
+    it('shows the call-age timer under the call number when created_at is present', () => {
+      const html = buildCallPopupHtml(callWithAge, false, now);
+      expect(html).toContain('00:14:32');
+      expect(html).toContain('open');
+    });
+
+    it('omits the timer line when created_at is missing', () => {
+      const html = buildCallPopupHtml({ ...call, created_at: null }, false, now);
+      expect(html).not.toContain('open');
+    });
+
+    it('shows STATUS, BEAT, ADDRESS, and UNIT rows in a labeled field table', () => {
+      const html = buildCallPopupHtml({ ...callWithAge, beat_name: 'A-2' }, false, now);
+      expect(html).toContain('STATUS');
+      expect(html).toContain('BEAT');
+      expect(html).toContain('ADDRESS');
+      expect(html).toContain('UNIT');
+      expect(html).toContain('A-2');
+    });
+
+    it('shows an em-dash placeholder for UNIT when no unit is assigned', () => {
+      const html = buildCallPopupHtml(callWithAge, false, now);
+      expect(html).toContain('unassigned');
     });
   });
 
@@ -271,7 +324,7 @@ describe('call popup priority color', () => {
   it('uses the real priority color, not the gray fallback', () => {
     // buildCallPopupHtml had the same 'P1'-keyed lookup against a bare-number
     // priority that buildCallMarkerEl did, so it always emitted #888888.
-    const html = buildCallPopupHtml(call);
+    const html = buildCallPopupHtml(call, false, Date.now());
     expect(html).toContain(PRIORITY_HEX.P1);
     expect(html).not.toContain('#888888');
   });
