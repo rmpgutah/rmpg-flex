@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, Route, MapPin, ChevronUp, ChevronDown, CheckSquare, Square,
-  Loader2, Navigation, Clock, DollarSign, Gauge, User,
+  Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical,
 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../../utils/webglRecovery';
@@ -214,6 +214,21 @@ export function nearestNeighborOrder(
  * riding along in the optimized run would be worse than requiring one
  * extra checkbox click to add it back.
  */
+/**
+ * Splice-and-reinsert reorder, generic over the stop-list item type so it's
+ * plain-data testable without constructing a full StopItem/ServeJob. Splice
+ * (not swap) so dragging item 0 onto item 4 shifts 1-4 up by one — matching
+ * how a drag-and-drop list visually reorders — rather than just trading
+ * places with whatever sits at the drop index.
+ */
+export function reorderList<T>(list: T[], fromIdx: number, toIdx: number): T[] {
+  if (fromIdx === toIdx || fromIdx < 0 || fromIdx >= list.length || toIdx < 0 || toIdx >= list.length) return list;
+  const next = [...list];
+  const [moved] = next.splice(fromIdx, 1);
+  next.splice(toIdx, 0, moved);
+  return next;
+}
+
 export function isJobPreselected(
   jobStatus: ServeJob['status'],
   preselectedJobIds: Set<number> | undefined,
@@ -258,6 +273,8 @@ export default function ServeRoutePlanner({
   const geocodedJobs = jobs.filter(j => j.recipient_lat != null && j.recipient_lng != null);
 
   const [stops, setStops] = useState<StopItem[]>([]);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dropIdx, setDropIdx] = useState<number | null>(null);
   const [optimizing, setOptimizing] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [totalDistance, setTotalDistance] = useState(0);
@@ -533,6 +550,14 @@ export default function ServeRoutePlanner({
       [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
       return next.map((s, i) => ({ ...s, order: i }));
     });
+  }, []);
+  // Drag-and-drop reorder — mirrors the pattern already used for PDF page
+  // thumbnails (pdf-editor/components/ThumbnailSidebar.tsx): a moved stop is
+  // spliced out and reinserted at the drop index rather than swapped, so
+  // dragging stop 1 onto stop 5 shifts 2-5 up by one instead of just
+  // swapping 1 and 5 (what the up/down arrows do one step at a time).
+  const reorderStop = useCallback((fromIdx: number, toIdx: number) => {
+    setStops(prev => reorderList(prev, fromIdx, toIdx).map((s, i) => ({ ...s, order: i })));
   }, []);
 
   const clearRouteFromMap = useCallback(() => {
@@ -847,8 +872,37 @@ export default function ServeRoutePlanner({
                   )}
                 </div>
               )}
-              {stops.map((stop, idx) => (
-                <div key={stop.job.id} className={`flex items-center gap-2 px-3 py-2 border-b border-border-default transition-colors ${stop.selected ? 'bg-surface-base' : 'opacity-50'}`}>
+              {stops.map((stop, idx) => {
+                const isDragSource = dragIdx === idx;
+                const isDropTarget = dropIdx === idx && dragIdx !== null && dragIdx !== idx;
+                return (
+                <div key={stop.job.id}
+                  draggable
+                  onDragStart={(e) => {
+                    setDragIdx(idx);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', String(idx));
+                  }}
+                  onDragOver={(e) => {
+                    if (dragIdx === null || dragIdx === idx) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    setDropIdx(idx);
+                  }}
+                  onDragLeave={() => { if (dropIdx === idx) setDropIdx(null); }}
+                  onDrop={(e) => {
+                    if (dragIdx === null) return;
+                    e.preventDefault();
+                    if (dragIdx !== idx) reorderStop(dragIdx, idx);
+                    setDragIdx(null);
+                    setDropIdx(null);
+                  }}
+                  onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
+                  className={`flex items-center gap-2 px-3 py-2 border-b transition-colors cursor-grab active:cursor-grabbing ${
+                    isDropTarget ? 'border-b-brand-400 border-dashed bg-brand-400/10'
+                    : 'border-border-default'
+                  } ${stop.selected ? 'bg-surface-base' : 'opacity-50'} ${isDragSource ? 'opacity-30' : ''}`}>
+                  <GripVertical size={12} className="text-fg-muted flex-shrink-0" aria-hidden="true" />
                   <button type="button" onClick={() => toggleStop(idx)} className="flex-shrink-0 p-0.5">
                     {stop.selected ? <CheckSquare size={16} className="text-brand-400" /> : <Square size={16} className="text-fg-muted" />}
                   </button>
@@ -861,16 +915,17 @@ export default function ServeRoutePlanner({
                     <PriorityBadge p={stop.job.priority} />
                     <TimeWindowBadge tw={stop.job.time_window} />
                     <div className="flex flex-col gap-0.5 ml-1">
-                      <button type="button" onClick={() => moveStop(idx, -1)} disabled={idx === 0} className="text-fg-muted hover:text-rmpg-100 disabled:opacity-30">
+                      <button type="button" onClick={() => moveStop(idx, -1)} disabled={idx === 0} className="text-fg-muted hover:text-rmpg-100 disabled:opacity-30" aria-label="Move stop up">
                         <ChevronUp size={10} />
                       </button>
-                      <button type="button" onClick={() => moveStop(idx, 1)} disabled={idx === stops.length - 1} className="text-fg-muted hover:text-rmpg-100 disabled:opacity-30">
+                      <button type="button" onClick={() => moveStop(idx, 1)} disabled={idx === stops.length - 1} className="text-fg-muted hover:text-rmpg-100 disabled:opacity-30" aria-label="Move stop down">
                         <ChevronDown size={10} />
                       </button>
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="px-4 py-3 border-t border-rmpg-700 bg-surface-sunken space-y-2">

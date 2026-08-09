@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { haversineMiles, estimateDriveMinutes, nearestNeighborOrder, isJobPreselected } from './ServeRoutePlanner';
+import { haversineMiles, estimateDriveMinutes, nearestNeighborOrder, isJobPreselected, reorderList } from './ServeRoutePlanner';
 
 function stop(id: number, lat: number, lng: number) {
   return {
@@ -81,5 +81,33 @@ describe('isJobPreselected', () => {
     // Job 3 would default to UNselected by status (served), but IS in the set —
     // the officer explicitly staged it, so membership wins.
     expect(isJobPreselected('served', preselected, 3)).toBe(true);
+  });
+});
+
+describe('reorderList', () => {
+  it('moves an item forward, shifting the items in between back by one', () => {
+    expect(reorderList(['a', 'b', 'c', 'd', 'e'], 0, 3)).toEqual(['b', 'c', 'd', 'a', 'e']);
+  });
+
+  it('moves an item backward, shifting the items in between forward by one', () => {
+    expect(reorderList(['a', 'b', 'c', 'd', 'e'], 4, 1)).toEqual(['a', 'e', 'b', 'c', 'd']);
+  });
+
+  it('is a no-op when fromIdx equals toIdx', () => {
+    const list = ['a', 'b', 'c'];
+    expect(reorderList(list, 1, 1)).toBe(list);
+  });
+
+  it('is a no-op for an out-of-range index instead of throwing or corrupting the list', () => {
+    const list = ['a', 'b', 'c'];
+    expect(reorderList(list, -1, 1)).toBe(list);
+    expect(reorderList(list, 1, 5)).toBe(list);
+  });
+
+  it('does not mutate the input array', () => {
+    const list = ['a', 'b', 'c'];
+    const result = reorderList(list, 0, 2);
+    expect(list).toEqual(['a', 'b', 'c']);
+    expect(result).not.toBe(list);
   });
 });
