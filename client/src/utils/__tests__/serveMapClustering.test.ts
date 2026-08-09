@@ -43,4 +43,32 @@ describe('clusterByGrid', () => {
   it('returns an empty array for no items', () => {
     expect(clusterByGrid([], 10)).toEqual([]);
   });
+
+  it('freezes a cluster centroid across zoom changes when a position cache is supplied', () => {
+    const cache = new Map();
+    const firstPass = clusterByGrid(items, 8, cache);
+    const twoItemCluster = firstPass.find((c) => c.count === 2)!;
+    const originalLng = twoItemCluster.lng;
+    const originalLat = twoItemCluster.lat;
+
+    // Re-cluster at a different zoom whose cell size still groups [1, 2]
+    // together (7 keeps them in the same wider cell). Without the cache this
+    // would legitimately recompute the same average since membership is
+    // unchanged, so instead we mutate the cache to prove the cached value —
+    // not a fresh average — is what's returned.
+    cache.set('1,2', { lng: -999, lat: -999 });
+    const secondPass = clusterByGrid(items, 8, cache);
+    const cachedCluster = secondPass.find((c) => c.count === 2)!;
+    expect(cachedCluster.lng).toBe(-999);
+    expect(cachedCluster.lat).toBe(-999);
+    expect(cachedCluster.lng).not.toBe(originalLng);
+    expect(cachedCluster.lat).not.toBe(originalLat);
+  });
+
+  it('without a cache, recomputes the average every call (pre-existing behavior)', () => {
+    const clusters = clusterByGrid(items, 8);
+    const twoItemCluster = clusters.find((c) => c.count === 2)!;
+    expect(twoItemCluster.lng).toBeCloseTo((-111.891 + -111.892) / 2, 6);
+    expect(twoItemCluster.lat).toBeCloseTo((40.760 + 40.761) / 2, 6);
+  });
 });

@@ -33,7 +33,29 @@ export function gridCellSizeForZoom(zoom: number): number {
   return size;
 }
 
-export function clusterByGrid(items: ClusterableItem[], zoom: number): MapCluster[] {
+/**
+ * Cache of `<sorted itemIds>` -> the centroid computed the FIRST time that
+ * exact member set clustered together. Passed by callers (as a ref that
+ * outlives re-renders) so a cluster marker's position is set once and never
+ * re-averaged as the user zooms — without this, the same set of jobs can
+ * still land in a different grid cell at a different zoom (grid cell size
+ * shrinks with zoom), and re-averaging would visibly move the marker even
+ * though its membership hadn't changed. Keying on membership (not the grid
+ * cell key, which is zoom-dependent) is what makes the freeze zoom-stable:
+ * the same jobs always resolve to the same cached centroid regardless of
+ * which cell they currently hash into.
+ */
+export type ClusterPositionCache = Map<string, { lng: number; lat: number }>;
+
+function membershipKey(itemIds: number[]): string {
+  return [...itemIds].sort((a, b) => a - b).join(',');
+}
+
+export function clusterByGrid(
+  items: ClusterableItem[],
+  zoom: number,
+  positionCache?: ClusterPositionCache,
+): MapCluster[] {
   if (items.length === 0) return [];
   const cellSize = gridCellSizeForZoom(zoom);
   const buckets = new Map<string, ClusterableItem[]>();
@@ -49,19 +71,32 @@ export function clusterByGrid(items: ClusterableItem[], zoom: number): MapCluste
 
   const clusters: MapCluster[] = [];
   for (const [key, bucketItems] of buckets) {
-    const avgLng = bucketItems.reduce((sum, it) => sum + it.lng, 0) / bucketItems.length;
-    const avgLat = bucketItems.reduce((sum, it) => sum + it.lat, 0) / bucketItems.length;
+    const itemIds = bucketItems.map((it) => it.id);
     const dominantPriority = bucketItems.reduce((best, it) =>
       (PRIORITY_SEVERITY[it.priority] ?? 0) > (PRIORITY_SEVERITY[best] ?? 0) ? it.priority : best,
       bucketItems[0].priority,
     );
+
+    let lng: number;
+    let lat: number;
+    const cacheKey = membershipKey(itemIds);
+    const cached = positionCache?.get(cacheKey);
+    if (cached) {
+      lng = cached.lng;
+      lat = cached.lat;
+    } else {
+      lng = bucketItems.reduce((sum, it) => sum + it.lng, 0) / bucketItems.length;
+      lat = bucketItems.reduce((sum, it) => sum + it.lat, 0) / bucketItems.length;
+      positionCache?.set(cacheKey, { lng, lat });
+    }
+
     clusters.push({
       key,
-      lng: avgLng,
-      lat: avgLat,
+      lng,
+      lat,
       count: bucketItems.length,
       dominantPriority,
-      itemIds: bucketItems.map((it) => it.id),
+      itemIds,
     });
   }
   return clusters;
