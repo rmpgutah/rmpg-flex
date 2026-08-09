@@ -373,9 +373,9 @@ export function formatCallAge(createdAt: string | null | undefined, nowMs: numbe
   // the naive-string/device-local timezone bug parseTimestamp exists to fix.
   if (!Number.isFinite(Date.parse(createdAt))) return null;
   // Server timestamps are naive UTC ("YYYY-MM-DD HH:MM:SS") — parseTimestamp
-  // treats them as UTC before converting to a Date; a bare `new Date(str)`
-  // would parse that string as device-local time, skewing the timer by a
-  // full UTC offset (e.g. ~7h in Mountain Time).
+  // treats them as UTC before converting to a Date; the plain Date
+  // constructor would parse that same string as device-local time, skewing
+  // the timer by a full UTC offset (e.g. ~7h in Mountain Time).
   const createdMs = parseTimestamp(createdAt).getTime();
   const elapsedSec = Math.max(0, Math.floor((nowMs - createdMs) / 1000));
   const hh = Math.floor(elapsedSec / 3600);
