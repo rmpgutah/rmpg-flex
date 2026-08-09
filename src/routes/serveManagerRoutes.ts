@@ -204,7 +204,18 @@ sm.delete('/api-key', async (c) => {
     log.error('DELETE /api-key failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ error: 'Failed to clear key' }, 500); }
 });
 
+// Enabling/toggling the poller (turning the feed on, flipping auto-create,
+// repointing Target Client) is a step above the router's general admin/
+// manager gate above: this is the one action that starts pulling data from
+// ServeManager and auto-creating dispatch calls unattended on every cron
+// tick, so it requires the 'admin' role specifically — a manager can still
+// trigger a one-off Poll Now / Full Sync (still gated admin/manager by the
+// router-wide middleware), but cannot arm the always-on poller.
 sm.put('/poller/settings', async (c) => {
+  const actor = c.get('user') as { role?: string } | undefined;
+  if (actor?.role !== 'admin') {
+    return c.json({ error: 'Only an admin can change poller settings', code: 'ADMIN_REQUIRED' }, 403);
+  }
   try {
     const db = getDb(c.env);
     const body = await c.req.json<{ enabled?: boolean; poll_interval?: number; target_client?: string; auto_create_calls?: boolean }>();
