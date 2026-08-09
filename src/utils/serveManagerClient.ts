@@ -123,9 +123,14 @@ export async function testConnection(db: D1Database, jwtSecret: string): Promise
 
 export interface SmJob {
   id: number;
-  job_number: string;
-  job_status: string;
-  service_status: string;
+  // Observed undefined on a real job live 2026-08-09 ("ServeManager Job
+  // #undefined" landed in a created call's description, and binding
+  // `undefined` straight into a D1 query throws D1_TYPE_ERROR: Type
+  // 'undefined' not supported). Typed as required by the API docs but not
+  // reliably present, so every read must fall back to null.
+  job_number?: string;
+  job_status?: string;
+  service_status?: string;
   // The real /jobs list payload (confirmed live 2026-08-08) has no
   // top-level `client` object at all — the client company lives under
   // `client_company.name` (a JSON:API-style nested resource; there is
