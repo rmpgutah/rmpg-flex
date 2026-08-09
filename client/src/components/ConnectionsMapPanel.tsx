@@ -50,7 +50,7 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
       const first = track[0] || points[0];
       const center: [number, number] = camera?.center
         ?? (first ? [first.lng, first.lat] : [-111.891, 40.7608]);
-      const map = new mapboxgl.Map({ container, style: MAPBOX_STYLE_DARK, center, zoom: camera?.zoom ?? 12, attributionControl: false });
+      const map = new mapboxgl.Map({ container, style: MAPBOX_STYLE_DARK, center, zoom: camera?.zoom ?? 12, projection: 'mercator', attributionControl: false });
       mapRef.current = map;
       registerMapInstance(map);
       map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
@@ -121,7 +121,7 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
         initMapbox(token);
         const first = track[0] || points[0];
         const center: [number, number] = first ? [first.lng, first.lat] : [-111.891, 40.7608];
-        const map = new mapboxgl.Map({ container: containerRef.current, style: MAPBOX_STYLE_DARK, center, zoom: 12, attributionControl: false });
+        const map = new mapboxgl.Map({ container: containerRef.current, style: MAPBOX_STYLE_DARK, center, zoom: 12, projection: 'mercator', attributionControl: false });
         mapRef.current = map;
         registerMapInstance(map);
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));

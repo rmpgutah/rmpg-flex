@@ -1121,6 +1121,7 @@ export default function NavigationPage() {
           style: MAPBOX_STYLE_DARK,
           center: rc ? rc.center : [gps.longitude ?? -111.891, gps.latitude ?? 40.7608],
           zoom: rc ? rc.zoom : 16.5,
+          projection: 'mercator',
           pitch: rc ? rc.pitch : 55,
           bearing: rc ? rc.bearing : 0,
           attributionControl: false,
@@ -1186,6 +1187,7 @@ export default function NavigationPage() {
           style: MAPBOX_STYLE_DARK,
           center: [gps.longitude!, gps.latitude!],
           zoom: 17.4, pitch: 70, bearing: dir ?? 0,
+          projection: 'mercator',
           attributionControl: false, interactive: false,
         });
         m.on('style.load', () => applyRmpgBasemap(m, { variant: 'dark' }));

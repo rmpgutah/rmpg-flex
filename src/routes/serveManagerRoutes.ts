@@ -83,10 +83,10 @@ sm.post('/sync', async (c) => {
     const result = await pollServeManagerJobs(c.env as any);
     await execute(db,
       "UPDATE sm_sync_log SET status = ?, jobs_synced = ?, attempts_synced = ?, error_message = ?, completed_at = datetime('now') WHERE id = ?",
-      result.error ? 'failed' : 'completed', result.synced, 0, result.error || null, syncId);
+      result.error ? 'failed' : 'completed', result.synced, result.attemptsSynced, result.error || null, syncId);
     return c.json({
       success: !result.error, sync_id: syncId, type,
-      jobs_synced: result.synced, attempts_synced: 0,
+      jobs_synced: result.synced, attempts_synced: result.attemptsSynced,
     });
   } catch (err) {
     log.error('POST /sync failed', { src: 'src/routes/serveManagerRoutes.ts' }, err);
@@ -204,7 +204,18 @@ sm.delete('/api-key', async (c) => {
     log.error('DELETE /api-key failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ error: 'Failed to clear key' }, 500); }
 });
 
+// Enabling/toggling the poller (turning the feed on, flipping auto-create,
+// repointing Target Client) is a step above the router's general admin/
+// manager gate above: this is the one action that starts pulling data from
+// ServeManager and auto-creating dispatch calls unattended on every cron
+// tick, so it requires the 'admin' role specifically — a manager can still
+// trigger a one-off Poll Now / Full Sync (still gated admin/manager by the
+// router-wide middleware), but cannot arm the always-on poller.
 sm.put('/poller/settings', async (c) => {
+  const actor = c.get('user') as { role?: string } | undefined;
+  if (actor?.role !== 'admin') {
+    return c.json({ error: 'Only an admin can change poller settings', code: 'ADMIN_REQUIRED' }, 403);
+  }
   try {
     const db = getDb(c.env);
     const body = await c.req.json<{ enabled?: boolean; poll_interval?: number; target_client?: string; auto_create_calls?: boolean }>();
@@ -225,7 +236,7 @@ sm.put('/poller/settings', async (c) => {
 sm.post('/poller/poll-now', async (c) => {
   try { return c.json(await pollServeManagerJobs(c.env as any)); }
   catch (err) {
-    log.error('POST /poller/poll-now failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ synced: 0, callsCreated: 0, error: 'Poll failed' }, 500); }
+    log.error('POST /poller/poll-now failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ synced: 0, callsCreated: 0, attemptsSynced: 0, error: 'Poll failed' }, 500); }
 });
 
 sm.post('/test-connection', async (c) => {

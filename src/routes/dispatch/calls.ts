@@ -1790,6 +1790,39 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
       await execute(db, `UPDATE calls_for_service_ext SET ${extCols.map((c2) => `"${c2}" = ?`).join(', ')} WHERE id = ?`, ...extValues, newCallId);
     }
 
+    // Link the new call into the Process Server queue. Without this, a
+    // re-dispatched PSO call has NO serve_queue row until it's later
+    // closed (crossLinkPsoCloseToServe only seeds one on a terminal-status
+    // transition) — so GET /process-server (what officers actually work
+    // from) never shows it while it's active. Confirmed live 2026-08-10:
+    // two real re-dispatched jobs (CFS26-00145, CFS26-00153) sat pending
+    // with real deadlines and were invisible to the Process Server module
+    // the entire time, flagged only by GET /process-server/cross-reference/
+    // dispatch — the same gap #3368 closed for the ServeManager auto-poller,
+    // just on this creation path instead. Field mapping mirrors
+    // psoServeCrosslink.ts's on-close seed, reading from the new call's own
+    // PSO/ext columns (already carried forward by the schema-driven copy
+    // above) rather than the parent's serve_queue row, since serve_queue is
+    // dedup'd per call_id — each visit in the chain gets its own row.
+    try {
+      const newCallExtRow = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', newCallId);
+      const mergedNew = { ...(await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', newCallId) || {}), ...(newCallExtRow || {}) } as Record<string, any>;
+      await execute(db,
+        `INSERT INTO serve_queue (
+           call_id, officer_id, recipient_name, recipient_address,
+           recipient_lat, recipient_lng, document_type, case_number, client_name,
+           priority, status, deadline, service_instructions
+         ) VALUES (?,?,?,?, ?,?,?,?,?, 'normal','pending',?,?)`,
+        newCallId, userId,
+        mergedNew.process_served_to || mergedNew.pso_requestor_name || null,
+        mergedNew.process_served_address || mergedNew.location_address || null,
+        mergedNew.latitude ?? null, mergedNew.longitude ?? null,
+        mergedNew.process_service_type || mergedNew.pso_service_type || null,
+        mergedNew.case_number || null, mergedNew.client_name || null,
+        mergedNew.pso_72hr_deadline || null, mergedNew.post_orders || null,
+      );
+    } catch (err) { console.error('[redispatch] serve_queue link failed:', err); }
+
     // Copy linked persons/vehicles/businesses from the parent call.
     const linkTables: Array<[string, readonly string[]]> = [
       ['call_persons', ['person_id', 'role', 'notes']],

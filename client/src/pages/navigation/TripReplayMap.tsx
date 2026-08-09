@@ -63,6 +63,7 @@ export default function TripReplayMap({ points, replayIdx }: TripReplayMapProps)
           style: MAPBOX_STYLE_DARK,
           center: [points[0]?.lng ?? 0, points[0]?.lat ?? 0],
           zoom: 13,
+          projection: 'mercator',
           attributionControl: false,
           interactive: false,
           pitch: 0,

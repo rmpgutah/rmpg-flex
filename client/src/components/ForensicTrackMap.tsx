@@ -61,7 +61,7 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
         if (cancelled || !containerRef.current || mapRef.current) return;
         initMapbox(token);
         const center: [number, number] = coords.length ? [coords[0].longitude, coords[0].latitude] : [-111.891, 40.7608];
-        const map = new mapboxgl.Map({ container: containerRef.current, style: MAPBOX_STYLE_DARK, center, zoom: 15, attributionControl: false });
+        const map = new mapboxgl.Map({ container: containerRef.current, style: MAPBOX_STYLE_DARK, center, zoom: 15, projection: 'mercator', attributionControl: false });
         mapRef.current = map;
         registerMapInstance(map);
         webglRecoveryCleanupRef.current = attach(map, 'ForensicTrackMap');

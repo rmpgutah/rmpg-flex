@@ -21,6 +21,10 @@ interface Props {
   LoadingSpinner: React.FC;
   error: string | null;
   setError: (e: string | null) => void;
+  /** Enabling/toggling the always-on poller is admin-only (server-enforced
+   * on PUT /servemanager/poller/settings) — a manager can still trigger a
+   * one-off Poll Now / sync, but cannot arm the unattended cron feed. */
+  isAdmin: boolean;
 }
 
 const timeAgo = (date: string): string => {
@@ -37,7 +41,7 @@ const timeAgo = (date: string): string => {
   return `${days}d ago`;
 };
 
-export default function AdminServeManagerTab({ LoadingSpinner, error, setError }: Props) {
+export default function AdminServeManagerTab({ LoadingSpinner, error, setError, isAdmin }: Props) {
   // ── Status ──
   const [status, setStatus] = useState<SMIntegrationStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,7 +77,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
   const [pollerAutoCreate, setPollerAutoCreate] = useState(true);
   const [pollerSaving, setPollerSaving] = useState(false);
   const [pollerPolling, setPollerPolling] = useState(false);
-  const [pollerPollResult, setPollerPollResult] = useState<{ synced: number; callsCreated: number; error?: string } | null>(null);
+  const [pollerPollResult, setPollerPollResult] = useState<{ synced: number; callsCreated: number; attemptsSynced?: number; error?: string } | null>(null);
   const [pollerDirty, setPollerDirty] = useState(false);
 
   // ── Data fetching ──
@@ -272,7 +276,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
     setPollerPolling(true);
     setPollerPollResult(null);
     try {
-      const result = await apiFetch<{ synced: number; callsCreated: number; error?: string }>('/servemanager/poller/poll-now', { method: 'POST' });
+      const result = await apiFetch<{ synced: number; callsCreated: number; attemptsSynced?: number; error?: string }>('/servemanager/poller/poll-now', { method: 'POST' });
       setPollerPollResult(result);
       await fetchPollerStatus();
       await fetchJobs();
@@ -490,7 +494,8 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               </button>
               <button type="button"
                 onClick={handlePollerSave}
-                disabled={pollerSaving || !pollerDirty}
+                disabled={!isAdmin || pollerSaving || !pollerDirty}
+                title={!isAdmin ? 'Only an admin can change poller settings' : undefined}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 disabled:opacity-50"
               >
                 {pollerSaving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
@@ -498,6 +503,13 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               </button>
             </div>
           </div>
+
+          {!isAdmin && (
+            <div className="flex items-center gap-2 text-[10px] text-amber-400 bg-amber-950/20 border border-amber-800/40 px-2 py-1.5 rounded-[2px]">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              Only an admin can enable/disable the poller or change its settings. You can still run Poll Now.
+            </div>
+          )}
 
           {/* Poll result feedback */}
           {pollerPollResult && (
@@ -511,7 +523,8 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               {pollerPollResult.error ? (
                 <><XCircle className="w-3.5 h-3.5 shrink-0" /> Poll error: {pollerPollResult.error}</>
               ) : (
-                <><CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Synced {pollerPollResult.synced} jobs, created {pollerPollResult.callsCreated} dispatch call(s)</>
+                <><CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Synced {pollerPollResult.synced} jobs
+                  {pollerPollResult.attemptsSynced ? `, ${pollerPollResult.attemptsSynced} attempt(s)` : ''}, created {pollerPollResult.callsCreated} dispatch call(s)</>
               )}
             </div>
           )}
@@ -526,7 +539,8 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               </div>
               <button type="button"
                 onClick={() => { setPollerEnabled(!pollerEnabled); setPollerDirty(true); }}
-                className="text-rmpg-300 hover:text-rmpg-100 transition-colors"
+                disabled={!isAdmin}
+                className="text-rmpg-300 hover:text-rmpg-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {pollerEnabled
                   ? <ToggleRight className="w-7 h-7 text-green-400" />
@@ -543,7 +557,8 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               </div>
               <button type="button"
                 onClick={() => { setPollerAutoCreate(!pollerAutoCreate); setPollerDirty(true); }}
-                className="text-rmpg-300 hover:text-rmpg-100 transition-colors"
+                disabled={!isAdmin}
+                className="text-rmpg-300 hover:text-rmpg-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {pollerAutoCreate
                   ? <ToggleRight className="w-7 h-7 text-green-400" />
@@ -561,7 +576,8 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 max={1800}
                 value={pollerInterval}
                 onChange={(e) => { setPollerInterval(e.target.value); setPollerDirty(true); }}
-                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors font-mono"
+                disabled={!isAdmin}
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors font-mono disabled:opacity-50"
               />
               <div className="text-[9px] text-rmpg-500">Min 60s, max 1800s (30 min)</div>
             </div>
@@ -573,7 +589,8 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 type="text"
                 value={pollerTargetClient}
                 onChange={(e) => { setPollerTargetClient(e.target.value); setPollerDirty(true); }}
-                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors"
+                disabled={!isAdmin}
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors disabled:opacity-50"
               />
               <div className="text-[9px] text-rmpg-500">Only jobs from this client trigger auto-dispatch</div>
             </div>

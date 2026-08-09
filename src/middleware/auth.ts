@@ -205,6 +205,7 @@ export async function authMiddleware(c: Context, next: Next) {
       full_name: user.full_name,
     });
     c.set('userId', user.id);
+    c.set('sessionId', typeof jwtPayload.sessionId === 'string' ? jwtPayload.sessionId : null);
 
     await next();
   } catch (err) {
