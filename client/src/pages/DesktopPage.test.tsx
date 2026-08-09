@@ -42,7 +42,7 @@ vi.mock('../utils/featureFlags', () => ({
 }));
 
 import { saveFavorites } from '../utils/navFavorites';
-import { isFeatureEnabled } from '../utils/featureFlags';
+import { isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden } from '../utils/desktopIconPreferences';
 import DesktopPage from './DesktopPage';
 
@@ -360,5 +360,31 @@ describe('DesktopPage — feature-toggle gating', () => {
     saveFavorites(new Set(['/fleet']));
     render(<MemoryRouter><DesktopPage /></MemoryRouter>);
     await waitFor(() => expect(screen.getAllByText('Fleet Management').length).toBeGreaterThan(0));
+  });
+
+  it('recomputes allFunctions/pinnedIcons and hides Fleet Management after flagsTick changes on a rerender (no prop change)', async () => {
+    let mockTick = 0;
+    vi.mocked(useFeatureFlags).mockImplementation(() => mockTick);
+    vi.mocked(isFeatureEnabled).mockReturnValue(true);
+    saveFavorites(new Set(['/fleet']));
+
+    // A fresh element on each call (not a reused reference) — passing the
+    // literal same element object to rerender() lets React bail out via
+    // referential-equality of props and never re-invoke the component at
+    // all, which would make this test pass vacuously regardless of whether
+    // flagsTick is wired correctly.
+    const renderUi = () => <MemoryRouter><DesktopPage /></MemoryRouter>;
+    const { rerender } = render(renderUi());
+    await waitFor(() => expect(screen.getAllByText('Fleet Management').length).toBeGreaterThan(0));
+
+    // Simulate a real flag reload: isFeatureEnabled's underlying data changes
+    // AND the tick increments — then rerender with IDENTICAL prop VALUES. If
+    // flagsTick were ever dropped from allFunctions's dependency array, the
+    // memoized value would stay stale and Fleet Management would still show.
+    vi.mocked(isFeatureEnabled).mockImplementation((path: string) => path !== '/fleet');
+    mockTick = 1;
+    rerender(renderUi());
+
+    await waitFor(() => expect(screen.queryByText('Fleet Management')).not.toBeInTheDocument());
   });
 });
