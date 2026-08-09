@@ -1459,7 +1459,7 @@ export default function MdtPage() {
                   {selectedCall.cross_street && (
                     <div className="text-[9px] text-rmpg-400 ml-4">X-Street: {selectedCall.cross_street}</div>
                   )}
-                  <div className="ml-4 mt-1"><ZsbBadge zoneId={selectedCall.zone_id} beatId={selectedCall.beat_id} dispatchCode={selectedCall.dispatch_code} /></div>
+                  <div className="ml-4 mt-1"><ZsbBadge zoneId={selectedCall.zone_id} beatId={selectedCall.beat_id} dispatchCode={selectedCall.dispatch_code} sectionCode={selectedCall.sector_id} /></div>
                 </div>
 
                 {/* ── DESCRIPTION section ── */}
