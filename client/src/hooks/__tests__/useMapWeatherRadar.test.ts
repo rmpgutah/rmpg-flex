@@ -79,6 +79,20 @@ describe('useMapWeatherRadar', () => {
     }));
   });
 
+  it('caps the source at RainViewer\'s documented max zoom (7) so GL overzooms instead of requesting a "Zoom Level Not Supported" placeholder tile', async () => {
+    const map = makeMap();
+    const { result } = renderHook(() => useMapWeatherRadar(map, true));
+
+    await act(async () => {
+      result.current.setEnabled(true);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(map.addSource).toHaveBeenCalledWith('rmpg-weather-radar', expect.objectContaining({
+      maxzoom: 7,
+    }));
+  });
+
   it('polls again after 5 minutes and swaps in a newer frame', async () => {
     const map = makeMap();
     const { result } = renderHook(() => useMapWeatherRadar(map, true));
