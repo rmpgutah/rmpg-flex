@@ -106,6 +106,7 @@ import MapRosterDock, { type MapRosterDockProps, type RosterUnit, type RosterCal
 import MapLeftDock from './components/MapLeftDock';
 import MapRightDock from './components/MapRightDock';
 import { buildDockSections, findUnboundLayers, type LayerBindingMap } from './hooks/useLayerBindings';
+import { useEnRouteEta } from './hooks/useEnRouteEta';
 import { LEFT_DOCK_GROUPS, RIGHT_DOCK_GROUPS } from './config/layerRegistry';
 import { MapDensityProvider } from './hooks/useMapDensity';
 import MapTopToolbar from './components/MapTopToolbar';
@@ -127,7 +128,7 @@ import MapboxDispatchConnections from './components/MapboxDispatchConnections';
 import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
 import { withAlpha } from '../../utils/withAlpha';
-import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove } from './utils/mapMarkers';
+import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove, formatEtaSeconds, formatDistanceMiles } from './utils/mapMarkers';
 import {
   TACTICAL_SURFACE_BASE, TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
   TACTICAL_TEXT_PRIMARY,
@@ -916,6 +917,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   // ── Unit Markers ───────────────────────────────────────────────────────────
 
+  const enRouteEtas = useEnRouteEta(units, calls);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
@@ -959,9 +962,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         // replacing the root element — mapboxgl.Marker tracks that exact
         // node internally (setLngLat writes a CSS transform onto it), so
         // swapping it out from under the library would break future moves.
-        applyUnitMarkerState(existing.getElement(), unit);
+        applyUnitMarkerState(existing.getElement(), unit, unit.call_number ? enRouteEtas[unit.call_number] : null);
       } else {
-        const el = buildUnitMarkerEl(unit);
+        const el = buildUnitMarkerEl(unit, unit.call_number ? enRouteEtas[unit.call_number] : null);
         const marker = new mapboxgl.Marker({ element: el })
           .setLngLat([unit.longitude, unit.latitude])
           .setPopup(
@@ -980,7 +983,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         unitMarkersRef.current.delete(id);
       }
     });
-  }, [units, mapLoaded]);
+  }, [units, mapLoaded, enRouteEtas]);
 
   // ── Call Markers ───────────────────────────────────────────────────────────
 
@@ -1021,16 +1024,24 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       if (call.latitude == null || call.longitude == null) continue;
       currentIds.add(call.id);
       const isQueued = multiStopQueue.some((s) => s.callNumber === call.call_number);
+      const assignedUnit = units.find((u) => u.call_number === call.call_number && u.status === 'enroute');
+      const assignedUnitInfo = assignedUnit
+        ? {
+            callSign: assignedUnit.call_sign,
+            etaLabel: enRouteEtas[call.call_number] ? formatEtaSeconds(enRouteEtas[call.call_number].etaSeconds) : undefined,
+            distanceLabel: enRouteEtas[call.call_number] ? formatDistanceMiles(enRouteEtas[call.call_number].distanceMiles) : undefined,
+          }
+        : null;
 
       const existing = callMarkersRef.current.get(call.id);
       if (existing) {
         existing.setLngLat([call.longitude, call.latitude]);
         const popup = existing.getPopup();
-        if (popup) popup.setHTML(buildCallPopupHtml(call, isQueued));
+        if (popup) popup.setHTML(buildCallPopupHtml(call, isQueued, Date.now(), assignedUnitInfo));
       } else {
         const el = buildCallMarkerEl(call);
         const popup = new mapboxgl.Popup({ offset: 16, closeButton: false, className: 'mapbox-popup-dark' })
-          .setHTML(buildCallPopupHtml(call, isQueued));
+          .setHTML(buildCallPopupHtml(call, isQueued, Date.now(), assignedUnitInfo));
         bindAddToRoutePopup(popup);
         const marker = new mapboxgl.Marker({ element: el })
           .setLngLat([call.longitude, call.latitude])
@@ -1046,7 +1057,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         callMarkersRef.current.delete(id);
       }
     });
-  }, [calls, mapLoaded, multiStopQueue, addCallToRoute]);
+  }, [calls, units, mapLoaded, multiStopQueue, addCallToRoute, enRouteEtas]);
 
   // ── Self-Position (GPS Blue Dot) ───────────────────────────────────────────
 

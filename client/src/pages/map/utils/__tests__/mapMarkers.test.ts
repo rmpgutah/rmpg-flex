@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove, computeAccuracyRingGeometry, CALL_MARKER_INK } from '../mapMarkers';
+import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove, computeAccuracyRingGeometry, CALL_MARKER_INK, formatCallAge, formatEtaSeconds, formatDistanceMiles } from '../mapMarkers';
 import { TACTICAL_SURFACE_RAISED, TACTICAL_BRAND_GOLD, TACTICAL_TEXT_PRIMARY } from '../tacticalPalette';
 import type { MapUnit, ActiveCall } from '../mapConstants';
+import { UNIT_STATUS_COLORS } from '../mapConstants';
 import { PRIORITY_HEX, priorityHex } from '../../../../utils/statusColors';
 import { MAP_PALETTE } from '../../../../utils/mapboxBasemap';
 
@@ -30,13 +31,60 @@ describe('mapMarkers', () => {
     expect(buildUnitPopupHtml(unit)).toContain('J. Smith');
   });
 
+  it('renders the unit badge as an arrow svg, not a filled circle', () => {
+    const el = buildUnitMarkerEl(unit);
+    const badge = el.querySelector('[data-role="badge"]');
+    expect(badge?.querySelector('svg')).toBeTruthy();
+    expect(badge?.querySelector('path')).toBeTruthy();
+    // No circular badge fill/border-radius left on the badge element itself
+    expect(badge?.getAttribute('style') || '').not.toContain('border-radius:50%');
+  });
+
+  it('rotates the arrow to gps_heading when present, and defaults to 0deg otherwise', () => {
+    const withHeading = buildUnitMarkerEl({ ...unit, gps_heading: 90 } as MapUnit);
+    const svgWithHeading = withHeading.querySelector('[data-role="badge"] svg') as SVGElement;
+    expect(svgWithHeading.style.transform).toBe('rotate(90deg)');
+
+    const withoutHeading = buildUnitMarkerEl({ ...unit, gps_heading: null } as MapUnit);
+    const svgWithoutHeading = withoutHeading.querySelector('[data-role="badge"] svg') as SVGElement;
+    expect(svgWithoutHeading.style.transform).toBe('rotate(0deg)');
+  });
+
+  it('applyUnitMarkerState updates the arrow rotation and fill color in place', () => {
+    const el = buildUnitMarkerEl(unit);
+    applyUnitMarkerState(el, { ...unit, status: 'busy', gps_heading: 200 } as MapUnit);
+    const svg = el.querySelector('[data-role="badge"] svg') as SVGElement;
+    expect(svg.style.transform).toBe('rotate(200deg)');
+    const path = el.querySelector('[data-role="badge"] path') as SVGPathElement;
+    expect(path.getAttribute('fill')).toBe(UNIT_STATUS_COLORS.busy);
+  });
+
   it('builds a call marker element with the priority label', () => {
     const el = buildCallMarkerEl(call);
-    expect(el.textContent).toBe('P1');
+    const square = el.querySelector('[data-role="priority-square"]') as HTMLElement;
+    expect(square.textContent).toBe('P1');
+  });
+
+  it('renders the call marker as a rounded square, not a rotated diamond', () => {
+    const el = buildCallMarkerEl(call);
+    const square = el.querySelector('[data-role="priority-square"]') as HTMLElement;
+    expect(square.style.transform).toBe('');
+    expect(square.style.borderRadius).toBe('2px');
+  });
+
+  it('renders a call-number label below the priority square', () => {
+    const el = buildCallMarkerEl(call);
+    const numberLabel = el.querySelector('[data-role="call-number-label"]') as HTMLElement;
+    expect(numberLabel.textContent).toBe('CFS-1');
+    // jsdom's cssstyle normalizes the `color` longhand to `rgb(r, g, b)` on
+    // readback (unlike the `background` shorthand elsewhere in this file,
+    // which round-trips as the literal hex string) — compare against the
+    // equivalent rgb() form rather than the raw hex.
+    expect(numberLabel.style.color).toBe(hexToRgb(priorityHex(call.priority)));
   });
 
   it('builds call popup HTML containing the call number', () => {
-    expect(buildCallPopupHtml(call)).toContain('CFS-1');
+    expect(buildCallPopupHtml(call, false, Date.now())).toContain('CFS-1');
   });
 
   // ── "PP1" regression ────────────────────────────────────────────────────
@@ -51,13 +99,14 @@ describe('mapMarkers', () => {
     for (const [input, expected] of [['P1', 'P1'], ['1', 'P1'], ['P4', 'P4'], ['3', 'P3'], [1, 'P1']] as const) {
       it(`renders ${JSON.stringify(input)} as ${expected} on the marker`, () => {
         const el = buildCallMarkerEl({ ...call, priority: input } as unknown as ActiveCall);
-        expect(el.textContent).toBe(expected);
-        expect(el.textContent).not.toMatch(/^PP/);
+        const square = el.querySelector('[data-role="priority-square"]') as HTMLElement;
+        expect(square.textContent).toBe(expected);
+        expect(square.textContent).not.toMatch(/^PP/);
       });
     }
 
     it('renders the same label in the popup', () => {
-      const html = buildCallPopupHtml({ ...call, priority: 'P1' } as unknown as ActiveCall);
+      const html = buildCallPopupHtml({ ...call, priority: 'P1' } as unknown as ActiveCall, false, Date.now());
       expect(html).toContain('>P1<');
       expect(html).not.toContain('PP1');
     });
@@ -66,10 +115,63 @@ describe('mapMarkers', () => {
       // The original defect was exactly this disagreement.
       const bare = buildCallMarkerEl({ ...call, priority: '1' } as unknown as ActiveCall);
       const prefixed = buildCallMarkerEl({ ...call, priority: 'P1' } as unknown as ActiveCall);
-      expect(bare.textContent).toBe(prefixed.textContent);
-      const fill = (el: HTMLElement) =>
-        (el.querySelector('[data-role="marker-inner"]') as HTMLElement).style.background;
+      const square = (el: HTMLElement) => el.querySelector('[data-role="priority-square"]') as HTMLElement;
+      expect(square(bare).textContent).toBe(square(prefixed).textContent);
+      const fill = (el: HTMLElement) => square(el).style.background;
       expect(fill(bare)).toBe(fill(prefixed));
+    });
+  });
+
+  describe('formatCallAge', () => {
+    it('formats an elapsed duration as HH:MM:SS', () => {
+      const created = '2026-08-09T12:00:00Z';
+      const now = new Date('2026-08-09T12:14:32Z').getTime();
+      expect(formatCallAge(created, now)).toBe('00:14:32');
+    });
+
+    it('formats durations over an hour with a non-zero hours segment', () => {
+      const created = '2026-08-09T10:00:00Z';
+      const now = new Date('2026-08-09T12:05:09Z').getTime();
+      expect(formatCallAge(created, now)).toBe('02:05:09');
+    });
+
+    it('returns null when created_at is missing', () => {
+      expect(formatCallAge(null, Date.now())).toBeNull();
+      expect(formatCallAge(undefined, Date.now())).toBeNull();
+    });
+
+    it('returns null when created_at does not parse', () => {
+      expect(formatCallAge('not-a-date', Date.now())).toBeNull();
+    });
+  });
+
+  describe('buildCallPopupHtml header + field table', () => {
+    const now = new Date('2026-08-09T12:14:32Z').getTime();
+    const callWithAge: ActiveCall = { ...call, created_at: '2026-08-09T12:00:00Z' };
+
+    it('shows the call-age timer under the call number when created_at is present', () => {
+      const html = buildCallPopupHtml(callWithAge, false, now);
+      expect(html).toContain('00:14:32');
+      expect(html).toContain('open');
+    });
+
+    it('omits the timer line when created_at is missing', () => {
+      const html = buildCallPopupHtml({ ...call, created_at: null }, false, now);
+      expect(html).not.toContain('open');
+    });
+
+    it('shows STATUS, BEAT, ADDRESS, and UNIT rows in a labeled field table', () => {
+      const html = buildCallPopupHtml({ ...callWithAge, beat_name: 'A-2' }, false, now);
+      expect(html).toContain('STATUS');
+      expect(html).toContain('BEAT');
+      expect(html).toContain('ADDRESS');
+      expect(html).toContain('UNIT');
+      expect(html).toContain('A-2');
+    });
+
+    it('shows an em-dash placeholder for UNIT when no unit is assigned', () => {
+      const html = buildCallPopupHtml(callWithAge, false, now);
+      expect(html).toContain('unassigned');
     });
   });
 
@@ -115,6 +217,11 @@ describe('mapMarkers', () => {
     expect(el.querySelector('[data-role="label"]')?.textContent).toBe('B99');
   });
 });
+
+function hexToRgb(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+}
 
 function srgbC(c: number) { const v = c / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
 function lumOf(hex: string) {
@@ -217,9 +324,31 @@ describe('call popup priority color', () => {
   it('uses the real priority color, not the gray fallback', () => {
     // buildCallPopupHtml had the same 'P1'-keyed lookup against a bare-number
     // priority that buildCallMarkerEl did, so it always emitted #888888.
-    const html = buildCallPopupHtml(call);
+    const html = buildCallPopupHtml(call, false, Date.now());
     expect(html).toContain(PRIORITY_HEX.P1);
     expect(html).not.toContain('#888888');
+  });
+});
+
+describe('buildCallPopupHtml assigned-unit ETA/distance rows', () => {
+  const now = new Date('2026-08-09T12:14:32Z').getTime();
+
+  it('shows ETA and DISTANCE rows when an assigned unit with en-route data is passed', () => {
+    const html = buildCallPopupHtml(call, false, now, {
+      callSign: 'D190',
+      etaLabel: formatEtaSeconds(192),
+      distanceLabel: formatDistanceMiles(1.44),
+    });
+    expect(html).toContain('D190');
+    expect(html).toContain('ETA');
+    expect(html).toContain('03:12');
+    expect(html).toContain('DISTANCE');
+    expect(html).toContain('1.4 mi');
+  });
+
+  it('omits ETA/DISTANCE rows when no assigned unit is passed', () => {
+    const html = buildCallPopupHtml(call, false, now);
+    expect(html).not.toContain('DISTANCE');
   });
 });
 
@@ -236,10 +365,14 @@ describe('shouldAnimateMarkerMove', () => {
 });
 
 describe('buildUnitMarkerEl — heading and accuracy', () => {
-  it('rotates the badge when heading is present', () => {
+  it('rotates the badge arrow svg when heading is present', () => {
+    // Rotation moved from the badge div onto the inner arrow <svg> when the
+    // circle badge was replaced with a directional arrow (see the dedicated
+    // arrow-rotation tests above) — this test now guards the same invariant
+    // one level down, on the svg rather than the badge wrapper itself.
     const el = buildUnitMarkerEl({ ...unit, gps_heading: 90 } as MapUnit);
-    const badge = el.querySelector('[data-role="badge"]') as HTMLElement;
-    expect(badge.style.transform).toContain('rotate(90deg)');
+    const svg = el.querySelector('[data-role="badge"] svg') as SVGElement;
+    expect(svg.style.transform).toContain('rotate(90deg)');
   });
 
   it('does not rotate when heading is null', () => {
@@ -296,14 +429,12 @@ describe('buildUnitMarkerEl — marker root vs inner wrapper (pan/zoom smear fix
     expect(el.style.cssText).not.toContain('transform');
   });
 
-  it('buildCallMarkerEl keeps the 45° diamond rotation on the inner wrapper', () => {
+  it('buildCallMarkerEl renders a rounded square with no rotation on the priority square', () => {
     const el = buildCallMarkerEl(call);
-    const inner = el.querySelector('[data-role="marker-inner"]') as HTMLElement;
-    expect(inner).not.toBeNull();
-    expect(inner.style.transform).toContain('rotate(45deg)');
-    // The label is counter-rotated inside the diamond so it reads level.
-    expect(inner.querySelector('span')?.style.transform).toContain('rotate(-45deg)');
-    expect(el.textContent).toBe('P1');
+    const square = el.querySelector('[data-role="priority-square"]') as HTMLElement;
+    expect(square).not.toBeNull();
+    expect(square.style.transform).toBe('');
+    expect(square.textContent).toBe('P1');
   });
 
   it('applyUnitMarkerState mutates the same inner wrapper node identity', () => {
@@ -329,14 +460,59 @@ describe('unit marker tactical palette', () => {
     expect(body).toMatch(/const TACTICAL_BADGE_SURFACE = '#0d1520';/);
   });
 
-  it('routes the badge ring and glyph color through that constant', () => {
+  it('routes the arrow outline color through that constant', () => {
     const body = src();
-    // Both the build path and the in-place update path set the ring color.
-    expect(body.match(/TACTICAL_BADGE_SURFACE : ringColor/g) ?? []).toHaveLength(2);
-    // The glyph inherits via currentColor from the badge element's color.
-    expect(body).toContain("badge.style.color = TACTICAL_BADGE_SURFACE;");
-    expect(body).toContain('fill="currentColor"');
+    // The circle badge (background/border) was replaced by a directional
+    // arrow <svg> — TACTICAL_BADGE_SURFACE now outlines the arrow path
+    // instead of filling the old badge div, but it's still the single source
+    // of truth, set on both the build path (buildUnitArrowSvg) and the
+    // in-place update path (applyUnitMarkerState).
+    expect(body.match(/setAttribute\('stroke', TACTICAL_BADGE_SURFACE\)/g) ?? []).toHaveLength(2);
     // And it must not have drifted back onto an ambient theme variable.
-    expect(body).not.toMatch(/badge\.style\.color = 'var\(/);
+    expect(body).not.toMatch(/setAttribute\('stroke', 'var\(/);
+  });
+});
+
+describe('formatEtaSeconds / formatDistanceMiles', () => {
+  it('formats seconds as mm:ss, zero-padded', () => {
+    expect(formatEtaSeconds(192)).toBe('03:12');
+    expect(formatEtaSeconds(5)).toBe('00:05');
+    expect(formatEtaSeconds(0)).toBe('00:00');
+  });
+
+  it('formats miles to one decimal place', () => {
+    expect(formatDistanceMiles(1.44)).toBe('1.4 mi');
+    expect(formatDistanceMiles(0)).toBe('0.0 mi');
+    expect(formatDistanceMiles(12.98)).toBe('13.0 mi');
+  });
+});
+
+describe('en-route tag on the unit marker', () => {
+  const enrouteUnit: MapUnit = { ...unit, status: 'enroute' } as MapUnit;
+
+  it('does not render an en-route tag when enRoute data is omitted', () => {
+    const el = buildUnitMarkerEl(enrouteUnit);
+    expect(el.querySelector('[data-role="enroute-tag"]')).toBeNull();
+  });
+
+  it('renders unit call sign, ENROUTE, ETA, and DIS when enRoute data is provided', () => {
+    const el = buildUnitMarkerEl(enrouteUnit, { etaSeconds: 192, distanceMiles: 1.44 });
+    const tag = el.querySelector('[data-role="enroute-tag"]') as HTMLElement;
+    expect(tag).toBeTruthy();
+    expect(tag.textContent).toContain('A12');
+    expect(tag.textContent).toContain('ENROUTE');
+    expect(tag.textContent).toContain('ETA 03:12');
+    expect(tag.textContent).toContain('DIS 1.4 mi');
+  });
+
+  it('applyUnitMarkerState adds/removes the tag as enRoute data comes and goes', () => {
+    const el = buildUnitMarkerEl(enrouteUnit);
+    expect(el.querySelector('[data-role="enroute-tag"]')).toBeNull();
+
+    applyUnitMarkerState(el, enrouteUnit, { etaSeconds: 60, distanceMiles: 0.5 });
+    expect(el.querySelector('[data-role="enroute-tag"]')).toBeTruthy();
+
+    applyUnitMarkerState(el, enrouteUnit, null);
+    expect(el.querySelector('[data-role="enroute-tag"]')).toBeNull();
   });
 });
