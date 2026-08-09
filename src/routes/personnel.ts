@@ -145,7 +145,7 @@ const PERSONNEL_ROSTER_FULL_COLUMNS = `u.id, u.username, u.full_name, u.first_na
                       u.shift_preference, u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies,
                       u.uniform_size, u.emergency_contact_name, u.emergency_contact_phone,
                       u.emergency_contact_relationship, u.sso_enabled, u.created_at, u.updated_at,
-                      u.last_login_at, u.totp_enabled, u.must_change_password`;
+                      u.last_login_at, u.totp_enabled, u.must_change_password, u.employee_id, u.login_count`;
 const PERSONNEL_ROSTER_SUMMARY_COLUMNS = `u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name,
                       u.role, u.badge_number, u.phone, u.email, u.status, u.rank, u.department,
                       u.shift_preference, u.uniform_size, u.created_at, u.updated_at`;
