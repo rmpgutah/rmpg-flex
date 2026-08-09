@@ -51,7 +51,7 @@ import { parseTimestamp } from '../utils/dateUtils';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { applyRmpgBasemap, getThemeColorRgb } from '../utils/mapboxBasemap';
 import { escapeHtml } from '../utils/sanitize';
-import { clusterByGrid, type ClusterableItem } from '../utils/serveMapClustering';
+import { clusterByGrid, type ClusterableItem, type ClusterPositionCache } from '../utils/serveMapClustering';
 import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter, type DeadlineFilter } from '../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../utils/mapboxRouting';
 import { exportServeMapSheet } from '../utils/serveMapExport';
@@ -633,6 +633,10 @@ export default function ServePage() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  // Outlives re-renders/zoom changes so a cluster's on-screen position, once
+  // computed for a given set of member job ids, never re-averages — see
+  // ClusterPositionCache doc in serveMapClustering.ts.
+  const clusterPositionCacheRef = useRef<ClusterPositionCache>(new Map());
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const routeSourceRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -1385,7 +1389,7 @@ export default function ServePage() {
       priority: j.priority,
       status: j.status,
     }));
-    const clusters = clusterByGrid(clusterInput, mapZoom);
+    const clusters = clusterByGrid(clusterInput, mapZoom, clusterPositionCacheRef.current);
 
     for (const cluster of clusters) {
       if (cluster.count === 1) {
@@ -1422,11 +1426,25 @@ export default function ServePage() {
           }
         });
 
+        // Right-click: job actions menu, in place of the map's own
+        // right-click (which sets the drive-time preview origin) —
+        // stopPropagation keeps that global handler from also firing.
+        el.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openMenu(e, buildJobMenu(job));
+        });
+
         markersRef.current.push(marker);
       } else {
         const el = buildServeClusterMarkerElement(cluster);
         el.addEventListener('click', () => {
           mapRef.current?.easeTo({ center: [cluster.lng, cluster.lat], zoom: mapZoom + 2 });
+        });
+        el.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openMenu(e, buildClusterMenu(cluster));
         });
         const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
           .setLngLat([cluster.lng, cluster.lat])
@@ -1451,6 +1469,11 @@ export default function ServePage() {
             if (!map) return;
             const el = document.createElement('div');
             el.style.cssText = 'width:18px;height:18px;border-radius:50%;background:rgba(59,130,246,0.6);border:3px solid rgba(59,130,246,0.9);box-shadow:0 0 12px rgba(59,130,246,0.5);cursor:pointer;animation:pulse 2s infinite;';
+            el.addEventListener('contextmenu', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              openMenu(e, buildLocationMenu(lngLat));
+            });
             userLocationMarker = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat(lngLat).addTo(map);
             // Register HERE, at creation. The previous code pushed the variable
             // synchronously below — while it was still null — so markersRef got
@@ -1798,9 +1821,14 @@ export default function ServePage() {
       ...(buildMoveSubmenu(job).length > 0
         ? [{ label: 'Move to…', icon: <FolderOpen size={12} />, submenu: buildMoveSubmenu(job) } as ContextMenuItem]
         : []),
+      m.action('Add to route', () => {
+        setSelectedJobIds(prev => new Set(prev).add(job.id));
+        setRoutePlannerOpen(true);
+      }, { icon: <Route size={12} /> }),
       m.separator(),
       m.copy('Copy recipient', job.recipient_name),
       m.copyId(job.id),
+      m.copyCoords(job.recipient_lat, job.recipient_lng),
       ...(addr ? [m.action('Navigate to address', () => handleNavigate(job.id), { icon: <Navigation size={12} /> })] : []),
       m.separator(),
       m.action('Flag bad address', () => handleFlagAddress(job.id), { icon: <AlertTriangle size={12} />, danger: true }),
@@ -1809,6 +1837,29 @@ export default function ServePage() {
       ] : []),
     ].filter(Boolean) as ContextMenuItem[];
   };
+
+  // ── Map-only context menus: cluster markers and the user-location dot ──
+  const buildClusterMenu = (cluster: { lng: number; lat: number; count: number; itemIds: number[] }): ContextMenuItem[] => [
+    m.action('Expand cluster', () => {
+      mapRef.current?.easeTo({ center: [cluster.lng, cluster.lat], zoom: mapZoom + 2 });
+    }, { icon: <Eye size={12} /> }),
+    m.action('Add all to route', () => {
+      setSelectedJobIds(prev => {
+        const next = new Set(prev);
+        cluster.itemIds.forEach(id => next.add(id));
+        return next;
+      });
+      setRoutePlannerOpen(true);
+    }, { icon: <Route size={12} /> }),
+    m.separator(),
+    m.copy('Copy job count', cluster.count),
+  ];
+
+  const buildLocationMenu = (lngLat: [number, number]): ContextMenuItem[] => [
+    m.copyCoords(lngLat[1], lngLat[0]),
+    m.action('Set as route start', () => setPreviewOrigin(lngLat), { icon: <Route size={12} /> }),
+    m.action('Center map here', () => mapRef.current?.easeTo({ center: lngLat }), { icon: <MapPin size={12} /> }),
+  ];
 
   return (
     <div className="flex flex-col h-full bg-surface-base" role="main">
