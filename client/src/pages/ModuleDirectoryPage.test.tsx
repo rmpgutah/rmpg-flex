@@ -7,9 +7,14 @@ vi.mock('../hooks/useApi', () => ({ apiFetch: (...args: unknown[]) => apiFetchMo
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ user: { id: '1', role: 'officer' } }),
 }));
+vi.mock('../utils/featureFlags', () => ({
+  isFeatureEnabled: vi.fn(() => true),
+  useFeatureFlags: vi.fn(() => 0),
+}));
 
 import ModuleDirectoryPage from './ModuleDirectoryPage';
 import { isAppPinned } from '../utils/taskbarPreferences';
+import { isFeatureEnabled } from '../utils/featureFlags';
 
 describe('ModuleDirectoryPage (post-catalog-extraction regression)', () => {
   beforeEach(() => {
@@ -57,5 +62,29 @@ describe('ModuleDirectoryPage — Pin to Taskbar', () => {
     expect(screen.getByText('Pin to Taskbar')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Pin to Taskbar'));
     expect(isAppPinned('/dispatch')).toBe(true);
+  });
+});
+
+describe('ModuleDirectoryPage — feature-toggle gating', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    apiFetchMock.mockClear();
+    vi.mocked(isFeatureEnabled).mockReturnValue(true);
+  });
+
+  it('hides Fleet Management when feature_fleet is disabled', () => {
+    vi.mocked(isFeatureEnabled).mockImplementation((path: string) => path !== '/fleet');
+    render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>);
+    const search = screen.getByPlaceholderText(/Search modules/i);
+    fireEvent.change(search, { target: { value: 'Fleet Management' } });
+    expect(screen.queryByText('Fleet Management')).not.toBeInTheDocument();
+  });
+
+  it('shows Fleet Management when feature_fleet is enabled', () => {
+    render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>);
+    const search = screen.getByPlaceholderText(/Search modules/i);
+    fireEvent.change(search, { target: { value: 'Fleet Management' } });
+    expect(screen.getByText('Fleet Management')).toBeInTheDocument();
   });
 });

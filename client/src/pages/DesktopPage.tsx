@@ -9,6 +9,7 @@ import { apiFetch } from '../hooks/useApi';
 import { DEFAULT_WALLPAPER_ID } from '../data/desktopWallpapers';
 import { DEFAULT_ACCENT_ID, getAccent } from '../data/desktopAccents';
 import { normalizeDesktopLayout, serializeDesktopLayout, type DesktopGroup } from '../utils/normalizeDesktopLayout';
+import { isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 import { normalizeDesktopWidgets, serializeDesktopWidgets } from '../utils/normalizeDesktopWidgets';
 import { sortIconPositions, snapToGrid, nextAutoArrangeSlot } from '../utils/desktopLayoutOps';
 import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden, setIconsHidden } from '../utils/desktopIconPreferences';
@@ -59,6 +60,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
   const isContractManager = user?.role === 'contract_manager';
+  const flagsTick = useFeatureFlags();
 
   // Role-filtered full catalog — mirrors ModuleDirectoryPage's visibleCategories
   // filter exactly (adminOnly + CLIENT_VIEWER_BLOCKED + CONTRACT_MANAGER_BLOCKED).
@@ -70,9 +72,10 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
       if (fn.adminOnly && !isAdmin) return false;
       if (isClientViewer && CLIENT_VIEWER_BLOCKED.has(fn.path)) return false;
       if (isContractManager && CONTRACT_MANAGER_BLOCKED.has(fn.path)) return false;
+      if (!isFeatureEnabled(fn.path)) return false;
       return true;
     });
-  }, [isAdmin, isClientViewer, isContractManager]);
+  }, [isAdmin, isClientViewer, isContractManager, flagsTick]);
 
   const [, forceRerender] = useState(0);
   const [favorites, setFavorites] = useState<Set<string>>(loadFavorites);

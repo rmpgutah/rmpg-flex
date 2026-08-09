@@ -36,7 +36,13 @@ vi.mock('../components/ToastProvider', () => ({
   useToast: () => ({ addToast: vi.fn() }),
 }));
 
+vi.mock('../utils/featureFlags', () => ({
+  isFeatureEnabled: vi.fn(() => true),
+  useFeatureFlags: vi.fn(() => 0),
+}));
+
 import { saveFavorites } from '../utils/navFavorites';
+import { isFeatureEnabled } from '../utils/featureFlags';
 import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden } from '../utils/desktopIconPreferences';
 import DesktopPage from './DesktopPage';
 
@@ -48,6 +54,7 @@ describe('DesktopPage', () => {
     apiFetchMock.mockResolvedValue({});
     mockUseUserPreferences.mockReset();
     mockUseUserPreferences.mockReturnValue({ prefs: mockPrefs, reload: vi.fn(), isLoading: false, error: null });
+    vi.mocked(isFeatureEnabled).mockReturnValue(true);
   });
 
   it('auto-populates the icon grid from current favorites on first load', async () => {
@@ -327,5 +334,31 @@ describe('DesktopPage — hidden icons layer', () => {
     fireEvent.contextMenu(desktopSurface);
     fireEvent.click(screen.getByText('Hide icons'));
     expect(screen.queryByText(/star modules from Module Directory/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('DesktopPage — feature-toggle gating', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    apiFetchMock.mockClear();
+    apiFetchMock.mockResolvedValue({});
+    mockUseUserPreferences.mockReset();
+    mockUseUserPreferences.mockReturnValue({ prefs: mockPrefs, reload: vi.fn(), isLoading: false, error: null });
+  });
+
+  it('excludes the Fleet Management pinned icon from allFunctions/pinnedIcons when feature_fleet is disabled', async () => {
+    vi.mocked(isFeatureEnabled).mockImplementation((path: string) => path !== '/fleet');
+    saveFavorites(new Set(['/fleet']));
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByLabelText('Open app launcher')).toBeInTheDocument());
+    expect(screen.queryByText('Fleet Management')).not.toBeInTheDocument();
+  });
+
+  it('shows the Fleet Management pinned icon when feature_fleet is enabled', async () => {
+    vi.mocked(isFeatureEnabled).mockReturnValue(true);
+    saveFavorites(new Set(['/fleet']));
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getAllByText('Fleet Management').length).toBeGreaterThan(0));
   });
 });

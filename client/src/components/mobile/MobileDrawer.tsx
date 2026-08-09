@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import RmpgLogo from '../RmpgLogo';
 import { toDisplayLabel } from '../../utils/formatters';
+import { isFeatureEnabled, useFeatureFlags } from '../../utils/featureFlags';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -196,6 +197,7 @@ export default function MobileDrawer({
 }: MobileDrawerProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  useFeatureFlags();
   const drawerRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef(0);
   const touchCurrentX = useRef(0);
@@ -350,6 +352,7 @@ export default function MobileDrawer({
             const visibleItems = group.items.filter((item) => {
               if (item.adminOnly && !isAdmin) return false;
               if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(item.path)) return false;
+              if (!isFeatureEnabled(item.path)) return false;
               return true;
             });
             if (visibleItems.length === 0) return null;
