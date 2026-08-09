@@ -2657,6 +2657,13 @@ export default function ServePage() {
         officers={officers}
         currentUserId={user?.id ? Number(user.id) : undefined}
         onRouteOptimized={handleRouteOptimized}
+        // Reuses the same set the map's shift-drag rectangle-select and
+        // "Add to route" / "Add all to route" context-menu actions populate:
+        // if the officer had already staged specific jobs on the map, the
+        // planner should open scoped to exactly those, not reset to "every
+        // open job". Empty selectedJobIds falls back to the planner's own
+        // default (every non-served/failed geocoded job).
+        preselectedJobIds={selectedJobIds}
       />
 
       {/* Skip Trace Panel */}

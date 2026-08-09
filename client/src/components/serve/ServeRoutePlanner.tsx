@@ -35,6 +35,14 @@ interface ServeRoutePlannerProps {
     totalDuration: number;
     fuelCost: number;
   }) => void;
+  /**
+   * When set (e.g. opened via "Add to route" on a map marker), only these
+   * job ids start selected — every other job still appears in the list, just
+   * unchecked, so the officer can add more manually. Without this prop the
+   * default selection (every non-served/failed geocoded job) is unchanged,
+   * which is what the toolbar's "Plan Route" button still wants.
+   */
+  preselectedJobIds?: Set<number>;
 }
 
 interface StopItem {
@@ -195,6 +203,26 @@ export function nearestNeighborOrder(
   return { ordered, totalDistanceMiles, totalDurationMinutes: estimateDriveMinutes(totalDistanceMiles) };
 }
 
+// ─── Initial Selection ──────────────────────────────────────────────────
+
+/**
+ * Whether a job starts checked when the planner opens. A non-empty
+ * `preselectedJobIds` (e.g. from the map's "Add to route" context menu)
+ * takes over selection entirely — every job NOT in the set starts
+ * unchecked, even ones the default rule would have picked — because the
+ * officer explicitly staged specific jobs and an unrelated one silently
+ * riding along in the optimized run would be worse than requiring one
+ * extra checkbox click to add it back.
+ */
+export function isJobPreselected(
+  jobStatus: ServeJob['status'],
+  preselectedJobIds: Set<number> | undefined,
+  jobId: number,
+): boolean {
+  if (preselectedJobIds && preselectedJobIds.size > 0) return preselectedJobIds.has(jobId);
+  return jobStatus !== 'served' && jobStatus !== 'failed';
+}
+
 // ─── Badge Components ───────────────────────────────────────────────────
 
 function TimeWindowBadge({ tw }: { tw: ServeJob['time_window'] }) {
@@ -225,7 +253,7 @@ function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ServeRoutePlanner({
-  isOpen, onClose, jobs, officers, currentUserId, onRouteOptimized,
+  isOpen, onClose, jobs, officers, currentUserId, onRouteOptimized, preselectedJobIds,
 }: ServeRoutePlannerProps) {
   const geocodedJobs = jobs.filter(j => j.recipient_lat != null && j.recipient_lng != null);
 
@@ -255,7 +283,9 @@ export default function ServeRoutePlanner({
   useEffect(() => {
     if (!isOpen) return;
     const items: StopItem[] = geocodedJobs.map((job, i) => ({
-      job, selected: job.status !== 'served' && job.status !== 'failed', order: i,
+      job,
+      selected: isJobPreselected(job.status, preselectedJobIds, job.id),
+      order: i,
     }));
     items.sort((a, b) => {
       const twDiff = timeWindowPriority(a.job.time_window) - timeWindowPriority(b.job.time_window);
@@ -267,7 +297,7 @@ export default function ServeRoutePlanner({
     setTotalDistance(0);
     setTotalDuration(0);
     setError(null);
-  }, [isOpen, jobs]);
+  }, [isOpen, jobs, preselectedJobIds]);
 
   // ─── Live GPS tracking ───
   // The app already runs a single mandatory, hardened location tracker
