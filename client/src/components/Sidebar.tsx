@@ -11,6 +11,7 @@ import {
   Globe, ScanSearch, Film, CalendarDays, Route, Fingerprint, FileSearch,
   Store, PawPrint, Warehouse, UserCog, MessageCircleQuestion, FlaskConical, Handshake,
 } from 'lucide-react';
+import { isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
 interface SidebarItem {
@@ -198,6 +199,7 @@ interface SidebarProps {
 export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  useFeatureFlags();
 
   // Persist collapsed state
   const [collapsed, setCollapsed] = useState(() => {
@@ -218,6 +220,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
   const isVisible = (item: SidebarItem) => {
     if (item.adminOnly && !isAdmin) return false;
     if (isContractManager && CONTRACT_MANAGER_BLOCKED.has(item.path)) return false;
+    if (!isFeatureEnabled(item.path)) return false;
     return true;
   };
 
