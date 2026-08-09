@@ -291,4 +291,56 @@ tesseractTraining.delete('/documents/:id/boxes/:boxId', async (c) => {
   return c.json({ success: true });
 });
 
+// GET /api/tesseract-training/documents/:id/notes
+tesseractTraining.get('/documents/:id/notes', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const row = await queryFirst<{ strokes_json: string }>(
+    db,
+    `SELECT strokes_json FROM tesseract_review_annotations WHERE serve_intake_document_id = ?`,
+    id,
+  );
+  return c.json({ strokes: row ? JSON.parse(row.strokes_json) : null });
+});
+
+// PUT /api/tesseract-training/documents/:id/notes
+// Body: { strokes: Array<{ tool: string; points: number[][]; color: string }> }
+// Review notes only — NEVER read by any training path (see migration 0233
+// header comment). Whole layer replaced on each save.
+tesseractTraining.put('/documents/:id/notes', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const user = c.get('user');
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+
+  let body: { strokes?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+  if (!Array.isArray(body.strokes)) {
+    return c.json({ error: 'strokes must be an array' }, 400);
+  }
+
+  const db = getDb(c.env);
+  await execute(
+    db,
+    `INSERT INTO tesseract_review_annotations (serve_intake_document_id, strokes_json, updated_by)
+     VALUES (?, ?, ?)
+     ON CONFLICT(serve_intake_document_id) DO UPDATE SET
+       strokes_json = excluded.strokes_json,
+       updated_by = excluded.updated_by,
+       updated_at = datetime('now')`,
+    id, JSON.stringify(body.strokes), user.id,
+  );
+  return c.json({ success: true });
+});
+
 export default tesseractTraining;
