@@ -393,7 +393,7 @@ head_sampling_rate = 1
 [vars]
 NODE_ENV = "production"
 PRIMARY_DOMAIN = "rmpgutah.us"
-CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:5173"
+CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:5173,https://claude-dispatch-audit-timeli.rmpg-flex.pages.dev,https://596c91e5.rmpg-flex.pages.dev"
 JWT_ACCESS_EXPIRY = "15m"
 JWT_REFRESH_EXPIRY = "7d"
 SERVER_TIMEZONE = "America/Denver"
