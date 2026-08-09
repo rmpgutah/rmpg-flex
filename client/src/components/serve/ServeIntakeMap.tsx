@@ -283,6 +283,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       style: MAPBOX_STYLE_DARK,
       center: [-111.891, 40.76],  // Salt Lake City
       zoom: 10,
+      projection: 'mercator',
       attributionControl: false,
       // Rectangle-select below also binds shift+drag — Mapbox's built-in
       // box-zoom (also shift+drag by default) would otherwise fight it.
