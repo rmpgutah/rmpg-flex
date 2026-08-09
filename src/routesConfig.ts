@@ -141,6 +141,7 @@ import documentsLibrary from './routes/documents/library';
 import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
 import tesseractOcr from './routes/tesseractOcr';
+import tesseractTraining from './routes/tesseractTraining';
 import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import voiceRoute from './routes/voice';
@@ -617,6 +618,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/documents', router: documentFolders, auth: 'required' },
   { prefix: '/api/pdf-tools', router: pdfTools, auth: 'required' },
   { prefix: '/api/tesseract-ocr', router: tesseractOcr, auth: 'required' },
+  { prefix: '/api/tesseract-training', router: tesseractTraining, auth: 'required' },
   { prefix: '/api/document-intake', router: documentIntake, auth: 'required' },
   { prefix: '/api/tts', router: tts, auth: 'required' },
 
