@@ -14,7 +14,7 @@ import './personnel/bodyCameraUploads';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
-import { getSecurityPolicy, validatePassword } from '../utils/securityPolicy';
+import { getSecurityPolicy, validatePassword, DEFAULT_SECURITY_POLICY } from '../utils/securityPolicy';
 const personnel = new Hono<Env>();
 
 // Sub-routers — mounted BEFORE any /:id handler below so the literal
@@ -1502,7 +1502,7 @@ personnel.post('/', async (c) => {
       : `${firstName} ${lastName}`.trim();
 
     if (!rawUsername) return c.json({ error: 'username is required' }, 400);
-    const securityPolicy = await getSecurityPolicy(getDb(c.env));
+    const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
     const passwordErr = validatePassword(password, securityPolicy);
     if (passwordErr) return c.json({ error: passwordErr }, 400);
     if (!fullName) return c.json({ error: 'full_name (or first_name + last_name) is required' }, 400);
@@ -1779,7 +1779,7 @@ personnel.post('/:id/reset-password', async (c) => {
       return c.json({ error: 'Password is required' }, 400);
     }
     const db = getDb(c.env);
-    const securityPolicy = await getSecurityPolicy(db);
+    const securityPolicy = await getSecurityPolicy(db).catch(() => DEFAULT_SECURITY_POLICY);
     const passwordErr = validatePassword(newPassword, securityPolicy);
     if (passwordErr) return c.json({ error: passwordErr }, 400);
     const existing = await queryFirst<{ id: number }>(

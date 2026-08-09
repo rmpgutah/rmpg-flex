@@ -18,7 +18,7 @@ import type {
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
-import { getSecurityPolicy, validatePassword } from '../utils/securityPolicy';
+import { getSecurityPolicy, validatePassword, DEFAULT_SECURITY_POLICY, type SecurityPolicy } from '../utils/securityPolicy';
 import {
   generateTotpSecret, verifyTotpCode, buildOtpauthUrl,
   encryptTotpSecret, decryptTotpSecret,
@@ -131,7 +131,7 @@ function signRefreshToken(secret: string, claims: Record<string, unknown>): Prom
 
 // Insert a session row using the live (legacy-owned) schema and return the new
 // session_id. is_active / created_at / last_used_at come from column defaults.
-async function createSession(c: any, db: any, userId: number, refreshToken: string): Promise<string> {
+async function createSession(c: any, db: any, userId: number, refreshToken: string, securityPolicy?: SecurityPolicy): Promise<string> {
   const sessionId = uuidv4(); // full dashed UUID → matches live session_id (36 chars)
   const refreshHash = await sha256Hex(refreshToken);
   await execute(
@@ -146,7 +146,7 @@ async function createSession(c: any, db: any, userId: number, refreshToken: stri
   // (today's behavior — no cap has ever existed). Best-effort: never fail
   // the login itself if this cleanup step errors.
   try {
-    const policy = await getSecurityPolicy(db);
+    const policy = securityPolicy ?? await getSecurityPolicy(db);
     if (policy.maxActiveSessions > 0) {
       await execute(
         db,
@@ -237,7 +237,7 @@ auth.post('/login', async (c) => {
 
     const db = getDb(c.env);
     await ensureAccountLockoutColumns(db);
-    const securityPolicy = await getSecurityPolicy(db);
+    const securityPolicy = await getSecurityPolicy(db).catch(() => DEFAULT_SECURITY_POLICY);
     const user = await queryFirst<any>(
       db,
       `SELECT ${USER_SELECT}, password_hash, failed_login_count, locked_until,
@@ -366,7 +366,7 @@ auth.post('/login', async (c) => {
 
     const claims = tokenClaims(user);
     const refreshToken = await signRefreshToken(secret, claims);
-    const sessionId = await createSession(c, db, user.id, refreshToken);
+    const sessionId = await createSession(c, db, user.id, refreshToken, securityPolicy);
     const accessToken = await signAccessToken(secret, { ...claims, sessionId });
 
     // Best-effort login counters — never let a counter error fail the login.
@@ -629,7 +629,7 @@ auth.put('/password', authMiddleware, async (c) => {
     if (!current_password || !new_password) {
       return c.json({ error: 'Current and new password required' }, 400);
     }
-    const securityPolicy = await getSecurityPolicy(getDb(c.env));
+    const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
     const policyErr = validatePassword(new_password, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
@@ -667,7 +667,7 @@ auth.post('/change-password', authMiddleware, async (c) => {
     if (!current || !next) {
       return c.json({ error: 'Current and new password required' }, 400);
     }
-    const securityPolicy = await getSecurityPolicy(getDb(c.env));
+    const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
     const policyErr = validatePassword(next, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
@@ -703,7 +703,7 @@ auth.post('/login/change-password', authMiddleware, async (c) => {
   try {
     const body = await c.req.json<{ newPassword?: string; new_password?: string }>();
     const next = body.newPassword ?? body.new_password ?? '';
-    const securityPolicy = await getSecurityPolicy(getDb(c.env));
+    const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
     const policyErr = validatePassword(next, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
@@ -859,7 +859,7 @@ auth.post('/forgot-password/reset', async (c) => {
     if (!tempToken || !newPassword) {
       return c.json({ error: 'Reset token and new password are required' }, 400);
     }
-    const securityPolicy = await getSecurityPolicy(getDb(c.env));
+    const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
     const policyErr = validatePassword(newPassword, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
@@ -972,7 +972,7 @@ auth.put('/security-questions', authMiddleware, async (c) => {
 });
 
 auth.get('/password-policy', async (c) => {
-  const policy = await getSecurityPolicy(getDb(c.env));
+  const policy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
   return c.json({
     minLength: policy.minPasswordLength,
     requireUppercase: policy.requireUppercase,
