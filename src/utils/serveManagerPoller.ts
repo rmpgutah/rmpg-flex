@@ -238,7 +238,7 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
           action: 'CREATE',
           entityType: 'call',
           entityId: callId,
-          details: `Created call ${callData.call_number} from ServeManager job ${job.job_number ?? job.id}`,
+          details: `Created call ${callData.call_number} from ServeManager job ${job.servemanager_job_number ?? job.id}`,
         });
       } catch (auditErr) {
         console.warn('audit_log insert failed for ServeManager call create:', auditErr);
