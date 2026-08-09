@@ -15,7 +15,7 @@ import { useWebglMapRecovery } from '../../hooks/useWebglMapRecovery';
 import LocationNoteModal from './LocationNoteModal';
 import { escapeHtml } from '../../utils/sanitize';
 import { withAlpha } from '../../utils/withAlpha';
-import { clusterByGrid, type ClusterableItem } from '../../utils/serveMapClustering';
+import { clusterByGrid, type ClusterableItem, type ClusterPositionCache } from '../../utils/serveMapClustering';
 import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter, type DeadlineFilter } from '../../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../../utils/mapboxRouting';
 import { exportServeMapSheet } from '../../utils/serveMapExport';
@@ -210,6 +210,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const clusterPositionCacheRef = useRef<ClusterPositionCache>(new Map());
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const unitMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
@@ -399,7 +400,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       priority: it.priority,
       status: it.status,
     }));
-    const clusters = clusterByGrid(clusterInput, currentZoom);
+    const clusters = clusterByGrid(clusterInput, currentZoom, clusterPositionCacheRef.current);
 
     for (const cluster of clusters) {
       if (cluster.count === 1) {
