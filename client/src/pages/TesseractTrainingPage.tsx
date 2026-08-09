@@ -24,6 +24,8 @@ interface BoxAnnotation {
   corrected_text: string;
 }
 
+interface Stroke { tool: 'arrow' | 'circle' | 'highlight'; points: [number, number][]; color: string }
+
 type Mode = 'text' | 'boxes' | 'notes';
 
 export default function TesseractTrainingPage() {
@@ -41,6 +43,11 @@ export default function TesseractTrainingPage() {
   const [drawRect, setDrawRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [pendingBoxText, setPendingBoxText] = useState('');
   const imgRef = useRef<HTMLImageElement>(null);
+
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [activeTool, setActiveTool] = useState<Stroke['tool']>('highlight');
+  const [drawingStroke, setDrawingStroke] = useState<Stroke | null>(null);
+  const [notesDirty, setNotesDirty] = useState(false);
 
   const loadList = useCallback(() => {
     apiFetch<{ rows: DocRow[] }>(`/tesseract-training/documents?page=${page}`)
@@ -65,6 +72,15 @@ export default function TesseractTrainingPage() {
   }, [selectedId]);
 
   useEffect(() => { if (mode === 'boxes') loadBoxes(); }, [mode, loadBoxes]);
+
+  const loadNotes = useCallback(() => {
+    if (selectedId == null) return;
+    apiFetch<{ strokes: Stroke[] | null }>(`/tesseract-training/documents/${selectedId}/notes`)
+      .then((res) => { setStrokes(res.strokes ?? []); setNotesDirty(false); })
+      .catch(console.error);
+  }, [selectedId]);
+
+  useEffect(() => { if (mode === 'notes') loadNotes(); }, [mode, loadNotes]);
 
   const handleSubmit = async () => {
     if (selectedId == null) return;
@@ -246,7 +262,74 @@ export default function TesseractTrainingPage() {
               )}
 
               {mode === 'notes' && (
-                <p className="text-[11px] text-rmpg-500">Notes mode implemented in the next task.</p>
+                <div className="space-y-2">
+                  <p className="text-[11px] text-rmpg-500">
+                    Free-form marks for human reviewers only — never used for training.
+                  </p>
+                  <div className="flex gap-2">
+                    {(['highlight', 'circle', 'arrow'] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setActiveTool(t)}
+                        className={`px-2 py-1 text-[11px] border ${activeTool === t ? 'bg-surface-raised' : ''}`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                    <button
+                      onClick={async () => {
+                        if (selectedId == null) return;
+                        await apiFetch(`/tesseract-training/documents/${selectedId}/notes`, {
+                          method: 'PUT',
+                          body: JSON.stringify({ strokes }),
+                        });
+                        setNotesDirty(false);
+                      }}
+                      disabled={!notesDirty}
+                      className="px-2 py-1 text-[11px] border ml-auto"
+                    >
+                      Save Notes
+                    </button>
+                  </div>
+                  <div
+                    className="relative inline-block"
+                    onPointerDown={(e) => {
+                      if (!imgRef.current) return;
+                      const rect = imgRef.current.getBoundingClientRect();
+                      const p = imageToNaturalCoords(rect, imgRef.current.naturalWidth, imgRef.current.naturalHeight, { x: e.clientX, y: e.clientY });
+                      setDrawingStroke({ tool: activeTool, points: [[p.x, p.y]], color: '#f59e0b' });
+                    }}
+                    onPointerMove={(e) => {
+                      if (!drawingStroke || !imgRef.current) return;
+                      const rect = imgRef.current.getBoundingClientRect();
+                      const p = imageToNaturalCoords(rect, imgRef.current.naturalWidth, imgRef.current.naturalHeight, { x: e.clientX, y: e.clientY });
+                      setDrawingStroke({ ...drawingStroke, points: [...drawingStroke.points, [p.x, p.y]] });
+                    }}
+                    onPointerUp={() => {
+                      if (drawingStroke) {
+                        setStrokes((prev) => [...prev, drawingStroke]);
+                        setNotesDirty(true);
+                      }
+                      setDrawingStroke(null);
+                    }}
+                  >
+                    <img
+                      ref={imgRef}
+                      src={authedImageUrl(`/api/tesseract-training/documents/${detail.id}/image`)}
+                      alt={detail.file_name}
+                      className="max-w-full border block"
+                    />
+                    <svg className="absolute top-0 left-0 w-full h-full pointer-events-none">
+                      {[...strokes, ...(drawingStroke ? [drawingStroke] : [])].map((s, i) => (
+                        <polyline
+                          key={i}
+                          points={s.points.map(([x, y]) => `${(x / (imgRef.current?.naturalWidth || 1)) * 100}%,${(y / (imgRef.current?.naturalHeight || 1)) * 100}%`).join(' ')}
+                          fill="none" stroke={s.color} strokeWidth={3} strokeLinecap="round"
+                        />
+                      ))}
+                    </svg>
+                  </div>
+                </div>
               )}
             </div>
           )}
