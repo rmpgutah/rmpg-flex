@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove, computeAccuracyRingGeometry, CALL_MARKER_INK } from '../mapMarkers';
 import { TACTICAL_SURFACE_RAISED, TACTICAL_BRAND_GOLD, TACTICAL_TEXT_PRIMARY } from '../tacticalPalette';
 import type { MapUnit, ActiveCall } from '../mapConstants';
+import { UNIT_STATUS_COLORS } from '../mapConstants';
 import { PRIORITY_HEX, priorityHex } from '../../../../utils/statusColors';
 import { MAP_PALETTE } from '../../../../utils/mapboxBasemap';
 
@@ -28,6 +29,34 @@ describe('mapMarkers', () => {
 
   it('builds unit popup HTML containing the officer name', () => {
     expect(buildUnitPopupHtml(unit)).toContain('J. Smith');
+  });
+
+  it('renders the unit badge as an arrow svg, not a filled circle', () => {
+    const el = buildUnitMarkerEl(unit);
+    const badge = el.querySelector('[data-role="badge"]');
+    expect(badge?.querySelector('svg')).toBeTruthy();
+    expect(badge?.querySelector('path')).toBeTruthy();
+    // No circular badge fill/border-radius left on the badge element itself
+    expect(badge?.getAttribute('style') || '').not.toContain('border-radius:50%');
+  });
+
+  it('rotates the arrow to gps_heading when present, and defaults to 0deg otherwise', () => {
+    const withHeading = buildUnitMarkerEl({ ...unit, gps_heading: 90 } as MapUnit);
+    const svgWithHeading = withHeading.querySelector('[data-role="badge"] svg') as SVGElement;
+    expect(svgWithHeading.style.transform).toBe('rotate(90deg)');
+
+    const withoutHeading = buildUnitMarkerEl({ ...unit, gps_heading: null } as MapUnit);
+    const svgWithoutHeading = withoutHeading.querySelector('[data-role="badge"] svg') as SVGElement;
+    expect(svgWithoutHeading.style.transform).toBe('rotate(0deg)');
+  });
+
+  it('applyUnitMarkerState updates the arrow rotation and fill color in place', () => {
+    const el = buildUnitMarkerEl(unit);
+    applyUnitMarkerState(el, { ...unit, status: 'busy', gps_heading: 200 } as MapUnit);
+    const svg = el.querySelector('[data-role="badge"] svg') as SVGElement;
+    expect(svg.style.transform).toBe('rotate(200deg)');
+    const path = el.querySelector('[data-role="badge"] path') as SVGPathElement;
+    expect(path.getAttribute('fill')).toBe(UNIT_STATUS_COLORS.busy);
   });
 
   it('builds a call marker element with the priority label', () => {
@@ -236,10 +265,14 @@ describe('shouldAnimateMarkerMove', () => {
 });
 
 describe('buildUnitMarkerEl — heading and accuracy', () => {
-  it('rotates the badge when heading is present', () => {
+  it('rotates the badge arrow svg when heading is present', () => {
+    // Rotation moved from the badge div onto the inner arrow <svg> when the
+    // circle badge was replaced with a directional arrow (see the dedicated
+    // arrow-rotation tests above) — this test now guards the same invariant
+    // one level down, on the svg rather than the badge wrapper itself.
     const el = buildUnitMarkerEl({ ...unit, gps_heading: 90 } as MapUnit);
-    const badge = el.querySelector('[data-role="badge"]') as HTMLElement;
-    expect(badge.style.transform).toContain('rotate(90deg)');
+    const svg = el.querySelector('[data-role="badge"] svg') as SVGElement;
+    expect(svg.style.transform).toContain('rotate(90deg)');
   });
 
   it('does not rotate when heading is null', () => {
@@ -329,14 +362,15 @@ describe('unit marker tactical palette', () => {
     expect(body).toMatch(/const TACTICAL_BADGE_SURFACE = '#0d1520';/);
   });
 
-  it('routes the badge ring and glyph color through that constant', () => {
+  it('routes the arrow outline color through that constant', () => {
     const body = src();
-    // Both the build path and the in-place update path set the ring color.
-    expect(body.match(/TACTICAL_BADGE_SURFACE : ringColor/g) ?? []).toHaveLength(2);
-    // The glyph inherits via currentColor from the badge element's color.
-    expect(body).toContain("badge.style.color = TACTICAL_BADGE_SURFACE;");
-    expect(body).toContain('fill="currentColor"');
+    // The circle badge (background/border) was replaced by a directional
+    // arrow <svg> — TACTICAL_BADGE_SURFACE now outlines the arrow path
+    // instead of filling the old badge div, but it's still the single source
+    // of truth, set on both the build path (buildUnitArrowSvg) and the
+    // in-place update path (applyUnitMarkerState).
+    expect(body.match(/setAttribute\('stroke', TACTICAL_BADGE_SURFACE\)/g) ?? []).toHaveLength(2);
     // And it must not have drifted back onto an ambient theme variable.
-    expect(body).not.toMatch(/badge\.style\.color = 'var\(/);
+    expect(body).not.toMatch(/setAttribute\('stroke', 'var\(/);
   });
 });

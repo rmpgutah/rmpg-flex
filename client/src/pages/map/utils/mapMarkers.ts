@@ -82,13 +82,26 @@ function getMapUnitGpsStaleness(unit: Unit): 'ok' | 'stale' | 'lost' {
 // isn't repeated at each site.
 const TACTICAL_BADGE_SURFACE = '#0d1520';
 
-// Simple top-down vehicle glyph — deliberately basic (one <path>, no detail)
-// so it stays legible at map scale; it's a silhouette, not an illustration.
-// Fill is `currentColor` so the glyph inherits from the badge element, whose
-// `color` is set to TACTICAL_BADGE_SURFACE below — that indirection keeps the
-// glyph and the badge ring on a single source of truth.
-const UNIT_GLYPH_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-  + '<path d="M12 2 L19 9 L19 21 L15 21 L15 17 L9 17 L9 21 L5 21 L5 9 Z" fill="currentColor"/></svg>';
+// Directional triangular arrow — replaces the old vehicle-silhouette glyph.
+// Points north (0deg) by default; buildUnitMarkerEl/applyUnitMarkerState set
+// the rotation via the returned <svg>'s own style.transform, not a wrapping
+// element, so the fill color and the rotation can be updated independently
+// without re-parsing HTML on every poll.
+function buildUnitArrowSvg(fillColor: string, headingDeg: number | null | undefined): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '20');
+  svg.setAttribute('height', '20');
+  const rotation = headingDeg != null && Number.isFinite(headingDeg) ? headingDeg : 0;
+  svg.style.transform = `rotate(${rotation}deg)`;
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', 'M12 2 20 21 12 16 4 21Z');
+  path.setAttribute('fill', fillColor);
+  path.setAttribute('stroke', TACTICAL_BADGE_SURFACE);
+  path.setAttribute('stroke-width', '1');
+  svg.appendChild(path);
+  return svg;
+}
 
 /** Build a bold solid-badge unit marker: status-colored disc + vehicle glyph + call-sign label. */
 export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
@@ -121,20 +134,11 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
   badge.setAttribute('data-role', 'badge');
   const ringColor = staleness === 'ok' ? color : '#6b7280';
   badge.style.cssText = `
-    width:30px;height:30px;border-radius:50%;
     display:flex;align-items:center;justify-content:center;
-    background:${color};
-    border:2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? TACTICAL_BADGE_SURFACE : ringColor};
-    box-shadow:0 0 8px ${withAlpha(ringColor, 'b3')};
+    filter:drop-shadow(0 0 4px ${withAlpha(ringColor, 'b3')});
   `;
-  badge.style.color = TACTICAL_BADGE_SURFACE;
-  badge.innerHTML = UNIT_GLYPH_SVG;
-  // Rotate the whole badge to point in the direction of travel. Only applied
-  // when heading is present and non-null — the server nulls implausible
-  // headings (gps.ts bounds validation), so a present value is trustworthy.
-  if (unit.gps_heading != null && Number.isFinite(unit.gps_heading)) {
-    badge.style.transform = `rotate(${unit.gps_heading}deg)`;
-  }
+  const arrowFill = staleness === 'ok' ? color : ringColor;
+  badge.appendChild(buildUnitArrowSvg(arrowFill, unit.gps_heading));
   inner.appendChild(badge);
 
   const label = document.createElement('div');
@@ -189,10 +193,16 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
   const ringColor = staleness === 'ok' ? color : '#6b7280';
   const badge = el.querySelector<HTMLElement>('[data-role="badge"]');
   if (badge) {
-    badge.style.background = color;
-    badge.style.border = `2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? TACTICAL_BADGE_SURFACE : ringColor}`;
-    badge.style.boxShadow = `0 0 8px ${withAlpha(ringColor, 'b3')}`;
-    badge.style.transform = (unit.gps_heading != null && Number.isFinite(unit.gps_heading)) ? `rotate(${unit.gps_heading}deg)` : '';
+    badge.style.filter = `drop-shadow(0 0 4px ${withAlpha(ringColor, 'b3')})`;
+    const arrowFill = staleness === 'ok' ? color : ringColor;
+    const svg = badge.querySelector('svg') as SVGSVGElement | null;
+    const path = badge.querySelector('path') as SVGPathElement | null;
+    if (svg && path) {
+      const rotation = unit.gps_heading != null && Number.isFinite(unit.gps_heading) ? unit.gps_heading : 0;
+      svg.style.transform = `rotate(${rotation}deg)`;
+      path.setAttribute('fill', arrowFill);
+      path.setAttribute('stroke', TACTICAL_BADGE_SURFACE);
+    }
   }
 
   const label = el.querySelector<HTMLElement>('[data-role="label"]');
