@@ -123,12 +123,14 @@ export async function testConnection(db: D1Database, jwtSecret: string): Promise
 
 export interface SmJob {
   id: number;
-  // Observed undefined on a real job live 2026-08-09 ("ServeManager Job
-  // #undefined" landed in a created call's description, and binding
-  // `undefined` straight into a D1 query throws D1_TYPE_ERROR: Type
-  // 'undefined' not supported). Typed as required by the API docs but not
-  // reliably present, so every read must fall back to null.
-  job_number?: string;
+  // The real /jobs list payload (confirmed live 2026-08-09) has no
+  // top-level `job_number` at all — the field is `servemanager_job_number`.
+  // Every `job.job_number` read was reading a field that never existed
+  // ("ServeManager Job #undefined" landed in a created call's
+  // description, and Job # showed blank in the Cached Jobs table), which
+  // #3350's `?? null` fallback correctly null-coalesced but didn't fix —
+  // it just stopped the D1_TYPE_ERROR on binding a raw `undefined`.
+  servemanager_job_number?: string;
   job_status?: string;
   service_status?: string;
   // The real /jobs list payload (confirmed live 2026-08-08) has no
