@@ -28,8 +28,8 @@ function makeDb(opts: {
           return { meta: { changes: 1, last_row_id: row.id } };
         }
         if (/DELETE FROM tesseract_box_annotations/.test(sql)) {
-          const boxId = boundArgs[0];
-          const idx = boxes.findIndex((b) => b.id === boxId);
+          const [boxId, docId] = boundArgs;
+          const idx = boxes.findIndex((b) => b.id === boxId && b.serve_intake_document_id === docId);
           if (idx >= 0) boxes.splice(idx, 1);
           return { meta: { changes: idx >= 0 ? 1 : 0 } };
         }
@@ -106,5 +106,13 @@ describe('tesseract box annotations', () => {
     const res = await app.request('/documents/5/boxes/9', { method: 'DELETE' }, { DB: db });
     expect(res.status).toBe(200);
     expect(db._boxes).toHaveLength(0);
+  });
+
+  test('DELETE /documents/:id/boxes/:boxId returns 404 when the box belongs to a different document', async () => {
+    const app = makeApp('admin');
+    const db = makeDb({ boxes: [{ id: 9, serve_intake_document_id: 6, x0: 1, y0: 1, x1: 2, y1: 2, corrected_text: 'x', created_at: 'now' }] });
+    const res = await app.request('/documents/5/boxes/9', { method: 'DELETE' }, { DB: db });
+    expect(res.status).toBe(404);
+    expect(db._boxes).toHaveLength(1);
   });
 });

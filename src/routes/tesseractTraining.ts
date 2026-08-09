@@ -278,10 +278,16 @@ tesseractTraining.delete('/documents/:id/boxes/:boxId', async (c) => {
   if (!requireAdminManager(c)) {
     return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
   }
+  const id = parseInt(c.req.param('id'), 10);
   const boxId = parseInt(c.req.param('boxId'), 10);
-  if (isNaN(boxId)) return c.json({ error: 'Invalid boxId' }, 400);
+  if (isNaN(id) || isNaN(boxId)) return c.json({ error: 'Invalid boxId' }, 400);
   const db = getDb(c.env);
-  await execute(db, `DELETE FROM tesseract_box_annotations WHERE id = ?`, boxId);
+  const result = await execute(
+    db,
+    `DELETE FROM tesseract_box_annotations WHERE id = ? AND serve_intake_document_id = ?`,
+    boxId, id,
+  );
+  if (result.meta.changes === 0) return c.json({ error: 'Not found' }, 404);
   return c.json({ success: true });
 });
 
