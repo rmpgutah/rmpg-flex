@@ -61,7 +61,26 @@ describe('mapMarkers', () => {
 
   it('builds a call marker element with the priority label', () => {
     const el = buildCallMarkerEl(call);
-    expect(el.textContent).toBe('P1');
+    const square = el.querySelector('[data-role="priority-square"]') as HTMLElement;
+    expect(square.textContent).toBe('P1');
+  });
+
+  it('renders the call marker as a rounded square, not a rotated diamond', () => {
+    const el = buildCallMarkerEl(call);
+    const square = el.querySelector('[data-role="priority-square"]') as HTMLElement;
+    expect(square.style.transform).toBe('');
+    expect(square.style.borderRadius).toBe('2px');
+  });
+
+  it('renders a call-number label below the priority square', () => {
+    const el = buildCallMarkerEl(call);
+    const numberLabel = el.querySelector('[data-role="call-number-label"]') as HTMLElement;
+    expect(numberLabel.textContent).toBe('CFS-1');
+    // jsdom's cssstyle normalizes the `color` longhand to `rgb(r, g, b)` on
+    // readback (unlike the `background` shorthand elsewhere in this file,
+    // which round-trips as the literal hex string) — compare against the
+    // equivalent rgb() form rather than the raw hex.
+    expect(numberLabel.style.color).toBe(hexToRgb(priorityHex(call.priority)));
   });
 
   it('builds call popup HTML containing the call number', () => {
@@ -80,8 +99,9 @@ describe('mapMarkers', () => {
     for (const [input, expected] of [['P1', 'P1'], ['1', 'P1'], ['P4', 'P4'], ['3', 'P3'], [1, 'P1']] as const) {
       it(`renders ${JSON.stringify(input)} as ${expected} on the marker`, () => {
         const el = buildCallMarkerEl({ ...call, priority: input } as unknown as ActiveCall);
-        expect(el.textContent).toBe(expected);
-        expect(el.textContent).not.toMatch(/^PP/);
+        const square = el.querySelector('[data-role="priority-square"]') as HTMLElement;
+        expect(square.textContent).toBe(expected);
+        expect(square.textContent).not.toMatch(/^PP/);
       });
     }
 
@@ -95,9 +115,9 @@ describe('mapMarkers', () => {
       // The original defect was exactly this disagreement.
       const bare = buildCallMarkerEl({ ...call, priority: '1' } as unknown as ActiveCall);
       const prefixed = buildCallMarkerEl({ ...call, priority: 'P1' } as unknown as ActiveCall);
-      expect(bare.textContent).toBe(prefixed.textContent);
-      const fill = (el: HTMLElement) =>
-        (el.querySelector('[data-role="marker-inner"]') as HTMLElement).style.background;
+      const square = (el: HTMLElement) => el.querySelector('[data-role="priority-square"]') as HTMLElement;
+      expect(square(bare).textContent).toBe(square(prefixed).textContent);
+      const fill = (el: HTMLElement) => square(el).style.background;
       expect(fill(bare)).toBe(fill(prefixed));
     });
   });
@@ -144,6 +164,11 @@ describe('mapMarkers', () => {
     expect(el.querySelector('[data-role="label"]')?.textContent).toBe('B99');
   });
 });
+
+function hexToRgb(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+}
 
 function srgbC(c: number) { const v = c / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
 function lumOf(hex: string) {
@@ -329,14 +354,12 @@ describe('buildUnitMarkerEl — marker root vs inner wrapper (pan/zoom smear fix
     expect(el.style.cssText).not.toContain('transform');
   });
 
-  it('buildCallMarkerEl keeps the 45° diamond rotation on the inner wrapper', () => {
+  it('buildCallMarkerEl renders a rounded square with no rotation on the priority square', () => {
     const el = buildCallMarkerEl(call);
-    const inner = el.querySelector('[data-role="marker-inner"]') as HTMLElement;
-    expect(inner).not.toBeNull();
-    expect(inner.style.transform).toContain('rotate(45deg)');
-    // The label is counter-rotated inside the diamond so it reads level.
-    expect(inner.querySelector('span')?.style.transform).toContain('rotate(-45deg)');
-    expect(el.textContent).toBe('P1');
+    const square = el.querySelector('[data-role="priority-square"]') as HTMLElement;
+    expect(square).not.toBeNull();
+    expect(square.style.transform).toBe('');
+    expect(square.textContent).toBe('P1');
   });
 
   it('applyUnitMarkerState mutates the same inner wrapper node identity', () => {

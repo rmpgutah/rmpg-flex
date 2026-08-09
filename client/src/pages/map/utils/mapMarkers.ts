@@ -253,43 +253,49 @@ export function buildUnitPopupHtml(unit: Unit): string {
     </div>`;
 }
 
-/** Build HTML for a call marker element. */
+/** Build HTML for a call marker element: rounded priority square + call-number label below. */
 export function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
   const color = priorityHex(call.priority);
-  // Root element handed to `new mapboxgl.Marker({ element: el })`. Mapbox GL
-  // OVERWRITES this node's `style.transform` wholesale on every render frame,
-  // so a `rotate(45deg)` written here is destroyed the instant the marker is
-  // added — the diamond flattened to a square while the counter-rotated label
-  // inside stayed tilted. Root carries position-neutral styling only; the
-  // rotation lives on the inner wrapper below. Same contract as
-  // buildUnitMarkerEl above.
   const el = document.createElement('div');
   el.className = 'rmpg-mbx-call';
-  el.style.cssText = `display:block;cursor:pointer;`;
+  el.style.cssText = `display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;`;
 
-  const diamond = document.createElement('div');
-  diamond.setAttribute('data-role', 'marker-inner');
-  diamond.style.cssText = `
+  const square = document.createElement('div');
+  square.setAttribute('data-role', 'priority-square');
+  square.style.cssText = `
     width:22px;height:22px;
     background:${color};border:2px solid ${color};
-    border-radius:2px;
     display:flex;align-items:center;justify-content:center;
     box-shadow:0 0 8px ${withAlpha(color, '99')};
   `;
-  // Discrete assignment, not part of the cssText blob above: jsdom voids an
-  // entire inline style when one cssText string mixes the `background`
-  // shorthand with `border-radius` (documented in this file's test suite), so
-  // the rotation that DEFINES this marker's shape must not ride in that blob.
-  diamond.style.transform = 'rotate(45deg)';
-  el.appendChild(diamond);
-
-  const inner = document.createElement('span');
-  inner.style.cssText = `font-size:8px;font-weight:700;color:${CALL_MARKER_INK};font-family:ui-monospace,monospace;`;
-  inner.style.transform = 'rotate(-45deg)';
+  // Discrete assignment, not part of the cssText blob above: jsdom's cssstyle
+  // parser voids the ENTIRE inline style when one cssText string mixes the
+  // `background` shorthand with `border-radius` (documented elsewhere in this
+  // file's test suite), so border-radius must be set outside that blob for
+  // `style.borderRadius` to read back correctly.
+  square.style.borderRadius = '2px';
+  const priorityText = document.createElement('span');
+  priorityText.style.cssText = `font-size:8px;font-weight:700;color:${CALL_MARKER_INK};font-family:ui-monospace,monospace;`;
   // priorityLabel, not `P${call.priority}` — live rows store 'P1'..'P4', so the
   // hand-built prefix rendered "PP1" on the map.
-  inner.textContent = priorityLabel(call.priority);
-  diamond.appendChild(inner);
+  priorityText.textContent = priorityLabel(call.priority);
+  square.appendChild(priorityText);
+  el.appendChild(square);
+
+  const numberLabel = document.createElement('div');
+  numberLabel.setAttribute('data-role', 'call-number-label');
+  numberLabel.style.cssText = `
+    background:#101820;border:1.2px solid ${color};
+    padding:1px 5px;font-size:8px;font-weight:700;
+    font-family:ui-monospace,monospace;white-space:nowrap;
+  `;
+  // Discrete assignments for the same jsdom cssText-voiding reason as above —
+  // border-radius and color must not ride in the same cssText blob as `background`.
+  numberLabel.style.borderRadius = '2px';
+  numberLabel.style.color = color;
+  numberLabel.textContent = call.call_number;
+  el.appendChild(numberLabel);
+
   el.title = `${call.call_number} — ${formatIncidentType(call.incident_type)}`;
   return el;
 }
