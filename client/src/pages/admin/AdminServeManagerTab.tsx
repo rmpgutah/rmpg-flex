@@ -73,7 +73,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
   const [pollerAutoCreate, setPollerAutoCreate] = useState(true);
   const [pollerSaving, setPollerSaving] = useState(false);
   const [pollerPolling, setPollerPolling] = useState(false);
-  const [pollerPollResult, setPollerPollResult] = useState<{ synced: number; callsCreated: number; error?: string } | null>(null);
+  const [pollerPollResult, setPollerPollResult] = useState<{ synced: number; callsCreated: number; attemptsSynced?: number; error?: string } | null>(null);
   const [pollerDirty, setPollerDirty] = useState(false);
 
   // ── Data fetching ──
@@ -272,7 +272,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
     setPollerPolling(true);
     setPollerPollResult(null);
     try {
-      const result = await apiFetch<{ synced: number; callsCreated: number; error?: string }>('/servemanager/poller/poll-now', { method: 'POST' });
+      const result = await apiFetch<{ synced: number; callsCreated: number; attemptsSynced?: number; error?: string }>('/servemanager/poller/poll-now', { method: 'POST' });
       setPollerPollResult(result);
       await fetchPollerStatus();
       await fetchJobs();
@@ -511,7 +511,8 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               {pollerPollResult.error ? (
                 <><XCircle className="w-3.5 h-3.5 shrink-0" /> Poll error: {pollerPollResult.error}</>
               ) : (
-                <><CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Synced {pollerPollResult.synced} jobs, created {pollerPollResult.callsCreated} dispatch call(s)</>
+                <><CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Synced {pollerPollResult.synced} jobs
+                  {pollerPollResult.attemptsSynced ? `, ${pollerPollResult.attemptsSynced} attempt(s)` : ''}, created {pollerPollResult.callsCreated} dispatch call(s)</>
               )}
             </div>
           )}
