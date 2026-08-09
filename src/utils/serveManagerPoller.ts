@@ -78,6 +78,16 @@ async function upsertJobAttempts(db: D1Database, job: SmJob): Promise<number> {
   return count;
 }
 
+// employee_process_server (in-house server) uses first_name/last_name, while
+// process_server_company/process_server_contact (external server) are name-
+// keyed like every other confirmed ServeManager resource. Confirmed live
+// 2026-08-09 against a real in-house-served job.
+function getProcessServerName(job: SmJob): string | null {
+  const emp = job.employee_process_server;
+  if (emp?.first_name || emp?.last_name) return [emp.first_name, emp.last_name].filter(Boolean).join(' ');
+  return job.process_server_company?.name || job.process_server_contact?.name || null;
+}
+
 function mapSmJobToCallData(job: SmJob) {
   const addresses = job.addresses || [];
   const primary = addresses.find((a) => a.primary) || addresses[0];
@@ -163,8 +173,9 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
         // live 2026-08-09: the fix deployed, but a job cached moments
         // earlier still showed sm_job_number: null until this refresh.
         await execute(db,
-          `UPDATE sm_jobs SET job_status=?, service_status=?, sm_job_number=?, updated_at=datetime('now') WHERE sm_job_id=?`,
-          job.job_status ?? null, job.service_status ?? null, job.servemanager_job_number ?? null, job.id);
+          `UPDATE sm_jobs SET job_status=?, service_status=?, sm_job_number=?, process_server_name=?, client_job_number=?, updated_at=datetime('now') WHERE sm_job_id=?`,
+          job.job_status ?? null, job.service_status ?? null, job.servemanager_job_number ?? null,
+          getProcessServerName(job), job.client_job_number || null, job.id);
         synced++;
         continue;
       }
@@ -244,13 +255,15 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
       await execute(db,
         `INSERT INTO sm_jobs (sm_job_id, sm_job_number, client_company_name, recipient_name,
            job_status, service_status, court_case_number, due_date, linked_call_id,
-           process_type, addresses_json, documents_json, synced_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
+           process_type, addresses_json, documents_json, process_server_name,
+           client_job_number, synced_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
         job.id, job.servemanager_job_number ?? null, clientName, (job.recipient?.name || job.recipient?.full_name) || null,
         job.job_status ?? null, job.service_status ?? null, job.court_case?.number || null,
         job.due_date || null, callId,
         callData.process_type,
         JSON.stringify(job.addresses || []), JSON.stringify(job.documents || []),
+        getProcessServerName(job), job.client_job_number || null,
       );
 
       // Link the auto-created call into the Process Server queue. Without
