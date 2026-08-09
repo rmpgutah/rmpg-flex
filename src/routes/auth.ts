@@ -18,6 +18,7 @@ import type {
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { getSecurityPolicy, validatePassword } from '../utils/securityPolicy';
 import {
   generateTotpSecret, verifyTotpCode, buildOtpauthUrl,
   encryptTotpSecret, decryptTotpSecret,
@@ -601,25 +602,14 @@ auth.get('/me', authMiddleware, async (c) => {
   return c.json({ user: userPayload(user) });
 });
 
-// Enforce the advertised password policy (GET /password-policy) — previously
-// only length was checked, so "12345678" satisfied a policy that requires
-// upper/lower/digit/special. Returns an error string, or null when valid.
-function validateNewPassword(pwd: string): string | null {
-  if (typeof pwd !== 'string' || pwd.length < 8) return 'Password must be at least 8 characters';
-  if (!/[A-Z]/.test(pwd)) return 'Password must contain an uppercase letter';
-  if (!/[a-z]/.test(pwd)) return 'Password must contain a lowercase letter';
-  if (!/[0-9]/.test(pwd)) return 'Password must contain a number';
-  if (!/[^A-Za-z0-9]/.test(pwd)) return 'Password must contain a special character';
-  return null;
-}
-
 auth.put('/password', authMiddleware, async (c) => {
   try {
     const { current_password, new_password } = await c.req.json();
     if (!current_password || !new_password) {
       return c.json({ error: 'Current and new password required' }, 400);
     }
-    const policyErr = validateNewPassword(new_password);
+    const securityPolicy = await getSecurityPolicy(getDb(c.env));
+    const policyErr = validatePassword(new_password, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
     const userId = c.get('userId');
@@ -656,7 +646,8 @@ auth.post('/change-password', authMiddleware, async (c) => {
     if (!current || !next) {
       return c.json({ error: 'Current and new password required' }, 400);
     }
-    const policyErr = validateNewPassword(next);
+    const securityPolicy = await getSecurityPolicy(getDb(c.env));
+    const policyErr = validatePassword(next, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
     const userId = c.get('userId');
@@ -691,7 +682,8 @@ auth.post('/login/change-password', authMiddleware, async (c) => {
   try {
     const body = await c.req.json<{ newPassword?: string; new_password?: string }>();
     const next = body.newPassword ?? body.new_password ?? '';
-    const policyErr = validateNewPassword(next);
+    const securityPolicy = await getSecurityPolicy(getDb(c.env));
+    const policyErr = validatePassword(next, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
     const userId = c.get('userId');
@@ -846,7 +838,8 @@ auth.post('/forgot-password/reset', async (c) => {
     if (!tempToken || !newPassword) {
       return c.json({ error: 'Reset token and new password are required' }, 400);
     }
-    const policyErr = validateNewPassword(newPassword);
+    const securityPolicy = await getSecurityPolicy(getDb(c.env));
+    const policyErr = validatePassword(newPassword, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
     let payload: any;
@@ -957,15 +950,16 @@ auth.put('/security-questions', authMiddleware, async (c) => {
   }
 });
 
-auth.get('/password-policy', (c) => {
+auth.get('/password-policy', async (c) => {
+  const policy = await getSecurityPolicy(getDb(c.env));
   return c.json({
-    minLength: 8,
-    requireUppercase: true,
-    requireLowercase: true,
-    requireNumber: true,
-    requireSpecial: true,
-    expiryDays: 90,
-    preventReuse: 5,
+    minLength: policy.minPasswordLength,
+    requireUppercase: policy.requireUppercase,
+    requireLowercase: policy.requireLowercase,
+    requireNumber: policy.requireNumbers,
+    requireSpecial: policy.requireSpecialChars,
+    expiryDays: policy.passwordExpiryDays,
+    preventReuse: 5, // not yet configurable — no UI field exists for this
   });
 });
 
