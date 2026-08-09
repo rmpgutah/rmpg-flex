@@ -1514,17 +1514,24 @@ admin.get('/sessions', async (c) => {
   if (denied) return denied;
   try {
     const db = getDb(c.env);
-    const rows = await query<{ user_agent: string | null }>(db,
+    const rows = await query<{ user_agent: string | null; browser: string | null; os: string | null }>(db,
       `SELECT session_id AS id, user_id, ip_address, user_agent, created_at, last_used_at, expires_at,
-              COALESCE(is_active, 1) AS is_active
+              COALESCE(is_active, 1) AS is_active,
+              device_type, browser, os, country, region, city, postal_code, timezone, latitude, longitude, asn, isp,
+              http_protocol, tls_version, likely_vpn_or_hosting, device_platform, device_platform_version,
+              device_latitude, device_longitude, device_geo_accuracy_m, device_geo_captured_at
          FROM sessions
         WHERE COALESCE(is_active, 1) = 1 AND expires_at > datetime('now')
         ORDER BY COALESCE(last_used_at, created_at) DESC
         LIMIT 500`);
-    // The client only renders `device_name` — derive a friendly label from
-    // the raw User-Agent string here rather than shipping the raw UA (or a
-    // parsing library) to the client.
-    const withDeviceName = (rows || []).map((r: any) => ({ ...r, device_name: parseUserAgentLabel(r.user_agent) }));
+    // The client only renders `device_name` — derive a friendly label. Rows
+    // created after migration 0231 already have real browser/os columns
+    // (captured at login); older rows fall back to parsing the raw UA.
+    const withDeviceName = (rows || []).map((r: any) => ({
+      ...r,
+      device_name: (r.browser || r.os) ? `${r.browser ?? 'Unknown Browser'} on ${r.os ?? 'Unknown OS'}` : parseUserAgentLabel(r.user_agent),
+      location: [r.city, r.region, r.country].filter(Boolean).join(', ') || null,
+    }));
     return c.json(withDeviceName);
   } catch (err) {
     console.error('[Admin] GET sessions failed:', err);

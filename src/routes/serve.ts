@@ -745,11 +745,19 @@ sv.get('/', async (c) => {
   const limit = clampIntParam(c.req.query('limit'), 100, 1, 500);
   const where: string[] = [];
   const args: any[] = [];
-  if (status) { where.push('status = ?'); args.push(status); }
-  if (officerId) { where.push('officer_id = ?'); args.push(parseInt(officerId, 10)); }
-  if (priority) { where.push('priority = ?'); args.push(priority); }
+  // Every filter column below must be qualified with q. — serve_queue is
+  // joined against calls_for_service (cfs), which also has status and
+  // priority columns, so an unqualified `status = ?` / `priority = ?` is
+  // genuinely ambiguous to SQLite. Confirmed live 2026-08-09: any request
+  // with ?status= or ?priority= (and ?q=, which touches the same
+  // unqualified-column class) 500'd with "D1_ERROR: ambiguous column name:
+  // status" — this endpoint had never been exercised with a filter in
+  // production before that.
+  if (status) { where.push('q.status = ?'); args.push(status); }
+  if (officerId) { where.push('q.officer_id = ?'); args.push(parseInt(officerId, 10)); }
+  if (priority) { where.push('q.priority = ?'); args.push(priority); }
   if (search) {
-    where.push('(recipient_name LIKE ? OR case_number LIKE ? OR recipient_address LIKE ?)');
+    where.push('(q.recipient_name LIKE ? OR q.case_number LIKE ? OR q.recipient_address LIKE ?)');
     args.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
   // FK reference guards: CASE expressions are re-emitted AFTER q.* so
