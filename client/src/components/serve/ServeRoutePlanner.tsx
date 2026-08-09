@@ -496,6 +496,7 @@ export default function ServeRoutePlanner({
         style: MAPBOX_STYLE_DARK,
         center: [centerLng, centerLat],
         zoom: 11,
+        projection: 'mercator',
         attributionControl: false,
       });
       map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));

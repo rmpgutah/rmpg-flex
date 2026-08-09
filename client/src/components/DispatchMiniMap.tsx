@@ -221,6 +221,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         style: MAPBOX_STYLE_DARK,
         center,
         zoom,
+        projection: 'mercator',
         attributionControl: false,
       });
       map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));

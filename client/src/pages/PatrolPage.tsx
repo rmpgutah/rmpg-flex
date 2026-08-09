@@ -132,6 +132,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         style: MAPBOX_STYLE_DARK,
         center: [-111.89, 40.76],
         zoom: 12,
+        projection: 'mercator',
         attributionControl: false,
       });
       mapInstanceRef.current = map;
