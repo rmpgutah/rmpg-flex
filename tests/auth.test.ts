@@ -22,3 +22,12 @@ describe('lockout policy defaults', () => {
     expect(DEFAULT_SECURITY_POLICY.lockoutDurationMinutes).toBe(15);
   });
 });
+
+describe('createSession session cap', () => {
+  it('DEFAULT_SECURITY_POLICY.maxActiveSessions is 0 (unenforced) by default', () => {
+    // Today, before this task, there is NO session cap anywhere in the codebase.
+    // 0 means "don't enforce" so an admin who has never touched this section
+    // sees no behavior change — matches the binding constraint in Task 1.
+    expect(DEFAULT_SECURITY_POLICY.maxActiveSessions).toBe(0);
+  });
+});

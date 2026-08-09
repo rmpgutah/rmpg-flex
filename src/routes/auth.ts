@@ -141,6 +141,28 @@ async function createSession(c: any, db: any, userId: number, refreshToken: stri
     sessionId, userId, refreshHash,
     c.req.header('cf-connecting-ip') || '', c.req.header('user-agent') || '',
   );
+
+  // Enforce Security Policy → "Max Active Sessions". 0 means unenforced
+  // (today's behavior — no cap has ever existed). Best-effort: never fail
+  // the login itself if this cleanup step errors.
+  try {
+    const policy = await getSecurityPolicy(db);
+    if (policy.maxActiveSessions > 0) {
+      await execute(
+        db,
+        `UPDATE sessions SET is_active = 0
+         WHERE user_id = ? AND is_active = 1
+           AND session_id NOT IN (
+             SELECT session_id FROM sessions
+             WHERE user_id = ? AND is_active = 1
+             ORDER BY created_at DESC
+             LIMIT ?
+           )`,
+        userId, userId, policy.maxActiveSessions,
+      );
+    }
+  } catch { /* session-cap cleanup is best-effort — never block login */ }
+
   return sessionId;
 }
 
