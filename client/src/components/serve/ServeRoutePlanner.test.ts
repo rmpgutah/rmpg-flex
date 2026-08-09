@@ -84,7 +84,7 @@ describe('nearestNeighborOrder', () => {
     const farLat = 40.900, farLng = -111.700;
     const directDistance = haversineMiles(origin.lat, origin.lng, farLat, farLng);
     const directArrivalMs = start + estimateDriveMinutes(directDistance) * 60_000;
-    const urgent = stop(2, farLat, farLng, new Date(directArrivalMs).toISOString()); // new-date-ok: epoch ms, not a server string
+    const urgent = stop(2, farLat, farLng, new Date(directArrivalMs).toISOString()); // new-date-ok: epoch ms, not a server timestamp string
 
     const { ordered } = nearestNeighborOrder([near, urgent], origin, start);
     expect(ordered.map(s => s.job.id)).toEqual([2, 1]);
@@ -95,7 +95,7 @@ describe('nearestNeighborOrder', () => {
     const origin = { lat: 40.700, lng: -111.900 };
     // A deadline that already passed before the route even started is
     // unreachable no matter what — the simplest possible infeasible case.
-    const alreadyLate = stop(1, 40.900, -111.700, new Date(start - 1).toISOString()); // new-date-ok: epoch ms, not a server string
+    const alreadyLate = stop(1, 40.900, -111.700, new Date(start - 1).toISOString()); // new-date-ok: epoch ms, not a server timestamp string
     const { missedDeadlineJobIds } = nearestNeighborOrder([alreadyLate], origin, start);
     expect(missedDeadlineJobIds).toEqual([1]);
   });
