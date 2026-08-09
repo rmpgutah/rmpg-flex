@@ -488,7 +488,7 @@ export default function ForensicLabPage() {
     if (!wizardData.title.trim()) return;
     setSubmitting(true);
     try {
-      const caseRes = await apiFetch<ForensicCase>('/forensic-lab', {
+      const caseRes = await apiFetch<{ data: ForensicCase; lab_number: string }>('/forensic-lab', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -500,11 +500,12 @@ export default function ForensicLabPage() {
           notes: wizardData.notes,
         }),
       });
+      const newCaseId = caseRes.data.id;
 
       // Add exhibits
       for (const exhibit of wizardData.exhibits) {
         if (exhibit.description.trim()) {
-          await apiFetch(`/forensic-lab/${caseRes.id}/exhibits`, {
+          await apiFetch(`/forensic-lab/${newCaseId}/exhibits`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(exhibit),
@@ -516,7 +517,7 @@ export default function ForensicLabPage() {
       setWizardStep(0);
       setActiveTab('My Cases');
       fetchCases();
-      fetchCaseDetail(caseRes.id);
+      fetchCaseDetail(newCaseId);
     } catch (err) {
       console.error('Create case error:', err);
       addToast(err instanceof Error ? err.message : 'Failed to create case', 'error');
