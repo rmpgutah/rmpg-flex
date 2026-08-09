@@ -208,7 +208,7 @@ const DEFAULT_SECURITY: SecurityConfig = {
   min_password_length: '8',
   require_uppercase: '1',
   require_numbers: '1',
-  require_special_chars: '0',
+  require_special_chars: '1', // matches the Worker's DEFAULT_SECURITY_POLICY (src/utils/securityPolicy.ts) — this section is now enforced
   max_login_attempts: '5',
   lockout_duration_minutes: '15',
   max_active_sessions: '3',
@@ -2244,7 +2244,6 @@ export default function AdminSystemTab({
                 {securityDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
-            <NotEnforcedNotice what="Password and session policy values" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Password Policy</div>
