@@ -74,11 +74,15 @@ describe('serveManagerPoller auto-create INSERT', () => {
   });
 
   it('only names columns that exist on calls_for_service', () => {
-    // Verified against live D1 (785de7ae) on 2026-07-29.
+    // Verified against live D1 (785de7ae) on 2026-07-29; contract_id/
+    // pso_requestor_name/pso_requestor_email/pso_billing_code/
+    // pso_service_type added and re-verified 2026-08-09 (createDispatchCallForJob
+    // — shared by the auto-poller and the manual "Create Dispatch" action).
     const LIVE = new Set([
       'call_number', 'incident_type', 'priority', 'status', 'source',
       'location_address', 'latitude', 'longitude', 'description', 'caller_name',
-      'created_at', 'updated_at',
+      'contract_id', 'pso_requestor_name', 'pso_requestor_email', 'pso_billing_code',
+      'pso_service_type', 'created_at', 'updated_at',
     ]);
     for (const c of colNames()) expect(LIVE.has(c)).toBe(true);
   });

@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { haversineMiles, estimateDriveMinutes, nearestNeighborOrder, isJobPreselected, reorderList } from './ServeRoutePlanner';
+import {
+  haversineMiles, estimateDriveMinutes, nearestNeighborOrder, isJobPreselected, reorderList,
+  describeMissedDeadlines,
+} from './ServeRoutePlanner';
 
-function stop(id: number, lat: number, lng: number) {
+function stop(id: number, lat: number, lng: number, deadline: string | null = null, recipient_name = `Recipient ${id}`) {
   return {
-    job: { id, recipient_lat: lat, recipient_lng: lng } as any,
+    job: { id, recipient_lat: lat, recipient_lng: lng, deadline, recipient_name } as any,
     selected: true,
     order: 0,
   };
@@ -56,6 +59,68 @@ describe('nearestNeighborOrder', () => {
     const { ordered, totalDistanceMiles } = nearestNeighborOrder([a], null);
     expect(ordered.map(s => s.job.id)).toEqual([1]);
     expect(totalDistanceMiles).toBe(0);
+  });
+
+  it('never flags a stop with no deadline as missed', () => {
+    const a = stop(1, 40.760, -111.890);
+    const { missedDeadlineJobIds } = nearestNeighborOrder([a], { lat: 40.750, lng: -111.900 }, 1_000_000_000_000);
+    expect(missedDeadlineJobIds).toEqual([]);
+  });
+
+  it('advances the simulated clock by at least the per-stop dwell time', () => {
+    const start = 1_000_000_000_000;
+    const a = stop(1, 40.760, -111.890);
+    const { finalElapsedMs } = nearestNeighborOrder([a], null, start);
+    expect(finalElapsedMs).toBeGreaterThanOrEqual(start + 5 * 60 * 1000);
+  });
+
+  it('prioritizes an urgent deadline over a much closer stop with no deadline', () => {
+    const start = 1_000_000_000_000;
+    const origin = { lat: 40.700, lng: -111.900 };
+    const near = stop(1, 40.7001, -111.9001); // negligible distance, no deadline
+    // Deadline set to the exact direct arrival time from the origin — zero
+    // slack, so it's "urgent" regardless of the exact buffer size — to prove
+    // this without depending on the 60-minute constant's specific value.
+    const farLat = 40.900, farLng = -111.700;
+    const directDistance = haversineMiles(origin.lat, origin.lng, farLat, farLng);
+    const directArrivalMs = start + estimateDriveMinutes(directDistance) * 60_000;
+    const urgent = stop(2, farLat, farLng, new Date(directArrivalMs).toISOString()); // new-date-ok: epoch ms, not a server timestamp string
+
+    const { ordered } = nearestNeighborOrder([near, urgent], origin, start);
+    expect(ordered.map(s => s.job.id)).toEqual([2, 1]);
+  });
+
+  it('flags a job whose deadline is already unreachable given its position in the route', () => {
+    const start = 1_000_000_000_000;
+    const origin = { lat: 40.700, lng: -111.900 };
+    // A deadline that already passed before the route even started is
+    // unreachable no matter what — the simplest possible infeasible case.
+    const alreadyLate = stop(1, 40.900, -111.700, new Date(start - 1).toISOString()); // new-date-ok: epoch ms, not a server timestamp string
+    const { missedDeadlineJobIds } = nearestNeighborOrder([alreadyLate], origin, start);
+    expect(missedDeadlineJobIds).toEqual([1]);
+  });
+});
+
+describe('describeMissedDeadlines', () => {
+  it('returns null when nothing is missed', () => {
+    expect(describeMissedDeadlines([], [])).toBeNull();
+  });
+
+  it('names the affected recipients, deduped', () => {
+    const stops = [stop(1, 0, 0, null, 'Alice'), stop(2, 0, 0, null, 'Bob')];
+    const msg = describeMissedDeadlines([1, 1, 2], stops);
+    expect(msg).toContain('2 stops may miss their deadline');
+    expect(msg).toContain('Alice');
+    expect(msg).toContain('Bob');
+  });
+
+  it('uses singular wording for exactly one missed stop', () => {
+    const stops = [stop(1, 0, 0, null, 'Alice')];
+    expect(describeMissedDeadlines([1], stops)).toBe('1 stop may miss their deadline: Alice.');
+  });
+
+  it('returns null if the missed id cannot be resolved to a stop', () => {
+    expect(describeMissedDeadlines([999], [stop(1, 0, 0, null, 'Alice')])).toBeNull();
   });
 });
 
