@@ -145,7 +145,7 @@ const PERSONNEL_ROSTER_FULL_COLUMNS = `u.id, u.username, u.full_name, u.first_na
                       u.shift_preference, u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies,
                       u.uniform_size, u.emergency_contact_name, u.emergency_contact_phone,
                       u.emergency_contact_relationship, u.sso_enabled, u.created_at, u.updated_at,
-                      u.last_login_at, u.totp_enabled, u.must_change_password`;
+                      u.last_login_at, u.totp_enabled, u.must_change_password, u.employee_id, u.login_count`;
 const PERSONNEL_ROSTER_SUMMARY_COLUMNS = `u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name,
                       u.role, u.badge_number, u.phone, u.email, u.status, u.rank, u.department,
                       u.shift_preference, u.uniform_size, u.created_at, u.updated_at`;
@@ -2550,120 +2550,6 @@ personnel.post('/training-bulk-assign', async (c) => {
   } catch (err) {
     console.error('POST /personnel/training-bulk-assign error:', err);
     return c.json({ error: 'Failed to bulk assign training' }, 500);
-  }
-});
-
-// ── Officer activity feed ────────────────────────────────────
-// GET /api/personnel/activity/:id?limit=50 — the officer's recent audited
-// actions. Unions the two live activity tables (audit_log + activity_log,
-// identical columns) so the feed is complete regardless of which subsystem
-// wrote the entry. Shapes to the client ActivityEntry contract.
-personnel.get('/activity/:id', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const officerId = Number(c.req.param('id'));
-    if (!Number.isFinite(officerId)) return c.json([]);
-    const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10) || 50, 1), 200);
-    const rows = await query<Record<string, unknown>>(db, `
-      SELECT id, src, action, details, entity_type, created_at, user_name FROM (
-        SELECT 'audit-' || a.id AS id, 'audit' AS src, a.action, a.details, a.entity_type,
-               a.created_at, u.full_name AS user_name
-          FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
-         WHERE a.user_id = ?
-        UNION ALL
-        SELECT 'act-' || l.id AS id, 'activity' AS src, l.action, l.details, l.entity_type,
-               l.created_at, u.full_name AS user_name
-          FROM activity_log l LEFT JOIN users u ON u.id = l.user_id
-         WHERE l.user_id = ?
-      )
-      ORDER BY created_at DESC, id DESC
-      LIMIT ?
-    `, officerId, officerId, limit);
-    return c.json(rows);
-  } catch (err) {
-    console.error('GET /personnel/activity/:id error:', err);
-    return c.json([], 200);
-  }
-});
-
-// ── Physical fitness tracking ────────────────────────────────
-// GET /api/personnel/fitness/:id — fitness scores, newest first.
-personnel.get('/fitness/:id', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const officerId = Number(c.req.param('id'));
-    if (!Number.isFinite(officerId)) return c.json([]);
-    const rows = await query<Record<string, unknown>>(db, `
-      SELECT id, date, score, run_time, pushups, situps, notes, created_at
-        FROM personnel_fitness WHERE officer_id = ?
-       ORDER BY COALESCE(date, created_at) DESC, id DESC
-    `, officerId);
-    return c.json(rows);
-  } catch (err) {
-    console.error('GET /personnel/fitness/:id error:', err);
-    return c.json([], 200);
-  }
-});
-
-// POST /api/personnel/fitness/:id — record a fitness score.
-personnel.post('/fitness/:id', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const officerId = Number(c.req.param('id'));
-    if (!Number.isFinite(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
-    const recordedBy = c.get('userId') as number | undefined;
-    const b = await c.req.json().catch(() => ({})) as Record<string, unknown>;
-    const num = (v: unknown) => (v === '' || v == null ? null : Number(v));
-    const result = await execute(db, `
-      INSERT INTO personnel_fitness (officer_id, date, score, run_time, pushups, situps, notes, recorded_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, officerId, b.date ?? null, num(b.score), b.run_time ?? null, num(b.pushups), num(b.situps), b.notes ?? null, recordedBy ?? null);
-    return c.json({ success: true, id: result.meta?.last_row_id }, 201);
-  } catch (err) {
-    console.error('POST /personnel/fitness/:id error:', err);
-    return c.json({ error: 'Failed to record fitness score' }, 500);
-  }
-});
-
-// ── Commendations ────────────────────────────────────────────
-// GET /api/personnel/commendations/:id — commendations, newest first.
-personnel.get('/commendations/:id', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const officerId = Number(c.req.param('id'));
-    if (!Number.isFinite(officerId)) return c.json([]);
-    const rows = await query<Record<string, unknown>>(db, `
-      SELECT cm.id, cm.date, cm.type, cm.description, cm.created_at,
-             u.full_name AS awarded_by_name
-        FROM personnel_commendations cm
-        LEFT JOIN users u ON u.id = cm.awarded_by
-       WHERE cm.officer_id = ?
-       ORDER BY COALESCE(cm.date, cm.created_at) DESC, cm.id DESC
-    `, officerId);
-    return c.json(rows);
-  } catch (err) {
-    console.error('GET /personnel/commendations/:id error:', err);
-    return c.json([], 200);
-  }
-});
-
-// POST /api/personnel/commendations/:id — add a commendation.
-personnel.post('/commendations/:id', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const officerId = Number(c.req.param('id'));
-    if (!Number.isFinite(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
-    const awardedBy = c.get('userId') as number | undefined;
-    const b = await c.req.json().catch(() => ({})) as Record<string, unknown>;
-    if (!b.description || !String(b.description).trim()) return c.json({ error: 'Description is required' }, 400);
-    const result = await execute(db, `
-      INSERT INTO personnel_commendations (officer_id, date, type, description, awarded_by)
-      VALUES (?, ?, ?, ?, ?)
-    `, officerId, b.date ?? null, b.type ?? 'commendation', String(b.description).trim(), awardedBy ?? null);
-    return c.json({ success: true, id: result.meta?.last_row_id }, 201);
-  } catch (err) {
-    console.error('POST /personnel/commendations/:id error:', err);
-    return c.json({ error: 'Failed to add commendation' }, 500);
   }
 });
 

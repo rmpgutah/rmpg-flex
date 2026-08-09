@@ -9,7 +9,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Bindings } from '../types';
 import { queryFirst, execute } from './db';
-import { fetchRecentJobs, getStoredKey, type SmJob } from './serveManagerClient';
+import { fetchRecentJobs, fetchJobAttempts, getStoredKey, type SmJob } from './serveManagerClient';
 import { broadcastAll } from '../routes/ws';
 import { recordAuditCore } from './auditLog';
 
@@ -64,7 +64,7 @@ function mapSmJobToCallData(job: SmJob) {
   const docNames = documents.map((d) => d.title).filter(Boolean).join(', ');
 
   const descParts: string[] = [];
-  if (job.job_number) descParts.push(`ServeManager Job #${job.job_number}`);
+  if (job.servemanager_job_number) descParts.push(`ServeManager Job #${job.servemanager_job_number}`);
   const recipientName = job.recipient?.name || job.recipient?.full_name;
   if (recipientName) descParts.push(`Serve to: ${recipientName}`);
   if (job.recipient?.description) descParts.push(`Description: ${job.recipient.description}`);
@@ -85,7 +85,7 @@ function mapSmJobToCallData(job: SmJob) {
     caller_phone: null,
     case_number: job.court_case?.number || null,
     due_date: job.due_date || null,
-    serve_job_number: job.job_number,
+    serve_job_number: job.servemanager_job_number,
     process_type: guessProcessType(documents),
     servemanager_job_id: job.id,
     servemanager_updated_at: job.updated_at || null,
@@ -108,6 +108,25 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
     const jobs = await fetchRecentJobs(db, jwtSecret, lastPoll || undefined);
     if (jobs.length === 0) return { synced: 0, callsCreated: 0 };
 
+    // TEMP DIAGNOSTIC (remove immediately after capturing one log line):
+    // attempts_synced is hardcoded to 0 everywhere — there is no attempts
+    // sync at all. fetchJobAttempts() exists but is never called. Job keys
+    // captured 2026-08-08 include a top-level "attempts" — checking whether
+    // it's embedded inline vs needs the separate /jobs/:id/attempts call,
+    // and which id (numeric job.id vs servemanager_job_number) that
+    // endpoint actually wants.
+    const j0: any = jobs[0];
+    try {
+      const viaId = await fetchJobAttempts(db, jwtSecret, String(j0.id));
+      console.error('[sm-poller] DIAGNOSTIC attempts:', JSON.stringify({
+        embedded_attempts: j0.attempts,
+        attempt_count: j0.attempt_count,
+        via_numeric_id: viaId,
+      }));
+    } catch (diagErr) {
+      console.error('[sm-poller] DIAGNOSTIC attempts fetch threw:', (diagErr as Error).message);
+    }
+
     let synced = 0;
     let callsCreated = 0;
 
@@ -124,10 +143,16 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
         db, 'SELECT id FROM sm_jobs WHERE sm_job_id = ?', job.id,
       );
       if (existing) {
-        // Update the cached job row
+        // Update the cached job row. sm_job_number is included here (not
+        // just on the initial INSERT below) because a row cached before
+        // the servemanager_job_number field-name fix landed would
+        // otherwise be stuck showing a blank "Job #" forever — the
+        // existing-job branch never re-derives it once cached. Confirmed
+        // live 2026-08-09: the fix deployed, but a job cached moments
+        // earlier still showed sm_job_number: null until this refresh.
         await execute(db,
-          `UPDATE sm_jobs SET job_status=?, service_status=?, updated_at=datetime('now') WHERE sm_job_id=?`,
-          job.job_status ?? null, job.service_status ?? null, job.id);
+          `UPDATE sm_jobs SET job_status=?, service_status=?, sm_job_number=?, updated_at=datetime('now') WHERE sm_job_id=?`,
+          job.job_status ?? null, job.service_status ?? null, job.servemanager_job_number ?? null, job.id);
         synced++;
         continue;
       }
@@ -225,7 +250,7 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
            job_status, service_status, court_case_number, due_date, linked_call_id,
            process_type, addresses_json, documents_json, synced_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
-        job.id, job.job_number ?? null, clientName, (job.recipient?.name || job.recipient?.full_name) || null,
+        job.id, job.servemanager_job_number ?? null, clientName, (job.recipient?.name || job.recipient?.full_name) || null,
         job.job_status ?? null, job.service_status ?? null, job.court_case?.number || null,
         job.due_date || null, callId,
         callData.process_type,
@@ -246,12 +271,27 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
       } catch { /* best-effort */ }
     }
 
-    // Update last poll timestamp
+    // Update last poll timestamp. system_config has a UNIQUE(config_key,
+    // config_value) index (not just config_key), and datetime('now') is
+    // second-precision, so two poll cycles completing in the same wall-clock
+    // second (a manual sync racing the cron poller, or two rapid manual
+    // syncs — confirmed live 2026-08-09) both DELETE the old row and then
+    // race to INSERT the identical new (key, value) pair: whichever loses
+    // hits SQLITE_CONSTRAINT_UNIQUE. That collision means the desired end
+    // state — a row for this key holding this exact timestamp — already
+    // exists via the winner, so it's safe to swallow rather than let it
+    // unwind to the outer try/catch and discard synced/callsCreated for
+    // the whole cycle.
     await execute(db,
       `DELETE FROM system_config WHERE config_key = 'servemanager_last_poll_at' AND category = 'integrations'`);
-    await execute(db,
-      `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at)
-       VALUES ('servemanager_last_poll_at', datetime('now'), 'integrations', 0, 1, datetime('now'), datetime('now'))`);
+    try {
+      await execute(db,
+        `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at)
+         VALUES ('servemanager_last_poll_at', datetime('now'), 'integrations', 0, 1, datetime('now'), datetime('now'))`);
+    } catch (raceErr: any) {
+      const raceMsg = String(raceErr?.message || raceErr || 'unknown');
+      if (!/SQLITE_CONSTRAINT/i.test(raceMsg) || !/system_config/i.test(raceMsg)) throw raceErr;
+    }
 
     return { synced, callsCreated };
   } catch (err) {
