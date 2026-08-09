@@ -7,6 +7,7 @@ import { escapeHtml } from '../../../utils/sanitize';
 import { getGpsStaleness } from '../../../utils/gpsStaleness';
 import { haversineDistance } from '../../../utils/unitRecommendation';
 import { withAlpha } from '../../../utils/withAlpha';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import {
   TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
   TACTICAL_TEXT_PRIMARY, TACTICAL_TEXT_DIM,
@@ -364,8 +365,18 @@ export function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
  */
 export function formatCallAge(createdAt: string | null | undefined, nowMs: number): string | null {
   if (!createdAt) return null;
-  const createdMs = new Date(createdAt).getTime();
-  if (!Number.isFinite(createdMs)) return null;
+  // parseTimestamp() never returns an Invalid Date — genuinely unparseable
+  // input falls back to `new Date()` (now), which would silently render
+  // "00:00:00" instead of omitting the row. Date.parse() here is only a
+  // validity probe (its value is discarded); the actual elapsed time below
+  // uses parseTimestamp's UTC-correct value, so this doesn't reintroduce
+  // the naive-string/device-local timezone bug parseTimestamp exists to fix.
+  if (!Number.isFinite(Date.parse(createdAt))) return null;
+  // Server timestamps are naive UTC ("YYYY-MM-DD HH:MM:SS") — parseTimestamp
+  // treats them as UTC before converting to a Date; a bare `new Date(str)`
+  // would parse that string as device-local time, skewing the timer by a
+  // full UTC offset (e.g. ~7h in Mountain Time).
+  const createdMs = parseTimestamp(createdAt).getTime();
   const elapsedSec = Math.max(0, Math.floor((nowMs - createdMs) / 1000));
   const hh = Math.floor(elapsedSec / 3600);
   const mm = Math.floor((elapsedSec % 3600) / 60);
