@@ -33,6 +33,49 @@ export function shouldAnimateMarkerMove(prevLat: number, prevLng: number, nextLa
   return haversineDistance(prevLat, prevLng, nextLat, nextLng) <= MAX_ANIMATED_JUMP_MILES;
 }
 
+/** `mm:ss`, zero-padded. Minutes are not capped at 59 — a >59min ETA is real data, not an overflow to hide. */
+export function formatEtaSeconds(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.round(totalSeconds));
+  const mm = Math.floor(clamped / 60);
+  const ss = clamped % 60;
+  return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
+/** One decimal place, always shown (e.g. "0.0 mi", never "0 mi"). */
+export function formatDistanceMiles(miles: number): string {
+  return `${miles.toFixed(1)} mi`;
+}
+
+export interface EnRouteEta {
+  etaSeconds: number;
+  distanceMiles: number;
+}
+
+function buildEnRouteTagEl(callSign: string, enRoute: EnRouteEta): HTMLDivElement {
+  const tag = document.createElement('div');
+  tag.setAttribute('data-role', 'enroute-tag');
+  tag.style.cssText = `
+    background:#000;border:1px solid #1d4ed8;border-radius:2px;
+    padding:3px 6px;display:grid;grid-template-columns:auto auto;gap:0 8px;
+    font-family:ui-monospace,monospace;white-space:nowrap;
+  `;
+  const rows: Array<[string, string]> = [
+    [callSign.slice(0, 6), 'ENROUTE'],
+    [`ETA ${formatEtaSeconds(enRoute.etaSeconds)}`, `DIS ${formatDistanceMiles(enRoute.distanceMiles)}`],
+  ];
+  for (const [left, right] of rows) {
+    const leftEl = document.createElement('span');
+    leftEl.style.cssText = 'font-size:9px;font-weight:800;color:#e8f0ff;';
+    leftEl.textContent = left;
+    const rightEl = document.createElement('span');
+    rightEl.style.cssText = 'font-size:9px;font-weight:700;color:#93c5fd;';
+    rightEl.textContent = right;
+    tag.appendChild(leftEl);
+    tag.appendChild(rightEl);
+  }
+  return tag;
+}
+
 /**
  * Pure geometry for the accuracy-radius ring, shared by buildUnitMarkerEl and
  * applyUnitMarkerState so the CSS-string-building code can't drift out of
@@ -104,7 +147,7 @@ function buildUnitArrowSvg(fillColor: string, headingDeg: number | null | undefi
 }
 
 /** Build a bold solid-badge unit marker: status-colored disc + vehicle glyph + call-sign label. */
-export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
+export function buildUnitMarkerEl(unit: Unit, enRoute?: EnRouteEta | null): HTMLDivElement {
   const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
   const staleness = getMapUnitGpsStaleness(unit);
   // Root element handed to `new mapboxgl.Marker({ element: el })`. Mapbox GL
@@ -171,6 +214,10 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
     inner.appendChild(ring);
   }
 
+  if (unit.status === 'enroute' && enRoute) {
+    inner.appendChild(buildEnRouteTagEl(unit.call_sign, enRoute));
+  }
+
   return el;
 }
 
@@ -180,7 +227,7 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
  * (mapboxgl.Marker writes position transforms onto the exact root element
  * it was constructed with — replacing or clearing its children breaks that).
  */
-export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
+export function applyUnitMarkerState(el: HTMLElement, unit: Unit, enRoute?: EnRouteEta | null): void {
   const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
   const staleness = getMapUnitGpsStaleness(unit);
   // Opacity (and the position/transition styling) live on the inner wrapper,
@@ -229,6 +276,14 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
       pointer-events:none;z-index:-1;
     `;
     inner.appendChild(ring);
+  }
+
+  const existingTag = el.querySelector('[data-role="enroute-tag"]');
+  if (unit.status === 'enroute' && enRoute) {
+    if (existingTag) existingTag.remove();
+    inner.appendChild(buildEnRouteTagEl(unit.call_sign, enRoute));
+  } else if (existingTag) {
+    existingTag.remove();
   }
 }
 

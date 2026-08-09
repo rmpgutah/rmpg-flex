@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove, computeAccuracyRingGeometry, CALL_MARKER_INK, formatCallAge } from '../mapMarkers';
+import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove, computeAccuracyRingGeometry, CALL_MARKER_INK, formatCallAge, formatEtaSeconds, formatDistanceMiles } from '../mapMarkers';
 import { TACTICAL_SURFACE_RAISED, TACTICAL_BRAND_GOLD, TACTICAL_TEXT_PRIMARY } from '../tacticalPalette';
 import type { MapUnit, ActiveCall } from '../mapConstants';
 import { UNIT_STATUS_COLORS } from '../mapConstants';
@@ -448,5 +448,49 @@ describe('unit marker tactical palette', () => {
     expect(body.match(/setAttribute\('stroke', TACTICAL_BADGE_SURFACE\)/g) ?? []).toHaveLength(2);
     // And it must not have drifted back onto an ambient theme variable.
     expect(body).not.toMatch(/setAttribute\('stroke', 'var\(/);
+  });
+});
+
+describe('formatEtaSeconds / formatDistanceMiles', () => {
+  it('formats seconds as mm:ss, zero-padded', () => {
+    expect(formatEtaSeconds(192)).toBe('03:12');
+    expect(formatEtaSeconds(5)).toBe('00:05');
+    expect(formatEtaSeconds(0)).toBe('00:00');
+  });
+
+  it('formats miles to one decimal place', () => {
+    expect(formatDistanceMiles(1.44)).toBe('1.4 mi');
+    expect(formatDistanceMiles(0)).toBe('0.0 mi');
+    expect(formatDistanceMiles(12.98)).toBe('13.0 mi');
+  });
+});
+
+describe('en-route tag on the unit marker', () => {
+  const enrouteUnit: MapUnit = { ...unit, status: 'enroute' } as MapUnit;
+
+  it('does not render an en-route tag when enRoute data is omitted', () => {
+    const el = buildUnitMarkerEl(enrouteUnit);
+    expect(el.querySelector('[data-role="enroute-tag"]')).toBeNull();
+  });
+
+  it('renders unit call sign, ENROUTE, ETA, and DIS when enRoute data is provided', () => {
+    const el = buildUnitMarkerEl(enrouteUnit, { etaSeconds: 192, distanceMiles: 1.44 });
+    const tag = el.querySelector('[data-role="enroute-tag"]') as HTMLElement;
+    expect(tag).toBeTruthy();
+    expect(tag.textContent).toContain('A12');
+    expect(tag.textContent).toContain('ENROUTE');
+    expect(tag.textContent).toContain('ETA 03:12');
+    expect(tag.textContent).toContain('DIS 1.4 mi');
+  });
+
+  it('applyUnitMarkerState adds/removes the tag as enRoute data comes and goes', () => {
+    const el = buildUnitMarkerEl(enrouteUnit);
+    expect(el.querySelector('[data-role="enroute-tag"]')).toBeNull();
+
+    applyUnitMarkerState(el, enrouteUnit, { etaSeconds: 60, distanceMiles: 0.5 });
+    expect(el.querySelector('[data-role="enroute-tag"]')).toBeTruthy();
+
+    applyUnitMarkerState(el, enrouteUnit, null);
+    expect(el.querySelector('[data-role="enroute-tag"]')).toBeNull();
   });
 });
