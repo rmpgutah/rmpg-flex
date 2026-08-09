@@ -27,6 +27,8 @@ import {
   ArrowUpDown,
   FilterX,
   Printer,
+  MapPin,
+  Wifi,
 } from 'lucide-react';
 import type { User, UserRole } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -78,6 +80,12 @@ interface UserSession {
   ip_address: string;
   user_agent: string;
   device_name: string;
+  location: string | null;
+  isp: string | null;
+  likely_vpn_or_hosting: number | null;
+  device_latitude: string | null;
+  device_longitude: string | null;
+  device_geo_accuracy_m: string | null;
   is_active: number;
   created_at: string;
   last_used_at: string;
@@ -1320,11 +1328,29 @@ export default function AdminUsersTab({
                           <Monitor className="w-3.5 h-3.5 text-rmpg-400 flex-shrink-0" />
                           <div className="flex-1 min-w-0">
                             <div className="text-rmpg-200 font-medium truncate">{session.device_name || 'Unknown Device'}</div>
-                            <div className="flex items-center gap-3 text-[9px] text-rmpg-500 mt-0.5">
+                            <div className="flex items-center gap-3 text-[9px] text-rmpg-500 mt-0.5 flex-wrap">
                               <span className="flex items-center gap-1"><Globe className="w-2.5 h-2.5" />{session.ip_address}</span>
+                              {session.location && (
+                                <span className="flex items-center gap-1"><MapPin className="w-2.5 h-2.5" />{session.location}</span>
+                              )}
+                              {session.isp && (
+                                <span className="flex items-center gap-1"><Wifi className="w-2.5 h-2.5" />{session.isp}</span>
+                              )}
+                              {session.device_latitude && session.device_longitude && (
+                                <span className="flex items-center gap-1" title="Device-reported GPS (browser navigator.geolocation), distinct from the IP-derived location above">
+                                  <MapPin className="w-2.5 h-2.5 text-green-400" />
+                                  GPS {Number(session.device_latitude).toFixed(4)}, {Number(session.device_longitude).toFixed(4)}
+                                  {session.device_geo_accuracy_m && ` (±${Math.round(Number(session.device_geo_accuracy_m))}m)`}
+                                </span>
+                              )}
                               <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" />{session.last_used_at ? parseTimestamp(session.last_used_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</span>
                             </div>
                           </div>
+                          {!!session.likely_vpn_or_hosting && (
+                            <span className="text-[8px] font-bold uppercase text-amber-400 border border-amber-700/50 bg-amber-900/20 px-1 py-0.5 flex-shrink-0" title="Connecting IP's network organization looks like a VPN or hosting/datacenter provider — heuristic, not certain">
+                              VPN?
+                            </span>
+                          )}
                           <span className="led-dot led-green flex-shrink-0" title="Active" />
                         </div>
                       ))}

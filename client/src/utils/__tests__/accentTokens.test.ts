@@ -703,7 +703,13 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // 10514 -> 10510: AdminUsersTab.tsx's Email Integration sub-tab (real
   // per-user Microsoft Graph connect status, replacing the old static
   // placeholder) was built directly on text-fg-muted/text-fg-secondary.
-  const PIN = 10510;
+  //
+  // 10510 -> 10505: SecurityDashboardPage.tsx's new device/geo columns
+  // (Logins/Threats/Timeline tables, Blocked IPs card) were built on
+  // text-fg-muted, and de-duplicating the Blocked IPs card — it was
+  // rendering every row twice — removed several more text-rmpg-500 sites
+  // along with the dead second copy.
+  const PIN = 10505;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
