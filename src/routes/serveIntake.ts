@@ -359,7 +359,9 @@ async function scanDocumentHandler(c: any): Promise<Response> {
     if (isImage(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       extraction = await ocrImageWithTesseractGate(c.env, bytes, file.type);
-      ocrEngine = extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
+      ocrEngine = extraction.model.startsWith('tesseract+')
+        ? 'tesseract'
+        : extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       let text: string;
@@ -588,7 +590,9 @@ si.post('/upload', async (c) => {
       if (isImage(file.type)) {
         const ex = await ocrImageWithTesseractGate(c.env, bytes, file.type)
           .catch((e) => emptyExtraction('workers-ai-vision', e instanceof Error ? e.message : String(e)));
-        const engine = ex.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
+        const engine = ex.model.startsWith('tesseract+')
+          ? 'tesseract'
+          : ex.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
         for (const d of ex.allDates) allDates.add(d);
         return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: engine, r2Key, ex, family: docFamily, modelCalled: true };
       }
