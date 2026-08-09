@@ -9,7 +9,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Bindings } from '../types';
 import { queryFirst, execute } from './db';
-import { fetchRecentJobs, fetchJobAttempts, getStoredKey, type SmJob } from './serveManagerClient';
+import { fetchRecentJobs, extractJobAttempts, getStoredKey, type SmJob } from './serveManagerClient';
 import { broadcastAll } from '../routes/ws';
 
 const DEFAULT_TARGET_CLIENT = 'ICU Investigations, LLC';
@@ -49,6 +49,33 @@ function guessProcessType(documents: any[]): string {
   if (titles.includes('complaint')) return 'complaint';
   if (titles.includes('eviction')) return 'eviction';
   return 'other';
+}
+
+// Upserts every attempt embedded on a job into sm_attempts, keyed by the
+// attempt's own id (INSERT OR REPLACE — idempotent across repeat syncs of
+// the same job). Returns how many were written. See SmJob.attempts for the
+// caveat that this field mapping is unverified against a real non-empty
+// sample — the account had zero served attempts as of 2026-08-09.
+async function upsertJobAttempts(db: D1Database, job: SmJob): Promise<number> {
+  const attempts = extractJobAttempts(job);
+  let count = 0;
+  for (const a of attempts) {
+    if (a.id == null) continue;
+    await execute(db,
+      `INSERT OR REPLACE INTO sm_attempts (id, job_id, description, success, service_status,
+         serve_type, served_at, lat, lng, gps_timestamp, server_name, recipient_name,
+         attachments_json, sm_created_at, sm_updated_at, synced_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
+      String(a.id), String(job.id), a.description ?? null, a.success == null ? null : (a.success ? 1 : 0),
+      a.service_status ?? null, a.serve_type ?? null, a.served_at ?? null,
+      a.lat ?? a.latitude ?? null, a.lng ?? a.longitude ?? null, a.gps_timestamp ?? null,
+      a.server_name ?? a.employee_process_server?.name ?? a.employee_process_server?.full_name ?? null,
+      a.recipient_name ?? null, JSON.stringify(a.attachments ?? []),
+      a.created_at ?? null, a.updated_at ?? null,
+    );
+    count++;
+  }
+  return count;
 }
 
 function mapSmJobToCallData(job: SmJob) {
@@ -93,41 +120,23 @@ function mapSmJobToCallData(job: SmJob) {
 
 // ── Main polling cycle ────────────────────────────────────────
 
-export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: number; callsCreated: number; error?: string }> {
+export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: number; callsCreated: number; attemptsSynced: number; error?: string }> {
   const db = env.DB;
   const jwtSecret = env.JWT_SECRET;
 
   try {
     const enabled = await getSmConfig(db, 'servemanager_poller_enabled');
-    if (enabled !== 'true') return { synced: 0, callsCreated: 0 };
+    if (enabled !== 'true') return { synced: 0, callsCreated: 0, attemptsSynced: 0 };
 
     const targetClient = await getTargetClient(db);
     const lastPoll = await getSmConfig(db, 'servemanager_last_poll_at');
 
     const jobs = await fetchRecentJobs(db, jwtSecret, lastPoll || undefined);
-    if (jobs.length === 0) return { synced: 0, callsCreated: 0 };
-
-    // TEMP DIAGNOSTIC (remove immediately after capturing one log line):
-    // attempts_synced is hardcoded to 0 everywhere — there is no attempts
-    // sync at all. fetchJobAttempts() exists but is never called. Job keys
-    // captured 2026-08-08 include a top-level "attempts" — checking whether
-    // it's embedded inline vs needs the separate /jobs/:id/attempts call,
-    // and which id (numeric job.id vs servemanager_job_number) that
-    // endpoint actually wants.
-    const j0: any = jobs[0];
-    try {
-      const viaId = await fetchJobAttempts(db, jwtSecret, String(j0.id));
-      console.error('[sm-poller] DIAGNOSTIC attempts:', JSON.stringify({
-        embedded_attempts: j0.attempts,
-        attempt_count: j0.attempt_count,
-        via_numeric_id: viaId,
-      }));
-    } catch (diagErr) {
-      console.error('[sm-poller] DIAGNOSTIC attempts fetch threw:', (diagErr as Error).message);
-    }
+    if (jobs.length === 0) return { synced: 0, callsCreated: 0, attemptsSynced: 0 };
 
     let synced = 0;
     let callsCreated = 0;
+    let attemptsSynced = 0;
 
     for (const job of jobs) {
       // Skip non-target-client jobs — an empty targetClient (admin explicitly
@@ -136,6 +145,10 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
       // — the client company lives under the nested `client_company.name`.
       const clientName = job.client_company?.name || '';
       if (targetClient && !clientName.toLowerCase().includes(targetClient.toLowerCase())) continue;
+
+      // Sync attempts regardless of whether the job's call already exists —
+      // a job can accrue new service attempts after its call was created.
+      attemptsSynced += await upsertJobAttempts(db, job);
 
       // Check if this job already has a linked call
       const existing = await queryFirst<{ id: number }>(
@@ -276,9 +289,9 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
       if (!/SQLITE_CONSTRAINT/i.test(raceMsg) || !/system_config/i.test(raceMsg)) throw raceErr;
     }
 
-    return { synced, callsCreated };
+    return { synced, callsCreated, attemptsSynced };
   } catch (err) {
     console.error('[sm-poller] Cycle failed:', (err as Error).message);
-    return { synced: 0, callsCreated: 0, error: (err as Error).message };
+    return { synced: 0, callsCreated: 0, attemptsSynced: 0, error: (err as Error).message };
   }
 }

@@ -157,6 +157,35 @@ export interface SmJob {
   }>;
   documents?: Array<{ title?: string }>;
   attempts_count?: number;
+  // There is no separate GET /jobs/:id/attempts collection endpoint —
+  // confirmed live 2026-08-09, it 404s (plain HTML error page, not even
+  // JSON) regardless of whether the numeric job.id or
+  // servemanager_job_number is used. Attempts are embedded directly on
+  // the job resource instead. Field names below are ServeManager's own
+  // per its object-naming conventions elsewhere (id/description/
+  // success/service_status/serve_type mirror the job's own fields), but
+  // unverified against a real non-empty sample — the one live job
+  // checked has zero attempts (attempt_count: 0, attempts: []) because
+  // it hasn't been served yet. Re-verify once any job accrues one.
+  attempts?: Array<{
+    id?: string | number;
+    description?: string;
+    success?: boolean;
+    service_status?: string;
+    serve_type?: string;
+    served_at?: string;
+    lat?: number;
+    lng?: number;
+    latitude?: number;
+    longitude?: number;
+    gps_timestamp?: string;
+    server_name?: string;
+    employee_process_server?: { name?: string; full_name?: string };
+    recipient_name?: string;
+    attachments?: unknown[];
+    created_at?: string;
+    updated_at?: string;
+  }>;
   process_server?: { full_name?: string };
   updated_at?: string;
 }
@@ -176,6 +205,19 @@ export async function fetchRecentJobs(db: D1Database, jwtSecret: string, since?:
       status: j0?.status, process_server: j0?.process_server,
       current_status: j0?.current_status, employee: j0?.employee,
     }));
+    // TEMP DIAGNOSTIC round 2 (remove immediately after capturing one log
+    // line): round 1's key list confirmed `process_server` never existed —
+    // the real fields are process_server_company / process_server_contact /
+    // employee_process_server, plus client_job_number. sm_jobs already has
+    // a process_server_name column that's never been populated because the
+    // mapper never read any of these. Need the real sub-shapes before
+    // fixing the mapper blind (same lesson as every prior round).
+    console.error('[sm-client] DIAGNOSTIC process_server shapes:', JSON.stringify({
+      process_server_company: j0?.process_server_company,
+      process_server_contact: j0?.process_server_contact,
+      employee_process_server: j0?.employee_process_server,
+      client_job_number: j0?.client_job_number,
+    }));
     // ServeManager wraps every response — list endpoints included — in a
     // JSON:API-style `{ links: {...}, data: [...] }` envelope (confirmed
     // live 2026-08-08 against the production account's real job data).
@@ -189,17 +231,13 @@ export async function fetchRecentJobs(db: D1Database, jwtSecret: string, since?:
   }
 }
 
-export async function fetchJobAttempts(db: D1Database, jwtSecret: string, jobNumber: string): Promise<any[]> {
-  const key = await getStoredKey(db, jwtSecret);
-  if (!key) return [];
-  try {
-    const result = await smGet(`/jobs/${jobNumber}/attempts`, key);
-    // Same JSON:API `data` envelope as /jobs — see fetchRecentJobs above.
-    return Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
-  } catch (err) {
-    console.error('[sm-client] Attempt fetch failed for job', jobNumber, (err as Error).message);
-    return [];
-  }
+// There is no GET /jobs/:id/attempts endpoint (confirmed live 2026-08-09 —
+// it 404s regardless of numeric job.id or servemanager_job_number). Attempts
+// come embedded on the job resource returned by fetchRecentJobs, so this is
+// a pure extractor, not an HTTP call. Kept as its own function so the
+// (still-unverified, see SmJob.attempts) mapping is named and in one place.
+export function extractJobAttempts(job: SmJob): NonNullable<SmJob['attempts']> {
+  return job.attempts ?? [];
 }
 
 export { getStoredKey };
