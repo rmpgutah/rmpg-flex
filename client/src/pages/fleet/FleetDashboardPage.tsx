@@ -268,6 +268,7 @@ export default function FleetDashboardPage() {
           style: 'mapbox://styles/mapbox/dark-v11',
           center: [-111.891, 40.7608],
           zoom: 10,
+          projection: 'mercator',
           interactive: true,
           attributionControl: false,
         });

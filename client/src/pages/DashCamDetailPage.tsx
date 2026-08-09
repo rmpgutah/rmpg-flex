@@ -444,6 +444,7 @@ export default function DashCamDetailPage() {
       style: MAPBOX_STYLE_DARK,
       center: [centerLng, centerLat],
       zoom: 15,
+      projection: 'mercator',
     });
     map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
 
