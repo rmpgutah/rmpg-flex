@@ -155,7 +155,7 @@ async function createSession(c: any, db: any, userId: number, refreshToken: stri
            AND session_id NOT IN (
              SELECT session_id FROM sessions
              WHERE user_id = ? AND is_active = 1
-             ORDER BY created_at DESC
+             ORDER BY created_at DESC, rowid DESC
              LIMIT ?
            )`,
         userId, userId, policy.maxActiveSessions,

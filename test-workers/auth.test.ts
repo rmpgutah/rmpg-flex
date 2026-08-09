@@ -182,14 +182,19 @@ describe('POST /login — account lockout', () => {
       expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')),
       last_used_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`);
-    // Every /login call reaches getSecurityPolicy(db) (src/utils/securityPolicy.ts),
-    // which queries `system_config` unconditionally and has no try/catch of its
-    // own — without this table, EVERY login in this Miniflare suite 500s. This
-    // table was missing from this file's schema setup even though task 5
-    // (f2784230b3, "enforce max active sessions from saved policy") introduced
-    // the unconditional getSecurityPolicy() read on the standard /login path,
-    // which was silently failing every "account lockout" test below with a 500
-    // instead of the asserted 200/401/403.
+    // The standard /login handler (src/routes/auth.ts, POST /login) calls
+    // getSecurityPolicy(db) (src/utils/securityPolicy.ts) directly in its main
+    // body, outside any try/catch of its own — that read has been there since
+    // task 2's account-lockout work, well before task 5. getSecurityPolicy()
+    // queries `system_config` unconditionally, so without this table, EVERY
+    // login in this Miniflare suite 500s (caught only by /login's outer
+    // try/catch, which turns it into a generic 500 response). This table was
+    // missing from this file's schema setup, which was silently failing every
+    // "account lockout" test below with a 500 instead of the asserted
+    // 200/401/403. (Task 5, f2784230b3, added its own getSecurityPolicy() call
+    // inside createSession() for max-active-sessions enforcement, but that call
+    // is wrapped in its own try/catch and fails silently — it is not the source
+    // of these 500s.)
     await execute(db, `CREATE TABLE IF NOT EXISTS system_config (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       config_key TEXT NOT NULL,
