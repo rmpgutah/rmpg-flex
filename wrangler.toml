@@ -165,6 +165,19 @@ bucket_name = "rmpg-flex-downloads"
 binding = "KIOSK_DEVICES"
 bucket_name = "kiosk-linux-devices"
 
+# TESSERACT_TRAINING — restricted bucket for the custom fine-tuned OCR
+# effort (data-sovereignty motivated, see
+# docs/superpowers/specs/2026-08-08-custom-tesseract-ocr-design.md).
+# Holds labeled real-document training pairs AND the resulting
+# .traineddata model file. NEITHER may ever be committed to git — this
+# bucket is the storage boundary for real client legal-process content
+# used in training. Access is admin/manager-gated at the route layer
+# (see src/routes/tesseractOcr.ts), matching the pattern already used
+# for PDF Tools encryption in src/routes/pdfTools.ts.
+[[r2_buckets]]
+binding = "TESSERACT_TRAINING"
+bucket_name = "rmpg-flex-tesseract-training"
+
 # ─── Analytics lakehouse (R2 Data Catalog / Pipelines) ─────
 # OPTIONAL until provisioned. The ALPR dual-write (src/routes/alpr.ts) and the
 # query routes (src/routes/analytics.ts) BOTH no-op / 503 while these are unset,
@@ -284,6 +297,22 @@ instance_type = "basic"
 name = "PDF_TOOLS"
 class_name = "PdfToolsContainer"
 
+# ─── Custom Tesseract OCR Container ─────────────────────────
+# Self-hosted, fine-tuned OCR — data-sovereignty motivated (see
+# docs/superpowers/specs/2026-08-08-custom-tesseract-ocr-design.md).
+# NOT wired into production callAi()/extractVision() — this is a
+# measurable A/B candidate only (see scripts/serve-intake-vision-ab.ts),
+# per the design's evidence-gated non-goal.
+[[containers]]
+class_name = "TesseractOcrContainer"
+image = "./containers/tesseract-ocr/Dockerfile"
+max_instances = 3
+instance_type = "basic"
+
+[[durable_objects.bindings]]
+name = "TESSERACT_OCR"
+class_name = "TesseractOcrContainer"
+
 [[migrations]]
 tag = "v1-pdftools"
 new_sqlite_classes = ["PdfToolsContainer"]
@@ -329,6 +358,13 @@ new_sqlite_classes = ["PersonIntelDO"]
 [[migrations]]
 tag = "v7-webbrowsersession"
 new_sqlite_classes = ["WebBrowserSessionDO"]
+
+# TesseractOcrContainer — APPENDED (same prefix rule as v2-voicehub above:
+# live tags must be a prefix of this list, so new DO migrations go at the
+# END, never mid-list). SQLite-backed for free-plan compatibility.
+[[migrations]]
+tag = "v8-tesseractocr"
+new_sqlite_classes = ["TesseractOcrContainer"]
 
 # ─── Workers AI ────────────────────────────────────────────
 # Used by /api/serve-intake/scan-document + /api/serve-intake/upload

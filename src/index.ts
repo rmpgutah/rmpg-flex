@@ -31,6 +31,7 @@ import { PersonIntelDO } from './durable-objects/PersonIntelDO';
 import { FlexCamRemuxDO } from './durable-objects/FlexCamRemuxDO';
 import { WebBrowserSessionDO } from './durable-objects/WebBrowserSessionDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
+import { TesseractOcrContainer } from './containers/tesseractOcrContainer';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
@@ -39,7 +40,7 @@ import { log, logErrorToDb } from './utils/logger';
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
 // [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
-export { WelfareWatchDO, VoiceHubDO, AlertHubDO, DeepResearchDO, PersonIntelDO, FlexCamRemuxDO, PdfToolsContainer, WebBrowserSessionDO };
+export { WelfareWatchDO, VoiceHubDO, AlertHubDO, DeepResearchDO, PersonIntelDO, FlexCamRemuxDO, PdfToolsContainer, WebBrowserSessionDO, TesseractOcrContainer };
 
 // Exported so sub-routers that need to dispatch internal subrequests
 // (e.g. src/routes/offline.ts replaying queued offline writes through

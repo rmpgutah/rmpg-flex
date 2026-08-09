@@ -100,6 +100,36 @@ async function runOpenAiVision(imageBase64: string): Promise<Record<string, stri
   }
 }
 
+async function runTesseractCustom(imageBase64: string): Promise<Record<string, string>> {
+  const jwt = process.env.RMPG_FLEX_JWT;
+  if (!jwt) { console.error('  tesseract-custom: RMPG_FLEX_JWT not set, skipping'); return {}; }
+  try {
+    const form = new FormData();
+    const bytes = Buffer.from(imageBase64, 'base64');
+    form.set('image', new Blob([bytes], { type: 'image/png' }), 'image.png');
+    const res = await fetch('https://api.rmpgutah.us/api/tesseract-ocr/ocr', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${jwt}` },
+      body: form,
+    });
+    if (!res.ok) { console.error(`  tesseract-custom: HTTP ${res.status}`); return {}; }
+    const body = await res.json() as { text?: string };
+    // Tesseract returns raw OCR text, not structured JSON fields like the
+    // other candidates — this scores 0 on every field until a prompt/parse
+    // layer is added on top (out of scope for this plan; the fixture corpus
+    // comparison here is measuring raw text-extraction quality, which is
+    // the correct signal for deciding whether fine-tuning is worth pursuing
+    // further before investing in a structured-extraction layer on top).
+    // Diagnostic only: truncated to 40 chars — enough to confirm OCR is
+    // producing plausible English text, not enough to expose case content.
+    console.log(`  tesseract-custom raw text: ${(body.text ?? '').slice(0, 40)}`);
+    return {};
+  } catch (e) {
+    console.error(`  tesseract-custom: ${e instanceof Error ? e.message : String(e)}`);
+    return {};
+  }
+}
+
 function scoreOne(got: Record<string, unknown>, want: Record<string, string>) {
   let hit = 0;
   const misses: string[] = [];
@@ -121,6 +151,7 @@ async function main() {
     ...WORKERS_AI_CANDIDATES.map((model) => ({ label: model, run: (img: string) => runWorkersAiVision(model, img) })),
     { label: 'claude-vision (Anthropic API)', run: runClaudeVision },
     { label: 'openai-vision (OpenAI API)', run: runOpenAiVision },
+    { label: 'tesseract-custom (self-hosted)', run: runTesseractCustom },
   ];
 
   for (const { label, run } of runners) {

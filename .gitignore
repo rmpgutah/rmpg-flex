@@ -86,3 +86,7 @@ __pycache__/
 
 # OSM overlay build artifacts — 250 MB extract, generated tiles
 /.osm-build/
+
+# Tesseract fine-tuned model — fetched from R2 at deploy time, never
+# committed (real document training data-derived artifact).
+containers/tesseract-ocr/model/
