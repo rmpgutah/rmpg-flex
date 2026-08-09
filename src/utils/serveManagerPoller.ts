@@ -63,7 +63,7 @@ function mapSmJobToCallData(job: SmJob) {
   const docNames = documents.map((d) => d.title).filter(Boolean).join(', ');
 
   const descParts: string[] = [];
-  descParts.push(`ServeManager Job #${job.job_number}`);
+  if (job.job_number) descParts.push(`ServeManager Job #${job.job_number}`);
   const recipientName = job.recipient?.name || job.recipient?.full_name;
   if (recipientName) descParts.push(`Serve to: ${recipientName}`);
   if (job.recipient?.description) descParts.push(`Description: ${job.recipient.description}`);
@@ -126,7 +126,7 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
         // Update the cached job row
         await execute(db,
           `UPDATE sm_jobs SET job_status=?, service_status=?, updated_at=datetime('now') WHERE sm_job_id=?`,
-          job.job_status, job.service_status, job.id);
+          job.job_status ?? null, job.service_status ?? null, job.id);
         synced++;
         continue;
       }
@@ -187,8 +187,8 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
            job_status, service_status, court_case_number, due_date, linked_call_id,
            process_type, addresses_json, documents_json, synced_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
-        job.id, job.job_number, clientName, (job.recipient?.name || job.recipient?.full_name) || null,
-        job.job_status, job.service_status, job.court_case?.number || null,
+        job.id, job.job_number ?? null, clientName, (job.recipient?.name || job.recipient?.full_name) || null,
+        job.job_status ?? null, job.service_status ?? null, job.court_case?.number || null,
         job.due_date || null, callId,
         callData.process_type,
         JSON.stringify(job.addresses || []), JSON.stringify(job.documents || []),
