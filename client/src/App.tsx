@@ -116,6 +116,7 @@ const AdminPage = lazyRetry(() => import('./pages/AdminPage'));
 const MyIdPage = lazyRetry(() => import('./pages/wallet/MyIdPage'));
 const VerifyIdPage = lazyRetry(() => import('./pages/wallet/VerifyIdPage'));
 const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
+const TesseractTrainingPage = lazyRetry(() => import('./pages/TesseractTrainingPage'));
 const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
 const FleetPage = lazyRetry(() => import('./pages/fleet'));
 const FleetDashboardPage = lazyRetry(() => import('./pages/fleet/FleetDashboardPage'));
@@ -689,6 +690,7 @@ function AppRoutes() {
             <Route path="/ncic" element={<RouteErrorBoundary><NcicPage /></RouteErrorBoundary>} />
             <Route path="/dl-search" element={<RouteErrorBoundary><DlSearchPage /></RouteErrorBoundary>} />
             <Route path="/audit" element={<AdminRoute><RouteErrorBoundary><AuditLogPage /></RouteErrorBoundary></AdminRoute>} />
+            <Route path="/tesseract-training" element={<AdminRoute><RouteErrorBoundary><TesseractTrainingPage /></RouteErrorBoundary></AdminRoute>} />
             <Route path="/training" element={<RouteErrorBoundary><TrainingPage /></RouteErrorBoundary>} />
             <Route path="/training-docs" element={<RouteErrorBoundary><TrainingDocsPage /></RouteErrorBoundary>} />
             <Route path="/forensics" element={<Navigate to="/connections" replace />} />
