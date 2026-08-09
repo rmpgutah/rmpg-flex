@@ -205,6 +205,19 @@ export async function fetchRecentJobs(db: D1Database, jwtSecret: string, since?:
       status: j0?.status, process_server: j0?.process_server,
       current_status: j0?.current_status, employee: j0?.employee,
     }));
+    // TEMP DIAGNOSTIC round 2 (remove immediately after capturing one log
+    // line): round 1's key list confirmed `process_server` never existed —
+    // the real fields are process_server_company / process_server_contact /
+    // employee_process_server, plus client_job_number. sm_jobs already has
+    // a process_server_name column that's never been populated because the
+    // mapper never read any of these. Need the real sub-shapes before
+    // fixing the mapper blind (same lesson as every prior round).
+    console.error('[sm-client] DIAGNOSTIC process_server shapes:', JSON.stringify({
+      process_server_company: j0?.process_server_company,
+      process_server_contact: j0?.process_server_contact,
+      employee_process_server: j0?.employee_process_server,
+      client_job_number: j0?.client_job_number,
+    }));
     // ServeManager wraps every response — list endpoints included — in a
     // JSON:API-style `{ links: {...}, data: [...] }` envelope (confirmed
     // live 2026-08-08 against the production account's real job data).
