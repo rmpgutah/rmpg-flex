@@ -229,12 +229,31 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
       } catch { /* best-effort */ }
     }
 
-    // Update last poll timestamp
-    await execute(db,
-      `DELETE FROM system_config WHERE config_key = 'servemanager_last_poll_at' AND category = 'integrations'`);
-    await execute(db,
-      `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at)
-       VALUES ('servemanager_last_poll_at', datetime('now'), 'integrations', 0, 1, datetime('now'), datetime('now'))`);
+    // Update last poll timestamp. UPDATE-then-fallback-INSERT instead of the
+    // old DELETE-then-INSERT: system_config has a UNIQUE(config_key,
+    // config_value) index (not config_key alone), and datetime('now') only
+    // has 1-second resolution, so two pollServeManagerJobs() runs landing in
+    // the same second (manual "Full Sync" overlapping the cron, or two
+    // concurrent invocations) both DELETE then both try to INSERT the
+    // identical (servemanager_last_poll_at, <same second>) pair -- the
+    // second insert throws SQLITE_CONSTRAINT_UNIQUE and dead-letters that
+    // whole cycle (confirmed live 2026-08-09, sm_sync_log id 37). UPDATE
+    // touches the existing row in place (no new (key,value) pair is ever
+    // created for a key that already has a row), so it can't collide; the
+    // INSERT fallback only runs once ever, on the very first poll, and its
+    // rare remaining race is caught below instead of failing the cycle.
+    const touched = await execute(db,
+      `UPDATE system_config SET config_value = datetime('now'), updated_at = datetime('now')
+       WHERE config_key = 'servemanager_last_poll_at' AND category = 'integrations'`);
+    if (touched.meta.changes === 0) {
+      try {
+        await execute(db,
+          `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at)
+           VALUES ('servemanager_last_poll_at', datetime('now'), 'integrations', 0, 1, datetime('now'), datetime('now'))`);
+      } catch (err) {
+        if (!/UNIQUE constraint/i.test((err as Error).message)) throw err;
+      }
+    }
 
     return { synced, callsCreated };
   } catch (err) {
