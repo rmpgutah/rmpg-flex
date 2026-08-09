@@ -9,7 +9,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Bindings } from '../types';
 import { queryFirst, execute } from './db';
-import { fetchRecentJobs, getStoredKey, type SmJob } from './serveManagerClient';
+import { fetchRecentJobs, fetchJobAttempts, getStoredKey, type SmJob } from './serveManagerClient';
 import { broadcastAll } from '../routes/ws';
 
 const DEFAULT_TARGET_CLIENT = 'ICU Investigations, LLC';
@@ -106,6 +106,25 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
 
     const jobs = await fetchRecentJobs(db, jwtSecret, lastPoll || undefined);
     if (jobs.length === 0) return { synced: 0, callsCreated: 0 };
+
+    // TEMP DIAGNOSTIC (remove immediately after capturing one log line):
+    // attempts_synced is hardcoded to 0 everywhere — there is no attempts
+    // sync at all. fetchJobAttempts() exists but is never called. Job keys
+    // captured 2026-08-08 include a top-level "attempts" — checking whether
+    // it's embedded inline vs needs the separate /jobs/:id/attempts call,
+    // and which id (numeric job.id vs servemanager_job_number) that
+    // endpoint actually wants.
+    const j0: any = jobs[0];
+    try {
+      const viaId = await fetchJobAttempts(db, jwtSecret, String(j0.id));
+      console.error('[sm-poller] DIAGNOSTIC attempts:', JSON.stringify({
+        embedded_attempts: j0.attempts,
+        attempt_count: j0.attempt_count,
+        via_numeric_id: viaId,
+      }));
+    } catch (diagErr) {
+      console.error('[sm-poller] DIAGNOSTIC attempts fetch threw:', (diagErr as Error).message);
+    }
 
     let synced = 0;
     let callsCreated = 0;
