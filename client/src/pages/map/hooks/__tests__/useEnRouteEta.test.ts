@@ -56,4 +56,58 @@ describe('useEnRouteEta', () => {
     const { result } = renderHook(() => useEnRouteEta([availableUnit], [call]));
     expect(result.current).toEqual({});
   });
+
+  it('does not refetch on prop-reference churn, only on mount + the 30s interval', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fetchMapboxRoute).mockResolvedValue({ durationSec: 192, distanceMeters: 2317 } as any);
+
+      const { rerender } = renderHook(
+        ({ units, calls }: { units: MapUnit[]; calls: ActiveCall[] }) => useEnRouteEta(units, calls),
+        { initialProps: { units: [enrouteUnit], calls: [call] } },
+      );
+
+      // Flush the initial mount-time fetch (its internal await needs a microtask tick).
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMapboxRoute).toHaveBeenCalledTimes(1);
+
+      // Re-render several times with brand-new array/object references but
+      // identical data — this mirrors every GPS poll in the real app.
+      for (let i = 0; i < 5; i++) {
+        rerender({ units: [{ ...enrouteUnit }], calls: [{ ...call }] });
+      }
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMapboxRoute).toHaveBeenCalledTimes(1);
+
+      // Advancing past the refresh cadence should trigger exactly one more fetch.
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(fetchMapboxRoute).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('isolates a rejected fetch to its own pair, leaving other en-route units unaffected', async () => {
+    const call2: ActiveCall = { ...call, id: 'c2', call_number: 'CFS-2', latitude: 40.77, longitude: -111.88 } as ActiveCall;
+    const unit2: MapUnit = {
+      ...enrouteUnit, id: 'u3', call_sign: 'D191', call_number: 'CFS-2',
+      latitude: 40.71, longitude: -111.91,
+    } as MapUnit;
+
+    vi.mocked(fetchMapboxRoute).mockImplementation(async (origin: any) => {
+      if (origin.lat === enrouteUnit.latitude && origin.lng === enrouteUnit.longitude) {
+        throw new Error('network error');
+      }
+      return { durationSec: 300, distanceMeters: 4000 } as any;
+    });
+
+    const { result } = renderHook(() => useEnRouteEta([enrouteUnit, unit2], [call, call2]));
+
+    await waitFor(() => {
+      expect(result.current['CFS-2']).toBeDefined();
+    });
+
+    expect(result.current['CFS-2'].etaSeconds).toBe(300);
+    expect(result.current['CFS-1']).toBeUndefined();
+  });
 });

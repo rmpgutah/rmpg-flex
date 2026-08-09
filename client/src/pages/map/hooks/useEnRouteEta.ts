@@ -43,10 +43,19 @@ export function useEnRouteEta(units: MapUnit[], calls: ActiveCall[]): Record<str
       }
 
       const results = await Promise.all(pairs.map(async ({ unit, call }) => {
-        const route = await fetchMapboxRoute(
-          { lng: unit.longitude as number, lat: unit.latitude as number },
-          { lng: call.longitude as number, lat: call.latitude as number },
-        );
+        // Isolate one unit's failing fetch from the rest of the batch — a
+        // rejection here must not blank the ETA for every other en-route
+        // unit on the same tick (see useEnRouteEta.test.ts).
+        let route;
+        try {
+          route = await fetchMapboxRoute(
+            { lng: unit.longitude as number, lat: unit.latitude as number },
+            { lng: call.longitude as number, lat: call.latitude as number },
+          );
+        } catch (err) {
+          console.warn('[useEnRouteEta] route fetch failed', err);
+          return null;
+        }
         if (!route) return null;
         return {
           callNumber: call.call_number,
