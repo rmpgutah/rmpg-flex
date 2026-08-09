@@ -249,6 +249,21 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
     }
   };
 
+  const [creatingDispatchFor, setCreatingDispatchFor] = useState<number | null>(null);
+
+  const handleCreateDispatch = async (jobId: number) => {
+    setCreatingDispatchFor(jobId);
+    try {
+      await apiFetch(`/servemanager/jobs/${jobId}/create-dispatch`, { method: 'POST' });
+      await fetchJobs();
+      if (selectedJob?.id === jobId) await handleViewJob(jobId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create dispatch call');
+    } finally {
+      setCreatingDispatchFor(null);
+    }
+  };
+
   // ── Poller handlers ──
 
   const handlePollerSave = async () => {
@@ -643,9 +658,23 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
                   <span className="text-xs font-bold text-rmpg-100">Job #{selectedJob.sm_job_number}</span>
                   <ServiceStatusBadge status={selectedJob.service_status} />
                 </div>
-                <button aria-label="Close" type="button" onClick={() => setSelectedJob(null)} className="text-rmpg-500 hover:text-rmpg-300">
-                  <XCircle className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {!selectedJob.linked_call_id && (
+                    <button type="button"
+                      onClick={() => handleCreateDispatch(selectedJob.id)}
+                      disabled={creatingDispatchFor === selectedJob.id}
+                      className="toolbar-btn text-[10px] flex items-center gap-1 px-2 py-1 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50"
+                    >
+                      {creatingDispatchFor === selectedJob.id
+                        ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
+                        : <Zap className="w-3 h-3" />}
+                      Create Dispatch
+                    </button>
+                  )}
+                  <button aria-label="Close" type="button" onClick={() => setSelectedJob(null)} className="text-rmpg-500 hover:text-rmpg-300">
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px]">
                 <div><span className="text-rmpg-500">Recipient:</span> <span className="text-rmpg-200">{selectedJob.recipient_name || '—'}</span></div>
@@ -697,7 +726,8 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
                     <th className="pb-1 pr-2 font-bold">Client</th>
                     <th className="pb-1 pr-2 font-bold">Due</th>
                     <th className="pb-1 pr-2 font-bold text-center">Attempts</th>
-                    <th className="pb-1 font-bold">Synced</th>
+                    <th className="pb-1 pr-2 font-bold">Synced</th>
+                    <th className="pb-1 font-bold">Dispatch</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -715,12 +745,28 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
                       <td className="py-1 pr-2 text-rmpg-300 max-w-[100px] truncate">{job.client_company_name || '—'}</td>
                       <td className="py-1 pr-2 text-rmpg-400 whitespace-nowrap">{job.due_date || '—'}</td>
                       <td className="py-1 pr-2 text-center font-mono text-rmpg-300">{job.attempt_count}</td>
-                      <td className="py-1 text-rmpg-500 whitespace-nowrap">{safeDateStr(job.synced_at)}</td>
+                      <td className="py-1 pr-2 text-rmpg-500 whitespace-nowrap">{safeDateStr(job.synced_at)}</td>
+                      <td className="py-1 whitespace-nowrap">
+                        {job.linked_call_id ? (
+                          <span className="text-[9px] text-green-400">Linked</span>
+                        ) : (
+                          <button type="button"
+                            onClick={(e) => { e.stopPropagation(); handleCreateDispatch(job.id); }}
+                            disabled={creatingDispatchFor === job.id}
+                            className="toolbar-btn text-[9px] flex items-center gap-1 px-1.5 py-0.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50"
+                          >
+                            {creatingDispatchFor === job.id
+                              ? <Loader2 className="w-2.5 h-2.5 animate-spin" role="status" aria-label="Loading" />
+                              : <Zap className="w-2.5 h-2.5" />}
+                            Create
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   {jobs.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="py-4 text-center text-rmpg-500">
+                      <td colSpan={9} className="py-4 text-center text-rmpg-500">
                         {jobSearch ? 'No jobs match your search' : 'No cached jobs'}
                       </td>
                     </tr>

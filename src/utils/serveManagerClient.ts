@@ -200,6 +200,14 @@ export interface SmJob {
   // Confirmed live 2026-08-09: exists as a top-level field, observed "" on
   // the one job checked (genuinely blank, not a mapping gap).
   client_job_number?: string;
+  // Confirmed present as top-level keys in the full key list captured
+  // 2026-08-08 (attorney_name, attorney_email), but their values were never
+  // sampled — the one live job checked has no attorney on file. Used for
+  // the manual "Create Dispatch" action's pso_requestor_name/email so the
+  // requesting attorney (not just the client company) is captured when
+  // present; re-verify the shape once a job with a real attorney syncs.
+  attorney_name?: string;
+  attorney_email?: string;
   updated_at?: string;
 }
 
@@ -220,6 +228,24 @@ export async function fetchRecentJobs(db: D1Database, jwtSecret: string, since?:
   } catch (err) {
     console.error('[sm-client] Job fetch failed:', (err as Error).message);
     return [];
+  }
+}
+
+// Single-job fetch for the manual "Create Dispatch" action — needs the
+// freshest job data (not whatever's cached in sm_jobs) so the manually-
+// created call captures current addresses/documents/case info. Singular
+// resources use the same `{ data: {...} }` envelope confirmed on /account
+// and every job's own `links.self` (a `/jobs/{id}` URL), just not wrapped
+// in an array.
+export async function fetchJobById(db: D1Database, jwtSecret: string, jobId: number | string): Promise<SmJob | null> {
+  const key = await getStoredKey(db, jwtSecret);
+  if (!key) return null;
+  try {
+    const result = await smGet(`/jobs/${jobId}`, key);
+    return result?.data ?? null;
+  } catch (err) {
+    console.error('[sm-client] Job-by-id fetch failed for', jobId, (err as Error).message);
+    return null;
   }
 }
 
