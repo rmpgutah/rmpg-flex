@@ -4,18 +4,30 @@
 --
 -- This file was ALREADY APPLIED to live D1 785de7ae on 2026-08-01 under its
 -- old name, and d1_migrations holds a row for '0221_assessor_full_cama_build.sql'.
--- Under the new name it is untracked, so wrangler will run it once more. That
--- is harmless — every statement is CREATE TABLE IF NOT EXISTS or an ADD COLUMN
--- that raises "duplicate column name" on an already-present column, and the
--- deploy step is continue-on-error. No data is touched.
+--
+-- ⚠️ 2026-08-09 CORRECTION: the note below ("re-running is harmless") was WRONG
+-- in practice. `continue-on-error: true` only protects the deploy WORKFLOW —
+-- it does not stop wrangler's migration RUNNER from aborting mid-batch on the
+-- first failing statement. Because this file was untracked under its new name,
+-- every deploy re-attempted it, hit "duplicate column name" on the very first
+-- ALTER, and aborted — silently blocking every migration queued behind it in
+-- file order (0230_tesseract_training_corpus.sql among them, discovered via a
+-- live 500 on /api/tesseract-training/documents). A row for
+-- '0222_assessor_full_cama_build.sql' was inserted directly into d1_migrations
+-- on 2026-08-09 (schema already verified present live) so wrangler stops
+-- retrying it. If this file is ever renumbered again, insert its new tracking
+-- row manually in the SAME PR rather than relying on a future run to "harmlessly"
+-- re-apply it.
 --
 -- Full Salt Lake County CAMA column build. Generated from
 -- src/utils/sl-assessor/camaFields.ts (146 fields) against the live
 -- PubMore/detail.cfm rendering captured 2026-08-01 for 16-31-127-029-0000.
 --
 -- D1 does NOT support IF NOT EXISTS on ADD COLUMN. Re-applying this file
--- raises "duplicate column name" per statement, which is expected and
--- harmless — the Worker boot reconciler (src/utils/db.ts) is the
+-- raises "duplicate column name" per statement, which ABORTS THE MIGRATION
+-- BATCH (see correction above) rather than being harmless. On a fresh
+-- environment where this file's columns don't yet exist, they apply fine —
+-- the Worker boot reconciler (src/utils/db.ts) is still the
 -- authoritative path and checks columnExists() before each ALTER.
 
 -- Residence Record (1:1). Its own table because parcel_records already
