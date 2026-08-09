@@ -10,6 +10,8 @@ import { mergeDispositions, isDispositionRow, type DispositionConfigRow } from '
 
 import { log } from '../utils/logger';
 import { recordAudit } from '../utils/auditLog';
+import { parseUserAgentLabel } from '../utils/userAgent';
+import { getUserGraphToken } from '../utils/userGraphTokens';
 const admin = new Hono<Env>();
 
 // Admin mutations are reachable by any authenticated user once authMiddleware
@@ -1480,6 +1482,28 @@ admin.delete('/users/:id/security-questions', async (c) => {
   }
 });
 
+// GET /admin/users/:id/email-status — read-only view of whether this user
+// has connected their own Microsoft Graph mailbox (per-officer email, see
+// src/routes/email.ts's /connect/* flow). Reuses getUserGraphToken rather
+// than a separate query so this can never drift from what /email/connect
+// actually stores. Never returns the encrypted access/refresh tokens
+// themselves — only connected/mailbox, same shape as the self-service
+// GET /email/connect/status an officer sees on their own account.
+admin.get('/users/:id/email-status', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const token = await getUserGraphToken(db, c.env, id);
+    return c.json({ connected: !!token, mailbox: token?.mailbox ?? null });
+  } catch (err) {
+    console.error('[Admin] GET user email-status failed:', err);
+    return c.json({ error: 'Failed to load email connection status' }, 500);
+  }
+});
+
 // GET /admin/sessions — every currently-active session, joined for the
 // client's own user_id-based filter (AdminUsersTab's loadUserSessions).
 // Was a permanent `[]` stub, so "Active Sessions" always read 0.
@@ -1490,14 +1514,18 @@ admin.get('/sessions', async (c) => {
   if (denied) return denied;
   try {
     const db = getDb(c.env);
-    const rows = await query(db,
+    const rows = await query<{ user_agent: string | null }>(db,
       `SELECT session_id AS id, user_id, ip_address, user_agent, created_at, last_used_at, expires_at,
               COALESCE(is_active, 1) AS is_active
          FROM sessions
         WHERE COALESCE(is_active, 1) = 1 AND expires_at > datetime('now')
         ORDER BY COALESCE(last_used_at, created_at) DESC
         LIMIT 500`);
-    return c.json(rows || []);
+    // The client only renders `device_name` — derive a friendly label from
+    // the raw User-Agent string here rather than shipping the raw UA (or a
+    // parsing library) to the client.
+    const withDeviceName = (rows || []).map((r: any) => ({ ...r, device_name: parseUserAgentLabel(r.user_agent) }));
+    return c.json(withDeviceName);
   } catch (err) {
     console.error('[Admin] GET sessions failed:', err);
     return c.json([]);
