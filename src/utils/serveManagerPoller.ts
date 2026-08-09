@@ -253,6 +253,31 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
         JSON.stringify(job.addresses || []), JSON.stringify(job.documents || []),
       );
 
+      // Link the auto-created call into the Process Server queue. Without
+      // this, the call only ever existed as a plain calls_for_service row
+      // — GET /process-server (the module officers actually work from)
+      // reads exclusively from serve_queue, which nothing populated for
+      // ServeManager-sourced jobs. Confirmed live 2026-08-09: a
+      // ServeManager job's auto-created call never appeared in the
+      // Process Server queue; GET /process-server/cross-reference/dispatch
+      // (built specifically to find this exact gap) flagged it. Matches
+      // the column set POST /serve-intake uses for manual intake.
+      const primaryAddr = (job.addresses || []).find((a) => a.primary) || (job.addresses || [])[0];
+      await execute(db,
+        `INSERT INTO serve_queue (
+           call_id, sm_job_id, serve_date,
+           recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip,
+           recipient_lat, recipient_lng, case_number, client_name, priority, deadline,
+           service_instructions, status
+         ) VALUES (?,?,?, ?,?,?,?,?, ?,?,?,?,?,?, ?,?)`,
+        callId, job.id, job.due_date || null,
+        (job.recipient?.name || job.recipient?.full_name) || null, primaryAddr?.address1 || null,
+        primaryAddr?.city || null, primaryAddr?.state || null, primaryAddr?.postal_code || null,
+        primaryAddr?.lat ?? primaryAddr?.latitude ?? null, primaryAddr?.lng ?? primaryAddr?.longitude ?? null,
+        job.court_case?.number || null, clientName || null, job.rush ? 'rush' : 'normal', job.due_date || null,
+        job.service_instructions || null, 'pending',
+      );
+
       synced++;
       callsCreated++;
 
