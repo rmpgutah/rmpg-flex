@@ -10,8 +10,8 @@ import { Hono } from 'hono';
 import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-import { testConnection, setApiKey as smSetApiKey, clearApiKey as smClearApiKey } from '../utils/serveManagerClient';
-import { pollServeManagerJobs } from '../utils/serveManagerPoller';
+import { testConnection, setApiKey as smSetApiKey, clearApiKey as smClearApiKey, fetchJobById } from '../utils/serveManagerClient';
+import { pollServeManagerJobs, createDispatchCallForJob } from '../utils/serveManagerPoller';
 
 import { log } from '../utils/logger';
 const sm = new Hono<Env>();
@@ -188,6 +188,37 @@ sm.get('/jobs/:jobId', async (c) => {
   } catch { return c.json({ error: 'Not found' }, 404); }
 });
 
+// POST /jobs/:jobId/create-dispatch — manual override of the target-client
+// filter and the "Auto-Create Dispatch Calls" toggle. An admin/manager (the
+// router-wide gate above) can push a specific job through even when the
+// poller wouldn't have (wrong/no target client, auto-create off, or the
+// poller itself disabled) rather than waiting on config changes. Re-fetches
+// the job fresh from ServeManager rather than trusting the sm_jobs cache, so
+// the manually-created call captures current data — see fetchJobById.
+sm.post('/jobs/:jobId/create-dispatch', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const jobId = parseInt(c.req.param('jobId'), 10);
+    if (!Number.isFinite(jobId)) return c.json({ error: 'Invalid job id' }, 400);
+
+    const existing = await queryFirst<{ linked_call_id: number | null }>(
+      db, 'SELECT linked_call_id FROM sm_jobs WHERE sm_job_id = ?', jobId,
+    );
+    if (existing?.linked_call_id) {
+      return c.json({ error: 'Job already has a linked dispatch call', code: 'ALREADY_LINKED', call_id: existing.linked_call_id }, 409);
+    }
+
+    const job = await fetchJobById(db, c.env.JWT_SECRET, jobId);
+    if (!job) return c.json({ error: 'Job not found in ServeManager (or API key not configured)' }, 404);
+
+    const result = await createDispatchCallForJob(db, job);
+    return c.json({ success: true, ...result });
+  } catch (err) {
+    log.error('POST /jobs/:jobId/create-dispatch failed', { src: 'src/routes/serveManagerRoutes.ts' }, err);
+    return c.json({ error: 'Failed to create dispatch call' }, 500);
+  }
+});
+
 sm.put('/api-key', async (c) => {
   try {
     const body = await c.req.json<{ api_key: string }>();
@@ -204,7 +235,18 @@ sm.delete('/api-key', async (c) => {
     log.error('DELETE /api-key failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ error: 'Failed to clear key' }, 500); }
 });
 
+// Enabling/toggling the poller (turning the feed on, flipping auto-create,
+// repointing Target Client) is a step above the router's general admin/
+// manager gate above: this is the one action that starts pulling data from
+// ServeManager and auto-creating dispatch calls unattended on every cron
+// tick, so it requires the 'admin' role specifically — a manager can still
+// trigger a one-off Poll Now / Full Sync (still gated admin/manager by the
+// router-wide middleware), but cannot arm the always-on poller.
 sm.put('/poller/settings', async (c) => {
+  const actor = c.get('user') as { role?: string } | undefined;
+  if (actor?.role !== 'admin') {
+    return c.json({ error: 'Only an admin can change poller settings', code: 'ADMIN_REQUIRED' }, 403);
+  }
   try {
     const db = getDb(c.env);
     const body = await c.req.json<{ enabled?: boolean; poll_interval?: number; target_client?: string; auto_create_calls?: boolean }>();

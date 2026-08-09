@@ -248,6 +248,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     else { try { localStorage.removeItem(CACHED_USER_KEY); } catch { /* ignore */ } }
   }, [user]);
 
+  // Best-effort device GPS attach, once per session — fires only through
+  // the browser's OWN navigator.geolocation permission prompt (this code
+  // cannot see coordinates the browser doesn't hand it, and never re-prompts
+  // if the officer declines). Fire-and-forget: never blocks login, never
+  // retries, and any failure (denied, unsupported, no fix, network error)
+  // is silently swallowed — this is enrichment for the Security Dashboard,
+  // not something login correctness can depend on. Keyed on `user` so it
+  // covers every login path (password, 2FA, backup code, SSO) from one
+  // place rather than duplicating the call at each success site.
+  const deviceLocationSentRef = useRef(false);
+  useEffect(() => {
+    if (!user) { deviceLocationSentRef.current = false; return; }
+    if (deviceLocationSentRef.current) return;
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    deviceLocationSentRef.current = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const currentToken = localStorage.getItem(TOKEN_KEY);
+        if (!currentToken) return;
+        fetchWithTimeout('/api/auth/session/device-location', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${currentToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracyMeters: pos.coords.accuracy,
+          }),
+        }).catch(() => { /* best-effort */ });
+      },
+      () => { /* permission denied / unavailable — no-op */ },
+      { timeout: 5000, maximumAge: 60_000 },
+    );
+  }, [user]);
+
   const clearError = useCallback(() => setError(null), []);
 
   // Schedule token refresh based on access token expiry

@@ -32,6 +32,14 @@ export function createMapboxMap(
       style: resolvedStyle,
       center: [-111.8910, 40.7608],
       zoom: 12,
+      // mapbox-gl v3 defaults to the 3D Globe projection — no map surface in
+      // this app opts into that (useMapProjection's own React state defaults
+      // to 'mercator' too, so leaving this unset made the ACTUAL map globe
+      // while the projection-toggle UI claimed flat). A CAD/dispatch map
+      // must stay flat at every zoom for markers/spatial reasoning to behave
+      // predictably; MapboxMapPage's toggle can still switch a user into
+      // Globe deliberately afterward via useMapProjection.setProjection.
+      projection: 'mercator',
       attributionControl: false,
       failIfMajorPerformanceCaveat: false,
     });

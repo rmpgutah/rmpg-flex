@@ -186,7 +186,28 @@ export interface SmJob {
     created_at?: string;
     updated_at?: string;
   }>;
-  process_server?: { full_name?: string };
+  // Confirmed live 2026-08-09: there is no top-level `process_server` field.
+  // The real job-level fields are process_server_company (external company)
+  // and process_server_contact (external individual) — both null on the one
+  // live job checked, an in-house serve, so their sub-shape is unconfirmed
+  // and mirrors client_company/client_contact's confirmed `.name` pattern —
+  // plus employee_process_server, which IS populated for in-house serves
+  // and uses first_name/last_name (an object shape distinct from the other
+  // "name" resources; confirmed live with a real employee record).
+  process_server_company?: { name?: string };
+  process_server_contact?: { name?: string };
+  employee_process_server?: { first_name?: string; last_name?: string };
+  // Confirmed live 2026-08-09: exists as a top-level field, observed "" on
+  // the one job checked (genuinely blank, not a mapping gap).
+  client_job_number?: string;
+  // Confirmed present as top-level keys in the full key list captured
+  // 2026-08-08 (attorney_name, attorney_email), but their values were never
+  // sampled — the one live job checked has no attorney on file. Used for
+  // the manual "Create Dispatch" action's pso_requestor_name/email so the
+  // requesting attorney (not just the client company) is captured when
+  // present; re-verify the shape once a job with a real attorney syncs.
+  attorney_name?: string;
+  attorney_email?: string;
   updated_at?: string;
 }
 
@@ -197,27 +218,6 @@ export async function fetchRecentJobs(db: D1Database, jwtSecret: string, since?:
     const params: Record<string, string> = { per_page: '50' };
     if (since) params.updated_since = since;
     const result = await smGet('/jobs', key, params);
-    // TEMP DIAGNOSTIC (remove immediately after capturing one log line):
-    const j0 = Array.isArray(result?.data) ? result.data[0] : undefined;
-    console.error('[sm-client] DIAGNOSTIC status/server keys:', JSON.stringify({
-      keys: j0 ? Object.keys(j0) : null,
-      job_status: j0?.job_status, service_status: j0?.service_status,
-      status: j0?.status, process_server: j0?.process_server,
-      current_status: j0?.current_status, employee: j0?.employee,
-    }));
-    // TEMP DIAGNOSTIC round 2 (remove immediately after capturing one log
-    // line): round 1's key list confirmed `process_server` never existed —
-    // the real fields are process_server_company / process_server_contact /
-    // employee_process_server, plus client_job_number. sm_jobs already has
-    // a process_server_name column that's never been populated because the
-    // mapper never read any of these. Need the real sub-shapes before
-    // fixing the mapper blind (same lesson as every prior round).
-    console.error('[sm-client] DIAGNOSTIC process_server shapes:', JSON.stringify({
-      process_server_company: j0?.process_server_company,
-      process_server_contact: j0?.process_server_contact,
-      employee_process_server: j0?.employee_process_server,
-      client_job_number: j0?.client_job_number,
-    }));
     // ServeManager wraps every response — list endpoints included — in a
     // JSON:API-style `{ links: {...}, data: [...] }` envelope (confirmed
     // live 2026-08-08 against the production account's real job data).
@@ -228,6 +228,24 @@ export async function fetchRecentJobs(db: D1Database, jwtSecret: string, since?:
   } catch (err) {
     console.error('[sm-client] Job fetch failed:', (err as Error).message);
     return [];
+  }
+}
+
+// Single-job fetch for the manual "Create Dispatch" action — needs the
+// freshest job data (not whatever's cached in sm_jobs) so the manually-
+// created call captures current addresses/documents/case info. Singular
+// resources use the same `{ data: {...} }` envelope confirmed on /account
+// and every job's own `links.self` (a `/jobs/{id}` URL), just not wrapped
+// in an array.
+export async function fetchJobById(db: D1Database, jwtSecret: string, jobId: number | string): Promise<SmJob | null> {
+  const key = await getStoredKey(db, jwtSecret);
+  if (!key) return null;
+  try {
+    const result = await smGet(`/jobs/${jobId}`, key);
+    return result?.data ?? null;
+  } catch (err) {
+    console.error('[sm-client] Job-by-id fetch failed for', jobId, (err as Error).message);
+    return null;
   }
 }
 

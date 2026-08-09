@@ -76,6 +76,7 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
           style: MAPBOX_STYLE_DARK,
           center: located.length ? [located[0].lng!, located[0].lat!] : DEFAULT_CENTER,
           zoom: 11,
+          projection: 'mercator',
           attributionControl: false,
         });
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));

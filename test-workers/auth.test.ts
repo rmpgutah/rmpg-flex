@@ -174,13 +174,24 @@ describe('POST /login — account lockout', () => {
     await execute(db, `CREATE TABLE IF NOT EXISTS login_attempts (
       id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, ip_address TEXT,
       success INTEGER NOT NULL DEFAULT 0, failure_reason TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      user_agent TEXT, device_type TEXT, browser TEXT, os TEXT,
+      country TEXT, region TEXT, city TEXT, postal_code TEXT, timezone TEXT,
+      latitude TEXT, longitude TEXT, asn TEXT, isp TEXT,
+      http_protocol TEXT, tls_version TEXT, tls_cipher TEXT, likely_vpn_or_hosting INTEGER,
+      device_platform TEXT, device_platform_version TEXT
     )`);
     await execute(db, `CREATE TABLE IF NOT EXISTS sessions (
       session_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, refresh_token_hash TEXT NOT NULL,
       ip_address TEXT, user_agent TEXT, is_active INTEGER NOT NULL DEFAULT 1,
       expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      last_used_at TEXT NOT NULL DEFAULT (datetime('now'))
+      last_used_at TEXT NOT NULL DEFAULT (datetime('now')),
+      device_type TEXT, browser TEXT, os TEXT,
+      country TEXT, region TEXT, city TEXT, postal_code TEXT, timezone TEXT,
+      latitude TEXT, longitude TEXT, asn TEXT, isp TEXT,
+      http_protocol TEXT, tls_version TEXT, tls_cipher TEXT, likely_vpn_or_hosting INTEGER,
+      device_platform TEXT, device_platform_version TEXT,
+      device_latitude TEXT, device_longitude TEXT, device_geo_accuracy_m TEXT, device_geo_captured_at TEXT
     )`);
   });
 
