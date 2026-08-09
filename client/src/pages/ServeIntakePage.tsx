@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye, Clock, CalendarDays, ScanLine } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye, Clock, CalendarDays, ScanLine, ScanText } from 'lucide-react';
 import ServeAttemptCalendar from '../components/serve/ServeAttemptCalendar';
 import LiveDlScanner, { type IdScanResult } from '../components/LiveDlScanner';
 import { aamvaToServeOverrides } from '../utils/scanIdToRecipient';
@@ -360,7 +360,7 @@ export default function ServeIntakePage() {
   const [showOcrPreview, setShowOcrPreview] = useState(false);
   const [showAttemptModal, setShowAttemptModal] = useState(false);
   // Tab: 'intake' = upload flow, 'schedule' = attempt calendar
-  const [activeTab, setActiveTab] = useState<'intake' | 'schedule'>('intake');
+  const [activeTab, setActiveTab] = useState<'intake' | 'schedule' | 'enforcement'>('intake');
   // Pre-submission field overrides: operator edits BEFORE clicking Create.
   // Keys match the server's field key names (e.g. `recipient_first_name`).
   const [editOverrides, setEditOverrides] = useState<Record<string, string>>({});
@@ -970,6 +970,15 @@ export default function ServeIntakePage() {
     <div className="p-4 space-y-4 max-w-4xl mx-auto">
       <PanelTitleBar title="Process Service Intake" icon={Upload} />
 
+      {user && ['admin', 'manager'].includes(user.role) && (
+        <button
+          onClick={() => navigate('/tesseract-training')}
+          className="flex items-center gap-1.5 px-3 py-1 text-[11px] border border-surface-border hover:bg-surface-raised"
+        >
+          <ScanText size={12} /> OCR Learning
+        </button>
+      )}
+
       {activeTab === 'intake' && showFallbackWarning && (
         <div className="flex items-start gap-2 px-3 py-2 panel-beveled bg-amber-900/20 border border-amber-700/40 text-amber-300 text-xs">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -983,7 +992,7 @@ export default function ServeIntakePage() {
 
       {/* Tab strip */}
       <div className="flex gap-0 border-b border-surface-border">
-        {(['intake', 'schedule'] as const).map((tab) => (
+        {(['intake', 'schedule', 'enforcement'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -993,8 +1002,8 @@ export default function ServeIntakePage() {
                 : 'border-transparent text-rmpg-500 hover:text-rmpg-300'
             }`}
           >
-            {tab === 'intake' ? <Upload size={11} /> : <CalendarDays size={11} />}
-            {tab === 'intake' ? 'Intake' : 'Attempt Schedule'}
+            {tab === 'intake' ? <Upload size={11} /> : tab === 'schedule' ? <CalendarDays size={11} /> : <ScanText size={11} />}
+            {tab === 'intake' ? 'Intake' : tab === 'schedule' ? 'Attempt Schedule' : 'Enforcement'}
           </button>
         ))}
       </div>
@@ -1002,6 +1011,23 @@ export default function ServeIntakePage() {
       {/* Schedule calendar view */}
       {activeTab === 'schedule' && (
         <ServeAttemptCalendar />
+      )}
+
+      {/* Enforcement tab */}
+      {activeTab === 'enforcement' && (
+        <div className="p-4 space-y-3">
+          <p className="text-[11px] text-rmpg-500">
+            Enforcement tools for Serve Intake.
+          </p>
+          {user && ['admin', 'manager'].includes(user.role) && (
+            <button
+              onClick={() => navigate('/tesseract-training')}
+              className="flex items-center gap-1.5 px-3 py-1 text-[11px] border border-surface-border hover:bg-surface-raised"
+            >
+              <ScanText size={12} /> Tesseract OCR Learning
+            </button>
+          )}
+        </div>
       )}
 
       {/* Intake upload flow — hidden when on schedule tab */}
