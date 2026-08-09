@@ -15,7 +15,7 @@
 // ============================================================
 
 import { VectorTile } from '@mapbox/vector-tile';
-import { PbfReader } from 'pbf';
+import Pbf from 'pbf';
 import { pointToSegmentMeters, tileExtentToLngLat } from './tileGeometry';
 
 const KMH_TO_MPH = 0.621371;
@@ -58,7 +58,7 @@ export function nearestMaxspeedInTile(
 ): SpeedLimitHit | null {
   let layer;
   try {
-    const tile = new VectorTile(new PbfReader(tileData));
+    const tile = new VectorTile(new Pbf(tileData));
     layer = tile.layers[sourceLayer];
   } catch {
     return null;
