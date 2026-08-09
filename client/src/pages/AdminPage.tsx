@@ -1167,6 +1167,7 @@ export default function AdminPage() {
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
+            isAdmin={user?.role === 'admin'}
           />
         )}
 
