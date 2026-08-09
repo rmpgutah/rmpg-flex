@@ -123,10 +123,16 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
         db, 'SELECT id FROM sm_jobs WHERE sm_job_id = ?', job.id,
       );
       if (existing) {
-        // Update the cached job row
+        // Update the cached job row. sm_job_number is included here (not
+        // just on the initial INSERT below) because a row cached before
+        // the servemanager_job_number field-name fix landed would
+        // otherwise be stuck showing a blank "Job #" forever — the
+        // existing-job branch never re-derives it once cached. Confirmed
+        // live 2026-08-09: the fix deployed, but a job cached moments
+        // earlier still showed sm_job_number: null until this refresh.
         await execute(db,
-          `UPDATE sm_jobs SET job_status=?, service_status=?, updated_at=datetime('now') WHERE sm_job_id=?`,
-          job.job_status ?? null, job.service_status ?? null, job.id);
+          `UPDATE sm_jobs SET job_status=?, service_status=?, sm_job_number=?, updated_at=datetime('now') WHERE sm_job_id=?`,
+          job.job_status ?? null, job.service_status ?? null, job.servemanager_job_number ?? null, job.id);
         synced++;
         continue;
       }
