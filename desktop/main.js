@@ -21,6 +21,7 @@ const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isL
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
 const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, restoreWindowBounds, saveWindowBounds } = require('./windowManager');
 const { buildShellRegistryValue, MAX_BOOT_FAILURES, resetBootAttemptState, nextBootAttemptState, shouldSelfRevert, KIOSK_ESCAPE_ACCELERATORS, selectEscapeAccelerator, shouldUseKioskChrome, shouldRelaunchOnAllWindowsClosed, validateEscapeLoginResponse } = require('./kioskShell');
+const { isRecoverableCrashReason, shouldAutoRecover, recordRecoveryAttempt } = require('./crashRecovery');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -175,6 +176,11 @@ let splashWindow = null;
 let tray = null;
 let isQuitting = false;
 let appReady = false;
+
+// Rolling-window crash-recovery timestamps for the main window's renderer
+// and GPU-process crashes — see crashRecovery.js. Kept at module scope
+// (not per-window) so the cap holds across a window recreated mid-session.
+let rendererRecoveryTimestamps = [];
 
 // ─── Kiosk-shell auto-relaunch bookkeeping ────────────────────
 // See docs/superpowers/specs/2026-07-21-desktop-kiosk-shell-mode-design.md,
@@ -830,6 +836,50 @@ function getOfflineHTML() {
   `)}`;
 }
 
+// ─── Crash Recovery — Repeated Crash Page ──────────────────
+/**
+ * Shown when the renderer/GPU has crashed and auto-recovered more than
+ * crashRecovery.MAX_RENDERER_RECOVERIES times within the rolling window —
+ * a genuinely failing unit, not a one-off transient loss. Auto-reloading
+ * past this point would just crash-loop silently with no console access in
+ * the field to show why, so this is a terminal, static screen instead.
+ */
+function getCrashLoopHTML() {
+  return `data:text/html;charset=utf-8,${encodeURIComponent(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          background: #000000;
+          color: #fff;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+          text-align: center;
+          padding: 40px;
+        }
+        .icon { font-size: 64px; margin-bottom: 24px; opacity: 0.6; }
+        h1 { font-size: 22px; font-weight: 600; margin-bottom: 12px; color: #e0e0e0; }
+        p { font-size: 14px; color: #888; max-width: 440px; line-height: 1.6; margin-bottom: 8px; }
+        .hint { font-size: 12px; color: #666; margin-top: 24px; }
+      </style>
+    </head>
+    <body>
+      <div class="icon">&#9888;&#65039;</div>
+      <h1>RMPG Flex Needs a Restart</h1>
+      <p>The app has crashed and recovered several times in a row. This usually means a display driver or hardware problem on this unit.</p>
+      <p>Please fully close and reopen RMPG Flex. If this keeps happening, contact IT/Fleet support.</p>
+      <div class="hint">Automatic recovery paused to avoid repeating the crash.</div>
+    </body>
+    </html>
+  `)}`;
+}
+
 // ─── Window Creation ────────────────────────────────────────
 async function createMainWindow() {
   // Guard: BrowserWindow cannot be created before app is ready
@@ -1086,6 +1136,15 @@ async function createMainWindow() {
     mainWindow.loadURL(getOfflineHTML()).catch((err) => {
       console.warn('[APP] Offline page loadURL failed:', err && err.message);
     });
+  });
+
+  // Renderer/GPU crash recovery — see the module-level recoverMainWindow()
+  // and its `child-process-gone` listener defined near the bottom of this
+  // file. Re-registered per webContents (unlike the app-level GPU listener,
+  // which is registered exactly once) since a new window gets a new
+  // webContents each time createMainWindow() runs.
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    recoverMainWindow('renderer', details && details.reason);
   });
 
   // Server hostname for link filtering — derived once at module scope (TRUSTED_HOST)
@@ -1971,6 +2030,56 @@ const PRINT_OVERRIDE_JS = `(() => {
     try { window.top.print(); } catch (e) {}
   };
 })();`;
+
+// ─── Renderer / GPU crash recovery ───────────────────────────
+// Neither `did-fail-load` (in createMainWindow) nor the client's own WebGL
+// context-loss watchdog (client/src/utils/webglRecovery.ts) can help here:
+// that code runs INSIDE the renderer, so it can't run once the renderer
+// itself is gone. Without this, a crashed renderer/GPU process left the
+// window permanently dead — a normal reload does nothing because the
+// process that would carry out the reload no longer exists — requiring a
+// full app restart with no console access in the field to see why. See
+// crashRecovery.js for the rolling-window recovery cap this uses.
+//
+// Module-level (not inside createMainWindow) because createMainWindow() can
+// run more than once per process (app 'activate', kiosk self-heal); a
+// per-call registration here would stack duplicate `app`-level listeners
+// each time. `mainWindow` is always read fresh at call time via closure, so
+// this stays correct across window recreation.
+function recoverMainWindow(source, reason) {
+  console.error(`[APP] ${source} crash: reason=${reason}`);
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    console.log(`[APP] ${source}: no live main window to recover`);
+    return;
+  }
+  if (!isRecoverableCrashReason(reason)) {
+    console.log(`[APP] ${source}: '${reason}' is not a crash reason, ignoring`);
+    return;
+  }
+  const now = Date.now();
+  if (!shouldAutoRecover(rendererRecoveryTimestamps, now)) {
+    console.error(`[APP] ${source}: too many recoveries in the rolling window — showing crash-loop screen`);
+    mainWindow.loadURL(getCrashLoopHTML()).catch((err) => {
+      console.warn('[APP] Crash-loop page loadURL failed:', err && err.message);
+    });
+    return;
+  }
+  rendererRecoveryTimestamps = recordRecoveryAttempt(rendererRecoveryTimestamps, now);
+  console.warn(`[APP] ${source}: reloading to recover`);
+  mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+    console.warn('[APP] Recovery loadURL failed (did-fail-load will handle a further failure):', err && err.message);
+  });
+}
+
+// GPU process crashes are process-wide, not per-webContents, so this is an
+// app-level listener registered exactly once — but it drives the SAME
+// window/counter as the per-webContents `render-process-gone` listener in
+// createMainWindow, since a lost GPU process kills that window's rendering
+// too and both must share one recovery cap.
+app.on('child-process-gone', (event, details) => {
+  if (!details || details.type !== 'GPU') return;
+  recoverMainWindow('GPU process', details.reason);
+});
 
 app.on('web-contents-created', (_event, wc) => {
   wc.on('did-frame-finish-load', (_ev, _isMainFrame, frameProcessId, frameRoutingId) => {
