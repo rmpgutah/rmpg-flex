@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { haversineMiles, estimateDriveMinutes, nearestNeighborOrder } from './ServeRoutePlanner';
+import { haversineMiles, estimateDriveMinutes, nearestNeighborOrder, isJobPreselected } from './ServeRoutePlanner';
 
 function stop(id: number, lat: number, lng: number) {
   return {
@@ -56,5 +56,30 @@ describe('nearestNeighborOrder', () => {
     const { ordered, totalDistanceMiles } = nearestNeighborOrder([a], null);
     expect(ordered.map(s => s.job.id)).toEqual([1]);
     expect(totalDistanceMiles).toBe(0);
+  });
+});
+
+describe('isJobPreselected', () => {
+  it('falls back to the status-based default when no preselection set is given', () => {
+    expect(isJobPreselected('pending', undefined, 1)).toBe(true);
+    expect(isJobPreselected('in_progress', undefined, 1)).toBe(true);
+    expect(isJobPreselected('served', undefined, 1)).toBe(false);
+    expect(isJobPreselected('failed', undefined, 1)).toBe(false);
+  });
+
+  it('falls back to the status-based default when the preselection set is empty', () => {
+    expect(isJobPreselected('pending', new Set(), 1)).toBe(true);
+    expect(isJobPreselected('served', new Set(), 1)).toBe(false);
+  });
+
+  it('when a non-empty preselection set is given, membership overrides the status default entirely', () => {
+    const preselected = new Set([2, 3]);
+    // Job 1 would default to selected by status, but is NOT in the set.
+    expect(isJobPreselected('pending', preselected, 1)).toBe(false);
+    // Job 2 is in the set.
+    expect(isJobPreselected('pending', preselected, 2)).toBe(true);
+    // Job 3 would default to UNselected by status (served), but IS in the set —
+    // the officer explicitly staged it, so membership wins.
+    expect(isJobPreselected('served', preselected, 3)).toBe(true);
   });
 });
