@@ -11,6 +11,7 @@ import {
   repairPoisonedChunk,
   evictPoisonedChunkCaches,
   findFailedChunkResourceUrls,
+  findFailedChunkResourceUrlsInBrowser,
   repairAllPoisonedChunks,
   retryChunkImport,
   CHUNK_RELOAD_KEY,
@@ -348,6 +349,47 @@ describe('findFailedChunkResourceUrls', () => {
       { name: `${ORIGIN}/assets/x-abc.js`, startTime: NOW - 50, transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
     ];
     expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([`${ORIGIN}/assets/x-abc.js`]);
+  });
+});
+
+describe('findFailedChunkResourceUrlsInBrowser (clock-basis regression)', () => {
+  const ORIGIN = 'https://rmpgutah.us';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // PerformanceResourceTiming.startTime is relative to performance.timeOrigin
+  // (small ms-since-navigation numbers), NOT Unix-epoch time. A real page load
+  // is a few seconds/minutes old at most, so Date.now() (~1.7e12) minus a
+  // small startTime is always astronomically larger than the 15s lookback —
+  // every entry gets filtered out regardless of how recently it failed. The
+  // wrapper must use performance.now() as its clock basis to match the
+  // entries it's scanning, or the entire transitive-sub-chunk repair path
+  // (repairAllPoisonedChunksInBrowser) silently finds nothing, forever.
+  it('finds a just-failed entry when Date.now() is epoch-scale and performance.now() is page-relative', () => {
+    const perfNow = 20_000; // 20s into this page load
+    vi.stubGlobal('performance', {
+      now: () => perfNow,
+      getEntriesByType: (type: string) =>
+        type === 'resource'
+          ? [{
+              name: `${ORIGIN}/assets/mapboxLoader-CDOMyCGK.js`,
+              startTime: perfNow - 100, // failed 100ms ago
+              transferSize: 0,
+              decodedBodySize: 0,
+              responseStatus: 404,
+            }]
+          : [],
+    });
+    vi.stubGlobal('window', { location: { origin: ORIGIN } });
+    // Date.now() is epoch-scale — feeding this in (the pre-fix behaviour)
+    // must NOT be what the wrapper does internally.
+    vi.stubGlobal('Date', { now: () => 1_754_000_000_000 });
+
+    expect(findFailedChunkResourceUrlsInBrowser()).toEqual([
+      `${ORIGIN}/assets/mapboxLoader-CDOMyCGK.js`,
+    ]);
   });
 });
 
