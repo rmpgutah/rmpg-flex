@@ -70,6 +70,7 @@ export default function DashboardMiniMap() {
           style: 'mapbox://styles/mapbox/dark-v11',
           center: DEFAULT_CENTER,
           zoom: DEFAULT_ZOOM,
+          projection: 'mercator',
           interactive: true,
           attributionControl: false,
           dragRotate: false,
@@ -128,7 +129,7 @@ export default function DashboardMiniMap() {
     calls.filter(c => c.latitude != null && c.longitude != null).forEach(c => {
       const marker = new mapboxgl.Marker({ element: buildCallMarkerEl(c) })
         .setLngLat([c.longitude!, c.latitude!])
-        .setPopup(new mapboxgl.Popup({ offset: 12, closeButton: false }).setHTML(buildCallPopupHtml(c)))
+        .setPopup(new mapboxgl.Popup({ offset: 12, closeButton: false }).setHTML(buildCallPopupHtml(c, false, Date.now())))
         .addTo(map);
       markersRef.current.push(marker);
       bounds.extend([c.longitude!, c.latitude!]);

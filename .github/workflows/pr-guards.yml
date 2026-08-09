@@ -1,27 +1,24 @@
 # PR Guards — consolidates the small diff-based static checks that used to
 # be five separate workflows (array-guard-check, column-cap-check,
-# new-date-check, theme-hex-guard, tofixed-guard-check). None of these are
-# in branch-protection's required checks (only Worker typecheck / Client
-# typecheck / Client build are), so splitting them across five workflow runs
-# only added runner spin-up + checkout + npm-install overhead per PR without
-# gating anything. One job, one checkout, one Node setup — same checks, same
-# pass/fail signal per script, fewer total Actions runs per PR.
+# new-date-check, theme-hex-guard, tofixed-guard-check). One job, one
+# checkout, one Node setup — same checks, same pass/fail signal per script,
+# fewer total Actions runs per PR.
+#
+# ⚠️ 2026-08-09: this file's job (name: "Static guard checks") IS a required
+# branch-protection status check, contradicting an earlier version of this
+# comment claiming otherwise — that claim was stale. A `paths:` filter here
+# previously meant a worker-only PR (no client/src, migrations, or listed
+# script touched) never triggered this workflow at all, so the required
+# check stayed permanently "expected" and unbypassable — including by
+# `gh pr merge --admin` and the REST API — blocking the merge outright
+# (#3378). Every check below scans repo-wide state (ratchets) or diffs
+# against the PR base itself, not "paths touched by this push", so running
+# unconditionally is correct, not just a workaround: removing the filter
+# fixes both this bug AND makes the check name match what it actually is.
 name: PR Guards
 
 on:
-  pull_request:
-    paths:
-      - 'client/src/**'
-      - 'migrations/**/*.sql'
-      - 'scripts/check-array-guards.js'
-      - 'scripts/check-column-cap.js'
-      - 'scripts/check-new-date.js'
-      - 'scripts/theme-hex-audit.mjs'
-      - 'scripts/check-tofixed-guards.js'
-      - 'scripts/check-form-draft-coverage.js'
-      - 'scripts/form-draft-coverage-baseline.json'
-      - 'docs/theme-cleaned-files.txt'
-      - '.github/workflows/pr-guards.yml'
+  pull_request: {}
 
 # Least-privilege GITHUB_TOKEN (CWE-275). Every check here only reads the
 # repo and diffs against the PR base — no comments, no writes.

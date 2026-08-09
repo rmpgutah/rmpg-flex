@@ -69,6 +69,7 @@ export default function GeoDataMapView({
           style: MAPBOX_STYLE_DARK,
           center: DEFAULT_CENTER,
           zoom: 6.2,
+          projection: 'mercator',
           attributionControl: false,
         });
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));

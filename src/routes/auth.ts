@@ -234,6 +234,18 @@ async function recordLoginAttempt(
     const geo = getRequestGeo(c);
     const platform = unquoteChHeader(c.req.header('sec-ch-ua-platform'));
     const platformVersion = unquoteChHeader(c.req.header('sec-ch-ua-platform-version'));
+    // TEMP DIAGNOSTIC (2026-08-09) — remove once the capture pipeline is
+    // confirmed working live. Investigating why a real production login
+    // produced ip_address='unknown' and every new geo/device column null.
+    try {
+      const cfRaw = (c.req.raw as unknown as { cf?: unknown }).cf;
+      log.warn('[login] geo/device capture diagnostic', {
+        ua, hasCf: cfRaw != null, cfKeys: cfRaw ? Object.keys(cfRaw as object) : [],
+        cfConnectingIp: c.req.header('cf-connecting-ip') || null,
+        xForwardedFor: c.req.header('x-forwarded-for') || null,
+        allHeaderKeys: [...(c.req.raw as Request).headers.keys()],
+      });
+    } catch (diagErr) { log.error('[login] geo/device capture diagnostic FAILED', {}, diagErr as Error); }
     await execute(
       db,
       `INSERT INTO login_attempts (username, ip_address, success, failure_reason,
