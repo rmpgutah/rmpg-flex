@@ -14,6 +14,7 @@ import './personnel/bodyCameraUploads';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { getSecurityPolicy, validatePassword } from '../utils/securityPolicy';
 const personnel = new Hono<Env>();
 
 // Sub-routers — mounted BEFORE any /:id handler below so the literal
@@ -1501,7 +1502,9 @@ personnel.post('/', async (c) => {
       : `${firstName} ${lastName}`.trim();
 
     if (!rawUsername) return c.json({ error: 'username is required' }, 400);
-    if (password.length < 8) return c.json({ error: 'password must be at least 8 characters' }, 400);
+    const securityPolicy = await getSecurityPolicy(getDb(c.env));
+    const passwordErr = validatePassword(password, securityPolicy);
+    if (passwordErr) return c.json({ error: passwordErr }, 400);
     if (!fullName) return c.json({ error: 'full_name (or first_name + last_name) is required' }, 400);
     if (!VALID_ROLES.has(role)) {
       return c.json({ error: 'Invalid role', valid: Array.from(VALID_ROLES) }, 400);
@@ -1772,11 +1775,13 @@ personnel.post('/:id/reset-password', async (c) => {
 
     const body = await c.req.json<{ new_password?: unknown }>().catch(() => null);
     const newPassword = typeof body?.new_password === 'string' ? body.new_password : null;
-    if (!newPassword || newPassword.length < 8) {
-      return c.json({ error: 'Password must be at least 8 characters' }, 400);
+    if (!newPassword) {
+      return c.json({ error: 'Password is required' }, 400);
     }
-
     const db = getDb(c.env);
+    const securityPolicy = await getSecurityPolicy(db);
+    const passwordErr = validatePassword(newPassword, securityPolicy);
+    if (passwordErr) return c.json({ error: passwordErr }, 400);
     const existing = await queryFirst<{ id: number }>(
       db,
       'SELECT id FROM users WHERE id = ?',
