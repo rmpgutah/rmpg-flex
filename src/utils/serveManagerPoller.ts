@@ -141,8 +141,16 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
       const seq = await queryFirst<{ max: string | null }>(
         db, "SELECT MAX(call_number) AS max FROM calls_for_service WHERE call_number LIKE ?", `CFS${year}-%`,
       );
+      // seq.max is e.g. "CFS26-00007" — the numeric suffix starts after the
+      // '-', not at a fixed offset from the start. slice(4) landed on "6-"
+      // (the tail of the year plus the dash), and parseInt("6-00007", 10)
+      // parses only the leading "6", so every job after the first
+      // recomputed the SAME seqNum forever and every insert after the first
+      // collided on the UNIQUE calls_for_service.call_number constraint
+      // (confirmed live 2026-08-09: every sync after the first ever call
+      // failed this way, dead-lettering the whole cycle).
       const seqNum = seq?.max
-        ? String(parseInt(seq.max.slice(4), 10) + 1).padStart(5, '0')
+        ? String(parseInt(seq.max.split('-')[1], 10) + 1).padStart(5, '0')
         : '00001';
       callData.call_number = `CFS${year}-${seqNum}`;
 
