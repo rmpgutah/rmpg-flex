@@ -16,6 +16,7 @@ const FLAG_LABELS: Record<keyof FeatureFlags, string> = {
   ruler: 'Ruler',
   minimap: 'Minimap',
   dev_diagnostics: 'Dev Diagnostics',
+  tesseract_ocr_primary: 'Tesseract OCR Primary (Serve Intake)',
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
