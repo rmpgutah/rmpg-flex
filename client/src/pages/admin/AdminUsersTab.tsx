@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search,
   Plus,
@@ -94,7 +94,7 @@ interface AdminUsersTabProps {
 
   // Selected user detail
   selectedUser: (User & { last_login_display?: string }) | null;
-  setSelectedUser: (user: (User & { last_login_display?: string }) | null) => void;
+  setSelectedUser: React.Dispatch<React.SetStateAction<(User & { last_login_display?: string }) | null>>;
   userActivity: AuditEntry[];
   loadingUserActivity: boolean;
 
@@ -218,14 +218,29 @@ export default function AdminUsersTab({
     setSecurityActionLoading(null);
   };
 
+  // Tracks the currently-selected user id without being part of any
+  // useCallback's dependency array, so loadUserSessions/loadUserSecurity
+  // keep a stable identity across renders — using `selectedUser` (which
+  // gets a new object reference on every security/role update) here would
+  // re-trigger the effect below on every fetch, causing an infinite
+  // refetch loop against /admin/sessions and /admin/users/:id/security.
+  const selectedUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedUserIdRef.current = selectedUser ? String(selectedUser.id) : null;
+  }, [selectedUser?.id]);
+
   // Load active sessions for a user when the Security tab is shown
   const loadUserSessions = useCallback(async (userId: string) => {
     setLoadingSessions(true);
     try {
       const sessions = await apiFetch<UserSession[]>('/admin/sessions');
-      setUserSessions((sessions || []).filter((s: UserSession) => String(s.user_id || (s as any).userId) === String(userId) && s.is_active));
+      // Stale-response guard: skip if the admin has switched to a
+      // different user while this request was in flight.
+      if (selectedUserIdRef.current === String(userId)) {
+        setUserSessions((sessions || []).filter((s: UserSession) => String(s.user_id || (s as any).userId) === String(userId) && s.is_active));
+      }
     } catch {
-      setUserSessions([]);
+      if (selectedUserIdRef.current === String(userId)) setUserSessions([]);
     }
     setLoadingSessions(false);
   }, []);
@@ -238,24 +253,30 @@ export default function AdminUsersTab({
     try {
       const security = await apiFetch<Record<string, unknown>>(`/admin/users/${userId}/security`);
       // Guard against a stale response landing after the admin has already
-      // switched to a different user (userId is captured per-call, not read
-      // from the possibly-changed `selectedUser` closure below).
-      if (selectedUser && String(selectedUser.id) === String(userId)) {
-        setSelectedUser({ ...selectedUser, ...security } as any);
-      }
+      // switched to a different user. Uses the functional setState form
+      // (not the `selectedUser` closure) so this callback never needs
+      // `selectedUser` in its dependency array — depending on it caused an
+      // infinite loop, since merging `security` into selectedUser produces
+      // a new object reference every call, which re-triggers the effect
+      // that calls this callback.
+      setSelectedUser((prev) => (prev && String(prev.id) === String(userId) ? ({ ...prev, ...security } as any) : prev));
     } catch { /* leave selectedUser's fields as-is */ }
 
     setSqAdminLoading(true);
     try {
       const sq = await apiFetch<{ configured: boolean; questions: string[] }>(`/admin/users/${userId}/security-questions`);
-      setSqAdminConfigured(sq.configured);
-      setSqAdminQuestions(sq.questions || []);
+      if (selectedUserIdRef.current === String(userId)) {
+        setSqAdminConfigured(sq.configured);
+        setSqAdminQuestions(sq.questions || []);
+      }
     } catch {
-      setSqAdminConfigured(null);
-      setSqAdminQuestions([]);
+      if (selectedUserIdRef.current === String(userId)) {
+        setSqAdminConfigured(null);
+        setSqAdminQuestions([]);
+      }
     }
     setSqAdminLoading(false);
-  }, [selectedUser, setSelectedUser]);
+  }, [setSelectedUser]);
 
   // Load sessions + security status when security tab is opened
   useEffect(() => {
