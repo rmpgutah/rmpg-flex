@@ -11,6 +11,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useGpsTracking } from '../../hooks/useGpsTracking';
 import type { ServeJob } from '../../types';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import {
   resolveRouteOrigin, describeOrigin, describeOriginProblem,
@@ -218,7 +219,7 @@ export function nearestNeighborOrder(
         ? haversineMiles(cursor.lat, cursor.lng, s.job.recipient_lat!, s.job.recipient_lng!)
         : 0;
       const arrivalMs = elapsedMs + estimateDriveMinutes(distanceMiles) * 60_000;
-      const deadlineMs = s.job.deadline ? new Date(s.job.deadline).getTime() : NaN;
+      const deadlineMs = s.job.deadline ? parseTimestamp(s.job.deadline).getTime() : NaN;
       return { idx, distanceMiles, arrivalMs, deadlineMs: Number.isNaN(deadlineMs) ? null : deadlineMs };
     });
 
