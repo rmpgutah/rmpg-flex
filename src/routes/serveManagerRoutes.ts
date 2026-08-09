@@ -83,10 +83,10 @@ sm.post('/sync', async (c) => {
     const result = await pollServeManagerJobs(c.env as any);
     await execute(db,
       "UPDATE sm_sync_log SET status = ?, jobs_synced = ?, attempts_synced = ?, error_message = ?, completed_at = datetime('now') WHERE id = ?",
-      result.error ? 'failed' : 'completed', result.synced, 0, result.error || null, syncId);
+      result.error ? 'failed' : 'completed', result.synced, result.attemptsSynced, result.error || null, syncId);
     return c.json({
       success: !result.error, sync_id: syncId, type,
-      jobs_synced: result.synced, attempts_synced: 0,
+      jobs_synced: result.synced, attempts_synced: result.attemptsSynced,
     });
   } catch (err) {
     log.error('POST /sync failed', { src: 'src/routes/serveManagerRoutes.ts' }, err);
@@ -225,7 +225,7 @@ sm.put('/poller/settings', async (c) => {
 sm.post('/poller/poll-now', async (c) => {
   try { return c.json(await pollServeManagerJobs(c.env as any)); }
   catch (err) {
-    log.error('POST /poller/poll-now failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ synced: 0, callsCreated: 0, error: 'Poll failed' }, 500); }
+    log.error('POST /poller/poll-now failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ synced: 0, callsCreated: 0, attemptsSynced: 0, error: 'Poll failed' }, 500); }
 });
 
 sm.post('/test-connection', async (c) => {
