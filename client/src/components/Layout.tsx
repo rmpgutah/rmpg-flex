@@ -95,6 +95,7 @@ import { useAuth } from '../context/AuthContext';
 import PttController from './PttController';
 import { initSettingsSync } from '../utils/settingsSync';
 import { loadSystemSettings } from '../utils/systemSettings';
+import { loadFeatureFlags, isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
@@ -388,6 +389,7 @@ const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
 ]);
 
 export default function Layout() {
+  const flagsTick = useFeatureFlags();
   const { user, logout, signOut, refreshUser } = useAuth();
   // `logout` is still exported for forced flows (password change). The
   // user-facing Sign Out button uses `signOut`, which gates on shift state.
@@ -646,6 +648,7 @@ export default function Layout() {
       const visibleNav = TOOLBAR_NAV.filter(item => {
         if (item.adminOnly && !isAdmin) return false;
         if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(item.path)) return false;
+        if (!isFeatureEnabled(item.path)) return false;
         return true;
       });
 
@@ -671,7 +674,7 @@ export default function Layout() {
 
     window.addEventListener('keydown', handleFKey);
     return () => window.removeEventListener('keydown', handleFKey);
-  }, [navigate, isAdmin, isClientViewer]);
+  }, [navigate, isAdmin, isClientViewer, flagsTick]);
 
   // ── Keyboard Shortcut Help Modal ────────────────────────
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
@@ -747,6 +750,7 @@ export default function Layout() {
     // settings to the document root. Branding/localization/report values
     // are read at their own call sites via getSystemSetting.
     loadSystemSettings();
+    loadFeatureFlags();
     return initSettingsSync();
     // Keyed on the user ID, NOT the user object. GET /api/settings is a pure
     // function of the actor id (src/routes/settings.ts: org is `WHERE id = 1`,
@@ -779,6 +783,7 @@ export default function Layout() {
     const allow = (path: string, adminOnly?: boolean) => {
       if (adminOnly && !isAdmin) return false;
       if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(path)) return false;
+      if (!isFeatureEnabled(path)) return false;
       return true;
     };
     for (const item of TOOLBAR_NAV) {
@@ -794,7 +799,7 @@ export default function Layout() {
       });
     }
     return targets;
-  }, [isAdmin, isClientViewer]);
+  }, [isAdmin, isClientViewer, flagsTick]);
 
   // Mobile menu & responsive detection
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1468,6 +1473,7 @@ export default function Layout() {
           return TOOLBAR_NAV.filter(item => {
             if (item.adminOnly && !isAdmin) return false;
             if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(item.path)) return false;
+            if (!isFeatureEnabled(item.path)) return false;
             return true;
           }).map((item) => {
             const Icon = item.icon;

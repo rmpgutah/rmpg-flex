@@ -211,7 +211,7 @@ sm.post('/jobs/:jobId/create-dispatch', async (c) => {
     const job = await fetchJobById(db, c.env.JWT_SECRET, jobId);
     if (!job) return c.json({ error: 'Job not found in ServeManager (or API key not configured)' }, 404);
 
-    const result = await createDispatchCallForJob(db, job);
+    const result = await createDispatchCallForJob(c.env, job);
     return c.json({ success: true, ...result });
   } catch (err) {
     log.error('POST /jobs/:jobId/create-dispatch failed', { src: 'src/routes/serveManagerRoutes.ts' }, err);

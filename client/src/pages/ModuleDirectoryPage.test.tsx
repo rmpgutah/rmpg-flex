@@ -7,9 +7,14 @@ vi.mock('../hooks/useApi', () => ({ apiFetch: (...args: unknown[]) => apiFetchMo
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ user: { id: '1', role: 'officer' } }),
 }));
+vi.mock('../utils/featureFlags', () => ({
+  isFeatureEnabled: vi.fn(() => true),
+  useFeatureFlags: vi.fn(() => 0),
+}));
 
 import ModuleDirectoryPage from './ModuleDirectoryPage';
 import { isAppPinned } from '../utils/taskbarPreferences';
+import { isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 
 describe('ModuleDirectoryPage (post-catalog-extraction regression)', () => {
   beforeEach(() => {
@@ -57,5 +62,57 @@ describe('ModuleDirectoryPage — Pin to Taskbar', () => {
     expect(screen.getByText('Pin to Taskbar')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Pin to Taskbar'));
     expect(isAppPinned('/dispatch')).toBe(true);
+  });
+});
+
+describe('ModuleDirectoryPage — feature-toggle gating', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    apiFetchMock.mockClear();
+    vi.mocked(isFeatureEnabled).mockReturnValue(true);
+  });
+
+  it('hides Fleet Management when feature_fleet is disabled', () => {
+    vi.mocked(isFeatureEnabled).mockImplementation((path: string) => path !== '/fleet');
+    render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>);
+    const search = screen.getByPlaceholderText(/Search modules/i);
+    fireEvent.change(search, { target: { value: 'Fleet Management' } });
+    expect(screen.queryByText('Fleet Management')).not.toBeInTheDocument();
+  });
+
+  it('shows Fleet Management when feature_fleet is enabled', () => {
+    render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>);
+    const search = screen.getByPlaceholderText(/Search modules/i);
+    fireEvent.change(search, { target: { value: 'Fleet Management' } });
+    expect(screen.getByText('Fleet Management')).toBeInTheDocument();
+  });
+
+  it('recomputes visibleCategories and hides Fleet Management after flagsTick changes on a rerender (no prop change)', () => {
+    let mockTick = 0;
+    vi.mocked(useFeatureFlags).mockImplementation(() => mockTick);
+    vi.mocked(isFeatureEnabled).mockReturnValue(true);
+
+    // A fresh element on each call (not a reused reference) — passing the
+    // literal same element object to rerender() lets React bail out via
+    // referential-equality of props and never re-invoke the component at
+    // all, which would make this test pass vacuously regardless of whether
+    // flagsTick is wired correctly.
+    const renderUi = () => <MemoryRouter><ModuleDirectoryPage /></MemoryRouter>;
+    const { rerender } = render(renderUi());
+    const search = screen.getByPlaceholderText(/Search modules/i);
+    fireEvent.change(search, { target: { value: 'Fleet Management' } });
+    expect(screen.getByText('Fleet Management')).toBeInTheDocument();
+
+    // Simulate a real flag reload: isFeatureEnabled's underlying data changes
+    // AND the tick increments — then rerender with IDENTICAL prop/search
+    // VALUES. If flagsTick were ever dropped from visibleCategories's
+    // dependency array, the memoized value would stay stale (searchQuery
+    // hasn't changed) and Fleet Management would still show.
+    vi.mocked(isFeatureEnabled).mockImplementation((path: string) => path !== '/fleet');
+    mockTick = 1;
+    rerender(renderUi());
+
+    expect(screen.queryByText('Fleet Management')).not.toBeInTheDocument();
   });
 });

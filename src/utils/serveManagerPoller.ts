@@ -11,6 +11,7 @@ import type { Bindings } from '../types';
 import { queryFirst, execute } from './db';
 import { fetchRecentJobs, extractJobAttempts, getStoredKey, type SmJob } from './serveManagerClient';
 import { broadcastAll } from '../routes/ws';
+import { recordAuditCore } from './auditLog';
 
 const DEFAULT_TARGET_CLIENT = 'ICU Investigations, LLC';
 
@@ -167,8 +168,9 @@ async function cacheJob(db: D1Database, job: SmJob, linkedCallId?: number): Prom
 // exactly that kind of duplication. Caller must have already verified the
 // job isn't already linked (sm_jobs.linked_call_id is null or absent).
 export async function createDispatchCallForJob(
-  db: D1Database, job: SmJob,
+  env: Bindings, job: SmJob,
 ): Promise<{ callId: number; callNumber: string; queueId: number }> {
+  const db = env.DB;
   const clientName = job.client_company?.name || '';
   const callData = mapSmJobToCallData(job);
   const year = new Date().getFullYear().toString().slice(-2);
@@ -213,6 +215,22 @@ export async function createDispatchCallForJob(
     }
   }
   const callId = Number(result.meta.last_row_id);
+
+  // Audit trail entry — matches the CREATE row POST /dispatch/calls writes
+  // (dispatch/calls.ts). Without this, every ServeManager-created call (the
+  // majority of the queue) starts with zero audit_log rows, so its Timeline
+  // and Audit tabs both read as empty until a human takes some other action
+  // on the call. Best-effort: never block call creation on it.
+  try {
+    await recordAuditCore(env, {
+      action: 'CREATE',
+      entityType: 'call',
+      entityId: callId,
+      details: `Created call ${callData.call_number} from ServeManager job ${job.servemanager_job_number ?? job.id}`,
+    });
+  } catch (auditErr) {
+    console.warn('audit_log insert failed for ServeManager call create:', auditErr);
+  }
 
   await cacheJob(db, job, callId);
 
@@ -300,7 +318,7 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
       const autoCreate = await getSmConfig(db, 'servemanager_auto_create_calls');
       if (autoCreate !== 'true') { synced++; continue; }
 
-      await createDispatchCallForJob(db, job);
+      await createDispatchCallForJob(env, job);
       synced++;
       callsCreated++;
     }

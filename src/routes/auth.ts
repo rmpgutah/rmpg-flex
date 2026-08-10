@@ -18,6 +18,7 @@ import type {
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { getSecurityPolicy, validatePassword, DEFAULT_SECURITY_POLICY, type SecurityPolicy } from '../utils/securityPolicy';
 import { parseUserAgentDetails } from '../utils/userAgent';
 import { getRequestGeo } from '../utils/requestGeo';
 import {
@@ -42,8 +43,6 @@ const auth = new Hono<Env>();
 // earlier handlers referenced those and 500'd on every login + refresh.
 const ACCESS_TTL_SECONDS = 15 * 60;            // 15m — legacy config.jwt.accessExpiry
 const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;  // 7d  — legacy config.jwt.refreshExpiry
-const FAILED_LOGIN_THRESHOLD = 5;
-const LOCKOUT_DURATION_MINUTES = 15;
 
 // Live `users` uses must_change_password / totp_enabled — NOT the
 // force_password_change / totp_enrolled names the earlier handlers queried
@@ -149,7 +148,7 @@ function unquoteChHeader(v: string | undefined | null): string | null {
   return v.replace(/^"|"$/g, '') || null;
 }
 
-async function createSession(c: any, db: any, userId: number, refreshToken: string): Promise<string> {
+async function createSession(c: any, db: any, userId: number, refreshToken: string, securityPolicy?: SecurityPolicy): Promise<string> {
   const sessionId = uuidv4(); // full dashed UUID → matches live session_id (36 chars)
   const refreshHash = await sha256Hex(refreshToken);
   const ua = c.req.header('user-agent') || '';
@@ -169,6 +168,28 @@ async function createSession(c: any, db: any, userId: number, refreshToken: stri
     geo.country, geo.region, geo.city, geo.postalCode, geo.timezone, geo.latitude, geo.longitude, geo.asn, geo.isp,
     geo.httpProtocol, geo.tlsVersion, geo.tlsCipher, geo.likelyVpnOrHosting ? 1 : 0, platform, platformVersion,
   );
+
+  // Enforce Security Policy → "Max Active Sessions". 0 means unenforced
+  // (today's behavior — no cap has ever existed). Best-effort: never fail
+  // the login itself if this cleanup step errors.
+  try {
+    const policy = securityPolicy ?? await getSecurityPolicy(db);
+    if (policy.maxActiveSessions > 0) {
+      await execute(
+        db,
+        `UPDATE sessions SET is_active = 0
+         WHERE user_id = ? AND is_active = 1
+           AND session_id NOT IN (
+             SELECT session_id FROM sessions
+             WHERE user_id = ? AND is_active = 1
+             ORDER BY created_at DESC, rowid DESC
+             LIMIT ?
+           )`,
+        userId, userId, policy.maxActiveSessions,
+      );
+    }
+  } catch { /* session-cap cleanup is best-effort — never block login */ }
+
   return sessionId;
 }
 
@@ -213,6 +234,18 @@ async function recordLoginAttempt(
     const geo = getRequestGeo(c);
     const platform = unquoteChHeader(c.req.header('sec-ch-ua-platform'));
     const platformVersion = unquoteChHeader(c.req.header('sec-ch-ua-platform-version'));
+    // TEMP DIAGNOSTIC (2026-08-09) — remove once the capture pipeline is
+    // confirmed working live. Investigating why a real production login
+    // produced ip_address='unknown' and every new geo/device column null.
+    try {
+      const cfRaw = (c.req.raw as unknown as { cf?: unknown }).cf;
+      log.warn('[login] geo/device capture diagnostic', {
+        ua, hasCf: cfRaw != null, cfKeys: cfRaw ? Object.keys(cfRaw as object) : [],
+        cfConnectingIp: c.req.header('cf-connecting-ip') || null,
+        xForwardedFor: c.req.header('x-forwarded-for') || null,
+        allHeaderKeys: [...(c.req.raw as Request).headers.keys()],
+      });
+    } catch (diagErr) { log.error('[login] geo/device capture diagnostic FAILED', {}, diagErr as Error); }
     await execute(
       db,
       `INSERT INTO login_attempts (username, ip_address, success, failure_reason,
@@ -255,6 +288,7 @@ auth.post('/login', async (c) => {
 
     const db = getDb(c.env);
     await ensureAccountLockoutColumns(db);
+    const securityPolicy = await getSecurityPolicy(db).catch(() => DEFAULT_SECURITY_POLICY);
     const user = await queryFirst<any>(
       db,
       `SELECT ${USER_SELECT}, password_hash, failed_login_count, locked_until,
@@ -301,8 +335,8 @@ auth.post('/login', async (c) => {
         `UPDATE users SET
            failed_login_count = (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1,
            locked_until = CASE
-             WHEN (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1 >= ${FAILED_LOGIN_THRESHOLD}
-               THEN datetime('now', '+${LOCKOUT_DURATION_MINUTES} minutes')
+             WHEN (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1 >= ${securityPolicy.maxLoginAttempts}
+               THEN datetime('now', '+${securityPolicy.lockoutDurationMinutes} minutes')
              ELSE NULL
            END
          WHERE id = ?
@@ -313,9 +347,9 @@ auth.post('/login', async (c) => {
       if (updated?.locked_until) {
         await recordLoginAttempt(c, db, username, ip, false, 'account_locked');
         return c.json({
-          error: `Account locked due to repeated failed attempts. Try again in ${LOCKOUT_DURATION_MINUTES} minutes.`,
+          error: `Account locked due to repeated failed attempts. Try again in ${securityPolicy.lockoutDurationMinutes} minutes.`,
           code: 'ACCOUNT_LOCKED',
-          retry_after_seconds: LOCKOUT_DURATION_MINUTES * 60,
+          retry_after_seconds: securityPolicy.lockoutDurationMinutes * 60,
         }, 403);
       }
       await recordLoginAttempt(c, db, username, ip, false, 'invalid_password');
@@ -383,7 +417,7 @@ auth.post('/login', async (c) => {
 
     const claims = tokenClaims(user);
     const refreshToken = await signRefreshToken(secret, claims);
-    const sessionId = await createSession(c, db, user.id, refreshToken);
+    const sessionId = await createSession(c, db, user.id, refreshToken, securityPolicy);
     const accessToken = await signAccessToken(secret, { ...claims, sessionId });
 
     // Best-effort login counters — never let a counter error fail the login.
@@ -675,25 +709,14 @@ auth.get('/me', authMiddleware, async (c) => {
   return c.json({ user: userPayload(user) });
 });
 
-// Enforce the advertised password policy (GET /password-policy) — previously
-// only length was checked, so "12345678" satisfied a policy that requires
-// upper/lower/digit/special. Returns an error string, or null when valid.
-function validateNewPassword(pwd: string): string | null {
-  if (typeof pwd !== 'string' || pwd.length < 8) return 'Password must be at least 8 characters';
-  if (!/[A-Z]/.test(pwd)) return 'Password must contain an uppercase letter';
-  if (!/[a-z]/.test(pwd)) return 'Password must contain a lowercase letter';
-  if (!/[0-9]/.test(pwd)) return 'Password must contain a number';
-  if (!/[^A-Za-z0-9]/.test(pwd)) return 'Password must contain a special character';
-  return null;
-}
-
 auth.put('/password', authMiddleware, async (c) => {
   try {
     const { current_password, new_password } = await c.req.json();
     if (!current_password || !new_password) {
       return c.json({ error: 'Current and new password required' }, 400);
     }
-    const policyErr = validateNewPassword(new_password);
+    const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
+    const policyErr = validatePassword(new_password, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
     const userId = c.get('userId');
@@ -730,7 +753,8 @@ auth.post('/change-password', authMiddleware, async (c) => {
     if (!current || !next) {
       return c.json({ error: 'Current and new password required' }, 400);
     }
-    const policyErr = validateNewPassword(next);
+    const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
+    const policyErr = validatePassword(next, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
     const userId = c.get('userId');
@@ -765,7 +789,8 @@ auth.post('/login/change-password', authMiddleware, async (c) => {
   try {
     const body = await c.req.json<{ newPassword?: string; new_password?: string }>();
     const next = body.newPassword ?? body.new_password ?? '';
-    const policyErr = validateNewPassword(next);
+    const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
+    const policyErr = validatePassword(next, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
     const userId = c.get('userId');
@@ -920,7 +945,8 @@ auth.post('/forgot-password/reset', async (c) => {
     if (!tempToken || !newPassword) {
       return c.json({ error: 'Reset token and new password are required' }, 400);
     }
-    const policyErr = validateNewPassword(newPassword);
+    const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
+    const policyErr = validatePassword(newPassword, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
     let payload: any;
@@ -1031,15 +1057,16 @@ auth.put('/security-questions', authMiddleware, async (c) => {
   }
 });
 
-auth.get('/password-policy', (c) => {
+auth.get('/password-policy', async (c) => {
+  const policy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
   return c.json({
-    minLength: 8,
-    requireUppercase: true,
-    requireLowercase: true,
-    requireNumber: true,
-    requireSpecial: true,
-    expiryDays: 90,
-    preventReuse: 5,
+    minLength: policy.minPasswordLength,
+    requireUppercase: policy.requireUppercase,
+    requireLowercase: policy.requireLowercase,
+    requireNumber: policy.requireNumbers,
+    requireSpecial: policy.requireSpecialChars,
+    expiryDays: policy.passwordExpiryDays,
+    preventReuse: 5, // not yet configurable — no UI field exists for this
   });
 });
 

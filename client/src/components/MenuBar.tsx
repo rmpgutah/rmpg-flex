@@ -27,6 +27,7 @@ import {
 } from '../utils/voiceChannel';
 import { setDetailLevel, getDetailLevel, type NarrativeDetail } from '../utils/narrativeComposer';
 import { apiFetch } from '../hooks/useApi';
+import { isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 import { createPrefetchIntentController } from '../hooks/useRoutePrefetch';
 
 // ============================================================
@@ -109,6 +110,11 @@ export default function MenuBar({
 }: MenuBarProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  // Forces a re-render once /api/feature-flags resolves — the menu arrays
+  // below are plain literals rebuilt on every render (not memoized), so no
+  // dependency array needs the tick, but the component itself still needs
+  // to re-render for the conditional spreads to reflect a loaded flag.
+  useFeatureFlags();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [winInstallerUrl, setWinInstallerUrl] = useState<string | null>(null);
 
@@ -542,7 +548,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', path: '/field-interviews', label: 'Field Interview', icon: Clipboard, action: () => navigate('/field-interviews') },
           { type: 'action', path: '/citations', label: 'Citation', icon: FileWarning, action: () => navigate('/citations') },
-          { type: 'action', path: '/warrants', label: 'Warrant', icon: Gavel, action: () => navigate('/warrants') },
+          ...(isFeatureEnabled('/warrants') ? [{ type: 'action' as const, path: '/warrants', label: 'Warrant', icon: Gavel, action: () => navigate('/warrants') }] : []),
           { type: 'action', path: '/trespass-orders', label: 'Trespass Order', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
           { type: 'action', path: '/use-of-force', label: 'Use of Force Report', icon: AlertTriangle, action: () => navigate('/use-of-force') },
           { type: 'separator' },
@@ -574,9 +580,9 @@ export default function MenuBar({
           { type: 'action', path: '/records', label: 'Records', icon: Database, action: () => navigate('/records') },
           { type: 'action', path: '/arrest-records', label: 'Arrest Records', icon: Shield, action: () => navigate('/arrest-records') },
           { type: 'action', path: '/field-interviews', label: 'Field Interviews', icon: Clipboard, action: () => navigate('/field-interviews') },
-          { type: 'action', path: '/warrants', label: 'Warrants', icon: Gavel, action: () => navigate('/warrants') },
+          ...(isFeatureEnabled('/warrants') ? [{ type: 'action' as const, path: '/warrants', label: 'Warrants', icon: Gavel, action: () => navigate('/warrants') }] : []),
           { type: 'action', path: '/citations', label: 'Citations', icon: FileWarning, action: () => navigate('/citations') },
-          { type: 'action', path: '/evidence', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
+          ...(isFeatureEnabled('/evidence') ? [{ type: 'action' as const, path: '/evidence', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') }] : []),
           { type: 'separator' },
           { type: 'action', path: '/cases', label: 'Case Management', icon: Briefcase, action: () => navigate('/cases') },
           { type: 'action', path: '/criminal-history', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
@@ -592,7 +598,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', path: '/personnel', label: 'Personnel', icon: Users, action: () => navigate('/personnel') },
           { type: 'action', path: '/hr', label: 'HR Console', icon: ClipboardCheck, action: () => navigate('/hr') },
-          { type: 'action', path: '/fleet', label: 'Fleet', icon: Car, action: () => navigate('/fleet') },
+          ...(isFeatureEnabled('/fleet') ? [{ type: 'action' as const, path: '/fleet', label: 'Fleet', icon: Car, action: () => navigate('/fleet') }] : []),
           { type: 'action', path: '/body-cameras', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
           { type: 'action', path: '/dash-cameras', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
           { type: 'action', path: '/dashcam-ai', label: 'Dashcam AI Console', icon: Video, action: () => navigate('/dashcam-ai') },
@@ -607,7 +613,7 @@ export default function MenuBar({
           { type: 'action', path: '/communications', label: 'Communications', icon: MessageSquare, action: () => navigate('/communications') },
           { type: 'action', path: '/radio', label: 'Radio', icon: Radio, action: () => navigate('/radio') },
           { type: 'action', path: '/email', label: 'Email', icon: MessageSquare, action: () => navigate('/email') },
-          { type: 'action', path: '/patrol', label: 'Patrol', icon: QrCode, action: () => navigate('/patrol') },
+          ...(isFeatureEnabled('/patrol') ? [{ type: 'action' as const, path: '/patrol', label: 'Patrol', icon: QrCode, action: () => navigate('/patrol') }] : []),
           { type: 'action', path: '/alerts', label: 'Alert Center', icon: Bell, action: () => navigate('/alerts') },
           { type: 'separator' },
           { type: 'action', path: '/reports', label: 'Reports', icon: BarChart3, action: () => navigate('/reports') },
@@ -762,7 +768,7 @@ export default function MenuBar({
           { type: 'action', path: '/dispatch', label: 'Active Calls Board', icon: ClipboardList, action: () => navigate('/dispatch') },
           { type: 'action', path: '/mdt', label: 'MDT Terminal', icon: Terminal, action: () => navigate('/mdt') },
           { type: 'separator' },
-          { type: 'action', path: '/patrol', label: 'Patrol Scanner', icon: QrCode, action: () => navigate('/patrol') },
+          ...(isFeatureEnabled('/patrol') ? [{ type: 'action' as const, path: '/patrol', label: 'Patrol Scanner', icon: QrCode, action: () => navigate('/patrol') }] : []),
           { type: 'action', path: '/shift-plans', label: 'Shift Planning', icon: CalendarDays, action: () => navigate('/shift-plans') },
           { type: 'action', path: '/geography', label: 'Geography / Zones', icon: MapPin, action: () => navigate('/geography') },
           { type: 'action', path: '/dar', label: 'Daily Activity Reports', icon: Clipboard, action: () => navigate('/dar') },
@@ -782,7 +788,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', path: '/dl-search', label: 'DL Search', icon: CreditCard, action: () => navigate('/dl-search') },
           { type: 'action', path: '/criminal-history', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
-          { type: 'action', path: '/warrants', label: 'Warrant Check', icon: Gavel, action: () => navigate('/warrants') },
+          ...(isFeatureEnabled('/warrants') ? [{ type: 'action' as const, path: '/warrants', label: 'Warrant Check', icon: Gavel, action: () => navigate('/warrants') }] : []),
           { type: 'action', path: '/nsopw', label: 'Sex Offender Registry (NSOPW)', icon: ShieldAlert, action: () => navigate('/nsopw') },
           { type: 'action', path: '/national-warrant-search', label: 'National Warrant Search', icon: Search, action: () => navigate('/national-warrant-search') },
           { type: 'separator' },
@@ -798,11 +804,11 @@ export default function MenuBar({
         label: 'Enforcement',
         icon: Shield,
         items: [
-          { type: 'action', path: '/warrants', label: 'Warrants', icon: Gavel, action: () => navigate('/warrants') },
+          ...(isFeatureEnabled('/warrants') ? [{ type: 'action' as const, path: '/warrants', label: 'Warrants', icon: Gavel, action: () => navigate('/warrants') }] : []),
           { type: 'action', path: '/citations', label: 'Citations', icon: FileWarning, action: () => navigate('/citations') },
           { type: 'action', path: '/trespass-orders', label: 'Trespass Orders', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
           { type: 'action', path: '/cases', label: 'Case Management', icon: Briefcase, action: () => navigate('/cases') },
-          { type: 'action', path: '/evidence', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
+          ...(isFeatureEnabled('/evidence') ? [{ type: 'action' as const, path: '/evidence', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') }] : []),
           { type: 'separator' },
           { type: 'action', path: '/code-enforcement', label: 'Code Enforcement', icon: Scale, action: () => navigate('/code-enforcement') },
           { type: 'action', path: '/court', label: 'Court Tracker', icon: Gavel, action: () => navigate('/court') },
@@ -822,7 +828,7 @@ export default function MenuBar({
           { type: 'action', path: '/personnel', label: 'Personnel Directory', icon: Users, action: () => navigate('/personnel') },
           { type: 'action', path: '/hr', label: 'HR Console', icon: ClipboardCheck, action: () => navigate('/hr') },
           { type: 'separator' },
-          { type: 'action', path: '/fleet', label: 'Fleet Management', icon: Car, action: () => navigate('/fleet') },
+          ...(isFeatureEnabled('/fleet') ? [{ type: 'action' as const, path: '/fleet', label: 'Fleet Management', icon: Car, action: () => navigate('/fleet') }] : []),
           { type: 'action', path: '/body-cameras', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
           { type: 'action', path: '/dash-cameras', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
           { type: 'action', path: '/dashcam-ai', label: 'Dashcam AI Console', icon: Video, action: () => navigate('/dashcam-ai') },
