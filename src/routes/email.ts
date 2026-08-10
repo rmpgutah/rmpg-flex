@@ -87,7 +87,8 @@ async function getCfgDecrypted(env: Bindings, key: string): Promise<string | nul
   if (!v) return null;
   try {
     return await decryptSecret(env, v);
-  } catch {
+  } catch (err) {
+    log.error('getCfgDecrypted: failed to decrypt config key', { key }, err instanceof Error ? err : new Error(String(err)));
     return null;
   }
 }
@@ -811,15 +812,22 @@ email.get('/image-proxy', async (c) => {
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return c.json({ error: `upstream ${res.status}` }, 502);
-    const ct = res.headers.get('Content-Type') || 'application/octet-stream';
-    if (!ct.startsWith('image/')) return c.json({ error: 'not an image' }, 415);
+    const ctRaw = (res.headers.get('Content-Type') || 'application/octet-stream').split(';')[0].trim();
+    // SVG is script-bearing: block it explicitly even though it starts with 'image/'.
+    const IMAGE_ALLOWLIST = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff']);
+    if (!IMAGE_ALLOWLIST.has(ctRaw)) return c.json({ error: 'not an image' }, 415);
+    // Enforce 8 MB cap even when Content-Length is absent (chunked upstream).
+    const MAX = 8 * 1024 * 1024;
     const len = res.headers.get('Content-Length');
-    if (len && parseInt(len, 10) > 8 * 1024 * 1024) return c.json({ error: 'too large' }, 413);
-    return new Response(res.body, {
+    if (len && parseInt(len, 10) > MAX) return c.json({ error: 'too large' }, 413);
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength > MAX) return c.json({ error: 'too large' }, 413);
+    return new Response(buf, {
       headers: {
-        'Content-Type': ct,
+        'Content-Type': ctRaw,
         'Cache-Control': 'private, max-age=3600',
         'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; sandbox",
       },
     });
   } catch (err: unknown) {
@@ -1362,7 +1370,7 @@ async function runAutolinker(
     candidates.add(tok);
   }
   if (candidates.size) {
-    const cands = [...candidates];
+    const cands = [...candidates].slice(0, 99); // D1 100-bound-parameter cap
     const placeholders = cands.map(() => '?').join(',');
     const hits = await query<{ id: number; plate_number: string }>(
       db,
@@ -1637,15 +1645,30 @@ email.put('/rules/:id', async (c) => {
   if (body.isActive !== undefined) { sets.push('is_active = ?'); vals.push(body.isActive ? 1 : 0); }
   if (!sets.length) return c.json({ success: true });
   sets.push("updated_at = datetime('now')");
-  vals.push(id, userId);
-  await execute(c.env.DB, `UPDATE email_rules SET ${sets.join(', ')} WHERE id = ? AND (owner_user_id IS NULL OR owner_user_id = ?)`, ...vals);
+  // Org-wide rules (owner_user_id IS NULL) require admin/manager to modify.
+  const rule = await queryFirst<{ owner_user_id: number | null }>(c.env.DB, 'SELECT owner_user_id FROM email_rules WHERE id = ?', id);
+  if (!rule) return c.json({ success: false, error: 'Not found' }, 404);
+  const userRole = (c.get('user') as { role?: string } | undefined)?.role;
+  if (rule.owner_user_id === null && !['admin', 'manager'].includes(userRole ?? '')) {
+    return c.json({ error: 'Insufficient role to modify shared rule' }, 403);
+  }
+  const ownerId = rule.owner_user_id ?? userId;
+  vals.push(id, ownerId);
+  await execute(c.env.DB, `UPDATE email_rules SET ${sets.join(', ')} WHERE id = ? AND owner_user_id = ?`, ...vals);
   return c.json({ success: true });
 });
 
 email.delete('/rules/:id', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   const userId = c.get('userId');
-  await execute(c.env.DB, 'DELETE FROM email_rules WHERE id = ? AND (owner_user_id IS NULL OR owner_user_id = ?)', id, userId);
+  const rule = await queryFirst<{ owner_user_id: number | null }>(c.env.DB, 'SELECT owner_user_id FROM email_rules WHERE id = ?', id);
+  if (!rule) return c.json({ success: true }); // already gone
+  const userRole = (c.get('user') as { role?: string } | undefined)?.role;
+  if (rule.owner_user_id === null && !['admin', 'manager'].includes(userRole ?? '')) {
+    return c.json({ error: 'Insufficient role to delete shared rule' }, 403);
+  }
+  const ownerId = rule.owner_user_id ?? userId;
+  await execute(c.env.DB, 'DELETE FROM email_rules WHERE id = ? AND owner_user_id = ?', id, ownerId);
   return c.json({ success: true });
 });
 
@@ -2087,15 +2110,23 @@ email.patch('/drafts/:id', async (c) => {
   }
 });
 
-email.post('/drafts/:id/send', async (c) => {
+email.post('/drafts/:id/send', emailSendRateLimit, async (c) => {
   const userId = c.get('userId');
+  const user = c.get('user') as { username?: string } | undefined;
   const id = c.req.param('id');
   try {
     const res = await graphFetch(c.env, userId, `/me/messages/${encodeURIComponent(id)}/send`, { method: 'POST' });
-    if (!res.ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    if (!res.ok) {
+      const msg = `Graph ${res.status}`;
+      await auditEmailAction(c.env, { userId, username: user?.username, action: 'send', graphMessageId: id, status: 'failed', error: msg });
+      return c.json({ success: false, error: msg }, 502);
+    }
+    await auditEmailAction(c.env, { userId, username: user?.username, action: 'send', graphMessageId: id, status: 'sent' });
     return c.json({ success: true });
   } catch (err: unknown) {
-    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+    const msg = err instanceof Error ? err.message : 'Failed';
+    await auditEmailAction(c.env, { userId, username: user?.username, action: 'send', graphMessageId: id, status: 'failed', error: msg }).catch(() => {});
+    return c.json({ success: false, error: msg }, 502);
   }
 });
 
@@ -2377,7 +2408,10 @@ email.post('/messages/:id/snooze', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json().catch(() => ({})) as { until?: string };
   if (!body.until) return c.json({ error: 'until (ISO datetime) required' }, 400);
-  const until = body.until.replace('T', ' ').slice(0, 19);
+  // Always store UTC: parse the ISO string (offset-aware) and emit UTC.
+  const untilDate = new Date(body.until);
+  if (isNaN(untilDate.getTime())) return c.json({ error: 'until must be a valid ISO datetime' }, 400);
+  const until = untilDate.toISOString().replace('T', ' ').slice(0, 19);
   try {
     const res = await graphFetch(c.env, userId, `/me/messages/${encodeURIComponent(id)}/move`, {
       method: 'POST', body: JSON.stringify({ destinationId: 'archive' }),
@@ -2437,6 +2471,7 @@ export async function resurfaceSnoozedEmails(env: Bindings): Promise<number> {
         await execute(env.DB, "UPDATE email_snoozes SET status = 'resurfaced' WHERE id = ?", r.id);
         resurfaced++;
       } else if (res.status === 404) {
+        log.warn('resurfaceSnoozedEmails: message 404 on move (deleted by retention/user), dismissing snooze', { userId: r.owner_user_id, messageId: r.message_graph_id });
         await execute(env.DB, "UPDATE email_snoozes SET status = 'resurfaced' WHERE id = ?", r.id);
       }
     } catch { /* retry next minute */ }
@@ -2457,8 +2492,13 @@ email.get('/templates', async (c) => {
 
 email.post('/templates', async (c) => {
   const userId = c.get('userId');
+  const userRole = (c.get('user') as { role?: string } | undefined)?.role;
   const body = await c.req.json().catch(() => ({})) as { name?: string; category?: string; subject?: string; body?: string; shared?: boolean };
   if (!body.name?.trim()) return c.json({ error: 'name required' }, 400);
+  // Only admins and managers can create org-wide shared templates.
+  if (body.shared && !['admin', 'manager'].includes(userRole ?? '')) {
+    return c.json({ error: 'Insufficient role to create shared template' }, 403);
+  }
   const r = await execute(
     c.env.DB,
     'INSERT INTO email_templates (owner_user_id, name, category, subject, body) VALUES (?, ?, ?, ?, ?)',
@@ -2507,17 +2547,21 @@ email.post('/schedule', emailSendRateLimit, async (c) => {
       code: 'ATTACHMENTS_TOO_LARGE',
     }, 413);
   }
-  const when = body.scheduledAt.replace('T', ' ').slice(0, 19);
+  // Always store UTC: parse the ISO string (offset-aware) and emit UTC.
+  const whenDate = new Date(body.scheduledAt);
+  if (isNaN(whenDate.getTime())) return c.json({ error: 'scheduledAt must be a valid ISO datetime' }, 400);
+  const when = whenDate.toISOString().replace('T', ' ').slice(0, 19);
   const cc = parseAddrList(body.cc).map((r) => r.emailAddress.address);
   const bcc = parseAddrList(body.bcc).map((r) => r.emailAddress.address);
   const encryptedTo = await encryptField(c.env, JSON.stringify(to));
   const encryptedCc = cc.length ? await encryptField(c.env, JSON.stringify(cc)) : null;
+  const encryptedBcc = bcc.length ? await encryptField(c.env, JSON.stringify(bcc)) : null;
   const encryptedBody = await encryptField(c.env, body.body || '');
   const r = await execute(
     c.env.DB,
     `INSERT INTO email_scheduled (owner_user_id, to_addresses, cc_addresses, bcc_addresses, subject, body, is_html, importance, attachments, scheduled_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    userId, encryptedTo, encryptedCc, bcc.length ? JSON.stringify(bcc) : null,
+    userId, encryptedTo, encryptedCc, encryptedBcc,
     body.subject || '', encryptedBody, body.isHtml === false ? 0 : 1,
     ['low', 'normal', 'high'].includes(body.importance || '') ? body.importance : 'normal',
     body.attachments?.length ? JSON.stringify(body.attachments.slice(0, 20)) : null,
@@ -2566,6 +2610,7 @@ export async function drainScheduledEmails(env: Bindings): Promise<number> {
       const decryptedBody = await decryptFieldIfEncrypted(env, r.body);
       const decryptedTo = await decryptFieldIfEncrypted(env, r.to_addresses);
       const decryptedCc = r.cc_addresses ? await decryptFieldIfEncrypted(env, r.cc_addresses) : null;
+      const decryptedBcc = r.bcc_addresses ? await decryptFieldIfEncrypted(env, r.bcc_addresses) : null;
       const parse = (s: string | null): string[] => { try { return s ? JSON.parse(s) : []; } catch { return []; } };
       const atts = ((): SendAttachment[] => { try { return r.attachments ? JSON.parse(r.attachments) : []; } catch { return []; } })();
       const attachments = mapAttachments(atts);
@@ -2575,7 +2620,7 @@ export async function drainScheduledEmails(env: Bindings): Promise<number> {
           body: { contentType: r.is_html ? 'HTML' : 'Text', content: decryptedBody || '' },
           toRecipients: parseAddrList(parse(decryptedTo)),
           ccRecipients: parseAddrList(parse(decryptedCc)),
-          bccRecipients: parseAddrList(parse(r.bcc_addresses)),
+          bccRecipients: parseAddrList(parse(decryptedBcc)),
           ...(attachments.length ? { attachments } : {}),
           importance: r.importance || 'normal',
         },

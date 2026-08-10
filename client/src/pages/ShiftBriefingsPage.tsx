@@ -153,22 +153,22 @@ export default function ShiftBriefingsPage() {
   }
 
   return (
-    <div className="p-4 space-y-4 bg-[#0a0a0a] min-h-screen">
+    <div className="p-4 space-y-4 bg-surface-base min-h-screen">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-[#d4a017] tracking-wide">SHIFT BRIEFINGS</h1>
+        <h1 className="text-lg font-semibold text-[color:var(--panel-header-color)] tracking-wide">SHIFT BRIEFINGS</h1>
         <div className="flex gap-2">
           <button
             onClick={handleGenerate}
             disabled={generating}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#141414] border border-[#222222] rounded-sm text-neutral-200 hover:border-[#d4a017] disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-surface-raised border border-border-default rounded-sm text-text-primary hover:border-brand-400 disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${generating ? 'animate-spin' : ''}`} />
             Generate Briefing
           </button>
           <button
             onClick={() => setShowManualForm(!showManualForm)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#141414] border border-[#222222] rounded-sm text-neutral-200 hover:border-[#d4a017]"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-surface-raised border border-border-default rounded-sm text-text-primary hover:border-brand-400"
           >
             <Plus className="w-3.5 h-3.5" />
             New Manual Briefing
@@ -177,7 +177,7 @@ export default function ShiftBriefingsPage() {
       </div>
 
       {/* Current Shift Info */}
-      <div className="bg-[#141414] border border-[#222222] rounded-sm p-3">
+      <div className="bg-surface-raised border border-border-default rounded-sm p-3">
         <PanelTitleBar title="CURRENT SHIFT" icon={Clock} />
         <div className="mt-2 flex items-center gap-6 text-sm">
           <div className="flex items-center gap-2">
@@ -198,26 +198,26 @@ export default function ShiftBriefingsPage() {
 
       {/* Manual Briefing Form */}
       {showManualForm && (
-        <div className="bg-[#141414] border border-[#222222] rounded-sm p-3 space-y-3">
+        <div className="bg-surface-raised border border-border-default rounded-sm p-3 space-y-3">
           <PanelTitleBar title="NEW MANUAL BRIEFING" icon={FileText} />
           <input
             type="text"
             placeholder="Briefing title..."
             value={manualTitle}
             onChange={(e) => setManualTitle(e.target.value)}
-            className="w-full px-2 py-1.5 text-sm bg-[#050505] border border-[#222222] rounded-sm text-neutral-200 placeholder-neutral-500 focus:border-[#d4a017] outline-none"
+            className="w-full px-2 py-1.5 text-sm bg-surface-sunken border border-border-default rounded-sm text-text-primary placeholder-fg-muted focus:border-brand-400 outline-none"
           />
           <textarea
             placeholder="Briefing content..."
             value={manualContent}
             onChange={(e) => setManualContent(e.target.value)}
             rows={6}
-            className="w-full px-2 py-1.5 text-sm bg-[#050505] border border-[#222222] rounded-sm text-neutral-200 placeholder-neutral-500 focus:border-[#d4a017] outline-none resize-y font-mono"
+            className="w-full px-2 py-1.5 text-sm bg-surface-sunken border border-border-default rounded-sm text-text-primary placeholder-fg-muted focus:border-brand-400 outline-none resize-y font-mono"
           />
           <button
             onClick={handleSaveManual}
             disabled={saving || !manualTitle.trim() || !manualContent.trim()}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#d4a017] text-black rounded-sm hover:bg-[#b88914] disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-surface-raised border border-brand-400 text-text-primary rounded-sm hover:bg-brand-400/10 disabled:opacity-50"
           >
             <Check className="w-3.5 h-3.5" />
             Save Briefing
@@ -227,13 +227,13 @@ export default function ShiftBriefingsPage() {
 
       {/* Generated Briefing */}
       {generated && (
-        <div className="bg-[#141414] border border-[#222222] rounded-sm p-3 space-y-3">
+        <div className="bg-surface-raised border border-border-default rounded-sm p-3 space-y-3">
           <div className="flex items-center justify-between">
             <PanelTitleBar title="GENERATED BRIEFING" icon={FileText} />
             <button
               onClick={handleSaveGenerated}
               disabled={saving}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#d4a017] text-black rounded-sm hover:bg-[#b88914] disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-surface-raised border border-brand-400 text-text-primary rounded-sm hover:bg-brand-400/10 disabled:opacity-50"
             >
               <Check className="w-3.5 h-3.5" />
               Save Briefing
@@ -242,13 +242,13 @@ export default function ShiftBriefingsPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {/* Active Bulletins */}
-            <div className="bg-[#050505] border border-[#222222] rounded-sm p-2">
-              <h4 className="text-xs font-semibold text-[#d4a017] mb-1.5">ACTIVE BULLETINS</h4>
+            <div className="bg-surface-sunken border border-border-default rounded-sm p-2">
+              <h4 className="text-xs font-semibold text-[color:var(--panel-header-color)] mb-1.5">ACTIVE BULLETINS</h4>
               {generated.active_bulletins.length === 0 ? (
                 <p className="text-xs text-neutral-500">None</p>
               ) : (
                 generated.active_bulletins.map((b) => (
-                  <div key={b.id} className="text-xs text-neutral-300 py-0.5 border-b border-[#1a1a1a] last:border-0">
+                  <div key={b.id} className="text-xs text-neutral-300 py-0.5 border-b border-border-muted last:border-0">
                     <span className="text-neutral-400">[{b.priority}]</span> {b.title}
                   </div>
                 ))
@@ -256,13 +256,13 @@ export default function ShiftBriefingsPage() {
             </div>
 
             {/* Critical Calls */}
-            <div className="bg-[#050505] border border-[#222222] rounded-sm p-2">
-              <h4 className="text-xs font-semibold text-[#d4a017] mb-1.5">CRITICAL CALLS (12H)</h4>
+            <div className="bg-surface-sunken border border-border-default rounded-sm p-2">
+              <h4 className="text-xs font-semibold text-[color:var(--panel-header-color)] mb-1.5">CRITICAL CALLS (12H)</h4>
               {generated.critical_calls.length === 0 ? (
                 <p className="text-xs text-neutral-500">None</p>
               ) : (
                 generated.critical_calls.map((c) => (
-                  <div key={c.call_number} className="text-xs text-neutral-300 py-0.5 border-b border-[#1a1a1a] last:border-0">
+                  <div key={c.call_number} className="text-xs text-neutral-300 py-0.5 border-b border-border-muted last:border-0">
                     <span className="font-mono text-neutral-400">{c.call_number}</span> {formatEnumValue(c.incident_type)}
                     <span className="ml-1 text-neutral-500">{c.time}</span>
                   </div>
@@ -271,13 +271,13 @@ export default function ShiftBriefingsPage() {
             </div>
 
             {/* High-Priority Warrants */}
-            <div className="bg-[#050505] border border-[#222222] rounded-sm p-2">
-              <h4 className="text-xs font-semibold text-[#d4a017] mb-1.5">HIGH-PRIORITY WARRANTS</h4>
+            <div className="bg-surface-sunken border border-border-default rounded-sm p-2">
+              <h4 className="text-xs font-semibold text-[color:var(--panel-header-color)] mb-1.5">HIGH-PRIORITY WARRANTS</h4>
               {generated.high_priority_warrants.length === 0 ? (
                 <p className="text-xs text-neutral-500">None</p>
               ) : (
                 generated.high_priority_warrants.map((w) => (
-                  <div key={w.warrant_number} className="text-xs text-neutral-300 py-0.5 border-b border-[#1a1a1a] last:border-0">
+                  <div key={w.warrant_number} className="text-xs text-neutral-300 py-0.5 border-b border-border-muted last:border-0">
                     <span className="font-mono text-neutral-400">{w.warrant_number}</span> {w.subject} — {w.charges}
                   </div>
                 ))
@@ -285,13 +285,13 @@ export default function ShiftBriefingsPage() {
             </div>
 
             {/* Premise Alerts */}
-            <div className="bg-[#050505] border border-[#222222] rounded-sm p-2">
-              <h4 className="text-xs font-semibold text-[#d4a017] mb-1.5">PREMISE ALERTS</h4>
+            <div className="bg-surface-sunken border border-border-default rounded-sm p-2">
+              <h4 className="text-xs font-semibold text-[color:var(--panel-header-color)] mb-1.5">PREMISE ALERTS</h4>
               {generated.premise_alerts.length === 0 ? (
                 <p className="text-xs text-neutral-500">None</p>
               ) : (
                 generated.premise_alerts.map((p, i) => (
-                  <div key={i} className="text-xs text-neutral-300 py-0.5 border-b border-[#1a1a1a] last:border-0">
+                  <div key={i} className="text-xs text-neutral-300 py-0.5 border-b border-border-muted last:border-0">
                     <span className="text-neutral-400">{p.address}</span> — {p.alert_type}: {p.notes}
                   </div>
                 ))
@@ -299,13 +299,13 @@ export default function ShiftBriefingsPage() {
             </div>
 
             {/* Recent Arrests */}
-            <div className="bg-[#050505] border border-[#222222] rounded-sm p-2">
-              <h4 className="text-xs font-semibold text-[#d4a017] mb-1.5">RECENT ARRESTS</h4>
+            <div className="bg-surface-sunken border border-border-default rounded-sm p-2">
+              <h4 className="text-xs font-semibold text-[color:var(--panel-header-color)] mb-1.5">RECENT ARRESTS</h4>
               {generated.recent_arrests.length === 0 ? (
                 <p className="text-xs text-neutral-500">None</p>
               ) : (
                 generated.recent_arrests.map((a, i) => (
-                  <div key={i} className="text-xs text-neutral-300 py-0.5 border-b border-[#1a1a1a] last:border-0">
+                  <div key={i} className="text-xs text-neutral-300 py-0.5 border-b border-border-muted last:border-0">
                     {a.name} — {a.charges} <span className="text-neutral-500">{a.arrest_time}</span>
                   </div>
                 ))
@@ -313,13 +313,13 @@ export default function ShiftBriefingsPage() {
             </div>
 
             {/* Units on Duty */}
-            <div className="bg-[#050505] border border-[#222222] rounded-sm p-2">
-              <h4 className="text-xs font-semibold text-[#d4a017] mb-1.5">UNITS ON DUTY</h4>
+            <div className="bg-surface-sunken border border-border-default rounded-sm p-2">
+              <h4 className="text-xs font-semibold text-[color:var(--panel-header-color)] mb-1.5">UNITS ON DUTY</h4>
               {generated.units_on_duty.length === 0 ? (
                 <p className="text-xs text-neutral-500">None</p>
               ) : (
                 generated.units_on_duty.map((u) => (
-                  <div key={u.unit_id} className="text-xs text-neutral-300 py-0.5 border-b border-[#1a1a1a] last:border-0 flex justify-between">
+                  <div key={u.unit_id} className="text-xs text-neutral-300 py-0.5 border-b border-border-muted last:border-0 flex justify-between">
                     <span><span className="font-mono text-neutral-400">{u.unit_id}</span> {u.officer_name}</span>
                     <span className="text-neutral-500">{toDisplayLabel(u.status)}</span>
                   </div>
@@ -331,7 +331,7 @@ export default function ShiftBriefingsPage() {
       )}
 
       {/* Briefing History */}
-      <div className="bg-[#141414] border border-[#222222] rounded-sm p-3">
+      <div className="bg-surface-raised border border-border-default rounded-sm p-3">
         <div className="flex items-center justify-between mb-2">
           <PanelTitleBar title="BRIEFING HISTORY" icon={Users} />
           <IconButton
@@ -349,10 +349,10 @@ export default function ShiftBriefingsPage() {
         ) : (
           <div className="space-y-1">
             {briefings.map((b) => (
-              <div key={b.id} className="border border-[#222222] rounded-sm bg-[#050505]">
+              <div key={b.id} className="border border-border-default rounded-sm bg-surface-sunken">
                 <button
                   onClick={() => setExpandedId(expandedId === b.id ? null : b.id)}
-                  className="w-full flex items-center justify-between px-2 py-1.5 text-left hover:bg-[#1a1a1a]"
+                  className="w-full flex items-center justify-between px-2 py-1.5 text-left hover:bg-surface-raised"
                 >
                   <div className="flex items-center gap-3 text-xs">
                     {shiftIcon(b.shift_type)}
@@ -368,7 +368,7 @@ export default function ShiftBriefingsPage() {
                   </div>
                 </button>
                 {expandedId === b.id && (
-                  <div className="px-3 py-2 border-t border-[#222222] text-xs text-neutral-300 whitespace-pre-wrap font-mono">
+                  <div className="px-3 py-2 border-t border-border-default text-xs text-text-primary whitespace-pre-wrap font-mono">
                     {b.content}
                   </div>
                 )}
@@ -379,7 +379,7 @@ export default function ShiftBriefingsPage() {
       </div>
 
       {/* Officer Safety Alerts */}
-      <div className="bg-[#141414] border border-[#222222] rounded-sm p-3">
+      <div className="bg-surface-raised border border-border-default rounded-sm p-3">
         <button
           onClick={() => setSafetyExpanded(!safetyExpanded)}
           className="w-full flex items-center justify-between"
@@ -396,7 +396,7 @@ export default function ShiftBriefingsPage() {
               safetyAlerts.map((alert) => (
                 <div
                   key={alert.id}
-                  className="flex items-start gap-2 px-2 py-1.5 bg-[#050505] border border-[#222222] rounded-sm"
+                  className="flex items-start gap-2 px-2 py-1.5 bg-surface-sunken border border-border-default rounded-sm"
                 >
                   <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${
                     alert.severity === 'high' ? 'text-red-400' :
