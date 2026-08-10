@@ -42,6 +42,9 @@ export default function TesseractTrainingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [bulkResultSummary, setBulkResultSummary] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('text');
 
   const [boxes, setBoxes] = useState<BoxAnnotation[]>([]);
@@ -71,6 +74,36 @@ export default function TesseractTrainingPage() {
   }, [page]);
 
   useEffect(() => { loadList(); }, [loadList]);
+
+  const toggleSelected = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkSubmit = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkSubmitting(true);
+    setBulkResultSummary(null);
+    try {
+      const res = await apiFetch<{ results: Array<{ id: number; success: boolean; error?: string }> }>(
+        '/tesseract-training/documents/bulk-submit',
+        { method: 'POST', body: JSON.stringify({ document_ids: Array.from(selectedIds) }) },
+      );
+      const succeeded = res.results.filter((r) => r.success).length;
+      const failed = res.results.length - succeeded;
+      setBulkResultSummary(`${succeeded} submitted, ${failed} failed`);
+      setSelectedIds(new Set());
+      loadList();
+      loadStats();
+    } catch (err) {
+      setBulkResultSummary(err instanceof Error ? err.message : 'Bulk submit failed');
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     if (selectedId == null) { setDetail(null); return; }
@@ -210,20 +243,36 @@ export default function TesseractTrainingPage() {
       <div className="flex gap-4">
         <div className="w-1/3 space-y-2">
           {rows.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => setSelectedId(r.id)}
-              className={`block w-full text-left p-2 text-[11px] border ${r.already_in_corpus ? 'opacity-50' : ''}`}
-            >
-              {r.file_name}
-              {r.approval_status === 'approved' && ' [APPROVED]'}
-              {r.approval_status === 'pending' && ' [PENDING]'}
-            </button>
+            <div key={r.id} className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={selectedIds.has(r.id)}
+                onChange={() => toggleSelected(r.id)}
+                disabled={r.already_in_corpus}
+                aria-label={`Select ${r.file_name} for bulk submit`}
+              />
+              <button
+                onClick={() => setSelectedId(r.id)}
+                className={`flex-1 text-left p-2 text-[11px] border ${r.already_in_corpus ? 'opacity-50' : ''}`}
+              >
+                {r.file_name}
+                {r.approval_status === 'approved' && ' [APPROVED]'}
+                {r.approval_status === 'pending' && ' [PENDING]'}
+              </button>
+            </div>
           ))}
           <div className="flex gap-2">
             <button onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button>
             <button onClick={() => setPage((p) => p + 1)}>Next</button>
           </div>
+          {selectedIds.size > 0 && (
+            <div className="space-y-1">
+              <button onClick={handleBulkSubmit} disabled={bulkSubmitting} className="px-3 py-1 border w-full">
+                Submit {selectedIds.size} Selected
+              </button>
+              {bulkResultSummary && <p className="text-[11px]">{bulkResultSummary}</p>}
+            </div>
+          )}
         </div>
         <div className="w-2/3">
           {detail && (
