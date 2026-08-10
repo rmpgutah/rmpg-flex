@@ -34,6 +34,41 @@ interface DocRow {
   created_at: string;
 }
 
+interface StatsRow {
+  doc_type: string | null;
+  eligible: number;
+  labeled: number;
+  approved: number;
+}
+
+// GET /api/tesseract-training/stats
+tesseractTraining.get('/stats', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const db = getDb(c.env);
+  const byDocType = await query<StatsRow>(
+    db,
+    `SELECT d.doc_type AS doc_type,
+            COUNT(*) AS eligible,
+            SUM(CASE WHEN t.id IS NOT NULL THEN 1 ELSE 0 END) AS labeled,
+            SUM(CASE WHEN t.approval_status = 'approved' THEN 1 ELSE 0 END) AS approved
+       FROM serve_intake_documents d
+       LEFT JOIN tesseract_training_corpus t ON t.serve_intake_document_id = d.id
+      WHERE d.status = 'extracted'
+      GROUP BY d.doc_type`,
+  );
+  const totals = byDocType.reduce(
+    (acc, r) => ({
+      total_eligible: acc.total_eligible + r.eligible,
+      total_labeled: acc.total_labeled + r.labeled,
+      total_approved: acc.total_approved + r.approved,
+    }),
+    { total_eligible: 0, total_labeled: 0, total_approved: 0 },
+  );
+  return c.json({ ...totals, by_doc_type: byDocType });
+});
+
 // GET /api/tesseract-training/documents?page=1
 tesseractTraining.get('/documents', async (c) => {
   if (!requireAdminManager(c)) {
