@@ -224,29 +224,47 @@ function cacheMatch(request) {
   return caches.match(request).catch(() => undefined);
 }
 
-function fetchWithRetry(request) {
-  return fetch(request).catch((firstErr) =>
+function fetchWithRetry(request, opts) {
+  var fetchOpts = opts || {};
+  return fetch(request, fetchOpts).catch((firstErr) =>
     new Promise((resolve, reject) => {
       setTimeout(() => {
-        // Reject with the ORIGINAL error so downstream catch branches and any
-        // console output describe the initial failure, not the retry's.
-        fetch(request).then(resolve, () => reject(firstErr));
+        fetch(request, fetchOpts).then(resolve, () => reject(firstErr));
       }, RETRY_DELAY_MS);
     })
   );
 }
 
-// Install — pre-cache core shell, immediately activate
+// Install — pre-cache core shell, immediately activate.
+// cache.addAll is ATOMIC — if ANY single file fails (one sound file on spotty
+// cellular), NOTHING gets cached, including index.html. Use individual puts so
+// critical assets (index.html, manifest) survive even when optional sounds fail.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .then((cache) =>
+        Promise.allSettled(
+          STATIC_ASSETS.map((asset) =>
+            fetch(asset, { cache: 'reload' })
+              .then((res) => {
+                if (res.ok) return cache.put(asset, res);
+              })
+              .catch(() => {})
+          )
+        )
+      )
+      .then((results) => {
+        var failed = results
+          ? results.filter((r) => r.status === 'rejected').length
+          : 0;
+        if (failed > 0) {
+          console.warn('[SW] Pre-cache: ' + failed + '/' + STATIC_ASSETS.length + ' assets failed');
+        }
+      })
       .catch((err) => {
         console.warn('[SW] Pre-cache failed:', err);
-        // Don't block install — partial cache is acceptable
       })
   );
-  // Skip waiting so the new SW activates immediately
   self.skipWaiting();
 });
 
@@ -354,10 +372,13 @@ self.addEventListener('fetch', (event) => {
   // tile fallback was retired 2026-04-29; if any code still references
   // /tiles/, requests fall through to the default network-first handler.
 
-  // Navigation requests — always network first with offline fallback
+  // Navigation requests — always network first with offline fallback.
+  // Force cache: 'no-cache' so the browser doesn't serve a stale HTTP-cached
+  // index.html from a previous deploy (the SW cache is the offline fallback,
+  // not the HTTP cache).
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetchWithRetry(event.request)
+      fetchWithRetry(event.request, { cache: 'no-cache' })
         .then((response) => {
           if (response.ok) {
             cachePut(CACHE_NAME, event.request, response.clone());
