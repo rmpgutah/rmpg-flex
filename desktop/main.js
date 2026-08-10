@@ -2191,26 +2191,40 @@ app.on('child-process-gone', (event, details) => {
   recoverMainWindow('GPU process', details.reason);
 });
 
-app.on('web-contents-created', (_event, wc) => {
-  wc.on('did-frame-finish-load', (_ev, _isMainFrame, frameProcessId, frameRoutingId) => {
-    try {
-      const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
-      if (frame) frame.executeJavaScript(PRINT_OVERRIDE_JS).catch(() => {});
-    } catch (e) { /* frame may already be gone */ }
+// Only inject the window.print() override on macOS — the NSPrintPanel
+// segfault is macOS-specific. On Windows/Linux, window.print() works
+// fine and opens the native print dialog directly.
+if (process.platform === 'darwin') {
+  app.on('web-contents-created', (_event, wc) => {
+    wc.on('did-frame-finish-load', (_ev, _isMainFrame, frameProcessId, frameRoutingId) => {
+      try {
+        const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
+        if (frame) frame.executeJavaScript(PRINT_OVERRIDE_JS).catch(() => {});
+      } catch (e) { /* frame may already be gone */ }
+    });
   });
-});
+}
 
 guardedHandle('print:to-pdf', async (event) => {
-  const fs = require('fs');
-  try {
-    const pdf = await event.sender.printToPDF({ printBackground: true });
-    const file = path.join(app.getPath('temp'), `rmpg-print-${Date.now()}.pdf`);
-    await fs.promises.writeFile(file, pdf);
-    const err = await shell.openPath(file); // opens in Preview; user prints from there
-    return { ok: !err, file, error: err || undefined };
-  } catch (e) {
-    return { ok: false, error: e.message };
+  if (process.platform === 'darwin') {
+    // macOS: render to PDF and open in Preview (avoids NSPrintPanel segfault).
+    const fs = require('fs');
+    try {
+      const pdf = await event.sender.printToPDF({ printBackground: true });
+      const file = path.join(app.getPath('temp'), `rmpg-print-${Date.now()}.pdf`);
+      await fs.promises.writeFile(file, pdf);
+      const err = await shell.openPath(file);
+      return { ok: !err, file, error: err || undefined };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
   }
+  // Windows/Linux: use native print dialog directly — no segfault risk.
+  return new Promise((resolve) => {
+    event.sender.print({ silent: false, printBackground: true }, (success, failureReason) => {
+      resolve(success ? { ok: true } : { ok: false, error: failureReason });
+    });
+  });
 });
 
 // ─── Recon Connect launcher ───────────────────────────────
