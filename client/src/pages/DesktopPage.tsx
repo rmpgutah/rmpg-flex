@@ -27,6 +27,7 @@ import { useDesktopNotes, type DesktopNote } from '../hooks/useDesktopNotes';
 import ContextMenu from '../components/ContextMenu';
 import DesktopLockScreen from '../components/desktop/DesktopLockScreen';
 import DesktopNotificationCenter from '../components/desktop/DesktopNotificationCenter';
+import DesktopScreenSaver, { useIdleScreenSaver } from '../components/desktop/DesktopScreenSaver';
 import { VirtualDesktopProvider } from '../components/desktop/DesktopVirtualDesktops';
 
 const GRID_COLS = 6;
@@ -103,24 +104,13 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [accentId, setAccentId] = useState<string>(prefs.desktop_accent || DEFAULT_ACCENT_ID);
   const [widgets, setWidgets] = useState(() => normalizeDesktopWidgets(prefs.desktop_widgets_json));
   const [widgetSettingsOpen, setWidgetSettingsOpen] = useState(false);
-  const [isLocked, setIsLocked] = useState(false);
   const [notifCenterOpen, setNotifCenterOpen] = useState(false);
 
-  // Auto-lock: poll idle time every 30 s when running in the desktop app.
-  useEffect(() => {
-    const el = (window as any).electron;
-    if (!el?.isElectron || !el?.getIdleTime) return;
-    const autoLockSecs = parseInt(localStorage.getItem('rmpg_desktop_autolock_secs') ?? '0', 10)
-      || (localStorage.getItem('rmpg_kiosk_shell_enabled') === '1' ? 300 : 900);
-    const id = setInterval(async () => {
-      if (isLocked) return;
-      try {
-        const idle: number = await el.getIdleTime();
-        if (idle >= autoLockSecs) setIsLocked(true);
-      } catch { /* silent */ }
-    }, 30_000);
-    return () => clearInterval(id);
-  }, [isLocked]);
+  const autoLockSecs = parseInt(localStorage.getItem('rmpg_desktop_autolock_secs') ?? '0', 10)
+    || (localStorage.getItem('rmpg_kiosk_shell_enabled') === '1' ? 300 : 900);
+  const { ssActive, lockActive, dismissSS, dismissLock } = useIdleScreenSaver(autoLockSecs);
+  const [manuallyLocked, setManuallyLocked] = useState(false);
+  const isLocked = lockActive || manuallyLocked;
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
   // the parse happens eagerly here — cheap for a small JSON blob, and this
   // component only mounts once real prefs have resolved (see the comment
@@ -312,7 +302,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         <DesktopTaskbar
           icons={pinnedIcons}
           catalog={allFunctions}
-          onLock={() => setIsLocked(true)}
+          onLock={() => setManuallyLocked(true)}
           onToggleNotifCenter={() => setNotifCenterOpen(v => !v)}
         />
         {widgetSettingsOpen && (
@@ -330,7 +320,8 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         )}
       </DesktopWindowManagerProvider>
       </VirtualDesktopProvider>
-      <DesktopLockScreen isLocked={isLocked} onUnlock={() => setIsLocked(false)} />
+      <DesktopScreenSaver isActive={ssActive && !isLocked} onDismiss={dismissSS} />
+      <DesktopLockScreen isLocked={isLocked} onUnlock={() => { dismissLock(); setManuallyLocked(false); }} />
       {notifCenterOpen && <DesktopNotificationCenter onClose={() => setNotifCenterOpen(false)} />}
     </div>
   );
