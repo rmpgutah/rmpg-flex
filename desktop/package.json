@@ -26,7 +26,7 @@
     },
     "publish": {
       "provider": "generic",
-      "url": "https://rmpgutah.us/releases/"
+      "url": "https://api.rmpgutah.us/updates/"
     },
     "files": [
       "main.js",
@@ -68,6 +68,7 @@
     ],
     "mac": {
       "category": "public.app-category.business",
+      "artifactName": "RMPG-Flex-${version}.${ext}",
       "target": [
         {
           "target": "dmg",
