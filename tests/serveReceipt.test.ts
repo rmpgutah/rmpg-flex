@@ -52,6 +52,13 @@ function submission(over: Partial<ServeReceiptSubmission> = {}): ServeReceiptSub
     sub_agrees_to_deliver: 0,
     sub_release_acknowledged: 0,
     sub_defendant_name: null,
+    id_scan_method: null,
+    aamva_data: null,
+    manual_id: null,
+    id_front_image: null,
+    id_back_image: null,
+    recipient_address_current: null,
+    recipient_relationship: null,
     ...over,
   };
 }
@@ -125,7 +132,7 @@ describe('validateReceiptSubmission — universal requirements', () => {
     ['recipient_name', { recipient_name: null }, /name is required/i],
     ['phone', { recipient_phone: null }, /phone number is required/i],
     ['email', { recipient_email: null }, /email address is required/i],
-    ['id verification', { recipient_id_verified: 0 }, /photo id is required/i],
+    ['id verification', { recipient_id_verified: 0 }, /scan your ID or enter your information/i],
     ['signature', { recipient_signature: null }, /signature is required/i],
     ['age', { recipient_age_confirmed: 0 }, /eighteen/i],
     ['receipt', { ack_received_documents: 0 }, /receiving the documents/i],
