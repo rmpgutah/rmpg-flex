@@ -153,6 +153,7 @@ export default function TesseractTrainingPage() {
       });
       setSelectedId(null);
       loadList();
+      loadStats();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Submission failed');
     } finally {
@@ -167,6 +168,7 @@ export default function TesseractTrainingPage() {
       await apiFetch(`/tesseract-training/documents/${selectedId}/approve`, { method: 'POST' });
       setDetail((d) => (d ? { ...d, approval_status: 'approved' } : d));
       loadList();
+      loadStats();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Approval failed');
     } finally {
