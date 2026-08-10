@@ -160,6 +160,78 @@ tesseractTraining.get('/documents/:id/image', async (c) => {
   });
 });
 
+// Shared by the single-submit route below and the bulk-submit route. Writes the
+// document's image + ground truth to TESSERACT_TRAINING R2, then inserts the
+// D1 row ONLY after both R2 writes succeed (see Global Constraints — never
+// record "this exists" before storage actually has it). Returns a discriminated
+// result rather than throwing, so bulk-submit can continue past one failure.
+async function submitDocumentToCorpus(
+  c: any, id: number, userId: number, groundTruthText: string,
+): Promise<{ success: true } | { success: false; error: string; code: string; status: number }> {
+  const trimmed = groundTruthText.trim();
+  if (!trimmed) {
+    return { success: false, error: 'ground_truth_text is required', code: 'MISSING_TEXT', status: 400 };
+  }
+
+  const db = getDb(c.env);
+  const existing = await queryFirst<{ id: number }>(
+    db,
+    `SELECT id FROM tesseract_training_corpus WHERE serve_intake_document_id = ?`,
+    id,
+  );
+  if (existing) {
+    return { success: false, error: 'Document already in training corpus', code: 'ALREADY_SUBMITTED', status: 409 };
+  }
+
+  const doc = await queryFirst<{ r2_key: string; file_type: string }>(
+    db,
+    'SELECT r2_key, file_type FROM serve_intake_documents WHERE id = ?',
+    id,
+  );
+  if (!doc?.r2_key) {
+    return { success: false, error: 'Not found', code: 'NOT_FOUND', status: 404 };
+  }
+
+  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
+  let imageBytes: Uint8Array | ArrayBuffer;
+  if (decrypted) {
+    imageBytes = decrypted.bytes;
+  } else {
+    const legacy = await c.env.UPLOADS.get(doc.r2_key);
+    if (!legacy) {
+      return { success: false, error: 'Source file missing in R2', code: 'SOURCE_MISSING', status: 404 };
+    }
+    imageBytes = await legacy.arrayBuffer();
+  }
+
+  const ext = (doc.file_type || '').includes('png') ? '.png'
+    : (doc.file_type || '').includes('jpeg') ? '.jpg'
+    : '.bin';
+
+  try {
+    await c.env.TESSERACT_TRAINING.put(`training-corpus/${id}/image${ext}`, imageBytes, {
+      httpMetadata: { contentType: doc.file_type || 'application/octet-stream' },
+    });
+    await c.env.TESSERACT_TRAINING.put(`training-corpus/${id}/ground-truth.txt`, trimmed, {
+      httpMetadata: { contentType: 'text/plain' },
+    });
+  } catch (err) {
+    return {
+      success: false,
+      error: 'Failed to write training pair to R2',
+      code: 'R2_WRITE_FAILED',
+      status: 500,
+    };
+  }
+
+  await execute(
+    db,
+    `INSERT INTO tesseract_training_corpus (serve_intake_document_id, added_by) VALUES (?, ?)`,
+    id, userId,
+  );
+  return { success: true };
+}
+
 // POST /api/tesseract-training/documents/:id/submit
 // Body: { ground_truth_text: string }
 tesseractTraining.post('/documents/:id/submit', async (c) => {
@@ -170,79 +242,62 @@ tesseractTraining.post('/documents/:id/submit', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
 
-  const existing = await queryFirst<{ id: number }>(
-    getDb(c.env),
-    `SELECT id FROM tesseract_training_corpus WHERE serve_intake_document_id = ?`,
-    id,
-  );
-  if (existing) {
-    return c.json({ error: 'Document already in training corpus', code: 'ALREADY_SUBMITTED' }, 409);
-  }
-
   let body: { ground_truth_text?: string };
   try {
     body = await c.req.json();
   } catch {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
-  const groundTruthText = (body.ground_truth_text ?? '').trim();
-  if (!groundTruthText) {
-    return c.json({ error: 'ground_truth_text is required' }, 400);
+
+  const result = await submitDocumentToCorpus(c, id, user.id, body.ground_truth_text ?? '');
+  if (!result.success) {
+    return c.json({ error: result.error, code: result.code }, result.status as any);
+  }
+  return c.json({ success: true, document_id: id });
+});
+
+// POST /api/tesseract-training/documents/bulk-submit
+// Body: { document_ids: number[] } — max 100 per call (D1 bound-parameter cap,
+// CLAUDE.md gotcha #20). Each document's EXISTING raw_text is used verbatim as
+// ground truth — this is the "already correct, just accept it" path; per-document
+// text correction stays the single-submit route's job. One failing document does
+// not abort the rest.
+tesseractTraining.post('/documents/bulk-submit', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const user = c.get('user');
+
+  let body: { document_ids?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+  const ids = body.document_ids;
+  if (!Array.isArray(ids) || !ids.every((v) => typeof v === 'number')) {
+    return c.json({ error: 'document_ids must be an array of numbers' }, 400);
+  }
+  if (ids.length > 100) {
+    return c.json({ error: 'document_ids exceeds the 100-item limit per call', code: 'TOO_MANY_IDS' }, 400);
   }
 
   const db = getDb(c.env);
-  const doc = await queryFirst<{ r2_key: string; file_type: string }>(
-    db,
-    'SELECT r2_key, file_type FROM serve_intake_documents WHERE id = ?',
-    id,
-  );
-  if (!doc?.r2_key) return c.json({ error: 'Not found' }, 404);
-
-  // Fetch the same image bytes the /image route serves (decrypt-then-legacy-
-  // fallback), so the corpus copy matches exactly what a reviewer looked at.
-  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
-  let imageBytes: Uint8Array | ArrayBuffer;
-  if (decrypted) {
-    imageBytes = decrypted.bytes;
-  } else {
-    const legacy = await c.env.UPLOADS.get(doc.r2_key);
-    if (!legacy) return c.json({ error: 'Source file missing in R2' }, 404);
-    imageBytes = await legacy.arrayBuffer();
+  const results: Array<{ id: number; success: boolean; error?: string }> = [];
+  for (const id of ids) {
+    const doc = await queryFirst<{ raw_text: string | null }>(
+      db,
+      'SELECT raw_text FROM serve_intake_documents WHERE id = ?',
+      id,
+    );
+    if (!doc) {
+      results.push({ id, success: false, error: 'Not found' });
+      continue;
+    }
+    const result = await submitDocumentToCorpus(c, id, user.id, doc.raw_text ?? '');
+    results.push(result.success ? { id, success: true } : { id, success: false, error: result.error });
   }
-
-  const ext = (doc.file_type || '').includes('png') ? '.png'
-    : (doc.file_type || '').includes('jpeg') ? '.jpg'
-    : '.bin';
-
-  // TESSERACT_TRAINING writes are plain (unencrypted) — matching the
-  // existing convention already shipped in
-  // scripts/upload-tesseract-training-pair.ts, which writes via
-  // `wrangler r2 object put` with no client-side encryption. Not changed
-  // here; see this plan's Global Constraints.
-  try {
-    await c.env.TESSERACT_TRAINING.put(`training-corpus/${id}/image${ext}`, imageBytes, {
-      httpMetadata: { contentType: doc.file_type || 'application/octet-stream' },
-    });
-    await c.env.TESSERACT_TRAINING.put(`training-corpus/${id}/ground-truth.txt`, groundTruthText, {
-      httpMetadata: { contentType: 'text/plain' },
-    });
-  } catch (err) {
-    return c.json({
-      error: 'Failed to write training pair to R2',
-      code: 'R2_WRITE_FAILED',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
-  }
-
-  // D1 insert happens ONLY after both R2 writes succeed (see Global
-  // Constraints — never record "this exists" before storage actually has it).
-  await execute(
-    db,
-    `INSERT INTO tesseract_training_corpus (serve_intake_document_id, added_by) VALUES (?, ?)`,
-    id, user.id,
-  );
-
-  return c.json({ success: true, document_id: id });
+  return c.json({ results });
 });
 
 // POST /api/tesseract-training/documents/:id/approve
