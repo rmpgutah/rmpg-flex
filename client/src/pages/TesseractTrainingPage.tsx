@@ -111,13 +111,18 @@ export default function TesseractTrainingPage() {
   const [savingNotes, setSavingNotes] = useState(false);
 
   const [stats, setStats] = useState<Stats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
   const [statsOpen, setStatsOpen] = useState(true);
 
   const [runs, setRuns] = useState<TrainingRun[]>([]);
   const [startingRun, setStartingRun] = useState(false);
 
   const loadStats = useCallback(() => {
-    apiFetch<Stats>('/tesseract-training/stats').then(setStats).catch(console.error);
+    setStatsLoading(true);
+    apiFetch<Stats>('/tesseract-training/stats')
+      .then(setStats)
+      .catch(console.error)
+      .finally(() => setStatsLoading(false));
   }, []);
 
   const loadRuns = useCallback(() => {
@@ -315,7 +320,22 @@ export default function TesseractTrainingPage() {
           {statsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>
 
-        {statsOpen && stats && (
+        {statsOpen && statsLoading && (
+          <div className="px-3 py-3 border-t border-border-subtle flex items-center gap-2 text-[10px] text-fg-muted">
+            <Loader2 size={11} className="animate-spin" /> Loading coverage data…
+          </div>
+        )}
+        {statsOpen && !statsLoading && !stats && (
+          <div className="px-3 py-3 border-t border-border-subtle text-[10px] text-amber-400 flex items-center gap-2">
+            <AlertTriangle size={11} /> Could not load coverage stats.
+          </div>
+        )}
+        {statsOpen && stats && stats.total_eligible === 0 && (
+          <div className="px-3 py-3 border-t border-border-subtle text-[10px] text-fg-muted italic">
+            No extracted documents found. Process serve documents first to populate training data.
+          </div>
+        )}
+        {statsOpen && stats && stats.total_eligible > 0 && (
           <div className="px-3 pb-3 space-y-2 border-t border-border-subtle">
             <div className="grid grid-cols-3 gap-2 pt-2">
               {[
@@ -429,7 +449,7 @@ export default function TesseractTrainingPage() {
             <select
               value={filterDocType}
               onChange={(e) => { setFilterDocType(e.target.value); setPage(1); }}
-              className="w-full text-[10px] border border-border-default bg-surface-base text-rmpg-200 px-1.5 py-1 rounded-sm"
+              className="w-full text-[10px] border border-border-default bg-surface-base text-rmpg-200 px-1.5 py-1 rounded-sm appearance-none"
             >
               <option value="">All doc types</option>
               <option value="null">(unclassified)</option>
@@ -442,7 +462,7 @@ export default function TesseractTrainingPage() {
             <select
               value={filterLabeled}
               onChange={(e) => { setFilterLabeled(e.target.value); setPage(1); }}
-              className="w-full text-[10px] border border-border-default bg-surface-base text-rmpg-200 px-1.5 py-1 rounded-sm"
+              className="w-full text-[10px] border border-border-default bg-surface-base text-rmpg-200 px-1.5 py-1 rounded-sm appearance-none"
             >
               <option value="">Labeled + unlabeled</option>
               <option value="true">Labeled only</option>
@@ -450,9 +470,9 @@ export default function TesseractTrainingPage() {
             </select>
             <div className="flex gap-1">
               <input type="date" value={filterFrom} onChange={(e) => { setFilterFrom(e.target.value); setPage(1); }}
-                className="flex-1 text-[10px] border border-border-default bg-surface-base text-rmpg-200 px-1.5 py-1 rounded-sm" />
+                className="flex-1 text-[10px] border border-border-default bg-surface-base text-rmpg-200 px-1.5 py-1 rounded-sm appearance-none" />
               <input type="date" value={filterTo} onChange={(e) => { setFilterTo(e.target.value); setPage(1); }}
-                className="flex-1 text-[10px] border border-border-default bg-surface-base text-rmpg-200 px-1.5 py-1 rounded-sm" />
+                className="flex-1 text-[10px] border border-border-default bg-surface-base text-rmpg-200 px-1.5 py-1 rounded-sm appearance-none" />
             </div>
           </div>
 
