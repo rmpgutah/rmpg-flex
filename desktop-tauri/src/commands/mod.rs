@@ -9,3 +9,7 @@ pub mod tray;
 pub mod geo;
 pub mod device;
 pub mod diagnostics;
+pub mod kiosk;
+pub mod gps;
+pub mod recon;
+pub mod offline;

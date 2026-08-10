@@ -1,16 +1,22 @@
 // RMPG Flex — Tauri ↔ Electron Compatibility Bridge
 // Injected into the remote webview so the React SPA at rmpgutah.us sees the
 // same window.electron API it expects from the Electron preload.
-// Phase 1: online-only — hardware/offline/sync methods are no-op stubs.
 
 (function () {
   if (window.electron) return; // already injected (or real Electron)
 
   const { invoke } = window.__TAURI__.core;
+  const { listen } = window.__TAURI__.event;
 
   function noop() { return Promise.resolve(); }
   function noopObj(val) { return () => Promise.resolve(val); }
-  function noopUnsub() { return () => {}; }
+
+  function tauriListen(eventName, callback) {
+    let unlisten = null;
+    listen(eventName, (event) => callback(event.payload))
+      .then((fn) => { unlisten = fn; });
+    return () => { if (unlisten) unlisten(); };
+  }
 
   window.electron = {
     // ─── Identity ────────────────────────────────────
@@ -94,8 +100,8 @@
     }),
     closeSecondaryWindow: (id) => invoke('close_secondary_window', { id }),
 
-    // ─── Device & Hardware (Phase 2 — native) ────────
-    listSerialPorts: noopObj([]),
+    // ─── Device & Hardware ───────────────────────────
+    listSerialPorts: () => invoke('list_serial_ports'),
     listAudioDevices: async () => {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -116,18 +122,51 @@
       } catch { return []; }
     },
     getBluetoothDevices: noopObj([]),
-    checkGpsHardwarePresent: noopObj(false),
+    checkGpsHardwarePresent: () => invoke('detect_internal_gps').then((r) => r.found).catch(() => false),
     getDockState: noopObj({ docked: false }),
     getWwanStatus: noopObj({ available: false }),
     setAutoLaunch: (enabled) => invoke('set_auto_launch', { enabled }),
     getAutoLaunchState: () => invoke('get_auto_launch_state'),
-    setKioskShell: noopObj({ ok: false, error: 'Kiosk shell not available in Tauri build' }),
-    getKioskShellState: noopObj({ supported: false }),
+    setKioskShell: (enabled) => invoke('set_kiosk_shell', { enabled }),
+    getKioskShellState: () => invoke('get_kiosk_shell_state'),
     registerGlobalShortcut: noop,
     unregisterGlobalShortcut: noop,
-    onShortcutTriggered: noopUnsub,
+    onShortcutTriggered: () => () => {},
     getDisplays: () => invoke('get_displays'),
-    onBarcodeScanned: noopUnsub,
+    onBarcodeScanned: (callback) => {
+      const BARCODE_MAX_GAP_MS = 30;
+      const BARCODE_MIN_CHARS = 3;
+      let buffer = [];
+      let timestamps = [];
+      let resetTimer = null;
+
+      const handler = (e) => {
+        const now = performance.now();
+        if (e.key === 'Enter' && buffer.length >= BARCODE_MIN_CHARS) {
+          const allFast = timestamps.every((t, i) =>
+            i === 0 || (t - timestamps[i - 1]) < BARCODE_MAX_GAP_MS
+          );
+          if (allFast) {
+            e.preventDefault();
+            e.stopPropagation();
+            callback(buffer.join(''));
+          }
+          buffer = [];
+          timestamps = [];
+          clearTimeout(resetTimer);
+          return;
+        }
+        if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+          buffer.push(e.key);
+          timestamps.push(now);
+          clearTimeout(resetTimer);
+          resetTimer = setTimeout(() => { buffer = []; timestamps = []; }, 200);
+        }
+      };
+
+      document.addEventListener('keydown', handler, true);
+      return () => document.removeEventListener('keydown', handler, true);
+    },
     printToPdf: () => invoke('print_to_pdf'),
     exportDiagnosticsBundle: () => invoke('export_diagnostics_bundle'),
     getCrashReports: () => invoke('get_crash_reports'),
@@ -146,74 +185,66 @@
     // ─── Geolocation fallback ────────────────────────
     getIpLocation: () => invoke('get_ip_location'),
 
-    // ─── Internal GPS (Phase 2 — Toughbook serial) ───
-    detectInternalGps: noopObj({ found: false }),
-    startInternalGps: noop,
-    stopInternalGps: noop,
-    onInternalGpsUpdate: noopUnsub,
-    onInternalGpsError: noopUnsub,
+    // ─── Internal GPS (Toughbook serial) ─────────────
+    detectInternalGps: () => invoke('detect_internal_gps'),
+    startInternalGps: () => invoke('start_internal_gps'),
+    stopInternalGps: () => invoke('stop_internal_gps'),
+    onInternalGpsUpdate: (callback) => tauriListen('geo:internal-gps-update', callback),
+    onInternalGpsError: (callback) => tauriListen('geo:internal-gps-error', callback),
 
     // ─── Auto-Update ─────────────────────────────────
-    onUpdateStatus: (callback) => {
-      let unlisten = null;
-      if (window.__TAURI__?.event?.listen) {
-        window.__TAURI__.event.listen('update-status', (event) => {
-          callback(event.payload);
-        }).then((fn) => { unlisten = fn; });
-      }
-      return () => { if (unlisten) unlisten(); };
-    },
+    onUpdateStatus: (callback) => tauriListen('update-status', callback),
     checkForUpdates: () => invoke('check_for_updates'),
     installUpdate: () => invoke('install_update'),
 
-    // ─── Recon Connect (Phase 2 — native process) ────
-    launchReconConnect: noopObj({ ok: false, error: 'Recon Connect not available in Tauri build' }),
-    installReconConnect: noopObj({ ok: false, error: 'Recon Connect not available in Tauri build' }),
-    checkReconConnect: noopObj({ installed: false }),
-    reconSpawn: noop,
-    reconInput: noop,
+    // ─── Recon Connect ───────────────────────────────
+    launchReconConnect: () => invoke('launch_recon_connect'),
+    installReconConnect: () => invoke('install_recon_connect'),
+    checkReconConnect: () => invoke('check_recon_connect'),
+    reconSpawn: (opts) => invoke('recon_spawn', { opts: opts || null }),
+    reconInput: (sessionId, data) => invoke('recon_input', { sessionId, data }),
     reconResize: noop,
-    reconKill: noop,
-    reconToolSpawn: noop,
-    reconToolKill: noop,
-    reconToolInstall: noop,
+    reconKill: (sessionId) => invoke('recon_kill', { sessionId }),
+    reconToolSpawn: (opts) => invoke('recon_spawn', { opts: opts || null }),
+    reconToolKill: (sessionId) => invoke('recon_kill', { sessionId }),
+    reconToolInstall: () => invoke('install_recon_connect'),
     reconCatalogRun: noop,
-    reconCheckBinary: noopObj({ found: false }),
+    reconCheckBinary: () => invoke('check_recon_connect').then((r) => ({ found: r.installed })),
     reconCatalogTerminal: noop,
     reconToolTerminal: noop,
-    reconInstallState: noopObj({ installed: false }),
-    reconUpdate: noop,
-    reconKillAll: noop,
-    onReconToolData: noopUnsub,
-    onReconToolExit: noopUnsub,
-    onReconData: noopUnsub,
-    onReconExit: noopUnsub,
+    reconInstallState: () => invoke('recon_install_state'),
+    reconUpdate: () => invoke('recon_update'),
+    reconKillAll: () => invoke('recon_kill_all'),
+    onReconToolData: (callback) => tauriListen('recon:term-data', callback),
+    onReconToolExit: (callback) => tauriListen('recon:term-exit', callback),
+    onReconData: (callback) => tauriListen('recon:term-data', callback),
+    onReconExit: (callback) => tauriListen('recon:term-exit', callback),
 
-    // ─── Auth Session Bridge (Phase 2 — offline) ─────
-    storeAuthSession: noop,
+    // ─── Auth Session Bridge (offline) ───────────────
+    storeAuthSession: (session) => invoke('store_auth_session', { session }),
 
-    // ─── Offline Mode (Phase 2 — local SQLite) ───────
-    localApi: noopObj({ ok: false, error: 'Offline mode not available in Tauri build' }),
-    getOfflineState: noopObj({ online: true, authorized: false }),
-    enterPin: noopObj({ ok: false }),
-    generatePin: noopObj({ ok: false }),
-    getSyncStatus: noopObj({ lastPull: null, lastPush: null, queueDepth: 0 }),
-    triggerSync: noop,
-    pauseSync: noop,
-    resumeSync: noop,
-    getSyncQueueDetail: noopObj({ pending: [], failed: [] }),
-    getOfflineWriteQueueSize: noopObj(0),
-    retryFailedSyncItem: noop,
-    clearFailedSyncItems: noop,
-    getLastSyncError: noopObj(null),
-    getLocalCacheStats: noopObj([]),
-    clearLocalCache: noop,
-    forceFullResync: noop,
-    getCachedUser: noopObj(null),
-    onConnectivityChange: noopUnsub,
-    onSyncProgress: noopUnsub,
-    onSyncComplete: noopUnsub,
-    onPinExpired: noopUnsub,
-    onAuthorizationChanged: noopUnsub,
+    // ─── Offline Mode (local SQLite) ─────────────────
+    localApi: (method, path, body) => invoke('local_api', { method, path, body: body || null }),
+    getOfflineState: () => invoke('get_offline_state'),
+    enterPin: (userId, pin) => invoke('enter_pin', { userId, pin }),
+    generatePin: (userId, secret) => invoke('generate_pin', { userId, secret }),
+    getSyncStatus: () => invoke('get_sync_status'),
+    triggerSync: () => invoke('trigger_sync'),
+    pauseSync: () => invoke('pause_sync'),
+    resumeSync: () => invoke('resume_sync'),
+    getSyncQueueDetail: () => invoke('get_sync_queue_detail'),
+    getOfflineWriteQueueSize: () => invoke('get_offline_write_queue_size'),
+    retryFailedSyncItem: (id) => invoke('retry_failed_sync_item', { id }),
+    clearFailedSyncItems: () => invoke('clear_failed_sync_items'),
+    getLastSyncError: () => invoke('get_last_sync_error'),
+    getLocalCacheStats: () => invoke('get_local_cache_stats'),
+    clearLocalCache: () => invoke('clear_local_cache'),
+    forceFullResync: () => invoke('force_full_resync'),
+    getCachedUser: (userId) => invoke('get_cached_user', { userId }),
+    onConnectivityChange: (callback) => tauriListen('offline:connectivity-change', callback),
+    onSyncProgress: (callback) => tauriListen('offline:sync-progress', callback),
+    onSyncComplete: (callback) => tauriListen('offline:sync-complete', callback),
+    onPinExpired: (callback) => tauriListen('offline:pin-expired', callback),
+    onAuthorizationChanged: (callback) => tauriListen('offline:auth-changed', callback),
   };
 })();
