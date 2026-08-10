@@ -471,6 +471,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
   const [localJobs, setLocalJobs] = useState<ServeJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastFetched, setLastFetched] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Resolve which set of jobs to display
   const allJobs: ServeJob[] = sharedJobs ?? localJobs;
@@ -483,9 +484,11 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
       // Use the main endpoint (supports officer_id) and filter by serve_date client-side
       const raw = await apiFetch<ServeJob[]>(`/process-server?officer_id=${officerId}&limit=200`);
       const todayJobs = (raw ?? []).filter(j => (j.serve_date ?? '').startsWith(today));
+      setError(null);
       setLocalJobs(todayJobs);
       setLastFetched(Date.now());
     } catch {
+      setError('Failed to load run data');
       setLocalJobs([]);
     } finally {
       setLoading(false);
@@ -657,6 +660,11 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
     <div className="flex flex-col h-full bg-surface-base">
       {/* ── Progress bar ─────────────────────────────────────────── */}
       <ProgressBar served={servedToday} total={totalToday} />
+      {error && (
+        <div className="px-3 py-2 text-[10px] text-red-400 bg-surface-sunken border-b border-border-default">
+          {error}
+        </div>
+      )}
       {mileageToday !== null && mileageToday > 0 && (
         <div className="px-3 py-1 border-b border-rmpg-700 bg-surface-sunken text-[9px] text-fg-muted uppercase tracking-wider flex items-center justify-between">
           <span>Mileage today</span>
