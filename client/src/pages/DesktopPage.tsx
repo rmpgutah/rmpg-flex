@@ -25,6 +25,8 @@ import DesktopSettingsApp from '../components/desktop/DesktopSettingsApp';
 import DesktopStickyNote from '../components/desktop/DesktopStickyNote';
 import { useDesktopNotes, type DesktopNote } from '../hooks/useDesktopNotes';
 import ContextMenu from '../components/ContextMenu';
+import DesktopLockScreen from '../components/desktop/DesktopLockScreen';
+import DesktopNotificationCenter from '../components/desktop/DesktopNotificationCenter';
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -100,6 +102,24 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [accentId, setAccentId] = useState<string>(prefs.desktop_accent || DEFAULT_ACCENT_ID);
   const [widgets, setWidgets] = useState(() => normalizeDesktopWidgets(prefs.desktop_widgets_json));
   const [widgetSettingsOpen, setWidgetSettingsOpen] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
+  const [notifCenterOpen, setNotifCenterOpen] = useState(false);
+
+  // Auto-lock: poll idle time every 30 s when running in the desktop app.
+  useEffect(() => {
+    const el = (window as any).electron;
+    if (!el?.isElectron || !el?.getIdleTime) return;
+    const autoLockSecs = parseInt(localStorage.getItem('rmpg_desktop_autolock_secs') ?? '0', 10)
+      || (localStorage.getItem('rmpg_kiosk_shell_enabled') === '1' ? 300 : 900);
+    const id = setInterval(async () => {
+      if (isLocked) return;
+      try {
+        const idle: number = await el.getIdleTime();
+        if (idle >= autoLockSecs) setIsLocked(true);
+      } catch { /* silent */ }
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [isLocked]);
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
   // the parse happens eagerly here — cheap for a small JSON blob, and this
   // component only mounts once real prefs have resolved (see the comment
@@ -287,7 +307,12 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             </DesktopWallpaper>
           </div>
         </ContextMenu>
-        <DesktopTaskbar icons={pinnedIcons} catalog={allFunctions} />
+        <DesktopTaskbar
+          icons={pinnedIcons}
+          catalog={allFunctions}
+          onLock={() => setIsLocked(true)}
+          onToggleNotifCenter={() => setNotifCenterOpen(v => !v)}
+        />
         {widgetSettingsOpen && (
           <DesktopSettingsApp
             widgets={widgets} onToggleWidget={handleToggleWidget}
@@ -302,6 +327,8 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           />
         )}
       </DesktopWindowManagerProvider>
+      <DesktopLockScreen isLocked={isLocked} onUnlock={() => setIsLocked(false)} />
+      {notifCenterOpen && <DesktopNotificationCenter onClose={() => setNotifCenterOpen(false)} />}
     </div>
   );
 }

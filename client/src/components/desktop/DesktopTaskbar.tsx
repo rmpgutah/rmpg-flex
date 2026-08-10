@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor } from 'lucide-react';
+import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useDesktopWindows } from './DesktopWindowManager';
 import { activateNavFunction } from '../../utils/windowManager';
@@ -16,9 +16,11 @@ export const TASKBAR_HEIGHT_PX: Record<TaskbarSize, number> = { small: 48, large
 export interface DesktopTaskbarProps {
   icons: NavFunction[];
   catalog: NavFunction[];
+  onLock?: () => void;
+  onToggleNotifCenter?: () => void;
 }
 
-export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) {
+export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCenter }: DesktopTaskbarProps) {
   const { windows, focusWindow, openWindow, minimizeAll, restoreAll, closeWindow } = useDesktopWindows();
   const [autoMinimizedIds, setAutoMinimizedIds] = useState<string[]>([]);
   const [, forceRerender] = useState(0);
@@ -299,8 +301,25 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
         >
           <Monitor className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
         </button>
-        <div className="relative">
-          <Bell className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+        {onLock && (
+          <button
+            type="button"
+            aria-label="Lock screen"
+            onClick={onLock}
+            className="p-1.5 hover:bg-surface-hover"
+            style={{ border: '1px solid var(--border-subtle)' }}
+          >
+            <Lock className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
+          </button>
+        )}
+        <button
+          type="button"
+          aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+          onClick={onToggleNotifCenter}
+          className="relative p-1.5 hover:bg-surface-hover"
+          style={{ border: '1px solid var(--border-subtle)' }}
+        >
+          <Bell className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
           {unreadCount > 0 && (
             <span
               className="absolute -top-1 -right-1 flex items-center justify-center font-bold bg-red-600 text-white"
@@ -309,7 +328,7 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
-        </div>
+        </button>
         <span className="text-[11px] font-mono" style={{ color: 'var(--text-primary)' }}>{time}</span>
       </div>
     </div>
