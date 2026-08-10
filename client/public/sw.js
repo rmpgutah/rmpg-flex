@@ -250,29 +250,26 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate — clean old caches (including the retired tile cache), claim clients, notify
+// Activate — clean stale caches, claim clients, notify.
+// Keep the IMMEDIATELY PREVIOUS cache alive so in-flight sessions whose
+// index.html still references old chunk URLs can serve them from cache
+// instead of 404-ing against the new deploy. Only caches older than the
+// previous deploy (and the retired tile cache) are purged.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
-      // Delete every cache that isn't the current main cache. This also
-      // evicts the retired 'rmpg-flex-tiles-v2' CartoDB tile cache.
       const oldKeys = keys.filter((k) => k !== CACHE_NAME);
-      return Promise.all(oldKeys.map((k) => caches.delete(k))).then(() => {
-        if (oldKeys.length > 0) {
-          // Notify v539+ clients that have an auto-reload handler.
-          // The SW-side force-reload (client.navigate) was REMOVED
-          // 2026-05-05 because it was causing perceived slowness on
-          // Electron — the cache eviction + navigation triggered a
-          // full bundle re-fetch every time a new SW activated. The
-          // v539+ client-side auto-reload (1.5s after SW_UPDATED with
-          // input-focus guard) is enough; pre-v539 sessions can do a
-          // one-time manual reload.
-          self.clients.matchAll({ type: 'window' }).then((clients) => {
-            clients.forEach((client) => {
-              client.postMessage({ type: 'SW_UPDATED', cacheName: CACHE_NAME });
-            });
+      const rmpgKeys = oldKeys
+        .filter((k) => k.startsWith('rmpg-flex-'))
+        .sort();
+      const previousCache = rmpgKeys.length > 0 ? rmpgKeys[rmpgKeys.length - 1] : null;
+      const toDelete = oldKeys.filter((k) => k !== previousCache);
+      return Promise.all(toDelete.map((k) => caches.delete(k))).then(() => {
+        self.clients.matchAll({ type: 'window' }).then((clients) => {
+          clients.forEach((client) => {
+            client.postMessage({ type: 'SW_UPDATED', cacheName: CACHE_NAME });
           });
-        }
+        });
       });
     })
     .then(() => self.clients.claim())
