@@ -1142,22 +1142,22 @@ async function createMainWindow() {
 
   // Clear Chromium HTTP cache before loading — ensures deploys propagate
   // immediately without requiring a manual hard-refresh in the desktop app.
-  // (Service workers, localStorage, and IndexedDB are NOT cleared.)
+  // Service workers are NOT cleared — they handle their own versioning via
+  // skipWaiting() + clients.claim() + the auto-stamped CACHE_NAME, and
+  // clearing them destroys offline capability (the SW cache is the only
+  // fallback when network fails on cold boot).
   // Wrap in a race with a timeout so a macOS-specific hang in clearCache
-  // or clearStorageData doesn't block startup forever.
+  // doesn't block startup forever.
   try {
     await Promise.race([
       (async () => {
         await mainWindow.webContents.session.clearCache();
-        console.log('[APP] HTTP cache cleared');
-        // Unregister stale service workers so the latest version installs fresh
-        await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] });
-        console.log('[APP] Service workers cleared');
+        console.log('[APP] HTTP cache cleared (SW registrations preserved)');
       })(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Cache/ServiceWorker clear timed out after 5000ms')), 5000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Cache clear timed out after 5000ms')), 5000)),
     ]);
   } catch (err) {
-    console.warn('[APP] Cache/SW clear timed out or failed — continuing:', err && err.message);
+    console.warn('[APP] Cache clear timed out or failed — continuing:', err && err.message);
   }
 
   // Load the remote web application

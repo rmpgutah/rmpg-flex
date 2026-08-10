@@ -195,6 +195,20 @@ export function buildUnitMarkerEl(unit: Unit, enRoute?: EnRouteEta | null): HTML
   label.textContent = unit.call_sign.slice(0, 6);
   inner.appendChild(label);
 
+  // Speed readout below call sign — shows mph when moving
+  if (unit.gps_speed != null && Number.isFinite(unit.gps_speed) && unit.gps_speed > 0.5) {
+    const speedEl = document.createElement('div');
+    speedEl.setAttribute('data-role', 'speed-label');
+    const mph = Math.round(unit.gps_speed * 2.237);
+    const speedColor = mph >= 75 ? '#ef4444' : mph >= 55 ? '#f97316' : mph >= 45 ? '#eab308' : '#93c5fd';
+    speedEl.style.cssText = `
+      font-size:8px;font-weight:700;font-family:ui-monospace,monospace;
+      color:${speedColor};white-space:nowrap;line-height:1;
+    `;
+    speedEl.textContent = `${mph} mph`;
+    inner.appendChild(speedEl);
+  }
+
   // Accuracy-radius ring: a translucent circle sized to the reported GPS
   // accuracy in meters. Rendered only when accuracy data is present (the
   // server nulls implausible values) so we never draw a fake/default ring.
@@ -258,6 +272,33 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit, enRoute?: EnRo
     label.style.border = `1.2px solid ${color}`;
     label.style.color = color;
     label.textContent = unit.call_sign.slice(0, 6);
+  }
+
+  // Speed label: update or create/remove as speed changes
+  const existingSpeed = el.querySelector<HTMLElement>('[data-role="speed-label"]');
+  if (unit.gps_speed != null && Number.isFinite(unit.gps_speed) && unit.gps_speed > 0.5) {
+    const mph = Math.round(unit.gps_speed * 2.237);
+    const speedColor = mph >= 75 ? '#ef4444' : mph >= 55 ? '#f97316' : mph >= 45 ? '#eab308' : '#93c5fd';
+    if (existingSpeed) {
+      existingSpeed.textContent = `${mph} mph`;
+      existingSpeed.style.color = speedColor;
+    } else {
+      const speedEl = document.createElement('div');
+      speedEl.setAttribute('data-role', 'speed-label');
+      speedEl.style.cssText = `
+        font-size:8px;font-weight:700;font-family:ui-monospace,monospace;
+        color:${speedColor};white-space:nowrap;line-height:1;
+      `;
+      speedEl.textContent = `${mph} mph`;
+      const labelEl = el.querySelector('[data-role="label"]');
+      if (labelEl && labelEl.nextSibling) {
+        inner.insertBefore(speedEl, labelEl.nextSibling);
+      } else {
+        inner.appendChild(speedEl);
+      }
+    }
+  } else if (existingSpeed) {
+    existingSpeed.remove();
   }
 
   // Accuracy ring: remove and rebuild rather than resize in place — it's a

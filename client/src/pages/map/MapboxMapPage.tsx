@@ -149,7 +149,7 @@ const UNITS_FAST_POLL_MS = 5_000;
 if (typeof document !== 'undefined' && !document.getElementById('rmpg-pulse-css')) {
   const css = document.createElement('style');
   css.id = 'rmpg-pulse-css';
-  css.textContent = `@keyframes rmpg-pulse{0%,100%{box-shadow:0 0 12px #3b82f680,0 0 24px #3b82f640}50%{box-shadow:0 0 20px #3b82f6b0,0 0 40px #3b82f670}}`;
+  css.textContent = `@keyframes rmpg-pulse{0%,100%{box-shadow:0 0 12px #3b82f680,0 0 24px #3b82f640}50%{box-shadow:0 0 20px #3b82f6b0,0 0 40px #3b82f670}}@keyframes rmpg-pulse-ring{0%,100%{opacity:0.6;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}`;
   document.head.appendChild(css);
 }
 
@@ -1059,7 +1059,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     });
   }, [calls, units, mapLoaded, multiStopQueue, addCallToRoute, enRouteEtas]);
 
-  // ── Self-Position (GPS Blue Dot) ───────────────────────────────────────────
+  // ── Self-Position (GPS Marker with heading + accuracy) ──────────────────
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1071,23 +1071,109 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       return;
     }
 
+    const heading = gps.headingSmoothed ?? gps.course ?? gps.heading;
+    const hasHeading = heading != null && Number.isFinite(heading);
+    const speedMph = gps.speed != null ? Math.round(gps.speed * 2.237) : null;
+    const accM = gps.accuracy;
+
     if (selfMarkerRef.current) {
       selfMarkerRef.current.setLngLat([gps.longitude, gps.latitude]);
+      const el = selfMarkerRef.current.getElement();
+
+      const arrow = el.querySelector<SVGSVGElement>('[data-role="self-arrow"]');
+      if (arrow) arrow.style.transform = hasHeading ? `rotate(${heading}deg)` : 'rotate(0deg)';
+
+      const dot = el.querySelector<HTMLElement>('[data-role="self-dot"]');
+      if (dot) dot.style.display = hasHeading ? 'none' : 'block';
+      if (arrow) arrow.style.display = hasHeading ? 'block' : 'none';
+
+      const speedLabel = el.querySelector<HTMLElement>('[data-role="self-speed"]');
+      if (speedLabel) {
+        speedLabel.textContent = speedMph != null && speedMph > 0 ? `${speedMph}` : '';
+        speedLabel.style.display = speedMph != null && speedMph > 0 ? 'block' : 'none';
+      }
+
+      const ring = el.querySelector<HTMLElement>('[data-role="self-accuracy"]');
+      if (ring && accM != null && accM > 0) {
+        const px = Math.min(80, Math.max(12, accM / 1.5));
+        ring.style.width = ring.style.height = `${px * 2}px`;
+        ring.style.marginLeft = ring.style.marginTop = `-${px}px`;
+        ring.style.display = 'block';
+      } else if (ring) {
+        ring.style.display = 'none';
+      }
     } else {
       const el = document.createElement('div');
       el.className = 'rmpg-mbx-self';
-      el.style.cssText = `
-        width:16px;height:16px;border-radius:50%;
-        background:#3b82f6;border:3px solid #fff;
-        box-shadow:0 0 12px #3b82f680, 0 0 24px #3b82f640;
-        animation:rmpg-pulse 2s ease-in-out infinite;
+      el.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:1px;pointer-events:none;position:relative;';
+
+      // Accuracy ring
+      const ring = document.createElement('div');
+      ring.setAttribute('data-role', 'self-accuracy');
+      const accPx = accM != null && accM > 0 ? Math.min(80, Math.max(12, accM / 1.5)) : 20;
+      ring.style.cssText = `
+        position:absolute;top:50%;left:50%;
+        width:${accPx * 2}px;height:${accPx * 2}px;
+        margin-left:-${accPx}px;margin-top:-${accPx}px;
+        border-radius:50%;background:rgba(59,130,246,0.10);
+        border:1.5px solid rgba(59,130,246,0.25);
+        pointer-events:none;z-index:0;
+        animation:rmpg-pulse-ring 3s ease-in-out infinite;
       `;
+      if (!accM || accM <= 0) ring.style.display = 'none';
+      el.appendChild(ring);
+
+      // Directional arrow (shown when heading available)
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('data-role', 'self-arrow');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('width', '28');
+      svg.setAttribute('height', '28');
+      svg.style.transform = hasHeading ? `rotate(${heading}deg)` : 'rotate(0deg)';
+      svg.style.transition = 'transform 0.4s ease-out';
+      svg.style.filter = 'drop-shadow(0 0 6px rgba(59,130,246,0.7))';
+      svg.style.display = hasHeading ? 'block' : 'none';
+      svg.style.position = 'relative';
+      svg.style.zIndex = '2';
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'M12 2 20 20 12 15 4 20Z');
+      path.setAttribute('fill', '#3b82f6');
+      path.setAttribute('stroke', '#ffffff');
+      path.setAttribute('stroke-width', '1.5');
+      svg.appendChild(path);
+      el.appendChild(svg);
+
+      // Blue dot (shown when no heading)
+      const dot = document.createElement('div');
+      dot.setAttribute('data-role', 'self-dot');
+      dot.style.cssText = `
+        width:18px;height:18px;border-radius:50%;
+        background:#3b82f6;border:3px solid #fff;
+        box-shadow:0 0 10px rgba(59,130,246,0.5), 0 0 20px rgba(59,130,246,0.25);
+        animation:rmpg-pulse 2s ease-in-out infinite;
+        position:relative;z-index:2;
+      `;
+      dot.style.display = hasHeading ? 'none' : 'block';
+      el.appendChild(dot);
+
+      // Speed readout
+      const speedEl = document.createElement('div');
+      speedEl.setAttribute('data-role', 'self-speed');
+      speedEl.style.cssText = `
+        background:rgba(0,0,0,0.75);border:1px solid rgba(59,130,246,0.5);
+        border-radius:2px;padding:0 4px;
+        font:700 9px/13px ui-monospace,monospace;color:#93c5fd;
+        white-space:nowrap;position:relative;z-index:2;
+      `;
+      speedEl.textContent = speedMph != null && speedMph > 0 ? `${speedMph}` : '';
+      speedEl.style.display = speedMph != null && speedMph > 0 ? 'block' : 'none';
+      el.appendChild(speedEl);
 
       selfMarkerRef.current = new mapboxgl.Marker({ element: el })
         .setLngLat([gps.longitude, gps.latitude])
         .addTo(map);
     }
-  }, [gps.latitude, gps.longitude, selfPosVisible, mapLoaded]);
+  }, [gps.latitude, gps.longitude, gps.headingSmoothed, gps.course, gps.heading, gps.speed, gps.accuracy, selfPosVisible, mapLoaded]);
 
   // ── Dispatch Connections Matrix Ranking (only while the diagnostics panel is open) ──
   // Depend on `findClosestUnit` itself, not the whole `routing` object -- useMapRouting
