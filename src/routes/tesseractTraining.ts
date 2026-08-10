@@ -17,6 +17,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { getDecrypted } from '../utils/encryptedR2';
 import { clampIntParam } from '../utils/paginationParams';
 import { zipSync, strToU8 } from 'fflate';
+import { log, logErrorToDb } from '../utils/logger';
 
 const tesseractTraining = new Hono<Env>();
 
@@ -170,7 +171,29 @@ tesseractTraining.get('/documents/runs/:id/download', async (c) => {
   );
   if (!run) return c.json({ error: 'Not found' }, 404);
   const obj = await c.env.TESSERACT_TRAINING.get(run.r2_key);
-  if (!obj) return c.json({ error: 'Package missing in R2' }, 404);
+  if (!obj) {
+    // D1 row exists but the R2 object it points at is gone — a real
+    // drift/data-integrity condition, not a mere "unknown id" 404. Log it
+    // so a vanished training package leaves a trace instead of looking
+    // identical to a bad request.
+    const traceId = c.get('traceId');
+    log.error('[tesseract-training] run R2 object missing', {
+      route: 'GET /tesseract-training/documents/runs/:id/download',
+      runId: id,
+      r2Key: run.r2_key,
+      traceId,
+    });
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: `tesseract_training_runs row ${id} points at missing R2 object ${run.r2_key}`,
+      details: { route: 'GET /tesseract-training/documents/runs/:id/download', runId: id, r2Key: run.r2_key },
+      traceId,
+      source: 'GET /tesseract-training/documents/runs/:id/download',
+      statusCode: 404,
+    }, c.executionCtx);
+    return c.json({ error: 'Package missing in R2' }, 404);
+  }
   return new Response(obj.body ?? (await obj.arrayBuffer()), {
     headers: {
       'Content-Type': 'application/zip',
@@ -621,16 +644,36 @@ Documents included: ${includedIds.length}
 
   const zipped = zipSync(zipEntries);
   const r2Key = `training-runs/${Date.now()}/package.zip`;
-  await c.env.TESSERACT_TRAINING.put(r2Key, zipped, {
-    httpMetadata: { contentType: 'application/zip' },
-  });
 
-  const result = await execute(
-    db,
-    `INSERT INTO tesseract_training_runs (generated_by, document_count, document_ids_json, r2_key) VALUES (?, ?, ?, ?)`,
-    user.id, includedIds.length, JSON.stringify(includedIds), r2Key,
-  );
-  return c.json({ id: result.meta.last_row_id, document_count: includedIds.length });
+  try {
+    await c.env.TESSERACT_TRAINING.put(r2Key, zipped, {
+      httpMetadata: { contentType: 'application/zip' },
+    });
+
+    const result = await execute(
+      db,
+      `INSERT INTO tesseract_training_runs (generated_by, document_count, document_ids_json, r2_key) VALUES (?, ?, ?, ?)`,
+      user.id, includedIds.length, JSON.stringify(includedIds), r2Key,
+    );
+    return c.json({ id: result.meta.last_row_id, document_count: includedIds.length });
+  } catch (err) {
+    const traceId = c.get('traceId');
+    log.error('[tesseract-training] training run package build failed', {
+      route: 'POST /tesseract-training/documents/runs',
+      documentCount: includedIds.length,
+      traceId,
+    }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'POST /tesseract-training/documents/runs', documentCount: includedIds.length },
+      traceId,
+      source: 'POST /tesseract-training/documents/runs',
+      statusCode: 500,
+    }, c.executionCtx);
+    return c.json({ error: 'Failed to save training package', code: 'PACKAGE_BUILD_FAILED' }, 500);
+  }
 });
 
 export default tesseractTraining;
