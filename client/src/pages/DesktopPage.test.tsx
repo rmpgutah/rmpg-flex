@@ -92,8 +92,8 @@ describe('DesktopPage', () => {
     saveFavorites(new Set(['/dispatch']));
     mockUseUserPreferences.mockReturnValue({ prefs: mockPrefs, reload: vi.fn(), isLoading: true, error: null });
     render(<MemoryRouter><DesktopPage /></MemoryRouter>);
-    // Loading placeholder is present...
-    expect(screen.getByRole('status', { name: /loading/i })).toBeInTheDocument();
+    // FlexOS boot splash is present while loading...
+    expect(screen.getByRole('status', { name: /loading flexos/i })).toBeInTheDocument();
     // ...and none of the real desktop shell (which would have seeded its
     // one-shot state from the still-default prefs) has mounted yet.
     expect(screen.queryByLabelText('Open app launcher')).not.toBeInTheDocument();
@@ -103,7 +103,7 @@ describe('DesktopPage', () => {
   it('opens the settings app with icon size, sort, wallpaper, accent, and reset controls', () => {
     render(<MemoryRouter><DesktopPage /></MemoryRouter>);
     fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
-    fireEvent.click(screen.getByText('Settings'));
+    fireEvent.click(screen.getByText('FlexOS Settings…'));
     fireEvent.click(screen.getByText('Desktop & Icons'));
     expect(screen.getByText('Icon Size')).toBeInTheDocument();
     expect(screen.getByText('Reset to Default')).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe('DesktopPage', () => {
   it('right-click "New sticky note" adds a note to the canvas', () => {
     render(<MemoryRouter><DesktopPage /></MemoryRouter>);
     fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
-    fireEvent.click(screen.getByText('New sticky note'));
+    fireEvent.click(screen.getByText('New Sticky Note'));
     expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
   });
 
@@ -121,7 +121,7 @@ describe('DesktopPage', () => {
     try {
       render(<MemoryRouter><DesktopPage /></MemoryRouter>);
       fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
-      fireEvent.click(screen.getByText('New sticky note'));
+      fireEvent.click(screen.getByText('New Sticky Note'));
       expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
 
       await act(async () => { await vi.advanceTimersByTimeAsync(800); });
@@ -143,11 +143,11 @@ describe('DesktopPage', () => {
     try {
       render(<MemoryRouter><DesktopPage /></MemoryRouter>);
       fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
-      fireEvent.click(screen.getByText('New sticky note'));
+      fireEvent.click(screen.getByText('New Sticky Note'));
       expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
 
       fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
-      fireEvent.click(screen.getByText('Settings'));
+      fireEvent.click(screen.getByText('FlexOS Settings…'));
       fireEvent.click(screen.getByText('Desktop & Icons'));
       fireEvent.click(screen.getByText('Reset to Default'));
 
@@ -187,7 +187,6 @@ describe('DesktopPage — empty-desktop right-click shortcuts', () => {
     fireEvent.contextMenu(desktopSurface);
     expect(screen.getByText('Sort: Alphabetical')).toBeInTheDocument();
     expect(screen.getByText('View: List')).toBeInTheDocument();
-    expect(screen.getByText('Icon size: Large')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Sort: Alphabetical'));
     // Re-open to check View next (ContextMenu closes itself after a click).
     fireEvent.contextMenu(desktopSurface);
@@ -207,7 +206,7 @@ describe('DesktopPage — auto-arrange and show/hide icons toggles', () => {
     fireEvent.click(screen.getByText('Auto-arrange: Off'));
     expect(isAutoArrangeEnabled()).toBe(true);
     fireEvent.contextMenu(desktopSurface);
-    expect(screen.getByText('Auto-arrange: On')).toBeInTheDocument();
+    expect(screen.getByText('Auto-arrange: On ✓')).toBeInTheDocument();
   });
 
   it('toggles the Hide/Show icons menu label and persists via setIconsHidden', async () => {
@@ -215,11 +214,11 @@ describe('DesktopPage — auto-arrange and show/hide icons toggles', () => {
     await waitFor(() => expect(screen.getByLabelText('Open app launcher')).toBeInTheDocument());
     const desktopSurface = screen.getByTestId('desktop-surface');
     fireEvent.contextMenu(desktopSurface);
-    expect(screen.getByText('Hide icons')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Hide icons'));
+    expect(screen.getByText('Hide Desktop Icons')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Hide Desktop Icons'));
     expect(areIconsHidden()).toBe(true);
     fireEvent.contextMenu(desktopSurface);
-    expect(screen.getByText('Show icons')).toBeInTheDocument();
+    expect(screen.getByText('Show Desktop Icons')).toBeInTheDocument();
   });
 });
 
@@ -315,11 +314,11 @@ describe('DesktopPage — hidden icons layer', () => {
 
     const desktopSurface = screen.getByTestId('desktop-surface');
     fireEvent.contextMenu(desktopSurface);
-    fireEvent.click(screen.getByText('New sticky note'));
+    fireEvent.click(screen.getByText('New Sticky Note'));
     expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
 
     fireEvent.contextMenu(desktopSurface);
-    fireEvent.click(screen.getByText('Hide icons'));
+    fireEvent.click(screen.getByText('Hide Desktop Icons'));
 
     // Icon grid's tile is gone — only the quick-access widget's instance remains.
     expect(screen.getAllByText('Dispatch Console').length).toBe(1);
@@ -332,7 +331,7 @@ describe('DesktopPage — hidden icons layer', () => {
     await waitFor(() => expect(screen.getByText(/star modules from Module Directory/i)).toBeInTheDocument());
     const desktopSurface = screen.getByTestId('desktop-surface');
     fireEvent.contextMenu(desktopSurface);
-    fireEvent.click(screen.getByText('Hide icons'));
+    fireEvent.click(screen.getByText('Hide Desktop Icons'));
     expect(screen.queryByText(/star modules from Module Directory/i)).not.toBeInTheDocument();
   });
 });

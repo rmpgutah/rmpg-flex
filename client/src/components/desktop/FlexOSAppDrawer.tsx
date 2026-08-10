@@ -10,8 +10,9 @@ import { Search, X, Star, Shield, type LucideIcon } from 'lucide-react';
 import type { NavFunction } from '../../data/navCatalog';
 import { NAV_CATEGORIES } from '../../data/navCatalog';
 import { loadFavorites } from '../../utils/navFavorites';
-import { getTaskbarPosition, getTaskbarSize } from '../../utils/taskbarPreferences';
+import { getTaskbarPosition, getTaskbarSize, isAppPinned, pinApp, unpinApp } from '../../utils/taskbarPreferences';
 import { TASKBAR_HEIGHT_PX } from './DesktopTaskbar';
+import ContextMenu from '../ContextMenu';
 
 export interface FlexOSQuickAction {
   key: string;
@@ -266,7 +267,12 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
 
 function AppTile({ fn, onNavigate, onClose }: { fn: NavFunction; onNavigate: (p: string) => void; onClose: () => void }) {
   const Icon = fn.icon;
+  const [, rerender] = useState(0);
   return (
+    <ContextMenu items={[{
+      label: isAppPinned(fn.path) ? 'Unpin from Taskbar' : 'Pin to Taskbar',
+      onClick: () => { if (isAppPinned(fn.path)) unpinApp(fn.path); else pinApp(fn.path); rerender(n => n + 1); },
+    }]}>
     <button
       type="button"
       onClick={() => { onNavigate(fn.path); onClose(); }}
@@ -306,5 +312,6 @@ function AppTile({ fn, onNavigate, onClose }: { fn: NavFunction; onNavigate: (p:
         {fn.label}
       </span>
     </button>
+    </ContextMenu>
   );
 }

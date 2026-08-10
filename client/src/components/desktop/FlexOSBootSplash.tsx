@@ -52,6 +52,8 @@ export default function FlexOSBootSplash({ ready, onFaded }: FlexOSBootSplashPro
 
   return (
     <div
+      role="status"
+      aria-label="Loading FlexOS"
       onTransitionEnd={handleTransitionEnd}
       style={{
         position: 'fixed',
