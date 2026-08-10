@@ -126,6 +126,59 @@ tesseractTraining.get('/documents', async (c) => {
   });
 });
 
+interface TrainingRunRow {
+  id: number;
+  generated_at: string;
+  generated_by: number;
+  document_count: number;
+}
+
+// GET /api/tesseract-training/documents/runs?page=1
+// Registered BEFORE /documents/:id so the static "runs" segment can never be
+// swallowed by the :id param matcher.
+tesseractTraining.get('/documents/runs', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const db = getDb(c.env);
+  const page = clampIntParam(c.req.query('page'), 1, 1, 100000);
+  const pageSize = 20;
+  const offset = (page - 1) * pageSize;
+  const rows = await query<TrainingRunRow>(
+    db,
+    `SELECT id, generated_at, generated_by, document_count
+       FROM tesseract_training_runs
+      ORDER BY generated_at DESC
+      LIMIT ? OFFSET ?`,
+    pageSize, offset,
+  );
+  return c.json({ rows, page, pageSize });
+});
+
+// GET /api/tesseract-training/documents/runs/:id/download
+tesseractTraining.get('/documents/runs/:id/download', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const run = await queryFirst<{ r2_key: string }>(
+    db,
+    `SELECT r2_key FROM tesseract_training_runs WHERE id = ?`,
+    id,
+  );
+  if (!run) return c.json({ error: 'Not found' }, 404);
+  const obj = await c.env.TESSERACT_TRAINING.get(run.r2_key);
+  if (!obj) return c.json({ error: 'Package missing in R2' }, 404);
+  return new Response(obj.body ?? (await obj.arrayBuffer()), {
+    headers: {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="rmpg-training-${id}.zip"`,
+    },
+  });
+});
+
 // GET /api/tesseract-training/documents/:id
 tesseractTraining.get('/documents/:id', async (c) => {
   if (!requireAdminManager(c)) {
