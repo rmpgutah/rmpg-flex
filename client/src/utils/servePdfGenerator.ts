@@ -1613,6 +1613,21 @@ export interface ReceiptOfServiceData {
   recipientJobTitle?: string;
   businessName?: string;
   recipientPhone?: string;
+
+  // ── Recipient ID data (from barcode scan or manual entry) ──
+  recipientGender?: string;
+  recipientRace?: string;
+  recipientHeight?: string;
+  recipientWeight?: string;
+  recipientHairColor?: string;
+  recipientEyeColor?: string;
+  recipientDlNumber?: string;
+  recipientDlState?: string;
+  recipientDlClass?: string;
+  recipientDlExpiry?: string;
+  recipientIsRealId?: boolean | null;
+  idScanMethod?: 'barcode' | 'manual' | null;
+
   /** Named individual or business the signer accepted on behalf of. */
   acceptingOnBehalfOf?: string;
 
@@ -2611,6 +2626,57 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       { sectionTitle: 'III. Schedule of Documents Delivered' },
     );
 
+  }
+
+  // ── Recipient Identification ──
+  // Printed when the officer scanned or manually recorded the signer's ID.
+  // The section is omitted entirely when no ID data was captured — a blank
+  // section reading "N/A" on every line adds nothing and costs vertical space
+  // on an instrument that must fit one sheet.
+  const hasIdData = !blank && (data.recipientDlNumber || data.recipientGender || data.recipientHeight || data.idScanMethod);
+  if (hasIdData) {
+    y = checkPageBreak(doc, y, 18);
+    const sec = openAutoSection(doc, 'Recipient Identification', y); y = sec.contentY;
+
+    // Verification method
+    if (data.idScanMethod) {
+      const methodLabel = data.idScanMethod === 'barcode' ? 'Barcode scanned from ID' : 'Manually entered';
+      y = addFieldPair(doc, 'ID Verification Method', methodLabel, lx, y, ffw);
+    }
+
+    // DL / ID number + issuing state
+    if (data.recipientDlNumber || data.recipientDlState) {
+      const dlA = addFieldPair(doc, 'DL / ID Number', data.recipientDlNumber || 'N/A', lx, y, hfw);
+      const dlB = addFieldPair(doc, 'Issuing State', data.recipientDlState || 'N/A', rx, y, hfw);
+      y = Math.max(dlA, dlB);
+    }
+
+    // DL class + expiry
+    if (data.recipientDlClass || data.recipientDlExpiry) {
+      const clA = addFieldPair(doc, 'DL Class', data.recipientDlClass || 'N/A', lx, y, hfw);
+      const clB = addFieldPair(doc, 'DL Expiry', data.recipientDlExpiry || 'N/A', rx, y, hfw);
+      y = Math.max(clA, clB);
+    }
+
+    // REAL ID status
+    if (data.recipientIsRealId != null) {
+      y = addFieldPair(doc, 'REAL ID', data.recipientIsRealId ? 'Yes' : 'No', lx, y, hfw);
+    }
+
+    // Physical description — single line summary
+    const descParts = [
+      data.recipientGender,
+      data.recipientRace,
+      data.recipientHeight,
+      data.recipientWeight ? `${data.recipientWeight} lbs` : undefined,
+      data.recipientHairColor ? `${data.recipientHairColor} hair` : undefined,
+      data.recipientEyeColor ? `${data.recipientEyeColor} eyes` : undefined,
+    ].filter(Boolean);
+    if (descParts.length > 0) {
+      y = addFieldPair(doc, 'Physical Description', descParts.join(', '), lx, y, ffw);
+    }
+
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Article IV — declarations ──

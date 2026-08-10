@@ -85,7 +85,9 @@ async function resetTables() {
     dl_restrictions TEXT, dl_endorsements TEXT, dl_issue_date TEXT,
     country TEXT, document_discriminator TEXT, is_real_id INTEGER, is_organ_donor INTEGER,
     under_18_until TEXT, under_21_until TEXT, aamva_version INTEGER, issuer_id TEXT,
-    address2 TEXT, raw_aamva_elements TEXT
+    address2 TEXT, raw_aamva_elements TEXT,
+    place_of_birth TEXT, name_prefix TEXT, is_veteran INTEGER, non_resident_indicator INTEGER,
+    limited_duration_doc INTEGER, card_revision_date TEXT, dl_hazmat_expiry TEXT, card_type TEXT
   )`);
   await execute(db, `CREATE TABLE dl_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT, dl_number TEXT, dl_state TEXT, dl_class TEXT, dl_status TEXT,
