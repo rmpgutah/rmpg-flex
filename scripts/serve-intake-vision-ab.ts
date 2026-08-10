@@ -29,11 +29,42 @@ const WORKERS_AI_CANDIDATES = [
   '@cf/moondream/moondream3.1-9B-A2B',      // deferred candidate, never tested
 ];
 
+// Moondream 3.1 is a task-based API (query/caption/point/detect), NOT the
+// legacy {image: number[], prompt: string} chat-vision shape the other
+// Workers AI candidate uses. `image` is a base64 data URI or public URL
+// (never a byte array), there is no free-form `prompt` field (use `question`
+// with task='query'), and the answer comes back as `result.answer` (plain
+// text), not `result.response`. Schema confirmed live via
+// GET /ai/models/schema?model=@cf/moondream/moondream3.1-9B-A2B.
+async function runMoondreamVision(imageBase64: string): Promise<Record<string, string>> {
+  const res = await fetch(`${API}/@cf/moondream/moondream3.1-9B-A2B`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${CF_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      task: 'query',
+      image: `data:image/png;base64,${imageBase64}`,
+      question: `${visionSystemPrompt()}\n\n${buildVisionUserPrompt('auto')}`,
+      reasoning: false,
+      max_tokens: 2048,
+      temperature: 0.1,
+    }),
+  });
+  if (!res.ok) { console.error(`  @cf/moondream/moondream3.1-9B-A2B: HTTP ${res.status}`); return {}; }
+  const body = await res.json() as { result?: { answer?: string } };
+  const parsed = tryParseModelJson({ response: body.result?.answer });
+  if (!parsed || typeof parsed !== 'object' || Object.keys(parsed).length === 0) {
+    console.error('  @cf/moondream/moondream3.1-9B-A2B: unparseable response');
+    return {};
+  }
+  return (parsed as any).fields ?? parsed;
+}
+
 async function runWorkersAiVision(model: string, imageBase64: string): Promise<Record<string, string>> {
   if (!CF_TOKEN || !process.env.CLOUDFLARE_ACCOUNT_ID) {
     console.error(`  ${model}: CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID not set, skipping`);
     return {};
   }
+  if (model === '@cf/moondream/moondream3.1-9B-A2B') return runMoondreamVision(imageBase64);
   const res = await fetch(`${API}/${model}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${CF_TOKEN}`, 'Content-Type': 'application/json' },
