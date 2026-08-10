@@ -536,7 +536,7 @@ export default function MdtPage() {
   }, []);
 
   // ── Real-time WebSocket subscriptions for dispatch events ──
-  const { subscribe } = useWebSocket();
+  const { subscribe, isConnected: wsConnected } = useWebSocket();
   useEffect(() => {
     // When dispatch assigns/unassigns units or changes call status, refresh
     // immediately — but skip high-frequency GPS position pushes (every ~1s),
@@ -1681,13 +1681,24 @@ export default function MdtPage() {
           <span className="text-[8px] font-mono font-bold text-rmpg-400">CH1 SECURE</span>
         </div>
 
-        {/* MDT ONLINE indicator */}
+        {/* MDT connection status — reflects actual WebSocket state */}
         <div className="flex items-center gap-1.5">
           <span
             className="w-2 h-2 rounded-full"
-            style={{ background: '#22c55e', boxShadow: '0 0 6px #22c55e, 0 0 2px #22c55e' }}
+            style={{
+              background: wsConnected ? 'var(--sev-ok)' : 'var(--sev-critical)',
+              boxShadow: wsConnected
+                ? '0 0 6px var(--sev-ok), 0 0 2px var(--sev-ok)'
+                : '0 0 6px var(--sev-critical), 0 0 2px var(--sev-critical)',
+              animation: wsConnected ? 'none' : 'officer-safety-flash 1.5s ease-in-out infinite',
+            }}
           />
-          <span className="text-[8px] font-mono font-bold text-green-400 uppercase tracking-wider">MDT ONLINE</span>
+          <span
+            className="text-[8px] font-mono font-bold uppercase tracking-wider"
+            style={{ color: wsConnected ? 'var(--sev-ok)' : 'var(--sev-critical)' }}
+          >
+            {wsConnected ? 'MDT ONLINE' : 'MDT OFFLINE'}
+          </span>
         </div>
       </div>
 
