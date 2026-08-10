@@ -710,11 +710,12 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // rendering every row twice — removed several more text-rmpg-500 sites
   // along with the dead second copy.
   //
-  // 10505 -> 10526: pre-existing drift from commits between the prior pin
-  // and the TesseractTrainingPage.tsx rewrite (2026-08-10). TesseractTrainingPage
-  // itself was rewritten with zero sub-AA tokens (text-fg-muted / text-fg-secondary
-  // throughout); the +21 comes from other files modified in that window.
-  const PIN = 10526;
+  // 10510 -> 10505: SecurityDashboardPage.tsx's new device/geo columns
+  // (Logins/Threats/Timeline tables, Blocked IPs card) were built on
+  // text-fg-muted, and de-duplicating the Blocked IPs card — it was
+  // rendering every row twice — removed several more text-rmpg-500 sites
+  // along with the dead second copy.
+  const PIN = 10505;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
