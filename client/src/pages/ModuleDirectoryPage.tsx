@@ -9,6 +9,7 @@ import { loadFavorites, saveFavorites, loadRecent, pushRecent } from '../utils/n
 import { useNavBadges, type NavBadges } from '../hooks/useNavBadges';
 import { isAppPinned, pinApp, unpinApp } from '../utils/taskbarPreferences';
 import ContextMenu from '../components/ContextMenu';
+import { isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 
 
 export default function ModuleDirectoryPage() {
@@ -18,6 +19,7 @@ export default function ModuleDirectoryPage() {
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
   const isContractManager = user?.role === 'contract_manager';
+  const flagsTick = useFeatureFlags();
 
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -68,6 +70,7 @@ export default function ModuleDirectoryPage() {
         if (fn.adminOnly && !isAdmin) return false;
         if (isClientViewer && CLIENT_VIEWER_BLOCKED.has(fn.path)) return false;
         if (isContractManager && CONTRACT_MANAGER_BLOCKED.has(fn.path)) return false;
+        if (!isFeatureEnabled(fn.path)) return false;
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
           return fn.label.toLowerCase().includes(q) ||
@@ -77,7 +80,7 @@ export default function ModuleDirectoryPage() {
         return true;
       }),
     })).filter(cat => cat.functions.length > 0);
-  }, [isAdmin, isClientViewer, isContractManager, searchQuery]);
+  }, [isAdmin, isClientViewer, isContractManager, searchQuery, flagsTick]);
 
   const allFunctions = useMemo(
     () => visibleCategories.flatMap(cat => cat.functions),

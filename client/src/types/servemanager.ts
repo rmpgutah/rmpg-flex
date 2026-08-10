@@ -117,6 +117,22 @@ export interface SMDocument {
   updated_at: string;
 }
 
+// Shape of each entry in SMCachedJob.documents_json — confirmed live
+// 2026-08-08 (distinct from SMDocument above, which is the unconfirmed
+// live-API shape). pdf_download_url is ServeManager's own authenticated
+// endpoint; fetch it via GET /api/servemanager/documents/:id/download
+// (the Worker proxy), never the raw URL directly.
+export interface SMCachedDocument {
+  type: 'document';
+  id: number;
+  title: string;
+  pdf_download_url: string;
+  signed: boolean;
+  document_type: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SMCompany {
   type: 'company';
   id: number;

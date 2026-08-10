@@ -25,6 +25,10 @@ describe('zsbComposite', () => {
     expect(zsbComposite({ sectionCode: 'SL2', zoneId: 'SL1-SSL', beatId: 'A1' })).toBe('SL2/SSL/A1');
   });
 
+  it('leaf-only zoneId (no embedded prefix, as CallCard/MdtPage pass call.sector_id) keeps the sector segment', () => {
+    expect(zsbComposite({ sectionCode: 'SL1', zoneId: 'SSL', beatId: 'A1' })).toBe('SL1/SSL/A1');
+  });
+
   it('sector only (resolved code) → SL1', () => {
     expect(zsbComposite({ sectionCode: 'SL1' })).toBe('SL1');
   });

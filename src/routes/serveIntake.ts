@@ -57,6 +57,7 @@ import {
   type PdfTextResult,
 } from '../utils/serveIntakeExtract';
 import { withTimeout, ocrImage, ocrText } from '../utils/serveIntakeOcr';
+import { loadFlags } from './adminDev';
 import { estimateNeurons, estimatePacketNeurons, FREE_NEURONS_PER_DAY } from '../utils/serveIntakeNeurons';
 import { precleanText, detectHomoglyphs } from '../utils/serveIntakePreclean';
 import { arbitrateFields, reconcileIdentityConflicts, type DocCandidate, type FieldConflict, type IdentityWinnerDoc } from '../utils/serveIntakeArbitrate';
@@ -260,6 +261,53 @@ const EMPTY_PDF_TEXT: PdfTextResult = { text: '', source: 'empty', structured: f
 // used directly below (not just via aiBudget's default).
 const AI_TIMEOUT_MS = 45_000;
 
+const TESSERACT_CONTAINER_NAME = 'shared'; // matches src/routes/tesseractOcr.ts's CONTAINER_NAME
+
+// Tesseract-first OCR leg, gated behind the tesseract_ocr_primary feature
+// flag (default OFF — see src/routes/adminDev.ts DEFAULT_FLAGS). When
+// enabled, calls the self-hosted Tesseract container for raw text, then
+// runs that text through the SAME Claude-first/Workers-AI-fallback field
+// extraction as every other text-based leg (ocrText) — Tesseract only
+// replaces the OCR step, not field extraction. Falls back to the existing
+// Claude-vision -> Workers-AI-vision chain (ocrImage) on ANY container
+// error, exactly like every other leg in this pipeline degrades rather
+// than failing the request.
+async function ocrImageWithTesseractGate(
+  env: Env['Bindings'], bytes: Uint8Array, mime: string,
+): Promise<ExtractionResult> {
+  let tesseractEnabled = false;
+  try {
+    const flags = await loadFlags(env.KV);
+    tesseractEnabled = flags.tesseract_ocr_primary;
+  } catch {
+    tesseractEnabled = false; // KV read failure must not block OCR — fall through to the existing chain
+  }
+
+  if (tesseractEnabled) {
+    try {
+      const form = new FormData();
+      form.append('image', new Blob([bytes], { type: mime }), 'input');
+      const container = getContainer(env.TESSERACT_OCR, TESSERACT_CONTAINER_NAME);
+      const res = await container.fetch(new Request('http://container/ocr', { method: 'POST', body: form }));
+      if (res.ok) {
+        const body = await res.json() as { text?: string };
+        const text = (body.text ?? '').trim();
+        if (text.length >= 20) {
+          const extraction = await ocrText(env, text);
+          if (extraction.success) {
+            return { ...extraction, model: `tesseract+${extraction.model}` };
+          }
+        }
+      }
+    } catch {
+      // Container unreachable, timed out, or returned unusable text — fall
+      // through to the existing chain below, same as every other leg here.
+    }
+  }
+
+  return ocrImage(env, bytes, mime);
+}
+
 async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | null): Promise<string> {
   const ts = Date.now();
   const safeName = (file.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
@@ -310,8 +358,10 @@ async function scanDocumentHandler(c: any): Promise<Response> {
   try {
     if (isImage(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      extraction = await ocrImage(c.env, bytes, file.type);
-      ocrEngine = extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
+      extraction = await ocrImageWithTesseractGate(c.env, bytes, file.type);
+      ocrEngine = extraction.model.startsWith('tesseract+')
+        ? 'tesseract'
+        : extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       let text: string;
@@ -538,9 +588,11 @@ si.post('/upload', async (c) => {
 
       // Images: Vision does OCR + extraction in one timeout-bounded pass.
       if (isImage(file.type)) {
-        const ex = await ocrImage(c.env, bytes, file.type)
+        const ex = await ocrImageWithTesseractGate(c.env, bytes, file.type)
           .catch((e) => emptyExtraction('workers-ai-vision', e instanceof Error ? e.message : String(e)));
-        const engine = ex.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
+        const engine = ex.model.startsWith('tesseract+')
+          ? 'tesseract'
+          : ex.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
         for (const d of ex.allDates) allDates.add(d);
         return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: engine, r2Key, ex, family: docFamily, modelCalled: true };
       }
@@ -1448,7 +1500,7 @@ async function reprocessDocument(
       const legacy = await c.env.UPLOADS.get(doc.r2_key);
       if (legacy) bytes = new Uint8Array(await legacy.arrayBuffer());
     }
-    if (bytes) extraction = await ocrImage(c.env, bytes, doc.file_type).catch(() => null);
+    if (bytes) extraction = await ocrImageWithTesseractGate(c.env, bytes, doc.file_type).catch(() => null);
   } else if ((doc.raw_text || '').trim().length >= 20) {
     // Same family derivation as /upload and /scan-document, from the
     // originally-uploaded file name stored on the document row.

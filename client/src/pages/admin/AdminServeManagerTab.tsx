@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, FileText, Briefcase, MapPin, ToggleLeft, ToggleRight,
   Settings, Bell, BellOff,
 } from 'lucide-react';
-import { apiFetch } from '../../hooks/useApi';
+import { apiFetch, apiFetchBlob } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import { safeDateStr, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
@@ -13,7 +13,7 @@ import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
   SMIntegrationStatus, SMConnectionTestResult, SMSyncResult,
   SMSyncLogEntry, SMCachedJob, SMPaginatedResponse, SMCachedAttempt,
-  SMPollerStatus,
+  SMPollerStatus, SMCachedDocument,
 } from '../../types/servemanager';
 import { formatEnumValue } from '../../utils/formatters';
 
@@ -246,6 +246,37 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
       setError(err instanceof Error ? err.message : 'Failed to load job details');
     } finally {
       setLoadingDetail(false);
+    }
+  };
+
+  const [downloadingDocId, setDownloadingDocId] = useState<number | null>(null);
+
+  const handleDownloadDocument = async (doc: SMCachedDocument) => {
+    setDownloadingDocId(doc.id);
+    try {
+      const blob = await apiFetchBlob(`/servemanager/documents/${doc.id}/download`);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download document');
+    } finally {
+      setDownloadingDocId(null);
+    }
+  };
+
+  const [creatingDispatchFor, setCreatingDispatchFor] = useState<number | null>(null);
+
+  const handleCreateDispatch = async (jobId: number) => {
+    setCreatingDispatchFor(jobId);
+    try {
+      await apiFetch(`/servemanager/jobs/${jobId}/create-dispatch`, { method: 'POST' });
+      await fetchJobs();
+      if (selectedJob?.id === jobId) await handleViewJob(jobId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create dispatch call');
+    } finally {
+      setCreatingDispatchFor(null);
     }
   };
 
@@ -643,9 +674,23 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
                   <span className="text-xs font-bold text-rmpg-100">Job #{selectedJob.sm_job_number}</span>
                   <ServiceStatusBadge status={selectedJob.service_status} />
                 </div>
-                <button aria-label="Close" type="button" onClick={() => setSelectedJob(null)} className="text-rmpg-500 hover:text-rmpg-300">
-                  <XCircle className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {!selectedJob.linked_call_id && (
+                    <button type="button"
+                      onClick={() => handleCreateDispatch(selectedJob.id)}
+                      disabled={creatingDispatchFor === selectedJob.id}
+                      className="toolbar-btn text-[10px] flex items-center gap-1 px-2 py-1 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50"
+                    >
+                      {creatingDispatchFor === selectedJob.id
+                        ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
+                        : <Zap className="w-3 h-3" />}
+                      Create Dispatch
+                    </button>
+                  )}
+                  <button aria-label="Close" type="button" onClick={() => setSelectedJob(null)} className="text-rmpg-500 hover:text-rmpg-300">
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px]">
                 <div><span className="text-rmpg-500">Recipient:</span> <span className="text-rmpg-200">{selectedJob.recipient_name || '—'}</span></div>
@@ -661,6 +706,31 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
                   <span className="text-rmpg-300 ml-1">{selectedJob.service_instructions}</span>
                 </div>
               )}
+              {/* Documents */}
+              {(() => {
+                let docs: SMCachedDocument[] = [];
+                try { docs = asArray(JSON.parse(selectedJob.documents_json || '[]')); } catch { /* malformed cache row */ }
+                if (docs.length === 0) return null;
+                return (
+                  <div className="space-y-1 mt-2">
+                    <div className="text-[10px] font-bold text-fg-muted">Documents ({docs.length})</div>
+                    {docs.map((doc) => (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        onClick={() => handleDownloadDocument(doc)}
+                        disabled={downloadingDocId === doc.id}
+                        className="flex items-center gap-2 w-full text-left text-[10px] bg-rmpg-800/50 hover:bg-rmpg-800 px-2 py-1 rounded-[2px] disabled:opacity-50"
+                      >
+                        <FileText className="w-3 h-3 text-fg-muted shrink-0" />
+                        <span className="text-rmpg-200">{doc.title || 'Document'}</span>
+                        {doc.document_type && <span className="text-fg-muted">({formatEnumValue(doc.document_type)})</span>}
+                        {downloadingDocId === doc.id && <Loader2 className="w-3 h-3 animate-spin text-fg-muted ml-auto" />}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
               {/* Attempts */}
               {selectedJob.attempts && selectedJob.attempts.length > 0 && (
                 <div className="space-y-1 mt-2">
@@ -697,7 +767,8 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
                     <th className="pb-1 pr-2 font-bold">Client</th>
                     <th className="pb-1 pr-2 font-bold">Due</th>
                     <th className="pb-1 pr-2 font-bold text-center">Attempts</th>
-                    <th className="pb-1 font-bold">Synced</th>
+                    <th className="pb-1 pr-2 font-bold">Synced</th>
+                    <th className="pb-1 font-bold">Dispatch</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -715,12 +786,28 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
                       <td className="py-1 pr-2 text-rmpg-300 max-w-[100px] truncate">{job.client_company_name || '—'}</td>
                       <td className="py-1 pr-2 text-rmpg-400 whitespace-nowrap">{job.due_date || '—'}</td>
                       <td className="py-1 pr-2 text-center font-mono text-rmpg-300">{job.attempt_count}</td>
-                      <td className="py-1 text-rmpg-500 whitespace-nowrap">{safeDateStr(job.synced_at)}</td>
+                      <td className="py-1 pr-2 text-rmpg-500 whitespace-nowrap">{safeDateStr(job.synced_at)}</td>
+                      <td className="py-1 whitespace-nowrap">
+                        {job.linked_call_id ? (
+                          <span className="text-[9px] text-green-400">Linked</span>
+                        ) : (
+                          <button type="button"
+                            onClick={(e) => { e.stopPropagation(); handleCreateDispatch(job.id); }}
+                            disabled={creatingDispatchFor === job.id}
+                            className="toolbar-btn text-[9px] flex items-center gap-1 px-1.5 py-0.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50"
+                          >
+                            {creatingDispatchFor === job.id
+                              ? <Loader2 className="w-2.5 h-2.5 animate-spin" role="status" aria-label="Loading" />
+                              : <Zap className="w-2.5 h-2.5" />}
+                            Create
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   {jobs.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="py-4 text-center text-rmpg-500">
+                      <td colSpan={9} className="py-4 text-center text-rmpg-500">
                         {jobSearch ? 'No jobs match your search' : 'No cached jobs'}
                       </td>
                     </tr>

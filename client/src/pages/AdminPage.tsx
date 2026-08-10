@@ -33,6 +33,7 @@ import {
   Package,
   Download,
   MonitorSmartphone,
+  ScanText,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -89,6 +90,7 @@ import AdminDevSettingsTab from './admin/AdminDevSettingsTab';
 import { Book } from 'lucide-react';
 import { AdminVmrsBrowser } from './admin/AdminVmrsBrowser';
 import AdminCourtLookupsTab from './admin/AdminCourtLookupsTab';
+import TesseractTrainingPage from './TesseractTrainingPage';
 import LinkageOptionsEditor from '../components/LinkageOptionsEditor';
 import { formatEnumValue } from '../utils/formatters';
 
@@ -259,7 +261,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'downloads' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'map_data_files' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleetio_health' | 'fleetio_directory' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups' | 'kiosk_devices';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'downloads' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'map_data_files' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleetio_health' | 'fleetio_directory' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups' | 'kiosk_devices' | 'ocr_learning';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -286,7 +288,7 @@ export default function AdminPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'downloads', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'map_data_files', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev', 'kiosk_devices'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'downloads', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'map_data_files', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev', 'kiosk_devices', 'ocr_learning'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link, and
@@ -762,6 +764,7 @@ export default function AdminPage() {
         { id: 'email', label: 'Microsoft Email', icon: Mail },
         { id: 'integrations', label: 'API Integrations', icon: Plug },
         { id: 'training', label: 'Training', icon: GraduationCap },
+        { id: 'ocr_learning', label: 'Tesseract OCR Learning', icon: ScanText },
       ],
     },
     {
@@ -1273,6 +1276,8 @@ export default function AdminPage() {
             setError={setError}
           />
         )}
+
+        {activeTab === 'ocr_learning' && <TesseractTrainingPage />}
 
         {activeTab === 'email' && (
           <AdminEmailTab

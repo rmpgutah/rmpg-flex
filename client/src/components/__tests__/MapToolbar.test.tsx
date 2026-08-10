@@ -7,6 +7,7 @@ const ALL_ON = {
   draw: true, annotations: true, gps_replay: true, nav_overlay: true,
   buildings_3d: true, buffer_rings: true, ruler: true, minimap: true,
   dev_diagnostics: false,
+  tesseract_ocr_primary: false,
 };
 
 const mockMap = {} as any;

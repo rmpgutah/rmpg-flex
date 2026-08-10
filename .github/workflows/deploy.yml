@@ -102,8 +102,9 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # [[containers]] removed from wrangler.toml (PdfToolsContainer
-          # intentionally off). No --containers-rollout flag needed.
+          # wrangler 4.x deploys [[containers]] automatically with a plain
+          # `deploy` command — no --containers-rollout flag exists/needed.
+          # Both PdfToolsContainer and TesseractOcrContainer are active here.
           command: deploy
 
       # Client SPA build + deploy to Cloudflare Pages.

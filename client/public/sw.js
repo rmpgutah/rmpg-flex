@@ -224,55 +224,70 @@ function cacheMatch(request) {
   return caches.match(request).catch(() => undefined);
 }
 
-function fetchWithRetry(request) {
-  return fetch(request).catch((firstErr) =>
+function fetchWithRetry(request, opts) {
+  var fetchOpts = opts || {};
+  return fetch(request, fetchOpts).catch((firstErr) =>
     new Promise((resolve, reject) => {
       setTimeout(() => {
-        // Reject with the ORIGINAL error so downstream catch branches and any
-        // console output describe the initial failure, not the retry's.
-        fetch(request).then(resolve, () => reject(firstErr));
+        fetch(request, fetchOpts).then(resolve, () => reject(firstErr));
       }, RETRY_DELAY_MS);
     })
   );
 }
 
-// Install — pre-cache core shell, immediately activate
+// Install — pre-cache core shell, immediately activate.
+// cache.addAll is ATOMIC — if ANY single file fails (one sound file on spotty
+// cellular), NOTHING gets cached, including index.html. Use individual puts so
+// critical assets (index.html, manifest) survive even when optional sounds fail.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .then((cache) =>
+        Promise.allSettled(
+          STATIC_ASSETS.map((asset) =>
+            fetch(asset, { cache: 'reload' })
+              .then((res) => {
+                if (res.ok) return cache.put(asset, res);
+              })
+              .catch(() => {})
+          )
+        )
+      )
+      .then((results) => {
+        var failed = results
+          ? results.filter((r) => r.status === 'rejected').length
+          : 0;
+        if (failed > 0) {
+          console.warn('[SW] Pre-cache: ' + failed + '/' + STATIC_ASSETS.length + ' assets failed');
+        }
+      })
       .catch((err) => {
         console.warn('[SW] Pre-cache failed:', err);
-        // Don't block install — partial cache is acceptable
       })
   );
-  // Skip waiting so the new SW activates immediately
   self.skipWaiting();
 });
 
-// Activate — clean old caches (including the retired tile cache), claim clients, notify
+// Activate — clean stale caches, claim clients, notify.
+// Keep the IMMEDIATELY PREVIOUS cache alive so in-flight sessions whose
+// index.html still references old chunk URLs can serve them from cache
+// instead of 404-ing against the new deploy. Only caches older than the
+// previous deploy (and the retired tile cache) are purged.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
-      // Delete every cache that isn't the current main cache. This also
-      // evicts the retired 'rmpg-flex-tiles-v2' CartoDB tile cache.
       const oldKeys = keys.filter((k) => k !== CACHE_NAME);
-      return Promise.all(oldKeys.map((k) => caches.delete(k))).then(() => {
-        if (oldKeys.length > 0) {
-          // Notify v539+ clients that have an auto-reload handler.
-          // The SW-side force-reload (client.navigate) was REMOVED
-          // 2026-05-05 because it was causing perceived slowness on
-          // Electron — the cache eviction + navigation triggered a
-          // full bundle re-fetch every time a new SW activated. The
-          // v539+ client-side auto-reload (1.5s after SW_UPDATED with
-          // input-focus guard) is enough; pre-v539 sessions can do a
-          // one-time manual reload.
-          self.clients.matchAll({ type: 'window' }).then((clients) => {
-            clients.forEach((client) => {
-              client.postMessage({ type: 'SW_UPDATED', cacheName: CACHE_NAME });
-            });
+      const rmpgKeys = oldKeys
+        .filter((k) => k.startsWith('rmpg-flex-'))
+        .sort();
+      const previousCache = rmpgKeys.length > 0 ? rmpgKeys[rmpgKeys.length - 1] : null;
+      const toDelete = oldKeys.filter((k) => k !== previousCache);
+      return Promise.all(toDelete.map((k) => caches.delete(k))).then(() => {
+        self.clients.matchAll({ type: 'window' }).then((clients) => {
+          clients.forEach((client) => {
+            client.postMessage({ type: 'SW_UPDATED', cacheName: CACHE_NAME });
           });
-        }
+        });
       });
     })
     .then(() => self.clients.claim())
@@ -357,10 +372,13 @@ self.addEventListener('fetch', (event) => {
   // tile fallback was retired 2026-04-29; if any code still references
   // /tiles/, requests fall through to the default network-first handler.
 
-  // Navigation requests — always network first with offline fallback
+  // Navigation requests — always network first with offline fallback.
+  // Force cache: 'no-cache' so the browser doesn't serve a stale HTTP-cached
+  // index.html from a previous deploy (the SW cache is the offline fallback,
+  // not the HTTP cache).
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetchWithRetry(event.request)
+      fetchWithRetry(event.request, { cache: 'no-cache' })
         .then((response) => {
           if (response.ok) {
             cachePut(CACHE_NAME, event.request, response.clone());
@@ -371,7 +389,7 @@ self.addEventListener('fetch', (event) => {
           cacheMatch(event.request)
             .then((cached) => cached || cacheMatch('/'))
             .then((fallback) => fallback || new Response(
-              '<!DOCTYPE html><html><head><title>Offline — RMPG Flex</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0}body{background:#0a0a0a;color:#d4a017;font-family:Calibri,Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{text-align:center;max-width:420px;padding:32px 28px;border:1px solid #222;background:#141414;border-radius:2px}h1{margin:0 0 12px;font-size:18px;letter-spacing:0.05em;text-transform:uppercase;color:#d4a017}p{margin:0 0 20px;color:#888;font-size:13px;line-height:1.5}button{background:#d4a017;color:#000;border:0;padding:10px 28px;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;border-radius:2px;font-family:inherit}button:hover{background:#f0bf38}</style></head><body><div class="card"><h1>Connection Lost</h1><p>Unable to reach the RMPG Flex server. Check your network connection and retry.</p><button onclick="window.location.reload()" type="button">Retry</button></div></body></html>',
+              '<!DOCTYPE html><html><head><title>Offline — RMPG Flex</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0}body{background:#172a3f;color:#f0f4f9;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{text-align:center;max-width:420px;padding:32px 28px;border:1px solid #2a4a6b;background:#1e3550;border-radius:2px}h1{margin:0 0 12px;font-size:18px;letter-spacing:0.05em;text-transform:uppercase;color:#f0f4f9}p{margin:0 0 20px;color:#8fa3b8;font-size:13px;line-height:1.5}button{background:#2a4a6b;color:#f0f4f9;border:1px solid #3b6a9a;padding:10px 28px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;border-radius:2px;font-family:inherit}button:hover{background:#3b6a9a}.cd{font-size:10px;color:#8fa3b8;font-family:monospace;margin-top:12px}</style></head><body><div class="card"><h1>Connection Lost</h1><p>Unable to reach the RMPG Flex server. Check your network connection.</p><button onclick="window.location.reload()" type="button">Retry Connection</button><div class="cd" id="cd">Retrying in 5s...</div></div><script>var r=5,t=setInterval(function(){r--;if(r<=0){clearInterval(t);window.location.reload()}else{document.getElementById("cd").textContent="Retrying in "+r+"s..."}},1000)</script></body></html>',
               { status: 503, headers: { 'Content-Type': 'text/html' } }
             ))
         )
