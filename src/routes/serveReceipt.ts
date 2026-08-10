@@ -34,6 +34,7 @@ import { recordAudit } from '../utils/auditLog';
 import { requireRole } from '../middleware/auth';
 import { rateLimitAllow } from '../utils/rateLimit';
 import { log } from '../utils/logger';
+import { clientIp } from '../utils/requestIp';
 
 const PUBLIC_APP_URL = 'https://rmpgutah.us';
 
@@ -97,9 +98,6 @@ async function hashIp(ip: string, salt: string): Promise<string> {
   return `${saltId}:${body}`;
 }
 
-function clientIp(c: any): string {
-  return c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
-}
 
 /** Reject anything that isn't a plausibly-sized PNG data URL. */
 /**
@@ -688,9 +686,11 @@ serveReceipt.post('/:token', async (c) => {
        recipient_signature, recipient_signed_at,
        server_signature, server_name, server_badge, witness_name, witness_signature,
        latitude, longitude, accuracy_m, user_agent, ip_hash,
+       device_fingerprint, screen_resolution, color_depth, timezone, language, languages,
+       platform, hardware_concurrency, device_memory, max_touch_points, timezone_offset,
        email_to, email_status, notes
      ) VALUES (?,?,?,?, ?,?,?, ?,?,?,?, ?,?,?,?, ?,?, ?, ?,?,?,?,?, ?,?, ?,?,?, ?,?,?, ?,?, ?,?,?,
-               ?, datetime('now'), ?,?,?,?,?, ?,?,?,?,?, ?,?,?)`,
+               ?, datetime('now'), ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?,?,?)`,
     tok.serve_queue_id, tok.id, method, priorStatus,
     variant, formTitle, boundedJson(attestations, 20, 16_000),
     submission.recipient_name, variant, str(body.recipient_relationship, 120),
@@ -713,6 +713,14 @@ serveReceipt.post('/:token', async (c) => {
     Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null,
     Number.isFinite(Number(body.accuracy_m)) ? Number(body.accuracy_m) : null,
     str(c.req.header('user-agent'), 300), ipHash,
+    str(body.device_fingerprint, 128), str(body.screen_resolution, 20),
+    Number.isFinite(Number(body.color_depth)) ? Number(body.color_depth) : null,
+    str(body.timezone, 60), str(body.language, 20), str(body.languages, 200),
+    str(body.platform, 300),
+    Number.isFinite(Number(body.hardware_concurrency)) ? Number(body.hardware_concurrency) : null,
+    Number.isFinite(Number(body.device_memory)) ? Number(body.device_memory) : null,
+    Number.isFinite(Number(body.max_touch_points)) ? Number(body.max_touch_points) : null,
+    Number.isFinite(Number(body.timezone_offset)) ? Number(body.timezone_offset) : null,
     emailTo, emailTo ? 'pending' : 'not_requested', str(body.notes, 1000),
     );
   } catch (err) {
