@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { imageToNaturalCoords } from '../utils/tesseractImageCoords';
+import { formatDateTime } from '../utils/dateUtils';
 
 interface DocRow {
   id: number;
@@ -9,6 +11,7 @@ interface DocRow {
   doc_type: string | null;
   created_at: string;
   already_in_corpus: boolean;
+  approval_status: 'pending' | 'approved' | null;
 }
 
 interface DocDetail {
@@ -16,6 +19,7 @@ interface DocDetail {
   file_name: string;
   raw_text: string | null;
   already_in_corpus: boolean;
+  approval_status: 'pending' | 'approved' | null;
 }
 
 interface BoxAnnotation {
@@ -28,7 +32,22 @@ interface Stroke { tool: 'arrow' | 'circle' | 'highlight'; points: [number, numb
 
 type Mode = 'text' | 'boxes' | 'notes';
 
+interface StatsByDocType { doc_type: string | null; eligible: number; labeled: number; approved: number }
+interface Stats { total_eligible: number; total_labeled: number; total_approved: number; by_doc_type: StatsByDocType[] }
+
+interface TrainingRun {
+  id: number;
+  generated_at: string;
+  generated_by: number;
+  document_count: number;
+}
+
 export default function TesseractTrainingPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [filterDocType, setFilterDocType] = useState(searchParams.get('doc_type') ?? '');
+  const [filterLabeled, setFilterLabeled] = useState(searchParams.get('labeled') ?? '');
+  const [filterFrom, setFilterFrom] = useState(searchParams.get('from') ?? '');
+  const [filterTo, setFilterTo] = useState(searchParams.get('to') ?? '');
   const [rows, setRows] = useState<DocRow[]>([]);
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -36,6 +55,10 @@ export default function TesseractTrainingPage() {
   const [groundTruth, setGroundTruth] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [bulkResultSummary, setBulkResultSummary] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('text');
 
   const [boxes, setBoxes] = useState<BoxAnnotation[]>([]);
@@ -49,13 +72,84 @@ export default function TesseractTrainingPage() {
   const [drawingStroke, setDrawingStroke] = useState<Stroke | null>(null);
   const [notesDirty, setNotesDirty] = useState(false);
 
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [statsOpen, setStatsOpen] = useState(true);
+
+  const loadStats = useCallback(() => {
+    apiFetch<Stats>('/tesseract-training/stats').then(setStats).catch(console.error);
+  }, []);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
+
+  const [runs, setRuns] = useState<TrainingRun[]>([]);
+  const [startingRun, setStartingRun] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  const loadRuns = useCallback(() => {
+    apiFetch<{ rows: TrainingRun[] }>('/tesseract-training/documents/runs?page=1')
+      .then((res) => setRuns(res.rows))
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => { loadRuns(); }, [loadRuns]);
+
+  const handleStartRun = async () => {
+    setStartingRun(true);
+    setRunError(null);
+    try {
+      await apiFetch('/tesseract-training/documents/runs', { method: 'POST' });
+      loadRuns();
+      loadStats();
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : 'Failed to start training run');
+    } finally {
+      setStartingRun(false);
+    }
+  };
+
   const loadList = useCallback(() => {
-    apiFetch<{ rows: DocRow[] }>(`/tesseract-training/documents?page=${page}`)
+    const params = new URLSearchParams({ page: String(page) });
+    if (filterDocType) params.set('doc_type', filterDocType);
+    if (filterLabeled) params.set('labeled', filterLabeled);
+    if (filterFrom) params.set('from', filterFrom);
+    if (filterTo) params.set('to', filterTo);
+    apiFetch<{ rows: DocRow[] }>(`/tesseract-training/documents?${params.toString()}`)
       .then((res) => setRows(res.rows))
       .catch(console.error);
-  }, [page]);
+    setSearchParams(params, { replace: true });
+  }, [page, filterDocType, filterLabeled, filterFrom, filterTo, setSearchParams]);
 
   useEffect(() => { loadList(); }, [loadList]);
+
+  const toggleSelected = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkSubmit = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkSubmitting(true);
+    setBulkResultSummary(null);
+    try {
+      const res = await apiFetch<{ results: Array<{ id: number; success: boolean; error?: string }> }>(
+        '/tesseract-training/documents/bulk-submit',
+        { method: 'POST', body: JSON.stringify({ document_ids: Array.from(selectedIds) }) },
+      );
+      const succeeded = res.results.filter((r) => r.success).length;
+      const failed = res.results.length - succeeded;
+      setBulkResultSummary(`${succeeded} submitted, ${failed} failed`);
+      setSelectedIds(new Set());
+      loadList();
+      loadStats();
+    } catch (err) {
+      setBulkResultSummary(err instanceof Error ? err.message : 'Bulk submit failed');
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     if (selectedId == null) { setDetail(null); return; }
@@ -93,10 +187,26 @@ export default function TesseractTrainingPage() {
       });
       setSelectedId(null);
       loadList();
+      loadStats();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Submission failed');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (selectedId == null) return;
+    setApproving(true);
+    try {
+      await apiFetch(`/tesseract-training/documents/${selectedId}/approve`, { method: 'POST' });
+      setDetail((d) => (d ? { ...d, approval_status: 'approved' } : d));
+      loadList();
+      loadStats();
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Approval failed');
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -143,21 +253,151 @@ export default function TesseractTrainingPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="TESSERACT TRAINING SETUP" />
+      {stats && (
+        <div className="border border-surface-border p-3 space-y-2">
+          <button
+            onClick={() => setStatsOpen((v) => !v)}
+            className="text-[11px] font-bold uppercase tracking-wide"
+          >
+            Coverage {statsOpen ? '▲' : '▼'}
+          </button>
+          {statsOpen && (
+            <div className="space-y-1 text-[11px]">
+              <p>
+                {stats.total_labeled} / {stats.total_eligible} documents labeled
+                ({stats.total_approved} approved)
+              </p>
+              <table className="w-full">
+                <thead>
+                  <tr className="text-left text-fg-muted">
+                    <th>Doc Type</th><th>Eligible</th><th>Labeled</th><th>Approved</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.by_doc_type.map((row) => (
+                    <tr key={row.doc_type ?? '(none)'}>
+                      <td>{row.doc_type ?? '(unclassified)'}</td>
+                      <td>{row.eligible}</td>
+                      <td>{row.labeled}</td>
+                      <td>{row.approved}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+      <div className="border border-surface-border p-3 space-y-2">
+        <p className="text-[11px] font-bold uppercase tracking-wide">Training Runs</p>
+        <button
+          onClick={handleStartRun}
+          disabled={startingRun || !stats || stats.total_approved === 0}
+          className="px-3 py-1 border text-[11px]"
+        >
+          {startingRun ? 'Building Package...' : 'Start Training Run'}
+        </button>
+        {stats && stats.total_approved === 0 && (
+          <p className="text-[11px] text-fg-muted">
+            Approve at least one document before starting a training run.
+          </p>
+        )}
+        {runError && <p className="text-[11px] text-red-500">{runError}</p>}
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="text-left text-fg-muted">
+              <th>Generated</th><th>Documents</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {runs.map((run) => (
+              <tr key={run.id}>
+                <td>{formatDateTime(run.generated_at)}</td>
+                <td>{run.document_count}</td>
+                <td>
+                  <a
+                    href={authedImageUrl(`/api/tesseract-training/documents/runs/${run.id}/download`)}
+                    download={`rmpg-training-${run.id}.zip`}
+                  >
+                    Download
+                  </a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <div className="flex gap-4">
         <div className="w-1/3 space-y-2">
-          {rows.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => setSelectedId(r.id)}
-              className={`block w-full text-left p-2 text-[11px] border ${r.already_in_corpus ? 'opacity-50' : ''}`}
+          <div className="space-y-1 pb-2 border-b border-surface-border">
+            <select
+              value={filterDocType}
+              onChange={(e) => { setFilterDocType(e.target.value); setPage(1); }}
+              className="w-full text-[11px] border p-1"
             >
-              {r.file_name} {r.already_in_corpus ? '(already labeled)' : ''}
-            </button>
+              <option value="">All doc types</option>
+              <option value="null">(unclassified)</option>
+              {stats?.by_doc_type
+                .filter((r) => r.doc_type != null)
+                .map((r) => (
+                  <option key={r.doc_type} value={r.doc_type!}>{r.doc_type}</option>
+                ))}
+            </select>
+            <select
+              value={filterLabeled}
+              onChange={(e) => { setFilterLabeled(e.target.value); setPage(1); }}
+              className="w-full text-[11px] border p-1"
+            >
+              <option value="">Labeled + unlabeled</option>
+              <option value="true">Labeled only</option>
+              <option value="false">Unlabeled only</option>
+            </select>
+            <div className="flex gap-1">
+              <input
+                type="date"
+                value={filterFrom}
+                onChange={(e) => { setFilterFrom(e.target.value); setPage(1); }}
+                className="flex-1 text-[11px] border p-1"
+              />
+              <input
+                type="date"
+                value={filterTo}
+                onChange={(e) => { setFilterTo(e.target.value); setPage(1); }}
+                className="flex-1 text-[11px] border p-1"
+              />
+            </div>
+          </div>
+          {rows.map((r) => (
+            <div key={r.id} className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={selectedIds.has(r.id)}
+                onChange={() => toggleSelected(r.id)}
+                disabled={r.already_in_corpus}
+                aria-label={`Select ${r.file_name} for bulk submit`}
+              />
+              <button
+                onClick={() => setSelectedId(r.id)}
+                className={`flex-1 text-left p-2 text-[11px] border ${r.already_in_corpus ? 'opacity-50' : ''}`}
+              >
+                {r.file_name}
+                {r.approval_status === 'approved' && ' [APPROVED]'}
+                {r.approval_status === 'pending' && ' [PENDING]'}
+              </button>
+            </div>
           ))}
           <div className="flex gap-2">
             <button onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button>
             <button onClick={() => setPage((p) => p + 1)}>Next</button>
           </div>
+          {selectedIds.size > 0 && (
+            <div className="space-y-1">
+              <button onClick={handleBulkSubmit} disabled={bulkSubmitting} className="px-3 py-1 border w-full">
+                Submit {selectedIds.size} Selected
+              </button>
+              {bulkResultSummary && <p className="text-[11px]">{bulkResultSummary}</p>}
+            </div>
+          )}
         </div>
         <div className="w-2/3">
           {detail && (
@@ -195,6 +435,15 @@ export default function TesseractTrainingPage() {
                   >
                     {detail.already_in_corpus ? 'Already Submitted' : 'Submit to Training Corpus'}
                   </button>
+                  {detail.already_in_corpus && detail.approval_status === 'pending' && (
+                    <button
+                      onClick={handleApprove}
+                      disabled={approving}
+                      className="px-3 py-1 border ml-2"
+                    >
+                      Approve
+                    </button>
+                  )}
                 </>
               )}
 
