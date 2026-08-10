@@ -16,6 +16,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { getDecrypted } from '../utils/encryptedR2';
 import { clampIntParam } from '../utils/paginationParams';
+import { zipSync, strToU8 } from 'fflate';
 
 const tesseractTraining = new Hono<Env>();
 
@@ -496,6 +497,87 @@ tesseractTraining.put('/documents/:id/notes', async (c) => {
     id, JSON.stringify(body.strokes), user.id,
   );
   return c.json({ success: true });
+});
+
+// POST /api/tesseract-training/documents/runs
+// Bundles every approved tesseract_training_corpus document into a
+// tesstrain-ready zip (image + ground-truth pairs, exactly the shape
+// tesstrain's GROUND_TRUTH_DIR expects) and saves it to R2. Does NOT run
+// tesstrain itself — that stays a manual, local, operator-run process.
+tesseractTraining.post('/documents/runs', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const user = c.get('user');
+  const db = getDb(c.env);
+
+  const approved = await query<{ serve_intake_document_id: number }>(
+    db,
+    `SELECT serve_intake_document_id FROM tesseract_training_corpus WHERE approval_status = 'approved'`,
+  );
+  if (approved.length === 0) {
+    return c.json({ error: 'No approved documents to package', code: 'NOTHING_TO_TRAIN' }, 400);
+  }
+
+  const zipEntries: Record<string, Uint8Array> = {};
+  for (const { serve_intake_document_id: docId } of approved) {
+    const listed = await c.env.TESSERACT_TRAINING.list({ prefix: `training-corpus/${docId}/` });
+    const imageKey = listed.objects.find((o: { key: string }) => /\/image\.[^/]+$/.test(o.key))?.key;
+    const gtKey = listed.objects.find((o: { key: string }) => o.key.endsWith('/ground-truth.txt'))?.key;
+    if (!imageKey || !gtKey) continue; // source objects missing — skip rather than fail the whole run
+
+    const imageObj = await c.env.TESSERACT_TRAINING.get(imageKey);
+    const gtObj = await c.env.TESSERACT_TRAINING.get(gtKey);
+    if (!imageObj || !gtObj) continue;
+
+    const ext = imageKey.split('.').pop() || 'png';
+    zipEntries[`rmpg-ground-truth/${docId}.${ext}`] = new Uint8Array(await imageObj.arrayBuffer());
+    zipEntries[`rmpg-ground-truth/${docId}.gt.txt`] = new Uint8Array(await gtObj.arrayBuffer());
+  }
+
+  const includedIds = approved
+    .map((r) => r.serve_intake_document_id)
+    .filter((docId) => `rmpg-ground-truth/${docId}.gt.txt` in zipEntries);
+  if (includedIds.length === 0) {
+    return c.json({ error: 'No approved documents to package', code: 'NOTHING_TO_TRAIN' }, 400);
+  }
+
+  const generatedAt = new Date().toISOString();
+  const readme = `# RMPG Flex — Tesseract Training Package
+
+Generated: ${generatedAt}
+Documents included: ${includedIds.length}
+
+## To train
+
+1. Clone tesstrain if you haven't already:
+   git clone https://github.com/tesseract-ocr/tesstrain.git
+   cd tesstrain
+
+2. Extract this package's rmpg-ground-truth/ folder into tesstrain's data/ directory:
+   data/rmpg-ground-truth/
+
+3. Run training (requires the stock \`eng\` traineddata as the starting point):
+   make training MODEL_NAME=rmpg START_MODEL=eng TESSDATA=/usr/share/tesseract-ocr/5/tessdata GROUND_TRUTH_DIR=data/rmpg-ground-truth
+
+4. The resulting data/rmpg.traineddata is the fine-tuned model. Upload it to:
+   rmpg-flex-tesseract-training/models/latest/tesseract.traineddata
+   (this is the R2 key scripts/fetch-tesseract-model.sh looks for on the next deploy)
+`;
+  zipEntries['README.md'] = strToU8(readme);
+
+  const zipped = zipSync(zipEntries);
+  const r2Key = `training-runs/${Date.now()}/package.zip`;
+  await c.env.TESSERACT_TRAINING.put(r2Key, zipped, {
+    httpMetadata: { contentType: 'application/zip' },
+  });
+
+  const result = await execute(
+    db,
+    `INSERT INTO tesseract_training_runs (generated_by, document_count, document_ids_json, r2_key) VALUES (?, ?, ?, ?)`,
+    user.id, includedIds.length, JSON.stringify(includedIds), r2Key,
+  );
+  return c.json({ id: result.meta.last_row_id, document_count: includedIds.length });
 });
 
 export default tesseractTraining;
