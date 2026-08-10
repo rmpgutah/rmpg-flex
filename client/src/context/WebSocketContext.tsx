@@ -492,9 +492,23 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     };
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('online', handleOnline);
+
+    // Electron connectivity monitor — when the desktop shell detects the
+    // health endpoint is reachable again after a confirmed outage, trigger
+    // an immediate WebSocket reconnect instead of waiting for the next
+    // backoff cycle. Critical for MDT in vehicles with flaky cellular.
+    const electron = (window as any).electron;
+    let unsubElectron: (() => void) | null = null;
+    if (electron?.onConnectivityChange) {
+      unsubElectron = electron.onConnectivityChange((data: { isOnline: boolean }) => {
+        if (data.isOnline) handleOnline();
+      });
+    }
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('online', handleOnline);
+      if (unsubElectron) unsubElectron();
     };
   }, [connect, connectAlerts, handleVisibility]);
 
