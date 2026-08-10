@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { imageToNaturalCoords } from '../utils/tesseractImageCoords';
+import { formatDateTime } from '../utils/dateUtils';
 
 interface DocRow {
   id: number;
@@ -311,7 +312,7 @@ export default function TesseractTrainingPage() {
           <tbody>
             {runs.map((run) => (
               <tr key={run.id}>
-                <td>{new Date(run.generated_at).toLocaleString()}</td>
+                <td>{formatDateTime(run.generated_at)}</td>
                 <td>{run.document_count}</td>
                 <td>
                   <a
