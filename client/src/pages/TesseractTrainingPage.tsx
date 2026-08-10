@@ -326,7 +326,7 @@ export default function TesseractTrainingPage() {
                 <div key={label} className="bg-surface-base border border-border-subtle rounded-sm px-2 py-1.5">
                   <p className="text-[9px] uppercase tracking-wider text-[color:var(--field-label-color)]">{label}</p>
                   <p className={`text-[18px] font-bold leading-none ${highlight ? 'text-green-400' : 'text-rmpg-100'}`}>{value}</p>
-                  {sub && <p className="text-[9px] text-rmpg-500 mt-0.5">{sub}</p>}
+                  {sub && <p className="text-[9px] text-fg-muted mt-0.5">{sub}</p>}
                 </div>
               ))}
             </div>
@@ -342,17 +342,17 @@ export default function TesseractTrainingPage() {
               <thead>
                 <tr className="border-b border-border-subtle">
                   <th className="text-left py-1 text-[color:var(--field-label-color)] font-semibold">Doc Type</th>
-                  <th className="text-right py-1 text-rmpg-500 font-semibold">Eligible</th>
-                  <th className="text-right py-1 text-rmpg-500 font-semibold">Labeled</th>
-                  <th className="text-right py-1 text-rmpg-500 font-semibold">Approved</th>
+                  <th className="text-right py-1 text-fg-muted font-semibold">Eligible</th>
+                  <th className="text-right py-1 text-fg-muted font-semibold">Labeled</th>
+                  <th className="text-right py-1 text-fg-muted font-semibold">Approved</th>
                 </tr>
               </thead>
               <tbody>
                 {stats.by_doc_type.map((row) => (
                   <tr key={row.doc_type ?? '__none__'} className="border-b border-border-subtle last:border-0">
-                    <td className="py-[3px] text-rmpg-200">{row.doc_type ?? <span className="text-rmpg-500 italic">unclassified</span>}</td>
-                    <td className="py-[3px] text-right text-rmpg-400">{row.eligible}</td>
-                    <td className="py-[3px] text-right text-rmpg-300">{row.labeled}</td>
+                    <td className="py-[3px] text-rmpg-200">{row.doc_type ?? <span className="text-fg-muted italic">unclassified</span>}</td>
+                    <td className="py-[3px] text-right text-fg-secondary">{row.eligible}</td>
+                    <td className="py-[3px] text-right text-fg-secondary">{row.labeled}</td>
                     <td className="py-[3px] text-right text-green-400 font-semibold">{row.approved}</td>
                   </tr>
                 ))}
@@ -385,13 +385,13 @@ export default function TesseractTrainingPage() {
         )}
 
         {runs.length === 0 ? (
-          <p className="px-3 py-3 text-[10px] text-rmpg-500 italic">No training runs yet.</p>
+          <p className="px-3 py-3 text-[10px] text-fg-muted italic">No training runs yet.</p>
         ) : (
           <table className="w-full text-[10px]">
             <thead>
               <tr className="border-b border-border-subtle">
                 <th className="text-left px-3 py-1.5 text-[color:var(--field-label-color)] font-semibold">Generated</th>
-                <th className="text-right px-3 py-1.5 text-rmpg-500 font-semibold">Docs</th>
+                <th className="text-right px-3 py-1.5 text-fg-muted font-semibold">Docs</th>
                 <th className="px-3 py-1.5" />
               </tr>
             </thead>
@@ -399,7 +399,7 @@ export default function TesseractTrainingPage() {
               {runs.map((run) => (
                 <tr key={run.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-hover">
                   <td className="px-3 py-[3px] text-rmpg-200">{formatDateTime(run.generated_at)}</td>
-                  <td className="px-3 py-[3px] text-right text-rmpg-300">{run.document_count}</td>
+                  <td className="px-3 py-[3px] text-right text-fg-secondary">{run.document_count}</td>
                   <td className="px-3 py-[3px] text-right">
                     <a
                       href={authedImageUrl(`/api/tesseract-training/documents/runs/${run.id}/download`)}
@@ -423,7 +423,7 @@ export default function TesseractTrainingPage() {
         <div className="w-72 flex-none bg-surface-raised border border-border-default rounded-sm flex flex-col">
           {/* Filters */}
           <div className="p-2 space-y-1.5 border-b border-border-default">
-            <div className="flex items-center gap-1 text-[9px] text-rmpg-500 uppercase tracking-wider pb-0.5">
+            <div className="flex items-center gap-1 text-[9px] text-fg-muted uppercase tracking-wider pb-0.5">
               <Filter size={9} /> Filters
             </div>
             <select
@@ -470,7 +470,7 @@ export default function TesseractTrainingPage() {
                   <button
                     onClick={(e) => { e.stopPropagation(); if (!r.already_in_corpus) toggleSelected(r.id); }}
                     disabled={r.already_in_corpus}
-                    className="flex-none text-rmpg-500 disabled:opacity-30"
+                    className="flex-none text-fg-muted disabled:opacity-30"
                     aria-label={`Select ${r.file_name} for bulk submit`}
                   >
                     {isChecked ? <CheckSquare size={13} className="text-brand-400" /> : <Square size={13} />}
@@ -478,7 +478,7 @@ export default function TesseractTrainingPage() {
                   <div className="flex-1 min-w-0">
                     <p className={`text-[10px] truncate ${isSelected ? 'text-rmpg-100' : 'text-rmpg-200'}`}>{r.file_name}</p>
                     <div className="flex items-center gap-1 mt-0.5">
-                      {r.doc_type && <span className="text-[8px] text-rmpg-500">{r.doc_type}</span>}
+                      {r.doc_type && <span className="text-[8px] text-fg-muted">{r.doc_type}</span>}
                       {r.approval_status === 'approved' && (
                         <span className="text-[8px] font-bold px-1 bg-green-900/40 text-green-400 border border-green-700/50 flex items-center gap-0.5">
                           <CheckCircle size={8} /> APPROVED
@@ -500,10 +500,10 @@ export default function TesseractTrainingPage() {
           <div className="p-2 border-t border-border-default space-y-1.5">
             <div className="flex items-center justify-between text-[10px]">
               <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-                className="px-2 py-0.5 border border-border-default text-rmpg-300 disabled:opacity-30 hover:text-rmpg-100">← Prev</button>
-              <span className="text-rmpg-500">Page {page}</span>
+                className="px-2 py-0.5 border border-border-default text-fg-secondary disabled:opacity-30 hover:text-rmpg-100">← Prev</button>
+              <span className="text-fg-muted">Page {page}</span>
               <button onClick={() => setPage((p) => p + 1)} disabled={rows.length < 25}
-                className="px-2 py-0.5 border border-border-default text-rmpg-300 disabled:opacity-30 hover:text-rmpg-100">Next →</button>
+                className="px-2 py-0.5 border border-border-default text-fg-secondary disabled:opacity-30 hover:text-rmpg-100">Next →</button>
             </div>
             {selectedIds.size > 0 && (
               <button
@@ -521,7 +521,7 @@ export default function TesseractTrainingPage() {
         {/* Right: editor */}
         <div className="flex-1 min-w-0 bg-surface-raised border border-border-default rounded-sm flex flex-col">
           {!detail ? (
-            <div className="flex-1 flex items-center justify-center text-[11px] text-rmpg-500 italic">
+            <div className="flex-1 flex items-center justify-center text-[11px] text-fg-muted italic">
               Select a document to review
             </div>
           ) : (
@@ -539,7 +539,7 @@ export default function TesseractTrainingPage() {
                     className={`flex items-center gap-1 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider border-b-2 transition-colors ${
                       mode === id
                         ? 'border-brand-400 text-brand-300'
-                        : 'border-transparent text-rmpg-500 hover:text-rmpg-300'
+                        : 'border-transparent text-fg-muted hover:text-fg-secondary'
                     }`}
                   >
                     <Icon size={11} /> {label}
@@ -558,7 +558,7 @@ export default function TesseractTrainingPage() {
                   )}
                   <button
                     onClick={() => setSelectedId(null)}
-                    className="ml-1 text-rmpg-500 hover:text-rmpg-200"
+                    className="ml-1 text-fg-muted hover:text-rmpg-200"
                     aria-label="Close document"
                   >
                     <X size={14} />
@@ -620,7 +620,7 @@ export default function TesseractTrainingPage() {
                 {/* ── Box Annotations ── */}
                 {mode === 'boxes' && (
                   <div className="space-y-3">
-                    <p className="text-[10px] text-rmpg-400">
+                    <p className="text-[10px] text-fg-secondary">
                       Drag a box over a word or line, then enter its correct text. These become Tesseract training data.
                     </p>
                     <div
@@ -673,7 +673,7 @@ export default function TesseractTrainingPage() {
                           <Save size={11} /> Save
                         </button>
                         <button onClick={() => { setDrawRect(null); setPendingBoxText(''); }}
-                          className="flex items-center gap-1 px-2 py-1.5 border border-border-default text-[10px] text-rmpg-300 hover:text-rmpg-100 rounded-sm">
+                          className="flex items-center gap-1 px-2 py-1.5 border border-border-default text-[10px] text-fg-secondary hover:text-rmpg-100 rounded-sm">
                           <X size={11} />
                         </button>
                       </div>
@@ -685,7 +685,7 @@ export default function TesseractTrainingPage() {
                         {boxes.map((b) => (
                           <div key={b.id} className="flex items-center justify-between bg-surface-base border border-border-subtle px-2 py-1 rounded-sm">
                             <span className="text-[10px] text-rmpg-200 font-mono">{b.corrected_text}</span>
-                            <button onClick={() => deleteBox(b.id)} className="text-rmpg-600 hover:text-red-400">
+                            <button onClick={() => deleteBox(b.id)} className="text-fg-muted hover:text-red-400">
                               <Trash2 size={12} />
                             </button>
                           </div>
@@ -699,7 +699,7 @@ export default function TesseractTrainingPage() {
                 {mode === 'notes' && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[9px] uppercase tracking-wider text-rmpg-500">Tool:</span>
+                      <span className="text-[9px] uppercase tracking-wider text-fg-muted">Tool:</span>
                       {(['highlight', 'circle', 'arrow'] as const).map((t) => {
                         const Icon = TOOL_ICONS[t];
                         return (
@@ -709,7 +709,7 @@ export default function TesseractTrainingPage() {
                             className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-sm ${
                               activeTool === t
                                 ? 'border-brand-400 bg-brand-900/40 text-brand-300'
-                                : 'border-border-default text-rmpg-400 hover:text-rmpg-200'
+                                : 'border-border-default text-fg-secondary hover:text-rmpg-200'
                             }`}
                           >
                             <Icon size={11} /> {t}
@@ -719,7 +719,7 @@ export default function TesseractTrainingPage() {
                       <button
                         onClick={() => { setStrokes([]); setNotesDirty(true); }}
                         disabled={strokes.length === 0}
-                        className="flex items-center gap-1 px-2 py-1 text-[10px] border border-border-default text-rmpg-500 hover:text-red-400 disabled:opacity-30 rounded-sm ml-1"
+                        className="flex items-center gap-1 px-2 py-1 text-[10px] border border-border-default text-fg-muted hover:text-red-400 disabled:opacity-30 rounded-sm ml-1"
                       >
                         <Trash2 size={11} /> Clear
                       </button>
@@ -733,7 +733,7 @@ export default function TesseractTrainingPage() {
                       </button>
                     </div>
 
-                    <p className="text-[10px] text-rmpg-500">
+                    <p className="text-[10px] text-fg-muted">
                       Free-form marks for human reviewers only — not used for training.
                     </p>
 
