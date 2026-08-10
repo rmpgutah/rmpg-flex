@@ -414,7 +414,7 @@ export default function ServeReceiptActions({
    * Downscale the photographed page before it leaves the device.
    *
    * A raw phone photo is several megabytes and this is going into a
-   * database column, not object storage. 1600px on the long edge at 0.7
+   * database column, not object storage. 1600px on the long edge at 0.8
    * JPEG keeps a signature and printed body text plainly legible while
    * landing inside the same 500KB ceiling a drawn signature has.
    */
@@ -428,7 +428,7 @@ export default function ServeReceiptActions({
         canvas.width = Math.round(img.width * scale);
         canvas.height = Math.round(img.height * scale);
         canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
-        setPaperImage(canvas.toDataURL('image/jpeg', 0.7));
+        setPaperImage(canvas.toDataURL('image/jpeg', 0.8));
       };
       img.src = String(reader.result);
     };
