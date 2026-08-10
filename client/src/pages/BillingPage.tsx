@@ -34,6 +34,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router';
+import { importWithRetry } from '../utils/importWithRetry';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -189,7 +190,7 @@ export default function BillingPage() {
         apiFetch<{ data: any[] }>(`/billing/invoices/${inv.id}/items`).catch(() => ({ data: [] })),
         apiFetch<{ data: any[] }>(`/billing/payments?invoice_id=${inv.id}`).catch(() => ({ data: [] })),
       ]);
-      const { generateInvoicePdf } = await import('../utils/invoicePdfGenerator');
+      const { generateInvoicePdf } = await importWithRetry(() => import('../utils/invoicePdfGenerator'));
       const pdfData = {
         invoice_number: String(inv.invoice_number || `INV-${inv.id}`),
         status: String(inv.status || 'draft'),

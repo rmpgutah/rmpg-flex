@@ -1,16 +1,17 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+import { lazyRetry } from '../../utils/importWithRetry';
 import { useAuth } from '../../context/AuthContext';
 import { useMobileLayout, CardId } from './hooks/useMobileLayout';
 
 const CARDS: Record<CardId, React.LazyExoticComponent<any>> = {
-  unit: lazy(() => import('./cards/UnitStatusCard')),
-  calls: lazy(() => import('./cards/ActiveCallsCard')),
-  search: lazy(() => import('./cards/QuickSearchCard')),
-  bolos: lazy(() => import('./cards/BolosCard')),
-  map: lazy(() => import('./cards/MapSnippetCard')),
-  actions: lazy(() => import('./cards/QuickActionsCard')),
-  messages: lazy(() => import('./cards/MessagesCard')),
-  shift: lazy(() => import('./cards/ShiftCard')),
+  unit: lazyRetry(() => import('./cards/UnitStatusCard')),
+  calls: lazyRetry(() => import('./cards/ActiveCallsCard')),
+  search: lazyRetry(() => import('./cards/QuickSearchCard')),
+  bolos: lazyRetry(() => import('./cards/BolosCard')),
+  map: lazyRetry(() => import('./cards/MapSnippetCard')),
+  actions: lazyRetry(() => import('./cards/QuickActionsCard')),
+  messages: lazyRetry(() => import('./cards/MessagesCard')),
+  shift: lazyRetry(() => import('./cards/ShiftCard')),
 };
 
 export default function MobileHomePage() {

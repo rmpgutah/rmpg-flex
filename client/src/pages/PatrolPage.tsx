@@ -54,6 +54,7 @@ import PricingTab from './patrol/PricingTab';
 import ContractsTab from './patrol/ContractsTab';
 import BillingReviewTab from './patrol/BillingReviewTab';
 import { escapeHtml } from '../utils/sanitize';
+import { importWithRetry } from '../utils/importWithRetry';
 
 // Add Mapbox type for TypeScript
 declare global {
@@ -726,7 +727,7 @@ const PatrolPage: React.FC = () => {
     let alive = true;
     (async () => {
       try {
-        const QRCode = (await import('qrcode')).default;
+        const QRCode = (await importWithRetry(() => import('qrcode'))).default;
         const url = await QRCode.toDataURL(selectedQrCode, {
           errorCorrectionLevel: 'H', // printed signage tolerates smudging/wear
           margin: 4,                 // ISO/IEC 18004 quiet zone

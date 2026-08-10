@@ -11,6 +11,7 @@ import { ShieldCheck, AlertCircle, Check, Copy, Clock } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import TotpCodeInput from './TotpCodeInput';
+import { importWithRetry } from '../utils/importWithRetry';
 
 /** Session key — tracks whether user dismissed the 2FA prompt this session */
 const DEFER_KEY = 'rmpg_2fa_deferred';
@@ -35,7 +36,7 @@ export default function Force2FASetupModal() {
       let qr = data.qrCodeDataUrl as string | null;
       if (!qr && data.otpauthUrl) {
         // Worker returns otpauthUrl; render the QR locally (qrcode pkg).
-        const QRCode = (await import('qrcode')).default;
+        const QRCode = (await importWithRetry(() => import('qrcode'))).default;
         qr = await QRCode.toDataURL(data.otpauthUrl, { margin: 1, width: 220 });
       }
       setQrDataUrl(qr || '');

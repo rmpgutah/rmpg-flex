@@ -4,6 +4,7 @@ import { RmpgPdfBuilder, open as openEnginePdf } from '../../lib/rmpg-pdf-engine
 import { Annotation, BatesConfig, EditorState, HeaderFooterConfig, PageLabelRule, PageMeta, PageNumbersConfig, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
 import { normalizeUploadResponse } from './uploadResponse';
 import { formatPageNumber, resolvePageLabel } from './pageNumbering';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 // Re-export the pure page-number / page-label helpers (defined in
 // pageNumbering.ts so they stay free of the heavy pdf-lib / pdfjs import graph
@@ -1406,7 +1407,7 @@ export async function grayscalePageBytes(
   original: number,
   invert = false,
 ): Promise<Uint8Array> {
-  const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
+  const { openAndRenderPage } = await importWithRetry(() => import('../../lib/rmpg-pdf-engine'));
   const canvas = document.createElement('canvas');
   const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: 2, canvas });
   await pdf.destroy().catch(() => { /* gone */ });
@@ -1438,7 +1439,7 @@ export async function deskewPageBytes(
   original: number,
   angleDeg: number,
 ): Promise<Uint8Array> {
-  const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
+  const { openAndRenderPage } = await importWithRetry(() => import('../../lib/rmpg-pdf-engine'));
   const src = document.createElement('canvas');
   const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: 2, canvas: src });
   await pdf.destroy().catch(() => { /* gone */ });
@@ -1582,7 +1583,7 @@ export async function comparePageDiff(
   pageNumber: number,
   scale = 1.5,
 ): Promise<{ diffUrl: string; changed: number; aUrl: string; bUrl: string }> {
-  const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
+  const { openAndRenderPage } = await importWithRetry(() => import('../../lib/rmpg-pdf-engine'));
   const cA = document.createElement('canvas');
   const cB = document.createElement('canvas');
   const pA = await openAndRenderPage(bytesA, { pageNumber, scale, canvas: cA });

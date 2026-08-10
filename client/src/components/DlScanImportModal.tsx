@@ -5,10 +5,11 @@ import { useToast } from './ToastProvider';
 import type { Person } from '../types';
 import type { AamvaResult, ScanAlert, ReadoutRow } from '../utils/aamvaParser';
 import { toDisplayLabel } from '../utils/formatters';
+import { importWithRetry } from '../utils/importWithRetry';
 
 // Lazy-loaded to keep the Records page initial bundle lean.
 type AamvaParserModule = typeof import('../utils/aamvaParser');
-const loadParser = (): Promise<AamvaParserModule> => import('../utils/aamvaParser');
+const loadParser = (): Promise<AamvaParserModule> => importWithRetry(() => import('../utils/aamvaParser'));
 
 type Step = 'scan' | 'preview' | 'importing';
 
@@ -46,7 +47,7 @@ export default function DlScanImportModal({ isOpen, onClose, onImported }: DlSca
 
   const loadScanner = useCallback(() => {
     if (LiveDlScanner) return;
-    import('./LiveDlScanner').then((m) => setLiveDlScanner(() => m.default));
+    importWithRetry(() => import('./LiveDlScanner')).then((m) => setLiveDlScanner(() => m.default));
   }, [LiveDlScanner]);
 
   // Called when LiveDlScanner or manual entry produces raw barcode text

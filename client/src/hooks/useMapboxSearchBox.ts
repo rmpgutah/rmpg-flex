@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { getMapboxTokenStatus } from '../utils/mapboxApiKey';
+import { importWithRetry } from '../utils/importWithRetry';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -91,7 +92,7 @@ export function useMapboxSearchBox(options?: {
       if (options?.types?.length) params.set('types', options.types.join(','));
 
       // Use apiFetch for authenticated server-side geocoding
-      const { apiFetch } = await import('../hooks/useApi');
+      const { apiFetch } = await importWithRetry(() => import('../hooks/useApi'));
       const data = await apiFetch<{ features: Array<{ place_name: string; text: string; center: [number, number]; place_type: string[]; relevance: number }> }>(
         `/mapbox/geocode?${params}`
       );

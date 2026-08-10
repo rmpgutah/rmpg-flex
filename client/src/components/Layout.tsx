@@ -1,4 +1,5 @@
 import React, { useEffect, useCallback, useState, useRef, useMemo } from 'react';
+import { lazyRetry } from '../utils/importWithRetry';
 import { parseTimestamp } from '../utils/dateUtils';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import {
@@ -111,7 +112,7 @@ import PanicButton from './PanicButton';
 // Lazy: 66.6 KB (plus SignaturePad's 21.9 KB, which it statically imports) and
 // it renders behind a boolean. Layout wraps every authenticated route, so a
 // static import here landed both in the entry chunk on every cold load.
-const UserProfileModal = React.lazy(() => import('./UserProfileModal'));
+const UserProfileModal = lazyRetry(() => import('./UserProfileModal'));
 import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
 import CommandPalette from './CommandPalette';

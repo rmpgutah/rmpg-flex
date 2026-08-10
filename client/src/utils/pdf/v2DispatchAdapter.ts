@@ -18,6 +18,7 @@
 // Same pattern as c0f34f20 (pdfStaticMap), pdfImageHelpers.ts,
 // and warrantPacket.ts. Now uses raw fetch + localStorage JWT.
 
+import { importWithRetry } from '../importWithRetry';
 import type { PdfSignatureBundle } from '../pdfIntegrity';
 
 // Isolated fetch — mirrors the getAuthToken + fetch pattern from
@@ -108,9 +109,9 @@ function normalizeOffenseLevel(raw: unknown): 'Infraction' | 'Misdemeanor' | 'Fe
 async function prepareCitationDispatch(opts: V2DispatchOptions) {
   if (opts.recordType !== 'citation') return null;
 
-  const v2 = await import('./v2');
-  const { citationSchema, citationCanonicalData } = await import('./v2/forms/citation');
-  const { CITATION_INSTRUCTIONS } = await import('./v2/forms/citationInstructions');
+  const v2 = await importWithRetry(() => import('./v2'));
+  const { citationSchema, citationCanonicalData } = await importWithRetry(() => import('./v2/forms/citation'));
+  const { CITATION_INSTRUCTIONS } = await importWithRetry(() => import('./v2/forms/citationInstructions'));
 
   let data = opts.recordData ?? {};
   if (data.id != null) {

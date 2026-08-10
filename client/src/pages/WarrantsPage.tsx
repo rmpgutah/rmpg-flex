@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
+import { importWithRetry } from '../utils/importWithRetry';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import { useToast } from '../components/ToastProvider';
@@ -1320,7 +1321,7 @@ export default function WarrantsPage() {
                         if (summaryTo) params.set('to', summaryTo);
                         const res = await apiFetch<WarrantSummaryData>(`/warrants/summary-report?${params.toString()}`);
                         if (!res) throw new Error('No data returned');
-                        const { fetchPdfBranding, setActiveBranding, loadPdfAssets } = await import('../utils/pdfGenerator');
+                        const { fetchPdfBranding, setActiveBranding, loadPdfAssets } = await importWithRetry(() => import('../utils/pdfGenerator'));
                         const branding = await fetchPdfBranding();
                         setActiveBranding(branding);
                         await loadPdfAssets();
@@ -2021,7 +2022,7 @@ export default function WarrantsPage() {
                       if (!autoPollStatus?.flaggedPersons?.length) return;
                       setBoloPrinting(true);
                       try {
-                        const { fetchPdfBranding, setActiveBranding, loadPdfAssets } = await import('../utils/pdfGenerator');
+                        const { fetchPdfBranding, setActiveBranding, loadPdfAssets } = await importWithRetry(() => import('../utils/pdfGenerator'));
                         const branding = await fetchPdfBranding();
                         setActiveBranding(branding);
                         await loadPdfAssets();
