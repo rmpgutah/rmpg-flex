@@ -167,12 +167,7 @@ tesseractTraining.get('/documents/:id/image', async (c) => {
 // result rather than throwing, so bulk-submit can continue past one failure.
 async function submitDocumentToCorpus(
   c: any, id: number, userId: number, groundTruthText: string,
-): Promise<{ success: true } | { success: false; error: string; code: string; status: number }> {
-  const trimmed = groundTruthText.trim();
-  if (!trimmed) {
-    return { success: false, error: 'ground_truth_text is required', code: 'MISSING_TEXT', status: 400 };
-  }
-
+): Promise<{ success: true } | { success: false; error: string; code: string; status: number; detail?: string }> {
   const db = getDb(c.env);
   const existing = await queryFirst<{ id: number }>(
     db,
@@ -181,6 +176,11 @@ async function submitDocumentToCorpus(
   );
   if (existing) {
     return { success: false, error: 'Document already in training corpus', code: 'ALREADY_SUBMITTED', status: 409 };
+  }
+
+  const trimmed = groundTruthText.trim();
+  if (!trimmed) {
+    return { success: false, error: 'ground_truth_text is required', code: 'MISSING_TEXT', status: 400 };
   }
 
   const doc = await queryFirst<{ r2_key: string; file_type: string }>(
@@ -221,6 +221,7 @@ async function submitDocumentToCorpus(
       error: 'Failed to write training pair to R2',
       code: 'R2_WRITE_FAILED',
       status: 500,
+      detail: err instanceof Error ? err.message : String(err),
     };
   }
 
@@ -251,7 +252,7 @@ tesseractTraining.post('/documents/:id/submit', async (c) => {
 
   const result = await submitDocumentToCorpus(c, id, user.id, body.ground_truth_text ?? '');
   if (!result.success) {
-    return c.json({ error: result.error, code: result.code }, result.status as any);
+    return c.json({ error: result.error, code: result.code, detail: result.detail }, result.status as any);
   }
   return c.json({ success: true, document_id: id });
 });
@@ -283,7 +284,7 @@ tesseractTraining.post('/documents/bulk-submit', async (c) => {
   }
 
   const db = getDb(c.env);
-  const results: Array<{ id: number; success: boolean; error?: string }> = [];
+  const results: Array<{ id: number; success: boolean; error?: string; detail?: string }> = [];
   for (const id of ids) {
     const doc = await queryFirst<{ raw_text: string | null }>(
       db,
@@ -295,7 +296,11 @@ tesseractTraining.post('/documents/bulk-submit', async (c) => {
       continue;
     }
     const result = await submitDocumentToCorpus(c, id, user.id, doc.raw_text ?? '');
-    results.push(result.success ? { id, success: true } : { id, success: false, error: result.error });
+    results.push(
+      result.success
+        ? { id, success: true }
+        : { id, success: false, error: result.error, detail: result.detail },
+    );
   }
   return c.json({ results });
 });

@@ -152,6 +152,27 @@ describe('tesseractTraining route — duplicate submission', () => {
     expect(put).not.toHaveBeenCalled();
     expect(db._inserts).toHaveLength(0);
   });
+
+  test('POST /documents/:id/submit returns 409 (not 400) when already submitted even with missing ground_truth_text', async () => {
+    const app = makeApp('admin');
+    const db = makeDb({
+      docs: { 6: { r2_key: 'uploads/6.png', file_type: 'image/png' } },
+      corpusIds: new Set([6]),
+    });
+    const put = vi.fn();
+    const res = await app.request('/documents/6/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ground_truth_text: '' }),
+    }, { DB: db, UPLOADS: { get: vi.fn() }, TESSERACT_TRAINING: { put } });
+
+    // The already-submitted check must run BEFORE the missing-text check —
+    // this restores the original single-submit route's behavior.
+    expect(res.status).toBe(409);
+    expect((await res.json() as any).code).toBe('ALREADY_SUBMITTED');
+    expect(put).not.toHaveBeenCalled();
+    expect(db._inserts).toHaveLength(0);
+  });
 });
 
 describe('tesseractTraining route — R2-then-D1 write ordering', () => {
