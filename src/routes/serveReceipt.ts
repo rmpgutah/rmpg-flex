@@ -66,6 +66,8 @@ const DEFAULT_TOKEN_TTL_DAYS = 30;
 /** Max size of a single base64 signature payload (~500 KB, matches
  *  users.digital_signature's cap in src/routes/auth.ts). */
 const MAX_SIGNATURE_BYTES = 500_000;
+const MAX_PAGE_IMAGE_BYTES = 2_000_000;
+const MAX_ID_PHOTO_BYTES = 2_000_000;
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -163,6 +165,26 @@ function validSignature(v: unknown): v is string {
     && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(v)
     && v.length > 100
     && v.length <= MAX_SIGNATURE_BYTES
+    && decodesToImage(v);
+}
+
+/** Validates a scanned page image (e.g. summons page photo). Same rules as
+ *  signature but with a 2 MB cap — page photos are larger than signatures. */
+export function validPageImage(v: unknown): v is string {
+  return typeof v === 'string'
+    && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(v)
+    && v.length > 100
+    && v.length <= MAX_PAGE_IMAGE_BYTES
+    && decodesToImage(v);
+}
+
+/** Validates a captured ID photo (front or back of a driver licence / govt ID).
+ *  PNG or JPEG only, 2 MB cap. */
+export function validIdPhoto(v: unknown): v is string {
+  return typeof v === 'string'
+    && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(v)
+    && v.length > 100
+    && v.length <= MAX_ID_PHOTO_BYTES
     && decodesToImage(v);
 }
 
