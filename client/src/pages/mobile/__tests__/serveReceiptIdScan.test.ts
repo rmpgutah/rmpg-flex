@@ -19,14 +19,15 @@ describe('driver licence scan', () => {
     expect(PAGE).toMatch(/from '\.\.\/\.\.\/utils\/aamvaParser'/);
   });
 
-  it('is required, per operator instruction on the 2026-07-27 service', () => {
-    // A proof of service is more defensible in a contested hearing when
-    // the signer's identity was verified against a photo ID rather than
-    // self-attested.
-    expect(PAGE).toMatch(/Required: scan the barcode/);
-    // It must appear in the blocking checks.
+  it('is offered but not required — nobody must produce ID to accept papers', () => {
+    // Scanning changes evidentiary weight (self-attested vs ID-verified),
+    // but a failed scan must never block an otherwise valid service. The
+    // UI keeps the scan prominent as the preferred path.
+    expect(PAGE).toMatch(/Scan the barcode on the back of your licence/);
+    // idVerified flows through to the submit payload (changes legal weight)
+    // but must NOT appear in fieldErrors as a blocking check.
     const fieldErrorsBlock = PAGE.slice(PAGE.indexOf('const fieldErrors'), PAGE.indexOf('const acceptedAttestations'));
-    expect(fieldErrorsBlock).toMatch(/idVerified/);
+    expect(fieldErrorsBlock).not.toMatch(/idVerified/);
   });
 
   it('populates the columns that existed and were never written', () => {

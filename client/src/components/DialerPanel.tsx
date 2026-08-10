@@ -146,9 +146,9 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
         </div>
         {unavailable ? (
           <div className="flex flex-col items-center justify-center h-[calc(100%-28px)] gap-3 p-6 text-center">
-            <PhoneCall className="w-8 h-8 text-rmpg-600" />
-            <p className="text-[11px] font-semibold text-rmpg-300 uppercase tracking-wide">Dialer unavailable</p>
-            <p className="text-[11px] text-rmpg-500 leading-relaxed max-w-[280px]">
+            <PhoneCall className="w-8 h-8 text-fg-muted" />
+            <p className="text-[11px] font-semibold text-rmpg-100 uppercase tracking-wide">Dialer unavailable</p>
+            <p className="text-[11px] text-fg-secondary leading-relaxed max-w-[280px]">
               Could not connect to dialer.rmpgutah.us. Check that the Dial Connect app is deployed and running.
             </p>
             <button
