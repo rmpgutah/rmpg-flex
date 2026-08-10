@@ -607,6 +607,18 @@ export default function ServeReceiptPage() {
     recipientJobTitle: jobTitle || undefined,
     businessName: businessName.trim() || undefined,
     recipientPhone: phone || undefined,
+    recipientGender: (aamvaResult?.gender as string) || manualGender || undefined,
+    recipientRace: (aamvaResult?.race as string) || undefined,
+    recipientHeight: (aamvaResult?.height as string) || manualHeight || undefined,
+    recipientWeight: (aamvaResult?.weight as string) || manualWeight || undefined,
+    recipientHairColor: (aamvaResult?.hair_color as string) || manualHairColor || undefined,
+    recipientEyeColor: (aamvaResult?.eye_color as string) || manualEyeColor || undefined,
+    recipientDlNumber: (aamvaResult?.dl_number as string) || manualDlNumber || undefined,
+    recipientDlState: (aamvaResult?.dl_state as string) || manualDlState || undefined,
+    recipientDlClass: (aamvaResult?.dl_class as string) || undefined,
+    recipientDlExpiry: (aamvaResult?.dl_expiry as string) || undefined,
+    recipientIsRealId: aamvaResult?.is_real_id != null ? aamvaResult.is_real_id as boolean : null,
+    idScanMethod: idScanMethod,
     acceptingOnBehalfOf: variant === 'individual' ? undefined : partyLabel,
     documents: Object.entries(docCopies).map(([title, copies]) => ({ title, copies })),
     attestations: acceptedAttestations,
@@ -618,7 +630,8 @@ export default function ServeReceiptPage() {
     expectedDeliveryAt: expectedDelivery || undefined,
   }), [formTitle, variant, ctx, premisesType, recipientName, relationship, jobTitle, businessName,
       phone, partyLabel, docCopies, acceptedAttestations, coords, signature, residesAtAddress,
-      authorizedAgent, expectedDelivery]);
+      authorizedAgent, expectedDelivery, aamvaResult, manualGender, manualHeight, manualWeight,
+      manualHairColor, manualEyeColor, manualDlNumber, manualDlState, idScanMethod]);
 
   const downloadPdf = useCallback(async (receiptId: number) => {
     // Designated: this IS the subject's copy. Printed undesignated it fell
