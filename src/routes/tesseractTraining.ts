@@ -79,6 +79,33 @@ tesseractTraining.get('/documents', async (c) => {
   const pageSize = 50;
   const offset = (page - 1) * pageSize;
 
+  const docType = c.req.query('doc_type');
+  const labeled = c.req.query('labeled');
+  const from = c.req.query('from');
+  const to = c.req.query('to');
+
+  const conditions = [`d.status = 'extracted'`];
+  const args: unknown[] = [];
+  if (docType === 'null') {
+    conditions.push('d.doc_type IS NULL');
+  } else if (docType) {
+    conditions.push('d.doc_type = ?');
+    args.push(docType);
+  }
+  if (labeled === 'true') {
+    conditions.push('t.id IS NOT NULL');
+  } else if (labeled === 'false') {
+    conditions.push('t.id IS NULL');
+  }
+  if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) {
+    conditions.push('d.created_at >= ?');
+    args.push(from);
+  }
+  if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    conditions.push('d.created_at <= ?');
+    args.push(to);
+  }
+
   const rows = await query<DocRow & { already_in_corpus: number; approval_status: string | null }>(
     db,
     `SELECT d.id, d.file_name, d.file_type, d.doc_type, d.created_at,
@@ -86,10 +113,10 @@ tesseractTraining.get('/documents', async (c) => {
             t.approval_status AS approval_status
        FROM serve_intake_documents d
        LEFT JOIN tesseract_training_corpus t ON t.serve_intake_document_id = d.id
-      WHERE d.status = 'extracted'
+      WHERE ${conditions.join(' AND ')}
       ORDER BY d.created_at DESC
       LIMIT ? OFFSET ?`,
-    pageSize, offset,
+    ...args, pageSize, offset,
   );
 
   return c.json({

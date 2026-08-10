@@ -105,6 +105,49 @@ describe('tesseractTraining route — permissions', () => {
   });
 });
 
+describe('tesseractTraining route — /documents filtering', () => {
+  test('GET /documents filters by doc_type, labeled, and date range', async () => {
+    const app = makeApp('admin');
+    const db = makeDb();
+    // Override .all() to assert the SQL carries the expected WHERE clauses and
+    // bound values, since this mock DB doesn't do real filtering.
+    let capturedSql = '';
+    let capturedArgs: any[] = [];
+    const originalPrepare = db.prepare.bind(db);
+    (db as any).prepare = (sql: string) => {
+      const stmt = originalPrepare(sql);
+      const originalBind = stmt.bind.bind(stmt);
+      stmt.bind = (...args: any[]) => { capturedSql = sql; capturedArgs = args; return originalBind(...args); };
+      return stmt;
+    };
+    await app.request(
+      '/documents?doc_type=summons&labeled=false&from=2026-01-01&to=2026-12-31',
+      {}, { DB: db },
+    );
+    expect(capturedSql).toMatch(/d\.doc_type = \?/);
+    expect(capturedSql).toMatch(/t\.id IS NULL/);
+    expect(capturedSql).toMatch(/d\.created_at >= \?/);
+    expect(capturedSql).toMatch(/d\.created_at <= \?/);
+    expect(capturedArgs).toContain('summons');
+    expect(capturedArgs).toContain('2026-01-01');
+    expect(capturedArgs).toContain('2026-12-31');
+  });
+
+  test('GET /documents treats doc_type=null as an explicit IS NULL filter', async () => {
+    const app = makeApp('admin');
+    const db = makeDb();
+    let capturedSql = '';
+    const originalPrepare = db.prepare.bind(db);
+    (db as any).prepare = (sql: string) => {
+      const stmt = originalPrepare(sql);
+      if (/FROM serve_intake_documents/.test(sql)) capturedSql = sql;
+      return stmt;
+    };
+    await app.request('/documents?doc_type=null', {}, { DB: db });
+    expect(capturedSql).toMatch(/d\.doc_type IS NULL/);
+  });
+});
+
 describe('tesseractTraining route — 404 for missing document', () => {
   test('GET /documents/:id returns 404 when the document does not exist', async () => {
     const app = makeApp('admin');
