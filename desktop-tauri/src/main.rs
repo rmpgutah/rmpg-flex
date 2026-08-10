@@ -50,6 +50,13 @@ fn main() {
             commands::secondary::open_company_browser,
             commands::updater::check_for_updates,
             commands::updater::install_update,
+            commands::tray::set_tray_status,
+            commands::geo::get_ip_location,
+            commands::device::get_displays,
+            commands::device::set_auto_launch,
+            commands::device::get_auto_launch_state,
+            commands::diagnostics::export_diagnostics_bundle,
+            commands::diagnostics::get_crash_reports,
         ])
         .setup(|app| {
             let bridge_js = include_str!("../scripts/electron-compat-bridge.js");
@@ -68,7 +75,7 @@ fn main() {
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
-            let _tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::with_id("main-tray")
                 .menu(&menu)
                 .tooltip("RMPG Flex")
                 .on_menu_event(move |app, event| {

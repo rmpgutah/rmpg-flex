@@ -5,3 +5,7 @@ pub mod power;
 pub mod files;
 pub mod secondary;
 pub mod updater;
+pub mod tray;
+pub mod geo;
+pub mod device;
+pub mod diagnostics;

@@ -81,7 +81,7 @@
     },
 
     // ─── Tray ────────────────────────────────────────
-    setTrayStatus: noop,
+    setTrayStatus: (state) => invoke('set_tray_status', { state }),
 
     // ─── Company Browser ──────────────────────────────
     openCompanyBrowser: (role) => invoke('open_company_browser', { role: role || null }),
@@ -119,18 +119,18 @@
     checkGpsHardwarePresent: noopObj(false),
     getDockState: noopObj({ docked: false }),
     getWwanStatus: noopObj({ available: false }),
-    setAutoLaunch: noop,
-    getAutoLaunchState: noopObj({ enabled: false }),
+    setAutoLaunch: (enabled) => invoke('set_auto_launch', { enabled }),
+    getAutoLaunchState: () => invoke('get_auto_launch_state'),
     setKioskShell: noopObj({ ok: false, error: 'Kiosk shell not available in Tauri build' }),
     getKioskShellState: noopObj({ supported: false }),
     registerGlobalShortcut: noop,
     unregisterGlobalShortcut: noop,
     onShortcutTriggered: noopUnsub,
-    getDisplays: noopObj([]),
+    getDisplays: () => invoke('get_displays'),
     onBarcodeScanned: noopUnsub,
     printToPdf: () => invoke('print_to_pdf'),
-    exportDiagnosticsBundle: noopObj(null),
-    getCrashReports: noopObj([]),
+    exportDiagnosticsBundle: () => invoke('export_diagnostics_bundle'),
+    getCrashReports: () => invoke('get_crash_reports'),
     getTpmStatus: noopObj({ available: false }),
 
     // ─── File I/O ─────────────────────────────────────
@@ -144,7 +144,7 @@
     importLocalDbBackup: noop,
 
     // ─── Geolocation fallback ────────────────────────
-    getIpLocation: noop,
+    getIpLocation: () => invoke('get_ip_location'),
 
     // ─── Internal GPS (Phase 2 — Toughbook serial) ───
     detectInternalGps: noopObj({ found: false }),
