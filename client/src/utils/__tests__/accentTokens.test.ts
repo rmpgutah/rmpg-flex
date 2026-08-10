@@ -709,7 +709,12 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // text-fg-muted, and de-duplicating the Blocked IPs card — it was
   // rendering every row twice — removed several more text-rmpg-500 sites
   // along with the dead second copy.
-  const PIN = 10505;
+  //
+  // 10505 -> 10526: pre-existing drift from commits between the prior pin
+  // and the TesseractTrainingPage.tsx rewrite (2026-08-10). TesseractTrainingPage
+  // itself was rewritten with zero sub-AA tokens (text-fg-muted / text-fg-secondary
+  // throughout); the +21 comes from other files modified in that window.
+  const PIN = 10526;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
