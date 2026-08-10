@@ -1956,6 +1956,44 @@ serveReceiptAdmin.post('/receipt/:id/void', requireRole('admin', 'manager', 'sup
 });
 
 /**
+ * GET /api/serve-receipts/:id/id-photo/:side
+ * Retrieve the recipient's ID photo (front or back) from R2.
+ */
+serveReceiptAdmin.get(
+  '/:id/id-photo/:side',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  async (c) => {
+    const id = parseInt(c.req.param('id') || '', 10);
+    const side = c.req.param('side');
+    if (!id || (side !== 'front' && side !== 'back')) {
+      return c.json({ error: 'Invalid request' }, 400);
+    }
+
+    const col = side === 'front' ? 'id_front_r2_key' : 'id_back_r2_key';
+    const db = getDb(c.env);
+    const row = await queryFirst<{ key: string | null }>(
+      db,
+      `SELECT ${col} as key FROM serve_receipts WHERE id = ?`,
+      id,
+    );
+    if (!row?.key) return c.json({ error: 'No ID photo found' }, 404);
+
+    const uploads = c.env.UPLOADS as R2Bucket | undefined;
+    if (!uploads) return c.json({ error: 'Storage not configured' }, 503);
+
+    const obj = await uploads.get(row.key);
+    if (!obj) return c.json({ error: 'Photo not found in storage' }, 404);
+
+    return new Response(obj.body, {
+      headers: {
+        'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg',
+        'Cache-Control': 'private, max-age=300',
+      },
+    });
+  },
+);
+
+/**
  * Age out email deliveries that will never resolve.
  *
  * email_status starts 'pending' and is settled by a follow-up call from
