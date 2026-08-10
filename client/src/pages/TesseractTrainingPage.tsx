@@ -257,7 +257,7 @@ export default function TesseractTrainingPage() {
           <div className="space-y-1 pb-2 border-b border-surface-border">
             <select
               value={filterDocType}
-              onChange={(e) => setFilterDocType(e.target.value)}
+              onChange={(e) => { setFilterDocType(e.target.value); setPage(1); }}
               className="w-full text-[11px] border p-1"
             >
               <option value="">All doc types</option>
@@ -270,7 +270,7 @@ export default function TesseractTrainingPage() {
             </select>
             <select
               value={filterLabeled}
-              onChange={(e) => setFilterLabeled(e.target.value)}
+              onChange={(e) => { setFilterLabeled(e.target.value); setPage(1); }}
               className="w-full text-[11px] border p-1"
             >
               <option value="">Labeled + unlabeled</option>
@@ -281,13 +281,13 @@ export default function TesseractTrainingPage() {
               <input
                 type="date"
                 value={filterFrom}
-                onChange={(e) => setFilterFrom(e.target.value)}
+                onChange={(e) => { setFilterFrom(e.target.value); setPage(1); }}
                 className="flex-1 text-[11px] border p-1"
               />
               <input
                 type="date"
                 value={filterTo}
-                onChange={(e) => setFilterTo(e.target.value)}
+                onChange={(e) => { setFilterTo(e.target.value); setPage(1); }}
                 className="flex-1 text-[11px] border p-1"
               />
             </div>
