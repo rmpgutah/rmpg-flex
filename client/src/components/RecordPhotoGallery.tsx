@@ -21,11 +21,11 @@ function Thumbnail({ photo, onDelete }: { photo: RecordPhoto; onDelete: (id: num
         type="button"
         aria-label={`Delete ${photo.kind}`}
         onClick={() => onDelete(photo.id)}
-        className="absolute top-0 right-0 bg-surface-base text-rmpg-300 px-1 text-[10px] hover:text-red-400">
+        className="absolute top-0 right-0 bg-surface-base text-text-secondary px-1 text-[10px] hover:text-red-400">
         ✕
       </button>
       {photo.kind === 'layout' && (
-        <div className="absolute bottom-0 left-0 right-0 bg-surface-base/80 text-[9px] text-rmpg-300 text-center">
+        <div className="absolute bottom-0 left-0 right-0 bg-surface-base/80 text-[9px] text-text-secondary text-center">
           layout
         </div>
       )}
@@ -56,7 +56,7 @@ export function RecordPhotoGallery({ recordType, recordId }: Props) {
     <div className="text-xs">
       {error && <div className="text-red-400 mb-1">{error}</div>}
       <div className="mb-2">
-        <div className="text-rmpg-300 font-semibold mb-1">Photos</div>
+        <div className="text-text-secondary font-semibold mb-1">Photos</div>
         <div className="flex flex-wrap gap-1 mb-1">
           {photoRows.map((p) => <Thumbnail key={p.id} photo={p} onDelete={remove} />)}
         </div>
@@ -83,7 +83,7 @@ export function RecordPhotoGallery({ recordType, recordId }: Props) {
         />
       </div>
       <div>
-        <div className="text-rmpg-300 font-semibold mb-1">Layout / Floor Plan</div>
+        <div className="text-text-secondary font-semibold mb-1">Layout / Floor Plan</div>
         <div className="flex flex-wrap gap-1 mb-1">
           {layoutRows.map((p) => <Thumbnail key={p.id} photo={p} onDelete={remove} />)}
         </div>
