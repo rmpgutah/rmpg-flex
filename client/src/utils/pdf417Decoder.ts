@@ -118,8 +118,12 @@ export async function decodePdf417Frame(imageData: ImageData): Promise<string | 
       textMode: 'Plain',
       maxNumberOfSymbols: 1,
     });
-    const text = results[0]?.text;
-    return text && text.length > 20 ? text : null;
+    const r = results[0];
+    if (!r?.isValid) return null;
+    // AAMVA uses Latin-1 encoded bytes with raw control chars (\x1e, \r).
+    // Decode from r.bytes rather than r.text to preserve every byte exactly.
+    const raw = new TextDecoder('latin1').decode(r.bytes);
+    return raw.length > 20 ? raw : null;
   } catch {
     return null;
   }
@@ -196,11 +200,17 @@ export async function decodePdf417(file: File): Promise<Pdf417DecodeOutcome | nu
           tryRotate: true,
           tryInvert: true,
           tryDownscale: true,
-          textMode: 'Plain',  // raw bytes as-is — AAMVA needs exact control chars
+          textMode: 'Plain',
           maxNumberOfSymbols: 1,
         });
-        const text = results[0]?.text;
-        if (text && text.length > 20) return { text, passes };
+        const r = results[0];
+        if (!r?.isValid) continue;
+        // AAMVA uses Latin-1 encoding with raw control chars (\x1e, \r, \n)
+        // as field/record separators. Decode from r.bytes — a raw Uint8Array —
+        // rather than r.text, which goes through Unicode transcoding that can
+        // silently drop or mangle control characters the parser depends on.
+        const text = new TextDecoder('latin1').decode(r.bytes);
+        if (text.length > 20) return { text, passes };
       } catch {
         // decode error on this pass — try the next configuration
       }
