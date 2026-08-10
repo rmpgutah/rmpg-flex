@@ -18,6 +18,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::system::get_system_info,
             commands::system::check_disk_space,
@@ -37,6 +38,18 @@ fn main() {
             commands::app::open_logs_folder,
             commands::power::keep_awake,
             commands::power::allow_sleep,
+            commands::files::write_export_file,
+            commands::files::read_import_file,
+            commands::files::reveal_in_folder,
+            commands::files::get_downloads_path,
+            commands::files::get_printers,
+            commands::files::print_silent,
+            commands::files::print_to_pdf,
+            commands::secondary::open_secondary_window,
+            commands::secondary::close_secondary_window,
+            commands::secondary::open_company_browser,
+            commands::updater::check_for_updates,
+            commands::updater::install_update,
         ])
         .setup(|app| {
             let bridge_js = include_str!("../scripts/electron-compat-bridge.js");

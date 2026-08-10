@@ -83,12 +83,16 @@
     // ─── Tray ────────────────────────────────────────
     setTrayStatus: noop,
 
-    // ─── Company Browser (Phase 2 — needs Tauri webview window) ─
-    openCompanyBrowser: noopObj({ ok: false, error: 'Company Browser not yet available in Tauri build' }),
+    // ─── Company Browser ──────────────────────────────
+    openCompanyBrowser: (role) => invoke('open_company_browser', { role: role || null }),
 
-    // ─── Secondary windows (Phase 2) ─────────────────
-    openSecondaryWindow: noopObj({ ok: false, error: 'Secondary windows not yet available in Tauri build' }),
-    closeSecondaryWindow: noop,
+    // ─── Secondary windows ──────────────────────────
+    openSecondaryWindow: (path, opts) => invoke('open_secondary_window', {
+      path,
+      width: opts?.width || null,
+      height: opts?.height || null,
+    }),
+    closeSecondaryWindow: (id) => invoke('close_secondary_window', { id }),
 
     // ─── Device & Hardware (Phase 2 — native) ────────
     listSerialPorts: noopObj([]),
@@ -124,18 +128,18 @@
     onShortcutTriggered: noopUnsub,
     getDisplays: noopObj([]),
     onBarcodeScanned: noopUnsub,
-    printToPdf: noop,
+    printToPdf: () => invoke('print_to_pdf'),
     exportDiagnosticsBundle: noopObj(null),
     getCrashReports: noopObj([]),
     getTpmStatus: noopObj({ available: false }),
 
-    // ─── File I/O stubs (Phase 2) ────────────────────
-    writeExportFile: noop,
-    readImportFile: noopObj(null),
-    revealInFolder: noop,
-    getDownloadsPath: noopObj(''),
-    getPrinters: noopObj([]),
-    printSilently: noop,
+    // ─── File I/O ─────────────────────────────────────
+    writeExportFile: (path, data) => invoke('write_export_file', { path, data }),
+    readImportFile: (path) => invoke('read_import_file', { path }),
+    revealInFolder: (path) => invoke('reveal_in_folder', { path }),
+    getDownloadsPath: () => invoke('get_downloads_path'),
+    getPrinters: () => invoke('get_printers'),
+    printSilently: (printerName) => invoke('print_silent', { printerName }),
     exportLocalDbBackup: noop,
     importLocalDbBackup: noop,
 
@@ -149,10 +153,18 @@
     onInternalGpsUpdate: noopUnsub,
     onInternalGpsError: noopUnsub,
 
-    // ─── Auto-Update (Phase 2) ───────────────────────
-    onUpdateStatus: noopUnsub,
-    checkForUpdates: noop,
-    installUpdate: noop,
+    // ─── Auto-Update ─────────────────────────────────
+    onUpdateStatus: (callback) => {
+      let unlisten = null;
+      if (window.__TAURI__?.event?.listen) {
+        window.__TAURI__.event.listen('update-status', (event) => {
+          callback(event.payload);
+        }).then((fn) => { unlisten = fn; });
+      }
+      return () => { if (unlisten) unlisten(); };
+    },
+    checkForUpdates: () => invoke('check_for_updates'),
+    installUpdate: () => invoke('install_update'),
 
     // ─── Recon Connect (Phase 2 — native process) ────
     launchReconConnect: noopObj({ ok: false, error: 'Recon Connect not available in Tauri build' }),

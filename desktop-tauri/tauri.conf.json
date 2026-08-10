@@ -46,6 +46,12 @@
   "plugins": {
     "shell": {
       "open": true
+    },
+    "updater": {
+      "endpoints": [
+        "https://api.rmpgutah.us/updates/tauri/{{target}}/{{current_version}}"
+      ],
+      "pubkey": ""
     }
   }
 }
