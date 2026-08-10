@@ -15,6 +15,15 @@ export const WORKSPACE_COUNT = 4;
 export const WORKSPACE_LABELS = ['CAD', 'RMS', 'Intel', 'Admin'];
 
 const STORAGE_KEY = 'rmpg_desktop_active_workspace';
+const WS_LABELS_KEY = 'rmpg_desktop_workspace_labels';
+
+function readWorkspaceLabels(): string[] {
+  try {
+    const raw = localStorage.getItem(WS_LABELS_KEY);
+    if (raw) { const a = JSON.parse(raw); if (Array.isArray(a) && a.length === WORKSPACE_COUNT) return a; }
+  } catch { /* ignore */ }
+  return [...WORKSPACE_LABELS];
+}
 
 interface VirtualDesktopContextValue {
   active: number;
@@ -62,6 +71,7 @@ export function useVirtualDesktop() {
  */
 export function WorkspacePills() {
   const { active, setActive } = useVirtualDesktop();
+  const [labels] = useState(readWorkspaceLabels);
 
   return (
     <div
@@ -69,7 +79,7 @@ export function WorkspacePills() {
       role="tablist"
       aria-label="Workspaces"
     >
-      {WORKSPACE_LABELS.map((label, i) => (
+      {labels.map((label, i) => (
         <button
           key={i}
           type="button"

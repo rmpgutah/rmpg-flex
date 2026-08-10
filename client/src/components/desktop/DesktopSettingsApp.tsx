@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
-import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, Monitor, X } from 'lucide-react';
+import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, Monitor, Shield, X } from 'lucide-react';
 import type { DesktopWidgetState } from '../../utils/normalizeDesktopWidgets';
 import { DESKTOP_WALLPAPERS, DEFAULT_WALLPAPER_ID } from '../../data/desktopWallpapers';
 import { DESKTOP_ACCENTS, DEFAULT_ACCENT_ID } from '../../data/desktopAccents';
@@ -17,6 +17,7 @@ import { getClockFormat, setClockFormat, type ClockFormat } from '../../utils/cl
 import { isDesktopSoundEnabled, setDesktopSoundEnabled } from '../../utils/desktopSoundPreference';
 import { getDefaultWindowOpacity, setDefaultWindowOpacity } from '../../utils/windowOpacityPreference';
 import DesktopKioskSettings from './DesktopKioskSettings';
+import FlexOSSettings from './FlexOSSettings';
 
 const ALL_WIDGETS: { id: string; label: string }[] = [
   { id: 'clock', label: 'Clock & Shift' },
@@ -40,6 +41,7 @@ const CATEGORIES = [
   { id: 'taskbar', label: 'Taskbar', icon: PanelBottom },
   { id: 'layout-templates', label: 'Layout & Templates', icon: FolderKanban },
   { id: 'kiosk-mode', label: 'Kiosk Mode', icon: Monitor },
+  { id: 'flexos', label: 'FlexOS', icon: Shield },
 ] as const;
 
 export type CategoryId = typeof CATEGORIES[number]['id'];
@@ -480,6 +482,10 @@ export default function DesktopSettingsApp({
 
           {activeCategory === 'kiosk-mode' && isAdmin && (
             <DesktopKioskSettings onClose={onClose} />
+          )}
+
+          {activeCategory === 'flexos' && (
+            <FlexOSSettings />
           )}
         </div>
       </div>
