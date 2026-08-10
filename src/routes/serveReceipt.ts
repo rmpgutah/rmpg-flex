@@ -935,26 +935,53 @@ serveReceipt.post('/:token/email', async (c) => {
   const label = receipt.form_title || 'Acknowledgement of Service Form';
 
   try {
-    const { enqueueAndSend } = await import('./email');
-    const { buildSendPayload } = await import('../utils/emailSend');
-    const result = await enqueueAndSend(c.env, ownerUserId, buildSendPayload({
+    const resendKey = c.env.RESEND_API_KEY;
+    if (!resendKey) {
+      await execute(db, "UPDATE serve_receipts SET email_status = 'not_configured', email_error = 'RESEND_API_KEY not set' WHERE id = ?", receipt.id);
+      return c.json({ ok: true, status: 'not_configured' });
+    }
+
+    const { sendViaResend } = await import('../utils/resendEmail');
+    const { buildAosEmailHtml } = await import('../utils/aosEmailTemplate');
+
+    const docsRaw = await queryFirst<{ documents_json: string | null }>(
+      db, 'SELECT documents_json FROM serve_receipts WHERE id = ?', receipt.id);
+    const documents = docsRaw?.documents_json
+      ? (JSON.parse(docsRaw.documents_json) as { title: string; copies?: number }[])
+      : [];
+
+    const serverInfo = ownerUserId
+      ? await queryFirst<{ first_name: string | null; last_name: string | null; badge_number: string | null }>(
+          db, 'SELECT first_name, last_name, badge_number FROM users WHERE id = ?', ownerUserId)
+      : null;
+
+    const html = buildAosEmailHtml({
+      recipientName: receipt.recipient_name,
+      formTitle: label,
+      documents,
+      caseNumber: job?.case_number || null,
+      dateServed: new Date().toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric',
+        timeZone: 'America/Denver',
+      }),
+      serverName: serverInfo
+        ? [serverInfo.first_name, serverInfo.last_name].filter(Boolean).join(' ') || null
+        : null,
+      serverBadge: serverInfo?.badge_number ? `#${serverInfo.badge_number}` : null,
+    });
+
+    const result = await sendViaResend(resendKey, {
+      from: 'Rocky Mountain Protective Group <server@rmpgutah.us>',
       to: receipt.email_to,
       subject: `${label}${caseRef}`,
-      body:
-        `${receipt.recipient_name},\n\n` +
-        `Attached is your copy of the ${label.toLowerCase()} you signed today, ` +
-        `for your records.\n\n` +
-        `This message is a courtesy copy from Rocky Mountain Protective Group. ` +
-        `Please do not reply — questions about the case should go to the court ` +
-        `or the attorney of record.\n`,
+      html,
       attachments: [{
-        name: body.filename || 'acknowledgement-of-service.pdf',
-        contentType: 'application/pdf',
-        contentBytes: body.pdf_base64,
+        filename: body.filename || 'acknowledgement-of-service.pdf',
+        content: body.pdf_base64,
       }],
-    } as any));
+    });
 
-    const status = result.status === 'sent' ? 'sent' : 'pending';
+    const status = result.status === 'sent' ? 'sent' : 'failed';
     await execute(
       db,
       `UPDATE serve_receipts SET email_status = ?, email_error = ?,
