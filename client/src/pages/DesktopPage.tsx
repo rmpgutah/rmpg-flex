@@ -29,6 +29,7 @@ import DesktopNotificationCenter from '../components/desktop/DesktopNotification
 import DesktopScreenSaver, { useIdleScreenSaver } from '../components/desktop/DesktopScreenSaver';
 import { VirtualDesktopProvider } from '../components/desktop/DesktopVirtualDesktops';
 import FlexOSBootSplash from '../components/desktop/FlexOSBootSplash';
+import FlexOSPowerMenu from '../components/desktop/FlexOSPowerMenu';
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -60,7 +61,7 @@ function WindowLayer() {
 // would silently PUT default-derived state back to the server on the user's
 // very next interaction, clobbering their real saved cross-device layout.
 function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: () => void }) {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
   const isContractManager = user?.role === 'contract_manager';
@@ -110,6 +111,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
     || (localStorage.getItem('rmpg_kiosk_shell_enabled') === '1' ? 300 : 900);
   const { ssActive, lockActive, dismissSS, dismissLock } = useIdleScreenSaver(autoLockSecs);
   const [manuallyLocked, setManuallyLocked] = useState(false);
+  const [powerMenuOpen, setPowerMenuOpen] = useState(false);
   const isLocked = lockActive || manuallyLocked;
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
   // the parse happens eagerly here — cheap for a small JSON blob, and this
@@ -244,6 +246,15 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         e.preventDefault();
         setWidgetSettingsOpen(true);
       }
+      if (e.ctrlKey && e.key === 'l') {
+        e.preventDefault();
+        setManuallyLocked(true);
+      }
+      // Ctrl+Alt+Delete — FlexOS power menu
+      if (e.ctrlKey && e.altKey && e.key === 'Delete') {
+        e.preventDefault();
+        setPowerMenuOpen(v => !v);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -322,6 +333,13 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
       <DesktopScreenSaver isActive={ssActive && !isLocked} onDismiss={dismissSS} />
       <DesktopLockScreen isLocked={isLocked} onUnlock={() => { dismissLock(); setManuallyLocked(false); }} />
       {notifCenterOpen && <DesktopNotificationCenter onClose={() => setNotifCenterOpen(false)} />}
+      {powerMenuOpen && (
+        <FlexOSPowerMenu
+          onClose={() => setPowerMenuOpen(false)}
+          onLock={() => setManuallyLocked(true)}
+          onSignOut={() => signOut().catch(() => {})}
+        />
+      )}
     </div>
   );
 }
