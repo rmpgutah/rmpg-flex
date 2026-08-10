@@ -34,6 +34,13 @@ type Mode = 'text' | 'boxes' | 'notes';
 interface StatsByDocType { doc_type: string | null; eligible: number; labeled: number; approved: number }
 interface Stats { total_eligible: number; total_labeled: number; total_approved: number; by_doc_type: StatsByDocType[] }
 
+interface TrainingRun {
+  id: number;
+  generated_at: string;
+  generated_by: number;
+  document_count: number;
+}
+
 export default function TesseractTrainingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [filterDocType, setFilterDocType] = useState(searchParams.get('doc_type') ?? '');
@@ -72,6 +79,32 @@ export default function TesseractTrainingPage() {
   }, []);
 
   useEffect(() => { loadStats(); }, [loadStats]);
+
+  const [runs, setRuns] = useState<TrainingRun[]>([]);
+  const [startingRun, setStartingRun] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  const loadRuns = useCallback(() => {
+    apiFetch<{ rows: TrainingRun[] }>('/tesseract-training/documents/runs?page=1')
+      .then((res) => setRuns(res.rows))
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => { loadRuns(); }, [loadRuns]);
+
+  const handleStartRun = async () => {
+    setStartingRun(true);
+    setRunError(null);
+    try {
+      await apiFetch('/tesseract-training/documents/runs', { method: 'POST' });
+      loadRuns();
+      loadStats();
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : 'Failed to start training run');
+    } finally {
+      setStartingRun(false);
+    }
+  };
 
   const loadList = useCallback(() => {
     const params = new URLSearchParams({ page: String(page) });
@@ -254,6 +287,45 @@ export default function TesseractTrainingPage() {
           )}
         </div>
       )}
+      <div className="border border-surface-border p-3 space-y-2">
+        <p className="text-[11px] font-bold uppercase tracking-wide">Training Runs</p>
+        <button
+          onClick={handleStartRun}
+          disabled={startingRun || !stats || stats.total_approved === 0}
+          className="px-3 py-1 border text-[11px]"
+        >
+          {startingRun ? 'Building Package...' : 'Start Training Run'}
+        </button>
+        {stats && stats.total_approved === 0 && (
+          <p className="text-[11px] text-fg-muted">
+            Approve at least one document before starting a training run.
+          </p>
+        )}
+        {runError && <p className="text-[11px] text-red-500">{runError}</p>}
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="text-left text-fg-muted">
+              <th>Generated</th><th>Documents</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {runs.map((run) => (
+              <tr key={run.id}>
+                <td>{new Date(run.generated_at).toLocaleString()}</td>
+                <td>{run.document_count}</td>
+                <td>
+                  <a
+                    href={authedImageUrl(`/api/tesseract-training/documents/runs/${run.id}/download`)}
+                    download={`rmpg-training-${run.id}.zip`}
+                  >
+                    Download
+                  </a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <div className="flex gap-4">
         <div className="w-1/3 space-y-2">
           <div className="space-y-1 pb-2 border-b border-surface-border">
