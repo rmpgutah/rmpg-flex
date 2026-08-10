@@ -260,19 +260,18 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
       <DesktopWindowManagerProvider>
         <ContextMenu
           items={[
-            { label: 'Sort: Manual', onClick: () => handleSortModeChange('manual') },
-            { label: 'Sort: Alphabetical', onClick: () => handleSortModeChange('alpha') },
-            { label: 'Sort: Most Used', onClick: () => handleSortModeChange('usage') },
+            { label: 'New Sticky Note', onClick: () => addNote(60, 60) },
+            { label: '', onClick: () => {}, divider: true },
             { label: 'View: Grid', onClick: () => handleViewModeChange('grid') },
             { label: 'View: List', onClick: () => handleViewModeChange('list') },
-            { label: 'Icon size: Small', onClick: () => handleIconSizeChange('small') },
-            { label: 'Icon size: Medium', onClick: () => handleIconSizeChange('medium') },
-            { label: 'Icon size: Large', onClick: () => handleIconSizeChange('large') },
-            { label: isAutoArrangeEnabled() ? 'Auto-arrange: On' : 'Auto-arrange: Off', onClick: () => { setAutoArrangeEnabled(!isAutoArrangeEnabled()); forceRerender(n => n + 1); } },
-            { label: areIconsHidden() ? 'Show icons' : 'Hide icons', onClick: () => { setIconsHidden(!areIconsHidden()); forceRerender(n => n + 1); } },
+            { label: 'Sort: Alphabetical', onClick: () => handleSortModeChange('alpha') },
+            { label: 'Sort: Most Used', onClick: () => handleSortModeChange('usage') },
+            { label: 'Sort: Manual', onClick: () => handleSortModeChange('manual') },
+            { label: isAutoArrangeEnabled() ? 'Auto-arrange: On ✓' : 'Auto-arrange: Off', onClick: () => { setAutoArrangeEnabled(!isAutoArrangeEnabled()); forceRerender(n => n + 1); } },
+            { label: areIconsHidden() ? 'Show Desktop Icons' : 'Hide Desktop Icons', onClick: () => { setIconsHidden(!areIconsHidden()); forceRerender(n => n + 1); } },
             { label: '', onClick: () => {}, divider: true },
-            { label: 'Settings', onClick: () => setWidgetSettingsOpen(true) },
-            { label: 'New sticky note', onClick: () => addNote(60, 60) },
+            { label: 'FlexOS Settings…', onClick: () => setWidgetSettingsOpen(true) },
+            { label: 'Lock Screen', onClick: () => setManuallyLocked(true) },
           ]}
         >
           <div data-testid="desktop-surface" style={{ position: 'relative', width: '100%', height: `calc(100vh - ${TASKBAR_HEIGHT_PX[getTaskbarSize()]}px)`, overflow: 'hidden' }}>

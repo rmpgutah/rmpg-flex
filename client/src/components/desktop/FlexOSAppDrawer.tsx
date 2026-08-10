@@ -6,17 +6,25 @@
  * Positioned above/below taskbar depending on taskbar position preference.
  */
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, X, Star, Shield } from 'lucide-react';
+import { Search, X, Star, Shield, type LucideIcon } from 'lucide-react';
 import type { NavFunction } from '../../data/navCatalog';
 import { NAV_CATEGORIES } from '../../data/navCatalog';
 import { loadFavorites } from '../../utils/navFavorites';
 import { getTaskbarPosition, getTaskbarSize } from '../../utils/taskbarPreferences';
 import { TASKBAR_HEIGHT_PX } from './DesktopTaskbar';
 
+export interface FlexOSQuickAction {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  onClick: () => void;
+}
+
 export interface FlexOSAppDrawerProps {
   catalog: NavFunction[];
   onNavigate: (path: string) => void;
   onClose: () => void;
+  quickActions?: FlexOSQuickAction[];
 }
 
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutside: () => void) {
@@ -43,7 +51,7 @@ function normalizeCategory(cat: string): string {
   return 'Miscellaneous';
 }
 
-export default function FlexOSAppDrawer({ catalog, onNavigate, onClose }: FlexOSAppDrawerProps) {
+export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickActions }: FlexOSAppDrawerProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   useClickOutside(ref, onClose);
 
@@ -186,6 +194,41 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose }: FlexOS
           </button>
         ))}
       </div>
+
+      {/* Quick actions — only when not searching */}
+      {quickActions && quickActions.length > 0 && !query.trim() && (
+        <div style={{
+          display: 'flex',
+          gap: 4,
+          padding: '6px 12px',
+          borderBottom: '1px solid var(--border-subtle, rgba(195,204,214,0.08))',
+          flexWrap: 'wrap',
+        }}>
+          {quickActions.map(qa => (
+            <button
+              key={qa.key}
+              type="button"
+              onClick={() => { qa.onClick(); onClose(); }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '4px 10px',
+                fontSize: 10,
+                fontWeight: 500,
+                background: 'rgba(var(--rmpg-500-rgb, 62 116 168), 0.15)',
+                border: '1px solid rgba(195,204,214,0.1)',
+                color: 'var(--text-secondary, #adbccc)',
+                cursor: 'pointer',
+                letterSpacing: '0.02em',
+              }}
+            >
+              <qa.icon style={{ width: 11, height: 11, flexShrink: 0 }} />
+              {qa.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* App grid */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>

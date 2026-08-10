@@ -168,6 +168,11 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
             catalog={catalog}
             onNavigate={path => handleSelectResult(catalog.find(fn => fn.path === path) ?? catalog[0])}
             onClose={() => setLauncherOpen(false)}
+            quickActions={[
+              { key: 'clock', label: onDuty ? 'Clock Out' : 'Clock In', icon: ClockIcon, onClick: handleClockToggle },
+              { key: 'new-call', label: 'New Call', icon: Radio, onClick: () => navigate('/dispatch?newCall=1') },
+              { key: 'new-incident', label: 'New Incident', icon: FileWarning, onClick: () => navigate('/incidents?newIncident=1') },
+            ]}
           />
         )}
       </div>
