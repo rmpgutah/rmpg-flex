@@ -132,6 +132,23 @@ try {
   REMOTE_SERVER_HOSTNAME = null;
 }
 
+// Health checks go DIRECTLY to the API Worker's /api/health endpoint, which
+// has a Cloudflare WAF skip rule that bypasses the managed challenge. The old
+// approach (REMOTE_SERVER_URL/api/health = rmpgutah.us/api/health) went through
+// the strangler proxy and hit the managed challenge — net.request can't solve
+// that challenge (no JS execution), so every cold boot reported the server as
+// unreachable until the BrowserWindow solved the challenge 10-30s later.
+const HEALTH_CHECK_URL = DEV_MODE
+  ? `${REMOTE_SERVER_URL}/api/health`
+  : 'https://api.rmpgutah.us/api/health';
+
+let HEALTH_CHECK_HOSTNAME;
+try {
+  HEALTH_CHECK_HOSTNAME = new URL(HEALTH_CHECK_URL).hostname;
+} catch {
+  HEALTH_CHECK_HOSTNAME = null;
+}
+
 const LOG_FILE_PATH = path.join(app.getPath('userData'), 'rmpg-flex.log');
 
 // Task 8 (childProcessGuard.js): a dedicated audit trail for the small
@@ -704,17 +721,16 @@ function checkServerConnectivity() {
     function tryConnect() {
       if (resolved) return;
       attempts++;
-      console.log(`[APP] Connectivity check attempt ${attempts}/${maxAttempts}: ${REMOTE_SERVER_URL}/api/health`);
+      console.log(`[APP] Connectivity check attempt ${attempts}/${maxAttempts}: ${HEALTH_CHECK_URL}`);
 
-      const healthCheckUrl = `${REMOTE_SERVER_URL}/api/health`;
-      if (!isAllowedApiHost(healthCheckUrl, [REMOTE_SERVER_HOSTNAME])) {
+      if (!isAllowedApiHost(HEALTH_CHECK_URL, [REMOTE_SERVER_HOSTNAME, HEALTH_CHECK_HOSTNAME].filter(Boolean))) {
         console.error('[APP] Connectivity check blocked: URL host not allowlisted');
         resolved = true;
         resolve(false);
         return;
       }
 
-      const request = net.request(healthCheckUrl);
+      const request = net.request(HEALTH_CHECK_URL);
 
       // Per-request timeout — prevent hung TCP handshakes from stalling startup
       const reqTimeout = setTimeout(() => {

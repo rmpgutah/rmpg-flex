@@ -46,6 +46,7 @@
       "fileOps.js",
       "deviceInfo.js",
       "windowManager.js",
+      "crashRecovery.js",
       "originalCatalog.json",
       "security"
     ],
