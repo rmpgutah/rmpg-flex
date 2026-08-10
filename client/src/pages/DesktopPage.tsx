@@ -27,6 +27,7 @@ import { useDesktopNotes, type DesktopNote } from '../hooks/useDesktopNotes';
 import ContextMenu from '../components/ContextMenu';
 import DesktopLockScreen from '../components/desktop/DesktopLockScreen';
 import DesktopNotificationCenter from '../components/desktop/DesktopNotificationCenter';
+import { VirtualDesktopProvider } from '../components/desktop/DesktopVirtualDesktops';
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -265,6 +266,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
 
   return (
     <div style={accentStyle}>
+      <VirtualDesktopProvider>
       <DesktopWindowManagerProvider>
         <ContextMenu
           items={[
@@ -327,6 +329,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           />
         )}
       </DesktopWindowManagerProvider>
+      </VirtualDesktopProvider>
       <DesktopLockScreen isLocked={isLocked} onUnlock={() => setIsLocked(false)} />
       {notifCenterOpen && <DesktopNotificationCenter onClose={() => setNotifCenterOpen(false)} />}
     </div>

@@ -10,6 +10,8 @@ import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import ContextMenu from '../ContextMenu';
 import { isAppPinned, pinApp, unpinApp, getPinnedApps, getTaskbarPosition, getTaskbarSize, isTaskbarAutoHideEnabled, type TaskbarSize } from '../../utils/taskbarPreferences';
+import DesktopSystemTray from './DesktopSystemTray';
+import { WorkspacePills } from './DesktopVirtualDesktops';
 
 export const TASKBAR_HEIGHT_PX: Record<TaskbarSize, number> = { small: 48, large: 56 };
 
@@ -222,6 +224,7 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
         )}
       </div>
 
+      <WorkspacePills />
       <div className="flex items-center gap-1 flex-1 overflow-x-auto">
         {pinnedNotRunning.map(fn => (
           <button
@@ -329,6 +332,7 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
             </span>
           )}
         </button>
+        <DesktopSystemTray />
         <span className="text-[11px] font-mono" style={{ color: 'var(--text-primary)' }}>{time}</span>
       </div>
     </div>
