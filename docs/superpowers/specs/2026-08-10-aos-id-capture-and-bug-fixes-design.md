@@ -260,7 +260,103 @@ Contains:
 | `client/src/utils/servePdfGenerator.ts` | Add ID data block, physical description, DL info, ID photo thumbnail to PDF |
 | `client/src/utils/aamvaParser.ts` | Extract `place_of_birth`, `race`, `name_prefix`, `card_revision_date`, `hazmat_expiry`, `non_resident`, `limited_duration`, `audit_info` into named fields |
 
-### 7. Testing
+### 8. Email — Recipient Copy via Resend
+
+#### 8.1 Problem
+
+The existing email path sends via Microsoft Graph from the assigned officer's
+mailbox. If the officer hasn't connected their mailbox via OAuth, the email
+silently falls to `not_configured`. The user wants a **system-level sender**
+(`server@rmpgutah.us`) that works regardless of officer mailbox state and
+delivers to any email provider.
+
+#### 8.2 Approach
+
+**Resend** (https://resend.com) — simple REST API, single API key, free tier
+covers 100 emails/day. The Worker calls `POST https://api.resend.com/emails`
+with an API key secret (`RESEND_API_KEY`). DNS records (SPF, DKIM) must be
+configured on the `rmpgutah.us` zone for deliverability.
+
+#### 8.3 Implementation
+
+**New file: `src/utils/resendEmail.ts`** — Worker-safe Resend client.
+```ts
+interface ResendEmailInput {
+  from: string;       // 'Rocky Mountain Protective Group <server@rmpgutah.us>'
+  to: string;
+  subject: string;
+  html: string;
+  attachments?: { filename: string; content: string }[];  // base64
+}
+```
+
+`sendViaResend(apiKey, input)` → `fetch('https://api.resend.com/emails', ...)`
+with typed errors (`ResendConfigError | ResendHttpError`). Returns
+`{ id: string; status: 'sent' | 'queued' }`.
+
+**New file: `src/utils/aosEmailTemplate.ts`** — HTML email template builder.
+`buildAosEmailHtml(data)` returns a self-contained HTML string with:
+- Navy RMPG header (`#22405f`)
+- Greeting: `"${recipientName},"`
+- Body: "Attached is your copy of the [form title] you signed today…"
+- Document summary card (navy left-border accent)
+- Case / date served / served by metadata row
+- Courtesy disclaimer
+- Footer: Rocky Mountain Protective Group / Salt Lake City / server@rmpgutah.us
+
+Inline CSS only (email clients strip `<style>` blocks). System fonts
+(Arial/Helvetica). All colors hardcoded (emails have no CSS variable support).
+
+**Modified: `src/routes/serveReceipt.ts`** — Replace the Graph-based email
+path in `POST /:token/email` with Resend:
+1. Check `RESEND_API_KEY` secret — if unset, return `200 { ok: true, status: 'not_configured' }`.
+2. Build HTML via `buildAosEmailHtml()`.
+3. Call `sendViaResend()` with the PDF as a base64 attachment.
+4. Update `serve_receipts.email_status` to `'sent'` or `'failed'`.
+5. The `ownerUserId` lookup and Graph machinery become dead code for this
+   specific route — leave the Graph path intact for other email routes.
+
+**Config:**
+- Secret: `RESEND_API_KEY` via `wrangler secret put RESEND_API_KEY`
+- DNS: add Resend's SPF include and DKIM CNAME records to the `rmpgutah.us` zone
+- No new D1 columns needed — reuses existing `email_status`, `email_sent_at`, `email_error`
+
+#### 8.4 Email template
+
+Layout (matches the mockup shown during design):
+```
+┌─────────────────────────────────────────────────┐
+│  ROCKY MOUNTAIN PROTECTIVE GROUP (navy header)  │
+│  Acknowledgement of Service                     │
+│  Your signed copy                               │
+├─────────────────────────────────────────────────┤
+│                                                 │
+│  {recipientName},                               │
+│                                                 │
+│  Attached is your copy of the {formTitle} you   │
+│  signed today, for your records.                │
+│                                                 │
+│  ┌── Documents served ────────────────────────┐ │
+│  │ 📄 Summons and Complaint                   │ │
+│  │ 📄 Motion for TRO                          │ │
+│  └────────────────────────────────────────────┘ │
+│                                                 │
+│  Case: 240301234 │ Date: Aug 10, 2026          │
+│  Served by: Ofc. Smith #412                     │
+│                                                 │
+│  This message is a courtesy copy from Rocky     │
+│  Mountain Protective Group. Please do not reply. │
+│                                                 │
+├─────────────────────────────────────────────────┤
+│  📎 acknowledgement-of-service.pdf              │
+├─────────────────────────────────────────────────┤
+│  Rocky Mountain Protective Group                │
+│  Salt Lake City, Utah                           │
+│  server@rmpgutah.us                             │
+└─────────────────────────────────────────────────┘
+```
+
+### 9. Testing
 
 - Unit tests for `validPageImage()` (size boundary at 2MB)
 - Unit tests for person upsert match logic (DL#, name+DOB, no match → create)

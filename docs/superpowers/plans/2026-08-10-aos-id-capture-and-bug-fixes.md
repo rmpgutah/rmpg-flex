@@ -1300,3 +1300,371 @@ All steps must pass with zero failures. Any failure is caused by these changes (
 git add -A
 git commit -m "fix: integration test fixes for AoS ID capture"
 ```
+
+---
+
+### Task 10: Email — Resend Integration for Recipient Copy
+
+**Files:**
+- Create: `src/utils/resendEmail.ts` (Resend REST client)
+- Create: `src/utils/aosEmailTemplate.ts` (HTML email template builder)
+- Test: `tests/resendEmail.test.ts`
+- Test: `tests/aosEmailTemplate.test.ts`
+- Modify: `src/routes/serveReceipt.ts:870-964` (replace Graph email path with Resend)
+- Modify: `src/types.ts` (add `RESEND_API_KEY` to Bindings)
+
+**Interfaces:**
+- Consumes: `serve_receipts` row (email_to, recipient_name, form_title), `serve_queue` row (case_number, officer info), PDF base64 from client
+- Produces: `sendViaResend(apiKey, input): Promise<{ id: string; status: 'sent' | 'queued' }>`, `buildAosEmailHtml(data): string`
+
+- [ ] **Step 1: Write failing test for Resend client**
+
+Create `tests/resendEmail.test.ts`:
+
+```ts
+import { describe, it, expect, vi } from 'vitest';
+import { sendViaResend } from '../src/utils/resendEmail';
+
+describe('sendViaResend', () => {
+  it('calls Resend API with correct payload', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ id: 'test-id' }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await sendViaResend('re_test_key', {
+      from: 'Rocky Mountain Protective Group <server@rmpgutah.us>',
+      to: 'recipient@example.com',
+      subject: 'Test',
+      html: '<p>Hello</p>',
+    });
+
+    expect(result.id).toBe('test-id');
+    expect(result.status).toBe('sent');
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.resend.com/emails',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Authorization': 'Bearer re_test_key',
+          'Content-Type': 'application/json',
+        }),
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('returns queued status on non-ok response', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      text: () => Promise.resolve('Invalid email'),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await sendViaResend('re_test_key', {
+      from: 'server@rmpgutah.us',
+      to: 'bad',
+      subject: 'Test',
+      html: '<p>Hello</p>',
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toContain('422');
+
+    vi.unstubAllGlobals();
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+```bash
+npx vitest run tests/resendEmail.test.ts
+```
+
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Create src/utils/resendEmail.ts**
+
+```ts
+import { log } from './logger';
+
+export interface ResendEmailInput {
+  from: string;
+  to: string;
+  subject: string;
+  html: string;
+  attachments?: { filename: string; content: string }[];
+}
+
+export interface ResendResult {
+  id: string | null;
+  status: 'sent' | 'failed';
+  error?: string;
+}
+
+export async function sendViaResend(
+  apiKey: string,
+  input: ResendEmailInput,
+): Promise<ResendResult> {
+  const body: Record<string, unknown> = {
+    from: input.from,
+    to: [input.to],
+    subject: input.subject,
+    html: input.html,
+  };
+
+  if (input.attachments?.length) {
+    body.attachments = input.attachments.map(a => ({
+      filename: a.filename,
+      content: a.content,
+    }));
+  }
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    const err = `Resend ${res.status}: ${text.slice(0, 200)}`;
+    log.error('Resend email failed', { status: res.status, to: input.to, error: err });
+    return { id: null, status: 'failed', error: err };
+  }
+
+  const data = await res.json() as { id?: string };
+  return { id: data.id || null, status: 'sent' };
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+```bash
+npx vitest run tests/resendEmail.test.ts
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Write failing test for email template**
+
+Create `tests/aosEmailTemplate.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { buildAosEmailHtml } from '../src/utils/aosEmailTemplate';
+
+describe('buildAosEmailHtml', () => {
+  it('produces valid HTML with recipient name', () => {
+    const html = buildAosEmailHtml({
+      recipientName: 'Jane Doe',
+      formTitle: 'Acknowledgement of Service Form (Individual)',
+      documents: [{ title: 'Summons', copies: 1 }],
+      caseNumber: '240301234',
+      dateServed: '2026-08-10',
+      serverName: 'Ofc. Smith',
+      serverBadge: '#412',
+    });
+    expect(html).toContain('Jane Doe');
+    expect(html).toContain('Acknowledgement of Service Form (Individual)');
+    expect(html).toContain('Summons');
+    expect(html).toContain('240301234');
+    expect(html).toContain('#22405f');
+    expect(html).toContain('Rocky Mountain Protective Group');
+    expect(html).toContain('server@rmpgutah.us');
+  });
+
+  it('omits case number when not provided', () => {
+    const html = buildAosEmailHtml({
+      recipientName: 'John Smith',
+      formTitle: 'Acknowledgement of Service Form',
+      documents: [],
+    });
+    expect(html).not.toContain('Case');
+    expect(html).toContain('John Smith');
+  });
+});
+```
+
+- [ ] **Step 6: Create src/utils/aosEmailTemplate.ts**
+
+```ts
+export interface AosEmailData {
+  recipientName: string;
+  formTitle: string;
+  documents?: { title: string; copies?: number }[];
+  caseNumber?: string | null;
+  dateServed?: string | null;
+  serverName?: string | null;
+  serverBadge?: string | null;
+}
+
+export function buildAosEmailHtml(data: AosEmailData): string {
+  const docs = (data.documents || [])
+    .map(d => `<div style="font-size:13px;color:#2c2c2a;margin-bottom:4px;">&#128196; ${esc(d.title)}</div>`)
+    .join('');
+
+  const metaParts: string[] = [];
+  if (data.caseNumber) metaParts.push(`<div><div style="color:#5f5e5a;margin-bottom:2px;">Case</div><div style="font-weight:500;">${esc(data.caseNumber)}</div></div>`);
+  if (data.dateServed) metaParts.push(`<div><div style="color:#5f5e5a;margin-bottom:2px;">Date served</div><div style="font-weight:500;">${esc(data.dateServed)}</div></div>`);
+  if (data.serverName) {
+    const badge = data.serverBadge ? ` ${esc(data.serverBadge)}` : '';
+    metaParts.push(`<div><div style="color:#5f5e5a;margin-bottom:2px;">Served by</div><div style="font-weight:500;">${esc(data.serverName)}${badge}</div></div>`);
+  }
+  const metaRow = metaParts.length
+    ? `<div style="display:flex;gap:24px;margin:20px 0;font-size:13px;">${metaParts.join('')}</div>`
+    : '';
+
+  const formTitleLower = data.formTitle.toLowerCase();
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f0f2f5;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:600px;margin:0 auto;padding:20px;">
+<div style="background:#ffffff;border-radius:8px;overflow:hidden;">
+<div style="background:#22405f;padding:24px 32px;text-align:center;">
+<div style="font-size:11px;letter-spacing:2px;color:#c3ccd6;margin-bottom:4px;">ROCKY MOUNTAIN PROTECTIVE GROUP</div>
+<div style="font-size:18px;font-weight:500;color:#f0f4f9;">Acknowledgement of Service</div>
+<div style="font-size:12px;color:#8fa3b8;margin-top:4px;">Your signed copy</div>
+</div>
+<div style="padding:32px;color:#2c2c2a;font-size:14px;line-height:1.7;">
+<p style="margin:0 0 16px;">${esc(data.recipientName)},</p>
+<p style="margin:0 0 16px;">Attached is your copy of the <strong>${esc(formTitleLower)}</strong> you signed today, for your records.</p>
+${docs ? `<div style="background:#f5f7fa;border-radius:6px;padding:16px 20px;margin:20px 0;border-left:3px solid #22405f;">
+<div style="font-size:12px;color:#5f5e5a;margin-bottom:8px;">Documents served</div>
+${docs}</div>` : ''}
+${metaRow}
+<p style="margin:20px 0 0;color:#5f5e5a;font-size:13px;">This message is a courtesy copy from Rocky Mountain Protective Group. Please do not reply &mdash; questions about the case should go to the court or the attorney of record.</p>
+</div>
+<div style="background:#f5f7fa;padding:20px 32px;text-align:center;border-top:1px solid #e0e0e0;">
+<div style="font-size:11px;color:#888780;line-height:1.6;">
+Rocky Mountain Protective Group<br>Salt Lake City, Utah<br>
+<span style="color:#5f5e5a;">server@rmpgutah.us</span>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>`;
+}
+
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+```
+
+- [ ] **Step 7: Run template test**
+
+```bash
+npx vitest run tests/aosEmailTemplate.test.ts
+```
+
+Expected: PASS.
+
+- [ ] **Step 8: Add RESEND_API_KEY to Bindings in src/types.ts**
+
+In `src/types.ts`, add to the `Bindings` interface:
+
+```ts
+  RESEND_API_KEY?: string;
+```
+
+- [ ] **Step 9: Replace Graph email path in serveReceipt.ts POST /:token/email**
+
+Replace lines 929-963 (the try/catch block that calls `enqueueAndSend` via Graph) with:
+
+```ts
+  try {
+    const resendKey = c.env.RESEND_API_KEY;
+    if (!resendKey) {
+      await execute(db, "UPDATE serve_receipts SET email_status = 'not_configured', email_error = 'RESEND_API_KEY not set' WHERE id = ?", receipt.id);
+      return c.json({ ok: true, status: 'not_configured' });
+    }
+
+    const { sendViaResend } = await import('../utils/resendEmail');
+    const { buildAosEmailHtml } = await import('../utils/aosEmailTemplate');
+
+    const docsRaw = await queryFirst<{ documents_json: string | null }>(
+      db, 'SELECT documents_json FROM serve_receipts WHERE id = ?', receipt.id);
+    const documents = docsRaw?.documents_json
+      ? (JSON.parse(docsRaw.documents_json) as { title: string; copies?: number }[])
+      : [];
+
+    const serverInfo = ownerUserId
+      ? await queryFirst<{ first_name: string | null; last_name: string | null; badge_number: string | null }>(
+          db, 'SELECT first_name, last_name, badge_number FROM users WHERE id = ?', ownerUserId)
+      : null;
+
+    const html = buildAosEmailHtml({
+      recipientName: receipt.recipient_name,
+      formTitle: label,
+      documents,
+      caseNumber: job?.case_number || null,
+      dateServed: new Date().toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric',
+        timeZone: 'America/Denver',
+      }),
+      serverName: serverInfo
+        ? [serverInfo.first_name, serverInfo.last_name].filter(Boolean).join(' ') || null
+        : null,
+      serverBadge: serverInfo?.badge_number ? `#${serverInfo.badge_number}` : null,
+    });
+
+    const result = await sendViaResend(resendKey, {
+      from: 'Rocky Mountain Protective Group <server@rmpgutah.us>',
+      to: receipt.email_to,
+      subject: `${label}${caseRef}`,
+      html,
+      attachments: [{
+        filename: body.filename || 'acknowledgement-of-service.pdf',
+        content: body.pdf_base64,
+      }],
+    });
+
+    const status = result.status === 'sent' ? 'sent' : 'failed';
+    await execute(
+      db,
+      `UPDATE serve_receipts SET email_status = ?, email_error = ?,
+              email_sent_at = CASE WHEN ? = 'sent' THEN datetime('now') ELSE NULL END
+        WHERE id = ?`,
+      status, result.error ? String(result.error).slice(0, 300) : null, status, receipt.id,
+    );
+    return c.json({ ok: true, status });
+  } catch (err) {
+    log.error('Serve receipt email failed', { receiptId: receipt.id }, err as Error);
+    await execute(db, "UPDATE serve_receipts SET email_status = 'failed', email_error = ? WHERE id = ?",
+      String((err as Error)?.message ?? 'send failed').slice(0, 300), receipt.id);
+    return c.json({ ok: true, status: 'failed' });
+  }
+```
+
+- [ ] **Step 10: Run all tests and typecheck**
+
+```bash
+npm run typecheck
+npx vitest run tests/resendEmail.test.ts tests/aosEmailTemplate.test.ts
+npx vitest run
+```
+
+Expected: all pass.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add src/utils/resendEmail.ts src/utils/aosEmailTemplate.ts src/types.ts src/routes/serveReceipt.ts tests/resendEmail.test.ts tests/aosEmailTemplate.test.ts
+git commit -m "feat(email): Resend integration for AoS recipient copy from server@rmpgutah.us"
+```
+
+**Post-merge setup:**
+1. `npx wrangler secret put RESEND_API_KEY` — paste the key from https://resend.com/api-keys
+2. In Resend dashboard: add domain `rmpgutah.us`, configure the SPF/DKIM DNS records it provides
+3. In Cloudflare DNS for `rmpgutah.us`: add the SPF include and DKIM CNAME records
+4. Test: sign a receipt with an email address → verify the email arrives with the PDF attachment
