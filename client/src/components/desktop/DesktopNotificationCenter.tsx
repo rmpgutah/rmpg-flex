@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Bell, CheckCheck, AlertTriangle, Info, Shield, Car } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { TASKBAR_HEIGHT_PX } from './DesktopTaskbar';
 import { getTaskbarPosition, getTaskbarSize } from '../../utils/taskbarPreferences';
 
@@ -38,7 +39,7 @@ function notifIcon(type: string) {
 }
 
 function relativeTime(iso: string): string {
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  const diff = (Date.now() - parseTimestamp(iso).getTime()) / 1000;
   if (diff < 60) return 'Just now';
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
