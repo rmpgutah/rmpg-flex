@@ -17,15 +17,28 @@ import { prepareZXingModule, readBarcodes } from 'zxing-wasm/reader';
 import wasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
 
 let prepared = false;
+let moduleError: string | null = null;
+
 function ensureModule(): void {
   if (prepared) return;
   prepared = true;
-  prepareZXingModule({
-    overrides: {
-      locateFile: (path: string, prefix: string) =>
-        path.endsWith('.wasm') ? wasmUrl : prefix + path,
-    },
-  });
+  try {
+    prepareZXingModule({
+      overrides: {
+        locateFile: (path: string, prefix: string) =>
+          path.endsWith('.wasm') ? wasmUrl : prefix + path,
+      },
+    });
+  } catch (err) {
+    moduleError = (err as Error)?.message ?? String(err);
+    console.error('[pdf417] WASM module init failed:', err);
+  }
+}
+
+/** Returns the WASM init error message, or null if init succeeded. */
+export function getModuleError(): string | null {
+  ensureModule();
+  return moduleError;
 }
 
 function loadImage(file: File): Promise<HTMLImageElement> {

@@ -217,6 +217,27 @@ export default function ServeReceiptPage() {
   const [idScanError, setIdScanError] = useState<string | null>(null);
   const [idVerified, setIdVerified] = useState(false);
   const [idDescription, setIdDescription] = useState('');
+  const [idManualMode, setIdManualMode] = useState(false);
+  const [aamvaResult, setAamvaResult] = useState<Record<string, unknown> | null>(null);
+  const [manualFirstName, setManualFirstName] = useState('');
+  const [manualLastName, setManualLastName] = useState('');
+  const [manualMiddleName, setManualMiddleName] = useState('');
+  const [manualDob, setManualDob] = useState('');
+  const [manualDlNumber, setManualDlNumber] = useState('');
+  const [manualDlState, setManualDlState] = useState('');
+  const [manualGender, setManualGender] = useState('');
+  const [manualHeight, setManualHeight] = useState('');
+  const [manualWeight, setManualWeight] = useState('');
+  const [manualEyeColor, setManualEyeColor] = useState('');
+  const [manualHairColor, setManualHairColor] = useState('');
+  const [idFrontImage, setIdFrontImage] = useState<string | null>(null);
+  const [idBackImage, setIdBackImage] = useState<string | null>(null);
+  const [idScanMethod, setIdScanMethod] = useState<'barcode' | 'manual' | null>(null);
+  const [addressCurrent, setAddressCurrent] = useState(true);
+  const [currentAddress, setCurrentAddress] = useState('');
+  const [currentCity, setCurrentCity] = useState('');
+  const [currentState, setCurrentState] = useState('');
+  const [currentZip, setCurrentZip] = useState('');
 
   const [coords, setCoords] = useState<{ lat: number; lng: number; acc: number } | null>(null);
   const [deviceSignals, setDeviceSignals] = useState<DeviceSignals | null>(null);
@@ -461,12 +482,13 @@ export default function ServeReceiptPage() {
       // perfectly valid service.
       phone: !phone.trim(),
       email: !email.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()),
+      id: !idVerified && !idFrontImage,
       businessName: variant === 'business' && !businessName.trim(),
       authority: isNamedParty === false && !residesAtAddress && !authorizedAgent && premisesType !== 'other',
       attestations: missingAttestationIds,
       signature: !signature,
     };
-  }, [partyIsEntity, isNamedParty, recipientName, phone, email, variant, businessName, residesAtAddress, authorizedAgent, premisesType, attestations, accepted, signature]);
+  }, [partyIsEntity, isNamedParty, recipientName, phone, email, idVerified, idFrontImage, variant, businessName, residesAtAddress, authorizedAgent, premisesType, attestations, accepted, signature]);
 
   const missingCount = Object.values(fieldErrors).reduce(
     (n, v) => n + (v instanceof Set ? v.size : v ? 1 : 0), 0,
@@ -510,22 +532,56 @@ export default function ServeReceiptPage() {
     try {
       const outcome = await decodePdf417(file);
       if (!outcome) {
-        setIdScanError('Could not read the barcode. Try again in better light, or just type your name.');
+        setIdScanError('Could not read the barcode. You can enter your ID information manually below.');
         return;
       }
       const dl = parseAamva(outcome.text);
       const full = [dl.first_name, dl.middle_name, dl.last_name, dl.suffix]
         .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
       if (full) setRecipientName(full);
-      setIdDescription([dl.gender, dl.height, dl.weight && `${dl.weight} lbs`, dl.hair_color, dl.eye_color]
+      setIdDescription([dl.gender, dl.race, dl.height, dl.weight && `${dl.weight} lbs`, dl.hair_color, dl.eye_color]
         .filter(Boolean).join(', '));
+      setAamvaResult(dl as unknown as Record<string, unknown>);
+      setIdScanMethod('barcode');
       setIdVerified(true);
-    } catch {
-      setIdScanError('Could not read the barcode. Try again, or just type your name.');
+    } catch (err) {
+      console.error('[aos] barcode scan error:', err);
+      setIdScanError('Could not read the barcode. You can enter your ID information manually below.');
     } finally {
       setIdScanning(false);
     }
   }, []);
+
+  const captureIdPhoto = useCallback((file: File, side: 'front' | 'back') => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        if (side === 'front') setIdFrontImage(dataUrl);
+        else setIdBackImage(dataUrl);
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const completeManualId = useCallback(() => {
+    if (!manualFirstName.trim() || !manualLastName.trim()) return;
+    const full = [manualFirstName, manualMiddleName, manualLastName]
+      .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    setRecipientName(full);
+    setIdDescription([manualGender, manualHeight, manualWeight && `${manualWeight} lbs`, manualHairColor, manualEyeColor]
+      .filter(Boolean).join(', '));
+    setIdScanMethod('manual');
+    setIdVerified(true);
+    setIdManualMode(false);
+  }, [manualFirstName, manualMiddleName, manualLastName, manualGender, manualHeight, manualWeight, manualHairColor, manualEyeColor]);
 
   const buildPdfData = useCallback((receiptId: number): ReceiptOfServiceData => ({
     receiptId,
@@ -616,6 +672,27 @@ export default function ServeReceiptPage() {
           recipient_id_type: idVerified ? 'drivers_licence_scan' : null,
           recipient_id_verified: idVerified,
           recipient_description: idDescription || null,
+          id_scan_method: idScanMethod,
+          aamva_data: aamvaResult,
+          manual_id: idScanMethod === 'manual' ? {
+            first_name: manualFirstName.trim(),
+            last_name: manualLastName.trim(),
+            middle_name: manualMiddleName.trim() || null,
+            dob: manualDob || null,
+            dl_number: manualDlNumber || null,
+            dl_state: manualDlState || null,
+            gender: manualGender || null,
+            height: manualHeight || null,
+            weight: manualWeight || null,
+            eye_color: manualEyeColor || null,
+            hair_color: manualHairColor || null,
+          } : null,
+          id_front_image: idFrontImage,
+          id_back_image: idBackImage,
+          recipient_address_current: !addressCurrent ? {
+            address: currentAddress, city: currentCity,
+            state: currentState, zip: currentZip,
+          } : null,
           premises_type: premisesType,
           service_address: ctx?.job.service_address ?? null,
           service_city: ctx?.job.service_city ?? null,
@@ -732,7 +809,11 @@ export default function ServeReceiptPage() {
     }
   }, [missingCount, submitting, token, apiBase, variant, formTitle, acceptedAttestations, recipientName,
       relationship, jobTitle, businessName, phone, email, accepted, premisesType, ctx, docCopies,
-      partyLabel, residesAtAddress, authorizedAgent, expectedDelivery, signature, coords, buildPdfData]);
+      partyLabel, residesAtAddress, authorizedAgent, expectedDelivery, signature, coords, buildPdfData,
+      idScanMethod, aamvaResult, manualFirstName, manualLastName, manualMiddleName, manualDob,
+      manualDlNumber, manualDlState, manualGender, manualHeight, manualWeight, manualEyeColor,
+      manualHairColor, idFrontImage, idBackImage, addressCurrent, currentAddress, currentCity,
+      currentState, currentZip]);
 
   // ── Render: loading / error / done ─────────────────────────
   if (loading) {
@@ -1018,40 +1099,172 @@ export default function ServeReceiptPage() {
             {showHint(fieldErrors.name) && <RequiredHint />}
           </Field>
 
-          {/* ID scan is strongly encouraged — it changes evidentiary weight
-              but cannot be mandatory (nobody must produce ID to accept papers). */}
+          {/* ── ID Capture ────────────────────────────────── */}
+          {/* Required, per operator instruction on the 2026-07-27 service —
+              a proof of service is more defensible in a contested hearing
+              when the signer's identity was verified against a photo ID
+              rather than self-attested. */}
           {idVerified ? (
-            <p className="text-[13px] text-sev-ok leading-relaxed flex items-center gap-1.5">
-              <Check size={14} /> Identity verified from your licence.
-            </p>
+            <div className="space-y-2">
+              <p className="text-[13px] text-sev-ok leading-relaxed flex items-center gap-1.5">
+                <Check size={14} /> Identity {idScanMethod === 'barcode' ? 'read from your licence' : 'entered manually'}.
+              </p>
+              {idDescription && (
+                <p className="text-[12px] text-fg-muted">{idDescription}</p>
+              )}
+            </div>
           ) : (
-            <label className="block">
-              <span className="flex items-center gap-1.5 text-[13px] text-fg-secondary cursor-pointer">
-                <ScanLine size={14} />
-                {idScanning ? 'Reading…' : 'Scan the barcode on the back of your licence or state ID'}
-              </span>
-              <input
-                type="file" accept="image/*" capture="environment" className="sr-only"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) void scanId(f); e.target.value = ''; }}
-              />
-              <span className="block text-[13px] text-fg-muted leading-relaxed mt-0.5">
-                We need this to verify who signed. It also fills your name in
-                for you.
-              </span>
-            </label>
-          )}
-          {idScanError && (
-            <p className="text-[13px] text-sev-warn leading-relaxed">
-              {idScanError}{' '}
-              <label className="underline cursor-pointer">
-                Try again
+            <div className="space-y-3">
+              {/* Barcode scan — prominent at top */}
+              <label className="block p-3 rounded-[2px] border border-brand-500 bg-surface-sunken cursor-pointer active:opacity-80">
+                <span className="flex items-center gap-2 text-[15px] text-rmpg-100 font-semibold">
+                  <ScanLine size={18} />
+                  {idScanning ? 'Reading barcode…' : 'Scan ID barcode'}
+                  <span className="text-sev-critical">*</span>
+                </span>
                 <input
                   type="file" accept="image/*" capture="environment" className="sr-only"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void scanId(f); e.target.value = ''; }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void scanId(f); }}
+                />
+                <span className="block text-[12px] text-fg-muted leading-snug mt-1">
+                  Take a photo of the barcode on the back of your licence or
+                  state ID. This fills your name and description automatically.
+                </span>
+              </label>
+
+              {idScanError && (
+                <p className="text-[13px] text-sev-warn leading-relaxed">{idScanError}</p>
+              )}
+
+              {/* Manual entry fallback — always visible when scan hasn't succeeded */}
+              {!idManualMode ? (
+                <button
+                  type="button"
+                  onClick={() => setIdManualMode(true)}
+                  className="w-full py-2.5 rounded-[2px] border border-rmpg-700 text-[13px] text-fg-secondary bg-surface-sunken active:opacity-80"
+                >
+                  Enter ID information manually instead
+                </button>
+              ) : (
+                <div className="space-y-2 p-3 rounded-[2px] border border-rmpg-700 bg-surface-sunken">
+                  <p className="text-[12px] text-fg-muted font-semibold uppercase tracking-wider">Manual ID entry</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="First name *">
+                      <input className={inputCls} value={manualFirstName} onChange={(e) => setManualFirstName(e.target.value)} placeholder="First" autoComplete="given-name" />
+                    </Field>
+                    <Field label="Last name *">
+                      <input className={inputCls} value={manualLastName} onChange={(e) => setManualLastName(e.target.value)} placeholder="Last" autoComplete="family-name" />
+                    </Field>
+                  </div>
+                  <Field label="Middle name">
+                    <input className={inputCls} value={manualMiddleName} onChange={(e) => setManualMiddleName(e.target.value)} placeholder="Middle (optional)" autoComplete="additional-name" />
+                  </Field>
+                  <Field label="Date of birth">
+                    <input type="date" className={inputCls} value={manualDob} onChange={(e) => setManualDob(e.target.value)} />
+                  </Field>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="DL / ID number">
+                      <input className={inputCls} value={manualDlNumber} onChange={(e) => setManualDlNumber(e.target.value)} placeholder="Licence #" />
+                    </Field>
+                    <Field label="Issuing state">
+                      <input className={inputCls} value={manualDlState} onChange={(e) => setManualDlState(e.target.value)} placeholder="e.g. UT" maxLength={2} />
+                    </Field>
+                  </div>
+                  <p className="text-[11px] text-fg-muted font-semibold uppercase tracking-wider mt-2">Physical description</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="Gender">
+                      <select className={inputCls} value={manualGender} onChange={(e) => setManualGender(e.target.value)}>
+                        <option value="">Select…</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                      </select>
+                    </Field>
+                    <Field label="Eye color">
+                      <select className={inputCls} value={manualEyeColor} onChange={(e) => setManualEyeColor(e.target.value)}>
+                        <option value="">Select…</option>
+                        {['Brown', 'Blue', 'Green', 'Hazel', 'Gray', 'Black'].map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Hair color">
+                      <select className={inputCls} value={manualHairColor} onChange={(e) => setManualHairColor(e.target.value)}>
+                        <option value="">Select…</option>
+                        {['Black', 'Brown', 'Blonde', 'Red', 'Gray', 'White', 'Bald'].map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Height">
+                      <input className={inputCls} value={manualHeight} onChange={(e) => setManualHeight(e.target.value)} placeholder={`e.g. 5'10"`} />
+                    </Field>
+                  </div>
+                  <Field label="Weight (lbs)">
+                    <input className={inputCls} type="number" inputMode="numeric" value={manualWeight} onChange={(e) => setManualWeight(e.target.value)} placeholder="e.g. 180" />
+                  </Field>
+                  <button
+                    type="button"
+                    onClick={completeManualId}
+                    disabled={!manualFirstName.trim() || !manualLastName.trim()}
+                    className="w-full py-2.5 rounded-[2px] font-semibold text-[14px] bg-brand-600 text-rmpg-50 disabled:opacity-40 active:opacity-80"
+                  >
+                    Confirm ID information
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Front / back ID photo capture */}
+          <div className="space-y-2">
+            <p className="text-[12px] text-fg-muted font-semibold uppercase tracking-wider">ID photos</p>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block p-2.5 rounded-[2px] border border-rmpg-700 bg-surface-sunken text-center cursor-pointer active:opacity-80">
+                <span className="text-[13px] text-fg-secondary">{idFrontImage ? 'Front captured' : 'Photo — front of ID'}</span>
+                {idFrontImage && <Check size={14} className="inline ml-1 text-sev-ok" />}
+                <input
+                  type="file" accept="image/*" capture="environment" className="sr-only"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) captureIdPhoto(f, 'front'); }}
                 />
               </label>
-            </p>
+              <label className="block p-2.5 rounded-[2px] border border-rmpg-700 bg-surface-sunken text-center cursor-pointer active:opacity-80">
+                <span className="text-[13px] text-fg-secondary">{idBackImage ? 'Back captured' : 'Photo — back of ID'}</span>
+                {idBackImage && <Check size={14} className="inline ml-1 text-sev-ok" />}
+                <input
+                  type="file" accept="image/*" capture="environment" className="sr-only"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) captureIdPhoto(f, 'back'); }}
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* Address confirmation */}
+          {(idVerified || idFrontImage) && (
+            <div className="space-y-2">
+              {ctx.job.service_address && (
+                <YesNo
+                  label="Is the address on your ID your current address?"
+                  value={addressCurrent}
+                  onChange={setAddressCurrent}
+                />
+              )}
+              {!addressCurrent && (
+                <div className="space-y-2">
+                  <Field label="Current street address">
+                    <input className={inputCls} value={currentAddress} onChange={(e) => setCurrentAddress(e.target.value)} placeholder="123 Main St" autoComplete="street-address" />
+                  </Field>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Field label="City">
+                      <input className={inputCls} value={currentCity} onChange={(e) => setCurrentCity(e.target.value)} placeholder="City" autoComplete="address-level2" />
+                    </Field>
+                    <Field label="State">
+                      <input className={inputCls} value={currentState} onChange={(e) => setCurrentState(e.target.value)} placeholder="UT" maxLength={2} autoComplete="address-level1" />
+                    </Field>
+                    <Field label="ZIP">
+                      <input className={inputCls} value={currentZip} onChange={(e) => setCurrentZip(e.target.value)} placeholder="84101" inputMode="numeric" maxLength={10} autoComplete="postal-code" />
+                    </Field>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
+          {showHint(fieldErrors.id) && <RequiredHint text="Scan your ID barcode, enter your information manually, or take a photo of the front of your ID." />}
 
           <Field label="Phone number *">
             <input
