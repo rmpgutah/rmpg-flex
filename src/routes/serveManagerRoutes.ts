@@ -10,7 +10,7 @@ import { Hono } from 'hono';
 import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-import { testConnection, setApiKey as smSetApiKey, clearApiKey as smClearApiKey, fetchJobById } from '../utils/serveManagerClient';
+import { testConnection, setApiKey as smSetApiKey, clearApiKey as smClearApiKey, fetchJobById, fetchDocumentBinary } from '../utils/serveManagerClient';
 import { pollServeManagerJobs, createDispatchCallForJob } from '../utils/serveManagerPoller';
 
 import { log } from '../utils/logger';
@@ -186,6 +186,20 @@ sm.get('/jobs/:jobId', async (c) => {
     const attempts = await query<Record<string, unknown>>(db, 'SELECT * FROM sm_attempts WHERE job_id = ? ORDER BY id DESC', String(jobId));
     return c.json({ data: { ...job, attempts } });
   } catch { return c.json({ error: 'Not found' }, 404); }
+});
+
+// GET /documents/:documentId/download — proxies a cached job's document PDF
+// (Fieldsheet, Address Label, etc.) through the Worker. The client can't hit
+// documents_json's pdf_download_url directly — that's ServeManager's own
+// authenticated API, not a public link, so it 401s without the stored key.
+sm.get('/documents/:documentId/download', async (c) => {
+  const documentId = c.req.param('documentId');
+  const result = await fetchDocumentBinary(getDb(c.env), c.env.JWT_SECRET, documentId);
+  if (!result.ok) {
+    log.error('GET /documents/:documentId/download failed', { src: 'src/routes/serveManagerRoutes.ts', documentId, status: result.status });
+    return c.json({ error: 'Download failed' }, result.status === 503 ? 503 : 502);
+  }
+  return new Response(result.body, { headers: { 'Content-Type': result.contentType } });
 });
 
 // POST /jobs/:jobId/create-dispatch — manual override of the target-client

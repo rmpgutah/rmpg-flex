@@ -106,6 +106,28 @@ async function smGet(path: string, apiKey: string, params?: Record<string, strin
   return res.json();
 }
 
+// documents_json's `pdf_download_url` (e.g.
+// https://www.servemanager.com/api/documents/50457080/download) is
+// ServeManager's OWN authenticated API endpoint, not a public link — the
+// browser has no ServeManager credentials, so linking to it directly from
+// the client 401s. This proxies the binary through the Worker with the
+// same Basic-Auth pattern smGet() uses for JSON.
+export async function fetchDocumentBinary(
+  db: D1Database, jwtSecret: string, documentId: number | string,
+): Promise<{ ok: true; contentType: string; body: ArrayBuffer } | { ok: false; status: number; error: string }> {
+  const key = await getStoredKey(db, jwtSecret);
+  if (!key) return { ok: false, status: 503, error: 'API key not configured' };
+  try {
+    const res = await fetch(`${SM_BASE_URL}/documents/${documentId}/download`, {
+      headers: { Authorization: `Basic ${btoa(`${key}:`)}` },
+    });
+    if (!res.ok) return { ok: false, status: res.status, error: await res.text().catch(() => 'download failed') };
+    return { ok: true, contentType: res.headers.get('content-type') || 'application/pdf', body: await res.arrayBuffer() };
+  } catch (err) {
+    return { ok: false, status: 502, error: (err as Error).message };
+  }
+}
+
 // ── Status check ──────────────────────────────────────────────
 
 export async function testConnection(db: D1Database, jwtSecret: string): Promise<{ success: boolean; account?: any; error?: string }> {

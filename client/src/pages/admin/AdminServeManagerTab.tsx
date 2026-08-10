@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, FileText, Briefcase, MapPin, ToggleLeft, ToggleRight,
   Settings, Bell, BellOff,
 } from 'lucide-react';
-import { apiFetch } from '../../hooks/useApi';
+import { apiFetch, apiFetchBlob } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import { safeDateStr, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
@@ -13,7 +13,7 @@ import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
   SMIntegrationStatus, SMConnectionTestResult, SMSyncResult,
   SMSyncLogEntry, SMCachedJob, SMPaginatedResponse, SMCachedAttempt,
-  SMPollerStatus,
+  SMPollerStatus, SMCachedDocument,
 } from '../../types/servemanager';
 import { formatEnumValue } from '../../utils/formatters';
 
@@ -246,6 +246,22 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
       setError(err instanceof Error ? err.message : 'Failed to load job details');
     } finally {
       setLoadingDetail(false);
+    }
+  };
+
+  const [downloadingDocId, setDownloadingDocId] = useState<number | null>(null);
+
+  const handleDownloadDocument = async (doc: SMCachedDocument) => {
+    setDownloadingDocId(doc.id);
+    try {
+      const blob = await apiFetchBlob(`/servemanager/documents/${doc.id}/download`);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download document');
+    } finally {
+      setDownloadingDocId(null);
     }
   };
 
@@ -690,6 +706,31 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
                   <span className="text-rmpg-300 ml-1">{selectedJob.service_instructions}</span>
                 </div>
               )}
+              {/* Documents */}
+              {(() => {
+                let docs: SMCachedDocument[] = [];
+                try { docs = asArray(JSON.parse(selectedJob.documents_json || '[]')); } catch { /* malformed cache row */ }
+                if (docs.length === 0) return null;
+                return (
+                  <div className="space-y-1 mt-2">
+                    <div className="text-[10px] font-bold text-fg-muted">Documents ({docs.length})</div>
+                    {docs.map((doc) => (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        onClick={() => handleDownloadDocument(doc)}
+                        disabled={downloadingDocId === doc.id}
+                        className="flex items-center gap-2 w-full text-left text-[10px] bg-rmpg-800/50 hover:bg-rmpg-800 px-2 py-1 rounded-[2px] disabled:opacity-50"
+                      >
+                        <FileText className="w-3 h-3 text-fg-muted shrink-0" />
+                        <span className="text-rmpg-200">{doc.title || 'Document'}</span>
+                        {doc.document_type && <span className="text-fg-muted">({formatEnumValue(doc.document_type)})</span>}
+                        {downloadingDocId === doc.id && <Loader2 className="w-3 h-3 animate-spin text-fg-muted ml-auto" />}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
               {/* Attempts */}
               {selectedJob.attempts && selectedJob.attempts.length > 0 && (
                 <div className="space-y-1 mt-2">
