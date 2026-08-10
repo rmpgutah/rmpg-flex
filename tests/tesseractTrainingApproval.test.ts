@@ -77,4 +77,31 @@ describe('tesseract training approval', () => {
     const body = await res.json() as any;
     expect(body.success).toBe(true);
   });
+
+  test('POST /documents/:id/approve reports APPROVE_FAILED when the D1 update throws', async () => {
+    const app = makeApp('admin');
+    const db = {
+      prepare: (sql: string) => {
+        let boundArgs: any[] = [];
+        return {
+          bind: (...args: any[]) => { boundArgs = args; return {
+            first: async () => {
+              if (/FROM tesseract_training_corpus WHERE serve_intake_document_id/.test(sql)) {
+                return { id: 1, approval_status: 'pending' };
+              }
+              return null;
+            },
+            run: async () => {
+              if (/UPDATE tesseract_training_corpus SET approval_status/.test(sql)) throw new Error('D1 unavailable');
+              return { meta: { changes: 0 } };
+            },
+          }; },
+        };
+      },
+    };
+    const res = await app.request('/documents/5/approve', { method: 'POST' }, { DB: db });
+    expect(res.status).toBe(500);
+    const body = await res.json() as any;
+    expect(body.code).toBe('APPROVE_FAILED');
+  });
 });

@@ -77,4 +77,26 @@ describe('tesseract review notes', () => {
     }, { DB: makeDb() });
     expect(res.status).toBe(403);
   });
+
+  test('PUT /documents/:id/notes reports NOTES_SAVE_FAILED when the D1 upsert throws', async () => {
+    const app = makeApp('admin');
+    const db = {
+      prepare: (sql: string) => ({
+        bind: (..._args: any[]) => ({
+          run: async () => {
+            if (/INSERT INTO tesseract_review_annotations/.test(sql)) throw new Error('D1 unavailable');
+            return { meta: { changes: 0 } };
+          },
+        }),
+      }),
+    };
+    const res = await app.request('/documents/5/notes', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ strokes: [] }),
+    }, { DB: db });
+    expect(res.status).toBe(500);
+    const body = await res.json() as any;
+    expect(body.code).toBe('NOTES_SAVE_FAILED');
+  });
 });
