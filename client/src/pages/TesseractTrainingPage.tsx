@@ -28,6 +28,9 @@ interface Stroke { tool: 'arrow' | 'circle' | 'highlight'; points: [number, numb
 
 type Mode = 'text' | 'boxes' | 'notes';
 
+interface StatsByDocType { doc_type: string | null; eligible: number; labeled: number; approved: number }
+interface Stats { total_eligible: number; total_labeled: number; total_approved: number; by_doc_type: StatsByDocType[] }
+
 export default function TesseractTrainingPage() {
   const [rows, setRows] = useState<DocRow[]>([]);
   const [page, setPage] = useState(1);
@@ -48,6 +51,15 @@ export default function TesseractTrainingPage() {
   const [activeTool, setActiveTool] = useState<Stroke['tool']>('highlight');
   const [drawingStroke, setDrawingStroke] = useState<Stroke | null>(null);
   const [notesDirty, setNotesDirty] = useState(false);
+
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [statsOpen, setStatsOpen] = useState(true);
+
+  const loadStats = useCallback(() => {
+    apiFetch<Stats>('/tesseract-training/stats').then(setStats).catch(console.error);
+  }, []);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
 
   const loadList = useCallback(() => {
     apiFetch<{ rows: DocRow[] }>(`/tesseract-training/documents?page=${page}`)
@@ -143,6 +155,41 @@ export default function TesseractTrainingPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="TESSERACT TRAINING SETUP" />
+      {stats && (
+        <div className="border border-surface-border p-3 space-y-2">
+          <button
+            onClick={() => setStatsOpen((v) => !v)}
+            className="text-[11px] font-bold uppercase tracking-wide"
+          >
+            Coverage {statsOpen ? '▲' : '▼'}
+          </button>
+          {statsOpen && (
+            <div className="space-y-1 text-[11px]">
+              <p>
+                {stats.total_labeled} / {stats.total_eligible} documents labeled
+                ({stats.total_approved} approved)
+              </p>
+              <table className="w-full">
+                <thead>
+                  <tr className="text-left text-fg-muted">
+                    <th>Doc Type</th><th>Eligible</th><th>Labeled</th><th>Approved</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.by_doc_type.map((row) => (
+                    <tr key={row.doc_type ?? '(none)'}>
+                      <td>{row.doc_type ?? '(unclassified)'}</td>
+                      <td>{row.eligible}</td>
+                      <td>{row.labeled}</td>
+                      <td>{row.approved}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
       <div className="flex gap-4">
         <div className="w-1/3 space-y-2">
           {rows.map((r) => (
