@@ -9,6 +9,7 @@ interface DocRow {
   doc_type: string | null;
   created_at: string;
   already_in_corpus: boolean;
+  approval_status: 'pending' | 'approved' | null;
 }
 
 interface DocDetail {
@@ -16,6 +17,7 @@ interface DocDetail {
   file_name: string;
   raw_text: string | null;
   already_in_corpus: boolean;
+  approval_status: 'pending' | 'approved' | null;
 }
 
 interface BoxAnnotation {
@@ -39,6 +41,7 @@ export default function TesseractTrainingPage() {
   const [groundTruth, setGroundTruth] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
   const [mode, setMode] = useState<Mode>('text');
 
   const [boxes, setBoxes] = useState<BoxAnnotation[]>([]);
@@ -109,6 +112,20 @@ export default function TesseractTrainingPage() {
       setSubmitError(err instanceof Error ? err.message : 'Submission failed');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (selectedId == null) return;
+    setApproving(true);
+    try {
+      await apiFetch(`/tesseract-training/documents/${selectedId}/approve`, { method: 'POST' });
+      setDetail((d) => (d ? { ...d, approval_status: 'approved' } : d));
+      loadList();
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Approval failed');
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -198,7 +215,9 @@ export default function TesseractTrainingPage() {
               onClick={() => setSelectedId(r.id)}
               className={`block w-full text-left p-2 text-[11px] border ${r.already_in_corpus ? 'opacity-50' : ''}`}
             >
-              {r.file_name} {r.already_in_corpus ? '(already labeled)' : ''}
+              {r.file_name}
+              {r.approval_status === 'approved' && ' [APPROVED]'}
+              {r.approval_status === 'pending' && ' [PENDING]'}
             </button>
           ))}
           <div className="flex gap-2">
@@ -242,6 +261,15 @@ export default function TesseractTrainingPage() {
                   >
                     {detail.already_in_corpus ? 'Already Submitted' : 'Submit to Training Corpus'}
                   </button>
+                  {detail.already_in_corpus && detail.approval_status === 'pending' && (
+                    <button
+                      onClick={handleApprove}
+                      disabled={approving}
+                      className="px-3 py-1 border ml-2"
+                    >
+                      Approve
+                    </button>
+                  )}
                 </>
               )}
 
