@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { imageToNaturalCoords } from '../utils/tesseractImageCoords';
@@ -34,6 +35,11 @@ interface StatsByDocType { doc_type: string | null; eligible: number; labeled: n
 interface Stats { total_eligible: number; total_labeled: number; total_approved: number; by_doc_type: StatsByDocType[] }
 
 export default function TesseractTrainingPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [filterDocType, setFilterDocType] = useState(searchParams.get('doc_type') ?? '');
+  const [filterLabeled, setFilterLabeled] = useState(searchParams.get('labeled') ?? '');
+  const [filterFrom, setFilterFrom] = useState(searchParams.get('from') ?? '');
+  const [filterTo, setFilterTo] = useState(searchParams.get('to') ?? '');
   const [rows, setRows] = useState<DocRow[]>([]);
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -68,10 +74,16 @@ export default function TesseractTrainingPage() {
   useEffect(() => { loadStats(); }, [loadStats]);
 
   const loadList = useCallback(() => {
-    apiFetch<{ rows: DocRow[] }>(`/tesseract-training/documents?page=${page}`)
+    const params = new URLSearchParams({ page: String(page) });
+    if (filterDocType) params.set('doc_type', filterDocType);
+    if (filterLabeled) params.set('labeled', filterLabeled);
+    if (filterFrom) params.set('from', filterFrom);
+    if (filterTo) params.set('to', filterTo);
+    apiFetch<{ rows: DocRow[] }>(`/tesseract-training/documents?${params.toString()}`)
       .then((res) => setRows(res.rows))
       .catch(console.error);
-  }, [page]);
+    setSearchParams(params, { replace: true });
+  }, [page, filterDocType, filterLabeled, filterFrom, filterTo, setSearchParams]);
 
   useEffect(() => { loadList(); }, [loadList]);
 
@@ -242,6 +254,44 @@ export default function TesseractTrainingPage() {
       )}
       <div className="flex gap-4">
         <div className="w-1/3 space-y-2">
+          <div className="space-y-1 pb-2 border-b border-surface-border">
+            <select
+              value={filterDocType}
+              onChange={(e) => setFilterDocType(e.target.value)}
+              className="w-full text-[11px] border p-1"
+            >
+              <option value="">All doc types</option>
+              <option value="null">(unclassified)</option>
+              {stats?.by_doc_type
+                .filter((r) => r.doc_type != null)
+                .map((r) => (
+                  <option key={r.doc_type} value={r.doc_type!}>{r.doc_type}</option>
+                ))}
+            </select>
+            <select
+              value={filterLabeled}
+              onChange={(e) => setFilterLabeled(e.target.value)}
+              className="w-full text-[11px] border p-1"
+            >
+              <option value="">Labeled + unlabeled</option>
+              <option value="true">Labeled only</option>
+              <option value="false">Unlabeled only</option>
+            </select>
+            <div className="flex gap-1">
+              <input
+                type="date"
+                value={filterFrom}
+                onChange={(e) => setFilterFrom(e.target.value)}
+                className="flex-1 text-[11px] border p-1"
+              />
+              <input
+                type="date"
+                value={filterTo}
+                onChange={(e) => setFilterTo(e.target.value)}
+                className="flex-1 text-[11px] border p-1"
+              />
+            </div>
+          </div>
           {rows.map((r) => (
             <div key={r.id} className="flex items-center gap-1">
               <input
