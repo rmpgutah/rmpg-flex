@@ -1,6 +1,5 @@
 // client/src/pages/DesktopPage.tsx
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
 import { NAV_CATEGORIES, CLIENT_VIEWER_BLOCKED, CONTRACT_MANAGER_BLOCKED, type NavFunction } from '../data/navCatalog';
 import { loadFavorites, saveFavorites, loadRecent } from '../utils/navFavorites';
 import { useUserPreferences, type UserPreferences } from '../context/UserPreferencesContext';
@@ -29,6 +28,7 @@ import DesktopLockScreen from '../components/desktop/DesktopLockScreen';
 import DesktopNotificationCenter from '../components/desktop/DesktopNotificationCenter';
 import DesktopScreenSaver, { useIdleScreenSaver } from '../components/desktop/DesktopScreenSaver';
 import { VirtualDesktopProvider } from '../components/desktop/DesktopVirtualDesktops';
+import FlexOSBootSplash from '../components/desktop/FlexOSBootSplash';
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -333,12 +333,17 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
 // `prefs` UserPreferencesProvider starts with.
 export default function DesktopPage() {
   const { prefs, reload, isLoading } = useUserPreferences();
+  const [splashDone, setSplashDone] = useState(false);
 
-  if (isLoading) {
+  // Show the FlexOS boot splash while preferences are loading, then fade out.
+  // The inner shell mounts once preferences arrive so its one-shot initializers
+  // read real data — keeping both concerns cleanly separated (see DesktopPageInner comment).
+  if (!splashDone) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
-      </div>
+      <>
+        {!isLoading && <DesktopPageInner prefs={prefs} reload={reload} />}
+        <FlexOSBootSplash ready={!isLoading} onFaded={() => setSplashDone(true)} />
+      </>
     );
   }
 
