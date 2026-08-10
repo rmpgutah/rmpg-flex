@@ -3,6 +3,8 @@ import { X, Gauge } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
 
+const MPS_TO_MPH = 2.23694;
+
 interface SpeedGraphOverlayProps {
   unitId: number;
   callSign: string;
@@ -55,7 +57,7 @@ export default function SpeedGraphOverlay({ unitId, callSign, hours, onClose }: 
         if (cancelled) return;
         const trail = raw.find((t) => t.unit_id === unitId) ?? raw[0];
         const tail = (trail?.points ?? []).slice(-200);
-        setPoints(tail.map((p) => ({ mph: p.speed ?? 0, time: p.time })));
+        setPoints(tail.map((p) => ({ mph: (p.speed ?? 0) * MPS_TO_MPH, time: p.time })));
       } catch (err) {
         console.warn('[SpeedGraph] fetch error:', err);
       }
