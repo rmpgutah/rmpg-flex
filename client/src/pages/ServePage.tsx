@@ -1797,7 +1797,7 @@ export default function ServePage() {
       ...(canManage ? [m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> })] : []),
       ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
       m.action('Print Job Sheet', () => handleJobSheet(job.id), { icon: <Printer size={12} /> }),
-      ...(job.attempt_count > 0 ? [
+      ...(job.attempt_count > 0 && job.status !== 'served' ? [
         m.action('Preview Notice of Attempt', () => setNoticePreviewJobId(job.id), { icon: <FileWarning size={12} /> }),
         m.action('Edit Notice before print', () => handleNoticeOfAttempt(job.id, true), { icon: <Pencil size={12} /> }),
       ] : []),
