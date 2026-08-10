@@ -1016,7 +1016,7 @@ export default function ServeIntakePage() {
       {/* Enforcement tab */}
       {activeTab === 'enforcement' && (
         <div className="p-4 space-y-3">
-          <p className="text-[11px] text-rmpg-500">
+          <p className="text-[11px] text-fg-muted">
             Enforcement tools for Serve Intake.
           </p>
           {user && ['admin', 'manager'].includes(user.role) && (

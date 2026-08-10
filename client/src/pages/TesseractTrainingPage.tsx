@@ -167,7 +167,7 @@ export default function TesseractTrainingPage() {
                   <button
                     key={m}
                     onClick={() => setMode(m)}
-                    className={`px-3 py-1 text-[11px] uppercase ${mode === m ? 'border-b-2 border-brand-400 text-brand-300' : 'text-rmpg-500'}`}
+                    className={`px-3 py-1 text-[11px] uppercase ${mode === m ? 'border-b-2 border-brand-400 text-brand-300' : 'text-fg-muted'}`}
                   >
                     {m}
                   </button>
@@ -200,7 +200,7 @@ export default function TesseractTrainingPage() {
 
               {mode === 'boxes' && (
                 <div className="space-y-2">
-                  <p className="text-[11px] text-rmpg-500">
+                  <p className="text-[11px] text-fg-muted">
                     Drag a box over a word or line, then type its correct text below.
                     These boxes become real Tesseract training data.
                   </p>
@@ -263,7 +263,7 @@ export default function TesseractTrainingPage() {
 
               {mode === 'notes' && (
                 <div className="space-y-2">
-                  <p className="text-[11px] text-rmpg-500">
+                  <p className="text-[11px] text-fg-muted">
                     Free-form marks for human reviewers only — never used for training.
                   </p>
                   <div className="flex gap-2">
