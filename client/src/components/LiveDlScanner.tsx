@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, Flashlight, Loader2, ScanLine, Upload, X, Check, RotateCcw, CreditCard } from 'lucide-react';
+import { importWithRetry } from '../utils/importWithRetry';
 
 export interface IdScanResult {
   barcodeText: string | null;
@@ -134,7 +135,7 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
         const caps = stream.getVideoTracks()[0]?.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean }) | undefined;
         if (caps?.torch) setTorchAvailable(true);
 
-        const { decodePdf417Frame } = await import('../utils/pdf417Decoder');
+        const { decodePdf417Frame } = await importWithRetry(() => import('../utils/pdf417Decoder'));
         interval = setInterval(async () => {
           if (cancelled || doneRef.current || decodingRef.current) return;
           if (stepRef.current !== 'back') return;     // only read on the back step

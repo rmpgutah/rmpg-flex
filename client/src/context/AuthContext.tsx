@@ -3,6 +3,7 @@ import type { User } from '../types';
 import { resetVoiceState } from '../utils/voiceAlerts';
 import { playStartupSound } from '../utils/startupSound';
 import { refreshAccessToken, onAuthEvent } from '../utils/tokenRefresh';
+import { importWithRetry } from '../utils/importWithRetry';
 
 export type LoginStep =
   | 'username'
@@ -628,7 +629,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { options, challengeId } = await optionsRes.json();
 
       // 2. Prompt the user's security key (browser native WebAuthn dialog)
-      const { startAuthentication } = await import('@simplewebauthn/browser');
+      const { startAuthentication } = await importWithRetry(() => import('@simplewebauthn/browser'));
       const authResponse = await startAuthentication({ optionsJSON: options });
 
       // 3. Verify with server

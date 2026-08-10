@@ -8,6 +8,7 @@
 
 import { playToneAsync } from './dispatchTones';
 import type { VoiceMode } from './edgeTTS';
+import { importWithRetry } from './importWithRetry';
 import { renderCallNarrative, type Terseness, type CallSlots } from './narrativeRenderer';
 // Spoken-label formatter: spells acronyms letter-by-letter so the voice says
 // "P. S. O. Client Request", not the mangled word "Pso Client Request".
@@ -326,12 +327,12 @@ function speakPhrase(phrase: VoicePhrase): Promise<void> {
   // Route ALL speech through Edge TTS (neural voice) — no browser SpeechSynthesis
   return new Promise(async (resolve) => {
     try {
-      const { speak: edgeSpeak } = await import('./edgeTTS');
+      const { speak: edgeSpeak } = await importWithRetry(() => import('./edgeTTS'));
       await edgeSpeak(phrase.text, undefined, phrase.mode ?? 'conversational');
     } catch {
       // Edge TTS unavailable — fall back to browser SpeechSynthesis as last resort
       if (isSpeechAvailable()) {
-        const { normalizeForSpeech } = await import('./speechNormalizer');
+        const { normalizeForSpeech } = await importWithRetry(() => import('./speechNormalizer'));
         const utterance = new SpeechSynthesisUtterance(normalizeForSpeech(phrase.text));
         const voice = selectFemaleVoice();
         if (voice) utterance.voice = voice;
@@ -369,7 +370,7 @@ async function processQueue(): Promise<void> {
   // Honors per-category mute so dispatchers who find it noisy can
   // silence just the beep without disabling all TTS.
   try {
-    const { isAlertSoundEnabled } = await import('./alertSoundPrefs');
+    const { isAlertSoundEnabled } = await importWithRetry(() => import('./alertSoundPrefs'));
     if (isAlertSoundEnabled('roger_beep')) {
       await playToneAsync('roger');
     }

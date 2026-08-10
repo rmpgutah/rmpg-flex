@@ -19,6 +19,7 @@ import type { FieldVerdict } from '../types/serveIntakeJudge';
 import DefendantsPicker from '../components/serve-intake/DefendantsPicker';
 import JudgeFlagChip from '../components/serve-intake/JudgeFlagChip';
 import { toDisplayLabel } from '../utils/formatters';
+import { importWithRetry } from '../utils/importWithRetry';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -921,7 +922,7 @@ export default function ServeIntakePage() {
     setShowIdScanner(false);
     if (!barcodeText) { addToast('No barcode read — try again or enter manually', 'error'); return; }
     try {
-      const { parseAamva, looksLikeAamva } = await import('../utils/aamvaParser');
+      const { parseAamva, looksLikeAamva } = await importWithRetry(() => import('../utils/aamvaParser'));
       if (!looksLikeAamva(barcodeText)) { addToast('Barcode did not decode as a DL/ID', 'error'); return; }
       const parsed = parseAamva(barcodeText);
       setEditOverrides((prev) => ({ ...prev, ...aamvaToServeOverrides(parsed) }));

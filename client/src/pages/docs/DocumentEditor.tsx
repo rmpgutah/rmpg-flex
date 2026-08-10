@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/ToastProvider';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { toDisplayLabel } from '../../utils/formatters';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 interface Props {
   documentId: number;
@@ -96,7 +97,7 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
     if (!doc || busy) return;
     setBusy(true);
     try {
-      const { generateDocumentPdf } = await import('../../utils/documentPdf');
+      const { generateDocumentPdf } = await importWithRetry(() => import('../../utils/documentPdf'));
       generateDocumentPdf({ ...doc, title, body });
     } catch (e) {
       addToast(e instanceof Error ? e.message : 'PDF export failed', 'error');
