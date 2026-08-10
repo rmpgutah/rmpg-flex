@@ -765,7 +765,9 @@ function checkServerConnectivity() {
 // ─── Connection Error Page ──────────────────────────────────
 /**
  * HTML page shown when the remote server is unreachable.
- * Includes a retry button that reloads the remote URL.
+ * Auto-retries every 5 seconds with a countdown, and reloads
+ * instantly when the Electron connectivity monitor fires.
+ * Blue & Silver themed to match the app.
  */
 function getOfflineHTML() {
   return `data:text/html;charset=utf-8,${encodeURIComponent(`
@@ -776,8 +778,8 @@ function getOfflineHTML() {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          background: #000000;
-          color: #fff;
+          background: #172a3f;
+          color: #f0f4f9;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -786,51 +788,143 @@ function getOfflineHTML() {
           text-align: center;
           padding: 40px;
         }
+        .card {
+          background: #1e3550;
+          border: 1px solid #2a4a6b;
+          border-radius: 2px;
+          padding: 40px 36px;
+          max-width: 440px;
+        }
         .icon {
-          font-size: 64px;
-          margin-bottom: 24px;
-          opacity: 0.6;
+          width: 56px; height: 56px; margin: 0 auto 20px;
+          opacity: 0.7;
+        }
+        .icon svg {
+          width: 100%; height: 100%;
+          stroke: #c3ccd6; fill: none;
+          stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
         }
         h1 {
-          font-size: 22px;
-          font-weight: 600;
-          margin-bottom: 12px;
-          color: #e0e0e0;
+          font-size: 20px;
+          font-weight: 700;
+          margin-bottom: 10px;
+          color: #f0f4f9;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
         }
         p {
-          font-size: 14px;
-          color: #888;
-          max-width: 400px;
+          font-size: 13px;
+          color: #8fa3b8;
+          max-width: 380px;
           line-height: 1.6;
-          margin-bottom: 32px;
+          margin-bottom: 24px;
+        }
+        .retry-row {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 16px;
+          margin-bottom: 16px;
         }
         button {
-          padding: 12px 32px;
-          font-size: 14px;
-          font-weight: 600;
-          background: #2a2a2a;
-          color: #fff;
-          border: none;
-          border-radius: 6px;
+          padding: 10px 28px;
+          font-size: 12px;
+          font-weight: 700;
+          background: #2a4a6b;
+          color: #f0f4f9;
+          border: 1px solid #3b6a9a;
+          border-radius: 2px;
           cursor: pointer;
           text-transform: uppercase;
-          letter-spacing: 1px;
+          letter-spacing: 0.12em;
+          font-family: inherit;
+          transition: background 0.15s;
         }
-        button:hover { background: #3a3a3a; }
-        .server-url {
-          margin-top: 24px;
+        button:hover { background: #3b6a9a; }
+        .countdown {
           font-size: 11px;
-          color: #555;
+          color: #8fa3b8;
           font-family: monospace;
+          min-width: 120px;
+        }
+        .server-url {
+          margin-top: 16px;
+          font-size: 10px;
+          color: #4a6a8a;
+          font-family: monospace;
+        }
+        .status-dot {
+          display: inline-block;
+          width: 8px; height: 8px;
+          border-radius: 50%;
+          background: #ef4444;
+          margin-right: 6px;
+          animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+        .reconnecting .status-dot {
+          background: #f59e0b;
         }
       </style>
     </head>
     <body>
-      <div class="icon">&#128268;</div>
-      <h1>Connection Lost</h1>
-      <p>Unable to connect to the RMPG Flex server. Please check your internet connection and try again.</p>
-      <button onclick="window.location.href='${REMOTE_SERVER_URL}'">Retry Connection</button>
-      <div class="server-url">${REMOTE_SERVER_URL}</div>
+      <div class="card">
+        <div class="icon">
+          <svg viewBox="0 0 24 24">
+            <line x1="1" y1="1" x2="23" y2="23"/>
+            <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+            <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+            <path d="M10.71 5.05A16 16 0 0 1 22.56 9"/>
+            <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+            <line x1="12" y1="20" x2="12.01" y2="20"/>
+          </svg>
+        </div>
+        <h1><span class="status-dot"></span>Connection Lost</h1>
+        <p>Unable to connect to the RMPG Flex server. Please check your internet connection and try again.</p>
+        <div class="retry-row">
+          <button onclick="attemptRetry()" id="retryBtn">Retry Connection</button>
+          <span class="countdown" id="countdown">Retrying in 5s...</span>
+        </div>
+        <div class="server-url">${REMOTE_SERVER_URL}</div>
+      </div>
+      <script>
+        var RETRY_INTERVAL = 5;
+        var remaining = RETRY_INTERVAL;
+        var timer = null;
+        var countdownEl = document.getElementById('countdown');
+        var retryBtn = document.getElementById('retryBtn');
+        var cardEl = document.querySelector('.card');
+
+        function attemptRetry() {
+          countdownEl.textContent = 'Connecting...';
+          retryBtn.disabled = true;
+          cardEl.classList.add('reconnecting');
+          if (timer) { clearInterval(timer); timer = null; }
+          window.location.href = '${REMOTE_SERVER_URL}';
+        }
+
+        function tick() {
+          remaining--;
+          if (remaining <= 0) {
+            attemptRetry();
+          } else {
+            countdownEl.textContent = 'Retrying in ' + remaining + 's...';
+          }
+        }
+
+        function startCountdown() {
+          remaining = RETRY_INTERVAL;
+          countdownEl.textContent = 'Retrying in ' + remaining + 's...';
+          if (timer) clearInterval(timer);
+          timer = setInterval(tick, 1000);
+        }
+
+        startCountdown();
+      </script>
     </body>
     </html>
   `)}`;
@@ -4434,11 +4528,26 @@ app.whenReady().then(async () => {
     connectivityMonitor.isOnline = isReachable; // Set initial state from startup check
     connectivityMonitor.start(mainWindow, (nowOnline) => {
       console.log(`[APP] Connectivity transition → ${nowOnline ? 'ONLINE' : 'OFFLINE'}`);
-      // When coming back online, trigger push sync
-      if (nowOnline && syncManager && syncManager.pushAll) {
-        syncManager.pushAll().catch(err => {
-          console.error('[APP] Push sync on reconnect failed:', err.message);
-        });
+      if (nowOnline) {
+        // Auto-reload when on the offline page — the officer shouldn't have
+        // to manually tap "Retry" after cellular reconnects in the field.
+        try {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            const currentUrl = mainWindow.webContents.getURL();
+            if (currentUrl.startsWith('data:')) {
+              console.log('[APP] Connectivity restored while on offline page — reloading');
+              mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+                console.warn('[APP] Auto-reload on reconnect failed:', err && err.message);
+              });
+            }
+          }
+        } catch { /* window may be closing */ }
+        // Trigger push sync
+        if (syncManager && syncManager.pushAll) {
+          syncManager.pushAll().catch(err => {
+            console.error('[APP] Push sync on reconnect failed:', err.message);
+          });
+        }
       }
     });
 
