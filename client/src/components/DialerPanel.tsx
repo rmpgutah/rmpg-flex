@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { PhoneCall, X } from 'lucide-react';
+import { PhoneCall, RefreshCw, X } from 'lucide-react';
 import IconButton from './IconButton';
 
 export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
@@ -27,10 +27,18 @@ interface DialerPanelProps {
   onDuress?: (message: string) => void;
 }
 
+// How long after the iframe first loads to wait for an initial heartbeat before
+// declaring the dialer service unavailable. Must be longer than a round-trip
+// page load but short enough to feel responsive.
+const UNAVAILABLE_GRACE_MS = 12_000;
+
 export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
   const [collapsed, setCollapsed] = useState(true);
   const [connected, setConnected] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
   const lastSeenRef = useRef(0);
+  const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -81,6 +89,33 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
     return () => clearInterval(interval);
   }, []);
 
+  // Start the grace timer when the panel first opens (iframe loads for the
+  // first time). If no heartbeat arrives within UNAVAILABLE_GRACE_MS the
+  // dialer service is unreachable — show an error overlay instead of a blank
+  // iframe. Clear the timer whenever any heartbeat arrives.
+  const handleIframeLoad = useCallback(() => {
+    if (graceTimerRef.current) clearTimeout(graceTimerRef.current);
+    graceTimerRef.current = setTimeout(() => {
+      if (lastSeenRef.current === 0) setUnavailable(true);
+    }, UNAVAILABLE_GRACE_MS);
+  }, []);
+
+  // Any real message clears the unavailable state.
+  useEffect(() => {
+    if (connected) {
+      setUnavailable(false);
+      if (graceTimerRef.current) { clearTimeout(graceTimerRef.current); graceTimerRef.current = null; }
+    }
+  }, [connected]);
+
+  useEffect(() => () => { if (graceTimerRef.current) clearTimeout(graceTimerRef.current); }, []);
+
+  const retry = useCallback(() => {
+    setUnavailable(false);
+    lastSeenRef.current = 0;
+    setIframeKey((k) => k + 1);
+  }, []);
+
   return (
     <div className="fixed bottom-4 right-4 z-[9998] flex flex-col items-end">
       <div
@@ -109,12 +144,31 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
             <X className="w-3.5 h-3.5" />
           </IconButton>
         </div>
-        <iframe
-          title="Dial Connect"
-          src={`${DIALER_ORIGIN}/dialer`}
-          className="w-full border-0"
-          style={{ height: 'calc(100% - 28px)' }}
-        />
+        {unavailable ? (
+          <div className="flex flex-col items-center justify-center h-[calc(100%-28px)] gap-3 p-6 text-center">
+            <PhoneCall className="w-8 h-8 text-rmpg-600" />
+            <p className="text-[11px] font-semibold text-rmpg-300 uppercase tracking-wide">Dialer unavailable</p>
+            <p className="text-[11px] text-rmpg-500 leading-relaxed max-w-[280px]">
+              Could not connect to dialer.rmpgutah.us. Check that the Dial Connect app is deployed and running.
+            </p>
+            <button
+              type="button"
+              onClick={retry}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide border border-border-subtle bg-surface-sunken hover:bg-surface-raised"
+            >
+              <RefreshCw className="w-3 h-3" /> Retry
+            </button>
+          </div>
+        ) : (
+          <iframe
+            key={iframeKey}
+            title="Dial Connect"
+            src={`${DIALER_ORIGIN}/dialer`}
+            className="w-full border-0"
+            style={{ height: 'calc(100% - 28px)' }}
+            onLoad={handleIframeLoad}
+          />
+        )}
       </div>
       {collapsed && (
         <button
