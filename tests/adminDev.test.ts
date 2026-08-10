@@ -1,6 +1,6 @@
 import { test, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
-import adminDevRouter from '../src/routes/adminDev';
+import adminDevRouter, { DEFAULT_FLAGS } from '../src/routes/adminDev';
 
 const mockKV = {
   get: vi.fn().mockResolvedValue(null),
@@ -203,4 +203,29 @@ test('DELETE /mock/calls closes test calls as admin', async () => {
   expect(res.status).toBe(200);
   const body = await res.json() as any;
   expect(body.success).toBe(true);
+});
+
+// ── tesseract_ocr_primary feature flag ──────────────────────────────────────
+test('DEFAULT_FLAGS export includes tesseract_ocr_primary set to false', () => {
+  expect(DEFAULT_FLAGS.tesseract_ocr_primary).toBe(false);
+});
+
+test('GET /feature-flags defaults tesseract_ocr_primary to false', async () => {
+  const app = makeAdminApp();
+  const res = await app.request('/feature-flags', {}, { KV: mockKV, DB: mockDb });
+  expect(res.status).toBe(200);
+  const body = await res.json() as any;
+  expect(body.tesseract_ocr_primary).toBe(false);
+});
+
+test('PUT /feature-flags allows admin to flip tesseract_ocr_primary on', async () => {
+  const app = makeAdminApp();
+  const res = await app.request('/feature-flags', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tesseract_ocr_primary: true }),
+  }, { KV: mockKV, DB: mockDb });
+  expect(res.status).toBe(200);
+  const body = await res.json() as any;
+  expect(body.flags.tesseract_ocr_primary).toBe(true);
 });

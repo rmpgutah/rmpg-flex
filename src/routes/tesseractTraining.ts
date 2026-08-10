@@ -209,4 +209,138 @@ tesseractTraining.post('/documents/:id/submit', async (c) => {
   return c.json({ success: true, document_id: id });
 });
 
+interface BoxRow {
+  id: number;
+  serve_intake_document_id: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  corrected_text: string;
+  created_at: string;
+}
+
+// GET /api/tesseract-training/documents/:id/boxes
+tesseractTraining.get('/documents/:id/boxes', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const boxes = await query<BoxRow>(
+    db,
+    `SELECT id, serve_intake_document_id, x0, y0, x1, y1, corrected_text, created_at
+       FROM tesseract_box_annotations WHERE serve_intake_document_id = ? ORDER BY created_at ASC`,
+    id,
+  );
+  return c.json({ boxes });
+});
+
+// POST /api/tesseract-training/documents/:id/boxes
+// Body: { x0, y0, x1, y1, corrected_text }
+tesseractTraining.post('/documents/:id/boxes', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const user = c.get('user');
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+
+  let body: { x0?: number; y0?: number; x1?: number; y1?: number; corrected_text?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+  const { x0, y0, x1, y1 } = body;
+  const correctedText = (body.corrected_text ?? '').trim();
+  if (
+    typeof x0 !== 'number' || typeof y0 !== 'number' ||
+    typeof x1 !== 'number' || typeof y1 !== 'number' ||
+    !correctedText
+  ) {
+    return c.json({ error: 'x0, y0, x1, y1, and corrected_text are all required' }, 400);
+  }
+
+  const db = getDb(c.env);
+  const result = await execute(
+    db,
+    `INSERT INTO tesseract_box_annotations (serve_intake_document_id, x0, y0, x1, y1, corrected_text, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    id, x0, y0, x1, y1, correctedText, user.id,
+  );
+  return c.json({ success: true, id: result.meta.last_row_id });
+});
+
+// DELETE /api/tesseract-training/documents/:id/boxes/:boxId
+tesseractTraining.delete('/documents/:id/boxes/:boxId', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const id = parseInt(c.req.param('id'), 10);
+  const boxId = parseInt(c.req.param('boxId'), 10);
+  if (isNaN(id) || isNaN(boxId)) return c.json({ error: 'Invalid boxId' }, 400);
+  const db = getDb(c.env);
+  const result = await execute(
+    db,
+    `DELETE FROM tesseract_box_annotations WHERE id = ? AND serve_intake_document_id = ?`,
+    boxId, id,
+  );
+  if (result.meta.changes === 0) return c.json({ error: 'Not found' }, 404);
+  return c.json({ success: true });
+});
+
+// GET /api/tesseract-training/documents/:id/notes
+tesseractTraining.get('/documents/:id/notes', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const row = await queryFirst<{ strokes_json: string }>(
+    db,
+    `SELECT strokes_json FROM tesseract_review_annotations WHERE serve_intake_document_id = ?`,
+    id,
+  );
+  return c.json({ strokes: row ? JSON.parse(row.strokes_json) : null });
+});
+
+// PUT /api/tesseract-training/documents/:id/notes
+// Body: { strokes: Array<{ tool: string; points: number[][]; color: string }> }
+// Review notes only — NEVER read by any training path (see migration 0233
+// header comment). Whole layer replaced on each save.
+tesseractTraining.put('/documents/:id/notes', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const user = c.get('user');
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+
+  let body: { strokes?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+  if (!Array.isArray(body.strokes)) {
+    return c.json({ error: 'strokes must be an array' }, 400);
+  }
+
+  const db = getDb(c.env);
+  await execute(
+    db,
+    `INSERT INTO tesseract_review_annotations (serve_intake_document_id, strokes_json, updated_by)
+     VALUES (?, ?, ?)
+     ON CONFLICT(serve_intake_document_id) DO UPDATE SET
+       strokes_json = excluded.strokes_json,
+       updated_by = excluded.updated_by,
+       updated_at = datetime('now')`,
+    id, JSON.stringify(body.strokes), user.id,
+  );
+  return c.json({ success: true });
+});
+
 export default tesseractTraining;

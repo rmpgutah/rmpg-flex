@@ -14,7 +14,7 @@ import type { Bindings, Variables } from '../types';
 const adminDev = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // ── Defaults (mirror client/src/context/FeatureFlagsContext.tsx) ──────────
-const DEFAULT_FLAGS = {
+export const DEFAULT_FLAGS = {
   draw: true,
   annotations: true,
   gps_replay: true,
@@ -24,9 +24,14 @@ const DEFAULT_FLAGS = {
   ruler: true,
   minimap: true,
   dev_diagnostics: false,
+  // Gates the Tesseract-primary OCR leg in src/routes/serveIntake.ts.
+  // Default OFF: no fine-tuned model exists yet and no A/B benchmark has
+  // been reviewed. Flip only after a human reviews scripts/serve-intake-vision-ab.ts
+  // results — see docs/superpowers/specs/2026-08-09-tesseract-ocr-learning-production-design.md.
+  tesseract_ocr_primary: false,
 } as const;
 
-type FlagKey = keyof typeof DEFAULT_FLAGS;
+export type FlagKey = keyof typeof DEFAULT_FLAGS;
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function requireAdmin(c: { get: (k: 'user') => Variables['user'] | undefined }) {
@@ -35,7 +40,7 @@ function requireAdmin(c: { get: (k: 'user') => Variables['user'] | undefined }) 
   return false;
 }
 
-async function loadFlags(kv: KVNamespace): Promise<Record<FlagKey, boolean>> {
+export async function loadFlags(kv: KVNamespace): Promise<Record<FlagKey, boolean>> {
   const raw = await kv.get('feature_flags');
   if (!raw) return { ...DEFAULT_FLAGS };
   try {

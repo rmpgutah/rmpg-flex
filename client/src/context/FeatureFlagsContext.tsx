@@ -12,6 +12,7 @@ export interface FeatureFlags {
   ruler: boolean;
   minimap: boolean;
   dev_diagnostics: boolean;
+  tesseract_ocr_primary: boolean;
 }
 
 const DEFAULT_FLAGS: FeatureFlags = {
@@ -24,6 +25,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   ruler: true,
   minimap: true,
   dev_diagnostics: false,
+  tesseract_ocr_primary: false,
 };
 
 export const FeatureFlagsContext = createContext<FeatureFlags>(DEFAULT_FLAGS);
