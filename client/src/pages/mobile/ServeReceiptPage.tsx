@@ -40,6 +40,7 @@ import {
   VARIANT_LABEL, type ReceiptVariant,
 } from '../../utils/serveReceiptVariant';
 import { formatPhoneInput } from '../../utils/formatters';
+import { collectDeviceSignals, type DeviceSignals } from '../../utils/deviceFingerprint';
 
 // ── Types mirroring GET /api/serve-receipt/:token ────────────
 interface ReceiptJob {
@@ -218,6 +219,7 @@ export default function ServeReceiptPage() {
   const [idDescription, setIdDescription] = useState('');
 
   const [coords, setCoords] = useState<{ lat: number; lng: number; acc: number } | null>(null);
+  const [deviceSignals, setDeviceSignals] = useState<DeviceSignals | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState<{ receiptId: number; emailStatus: string; variant: ReceiptVariant } | null>(null);
@@ -313,6 +315,8 @@ export default function ServeReceiptPage() {
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 60_000 },
     );
   }, []);
+
+  useEffect(() => { collectDeviceSignals().then(setDeviceSignals).catch(() => undefined); }, []);
 
   // Retry the moment the browser reports a connection, and on refocus —
   // 'online' alone is unreliable on mobile, where a phone can report
@@ -631,6 +635,17 @@ export default function ServeReceiptPage() {
           latitude: coords?.lat ?? null,
           longitude: coords?.lng ?? null,
       accuracy_m: coords?.acc ?? null,
+      device_fingerprint: deviceSignals?.fingerprint ?? null,
+      screen_resolution: deviceSignals?.screen_resolution ?? null,
+      color_depth: deviceSignals?.color_depth ?? null,
+      timezone: deviceSignals?.timezone ?? null,
+      language: deviceSignals?.language ?? null,
+      languages: deviceSignals?.languages ?? null,
+      platform: deviceSignals?.platform ?? null,
+      hardware_concurrency: deviceSignals?.hardware_concurrency ?? null,
+      device_memory: deviceSignals?.device_memory ?? null,
+      max_touch_points: deviceSignals?.max_touch_points ?? null,
+      timezone_offset: deviceSignals?.timezone_offset ?? null,
     };
 
     // Persist BEFORE the network is attempted. A signal that drops between
