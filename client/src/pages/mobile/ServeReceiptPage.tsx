@@ -450,19 +450,19 @@ export default function ServeReceiptPage() {
     return {
       whoIsSigning: !partyIsEntity && isNamedParty === null,
       name: !recipientName.trim(),
-      // Phone, email, and ID are all required, per operator instruction on
-      // the 2026-07-27 service. A proof of service whose signer cannot be
-      // reached afterwards — or verified — is hard to stand behind if the
-      // service is ever contested.
+      // Phone and email are required so the signer can be reached and
+      // served a copy. ID scan is strongly encouraged (changes evidentiary
+      // weight of the instrument) but never mandatory — nobody is obliged to
+      // produce ID to accept papers, and a failed scan must not stop a
+      // perfectly valid service.
       phone: !phone.trim(),
       email: !email.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()),
-      id: !idVerified,
       businessName: variant === 'business' && !businessName.trim(),
       authority: isNamedParty === false && !residesAtAddress && !authorizedAgent && premisesType !== 'other',
       attestations: missingAttestationIds,
       signature: !signature,
     };
-  }, [partyIsEntity, isNamedParty, recipientName, phone, email, idVerified, variant, businessName, residesAtAddress, authorizedAgent, premisesType, attestations, accepted, signature]);
+  }, [partyIsEntity, isNamedParty, recipientName, phone, email, variant, businessName, residesAtAddress, authorizedAgent, premisesType, attestations, accepted, signature]);
 
   const missingCount = Object.values(fieldErrors).reduce(
     (n, v) => n + (v instanceof Set ? v.size : v ? 1 : 0), 0,
@@ -1003,24 +1003,21 @@ export default function ServeReceiptPage() {
             {showHint(fieldErrors.name) && <RequiredHint />}
           </Field>
 
-          {/* Required, per operator instruction on the 2026-07-27 service —
-              a proof of service is more defensible in a contested hearing
-              when the signer's identity was verified against a photo ID
-              rather than self-attested. */}
+          {/* ID scan is strongly encouraged — it changes evidentiary weight
+              but cannot be mandatory (nobody must produce ID to accept papers). */}
           {idVerified ? (
             <p className="text-[13px] text-sev-ok leading-relaxed flex items-center gap-1.5">
-              <Check size={14} /> Identity read from your licence.
+              <Check size={14} /> Identity verified from your licence.
             </p>
           ) : (
             <label className="block">
               <span className="flex items-center gap-1.5 text-[13px] text-fg-secondary cursor-pointer">
                 <ScanLine size={14} />
-                {idScanning ? 'Reading…' : 'Required: scan the barcode on the back of your licence or state ID'}
-                <span className="text-sev-critical">*</span>
+                {idScanning ? 'Reading…' : 'Scan the barcode on the back of your licence or state ID'}
               </span>
               <input
                 type="file" accept="image/*" capture="environment" className="sr-only"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) void scanId(f); }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void scanId(f); e.target.value = ''; }}
               />
               <span className="block text-[13px] text-fg-muted leading-relaxed mt-0.5">
                 We need this to verify who signed. It also fills your name in
@@ -1028,8 +1025,18 @@ export default function ServeReceiptPage() {
               </span>
             </label>
           )}
-          {idScanError && <p className="text-[13px] text-sev-warn leading-relaxed">{idScanError}</p>}
-          {showHint(fieldErrors.id) && <RequiredHint />}
+          {idScanError && (
+            <p className="text-[13px] text-sev-warn leading-relaxed">
+              {idScanError}{' '}
+              <label className="underline cursor-pointer">
+                Try again
+                <input
+                  type="file" accept="image/*" capture="environment" className="sr-only"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void scanId(f); e.target.value = ''; }}
+                />
+              </label>
+            </p>
+          )}
 
           <Field label="Phone number *">
             <input
