@@ -781,7 +781,7 @@ serveReceipt.post('/:token', async (c) => {
   // Person upsert + ID photo storage — fire-and-forget via waitUntil.
   // A failure here must NOT block the receipt response: the signer is
   // standing at a door and the signature is the legally operative event.
-  c.executionCtx.waitUntil((async () => {
+  const bgTask = (async () => {
     try {
       const idData = aamvaData ?? manualId;
       if (!idData) return;
@@ -860,7 +860,8 @@ serveReceipt.post('/:token', async (c) => {
     } catch (err) {
       log.error('AoS person upsert failed', { receiptId }, err as Error);
     }
-  })());
+  })();
+  try { c.executionCtx.waitUntil(bgTask); } catch { /* Miniflare test env has no ExecutionContext */ }
 
   // Submissions are what the cap is for. Recorded before the burn so a
   // rejected attempt still counts against a token being hammered.
