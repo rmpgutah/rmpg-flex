@@ -79,10 +79,11 @@ tesseractTraining.get('/documents', async (c) => {
   const pageSize = 50;
   const offset = (page - 1) * pageSize;
 
-  const rows = await query<DocRow & { already_in_corpus: number }>(
+  const rows = await query<DocRow & { already_in_corpus: number; approval_status: string | null }>(
     db,
     `SELECT d.id, d.file_name, d.file_type, d.doc_type, d.created_at,
-            CASE WHEN t.id IS NOT NULL THEN 1 ELSE 0 END AS already_in_corpus
+            CASE WHEN t.id IS NOT NULL THEN 1 ELSE 0 END AS already_in_corpus,
+            t.approval_status AS approval_status
        FROM serve_intake_documents d
        LEFT JOIN tesseract_training_corpus t ON t.serve_intake_document_id = d.id
       WHERE d.status = 'extracted'
@@ -112,12 +113,12 @@ tesseractTraining.get('/documents/:id', async (c) => {
     id,
   );
   if (!doc) return c.json({ error: 'Not found' }, 404);
-  const inCorpus = await queryFirst<{ id: number }>(
+  const corpusRow = await queryFirst<{ id: number; approval_status: string }>(
     db,
-    `SELECT id FROM tesseract_training_corpus WHERE serve_intake_document_id = ?`,
+    `SELECT id, approval_status FROM tesseract_training_corpus WHERE serve_intake_document_id = ?`,
     id,
   );
-  return c.json({ ...doc, already_in_corpus: !!inCorpus });
+  return c.json({ ...doc, already_in_corpus: !!corpusRow, approval_status: corpusRow?.approval_status ?? null });
 });
 
 // GET /api/tesseract-training/documents/:id/image
@@ -242,6 +243,38 @@ tesseractTraining.post('/documents/:id/submit', async (c) => {
   );
 
   return c.json({ success: true, document_id: id });
+});
+
+// POST /api/tesseract-training/documents/:id/approve
+// Single-person approval: any admin/manager, including the original submitter.
+// Idempotent — approving an already-approved document is a 200 no-op, not an error.
+tesseractTraining.post('/documents/:id/approve', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const user = c.get('user');
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+
+  const db = getDb(c.env);
+  const existing = await queryFirst<{ id: number; approval_status: string }>(
+    db,
+    `SELECT id, approval_status FROM tesseract_training_corpus WHERE serve_intake_document_id = ?`,
+    id,
+  );
+  if (!existing) {
+    return c.json({ error: 'Document is not in the training corpus', code: 'NOT_SUBMITTED' }, 404);
+  }
+  if (existing.approval_status === 'approved') {
+    return c.json({ success: true, already_approved: true });
+  }
+
+  await execute(
+    db,
+    `UPDATE tesseract_training_corpus SET approval_status = 'approved', approved_by = ?, approved_at = datetime('now') WHERE serve_intake_document_id = ?`,
+    user.id, id,
+  );
+  return c.json({ success: true });
 });
 
 interface BoxRow {

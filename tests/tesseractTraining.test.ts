@@ -27,7 +27,7 @@ function makeDb(opts: {
       first: async () => {
         if (/FROM tesseract_training_corpus WHERE serve_intake_document_id/.test(sql)) {
           const id = boundArgs[0];
-          return corpusIds.has(id) ? { id } : null;
+          return corpusIds.has(id) ? { id: 1, approval_status: 'pending' } : null;
         }
         if (/FROM serve_intake_documents WHERE id/.test(sql)) {
           const id = boundArgs[0];
