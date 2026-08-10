@@ -26,6 +26,20 @@ function requireAdminManager(c: any): boolean {
   return !!user && ['admin', 'manager'].includes(user.role);
 }
 
+// Hono's `c.executionCtx` getter THROWS (rather than returning undefined) when
+// no ExecutionContext was ever set on the request — the case in every plain
+// Node/vitest mock app used by this file's tests, as opposed to a real Workers
+// runtime where it's always present. logErrorToDb()'s ctx param is optional,
+// so this just needs to swallow that specific access failure, not the
+// underlying error being logged.
+function safeExecutionCtx(c: any): any {
+  try {
+    return c.executionCtx;
+  } catch {
+    return undefined;
+  }
+}
+
 interface DocRow {
   id: number;
   file_name: string;
@@ -191,7 +205,7 @@ tesseractTraining.get('/documents/runs/:id/download', async (c) => {
       traceId,
       source: 'GET /tesseract-training/documents/runs/:id/download',
       statusCode: 404,
-    }, c.executionCtx);
+    }, safeExecutionCtx(c));
     return c.json({ error: 'Package missing in R2' }, 404);
   }
   return new Response(obj.body ?? (await obj.arrayBuffer()), {
@@ -312,6 +326,7 @@ async function submitDocumentToCorpus(
     : (doc.file_type || '').includes('jpeg') ? '.jpg'
     : '.bin';
 
+  const traceId = c.get('traceId');
   try {
     await c.env.TESSERACT_TRAINING.put(`training-corpus/${id}/image${ext}`, imageBytes, {
       httpMetadata: { contentType: doc.file_type || 'application/octet-stream' },
@@ -320,6 +335,18 @@ async function submitDocumentToCorpus(
       httpMetadata: { contentType: 'text/plain' },
     });
   } catch (err) {
+    log.error('[tesseract-training] failed to write training pair to R2', {
+      route: 'submitDocumentToCorpus', documentId: id, traceId,
+    }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'submitDocumentToCorpus', documentId: id },
+      traceId,
+      source: 'submitDocumentToCorpus',
+      statusCode: 500,
+    }, safeExecutionCtx(c));
     return {
       success: false,
       error: 'Failed to write training pair to R2',
@@ -329,11 +356,37 @@ async function submitDocumentToCorpus(
     };
   }
 
-  await execute(
-    db,
-    `INSERT INTO tesseract_training_corpus (serve_intake_document_id, added_by) VALUES (?, ?)`,
-    id, userId,
-  );
+  // The R2 pair above is now written — if this insert fails, that pair is
+  // orphaned (exists in storage with no corpus row pointing at it). Log it
+  // as an error rather than letting it fail silently, since the caller's
+  // only signal otherwise would be a generic thrown exception.
+  try {
+    await execute(
+      db,
+      `INSERT INTO tesseract_training_corpus (serve_intake_document_id, added_by) VALUES (?, ?)`,
+      id, userId,
+    );
+  } catch (err) {
+    log.error('[tesseract-training] training pair written to R2 but D1 insert failed — orphaned R2 objects', {
+      route: 'submitDocumentToCorpus', documentId: id, traceId,
+    }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'submitDocumentToCorpus', documentId: id, orphanedR2: true },
+      traceId,
+      source: 'submitDocumentToCorpus',
+      statusCode: 500,
+    }, safeExecutionCtx(c));
+    return {
+      success: false,
+      error: 'Training pair saved but failed to record — contact an admin',
+      code: 'CORPUS_INSERT_FAILED',
+      status: 500,
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
   return { success: true };
 }
 
@@ -433,11 +486,28 @@ tesseractTraining.post('/documents/:id/approve', async (c) => {
     return c.json({ success: true, already_approved: true });
   }
 
-  await execute(
-    db,
-    `UPDATE tesseract_training_corpus SET approval_status = 'approved', approved_by = ?, approved_at = datetime('now') WHERE serve_intake_document_id = ?`,
-    user.id, id,
-  );
+  try {
+    await execute(
+      db,
+      `UPDATE tesseract_training_corpus SET approval_status = 'approved', approved_by = ?, approved_at = datetime('now') WHERE serve_intake_document_id = ?`,
+      user.id, id,
+    );
+  } catch (err) {
+    const traceId = c.get('traceId');
+    log.error('[tesseract-training] approve update failed', {
+      route: 'POST /tesseract-training/documents/:id/approve', documentId: id, traceId,
+    }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'POST /tesseract-training/documents/:id/approve', documentId: id },
+      traceId,
+      source: 'POST /tesseract-training/documents/:id/approve',
+      statusCode: 500,
+    }, safeExecutionCtx(c));
+    return c.json({ error: 'Failed to approve document', code: 'APPROVE_FAILED' }, 500);
+  }
   return c.json({ success: true });
 });
 
@@ -496,13 +566,30 @@ tesseractTraining.post('/documents/:id/boxes', async (c) => {
   }
 
   const db = getDb(c.env);
-  const result = await execute(
-    db,
-    `INSERT INTO tesseract_box_annotations (serve_intake_document_id, x0, y0, x1, y1, corrected_text, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    id, x0, y0, x1, y1, correctedText, user.id,
-  );
-  return c.json({ success: true, id: result.meta.last_row_id });
+  try {
+    const result = await execute(
+      db,
+      `INSERT INTO tesseract_box_annotations (serve_intake_document_id, x0, y0, x1, y1, corrected_text, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      id, x0, y0, x1, y1, correctedText, user.id,
+    );
+    return c.json({ success: true, id: result.meta.last_row_id });
+  } catch (err) {
+    const traceId = c.get('traceId');
+    log.error('[tesseract-training] box insert failed', {
+      route: 'POST /tesseract-training/documents/:id/boxes', documentId: id, traceId,
+    }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'POST /tesseract-training/documents/:id/boxes', documentId: id },
+      traceId,
+      source: 'POST /tesseract-training/documents/:id/boxes',
+      statusCode: 500,
+    }, safeExecutionCtx(c));
+    return c.json({ error: 'Failed to save box annotation', code: 'BOX_INSERT_FAILED' }, 500);
+  }
 });
 
 // DELETE /api/tesseract-training/documents/:id/boxes/:boxId
@@ -562,16 +649,33 @@ tesseractTraining.put('/documents/:id/notes', async (c) => {
   }
 
   const db = getDb(c.env);
-  await execute(
-    db,
-    `INSERT INTO tesseract_review_annotations (serve_intake_document_id, strokes_json, updated_by)
-     VALUES (?, ?, ?)
-     ON CONFLICT(serve_intake_document_id) DO UPDATE SET
-       strokes_json = excluded.strokes_json,
-       updated_by = excluded.updated_by,
-       updated_at = datetime('now')`,
-    id, JSON.stringify(body.strokes), user.id,
-  );
+  try {
+    await execute(
+      db,
+      `INSERT INTO tesseract_review_annotations (serve_intake_document_id, strokes_json, updated_by)
+       VALUES (?, ?, ?)
+       ON CONFLICT(serve_intake_document_id) DO UPDATE SET
+         strokes_json = excluded.strokes_json,
+         updated_by = excluded.updated_by,
+         updated_at = datetime('now')`,
+      id, JSON.stringify(body.strokes), user.id,
+    );
+  } catch (err) {
+    const traceId = c.get('traceId');
+    log.error('[tesseract-training] notes upsert failed', {
+      route: 'PUT /tesseract-training/documents/:id/notes', documentId: id, traceId,
+    }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'PUT /tesseract-training/documents/:id/notes', documentId: id },
+      traceId,
+      source: 'PUT /tesseract-training/documents/:id/notes',
+      statusCode: 500,
+    }, safeExecutionCtx(c));
+    return c.json({ error: 'Failed to save review notes', code: 'NOTES_SAVE_FAILED' }, 500);
+  }
   return c.json({ success: true });
 });
 
@@ -671,7 +775,7 @@ Documents included: ${includedIds.length}
       traceId,
       source: 'POST /tesseract-training/documents/runs',
       statusCode: 500,
-    }, c.executionCtx);
+    }, safeExecutionCtx(c));
     return c.json({ error: 'Failed to save training package', code: 'PACKAGE_BUILD_FAILED' }, 500);
   }
 });
