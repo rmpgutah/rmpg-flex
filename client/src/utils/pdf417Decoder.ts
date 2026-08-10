@@ -51,7 +51,7 @@ function loadImage(file: File): Promise<HTMLImageElement> {
   });
 }
 
-type ContrastMode = 'none' | 'linear' | 'minmax' | 'binarize';
+type ContrastMode = 'none' | 'linear' | 'minmax' | 'binarize' | 'sharpen' | 'adaptive';
 
 function toImageData(img: HTMLImageElement, scale: number, mode: ContrastMode): ImageData {
   const w = Math.max(1, Math.round(img.naturalWidth * scale));
@@ -60,7 +60,7 @@ function toImageData(img: HTMLImageElement, scale: number, mode: ContrastMode): 
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingEnabled = scale < 1;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, 0, 0, w, h);
   const data = ctx.getImageData(0, 0, w, h);
@@ -68,20 +68,39 @@ function toImageData(img: HTMLImageElement, scale: number, mode: ContrastMode): 
 
   if (mode === 'none') return data;
 
-  // Convert to luminance first
   const lum = new Float32Array(w * h);
   for (let i = 0, p = 0; i < px.length; i += 4, p++) {
     lum[p] = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
   }
 
-  if (mode === 'linear') {
-    // Fixed midpoint stretch (handles moderate glare)
+  if (mode === 'sharpen') {
+    // Unsharp-mask: sharpens module edges that phone blur smears.
+    const blurred = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let sum = 0, count = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const ny = y + dy, nx = x + dx;
+            if (ny >= 0 && ny < h && nx >= 0 && nx < w) {
+              sum += lum[ny * w + nx]; count++;
+            }
+          }
+        }
+        blurred[y * w + x] = sum / count;
+      }
+    }
+    const amount = 1.5;
+    for (let p = 0, i = 0; p < lum.length; p++, i += 4) {
+      const v = Math.min(255, Math.max(0, Math.round(lum[p] + amount * (lum[p] - blurred[p]))));
+      px[i] = px[i + 1] = px[i + 2] = v;
+    }
+  } else if (mode === 'linear') {
     for (let p = 0, i = 0; p < lum.length; p++, i += 4) {
       const v = Math.min(255, Math.max(0, (lum[p] - 128) * 1.8 + 128));
       px[i] = px[i + 1] = px[i + 2] = v;
     }
   } else if (mode === 'minmax') {
-    // Min/max stretch — expands full tonal range regardless of exposure
     let lo = 255, hi = 0;
     for (let p = 0; p < lum.length; p++) { if (lum[p] < lo) lo = lum[p]; if (lum[p] > hi) hi = lum[p]; }
     const range = hi - lo || 1;
@@ -90,7 +109,6 @@ function toImageData(img: HTMLImageElement, scale: number, mode: ContrastMode): 
       px[i] = px[i + 1] = px[i + 2] = v;
     }
   } else if (mode === 'binarize') {
-    // Otsu's threshold — best for glare-washed or very dark barcodes
     const hist = new Int32Array(256);
     for (let p = 0; p < lum.length; p++) hist[Math.round(lum[p])]++;
     const total = lum.length;
@@ -108,6 +126,36 @@ function toImageData(img: HTMLImageElement, scale: number, mode: ContrastMode): 
     for (let p = 0, i = 0; p < lum.length; p++, i += 4) {
       const v = lum[p] >= threshold ? 255 : 0;
       px[i] = px[i + 1] = px[i + 2] = v;
+    }
+  } else if (mode === 'adaptive') {
+    // Adaptive threshold with integral image — handles local shadows
+    // across the card surface from doorstep lighting.
+    const blockSize = Math.max(15, Math.round(Math.min(w, h) / 20) | 1);
+    const half = blockSize >> 1;
+    const integral = new Float64Array((w + 1) * (h + 1));
+    const sw = w + 1;
+    for (let y = 0; y < h; y++) {
+      let rowSum = 0;
+      for (let x = 0; x < w; x++) {
+        rowSum += lum[y * w + x];
+        integral[(y + 1) * sw + (x + 1)] = rowSum + integral[y * sw + (x + 1)];
+      }
+    }
+    const bias = -8;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const y0 = Math.max(0, y - half), y1 = Math.min(h - 1, y + half);
+        const x0 = Math.max(0, x - half), x1 = Math.min(w - 1, x + half);
+        const area = (y1 - y0 + 1) * (x1 - x0 + 1);
+        const sum = integral[(y1 + 1) * sw + (x1 + 1)]
+          - integral[y0 * sw + (x1 + 1)]
+          - integral[(y1 + 1) * sw + x0]
+          + integral[y0 * sw + x0];
+        const mean = sum / area;
+        const i = (y * w + x) * 4;
+        const v = lum[y * w + x] < mean + bias ? 0 : 255;
+        px[i] = px[i + 1] = px[i + 2] = v;
+      }
     }
   }
 
@@ -186,21 +234,18 @@ export async function decodePdf417(file: File): Promise<Pdf417DecodeOutcome | nu
   const maxDim = Math.max(img.naturalWidth, img.naturalHeight);
   if (!maxDim) return null;
 
-  // Cap at 3200px — higher res than before to preserve fine PDF417 modules
-  // from modern phone cameras without overwhelming the WASM decoder.
-  const baseScale = maxDim > 3200 ? 3200 / maxDim : 1;
-  // Multiple scales: native, upscale (sharpens tight modules), downscale
-  // (helps when the phone was very close and modules blur at full size).
+  // Full native resolution first — modern phones (4032x3024) need every
+  // pixel to resolve the fine module grid on a PDF417 barcode. Only cap
+  // at 4800px for extremely high-res sensors to bound WASM memory.
+  const baseScale = maxDim > 4800 ? 4800 / maxDim : 1;
   const scales: number[] = [
     baseScale,
-    baseScale * 1.5,
-    maxDim < 1200 ? Math.min(2.5, (1800 / maxDim)) : baseScale * 0.75,
-  ];
+    Math.min(baseScale * 1.5, 1.0),
+    baseScale * 0.75,
+    baseScale * 0.5,
+  ].filter((s, i, a) => a.indexOf(s) === i);
 
-  // Preprocessing passes in order of speed and typical usefulness.
-  // Most clean photos decode on pass 1 (none/native scale). Later passes
-  // target glare, low contrast, and very dark/washed-out captures.
-  const modes: ContrastMode[] = ['none', 'linear', 'minmax', 'binarize'];
+  const modes: ContrastMode[] = ['none', 'sharpen', 'linear', 'adaptive', 'minmax', 'binarize'];
 
   let passes = 0;
   for (const mode of modes) {
@@ -218,10 +263,6 @@ export async function decodePdf417(file: File): Promise<Pdf417DecodeOutcome | nu
         });
         const r = results[0];
         if (!r?.isValid) continue;
-        // AAMVA uses Latin-1 encoding with raw control chars (\x1e, \r, \n)
-        // as field/record separators. Decode from r.bytes — a raw Uint8Array —
-        // rather than r.text, which goes through Unicode transcoding that can
-        // silently drop or mangle control characters the parser depends on.
         const text = new TextDecoder('latin1').decode(r.bytes);
         if (text.length > 20) return { text, passes };
       } catch {
