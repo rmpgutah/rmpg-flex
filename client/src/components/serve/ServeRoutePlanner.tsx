@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, Route, MapPin, ChevronUp, ChevronDown, CheckSquare, Square,
-  Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical,
+  Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical, Trash2,
 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../../utils/webglRecovery';
@@ -611,6 +611,9 @@ export default function ServeRoutePlanner({
   }, []);
   const selectAll = useCallback(() => setStops(prev => prev.map(s => ({ ...s, selected: true }))), []);
   const deselectAll = useCallback(() => setStops(prev => prev.map(s => ({ ...s, selected: false }))), []);
+  const clearFinished = useCallback(() => {
+    setStops(prev => prev.filter(s => s.job.status !== 'served' && s.job.status !== 'failed'));
+  }, []);
   const moveStop = useCallback((idx: number, dir: -1 | 1) => {
     setStops(prev => {
       const next = [...prev];
@@ -994,6 +997,13 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={selectAll} className="toolbar-btn text-xs px-2 py-1"><CheckSquare className="w-3 h-3" /> All</button>
             <button type="button" onClick={deselectAll} className="toolbar-btn text-xs px-2 py-1"><Square className="w-3 h-3" /> None</button>
+            {stops.some(s => s.job.status === 'served' || s.job.status === 'failed') && (
+              <button type="button" onClick={clearFinished}
+                className="toolbar-btn text-xs px-2 py-1 text-fg-muted hover:text-red-300 hover:border-red-700/50 transition-colors"
+                title="Remove served and non-service jobs from the list">
+                <Trash2 className="w-3 h-3" /> Clear Finished
+              </button>
+            )}
             <X size={20} className="text-rmpg-400 hover:text-rmpg-100 cursor-pointer transition-colors" onClick={onClose} aria-label="Close route planner" />
           </div>
         </div>
@@ -1082,6 +1092,12 @@ export default function ServeRoutePlanner({
                     <div className="text-[10px] text-fg-muted truncate">{stop.job.recipient_address || 'No address'}</div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
+                    {stop.job.status === 'served' && (
+                      <span className="text-[9px] font-semibold px-1 py-0.5 rounded-[2px] bg-green-900/40 text-green-400 border border-green-700/40 leading-none">SERVED</span>
+                    )}
+                    {stop.job.status === 'failed' && (
+                      <span className="text-[9px] font-semibold px-1 py-0.5 rounded-[2px] bg-red-900/40 text-red-400 border border-red-700/40 leading-none">NON-SVC</span>
+                    )}
                     <PriorityBadge p={stop.job.priority} />
                     <TimeWindowBadge tw={stop.job.time_window} />
                     <div className="flex flex-col gap-0.5 ml-1">
