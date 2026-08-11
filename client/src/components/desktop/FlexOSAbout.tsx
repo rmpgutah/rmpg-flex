@@ -107,8 +107,8 @@ export default function FlexOSAbout() {
           <Row label="CPU Cores" value={sysInfo.cpu_count} />
           <Row label="Memory" value={`${Math.round(sysInfo.free_memory_mb / 1024)} GB free / ${Math.round(sysInfo.total_memory_mb / 1024)} GB total`} />
           <Row label="Uptime" value={formatUptime(sysInfo.uptime_seconds)} />
-          {diskInfo && (
-            <Row label="Storage" value={`${diskInfo.free_gb.toFixed(1)} GB free / ${diskInfo.total_gb.toFixed(1)} GB — ${Math.round(diskInfo.used_percent)}% used`} />
+          {diskInfo && diskInfo.free_gb != null && diskInfo.total_gb != null && (
+            <Row label="Storage" value={`${diskInfo.free_gb.toFixed(1)} GB free / ${diskInfo.total_gb.toFixed(1)} GB — ${Math.round(diskInfo.used_percent ?? 0)}% used`} />
           )}
         </div>
       )}

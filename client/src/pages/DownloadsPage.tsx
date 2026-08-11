@@ -398,7 +398,23 @@ export default function DownloadsPage() {
                       )}
                     </>
                   ) : (
-                    <span className="text-xs mt-4" style={{ color: 'var(--text-muted)' }}>Not available</span>
+                    <div className="flex flex-col items-center gap-2 mt-4">
+                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Build not yet published</span>
+                      <a
+                        href="/"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors"
+                        style={{
+                          background: 'var(--surface-raised)',
+                          borderWidth: 1,
+                          borderStyle: 'solid',
+                          borderColor: 'var(--border-default)',
+                          color: 'var(--text-secondary)',
+                          borderRadius: 2,
+                        }}
+                      >
+                        Use Web App Instead
+                      </a>
+                    </div>
                   )}
                 </div>
               );
