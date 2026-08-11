@@ -121,6 +121,23 @@ jobs:
         env:
           VITE_MAPBOX_ACCESS_TOKEN: ${{ secrets.VITE_MAPBOX_ACCESS_TOKEN }}
 
+  # The proxy is a Cloudflare Worker (rmpg-api-proxy) with its own tsconfig.
+  # wrangler deploy bundles it at deploy time, but nothing has ever typechecked
+  # it in CI — a type error in proxy/index.ts would only surface at bundle time
+  # during deploy, after the PR is already merged.
+  proxy-typecheck:
+    name: Proxy typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: cd proxy && npx tsc --noEmit
+
   client-entry-size:
     name: client-entry-size
     runs-on: ubuntu-latest
