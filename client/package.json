@@ -73,7 +73,7 @@
     "mapbox-gl": "^3.27.0",
     "maplibre-gl": "^6.2.0",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^6.1.200",
+    "pdfjs-dist": "^6.2.108",
     "pmtiles": "^4.4.1",
     "qrcode": "^1.5.4",
     "react": "^19.2.7",
