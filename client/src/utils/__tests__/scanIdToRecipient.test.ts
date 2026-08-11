@@ -13,6 +13,9 @@ function makeAamva(overrides: Partial<AamvaResult> = {}): AamvaResult {
     country: 'USA', document_discriminator: 'ABC123', is_real_id: true,
     is_organ_donor: null, is_veteran: null, under_18_until: '', under_21_until: '',
     aamva_version: 9, issuer_id: '636040', card_type: 'DL', raw_elements: {},
+    place_of_birth: '', race: '', name_prefix: '', card_revision_date: '',
+    dl_hazmat_expiry: '', non_resident_indicator: false, limited_duration_doc: false,
+    audit_info: '',
     ...overrides,
   };
 }

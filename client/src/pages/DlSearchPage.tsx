@@ -21,6 +21,7 @@ import { parseTimestamp } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { importWithRetry } from '../utils/importWithRetry';
 
 // QR code that opens this scanner page on the officer's phone —
 // scans made there relay to this desktop session automatically.
@@ -46,7 +47,7 @@ function PhoneScanQr() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     let cancelled = false;
-    import('bwip-js/browser').then(({ default: bwipjs }) => {
+    importWithRetry(() => import('bwip-js/browser')).then(({ default: bwipjs }) => {
       if (cancelled || !canvasRef.current) return;
       try {
         bwipjs.toCanvas(canvasRef.current, {
@@ -164,7 +165,7 @@ export default function DlSearchPage() {
     const { front, back } = cardImages;
     if ((!front && !back) || cardSavedTo === personId) return;
     try {
-      const { stampPhoto, getGeoFix } = await import('../utils/photoStamp');
+      const { stampPhoto, getGeoFix } = await importWithRetry(() => import('../utils/photoStamp'));
       const geo = await getGeoFix();
       const officerLast = (user?.last_name || user?.full_name?.split(' ').slice(-1)[0] || user?.username || '').trim();
       const mk = (blob: Blob, side: 'FRONT' | 'BACK') =>
@@ -688,7 +689,7 @@ export default function DlSearchPage() {
   // scanner, recent-scan replay, and phone-relay receipt.
   const processBarcodeText = useCallback(async (rawText: string, opts?: { silent?: boolean; skipRelay?: boolean }): Promise<boolean> => {
     try {
-      const { parseAamva, looksLikeAamva, describeAamva, assessAamva, formatLawEnforcement, formatLeBlock, describeRestrictions, describeEndorsements, describeClass } = await import('../utils/aamvaParser');
+      const { parseAamva, looksLikeAamva, describeAamva, assessAamva, formatLawEnforcement, formatLeBlock, describeRestrictions, describeEndorsements, describeClass } = await importWithRetry(() => import('../utils/aamvaParser'));
       if (!looksLikeAamva(rawText)) return false;
       const parsed = parseAamva(rawText);
       setScanReadout(describeAamva(parsed));
@@ -699,7 +700,7 @@ export default function DlSearchPage() {
       // evaluateDl() bridge call the iOS app uses, so phone + desktop produce
       // identical analysis from one parse.
       try {
-        const { evaluateDl } = await import('../utils/dlFunctions');
+        const { evaluateDl } = await importWithRetry(() => import('../utils/dlFunctions'));
         setScanEval(evaluateDl(parsed));
       } catch { setScanEval(null); }
       const resultObj = {
@@ -774,7 +775,7 @@ export default function DlSearchPage() {
     // issuing DMV encoded it. Only fall back to OCR (front of card)
     // when no barcode is found in the image.
     try {
-      const { decodePdf417 } = await import('../utils/pdf417Decoder');
+      const { decodePdf417 } = await importWithRetry(() => import('../utils/pdf417Decoder'));
       const decoded = await decodePdf417(file);
       if (decoded && await processBarcodeText(decoded.text)) {
         setOcrLoading(false);
@@ -1536,7 +1537,7 @@ export default function DlSearchPage() {
               // falling back to OCR on the front image.
               if (backImage) {
                 try {
-                  const { decodePdf417 } = await import('../utils/pdf417Decoder');
+                  const { decodePdf417 } = await importWithRetry(() => import('../utils/pdf417Decoder'));
                   const decoded = await decodePdf417(new File([backImage], 'id-back.jpg', { type: 'image/jpeg' }));
                   if (decoded && await processBarcodeText(decoded.text)) {
                     setShowLiveScanner(false);
@@ -2068,7 +2069,7 @@ export default function DlSearchPage() {
                 type="button"
                 onClick={async () => {
                   try {
-                    const { generateSafetySheet } = await import('../utils/dlSafetySheet');
+                    const { generateSafetySheet } = await importWithRetry(() => import('../utils/dlSafetySheet'));
                     const doc = generateSafetySheet({
                       ocrResult, leFields, scanAlerts, scanMatches, deepSweep, courtRecords, fbiRecords,
                       officerName: undefined,

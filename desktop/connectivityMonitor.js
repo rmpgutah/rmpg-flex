@@ -15,15 +15,29 @@ class ConnectivityMonitor {
     this.stableCount = options.stableCount || 3;           // 3 consecutive checks to confirm transition
     this.requestTimeout = options.requestTimeout || 5_000; // 5s timeout per check
 
-    // Regression tripwire, not an active-vulnerability fix — serverUrl is
-    // always the module-scoped REMOTE_SERVER_URL today, never renderer
-    // input. Computed once here (mirrors REMOTE_SERVER_HOSTNAME/
-    // allowedSyncHost's pattern elsewhere) so a future accidental change
-    // that threads untrusted input into serverUrl can't silently start
-    // issuing health-check requests to an arbitrary host.
+    // Health checks go DIRECTLY to the API Worker (api.rmpgutah.us/api/health),
+    // which has a Cloudflare WAF skip rule that bypasses the managed challenge.
+    // The previous approach (rmpgutah.us/api/health via the strangler proxy)
+    // failed at startup because net.request has no cf_clearance cookie before
+    // the BrowserWindow solves the challenge, causing the monitor to report
+    // the server as unreachable for 30+ seconds after every cold boot.
+    this.healthCheckUrl = options.healthCheckUrl || (() => {
+      try {
+        const host = new URL(serverUrl).hostname;
+        return host === 'localhost' || host === '127.0.0.1'
+          ? `${serverUrl}/api/health`
+          : 'https://api.rmpgutah.us/api/health';
+      } catch {
+        return `${serverUrl}/api/health`;
+      }
+    })();
+
     this._allowedHealthCheckHosts = (() => {
       try {
-        return [new URL(serverUrl).hostname];
+        const hosts = [new URL(serverUrl).hostname];
+        const healthHost = new URL(this.healthCheckUrl).hostname;
+        if (!hosts.includes(healthHost)) hosts.push(healthHost);
+        return hosts;
       } catch {
         return [];
       }
@@ -99,7 +113,7 @@ class ConnectivityMonitor {
   _doHealthCheck() {
     return new Promise((resolve) => {
       try {
-        const url = `${this.serverUrl}/api/health`;
+        const url = this.healthCheckUrl;
         if (!isAllowedApiHost(url, this._allowedHealthCheckHosts)) {
           resolve(false);
           return;

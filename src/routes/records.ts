@@ -279,6 +279,9 @@ const PERSON_EXT_COLUMNS = new Set([
   'country', 'document_discriminator', 'is_real_id', 'is_organ_donor',
   'under_18_until', 'under_21_until', 'aamva_version', 'issuer_id',
   'address2', 'raw_aamva_elements',
+  // AoS ID capture — additional AAMVA fields (mig 0236)
+  'place_of_birth', 'name_prefix', 'is_veteran', 'non_resident_indicator',
+  'limited_duration_doc', 'card_revision_date', 'dl_hazmat_expiry', 'card_type',
 ]);
 // Read projection excludes raw_aamva_elements: it's a raw barcode-element
 // dump kept for potential forensic/debugging use, not something every
@@ -289,7 +292,7 @@ const PERSON_EXT_SELECT = PERSON_EXT_READ_COLUMNS.join(', ');
 
 /** Upsert the overflow fields present in `body` into persons_ext (1:1 on
  *  person_id). No-op when the body carries none of them. */
-async function writePersonExt(
+export async function writePersonExt(
   db: ReturnType<typeof getDb>, personId: number | string, body: Record<string, unknown>,
 ): Promise<void> {
   const cols: string[] = [];
@@ -313,7 +316,7 @@ async function writePersonExt(
 
 /** Merge a person's persons_ext overflow fields onto the base row so callers see
  *  one flat object. Returns the row unchanged when it has no ext row yet. */
-async function mergePersonExt(
+export async function mergePersonExt(
   db: ReturnType<typeof getDb>, person: Record<string, unknown> | null,
 ): Promise<Record<string, unknown> | null> {
   if (!person || person.id == null) return person;

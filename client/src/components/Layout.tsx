@@ -1,4 +1,5 @@
 import React, { useEffect, useCallback, useState, useRef, useMemo } from 'react';
+import { lazyRetry } from '../utils/importWithRetry';
 import { parseTimestamp } from '../utils/dateUtils';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import {
@@ -111,7 +112,7 @@ import PanicButton from './PanicButton';
 // Lazy: 66.6 KB (plus SignaturePad's 21.9 KB, which it statically imports) and
 // it renders behind a boolean. Layout wraps every authenticated route, so a
 // static import here landed both in the entry chunk on every cold load.
-const UserProfileModal = React.lazy(() => import('./UserProfileModal'));
+const UserProfileModal = lazyRetry(() => import('./UserProfileModal'));
 import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
 import CommandPalette from './CommandPalette';
@@ -969,6 +970,26 @@ export default function Layout() {
   // Detect Electron (macOS needs extra left padding for traffic lights)
   const isElectron = !!(window as any).electron;
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
+
+  // Standalone mode: page is running inside a FloatingWindow iframe.
+  // Render only the page content — no nav bar, no top bar, no banners.
+  const isStandalone = new URLSearchParams(window.location.search).get('standalone') === '1';
+  if (isStandalone) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: 'var(--surface-base)', overflow: 'hidden' }}>
+        {/* Thin branded title row so the user knows which app they're in */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden><circle cx="8" cy="8" r="7" stroke="var(--accent-silver-400,#c3ccd6)" strokeWidth="1.5"/><path d="M5 8l2 2 4-4" stroke="var(--accent-silver-400,#c3ccd6)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <span style={{ fontSize: 9, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+            Rocky Mountain Protective Group — FlexOS
+          </span>
+        </div>
+        <main style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col text-rmpg-100 overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>

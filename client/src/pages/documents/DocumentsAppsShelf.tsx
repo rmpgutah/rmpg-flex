@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { FileText, FilePlus2, FileCode, Sparkles, Clock, Eye } from 'lucide-react';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 // Documents Apps shelf — a row of integrated applications that operate
 // on the contents of the current folder. The PDF Editor is the first
@@ -69,7 +70,7 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
     setCreatingBlank(true);
     try {
       // Lazy import the proprietary writer so the shelf doesn't bloat the main bundle.
-      const { RmpgPdfBuilder } = await import('../../lib/rmpg-pdf-engine');
+      const { RmpgPdfBuilder } = await importWithRetry(() => import('../../lib/rmpg-pdf-engine'));
       // Start from a tiny synthetic source: a one-page PDF with no contents.
       // We construct it inline so we can hand it to RmpgPdfBuilder.load().
       const synthetic = buildBlankSourceBytes();

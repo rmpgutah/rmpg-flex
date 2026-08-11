@@ -709,7 +709,13 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // text-fg-muted, and de-duplicating the Blocked IPs card — it was
   // rendering every row twice — removed several more text-rmpg-500 sites
   // along with the dead second copy.
-  const PIN = 10505;
+  //
+  // 10510 -> 10505: SecurityDashboardPage.tsx's new device/geo columns
+  // (Logins/Threats/Timeline tables, Blocked IPs card) were built on
+  // text-fg-muted, and de-duplicating the Blocked IPs card — it was
+  // rendering every row twice — removed several more text-rmpg-500 sites
+  // along with the dead second copy.
+  const PIN = 10487;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

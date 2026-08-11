@@ -54,6 +54,7 @@ import {
   LEGACY_FLAG_KEY, isBlueSilverForced, BLUE_SILVER_FLAG_KEY,
 } from '../utils/theme';
 import { useUserPreferences } from '../context/UserPreferencesContext';
+import { importWithRetry } from '../utils/importWithRetry';
 
 // ─── Reusable controls ──────────────────────────────────────
 
@@ -400,7 +401,7 @@ export default function SettingsPage() {
   async function previewVoice() {
     setPreviewing(true);
     try {
-      const { speak, clearQueue } = await import('../utils/edgeTTS');
+      const { speak, clearQueue } = await importWithRetry(() => import('../utils/edgeTTS'));
       clearQueue();
       const opt = VOICE_CATALOG.find((v) => v.id === persona.voiceId);
       const sample = `Dispatch test. This is ${opt?.label ?? 'the dispatcher'}. ` +

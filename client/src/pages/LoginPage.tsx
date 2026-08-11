@@ -48,12 +48,12 @@ function getCurrentTime() {
 const stepStatus: Record<LoginStep, { text: string; color: string }> = {
   username:           { text: 'AWAITING CREDENTIALS', color: 'var(--brand-gold)' },
   password:           { text: 'AUTHENTICATING',       color: 'var(--brand-gold)' },
-  verify_2fa:         { text: '2FA VERIFICATION',     color: '#a855f7' },
-  setup_2fa:          { text: '2FA SETUP REQUIRED',   color: '#bc1010' },
-  confirm_setup_2fa:  { text: '2FA SETUP — VERIFY',   color: '#bc1010' },
+  verify_2fa:         { text: '2FA VERIFICATION',     color: 'var(--sev-critical)' },
+  setup_2fa:          { text: '2FA SETUP REQUIRED',   color: 'var(--sev-critical)' },
+  confirm_setup_2fa:  { text: '2FA SETUP — VERIFY',   color: 'var(--sev-critical)' },
   show_backup_codes:  { text: 'SAVE BACKUP CODES',    color: 'var(--brand-gold)' },
-  password_change:    { text: 'PASSWORD CHANGE REQ.',  color: '#bc1010' },
-  complete:           { text: 'AUTHENTICATED',         color: '#22c55e' },
+  password_change:    { text: 'PASSWORD CHANGE REQ.',  color: 'var(--sev-critical)' },
+  complete:           { text: 'AUTHENTICATED',         color: 'var(--sev-ok)' },
 };
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -1274,7 +1274,7 @@ export default function LoginPage() {
                     aria-required="true"
                   />
                   {confirmPassword && newPassword !== confirmPassword && (
-                    <p className="text-[9px] mt-1" style={{ color: '#ef4444' }}>Passwords do not match</p>
+                    <p className="text-[9px] mt-1 text-red-400">Passwords do not match</p>
                   )}
                 </div>
 
@@ -1472,7 +1472,7 @@ export default function LoginPage() {
                         required
                       />
                       {forgotConfirmPassword && forgotNewPassword !== forgotConfirmPassword && (
-                        <p className="text-[9px] mt-1" style={{ color: '#ef4444' }}>Passwords do not match</p>
+                        <p className="text-[9px] mt-1 text-red-400">Passwords do not match</p>
                       )}
                     </div>
                     <button

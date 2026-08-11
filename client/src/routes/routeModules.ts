@@ -119,6 +119,7 @@ export const ROUTE_MODULES: Readonly<Record<string, RouteImporter>> = {
   '/command-center': () => import('../pages/CommandCenterPage'),
   '/security-dashboard': () => import('../pages/SecurityDashboardPage'),
   '/use-of-force': () => import('../pages/UseOfForcePage'),
+  '/desktop-company-browser': () => import('../pages/CompanyBrowserPage'),
   '/settings': () => import('../pages/SettingsPage'),
   '/notifications': () => import('../pages/NotificationsPage'),
   '/help': () => import('../pages/HelpPage'),

@@ -1,7 +1,31 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router';
+import {
+  BarChart2,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle,
+  Clock,
+  Download,
+  Package,
+  FileText,
+  Box,
+  PenLine,
+  Highlighter,
+  Circle,
+  ArrowRight,
+  Trash2,
+  Loader2,
+  Save,
+  Send,
+  Filter,
+  Square,
+  CheckSquare,
+  AlertTriangle,
+  X,
+} from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { useToast } from '../components/ToastProvider';
 import { imageToNaturalCoords } from '../utils/tesseractImageCoords';
 import { formatDateTime } from '../utils/dateUtils';
 
@@ -42,24 +66,37 @@ interface TrainingRun {
   document_count: number;
 }
 
+const TOOL_ICONS = {
+  highlight: Highlighter,
+  circle:    Circle,
+  arrow:     ArrowRight,
+} as const;
+
+const TOOL_COLORS: Record<Stroke['tool'], string> = {
+  highlight: 'rgba(245,158,11,0.55)',
+  circle:    'rgba(59,130,246,0.80)',
+  arrow:     'rgba(239,68,68,0.90)',
+};
+
 export default function TesseractTrainingPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [filterDocType, setFilterDocType] = useState(searchParams.get('doc_type') ?? '');
-  const [filterLabeled, setFilterLabeled] = useState(searchParams.get('labeled') ?? '');
-  const [filterFrom, setFilterFrom] = useState(searchParams.get('from') ?? '');
-  const [filterTo, setFilterTo] = useState(searchParams.get('to') ?? '');
+  const { addToast } = useToast();
+
+  const [filterDocType, setFilterDocType] = useState('');
+  const [filterLabeled, setFilterLabeled] = useState('');
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
   const [rows, setRows] = useState<DocRow[]>([]);
   const [page, setPage] = useState(1);
+
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<DocDetail | null>(null);
   const [groundTruth, setGroundTruth] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
+  const [mode, setMode] = useState<Mode>('text');
+
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
-  const [bulkResultSummary, setBulkResultSummary] = useState<string | null>(null);
-  const [mode, setMode] = useState<Mode>('text');
 
   const [boxes, setBoxes] = useState<BoxAnnotation[]>([]);
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -71,19 +108,22 @@ export default function TesseractTrainingPage() {
   const [activeTool, setActiveTool] = useState<Stroke['tool']>('highlight');
   const [drawingStroke, setDrawingStroke] = useState<Stroke | null>(null);
   const [notesDirty, setNotesDirty] = useState(false);
+  const [savingNotes, setSavingNotes] = useState(false);
 
   const [stats, setStats] = useState<Stats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
   const [statsOpen, setStatsOpen] = useState(true);
-
-  const loadStats = useCallback(() => {
-    apiFetch<Stats>('/tesseract-training/stats').then(setStats).catch(console.error);
-  }, []);
-
-  useEffect(() => { loadStats(); }, [loadStats]);
 
   const [runs, setRuns] = useState<TrainingRun[]>([]);
   const [startingRun, setStartingRun] = useState(false);
-  const [runError, setRunError] = useState<string | null>(null);
+
+  const loadStats = useCallback(() => {
+    setStatsLoading(true);
+    apiFetch<Stats>('/tesseract-training/stats')
+      .then(setStats)
+      .catch(console.error)
+      .finally(() => setStatsLoading(false));
+  }, []);
 
   const loadRuns = useCallback(() => {
     apiFetch<{ rows: TrainingRun[] }>('/tesseract-training/documents/runs?page=1')
@@ -91,17 +131,18 @@ export default function TesseractTrainingPage() {
       .catch(console.error);
   }, []);
 
+  useEffect(() => { loadStats(); }, [loadStats]);
   useEffect(() => { loadRuns(); }, [loadRuns]);
 
   const handleStartRun = async () => {
     setStartingRun(true);
-    setRunError(null);
     try {
       await apiFetch('/tesseract-training/documents/runs', { method: 'POST' });
       loadRuns();
       loadStats();
+      addToast('Training package built successfully.', 'success');
     } catch (err) {
-      setRunError(err instanceof Error ? err.message : 'Failed to start training run');
+      addToast(err instanceof Error ? err.message : 'Failed to build training package', 'error');
     } finally {
       setStartingRun(false);
     }
@@ -116,8 +157,7 @@ export default function TesseractTrainingPage() {
     apiFetch<{ rows: DocRow[] }>(`/tesseract-training/documents?${params.toString()}`)
       .then((res) => setRows(res.rows))
       .catch(console.error);
-    setSearchParams(params, { replace: true });
-  }, [page, filterDocType, filterLabeled, filterFrom, filterTo, setSearchParams]);
+  }, [page, filterDocType, filterLabeled, filterFrom, filterTo]);
 
   useEffect(() => { loadList(); }, [loadList]);
 
@@ -132,7 +172,6 @@ export default function TesseractTrainingPage() {
   const handleBulkSubmit = async () => {
     if (selectedIds.size === 0) return;
     setBulkSubmitting(true);
-    setBulkResultSummary(null);
     try {
       const res = await apiFetch<{ results: Array<{ id: number; success: boolean; error?: string }> }>(
         '/tesseract-training/documents/bulk-submit',
@@ -140,12 +179,12 @@ export default function TesseractTrainingPage() {
       );
       const succeeded = res.results.filter((r) => r.success).length;
       const failed = res.results.length - succeeded;
-      setBulkResultSummary(`${succeeded} submitted, ${failed} failed`);
+      addToast(`${succeeded} submitted${failed > 0 ? `, ${failed} failed` : ''}.`, failed > 0 ? 'error' : 'success');
       setSelectedIds(new Set());
       loadList();
       loadStats();
     } catch (err) {
-      setBulkResultSummary(err instanceof Error ? err.message : 'Bulk submit failed');
+      addToast(err instanceof Error ? err.message : 'Bulk submit failed', 'error');
     } finally {
       setBulkSubmitting(false);
     }
@@ -154,7 +193,7 @@ export default function TesseractTrainingPage() {
   useEffect(() => {
     if (selectedId == null) { setDetail(null); return; }
     apiFetch<DocDetail>(`/tesseract-training/documents/${selectedId}`)
-      .then((d) => { setDetail(d); setGroundTruth(d.raw_text ?? ''); setSubmitError(null); })
+      .then((d) => { setDetail(d); setGroundTruth(d.raw_text ?? ''); })
       .catch(console.error);
   }, [selectedId]);
 
@@ -179,17 +218,17 @@ export default function TesseractTrainingPage() {
   const handleSubmit = async () => {
     if (selectedId == null) return;
     setSubmitting(true);
-    setSubmitError(null);
     try {
       await apiFetch(`/tesseract-training/documents/${selectedId}/submit`, {
         method: 'POST',
         body: JSON.stringify({ ground_truth_text: groundTruth }),
       });
+      addToast('Submitted to training corpus.', 'success');
       setSelectedId(null);
       loadList();
       loadStats();
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Submission failed');
+      addToast(err instanceof Error ? err.message : 'Submission failed', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -203,10 +242,28 @@ export default function TesseractTrainingPage() {
       setDetail((d) => (d ? { ...d, approval_status: 'approved' } : d));
       loadList();
       loadStats();
+      addToast('Document approved for training.', 'success');
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Approval failed');
+      addToast(err instanceof Error ? err.message : 'Approval failed', 'error');
     } finally {
       setApproving(false);
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    if (selectedId == null) return;
+    setSavingNotes(true);
+    try {
+      await apiFetch(`/tesseract-training/documents/${selectedId}/notes`, {
+        method: 'PUT',
+        body: JSON.stringify({ strokes }),
+      });
+      setNotesDirty(false);
+      addToast('Notes saved.', 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Save failed', 'error');
+    } finally {
+      setSavingNotes(false);
     }
   };
 
@@ -228,10 +285,7 @@ export default function TesseractTrainingPage() {
     });
   };
 
-  const handleCanvasPointerUp = () => {
-    setDrawStart(null);
-    // drawRect stays set — the inline text input below the image commits it.
-  };
+  const handleCanvasPointerUp = () => { setDrawStart(null); };
 
   const commitBox = async () => {
     if (!drawRect || selectedId == null || !pendingBoxText.trim()) return;
@@ -250,90 +304,152 @@ export default function TesseractTrainingPage() {
     loadBoxes();
   };
 
+  const pct = (v: number, total: number) => total > 0 ? Math.round((v / total) * 100) : 0;
+
   return (
-    <div className="p-4 space-y-4">
-      <PanelTitleBar title="TESSERACT TRAINING SETUP" />
-      {stats && (
-        <div className="border border-surface-border p-3 space-y-2">
-          <button
-            onClick={() => setStatsOpen((v) => !v)}
-            className="text-[11px] font-bold uppercase tracking-wide"
-          >
-            Coverage {statsOpen ? '▲' : '▼'}
-          </button>
-          {statsOpen && (
-            <div className="space-y-1 text-[11px]">
-              <p>
-                {stats.total_labeled} / {stats.total_eligible} documents labeled
-                ({stats.total_approved} approved)
-              </p>
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left text-fg-muted">
-                    <th>Doc Type</th><th>Eligible</th><th>Labeled</th><th>Approved</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stats.by_doc_type.map((row) => (
-                    <tr key={row.doc_type ?? '(none)'}>
-                      <td>{row.doc_type ?? '(unclassified)'}</td>
-                      <td>{row.eligible}</td>
-                      <td>{row.labeled}</td>
-                      <td>{row.approved}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-      <div className="border border-surface-border p-3 space-y-2">
-        <p className="text-[11px] font-bold uppercase tracking-wide">Training Runs</p>
+    <div className="p-4 space-y-3">
+      <PanelTitleBar title="TESSERACT OCR TRAINING" icon={Package} />
+
+      {/* ── Coverage Dashboard ─────────────────────────────── */}
+      <div className="bg-surface-raised border border-border-default rounded-sm">
         <button
-          onClick={handleStartRun}
-          disabled={startingRun || !stats || stats.total_approved === 0}
-          className="px-3 py-1 border text-[11px]"
+          onClick={() => setStatsOpen((v) => !v)}
+          className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[color:var(--panel-header-color)]"
         >
-          {startingRun ? 'Building Package...' : 'Start Training Run'}
+          <span className="flex items-center gap-1.5"><BarChart2 size={11} /> Coverage Dashboard</span>
+          {statsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>
-        {stats && stats.total_approved === 0 && (
-          <p className="text-[11px] text-fg-muted">
-            Approve at least one document before starting a training run.
-          </p>
+
+        {statsOpen && statsLoading && (
+          <div className="px-3 py-3 border-t border-border-subtle flex items-center gap-2 text-[10px] text-fg-muted">
+            <Loader2 size={11} className="animate-spin" /> Loading coverage data…
+          </div>
         )}
-        {runError && <p className="text-[11px] text-red-500">{runError}</p>}
-        <table className="w-full text-[11px]">
-          <thead>
-            <tr className="text-left text-fg-muted">
-              <th>Generated</th><th>Documents</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((run) => (
-              <tr key={run.id}>
-                <td>{formatDateTime(run.generated_at)}</td>
-                <td>{run.document_count}</td>
-                <td>
-                  <a
-                    href={authedImageUrl(`/api/tesseract-training/documents/runs/${run.id}/download`)}
-                    download={`rmpg-training-${run.id}.zip`}
-                  >
-                    Download
-                  </a>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {statsOpen && !statsLoading && !stats && (
+          <div className="px-3 py-3 border-t border-border-subtle text-[10px] text-amber-400 flex items-center gap-2">
+            <AlertTriangle size={11} /> Could not load coverage stats.
+          </div>
+        )}
+        {statsOpen && stats && stats.total_eligible === 0 && (
+          <div className="px-3 py-3 border-t border-border-subtle text-[10px] text-fg-muted italic">
+            No extracted documents found. Process serve documents first to populate training data.
+          </div>
+        )}
+        {statsOpen && stats && stats.total_eligible > 0 && (
+          <div className="px-3 pb-3 space-y-2 border-t border-border-subtle">
+            <div className="grid grid-cols-3 gap-2 pt-2">
+              {[
+                { label: 'Eligible', value: stats.total_eligible },
+                { label: 'Labeled',  value: stats.total_labeled,  sub: `${pct(stats.total_labeled, stats.total_eligible)}%` },
+                { label: 'Approved', value: stats.total_approved, sub: `${pct(stats.total_approved, stats.total_eligible)}%`, highlight: true },
+              ].map(({ label, value, sub, highlight }) => (
+                <div key={label} className="bg-surface-base border border-border-subtle rounded-sm px-2 py-1.5">
+                  <p className="text-[9px] uppercase tracking-wider text-[color:var(--field-label-color)]">{label}</p>
+                  <p className={`text-[18px] font-bold leading-none ${highlight ? 'text-green-400' : 'text-rmpg-100'}`}>{value}</p>
+                  {sub && <p className="text-[9px] text-fg-muted mt-0.5">{sub}</p>}
+                </div>
+              ))}
+            </div>
+
+            <div className="w-full bg-surface-base rounded-sm h-1.5 overflow-hidden">
+              <div
+                className="h-full bg-green-500 transition-all"
+                style={{ width: `${pct(stats.total_approved, stats.total_eligible)}%` }}
+              />
+            </div>
+
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="border-b border-border-subtle">
+                  <th className="text-left py-1 text-[color:var(--field-label-color)] font-semibold">Doc Type</th>
+                  <th className="text-right py-1 text-fg-muted font-semibold">Eligible</th>
+                  <th className="text-right py-1 text-fg-muted font-semibold">Labeled</th>
+                  <th className="text-right py-1 text-fg-muted font-semibold">Approved</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.by_doc_type.map((row) => (
+                  <tr key={row.doc_type ?? '__none__'} className="border-b border-border-subtle last:border-0">
+                    <td className="py-[3px] text-rmpg-200">{row.doc_type ?? <span className="text-fg-muted italic">unclassified</span>}</td>
+                    <td className="py-[3px] text-right text-fg-secondary">{row.eligible}</td>
+                    <td className="py-[3px] text-right text-fg-secondary">{row.labeled}</td>
+                    <td className="py-[3px] text-right text-green-400 font-semibold">{row.approved}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
-      <div className="flex gap-4">
-        <div className="w-1/3 space-y-2">
-          <div className="space-y-1 pb-2 border-b border-surface-border">
+
+      {/* ── Training Runs ──────────────────────────────────── */}
+      <div className="bg-surface-raised border border-border-default rounded-sm">
+        <div className="px-3 py-2 border-b border-border-default flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--panel-header-color)] flex items-center gap-1.5">
+            <Package size={11} /> Training Runs
+          </span>
+          <button
+            onClick={handleStartRun}
+            disabled={startingRun || !stats || stats.total_approved === 0}
+            title={stats && stats.total_approved === 0 ? 'Approve at least one document first' : undefined}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 rounded-sm text-[10px] font-bold text-white"
+          >
+            {startingRun ? <><Loader2 size={11} className="animate-spin" /> Building…</> : <><Package size={11} /> Build Package</>}
+          </button>
+        </div>
+
+        {stats && stats.total_approved === 0 && (
+          <div className="px-3 py-2 flex items-center gap-2 text-[10px] text-amber-400 border-b border-border-subtle">
+            <AlertTriangle size={11} /> Approve at least one document before building a training package.
+          </div>
+        )}
+
+        {runs.length === 0 ? (
+          <p className="px-3 py-3 text-[10px] text-fg-muted italic">No training runs yet.</p>
+        ) : (
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="border-b border-border-subtle">
+                <th className="text-left px-3 py-1.5 text-[color:var(--field-label-color)] font-semibold">Generated</th>
+                <th className="text-right px-3 py-1.5 text-fg-muted font-semibold">Docs</th>
+                <th className="px-3 py-1.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((run) => (
+                <tr key={run.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-hover">
+                  <td className="px-3 py-[3px] text-rmpg-200">{formatDateTime(run.generated_at)}</td>
+                  <td className="px-3 py-[3px] text-right text-fg-secondary">{run.document_count}</td>
+                  <td className="px-3 py-[3px] text-right">
+                    <a
+                      href={authedImageUrl(`/api/tesseract-training/documents/runs/${run.id}/download`)}
+                      download={`rmpg-training-${run.id}.zip`}
+                      className="inline-flex items-center gap-1 text-brand-300 hover:text-brand-100"
+                    >
+                      <Download size={11} /> Download
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* ── Document List + Editor ─────────────────────────── */}
+      <div className="flex gap-3 min-h-0">
+
+        {/* Left: list */}
+        <div className="w-72 flex-none bg-surface-raised border border-border-default rounded-sm flex flex-col">
+          {/* Filters */}
+          <div className="p-2 space-y-1.5 border-b border-border-default">
+            <div className="flex items-center gap-1 text-[9px] text-fg-muted uppercase tracking-wider pb-0.5">
+              <Filter size={9} /> Filters
+            </div>
             <select
               value={filterDocType}
               onChange={(e) => { setFilterDocType(e.target.value); setPage(1); }}
-              className="w-full text-[11px] border p-1"
+              className="w-full text-[10px] border border-border-default bg-surface-base text-rmpg-200 px-1.5 py-1 rounded-sm appearance-none"
             >
               <option value="">All doc types</option>
               <option value="null">(unclassified)</option>
@@ -346,241 +462,345 @@ export default function TesseractTrainingPage() {
             <select
               value={filterLabeled}
               onChange={(e) => { setFilterLabeled(e.target.value); setPage(1); }}
-              className="w-full text-[11px] border p-1"
+              className="w-full text-[10px] border border-border-default bg-surface-base text-rmpg-200 px-1.5 py-1 rounded-sm appearance-none"
             >
               <option value="">Labeled + unlabeled</option>
               <option value="true">Labeled only</option>
               <option value="false">Unlabeled only</option>
             </select>
             <div className="flex gap-1">
-              <input
-                type="date"
-                value={filterFrom}
-                onChange={(e) => { setFilterFrom(e.target.value); setPage(1); }}
-                className="flex-1 text-[11px] border p-1"
-              />
-              <input
-                type="date"
-                value={filterTo}
-                onChange={(e) => { setFilterTo(e.target.value); setPage(1); }}
-                className="flex-1 text-[11px] border p-1"
-              />
+              <input type="date" value={filterFrom} onChange={(e) => { setFilterFrom(e.target.value); setPage(1); }}
+                className="flex-1 text-[10px] border border-border-default bg-surface-base text-rmpg-200 px-1.5 py-1 rounded-sm appearance-none" />
+              <input type="date" value={filterTo} onChange={(e) => { setFilterTo(e.target.value); setPage(1); }}
+                className="flex-1 text-[10px] border border-border-default bg-surface-base text-rmpg-200 px-1.5 py-1 rounded-sm appearance-none" />
             </div>
           </div>
-          {rows.map((r) => (
-            <div key={r.id} className="flex items-center gap-1">
-              <input
-                type="checkbox"
-                checked={selectedIds.has(r.id)}
-                onChange={() => toggleSelected(r.id)}
-                disabled={r.already_in_corpus}
-                aria-label={`Select ${r.file_name} for bulk submit`}
-              />
+
+          {/* Doc rows */}
+          <div className="flex-1 overflow-y-auto divide-y divide-border-subtle">
+            {rows.map((r) => {
+              const isSelected = selectedId === r.id;
+              const isChecked = selectedIds.has(r.id);
+              return (
+                <div
+                  key={r.id}
+                  className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer group ${isSelected ? 'bg-brand-900/40' : 'hover:bg-surface-hover'}`}
+                  onClick={() => setSelectedId(r.id)}
+                >
+                  <button
+                    onClick={(e) => { e.stopPropagation(); if (!r.already_in_corpus) toggleSelected(r.id); }}
+                    disabled={r.already_in_corpus}
+                    className="flex-none text-fg-muted disabled:opacity-30"
+                    aria-label={`Select ${r.file_name} for bulk submit`}
+                  >
+                    {isChecked ? <CheckSquare size={13} className="text-brand-400" /> : <Square size={13} />}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-[10px] truncate ${isSelected ? 'text-rmpg-100' : 'text-rmpg-200'}`}>{r.file_name}</p>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {r.doc_type && <span className="text-[8px] text-fg-muted">{r.doc_type}</span>}
+                      {r.approval_status === 'approved' && (
+                        <span className="text-[8px] font-bold px-1 bg-green-900/40 text-green-400 border border-green-700/50 flex items-center gap-0.5">
+                          <CheckCircle size={8} /> APPROVED
+                        </span>
+                      )}
+                      {r.approval_status === 'pending' && (
+                        <span className="text-[8px] font-bold px-1 bg-amber-900/30 text-amber-400 border border-amber-700/40 flex items-center gap-0.5">
+                          <Clock size={8} /> PENDING
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Pagination + bulk submit */}
+          <div className="p-2 border-t border-border-default space-y-1.5">
+            <div className="flex items-center justify-between text-[10px]">
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+                className="px-2 py-0.5 border border-border-default text-fg-secondary disabled:opacity-30 hover:text-rmpg-100">← Prev</button>
+              <span className="text-fg-muted">Page {page}</span>
+              <button onClick={() => setPage((p) => p + 1)} disabled={rows.length < 25}
+                className="px-2 py-0.5 border border-border-default text-fg-secondary disabled:opacity-30 hover:text-rmpg-100">Next →</button>
+            </div>
+            {selectedIds.size > 0 && (
               <button
-                onClick={() => setSelectedId(r.id)}
-                className={`flex-1 text-left p-2 text-[11px] border ${r.already_in_corpus ? 'opacity-50' : ''}`}
+                onClick={handleBulkSubmit}
+                disabled={bulkSubmitting}
+                className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 bg-brand-700 hover:bg-brand-600 disabled:opacity-40 text-[10px] font-bold text-white rounded-sm"
               >
-                {r.file_name}
-                {r.approval_status === 'approved' && ' [APPROVED]'}
-                {r.approval_status === 'pending' && ' [PENDING]'}
-              </button>
-            </div>
-          ))}
-          <div className="flex gap-2">
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button>
-            <button onClick={() => setPage((p) => p + 1)}>Next</button>
-          </div>
-          {selectedIds.size > 0 && (
-            <div className="space-y-1">
-              <button onClick={handleBulkSubmit} disabled={bulkSubmitting} className="px-3 py-1 border w-full">
+                {bulkSubmitting ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
                 Submit {selectedIds.size} Selected
               </button>
-              {bulkResultSummary && <p className="text-[11px]">{bulkResultSummary}</p>}
-            </div>
-          )}
+            )}
+          </div>
         </div>
-        <div className="w-2/3">
-          {detail && (
-            <div className="space-y-2">
-              <div className="flex gap-2 border-b border-surface-border">
-                {(['text', 'boxes', 'notes'] as const).map((m) => (
+
+        {/* Right: editor */}
+        <div className="flex-1 min-w-0 bg-surface-raised border border-border-default rounded-sm flex flex-col">
+          {!detail ? (
+            <div className="flex-1 flex items-center justify-center text-[11px] text-fg-muted italic">
+              Select a document to review
+            </div>
+          ) : (
+            <>
+              {/* Tab bar */}
+              <div className="flex items-center border-b border-border-default px-2 gap-1">
+                {([
+                  { id: 'text'  as Mode, label: 'Text Correction', icon: FileText },
+                  { id: 'boxes' as Mode, label: 'Box Annotations', icon: Box },
+                  { id: 'notes' as Mode, label: 'Review Notes',    icon: PenLine },
+                ] as const).map(({ id, label, icon: Icon }) => (
                   <button
-                    key={m}
-                    onClick={() => setMode(m)}
-                    className={`px-3 py-1 text-[11px] uppercase ${mode === m ? 'border-b-2 border-brand-400 text-brand-300' : 'text-fg-muted'}`}
+                    key={id}
+                    onClick={() => setMode(id)}
+                    className={`flex items-center gap-1 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider border-b-2 transition-colors ${
+                      mode === id
+                        ? 'border-brand-400 text-brand-300'
+                        : 'border-transparent text-fg-muted hover:text-fg-secondary'
+                    }`}
                   >
-                    {m}
+                    <Icon size={11} /> {label}
                   </button>
                 ))}
+                <div className="ml-auto flex items-center gap-1 px-2 py-1.5">
+                  {detail.approval_status === 'approved' && (
+                    <span className="flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 bg-green-900/40 text-green-400 border border-green-700/50">
+                      <CheckCircle size={9} /> APPROVED
+                    </span>
+                  )}
+                  {detail.approval_status === 'pending' && (
+                    <span className="flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-700/40">
+                      <Clock size={9} /> PENDING APPROVAL
+                    </span>
+                  )}
+                  <button
+                    onClick={() => setSelectedId(null)}
+                    className="ml-1 text-fg-muted hover:text-rmpg-200"
+                    aria-label="Close document"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               </div>
 
-              {mode === 'text' && (
-                <>
-                  <img
-                    src={authedImageUrl(`/api/tesseract-training/documents/${detail.id}/image`)}
-                    alt={detail.file_name}
-                    className="max-w-full border"
-                  />
-                  <textarea
-                    value={groundTruth}
-                    onChange={(e) => setGroundTruth(e.target.value)}
-                    rows={12}
-                    className="w-full border p-2 text-[11px] font-mono"
-                  />
-                  {submitError && <p className="text-[11px] text-red-500">{submitError}</p>}
-                  <button
-                    onClick={handleSubmit}
-                    disabled={submitting || detail.already_in_corpus}
-                    className="px-3 py-1 border"
-                  >
-                    {detail.already_in_corpus ? 'Already Submitted' : 'Submit to Training Corpus'}
-                  </button>
-                  {detail.already_in_corpus && detail.approval_status === 'pending' && (
-                    <button
-                      onClick={handleApprove}
-                      disabled={approving}
-                      className="px-3 py-1 border ml-2"
-                    >
-                      Approve
-                    </button>
-                  )}
-                </>
-              )}
+              {/* Tab content */}
+              <div className="flex-1 overflow-y-auto p-3">
 
-              {mode === 'boxes' && (
-                <div className="space-y-2">
-                  <p className="text-[11px] text-fg-muted">
-                    Drag a box over a word or line, then type its correct text below.
-                    These boxes become real Tesseract training data.
-                  </p>
-                  <div
-                    className="relative inline-block"
-                    onPointerDown={handleCanvasPointerDown}
-                    onPointerMove={handleCanvasPointerMove}
-                    onPointerUp={handleCanvasPointerUp}
-                  >
+                {/* ── Text Correction ── */}
+                {mode === 'text' && (
+                  <div className="space-y-3">
                     <img
-                      ref={imgRef}
                       src={authedImageUrl(`/api/tesseract-training/documents/${detail.id}/image`)}
                       alt={detail.file_name}
-                      className="max-w-full border block"
+                      className="max-w-full border border-border-default rounded-sm"
                     />
-                    <svg className="absolute top-0 left-0 w-full h-full pointer-events-none">
-                      {boxes.map((b) => (
-                        <rect
-                          key={b.id}
-                          x={`${(b.x0 / (imgRef.current?.naturalWidth || 1)) * 100}%`}
-                          y={`${(b.y0 / (imgRef.current?.naturalHeight || 1)) * 100}%`}
-                          width={`${((b.x1 - b.x0) / (imgRef.current?.naturalWidth || 1)) * 100}%`}
-                          height={`${((b.y1 - b.y0) / (imgRef.current?.naturalHeight || 1)) * 100}%`}
-                          fill="none" stroke="lime" strokeWidth={2}
-                        />
-                      ))}
-                      {drawRect && (
-                        <rect
-                          x={`${(drawRect.x0 / (imgRef.current?.naturalWidth || 1)) * 100}%`}
-                          y={`${(drawRect.y0 / (imgRef.current?.naturalHeight || 1)) * 100}%`}
-                          width={`${((drawRect.x1 - drawRect.x0) / (imgRef.current?.naturalWidth || 1)) * 100}%`}
-                          height={`${((drawRect.y1 - drawRect.y0) / (imgRef.current?.naturalHeight || 1)) * 100}%`}
-                          fill="none" stroke="yellow" strokeWidth={2}
-                        />
-                      )}
-                    </svg>
-                  </div>
-                  {drawRect && (
-                    <div className="flex gap-2">
-                      <input
-                        value={pendingBoxText}
-                        onChange={(e) => setPendingBoxText(e.target.value)}
-                        placeholder="Correct text for this region"
-                        className="flex-1 border p-1 text-[11px]"
+                    <div>
+                      <label className="block text-[9px] uppercase tracking-wider text-[color:var(--field-label-color)] mb-1">
+                        Ground-Truth Text
+                      </label>
+                      <textarea
+                        value={groundTruth}
+                        onChange={(e) => setGroundTruth(e.target.value)}
+                        rows={12}
+                        className="w-full border border-border-default bg-surface-base text-rmpg-100 text-[11px] font-mono p-2 rounded-sm"
                       />
-                      <button onClick={commitBox} className="px-3 py-1 border">Save Box</button>
-                      <button onClick={() => { setDrawRect(null); setPendingBoxText(''); }} className="px-3 py-1 border">Cancel</button>
                     </div>
-                  )}
-                  <ul className="space-y-1">
-                    {boxes.map((b) => (
-                      <li key={b.id} className="flex justify-between text-[11px] border p-1">
-                        <span>{b.corrected_text}</span>
-                        <button onClick={() => deleteBox(b.id)} className="text-red-500">Delete</button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {!detail.already_in_corpus ? (
+                        <button
+                          onClick={handleSubmit}
+                          disabled={submitting}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-[10px] font-bold text-white rounded-sm"
+                        >
+                          {submitting ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                          Submit to Training Corpus
+                        </button>
+                      ) : (
+                        <span className="flex items-center gap-1 text-[10px] text-green-400">
+                          <CheckCircle size={12} /> Already in corpus
+                        </span>
+                      )}
+                      {detail.already_in_corpus && detail.approval_status === 'pending' && (
+                        <button
+                          onClick={handleApprove}
+                          disabled={approving}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-green-800 hover:bg-green-700 disabled:opacity-40 text-[10px] font-bold text-white rounded-sm"
+                        >
+                          {approving ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />}
+                          Approve for Training
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-              {mode === 'notes' && (
-                <div className="space-y-2">
-                  <p className="text-[11px] text-fg-muted">
-                    Free-form marks for human reviewers only — never used for training.
-                  </p>
-                  <div className="flex gap-2">
-                    {(['highlight', 'circle', 'arrow'] as const).map((t) => (
-                      <button
-                        key={t}
-                        onClick={() => setActiveTool(t)}
-                        className={`px-2 py-1 text-[11px] border ${activeTool === t ? 'bg-surface-raised' : ''}`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                    <button
-                      onClick={async () => {
-                        if (selectedId == null) return;
-                        await apiFetch(`/tesseract-training/documents/${selectedId}/notes`, {
-                          method: 'PUT',
-                          body: JSON.stringify({ strokes }),
-                        });
-                        setNotesDirty(false);
-                      }}
-                      disabled={!notesDirty}
-                      className="px-2 py-1 text-[11px] border ml-auto"
+                {/* ── Box Annotations ── */}
+                {mode === 'boxes' && (
+                  <div className="space-y-3">
+                    <p className="text-[10px] text-fg-secondary">
+                      Drag a box over a word or line, then enter its correct text. These become Tesseract training data.
+                    </p>
+                    <div
+                      className="relative inline-block cursor-crosshair select-none"
+                      onPointerDown={handleCanvasPointerDown}
+                      onPointerMove={handleCanvasPointerMove}
+                      onPointerUp={handleCanvasPointerUp}
                     >
-                      Save Notes
-                    </button>
-                  </div>
-                  <div
-                    className="relative inline-block"
-                    onPointerDown={(e) => {
-                      if (!imgRef.current) return;
-                      const rect = imgRef.current.getBoundingClientRect();
-                      const p = imageToNaturalCoords(rect, imgRef.current.naturalWidth, imgRef.current.naturalHeight, { x: e.clientX, y: e.clientY });
-                      setDrawingStroke({ tool: activeTool, points: [[p.x, p.y]], color: '#f59e0b' });
-                    }}
-                    onPointerMove={(e) => {
-                      if (!drawingStroke || !imgRef.current) return;
-                      const rect = imgRef.current.getBoundingClientRect();
-                      const p = imageToNaturalCoords(rect, imgRef.current.naturalWidth, imgRef.current.naturalHeight, { x: e.clientX, y: e.clientY });
-                      setDrawingStroke({ ...drawingStroke, points: [...drawingStroke.points, [p.x, p.y]] });
-                    }}
-                    onPointerUp={() => {
-                      if (drawingStroke) {
-                        setStrokes((prev) => [...prev, drawingStroke]);
-                        setNotesDirty(true);
-                      }
-                      setDrawingStroke(null);
-                    }}
-                  >
-                    <img
-                      ref={imgRef}
-                      src={authedImageUrl(`/api/tesseract-training/documents/${detail.id}/image`)}
-                      alt={detail.file_name}
-                      className="max-w-full border block"
-                    />
-                    <svg className="absolute top-0 left-0 w-full h-full pointer-events-none">
-                      {[...strokes, ...(drawingStroke ? [drawingStroke] : [])].map((s, i) => (
-                        <polyline
-                          key={i}
-                          points={s.points.map(([x, y]) => `${(x / (imgRef.current?.naturalWidth || 1)) * 100}%,${(y / (imgRef.current?.naturalHeight || 1)) * 100}%`).join(' ')}
-                          fill="none" stroke={s.color} strokeWidth={3} strokeLinecap="round"
+                      <img
+                        ref={imgRef}
+                        src={authedImageUrl(`/api/tesseract-training/documents/${detail.id}/image`)}
+                        alt={detail.file_name}
+                        draggable={false}
+                        className="max-w-full border border-border-default rounded-sm block"
+                      />
+                      <svg className="absolute top-0 left-0 w-full h-full pointer-events-none">
+                        {boxes.map((b) => (
+                          <rect key={b.id}
+                            x={`${(b.x0 / (imgRef.current?.naturalWidth || 1)) * 100}%`}
+                            y={`${(b.y0 / (imgRef.current?.naturalHeight || 1)) * 100}%`}
+                            width={`${((b.x1 - b.x0) / (imgRef.current?.naturalWidth || 1)) * 100}%`}
+                            height={`${((b.y1 - b.y0) / (imgRef.current?.naturalHeight || 1)) * 100}%`}
+                            fill="none" stroke="rgba(34,197,94,0.8)" strokeWidth={2}
+                          />
+                        ))}
+                        {drawRect && (
+                          <rect
+                            x={`${(drawRect.x0 / (imgRef.current?.naturalWidth || 1)) * 100}%`}
+                            y={`${(drawRect.y0 / (imgRef.current?.naturalHeight || 1)) * 100}%`}
+                            width={`${((drawRect.x1 - drawRect.x0) / (imgRef.current?.naturalWidth || 1)) * 100}%`}
+                            height={`${((drawRect.y1 - drawRect.y0) / (imgRef.current?.naturalHeight || 1)) * 100}%`}
+                            fill="none" stroke="rgba(59,130,246,0.9)" strokeWidth={2} strokeDasharray="4 2"
+                          />
+                        )}
+                      </svg>
+                    </div>
+
+                    {drawRect && (
+                      <div className="flex gap-2 items-center">
+                        <input
+                          autoFocus
+                          value={pendingBoxText}
+                          onChange={(e) => setPendingBoxText(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') commitBox(); if (e.key === 'Escape') { setDrawRect(null); setPendingBoxText(''); } }}
+                          placeholder="Correct text for this region…"
+                          className="flex-1 border border-border-default bg-surface-base text-rmpg-100 text-[10px] px-2 py-1.5 rounded-sm"
                         />
-                      ))}
-                    </svg>
+                        <button onClick={commitBox} disabled={!pendingBoxText.trim()}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-[10px] font-bold text-white rounded-sm">
+                          <Save size={11} /> Save
+                        </button>
+                        <button onClick={() => { setDrawRect(null); setPendingBoxText(''); }}
+                          className="flex items-center gap-1 px-2 py-1.5 border border-border-default text-[10px] text-fg-secondary hover:text-rmpg-100 rounded-sm">
+                          <X size={11} />
+                        </button>
+                      </div>
+                    )}
+
+                    {boxes.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[9px] uppercase tracking-wider text-[color:var(--field-label-color)]">Saved Boxes ({boxes.length})</p>
+                        {boxes.map((b) => (
+                          <div key={b.id} className="flex items-center justify-between bg-surface-base border border-border-subtle px-2 py-1 rounded-sm">
+                            <span className="text-[10px] text-rmpg-200 font-mono">{b.corrected_text}</span>
+                            <button onClick={() => deleteBox(b.id)} className="text-fg-muted hover:text-red-400">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+
+                {/* ── Review Notes ── */}
+                {mode === 'notes' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[9px] uppercase tracking-wider text-fg-muted">Tool:</span>
+                      {(['highlight', 'circle', 'arrow'] as const).map((t) => {
+                        const Icon = TOOL_ICONS[t];
+                        return (
+                          <button
+                            key={t}
+                            onClick={() => setActiveTool(t)}
+                            className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-sm ${
+                              activeTool === t
+                                ? 'border-brand-400 bg-brand-900/40 text-brand-300'
+                                : 'border-border-default text-fg-secondary hover:text-rmpg-200'
+                            }`}
+                          >
+                            <Icon size={11} /> {t}
+                          </button>
+                        );
+                      })}
+                      <button
+                        onClick={() => { setStrokes([]); setNotesDirty(true); }}
+                        disabled={strokes.length === 0}
+                        className="flex items-center gap-1 px-2 py-1 text-[10px] border border-border-default text-fg-muted hover:text-red-400 disabled:opacity-30 rounded-sm ml-1"
+                      >
+                        <Trash2 size={11} /> Clear
+                      </button>
+                      <button
+                        onClick={handleSaveNotes}
+                        disabled={!notesDirty || savingNotes}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-[10px] font-bold text-white rounded-sm ml-auto"
+                      >
+                        {savingNotes ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                        Save Notes
+                      </button>
+                    </div>
+
+                    <p className="text-[10px] text-fg-muted">
+                      Free-form marks for human reviewers only — not used for training.
+                    </p>
+
+                    <div
+                      className="relative inline-block cursor-crosshair select-none"
+                      onPointerDown={(e) => {
+                        if (!imgRef.current) return;
+                        const rect = imgRef.current.getBoundingClientRect();
+                        const p = imageToNaturalCoords(rect, imgRef.current.naturalWidth, imgRef.current.naturalHeight, { x: e.clientX, y: e.clientY });
+                        setDrawingStroke({ tool: activeTool, points: [[p.x, p.y]], color: TOOL_COLORS[activeTool] });
+                      }}
+                      onPointerMove={(e) => {
+                        if (!drawingStroke || !imgRef.current) return;
+                        const rect = imgRef.current.getBoundingClientRect();
+                        const p = imageToNaturalCoords(rect, imgRef.current.naturalWidth, imgRef.current.naturalHeight, { x: e.clientX, y: e.clientY });
+                        setDrawingStroke({ ...drawingStroke, points: [...drawingStroke.points, [p.x, p.y]] });
+                      }}
+                      onPointerUp={() => {
+                        if (drawingStroke) { setStrokes((prev) => [...prev, drawingStroke]); setNotesDirty(true); }
+                        setDrawingStroke(null);
+                      }}
+                    >
+                      <img
+                        ref={imgRef}
+                        src={authedImageUrl(`/api/tesseract-training/documents/${detail.id}/image`)}
+                        alt={detail.file_name}
+                        draggable={false}
+                        className="max-w-full border border-border-default rounded-sm block"
+                      />
+                      <svg className="absolute top-0 left-0 w-full h-full pointer-events-none">
+                        {[...strokes, ...(drawingStroke ? [drawingStroke] : [])].map((s, i) => (
+                          <polyline
+                            key={i}
+                            points={s.points.map(([x, y]) =>
+                              `${(x / (imgRef.current?.naturalWidth || 1)) * 100}%,${(y / (imgRef.current?.naturalHeight || 1)) * 100}%`
+                            ).join(' ')}
+                            fill="none" stroke={s.color} strokeWidth={s.tool === 'highlight' ? 12 : 3}
+                            strokeOpacity={s.tool === 'highlight' ? 0.45 : 1}
+                            strokeLinecap="round" strokeLinejoin="round"
+                          />
+                        ))}
+                      </svg>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>

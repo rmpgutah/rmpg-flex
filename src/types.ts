@@ -110,6 +110,7 @@ export type Bindings = {
   ROBOFLOW_API_URL?: string;
   CARXE_API_KEY?: string;
   CARXE_API_BASE?: string;
+  RESEND_API_KEY?: string;
   IPED_API_KEY?: string;
   EMAIL_FIELD_ENCRYPTION_KEK?: string;
   // Analytics pipeline (optional — provisioned separately)

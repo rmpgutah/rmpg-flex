@@ -155,7 +155,7 @@ describe('paper transcription', () => {
   it('downscales before sending rather than posting a raw phone photo', () => {
     // Several megabytes into a database column is not storage.
     expect(ACTIONS).toMatch(/1600 \/ Math\.max\(img\.width, img\.height\)/);
-    expect(ACTIONS).toMatch(/toDataURL\('image\/jpeg', 0\.7\)/);
+    expect(ACTIONS).toMatch(/toDataURL\('image\/jpeg', 0\.8\)/);
   });
 
   it('stores the wording the paper carried, not today\'s copy', () => {

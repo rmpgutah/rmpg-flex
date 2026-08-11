@@ -21,6 +21,7 @@ import { log } from '../utils/logger';
 import { getSecurityPolicy, validatePassword, DEFAULT_SECURITY_POLICY, type SecurityPolicy } from '../utils/securityPolicy';
 import { parseUserAgentDetails } from '../utils/userAgent';
 import { getRequestGeo } from '../utils/requestGeo';
+import { clientIp } from '../utils/requestIp';
 import {
   generateTotpSecret, verifyTotpCode, buildOtpauthUrl,
   encryptTotpSecret, decryptTotpSecret,
@@ -82,7 +83,7 @@ async function trustDeviceIfRequested(
 ): Promise<void> {
   if (!trustDevice || typeof deviceFingerprint !== 'string' || !deviceFingerprint) return;
   try {
-    const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || '';
+    const ip = clientIp(c);
     const ua = c.req.header('user-agent') || '';
     const existing = await queryFirst<{ id: number }>(
       db, 'SELECT id FROM trusted_devices WHERE user_id = ? AND device_fingerprint = ?', userId, deviceFingerprint);
@@ -163,7 +164,7 @@ async function createSession(c: any, db: any, userId: number, refreshToken: stri
                            http_protocol, tls_version, tls_cipher, likely_vpn_or_hosting, device_platform, device_platform_version)
      VALUES (?, ?, ?, ?, ?, datetime('now', '+7 days'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     sessionId, userId, refreshHash,
-    c.req.header('cf-connecting-ip') || '', ua,
+    clientIp(c), ua,
     deviceType, browser, os,
     geo.country, geo.region, geo.city, geo.postalCode, geo.timezone, geo.latitude, geo.longitude, geo.asn, geo.isp,
     geo.httpProtocol, geo.tlsVersion, geo.tlsCipher, geo.likelyVpnOrHosting ? 1 : 0, platform, platformVersion,
@@ -275,7 +276,7 @@ auth.post('/login', async (c) => {
     // many legit users behind one IP) + a tighter per-username window so a
     // distributed credential-stuffing run still hits a wall. Counts every
     // attempt, success included — fine at these limits; KV fails open.
-    const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
+    const ip = clientIp(c);
     const uname = String(username).toLowerCase().slice(0, 64);
     const [ipOk, userOk] = await Promise.all([
       rateLimitAllow(c.env.KV, `login:ip:${ip}`, 30, 300),
@@ -498,7 +499,7 @@ export async function mintLoginTokens(c: any, db: any, user: any) {
       user.id,
     );
   } catch { /* non-fatal */ }
-  const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
+  const ip = clientIp(c);
   await recordLoginAttempt(c, db, user.username, ip, true, null);
   return {
     token: accessToken,
@@ -853,7 +854,7 @@ auth.post('/forgot-password', async (c) => {
     const { username } = await c.req.json<{ username?: string }>().catch(() => ({} as any));
     if (!username) return c.json({ hasQuestions: false });
 
-    const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
+    const ip = clientIp(c);
     const uname = String(username).toLowerCase().slice(0, 64);
     const [ipOk, userOk] = await Promise.all([
       rateLimitAllow(c.env.KV, `forgot-pw:ip:${ip}`, 20, 300),
@@ -890,7 +891,7 @@ auth.post('/forgot-password/verify', async (c) => {
       return c.json({ error: 'Username and all three answers are required' }, 400);
     }
 
-    const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
+    const ip = clientIp(c);
     const uname = String(username).toLowerCase().slice(0, 64);
     const [ipOk, userOk] = await Promise.all([
       rateLimitAllow(c.env.KV, `forgot-pw-verify:ip:${ip}`, 15, 300),
@@ -2200,6 +2201,30 @@ auth.post('/recover-all', async (c) => {
   } catch (err) {
     console.error('POST /auth/recover-all failed:', err);
     return dbErrorResponse(c, err, 'Failed to recover accounts');
+  }
+});
+
+// ── GET /auth/users/list — public user picker for the FlexOS login screen ──
+// Returns display-safe fields only (no password hashes, no secrets).
+// Auth is intentionally NOT required — the login screen calls this before
+// a session exists. Only active accounts are returned; suspended/inactive
+// accounts are excluded so they don't appear on the picker.
+auth.get('/users/list', async (c) => {
+  try {
+    const db = c.env.DB;
+    const rows = await db
+      .prepare(
+        `SELECT id, username, first_name, last_name, badge_number, role
+         FROM users
+         WHERE status = 'active'
+         ORDER BY last_name ASC, first_name ASC
+         LIMIT 50`
+      )
+      .all<{ id: number; username: string; first_name: string; last_name: string; badge_number: string | null; role: string }>();
+    return c.json({ users: rows.results ?? [] });
+  } catch (err) {
+    console.error('GET /auth/users/list failed:', err);
+    return c.json({ users: [] }, 500);
   }
 });
 

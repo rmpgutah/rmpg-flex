@@ -132,6 +132,23 @@ try {
   REMOTE_SERVER_HOSTNAME = null;
 }
 
+// Health checks go DIRECTLY to the API Worker's /api/health endpoint, which
+// has a Cloudflare WAF skip rule that bypasses the managed challenge. The old
+// approach (REMOTE_SERVER_URL/api/health = rmpgutah.us/api/health) went through
+// the strangler proxy and hit the managed challenge — net.request can't solve
+// that challenge (no JS execution), so every cold boot reported the server as
+// unreachable until the BrowserWindow solved the challenge 10-30s later.
+const HEALTH_CHECK_URL = DEV_MODE
+  ? `${REMOTE_SERVER_URL}/api/health`
+  : 'https://api.rmpgutah.us/api/health';
+
+let HEALTH_CHECK_HOSTNAME;
+try {
+  HEALTH_CHECK_HOSTNAME = new URL(HEALTH_CHECK_URL).hostname;
+} catch {
+  HEALTH_CHECK_HOSTNAME = null;
+}
+
 const LOG_FILE_PATH = path.join(app.getPath('userData'), 'rmpg-flex.log');
 
 // Task 8 (childProcessGuard.js): a dedicated audit trail for the small
@@ -704,17 +721,16 @@ function checkServerConnectivity() {
     function tryConnect() {
       if (resolved) return;
       attempts++;
-      console.log(`[APP] Connectivity check attempt ${attempts}/${maxAttempts}: ${REMOTE_SERVER_URL}/api/health`);
+      console.log(`[APP] Connectivity check attempt ${attempts}/${maxAttempts}: ${HEALTH_CHECK_URL}`);
 
-      const healthCheckUrl = `${REMOTE_SERVER_URL}/api/health`;
-      if (!isAllowedApiHost(healthCheckUrl, [REMOTE_SERVER_HOSTNAME])) {
+      if (!isAllowedApiHost(HEALTH_CHECK_URL, [REMOTE_SERVER_HOSTNAME, HEALTH_CHECK_HOSTNAME].filter(Boolean))) {
         console.error('[APP] Connectivity check blocked: URL host not allowlisted');
         resolved = true;
         resolve(false);
         return;
       }
 
-      const request = net.request(healthCheckUrl);
+      const request = net.request(HEALTH_CHECK_URL);
 
       // Per-request timeout — prevent hung TCP handshakes from stalling startup
       const reqTimeout = setTimeout(() => {
@@ -1099,6 +1115,11 @@ async function createMainWindow() {
       // upload logic runs here in the renderer, so it must not be throttled for
       // navigation to keep calculating + recording movement off-screen.
       backgroundThrottling: false,
+      // webviewTag is required for the in-app Company Browser (CompanyBrowserPage).
+      // This is an enterprise-only, locked-down Toughbook — the session permission
+      // handler, CSP, and webview hardening (security/webviewHardening.js) collectively
+      // gate what the <webview> guest can load and navigate to.
+      webviewTag: true,
     }),
     // macOS titlebar
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
@@ -2175,26 +2196,40 @@ app.on('child-process-gone', (event, details) => {
   recoverMainWindow('GPU process', details.reason);
 });
 
-app.on('web-contents-created', (_event, wc) => {
-  wc.on('did-frame-finish-load', (_ev, _isMainFrame, frameProcessId, frameRoutingId) => {
-    try {
-      const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
-      if (frame) frame.executeJavaScript(PRINT_OVERRIDE_JS).catch(() => {});
-    } catch (e) { /* frame may already be gone */ }
+// Only inject the window.print() override on macOS — the NSPrintPanel
+// segfault is macOS-specific. On Windows/Linux, window.print() works
+// fine and opens the native print dialog directly.
+if (process.platform === 'darwin') {
+  app.on('web-contents-created', (_event, wc) => {
+    wc.on('did-frame-finish-load', (_ev, _isMainFrame, frameProcessId, frameRoutingId) => {
+      try {
+        const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
+        if (frame) frame.executeJavaScript(PRINT_OVERRIDE_JS).catch(() => {});
+      } catch (e) { /* frame may already be gone */ }
+    });
   });
-});
+}
 
 guardedHandle('print:to-pdf', async (event) => {
-  const fs = require('fs');
-  try {
-    const pdf = await event.sender.printToPDF({ printBackground: true });
-    const file = path.join(app.getPath('temp'), `rmpg-print-${Date.now()}.pdf`);
-    await fs.promises.writeFile(file, pdf);
-    const err = await shell.openPath(file); // opens in Preview; user prints from there
-    return { ok: !err, file, error: err || undefined };
-  } catch (e) {
-    return { ok: false, error: e.message };
+  if (process.platform === 'darwin') {
+    // macOS: render to PDF and open in Preview (avoids NSPrintPanel segfault).
+    const fs = require('fs');
+    try {
+      const pdf = await event.sender.printToPDF({ printBackground: true });
+      const file = path.join(app.getPath('temp'), `rmpg-print-${Date.now()}.pdf`);
+      await fs.promises.writeFile(file, pdf);
+      const err = await shell.openPath(file);
+      return { ok: !err, file, error: err || undefined };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
   }
+  // Windows/Linux: use native print dialog directly — no segfault risk.
+  return new Promise((resolve) => {
+    event.sender.print({ silent: false, printBackground: true }, (success, failureReason) => {
+      resolve(success ? { ok: true } : { ok: false, error: failureReason });
+    });
+  });
 });
 
 // ─── Recon Connect launcher ───────────────────────────────

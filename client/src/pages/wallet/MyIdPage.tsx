@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../hooks/useApi';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 // MyIdPage — the officer's own digital ID badge with a live, rotating QR.
 // GET /api/wallet/me lazily issues the credential and returns the badge + a
@@ -36,7 +37,7 @@ export default function MyIdPage() {
 
   async function renderQr(token: string) {
     try {
-      const QRCode = (await import('qrcode')).default;
+      const QRCode = (await importWithRetry(() => import('qrcode'))).default;
       const url = await QRCode.toDataURL(token, { margin: 1, width: 260, errorCorrectionLevel: 'M' });
       setQrDataUrl(url);
     } catch {

@@ -4,9 +4,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
 import { NavTripProvider } from './context/NavTripContext';
-import { ToastProvider, useToast } from './components/ToastProvider';
+import { ToastProvider } from './components/ToastProvider';
 import MDTBridge from './components/MDTBridge';
-import DialerPanel from './components/DialerPanel';
 import { ContextMenuProvider } from './context/ContextMenuContext';
 import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import { GlobalSearch } from './components/GlobalSearch';
@@ -15,7 +14,7 @@ import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import { resolveDispatchAccess } from './pages/dispatch/dispatchAccess';
 import { isCompanyBrowserBlockedRole } from './utils/companyBrowserAccess';
-import { tryReloadForChunkFailure, normalizeChunkError, retryChunkImportInBrowser } from './utils/chunkRetry';
+import { lazyRetry } from './utils/importWithRetry';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
@@ -62,49 +61,8 @@ const DownloadsPage = lazyRetry(() => import('./pages/DownloadsPage'));
 const PdfGalleryPage = import.meta.env.DEV
   ? lazy(() => import('./devtools/pdfGallery/PdfGalleryPage'))
   : null;
-// Lazy import with auto-retry on chunk load failure (stale cache after deploys)
-function lazyRetry<T extends React.ComponentType<any>>(
-  factory: () => Promise<{ default: T }>,
-): React.LazyExoticComponent<T> {
-  // Retry the import in place before escalating to a reload. A reload only
-  // helps when OUR index.html is stale; during a Pages deploy-propagation
-  // window the fresh index references a chunk the CDN is still replicating
-  // (server 500s) — there a reload re-fails instantly, the second failure
-  // lands inside the 30s guard, and the ErrorBoundary card strands the user
-  // (seen live 2026-06-10, fleet chunk 500 for ~15 min after 4 back-to-back
-  // deploys). Two delayed re-imports (1.5s, 4s) ride out that window.
-  //
-  // Before EVERY rung: the failure may be a POISONED HTTP-CACHE entry for a
-  // chunk — a Pages SPA-fallback `index.html` stored under the chunk's URL for
-  // 4h by its own cache-control header. Sleeping and re-importing can never
-  // fix that (a bare `import()` re-reads the same cached bytes), and neither
-  // can the reload below (index.html is already current). Only a
-  // cache-bypassing re-request can, via retryChunkImport's `repair` hook —
-  // and it runs before every rung, not just the first, because a page like
-  // DashboardPage pulls in several statically-imported sub-chunks at once and
-  // Chrome's rejection only ever names the ONE that failed first; siblings
-  // still in flight at that instant haven't landed in Resource Timing yet, so
-  // a repair pass run only once misses them (see chunkRetry.ts's
-  // "Retry ladder — repair on EVERY rung" section for the live incident this
-  // fixed).
-  const withRetry = () => retryChunkImportInBrowser(factory);
-  return lazy(() => withRetry().catch((err) => {
-    // A lazy chunk failed to load — almost always a stale bundle after a
-    // deploy: this long-lived tab requests an old hash the server no longer
-    // serves. Reload ONCE per 30s to pick up the fresh index, holding the
-    // Suspense fallback (spinner) while the reload navigates away — rejecting
-    // immediately would flash the ErrorBoundary's red card for a frame. The
-    // hold is BOUNDED (tryReloadForChunkFailure): if the reload never tears
-    // this page down (offline / stale SW shell / captive portal / webview that
-    // ignores reload()), it rejects after ~10s so the RouteErrorBoundary shows
-    // its recovery card — never a permanent button-less splash. A second
-    // failure inside the 30s window means the reload didn't help → reload
-    // returns null here and we rethrow for the ErrorBoundary instead of looping.
-    const held = tryReloadForChunkFailure<{ default: T }>(err);
-    if (held) return held;
-    throw normalizeChunkError(err);
-  }));
-}
+// lazyRetry is imported from utils/importWithRetry — shared with Layout,
+// MobileHomePage, map/index, and any other component-level lazy split.
 
 // Lazy-loaded pages (less frequently accessed)
 const IncidentsPage = lazyRetry(() => import('./pages/IncidentsPage'));
@@ -768,22 +726,6 @@ function AppRoutes() {
   );
 }
 
-function DialerPanelMount() {
-  const { isAuthenticated } = useAuth();
-  const { addToast } = useToast();
-  const location = useLocation();
-  // Navigation page is full-screen and manages its own z-stack; the floating
-  // Dialer chip at z-[9998] renders on top of every HUD element there and
-  // blocks map/instrument interaction — hide it for the duration of that route.
-  if (!isAuthenticated || location.pathname === '/navigate') return null;
-  return (
-    <DialerPanel
-      onRinging={(message) => addToast(message, 'warning')}
-      onDuress={(message) => addToast(message, 'error')}
-    />
-  );
-}
-
 export default function App() {
   // TWO nested boundaries by design (defense in depth):
   //  • OUTER — sits above every context provider. A render/effect throw inside
@@ -810,7 +752,6 @@ export default function App() {
                     <MDTBridge />
                     <AndroidUpdateChecker />
                     <ButtonHealthOverlay />
-                    <DialerPanelMount />
                     <AppRoutes />
                   </ErrorBoundary>
                 </ContextMenuProvider>

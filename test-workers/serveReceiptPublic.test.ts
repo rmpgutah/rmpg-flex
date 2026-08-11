@@ -17,6 +17,7 @@ import { Hono } from 'hono';
 import mig0207 from '../migrations/0207_serve_receipts.sql?raw';
 import mig0209 from '../migrations/0209_serve_receipt_integrity.sql?raw';
 import mig0210 from '../migrations/0210_serve_receipt_lifecycle.sql?raw';
+import mig0236 from '../migrations/0236_serve_receipt_device_fingerprint.sql?raw';
 import { serveReceipt } from '../src/routes/serveReceipt';
 
 const db = () => env.DB as unknown as import('@cloudflare/workers-types').D1Database;
@@ -44,7 +45,7 @@ beforeAll(async () => {
   // them. A stub drifts from production the moment a column is added, and
   // the insert under test writes 51 columns — a thin stub fails as a 500
   // that looks like a code defect rather than a test-fixture gap.
-  const sql = [mig0207, mig0209, mig0210].join('\n');
+  const sql = [mig0207, mig0209, mig0210, mig0236].join('\n');
 
   // serve_queue and serve_attempts are pre-existing tables, not created by
   // these migrations — stubbed to the columns this router actually touches

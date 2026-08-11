@@ -28,6 +28,7 @@ import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { useNavTravel } from './useNavTravel';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { decodeMaxspeedAnnotation } from '../utils/speedLimit';
+import { importWithRetry } from '../utils/importWithRetry';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -828,7 +829,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         // Loaded dynamically, not statically imported at module scope (see
         // the header comment) — `map` above is already a live mapboxgl.Map
         // instance, so this resolves from the already-warm module cache.
-        const { mapboxgl } = await import('../utils/mapboxLoader');
+        const { mapboxgl } = await importWithRetry(() => import('../utils/mapboxLoader'));
 
         // Coord 0 = unit origin; coords 1..n = the calls (in queue order).
         const pts = [origin, ...valid];

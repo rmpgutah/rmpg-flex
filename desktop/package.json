@@ -46,6 +46,7 @@
       "fileOps.js",
       "deviceInfo.js",
       "windowManager.js",
+      "crashRecovery.js",
       "originalCatalog.json",
       "security"
     ],
@@ -127,7 +128,7 @@
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
-    "electron": "^41.10.3",
+    "electron": "^41.10.4",
     "electron-builder": "^26.15.2"
   },
   "overrides": {
