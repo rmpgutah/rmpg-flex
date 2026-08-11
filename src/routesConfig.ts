@@ -240,6 +240,7 @@ import offenderRegistry from './routes/offenderRegistry';
 import uploads from './routes/uploads';
 import companyDocuments from './routes/companyDocuments';
 import wallet from './routes/wallet';
+import systemRoutes from './routes/system';
 import jailRoster from './routes/jailRoster';
 // Full-trip dashcam footage (FlexCamPage). Handler existed but the mount was
 // dropped in a squash merge, 404ing the entire page. NOTE: this comment
@@ -794,4 +795,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // Officer Wallet ID — digital badge / QR-verifiable ID. Auth required on every
   // path (verify is RMPG-only); admin/manager gating is applied per-route inside.
   { prefix: '/api/wallet', router: wallet, auth: 'required' },
+
+  // FlexOS system routes: remote lock (KV-backed), active-call polling,
+  // unit status read/write. Used by the FlexOS desktop system context.
+  { prefix: '/api/system', router: systemRoutes, auth: 'required' },
 ];

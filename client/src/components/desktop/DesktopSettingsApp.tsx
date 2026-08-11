@@ -27,6 +27,12 @@ const ALL_WIDGETS: { id: string; label: string }[] = [
   { id: 'shift-timer', label: 'Shift Timer' },
   { id: 'pinned-call-ticker', label: 'Pinned Call Ticker' },
   { id: 'mini-map', label: 'Mini Map' },
+  { id: 'weather', label: 'Weather / Conditions' },
+  { id: 'radio-channel', label: 'Radio Channel' },
+  { id: 'roll-call', label: 'Roll Call' },
+  { id: 'incident-timer', label: 'Incident Timer' },
+  { id: 'gps-trail', label: 'GPS Trail' },
+  { id: 'shift-handoff', label: 'Shift Handoff Checklist' },
 ];
 
 const ICON_SIZES: Array<'small' | 'medium' | 'large'> = ['small', 'medium', 'large'];

@@ -9,6 +9,7 @@ import {
   Construction, User, Lock, ScrollText, UserCheck, Fingerprint, Globe,
   HelpCircle, BookOpen, ClipboardPen, ListChecks, Sparkles,
   Navigation, Star, Clock, ExternalLink, RefreshCw, Grid3X3,
+  Calculator, ArrowLeftRight, Clipboard, Timer, Cpu, Printer, Download,
 } from 'lucide-react';
 
 export interface NavFunction {
@@ -214,6 +215,21 @@ export const NAV_CATEGORIES: NavCategory[] = [
     functions: [
       { path: '/audit', label: 'Audit Log', icon: ScrollText, shortcut: 'F11', adminOnly: true, description: 'System audit trail with user activity, data changes, and access logs' },
       { path: '/admin', label: 'Administration', icon: Settings, shortcut: 'F12', adminOnly: true, description: 'System administration, user management, roles, and configuration' },
+    ],
+  },
+  {
+    id: 'tools',
+    label: 'Desktop Tools',
+    icon: Calculator,
+    functions: [
+      { path: '/calculator', label: 'Calculator', icon: Calculator, description: 'Standard calculator with history log' },
+      { path: '/unit-converter', label: 'Unit Converter', icon: ArrowLeftRight, description: 'Convert distance, speed, weight, and temperature' },
+      { path: '/clipboard-manager', label: 'Clipboard Manager', icon: Clipboard, description: 'View and re-use clipboard history' },
+      { path: '/focus-timer', label: 'Focus Timer', icon: Timer, description: 'Pomodoro-style focus and break timer' },
+      { path: '/device-health', label: 'Device Health', icon: Cpu, description: 'Battery, network, and API service health' },
+      { path: '/print-queue', label: 'Print Queue', icon: Printer, description: 'View and manage active print jobs' },
+      { path: '/scheduled-updates', label: 'Scheduled Updates', icon: Download, description: 'Configure automatic update install window' },
+      { path: '/remote-lock', label: 'Remote Device Lock', icon: Lock, adminOnly: true, description: 'Send a remote lock signal to a field device' },
     ],
   },
 ];

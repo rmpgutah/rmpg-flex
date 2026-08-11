@@ -14,6 +14,12 @@ import { sortIconPositions, snapToGrid, nextAutoArrangeSlot } from '../utils/des
 import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden, setIconsHidden } from '../utils/desktopIconPreferences';
 import DesktopWallpaper from '../components/desktop/DesktopWallpaper';
 import { DesktopWindowManagerProvider, useDesktopWindows } from '../components/desktop/DesktopWindowManager';
+import { DesktopSystemProvider } from '../context/DesktopSystemContext';
+import DesktopNightLightOverlay from '../components/desktop/DesktopNightLightOverlay';
+import DesktopP1AlertOverlay from '../components/desktop/DesktopP1AlertOverlay';
+import DesktopWelfareCountdown from '../components/desktop/DesktopWelfareCountdown';
+import DesktopActiveCallBar from '../components/desktop/DesktopActiveCallBar';
+import DesktopUpdateBanner from '../components/desktop/DesktopUpdateBanner';
 import FloatingWindow from '../components/desktop/FloatingWindow';
 import DesktopWindowSwitcher from '../components/desktop/DesktopWindowSwitcher';
 import DesktopIconGrid from '../components/desktop/DesktopIconGrid';
@@ -273,8 +279,11 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
     return { '--desktop-shell-accent': accent.accent, '--desktop-shell-accent-shadow': accent.shadow } as React.CSSProperties;
   }, [accentId]);
 
+  const taskbarH = TASKBAR_HEIGHT_PX[getTaskbarSize()];
+
   return (
     <div style={accentStyle}>
+      <DesktopSystemProvider>
       <VirtualDesktopProvider>
       <DesktopWindowManagerProvider>
         <ContextMenu
@@ -341,6 +350,11 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         )}
       </DesktopWindowManagerProvider>
       </VirtualDesktopProvider>
+      <DesktopNightLightOverlay />
+      <DesktopP1AlertOverlay />
+      <DesktopActiveCallBar taskbarHeightPx={taskbarH} />
+      <DesktopUpdateBanner taskbarHeightPx={taskbarH} hasActiveCall={false} />
+      </DesktopSystemProvider>
       <DesktopScreenSaver isActive={ssActive && !isLocked} onDismiss={dismissSS} />
       <DesktopLockScreen isLocked={isLocked} onUnlock={() => { dismissLock(); setManuallyLocked(false); }} />
       {notifCenterOpen && <DesktopNotificationCenter onClose={() => setNotifCenterOpen(false)} />}
