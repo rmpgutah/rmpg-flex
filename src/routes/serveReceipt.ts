@@ -36,6 +36,7 @@ import { rateLimitAllow } from '../utils/rateLimit';
 import { log } from '../utils/logger';
 import { clientIp } from '../utils/requestIp';
 import { upsertPersonFromAos, storeIdPhotos, linkReceiptToPerson } from '../utils/serveReceiptPersons';
+import { broadcastAll } from './ws';
 
 const PUBLIC_APP_URL = 'https://rmpgutah.us';
 
@@ -978,6 +979,15 @@ serveReceipt.post('/:token', async (c) => {
   }).catch(() => undefined);
 
   log.info('Serve receipt signed', { receiptId, queueId: tok.serve_queue_id, variant, method });
+
+  // Broadcast to live dispatch / serve feeds so they refresh without polling.
+  broadcastAll('data_changed', {
+    module: 'process-server',
+    entity: 'serve_queue',
+    id: tok.serve_queue_id,
+    status: advances ? 'served' : 'attempted',
+    event: 'receipt_signed',
+  });
 
   return c.json({
     ok: true,

@@ -49,6 +49,8 @@ import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/p
 import { generateServeCharges } from '../utils/serveChargeStore';
 import { syncServeCompletionToCfs } from '../utils/reversePsoSync';
 import { notifyServeCompletion } from '../utils/serveCompletionNotify';
+import { broadcastAll } from './ws';
+import { toDisplayLabel } from '../utils/displayLabel';
 import { geocodeAddress } from './geocode';
 import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
 import { autoAssignAllUnassigned } from '../utils/serveAutoAssign';
@@ -1179,8 +1181,12 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   const user = c.get('user') as { id: number; role: string } | undefined;
   const db = getDb(c.env);
 
-  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; status: string; officer_id: number | null }>(
-    db, 'SELECT attempt_count, max_attempts, status, officer_id FROM serve_queue WHERE id = ?', id,
+  const queue = await queryFirst<{
+    attempt_count: number; max_attempts: number; status: string;
+    officer_id: number | null; cfs_call_id: number | null;
+    recipient_name: string | null; case_number: string | null;
+  }>(
+    db, 'SELECT attempt_count, max_attempts, status, officer_id, cfs_call_id, recipient_name, case_number FROM serve_queue WHERE id = ?', id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
 
@@ -1290,6 +1296,36 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     // but nothing ever imported/invoked it — clients had no way to learn a
     // job was served or failed short of checking the portal themselves.
     notifyServeCompletion(db, id, newStatus).catch(() => {});
+  }
+
+  // [12a] Live dispatch sync — broadcast over WebSocket so ServePage / DispatchPage
+  // consumers subscribed to 'process-server' receive a push without polling.
+  // useLiveSync in the client already wires up this module; until now the server
+  // never emitted it. Fire-and-forget: WS delivery is best-effort.
+  broadcastAll('data_changed', {
+    module: 'process-server',
+    entity: 'serve_queue',
+    id,
+    status: newStatus,
+    attempt: nextNum,
+  });
+
+  // [12b] CFS timeline entry — if this job is linked to a call, write a
+  // call_notes row so dispatchers see serve activity in the call's history
+  // alongside radio notes and status changes.
+  if (queue.cfs_call_id) {
+    const attemptLabel = toDisplayLabel(result);
+    const caseRef = queue.case_number ? ` (${queue.case_number})` : '';
+    const recipientRef = queue.recipient_name ? ` for ${queue.recipient_name}` : '';
+    const noteText = [
+      `[Process Server] Attempt ${nextNum}${caseRef}${recipientRef}: ${attemptLabel}`,
+      body.notes ? String(body.notes).slice(0, 200) : null,
+    ].filter(Boolean).join(' — ');
+    execute(db,
+      `INSERT INTO call_notes (call_id, user_id, note, created_at)
+       VALUES (?, ?, ?, datetime('now'))`,
+      queue.cfs_call_id, user?.id ?? null, noteText,
+    ).catch(() => {});
   }
 
   // [11] GPS proximity soft-warning — non-blocking. If the client sent GPS
