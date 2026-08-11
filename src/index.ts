@@ -520,6 +520,27 @@ export default {
           }).catch((err) => console.error('Intel watchlist sweep failed:', err)),
         ).catch(() => {}),
       );
+      // [12] Serve priority auto-escalation — jobs with a deadline ≤ 3 days
+      // that are still 'normal' priority are bumped to 'rush'; ≤ 1 day → 'urgent'.
+      // Runs every minute so a crossing detected mid-day gets caught quickly
+      // (capped at 100 rows per sweep to stay within cron budget).
+      ctx.waitUntil(
+        env.DB.prepare(`
+          UPDATE serve_queue
+             SET priority   = CASE
+                                WHEN julianday(deadline) - julianday('now') <= 1 THEN 'urgent'
+                                ELSE 'rush'
+                              END,
+                 updated_at = datetime('now')
+           WHERE status NOT IN ('served','failed','cancelled')
+             AND deadline IS NOT NULL
+             AND julianday(deadline) - julianday('now') <= 3
+             AND priority NOT IN ('urgent','rush')
+           LIMIT 100
+        `).run()
+          .then((r) => { if (r.meta.changes > 0) console.log(`[serve-escalation] auto-escalated ${r.meta.changes} job(s)`); })
+          .catch((err) => console.error('Serve priority auto-escalation failed:', err)),
+      );
       // Daily tasks at 04:00 America/Denver. The cron fires every minute, so
       // gate on BOTH Denver hour == 4 AND minute == 0 — an hour-only gate
       // (the original approach) still fires ~60x during that hour. Harmless

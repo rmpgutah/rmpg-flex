@@ -1296,6 +1296,19 @@ export default function ServePage() {
   const [sortByUrgency, setSortByUrgency] = useState(false);
   // ── Feature 33: Serve-type filter ──
   const [serveTypeFilter, setServeTypeFilter] = useState<string>('all');
+  // [30] Attorney name filter — new query param on GET /
+  const [attorneyFilter, setAttorneyFilter] = useState('');
+  // [22] Aging alert banner — at-risk jobs loaded once per mount, refresh with queue
+  const [agingJobs, setAgingJobs] = useState<Array<{ id: number; recipient_name: string; days_remaining: number }>>([]);
+  useEffect(() => {
+    apiFetch<Array<{ id: number; recipient_name: string; days_remaining: number }>>('/serve/aging')
+      .then(setAgingJobs)
+      .catch(() => {});
+  }, []);
+  // [21] Bulk deadline extension modal
+  const [bulkDeadlineOpen, setBulkDeadlineOpen] = useState(false);
+  const [bulkDeadlineDate, setBulkDeadlineDate] = useState('');
+  const [bulkDeadlineSubmitting, setBulkDeadlineSubmitting] = useState(false);
   // ── Feature 31: Clone state ──
   const [cloningJobId, setCloningJobId] = useState<number | null>(null);
   // ── Queue view: folder mode vs flat list ──
@@ -1400,8 +1413,17 @@ export default function ServePage() {
       result = result.filter(j => (j.serve_type ?? 'personal') === serveTypeFilter);
     }
 
+    // [30] Attorney name filter
+    if (attorneyFilter.trim()) {
+      const q = attorneyFilter.trim().toLowerCase();
+      result = result.filter(j =>
+        (j.attorney_name ?? '').toLowerCase().includes(q) ||
+        (j.client_name ?? '').toLowerCase().includes(q),
+      );
+    }
+
     return result;
-  }, [jobs, statusFilter, sortByUrgency, searchQuery, serveTypeFilter]);
+  }, [jobs, statusFilter, sortByUrgency, searchQuery, serveTypeFilter, attorneyFilter]);
 
   // Feature 30: Overdue count (open jobs past deadline)
   const overdueCount = useMemo(() => {
@@ -2346,6 +2368,94 @@ export default function ServePage() {
                 </span>
               </button>
             </div>
+
+            {/* [22] Aging alert banner — jobs at risk of missing deadline */}
+            {agingJobs.length > 0 && (
+              <div className="flex items-center gap-2 px-3 py-1.5 border-b border-amber-700/40 bg-amber-900/20 text-[10px]">
+                <AlertTriangle size={11} className="text-amber-400 flex-shrink-0" />
+                <span className="text-amber-300 font-bold">
+                  {agingJobs.length} job{agingJobs.length === 1 ? '' : 's'} approaching deadline with no recent attempt —{' '}
+                  {agingJobs.slice(0, 2).map((j) => j.recipient_name).join(', ')}
+                  {agingJobs.length > 2 ? ` +${agingJobs.length - 2} more` : ''}
+                </span>
+              </div>
+            )}
+
+            {/* [30] Attorney filter + [21] Bulk deadline button */}
+            <div className="flex items-center gap-2 px-3 py-1 border-b border-rmpg-700/30 bg-surface-sunken/20">
+              <input
+                type="search"
+                value={attorneyFilter}
+                onChange={(e) => setAttorneyFilter(e.target.value)}
+                placeholder="Filter by attorney / client name…"
+                aria-label="Filter by attorney or client"
+                className="flex-1 px-2 py-0.5 text-[10px] rounded-[2px] bg-surface-sunken border border-rmpg-600 text-rmpg-100 placeholder:text-fg-muted focus:outline-none focus:ring-1 focus:ring-rmpg-400/50"
+              />
+              {selectedJobIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setBulkDeadlineOpen(true)}
+                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-300 bg-amber-900/30 border border-amber-700/50 rounded-[2px] hover:bg-amber-900/50 transition-colors whitespace-nowrap"
+                >
+                  <Calendar size={10} />
+                  Extend Deadline ({selectedJobIds.size})
+                </button>
+              )}
+            </div>
+
+            {/* [21] Bulk deadline extension modal */}
+            {bulkDeadlineOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+                <div className="bg-surface-base border border-rmpg-700 rounded-[2px] p-4 w-80 space-y-3 shadow-xl">
+                  <h2 className="text-[11px] font-bold text-rmpg-100 uppercase tracking-wider">
+                    Extend Deadline — {selectedJobIds.size} job{selectedJobIds.size === 1 ? '' : 's'}
+                  </h2>
+                  <label className="block text-[10px] text-rmpg-300">
+                    New deadline date
+                    <input
+                      type="date"
+                      value={bulkDeadlineDate}
+                      onChange={(e) => setBulkDeadlineDate(e.target.value)}
+                      min={new Date().toISOString().slice(0, 10)}
+                      className="mt-1 block w-full px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-600 rounded-[2px] text-rmpg-100 focus:outline-none focus:ring-1 focus:ring-rmpg-400/50"
+                    />
+                  </label>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => { setBulkDeadlineOpen(false); setBulkDeadlineDate(''); }}
+                      className="px-3 py-1 text-[10px] text-rmpg-400 border border-rmpg-600 rounded-[2px] hover:border-rmpg-400 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!bulkDeadlineDate || bulkDeadlineSubmitting}
+                      onClick={async () => {
+                        if (!bulkDeadlineDate) return;
+                        setBulkDeadlineSubmitting(true);
+                        try {
+                          await apiFetch('/serve/bulk-deadline', {
+                            method: 'PATCH',
+                            body: JSON.stringify({ ids: [...selectedJobIds], deadline: bulkDeadlineDate }),
+                          });
+                          setBulkDeadlineOpen(false);
+                          setBulkDeadlineDate('');
+                          fetchJobs();
+                        } catch {
+                          // toast not available at this scope; silent fail
+                        } finally {
+                          setBulkDeadlineSubmitting(false);
+                        }
+                      }}
+                      className="px-3 py-1 text-[10px] font-bold text-amber-300 bg-amber-900/40 border border-amber-700/50 rounded-[2px] hover:bg-amber-900/60 disabled:opacity-40 transition-colors"
+                    >
+                      {bulkDeadlineSubmitting ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Feature 32+34: Fee total and diligence warning strip */}
             {(filteredFeeTotal > 0 || diligenceCount > 0) && (
