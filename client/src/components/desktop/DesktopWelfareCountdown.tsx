@@ -4,8 +4,7 @@ import { useOptionalDesktopSystem } from '../../context/DesktopSystemContext';
 
 export default function DesktopWelfareCountdown() {
   const ctx = useOptionalDesktopSystem();
-  if (!ctx) return null;
-  const { welfareTimer, startWelfareTimer, cancelWelfareTimer } = ctx;
+  // All hooks must run unconditionally before any early return (React rules of hooks).
   const [now, setNow] = useState(Date.now());
   const [showPicker, setShowPicker] = useState(false);
 
@@ -13,6 +12,9 @@ export default function DesktopWelfareCountdown() {
     const iv = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(iv);
   }, []);
+
+  if (!ctx) return null;
+  const { welfareTimer, startWelfareTimer, cancelWelfareTimer } = ctx;
 
   const remaining = welfareTimer ? welfareTimer.endsAt - now : null;
   const mins = remaining !== null ? Math.max(0, Math.floor(remaining / 60000)) : null;

@@ -62,3 +62,6 @@ jobs:
 
       - name: Button health ratchet
         run: node scripts/check-button-health.mjs
+
+      - name: React hooks-after-early-return check
+        run: node scripts/check-hooks-after-early-return.js
