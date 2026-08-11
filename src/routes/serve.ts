@@ -850,16 +850,38 @@ sv.post('/', async (c) => {
        call_id, sm_job_id, officer_id, serve_date,
        recipient_name, recipient_person_id, recipient_address, recipient_address_2, recipient_city,
        recipient_state, recipient_zip, recipient_lat, recipient_lng, property_id,
+       recipient_phone, recipient_email, recipient_dob,
+       recipient_employer, recipient_employer_address,
        document_type, case_number, court_name, jurisdiction,
-       client_name, attorney_name, priority, time_window, deadline,
-       max_attempts, service_instructions, notes, status, contract_id
-     ) VALUES (?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?,?)`,
+       client_name, attorney_name, plaintiff_name, defendant_name,
+       serve_type, case_type, return_date, co_defendants, relationship,
+       priority, time_window, deadline,
+       max_attempts, service_instructions, notes, status, contract_id,
+       serve_fee, rush_fee, payment_status,
+       diligence_required, contact_restrictions, building_access_notes
+     ) VALUES (
+       ?,?,?,?, ?,?,?,?,?, ?,?,?,?,?,
+       ?,?,?,
+       ?,?,
+       ?,?,?,?, ?,?,?,?,
+       ?,?,?,?,?,
+       ?,?,?,
+       ?,?,?,?,?,
+       ?,?,?,
+       ?,?,?
+     )`,
     body.call_id ?? null, body.sm_job_id ?? null, body.officer_id ?? null, body.serve_date ?? null,
     body.recipient_name ?? null, body.recipient_person_id ?? null, body.recipient_address ?? null, body.recipient_address_2 ?? null, body.recipient_city ?? null,
     body.recipient_state ?? null, body.recipient_zip ?? null, lat, lng, body.property_id ?? null,
+    body.recipient_phone ?? null, body.recipient_email ?? null, body.recipient_dob ?? null,
+    body.recipient_employer ?? null, body.recipient_employer_address ?? null,
     body.document_type ?? null, body.case_number ?? null, body.court_name ?? null, body.jurisdiction ?? null,
-    body.client_name ?? null, body.attorney_name ?? null, priority, body.time_window ?? null, body.deadline ?? null,
+    body.client_name ?? null, body.attorney_name ?? null, body.plaintiff_name ?? null, body.defendant_name ?? null,
+    body.serve_type ?? 'personal', body.case_type ?? null, body.return_date ?? null, body.co_defendants ?? null, body.relationship ?? null,
+    priority, body.time_window ?? null, body.deadline ?? null,
     body.max_attempts ?? 3, body.service_instructions ?? null, body.notes ?? null, status, body.contract_id ?? null,
+    body.serve_fee ?? null, body.rush_fee ?? null, body.payment_status ?? 'unpaid',
+    body.diligence_required ? 1 : 0, body.contact_restrictions ?? null, body.building_access_notes ?? null,
   );
   return c.json({ success: true, id: r.meta.last_row_id }, 201);
 });
@@ -1000,10 +1022,16 @@ sv.put('/:id', async (c) => {
     'call_id', 'sm_job_id', 'officer_id', 'serve_date',
     'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_address_2', 'recipient_city',
     'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng', 'property_id',
+    'recipient_phone', 'recipient_email', 'recipient_dob',
+    'recipient_employer', 'recipient_employer_address',
     'document_type', 'case_number', 'court_name', 'jurisdiction',
-    'client_name', 'attorney_name', 'priority', 'time_window', 'deadline',
+    'client_name', 'attorney_name', 'plaintiff_name', 'defendant_name',
+    'serve_type', 'case_type', 'return_date', 'co_defendants', 'relationship',
+    'priority', 'time_window', 'deadline',
     'max_attempts', 'service_instructions', 'notes', 'status', 'sort_order', 'contract_id',
-    'next_attempt_note',
+    'next_attempt_note', 'urgency_tier',
+    'serve_fee', 'rush_fee', 'payment_status',
+    'diligence_required', 'mileage_actual', 'contact_restrictions', 'building_access_notes',
   ];
   const sets: string[] = [];
   const args: any[] = [];

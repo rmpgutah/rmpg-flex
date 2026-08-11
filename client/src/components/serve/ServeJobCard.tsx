@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 import {
   MapPin,
@@ -22,6 +22,16 @@ import {
   CheckCircle2,
   Bot,
   Flame,
+  Phone,
+  Mail,
+  Copy,
+  Check,
+  DollarSign,
+  Lock,
+  KeyRound,
+  ClipboardList,
+  Scale,
+  Building2,
 } from 'lucide-react';
 import type { ServeJob, ServeJobLinkedCall, ServeAttempt } from '../../types';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../../utils/dateUtils';
@@ -95,6 +105,21 @@ const DOC_TYPE_ICONS: Record<string, React.ElementType> = {
   Motion: FileText, Garnishment: FileWarning, Eviction: Shield,
 };
 
+const SERVE_TYPE_STYLES: Record<string, string> = {
+  personal:    'bg-blue-900/40 text-blue-300 border-blue-700/50',
+  substituted: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
+  corporate:   'bg-purple-900/40 text-purple-300 border-purple-700/50',
+  posting:     'bg-rmpg-800/60 text-rmpg-300 border-rmpg-600/50',
+  publication: 'bg-rmpg-800/60 text-rmpg-400 border-rmpg-600/50',
+};
+
+const PAYMENT_STATUS_STYLES: Record<string, string> = {
+  unpaid:   'bg-red-900/40 text-red-300 border-red-700/50',
+  invoiced: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
+  paid:     'bg-green-900/40 text-green-300 border-green-700/50',
+  waived:   'bg-rmpg-800/60 text-rmpg-400 border-rmpg-600/50',
+};
+
 function AttemptDots({ count, max }: { count: number; max: number }) {
   const dots = [];
   for (let i = 0; i < max; i++) {
@@ -166,6 +191,24 @@ export default React.memo(function ServeJobCard({
   // Selection mode is active whenever the prop is wired up (parent has at
   // least one card selected or is displaying the selection UI).
   const selectionModeActive = onToggleSelect !== undefined;
+
+  // Feature 18: Copy address to clipboard
+  const [copied, setCopied] = useState(false);
+  const handleCopyAddress = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!fullAddress) return;
+    navigator.clipboard?.writeText(fullAddress).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }, [fullAddress]);
+
+  // Feature 27: diligence required warning
+  const needsDiligence = !!job.diligence_required && job.status !== 'served';
+
+  // Return-date urgency
+  const returnDateMs = job.return_date ? parseTimestamp(job.return_date).getTime() : null;
+  const returnOverdue = returnDateMs !== null && returnDateMs <= Date.now() && job.status !== 'served';
+  const returnDueSoon = returnDateMs !== null && !returnOverdue && returnDateMs - Date.now() <= 48 * 60 * 60 * 1000;
 
   return (
     <div
@@ -337,6 +380,30 @@ export default React.memo(function ServeJobCard({
               {shownUrgency.toUpperCase()}
             </span>
           )}
+          {/* Feature 21: Serve type badge */}
+          {job.serve_type && job.serve_type !== 'personal' && (
+            <span className={`text-[8px] font-bold font-mono border rounded-[2px] px-1 py-0 ${SERVE_TYPE_STYLES[job.serve_type] ?? SERVE_TYPE_STYLES.personal}`}>
+              {job.serve_type.toUpperCase()}
+            </span>
+          )}
+          {/* Feature 22: Case type badge */}
+          {job.case_type && (
+            <span className="text-[8px] font-mono text-rmpg-300 bg-rmpg-800/50 border border-rmpg-600/40 px-1 py-0 rounded-[2px]">
+              {formatEnumValue(job.case_type)}
+            </span>
+          )}
+          {/* Feature 24: Payment status badge (only show unpaid/invoiced as warnings) */}
+          {job.payment_status && job.payment_status !== 'paid' && job.payment_status !== 'waived' && (
+            <span className={`inline-flex items-center gap-0.5 text-[8px] font-bold border rounded-[2px] px-1 py-0 ${PAYMENT_STATUS_STYLES[job.payment_status] ?? PAYMENT_STATUS_STYLES.unpaid}`}>
+              <DollarSign className="w-2 h-2" />{job.payment_status.toUpperCase()}
+            </span>
+          )}
+          {/* Feature 27: Diligence required warning */}
+          {needsDiligence && (
+            <span title="Due diligence documentation required" className="inline-flex items-center gap-0.5 text-[8px] font-bold text-amber-300 bg-amber-900/40 border border-amber-700/50 px-1 py-0 rounded-[2px]">
+              <ClipboardList className="w-2.5 h-2.5" />DILIGENCE
+            </span>
+          )}
           {/* Closed chip — green-800/green-300, shown whenever closed_at is set */}
           {job.closed_at && (
             <span title={`Closed ${safeDateStr(job.closed_at)}`} className="inline-flex items-center gap-0.5 text-[8px] font-bold text-green-300 bg-green-900/50 border border-green-700/50 px-1 py-0 rounded-[2px]">
@@ -392,7 +459,56 @@ export default React.memo(function ServeJobCard({
             </div>
           )}
 
-          {/* Case / court / jurisdiction */}
+          {/* Feature 19-20: Contact info — phone, email, DOB */}
+          {(job.recipient_phone || job.recipient_email || job.recipient_dob) && (
+            <div>
+              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Contact</span>
+              <div className="mt-0.5 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-300">
+                {job.recipient_phone && (
+                  <div className="flex items-center gap-1">
+                    <Phone className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                    <a href={`tel:${job.recipient_phone}`} onClick={e => e.stopPropagation()} className="text-blue-400 hover:text-blue-300 underline">{job.recipient_phone}</a>
+                  </div>
+                )}
+                {job.recipient_email && (
+                  <div className="flex items-center gap-1">
+                    <Mail className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                    <a href={`mailto:${job.recipient_email}`} onClick={e => e.stopPropagation()} className="text-blue-400 hover:text-blue-300 underline truncate max-w-[120px]">{job.recipient_email}</a>
+                  </div>
+                )}
+                {job.recipient_dob && (
+                  <div className="flex items-center gap-1 col-span-2">
+                    <User className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                    <span className="text-rmpg-400">DOB:</span>
+                    <span className="font-mono tabular-nums">{job.recipient_dob}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Feature 21-22: Employment info */}
+          {(job.recipient_employer || job.recipient_employer_address) && (
+            <div>
+              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Employment</span>
+              <div className="mt-0.5 space-y-0.5 text-[10px] text-rmpg-300">
+                {job.recipient_employer && (
+                  <div className="flex items-center gap-1">
+                    <Building2 className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                    <span>{job.recipient_employer}</span>
+                  </div>
+                )}
+                {job.recipient_employer_address && (
+                  <div className="flex items-center gap-1 ml-4">
+                    <MapPin className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                    <span>{job.recipient_employer_address}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Feature 23: Case / court / jurisdiction */}
           <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Case Details</span>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-rmpg-300">
             {job.case_number && (
@@ -452,7 +568,76 @@ export default React.memo(function ServeJobCard({
                 <span className="text-green-300">{safeDateStr(job.intake_screened_at)}</span>
               </div>
             )}
+            {/* Feature 23: Return date */}
+            {job.return_date && (
+              <div className="flex items-center gap-1 col-span-2">
+                <Calendar className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                <span className="text-rmpg-400">Return Date:</span>
+                <span className={returnOverdue ? 'text-red-400 font-bold' : returnDueSoon ? 'text-amber-400 font-semibold' : ''}>
+                  {safeDateStr(job.return_date)}
+                  {returnOverdue && ' — OVERDUE'}
+                  {returnDueSoon && !returnOverdue && ' — DUE SOON'}
+                </span>
+              </div>
+            )}
+            {/* Feature 10: Relationship (substituted service) */}
+            {job.relationship && (
+              <div className="flex items-center gap-1 col-span-2">
+                <User className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                <span className="text-rmpg-400">Relationship:</span>
+                <span>{job.relationship}</span>
+              </div>
+            )}
+            {/* Feature 9: Co-defendants */}
+            {job.co_defendants && (
+              <div className="flex items-start gap-1 col-span-2">
+                <Scale className="w-3 h-3 text-rmpg-400 flex-shrink-0 mt-0.5" />
+                <span className="text-rmpg-400 flex-shrink-0">Co-Defendants:</span>
+                <span className="text-rmpg-300">{job.co_defendants}</span>
+              </div>
+            )}
+            {/* Feature 11-13: Billing */}
+            {(job.serve_fee != null || job.rush_fee != null) && (
+              <div className="flex items-center gap-1 col-span-2">
+                <DollarSign className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                <span className="text-rmpg-400">Fee:</span>
+                <span className="font-mono tabular-nums text-green-300">
+                  ${((job.serve_fee ?? 0) + (job.rush_fee ?? 0)).toFixed(2)}
+                  {job.rush_fee ? ` (incl. $${job.rush_fee.toFixed(2)} rush)` : ''}
+                </span>
+                {job.payment_status && (
+                  <span className={`ml-1 text-[8px] font-bold border px-1 py-0 rounded-[2px] ${PAYMENT_STATUS_STYLES[job.payment_status] ?? PAYMENT_STATUS_STYLES.unpaid}`}>
+                    {job.payment_status.toUpperCase()}
+                  </span>
+                )}
+              </div>
+            )}
+            {job.mileage_actual != null && (
+              <div className="flex items-center gap-1">
+                <MapPin className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                <span className="text-rmpg-400">Mileage:</span>
+                <span className="font-mono tabular-nums">{job.mileage_actual.toFixed(1)} mi</span>
+              </div>
+            )}
           </div>
+
+          {/* Feature 25-26: Building access notes and contact restrictions */}
+          {job.building_access_notes && (
+            <div>
+              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
+                <KeyRound className="inline w-3 h-3 mr-1" />Building Access
+              </span>
+              <p className="text-rmpg-300 mt-0.5 text-[10px] bg-surface-sunken/50 rounded-[2px] px-2 py-1 border border-rmpg-700/30">{job.building_access_notes}</p>
+            </div>
+          )}
+          {job.contact_restrictions && (
+            <div>
+              <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400">
+                <Lock className="inline w-3 h-3 mr-1" />Contact Restrictions
+              </span>
+              <p className="text-amber-200/80 mt-0.5 text-[10px] bg-amber-900/20 rounded-[2px] px-2 py-1 border border-amber-700/30">{job.contact_restrictions}</p>
+            </div>
+          )}
 
           {/* Service instructions */}
           {job.service_instructions && (
@@ -583,6 +768,30 @@ export default React.memo(function ServeJobCard({
 
       {/* Action buttons row */}
       <div className="flex items-center border-t border-rmpg-700/40 divide-x divide-rmpg-700/40">
+        {/* Feature 18: Copy address */}
+        {fullAddress && (
+          <button type="button"
+            onClick={handleCopyAddress}
+            className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+            title="Copy address"
+            aria-label={`Copy address for ${job.recipient_name}`}
+          >
+            {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        )}
+        {/* Feature 19: Quick call */}
+        {job.recipient_phone && (
+          <a href={`tel:${job.recipient_phone}`}
+            onClick={e => e.stopPropagation()}
+            className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-blue-400 hover:bg-blue-900/30 transition-colors duration-150"
+            title={`Call ${job.recipient_phone}`}
+            aria-label={`Call ${job.recipient_name}`}
+          >
+            <Phone className="w-3 h-3" />
+            Call
+          </a>
+        )}
         {/* Directions link */}
         <button type="button"
           onClick={(e) => { e.stopPropagation(); window.open(`https://www.openstreetmap.org/directions?to=${encodeURIComponent(fullAddress)}`, '_blank', 'noopener,noreferrer'); }}

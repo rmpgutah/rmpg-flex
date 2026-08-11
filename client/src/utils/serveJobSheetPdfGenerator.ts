@@ -20,6 +20,7 @@ import {
   loadPdfAssets,
   setActiveFormKey,
   setActiveCaseNumber,
+  setActiveSectionStyle,
   sanitizePdfText,
   finalizePoliceReport,
   stampGenerationTime,
@@ -117,6 +118,7 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
   await loadPdfAssets();
   const branding = await fetchPdfBranding();
   setActiveBranding(branding);
+  setActiveSectionStyle('light');
   setActiveFormKey('PS-300');
   setActiveCaseNumber(data.caseNumber || `JOB-${data.jobId}`);
   stampGenerationTime();

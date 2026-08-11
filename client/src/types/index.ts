@@ -3292,12 +3292,35 @@ export interface ServeJob {
   recipient_zip: string | null;
   recipient_lat: number | null;
   recipient_lng: number | null;
+  // Contact info (migration 0237)
+  recipient_phone: string | null;
+  recipient_email: string | null;
+  recipient_dob: string | null;
+  recipient_employer: string | null;
+  recipient_employer_address: string | null;
   document_type: string;
   case_number: string | null;
   court_name: string | null;
   jurisdiction: string | null;
   client_name: string | null;
   attorney_name: string | null;
+  plaintiff_name: string | null;
+  defendant_name: string | null;
+  // Service classification (migration 0237)
+  serve_type: 'personal' | 'substituted' | 'corporate' | 'posting' | 'publication' | null;
+  case_type: 'civil' | 'criminal' | 'family' | 'eviction' | 'small_claims' | 'probate' | 'traffic' | null;
+  return_date: string | null;
+  co_defendants: string | null;
+  relationship: string | null;
+  // Billing (migration 0237)
+  serve_fee: number | null;
+  rush_fee: number | null;
+  payment_status: 'unpaid' | 'invoiced' | 'paid' | 'waived' | null;
+  // Operational (migration 0237)
+  diligence_required: number | null;
+  mileage_actual: number | null;
+  contact_restrictions: string | null;
+  building_access_notes: string | null;
   // Matches the serve_queue.priority CHECK constraint.
   priority: 'routine' | 'normal' | 'rush' | 'urgent';
   time_window: 'morning' | 'afternoon' | 'evening' | 'anytime';

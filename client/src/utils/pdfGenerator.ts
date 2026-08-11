@@ -4736,7 +4736,7 @@ export function generatePdfReport(reportType: PdfReportType, data: IncidentData,
         generateGeneralIncident(doc, data);
     }
   } finally {
-    setActiveSectionStyle('dark');
+    setActiveSectionStyle('light');
   }
 
   // Document integrity trailer page removed 2026-05-04 per user request.

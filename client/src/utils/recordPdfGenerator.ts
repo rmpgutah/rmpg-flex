@@ -3542,9 +3542,9 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     } catch { /* non-fatal — PDF still prints without the receipt QR */ }
   }
 
-  // Restore default dark style + disable field numbering for any
-  // subsequent (non-Call) generation that shares module state.
-  setActiveSectionStyle('dark');
+  // Restore light style + disable field numbering for any
+  // subsequent generation that shares module state.
+  setActiveSectionStyle('light');
   setFieldNumberingEnabled(false);
 }
 
@@ -4360,9 +4360,8 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = renderPersonDossierAppendix(doc, data._dossier, y);
   }
 
-  // Restore default section style so the next PDF (which may be a
-  // different record type with the dark style) renders unchanged.
-  setActiveSectionStyle('dark');
+  // Restore light style so the next PDF renders unchanged.
+  setActiveSectionStyle('light');
 }
 
 // ── Vehicle Record ───────────────────────────────────────────
