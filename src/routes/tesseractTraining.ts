@@ -16,12 +16,28 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { getDecrypted } from '../utils/encryptedR2';
 import { clampIntParam } from '../utils/paginationParams';
+import { zipSync, strToU8 } from 'fflate';
+import { log, logErrorToDb } from '../utils/logger';
 
 const tesseractTraining = new Hono<Env>();
 
 function requireAdminManager(c: any): boolean {
   const user = c.get('user');
   return !!user && ['admin', 'manager'].includes(user.role);
+}
+
+// Hono's `c.executionCtx` getter THROWS (rather than returning undefined) when
+// no ExecutionContext was ever set on the request — the case in every plain
+// Node/vitest mock app used by this file's tests, as opposed to a real Workers
+// runtime where it's always present. logErrorToDb()'s ctx param is optional,
+// so this just needs to swallow that specific access failure, not the
+// underlying error being logged.
+function safeExecutionCtx(c: any): any {
+  try {
+    return c.executionCtx;
+  } catch {
+    return undefined;
+  }
 }
 
 interface DocRow {
@@ -122,6 +138,81 @@ tesseractTraining.get('/documents', async (c) => {
   return c.json({
     rows: rows.map((r) => ({ ...r, already_in_corpus: !!r.already_in_corpus })),
     page, pageSize,
+  });
+});
+
+interface TrainingRunRow {
+  id: number;
+  generated_at: string;
+  generated_by: number;
+  document_count: number;
+}
+
+// GET /api/tesseract-training/documents/runs?page=1
+// Registered BEFORE /documents/:id so the static "runs" segment can never be
+// swallowed by the :id param matcher.
+tesseractTraining.get('/documents/runs', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const db = getDb(c.env);
+  const page = clampIntParam(c.req.query('page'), 1, 1, 100000);
+  const pageSize = 20;
+  const offset = (page - 1) * pageSize;
+  const rows = await query<TrainingRunRow>(
+    db,
+    `SELECT id, generated_at, generated_by, document_count
+       FROM tesseract_training_runs
+      ORDER BY generated_at DESC
+      LIMIT ? OFFSET ?`,
+    pageSize, offset,
+  );
+  return c.json({ rows, page, pageSize });
+});
+
+// GET /api/tesseract-training/documents/runs/:id/download
+tesseractTraining.get('/documents/runs/:id/download', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const run = await queryFirst<{ r2_key: string }>(
+    db,
+    `SELECT r2_key FROM tesseract_training_runs WHERE id = ?`,
+    id,
+  );
+  if (!run) return c.json({ error: 'Not found' }, 404);
+  const obj = await c.env.TESSERACT_TRAINING.get(run.r2_key);
+  if (!obj) {
+    // D1 row exists but the R2 object it points at is gone — a real
+    // drift/data-integrity condition, not a mere "unknown id" 404. Log it
+    // so a vanished training package leaves a trace instead of looking
+    // identical to a bad request.
+    const traceId = c.get('traceId');
+    log.error('[tesseract-training] run R2 object missing', {
+      route: 'GET /tesseract-training/documents/runs/:id/download',
+      runId: id,
+      r2Key: run.r2_key,
+      traceId,
+    });
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: `tesseract_training_runs row ${id} points at missing R2 object ${run.r2_key}`,
+      details: { route: 'GET /tesseract-training/documents/runs/:id/download', runId: id, r2Key: run.r2_key },
+      traceId,
+      source: 'GET /tesseract-training/documents/runs/:id/download',
+      statusCode: 404,
+    }, safeExecutionCtx(c));
+    return c.json({ error: 'Package missing in R2' }, 404);
+  }
+  return new Response(obj.body ?? (await obj.arrayBuffer()), {
+    headers: {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="rmpg-training-${id}.zip"`,
+    },
   });
 });
 
@@ -235,6 +326,7 @@ async function submitDocumentToCorpus(
     : (doc.file_type || '').includes('jpeg') ? '.jpg'
     : '.bin';
 
+  const traceId = c.get('traceId');
   try {
     await c.env.TESSERACT_TRAINING.put(`training-corpus/${id}/image${ext}`, imageBytes, {
       httpMetadata: { contentType: doc.file_type || 'application/octet-stream' },
@@ -243,6 +335,18 @@ async function submitDocumentToCorpus(
       httpMetadata: { contentType: 'text/plain' },
     });
   } catch (err) {
+    log.error('[tesseract-training] failed to write training pair to R2', {
+      route: 'submitDocumentToCorpus', documentId: id, traceId,
+    }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'submitDocumentToCorpus', documentId: id },
+      traceId,
+      source: 'submitDocumentToCorpus',
+      statusCode: 500,
+    }, safeExecutionCtx(c));
     return {
       success: false,
       error: 'Failed to write training pair to R2',
@@ -252,11 +356,37 @@ async function submitDocumentToCorpus(
     };
   }
 
-  await execute(
-    db,
-    `INSERT INTO tesseract_training_corpus (serve_intake_document_id, added_by) VALUES (?, ?)`,
-    id, userId,
-  );
+  // The R2 pair above is now written — if this insert fails, that pair is
+  // orphaned (exists in storage with no corpus row pointing at it). Log it
+  // as an error rather than letting it fail silently, since the caller's
+  // only signal otherwise would be a generic thrown exception.
+  try {
+    await execute(
+      db,
+      `INSERT INTO tesseract_training_corpus (serve_intake_document_id, added_by) VALUES (?, ?)`,
+      id, userId,
+    );
+  } catch (err) {
+    log.error('[tesseract-training] training pair written to R2 but D1 insert failed — orphaned R2 objects', {
+      route: 'submitDocumentToCorpus', documentId: id, traceId,
+    }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'submitDocumentToCorpus', documentId: id, orphanedR2: true },
+      traceId,
+      source: 'submitDocumentToCorpus',
+      statusCode: 500,
+    }, safeExecutionCtx(c));
+    return {
+      success: false,
+      error: 'Training pair saved but failed to record — contact an admin',
+      code: 'CORPUS_INSERT_FAILED',
+      status: 500,
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
   return { success: true };
 }
 
@@ -356,11 +486,28 @@ tesseractTraining.post('/documents/:id/approve', async (c) => {
     return c.json({ success: true, already_approved: true });
   }
 
-  await execute(
-    db,
-    `UPDATE tesseract_training_corpus SET approval_status = 'approved', approved_by = ?, approved_at = datetime('now') WHERE serve_intake_document_id = ?`,
-    user.id, id,
-  );
+  try {
+    await execute(
+      db,
+      `UPDATE tesseract_training_corpus SET approval_status = 'approved', approved_by = ?, approved_at = datetime('now') WHERE serve_intake_document_id = ?`,
+      user.id, id,
+    );
+  } catch (err) {
+    const traceId = c.get('traceId');
+    log.error('[tesseract-training] approve update failed', {
+      route: 'POST /tesseract-training/documents/:id/approve', documentId: id, traceId,
+    }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'POST /tesseract-training/documents/:id/approve', documentId: id },
+      traceId,
+      source: 'POST /tesseract-training/documents/:id/approve',
+      statusCode: 500,
+    }, safeExecutionCtx(c));
+    return c.json({ error: 'Failed to approve document', code: 'APPROVE_FAILED' }, 500);
+  }
   return c.json({ success: true });
 });
 
@@ -419,13 +566,30 @@ tesseractTraining.post('/documents/:id/boxes', async (c) => {
   }
 
   const db = getDb(c.env);
-  const result = await execute(
-    db,
-    `INSERT INTO tesseract_box_annotations (serve_intake_document_id, x0, y0, x1, y1, corrected_text, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    id, x0, y0, x1, y1, correctedText, user.id,
-  );
-  return c.json({ success: true, id: result.meta.last_row_id });
+  try {
+    const result = await execute(
+      db,
+      `INSERT INTO tesseract_box_annotations (serve_intake_document_id, x0, y0, x1, y1, corrected_text, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      id, x0, y0, x1, y1, correctedText, user.id,
+    );
+    return c.json({ success: true, id: result.meta.last_row_id });
+  } catch (err) {
+    const traceId = c.get('traceId');
+    log.error('[tesseract-training] box insert failed', {
+      route: 'POST /tesseract-training/documents/:id/boxes', documentId: id, traceId,
+    }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'POST /tesseract-training/documents/:id/boxes', documentId: id },
+      traceId,
+      source: 'POST /tesseract-training/documents/:id/boxes',
+      statusCode: 500,
+    }, safeExecutionCtx(c));
+    return c.json({ error: 'Failed to save box annotation', code: 'BOX_INSERT_FAILED' }, 500);
+  }
 });
 
 // DELETE /api/tesseract-training/documents/:id/boxes/:boxId
@@ -485,17 +649,135 @@ tesseractTraining.put('/documents/:id/notes', async (c) => {
   }
 
   const db = getDb(c.env);
-  await execute(
-    db,
-    `INSERT INTO tesseract_review_annotations (serve_intake_document_id, strokes_json, updated_by)
-     VALUES (?, ?, ?)
-     ON CONFLICT(serve_intake_document_id) DO UPDATE SET
-       strokes_json = excluded.strokes_json,
-       updated_by = excluded.updated_by,
-       updated_at = datetime('now')`,
-    id, JSON.stringify(body.strokes), user.id,
-  );
+  try {
+    await execute(
+      db,
+      `INSERT INTO tesseract_review_annotations (serve_intake_document_id, strokes_json, updated_by)
+       VALUES (?, ?, ?)
+       ON CONFLICT(serve_intake_document_id) DO UPDATE SET
+         strokes_json = excluded.strokes_json,
+         updated_by = excluded.updated_by,
+         updated_at = datetime('now')`,
+      id, JSON.stringify(body.strokes), user.id,
+    );
+  } catch (err) {
+    const traceId = c.get('traceId');
+    log.error('[tesseract-training] notes upsert failed', {
+      route: 'PUT /tesseract-training/documents/:id/notes', documentId: id, traceId,
+    }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'PUT /tesseract-training/documents/:id/notes', documentId: id },
+      traceId,
+      source: 'PUT /tesseract-training/documents/:id/notes',
+      statusCode: 500,
+    }, safeExecutionCtx(c));
+    return c.json({ error: 'Failed to save review notes', code: 'NOTES_SAVE_FAILED' }, 500);
+  }
   return c.json({ success: true });
+});
+
+// POST /api/tesseract-training/documents/runs
+// Bundles every approved tesseract_training_corpus document into a
+// tesstrain-ready zip (image + ground-truth pairs, exactly the shape
+// tesstrain's GROUND_TRUTH_DIR expects) and saves it to R2. Does NOT run
+// tesstrain itself — that stays a manual, local, operator-run process.
+tesseractTraining.post('/documents/runs', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const user = c.get('user');
+  const db = getDb(c.env);
+
+  const approved = await query<{ serve_intake_document_id: number }>(
+    db,
+    `SELECT serve_intake_document_id FROM tesseract_training_corpus WHERE approval_status = 'approved'`,
+  );
+  if (approved.length === 0) {
+    return c.json({ error: 'No approved documents to package', code: 'NOTHING_TO_TRAIN' }, 400);
+  }
+
+  const zipEntries: Record<string, Uint8Array> = {};
+  for (const { serve_intake_document_id: docId } of approved) {
+    const listed = await c.env.TESSERACT_TRAINING.list({ prefix: `training-corpus/${docId}/` });
+    const imageKey = listed.objects.find((o: { key: string }) => /\/image\.[^/]+$/.test(o.key))?.key;
+    const gtKey = listed.objects.find((o: { key: string }) => o.key.endsWith('/ground-truth.txt'))?.key;
+    if (!imageKey || !gtKey) continue; // source objects missing — skip rather than fail the whole run
+
+    const imageObj = await c.env.TESSERACT_TRAINING.get(imageKey);
+    const gtObj = await c.env.TESSERACT_TRAINING.get(gtKey);
+    if (!imageObj || !gtObj) continue;
+
+    const ext = imageKey.split('.').pop() || 'png';
+    zipEntries[`rmpg-ground-truth/${docId}.${ext}`] = new Uint8Array(await imageObj.arrayBuffer());
+    zipEntries[`rmpg-ground-truth/${docId}.gt.txt`] = new Uint8Array(await gtObj.arrayBuffer());
+  }
+
+  const includedIds = approved
+    .map((r) => r.serve_intake_document_id)
+    .filter((docId) => `rmpg-ground-truth/${docId}.gt.txt` in zipEntries);
+  if (includedIds.length === 0) {
+    return c.json({ error: 'No approved documents to package', code: 'NOTHING_TO_TRAIN' }, 400);
+  }
+
+  const generatedAt = new Date().toISOString();
+  const readme = `# RMPG Flex — Tesseract Training Package
+
+Generated: ${generatedAt}
+Documents included: ${includedIds.length}
+
+## To train
+
+1. Clone tesstrain if you haven't already:
+   git clone https://github.com/tesseract-ocr/tesstrain.git
+   cd tesstrain
+
+2. Extract this package's rmpg-ground-truth/ folder into tesstrain's data/ directory:
+   data/rmpg-ground-truth/
+
+3. Run training (requires the stock \`eng\` traineddata as the starting point):
+   make training MODEL_NAME=rmpg START_MODEL=eng TESSDATA=/usr/share/tesseract-ocr/5/tessdata GROUND_TRUTH_DIR=data/rmpg-ground-truth
+
+4. The resulting data/rmpg.traineddata is the fine-tuned model. Upload it to:
+   rmpg-flex-tesseract-training/models/latest/tesseract.traineddata
+   (this is the R2 key scripts/fetch-tesseract-model.sh looks for on the next deploy)
+`;
+  zipEntries['README.md'] = strToU8(readme);
+
+  const zipped = zipSync(zipEntries);
+  const r2Key = `training-runs/${Date.now()}/package.zip`;
+
+  try {
+    await c.env.TESSERACT_TRAINING.put(r2Key, zipped, {
+      httpMetadata: { contentType: 'application/zip' },
+    });
+
+    const result = await execute(
+      db,
+      `INSERT INTO tesseract_training_runs (generated_by, document_count, document_ids_json, r2_key) VALUES (?, ?, ?, ?)`,
+      user.id, includedIds.length, JSON.stringify(includedIds), r2Key,
+    );
+    return c.json({ id: result.meta.last_row_id, document_count: includedIds.length });
+  } catch (err) {
+    const traceId = c.get('traceId');
+    log.error('[tesseract-training] training run package build failed', {
+      route: 'POST /tesseract-training/documents/runs',
+      documentCount: includedIds.length,
+      traceId,
+    }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'POST /tesseract-training/documents/runs', documentCount: includedIds.length },
+      traceId,
+      source: 'POST /tesseract-training/documents/runs',
+      statusCode: 500,
+    }, safeExecutionCtx(c));
+    return c.json({ error: 'Failed to save training package', code: 'PACKAGE_BUILD_FAILED' }, 500);
+  }
 });
 
 export default tesseractTraining;

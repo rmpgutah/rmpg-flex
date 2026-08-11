@@ -42,6 +42,7 @@ import { alignAnnotations, applyAnnotationToAllPages, distributeAnnotations, mat
 import AlignmentBar from './components/AlignmentBar';
 import { authedImageUrl } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 // PDF rendering goes through our company-owned engine facade
 // (client/src/lib/rmpg-pdf-engine). It tries our native backend first and
@@ -1167,7 +1168,7 @@ export default function PdfEditorPage() {
     if (!original || original <= 0) { pushToast('Cannot export a blank page as PNG', 'warn'); return; }
     setSaving(true);
     try {
-      const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
+      const { openAndRenderPage } = await importWithRetry(() => import('../../lib/rmpg-pdf-engine'));
       const canvas = document.createElement('canvas');
       // Base page render is 72 dpi at scale 1; scale up to the chosen export DPI.
       const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: pngDpi / 72, canvas });
@@ -1328,7 +1329,7 @@ export default function PdfEditorPage() {
     const crop = state.pages[visualIdx]?.crop;
     setSaving(true);
     try {
-      const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
+      const { openAndRenderPage } = await importWithRetry(() => import('../../lib/rmpg-pdf-engine'));
       const full = document.createElement('canvas');
       const renderScale = pngDpi / 72;
       const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: renderScale, canvas: full });

@@ -23,8 +23,8 @@ describe('driver licence scan', () => {
     // A proof of service is more defensible in a contested hearing when
     // the signer's identity was verified against a photo ID rather than
     // self-attested.
-    expect(PAGE).toMatch(/Required: scan the barcode/);
-    // It must appear in the blocking checks.
+    expect(PAGE).toMatch(/Scan ID barcode/);
+    // ID validation is relaxed: accepts barcode scan OR manual entry OR front photo.
     const fieldErrorsBlock = PAGE.slice(PAGE.indexOf('const fieldErrors'), PAGE.indexOf('const acceptedAttestations'));
     expect(fieldErrorsBlock).toMatch(/idVerified/);
   });
@@ -35,11 +35,13 @@ describe('driver licence scan', () => {
     expect(PAGE).toMatch(/recipient_description: idDescription \|\| null/);
   });
 
-  it('keeps the licence number and address on the device', () => {
+  it('keeps the licence number and address on the device in the scan path', () => {
     // The decoded barcode carries a licence number and home address. The
-    // form asks for neither, so neither is kept — only the fields it
-    // actually shows survive the parse.
-    const scan = PAGE.slice(PAGE.indexOf('const scanId'), PAGE.indexOf('const buildPdfData'));
+    // barcode scan callback itself does not reference them — only the
+    // manual-entry fallback stores a DL number the signer typed.
+    const scanStart = PAGE.indexOf('const scanId');
+    const scanEnd = PAGE.indexOf('const captureIdPhoto');
+    const scan = PAGE.slice(scanStart, scanEnd);
     expect(scan).not.toMatch(/dl_number/);
     expect(scan).not.toMatch(/dl\.address/);
     expect(scan).toMatch(/setIdDescription/);
@@ -48,7 +50,7 @@ describe('driver licence scan', () => {
   it('degrades to typing when the barcode will not read', () => {
     // Bad light, a worn card, a cracked screen. The fallback has to be
     // the thing the person was going to do anyway.
-    expect(PAGE).toMatch(/or just type your name/);
+    expect(PAGE).toMatch(/enter your ID information manually/);
   });
 });
 

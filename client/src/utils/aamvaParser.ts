@@ -45,6 +45,14 @@ export interface AamvaResult {
   aamva_version: number;
   issuer_id: string;       // 6-digit IIN
   card_type: 'DL' | 'ID' | 'UNKNOWN';
+  place_of_birth: string;
+  race: string;
+  name_prefix: string;
+  card_revision_date: string;
+  dl_hazmat_expiry: string;
+  non_resident_indicator: boolean | null;
+  limited_duration_doc: boolean | null;
+  audit_info: string;
   /** Every raw element id → value, including jurisdiction (Z*) fields. */
   raw_elements: Record<string, string>;
 }
@@ -61,6 +69,11 @@ const EYE_MAP: Record<string, string> = {
 const HAIR_MAP: Record<string, string> = {
   BAL: 'Bald', BLK: 'Black', BLN: 'Blond', BRO: 'Brown', BRN: 'Brown',
   GRY: 'Gray', RED: 'Red', SDY: 'Sandy', WHI: 'White', UNK: 'Unknown',
+};
+
+const RACE_MAP: Record<string, string> = {
+  AP: 'Asian or Pacific Islander', BK: 'Black', H: 'Hispanic',
+  AI: 'American Indian / Alaskan Native', W: 'White', U: 'Unknown',
 };
 
 /** True if a decoded string looks like an AAMVA DL/ID payload. */
@@ -289,6 +302,14 @@ export function parseAamva(raw: string): AamvaResult {
     dl_endorsements: clean(elements.DCD) || clean(elements.DAT),
     country,
     document_discriminator: clean(elements.DCF),
+    place_of_birth: clean(elements.DCI),
+    race: RACE_MAP[clean(elements.DCL)] || clean(elements.DCL),
+    name_prefix: clean(elements.DAF),
+    card_revision_date: date(elements.DDB),
+    dl_hazmat_expiry: date(elements.DDC),
+    non_resident_indicator: flag(elements.DBI),
+    limited_duration_doc: flag(elements.DDD),
+    audit_info: clean(elements.DCJ),
     is_real_id: elements.DDA !== undefined ? elements.DDA.trim() === 'F' : null,
     is_organ_donor: flag(elements.DDK),
     is_veteran: flag(elements.DDL),

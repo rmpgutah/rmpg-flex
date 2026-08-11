@@ -41,6 +41,7 @@
 // ============================================================
 
 import { Hono, type Context } from 'hono';
+import { log } from '../utils/logger';
 import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists, queryInChunks, executeInChunks } from '../utils/db';
@@ -263,10 +264,16 @@ sv.get('/routes/:date', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
   const date = c.req.param('date');
+  const user = c.get('user') as { id: number; role: string } | undefined;
   const officerId = c.req.query('officer_id');
   const args: any[] = [date];
   let sql = 'SELECT * FROM serve_routes WHERE route_date = ?';
-  if (officerId) { sql += ' AND officer_id = ?'; args.push(parseInt(officerId, 10)); }
+  // Officers only see their own routes; supervisors/managers/admins can filter by officer_id or see all.
+  if (user?.role === 'officer') {
+    sql += ' AND officer_id = ?'; args.push(user.id);
+  } else if (officerId) {
+    sql += ' AND officer_id = ?'; args.push(parseInt(officerId, 10));
+  }
   sql += ' ORDER BY id DESC LIMIT 50';
   return c.json(await query(getDb(c.env), sql, ...args));
 });
@@ -910,7 +917,7 @@ sv.put('/bulk-status', async (c) => {
       (placeholders) => `SELECT id FROM serve_queue WHERE id IN (${placeholders}) AND call_id IS NOT NULL`,
     );
     for (const q of affected) {
-      syncServeCompletionToCfs(db, q.id).catch(() => {});
+      syncServeCompletionToCfs(db, q.id).catch((e: unknown) => log.error('syncServeCompletionToCfs failed', { queueId: q.id }, e instanceof Error ? e : new Error(String(e))));
     }
   }
 
@@ -1036,7 +1043,7 @@ sv.put('/:id', async (c) => {
   // Fire-and-forget: if status was explicitly set to a terminal outcome,
   // sync back to the originating CFS call (if one exists).
   if (body.status === 'served' || body.status === 'failed') {
-    syncServeCompletionToCfs(getDb(c.env), id).catch(() => {});
+    syncServeCompletionToCfs(getDb(c.env), id).catch((e: unknown) => log.error('syncServeCompletionToCfs failed', { queueId: id }, e instanceof Error ? e : new Error(String(e))));
   }
   return c.json({ success: true });
 });
@@ -1080,13 +1087,18 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   const id = parseInt(c.req.param('id') ?? '', 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const body = (await c.req.json().catch(() => ({}))) as any;
-  const user = c.get('user') as { id: number } | undefined;
+  const user = c.get('user') as { id: number; role: string } | undefined;
   const db = getDb(c.env);
 
-  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; status: string }>(
-    db, 'SELECT attempt_count, max_attempts, status FROM serve_queue WHERE id = ?', id,
+  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; status: string; officer_id: number | null }>(
+    db, 'SELECT attempt_count, max_attempts, status, officer_id FROM serve_queue WHERE id = ?', id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
+
+  // Officers can only log attempts on jobs assigned to them.
+  if (user?.role === 'officer' && queue.officer_id !== user.id) {
+    return c.json({ error: 'Not assigned to this job' }, 403);
+  }
 
   // Structured PS code (PS/15.05 etc.) is the new source of truth. When
   // supplied, it derives both the legacy `result` enum (for the existing

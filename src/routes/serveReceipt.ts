@@ -34,6 +34,8 @@ import { recordAudit } from '../utils/auditLog';
 import { requireRole } from '../middleware/auth';
 import { rateLimitAllow } from '../utils/rateLimit';
 import { log } from '../utils/logger';
+import { clientIp } from '../utils/requestIp';
+import { upsertPersonFromAos, storeIdPhotos, linkReceiptToPerson } from '../utils/serveReceiptPersons';
 
 const PUBLIC_APP_URL = 'https://rmpgutah.us';
 
@@ -65,6 +67,8 @@ const DEFAULT_TOKEN_TTL_DAYS = 30;
 /** Max size of a single base64 signature payload (~500 KB, matches
  *  users.digital_signature's cap in src/routes/auth.ts). */
 const MAX_SIGNATURE_BYTES = 500_000;
+const MAX_PAGE_IMAGE_BYTES = 2_000_000;
+const MAX_ID_PHOTO_BYTES = 2_000_000;
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -97,9 +101,6 @@ async function hashIp(ip: string, salt: string): Promise<string> {
   return `${saltId}:${body}`;
 }
 
-function clientIp(c: any): string {
-  return c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
-}
 
 /** Reject anything that isn't a plausibly-sized PNG data URL. */
 /**
@@ -165,6 +166,26 @@ function validSignature(v: unknown): v is string {
     && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(v)
     && v.length > 100
     && v.length <= MAX_SIGNATURE_BYTES
+    && decodesToImage(v);
+}
+
+/** Validates a scanned page image (e.g. summons page photo). Same rules as
+ *  signature but with a 2 MB cap — page photos are larger than signatures. */
+export function validPageImage(v: unknown): v is string {
+  return typeof v === 'string'
+    && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(v)
+    && v.length > 100
+    && v.length <= MAX_PAGE_IMAGE_BYTES
+    && decodesToImage(v);
+}
+
+/** Validates a captured ID photo (front or back of a driver licence / govt ID).
+ *  PNG or JPEG only, 2 MB cap. */
+export function validIdPhoto(v: unknown): v is string {
+  return typeof v === 'string'
+    && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(v)
+    && v.length > 100
+    && v.length <= MAX_ID_PHOTO_BYTES
     && decodesToImage(v);
 }
 
@@ -333,6 +354,13 @@ export interface ServeReceiptSubmission {
   sub_agrees_to_deliver: number;
   sub_release_acknowledged: number;
   sub_defendant_name: string | null;
+  id_scan_method: 'barcode' | 'manual' | null;
+  aamva_data: Record<string, unknown> | null;
+  manual_id: Record<string, unknown> | null;
+  id_front_image: unknown;
+  id_back_image: unknown;
+  recipient_address_current: Record<string, unknown> | null;
+  recipient_relationship: string | null;
 }
 
 /**
@@ -373,7 +401,10 @@ export function validateReceiptSubmission(s: ServeReceiptSubmission): string | n
   if (!s.recipient_email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s.recipient_email)) {
     return 'A valid email address is required';
   }
-  if (!s.recipient_id_verified) return 'A scanned photo ID is required';
+  // ID verified via barcode scan OR manual entry with at least a front photo
+  if (!s.recipient_id_verified && s.id_scan_method !== 'manual') {
+    return 'Please scan your ID or enter your information manually';
+  }
   if (!validSignature(s.recipient_signature)) return 'A signature is required';
   if (!s.recipient_age_confirmed) return 'You must confirm you are an adult over the age of eighteen';
   if (!s.ack_received_documents) return 'You must acknowledge receiving the documents';
@@ -634,7 +665,20 @@ serveReceipt.post('/:token', async (c) => {
     sub_agrees_to_deliver: bool(body.sub_agrees_to_deliver),
     sub_release_acknowledged: bool(body.sub_release_acknowledged),
     sub_defendant_name: str(body.sub_defendant_name, 200),
+    id_scan_method: (str(body.id_scan_method, 20) as 'barcode' | 'manual' | null),
+    aamva_data: (typeof body.aamva_data === 'object' && body.aamva_data) ? body.aamva_data as Record<string, unknown> : null,
+    manual_id: (typeof body.manual_id === 'object' && body.manual_id) ? body.manual_id as Record<string, unknown> : null,
+    id_front_image: body.id_front_image,
+    id_back_image: body.id_back_image,
+    recipient_address_current: (typeof body.recipient_address_current === 'object' && body.recipient_address_current) ? body.recipient_address_current as Record<string, unknown> : null,
+    recipient_relationship: str(body.recipient_relationship, 120),
   };
+
+  const idScanMethod = submission.id_scan_method;
+  const aamvaData = submission.aamva_data;
+  const manualId = submission.manual_id;
+  const idFrontImage = submission.id_front_image;
+  const idBackImage = submission.id_back_image;
 
   // Attestation sentences captured VERBATIM as shown to this signer.
   // Never regenerated server-side from current copy — editing the
@@ -688,9 +732,11 @@ serveReceipt.post('/:token', async (c) => {
        recipient_signature, recipient_signed_at,
        server_signature, server_name, server_badge, witness_name, witness_signature,
        latitude, longitude, accuracy_m, user_agent, ip_hash,
+       device_fingerprint, screen_resolution, color_depth, timezone, language, languages,
+       platform, hardware_concurrency, device_memory, max_touch_points, timezone_offset,
        email_to, email_status, notes
      ) VALUES (?,?,?,?, ?,?,?, ?,?,?,?, ?,?,?,?, ?,?, ?, ?,?,?,?,?, ?,?, ?,?,?, ?,?,?, ?,?, ?,?,?,
-               ?, datetime('now'), ?,?,?,?,?, ?,?,?,?,?, ?,?,?)`,
+               ?, datetime('now'), ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?,?,?)`,
     tok.serve_queue_id, tok.id, method, priorStatus,
     variant, formTitle, boundedJson(attestations, 20, 16_000),
     submission.recipient_name, variant, str(body.recipient_relationship, 120),
@@ -713,6 +759,14 @@ serveReceipt.post('/:token', async (c) => {
     Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null,
     Number.isFinite(Number(body.accuracy_m)) ? Number(body.accuracy_m) : null,
     str(c.req.header('user-agent'), 300), ipHash,
+    str(body.device_fingerprint, 128), str(body.screen_resolution, 20),
+    Number.isFinite(Number(body.color_depth)) ? Number(body.color_depth) : null,
+    str(body.timezone, 60), str(body.language, 20), str(body.languages, 200),
+    str(body.platform, 300),
+    Number.isFinite(Number(body.hardware_concurrency)) ? Number(body.hardware_concurrency) : null,
+    Number.isFinite(Number(body.device_memory)) ? Number(body.device_memory) : null,
+    Number.isFinite(Number(body.max_touch_points)) ? Number(body.max_touch_points) : null,
+    Number.isFinite(Number(body.timezone_offset)) ? Number(body.timezone_offset) : null,
     emailTo, emailTo ? 'pending' : 'not_requested', str(body.notes, 1000),
     );
   } catch (err) {
@@ -723,6 +777,91 @@ serveReceipt.post('/:token', async (c) => {
   }
 
   const receiptId = Number(ins.meta.last_row_id);
+
+  // Person upsert + ID photo storage — fire-and-forget via waitUntil.
+  // A failure here must NOT block the receipt response: the signer is
+  // standing at a door and the signature is the legally operative event.
+  const bgTask = (async () => {
+    try {
+      const idData = aamvaData ?? manualId;
+      if (!idData) return;
+
+      const firstName = str(idData.first_name, 100);
+      const lastName = str(idData.last_name, 100);
+      if (!firstName || !lastName) return;
+
+      const { personId, created } = await upsertPersonFromAos(db, {
+        first_name: firstName,
+        last_name: lastName,
+        middle_name: str(idData.middle_name, 100),
+        suffix: str(idData.suffix, 20),
+        name_prefix: str(idData.name_prefix, 20),
+        dob: str(idData.date_of_birth, 10) || str(idData.dob, 10),
+        gender: str(idData.gender, 20),
+        race: str(idData.race, 40),
+        height: str(idData.height, 20),
+        weight: str(idData.weight, 20),
+        eye_color: str(idData.eye_color, 30),
+        hair_color: str(idData.hair_color, 30),
+        address: str(idData.address, 200),
+        address2: str(idData.address2, 100),
+        city: str(idData.city, 100),
+        state: str(idData.state, 2),
+        zip: str(idData.zip, 10),
+        phone: str(body.recipient_phone, 40),
+        email: str(body.recipient_email, 254),
+        dl_number: str(idData.dl_number, 30),
+        dl_state: str(idData.dl_state, 5),
+        dl_class: str(idData.dl_class, 10),
+        dl_expiry: str(idData.dl_expiry, 10),
+        dl_issue_date: str(idData.dl_issue_date, 10),
+        dl_restrictions: str(idData.dl_restrictions, 100),
+        dl_endorsements: str(idData.dl_endorsements, 100),
+        country: str(idData.country, 10),
+        document_discriminator: str(idData.document_discriminator, 60),
+        is_real_id: idData.is_real_id as boolean | null,
+        is_organ_donor: idData.is_organ_donor as boolean | null,
+        is_veteran: idData.is_veteran as boolean | null,
+        under_18_until: str(idData.under_18_until, 10),
+        under_21_until: str(idData.under_21_until, 10),
+        aamva_version: typeof idData.aamva_version === 'number' ? idData.aamva_version : null,
+        issuer_id: str(idData.issuer_id, 10),
+        place_of_birth: str(idData.place_of_birth, 100),
+        non_resident_indicator: idData.non_resident_indicator as boolean | null,
+        limited_duration_doc: idData.limited_duration_doc as boolean | null,
+        card_revision_date: str(idData.card_revision_date, 10),
+        dl_hazmat_expiry: str(idData.dl_hazmat_expiry, 10),
+        card_type: str(idData.card_type, 10),
+        raw_aamva_elements: idData.raw_elements as Record<string, string> | null,
+      });
+
+      const frontPhoto = validIdPhoto(idFrontImage) ? (idFrontImage as string) : null;
+      const backPhoto = validIdPhoto(idBackImage) ? (idBackImage as string) : null;
+      const { frontKey, backKey } = await storeIdPhotos(c.env, receiptId, frontPhoto, backPhoto);
+
+      // Update receipt with person link and R2 keys
+      await execute(db,
+        `UPDATE serve_receipts SET
+           recipient_person_id = ?, recipient_aamva_json = ?,
+           id_scan_method = ?, id_front_r2_key = ?, id_back_r2_key = ?
+         WHERE id = ?`,
+        personId, aamvaData ? JSON.stringify(aamvaData) : null,
+        idScanMethod, frontKey, backKey, receiptId);
+
+      await linkReceiptToPerson(db, receiptId, personId, 'recipient', idScanMethod, frontKey, backKey);
+
+      // Also link person to the serve job
+      await execute(db,
+        `INSERT OR IGNORE INTO serve_queue_persons (serve_queue_id, person_id, role)
+         VALUES (?, ?, 'recipient')`,
+        tok.serve_queue_id, personId);
+
+      log.info('AoS person upsert complete', { receiptId, personId, created, scanMethod: idScanMethod });
+    } catch (err) {
+      log.error('AoS person upsert failed', { receiptId }, err as Error);
+    }
+  })();
+  try { c.executionCtx.waitUntil(bgTask); } catch { /* Miniflare test env has no ExecutionContext */ }
 
   // Submissions are what the cap is for. Recorded before the burn so a
   // rejected attempt still counts against a token being hammered.
@@ -927,26 +1066,53 @@ serveReceipt.post('/:token/email', async (c) => {
   const label = receipt.form_title || 'Acknowledgement of Service Form';
 
   try {
-    const { enqueueAndSend } = await import('./email');
-    const { buildSendPayload } = await import('../utils/emailSend');
-    const result = await enqueueAndSend(c.env, ownerUserId, buildSendPayload({
+    const resendKey = c.env.RESEND_API_KEY;
+    if (!resendKey) {
+      await execute(db, "UPDATE serve_receipts SET email_status = 'not_configured', email_error = 'RESEND_API_KEY not set' WHERE id = ?", receipt.id);
+      return c.json({ ok: true, status: 'not_configured' });
+    }
+
+    const { sendViaResend } = await import('../utils/resendEmail');
+    const { buildAosEmailHtml } = await import('../utils/aosEmailTemplate');
+
+    const docsRaw = await queryFirst<{ documents_json: string | null }>(
+      db, 'SELECT documents_json FROM serve_receipts WHERE id = ?', receipt.id);
+    const documents = docsRaw?.documents_json
+      ? (JSON.parse(docsRaw.documents_json) as { title: string; copies?: number }[])
+      : [];
+
+    const serverInfo = ownerUserId
+      ? await queryFirst<{ first_name: string | null; last_name: string | null; badge_number: string | null }>(
+          db, 'SELECT first_name, last_name, badge_number FROM users WHERE id = ?', ownerUserId)
+      : null;
+
+    const html = buildAosEmailHtml({
+      recipientName: receipt.recipient_name,
+      formTitle: label,
+      documents,
+      caseNumber: job?.case_number || null,
+      dateServed: new Date().toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric',
+        timeZone: 'America/Denver',
+      }),
+      serverName: serverInfo
+        ? [serverInfo.first_name, serverInfo.last_name].filter(Boolean).join(' ') || null
+        : null,
+      serverBadge: serverInfo?.badge_number ? `#${serverInfo.badge_number}` : null,
+    });
+
+    const result = await sendViaResend(resendKey, {
+      from: 'Rocky Mountain Protective Group <server@rmpgutah.us>',
       to: receipt.email_to,
       subject: `${label}${caseRef}`,
-      body:
-        `${receipt.recipient_name},\n\n` +
-        `Attached is your copy of the ${label.toLowerCase()} you signed today, ` +
-        `for your records.\n\n` +
-        `This message is a courtesy copy from Rocky Mountain Protective Group. ` +
-        `Please do not reply — questions about the case should go to the court ` +
-        `or the attorney of record.\n`,
+      html,
       attachments: [{
-        name: body.filename || 'acknowledgement-of-service.pdf',
-        contentType: 'application/pdf',
-        contentBytes: body.pdf_base64,
+        filename: body.filename || 'acknowledgement-of-service.pdf',
+        content: body.pdf_base64,
       }],
-    } as any));
+    });
 
-    const status = result.status === 'sent' ? 'sent' : 'pending';
+    const status = result.status === 'sent' ? 'sent' : 'failed';
     await execute(
       db,
       `UPDATE serve_receipts SET email_status = ?, email_error = ?,
@@ -1396,7 +1562,7 @@ serveReceiptAdmin.post(
     // signature — the client downscales before sending, because a raw
     // phone photo is several megabytes and this column is not storage.
     const pageImage = body.signed_page_image;
-    if (!validSignature(pageImage)) {
+    if (!validPageImage(pageImage)) {
       return c.json({ error: 'A photograph of the signed page is required' }, 400);
     }
 
@@ -1789,6 +1955,44 @@ serveReceiptAdmin.post('/receipt/:id/void', requireRole('admin', 'manager', 'sup
 
   return c.json({ success: true, job_reverted: jobReverted });
 });
+
+/**
+ * GET /api/serve-receipts/:id/id-photo/:side
+ * Retrieve the recipient's ID photo (front or back) from R2.
+ */
+serveReceiptAdmin.get(
+  '/:id/id-photo/:side',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  async (c) => {
+    const id = parseInt(c.req.param('id') || '', 10);
+    const side = c.req.param('side');
+    if (!id || (side !== 'front' && side !== 'back')) {
+      return c.json({ error: 'Invalid request' }, 400);
+    }
+
+    const col = side === 'front' ? 'id_front_r2_key' : 'id_back_r2_key';
+    const db = getDb(c.env);
+    const row = await queryFirst<{ key: string | null }>(
+      db,
+      `SELECT ${col} as key FROM serve_receipts WHERE id = ?`,
+      id,
+    );
+    if (!row?.key) return c.json({ error: 'No ID photo found' }, 404);
+
+    const uploads = c.env.UPLOADS as R2Bucket | undefined;
+    if (!uploads) return c.json({ error: 'Storage not configured' }, 503);
+
+    const obj = await uploads.get(row.key);
+    if (!obj) return c.json({ error: 'Photo not found in storage' }, 404);
+
+    return new Response(obj.body, {
+      headers: {
+        'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg',
+        'Cache-Control': 'private, max-age=300',
+      },
+    });
+  },
+);
 
 /**
  * Age out email deliveries that will never resolve.

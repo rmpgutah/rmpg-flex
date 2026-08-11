@@ -279,4 +279,52 @@ describe('tesseractTraining route — R2-then-D1 write ordering', () => {
       'put:training-corpus/9/ground-truth.txt',
     ]);
   });
+
+  test('a D1 insert failure AFTER both R2 writes succeed reports CORPUS_INSERT_FAILED, not a silent success', async () => {
+    const app = makeApp('admin');
+    const docs = { 10: { r2_key: 'uploads/10.png', file_type: 'image/png' } };
+    const corpusIds = new Set<number>();
+    const prepare = (sql: string) => {
+      let boundArgs: any[] = [];
+      const stmt: any = {
+        bind: (...args: any[]) => { boundArgs = args; return stmt; },
+        first: async () => {
+          if (/FROM tesseract_training_corpus WHERE serve_intake_document_id/.test(sql)) {
+            const id = boundArgs[0];
+            return corpusIds.has(id) ? { id: 1, approval_status: 'pending' } : null;
+          }
+          if (/FROM serve_intake_documents WHERE id/.test(sql)) {
+            return (docs as any)[boundArgs[0]] ?? null;
+          }
+          return null;
+        },
+        all: async () => ({ results: [] }),
+        run: async () => {
+          if (/INSERT INTO tesseract_training_corpus/.test(sql)) {
+            throw new Error('D1 unavailable');
+          }
+          return { meta: { changes: 1, last_row_id: 1 } };
+        },
+      };
+      return stmt;
+    };
+    const db = { prepare };
+    const legacyObj = makeLegacyR2Object();
+    const uploads = { get: vi.fn().mockResolvedValue(legacyObj) };
+    const put = vi.fn().mockResolvedValue(undefined);
+    const tesseractTraining = { put };
+
+    const res = await app.request('/documents/10/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ground_truth_text: 'the verified ground truth' }),
+    }, { DB: db, UPLOADS: uploads, TESSERACT_TRAINING: tesseractTraining });
+
+    // Both R2 writes DID happen (the pair now exists in R2 with no corpus row
+    // pointing at it — the orphan this error path exists to make visible).
+    expect(put).toHaveBeenCalledTimes(2);
+    expect(res.status).toBe(500);
+    const body = await res.json() as any;
+    expect(body.code).toBe('CORPUS_INSERT_FAILED');
+  });
 });

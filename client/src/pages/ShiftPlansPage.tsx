@@ -523,7 +523,7 @@ export default function ShiftPlansPage() {
               Briefing PDF
             </button>
           )}
-          <ExportButton exportUrl="/api/admin/shift-plans/export/csv" exportFilename="shift-plans.csv" />
+          <ExportButton exportUrl="/api/shift-plans/export/csv" exportFilename="shift-plans.csv" />
           {canManage && (
             <button type="button"
               onClick={() => setShowCreateForm(true)}

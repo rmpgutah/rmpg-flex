@@ -3,6 +3,7 @@
 // Falls back to a plain connection list if the canvas fails to render.
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { Network } from 'lucide-react';
+import { importWithRetry } from '../utils/importWithRetry';
 
 interface Connection {
   id: number;
@@ -43,7 +44,7 @@ export default function PersonIntelGraphTab({ subjectName, connections }: Props)
   const [dims, setDims] = useState({ w: 600, h: 400 });
 
   useEffect(() => {
-    import('react-force-graph-2d').then(m => setForceGraph(() => m.default)).catch(() => setLoadError(true));
+    importWithRetry(() => import('react-force-graph-2d')).then(m => setForceGraph(() => m.default)).catch(() => setLoadError(true));
   }, []);
 
   useEffect(() => {

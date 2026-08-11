@@ -24,6 +24,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
+import { importWithRetry } from '../utils/importWithRetry';
 import {
   HelpCircle, Keyboard, BookOpen, Monitor, Radio, Map, Database, FileText, Users,
   MessageSquare, BarChart3, Search, AlertTriangle, Shield, Settings, ChevronRight,
@@ -487,7 +488,7 @@ export default function HelpPage() {
   // help-page route bundle when nobody clicks Print).
   const onPrintQuickRef = useCallback(async () => {
     try {
-      const mod = await import('../utils/helpQuickReferencePdf');
+      const mod = await importWithRetry(() => import('../utils/helpQuickReferencePdf'));
       await mod.generateHelpQuickReferencePdfWithDefaults();
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -498,7 +499,7 @@ export default function HelpPage() {
 
   const onDownloadDispatchGuide = useCallback(async () => {
     try {
-      const mod = await import('../utils/dispatchGuidePdfGenerator');
+      const mod = await importWithRetry(() => import('../utils/dispatchGuidePdfGenerator'));
       await mod.generateDispatchGuidePdf();
     } catch (err) {
       // eslint-disable-next-line no-console

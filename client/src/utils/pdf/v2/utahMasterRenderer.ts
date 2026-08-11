@@ -13,6 +13,7 @@
 // `splitCopiesToBlobs()` — used to upload each copy separately to R2.
 
 import jsPDF from 'jspdf';
+import { importWithRetry } from '../../importWithRetry';
 import { renderPdfV2, type RenderOptions } from './engine/renderer';
 import { embedSidecar, outputWithSidecar, type SidecarPayload, type SidecarSignature } from './engine/sidecar';
 import {
@@ -117,14 +118,14 @@ async function renderCopyPage(
   options: UtahMasterRenderOptions,
 ): Promise<void> {
   // Re-imports to avoid pulling in the full renderer module surface:
-  const { drawDefaultHeader } = await import('./engine/header');
-  const { drawDefaultFooter } = await import('./engine/footer');
-  const { LayoutEngine } = await import('./engine/layout');
-  const { Primitives } = await import('./engine/primitives');
-  const { makeRenderContext, drawSectionHeader, closeSection } = await import('./engine/context');
-  const { renderSectionFields } = await import('./engine/renderer');
-  const { renderFixedLayoutSection } = await import('./engine/fixedLayout');
-  const { drawBlankFormWatermark, drawDraftWatermark } = await import('./engine/watermark');
+  const { drawDefaultHeader } = await importWithRetry(() => import('./engine/header'));
+  const { drawDefaultFooter } = await importWithRetry(() => import('./engine/footer'));
+  const { LayoutEngine } = await importWithRetry(() => import('./engine/layout'));
+  const { Primitives } = await importWithRetry(() => import('./engine/primitives'));
+  const { makeRenderContext, drawSectionHeader, closeSection } = await importWithRetry(() => import('./engine/context'));
+  const { renderSectionFields } = await importWithRetry(() => import('./engine/renderer'));
+  const { renderFixedLayoutSection } = await importWithRetry(() => import('./engine/fixedLayout'));
+  const { drawBlankFormWatermark, drawDraftWatermark } = await importWithRetry(() => import('./engine/watermark'));
   void options.coreFontsOnly; // already controlled by the initial renderPdfV2 call
 
   const schema = citationUtahMasterSchema;
@@ -185,7 +186,7 @@ export async function renderUtahMasterMultiCopyBytes(
   // Final-pass footer overwrites with correct page totals after all
   // pages exist (mirror of renderPdfV2's behavior).
   const total = doc.getNumberOfPages();
-  const { drawDefaultFooter } = await import('./engine/footer');
+  const { drawDefaultFooter } = await importWithRetry(() => import('./engine/footer'));
   for (let p = 1; p <= total; p++) {
     doc.setPage(p);
     drawDefaultFooter(doc, {

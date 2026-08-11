@@ -16,6 +16,7 @@ import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 function fmtShortDate(d: string | null | undefined): string {
   if (!d) return '\u2014';
@@ -767,7 +768,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             onClick={async () => {
               try {
                 setError(null);
-                const { generateInvoicePdfBlobUrl } = await import('../../utils/invoicePdfGenerator');
+                const { generateInvoicePdfBlobUrl } = await importWithRetry(() => import('../../utils/invoicePdfGenerator'));
                 const res = await apiFetch<{ data: any }>(`/invoices/${inv.id}/pdf-data`);
                 if (!res?.data?.invoice) throw new Error('No invoice data returned from server');
                 if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
@@ -787,7 +788,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             onClick={async () => {
               try {
                 setError(null);
-                const { generateInvoicePdf } = await import('../../utils/invoicePdfGenerator');
+                const { generateInvoicePdf } = await importWithRetry(() => import('../../utils/invoicePdfGenerator'));
                 const res = await apiFetch<{ data: any }>(`/invoices/${inv.id}/pdf-data`);
                 if (!res?.data?.invoice) throw new Error('No invoice data returned from server');
                 const doc = await generateInvoicePdf(res.data.invoice);
@@ -805,7 +806,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             onClick={async () => {
               try {
                 setError(null);
-                const { generatePrintableInvoiceHtml } = await import('../../utils/invoicePdfGenerator');
+                const { generatePrintableInvoiceHtml } = await importWithRetry(() => import('../../utils/invoicePdfGenerator'));
                 const res = await apiFetch<{ data: any }>(`/invoices/${inv.id}/pdf-data`);
                 if (!res?.data?.invoice) throw new Error('No invoice data returned from server');
                 const html = generatePrintableInvoiceHtml(res.data.invoice);

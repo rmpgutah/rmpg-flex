@@ -12,6 +12,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { importWithRetry } from './importWithRetry';
 import { openPdfDocument } from './openPdfDocument';
 import { localToday } from './dateUtils';
 
@@ -319,8 +320,8 @@ export function generateHelpQuickReferencePdf(input: HelpQuickReferenceInput): v
  */
 export async function generateHelpQuickReferencePdfWithDefaults(): Promise<void> {
   const [{ SHORTCUT_GROUPS, PRIORITIES, UNIT_STATUSES, CAD_COMMANDS }, { APP_VERSION }] = await Promise.all([
-    import('./helpReferenceData'),
-    import('./version'),
+    importWithRetry(() => import('./helpReferenceData')),
+    importWithRetry(() => import('./version')),
   ]);
   generateHelpQuickReferencePdf({
     shortcutGroups: SHORTCUT_GROUPS,

@@ -479,8 +479,10 @@ sch.get('/shift-comparison', async (c) => {
     if (!plan1) return c.json({ error: `Shift plan "${shift1}" not found` }, 404);
     if (!plan2) return c.json({ error: `Shift plan "${shift2}" not found` }, 404);
 
-    const assignments1 = parseAssignments(plan1);
-    const assignments2 = parseAssignments(plan2);
+    parseAssignments(plan1);
+    parseAssignments(plan2);
+    const assignments1 = plan1.assignments as any[];
+    const assignments2 = plan2.assignments as any[];
 
     const officers1 = new Set(assignments1.map((a: any) => a.officer_id ?? a.userId));
     const officers2 = new Set(assignments2.map((a: any) => a.officer_id ?? a.userId));

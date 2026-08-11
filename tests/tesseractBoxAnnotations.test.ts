@@ -115,4 +115,26 @@ describe('tesseract box annotations', () => {
     expect(res.status).toBe(404);
     expect(db._boxes).toHaveLength(1);
   });
+
+  test('POST /documents/:id/boxes reports BOX_INSERT_FAILED when the D1 insert throws', async () => {
+    const app = makeApp('admin');
+    const db = {
+      prepare: (sql: string) => ({
+        bind: (..._args: any[]) => ({
+          run: async () => {
+            if (/INSERT INTO tesseract_box_annotations/.test(sql)) throw new Error('D1 unavailable');
+            return { meta: { changes: 0 } };
+          },
+        }),
+      }),
+    };
+    const res = await app.request('/documents/5/boxes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x0: 1, y0: 2, x1: 3, y1: 4, corrected_text: 'S Main St' }),
+    }, { DB: db });
+    expect(res.status).toBe(500);
+    const body = await res.json() as any;
+    expect(body.code).toBe('BOX_INSERT_FAILED');
+  });
 });

@@ -30,6 +30,7 @@ import TrustBadge from '../../components/TrustBadge';
 import LiveDlScanner, { type IdScanResult } from '../../components/LiveDlScanner';
 import type { AamvaResult, ScanAlert } from '../../utils/aamvaParser';
 import { aamvaToScanResultObj } from '../../utils/scanIdToRecipient';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 type GpsFix = { lat: number; lng: number; accuracy: number } | null;
 
@@ -397,7 +398,7 @@ export default function FieldCameraPage() {
     startCamera(facing);
     if (!barcodeText) { addToast('No barcode read — try again or use manual entry', 'error'); return; }
     try {
-      const { parseAamva, looksLikeAamva, assessAamva } = await import('../../utils/aamvaParser');
+      const { parseAamva, looksLikeAamva, assessAamva } = await importWithRetry(() => import('../../utils/aamvaParser'));
       if (!looksLikeAamva(barcodeText)) { addToast('Barcode did not decode as a DL/ID', 'error'); return; }
       const parsed = parseAamva(barcodeText);
       const alerts = assessAamva(parsed);

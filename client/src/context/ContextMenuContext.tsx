@@ -201,7 +201,7 @@ function MenuLevel({ items, onCloseAll, onCloseLevel, autoFocus }: MenuLevelProp
           return (
             <div
               key={itemKey}
-              className="px-3 pt-1.5 pb-1 text-[9px] font-semibold uppercase tracking-wide text-rmpg-500 select-none"
+              className="px-3 pt-1.5 pb-1 text-[9px] font-semibold uppercase tracking-wide text-fg-muted select-none"
             >
               {item.label}
             </div>
@@ -229,7 +229,7 @@ function MenuLevel({ items, onCloseAll, onCloseLevel, autoFocus }: MenuLevelProp
                 w-full text-left pl-3 pr-2 py-1.5 text-[11px] flex items-center gap-2
                 outline-none transition-colors duration-100
                 ${item.disabled
-                  ? 'text-rmpg-600 cursor-not-allowed'
+                  ? 'text-fg-muted cursor-not-allowed'
                   : item.danger
                     ? 'text-red-400 hover:bg-red-900/25 focus:bg-red-900/25'
                     : 'text-rmpg-200 hover:bg-rmpg-700 hover:text-rmpg-100 focus:bg-rmpg-700 focus:text-rmpg-100'}
@@ -239,8 +239,8 @@ function MenuLevel({ items, onCloseAll, onCloseLevel, autoFocus }: MenuLevelProp
                 <span className="w-3.5 h-3.5 flex items-center justify-center shrink-0">{item.icon}</span>
               )}
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              {item.hint && <span className="text-[9px] text-rmpg-500 ml-2 shrink-0">{item.hint}</span>}
-              {hasSub && <ChevronRight size={12} className="ml-1 shrink-0 text-rmpg-500" />}
+              {item.hint && <span className="text-[9px] text-fg-muted ml-2 shrink-0">{item.hint}</span>}
+              {hasSub && <ChevronRight size={12} className="ml-1 shrink-0 text-fg-muted" />}
             </button>
             {hasSub && openSub === i && (
               <Submenu>

@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { Usb, Plus, Trash2, RefreshCw, Shield, Fingerprint } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 interface WebAuthnCredential {
   id: number;
@@ -86,7 +87,7 @@ export default function SecurityKeyManager() {
       const { options, challengeId } = await optionsRes.json();
 
       // 2. Prompt browser WebAuthn dialog
-      const { startRegistration } = await import('@simplewebauthn/browser');
+      const { startRegistration } = await importWithRetry(() => import('@simplewebauthn/browser'));
       const regResponse = await startRegistration({ optionsJSON: options });
 
       // 3. Verify with server

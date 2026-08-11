@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Shield, QrCode, Keyboard, Copy, Check, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import BackupCodesDisplay from './BackupCodesDisplay';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 type WizardStep = 'intro' | 'scan' | 'verify' | 'backup' | 'complete';
 
@@ -41,7 +42,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       let qr = data.qrCodeDataUri as string | null;
       if (!qr && data.otpauthUrl) {
         // Worker returns otpauthUrl; render the QR locally (qrcode pkg).
-        const QRCode = (await import('qrcode')).default;
+        const QRCode = (await importWithRetry(() => import('qrcode'))).default;
         qr = await QRCode.toDataURL(data.otpauthUrl, { margin: 1, width: 220 });
       }
       setQrDataUri(qr || '');

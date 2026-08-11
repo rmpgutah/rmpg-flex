@@ -1,0 +1,43 @@
+[package]
+name = "rmpg-flex-desktop"
+version = "5.9.0"
+description = "RMPG Flex CAD/RMS — Desktop Application"
+authors = ["Rocky Mountain Protective Group"]
+license = "UNLICENSED"
+edition = "2024"
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-process = "2"
+tauri-plugin-os = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sysinfo = "0.34"
+open = "5"
+dirs = "6"
+reqwest = { version = "0.12", features = ["json"] }
+serialport = "4"
+tokio = { version = "1", features = ["sync", "time", "rt"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+tauri-plugin-updater = "2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
