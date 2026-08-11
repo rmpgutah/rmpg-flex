@@ -1,16 +1,21 @@
 // ============================================================
-// RMPG Flex — Company Browser
-// General-purpose external web browsing, rendered inside a
-// dedicated Electron BrowserWindow (see desktop/main.js's
-// 'window:open-company-browser' handler). Never rendered inside
-// the main app window or a FloatingWindow iframe — <webview> is
-// only enabled on this one window's webPreferences.
+// RMPG Flex — Company Browser (in-app)
+// Embedded <webview>-based browser running inside the main
+// app window. webviewTag must be enabled on the main BrowserWindow
+// (desktop/main.js). Falls back gracefully in non-Electron envs.
 // ============================================================
 
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { ArrowLeft, ArrowRight, RotateCw, X, Plus, Star, Trash2, Clock } from 'lucide-react';
+import {
+  ArrowLeft, ArrowRight, RotateCw, X, Plus, Star, Clock,
+  ZoomIn, ZoomOut, Download, Printer, Lock, Unlock, Globe,
+  Bookmark, Trash2, Copy, Home, Search, Shield, Wifi, WifiOff,
+  ExternalLink, ChevronDown, Volume2, VolumeX, Maximize2,
+} from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 interface BrowserTab {
   id: string;
@@ -20,12 +25,17 @@ interface BrowserTab {
   canGoForward: boolean;
   loading: boolean;
   error: string | null;
+  pinned?: boolean;
+  muted?: boolean;
+  favicon?: string;
+  zoom?: number;
 }
 
-interface Bookmark {
+interface BookmarkItem {
   id: string;
   url: string;
   title: string;
+  folder?: string;
 }
 
 interface HistoryEntry {
@@ -34,140 +44,159 @@ interface HistoryEntry {
   visitedAt: string;
 }
 
-// React's own type definitions (@types/react) already declare a global
-// `HTMLWebViewElement` and a `webview` JSX intrinsic element (see
-// react/index.d.ts's WebViewHTMLAttributes) — Electron normally supplies the
-// runtime behind that type. That built-in declaration only extends
-// `HTMLElement` with no members, so it doesn't know about the imperative
-// navigation methods Electron's <webview> actually exposes at runtime. This
-// merges the missing members onto the same global interface rather than
-// declaring an unrelated same-named type (which TS would then treat as two
-// incompatible types).
+interface DownloadItem {
+  id: string;
+  filename: string;
+  url: string;
+  startedAt: string;
+  status: 'downloading' | 'done' | 'failed';
+  progress?: number;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const NEW_TAB_URL = 'about:blank';
+const MAX_HISTORY = 500;
+const SAVE_DEBOUNCE_MS = 800;
+const DEFAULT_ZOOM = 1;
+const ZOOM_STEP = 0.1;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 3;
+
+const RMPG_QUICK_LINKS = [
+  { label: 'RMPG Portal', url: 'https://rmpgutahps.us/portal/login' },
+  { label: 'SL County', url: 'https://www.slco.org' },
+  { label: 'Utah Courts', url: 'https://www.utcourts.gov' },
+  { label: 'Fleet.io', url: 'https://app.fleetio.com' },
+  { label: 'NCIC NLETS', url: 'https://www.nlets.org' },
+];
+
+const FATAL_NET_ERRORS = new Set([
+  -2, -100, -101, -102, -103, -105, -106, -109, -118, -130, -137,
+  -201, -202, -203, -207, -208,
+]);
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 declare global {
   interface HTMLWebViewElement {
     src: string;
     goBack(): void;
     goForward(): void;
     reload(): void;
+    stop(): void;
     getURL(): string;
     getTitle(): string;
     canGoBack(): boolean;
     canGoForward(): boolean;
+    setZoomFactor(factor: number): void;
+    getZoomFactor(): number;
+    print(): void;
+    findInPage(text: string, options?: { forward?: boolean; matchCase?: boolean }): void;
+    stopFindInPage(action: 'clearSelection' | 'keepSelection'): void;
+    setAudioMuted(muted: boolean): void;
+    isAudioMuted(): boolean;
+    getWebContentsId(): number;
+    executeJavaScript(code: string): Promise<any>;
+    insertCSS(css: string): Promise<string>;
+    capturePage(): Promise<{ toPNG(): Buffer }>;
   }
 }
 
-const NEW_TAB_URL = 'about:blank';
-const MAX_HISTORY_ENTRIES = 200;
-const BOOKMARKS_SAVE_DEBOUNCE_MS = 800;
-
-// Mirrors desktop/main.js's FATAL_NET_ERRORS (search that name there for the
-// per-code rationale). Duplicated rather than imported: main.js is a
-// CommonJS Electron-main module and this file is an ES module bundled by
-// Vite for the renderer — there's no clean shared-import path across that
-// boundary, so the pragmatic choice is one small client-local constant with
-// this comment as the tether, instead of forcing a cross-process module.
-// Keep the two lists in sync if either changes.
-const FATAL_NET_ERRORS = new Set([
-  -2, -100, -101, -102, -103, -105, -106, -109, -118, -130, -137,
-  -201, -202, -203, -207, -208,
-]);
-function isFatalNavFailure(errorCode: number, isMainFrame: boolean): boolean {
-  return isMainFrame === true && FATAL_NET_ERRORS.has(errorCode);
-}
-
-function makeTabId(): string {
+function makeId(): string {
   return `tab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** Bare domains ("example.com") get https:// prepended, like a real browser's address bar. Anything that already looks like a URL (has a scheme) passes through unchanged. */
-function normalizeAddressInput(raw: string): string {
-  const trimmed = raw.trim();
-  if (trimmed === '') return NEW_TAB_URL;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
+function normalize(raw: string): string {
+  const t = raw.trim();
+  if (!t) return NEW_TAB_URL;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return t;
+  if (/\s/.test(t) || !t.includes('.')) return `https://www.google.com/search?q=${encodeURIComponent(t)}`;
+  return `https://${t}`;
 }
 
-// Mirrors desktop/main.js's will-navigate gate (shouldAllowGuestNavigation in
-// desktop/security/webviewHardening.js), same duplication rationale as
-// FATAL_NET_ERRORS above: that's a CommonJS Electron-main module and this is
-// an ES module bundled for the renderer, so there's no clean shared-import
-// path. This is load-bearing on its own, not just defense-in-depth — Electron
-// does not fire 'will-navigate' for a programmatic <webview src> change (the
-// address bar / bookmark-click path here), so the main-process gate never
-// sees this navigation at all. Keep the two rules in sync if either changes.
-function isAllowedBrowserUrl(url: string): boolean {
-  if (url === NEW_TAB_URL) return true;
-  let parsed: URL;
+function isAllowed(url: string): boolean {
+  if (url === NEW_TAB_URL || url === 'about:blank') return true;
   try {
-    parsed = new URL(url);
-  } catch {
-    return false;
-  }
-  return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    const p = new URL(url);
+    return p.protocol === 'http:' || p.protocol === 'https:';
+  } catch { return false; }
 }
 
 function parseJsonArray<T>(raw: string | null | undefined): T[] {
-  try {
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  try { const p = raw ? JSON.parse(raw) : []; return Array.isArray(p) ? p : []; } catch { return []; }
 }
 
-function ownershipAckKey(userId: string | number | undefined): string {
-  return userId != null ? `rmpg_company_browser_ack_${userId}` : 'rmpg_company_browser_ack';
+function ownershipKey(uid?: string | number): string {
+  return uid != null ? `rmpg_cbrowser_ack_${uid}` : 'rmpg_cbrowser_ack';
 }
 
-function hasAcknowledgedOwnership(userId: string | number | undefined): boolean {
-  try {
-    return localStorage.getItem(ownershipAckKey(userId)) === '1';
-  } catch {
-    return false;
-  }
+function isFatalNavFailure(code: number, isMain: boolean): boolean {
+  return isMain && FATAL_NET_ERRORS.has(code);
 }
 
-function acknowledgeOwnership(userId: string | number | undefined): void {
+function securityLabel(url: string): { secure: boolean; label: string } {
   try {
-    localStorage.setItem(ownershipAckKey(userId), '1');
-  } catch {
-    // Private-browsing/quota failure — degrades to "show the modal every
-    // launch" rather than crashing the page, matching this codebase's
-    // existing localStorage-failure convention (see navFavorites.ts).
-  }
+    const p = new URL(url);
+    if (p.protocol === 'https:') return { secure: true, label: p.hostname };
+    return { secure: false, label: p.hostname };
+  } catch { return { secure: false, label: '' }; }
 }
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function CompanyBrowserPage() {
   const { user } = useAuth();
-  const [tabs, setTabs] = useState<BrowserTab[]>(() => [{
-    id: makeTabId(), url: NEW_TAB_URL, title: '', canGoBack: false, canGoForward: false, loading: false, error: null,
-  }]);
+
+  const [tabs, setTabs] = useState<BrowserTab[]>(() => [
+    { id: makeId(), url: NEW_TAB_URL, title: 'New Tab', canGoBack: false, canGoForward: false, loading: false, error: null, zoom: DEFAULT_ZOOM },
+  ]);
   const [activeTabId, setActiveTabId] = useState(() => tabs[0].id);
   const [addressInput, setAddressInput] = useState('');
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [showOwnershipNotice, setShowOwnershipNotice] = useState(() => !hasAcknowledgedOwnership(user?.id));
+  const [downloads, setDownloads] = useState<DownloadItem[]>([]);
+
+  // Panel visibility
+  const [panel, setPanel] = useState<'history' | 'bookmarks' | 'downloads' | 'find' | 'quicklinks' | null>(null);
+
+  // Find-in-page
+  const [findQuery, setFindQuery] = useState('');
+  const [findMatchCase, setFindMatchCase] = useState(false);
+
+  // Ownership notice (shown once per user)
+  const [showOwnershipNotice, setShowOwnershipNotice] = useState(
+    () => localStorage.getItem(ownershipKey(user?.id)) !== '1'
+  );
+
+  // Dark reader CSS key
+  const [darkReader, setDarkReader] = useState(false);
+  const darkReaderKeyRef = useRef<string | null>(null);
+
   const webviewRefs = useRef<Record<string, HTMLWebViewElement | null>>({});
-  const webviewContainerRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstLoad = useRef(true);
+  const addressRef = useRef<HTMLInputElement>(null);
 
   const activeTab = useMemo(() => tabs.find(t => t.id === activeTabId) ?? tabs[0], [tabs, activeTabId]);
 
+  // Sync address bar with active tab
   useEffect(() => {
     setAddressInput(activeTab.url === NEW_TAB_URL ? '' : activeTab.url);
   }, [activeTab.id, activeTab.url]);
 
+  // Load persisted bookmarks + history
   useEffect(() => {
-    apiFetch<{ browser_bookmarks_json: string | null; browser_history_json: string | null }>('/preferences')
-      .then((prefs) => {
-        setBookmarks(parseJsonArray<Bookmark>(prefs.browser_bookmarks_json));
+    apiFetch<{ browser_bookmarks_json?: string | null; browser_history_json?: string | null }>('/preferences')
+      .then(prefs => {
+        setBookmarks(parseJsonArray<BookmarkItem>(prefs.browser_bookmarks_json));
         setHistory(parseJsonArray<HistoryEntry>(prefs.browser_history_json));
       })
-      .catch(() => { /* start empty on failure — non-blocking, same tolerance as DesktopPage's preferences load */ });
+      .catch(() => {});
   }, []);
 
+  // Persist bookmarks + history (debounced)
   useEffect(() => {
     if (isFirstLoad.current) { isFirstLoad.current = false; return; }
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -176,137 +205,18 @@ export default function CompanyBrowserPage() {
         method: 'PUT',
         body: JSON.stringify({
           browser_bookmarks_json: JSON.stringify(bookmarks),
-          browser_history_json: JSON.stringify(history),
+          browser_history_json: JSON.stringify(history.slice(0, MAX_HISTORY)),
         }),
-      }).catch(() => { /* non-blocking — retried on next change, same pattern as DesktopPage */ });
-    }, BOOKMARKS_SAVE_DEBOUNCE_MS);
+      }).catch(() => {});
+    }, SAVE_DEBOUNCE_MS);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [bookmarks, history]);
 
-  const updateTab = useCallback((id: string, patch: Partial<BrowserTab>) => {
-    setTabs(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
-  }, []);
-
-  const recordHistory = useCallback((url: string, title: string) => {
-    if (url === NEW_TAB_URL) return;
-    setHistory(prev => [{ url, title, visitedAt: new Date().toISOString() }, ...prev].slice(0, MAX_HISTORY_ENTRIES));
-  }, []);
-
-  const navigateActiveTab = useCallback((rawUrl: string) => {
-    const url = normalizeAddressInput(rawUrl);
-    if (!isAllowedBrowserUrl(url)) {
-      updateTab(activeTab.id, { error: 'Blocked: only http/https URLs can be opened' });
-      return;
-    }
-    updateTab(activeTab.id, { url, loading: true, error: null });
-  }, [activeTab.id, updateTab]);
-
-  const handleAddressSubmit = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    navigateActiveTab(addressInput);
-  }, [addressInput, navigateActiveTab]);
-
-  const openNewTab = useCallback(() => {
-    const tab: BrowserTab = { id: makeTabId(), url: NEW_TAB_URL, title: '', canGoBack: false, canGoForward: false, loading: false, error: null };
-    setTabs(prev => [...prev, tab]);
-    setActiveTabId(tab.id);
-  }, []);
-
-  const closeTab = useCallback((id: string) => {
-    setTabs(prev => {
-      if (prev.length <= 1) return prev; // always keep at least one tab open
-      const next = prev.filter(t => t.id !== id);
-      if (id === activeTabId) setActiveTabId(next[next.length - 1].id);
-      delete webviewRefs.current[id];
-      return next;
-    });
-  }, [activeTabId]);
-
-  const dismissOwnershipNotice = useCallback(() => {
-    acknowledgeOwnership(user?.id);
-    setShowOwnershipNotice(false);
-  }, [user?.id]);
-
-  const goBack = useCallback(() => webviewRefs.current[activeTab.id]?.goBack(), [activeTab.id]);
-  const goForward = useCallback(() => webviewRefs.current[activeTab.id]?.goForward(), [activeTab.id]);
-  const reload = useCallback(() => webviewRefs.current[activeTab.id]?.reload(), [activeTab.id]);
-
-  const isBookmarked = bookmarks.some(b => b.url === activeTab.url);
-  const toggleBookmark = useCallback(() => {
-    if (isBookmarked) {
-      setBookmarks(prev => prev.filter(b => b.url !== activeTab.url));
-    } else {
-      setBookmarks(prev => [...prev, { id: makeTabId(), url: activeTab.url, title: activeTab.title }]);
-    }
-  }, [isBookmarked, activeTab.url, activeTab.title]);
-
-  // <webview> fires plain DOM events (not React synthetic events), so listeners
-  // are attached imperatively via the ref rather than JSX props.
+  // Resize webviews imperatively (CSS sizing isn't reliable for <webview>)
   useEffect(() => {
-    const el = webviewRefs.current[activeTab.id];
-    if (!el) return;
-
-    const onDidNavigate = () => {
-      const url = el.getURL();
-      updateTab(activeTab.id, {
-        url, loading: false, error: null, canGoBack: el.canGoBack(), canGoForward: el.canGoForward(),
-      });
-    };
-    const onTitleUpdated = (e: Event) => {
-      const title = (e as CustomEvent & { title?: string }).title ?? el.getTitle();
-      updateTab(activeTab.id, { title });
-      recordHistory(el.getURL(), title);
-    };
-    const onStartLoading = () => updateTab(activeTab.id, { loading: true });
-    const onStopLoading = () => updateTab(activeTab.id, {
-      loading: false, canGoBack: el.canGoBack(), canGoForward: el.canGoForward(),
-    });
-    // Per the design's Error Handling section: DNS/connection/cert failures
-    // are shown inline in the tab, filtered through the same fatal/non-fatal
-    // split main.js's own did-fail-load handler uses (FATAL_NET_ERRORS
-    // above) so a transient ABORTED/NETWORK_CHANGED blip doesn't flash a
-    // false error.
-    const onDidFailLoad = (e: Event) => {
-      const fe = e as Event & { errorCode?: number; errorDescription?: string; isMainFrame?: boolean };
-      if (!isFatalNavFailure(fe.errorCode ?? 0, fe.isMainFrame ?? true)) return;
-      updateTab(activeTab.id, {
-        loading: false,
-        error: fe.errorDescription || 'This page could not be loaded.',
-      });
-    };
-
-    el.addEventListener('did-navigate', onDidNavigate);
-    el.addEventListener('did-navigate-in-page', onDidNavigate);
-    el.addEventListener('page-title-updated', onTitleUpdated);
-    el.addEventListener('did-start-loading', onStartLoading);
-    el.addEventListener('did-stop-loading', onStopLoading);
-    el.addEventListener('did-fail-load', onDidFailLoad);
-    return () => {
-      el.removeEventListener('did-navigate', onDidNavigate);
-      el.removeEventListener('did-navigate-in-page', onDidNavigate);
-      el.removeEventListener('page-title-updated', onTitleUpdated);
-      el.removeEventListener('did-start-loading', onStartLoading);
-      el.removeEventListener('did-stop-loading', onStopLoading);
-      el.removeEventListener('did-fail-load', onDidFailLoad);
-    };
-  }, [activeTab.id, updateTab, recordHistory]);
-
-  // Electron's <webview> has been observed to NOT reliably pick up a
-  // CSS-only size (percentage width/height, `inset: 0`, `display: flex`)
-  // for its internal guest frame — confirmed live: a real page loaded but
-  // rendered only in a thin strip matching its own intrinsic content
-  // height, with the rest of the box blank, regardless of the CSS applied
-  // to the element or its container. The reliable fix used by real-world
-  // Electron apps is to explicitly set the element's pixel width/height in
-  // JS, driven by a ResizeObserver on the container, rather than trusting
-  // CSS sizing alone. Applied to every mounted webview (not just the active
-  // one) so a background tab is already correctly sized before it's
-  // switched to.
-  useEffect(() => {
-    const container = webviewContainerRef.current;
+    const container = containerRef.current;
     if (!container) return;
-
-    const applySize = () => {
+    const apply = () => {
       const { width, height } = container.getBoundingClientRect();
       for (const el of Object.values(webviewRefs.current)) {
         if (!el) continue;
@@ -314,185 +224,548 @@ export default function CompanyBrowserPage() {
         el.style.height = `${height}px`;
       }
     };
-
-    applySize();
-    // ResizeObserver doesn't exist in the jsdom test environment (only in a
-    // real browser/Electron renderer) — a single applySize() call on mount
-    // still covers that environment's needs.
+    apply();
     if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(applySize);
-    observer.observe(container);
-    return () => observer.disconnect();
+    const ro = new ResizeObserver(apply);
+    ro.observe(container);
+    return () => ro.disconnect();
   }, [tabs.length]);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 't') { e.preventDefault(); openNewTab(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'w') { e.preventDefault(); closeTab(activeTabId); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'r') { e.preventDefault(); reload(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'l') { e.preventDefault(); addressRef.current?.focus(); addressRef.current?.select(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); setPanel(p => p === 'find' ? null : 'find'); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); toggleBookmark(); }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'H') { e.preventDefault(); setPanel(p => p === 'history' ? null : 'history'); }
+      if ((e.ctrlKey || e.metaKey) && e.key === '=') { e.preventDefault(); zoomIn(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === '-') { e.preventDefault(); zoomOut(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === '0') { e.preventDefault(); resetZoom(); }
+      if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); goBack(); }
+      if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); goForward(); }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTabId, activeTab]);
+
+  // ── Tab management ──────────────────────────────────────────────────────────
+
+  const updateTab = useCallback((id: string, patch: Partial<BrowserTab>) => {
+    setTabs(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
+  }, []);
+
+  const recordHistory = useCallback((url: string, title: string) => {
+    if (!url || url === NEW_TAB_URL) return;
+    setHistory(prev => [{ url, title, visitedAt: new Date().toISOString() }, ...prev.filter(h => h.url !== url)].slice(0, MAX_HISTORY));
+  }, []);
+
+  const navigateTo = useCallback((rawUrl: string, tabId?: string) => {
+    const id = tabId ?? activeTab.id;
+    const url = normalize(rawUrl);
+    if (!isAllowed(url)) { updateTab(id, { error: 'Only http/https URLs are permitted.' }); return; }
+    updateTab(id, { url, loading: true, error: null });
+  }, [activeTab.id, updateTab]);
+
+  const openNewTab = useCallback((url?: string) => {
+    const tab: BrowserTab = { id: makeId(), url: url ?? NEW_TAB_URL, title: url ? url : 'New Tab', canGoBack: false, canGoForward: false, loading: !!url, error: null, zoom: DEFAULT_ZOOM };
+    setTabs(prev => [...prev, tab]);
+    setActiveTabId(tab.id);
+  }, []);
+
+  const closeTab = useCallback((id: string) => {
+    setTabs(prev => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter(t => t.id !== id);
+      if (id === activeTabId) setActiveTabId(next[Math.max(0, prev.findIndex(t => t.id === id) - 1)].id);
+      delete webviewRefs.current[id];
+      return next;
+    });
+  }, [activeTabId]);
+
+  const duplicateTab = useCallback(() => {
+    openNewTab(activeTab.url);
+  }, [activeTab.url, openNewTab]);
+
+  const pinTab = useCallback((id: string) => {
+    setTabs(prev => prev.map(t => t.id === id ? { ...t, pinned: !t.pinned } : t));
+  }, []);
+
+  const muteTab = useCallback((id: string) => {
+    const el = webviewRefs.current[id];
+    const tab = tabs.find(t => t.id === id);
+    if (!tab) return;
+    const next = !tab.muted;
+    el?.setAudioMuted?.(next);
+    setTabs(prev => prev.map(t => t.id === id ? { ...t, muted: next } : t));
+  }, [tabs]);
+
+  // ── Navigation ──────────────────────────────────────────────────────────────
+
+  const goBack = useCallback(() => webviewRefs.current[activeTab.id]?.goBack(), [activeTab.id]);
+  const goForward = useCallback(() => webviewRefs.current[activeTab.id]?.goForward(), [activeTab.id]);
+  const reload = useCallback(() => {
+    if (activeTab.loading) {
+      webviewRefs.current[activeTab.id]?.stop();
+      updateTab(activeTab.id, { loading: false });
+    } else {
+      webviewRefs.current[activeTab.id]?.reload();
+    }
+  }, [activeTab.id, activeTab.loading, updateTab]);
+
+  const goHome = useCallback(() => navigateTo('https://rmpgutahps.us/portal/login'), [navigateTo]);
+
+  // ── Zoom ───────────────────────────────────────────────────────────────────
+
+  const applyZoom = useCallback((factor: number) => {
+    const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round(factor * 10) / 10));
+    webviewRefs.current[activeTab.id]?.setZoomFactor?.(clamped);
+    updateTab(activeTab.id, { zoom: clamped });
+  }, [activeTab.id, updateTab]);
+
+  const zoomIn = useCallback(() => applyZoom((activeTab.zoom ?? DEFAULT_ZOOM) + ZOOM_STEP), [activeTab.zoom, applyZoom]);
+  const zoomOut = useCallback(() => applyZoom((activeTab.zoom ?? DEFAULT_ZOOM) - ZOOM_STEP), [activeTab.zoom, applyZoom]);
+  const resetZoom = useCallback(() => applyZoom(DEFAULT_ZOOM), [applyZoom]);
+
+  // ── Bookmarks ──────────────────────────────────────────────────────────────
+
+  const isBookmarked = bookmarks.some(b => b.url === activeTab.url);
+  const toggleBookmark = useCallback(() => {
+    if (activeTab.url === NEW_TAB_URL) return;
+    setBookmarks(prev =>
+      isBookmarked
+        ? prev.filter(b => b.url !== activeTab.url)
+        : [...prev, { id: makeId(), url: activeTab.url, title: activeTab.title || activeTab.url }]
+    );
+  }, [isBookmarked, activeTab.url, activeTab.title]);
+
+  const removeBookmark = useCallback((id: string) => {
+    setBookmarks(prev => prev.filter(b => b.id !== id));
+  }, []);
+
+  // ── Find in page ───────────────────────────────────────────────────────────
+
+  const doFind = useCallback((forward = true) => {
+    if (!findQuery) return;
+    webviewRefs.current[activeTab.id]?.findInPage?.(findQuery, { forward, matchCase: findMatchCase });
+  }, [activeTab.id, findQuery, findMatchCase]);
+
+  const stopFind = useCallback(() => {
+    webviewRefs.current[activeTab.id]?.stopFindInPage?.('clearSelection');
+    setPanel(null);
+  }, [activeTab.id]);
+
+  // ── Print ──────────────────────────────────────────────────────────────────
+
+  const printPage = useCallback(() => {
+    webviewRefs.current[activeTab.id]?.print?.();
+  }, [activeTab.id]);
+
+  // ── Copy URL ───────────────────────────────────────────────────────────────
+
+  const copyUrl = useCallback(() => {
+    navigator.clipboard.writeText(activeTab.url).catch(() => {});
+  }, [activeTab.url]);
+
+  // ── Dark reader ────────────────────────────────────────────────────────────
+
+  const toggleDarkReader = useCallback(async () => {
+    const el = webviewRefs.current[activeTab.id];
+    if (!el) return;
+    if (!darkReader) {
+      const key = await el.insertCSS?.(`
+        html { filter: invert(90%) hue-rotate(180deg) !important; }
+        img, video, canvas, [style*="background-image"] { filter: invert(100%) hue-rotate(180deg) !important; }
+      `);
+      darkReaderKeyRef.current = key ?? null;
+      setDarkReader(true);
+    } else {
+      setDarkReader(false);
+      darkReaderKeyRef.current = null;
+    }
+  }, [activeTab.id, darkReader]);
+
+  // ── Ownership notice ───────────────────────────────────────────────────────
+
+  const dismissNotice = useCallback(() => {
+    localStorage.setItem(ownershipKey(user?.id), '1');
+    setShowOwnershipNotice(false);
+  }, [user?.id]);
+
+  // ── Webview event wiring ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    const el = webviewRefs.current[activeTab.id];
+    if (!el) return;
+
+    const onNavigate = () => {
+      const url = el.getURL();
+      updateTab(activeTab.id, { url, loading: false, error: null, canGoBack: el.canGoBack(), canGoForward: el.canGoForward() });
+    };
+    const onTitleUpdated = (e: Event) => {
+      const title = (e as CustomEvent & { title?: string }).title ?? el.getTitle();
+      updateTab(activeTab.id, { title });
+      recordHistory(el.getURL(), title);
+    };
+    const onStartLoading = () => updateTab(activeTab.id, { loading: true });
+    const onStopLoading = () => updateTab(activeTab.id, { loading: false, canGoBack: el.canGoBack(), canGoForward: el.canGoForward() });
+    const onFailLoad = (e: Event) => {
+      const fe = e as Event & { errorCode?: number; errorDescription?: string; isMainFrame?: boolean };
+      if (!isFatalNavFailure(fe.errorCode ?? 0, fe.isMainFrame ?? true)) return;
+      updateTab(activeTab.id, { loading: false, error: fe.errorDescription || 'Page could not be loaded.' });
+    };
+    const onNewWindow = (e: Event) => {
+      const ne = e as Event & { url?: string };
+      if (ne.url && isAllowed(ne.url)) openNewTab(ne.url);
+    };
+
+    el.addEventListener('did-navigate', onNavigate);
+    el.addEventListener('did-navigate-in-page', onNavigate);
+    el.addEventListener('page-title-updated', onTitleUpdated);
+    el.addEventListener('did-start-loading', onStartLoading);
+    el.addEventListener('did-stop-loading', onStopLoading);
+    el.addEventListener('did-fail-load', onFailLoad);
+    el.addEventListener('new-window', onNewWindow);
+    return () => {
+      el.removeEventListener('did-navigate', onNavigate);
+      el.removeEventListener('did-navigate-in-page', onNavigate);
+      el.removeEventListener('page-title-updated', onTitleUpdated);
+      el.removeEventListener('did-start-loading', onStartLoading);
+      el.removeEventListener('did-stop-loading', onStopLoading);
+      el.removeEventListener('did-fail-load', onFailLoad);
+      el.removeEventListener('new-window', onNewWindow);
+    };
+  }, [activeTab.id, updateTab, recordHistory, openNewTab]);
+
+  // ── Rendering helpers ──────────────────────────────────────────────────────
+
+  const security = securityLabel(activeTab.url);
+  const isElectron = !!(window as any).electron?.isElectron;
+
+  const pinnedTabs = tabs.filter(t => t.pinned);
+  const regularTabs = tabs.filter(t => !t.pinned);
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-base)' }}>
-      <div role="tablist" className="flex items-center" style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}>
-        {tabs.map(tab => (
-          <div
-            key={tab.id}
-            role="tab"
-            aria-selected={tab.id === activeTabId}
-            onClick={() => setActiveTabId(tab.id)}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] cursor-pointer"
-            style={{
-              maxWidth: 180, borderRight: '1px solid var(--border-subtle)',
-              background: tab.id === activeTabId ? 'var(--surface-raised)' : 'transparent',
-              color: 'var(--text-primary)',
-            }}
-          >
-            <span className="truncate">{tab.title || 'New Tab'}</span>
-            <button
-              type="button"
-              aria-label="Close tab"
-              onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
-            >
-              <X className="w-3 h-3" style={{ color: 'var(--text-muted)' }} />
-            </button>
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--surface-base)', userSelect: 'none' }}>
+
+      {/* ── Tab strip ──────────────────────────────────────────────────────── */}
+      <div role="tablist" style={{ display: 'flex', alignItems: 'center', background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)', minHeight: 32, overflow: 'hidden' }}>
+        {/* Pinned tabs (compact) */}
+        {pinnedTabs.map(tab => (
+          <TabChip key={tab.id} tab={tab} active={tab.id === activeTabId} pinned onSelect={() => setActiveTabId(tab.id)} onClose={() => closeTab(tab.id)} onPin={() => pinTab(tab.id)} onMute={() => muteTab(tab.id)} onDuplicate={duplicateTab} />
         ))}
-        <button type="button" aria-label="New tab" onClick={openNewTab} className="p-1.5">
-          <Plus className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
+        {pinnedTabs.length > 0 && <div style={{ width: 1, background: 'var(--border-subtle)', alignSelf: 'stretch', margin: '4px 0' }} />}
+        {/* Regular tabs */}
+        <div style={{ display: 'flex', flex: 1, overflowX: 'auto', overflowY: 'hidden' }}>
+          {regularTabs.map(tab => (
+            <TabChip key={tab.id} tab={tab} active={tab.id === activeTabId} onSelect={() => setActiveTabId(tab.id)} onClose={() => closeTab(tab.id)} onPin={() => pinTab(tab.id)} onMute={() => muteTab(tab.id)} onDuplicate={duplicateTab} />
+          ))}
+        </div>
+        <button type="button" aria-label="New tab (Ctrl+T)" title="New tab (Ctrl+T)" onClick={() => openNewTab()} style={{ padding: '6px 8px', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
+          <Plus style={{ width: 13, height: 13, color: 'var(--text-secondary)' }} />
         </button>
       </div>
 
-      <div className="flex items-center gap-1 px-2 py-1" style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}>
-        <button type="button" aria-label="Back" onClick={goBack} disabled={!activeTab.canGoBack} className="p-1">
-          <ArrowLeft className="w-3.5 h-3.5" style={{ color: activeTab.canGoBack ? 'var(--text-secondary)' : 'var(--text-muted)' }} />
+      {/* ── Navigation bar ─────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '4px 6px', background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}>
+        {/* Back / Forward / Reload */}
+        <button type="button" aria-label="Back (Alt+←)" title="Back" onClick={goBack} disabled={!activeTab.canGoBack} style={navBtn(!activeTab.canGoBack)}>
+          <ArrowLeft style={{ width: 13, height: 13 }} />
         </button>
-        <button type="button" aria-label="Forward" onClick={goForward} disabled={!activeTab.canGoForward} className="p-1">
-          <ArrowRight className="w-3.5 h-3.5" style={{ color: activeTab.canGoForward ? 'var(--text-secondary)' : 'var(--text-muted)' }} />
+        <button type="button" aria-label="Forward (Alt+→)" title="Forward" onClick={goForward} disabled={!activeTab.canGoForward} style={navBtn(!activeTab.canGoForward)}>
+          <ArrowRight style={{ width: 13, height: 13 }} />
         </button>
-        <button type="button" aria-label="Reload" onClick={reload} className="p-1">
-          <RotateCw className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
+        <button type="button" aria-label={activeTab.loading ? 'Stop loading (Ctrl+R)' : 'Reload (Ctrl+R)'} title={activeTab.loading ? 'Stop' : 'Reload'} onClick={reload} style={navBtn(false)}>
+          {activeTab.loading
+            ? <X style={{ width: 13, height: 13, color: 'var(--sev-critical)' }} />
+            : <RotateCw style={{ width: 13, height: 13 }} />}
         </button>
-        <form onSubmit={handleAddressSubmit} className="flex-1">
-          <input
-            type="text"
-            role="textbox"
-            aria-label="Address"
-            value={addressInput}
-            onChange={(e) => setAddressInput(e.target.value)}
-            placeholder="Enter a URL"
-            className="w-full px-2 py-1 text-[11px]"
-            style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
-          />
-        </form>
-        <button type="button" aria-label={isBookmarked ? 'Remove bookmark' : 'Add bookmark'} onClick={toggleBookmark} className="p-1">
-          <Star className="w-3.5 h-3.5" fill={isBookmarked ? 'currentColor' : 'none'} style={{ color: 'var(--brand-gold)' }} />
+        <button type="button" aria-label="Home" title="Go to RMPG Portal" onClick={goHome} style={navBtn(false)}>
+          <Home style={{ width: 13, height: 13 }} />
         </button>
-        <button type="button" aria-label="History" onClick={() => setHistoryOpen(o => !o)} className="p-1">
-          <Clock className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
+
+        {/* Security indicator + address bar */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface-sunken, var(--surface-base))', border: '1px solid var(--border-subtle)', padding: '2px 8px' }}>
+          {activeTab.url !== NEW_TAB_URL && (
+            <span title={security.secure ? 'Secure connection (HTTPS)' : 'Not secure'}>
+              {security.secure
+                ? <Lock style={{ width: 11, height: 11, color: 'var(--accent-silver-400)' }} />
+                : <Unlock style={{ width: 11, height: 11, color: 'var(--sev-warn)' }} />}
+            </span>
+          )}
+          <form onSubmit={e => { e.preventDefault(); navigateTo(addressInput); }} style={{ flex: 1 }}>
+            <input
+              ref={addressRef}
+              role="textbox"
+              aria-label="Address bar (Ctrl+L)"
+              type="text"
+              value={addressInput}
+              onChange={e => setAddressInput(e.target.value)}
+              onFocus={e => e.target.select()}
+              placeholder="Enter URL or search…"
+              style={{ width: '100%', background: 'none', border: 'none', outline: 'none', fontSize: 11, color: 'var(--text-primary)', fontFamily: 'monospace' }}
+            />
+          </form>
+          {addressInput && (
+            <button type="button" onClick={() => { setAddressInput(''); addressRef.current?.focus(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              <X style={{ width: 10, height: 10, color: 'var(--text-muted)' }} />
+            </button>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <button type="button" aria-label={isBookmarked ? 'Remove bookmark (Ctrl+D)' : 'Add bookmark (Ctrl+D)'} title={isBookmarked ? 'Remove bookmark' : 'Add bookmark'} onClick={toggleBookmark} style={navBtn(false)}>
+          <Star style={{ width: 13, height: 13, fill: isBookmarked ? 'currentColor' : 'none', color: isBookmarked ? 'var(--accent-gold-300, #d9bd72)' : 'var(--text-secondary)' }} />
+        </button>
+        <button type="button" aria-label="Copy URL" title="Copy URL" onClick={copyUrl} style={navBtn(false)}>
+          <Copy style={{ width: 12, height: 12 }} />
+        </button>
+        <button type="button" aria-label="Zoom in (Ctrl+=)" title={`Zoom: ${Math.round((activeTab.zoom ?? DEFAULT_ZOOM) * 100)}%`} onClick={zoomIn} style={navBtn(false)}>
+          <ZoomIn style={{ width: 12, height: 12 }} />
+        </button>
+        <button type="button" aria-label="Zoom out (Ctrl+-)" title="Zoom out" onClick={zoomOut} style={navBtn(false)}>
+          <ZoomOut style={{ width: 12, height: 12 }} />
+        </button>
+        {(activeTab.zoom ?? DEFAULT_ZOOM) !== DEFAULT_ZOOM && (
+          <button type="button" aria-label="Reset zoom (Ctrl+0)" title="Reset zoom" onClick={resetZoom} style={{ ...navBtn(false), fontSize: 9, padding: '2px 4px', color: 'var(--accent-silver-400)' }}>
+            {Math.round((activeTab.zoom ?? 1) * 100)}%
+          </button>
+        )}
+        <button type="button" aria-label="Find in page (Ctrl+F)" title="Find in page" onClick={() => setPanel(p => p === 'find' ? null : 'find')} style={navBtn(panel === 'find')}>
+          <Search style={{ width: 12, height: 12 }} />
+        </button>
+        <button type="button" aria-label="Print (Ctrl+P)" title="Print page" onClick={printPage} style={navBtn(false)}>
+          <Printer style={{ width: 12, height: 12 }} />
+        </button>
+        <button type="button" aria-label="Dark mode" title={darkReader ? 'Disable dark reader' : 'Enable dark reader'} onClick={toggleDarkReader} style={navBtn(darkReader)}>
+          <Shield style={{ width: 12, height: 12 }} />
+        </button>
+        <button type="button" aria-label="History (Ctrl+Shift+H)" title="History" onClick={() => setPanel(p => p === 'history' ? null : 'history')} style={navBtn(panel === 'history')}>
+          <Clock style={{ width: 12, height: 12 }} />
+        </button>
+        <button type="button" aria-label="Bookmarks" title="Bookmarks" onClick={() => setPanel(p => p === 'bookmarks' ? null : 'bookmarks')} style={navBtn(panel === 'bookmarks')}>
+          <Bookmark style={{ width: 12, height: 12 }} />
+        </button>
+        <button type="button" aria-label="Downloads" title="Downloads" onClick={() => setPanel(p => p === 'downloads' ? null : 'downloads')} style={navBtn(panel === 'downloads')}>
+          <Download style={{ width: 12, height: 12 }} />
+        </button>
+        <button type="button" aria-label="Quick links" title="RMPG Quick Links" onClick={() => setPanel(p => p === 'quicklinks' ? null : 'quicklinks')} style={navBtn(panel === 'quicklinks')}>
+          <Globe style={{ width: 12, height: 12 }} />
         </button>
       </div>
 
+      {/* ── Bookmarks bar ──────────────────────────────────────────────────── */}
       {bookmarks.length > 0 && (
-        <div className="flex items-center gap-3 px-2 py-1" style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '2px 6px', background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)', overflowX: 'auto' }}>
           {bookmarks.map(b => (
-            <a
+            <button
               key={b.id}
-              role="link"
-              href="#"
-              onClick={(e) => { e.preventDefault(); navigateActiveTab(b.url); }}
-              className="text-[11px] truncate"
-              style={{ color: 'var(--text-primary)', maxWidth: 160 }}
+              type="button"
+              onClick={() => navigateTo(b.url)}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: 'var(--text-primary)', whiteSpace: 'nowrap', maxWidth: 140 }}
             >
-              {b.title || b.url}
-            </a>
+              <Star style={{ width: 9, height: 9, fill: 'currentColor', color: 'var(--accent-gold-300, #d9bd72)', flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.title || b.url}</span>
+            </button>
           ))}
         </div>
       )}
 
-      <div ref={webviewContainerRef} className="flex-1 relative">
-        {tabs.map(tab => (
-          <webview
-            key={tab.id}
-            ref={(el) => { webviewRefs.current[tab.id] = el; }}
-            src={tab.url}
-            // position/inset place the element; actual width/height are set
-            // imperatively in px by the ResizeObserver effect above — see
-            // its comment for why CSS-only sizing isn't reliable here.
-            style={{
-              position: 'absolute', inset: 0,
-              display: tab.id === activeTabId ? 'flex' : 'none',
-            }}
-            partition={`persist:company-browser-${tab.id}`}
+      {/* ── Find bar ───────────────────────────────────────────────────────── */}
+      {panel === 'find' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', background: 'var(--surface-raised)', borderBottom: '1px solid var(--border-subtle)' }}>
+          <input
+            autoFocus
+            type="text"
+            placeholder="Find in page…"
+            value={findQuery}
+            onChange={e => setFindQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') doFind(!e.shiftKey); if (e.key === 'Escape') stopFind(); }}
+            style={{ flex: 1, padding: '2px 6px', fontSize: 11, background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', outline: 'none' }}
           />
-        ))}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={findMatchCase} onChange={e => setFindMatchCase(e.target.checked)} />
+            Aa
+          </label>
+          <button type="button" onClick={() => doFind(false)} style={smallBtn}>↑</button>
+          <button type="button" onClick={() => doFind(true)} style={smallBtn}>↓</button>
+          <button type="button" aria-label="Close find bar" onClick={stopFind} style={{ ...smallBtn, color: 'var(--text-muted)' }}>
+            <X style={{ width: 10, height: 10 }} />
+          </button>
+        </div>
+      )}
 
-        {activeTab.error && (
-          <div
-            role="alert"
-            style={{
-              position: 'absolute', top: 0, left: 0, right: 0, padding: '8px 12px',
-              background: 'var(--sev-critical)', color: 'var(--text-primary)', fontSize: 11, zIndex: 1,
-            }}
-          >
-            {activeTab.error}
-          </div>
-        )}
+      {/* ── Quick links bar ────────────────────────────────────────────────── */}
+      {panel === 'quicklinks' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'var(--surface-raised)', borderBottom: '1px solid var(--border-subtle)', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 4 }}>RMPG Quick Links</span>
+          {RMPG_QUICK_LINKS.map(link => (
+            <button key={link.url} type="button" onClick={() => navigateTo(link.url)} style={{ padding: '2px 8px', fontSize: 10, background: 'rgba(195,204,214,0.06)', border: '1px solid rgba(195,204,214,0.1)', cursor: 'pointer', color: 'var(--text-primary)' }}>
+              {link.label}
+            </button>
+          ))}
+          <button type="button" onClick={() => setPanel(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+            <X style={{ width: 10, height: 10, color: 'var(--text-muted)' }} />
+          </button>
+        </div>
+      )}
 
-        {historyOpen && (
-          <div
-            style={{
-              position: 'absolute', top: 0, right: 0, bottom: 0, width: 280,
-              background: 'var(--surface-raised)', borderLeft: '1px solid var(--border-strong)', overflowY: 'auto',
-            }}
-          >
-            <div className="flex items-center justify-between px-2 py-1" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-              <span className="text-[11px] font-semibold" style={{ color: 'var(--text-primary)' }}>History</span>
-              <button type="button" aria-label="Clear history" onClick={() => setHistory([])}>
-                <Trash2 className="w-3 h-3" style={{ color: 'var(--text-muted)' }} />
-              </button>
+      {/* ── Progress bar ───────────────────────────────────────────────────── */}
+      {activeTab.loading && (
+        <div style={{ height: 2, background: 'rgba(195,204,214,0.1)', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', left: '-50%', width: '50%', height: '100%', background: 'var(--accent-silver-400, #c3ccd6)', animation: 'cbrowserSlide 1.2s linear infinite' }} />
+          <style>{`@keyframes cbrowserSlide { from { left: -50% } to { left: 150% } }`}</style>
+        </div>
+      )}
+
+      {/* ── Main content area ──────────────────────────────────────────────── */}
+      <div style={{ flex: 1, display: 'flex', position: 'relative', overflow: 'hidden' }}>
+        {/* Webview area */}
+        <div ref={containerRef} style={{ flex: 1, position: 'relative' }}>
+          {isElectron ? (
+            tabs.map(tab => (
+              <webview
+                key={tab.id}
+                ref={el => { webviewRefs.current[tab.id] = el; }}
+                src={tab.url}
+                style={{ position: 'absolute', inset: 0, display: tab.id === activeTabId ? 'flex' : 'none' }}
+                partition={`persist:cbrowser-${tab.id}`}
+              />
+            ))
+          ) : (
+            /* Non-Electron fallback */
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12 }}>
+              <WifiOff style={{ width: 32, height: 32, color: 'var(--text-muted)' }} />
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Company Browser requires the FlexOS desktop app</p>
+              {activeTab.url !== NEW_TAB_URL && (
+                <a href={activeTab.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: 'var(--brand-400)' }}>
+                  Open in system browser <ExternalLink style={{ width: 10, height: 10, display: 'inline' }} />
+                </a>
+              )}
             </div>
-            {history.map((h, i) => (
-              <div
-                key={`${h.url}_${h.visitedAt}_${i}`}
-                onClick={() => navigateActiveTab(h.url)}
-                className="px-2 py-1 text-[11px] truncate cursor-pointer"
-                style={{ color: 'var(--text-primary)', borderBottom: '1px solid var(--border-subtle)' }}
-              >
-                {h.title || h.url}
+          )}
+
+          {/* New tab page */}
+          {activeTab.url === NEW_TAB_URL && isElectron && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24, background: 'var(--surface-base)', zIndex: 1 }}>
+              <Shield style={{ width: 40, height: 40, color: 'var(--accent-silver-400)' }} />
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Company Browser</span>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 300 }}>
+                Rocky Mountain Protective Group — Authorized Personnel Only
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 400 }}>
+                {RMPG_QUICK_LINKS.map(link => (
+                  <button key={link.url} type="button" onClick={() => navigateTo(link.url)} style={{ padding: '6px 14px', fontSize: 11, background: 'rgba(195,204,214,0.06)', border: '1px solid rgba(195,204,214,0.1)', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                    {link.label}
+                  </button>
+                ))}
               </div>
-            ))}
+            </div>
+          )}
+
+          {/* Error overlay */}
+          {activeTab.error && (
+            <div role="alert" style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '8px 12px', background: 'rgba(239,68,68,0.12)', borderBottom: '1px solid rgba(239,68,68,0.2)', fontSize: 11, color: 'var(--sev-critical)', zIndex: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <WifiOff style={{ width: 13, height: 13, flexShrink: 0 }} />
+              {activeTab.error}
+              <button type="button" onClick={reload} style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Retry</button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Side panel ───────────────────────────────────────────────────── */}
+        {panel && panel !== 'find' && panel !== 'quicklinks' && (
+          <div style={{ width: 280, background: 'var(--surface-raised)', borderLeft: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                {panel === 'history' ? 'History' : panel === 'bookmarks' ? 'Bookmarks' : 'Downloads'}
+              </span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {panel === 'history' && (
+                  <button type="button" aria-label="Clear history" title="Clear history" onClick={() => setHistory([])} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+                    <Trash2 style={{ width: 11, height: 11, color: 'var(--text-muted)' }} />
+                  </button>
+                )}
+                <button type="button" aria-label="Close panel" onClick={() => setPanel(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+                  <X style={{ width: 11, height: 11, color: 'var(--text-muted)' }} />
+                </button>
+              </div>
+            </div>
+
+            {panel === 'history' && (history.length === 0
+              ? <EmptyState icon={Clock} message="No history yet" />
+              : history.map((h, i) => (
+                <PanelRow
+                  key={`${h.url}_${i}`}
+                  title={h.title || h.url}
+                  subtitle={new Date(h.visitedAt).toLocaleString()}
+                  onClick={() => navigateTo(h.url)}
+                  onRemove={() => setHistory(prev => prev.filter((_, j) => j !== i))}
+                />
+              ))
+            )}
+
+            {panel === 'bookmarks' && (bookmarks.length === 0
+              ? <EmptyState icon={Star} message="No bookmarks yet — press Ctrl+D to add one" />
+              : bookmarks.map(b => (
+                <PanelRow
+                  key={b.id}
+                  title={b.title || b.url}
+                  subtitle={b.url}
+                  onClick={() => navigateTo(b.url)}
+                  onRemove={() => removeBookmark(b.id)}
+                />
+              ))
+            )}
+
+            {panel === 'downloads' && (downloads.length === 0
+              ? <EmptyState icon={Download} message="No downloads this session" />
+              : downloads.map(d => (
+                <div key={d.id} style={{ padding: '6px 10px', borderBottom: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.filename}</div>
+                  <div style={{ fontSize: 9, color: d.status === 'failed' ? 'var(--sev-critical)' : 'var(--text-muted)', marginTop: 2 }}>{d.status}</div>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>
 
-      <div
-        className="px-2 py-1 text-[10px] text-center"
-        style={{ background: 'var(--surface-overlay)', borderTop: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}
-      >
-        © 2026 Rocky Mountain Protective Group, LLC — Internal Use Only, Authorized Personnel Only
+      {/* ── Status bar ─────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', padding: '2px 8px', background: 'var(--surface-overlay)', borderTop: '1px solid var(--border-subtle)', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
+          {activeTab.url !== NEW_TAB_URL && (
+            <>
+              {security.secure
+                ? <Wifi style={{ width: 9, height: 9, color: 'var(--accent-silver-400)' }} />
+                : <WifiOff style={{ width: 9, height: 9, color: 'var(--sev-warn)' }} />}
+              <span style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 400 }}>
+                {activeTab.loading ? 'Loading…' : activeTab.url}
+              </span>
+            </>
+          )}
+        </div>
+        <span style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.04em', flexShrink: 0 }}>
+          © 2026 Rocky Mountain Protective Group — Authorized Personnel Only
+        </span>
       </div>
 
+      {/* ── Ownership notice ────────────────────────────────────────────────── */}
       {showOwnershipNotice && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Company Browser ownership notice"
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10,
-          }}
-        >
-          <div
-            style={{
-              background: 'var(--surface-raised)', border: '1px solid var(--border-strong)',
-              padding: 20, maxWidth: 420, textAlign: 'center',
-            }}
-          >
-            <p className="text-[12px]" style={{ color: 'var(--text-primary)' }}>
-              Company Browser is proprietary software owned by Rocky Mountain Protective Group, LLC.
+        <div role="dialog" aria-modal aria-label="Company Browser notice" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20 }}>
+          <div style={{ background: 'var(--surface-raised)', border: '1px solid rgba(195,204,214,0.15)', padding: 28, maxWidth: 440, textAlign: 'center', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
+            <Shield style={{ width: 28, height: 28, color: 'var(--accent-silver-400)', margin: '0 auto 12px' }} />
+            <p style={{ fontSize: 12, color: 'var(--text-primary)', lineHeight: 1.7, margin: '0 0 16px' }}>
+              Company Browser is proprietary software owned by <strong>Rocky Mountain Protective Group, LLC</strong>.
               It is provided for internal use only, restricted to authorized RMPG personnel.
               Unauthorized access, copying, or distribution is prohibited.
             </p>
-            <button
-              type="button"
-              onClick={dismissOwnershipNotice}
-              className="mt-3 px-3 py-1 text-[11px]"
-              style={{ background: 'var(--rmpg-700)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }}
-            >
+            <button type="button" onClick={dismissNotice} style={{ padding: '7px 20px', fontSize: 11, fontWeight: 600, background: 'rgba(195,204,214,0.1)', border: '1px solid rgba(195,204,214,0.2)', color: 'var(--text-primary)', cursor: 'pointer', letterSpacing: '0.04em' }}>
               I Understand
             </button>
           </div>
@@ -501,3 +774,87 @@ export default function CompanyBrowserPage() {
     </div>
   );
 }
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function TabChip({ tab, active, pinned, onSelect, onClose, onPin, onMute, onDuplicate }: {
+  tab: BrowserTab; active: boolean; pinned?: boolean;
+  onSelect: () => void; onClose: () => void; onPin: () => void; onMute: () => void; onDuplicate: () => void;
+}) {
+  const [ctx, setCtx] = useState(false);
+
+  return (
+    <div
+      role="tab"
+      aria-selected={active}
+      onClick={onSelect}
+      onContextMenu={e => { e.preventDefault(); setCtx(v => !v); }}
+      style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 4, padding: pinned ? '4px 8px' : '4px 6px', minWidth: pinned ? 0 : 100, maxWidth: pinned ? 36 : 180, borderRight: '1px solid var(--border-subtle)', cursor: 'pointer', background: active ? 'var(--surface-raised)' : 'transparent', flexShrink: pinned ? 0 : undefined }}
+    >
+      {tab.loading && <span style={{ width: 8, height: 8, borderRadius: '50%', border: '1.5px solid var(--accent-silver-400)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />}
+      {!tab.loading && <Globe style={{ width: 9, height: 9, color: 'var(--text-muted)', flexShrink: 0 }} />}
+      {!pinned && <span style={{ fontSize: 10, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{tab.title || 'New Tab'}</span>}
+      {tab.muted && <VolumeX style={{ width: 9, height: 9, color: 'var(--text-muted)', flexShrink: 0 }} />}
+      {!pinned && (
+        <button type="button" aria-label="Close tab" onClick={e => { e.stopPropagation(); onClose(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}>
+          <X style={{ width: 9, height: 9, color: 'var(--text-muted)' }} />
+        </button>
+      )}
+      {ctx && (
+        <div onClick={e => e.stopPropagation()} onMouseLeave={() => setCtx(false)} style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', minWidth: 160 }}>
+          {[
+            { label: tab.pinned ? 'Unpin Tab' : 'Pin Tab', action: onPin },
+            { label: tab.muted ? 'Unmute Tab' : 'Mute Tab', action: onMute },
+            { label: 'Duplicate Tab', action: onDuplicate },
+            { label: 'Close Tab', action: onClose },
+          ].map(item => (
+            <button key={item.label} type="button" onClick={() => { item.action(); setCtx(false); }} style={{ display: 'block', width: '100%', padding: '6px 12px', textAlign: 'left', fontSize: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)' }}>
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PanelRow({ title, subtitle, onClick, onRemove }: { title: string; subtitle?: string; onClick: () => void; onRemove?: () => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', padding: '5px 10px', gap: 6 }}>
+      <div onClick={onClick} style={{ flex: 1, cursor: 'pointer', overflow: 'hidden' }}>
+        <div style={{ fontSize: 10, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</div>
+        {subtitle && <div style={{ fontSize: 9, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{subtitle}</div>}
+      </div>
+      {onRemove && (
+        <button type="button" aria-label="Remove" onClick={e => { e.stopPropagation(); onRemove(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, flexShrink: 0 }}>
+          <X style={{ width: 9, height: 9, color: 'var(--text-muted)' }} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8, flex: 1 }}>
+      <Icon style={{ width: 20, height: 20, color: 'var(--text-muted)' }} />
+      <span style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.6 }}>{message}</span>
+    </div>
+  );
+}
+
+// ── Style helpers ─────────────────────────────────────────────────────────────
+
+function navBtn(active: boolean): React.CSSProperties {
+  return {
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: 4, background: active ? 'rgba(195,204,214,0.1)' : 'none',
+    border: 'none', cursor: 'pointer',
+    color: active ? 'var(--accent-silver-400, #c3ccd6)' : 'var(--text-secondary)',
+  };
+}
+
+const smallBtn: React.CSSProperties = {
+  padding: '2px 6px', fontSize: 10, background: 'rgba(195,204,214,0.06)',
+  border: '1px solid rgba(195,204,214,0.1)', cursor: 'pointer', color: 'var(--text-primary)',
+};

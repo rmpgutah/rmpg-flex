@@ -2204,4 +2204,28 @@ auth.post('/recover-all', async (c) => {
   }
 });
 
+// ── GET /auth/users/list — public user picker for the FlexOS login screen ──
+// Returns display-safe fields only (no password hashes, no secrets).
+// Auth is intentionally NOT required — the login screen calls this before
+// a session exists. Only active accounts are returned; suspended/inactive
+// accounts are excluded so they don't appear on the picker.
+auth.get('/users/list', async (c) => {
+  try {
+    const db = c.env.DB;
+    const rows = await db
+      .prepare(
+        `SELECT id, username, first_name, last_name, badge_number, role
+         FROM users
+         WHERE status = 'active'
+         ORDER BY last_name ASC, first_name ASC
+         LIMIT 50`
+      )
+      .all<{ id: number; username: string; first_name: string; last_name: string; badge_number: string | null; role: string }>();
+    return c.json({ users: rows.results ?? [] });
+  } catch (err) {
+    console.error('GET /auth/users/list failed:', err);
+    return c.json({ users: [] }, 500);
+  }
+});
+
 export default auth;
