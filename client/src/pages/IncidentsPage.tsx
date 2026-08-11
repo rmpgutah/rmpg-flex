@@ -1458,9 +1458,9 @@ export default function IncidentsPage() {
                 timestamp: n.timestamp ?? undefined,
               }));
             } else {
-              // Use safeDateTimeStr — raw `new Date(x).toLocaleString()` parses
-              // "YYYY-MM-DD HH:MM:SS" inconsistently (Chrome=local, others=UTC),
-              // and the DB strings are MST-stamped.
+              // Use safeDateTimeStr — raw toLocaleString() on a naive UTC timestamp
+              // parses inconsistently (Chrome=local, others=UTC) and the DB strings
+              // are MST-stamped. See parseTimestamp() in dateUtils.ts.
               pdfData.call_notes = callDetail.notes.map((n: any) =>
                 `[${n.timestamp ? safeDateTimeStr(n.timestamp, '') : ''}] ${n.author || 'System'}: ${n.text || ''}`
               ).join('\n');
