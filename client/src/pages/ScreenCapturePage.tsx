@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Camera, Clipboard, Save, Tag, Square, Trash2, Paperclip, AlertCircle } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -58,7 +59,7 @@ function buildFilename(): string {
 
 function formatTimestamp(ts: string): string {
   try {
-    return new Date(ts).toLocaleString('en-US', {
+    return parseTimestamp(ts).toLocaleString('en-US', {
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
     });
   } catch {

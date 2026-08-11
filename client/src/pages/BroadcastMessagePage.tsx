@@ -3,6 +3,7 @@ import { Megaphone, Send, Clock, AlertTriangle, CheckCircle, X } from 'lucide-re
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
+import { parseTimestamp } from '../utils/dateUtils';
 
 type Priority = 'routine' | 'urgent' | 'emergency';
 type Target = 'all' | 'shift' | 'unit';
@@ -54,7 +55,7 @@ function canSendEmergency(role: string): boolean {
 }
 
 function formatTime(iso: string): string {
-  const d = new Date(iso);
+  const d = parseTimestamp(iso);
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) +
     ' ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }

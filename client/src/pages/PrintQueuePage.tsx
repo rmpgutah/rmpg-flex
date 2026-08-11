@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Printer, RefreshCw, X, Pause, Play, Trash2 } from 'lucide-react';
 // apiFetch retained for future PDF fetch integration
 import { apiFetch } from '../hooks/useApi'; // eslint-disable-line @typescript-eslint/no-unused-vars
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface PrintJob {
   id: string;
@@ -28,7 +29,7 @@ function getElectron(): ElectronPrint | undefined {
 }
 
 function relativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMs = Date.now() - parseTimestamp(iso).getTime();
   const diffMin = Math.floor(diffMs / 60000);
   if (diffMin < 60) return `${diffMin}m ago`;
   const diffHr = Math.floor(diffMin / 60);

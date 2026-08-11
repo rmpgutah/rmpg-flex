@@ -28,6 +28,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -81,7 +82,7 @@ function formatBytes(bytes?: number): string {
 function formatDate(ts?: string): string {
   if (!ts) return '—';
   try {
-    return new Date(ts).toLocaleString('en-US', {
+    return parseTimestamp(ts).toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',

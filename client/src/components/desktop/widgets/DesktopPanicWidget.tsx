@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 type PanicPhase = 'idle' | 'holding' | 'active' | 'error';
 
@@ -337,7 +338,7 @@ export default function DesktopPanicWidget() {
           opacity: 0.6,
           lineHeight: 1.3,
         }}>
-          Last: {new Date(lastActivation).toLocaleString('en-US', {
+          Last: {parseTimestamp(lastActivation).toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',
             hour: '2-digit',

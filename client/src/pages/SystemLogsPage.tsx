@@ -3,6 +3,7 @@ import { Terminal, RefreshCw, Download, Trash2, ChevronDown, ChevronRight, Monit
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface ErrorLogEntry {
   id: number;
@@ -29,7 +30,7 @@ const CATEGORY_OPTIONS: CategoryFilter[] = ['ALL', 'route', 'cron', 'integration
 const PAGE_LIMIT = 50;
 
 function timeAgo(isoString: string): string {
-  const diff = Date.now() - new Date(isoString).getTime();
+  const diff = Date.now() - parseTimestamp(isoString).getTime();
   const s = Math.floor(diff / 1000);
   if (s < 60) return `${s}s ago`;
   const m = Math.floor(s / 60);
@@ -111,7 +112,7 @@ function LogRow({ entry }: LogRowProps) {
               </>
             )}
             <span className="text-fg-secondary">Timestamp</span>
-            <span className="text-rmpg-200">{new Date(entry.created_at).toLocaleString()}</span>
+            <span className="text-rmpg-200">{parseTimestamp(entry.created_at).toLocaleString()}</span>
           </div>
           {entry.details !== undefined && entry.details !== null && (
             <pre className="bg-surface-sunken rounded-[2px] p-2 text-[10px] font-mono text-rmpg-200 overflow-x-auto whitespace-pre-wrap break-all">

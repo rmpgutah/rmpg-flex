@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { WifiOff, RefreshCw, Trash2, CheckCircle } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { withAlpha } from '../utils/withAlpha';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface SyncQueueItem {
   id: string;
@@ -28,7 +29,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 function formatTime(iso: string): string {
   try {
-    const d = new Date(iso);
+    const d = parseTimestamp(iso);
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   } catch {
     return iso;

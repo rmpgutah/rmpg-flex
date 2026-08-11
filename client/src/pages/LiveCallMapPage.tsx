@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MapPin, ChevronDown, ChevronRight, Volume2, VolumeX, ExternalLink, RefreshCw } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface CallUnit {
   unit_id: number;
@@ -52,7 +53,7 @@ function playP1Beep(): void {
 }
 
 function getElapsed(createdAt: string): string {
-  const diff = Date.now() - new Date(createdAt).getTime();
+  const diff = Date.now() - parseTimestamp(createdAt).getTime();
   if (isNaN(diff) || diff < 0) return '—';
   const totalSec = Math.floor(diff / 1000);
   const h = Math.floor(totalSec / 3600);
@@ -325,10 +326,10 @@ export default function LiveCallMapPage() {
   const sorted = [...filtered].sort((a, b) => {
     if (sort === 'priority') {
       if (a.priority !== b.priority) return a.priority - b.priority;
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return parseTimestamp(a.created_at).getTime() - parseTimestamp(b.created_at).getTime();
     }
     // by time (oldest first = longest running)
-    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    return parseTimestamp(a.created_at).getTime() - parseTimestamp(b.created_at).getTime();
   });
 
   // Group by district

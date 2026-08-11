@@ -3,6 +3,7 @@ import { NotebookPen, Plus, Trash2, Eye, EyeOff, Users, Tag, X } from 'lucide-re
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface ShiftNote {
   id: number;
@@ -27,7 +28,7 @@ function todayIso(): string {
 
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString('en-US', {
+    return parseTimestamp(iso).toLocaleTimeString('en-US', {
       hour: '2-digit', minute: '2-digit', hour12: true,
     });
   } catch {

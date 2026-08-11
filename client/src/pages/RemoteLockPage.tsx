@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Lock, Unlock, AlertTriangle, Search, ShieldOff, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface LockUnit {
   unit_id: string;
@@ -45,7 +46,7 @@ const BTN_BASE: React.CSSProperties = {
 function fmtTs(ts?: string): string {
   if (!ts) return '';
   try {
-    return new Date(ts).toLocaleString('en-US', {
+    return parseTimestamp(ts).toLocaleString('en-US', {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
     });
   } catch {

@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Search, X, AlertTriangle, Car, User, MapPin, FileText, Clock, ChevronDown } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
+import { parseTimestamp } from '../utils/dateUtils';
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN',
@@ -71,12 +72,12 @@ function saveHistory(plate: string, state: string): void {
 }
 
 function formatTs(ts: number): string {
-  const d = new Date(ts);
+  const d = new Date(ts); // new-date-ok — numeric Unix ms, not a D1 string
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatSightingTs(raw: string): string {
-  const d = new Date(raw);
+  const d = parseTimestamp(raw);
   return d.toLocaleString([], {
     month: 'short',
     day: 'numeric',
