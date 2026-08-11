@@ -415,8 +415,13 @@ function runTone(successRate: number): {
   if (successRate >= RUN_TONE_NEUTRAL_AT) {
     return { accent: 'silver', title: 'Run Complete', icon: CheckCircle2 };
   }
-  // Below the neutral band the run still finished — say so accurately rather
-  // than congratulating. "Closed Out" states the fact without implying a win.
+  // Amber band: some attempts were made but <40% succeeded — a caution signal,
+  // not a celebration, but also not a blank slate. 0% (all doors closed, no
+  // serves possible) stays silver — that's a diligent documented outcome, not a
+  // performance concern. A slow day is never red (not a safety event).
+  if (successRate > 0) {
+    return { accent: 'amber', title: 'Run Closed Out', icon: XCircle };
+  }
   return { accent: 'silver', title: 'Run Closed Out', icon: ClipboardCheck };
 }
 
@@ -438,11 +443,11 @@ function CompletionBanner({ startedAt, served, total }: { startedAt: number | nu
       <ToneIcon size={18} className={`${styles.icon} flex-shrink-0 mt-0.5`} aria-hidden />
       <div>
         <div className={`text-[12px] font-bold mb-0.5 ${styles.title}`}>{tone.title}</div>
-        <div className="text-[11px] text-rmpg-300">
+        <div className="text-[11px] text-text-secondary">
           {served}/{total} served ({successRate}% success rate)
           {elapsed && elapsed > 0 && ` · ${fmtDuration(elapsed)} total`}
         </div>
-        <div className="text-[9px] text-rmpg-500 mt-1 uppercase tracking-wide">
+        <div className="text-[9px] text-fg-muted mt-1 uppercase tracking-wide">
           All active jobs have been resolved for today.
         </div>
       </div>
