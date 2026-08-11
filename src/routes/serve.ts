@@ -1076,6 +1076,38 @@ sv.put('/:id', async (c) => {
   return c.json({ success: true });
 });
 
+// PATCH /:id/address-class — operator confirms the serve location's address class
+// so the auto-scheduler can apply business-hours windows for genuine corporate offices.
+// Updates parsed_data._intake.address_class in-place via json_set; leaves every
+// other key in parsed_data untouched.
+sv.patch('/:id/address-class', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const body = await c.req.json<{ klass?: string; confirmed?: boolean }>().catch(() => ({} as { klass?: string; confirmed?: boolean }));
+  const VALID_KLASS = new Set(['residential', 'business', 'unknown']);
+  const klass = typeof body.klass === 'string' && VALID_KLASS.has(body.klass) ? body.klass : null;
+  const confirmed = typeof body.confirmed === 'boolean' ? body.confirmed : null;
+  if (klass === null && confirmed === null) return c.json({ error: 'Provide klass and/or confirmed' }, 400);
+  const db = getDb(c.env);
+  // json_set creates the path when it does not exist (safe on rows that predate
+  // commitIntake, which is all rows without an OCR intake).
+  const sets: string[] = ["updated_at = datetime('now')"];
+  const args: (string | number | null)[] = [];
+  if (klass !== null) {
+    sets.push(`parsed_data = json_set(COALESCE(parsed_data, '{}'), '$._intake.address_class.klass', ?)`);
+    args.push(klass);
+  }
+  if (confirmed !== null) {
+    sets.push(`parsed_data = json_set(COALESCE(parsed_data, '{}'), '$._intake.address_class.confirmed', ?)`);
+    args.push(confirmed ? 1 : 0);
+  }
+  args.push(id);
+  await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  return c.json({ success: true, klass, confirmed });
+});
+
 // ─────────────────────────────────────────────────────────────
 // Attempts — richer than the intake variant (gps + photo refs)
 // ─────────────────────────────────────────────────────────────
