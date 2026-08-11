@@ -101,6 +101,8 @@ jobs:
           npx --yes wrangler@4 r2 object put "$bucket/$($exe.Name)" --file "$($exe.Name)" --remote
           npx --yes wrangler@4 r2 object put "$bucket/$($exe.Name).blockmap" --file "$($exe.Name).blockmap" --remote
           npx --yes wrangler@4 r2 object put "$bucket/latest.yml" --file "latest.yml" --remote --content-type "text/yaml"
+          # Publish the provisioning script so IT can always grab the latest from the feed
+          npx --yes wrangler@4 r2 object put "$bucket/provision.ps1" --file "${{ github.workspace }}/desktop/scripts/provision.ps1" --remote --content-type "text/plain"
 
       - name: Verify feed
         shell: bash

@@ -3298,6 +3298,8 @@ export interface ServeJob {
   jurisdiction: string | null;
   client_name: string | null;
   attorney_name: string | null;
+  plaintiff_name: string | null;
+  defendant_name: string | null;
   // Matches the serve_queue.priority CHECK constraint.
   priority: 'routine' | 'normal' | 'rush' | 'urgent';
   time_window: 'morning' | 'afternoon' | 'evening' | 'anytime';

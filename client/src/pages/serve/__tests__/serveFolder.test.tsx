@@ -40,6 +40,8 @@ function makeJob(overrides: Partial<ServeJob> = {}): ServeJob {
     jurisdiction: 'Salt Lake County',
     client_name: 'RMPG',
     attorney_name: null,
+    plaintiff_name: null,
+    defendant_name: null,
     priority: 'normal',
     time_window: 'anytime',
     deadline: null,
