@@ -34,6 +34,16 @@ interface DesktopWindowManagerContextValue {
   restoreAll: (ids: string[]) => void;
   toggleAlwaysOnTop: (id: string) => void;
   setWindowOpacity: (id: string, opacity: number) => void;
+  /** Minimizes all windows except the given id (Aero Shake). */
+  minimizeOthers: (exceptId: string) => void;
+  /** Cascades all visible (non-minimized) windows in a stair-step pattern. */
+  cascade: (desktopW?: number, desktopH?: number) => void;
+  /** Tiles all visible windows horizontally (side by side). */
+  tileHorizontal: (desktopW?: number, desktopH?: number) => void;
+  /** Tiles all visible windows vertically (stacked). */
+  tileVertical: (desktopW?: number, desktopH?: number) => void;
+  /** ID of the topmost (highest zIndex) non-minimized window, or null. */
+  focusedId: string | null;
 }
 
 const SESSION_KEY = 'rmpg_desktop_windows';
@@ -168,9 +178,58 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     commit(windowsRef.current.map(w => w.id === id ? { ...w, opacity: clamped } : w));
   }, [commit]);
 
+  const minimizeOthers = useCallback((exceptId: string) => {
+    commit(windowsRef.current.map(w => w.id === exceptId ? w : { ...w, minimized: true }));
+  }, [commit]);
+
+  const cascade = useCallback((desktopW = window.innerWidth, desktopH = window.innerHeight) => {
+    const visible = windowsRef.current.filter(w => !w.minimized);
+    if (visible.length === 0) return;
+    const cascadeW = Math.min(900, desktopW - 120);
+    const cascadeH = Math.min(600, desktopH - 120);
+    const offset = 28;
+    const sorted = [...visible].sort((a, b) => a.zIndex - b.zIndex);
+    commit(windowsRef.current.map(w => {
+      const idx = sorted.findIndex(v => v.id === w.id);
+      if (idx < 0) return w;
+      return { ...w, maximized: false, x: 40 + idx * offset, y: 40 + idx * offset, width: cascadeW, height: cascadeH };
+    }));
+  }, [commit]);
+
+  const tileHorizontal = useCallback((desktopW = window.innerWidth, desktopH = window.innerHeight) => {
+    const visible = windowsRef.current.filter(w => !w.minimized);
+    if (visible.length === 0) return;
+    const colW = Math.floor(desktopW / visible.length);
+    const sorted = [...visible].sort((a, b) => a.zIndex - b.zIndex);
+    commit(windowsRef.current.map(w => {
+      const idx = sorted.findIndex(v => v.id === w.id);
+      if (idx < 0) return w;
+      return { ...w, maximized: false, x: idx * colW, y: 0, width: colW, height: desktopH };
+    }));
+  }, [commit]);
+
+  const tileVertical = useCallback((desktopW = window.innerWidth, desktopH = window.innerHeight) => {
+    const visible = windowsRef.current.filter(w => !w.minimized);
+    if (visible.length === 0) return;
+    const rowH = Math.floor(desktopH / visible.length);
+    const sorted = [...visible].sort((a, b) => a.zIndex - b.zIndex);
+    commit(windowsRef.current.map(w => {
+      const idx = sorted.findIndex(v => v.id === w.id);
+      if (idx < 0) return w;
+      return { ...w, maximized: false, x: 0, y: idx * rowH, width: desktopW, height: rowH };
+    }));
+  }, [commit]);
+
+  const focusedId = windows.reduce<string | null>((best, w) => {
+    if (w.minimized) return best;
+    if (!best) return w.id;
+    const bestWin = windows.find(x => x.id === best);
+    return (bestWin && w.zIndex > bestWin.zIndex) ? w.id : best;
+  }, null);
+
   return (
     <DesktopWindowManagerContext.Provider
-      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity }}
+      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, cascade, tileHorizontal, tileVertical, focusedId }}
     >
       {children}
     </DesktopWindowManagerContext.Provider>

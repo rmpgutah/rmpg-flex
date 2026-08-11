@@ -188,7 +188,7 @@ export default function DeviceHealthPage() {
         diskFreeGb = sysInfo?.disk_free_gb ?? null;
       }
       try { networks = ((await el.getNetworkInterfaces?.()) as NetworkInterface[] | null) ?? []; } catch {}
-      try { battery = (await el.getBattery?.()) as BatteryInfo | null ?? null; } catch {}
+      try { battery = (await el.getBatteryStatus?.()) as BatteryInfo | null ?? null; } catch {}
       try { appVersion = (await el.getVersion?.()) as string | null ?? null; } catch {}
     }
 

@@ -180,8 +180,10 @@ export default function SystemLogsPage() {
 
   useEffect(() => {
     if (activeTab === 'desktop') {
-      const lines = window.electron?.getElectronLogs?.() ?? [];
-      setDesktopLogs(lines);
+      (async () => {
+        const lines = (await window.electron?.getAppLogs?.()) ?? [];
+        setDesktopLogs(lines);
+      })();
     }
   }, [activeTab]);
 
@@ -378,7 +380,7 @@ export default function SystemLogsPage() {
           <div className="p-3">
             {desktopLogs.length === 0 ? (
               <div className="text-center py-12 text-fg-muted text-[11px]">
-                {window.electron?.getElectronLogs
+                {window.electron?.getAppLogs
                   ? 'No desktop log lines available.'
                   : 'Desktop log bridge unavailable (not running in Electron).'}
               </div>

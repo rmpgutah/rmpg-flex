@@ -57,7 +57,7 @@ export default function OfflineQueuePage() {
   const [clearing, setClearing] = useState(false);
 
   const fetchQueue = useCallback(async () => {
-    const electronQueue = await window.electron?.getSyncQueue?.();
+    const electronQueue = await window.electron?.getSyncQueueDetail?.();
     if (Array.isArray(electronQueue)) {
       setQueue(electronQueue as SyncQueueItem[]);
     } else {
@@ -86,7 +86,7 @@ export default function OfflineQueuePage() {
   const handleRetry = useCallback(async (id: string) => {
     setRetryingId(id);
     try {
-      await window.electron?.retrySync?.(id);
+      await window.electron?.retryFailedSyncItem?.(id);
       await fetchQueue();
     } finally {
       setRetryingId(null);
@@ -96,17 +96,20 @@ export default function OfflineQueuePage() {
   const handleRetryAll = useCallback(async () => {
     setRetryingAll(true);
     try {
-      await window.electron?.retryAllSync?.();
+      const failed = queue.filter(i => i.status === 'failed');
+      for (const item of failed) {
+        await window.electron?.retryFailedSyncItem?.(item.id);
+      }
       await fetchQueue();
     } finally {
       setRetryingAll(false);
     }
-  }, [fetchQueue]);
+  }, [fetchQueue, queue]);
 
   const handleClearFailed = useCallback(async () => {
     setClearing(true);
     try {
-      await window.electron?.clearFailedSync?.();
+      await window.electron?.clearFailedSyncItems?.();
       await fetchQueue();
     } finally {
       setClearing(false);
