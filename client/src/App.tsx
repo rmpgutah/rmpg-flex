@@ -4,9 +4,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
 import { NavTripProvider } from './context/NavTripContext';
-import { ToastProvider, useToast } from './components/ToastProvider';
+import { ToastProvider } from './components/ToastProvider';
 import MDTBridge from './components/MDTBridge';
-import DialerPanel from './components/DialerPanel';
 import { ContextMenuProvider } from './context/ContextMenuContext';
 import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import { GlobalSearch } from './components/GlobalSearch';
@@ -727,22 +726,6 @@ function AppRoutes() {
   );
 }
 
-function DialerPanelMount() {
-  const { isAuthenticated } = useAuth();
-  const { addToast } = useToast();
-  const location = useLocation();
-  // Navigation page is full-screen and manages its own z-stack; the floating
-  // Dialer chip at z-[9998] renders on top of every HUD element there and
-  // blocks map/instrument interaction — hide it for the duration of that route.
-  if (!isAuthenticated || location.pathname === '/navigate') return null;
-  return (
-    <DialerPanel
-      onRinging={(message) => addToast(message, 'warning')}
-      onDuress={(message) => addToast(message, 'error')}
-    />
-  );
-}
-
 export default function App() {
   // TWO nested boundaries by design (defense in depth):
   //  • OUTER — sits above every context provider. A render/effect throw inside
@@ -769,7 +752,6 @@ export default function App() {
                     <MDTBridge />
                     <AndroidUpdateChecker />
                     <ButtonHealthOverlay />
-                    <DialerPanelMount />
                     <AppRoutes />
                   </ErrorBoundary>
                 </ContextMenuProvider>

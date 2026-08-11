@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, Route, MapPin, ChevronUp, ChevronDown, CheckSquare, Square,
-  Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical,
+  Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical, Trash2,
 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../../utils/webglRecovery';
@@ -355,6 +355,14 @@ export default function ServeRoutePlanner({
   const routeMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const currentLocMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const routeSourceIdRef = useRef<string | null>(null);
+  const returnRouteSourceIdRef = useRef<string | null>(null);
+  const [returnLegMiles, setReturnLegMiles] = useState(0);
+
+  // Reset derived stats when planner opens
+  useEffect(() => {
+    if (!isOpen) return;
+    setReturnLegMiles(0);
+  }, [isOpen]);
 
   // Initialize stops from jobs
   useEffect(() => {
@@ -603,6 +611,9 @@ export default function ServeRoutePlanner({
   }, []);
   const selectAll = useCallback(() => setStops(prev => prev.map(s => ({ ...s, selected: true }))), []);
   const deselectAll = useCallback(() => setStops(prev => prev.map(s => ({ ...s, selected: false }))), []);
+  const clearFinished = useCallback(() => {
+    setStops(prev => prev.filter(s => s.job.status !== 'served' && s.job.status !== 'failed'));
+  }, []);
   const moveStop = useCallback((idx: number, dir: -1 | 1) => {
     setStops(prev => {
       const next = [...prev];
@@ -629,6 +640,12 @@ export default function ServeRoutePlanner({
       safeRemoveSource(mapRef.current, srcId);
       routeSourceIdRef.current = null;
     }
+    const retSrcId = returnRouteSourceIdRef.current;
+    if (retSrcId) {
+      safeRemoveLayer(mapRef.current, retSrcId);
+      safeRemoveSource(mapRef.current, retSrcId);
+      returnRouteSourceIdRef.current = null;
+    }
   }, []);
 
   const optimizeRoute = useCallback(async () => {
@@ -650,8 +667,18 @@ export default function ServeRoutePlanner({
     // officers still get a usable (if less precise) route order.
     if (!mapReady || !mapRef.current) {
       const { ordered, totalDistanceMiles, totalDurationMinutes, missedDeadlineJobIds } = nearestNeighborOrder(selected, routeOrigin);
-      setTotalDistance(totalDistanceMiles);
-      setTotalDuration(totalDurationMinutes);
+      // Add return leg (last stop → origin) so total mileage is circular.
+      let returnMi = 0;
+      if (routeOrigin && ordered.length > 0) {
+        const last = ordered[ordered.length - 1];
+        returnMi = haversineMiles(
+          last.job.recipient_lat!, last.job.recipient_lng!,
+          routeOrigin.lat, routeOrigin.lng,
+        );
+      }
+      setTotalDistance(totalDistanceMiles + returnMi);
+      setReturnLegMiles(returnMi);
+      setTotalDuration(totalDurationMinutes + estimateDriveMinutes(returnMi));
       const unselected = stops.filter(s => !s.selected);
       setStops([
         ...ordered.map((s, i) => ({ ...s, order: i })),
@@ -776,7 +803,61 @@ export default function ServeRoutePlanner({
         runningElapsedMs = primaryFinalElapsedMs;
       }
 
-      // Render route on map
+      // Return leg: last stop → origin, to make mileage circular.
+      let returnLegM = 0;
+      let returnLegDurS = 0;
+      if (routeOrigin && allOrderedStops.length > 0) {
+        const lastStop = allOrderedStops[allOrderedStops.length - 1];
+        const retStart: [number, number] = [lastStop.job.recipient_lng!, lastStop.job.recipient_lat!];
+        const retEnd: [number, number] = [routeOrigin.lng, routeOrigin.lat];
+        try {
+          const token = await getMapboxAccessToken();
+          const retUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${retStart.join(',')};${retEnd.join(',')}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
+          const retRes = await fetch(retUrl);
+          if (retRes.ok) {
+            const retData = await retRes.json();
+            const retRoute = retData.routes?.[0];
+            if (retRoute) {
+              returnLegM = retRoute.distance || 0;
+              returnLegDurS = retRoute.duration || 0;
+              if (retRoute.geometry && mapRef.current) {
+                const retSrcId = `serve-route-return-${Date.now()}`;
+                returnRouteSourceIdRef.current = retSrcId;
+                const retCoords = retRoute.geometry.coordinates || [];
+                if (retCoords.length > 1) {
+                  whenStyleReady(mapRef.current, () => {
+                    if (!mapRef.current || hasSource(mapRef.current, retSrcId)) return;
+                    {
+                      mapRef.current!.addSource(retSrcId, {
+                        type: 'geojson',
+                        data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: retCoords } },
+                      });
+                      mapRef.current!.addLayer({
+                        id: retSrcId,
+                        type: 'line',
+                        source: retSrcId,
+                        paint: { 'line-color': '#888888', 'line-width': 3, 'line-opacity': 0.5, 'line-dasharray': [4, 4] },
+                      });
+                    }
+                  });
+                }
+              }
+            }
+          }
+        } catch { /* non-fatal; fall through to haversine */ }
+        if (returnLegM === 0) {
+          const fallbackMi = haversineMiles(
+            lastStop.job.recipient_lat!, lastStop.job.recipient_lng!,
+            routeOrigin.lat, routeOrigin.lng,
+          );
+          returnLegM = fallbackMi / 0.000621371;
+          returnLegDurS = estimateDriveMinutes(fallbackMi) * 60;
+        }
+      }
+      totalDistM += returnLegM;
+      totalDurS += returnLegDurS;
+
+      // Render forward route on map
       if (allGeometries.length > 0 && mapRef.current) {
         const sourceId = `serve-route-${Date.now()}`;
         routeSourceIdRef.current = sourceId;
@@ -798,6 +879,7 @@ export default function ServeRoutePlanner({
 
       const distMiles = totalDistM * 0.000621371;
       const durMinutes = totalDurS / 60;
+      setReturnLegMiles(returnLegM * 0.000621371);
       setTotalDistance(distMiles);
       setTotalDuration(durMinutes);
 
@@ -915,6 +997,13 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={selectAll} className="toolbar-btn text-xs px-2 py-1"><CheckSquare className="w-3 h-3" /> All</button>
             <button type="button" onClick={deselectAll} className="toolbar-btn text-xs px-2 py-1"><Square className="w-3 h-3" /> None</button>
+            {stops.some(s => s.job.status === 'served' || s.job.status === 'failed') && (
+              <button type="button" onClick={clearFinished}
+                className="toolbar-btn text-xs px-2 py-1 text-fg-muted hover:text-red-300 hover:border-red-700/50 transition-colors"
+                title="Remove served and non-service jobs from the list">
+                <Trash2 className="w-3 h-3" /> Clear Finished
+              </button>
+            )}
             <X size={20} className="text-rmpg-400 hover:text-rmpg-100 cursor-pointer transition-colors" onClick={onClose} aria-label="Close route planner" />
           </div>
         </div>
@@ -1003,6 +1092,12 @@ export default function ServeRoutePlanner({
                     <div className="text-[10px] text-fg-muted truncate">{stop.job.recipient_address || 'No address'}</div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
+                    {stop.job.status === 'served' && (
+                      <span className="text-[9px] font-semibold px-1 py-0.5 rounded-[2px] bg-green-900/40 text-green-400 border border-green-700/40 leading-none">SERVED</span>
+                    )}
+                    {stop.job.status === 'failed' && (
+                      <span className="text-[9px] font-semibold px-1 py-0.5 rounded-[2px] bg-red-900/40 text-red-400 border border-red-700/40 leading-none">NON-SVC</span>
+                    )}
                     <PriorityBadge p={stop.job.priority} />
                     <TimeWindowBadge tw={stop.job.time_window} />
                     <div className="flex flex-col gap-0.5 ml-1">
@@ -1034,7 +1129,13 @@ export default function ServeRoutePlanner({
                   <span className="text-rmpg-100 font-mono">{firstLegMiles.toFixed(1)} mi</span>
                 </div>
               )}
-              <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><MapPin size={12} /> Distance:</span><span className="text-rmpg-100 font-mono">{totalDistance.toFixed(1)} mi</span></div>
+              {returnLegMiles > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-fg-muted flex items-center gap-1.5"><Navigation size={12} /> Return leg:</span>
+                  <span className="text-amber-400 font-mono">{returnLegMiles.toFixed(1)} mi</span>
+                </div>
+              )}
+              <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><MapPin size={12} /> Distance:</span><span className="text-rmpg-100 font-mono">{totalDistance.toFixed(1)} mi {returnLegMiles > 0 && <span className="text-fg-muted text-[9px]">(circular)</span>}</span></div>
               <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><Clock size={12} /> Est. Time:</span><span className="text-rmpg-100 font-mono">{Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m</span></div>
               <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-rmpg-100 font-mono">${fuelCost.toFixed(2)}</span></div>
               <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><Gauge size={12} /> Efficiency:</span><span className="text-rmpg-100 font-mono">{totalDistance > 0 ? `${(selectedCount / totalDistance).toFixed(1)} stops/mi` : '\u2014'}</span></div>

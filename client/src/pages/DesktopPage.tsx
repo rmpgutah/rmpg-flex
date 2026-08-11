@@ -1,6 +1,5 @@
 // client/src/pages/DesktopPage.tsx
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
 import { NAV_CATEGORIES, CLIENT_VIEWER_BLOCKED, CONTRACT_MANAGER_BLOCKED, type NavFunction } from '../data/navCatalog';
 import { loadFavorites, saveFavorites, loadRecent } from '../utils/navFavorites';
 import { useUserPreferences, type UserPreferences } from '../context/UserPreferencesContext';
@@ -25,6 +24,14 @@ import DesktopSettingsApp from '../components/desktop/DesktopSettingsApp';
 import DesktopStickyNote from '../components/desktop/DesktopStickyNote';
 import { useDesktopNotes, type DesktopNote } from '../hooks/useDesktopNotes';
 import ContextMenu from '../components/ContextMenu';
+import DesktopLockScreen from '../components/desktop/DesktopLockScreen';
+import DesktopNotificationCenter from '../components/desktop/DesktopNotificationCenter';
+import DesktopScreenSaver, { useIdleScreenSaver } from '../components/desktop/DesktopScreenSaver';
+import { VirtualDesktopProvider } from '../components/desktop/DesktopVirtualDesktops';
+import FlexOSBootSplash from '../components/desktop/FlexOSBootSplash';
+import FlexOSPowerMenu from '../components/desktop/FlexOSPowerMenu';
+import FlexOSSystemDashboard from '../components/desktop/FlexOSSystemDashboard';
+import FlexOSStatusBar, { STATUS_BAR_HEIGHT } from '../components/desktop/FlexOSStatusBar';
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -56,7 +63,7 @@ function WindowLayer() {
 // would silently PUT default-derived state back to the server on the user's
 // very next interaction, clobbering their real saved cross-device layout.
 function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: () => void }) {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
   const isContractManager = user?.role === 'contract_manager';
@@ -100,6 +107,15 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [accentId, setAccentId] = useState<string>(prefs.desktop_accent || DEFAULT_ACCENT_ID);
   const [widgets, setWidgets] = useState(() => normalizeDesktopWidgets(prefs.desktop_widgets_json));
   const [widgetSettingsOpen, setWidgetSettingsOpen] = useState(false);
+  const [notifCenterOpen, setNotifCenterOpen] = useState(false);
+
+  const autoLockSecs = parseInt(localStorage.getItem('rmpg_desktop_autolock_secs') ?? '0', 10)
+    || (localStorage.getItem('rmpg_kiosk_shell_enabled') === '1' ? 300 : 900);
+  const { ssActive, lockActive, dismissSS, dismissLock } = useIdleScreenSaver(autoLockSecs);
+  const [manuallyLocked, setManuallyLocked] = useState(false);
+  const [powerMenuOpen, setPowerMenuOpen] = useState(false);
+  const [sysDashboardOpen, setSysDashboardOpen] = useState(false);
+  const isLocked = lockActive || manuallyLocked;
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
   // the parse happens eagerly here — cheap for a small JSON blob, and this
   // component only mounts once real prefs have resolved (see the comment
@@ -233,6 +249,20 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         e.preventDefault();
         setWidgetSettingsOpen(true);
       }
+      if (e.ctrlKey && e.key === 'l') {
+        e.preventDefault();
+        setManuallyLocked(true);
+      }
+      // Ctrl+Alt+Delete — FlexOS power menu
+      if (e.ctrlKey && e.altKey && e.key === 'Delete') {
+        e.preventDefault();
+        setPowerMenuOpen(v => !v);
+      }
+      // Ctrl+I — System info dashboard
+      if (e.ctrlKey && !e.altKey && e.key === 'i') {
+        e.preventDefault();
+        setSysDashboardOpen(v => !v);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -245,25 +275,26 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
 
   return (
     <div style={accentStyle}>
+      <VirtualDesktopProvider>
       <DesktopWindowManagerProvider>
         <ContextMenu
           items={[
-            { label: 'Sort: Manual', onClick: () => handleSortModeChange('manual') },
-            { label: 'Sort: Alphabetical', onClick: () => handleSortModeChange('alpha') },
-            { label: 'Sort: Most Used', onClick: () => handleSortModeChange('usage') },
+            { label: 'New Sticky Note', onClick: () => addNote(60, 60) },
+            { label: '', onClick: () => {}, divider: true },
             { label: 'View: Grid', onClick: () => handleViewModeChange('grid') },
             { label: 'View: List', onClick: () => handleViewModeChange('list') },
-            { label: 'Icon size: Small', onClick: () => handleIconSizeChange('small') },
-            { label: 'Icon size: Medium', onClick: () => handleIconSizeChange('medium') },
-            { label: 'Icon size: Large', onClick: () => handleIconSizeChange('large') },
-            { label: isAutoArrangeEnabled() ? 'Auto-arrange: On' : 'Auto-arrange: Off', onClick: () => { setAutoArrangeEnabled(!isAutoArrangeEnabled()); forceRerender(n => n + 1); } },
-            { label: areIconsHidden() ? 'Show icons' : 'Hide icons', onClick: () => { setIconsHidden(!areIconsHidden()); forceRerender(n => n + 1); } },
+            { label: 'Sort: Alphabetical', onClick: () => handleSortModeChange('alpha') },
+            { label: 'Sort: Most Used', onClick: () => handleSortModeChange('usage') },
+            { label: 'Sort: Manual', onClick: () => handleSortModeChange('manual') },
+            { label: isAutoArrangeEnabled() ? 'Auto-arrange: On ✓' : 'Auto-arrange: Off', onClick: () => { setAutoArrangeEnabled(!isAutoArrangeEnabled()); forceRerender(n => n + 1); } },
+            { label: areIconsHidden() ? 'Show Desktop Icons' : 'Hide Desktop Icons', onClick: () => { setIconsHidden(!areIconsHidden()); forceRerender(n => n + 1); } },
             { label: '', onClick: () => {}, divider: true },
-            { label: 'Settings', onClick: () => setWidgetSettingsOpen(true) },
-            { label: 'New sticky note', onClick: () => addNote(60, 60) },
+            { label: 'FlexOS Settings…', onClick: () => setWidgetSettingsOpen(true) },
+            { label: 'System Info…', onClick: () => setSysDashboardOpen(true) },
+            { label: 'Lock Screen', onClick: () => setManuallyLocked(true) },
           ]}
         >
-          <div data-testid="desktop-surface" style={{ position: 'relative', width: '100%', height: `calc(100vh - ${TASKBAR_HEIGHT_PX[getTaskbarSize()]}px)`, overflow: 'hidden' }}>
+          <div data-testid="desktop-surface" style={{ position: 'relative', width: '100%', height: `calc(100vh - ${TASKBAR_HEIGHT_PX[getTaskbarSize()] + STATUS_BAR_HEIGHT}px)`, overflow: 'hidden' }}>
             <DesktopWallpaper wallpaperId={wallpaperId}>
               {!areIconsHidden() && (
                 pinnedIcons.length === 0 ? (
@@ -287,7 +318,14 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             </DesktopWallpaper>
           </div>
         </ContextMenu>
-        <DesktopTaskbar icons={pinnedIcons} catalog={allFunctions} />
+        <DesktopTaskbar
+          icons={pinnedIcons}
+          catalog={allFunctions}
+          onLock={() => setManuallyLocked(true)}
+          onToggleNotifCenter={() => setNotifCenterOpen(v => !v)}
+          onPowerMenu={() => setPowerMenuOpen(true)}
+        />
+        <FlexOSStatusBar />
         {widgetSettingsOpen && (
           <DesktopSettingsApp
             widgets={widgets} onToggleWidget={handleToggleWidget}
@@ -302,6 +340,18 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           />
         )}
       </DesktopWindowManagerProvider>
+      </VirtualDesktopProvider>
+      <DesktopScreenSaver isActive={ssActive && !isLocked} onDismiss={dismissSS} />
+      <DesktopLockScreen isLocked={isLocked} onUnlock={() => { dismissLock(); setManuallyLocked(false); }} />
+      {notifCenterOpen && <DesktopNotificationCenter onClose={() => setNotifCenterOpen(false)} />}
+      {powerMenuOpen && (
+        <FlexOSPowerMenu
+          onClose={() => setPowerMenuOpen(false)}
+          onLock={() => setManuallyLocked(true)}
+          onSignOut={() => signOut().catch(() => {})}
+        />
+      )}
+      {sysDashboardOpen && <FlexOSSystemDashboard onClose={() => setSysDashboardOpen(false)} />}
     </div>
   );
 }
@@ -312,12 +362,17 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
 // `prefs` UserPreferencesProvider starts with.
 export default function DesktopPage() {
   const { prefs, reload, isLoading } = useUserPreferences();
+  const [splashDone, setSplashDone] = useState(false);
 
-  if (isLoading) {
+  // Show the FlexOS boot splash while preferences are loading, then fade out.
+  // The inner shell mounts once preferences arrive so its one-shot initializers
+  // read real data — keeping both concerns cleanly separated (see DesktopPageInner comment).
+  if (!splashDone) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
-      </div>
+      <>
+        {!isLoading && <DesktopPageInner prefs={prefs} reload={reload} />}
+        <FlexOSBootSplash ready={!isLoading} onFaded={() => setSplashDone(true)} />
+      </>
     );
   }
 

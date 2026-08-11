@@ -18,13 +18,22 @@ function getDiskFreeBytes(targetPath, fsModule) {
 /** Assembles the sys:info shape from Node's os module plus a precomputed diskFree value. */
 function formatSystemInfo(osModule, freeBytes) {
   const cpus = osModule.cpus();
+  const totalMem = osModule.totalmem();
+  const freeMem = osModule.freemem();
+  const diskFreeBytes = typeof freeBytes === 'number' && freeBytes >= 0 ? freeBytes : null;
+  const MB = 1024 * 1024;
+  const GB = MB * 1024;
   return {
-    os: osModule.platform(),
+    hostname: osModule.hostname(),
+    platform: osModule.platform(),
     arch: osModule.arch(),
-    cpuModel: cpus.length > 0 ? cpus[0].model : 'unknown',
-    totalMem: osModule.totalmem(),
-    freeMem: osModule.freemem(),
-    diskFree: freeBytes,
+    cpu_count: cpus.length,
+    cpu_model: cpus.length > 0 ? cpus[0].model : 'Unknown',
+    uptime_seconds: osModule.uptime(),
+    total_memory_mb: Math.round(totalMem / MB),
+    free_memory_mb: Math.round(freeMem / MB),
+    disk_free_gb: diskFreeBytes !== null ? Math.round((diskFreeBytes / GB) * 10) / 10 : null,
+    disk_free_bytes: diskFreeBytes,
   };
 }
 

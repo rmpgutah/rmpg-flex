@@ -1115,6 +1115,11 @@ async function createMainWindow() {
       // upload logic runs here in the renderer, so it must not be throttled for
       // navigation to keep calculating + recording movement off-screen.
       backgroundThrottling: false,
+      // webviewTag is required for the in-app Company Browser (CompanyBrowserPage).
+      // This is an enterprise-only, locked-down Toughbook — the session permission
+      // handler, CSP, and webview hardening (security/webviewHardening.js) collectively
+      // gate what the <webview> guest can load and navigate to.
+      webviewTag: true,
     }),
     // macOS titlebar
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',

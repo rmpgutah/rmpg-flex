@@ -254,7 +254,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
           <iframe
             ref={iframeRef}
             title={win.title}
-            src={win.path}
+            src={win.path.includes('?') ? `${win.path}&standalone=1` : `${win.path}?standalone=1`}
             allow="microphone; camera; fullscreen"
             style={{ width: '100%', height: `calc(100% - ${TITLE_BAR_HEIGHT}px)`, border: 'none' }}
           />

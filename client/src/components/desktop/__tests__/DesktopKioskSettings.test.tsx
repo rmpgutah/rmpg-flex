@@ -18,7 +18,7 @@ describe('DesktopKioskSettings', () => {
 
   it('shows an Enable button and current Off state when supported and disabled', async () => {
     render(<DesktopKioskSettings onClose={() => {}} />);
-    expect(await screen.findByText(/off/i)).toBeInTheDocument();
+    expect(await screen.findByText(/disabled/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /enable kiosk mode/i })).toBeInTheDocument();
   });
 
