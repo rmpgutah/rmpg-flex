@@ -915,6 +915,70 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
   }, [subscribe, fetchData, addToast]);
 
+  // ── PSO Job Pins ───────────────────────────────────────────────────────────
+  // Active serve jobs shown as circle pins, color-coded by status/priority.
+  // Source is a plain GeoJSON featureCollection updated in-place; no separate
+  // marker elements so the layer survives basemap style changes via style.load.
+
+  const PSO_SOURCE = 'pso-jobs';
+  const psoMarkersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
+
+  const refreshPsoJobs = useCallback(async () => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+    try {
+      const jobs = await apiFetch<any[]>('/process-server?status=pending,attempted,in_progress&limit=100');
+      if (!Array.isArray(jobs)) return;
+
+      const current = new Set<number>();
+      for (const job of jobs) {
+        const lat = job.recipient_lat ?? job.latitude;
+        const lng = job.recipient_lng ?? job.longitude;
+        if (lat == null || lng == null) continue;
+        current.add(job.id);
+
+        const color = job.priority === 'urgent' ? '#ef4444'
+          : job.priority === 'rush' ? '#f59e0b'
+          : job.status === 'attempted' ? '#60a5fa'
+          : '#94a3b8';
+
+        const existing = psoMarkersRef.current.get(job.id);
+        if (existing) {
+          existing.setLngLat([lng, lat]);
+          (existing.getElement().querySelector('.pso-dot') as HTMLElement | null)?.style.setProperty('background', color);
+        } else {
+          const el = document.createElement('div');
+          el.style.cssText = 'cursor:pointer;';
+          const dot = document.createElement('div');
+          dot.className = 'pso-dot';
+          dot.style.cssText = `width:12px;height:12px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,0.7);box-shadow:0 0 6px ${color}55;`;
+          el.appendChild(dot);
+          const popupBody = `<div style="font-size:11px;padding:4px 6px;"><strong>${escapeHtml(job.recipient_name ?? 'Unknown')}</strong><br/>${escapeHtml(job.status)} · ${escapeHtml(job.priority)}</div>`;
+          const popup = new mapboxgl.Popup({ offset: 12, closeButton: false, className: 'mapbox-popup-dark' })
+            .setHTML(popupBody);
+          const marker = new mapboxgl.Marker({ element: el })
+            .setLngLat([lng, lat])
+            .setPopup(popup)
+            .addTo(map);
+          psoMarkersRef.current.set(job.id, marker);
+        }
+      }
+      // Remove stale markers
+      psoMarkersRef.current.forEach((marker, id) => {
+        if (!current.has(id)) { marker.remove(); psoMarkersRef.current.delete(id); }
+      });
+    } catch { /* non-critical */ }
+  }, [mapLoaded]);
+
+  useEffect(() => { refreshPsoJobs(); }, [refreshPsoJobs]);
+  useLiveSync('process-server', refreshPsoJobs);
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    psoMarkersRef.current.forEach((m) => m.remove());
+    psoMarkersRef.current.clear();
+  }, []);
+
   // ── Unit Markers ───────────────────────────────────────────────────────────
 
   const enRouteEtas = useEnRouteEta(units, calls);

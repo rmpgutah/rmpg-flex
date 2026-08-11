@@ -1289,13 +1289,59 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   // break the serve write, so failures are swallowed by generateServeCharges.
   if (newStatus === 'served' || newStatus === 'failed') {
     await generateServeCharges(db, id);
-    // Fire-and-forget: sync the terminal outcome back to the originating CFS
     syncServeCompletionToCfs(db, id).catch(() => {});
-    // Fire-and-forget: notify the client the job reached a terminal outcome.
-    // serveCompletionNotify.ts was written to be called from exactly this spot
-    // but nothing ever imported/invoked it — clients had no way to learn a
-    // job was served or failed short of checking the portal themselves.
     notifyServeCompletion(db, id, newStatus).catch(() => {});
+
+    // [F2] Auto-clear the linked CFS call when the job is served. Only
+    // transitions calls that are still open — never re-opens a cleared call.
+    if (newStatus === 'served' && queue.call_id) {
+      execute(db,
+        `UPDATE calls_for_service SET status = 'cleared', cleared_at = datetime('now'), updated_at = datetime('now')
+         WHERE id = ? AND status NOT IN ('cleared','archived')`,
+        queue.call_id,
+      ).then(async (r) => {
+        if ((r as any).meta?.changes > 0) {
+          // Fetch the updated row so DispatchPage can merge it in-place.
+          const updatedCall = await db.prepare('SELECT id, status, cleared_at FROM calls_for_service WHERE id = ?')
+            .bind(queue.call_id).first<{ id: number; status: string; cleared_at: string | null }>();
+          broadcastAll('dispatch_update', {
+            action: 'call_status_changed',
+            call: updatedCall ?? { id: queue.call_id, status: 'cleared' },
+          });
+        }
+      }).catch(() => {});
+    }
+
+    // [F5] Alert dispatchers when a serve job reaches a terminal outcome.
+    broadcastAll('dispatch_update', {
+      action: newStatus === 'served' ? 'serve_completed' : 'serve_failed',
+      queue_id: id,
+      call_id: queue.call_id ?? null,
+      recipient_name: queue.recipient_name ?? null,
+      case_number: queue.case_number ?? null,
+      attempt_count: nextNum,
+    });
+
+    // [F3] Restore PSO officer unit to available on terminal status so they
+    // show as free in the dispatch units panel.
+    if (user?.id) {
+      execute(db,
+        `UPDATE units SET status = 'available', last_status_change = datetime('now'), updated_at = datetime('now')
+         WHERE officer_id = ? AND status NOT IN ('off_duty','out_of_service')`,
+        user.id,
+      ).then(() => {
+        broadcastAll('dispatch_update', { action: 'unit_status_changed', officer_id: user!.id, status: 'available' });
+      }).catch(() => {});
+    }
+  } else if (user?.id) {
+    // [F3] Non-terminal attempt: officer is on-scene at the serve address.
+    execute(db,
+      `UPDATE units SET status = 'onscene', last_status_change = datetime('now'), updated_at = datetime('now')
+       WHERE officer_id = ? AND status NOT IN ('off_duty','out_of_service','dispatched')`,
+      user.id,
+    ).then(() => {
+      broadcastAll('dispatch_update', { action: 'unit_status_changed', officer_id: user!.id, status: 'onscene' });
+    }).catch(() => {});
   }
 
   // [12a] Live dispatch sync — broadcast over WebSocket so ServePage / DispatchPage
