@@ -30,6 +30,7 @@ import DesktopScreenSaver, { useIdleScreenSaver } from '../components/desktop/De
 import { VirtualDesktopProvider } from '../components/desktop/DesktopVirtualDesktops';
 import FlexOSBootSplash from '../components/desktop/FlexOSBootSplash';
 import FlexOSPowerMenu from '../components/desktop/FlexOSPowerMenu';
+import FlexOSStatusBar, { STATUS_BAR_HEIGHT } from '../components/desktop/FlexOSStatusBar';
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -285,7 +286,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             { label: 'Lock Screen', onClick: () => setManuallyLocked(true) },
           ]}
         >
-          <div data-testid="desktop-surface" style={{ position: 'relative', width: '100%', height: `calc(100vh - ${TASKBAR_HEIGHT_PX[getTaskbarSize()]}px)`, overflow: 'hidden' }}>
+          <div data-testid="desktop-surface" style={{ position: 'relative', width: '100%', height: `calc(100vh - ${TASKBAR_HEIGHT_PX[getTaskbarSize()] + STATUS_BAR_HEIGHT}px)`, overflow: 'hidden' }}>
             <DesktopWallpaper wallpaperId={wallpaperId}>
               {!areIconsHidden() && (
                 pinnedIcons.length === 0 ? (
@@ -316,6 +317,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           onToggleNotifCenter={() => setNotifCenterOpen(v => !v)}
           onPowerMenu={() => setPowerMenuOpen(true)}
         />
+        <FlexOSStatusBar />
         {widgetSettingsOpen && (
           <DesktopSettingsApp
             widgets={widgets} onToggleWidget={handleToggleWidget}
