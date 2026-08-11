@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor } from 'lucide-react';
+import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useDesktopWindows } from './DesktopWindowManager';
 import { activateNavFunction } from '../../utils/windowManager';
@@ -10,15 +10,21 @@ import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import ContextMenu from '../ContextMenu';
 import { isAppPinned, pinApp, unpinApp, getPinnedApps, getTaskbarPosition, getTaskbarSize, isTaskbarAutoHideEnabled, type TaskbarSize } from '../../utils/taskbarPreferences';
+import DesktopSystemTray from './DesktopSystemTray';
+import { WorkspacePills } from './DesktopVirtualDesktops';
+import FlexOSAppDrawer from './FlexOSAppDrawer';
 
 export const TASKBAR_HEIGHT_PX: Record<TaskbarSize, number> = { small: 48, large: 56 };
 
 export interface DesktopTaskbarProps {
   icons: NavFunction[];
   catalog: NavFunction[];
+  onLock?: () => void;
+  onToggleNotifCenter?: () => void;
+  onPowerMenu?: () => void;
 }
 
-export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) {
+export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCenter, onPowerMenu }: DesktopTaskbarProps) {
   const { windows, focusWindow, openWindow, minimizeAll, restoreAll, closeWindow } = useDesktopWindows();
   const [autoMinimizedIds, setAutoMinimizedIds] = useState<string[]>([]);
   const [, forceRerender] = useState(0);
@@ -35,7 +41,6 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
   const { time } = useClock();
   const navigate = useNavigate();
   const [launcherOpen, setLauncherOpen] = useState(false);
-  const [query, setQuery] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
 
   React.useEffect(() => {
@@ -109,21 +114,8 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
     });
     if (capHit) addToast('Close a window to open another', 'error');
     setLauncherOpen(false);
-    setQuery('');
   }, [navigate, openWindow, addToast, user?.role]);
 
-  const quickActions = useMemo(() => ([
-    { key: 'clock', label: onDuty ? 'Clock Out' : 'Clock In', icon: ClockIcon, onClick: handleClockToggle },
-    { key: 'new-call', label: 'New Call', icon: Radio, onClick: () => { navigate('/dispatch?newCall=1'); setLauncherOpen(false); } },
-    { key: 'new-incident', label: 'New Incident', icon: FileWarning, onClick: () => { navigate('/incidents?newIncident=1'); setLauncherOpen(false); } },
-  ]), [onDuty, handleClockToggle, navigate]);
-
-  const searchResults = useMemo(() => {
-    if (!query.trim()) return icons;
-    const q = query.toLowerCase();
-    return catalog.filter(fn =>
-      fn.label.toLowerCase().includes(q) || fn.description.toLowerCase().includes(q) || fn.path.toLowerCase().includes(q));
-  }, [query, icons, catalog]);
 
   const pinnedNotRunning = useMemo(() => {
     const runningPaths = new Set(windows.map(w => w.path));
@@ -173,53 +165,20 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
           <Grid3X3 className="w-4 h-4" style={{ color: 'var(--brand-400)' }} />
         </button>
         {launcherOpen && (
-          <div style={{ position: 'fixed', left: 8, bottom: 52, width: 320, maxHeight: 400, overflowY: 'auto', background: 'var(--surface-raised)', border: '1px solid var(--border-default)', zIndex: 1001 }}>
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search modules…"
-              className="w-full px-2 py-1.5 text-[11px] bg-surface-sunken border-b border-rmpg-700 text-rmpg-100 focus:outline-none"
-            />
-            {!query.trim() && (
-              <div style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                {quickActions.map(action => (
-                  <button
-                    key={action.key}
-                    type="button"
-                    onClick={action.onClick}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-surface-hover"
-                    style={{ color: 'var(--accent-silver-400)' }}
-                  >
-                    <action.icon className="w-3.5 h-3.5 flex-shrink-0" />
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            {searchResults.slice(0, 20).map(fn => (
-              <ContextMenu
-                key={fn.path}
-                items={[{
-                  label: isAppPinned(fn.path) ? 'Unpin from Taskbar' : 'Pin to Taskbar',
-                  onClick: () => { if (isAppPinned(fn.path)) unpinApp(fn.path); else pinApp(fn.path); forceRerender(n => n + 1); },
-                }]}
-              >
-                <button
-                  type="button"
-                  onClick={() => handleSelectResult(fn)}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-surface-hover"
-                  style={{ color: 'var(--text-primary)' }}
-                >
-                  <fn.icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-secondary)' }} />
-                  {fn.label}
-                </button>
-              </ContextMenu>
-            ))}
-          </div>
+          <FlexOSAppDrawer
+            catalog={catalog}
+            onNavigate={path => handleSelectResult(catalog.find(fn => fn.path === path) ?? catalog[0])}
+            onClose={() => setLauncherOpen(false)}
+            quickActions={[
+              { key: 'clock', label: onDuty ? 'Clock Out' : 'Clock In', icon: ClockIcon, onClick: handleClockToggle },
+              { key: 'new-call', label: 'New Call', icon: Radio, onClick: () => navigate('/dispatch?newCall=1') },
+              { key: 'new-incident', label: 'New Incident', icon: FileWarning, onClick: () => navigate('/incidents?newIncident=1') },
+            ]}
+          />
         )}
       </div>
 
+      <WorkspacePills />
       <div className="flex items-center gap-1 flex-1 overflow-x-auto">
         {pinnedNotRunning.map(fn => (
           <button
@@ -299,8 +258,25 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
         >
           <Monitor className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
         </button>
-        <div className="relative">
-          <Bell className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+        {onLock && (
+          <button
+            type="button"
+            aria-label="Lock screen"
+            onClick={onLock}
+            className="p-1.5 hover:bg-surface-hover"
+            style={{ border: '1px solid var(--border-subtle)' }}
+          >
+            <Lock className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
+          </button>
+        )}
+        <button
+          type="button"
+          aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+          onClick={onToggleNotifCenter}
+          className="relative p-1.5 hover:bg-surface-hover"
+          style={{ border: '1px solid var(--border-subtle)' }}
+        >
+          <Bell className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
           {unreadCount > 0 && (
             <span
               className="absolute -top-1 -right-1 flex items-center justify-center font-bold bg-red-600 text-white"
@@ -309,8 +285,14 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
-        </div>
-        <span className="text-[11px] font-mono" style={{ color: 'var(--text-primary)' }}>{time}</span>
+        </button>
+        <DesktopSystemTray />
+        <span
+          className="text-[11px] font-mono cursor-default select-none"
+          style={{ color: 'var(--text-primary)' }}
+          onContextMenu={onPowerMenu ? (e) => { e.preventDefault(); onPowerMenu(); } : undefined}
+          title={onPowerMenu ? 'Right-click for power options' : undefined}
+        >{time}</span>
       </div>
     </div>
     {autoHideEnabled && (

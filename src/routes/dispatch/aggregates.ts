@@ -777,4 +777,32 @@ aggregates.get('/by-zone', async (c) => {
   } catch { return c.json({ by_zone: [], days: 7 }); }
 });
 
+// GET /dispatch/ambient-stats — lightweight screensaver data (active calls, unit counts).
+// Auth required (gated in routesConfig under /api/dispatch). Returns gracefully
+// on any DB error so the screensaver never crashes from a bad query.
+aggregates.get('/ambient-stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const [callRow, critRow, unitRow] = await Promise.all([
+      queryFirst<{ count: number }>(db,
+        `SELECT COUNT(*) AS count FROM calls_for_service
+         WHERE status NOT IN ('closed','cancelled','duplicate','archived') AND date(created_at) = date('now','localtime')`),
+      queryFirst<{ count: number }>(db,
+        `SELECT COUNT(*) AS count FROM calls_for_service
+         WHERE priority IN ('1','P1','critical') AND status NOT IN ('closed','cancelled','duplicate','archived')
+         AND date(created_at) = date('now','localtime')`),
+      queryFirst<{ total: number; available: number }>(db,
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) AS available
+         FROM dispatch_units WHERE active = 1`),
+    ]);
+    return c.json({
+      active_calls: callRow?.count ?? 0,
+      critical_calls: critRow?.count ?? 0,
+      total_units: unitRow?.total ?? 0,
+      available_units: unitRow?.available ?? 0,
+    });
+  } catch { return c.json({ active_calls: 0, critical_calls: 0, total_units: 0, available_units: 0 }); }
+});
+
 export default aggregates;

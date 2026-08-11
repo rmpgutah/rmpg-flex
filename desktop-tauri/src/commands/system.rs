@@ -105,7 +105,56 @@ pub fn get_battery_status() -> BatteryStatus {
     }
 }
 
+/// Returns seconds the system has been idle (no keyboard/mouse input).
+/// On Windows uses GetLastInputInfo (user32). On macOS uses CGEventSource.
+/// Falls back to 0 on unsupported platforms.
 #[tauri::command]
 pub fn get_idle_time() -> u64 {
-    0
+    #[cfg(target_os = "windows")]
+    {
+        use std::mem;
+        #[repr(C)]
+        struct LASTINPUTINFO {
+            cb_size: u32,
+            dw_time: u32,
+        }
+        extern "system" {
+            fn GetLastInputInfo(plii: *mut LASTINPUTINFO) -> i32;
+            fn GetTickCount() -> u32;
+        }
+        unsafe {
+            let mut lii = LASTINPUTINFO { cb_size: mem::size_of::<LASTINPUTINFO>() as u32, dw_time: 0 };
+            if GetLastInputInfo(&mut lii) != 0 {
+                let tick = GetTickCount();
+                let elapsed_ms = tick.wrapping_sub(lii.dw_time) as u64;
+                return elapsed_ms / 1000;
+            }
+        }
+        0
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        // ioreg -c IOHIDSystem reads HIDIdleTime in nanoseconds
+        let out = Command::new("ioreg")
+            .args(["-c", "IOHIDSystem", "-d", "4"])
+            .output()
+            .unwrap_or_default();
+        let text = String::from_utf8_lossy(&out.stdout);
+        for line in text.lines() {
+            if line.contains("HIDIdleTime") {
+                if let Some(val) = line.split('=').nth(1) {
+                    let ns: u64 = val.trim().parse().unwrap_or(0);
+                    return ns / 1_000_000_000;
+                }
+            }
+        }
+        0
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        0
+    }
 }
