@@ -21,9 +21,10 @@ export interface DesktopTaskbarProps {
   catalog: NavFunction[];
   onLock?: () => void;
   onToggleNotifCenter?: () => void;
+  onPowerMenu?: () => void;
 }
 
-export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCenter }: DesktopTaskbarProps) {
+export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCenter, onPowerMenu }: DesktopTaskbarProps) {
   const { windows, focusWindow, openWindow, minimizeAll, restoreAll, closeWindow } = useDesktopWindows();
   const [autoMinimizedIds, setAutoMinimizedIds] = useState<string[]>([]);
   const [, forceRerender] = useState(0);
@@ -286,7 +287,12 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
           )}
         </button>
         <DesktopSystemTray />
-        <span className="text-[11px] font-mono" style={{ color: 'var(--text-primary)' }}>{time}</span>
+        <span
+          className="text-[11px] font-mono cursor-default select-none"
+          style={{ color: 'var(--text-primary)' }}
+          onContextMenu={onPowerMenu ? (e) => { e.preventDefault(); onPowerMenu(); } : undefined}
+          title={onPowerMenu ? 'Right-click for power options' : undefined}
+        >{time}</span>
       </div>
     </div>
     {autoHideEnabled && (

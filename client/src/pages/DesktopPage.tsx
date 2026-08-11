@@ -314,6 +314,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           catalog={allFunctions}
           onLock={() => setManuallyLocked(true)}
           onToggleNotifCenter={() => setNotifCenterOpen(v => !v)}
+          onPowerMenu={() => setPowerMenuOpen(true)}
         />
         {widgetSettingsOpen && (
           <DesktopSettingsApp
