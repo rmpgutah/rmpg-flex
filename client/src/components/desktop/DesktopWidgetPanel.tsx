@@ -16,6 +16,10 @@ import DesktopRollCallWidget from './widgets/DesktopRollCallWidget';
 import DesktopIncidentTimerWidget from './widgets/DesktopIncidentTimerWidget';
 import DesktopGpsTrailWidget from './widgets/DesktopGpsTrailWidget';
 import DesktopShiftHandoffWidget from './widgets/DesktopShiftHandoffWidget';
+import DesktopPanicWidget from './widgets/DesktopPanicWidget';
+import DesktopWarrantCountWidget from './widgets/DesktopWarrantCountWidget';
+import DesktopBodyCamWidget from './widgets/DesktopBodyCamWidget';
+import DesktopMessageCountWidget from './widgets/DesktopMessageCountWidget';
 
 export interface DesktopWidgetPanelProps {
   widgets: DesktopWidgetState[];
@@ -46,6 +50,10 @@ const WIDGET_COMPONENTS: Record<string, React.ComponentType<any>> = {
   'incident-timer': DesktopIncidentTimerWidget,
   'gps-trail': DesktopGpsTrailWidget,
   'shift-handoff': DesktopShiftHandoffWidget,
+  'panic': DesktopPanicWidget,
+  'warrant-count': DesktopWarrantCountWidget,
+  'body-cam': DesktopBodyCamWidget,
+  'message-count': DesktopMessageCountWidget,
 };
 
 function clampOpacity(v: number): number {

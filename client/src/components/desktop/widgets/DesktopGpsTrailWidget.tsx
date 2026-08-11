@@ -32,7 +32,10 @@ export default function DesktopGpsTrailWidget() {
       </div>
       {latest ? (
         <>
-          <div style={{ fontSize: 10, color: 'var(--text-primary)' }}>{latest.lat.toFixed(5)}, {latest.lon.toFixed(5)}</div>
+          <div style={{ fontSize: 10, color: 'var(--text-primary)' }}>
+            {typeof latest.lat === 'number' ? latest.lat.toFixed(5) : '—'},{' '}
+            {typeof latest.lon === 'number' ? latest.lon.toFixed(5) : '—'}
+          </div>
           {latest.speed !== undefined && (
             <div style={{ fontSize: 9, color: 'var(--text-secondary)', marginTop: 2 }}>{Math.round(latest.speed)} mph</div>
           )}
