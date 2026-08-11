@@ -97,6 +97,7 @@ import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import DispatchCodeQuickPanel from '../../components/dispatch/DispatchCodeQuickPanel';
 import { useDispatchCodes } from '../../hooks/useDispatchCodes';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
+import PsoWorkloadPanel from '../../components/dispatch/PsoWorkloadPanel';
 import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import { withAlpha } from '../../utils/withAlpha';
@@ -3865,7 +3866,9 @@ export default function DispatchPage() {
               )}
             </div>
           ) : (
-            filteredCalls.map((call, i) => {
+            <>
+            {filterTab === 'serve' && <PsoWorkloadPanel />}
+            {filteredCalls.map((call, i) => {
               // GEO sort groups calls by section → zone → beat; render a sticky
               // district header before the first call of each new section so a
               // dispatcher can scan and work one district at a time.
@@ -3910,7 +3913,8 @@ export default function DispatchPage() {
                   />
                 </React.Fragment>
               );
-            })
+            })}
+            </>
           )}
         </div>
         </>)}

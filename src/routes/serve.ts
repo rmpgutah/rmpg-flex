@@ -1183,10 +1183,10 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
 
   const queue = await queryFirst<{
     attempt_count: number; max_attempts: number; status: string;
-    officer_id: number | null; cfs_call_id: number | null;
+    officer_id: number | null; call_id: number | null;
     recipient_name: string | null; case_number: string | null;
   }>(
-    db, 'SELECT attempt_count, max_attempts, status, officer_id, cfs_call_id, recipient_name, case_number FROM serve_queue WHERE id = ?', id,
+    db, 'SELECT attempt_count, max_attempts, status, officer_id, call_id, recipient_name, case_number FROM serve_queue WHERE id = ?', id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
 
@@ -1313,7 +1313,7 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   // [12b] CFS timeline entry — if this job is linked to a call, write a
   // call_notes row so dispatchers see serve activity in the call's history
   // alongside radio notes and status changes.
-  if (queue.cfs_call_id) {
+  if (queue.call_id) {
     const attemptLabel = toDisplayLabel(result);
     const caseRef = queue.case_number ? ` (${queue.case_number})` : '';
     const recipientRef = queue.recipient_name ? ` for ${queue.recipient_name}` : '';
@@ -1324,7 +1324,7 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     execute(db,
       `INSERT INTO call_notes (call_id, user_id, note, created_at)
        VALUES (?, ?, ?, datetime('now'))`,
-      queue.cfs_call_id, user?.id ?? null, noteText,
+      queue.call_id, user?.id ?? null, noteText,
     ).catch(() => {});
   }
 
@@ -1337,7 +1337,7 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     const cfsCoords = await queryFirst<{ latitude: number | null; longitude: number | null }>(db,
       `SELECT c.latitude, c.longitude
        FROM calls_for_service c
-       JOIN serve_queue q ON q.cfs_call_id = c.id
+       JOIN serve_queue q ON q.call_id = c.id
        WHERE q.id = ?`,
       id,
     ).catch(() => null);
