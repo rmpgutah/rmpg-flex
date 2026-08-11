@@ -3349,6 +3349,9 @@ export interface ServeJob {
   intake_screened_at?: string | null;
   attempts?: ServeAttempt[];
   skipTraces?: ServeSkipTrace[];
+  // Raw JSON blob written by commitIntake. Parsed client-side to extract
+  // _intake.address_class.{klass, confirmed} for the scheduling UI.
+  parsed_data?: string | null;
 }
 
 // ── Serve folder helpers ───────────────────────────────────────────────────

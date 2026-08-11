@@ -895,6 +895,37 @@ export default function ServePage() {
     }
   }, [jobs, routerNavigate]);
 
+  const handleAddressClassChange = useCallback(async (jobId: number, klass: string, confirmed: boolean) => {
+    try {
+      await apiFetch(`/process-server/${jobId}/address-class`, {
+        method: 'PATCH',
+        body: JSON.stringify({ klass, confirmed }),
+      });
+      // Patch local state so the UI reflects the change immediately without a full refresh.
+      setJobs(prev => prev.map(j => {
+        if (j.id !== jobId) return j;
+        let pd: Record<string, any> = {};
+        try { pd = j.parsed_data ? JSON.parse(j.parsed_data) : {}; } catch { /* ignore */ }
+        pd._intake = pd._intake ?? {};
+        pd._intake.address_class = { ...(pd._intake.address_class ?? {}), klass, confirmed };
+        return { ...j, parsed_data: JSON.stringify(pd) };
+      }));
+      if (editJob?.id === jobId) {
+        setEditJob(prev => {
+          if (!prev) return prev;
+          let pd: Record<string, any> = {};
+          try { pd = prev.parsed_data ? JSON.parse(prev.parsed_data) : {}; } catch { /* ignore */ }
+          pd._intake = pd._intake ?? {};
+          pd._intake.address_class = { ...(pd._intake.address_class ?? {}), klass, confirmed };
+          return { ...prev, parsed_data: JSON.stringify(pd) };
+        });
+      }
+      addToast(`Address class set to ${klass}${confirmed ? ' (confirmed)' : ''}`, 'success');
+    } catch {
+      addToast('Could not update address class', 'error');
+    }
+  }, [editJob, addToast]);
+
   const handleFlagAddress = useCallback(async (jobId: number) => {
     try {
       await apiFetch(`/process-server/${jobId}`, {
@@ -3423,6 +3454,53 @@ export default function ServePage() {
                   className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors resize-none"
                 />
               </div>
+              {editJob && (() => {
+                let ac: { klass?: string; confirmed?: boolean } = {};
+                try { ac = JSON.parse(editJob.parsed_data ?? '{}')._intake?.address_class ?? {}; } catch { /* ignore */ }
+                const klass = ac.klass ?? 'unknown';
+                const confirmed = !!ac.confirmed;
+                return (
+                  <div>
+                    <label className="block text-[11px] text-fg-muted mb-1">
+                      Serve Location Type <span className="text-fg-muted font-normal">(shapes attempt windows)</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {(['residential', 'unknown', 'business'] as const).map(k => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => handleAddressClassChange(editJob.id, k, k !== 'unknown')}
+                          className={`px-3 py-1 text-[11px] rounded-[2px] border transition-colors ${
+                            klass === k
+                              ? k === 'business'
+                                ? 'bg-brand-800/60 border-brand-500 text-brand-200'
+                                : k === 'residential'
+                                ? 'bg-rmpg-800/60 border-rmpg-500 text-rmpg-100'
+                                : 'bg-surface-raised border-rmpg-600 text-fg-muted'
+                              : 'bg-surface-deep border-rmpg-700 text-fg-muted hover:border-rmpg-500'
+                          }`}
+                        >
+                          {k.charAt(0).toUpperCase() + k.slice(1)}
+                        </button>
+                      ))}
+                      {klass !== 'unknown' && (
+                        <span className={`text-[10px] px-2 py-0.5 rounded-[2px] border ${
+                          confirmed
+                            ? 'text-green-300 border-green-800/50 bg-green-900/20'
+                            : 'text-amber-300 border-amber-800/50 bg-amber-900/20'
+                        }`}>
+                          {confirmed ? 'Confirmed' : 'Unconfirmed'}
+                        </span>
+                      )}
+                    </div>
+                    {klass === 'business' && !confirmed && (
+                      <p className="text-[10px] text-amber-400 mt-1">
+                        Unconfirmed — residential windows apply until confirmed. Select Business again to confirm.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
