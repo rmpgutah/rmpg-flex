@@ -127,6 +127,14 @@ export const ROUTE_MODULES: Readonly<Record<string, RouteImporter>> = {
   '/geo-data-viewer': () => import('../pages/GeoDataViewerPage'),
   '/audit': () => import('../pages/AuditLogPage'),
   '/admin': () => import('../pages/AdminPage'),
+  '/calculator': () => import('../pages/CalculatorPage'),
+  '/unit-converter': () => import('../pages/UnitConverterPage'),
+  '/clipboard-manager': () => import('../pages/ClipboardManagerPage'),
+  '/focus-timer': () => import('../pages/FocusTimerPage'),
+  '/device-health': () => import('../pages/DeviceHealthPage'),
+  '/print-queue': () => import('../pages/PrintQueuePage'),
+  '/scheduled-updates': () => import('../pages/ScheduledUpdatesPage'),
+  '/remote-lock': () => import('../pages/RemoteLockPage'),
 };
 
 /**

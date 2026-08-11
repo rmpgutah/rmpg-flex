@@ -74,6 +74,14 @@ const AdminPage = lazyRetry(() => import('./pages/AdminPage'));
 const MyIdPage = lazyRetry(() => import('./pages/wallet/MyIdPage'));
 const VerifyIdPage = lazyRetry(() => import('./pages/wallet/VerifyIdPage'));
 const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
+const CalculatorPage = lazyRetry(() => import('./pages/CalculatorPage'));
+const UnitConverterPage = lazyRetry(() => import('./pages/UnitConverterPage'));
+const ClipboardManagerPage = lazyRetry(() => import('./pages/ClipboardManagerPage'));
+const FocusTimerPage = lazyRetry(() => import('./pages/FocusTimerPage'));
+const DeviceHealthPage = lazyRetry(() => import('./pages/DeviceHealthPage'));
+const PrintQueuePage = lazyRetry(() => import('./pages/PrintQueuePage'));
+const ScheduledUpdatesPage = lazyRetry(() => import('./pages/ScheduledUpdatesPage'));
+const RemoteLockPage = lazyRetry(() => import('./pages/RemoteLockPage'));
 const TesseractTrainingPage = lazyRetry(() => import('./pages/TesseractTrainingPage'));
 const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
 const FleetPage = lazyRetry(() => import('./pages/fleet'));
@@ -648,6 +656,14 @@ function AppRoutes() {
             <Route path="/ncic" element={<RouteErrorBoundary><NcicPage /></RouteErrorBoundary>} />
             <Route path="/dl-search" element={<RouteErrorBoundary><DlSearchPage /></RouteErrorBoundary>} />
             <Route path="/audit" element={<AdminRoute><RouteErrorBoundary><AuditLogPage /></RouteErrorBoundary></AdminRoute>} />
+            <Route path="/calculator" element={<ProtectedRoute><RouteErrorBoundary><CalculatorPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/unit-converter" element={<ProtectedRoute><RouteErrorBoundary><UnitConverterPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/clipboard-manager" element={<ProtectedRoute><RouteErrorBoundary><ClipboardManagerPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/focus-timer" element={<ProtectedRoute><RouteErrorBoundary><FocusTimerPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/device-health" element={<ProtectedRoute><RouteErrorBoundary><DeviceHealthPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/print-queue" element={<ProtectedRoute><RouteErrorBoundary><PrintQueuePage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/scheduled-updates" element={<ProtectedRoute><RouteErrorBoundary><ScheduledUpdatesPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/remote-lock" element={<ProtectedRoute><RouteErrorBoundary><RemoteLockPage /></RouteErrorBoundary></ProtectedRoute>} />
             <Route path="/tesseract-training" element={<AdminRoute><RouteErrorBoundary><TesseractTrainingPage /></RouteErrorBoundary></AdminRoute>} />
             <Route path="/training" element={<RouteErrorBoundary><TrainingPage /></RouteErrorBoundary>} />
             <Route path="/training-docs" element={<RouteErrorBoundary><TrainingDocsPage /></RouteErrorBoundary>} />

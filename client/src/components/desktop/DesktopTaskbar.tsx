@@ -11,10 +11,37 @@ import { useToast } from '../ToastProvider';
 import ContextMenu from '../ContextMenu';
 import { isAppPinned, pinApp, unpinApp, getPinnedApps, getTaskbarPosition, getTaskbarSize, isTaskbarAutoHideEnabled, type TaskbarSize } from '../../utils/taskbarPreferences';
 import DesktopSystemTray from './DesktopSystemTray';
+import DesktopWelfareCountdown from './DesktopWelfareCountdown';
+import DesktopQuickSettings from './DesktopQuickSettings';
+import { SlidersHorizontal } from 'lucide-react';
 import { WorkspacePills } from './DesktopVirtualDesktops';
 import FlexOSAppDrawer from './FlexOSAppDrawer';
 
 export const TASKBAR_HEIGHT_PX: Record<TaskbarSize, number> = { small: 48, large: 56 };
+
+function QuickSettingsButton() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button type="button" onClick={() => setOpen(v => !v)} title="Quick settings"
+        style={{ background: open ? 'rgba(255,255,255,0.1)' : 'none', border: 'none', cursor: 'pointer', borderRadius: 2, padding: '3px 5px', display: 'flex', alignItems: 'center' }}>
+        <SlidersHorizontal className="w-3.5 h-3.5" style={{ color: 'var(--text-primary)' }} />
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', bottom: '100%', right: 0, marginBottom: 4, zIndex: 99980 }}>
+          <DesktopQuickSettings onClose={() => setOpen(false)} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export interface DesktopTaskbarProps {
   icons: NavFunction[];
@@ -286,6 +313,8 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
             </span>
           )}
         </button>
+        <DesktopWelfareCountdown />
+        <QuickSettingsButton />
         <DesktopSystemTray />
         <span
           className="text-[11px] font-mono cursor-default select-none"
