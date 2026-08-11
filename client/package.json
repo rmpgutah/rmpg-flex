@@ -54,7 +54,7 @@
     "@tiptap/react": "^3.29.2",
     "@tiptap/starter-kit": "^3.27.3",
     "@turf/area": "^7.3.5",
-    "@turf/boolean-point-in-polygon": "^7.3.5",
+    "@turf/boolean-point-in-polygon": "^7.4.0",
     "@turf/circle": "^7.4.0",
     "@turf/dissolve": "^7.3.5",
     "@turf/length": "^7.3.5",
