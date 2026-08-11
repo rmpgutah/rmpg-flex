@@ -2410,7 +2410,7 @@ export default function ServePage() {
                   <h2 className="text-[11px] font-bold text-rmpg-100 uppercase tracking-wider">
                     Extend Deadline — {selectedJobIds.size} job{selectedJobIds.size === 1 ? '' : 's'}
                   </h2>
-                  <label className="block text-[10px] text-rmpg-300">
+                  <label className="block text-[10px] text-fg-secondary">
                     New deadline date
                     <input
                       type="date"
@@ -2424,7 +2424,7 @@ export default function ServePage() {
                     <button
                       type="button"
                       onClick={() => { setBulkDeadlineOpen(false); setBulkDeadlineDate(''); }}
-                      className="px-3 py-1 text-[10px] text-rmpg-400 border border-rmpg-600 rounded-[2px] hover:border-rmpg-400 transition-colors"
+                      className="px-3 py-1 text-[10px] text-fg-muted border border-rmpg-600 rounded-[2px] hover:border-rmpg-400 transition-colors"
                     >
                       Cancel
                     </button>

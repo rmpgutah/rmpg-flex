@@ -951,7 +951,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           el.style.cssText = 'cursor:pointer;';
           const dot = document.createElement('div');
           dot.className = 'pso-dot';
-          dot.style.cssText = `width:12px;height:12px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,0.7);box-shadow:0 0 6px ${color}55;`;
+          dot.style.cssText = `width:12px;height:12px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,0.7);box-shadow:0 0 6px ${withAlpha(color, '55')};`;
           el.appendChild(dot);
           const popupBody = `<div style="font-size:11px;padding:4px 6px;"><strong>${escapeHtml(job.recipient_name ?? 'Unknown')}</strong><br/>${escapeHtml(job.status)} · ${escapeHtml(job.priority)}</div>`;
           const popup = new mapboxgl.Popup({ offset: 12, closeButton: false, className: 'mapbox-popup-dark' })

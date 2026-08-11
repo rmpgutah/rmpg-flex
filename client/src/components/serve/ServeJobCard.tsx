@@ -415,7 +415,7 @@ export default React.memo(function ServeJobCard({
               ? 'text-red-300 bg-red-900/50 border-red-600/60'
               : daysLeft <= 3
               ? 'text-amber-300 bg-amber-900/40 border-amber-700/50'
-              : 'text-rmpg-300 bg-rmpg-800/50 border-rmpg-600/40';
+              : 'text-fg-secondary bg-rmpg-800/50 border-rmpg-600/40';
             return (
               <span title={`Deadline: ${safeDateStr(job.deadline)}`}
                 className={`inline-flex items-center gap-0.5 text-[8px] font-bold border rounded-[2px] px-1 py-0 ${style}`}>

@@ -61,14 +61,14 @@ export default function ServeJobComments({ jobId, className = '' }: ServeJobComm
         <MessageSquare className="w-3 h-3" />
         Job Comments
         {comments.length > 0 && (
-          <span className="text-rmpg-400 font-normal">({comments.length})</span>
+          <span className="text-fg-muted font-normal">({comments.length})</span>
         )}
       </div>
 
       {/* Thread */}
       <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
         {comments.length === 0 && (
-          <p className="text-[10px] text-rmpg-400 italic">No comments yet.</p>
+          <p className="text-[10px] text-fg-muted italic">No comments yet.</p>
         )}
         {comments.map((c) => (
           <div key={c.id}
@@ -80,14 +80,14 @@ export default function ServeJobComments({ jobId, className = '' }: ServeJobComm
             <div className="flex items-center gap-1 mb-0.5">
               {c.is_system
                 ? <Bot className="w-2.5 h-2.5 text-amber-400 flex-shrink-0" />
-                : <User className="w-2.5 h-2.5 text-rmpg-400 flex-shrink-0" />}
+                : <User className="w-2.5 h-2.5 text-fg-muted flex-shrink-0" />}
               <span className={`font-bold ${c.is_system ? 'text-amber-300' : 'text-rmpg-200'}`}>
                 {c.author_name}
               </span>
               {c.author_role && !c.is_system && (
-                <span className="text-rmpg-500 text-[9px]">({c.author_role})</span>
+                <span className="text-fg-muted text-[9px]">({c.author_role})</span>
               )}
-              <span className="text-rmpg-500 ml-auto">
+              <span className="text-fg-muted ml-auto">
                 {safeDateStr(c.created_at)} {safeTimeStr(c.created_at)}
               </span>
             </div>
@@ -106,7 +106,7 @@ export default function ServeJobComments({ jobId, className = '' }: ServeJobComm
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit(); }}
           placeholder="Add a comment… (Ctrl+Enter to send)"
           rows={2}
-          className="flex-1 text-[10px] bg-surface-sunken border border-border-default rounded-[2px] px-2 py-1 text-rmpg-100 placeholder-rmpg-500 resize-none focus:outline-none focus:border-brand-400/50"
+          className="flex-1 text-[10px] bg-surface-sunken border border-border-default rounded-[2px] px-2 py-1 text-rmpg-100 placeholder-fg-muted resize-none focus:outline-none focus:border-brand-400/50"
         />
         <button
           type="button"
