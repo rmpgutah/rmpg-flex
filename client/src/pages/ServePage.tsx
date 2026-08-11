@@ -1310,7 +1310,7 @@ export default function ServePage() {
     const now = Date.now();
     return jobs.filter(j =>
       (j.status === 'pending' || j.status === 'in_progress') &&
-      j.deadline && new Date(j.deadline).getTime() <= now,
+      j.deadline && parseTimestamp(j.deadline).getTime() <= now,
     ).length;
   }, [jobs]);
 

@@ -206,7 +206,7 @@ export default React.memo(function ServeJobCard({
   const needsDiligence = !!job.diligence_required && job.status !== 'served';
 
   // Return-date urgency
-  const returnDateMs = job.return_date ? new Date(job.return_date).getTime() : null;
+  const returnDateMs = job.return_date ? parseTimestamp(job.return_date).getTime() : null;
   const returnOverdue = returnDateMs !== null && returnDateMs <= Date.now() && job.status !== 'served';
   const returnDueSoon = returnDateMs !== null && !returnOverdue && returnDateMs - Date.now() <= 48 * 60 * 60 * 1000;
 
