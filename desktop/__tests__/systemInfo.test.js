@@ -16,30 +16,38 @@ test('getDiskFreeBytes: computes bytes from bavail * bsize', () => {
 
 function fakeOs() {
   return {
+    hostname: () => 'fz55-unit',
     platform: () => 'darwin',
     arch: () => 'arm64',
     cpus: () => [{ model: 'Apple M2' }, { model: 'Apple M2' }],
     totalmem: () => 17179869184,
     freemem: () => 4294967296,
+    uptime: () => 3600,
   };
 }
 
 test('formatSystemInfo: assembles the expected shape from os + a precomputed freeBytes', () => {
   const info = formatSystemInfo(fakeOs(), 214748364800);
+  const MB = 1024 * 1024;
+  const GB = MB * 1024;
   assert.deepEqual(info, {
-    os: 'darwin',
+    hostname: 'fz55-unit',
+    platform: 'darwin',
     arch: 'arm64',
-    cpuModel: 'Apple M2',
-    totalMem: 17179869184,
-    freeMem: 4294967296,
-    diskFree: 214748364800,
+    cpu_count: 2,
+    cpu_model: 'Apple M2',
+    uptime_seconds: 3600,
+    total_memory_mb: Math.round(17179869184 / MB),
+    free_memory_mb: Math.round(4294967296 / MB),
+    disk_free_gb: Math.round((214748364800 / GB) * 10) / 10,
+    disk_free_bytes: 214748364800,
   });
 });
 
 test('formatSystemInfo: cpuModel falls back to "unknown" when cpus() is empty', () => {
   const os = { ...fakeOs(), cpus: () => [] };
   const info = formatSystemInfo(os, 0);
-  assert.equal(info.cpuModel, 'unknown');
+  assert.equal(info.cpu_model, 'Unknown');
 });
 
 function fakeFsWithStore(initialContent) {
