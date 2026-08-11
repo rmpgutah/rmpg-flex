@@ -703,7 +703,7 @@ export default function CompanyBrowserPage() {
                 <PanelRow
                   key={`${h.url}_${i}`}
                   title={h.title || h.url}
-                  subtitle={new Date(h.visitedAt).toLocaleString()}
+                  subtitle={new Date(h.visitedAt).toLocaleString()} /* new-date-ok: visitedAt is set client-side via new Date().toISOString() (line 263), never from D1 */
                   onClick={() => navigateTo(h.url)}
                   onRemove={() => setHistory(prev => prev.filter((_, j) => j !== i))}
                 />
