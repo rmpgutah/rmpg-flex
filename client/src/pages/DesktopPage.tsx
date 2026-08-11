@@ -30,6 +30,7 @@ import DesktopScreenSaver, { useIdleScreenSaver } from '../components/desktop/De
 import { VirtualDesktopProvider } from '../components/desktop/DesktopVirtualDesktops';
 import FlexOSBootSplash from '../components/desktop/FlexOSBootSplash';
 import FlexOSPowerMenu from '../components/desktop/FlexOSPowerMenu';
+import FlexOSSystemDashboard from '../components/desktop/FlexOSSystemDashboard';
 import FlexOSStatusBar, { STATUS_BAR_HEIGHT } from '../components/desktop/FlexOSStatusBar';
 
 const GRID_COLS = 6;
@@ -113,6 +114,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const { ssActive, lockActive, dismissSS, dismissLock } = useIdleScreenSaver(autoLockSecs);
   const [manuallyLocked, setManuallyLocked] = useState(false);
   const [powerMenuOpen, setPowerMenuOpen] = useState(false);
+  const [sysDashboardOpen, setSysDashboardOpen] = useState(false);
   const isLocked = lockActive || manuallyLocked;
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
   // the parse happens eagerly here — cheap for a small JSON blob, and this
@@ -256,6 +258,11 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         e.preventDefault();
         setPowerMenuOpen(v => !v);
       }
+      // Ctrl+I — System info dashboard
+      if (e.ctrlKey && !e.altKey && e.key === 'i') {
+        e.preventDefault();
+        setSysDashboardOpen(v => !v);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -283,6 +290,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             { label: areIconsHidden() ? 'Show Desktop Icons' : 'Hide Desktop Icons', onClick: () => { setIconsHidden(!areIconsHidden()); forceRerender(n => n + 1); } },
             { label: '', onClick: () => {}, divider: true },
             { label: 'FlexOS Settings…', onClick: () => setWidgetSettingsOpen(true) },
+            { label: 'System Info…', onClick: () => setSysDashboardOpen(true) },
             { label: 'Lock Screen', onClick: () => setManuallyLocked(true) },
           ]}
         >
@@ -343,6 +351,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           onSignOut={() => signOut().catch(() => {})}
         />
       )}
+      {sysDashboardOpen && <FlexOSSystemDashboard onClose={() => setSysDashboardOpen(false)} />}
     </div>
   );
 }
