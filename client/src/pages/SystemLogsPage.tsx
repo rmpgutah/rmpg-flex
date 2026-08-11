@@ -47,7 +47,7 @@ function severityClass(severity: string): string {
 }
 
 function categoryClass(): string {
-  return 'bg-surface-raised text-rmpg-300 border border-rmpg-700/40';
+  return 'bg-surface-raised text-fg-secondary border border-rmpg-700/40';
 }
 
 interface LogRowProps {
@@ -63,7 +63,7 @@ function LogRow({ entry }: LogRowProps) {
         className="w-full text-left px-3 py-2 flex items-start gap-2 hover:bg-surface-raised/50 transition-colors"
         onClick={() => setExpanded(v => !v)}
       >
-        <span className="mt-0.5 text-rmpg-500 shrink-0">
+        <span className="mt-0.5 text-fg-muted shrink-0">
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </span>
         <span
@@ -78,39 +78,39 @@ function LogRow({ entry }: LogRowProps) {
         </span>
         <span className="flex-1 text-[11px] text-rmpg-100 truncate">{entry.message}</span>
         {entry.source && (
-          <span className="shrink-0 text-[10px] text-rmpg-400 hidden md:block truncate max-w-[140px]">
+          <span className="shrink-0 text-[10px] text-fg-secondary hidden md:block truncate max-w-[140px]">
             {entry.source}
           </span>
         )}
         {entry.trace_id && (
-          <span className="shrink-0 text-[10px] font-mono text-rmpg-500 hidden lg:block">
+          <span className="shrink-0 text-[10px] font-mono text-fg-muted hidden lg:block">
             {entry.trace_id.slice(0, 12)}…
           </span>
         )}
-        <span className="shrink-0 text-[10px] text-rmpg-500">{timeAgo(entry.created_at)}</span>
+        <span className="shrink-0 text-[10px] text-fg-muted">{timeAgo(entry.created_at)}</span>
       </button>
       {expanded && (
         <div className="px-4 pb-3 pt-1 space-y-2">
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
             {entry.status_code !== undefined && (
               <>
-                <span className="text-rmpg-400">Status Code</span>
+                <span className="text-fg-secondary">Status Code</span>
                 <span className="text-rmpg-200">{entry.status_code}</span>
               </>
             )}
             {entry.trace_id && (
               <>
-                <span className="text-rmpg-400">Trace ID</span>
+                <span className="text-fg-secondary">Trace ID</span>
                 <span className="text-rmpg-200 font-mono">{entry.trace_id}</span>
               </>
             )}
             {entry.source && (
               <>
-                <span className="text-rmpg-400">Source</span>
+                <span className="text-fg-secondary">Source</span>
                 <span className="text-rmpg-200 font-mono">{entry.source}</span>
               </>
             )}
-            <span className="text-rmpg-400">Timestamp</span>
+            <span className="text-fg-secondary">Timestamp</span>
             <span className="text-rmpg-200">{new Date(entry.created_at).toLocaleString()}</span>
           </div>
           {entry.details !== undefined && entry.details !== null && (
@@ -220,7 +220,7 @@ export default function SystemLogsPage() {
 
   if (!isAdmin) {
     return (
-      <div className="p-6 text-rmpg-400 text-sm">Access restricted to administrators.</div>
+      <div className="p-6 text-fg-secondary text-sm">Access restricted to administrators.</div>
     );
   }
 
@@ -239,7 +239,7 @@ export default function SystemLogsPage() {
               className={`px-3 py-1 text-[11px] font-semibold uppercase transition-colors ${
                 activeTab === tab
                   ? 'bg-brand-600 text-rmpg-50'
-                  : 'bg-surface-base text-rmpg-400 hover:text-rmpg-200'
+                  : 'bg-surface-base text-fg-secondary hover:text-rmpg-200'
               }`}
             >
               {tab === 'server' ? 'Server' : (
@@ -279,13 +279,13 @@ export default function SystemLogsPage() {
               placeholder="Filter by message…"
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
-              className="bg-surface-base border border-rmpg-700/50 text-rmpg-200 text-[11px] rounded-[2px] px-2 py-1 w-44 placeholder:text-rmpg-600"
+              className="bg-surface-base border border-rmpg-700/50 text-rmpg-200 text-[11px] rounded-[2px] px-2 py-1 w-44 placeholder:text-fg-muted"
             />
 
             <div className="flex-1" />
 
             {/* Auto-refresh */}
-            <label className="flex items-center gap-1.5 text-[11px] text-rmpg-400 cursor-pointer select-none">
+            <label className="flex items-center gap-1.5 text-[11px] text-fg-secondary cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={autoRefresh}
@@ -299,7 +299,7 @@ export default function SystemLogsPage() {
             <button
               onClick={() => fetchLogs(true)}
               disabled={loading}
-              className="flex items-center gap-1 px-2 py-1 text-[11px] text-rmpg-300 border border-rmpg-700/50 rounded-[2px] hover:bg-surface-raised transition-colors disabled:opacity-50"
+              className="flex items-center gap-1 px-2 py-1 text-[11px] text-fg-secondary border border-rmpg-700/50 rounded-[2px] hover:bg-surface-raised transition-colors disabled:opacity-50"
             >
               <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
               Refresh
@@ -308,7 +308,7 @@ export default function SystemLogsPage() {
             {/* Export */}
             <button
               onClick={handleExport}
-              className="flex items-center gap-1 px-2 py-1 text-[11px] text-rmpg-300 border border-rmpg-700/50 rounded-[2px] hover:bg-surface-raised transition-colors"
+              className="flex items-center gap-1 px-2 py-1 text-[11px] text-fg-secondary border border-rmpg-700/50 rounded-[2px] hover:bg-surface-raised transition-colors"
             >
               <Download size={11} />
               Export
@@ -320,7 +320,7 @@ export default function SystemLogsPage() {
               className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded-[2px] border transition-colors ${
                 clearConfirm
                   ? 'bg-sev-critical/20 border-sev-critical text-sev-critical'
-                  : 'text-rmpg-400 border-rmpg-700/50 hover:bg-surface-raised'
+                  : 'text-fg-secondary border-rmpg-700/50 hover:bg-surface-raised'
               }`}
             >
               <Trash2 size={11} />
@@ -343,16 +343,16 @@ export default function SystemLogsPage() {
             {/* Column headers */}
             <div className="flex items-center gap-2 px-3 py-1 border-b border-rmpg-800/50 bg-surface-sunken/30 sticky top-0">
               <span className="w-4 shrink-0" />
-              <span className="w-14 shrink-0 text-[9px] font-semibold uppercase text-rmpg-500">Severity</span>
-              <span className="w-20 shrink-0 text-[9px] font-semibold uppercase text-rmpg-500">Category</span>
-              <span className="flex-1 text-[9px] font-semibold uppercase text-rmpg-500">Message</span>
-              <span className="w-36 shrink-0 text-[9px] font-semibold uppercase text-rmpg-500 hidden md:block">Source</span>
-              <span className="w-24 shrink-0 text-[9px] font-semibold uppercase text-rmpg-500 hidden lg:block">Trace ID</span>
-              <span className="w-14 shrink-0 text-[9px] font-semibold uppercase text-rmpg-500">Time</span>
+              <span className="w-14 shrink-0 text-[9px] font-semibold uppercase text-fg-muted">Severity</span>
+              <span className="w-20 shrink-0 text-[9px] font-semibold uppercase text-fg-muted">Category</span>
+              <span className="flex-1 text-[9px] font-semibold uppercase text-fg-muted">Message</span>
+              <span className="w-36 shrink-0 text-[9px] font-semibold uppercase text-fg-muted hidden md:block">Source</span>
+              <span className="w-24 shrink-0 text-[9px] font-semibold uppercase text-fg-muted hidden lg:block">Trace ID</span>
+              <span className="w-14 shrink-0 text-[9px] font-semibold uppercase text-fg-muted">Time</span>
             </div>
 
             {filtered.length === 0 && !loading && (
-              <div className="text-center py-12 text-rmpg-500 text-[11px]">No log entries match the current filters.</div>
+              <div className="text-center py-12 text-fg-muted text-[11px]">No log entries match the current filters.</div>
             )}
 
             {filtered.map(entry => (
@@ -364,7 +364,7 @@ export default function SystemLogsPage() {
                 <button
                   onClick={() => fetchLogs(false)}
                   disabled={loading}
-                  className="px-4 py-1.5 text-[11px] text-rmpg-300 border border-rmpg-700/50 rounded-[2px] hover:bg-surface-raised transition-colors disabled:opacity-50"
+                  className="px-4 py-1.5 text-[11px] text-fg-secondary border border-rmpg-700/50 rounded-[2px] hover:bg-surface-raised transition-colors disabled:opacity-50"
                 >
                   {loading ? 'Loading…' : 'Load More'}
                 </button>
@@ -376,7 +376,7 @@ export default function SystemLogsPage() {
         {activeTab === 'desktop' && (
           <div className="p-3">
             {desktopLogs.length === 0 ? (
-              <div className="text-center py-12 text-rmpg-500 text-[11px]">
+              <div className="text-center py-12 text-fg-muted text-[11px]">
                 {window.electron?.getElectronLogs
                   ? 'No desktop log lines available.'
                   : 'Desktop log bridge unavailable (not running in Electron).'}
@@ -391,7 +391,7 @@ export default function SystemLogsPage() {
       </div>
 
       {/* Footer */}
-      <div className="px-3 py-1.5 border-t border-rmpg-800/60 bg-surface-raised/20 flex items-center gap-4 text-[10px] text-rmpg-500">
+      <div className="px-3 py-1.5 border-t border-rmpg-800/60 bg-surface-raised/20 flex items-center gap-4 text-[10px] text-fg-muted">
         <span>{filtered.length} {filtered.length === 1 ? 'entry' : 'entries'} shown</span>
         {logs.length !== filtered.length && (
           <span>({logs.length} total loaded)</span>

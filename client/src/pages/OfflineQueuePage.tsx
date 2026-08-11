@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { WifiOff, RefreshCw, Trash2, CheckCircle } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { withAlpha } from '../utils/withAlpha';
 
 interface SyncQueueItem {
   id: string;
@@ -226,7 +227,7 @@ export default function OfflineQueuePage() {
               <tr
                 style={{
                   background: 'var(--surface-sunken)',
-                  color: 'var(--field-label-color, var(--accent-gold-300))',
+                  color: 'var(--field-label-color)',
                   fontWeight: 600,
                   fontSize: 9,
                   letterSpacing: '0.06em',
@@ -254,10 +255,10 @@ export default function OfflineQueuePage() {
                     <span
                       className="inline-block font-bold px-2 py-[1px] text-[10px]"
                       style={{
-                        background: `${METHOD_COLORS[item.method] ?? 'var(--text-secondary)'}22`,
+                        background: withAlpha(METHOD_COLORS[item.method] ?? 'var(--text-secondary)', '22'),
                         color: METHOD_COLORS[item.method] ?? 'var(--text-secondary)',
                         borderRadius: 2,
-                        border: `1px solid ${METHOD_COLORS[item.method] ?? 'var(--text-secondary)'}44`,
+                        border: `1px solid ${withAlpha(METHOD_COLORS[item.method] ?? 'var(--text-secondary)', '44')}`,
                         minWidth: 44,
                         textAlign: 'center',
                       }}
@@ -281,10 +282,10 @@ export default function OfflineQueuePage() {
                     <span
                       className="inline-block text-[10px] font-semibold px-2 py-[1px]"
                       style={{
-                        background: `${STATUS_COLORS[item.status] ?? 'var(--text-secondary)'}18`,
+                        background: withAlpha(STATUS_COLORS[item.status] ?? 'var(--text-secondary)', '18'),
                         color: STATUS_COLORS[item.status] ?? 'var(--text-secondary)',
                         borderRadius: 2,
-                        border: `1px solid ${STATUS_COLORS[item.status] ?? 'var(--text-secondary)'}44`,
+                        border: `1px solid ${withAlpha(STATUS_COLORS[item.status] ?? 'var(--text-secondary)', '44')}`,
                       }}
                     >
                       {item.status}

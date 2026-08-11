@@ -109,7 +109,7 @@ const TYPE_LABELS: Record<EvidenceType, string> = {
 
 const STATUS_STYLES: Record<EvidenceStatus, string> = {
   pending_review: 'bg-[color:var(--sev-warn)] text-[color:var(--text-primary)]',
-  reviewed: 'bg-[color:var(--sev-low)] text-[color:var(--text-primary)]',
+  reviewed: 'bg-[color:var(--sev-ok)] text-[color:var(--text-primary)]',
   released: 'bg-[color:var(--sev-ok)] text-[color:var(--text-primary)]',
   sealed: 'bg-[color:var(--sev-critical)] text-[color:var(--text-primary)]',
 };

@@ -150,7 +150,7 @@ export default function BroadcastMessagePage() {
     return (
       <div className="p-4 space-y-3">
         <PanelTitleBar title="BROADCAST MESSAGE" icon={Megaphone} />
-        <div className="rounded bg-surface-raised border border-rmpg-600 p-4 text-rmpg-300 text-xs">
+        <div className="rounded bg-surface-raised border border-rmpg-600 p-4 text-fg-secondary text-xs">
           You do not have permission to send broadcasts. Required: supervisor, dispatcher, manager, or admin.
         </div>
       </div>
@@ -186,13 +186,13 @@ export default function BroadcastMessagePage() {
               {target === 'all' ? 'all units' : target === 'shift' ? 'current shift' : `unit ${targetId}`}.
               Confirm?
             </p>
-            <div className="text-rmpg-300 text-xs bg-surface-base rounded border border-rmpg-600 p-2 italic">
+            <div className="text-fg-secondary text-xs bg-surface-base rounded border border-rmpg-600 p-2 italic">
               "{message.slice(0, 120)}{message.length > 120 ? '…' : ''}"
             </div>
             <div className="flex gap-2 justify-end pt-1">
               <button
                 onClick={() => setConfirmOpen(false)}
-                className="px-3 py-1.5 text-xs rounded border border-rmpg-600 text-rmpg-300 hover:bg-surface-base"
+                className="px-3 py-1.5 text-xs rounded border border-rmpg-600 text-fg-secondary hover:bg-surface-base"
               >
                 Cancel
               </button>
@@ -225,7 +225,7 @@ export default function BroadcastMessagePage() {
                 className={`px-3 py-1 text-xs rounded border ${
                   target === t
                     ? 'border-brand-400 bg-brand-900/30 text-rmpg-100'
-                    : 'border-rmpg-600 text-rmpg-300 hover:border-rmpg-400'
+                    : 'border-rmpg-600 text-fg-secondary hover:border-rmpg-400'
                 }`}
               >
                 {t === 'all' ? 'All Units' : t === 'shift' ? 'Current Shift' : 'Specific Unit'}
@@ -263,7 +263,7 @@ export default function BroadcastMessagePage() {
                 className={`px-3 py-1 text-xs rounded border ${
                   priority === p
                     ? PRIORITY_BADGE[p]
-                    : 'border-rmpg-600 text-rmpg-400 hover:border-rmpg-400 disabled:opacity-40 disabled:cursor-not-allowed'
+                    : 'border-rmpg-600 text-fg-secondary hover:border-rmpg-400 disabled:opacity-40 disabled:cursor-not-allowed'
                 } ${p === 'emergency' && !canSendEmergency(role) ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 {PRIORITY_LABELS[p]}
@@ -282,7 +282,7 @@ export default function BroadcastMessagePage() {
               <button
                 key={q}
                 onClick={() => setMessage(q)}
-                className="px-2 py-1 text-[10px] rounded border border-rmpg-600 text-rmpg-300 hover:text-rmpg-100 hover:border-rmpg-400 bg-surface-base"
+                className="px-2 py-1 text-[10px] rounded border border-rmpg-600 text-fg-secondary hover:text-rmpg-100 hover:border-rmpg-400 bg-surface-base"
               >
                 {q}
               </button>
@@ -296,7 +296,7 @@ export default function BroadcastMessagePage() {
             <label className="text-[color:var(--field-label-color)] text-[9px] font-semibold uppercase tracking-wider">
               Message
             </label>
-            <span className={`text-[9px] ${message.length > MAX_CHARS - 50 ? 'text-amber-400' : 'text-rmpg-500'}`}>
+            <span className={`text-[9px] ${message.length > MAX_CHARS - 50 ? 'text-amber-400' : 'text-fg-muted'}`}>
               {message.length} / {MAX_CHARS}
             </span>
           </div>
@@ -305,7 +305,7 @@ export default function BroadcastMessagePage() {
             onChange={(e) => setMessage(e.target.value.slice(0, MAX_CHARS))}
             rows={4}
             placeholder="Enter broadcast message…"
-            className="w-full rounded border border-rmpg-600 bg-surface-base text-rmpg-100 text-xs px-2 py-2 resize-none focus:outline-none focus:border-brand-500 placeholder:text-rmpg-600"
+            className="w-full rounded border border-rmpg-600 bg-surface-base text-rmpg-100 text-xs px-2 py-2 resize-none focus:outline-none focus:border-brand-500 placeholder:text-fg-muted"
           />
         </div>
 
@@ -340,15 +340,15 @@ export default function BroadcastMessagePage() {
       {/* History */}
       <div className="rounded border border-rmpg-600 bg-surface-raised">
         <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
-          <Clock size={11} className="text-rmpg-400" />
+          <Clock size={11} className="text-fg-secondary" />
           <span className="text-[color:var(--panel-header-color)] text-[9px] font-semibold uppercase tracking-wider">
             Recent Broadcasts
           </span>
         </div>
         {loadingHistory ? (
-          <div className="p-4 text-rmpg-500 text-xs text-center">Loading…</div>
+          <div className="p-4 text-fg-muted text-xs text-center">Loading…</div>
         ) : history.length === 0 ? (
-          <div className="p-4 text-rmpg-500 text-xs text-center">No broadcasts sent yet.</div>
+          <div className="p-4 text-fg-muted text-xs text-center">No broadcasts sent yet.</div>
         ) : (
           <div className="divide-y divide-rmpg-700/50">
             {history.map((rec) => (
@@ -357,13 +357,13 @@ export default function BroadcastMessagePage() {
                   <span className={`text-[9px] px-1.5 py-0.5 rounded border ${PRIORITY_BADGE[rec.priority]}`}>
                     {PRIORITY_LABELS[rec.priority]}
                   </span>
-                  <span className="text-rmpg-400 text-[9px]">
+                  <span className="text-fg-secondary text-[9px]">
                     {rec.target === 'all' ? 'All Units' : rec.target === 'shift' ? 'Current Shift' : `Unit ${rec.target_id ?? ''}`}
                   </span>
-                  <span className="text-rmpg-500 text-[9px] ml-auto">{formatTime(rec.created_at)}</span>
+                  <span className="text-fg-muted text-[9px] ml-auto">{formatTime(rec.created_at)}</span>
                 </div>
                 <p className="text-rmpg-200 text-[10px] leading-snug">{rec.message}</p>
-                <p className="text-rmpg-500 text-[9px]">Sent by {rec.sender_name}</p>
+                <p className="text-fg-muted text-[9px]">Sent by {rec.sender_name}</p>
               </div>
             ))}
           </div>
