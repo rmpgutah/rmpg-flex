@@ -463,15 +463,23 @@ function getSyncMeta(tableName) {
 
 function getConfig(key) {
   const row = db.prepare('SELECT value FROM local_config WHERE key = ?').get(key);
-  return row ? row.value : null;
+  if (!row) return null;
+  // Values were serialized as JSON strings by setConfig — attempt to parse.
+  // Plain strings that aren't JSON (e.g. ISO timestamps) are returned as-is.
+  try { return JSON.parse(row.value); } catch { return row.value; }
 }
 
 function setConfig(key, value) {
+  // better-sqlite3 only accepts string/number/bigint/Buffer/null.
+  // Serialize everything else (booleans, objects, arrays) as JSON.
+  const stored = (value === null || value === undefined)
+    ? null
+    : (typeof value === 'string' ? value : JSON.stringify(value));
   db.prepare(`
     INSERT INTO local_config (key, value, updated_at)
     VALUES (?, ?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-  `).run(key, value, new Date().toISOString());
+  `).run(key, stored, new Date().toISOString());
 }
 
 /**
