@@ -2145,6 +2145,56 @@ export function addWrappedText(
 }
 
 /**
+ * Render PSO pre-arrival briefing notes (items 42-44).
+ *
+ * Each note has an `author` tag (`OFFICER SAFETY` / `INTAKE` / `DISPATCH` / `OCR`)
+ * that determines its sub-section header color. The header is a narrower bar than
+ * the parent section — same width but lower height — to distinguish topical entries
+ * visually without adding full section breaks. Text is rendered via addFormattedText
+ * so bold/italic/underline markers in the briefing body survive to print.
+ */
+export function renderPsoBriefingNotes(
+  doc: jsPDF,
+  notes: Array<{ author: string; text: string; timestamp?: string }>,
+  x: number,
+  y: number,
+  maxWidth: number,
+  priority?: string,
+): number {
+  const AUTHOR_COLOR: Record<string, [number, number, number]> = {
+    'OFFICER SAFETY': [35,  35,  35 ],
+    'INTAKE':         [70,  70,  70 ],
+    'DISPATCH':       [100, 100, 100],
+    'OCR':            [130, 130, 130],
+  };
+  const DEFAULT_COLOR: [number, number, number] = [100, 100, 100];
+  const BAR_H = 4.5;
+  const fontSize = FONT.SIZE_FIELD_VALUE;
+
+  for (const note of notes) {
+    if (!note.text?.trim()) continue;
+    y = checkPageBreak(doc, y, BAR_H + 8, priority);
+
+    // Author sub-header bar
+    const rgb = AUTHOR_COLOR[note.author?.toUpperCase?.()] ?? DEFAULT_COLOR;
+    doc.setFillColor(...rgb);
+    doc.rect(x, y, maxWidth, BAR_H, 'F');
+    doc.setFont('Arial', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    const capH = 7 * 0.35;
+    const label = sanitizePdfText(note.author.toUpperCase());
+    doc.text(label, x + SPACING.CONTENT_INSET, y + (BAR_H + capH) / 2);
+    y += BAR_H + SPACING.SM;
+
+    // Note body — passes through addFormattedText for full markdown rendering
+    y = addFormattedText(doc, note.text, x, y, maxWidth, fontSize);
+    y += SPACING.MD;
+  }
+  return y;
+}
+
+/**
  * Render text with simple inline formatting markers:
  * **bold**, *italic*, __underline__
  * Switches between courier normal/bold/bolditalic as needed.
@@ -2161,7 +2211,32 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
   const GUTTER_MM = 5;   // minimum space reserved for the bullet/number marker
   const BULLET_R = 0.5;  // filled-circle bullet radius (mm)
 
-  // Custom word-based line wrapper — jsPDF splitTextToSize breaks mid-word with Courier
+  // Custom word-based line wrapper — jsPDF splitTextToSize breaks mid-word with Courier.
+  // Handles oversized single tokens (URLs, long hyphenated names, case numbers) that
+  // alone exceed maxW by hard-breaking them character-by-character, preferring to cut
+  // after a hyphen to keep compound names readable (item 54).
+  const breakOversized = (word: string, maxW: number): string[] => {
+    if (doc.getTextWidth(word) <= maxW) return [word];
+    const parts: string[] = [];
+    let chunk = '';
+    for (const ch of word) {
+      const test = chunk + ch;
+      if (doc.getTextWidth(test) > maxW && chunk) {
+        const hyphenIdx = chunk.lastIndexOf('-');
+        if (hyphenIdx > 0 && hyphenIdx < chunk.length - 1) {
+          parts.push(chunk.slice(0, hyphenIdx + 1));
+          chunk = chunk.slice(hyphenIdx + 1) + ch;
+        } else {
+          parts.push(chunk);
+          chunk = ch;
+        }
+      } else {
+        chunk = test;
+      }
+    }
+    if (chunk) parts.push(chunk);
+    return parts;
+  };
   const wordWrap = (str: string, maxW: number): string[] => {
     const words = str.split(/(\s+)/); // Split keeping whitespace tokens
     const result: string[] = [];
@@ -2172,7 +2247,15 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
       const testWidth = doc.getTextWidth(testLine.trimEnd());
       if (testWidth > maxW && currentLine.trim().length > 0) {
         result.push(currentLine.trimEnd());
-        currentLine = word.trimStart(); // Start new line without leading space
+        const chunks = breakOversized(word.trimStart(), maxW);
+        for (let ci = 0; ci < chunks.length - 1; ci++) result.push(chunks[ci]);
+        currentLine = chunks[chunks.length - 1] ?? '';
+      } else if (doc.getTextWidth(word.trimStart()) > maxW) {
+        // Single word alone is too wide — break it even with no prior content
+        if (currentLine.trim()) { result.push(currentLine.trimEnd()); currentLine = ''; }
+        const chunks = breakOversized(word.trimStart(), maxW);
+        for (let ci = 0; ci < chunks.length - 1; ci++) result.push(chunks[ci]);
+        currentLine = chunks[chunks.length - 1] ?? '';
       } else {
         currentLine = testLine;
       }
@@ -3074,6 +3157,11 @@ interface IncidentData {
   caller_name?: string;
   caller_phone?: string;
   call_notes?: string;
+  // Structured PSO briefing notes (process-server intake). When present the
+  // PDF renders each entry as an author-badged sub-section instead of the
+  // flat call_notes string. Both fields may be present; pso_briefing_notes
+  // takes precedence.
+  pso_briefing_notes?: Array<{ author: string; text: string; timestamp?: string }>;
   // Supplement reports
   supplements?: {
     report_number: string;
@@ -3744,8 +3832,12 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         y = Math.max(fya, fyb, fyc);
       }
 
-      // Call Notes (narrative text below fields)
-      if (data.call_notes) {
+      // Call Notes — structured PSO briefing renders per-author sub-sections;
+      // legacy flat string falls through to addFormattedText.
+      if (data.pso_briefing_notes?.length) {
+        y += SPACING.LG;
+        y = renderPsoBriefingNotes(doc, data.pso_briefing_notes, lx, y, ffw, data.priority);
+      } else if (data.call_notes) {
         y += SPACING.LG;
         y = addFormattedText(doc, data.call_notes, lx, y, ffw);
         y += SPACING.MD;
@@ -4642,7 +4734,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     const rows = data.linked_persons.map(p => [
       `${p.last_name}, ${p.first_name}`,
       p.role,
-      p.dob || '',
+      p.dob || 'NOT IN DOCUMENTS',
     ]);
     y = addTableWithShading(doc, tableHeaders, rows, y, colPositions);
     y += SPACING.MD;
