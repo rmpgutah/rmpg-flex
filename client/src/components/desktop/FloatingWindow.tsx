@@ -560,21 +560,21 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
           {!win.maximized && (
             <>
               {/* N edge */}
-              <div onPointerDown={e => onResizeHandlePointerDown(e, 'n')} style={{ position: 'absolute', top: 0, left: 8, right: 8, height: 5, cursor: 'n-resize', zIndex: 1 }} />
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'n')} style={{ position: 'absolute', top: 0, left: 14, right: 14, height: 8, cursor: 'n-resize', zIndex: 1 }} />
               {/* S edge */}
-              <div onPointerDown={e => onResizeHandlePointerDown(e, 's')} style={{ position: 'absolute', bottom: 0, left: 8, right: 8, height: 5, cursor: 's-resize', zIndex: 1 }} />
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 's')} style={{ position: 'absolute', bottom: 0, left: 14, right: 14, height: 8, cursor: 's-resize', zIndex: 1 }} />
               {/* W edge */}
-              <div onPointerDown={e => onResizeHandlePointerDown(e, 'w')} style={{ position: 'absolute', top: 8, bottom: 8, left: 0, width: 5, cursor: 'w-resize', zIndex: 1 }} />
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'w')} style={{ position: 'absolute', top: 14, bottom: 14, left: 0, width: 8, cursor: 'w-resize', zIndex: 1 }} />
               {/* E edge */}
-              <div onPointerDown={e => onResizeHandlePointerDown(e, 'e')} style={{ position: 'absolute', top: 8, bottom: 8, right: 0, width: 5, cursor: 'e-resize', zIndex: 1 }} />
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'e')} style={{ position: 'absolute', top: 14, bottom: 14, right: 0, width: 8, cursor: 'e-resize', zIndex: 1 }} />
               {/* NW corner */}
-              <div onPointerDown={e => onResizeHandlePointerDown(e, 'nw')} style={{ position: 'absolute', top: 0, left: 0, width: 10, height: 10, cursor: 'nw-resize', zIndex: 2 }} />
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'nw')} style={{ position: 'absolute', top: 0, left: 0, width: 14, height: 14, cursor: 'nw-resize', zIndex: 2 }} />
               {/* NE corner */}
-              <div onPointerDown={e => onResizeHandlePointerDown(e, 'ne')} style={{ position: 'absolute', top: 0, right: 0, width: 10, height: 10, cursor: 'ne-resize', zIndex: 2 }} />
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'ne')} style={{ position: 'absolute', top: 0, right: 0, width: 14, height: 14, cursor: 'ne-resize', zIndex: 2 }} />
               {/* SW corner */}
-              <div onPointerDown={e => onResizeHandlePointerDown(e, 'sw')} style={{ position: 'absolute', bottom: 0, left: 0, width: 10, height: 10, cursor: 'sw-resize', zIndex: 2 }} />
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'sw')} style={{ position: 'absolute', bottom: 0, left: 0, width: 14, height: 14, cursor: 'sw-resize', zIndex: 2 }} />
               {/* SE corner */}
-              <div onPointerDown={e => onResizeHandlePointerDown(e, 'se')} style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, cursor: 'se-resize', zIndex: 2 }} />
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'se')} style={{ position: 'absolute', bottom: 0, right: 0, width: 14, height: 14, cursor: 'se-resize', zIndex: 2 }} />
             </>
           )}
         </>
