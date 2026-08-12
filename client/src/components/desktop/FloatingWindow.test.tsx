@@ -287,3 +287,33 @@ describe('FloatingWindow — respects taskbar size setting for maximize/snap mat
     setTaskbarSize('small');
   });
 });
+
+describe('FloatingWindow — SnapLayouts trigger', () => {
+  function renderWindow() {
+    const result = render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    return result;
+  }
+
+  it('shows snap layouts overlay after hovering maximize button for 400ms', () => {
+    vi.useFakeTimers();
+    const { container } = renderWindow();
+    const maxBtn = screen.getByLabelText(/maximize/i);
+    fireEvent.mouseEnter(maxBtn);
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(container.querySelector('[data-testid="snap-layouts-overlay"]')).toBeInTheDocument();
+    fireEvent.mouseLeave(maxBtn);
+    expect(container.querySelector('[data-testid="snap-layouts-overlay"]')).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it('does not show snap layouts overlay before 400ms have elapsed', () => {
+    vi.useFakeTimers();
+    const { container } = renderWindow();
+    const maxBtn = screen.getByLabelText(/maximize/i);
+    fireEvent.mouseEnter(maxBtn);
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(container.querySelector('[data-testid="snap-layouts-overlay"]')).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+});

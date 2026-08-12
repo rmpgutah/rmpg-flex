@@ -7,6 +7,7 @@ import { TASKBAR_HEIGHT_PX } from './DesktopTaskbar';
 import { getTaskbarSize } from '../../utils/taskbarPreferences';
 import ContextMenu from '../ContextMenu';
 import { playDesktopSound } from '../../utils/desktopSounds';
+import SnapLayouts, { type SnapZone } from './SnapLayouts';
 
 const TITLE_BAR_HEIGHT = 30;
 const TITLE_SYNC_POLL_MS = 500;
@@ -27,12 +28,78 @@ type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 export const ALWAYS_ON_TOP_ZINDEX_OFFSET = 10000;
 const SNAP_PREVIEW_ZINDEX = ALWAYS_ON_TOP_ZINDEX_OFFSET + 1000;
 
+interface SnapAssistProps {
+  occupiedZone: SnapZone;
+  otherWindows: { id: string; title: string; path: string }[];
+  taskbarH: number;
+  onPick: (windowId: string, zone: SnapZone) => void;
+  onDismiss: () => void;
+}
+
+function SnapAssist({ occupiedZone, otherWindows, taskbarH, onPick, onDismiss }: SnapAssistProps) {
+  const dW = window.innerWidth;
+  const dH = window.innerHeight - taskbarH;
+  const remainX = occupiedZone.x + occupiedZone.width < dW ? occupiedZone.x + occupiedZone.width : 0;
+  const remainW = dW - occupiedZone.width;
+
+  return (
+    <div
+      data-testid="snap-assist-panel"
+      style={{
+        position: 'fixed',
+        left: remainX,
+        top: 0,
+        width: remainW,
+        height: dH,
+        background: 'rgba(var(--rmpg-900-rgb, 10 22 38), 0.7)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        zIndex: 10002,
+        backdropFilter: 'blur(2px)',
+      }}
+      onClick={onDismiss}
+    >
+      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4, letterSpacing: '0.06em' }}>SNAP ASSIST</div>
+      {otherWindows.map(w => (
+        <button
+          key={w.id}
+          type="button"
+          aria-label={`Snap ${w.title} into remaining zone`}
+          onClick={e => {
+            e.stopPropagation();
+            onPick(w.id, { id: 'assist', label: 'Remaining', x: remainX, y: 0, width: remainW, height: dH });
+          }}
+          style={{
+            width: 160,
+            padding: '8px 12px',
+            background: 'rgba(var(--rmpg-700-rgb, 30 60 95), 0.8)',
+            border: '1px solid var(--border-strong)',
+            borderRadius: 2,
+            cursor: 'pointer',
+            fontSize: 10,
+            color: 'var(--text-primary)',
+            textAlign: 'left',
+            transition: 'background 120ms',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--rmpg-500-rgb, 62 116 168), 0.6)'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--rmpg-700-rgb, 30 60 95), 0.8)'; }}
+        >
+          {w.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface FloatingWindowProps {
   win: DesktopWindowState;
 }
 
 export default function FloatingWindow({ win }: FloatingWindowProps) {
-  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers } = useDesktopWindows();
+  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, windows } = useDesktopWindows();
   const taskbarHeight = TASKBAR_HEIGHT_PX[getTaskbarSize()];
   const dragState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const resizeState = useRef<{ startX: number; startY: number; originW: number; originH: number; originX: number; originY: number; dir: ResizeDir } | null>(null);
@@ -44,6 +111,25 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   // determine if a snap should be applied. We need a ref here because the state
   // update from setSnapPreview is not visible in the onUp closure.
   const snapEdgeRef = useRef<'left' | 'right' | null>(null);
+  const [snapLayoutsOpen, setSnapLayoutsOpen] = useState(false);
+  const [snapAssist, setSnapAssist] = useState<{ zone: SnapZone } | null>(null);
+  const snapHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const onMaxBtnMouseEnter = useCallback(() => {
+    snapHoverTimer.current = setTimeout(() => setSnapLayoutsOpen(true), 400);
+  }, []);
+
+  const onMaxBtnMouseLeave = useCallback(() => {
+    if (snapHoverTimer.current) { clearTimeout(snapHoverTimer.current); snapHoverTimer.current = null; }
+    setSnapLayoutsOpen(false);
+  }, []);
+
+  const handleSnapZone = useCallback((zone: SnapZone) => {
+    moveResize(win.id, { x: zone.x, y: zone.y, width: zone.width, height: zone.height }, { persist: false });
+    setSnapLayoutsOpen(false);
+    playDesktopSound();
+    setSnapAssist({ zone });
+  }, [win.id, moveResize]);
   // Captured the instant a snap is applied — lets a subsequent drag "pull the
   // window away" from the edge to restore its pre-snap bounds, matching the
   // real OS un-snap feel. Not persisted: a transient drag-interaction detail.
@@ -302,9 +388,26 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
           <button type="button" aria-label={`Minimize ${win.title}`} onClick={() => minimizeWindow(win.id)} className="p-1 hover:bg-surface-hover">
             <Minus className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />
           </button>
-          <button type="button" aria-label={`Maximize ${win.title}`} onClick={() => toggleMaximize(win.id)} className="p-1 hover:bg-surface-hover">
-            <Square className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />
-          </button>
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              aria-label={`Maximize ${win.title}`}
+              onClick={() => toggleMaximize(win.id)}
+              onMouseEnter={onMaxBtnMouseEnter}
+              onMouseLeave={onMaxBtnMouseLeave}
+              className="p-1 hover:bg-surface-hover"
+            >
+              <Square className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />
+            </button>
+            {snapLayoutsOpen && (
+              <SnapLayouts
+                windowId={win.id}
+                taskbarH={taskbarHeight}
+                onSnap={handleSnapZone}
+                onDismiss={() => setSnapLayoutsOpen(false)}
+              />
+            )}
+          </div>
           <button type="button" aria-label={`Close ${win.title}`} onClick={() => closeWindow(win.id)} className="p-1 hover:bg-surface-hover">
             <X className="w-3 h-3" style={{ color: 'var(--sev-critical, var(--text-secondary))' }} />
           </button>
@@ -344,6 +447,20 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         </>
       )}
     </div>
+    {snapAssist && (
+      <SnapAssist
+        occupiedZone={snapAssist.zone}
+        otherWindows={windows.filter(w => w.id !== win.id && !w.minimized).map(w => ({ id: w.id, title: w.title, path: w.path }))}
+        taskbarH={taskbarHeight}
+        onPick={(targetId, remainZone) => {
+          moveResize(targetId, { x: remainZone.x, y: remainZone.y, width: remainZone.width, height: remainZone.height }, { persist: false });
+          focusWindow(targetId);
+          setSnapAssist(null);
+          playDesktopSound();
+        }}
+        onDismiss={() => setSnapAssist(null)}
+      />
+    )}
     </>
   );
 }
