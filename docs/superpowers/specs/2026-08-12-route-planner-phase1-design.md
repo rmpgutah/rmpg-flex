@@ -277,11 +277,95 @@ Both are idempotent (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN` wrapped in the W
 
 | Test file | Coverage |
 |-----------|---------|
-| `tests/serveRouteOptimizer.test.ts` | Matrix API mock + fallback, deadline coefficient math, time-window penalty application, dwell-time ETA computation |
+| `tests/serveRouteOptimizer.test.ts` | Matrix API mock + fallback, deadline coefficient math, time-window penalty application, dwell-time ETA computation, traffic degradation detection |
 | `tests/serveDwellTimes.test.ts` | Write path bounds check, read path median query, address hash normalization |
-| `client/src/components/serve/__tests__/ServeRoutePlanner.clustering.test.ts` | Extend existing: geocode warning banner renders, dismiss works, verify link opens edit modal |
+| `client/src/components/serve/__tests__/ServeRoutePlanner.clustering.test.ts` | Extend existing: geocode warning banner renders, dismiss works, verify link opens edit modal, traffic suggestion banner renders and dismisses |
 
 All existing `serveRouteOptimizer` tests must remain green — the matrix input changes but the solver interface does not.
+
+---
+
+## Feature 7 — Mid-Shift Traffic Suggestion
+
+### Overview
+
+While an officer is working a route, real-world traffic conditions can degrade significantly from the conditions at shift start. Feature 7 detects this automatically and surfaces a non-intrusive suggestion to accept a re-optimized sequence for remaining stops.
+
+### Data Flow
+
+```
+ServeRoutePlanner.tsx (active route)
+  → poll every 10 min → POST /api/serve/route/traffic-check
+        │
+        ├─ Re-run Mapbox Matrix API with depart_at = now
+        ├─ Compare new segment durations to original durations
+        ├─ If total added time > 15 min OR any segment > 10 min added:
+        │      re-optimize remaining stops with new matrix
+        │      return degraded: true + new order + new ETAs
+        └─ Return TrafficCheckResponse
+```
+
+### Request / Response
+
+**`POST /api/serve/route/traffic-check`** — auth required
+
+Request body:
+```typescript
+interface TrafficCheckRequest {
+  remainingStops: RouteStop[];       // stops not yet completed this shift
+  currentOrder: number[];            // jobId ordering of remainingStops
+  currentPosition: { lat: number; lng: number };
+  originalEtas: string[];            // ISO timestamps from route generation
+  departAt: string;                  // original shift start (for comparison baseline)
+}
+```
+
+Response:
+```typescript
+interface TrafficCheckResponse {
+  degraded: boolean;
+  addedMinutes: number;              // total minutes added vs original ETAs
+  newOrder: RouteStop[];             // re-optimized remaining stop sequence
+  newEtas: string[];                 // updated ETA per remaining stop
+  degradedSegments: Array<{
+    fromJobId: number;
+    toJobId: number;
+    addedSeconds: number;
+  }>;
+  matrixFallback: boolean;
+}
+```
+
+### Server-Side Logic: `checkTrafficDegradation()`
+
+New function in `src/utils/serveRouteOptimizer.ts`:
+
+1. Prepend `currentPosition` as a virtual origin stop to `remainingStops`
+2. Call `buildCostMatrix()` with `depart_at = new Date().toISOString()` (current traffic)
+3. Compare new `matrix[i][j]` values against reconstructed original costs (derived from original ETAs delta)
+4. Collect degraded segments: any pair where `newCost - originalCost > 600` (10 min)
+5. Sum total added seconds across the planned path
+6. If `totalAddedSeconds > 900` (15 min) or any degraded segment exists: re-run `optimizeRoute()` on remaining stops with new matrix
+7. Return result
+
+### Client: Polling + Suggestion Banner
+
+`ServeRoutePlanner.tsx` — when `routeAccepted` state is true:
+
+- `useEffect` with `setInterval(checkTraffic, 600_000)` (10 min)
+- `checkTraffic` calls `apiFetch<TrafficCheckResponse>('/api/serve/route/traffic-check', { method: 'POST', body: ... })`
+- If `response.degraded`, set `trafficSuggestion` state
+- Render amber banner above the stop list:
+
+```
+⚠ Traffic has changed — route is now +{addedMinutes} min behind schedule.
+[Accept Updated Route]  [Dismiss]
+```
+
+- "Accept Updated Route" replaces `orderedStops` + `etaPerStop` with `newOrder` + `newEtas` and clears the banner
+- "Dismiss" clears the banner and resets the poll timer (next check in 10 min)
+- If `matrixFallback: true` on the check response, suppress the banner (no reliable data to suggest on)
+- Polling stops when all stops are marked completed (all `status` values are `'served'` or terminal)
 
 ---
 
@@ -294,13 +378,14 @@ All existing `serveRouteOptimizer` tests must remain green — the matrix input 
 - [ ] Verify via `pragma_table_info('serve_dwell_times')` and `pragma_table_info('serve_queue')`
 - [ ] Smoke test: generate a route in prod, confirm `etaPerStop` present, `matrixFallback: false`
 - [ ] Confirm geocode warning banner appears for a known centroid-geocoded address
+- [ ] Confirm traffic-check endpoint returns `degraded: false` under normal conditions
 
 ---
 
 ## Out of Scope (Phase 2)
 
-- Live route resequencing on mid-shift job assignment (Feature 7)
-- Attempt failure auto-replan (Feature 8)
-- Cheapest insertion heuristic (Feature 9)
-- Route health indicator (Feature 10)
+- Live route resequencing on mid-shift job assignment
+- Attempt failure auto-replan
+- Cheapest insertion heuristic
+- Route health indicator
 - All remaining features 11–20
