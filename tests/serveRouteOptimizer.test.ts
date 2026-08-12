@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { RouteStop, OptimizeResult, TrafficCheckResult } from '../src/utils/serveRouteOptimizer';
-import { buildCostMatrix, haversineMatrix } from '../src/utils/serveRouteOptimizer';
+import { buildCostMatrix, haversineMatrix, deadlineCoefficient, applyTimeWindowPenalties, optimizeRoute } from '../src/utils/serveRouteOptimizer';
 
 const STOPS_3: RouteStop[] = [
   { jobId: 1, lat: 40.760, lng: -111.890, geocodeSource: 'point', deadlineAt: null, defendantType: 'individual', addressHash: 'a', defendant: 'A', address: '1 A St', locationNote: null },
@@ -94,6 +94,81 @@ describe('buildCostMatrix', () => {
     expect(result.matrix[0][25]).toBeGreaterThan(0);
     // Matrix must be marked fallback:true because cross-chunk cells use haversine
     expect(result.fallback).toBe(true);
+  });
+});
+
+describe('deadlineCoefficient', () => {
+  const now = new Date('2026-08-12T08:00:00Z');
+
+  it('returns 1.0 for deadline > 72 hours away', () => {
+    const stop = { ...STOPS_3[0], deadlineAt: '2026-08-15T10:00:00Z' };
+    expect(deadlineCoefficient(stop, now)).toBe(1.0);
+  });
+
+  it('returns 0.7 for deadline 24–72 hours away', () => {
+    const stop = { ...STOPS_3[0], deadlineAt: '2026-08-13T10:00:00Z' };
+    expect(deadlineCoefficient(stop, now)).toBe(0.7);
+  });
+
+  it('returns 0.4 for deadline < 24 hours away', () => {
+    const stop = { ...STOPS_3[0], deadlineAt: '2026-08-12T20:00:00Z' };
+    expect(deadlineCoefficient(stop, now)).toBe(0.4);
+  });
+
+  it('returns 0.1 for past-deadline stop', () => {
+    const stop = { ...STOPS_3[0], deadlineAt: '2026-08-11T08:00:00Z' };
+    expect(deadlineCoefficient(stop, now)).toBe(0.1);
+  });
+
+  it('returns 1.0 when deadlineAt is null', () => {
+    const stop = { ...STOPS_3[0], deadlineAt: null };
+    expect(deadlineCoefficient(stop, now)).toBe(1.0);
+  });
+});
+
+describe('applyTimeWindowPenalties', () => {
+  it('adds penalty when projected arrival falls outside serve window', () => {
+    const stops: RouteStop[] = [
+      { ...STOPS_3[0], locationNote: null },
+      {
+        ...STOPS_3[1],
+        locationNote: { serveStart: '08:00', serveEnd: '08:05' }, // extremely tight window
+      },
+    ];
+    const matrix = [[0, 300], [300, 0]]; // 5 min travel
+    const departAt = '2026-08-12T09:00:00-06:00'; // 9 AM MDT — arrives at stop[1] at 9:05, outside 08:00–08:05
+    const penalized = applyTimeWindowPenalties(matrix, stops, departAt, [0, 0]);
+    expect(penalized[0][1]).toBeGreaterThan(matrix[0][1]);
+  });
+
+  it('does not penalize stops with no location note', () => {
+    const stops = STOPS_3.map(s => ({ ...s, locationNote: null }));
+    const matrix = [[0, 300, 600], [300, 0, 300], [600, 300, 0]];
+    const penalized = applyTimeWindowPenalties(matrix, stops, '2026-08-12T08:00:00Z', [0, 0, 0]);
+    expect(penalized).toEqual(matrix);
+  });
+});
+
+describe('optimizeRoute', () => {
+  it('returns an ordering of all stop indices', () => {
+    const matrix = [[0, 100, 200], [100, 0, 100], [200, 100, 0]];
+    const now = new Date('2026-08-12T08:00:00Z');
+    const order = optimizeRoute(STOPS_3, matrix, '2026-08-12T08:00:00Z', now, [300, 300, 600]);
+    expect(order).toHaveLength(3);
+    expect(new Set(order).size).toBe(3);
+  });
+
+  it('places a critically overdue stop first regardless of geometry', () => {
+    const stops: RouteStop[] = [
+      { ...STOPS_3[0], deadlineAt: null },
+      { ...STOPS_3[1], deadlineAt: null },
+      { ...STOPS_3[2], deadlineAt: '2026-08-11T00:00:00Z' }, // past deadline
+    ];
+    // matrix is symmetric and uniform — geometry alone would give [0,1,2]
+    const matrix = [[0, 100, 100], [100, 0, 100], [100, 100, 0]];
+    const now = new Date('2026-08-12T08:00:00Z');
+    const order = optimizeRoute(stops, matrix, '2026-08-12T08:00:00Z', now, [0, 0, 0]);
+    expect(order[0]).toBe(2); // overdue stop must be first
   });
 });
 

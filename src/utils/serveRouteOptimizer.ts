@@ -427,7 +427,7 @@ function nearestNeighborSort(
  * @param attemptIds - Array of serve_attempts.id values to optimize
  * @returns Ordered attempt IDs, estimated total distance, and drive time
  */
-export async function optimizeRoute(
+export async function optimizeRouteForServer(
   db: D1Database,
   serverId: number,
   attemptIds: number[],
@@ -550,7 +550,7 @@ export async function batchOptimizeAllServers(
 
     if (attempts.length === 0) continue;
 
-    const optimization = await optimizeRoute(
+    const optimization = await optimizeRouteForServer(
       db,
       server.id,
       attempts.map((a) => a.id),
@@ -637,4 +637,128 @@ export async function getNearestUnassignedAttempt(
   }
 
   return best;
+}
+
+// ── Phase-1 solver: deadline coefficients + time-window penalties + 2-opt ──
+
+export function deadlineCoefficient(stop: RouteStop, now: Date): number {
+  if (!stop.deadlineAt) return 1.0;
+  const hoursRemaining =
+    (new Date(stop.deadlineAt).getTime() - now.getTime()) / 3_600_000;
+  if (hoursRemaining > 72) return 1.0;
+  if (hoursRemaining > 24) return 0.7;
+  if (hoursRemaining > 0) return 0.4;
+  return 0.1;
+}
+
+function parseTimeOfDay(timeStr: string, referenceDate: string): number {
+  const [h, m] = timeStr.split(':').map(Number);
+  const d = new Date(referenceDate);
+  d.setHours(h, m, 0, 0);
+  return d.getTime();
+}
+
+export function applyTimeWindowPenalties(
+  matrix: number[][],
+  stops: RouteStop[],
+  departAt: string,
+  dwellSeconds: number[]
+): number[][] {
+  const n = stops.length;
+  const flat = matrix.flat();
+  const maxCost = Math.max(...flat.filter(v => isFinite(v)), 1);
+  const PENALTY = 10 * maxCost;
+  const result = matrix.map(row => [...row]);
+  const departMs = new Date(departAt).getTime();
+
+  for (let j = 0; j < n; j++) {
+    const note = stops[j].locationNote;
+    if (!note?.serveStart || !note?.serveEnd) continue;
+    const windowStart = parseTimeOfDay(note.serveStart, departAt);
+    const windowEnd = parseTimeOfDay(note.serveEnd, departAt);
+
+    for (let i = 0; i < n; i++) {
+      if (i === j) continue;
+      const arrivalMs = departMs + matrix[i][j] * 1000;
+      if (arrivalMs < windowStart || arrivalMs > windowEnd) {
+        result[i][j] += PENALTY;
+      }
+    }
+  }
+  return result;
+}
+
+function nearestNeighborOrder(matrix: number[][], n: number, startIdx: number = 0): number[] {
+  const visited = new Set<number>([startIdx]);
+  const order: number[] = [startIdx];
+  while (order.length < n) {
+    const last = order[order.length - 1];
+    let best = -1;
+    let bestCost = Infinity;
+    for (let j = 0; j < n; j++) {
+      if (!visited.has(j) && matrix[last][j] < bestCost) {
+        bestCost = matrix[last][j];
+        best = j;
+      }
+    }
+    order.push(best);
+    visited.add(best);
+  }
+  return order;
+}
+
+function twoOpt(matrix: number[][], order: number[]): number[] {
+  const n = order.length;
+  let best = [...order];
+  let improved = true;
+  while (improved) {
+    improved = false;
+    for (let i = 1; i < n - 1; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const nextJ = j + 1 < n ? j + 1 : 0;
+        const before = matrix[best[i - 1]][best[i]] + (matrix[best[j]][best[nextJ]] ?? 0);
+        const after = matrix[best[i - 1]][best[j]] + (matrix[best[i]][best[nextJ]] ?? 0);
+        if (after < before - 0.001) {
+          best = [
+            ...best.slice(0, i),
+            ...best.slice(i, j + 1).reverse(),
+            ...best.slice(j + 1),
+          ];
+          improved = true;
+        }
+      }
+    }
+  }
+  return best;
+}
+
+export function optimizeRoute(
+  stops: RouteStop[],
+  matrix: number[][],
+  departAt: string,
+  now: Date,
+  dwellSeconds: number[]
+): number[] {
+  const n = stops.length;
+  if (n === 0) return [];
+  if (n === 1) return [0];
+
+  // Apply deadline coefficients to matrix
+  const weighted = matrix.map((row, _i) =>
+    row.map((cost, j) => cost * deadlineCoefficient(stops[j], now))
+  );
+
+  // Apply time-window penalties on top of weighted costs
+  const penalized = applyTimeWindowPenalties(weighted, stops, departAt, dwellSeconds);
+
+  // Start from the most urgent stop (lowest deadline coefficient = highest priority)
+  let startIdx = 0;
+  let lowestCoeff = deadlineCoefficient(stops[0], now);
+  for (let i = 1; i < n; i++) {
+    const c = deadlineCoefficient(stops[i], now);
+    if (c < lowestCoeff) { lowestCoeff = c; startIdx = i; }
+  }
+
+  const seed = nearestNeighborOrder(penalized, n, startIdx);
+  return twoOpt(penalized, seed);
 }

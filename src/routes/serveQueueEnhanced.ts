@@ -20,7 +20,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { toDenverWallClock } from '../utils/denverTime';
 import {
-  optimizeRoute,
+  optimizeRouteForServer as optimizeRoute,
   haversineDistanceMiles as haversineDistance,
   estimateDriveTime,
 } from '../utils/serveRouteOptimizer';
@@ -1010,12 +1010,12 @@ sqe.post('/optimize-route', async (c) => {
     if (!Array.isArray(body.attempt_ids) || !body.attempt_ids.length) {
       return c.json({ error: 'attempt_ids array required' }, 400);
     }
-    const { optimizeRoute, optimizeRouteFromUserLocation } = await import('../utils/serveRouteOptimizer');
+    const { optimizeRouteForServer, optimizeRouteFromUserLocation } = await import('../utils/serveRouteOptimizer');
     let result;
     if (body.user_lat != null && body.user_lng != null && isFinite(body.user_lat) && isFinite(body.user_lng)) {
       result = await optimizeRouteFromUserLocation(db, body.attempt_ids, body.user_lat, body.user_lng);
     } else {
-      result = await optimizeRoute(db, userId ?? 0, body.attempt_ids);
+      result = await optimizeRouteForServer(db, userId ?? 0, body.attempt_ids);
     }
     return c.json(result);
   } catch (err) {
