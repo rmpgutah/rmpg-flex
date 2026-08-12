@@ -433,10 +433,10 @@ export default React.memo(function ServeJobCard({
           )}
 
           {/* [18] Witness fee chip — shown when serve_fee or rush_fee indicates a fee is set */}
-          {((job.serve_fee ?? 0) > 0 || (job.rush_fee ?? 0) > 0) && (
-            <span title={`Serve fee: $${(job.serve_fee ?? 0).toFixed(2)}${(job.rush_fee ?? 0) > 0 ? ` + $${job.rush_fee!.toFixed(2)} rush` : ''}`}
+          {(Number(job.serve_fee ?? 0) > 0 || Number(job.rush_fee ?? 0) > 0) && (
+            <span title={`Serve fee: $${Number(job.serve_fee ?? 0).toFixed(2)}${Number(job.rush_fee ?? 0) > 0 ? ` + $${Number(job.rush_fee).toFixed(2)} rush` : ''}`}
               className="inline-flex items-center gap-0.5 text-[8px] font-bold text-green-300 bg-green-900/30 border border-green-700/40 px-1 py-0 rounded-[2px]">
-              <DollarSign className="w-2 h-2" />FEE ${((job.serve_fee ?? 0) + (job.rush_fee ?? 0)).toFixed(2)}
+              <DollarSign className="w-2 h-2" />FEE ${(Number(job.serve_fee ?? 0) + Number(job.rush_fee ?? 0)).toFixed(2)}
             </span>
           )}
 
