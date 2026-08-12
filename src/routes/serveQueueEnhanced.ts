@@ -21,7 +21,7 @@ import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db'
 import { toDenverWallClock } from '../utils/denverTime';
 import {
   optimizeRoute,
-  haversineDistance,
+  haversineDistanceMiles as haversineDistance,
   estimateDriveTime,
 } from '../utils/serveRouteOptimizer';
 import { containsAnyClause } from '../utils/searchText';

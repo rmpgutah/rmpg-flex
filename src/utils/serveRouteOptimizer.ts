@@ -12,9 +12,71 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, queryInChunks } from './db';
 
-// ── Types ──────────────────────────────────────────────────
+// ── Phase-1 route-planner types (added 2026-08-12) ─────────
 
 export interface RouteStop {
+  jobId: number;
+  lat: number;
+  lng: number;
+  geocodeSource: 'point' | 'centroid' | null;
+  deadlineAt: string | null;
+  defendantType: 'individual' | 'business';
+  addressHash: string;
+  defendant: string;
+  address: string;
+  locationNote: { serveStart: string | null; serveEnd: string | null } | null;
+}
+
+export interface GeocodeWarning {
+  jobId: number;
+  defendant: string;
+  address: string;
+  quality: 'low' | 'none';
+}
+
+export interface OptimizeResult {
+  orderedStops: RouteStop[];
+  etaPerStop: string[];
+  matrixFallback: boolean;
+  geocodeWarnings: GeocodeWarning[];
+}
+
+export interface TrafficCheckResult {
+  degraded: boolean;
+  addedMinutes: number;
+  newOrder: RouteStop[];
+  newEtas: string[];
+  degradedSegments: Array<{ fromJobId: number; toJobId: number; addedSeconds: number }>;
+  matrixFallback: boolean;
+}
+
+/**
+ * Haversine distance between two {lat, lng} points. Returns metres.
+ * Used as the fallback matrix calculation when live traffic data is unavailable.
+ */
+export function haversineDistance(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6_371_000;
+  const φ1 = (a.lat * Math.PI) / 180;
+  const φ2 = (b.lat * Math.PI) / 180;
+  const Δφ = ((b.lat - a.lat) * Math.PI) / 180;
+  const Δλ = ((b.lng - a.lng) * Math.PI) / 180;
+  const x =
+    Math.sin(Δφ / 2) ** 2 +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+/**
+ * Build an n×n distance matrix (metres) for a list of stops.
+ * Diagonal entries are 0. Used as fallback when Mapbox Matrix API is unavailable.
+ */
+export function haversineMatrix(stops: Array<{ lat: number; lng: number }>): number[][] {
+  return stops.map(a => stops.map(b => haversineDistance(a, b)));
+}
+
+// ── Legacy attempt-based types (nearest-neighbor optimizer) ─
+
+export interface AttemptRouteStop {
   attemptId: number;
   queueId: number;
   lat: number;
@@ -30,7 +92,7 @@ export interface OptimizationResult {
   orderedAttemptIds: number[];
   totalDistanceMiles: number;
   estimatedDriveTimeMinutes: number;
-  stops: RouteStop[];
+  stops: AttemptRouteStop[];
 }
 
 export interface BoundingBox {
@@ -68,7 +130,7 @@ const ROAD_WINDING_FACTOR = 1.3;
 
 const toRad = (deg: number) => (deg * Math.PI) / 180;
 
-// ── Core geometry ──────────────────────────────────────────
+// ── Core geometry (legacy attempt optimizer) ───────────────
 
 /**
  * Calculate the great-circle distance between two coordinates using the
@@ -80,7 +142,7 @@ const toRad = (deg: number) => (deg * Math.PI) / 180;
  * @param lng2 - Longitude of second point (decimal degrees)
  * @returns Distance in miles (always ≥ 0)
  */
-export function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+export function haversineDistanceMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const dLat = toRad(lat2 - lat1);
   const dLng = toRad(lng2 - lng1);
   const a =
@@ -151,7 +213,7 @@ export async function getServerWorkArea(
 
   const centerLat = (minLat + maxLat) / 2;
   const centerLng = (minLng + maxLng) / 2;
-  const spanMiles = haversineDistance(minLat, minLng, maxLat, maxLng);
+  const spanMiles = haversineDistanceMiles(minLat, minLng, maxLat, maxLng);
 
   return { minLat, maxLat, minLng, maxLng, centerLat, centerLng, spanMiles };
 }
@@ -167,14 +229,14 @@ export async function getServerWorkArea(
 async function fetchStops(
   db: D1Database,
   attemptIds: number[],
-): Promise<{ withCoords: RouteStop[]; withoutCoords: RouteStop[] }> {
+): Promise<{ withCoords: AttemptRouteStop[]; withoutCoords: AttemptRouteStop[] }> {
   if (attemptIds.length === 0) return { withCoords: [], withoutCoords: [] };
 
   // Caller-supplied id list: a full day's route plan can exceed D1's
   // 100-bound-parameter cap, which throws at BIND time -- before the query
   // runs -- so the whole route would fail to build on exactly the busy days
   // it matters most.
-  const rows = await queryInChunks<RouteStop>(
+  const rows = await queryInChunks<AttemptRouteStop>(
     db, attemptIds,
     // Five of this query's column references did not exist on live D1, so the
     // route optimizer's stop fetch threw "no such column" on EVERY call and
@@ -200,8 +262,8 @@ async function fetchStops(
       WHERE a.id IN (${placeholders})`,
   );
 
-  const withCoords: RouteStop[] = [];
-  const withoutCoords: RouteStop[] = [];
+  const withCoords: AttemptRouteStop[] = [];
+  const withoutCoords: AttemptRouteStop[] = [];
 
   for (const row of rows) {
     if (Number.isFinite(row.lat) && Number.isFinite(row.lng)) {
@@ -222,15 +284,15 @@ async function fetchStops(
  * Returns the stops in optimized order plus the total distance.
  */
 function nearestNeighborSort(
-  stops: RouteStop[],
+  stops: AttemptRouteStop[],
   startLat: number | null,
   startLng: number | null,
-): { ordered: RouteStop[]; totalMiles: number } {
+): { ordered: AttemptRouteStop[]; totalMiles: number } {
   if (stops.length === 0) return { ordered: [], totalMiles: 0 };
   if (stops.length === 1) return { ordered: stops, totalMiles: 0 };
 
   const remaining = [...stops];
-  const ordered: RouteStop[] = [];
+  const ordered: AttemptRouteStop[] = [];
   let totalMiles = 0;
 
   // Start from the server's current position if provided; otherwise start
@@ -246,7 +308,7 @@ function nearestNeighborSort(
     let bestIdx = 0;
     let bestDist = Infinity;
     for (let i = 0; i < remaining.length; i++) {
-      const d = haversineDistance(centroidLat, centroidLng, remaining[i].lat, remaining[i].lng);
+      const d = haversineDistanceMiles(centroidLat, centroidLng, remaining[i].lat, remaining[i].lng);
       if (d < bestDist) { bestDist = d; bestIdx = i; }
     }
     // Move the chosen start to front.
@@ -260,7 +322,7 @@ function nearestNeighborSort(
     let bestIdx = 0;
     let bestDist = Infinity;
     for (let i = 0; i < remaining.length; i++) {
-      const d = haversineDistance(curLat, curLng, remaining[i].lat, remaining[i].lng);
+      const d = haversineDistanceMiles(curLat, curLng, remaining[i].lat, remaining[i].lng);
       if (d < bestDist) { bestDist = d; bestIdx = i; }
     }
     const [next] = remaining.splice(bestIdx, 1);
@@ -478,7 +540,7 @@ export async function getNearestUnassignedAttempt(
 
   for (const c of candidates) {
     if (!Number.isFinite(c.lat) || !Number.isFinite(c.lng)) continue;
-    const dist = haversineDistance(serverLat, serverLng, c.lat, c.lng);
+    const dist = haversineDistanceMiles(serverLat, serverLng, c.lat, c.lng);
     if (dist <= maxRadiusMiles && dist < bestDist) {
       bestDist = dist;
       best = {
