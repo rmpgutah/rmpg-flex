@@ -666,7 +666,10 @@ calls.get('/:id', async (c) => {
     // something to read; the client already renders this (DispatchPage.tsx
     // ~line 5961) but it was always empty since nothing populated it.
     const visitHistory = await query<Record<string, unknown>>(db,
-      'SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC, id ASC LIMIT 200', id);
+      `SELECT cvh.*, fv.vehicle_number AS responding_vehicle_number
+       FROM call_visit_history cvh
+       LEFT JOIN fleet_vehicles fv ON fv.id = cvh.responding_vehicle_id
+       WHERE cvh.call_id = ? ORDER BY cvh.visit_number ASC, cvh.id ASC LIMIT 200`, id);
 
     // Linked serve job. CallPdfData declares `serve_queue_id` and the call
     // report's QR gate reads it (recordPdfGenerator.ts) — but nothing ever

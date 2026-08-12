@@ -188,7 +188,7 @@ export function buildNoticeOfCommunicationFromCall(
       date: visitStamp.date,
       time: visitStamp.time,
       result: v.disposition || 'no_contact',
-      notes: v.note || '',
+      notes: v.notes || '',
     };
   });
 

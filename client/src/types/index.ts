@@ -405,7 +405,7 @@ export interface PsoServiceWindows {
 
 export interface VisitHistory {
   id: number;
-  call_id: string;
+  call_id: number;
   visit_number: number;
   status: CallStatus;
   dispatched_at?: string;
@@ -414,15 +414,14 @@ export interface VisitHistory {
   cleared_at?: string;
   closed_at?: string;
   assigned_units?: string; // JSON string of call signs
-  responding_vehicle_id?: string;
+  responding_vehicle_id?: number;
+  responding_vehicle_number?: string; // resolved from fleet_vehicles
   starting_mileage?: number;
   ending_mileage?: number;
   disposition?: string;
-  note?: string;
-  created_by?: string;
+  notes?: string;
+  officer_id?: number;
   created_at: string;
-  time_window?: 'early_morning' | 'daytime' | 'evening';
-  is_weekend?: number; // 0 or 1
 }
 
 // --- Units ---

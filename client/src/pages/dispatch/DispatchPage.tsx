@@ -3242,12 +3242,6 @@ export default function DispatchPage() {
                               <div className="flex items-center gap-2 mb-0.5">
                                 <span className="font-bold text-amber-300">VISIT #{visit.visit_number}</span>
                                 <span className="text-rmpg-300">{(visit.status || '').toUpperCase()}</span>
-                                {visit.time_window && (
-                                  <span className="px-1 rounded-sm text-[8px] font-mono" style={{ background: 'color-mix(in srgb, var(--spm-text-muted) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 25%, transparent)', color: 'var(--spm-text-muted)' }}>
-                                    {visit.time_window === 'early_morning' ? '6-9AM' : visit.time_window === 'daytime' ? '9AM-6PM' : '6-9PM'}
-                                    {visit.is_weekend ? ' (wknd)' : ''}
-                                  </span>
-                                )}
                               </div>
                               <div className="text-rmpg-400 space-y-0.5">
                                 {visit.dispatched_at && <div>Dispatched: {formatTime(visit.dispatched_at)}</div>}
@@ -6263,9 +6257,9 @@ export default function DispatchPage() {
                               {visit.cleared_at && <span className="text-rmpg-300"><span className="text-rmpg-500">Cleared:</span> {formatTime(visit.cleared_at)}</span>}
                               {visit.closed_at && <span className="text-rmpg-300"><span className="text-rmpg-500">Closed:</span> {formatTime(visit.closed_at)}</span>}
                             </div>
-                            {(visit.responding_vehicle_id || totalMiles) && (
+                            {(visit.responding_vehicle_number || totalMiles) && (
                               <div className="flex gap-x-4 text-[9px] mt-0.5">
-                                {visit.responding_vehicle_id && <span className="text-rmpg-300"><span className="text-rmpg-500">Vehicle:</span> {visit.responding_vehicle_id}</span>}
+                                {visit.responding_vehicle_number && <span className="text-rmpg-300"><span className="text-rmpg-500">Vehicle:</span> {visit.responding_vehicle_number}</span>}
                                 {visit.starting_mileage != null && <span className="text-rmpg-300"><span className="text-rmpg-500">Start Mi:</span> {visit.starting_mileage.toLocaleString()}</span>}
                                 {visit.ending_mileage != null && <span className="text-rmpg-300"><span className="text-rmpg-500">End Mi:</span> {visit.ending_mileage.toLocaleString()}</span>}
                                 {totalMiles && <span className="text-green-400 font-bold"><span className="text-rmpg-500">Total:</span> {totalMiles} mi</span>}
