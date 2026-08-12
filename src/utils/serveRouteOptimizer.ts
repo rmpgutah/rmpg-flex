@@ -74,6 +74,81 @@ export function haversineMatrix(stops: Array<{ lat: number; lng: number }>): num
   return stops.map(a => stops.map(b => haversineDistance(a, b)));
 }
 
+// ── Mapbox Matrix API ──────────────────────────────────────
+
+const MATRIX_CHUNK_SIZE = 25;
+
+export async function buildCostMatrix(
+  stops: RouteStop[],
+  departAt: string,
+  mapboxToken: string
+): Promise<{ matrix: number[][]; fallback: boolean }> {
+  if (!mapboxToken) {
+    return { matrix: haversineMatrix(stops), fallback: true };
+  }
+
+  if (stops.length <= MATRIX_CHUNK_SIZE) {
+    return fetchMatrixChunk(stops, departAt, mapboxToken);
+  }
+
+  // Chunk into overlapping 25-stop windows and merge
+  const n = stops.length;
+  const result: number[][] = Array.from({ length: n }, () => Array(n).fill(0));
+  let fallback = false;
+
+  for (let start = 0; start < n; start += MATRIX_CHUNK_SIZE) {
+    const end = Math.min(start + MATRIX_CHUNK_SIZE, n);
+    const chunk = stops.slice(start, end);
+    const { matrix: chunkMatrix, fallback: chunkFallback } = await fetchMatrixChunk(
+      chunk,
+      departAt,
+      mapboxToken
+    );
+    if (chunkFallback) fallback = true;
+    for (let i = start; i < end; i++) {
+      for (let j = start; j < end; j++) {
+        result[i][j] = chunkMatrix[i - start][j - start];
+      }
+    }
+    // Fill cross-chunk cells with haversine fallback
+    for (let i = 0; i < start; i++) {
+      for (let j = start; j < end; j++) {
+        if (result[i][j] === 0 && i !== j) {
+          result[i][j] = haversineDistance(stops[i], stops[j]);
+          result[j][i] = result[i][j];
+        }
+      }
+    }
+  }
+  return { matrix: result, fallback };
+}
+
+async function fetchMatrixChunk(
+  stops: RouteStop[],
+  departAt: string,
+  mapboxToken: string
+): Promise<{ matrix: number[][]; fallback: boolean }> {
+  const coords = stops.map(s => `${s.lng},${s.lat}`).join(';');
+  const url = new URL(
+    `https://api.mapbox.com/directions-matrix/v1/mapbox/driving-traffic/${coords}`
+  );
+  url.searchParams.set('sources', 'all');
+  url.searchParams.set('destinations', 'all');
+  url.searchParams.set('depart_at', departAt);
+  url.searchParams.set('access_token', mapboxToken);
+
+  try {
+    const res = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) throw new Error(`Mapbox Matrix HTTP ${res.status}`);
+    const data = await (res.json() as Promise<{ durations: number[][] }>);
+    return { matrix: data.durations, fallback: false };
+  } catch {
+    return { matrix: haversineMatrix(stops), fallback: true };
+  }
+}
+
 // ── Legacy attempt-based types (nearest-neighbor optimizer) ─
 
 export interface AttemptRouteStop {
