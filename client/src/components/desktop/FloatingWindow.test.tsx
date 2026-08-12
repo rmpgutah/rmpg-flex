@@ -367,4 +367,33 @@ describe('FloatingWindow — Aero Shake ring', () => {
     const titleBar = getByTestId('title-bar');
     expect(titleBar.className).not.toContain('shake-ring');
   });
+
+  it('title bar shows shake-ring-active class after Aero Shake gesture', () => {
+    vi.useFakeTimers();
+    try {
+      const { getByTestId } = renderWindow();
+      const titleBar = getByTestId('title-bar');
+
+      // Begin drag on the title bar (initialises dragState + shakeRef)
+      fireEvent.pointerDown(titleBar, { clientX: 200, clientY: 10, pointerId: 1 });
+
+      // Fire rapid left-right-left-right pointermove events on window.
+      // dx sign must flip AERO_SHAKE_REVERSAL_COUNT (4) times within
+      // AERO_SHAKE_WINDOW_MS (600 ms).  All events are within the same fake-timer
+      // tick so Date.now() stays constant — every timestamp passes the 600 ms filter.
+      const moves = [
+        { clientX: 150, clientY: 10 }, // dx = -50  sign = -1  (reversal 1)
+        { clientX: 260, clientY: 10 }, // dx = +60  sign = +1  (reversal 2)
+        { clientX: 140, clientY: 10 }, // dx = -60  sign = -1  (reversal 3)
+        { clientX: 270, clientY: 10 }, // dx = +70  sign = +1  (reversal 4 → shake!)
+      ];
+      for (const coords of moves) {
+        fireEvent.pointerMove(window, { clientX: coords.clientX, clientY: coords.clientY, pointerId: 1 });
+      }
+
+      expect(titleBar.className).toContain('shake-ring-active');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
