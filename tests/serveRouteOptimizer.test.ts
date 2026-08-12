@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { RouteStop, OptimizeResult, TrafficCheckResult } from '../src/utils/serveRouteOptimizer';
-import { buildCostMatrix, haversineMatrix, deadlineCoefficient, applyTimeWindowPenalties, optimizeRoute, geocodeQualityScore, collectGeocodeWarnings, optimizeRouteFullPipeline } from '../src/utils/serveRouteOptimizer';
+import { buildCostMatrix, haversineMatrix, deadlineCoefficient, applyTimeWindowPenalties, optimizeRoute, geocodeQualityScore, collectGeocodeWarnings, optimizeRouteFullPipeline, checkTrafficDegradation } from '../src/utils/serveRouteOptimizer';
 
 const STOPS_3: RouteStop[] = [
   { jobId: 1, lat: 40.760, lng: -111.890, geocodeSource: 'point', deadlineAt: null, defendantType: 'individual', addressHash: 'a', defendant: 'A', address: '1 A St', locationNote: null },
@@ -219,5 +219,103 @@ describe('collectGeocodeWarnings', () => {
   it('returns empty array when all stops have high quality', () => {
     const stops = STOPS_3.map(s => ({ ...s, geocodeSource: 'point' as const }));
     expect(collectGeocodeWarnings(stops)).toHaveLength(0);
+  });
+});
+
+describe('checkTrafficDegradation', () => {
+  const origin = { lat: 40.755, lng: -111.895 };
+  const originalEtas = [
+    '2026-08-12T08:10:00Z',
+    '2026-08-12T08:20:00Z',
+    '2026-08-12T08:30:00Z',
+  ];
+
+  it('returns degraded:false when traffic is unchanged', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        durations: [
+          [0, 300, 300, 300],
+          [300, 0, 300, 600],
+          [300, 300, 0, 300],
+          [300, 600, 300, 0],
+        ],
+      }),
+    } as unknown as Response);
+
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const result = await checkTrafficDegradation(
+      STOPS_3,
+      [0, 1, 2],
+      origin,
+      originalEtas,
+      mockDb,
+      'sk.fake'
+    );
+    expect(result.degraded).toBe(false);
+    expect(result.addedMinutes).toBeLessThan(15);
+  });
+
+  it('returns degraded:true when total added time exceeds 15 minutes', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        durations: [
+          [0, 2100, 2100, 2100],
+          [2100, 0, 2100, 2100],
+          [2100, 2100, 0, 2100],
+          [2100, 2100, 2100, 0],
+        ],
+      }),
+    } as unknown as Response);
+
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const result = await checkTrafficDegradation(
+      STOPS_3,
+      [0, 1, 2],
+      origin,
+      originalEtas,
+      mockDb,
+      'sk.fake'
+    );
+    expect(result.degraded).toBe(true);
+    expect(result.addedMinutes).toBeGreaterThanOrEqual(15);
+  });
+
+  it('returns matrixFallback:true and degraded:false when API fails', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response);
+
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const result = await checkTrafficDegradation(
+      STOPS_3,
+      [0, 1, 2],
+      origin,
+      originalEtas,
+      mockDb,
+      'sk.fake'
+    );
+    expect(result.matrixFallback).toBe(true);
+    expect(result.degraded).toBe(false);
   });
 });

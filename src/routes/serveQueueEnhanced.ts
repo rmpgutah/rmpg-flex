@@ -1072,4 +1072,43 @@ sqe.get('/nearest-unassigned', async (c) => {
     logger.error('GET /nearest-unassigned failed', { src: 'src/routes/serveQueueEnhanced.ts' }, err); return c.json({ error: 'Lookup failed' }, 500); }
 });
 
+// ── POST /route/traffic-check — mid-shift traffic degradation check ──
+sqe.post('/route/traffic-check', async (c) => {
+  try {
+    const body = await c.req.json<{
+      remainingStops: import('../utils/serveRouteOptimizer').RouteStop[];
+      currentOrder: number[];
+      currentPosition: { lat: number; lng: number };
+      originalEtas: string[];
+    }>();
+    const { remainingStops, currentOrder, currentPosition, originalEtas } = body;
+
+    if (!remainingStops?.length) {
+      return c.json<import('../utils/serveRouteOptimizer').TrafficCheckResult>({
+        degraded: false,
+        addedMinutes: 0,
+        newOrder: [],
+        newEtas: [],
+        degradedSegments: [],
+        matrixFallback: false,
+      });
+    }
+
+    const { checkTrafficDegradation } = await import('../utils/serveRouteOptimizer');
+    const db = getDb(c.env);
+    const result = await checkTrafficDegradation(
+      remainingStops,
+      currentOrder,
+      currentPosition,
+      originalEtas,
+      db,
+      c.env.MAPBOX_SECRET_TOKEN ?? '',
+    );
+    return c.json(result);
+  } catch (err) {
+    logger.error('POST /route/traffic-check failed', { src: 'src/routes/serveQueueEnhanced.ts' }, err);
+    return c.json({ error: 'Traffic check failed' }, 500);
+  }
+});
+
 export default sqe;

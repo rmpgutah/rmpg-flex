@@ -900,3 +900,121 @@ export function computeEtas(
   }
   return etas;
 }
+
+// ---------------------------------------------------------------------------
+// Mid-shift traffic degradation detection
+// ---------------------------------------------------------------------------
+
+const TRAFFIC_DEGRADE_THRESHOLD_S = 900;  // 15 min total added
+const TRAFFIC_SEGMENT_THRESHOLD_S = 600;  // 10 min per segment
+
+/**
+ * Compare current live traffic costs against original ETAs.
+ * Returns a TrafficCheckResult indicating whether re-routing is warranted.
+ *
+ * @param remainingStops - Stops not yet served, in their current visit order
+ * @param currentOrder   - Indices into remainingStops representing the planned sequence
+ * @param currentPosition - Officer's current GPS position
+ * @param originalEtas   - ISO timestamps from the last route optimization (one per stop in currentOrder)
+ * @param db             - D1 database binding (for dwell-time lookup)
+ * @param mapboxToken    - Mapbox secret token for the Matrix API
+ */
+export async function checkTrafficDegradation(
+  remainingStops: RouteStop[],
+  currentOrder: number[],
+  currentPosition: { lat: number; lng: number },
+  originalEtas: string[],
+  db: D1Database,
+  mapboxToken: string,
+): Promise<TrafficCheckResult> {
+  if (remainingStops.length === 0) {
+    return {
+      degraded: false,
+      addedMinutes: 0,
+      newOrder: [],
+      newEtas: [],
+      degradedSegments: [],
+      matrixFallback: false,
+    };
+  }
+
+  const origin: RouteStop = {
+    jobId: -1,
+    lat: currentPosition.lat,
+    lng: currentPosition.lng,
+    geocodeSource: 'point',
+    deadlineAt: null,
+    defendantType: 'individual',
+    addressHash: '',
+    defendant: '__origin__',
+    address: '',
+    locationNote: null,
+  };
+
+  const allStops = [origin, ...remainingStops];
+  const nowIso = new Date().toISOString();
+  const { matrix, fallback } = await buildCostMatrix(allStops, nowIso, mapboxToken);
+
+  if (fallback) {
+    return {
+      degraded: false,
+      addedMinutes: 0,
+      newOrder: currentOrder.map(i => remainingStops[i]),
+      newEtas: originalEtas,
+      degradedSegments: [],
+      matrixFallback: true,
+    };
+  }
+
+  // Reconstruct original per-segment durations from ETA timestamps
+  const departMs = Date.now();
+  const originalSegmentSeconds: number[] = currentOrder.map((_, step) => {
+    if (step === 0) return (new Date(originalEtas[0]).getTime() - departMs) / 1000;
+    return (new Date(originalEtas[step]).getTime() - new Date(originalEtas[step - 1]).getTime()) / 1000;
+  });
+
+  // Compare new live traffic costs against original plan
+  const degradedSegments: TrafficCheckResult['degradedSegments'] = [];
+  let totalAddedSeconds = 0;
+
+  for (let step = 0; step < currentOrder.length; step++) {
+    const stopIdx = currentOrder[step];
+    const matrixStopIdx = stopIdx + 1; // +1: origin is [0] in allStops
+    const prevMatrixIdx = step === 0 ? 0 : currentOrder[step - 1] + 1;
+    const newCost = matrix[prevMatrixIdx][matrixStopIdx];
+    // Clamp to 0 in case ETAs are already past (officer is late — don't inflate "added")
+    const originalCost = Math.max(0, originalSegmentSeconds[step]);
+    const added = newCost - originalCost;
+
+    if (added > TRAFFIC_SEGMENT_THRESHOLD_S) {
+      degradedSegments.push({
+        fromJobId: step === 0 ? -1 : remainingStops[currentOrder[step - 1]].jobId,
+        toJobId: remainingStops[stopIdx].jobId,
+        addedSeconds: Math.round(added),
+      });
+    }
+    totalAddedSeconds += Math.max(0, added);
+  }
+
+  const degraded = totalAddedSeconds > TRAFFIC_DEGRADE_THRESHOLD_S;
+
+  // Re-optimize with live matrix when degraded
+  const now = new Date();
+  const dwellSecs = await fetchDwellSeconds(db, remainingStops);
+  const remainingMatrix = matrix.slice(1).map(row => row.slice(1)); // strip origin row/col
+  const newOrderIndices = degraded
+    ? optimizeRoute(remainingStops, remainingMatrix, nowIso, now, dwellSecs)
+    : currentOrder;
+
+  const newOrder = newOrderIndices.map(i => remainingStops[i]);
+  const newEtas = computeEtas(newOrderIndices, remainingMatrix, dwellSecs, nowIso);
+
+  return {
+    degraded,
+    addedMinutes: Math.round(totalAddedSeconds / 60),
+    newOrder,
+    newEtas,
+    degradedSegments,
+    matrixFallback: false,
+  };
+}
