@@ -3,6 +3,7 @@ import { AlertTriangle, Briefcase, UserCheck, BarChart3, Clock, Calendar } from 
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import PanelTitleBar from '../PanelTitleBar';
+import { formatDateLong } from '../../utils/dateUtils';
 
 interface ServeSummary {
   total: number;
@@ -146,7 +147,7 @@ export default function ServeDashboardPerformance() {
                       )}
                     </div>
                     <span className="text-[10px] font-mono text-rmpg-400 shrink-0">
-                      {d.deadline ? new Date(d.deadline.slice(0, 10)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                      {d.deadline ? formatDateLong(d.deadline) : ''}
                     </span>
                   </div>
                 ))}
