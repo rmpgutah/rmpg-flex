@@ -3869,19 +3869,19 @@ export default function DispatchPage() {
                 style={{ background: priorityFilter === 'P1' ? 'rgb(var(--sev-critical-rgb) / 0.25)' : priorityFilter === 'P2' ? 'rgb(var(--sev-warn-rgb) / 0.25)' : priorityFilter === 'P3' ? 'rgb(var(--spm-text-muted-rgb) / 0.25)' : 'rgb(var(--sev-ok-rgb) / 0.25)', borderColor: priorityFilter === 'P1' ? 'color-mix(in srgb, var(--sev-critical) 50%, transparent)' : priorityFilter === 'P2' ? 'color-mix(in srgb, var(--sev-warn) 50%, transparent)' : priorityFilter === 'P3' ? 'color-mix(in srgb, var(--spm-text-muted) 50%, transparent)' : 'color-mix(in srgb, var(--sev-ok) 50%, transparent)', color: priorityFilter === 'P1' ? 'var(--sev-critical)' : priorityFilter === 'P2' ? 'var(--sev-warn)' : priorityFilter === 'P3' ? 'var(--spm-text-muted)' : 'var(--sev-ok)' }}
               >
                 Priority: {priorityFilter}
-                <button type="button" onClick={() => setPriorityFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors">&times;</button>
+                <button type="button" onClick={() => setPriorityFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors" aria-label="Clear priority filter">&times;</button>
               </span>
             )}
             {typeFilter && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-brand-300 border-brand-700/50 bg-brand-900/20">
                 Type: {formatIncidentType(typeFilter)}
-                <button type="button" onClick={() => setTypeFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors">&times;</button>
+                <button type="button" onClick={() => setTypeFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors" aria-label="Clear type filter">&times;</button>
               </span>
             )}
             {signalFilter && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-purple-300 border-purple-700/50 bg-purple-900/20">
                 Signal: {signalFilter === 'signaled' ? 'Has code' : 'No code'}
-                <button type="button" onClick={() => setSignalFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors">&times;</button>
+                <button type="button" onClick={() => setSignalFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors" aria-label="Clear signal filter">&times;</button>
               </span>
             )}
             <button
@@ -5414,7 +5414,7 @@ export default function DispatchPage() {
                                   {cp.last_name}, {cp.first_name}
                                   <WarrantBadge flags={cp.flags} size="sm" />
                                   {cp.dob && <span className="text-rmpg-500">DOB:{cp.dob}</span>}
-                                  <button type="button" onClick={() => unlinkPersonFromCall(selectedCall.id, cp.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
+                                  <button type="button" onClick={() => unlinkPersonFromCall(selectedCall.id, cp.id)} className="text-red-500 hover:text-red-300 ml-0.5" aria-label="Remove person from call">&times;</button>
                                 </span>
                               ))}
                             </div>
@@ -5461,7 +5461,7 @@ export default function DispatchPage() {
                                   <span className="text-brand-gold-500 uppercase text-[7px] font-black">{toDisplayLabel(cv.role || '')}</span>
                                   {[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}
                                   {cv.plate_number && <span className="text-brand-400 ml-0.5">PLT:{cv.plate_number}</span>}
-                                  <button type="button" onClick={() => unlinkVehicleFromCall(selectedCall.id, cv.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
+                                  <button type="button" onClick={() => unlinkVehicleFromCall(selectedCall.id, cv.id)} className="text-red-500 hover:text-red-300 ml-0.5" aria-label="Remove vehicle from call">&times;</button>
                                 </span>
                               ))}
                             </div>
@@ -5508,7 +5508,7 @@ export default function DispatchPage() {
                                   <span className="text-brand-gold-500 uppercase text-[7px] font-black">{toDisplayLabel(cb.role)}</span>
                                   {cb.name}
                                   {cb.business_type && <span className="text-rmpg-500">{toDisplayLabel(cb.business_type)}</span>}
-                                  <button type="button" onClick={() => unlinkBusinessFromCall(selectedCall.id, cb.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
+                                  <button type="button" onClick={() => unlinkBusinessFromCall(selectedCall.id, cb.id)} className="text-red-500 hover:text-red-300 ml-0.5" aria-label="Remove business from call">&times;</button>
                                 </span>
                               ))}
                             </div>
@@ -6391,10 +6391,10 @@ export default function DispatchPage() {
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleEditTimeline(String(entry.id)); if (e.key === 'Escape') setEditingTimelineId(null); }}
                                 autoFocus
                               />
-                              <button type="button" onClick={() => handleEditTimeline(String(entry.id))} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }}>
+                              <button type="button" onClick={() => handleEditTimeline(String(entry.id))} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }} aria-label="Save timeline entry">
                                 <Save style={{ width: 8, height: 8 }} />
                               </button>
-                              <button type="button" onClick={() => setEditingTimelineId(null)} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }}>
+                              <button type="button" onClick={() => setEditingTimelineId(null)} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }} aria-label="Cancel timeline edit">
                                 <X style={{ width: 8, height: 8 }} />
                               </button>
                             </div>
