@@ -419,7 +419,8 @@ sv.get('/deadlines', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
   const days = parseInt(c.req.query('days') || '7', 10);
-  const sql = `SELECT * FROM serve_queue
+  const sql = `SELECT *, CAST(julianday(deadline) - julianday('now') AS INTEGER) AS days_remaining
+    FROM serve_queue
     WHERE deadline IS NOT NULL
       AND deadline <= datetime('now','+' || ? || ' days')
       AND status NOT IN ('served','cancelled','failed')
@@ -486,6 +487,7 @@ sv.get('/success-rates', async (c) => {
       served: r.served,
       failed: r.failed,
       success_rate: r.total ? Math.round((r.served / r.total) * 10000) / 100 : 0,
+      avg_attempts: r.total ? Math.round((Number(r.attempts ?? 0) / r.total) * 100) / 100 : 0,
     })),
   });
 });

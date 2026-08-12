@@ -3,6 +3,7 @@ import { AlertTriangle, Briefcase, UserCheck, BarChart3, Clock, Calendar } from 
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import PanelTitleBar from '../PanelTitleBar';
+import { formatDateLong } from '../../utils/dateUtils';
 
 interface ServeSummary {
   total: number;
@@ -90,19 +91,19 @@ export default function ServeDashboardPerformance() {
         <div className="p-3 space-y-3">
           {/* Stat cards row */}
           <div className="grid grid-cols-4 gap-2">
-            <div className="bg-surface-raised rounded px-2 py-1.5 text-center">
+            <div className="bg-surface-raised rounded-[2px] px-2 py-1.5 text-center">
               <div className="text-[9px] text-rmpg-400 uppercase font-bold">Pending</div>
               <div className="text-lg font-bold font-mono tabular-nums text-amber-400">{summary?.pending ?? 0}</div>
             </div>
-            <div className="bg-surface-raised rounded px-2 py-1.5 text-center">
+            <div className="bg-surface-raised rounded-[2px] px-2 py-1.5 text-center">
               <div className="text-[9px] text-rmpg-400 uppercase font-bold">Served</div>
               <div className="text-lg font-bold font-mono tabular-nums text-green-400">{summary?.served ?? 0}</div>
             </div>
-            <div className="bg-surface-raised rounded px-2 py-1.5 text-center">
+            <div className="bg-surface-raised rounded-[2px] px-2 py-1.5 text-center">
               <div className="text-[9px] text-rmpg-400 uppercase font-bold">Failed</div>
               <div className="text-lg font-bold font-mono tabular-nums text-red-400">{summary?.failed ?? 0}</div>
             </div>
-            <div className="bg-surface-raised rounded px-2 py-1.5 text-center">
+            <div className="bg-surface-raised rounded-[2px] px-2 py-1.5 text-center">
               <div className="text-[9px] text-rmpg-400 uppercase font-bold">Overdue</div>
               <div className="text-lg font-bold font-mono tabular-nums text-rose-400">{summary?.overdue ?? 0}</div>
             </div>
@@ -146,7 +147,7 @@ export default function ServeDashboardPerformance() {
                       )}
                     </div>
                     <span className="text-[10px] font-mono text-rmpg-400 shrink-0">
-                      {d.deadline ? new Date(d.deadline + 'T23:59:59').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : ''}
+                      {d.deadline ? formatDateLong(d.deadline) : ''}
                     </span>
                   </div>
                 ))}
@@ -165,11 +166,11 @@ export default function ServeDashboardPerformance() {
                 <BarChart3 className="w-3 h-3" /> Schedule Performance (30d)
               </div>
               <div className="grid grid-cols-2 gap-2 mb-2">
-                <div className="bg-surface-raised rounded px-2 py-1 text-center">
+                <div className="bg-surface-raised rounded-[2px] px-2 py-1 text-center">
                   <div className="text-[9px] text-rmpg-400 uppercase font-bold">Attempts</div>
                   <div className="text-sm font-bold font-mono tabular-nums text-rmpg-100">{scheduleAnalytics.summary.total_attempts}</div>
                 </div>
-                <div className="bg-surface-raised rounded px-2 py-1 text-center">
+                <div className="bg-surface-raised rounded-[2px] px-2 py-1 text-center">
                   <div className="text-[9px] text-rmpg-400 uppercase font-bold">Success Rate</div>
                   <div className="text-sm font-bold font-mono tabular-nums text-green-400">{scheduleAnalytics.summary.success_rate}%</div>
                 </div>
