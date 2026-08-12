@@ -5,7 +5,6 @@ import { getWindowConfigByPath } from '../../utils/windowManager';
 import { isSnapEnabled } from '../../utils/snapPreference';
 import { TASKBAR_HEIGHT_PX } from './DesktopTaskbar';
 import { getTaskbarSize } from '../../utils/taskbarPreferences';
-import ContextMenu from '../ContextMenu';
 import { playDesktopSound } from '../../utils/desktopSounds';
 import SnapLayouts, { type SnapZone } from './SnapLayouts';
 
@@ -94,6 +93,89 @@ function SnapAssist({ occupiedZone, otherWindows, taskbarH, onPick, onDismiss }:
   );
 }
 
+interface SystemMenuProps {
+  win: DesktopWindowState;
+  onClose: () => void;
+  onMinimize: () => void;
+  onMaximize: () => void;
+  onAlwaysOnTop: () => void;
+  onOpacity: (v: number) => void;
+  onDismiss: () => void;
+}
+
+function SystemMenu({ win, onClose, onMinimize, onMaximize, onAlwaysOnTop, onOpacity, onDismiss }: SystemMenuProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onDismiss(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onDismiss(); };
+    document.addEventListener('mousedown', handler);
+    window.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', handler); window.removeEventListener('keydown', onKey); };
+  }, [onDismiss]);
+
+  const item = (label: string, onClick: () => void, disabled = false) => (
+    <button
+      key={label}
+      type="button"
+      role="menuitem"
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => { onClick(); onDismiss(); }}
+      style={{
+        display: 'block', width: '100%', padding: '5px 16px', textAlign: 'left',
+        fontSize: 10, color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
+        background: 'none', border: 'none', cursor: disabled ? 'default' : 'pointer',
+      }}
+      onMouseEnter={e => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--rmpg-500-rgb, 62 116 168), 0.25)'; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
+    >
+      {label}
+    </button>
+  );
+
+  const divider = () => <div style={{ height: 1, background: 'var(--border-subtle)', margin: '4px 0' }} />;
+
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      data-testid="system-menu"
+      style={{
+        position: 'fixed', zIndex: win.zIndex + 1,
+        background: 'var(--surface-raised)',
+        border: '1px solid var(--border-strong)',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+        minWidth: 180, padding: '4px 0',
+      }}
+    >
+      {item('Restore', onMaximize, !win.maximized && !win.minimized)}
+      {item('Minimize', onMinimize, win.minimized)}
+      {item(`${win.maximized ? 'Restore Down' : 'Maximize'}`, onMaximize)}
+      {divider()}
+      {item(`Always on Top${win.alwaysOnTop ? ' ✓' : ''}`, onAlwaysOnTop)}
+      {divider()}
+      <div style={{ padding: '6px 16px' }}>
+        <div style={{ fontSize: 9, color: 'var(--field-label-color)', letterSpacing: '0.06em', marginBottom: 4 }}>OPACITY</div>
+        <input
+          type="range"
+          min={0.2}
+          max={1}
+          step={0.05}
+          value={win.opacity ?? 1}
+          aria-label="Opacity"
+          onChange={e => onOpacity(Number(e.target.value))}
+          style={{ width: '100%', height: 4, accentColor: 'var(--brand-400)' }}
+        />
+        <div style={{ fontSize: 9, color: 'var(--text-muted)', textAlign: 'right', marginTop: 2 }}>
+          {Math.round((win.opacity ?? 1) * 100)}%
+        </div>
+      </div>
+      {divider()}
+      {item('Close  Alt+F4', onClose)}
+    </div>
+  );
+}
+
 interface FloatingWindowProps {
   win: DesktopWindowState;
 }
@@ -114,6 +196,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   const [snapLayoutsOpen, setSnapLayoutsOpen] = useState(false);
   const [snapAssist, setSnapAssist] = useState<{ zone: SnapZone } | null>(null);
   const snapHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [systemMenu, setSystemMenu] = useState<{ x: number; y: number } | null>(null);
 
   const onMaxBtnMouseEnter = useCallback(() => {
     snapHoverTimer.current = setTimeout(() => setSnapLayoutsOpen(true), 400);
@@ -372,15 +455,15 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         focusWindow(win.id);
       }}
     >
-      <ContextMenu
-        items={[
-          { label: 'Increase opacity', onClick: () => setWindowOpacity(win.id, (win.opacity ?? 1) + 0.1) },
-          { label: 'Decrease opacity', onClick: () => setWindowOpacity(win.id, (win.opacity ?? 1) - 0.1) },
-        ]}
-      >
       <div
+        data-testid="title-bar"
         onPointerDown={onTitleBarPointerDown}
         onDoubleClick={onTitleBarDoubleClick}
+        onContextMenu={(e: React.MouseEvent) => {
+          if ((e.target as HTMLElement).closest('button')) return;
+          e.preventDefault();
+          setSystemMenu({ x: e.clientX, y: e.clientY });
+        }}
         className="flex items-center justify-between px-2 select-none cursor-move"
         style={{ height: TITLE_BAR_HEIGHT, background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
       >
@@ -422,7 +505,6 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
           </button>
         </div>
       </div>
-      </ContextMenu>
 
       {!win.minimized && (
         <>
@@ -469,6 +551,19 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         }}
         onDismiss={() => setSnapAssist(null)}
       />
+    )}
+    {systemMenu && (
+      <div style={{ position: 'fixed', left: systemMenu.x, top: systemMenu.y, zIndex: effectiveZIndex + 1 }}>
+        <SystemMenu
+          win={win}
+          onClose={() => closeWindow(win.id)}
+          onMinimize={() => minimizeWindow(win.id)}
+          onMaximize={() => toggleMaximize(win.id)}
+          onAlwaysOnTop={() => toggleAlwaysOnTop(win.id)}
+          onOpacity={v => setWindowOpacity(win.id, v)}
+          onDismiss={() => setSystemMenu(null)}
+        />
+      </div>
     )}
     </>
   );

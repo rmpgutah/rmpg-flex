@@ -266,13 +266,12 @@ describe('FloatingWindow — opacity', () => {
     expect(windowEl.style.opacity).toBe('1');
   });
 
-  it('right-clicking the title bar offers Increase/Decrease opacity, which call setWindowOpacity', () => {
+  it('right-clicking the title bar opens the system menu', () => {
     render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
     fireEvent.click(screen.getByText('open'));
-    fireEvent.contextMenu(screen.getByText('Dispatch'));
-    fireEvent.click(screen.getByText('Decrease opacity'));
-    const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
-    expect(windowEl.style.opacity).toBe('0.9');
+    const titleBar = screen.getByTestId('title-bar');
+    fireEvent.contextMenu(titleBar);
+    expect(screen.getByTestId('system-menu')).toBeInTheDocument();
   });
 });
 
@@ -285,6 +284,31 @@ describe('FloatingWindow — respects taskbar size setting for maximize/snap mat
     const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
     expect(windowEl.style.bottom).toBe('56px');
     setTaskbarSize('small');
+  });
+});
+
+describe('FloatingWindow — system menu', () => {
+  function renderWindow() {
+    const result = render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    return result;
+  }
+
+  it('right-clicking title bar opens system menu with Close option', async () => {
+    const { getByTestId } = renderWindow();
+    const titleBar = getByTestId('title-bar');
+    fireEvent.contextMenu(titleBar);
+    expect(screen.getByRole('menuitem', { name: /close/i })).toBeInTheDocument();
+  });
+
+  it('system menu opacity slider changes opacity', async () => {
+    const { getByTestId } = renderWindow();
+    const titleBar = getByTestId('title-bar');
+    fireEvent.contextMenu(titleBar);
+    const slider = screen.getByRole('slider', { name: /opacity/i });
+    fireEvent.change(slider, { target: { value: '0.5' } });
+    const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
+    expect(parseFloat(windowEl.style.opacity)).toBeCloseTo(0.5, 1);
   });
 });
 
