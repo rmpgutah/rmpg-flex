@@ -132,21 +132,21 @@ export default function DesktopKeyboardShortcuts({
       // Ctrl+Alt+C — Cascade windows
       if (ctrl && alt && key === 'c' && !meta) {
         e.preventDefault();
-        cascade();
+        cascade(window.innerWidth, window.innerHeight - taskbarH);
         return;
       }
 
       // Ctrl+Alt+H — Tile horizontally
       if (ctrl && alt && key === 'h' && !meta) {
         e.preventDefault();
-        tileHorizontal();
+        tileHorizontal(window.innerWidth, window.innerHeight - taskbarH);
         return;
       }
 
       // Ctrl+Alt+V — Tile vertically
       if (ctrl && alt && key === 'v' && !meta) {
         e.preventDefault();
-        tileVertical();
+        tileVertical(window.innerWidth, window.innerHeight - taskbarH);
         return;
       }
     };
