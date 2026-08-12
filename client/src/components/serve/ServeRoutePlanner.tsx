@@ -337,7 +337,10 @@ function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
 export default function ServeRoutePlanner({
   isOpen, onClose, jobs, officers, currentUserId, onRouteOptimized, preselectedJobIds,
 }: ServeRoutePlannerProps) {
-  const geocodedJobs = jobs.filter(j => j.recipient_lat != null && j.recipient_lng != null);
+  const TERMINAL_STATUSES = new Set<ServeJob['status']>(['served', 'failed', 'skipped', 'archived']);
+  const geocodedJobs = jobs.filter(j =>
+    j.recipient_lat != null && j.recipient_lng != null && !TERMINAL_STATUSES.has(j.status)
+  );
 
   const [stops, setStops] = useState<StopItem[]>([]);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
