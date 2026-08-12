@@ -1039,21 +1039,11 @@ serveReceipt.post('/:token/email', async (c) => {
     return c.json({ ok: false, code: 'bad_request' }, 400);
   }
   if (body.pdf_base64.length > 6_000_000) {
-    // Mark failed immediately — the sweeper would eventually catch it but
-    // the success screen would claim "a copy is on its way" for 24 h first.
-    await execute(getDb(c.env),
-      "UPDATE serve_receipts SET email_status = 'failed', email_error = 'pdf_too_large' WHERE id = ?",
-      body.receipt_id,
-    ).catch(() => undefined);
     return c.json({ ok: false, code: 'too_large', message: 'Receipt PDF is too large to email.' }, 413);
   }
   // Size was the only gate: a 5 MB HTML file passed it as readily as a
   // PDF, and went out as an attachment from an officer's mailbox.
   if (!decodesToPdf(body.pdf_base64)) {
-    await execute(getDb(c.env),
-      "UPDATE serve_receipts SET email_status = 'failed', email_error = 'not_a_pdf' WHERE id = ?",
-      body.receipt_id,
-    ).catch(() => undefined);
     return c.json({ ok: false, code: 'bad_request', message: 'Attachment is not a PDF.' }, 400);
   }
 
