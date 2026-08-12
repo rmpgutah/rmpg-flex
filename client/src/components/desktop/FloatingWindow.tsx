@@ -9,6 +9,7 @@ import { playDesktopSound } from '../../utils/desktopSounds';
 import SnapLayouts, { type SnapZone } from './SnapLayouts';
 
 const TITLE_BAR_HEIGHT = 30;
+const TAB_STRIP_HEIGHT = 24;
 const TITLE_SYNC_POLL_MS = 500;
 const SNAP_EDGE_THRESHOLD = 24;
 const MIN_SNAP_HALF_WIDTH = 360;
@@ -181,8 +182,10 @@ interface FloatingWindowProps {
 }
 
 export default function FloatingWindow({ win }: FloatingWindowProps) {
-  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, setFullscreen, windows } = useDesktopWindows();
+  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, setFullscreen, mergeWindowTab, tearOffTab, setActiveTab, windows } = useDesktopWindows();
   const taskbarHeight = TASKBAR_HEIGHT_PX[getTaskbarSize()];
+  const windowsRef = useRef(windows);
+  useEffect(() => { windowsRef.current = windows; }, [windows]);
   const dragState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const resizeState = useRef<{ startX: number; startY: number; originW: number; originH: number; originX: number; originY: number; dir: ResizeDir } | null>(null);
   // Tracks x-direction reversals for Aero Shake detection
@@ -198,6 +201,19 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   const snapHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [systemMenu, setSystemMenu] = useState<{ x: number; y: number } | null>(null);
   const [shakeRingActive, setShakeRingActive] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
+  // Ref copy of mergeTargetId for use inside raw DOM event closures (avoids stale closure)
+  const mergeTargetIdRef = useRef<string | null>(null);
+
+  // Tab group: compute grouped windows and leader status
+  const groupedWindows = win.groupId
+    ? windows.filter(w => w.groupId === win.groupId).sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id))
+    : [];
+  const isGroupLeader = groupedWindows.length > 0 && groupedWindows[0].id === win.id;
+  const isGroupMember = win.groupId !== null && !isGroupLeader;
+
+  // Non-leader group members render nothing — the leader renders everything for the group
+  if (isGroupMember) return null;
 
   const onMaxBtnMouseEnter = useCallback(() => {
     snapHoverTimer.current = setTimeout(() => setSnapLayoutsOpen(true), 400);
@@ -351,8 +367,28 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
 
       moveResize(win.id, { x: nextX, y: nextY });
       liveDragPos.current = { x: nextX, y: nextY };
+
+      // Drag-to-merge detection: check if this window's title bar Y is within 40px of another
+      const nearWindow = windowsRef.current.find(w =>
+        w.id !== win.id && !w.minimized &&
+        Math.abs(nextY - w.y) < 40 &&
+        nextX + win.width > w.x &&
+        nextX < w.x + w.width
+      );
+      mergeTargetIdRef.current = nearWindow?.id ?? null;
+      setMergeTargetId(nearWindow?.id ?? null);
     };
     const onUp = (ev: PointerEvent) => {
+      // Merge: if dragged near another window, merge into a tab group
+      if (mergeTargetIdRef.current) {
+        mergeWindowTab(win.id, mergeTargetIdRef.current);
+        mergeTargetIdRef.current = null;
+        setMergeTargetId(null);
+        dragState.current = null;
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        return;
+      }
       // Drag to top edge → maximize
       if (ev.clientY <= DRAG_TOP_MAXIMIZE_THRESHOLD && !snapEdgeRef.current) {
         toggleMaximize(win.id);
@@ -404,7 +440,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, [win.id, win.x, win.y, win.width, win.height, focusWindow, moveResize, snapPreview, taskbarHeight, minimizeOthers, toggleMaximize]);
+  }, [win.id, win.x, win.y, win.width, win.height, focusWindow, moveResize, snapPreview, taskbarHeight, minimizeOthers, toggleMaximize, mergeWindowTab]);
 
   const onResizeHandlePointerDown = useCallback((e: React.PointerEvent, dir: ResizeDir) => {
     e.stopPropagation();
@@ -550,12 +586,60 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
 
       {!win.minimized && (
         <>
+          {groupedWindows.length > 1 && (
+            <div
+              data-testid="tab-strip"
+              style={{
+                display: 'flex', alignItems: 'center', height: TAB_STRIP_HEIGHT,
+                background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)',
+                overflowX: 'auto',
+              }}
+            >
+              {groupedWindows.map(gw => (
+                <div
+                  key={gw.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4, padding: '0 8px',
+                    height: '100%', fontSize: 9, cursor: 'pointer', userSelect: 'none',
+                    background: gw.activeInGroup ? 'rgba(var(--rmpg-500-rgb,62 116 168),0.2)' : 'transparent',
+                    borderRight: '1px solid var(--border-subtle)',
+                    color: gw.activeInGroup ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    flexShrink: 0,
+                  }}
+                  onClick={() => setActiveTab(win.groupId!, gw.id)}
+                >
+                  <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {gw.title}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Tear off ${gw.title}`}
+                    onClick={e => { e.stopPropagation(); tearOffTab(gw.id); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--text-muted)' }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <iframe
             ref={iframeRef}
             title={win.title}
-            src={win.path.includes('?') ? `${win.path}&standalone=1` : `${win.path}?standalone=1`}
+            src={(() => {
+              const activePath = groupedWindows.length > 1
+                ? (groupedWindows.find(gw => gw.activeInGroup)?.path ?? win.path)
+                : win.path;
+              return activePath.includes('?') ? `${activePath}&standalone=1` : `${activePath}?standalone=1`;
+            })()}
             allow="microphone; camera; fullscreen"
-            style={{ width: '100%', height: win.fullscreen ? '100%' : `calc(100% - ${TITLE_BAR_HEIGHT}px)`, border: 'none' }}
+            style={{
+              width: '100%',
+              height: win.fullscreen ? '100%' : groupedWindows.length > 1
+                ? `calc(100% - ${TITLE_BAR_HEIGHT + TAB_STRIP_HEIGHT}px)`
+                : `calc(100% - ${TITLE_BAR_HEIGHT}px)`,
+              border: 'none',
+            }}
           />
           {!win.maximized && (
             <>

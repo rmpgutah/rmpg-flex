@@ -17,6 +17,8 @@ export interface DesktopWindowState {
   alwaysOnTop: boolean;
   opacity: number;
   fullscreen: boolean;
+  groupId: string | null;
+  activeInGroup: boolean;
 }
 
 interface DesktopWindowManagerContextValue {
@@ -44,6 +46,12 @@ interface DesktopWindowManagerContextValue {
   /** Tiles all visible windows vertically (stacked). */
   tileVertical: (desktopW?: number, desktopH?: number) => void;
   setFullscreen: (id: string, value: boolean) => void;
+  /** Merges sourceId into the same tab group as targetId. Creates a new groupId if neither is in a group. */
+  mergeWindowTab: (sourceId: string, targetId: string) => void;
+  /** Removes a window from its tab group, restoring it as a standalone window. */
+  tearOffTab: (windowId: string) => void;
+  /** Sets the active (visible) tab within a tab group. */
+  setActiveTab: (groupId: string, windowId: string) => void;
   /** ID of the topmost (highest zIndex) non-minimized window, or null. */
   focusedId: string | null;
 }
@@ -118,6 +126,7 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
       width: saved?.width ?? size?.width ?? 1050, height: saved?.height ?? size?.height ?? 800,
       zIndex: nextZIndex, minimized: false, maximized: false,
       alwaysOnTop: false, opacity: getDefaultWindowOpacity(), fullscreen: false,
+      groupId: null, activeInGroup: true,
     };
     commit([...prev, win]);
     playDesktopSound();
@@ -184,6 +193,29 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     commit(windowsRef.current.map(w => w.id === id ? { ...w, fullscreen: value } : w));
   }, [commit]);
 
+  const mergeWindowTab = useCallback((sourceId: string, targetId: string) => {
+    const prev = windowsRef.current;
+    const target = prev.find(w => w.id === targetId);
+    if (!target) return;
+    const groupId = target.groupId ?? `group_${Date.now()}`;
+    commit(prev.map(w => {
+      if (w.id === targetId) return { ...w, groupId, activeInGroup: true };
+      if (w.id === sourceId) return { ...w, groupId, activeInGroup: false };
+      return w;
+    }));
+  }, [commit]);
+
+  const tearOffTab = useCallback((windowId: string) => {
+    commit(windowsRef.current.map(w => w.id === windowId ? { ...w, groupId: null, activeInGroup: true } : w));
+  }, [commit]);
+
+  const setActiveTab = useCallback((groupId: string, windowId: string) => {
+    commit(windowsRef.current.map(w => {
+      if (w.groupId !== groupId) return w;
+      return { ...w, activeInGroup: w.id === windowId };
+    }));
+  }, [commit]);
+
   const minimizeOthers = useCallback((exceptId: string) => {
     commit(windowsRef.current.map(w => w.id === exceptId ? w : { ...w, minimized: true }));
   }, [commit]);
@@ -235,7 +267,7 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
 
   return (
     <DesktopWindowManagerContext.Provider
-      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, cascade, tileHorizontal, tileVertical, setFullscreen, focusedId }}
+      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, cascade, tileHorizontal, tileVertical, setFullscreen, mergeWindowTab, tearOffTab, setActiveTab, focusedId }}
     >
       {children}
     </DesktopWindowManagerContext.Provider>
