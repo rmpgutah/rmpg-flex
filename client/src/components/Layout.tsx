@@ -977,13 +977,6 @@ export default function Layout() {
   if (isStandalone) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: 'var(--surface-base)', overflow: 'hidden' }}>
-        {/* Thin branded title row so the user knows which app they're in */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden><circle cx="8" cy="8" r="7" stroke="var(--accent-silver-400,#c3ccd6)" strokeWidth="1.5"/><path d="M5 8l2 2 4-4" stroke="var(--accent-silver-400,#c3ccd6)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          <span style={{ fontSize: 9, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-            Rocky Mountain Protective Group — FlexOS
-          </span>
-        </div>
         <main style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
           <Outlet />
         </main>

@@ -87,8 +87,8 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
   };
 
   const handleClearFailed = () => {
-    if (!electron?.clearFailedSync) return;
-    electron.clearFailedSync();
+    if (!electron?.clearFailedSyncItems) return;
+    electron.clearFailedSyncItems();
     setTimeout(refresh, 500);
   };
 

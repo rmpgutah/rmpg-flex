@@ -12,6 +12,12 @@ const TITLE_BAR_HEIGHT = 30;
 const TITLE_SYNC_POLL_MS = 500;
 const SNAP_EDGE_THRESHOLD = 24;
 const MIN_SNAP_HALF_WIDTH = 360;
+const MIN_W = 320;
+const MIN_H = 200;
+const DRAG_TOP_MAXIMIZE_THRESHOLD = 4;
+const AERO_SHAKE_REVERSAL_COUNT = 4;
+const AERO_SHAKE_WINDOW_MS = 600;
+type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 // Any pinned (always-on-top) window renders at win.zIndex + ALWAYS_ON_TOP_ZINDEX_OFFSET
 // (see effectiveZIndex below). Window zIndex values are small incrementing integers from
 // a focus counter (never anywhere near 1000), so overlays that must always render above
@@ -26,10 +32,12 @@ interface FloatingWindowProps {
 }
 
 export default function FloatingWindow({ win }: FloatingWindowProps) {
-  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity } = useDesktopWindows();
+  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers } = useDesktopWindows();
   const taskbarHeight = TASKBAR_HEIGHT_PX[getTaskbarSize()];
   const dragState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
-  const resizeState = useRef<{ startX: number; startY: number; originW: number; originH: number } | null>(null);
+  const resizeState = useRef<{ startX: number; startY: number; originW: number; originH: number; originX: number; originY: number; dir: ResizeDir } | null>(null);
+  // Tracks x-direction reversals for Aero Shake detection
+  const shakeRef = useRef<{ timestamps: number[]; lastSign: number }>({ timestamps: [], lastSign: 0 });
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [snapPreview, setSnapPreview] = useState<'left' | 'right' | null>(null);
   // Tracks which edge the cursor is near during the drag — used in onUp to
@@ -81,15 +89,37 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     return () => clearInterval(interval);
   }, [win.id, win.minimized, updateWindowTitle]);
 
+  const onTitleBarDoubleClick = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    toggleMaximize(win.id);
+  }, [win.id, toggleMaximize]);
+
   const onTitleBarPointerDown = useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
+    // Un-maximize on drag start so the window can be repositioned
+    if (win.maximized) { toggleMaximize(win.id); return; }
     focusWindow(win.id);
     dragState.current = { startX: e.clientX, startY: e.clientY, originX: win.x, originY: win.y };
     liveDragPos.current = { x: win.x, y: win.y };
+    shakeRef.current = { timestamps: [], lastSign: 0 };
     const onMove = (ev: PointerEvent) => {
       if (!dragState.current) return;
       const dx = ev.clientX - dragState.current.startX;
       const dy = ev.clientY - dragState.current.startY;
+
+      // Aero Shake: track x-direction reversals
+      const sign = dx > 0 ? 1 : dx < 0 ? -1 : 0;
+      if (sign !== 0 && sign !== shakeRef.current.lastSign) {
+        const now = Date.now();
+        shakeRef.current.lastSign = sign;
+        shakeRef.current.timestamps.push(now);
+        shakeRef.current.timestamps = shakeRef.current.timestamps.filter(t => now - t < AERO_SHAKE_WINDOW_MS);
+        if (shakeRef.current.timestamps.length >= AERO_SHAKE_REVERSAL_COUNT) {
+          minimizeOthers(win.id);
+          shakeRef.current.timestamps = [];
+        }
+      }
+
       let nextX = Math.max(0, dragState.current.originX + dx);
       const nextY = Math.max(0, dragState.current.originY + dy);
 
@@ -126,22 +156,43 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
       moveResize(win.id, { x: nextX, y: nextY });
       liveDragPos.current = { x: nextX, y: nextY };
     };
-    const onUp = () => {
+    const onUp = (ev: PointerEvent) => {
+      // Drag to top edge → maximize
+      if (ev.clientY <= DRAG_TOP_MAXIMIZE_THRESHOLD && !snapEdgeRef.current) {
+        toggleMaximize(win.id);
+        dragState.current = null;
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        return;
+      }
       if (snapEdgeRef.current) {
         const desktopHeight = window.innerHeight - taskbarHeight;
         const halfWidth = window.innerWidth / 2;
         if (halfWidth >= MIN_SNAP_HALF_WIDTH) {
-          preSnapBounds.current = { x: liveDragPos.current.x, y: liveDragPos.current.y, width: win.width, height: win.height };
-          snappedSide.current = snapEdgeRef.current;
-          // The snapped half-screen bounds are a transient drag-interaction outcome, not
-          // the user's chosen size — don't let it overwrite the remembered position for
-          // this path (see preSnapBounds, which is what un-snapping restores).
-          moveResize(win.id, {
-            x: snapEdgeRef.current === 'left' ? 0 : halfWidth,
-            y: 0,
-            width: halfWidth,
-            height: desktopHeight,
-          }, { persist: false });
+          // Corner snap: if released near the top-left or top-right, snap to quarter screen
+          const snapToCorner = ev.clientY <= SNAP_EDGE_THRESHOLD * 3;
+          if (snapToCorner) {
+            preSnapBounds.current = { x: liveDragPos.current.x, y: liveDragPos.current.y, width: win.width, height: win.height };
+            snappedSide.current = snapEdgeRef.current;
+            moveResize(win.id, {
+              x: snapEdgeRef.current === 'left' ? 0 : halfWidth,
+              y: 0,
+              width: halfWidth,
+              height: Math.floor(desktopHeight / 2),
+            }, { persist: false });
+          } else {
+            preSnapBounds.current = { x: liveDragPos.current.x, y: liveDragPos.current.y, width: win.width, height: win.height };
+            snappedSide.current = snapEdgeRef.current;
+            // The snapped half-screen bounds are a transient drag-interaction outcome, not
+            // the user's chosen size — don't let it overwrite the remembered position for
+            // this path (see preSnapBounds, which is what un-snapping restores).
+            moveResize(win.id, {
+              x: snapEdgeRef.current === 'left' ? 0 : halfWidth,
+              y: 0,
+              width: halfWidth,
+              height: desktopHeight,
+            }, { persist: false });
+          }
           playDesktopSound();
         }
         setSnapPreview(null);
@@ -153,20 +204,31 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, [win.id, win.x, win.y, win.width, win.height, focusWindow, moveResize, snapPreview, taskbarHeight]);
+  }, [win.id, win.x, win.y, win.width, win.height, focusWindow, moveResize, snapPreview, taskbarHeight, minimizeOthers, toggleMaximize]);
 
-  const onResizeHandlePointerDown = useCallback((e: React.PointerEvent) => {
+  const onResizeHandlePointerDown = useCallback((e: React.PointerEvent, dir: ResizeDir) => {
     e.stopPropagation();
     focusWindow(win.id);
-    resizeState.current = { startX: e.clientX, startY: e.clientY, originW: win.width, originH: win.height };
+    resizeState.current = { startX: e.clientX, startY: e.clientY, originW: win.width, originH: win.height, originX: win.x, originY: win.y, dir };
     const onMove = (ev: PointerEvent) => {
       if (!resizeState.current) return;
       const dx = ev.clientX - resizeState.current.startX;
       const dy = ev.clientY - resizeState.current.startY;
-      moveResize(win.id, {
-        width: Math.max(360, resizeState.current.originW + dx),
-        height: Math.max(240, resizeState.current.originH + dy),
-      });
+      const { originW, originH, originX, originY, dir: d } = resizeState.current;
+      const patch: Partial<Pick<DesktopWindowState, 'x' | 'y' | 'width' | 'height'>> = {};
+      if (d.includes('e')) patch.width = Math.max(MIN_W, originW + dx);
+      if (d.includes('s')) patch.height = Math.max(MIN_H, originH + dy);
+      if (d.includes('w')) {
+        const newW = Math.max(MIN_W, originW - dx);
+        patch.width = newW;
+        patch.x = originX + (originW - newW);
+      }
+      if (d.includes('n')) {
+        const newH = Math.max(MIN_H, originH - dy);
+        patch.height = newH;
+        patch.y = originY + (originH - newH);
+      }
+      moveResize(win.id, patch);
     };
     const onUp = () => {
       resizeState.current = null;
@@ -175,7 +237,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, [win.id, win.width, win.height, focusWindow, moveResize]);
+  }, [win.id, win.width, win.height, win.x, win.y, focusWindow, moveResize]);
 
   // Pinned windows always render above unpinned ones, regardless of normal
   // focus-based zIndex — a flat offset large enough to clear any realistic
@@ -223,6 +285,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
       >
       <div
         onPointerDown={onTitleBarPointerDown}
+        onDoubleClick={onTitleBarDoubleClick}
         className="flex items-center justify-between px-2 select-none cursor-move"
         style={{ height: TITLE_BAR_HEIGHT, background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
       >
@@ -259,10 +322,24 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
             style={{ width: '100%', height: `calc(100% - ${TITLE_BAR_HEIGHT}px)`, border: 'none' }}
           />
           {!win.maximized && (
-            <div
-              onPointerDown={onResizeHandlePointerDown}
-              style={{ position: 'absolute', right: 0, bottom: 0, width: 14, height: 14, cursor: 'nwse-resize' }}
-            />
+            <>
+              {/* N edge */}
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'n')} style={{ position: 'absolute', top: 0, left: 8, right: 8, height: 5, cursor: 'n-resize', zIndex: 1 }} />
+              {/* S edge */}
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 's')} style={{ position: 'absolute', bottom: 0, left: 8, right: 8, height: 5, cursor: 's-resize', zIndex: 1 }} />
+              {/* W edge */}
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'w')} style={{ position: 'absolute', top: 8, bottom: 8, left: 0, width: 5, cursor: 'w-resize', zIndex: 1 }} />
+              {/* E edge */}
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'e')} style={{ position: 'absolute', top: 8, bottom: 8, right: 0, width: 5, cursor: 'e-resize', zIndex: 1 }} />
+              {/* NW corner */}
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'nw')} style={{ position: 'absolute', top: 0, left: 0, width: 10, height: 10, cursor: 'nw-resize', zIndex: 2 }} />
+              {/* NE corner */}
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'ne')} style={{ position: 'absolute', top: 0, right: 0, width: 10, height: 10, cursor: 'ne-resize', zIndex: 2 }} />
+              {/* SW corner */}
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'sw')} style={{ position: 'absolute', bottom: 0, left: 0, width: 10, height: 10, cursor: 'sw-resize', zIndex: 2 }} />
+              {/* SE corner */}
+              <div onPointerDown={e => onResizeHandlePointerDown(e, 'se')} style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, cursor: 'se-resize', zIndex: 2 }} />
+            </>
           )}
         </>
       )}

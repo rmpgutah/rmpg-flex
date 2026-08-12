@@ -25,10 +25,10 @@ interface ElectronAPI {
   setKioskShell?: (enabled: boolean) => Promise<{ ok: boolean; error?: string }>;
   // System info
   getSystemInfo?: () => Promise<{ hostname?: string; platform?: string; arch?: string; cpu_count?: number; cpu_model?: string; uptime_seconds?: number; total_memory_mb?: number; free_memory_mb?: number; disk_free_gb?: number | null }>;
-  checkDiskSpace?: (path?: string) => Promise<{ freeBytes?: number | null; total_gb?: number | null; free_gb?: number | null; used_percent?: number | null; warn?: boolean } | null>;
+  checkDiskSpace?: () => Promise<{ freeBytes?: number | null; warn?: boolean } | null>;
   getCpuUsage?: () => Promise<number>;
   getNetworkInterfaces?: () => Promise<Array<{ name?: string; address?: string; type?: string }>>;
-  getBattery?: () => Promise<{ percent?: number; charging?: boolean; timeRemaining?: number } | null>;
+  getBatteryStatus?: () => Promise<{ percent?: number; charging?: boolean; timeRemaining?: number } | null>;
   // Print queue
   getPrintQueue?: () => Promise<Array<{ id: string; name: string; status: string; pages: number; pagesTotal: number; printer: string; submittedAt: string; size?: number }>>;
   cancelPrintJob?: (id: string) => Promise<void>;
@@ -41,10 +41,9 @@ interface ElectronAPI {
   startBodyCamRecording?: () => Promise<void>;
   stopBodyCamRecording?: () => Promise<void>;
   // Sync queue
-  getSyncQueue?: () => Promise<Array<{ id: string; method: string; endpoint: string; body?: string; created_at: string; retry_count: number; status: string }>>;
-  retrySync?: (id: string) => Promise<void>;
-  retryAllSync?: () => Promise<void>;
-  clearFailedSync?: () => Promise<void>;
+  getSyncQueueDetail?: () => Promise<Array<{ id: string; method: string; endpoint: string; body?: string; created_at: string; retry_count: number; status: string }>>;
+  retryFailedSyncItem?: (id: string) => Promise<void>;
+  clearFailedSyncItems?: () => Promise<void>;
   getSyncQueueDepth?: () => Promise<number>;
   // Screen capture
   captureScreen?: () => Promise<string>;
@@ -55,7 +54,7 @@ interface ElectronAPI {
   // Brightness
   setBrightness?: (value: number) => void;
   // Logs
-  getElectronLogs?: () => string[];
+  getAppLogs?: (lines?: number) => Promise<string[]>;
 }
 
 declare global {
