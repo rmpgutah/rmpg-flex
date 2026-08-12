@@ -55,11 +55,18 @@ export async function upsertPersonFromAos(
 ): Promise<{ personId: number; created: boolean }> {
   const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
-  // Match order: DL# first, then name+DOB
+  // Match order: DL# first, then name+DOB.
+  // DL numbers are state-namespaced — the same number can legally exist in
+  // two states for two different people. Require state agreement when both
+  // sides have it; allow a match when the existing row has no state yet.
   let person: Record<string, unknown> | null = null;
   if (data.dl_number) {
     person = await queryFirst<Record<string, unknown>>(db,
-      'SELECT * FROM persons WHERE dl_number = ? LIMIT 1', data.dl_number);
+      `SELECT * FROM persons
+        WHERE dl_number = ?
+          AND (dl_state IS NULL OR dl_state = '' OR ? IS NULL OR dl_state = ?)
+        LIMIT 1`,
+      data.dl_number, data.dl_state ?? null, data.dl_state ?? null);
   }
   if (!person && data.dob) {
     person = await queryFirst<Record<string, unknown>>(db,

@@ -940,7 +940,17 @@ serveReceipt.post('/:token', async (c) => {
               updated_at = datetime('now')
         WHERE id = ? AND status != 'served'`,
       tok.serve_queue_id,
-    );
+    ).catch(async (err: Error) => {
+      // Token is already burned — the receipt is signed. Compensate by
+      // voiding the receipt so the job stays actionable and the unique
+      // signed-per-job slot is freed for a re-attempt.
+      log.error('Mobile sign: serve_queue not advanced; voiding receipt to keep job actionable',
+        { receiptId, queueId: tok.serve_queue_id }, err);
+      await execute(db,
+        "UPDATE serve_receipts SET status = 'voided', void_reason = 'queue_advance_failed' WHERE id = ?",
+        receiptId,
+      ).catch(() => undefined);
+    });
   }
 
   // Attempt row, so the receipt shows up on the existing attempt timeline.
@@ -1469,6 +1479,11 @@ serveReceiptAdmin.post(
 
     let ins;
     try {
+      // When documents are NOT left, service is incomplete — this is a
+      // failed attempt, not a terminal acknowledgement. Use 'attempted'
+      // so the unique idx_serve_receipts_one_signed slot (status='signed')
+      // stays available for a subsequent real signature.
+      const refusalStatus = body.documents_left === false ? 'attempted' : 'signed';
       ins = await execute(
       db,
       `INSERT INTO serve_receipts (
@@ -1478,7 +1493,7 @@ serveReceiptAdmin.post(
          ack_received_documents, recipient_signed_at,
          server_name, server_user_id, latitude, longitude, notes, status
        ) VALUES (?,?, 'refused', 'refused', ?, ?, 'refusal', ?, 'refused',
-                 ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, 'signed')`,
+                 ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?)`,
       queueId, tok?.id ?? null,
       'Record of Refusal to Sign', priorStatus,
       str(body.recipient_name, 200) || job.recipient_name || 'Unidentified person',
@@ -1492,6 +1507,7 @@ serveReceiptAdmin.post(
       Number.isFinite(Number(body.latitude)) ? Number(body.latitude) : null,
       Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null,
       str(body.notes, 1000),
+      refusalStatus,
       );
     } catch (err) {
       if (isDuplicateSignedReceipt(err)) return c.json({ error: DUPLICATE_MESSAGE }, 409);
@@ -1670,7 +1686,9 @@ serveReceiptAdmin.post(
               serve_date = COALESCE(serve_date, ?, datetime('now')), updated_at = datetime('now')
         WHERE id = ? AND status != 'served'`,
       signedAt, queueId,
-    ).catch(() => undefined);
+    ).catch((err: Error) => {
+      log.error('Paper receipt: serve_queue status not advanced to served', { receiptId, queueId }, err);
+    });
 
     await recordAudit(c, {
       action: 'SERVE_RECEIPT_PAPER',
@@ -1952,6 +1970,20 @@ serveReceiptAdmin.post('/receipt/:id/void', requireRole('admin', 'manager', 'sup
     user?.id ?? null, String(reason).slice(0, 500), id,
   );
   if (!r.meta.changes) return c.json({ error: 'Receipt not found or already voided' }, 404);
+
+  // Revoke any live tokens for this job — the /correct path does this, and
+  // a plain void must too. Without revocation, a subject who kept the
+  // printed QR can re-sign after a void: resolveToken sees a spent-but-not-
+  // revoked token whose used_receipt_id is now null (voided), the unique
+  // signed-per-job index is clear, and a new 'signed' receipt lands.
+  if (before?.serve_queue_id) {
+    await execute(
+      db,
+      `UPDATE serve_receipt_tokens SET revoked_at = datetime('now')
+        WHERE serve_queue_id = ? AND used_receipt_id IS NULL AND revoked_at IS NULL`,
+      before.serve_queue_id,
+    ).catch(() => undefined);
+  }
 
   // Put the job back. Signing advanced it to 'served'; striking the only
   // acknowledgement for it and leaving 'served' in place meant a job that
