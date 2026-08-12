@@ -97,6 +97,7 @@ import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import DispatchCodeQuickPanel from '../../components/dispatch/DispatchCodeQuickPanel';
 import { useDispatchCodes } from '../../hooks/useDispatchCodes';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
+import PsoWorkloadPanel from '../../components/dispatch/PsoWorkloadPanel';
 import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import { withAlpha } from '../../utils/withAlpha';
@@ -1448,7 +1449,30 @@ export default function DispatchPage() {
       addToast(`${data.call_sign ?? `Unit ${data.unit_id}`} ${verb} ${data.zone_name ?? 'geofence zone'}`, 'info');
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); unsubGeofence(); };
+    // [F5] Serve terminal alerts — fired by serve.ts logAttempt on served/failed.
+    const unsubServeTerminal = subscribe('dispatch_update', (msg: any) => {
+      const data = msg.data || msg;
+      if (data.action === 'serve_failed') {
+        const who = data.recipient_name ? ` for ${data.recipient_name}` : '';
+        const ref = data.case_number ? ` (${data.case_number})` : '';
+        addToast(`Serve failed${who}${ref} — ${data.attempt_count} attempt(s)`, 'warning', 8000);
+      } else if (data.action === 'serve_completed') {
+        const who = data.recipient_name ? ` — ${data.recipient_name}` : '';
+        addToast(`Serve completed${who}`, 'success', 6000);
+        // If the linked CFS call is selected, update its status in-place.
+        if (data.call_id) {
+          setCalls((prev) => prev.map((c) => c.id === data.call_id ? { ...c, status: 'cleared' as const } : c));
+          setSelectedCall((prev) => (prev && prev.id === data.call_id) ? ({ ...prev, status: 'cleared' as CallForService['status'] }) : prev);
+        }
+      } else if (data.action === 'unit_status_changed' && data.officer_id && data.status) {
+        // [F3] PSO officer unit status update keyed by officer_id (not unit id).
+        setUnits((prev) => prev.map((u) =>
+          String(u.officer_id) === String(data.officer_id) ? { ...u, status: data.status } : u
+        ));
+      }
+    });
+
+    return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); unsubGeofence(); unsubServeTerminal(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
@@ -3116,6 +3140,48 @@ export default function DispatchPage() {
                                 Attempts: {serveLink.attempt_count}/{serveLink.max_attempts}
                               </span>
                             </div>
+                            {/* [F4] Dispatcher quick-actions: reassign officer + priority */}
+                            {!['served','failed','cancelled'].includes(serveLink.status) && isAdminOrManager && (
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <select
+                                  className="text-[9px] font-medium rounded-sm px-1 py-0.5 flex-1 min-w-0"
+                                  style={{ background: 'rgb(var(--surface-raised-rgb) / 0.8)', border: '1px solid var(--spm-border)', color: 'var(--text-secondary)' }}
+                                  value={serveLink.officer_id ?? ''}
+                                  aria-label="Reassign PSO officer"
+                                  onChange={async (e) => {
+                                    const officer_id = e.target.value ? parseInt(e.target.value, 10) : null;
+                                    try {
+                                      await apiFetch(`/process-server/${serveLink.id}`, { method: 'PUT', body: JSON.stringify({ officer_id }) });
+                                      setServeLink((prev: any) => prev ? { ...prev, officer_id } : prev);
+                                      addToast('Officer reassigned', 'success');
+                                    } catch { addToast('Reassign failed', 'error'); }
+                                  }}
+                                >
+                                  <option value="">Unassigned</option>
+                                  {units.filter((u) => u.status !== 'off_duty' && u.officer_id).map((u) => (
+                                    <option key={u.id} value={u.officer_id!}>{u.call_sign}</option>
+                                  ))}
+                                </select>
+                                <select
+                                  className="text-[9px] font-medium rounded-sm px-1 py-0.5"
+                                  style={{ background: 'rgb(var(--surface-raised-rgb) / 0.8)', border: '1px solid var(--spm-border)', color: 'var(--text-secondary)' }}
+                                  value={serveLink.priority ?? 'normal'}
+                                  aria-label="Change PSO job priority"
+                                  onChange={async (e) => {
+                                    const priority = e.target.value;
+                                    try {
+                                      await apiFetch(`/process-server/${serveLink.id}`, { method: 'PUT', body: JSON.stringify({ priority }) });
+                                      setServeLink((prev: any) => prev ? { ...prev, priority } : prev);
+                                      addToast(`Priority set to ${priority}`, 'success');
+                                    } catch { addToast('Priority change failed', 'error'); }
+                                  }}
+                                >
+                                  {['normal','rush','urgent'].map((p) => (
+                                    <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
                             {/* View in Process Server link */}
                             <button type="button"
                               className="flex items-center gap-1 text-[10px] font-medium rounded-[2px] px-2 py-1 transition-all duration-150 hover:shadow-[0_0_6px_rgb(var(--brand-gold-rgb)_/_0.2)]"
@@ -3865,7 +3931,9 @@ export default function DispatchPage() {
               )}
             </div>
           ) : (
-            filteredCalls.map((call, i) => {
+            <>
+            {filterTab === 'serve' && <PsoWorkloadPanel />}
+            {filteredCalls.map((call, i) => {
               // GEO sort groups calls by section → zone → beat; render a sticky
               // district header before the first call of each new section so a
               // dispatcher can scan and work one district at a time.
@@ -3910,7 +3978,8 @@ export default function DispatchPage() {
                   />
                 </React.Fragment>
               );
-            })
+            })}
+            </>
           )}
         </div>
         </>)}

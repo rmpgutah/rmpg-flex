@@ -1442,15 +1442,29 @@ export default function IncidentsPage() {
         if (callDetail) {
           if (callDetail.caller_name) pdfData.caller_name = callDetail.caller_name;
           if (callDetail.caller_phone) pdfData.caller_phone = callDetail.caller_phone;
-          // Build call notes from dispatch notes
+          // Build call notes from dispatch notes. PSO briefing notes are stored
+          // as a structured JSON array (author/text/timestamp per entry); plain
+          // dispatch notes are flat strings joined with timestamps.
           if (callDetail.notes?.length > 0) {
-            // Use safeDateTimeStr — raw `new Date(x).toLocaleString()` parses
-            // "YYYY-MM-DD HH:MM:SS" inconsistently (Chrome=local, others=UTC),
-            // and the DB strings are MST-stamped. safeDateTimeStr applies the
-            // correct Mountain-Time offset before formatting.
-            pdfData.call_notes = callDetail.notes.map((n: any) =>
-              `[${n.timestamp ? safeDateTimeStr(n.timestamp, '') : ''}] ${n.author || 'System'}: ${n.text || ''}`
-            ).join('\n');
+            const firstNote = callDetail.notes[0];
+            const isStructured = firstNote && typeof firstNote === 'object'
+              && typeof firstNote.author === 'string' && typeof firstNote.text === 'string';
+            if (isStructured) {
+              // Route to the typed field so the PDF renderer draws author-badged
+              // sub-sections with per-entry colors (items 42-44).
+              pdfData.pso_briefing_notes = callDetail.notes.map((n: any) => ({
+                author: String(n.author || 'SYSTEM'),
+                text: String(n.text || ''),
+                timestamp: n.timestamp ?? undefined,
+              }));
+            } else {
+              // Use safeDateTimeStr — raw toLocaleString() on a naive UTC timestamp
+              // parses inconsistently (Chrome=local, others=UTC) and the DB strings
+              // are MST-stamped. See parseTimestamp() in dateUtils.ts.
+              pdfData.call_notes = callDetail.notes.map((n: any) =>
+                `[${n.timestamp ? safeDateTimeStr(n.timestamp, '') : ''}] ${n.author || 'System'}: ${n.text || ''}`
+              ).join('\n');
+            }
           }
           // Inherit lat/lng from call if incident doesn't have them
           if (pdfData.latitude == null && callDetail.latitude != null) {

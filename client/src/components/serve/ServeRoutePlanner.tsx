@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, Route, MapPin, ChevronUp, ChevronDown, CheckSquare, Square,
-  Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical, Trash2,
+  Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical,
+  Printer, RotateCcw, CalendarDays, AlertTriangle,
 } from 'lucide-react';
+import jsPDF from 'jspdf';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../../utils/webglRecovery';
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
@@ -11,7 +13,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useGpsTracking } from '../../hooks/useGpsTracking';
 import type { ServeJob } from '../../types';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
-import { parseTimestamp } from '../../utils/dateUtils';
+import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import {
   resolveRouteOrigin, describeOrigin, describeOriginProblem,
@@ -205,9 +207,12 @@ export function nearestNeighborOrder(
   totalDurationMinutes: number;
   missedDeadlineJobIds: number[];
   finalElapsedMs: number;
+  /** Arrival timestamp (ms) for each stop, parallel to `ordered`. */
+  perStopArrivalMs: number[];
 } {
   const remaining = [...selected];
   const ordered: StopItem[] = [];
+  const perStopArrivalMs: number[] = [];
   let cursor = origin;
   let totalDistanceMiles = 0;
   let elapsedMs = startTimeMs;
@@ -235,6 +240,7 @@ export function nearestNeighborOrder(
     const [next] = remaining.splice(chosen.idx, 1);
     if (cursor) totalDistanceMiles += chosen.distanceMiles;
     cursor = { lat: next.job.recipient_lat!, lng: next.job.recipient_lng! };
+    perStopArrivalMs.push(chosen.arrivalMs);
     elapsedMs = chosen.arrivalMs + STOP_DWELL_MS;
     ordered.push(next);
   }
@@ -245,6 +251,7 @@ export function nearestNeighborOrder(
     totalDurationMinutes: (elapsedMs - startTimeMs) / 60_000,
     missedDeadlineJobIds,
     finalElapsedMs: elapsedMs,
+    perStopArrivalMs,
   };
 }
 
@@ -330,7 +337,10 @@ function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
 export default function ServeRoutePlanner({
   isOpen, onClose, jobs, officers, currentUserId, onRouteOptimized, preselectedJobIds,
 }: ServeRoutePlannerProps) {
-  const geocodedJobs = jobs.filter(j => j.recipient_lat != null && j.recipient_lng != null);
+  const TERMINAL_STATUSES = new Set<ServeJob['status']>(['served', 'failed', 'skipped', 'archived']);
+  const geocodedJobs = jobs.filter(j =>
+    j.recipient_lat != null && j.recipient_lng != null && !TERMINAL_STATUSES.has(j.status)
+  );
 
   const [stops, setStops] = useState<StopItem[]>([]);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -357,11 +367,26 @@ export default function ServeRoutePlanner({
   const routeSourceIdRef = useRef<string | null>(null);
   const returnRouteSourceIdRef = useRef<string | null>(null);
   const [returnLegMiles, setReturnLegMiles] = useState(0);
+  // F1: per-stop arrival estimates (job.id → timestamp ms)
+  const [stopArrivalTimes, setStopArrivalTimes] = useState<Map<number, number>>(new Map());
+  // F2: circular route toggle (default on — matches existing always-circular behavior)
+  const [returnToStart, setReturnToStart] = useState(true);
+  // F4: multi-day split banner (shown when total estimated time > 8 h)
+  const [showSplitBanner, setShowSplitBanner] = useState(false);
+  const [splitSaving, setSplitSaving] = useState(false);
+  // F5: missed-deadline confirm before applying
+  const [missedDeadlineIds, setMissedDeadlineIds] = useState<number[]>([]);
+  const [showDeadlineConfirm, setShowDeadlineConfirm] = useState(false);
 
   // Reset derived stats when planner opens
   useEffect(() => {
     if (!isOpen) return;
     setReturnLegMiles(0);
+    setStopArrivalTimes(new Map());
+    setShowSplitBanner(false);
+    setMissedDeadlineIds([]);
+    setShowDeadlineConfirm(false);
+    setSavedRouteLoaded(false); // Fix #3: always re-fetch saved route on re-open
   }, [isOpen]);
 
   // Initialize stops from jobs
@@ -573,16 +598,18 @@ export default function ServeRoutePlanner({
 
     const bounds = new mapboxgl.LngLatBounds();
 
-    stops.forEach((stop, idx) => {
+    let markerSeq = 0;
+    stops.forEach((stop) => {
       if (!stop.selected) return;
+      markerSeq++;
       const lngLat: [number, number] = [stop.job.recipient_lng!, stop.job.recipient_lat!];
       bounds.extend(lngLat);
 
       const color = markerColor(stop.job.status);
       const el = document.createElement('div');
       el.style.cssText = `width:28px;height:28px;border-radius:50%;background:${color};border:2px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:pointer;`;
-      el.textContent = String(idx + 1);
-      el.title = `${stop.job.recipient_name}\n${stop.job.recipient_address || ''}`;
+      el.textContent = String(markerSeq);
+      el.title = `${stop.job.recipient_name ?? 'Unknown'}\n${stop.job.recipient_address || ''}`;
 
       const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
         .setLngLat(lngLat)
@@ -611,9 +638,6 @@ export default function ServeRoutePlanner({
   }, []);
   const selectAll = useCallback(() => setStops(prev => prev.map(s => ({ ...s, selected: true }))), []);
   const deselectAll = useCallback(() => setStops(prev => prev.map(s => ({ ...s, selected: false }))), []);
-  const clearFinished = useCallback(() => {
-    setStops(prev => prev.filter(s => s.job.status !== 'served' && s.job.status !== 'failed'));
-  }, []);
   const moveStop = useCallback((idx: number, dir: -1 | 1) => {
     setStops(prev => {
       const next = [...prev];
@@ -666,19 +690,28 @@ export default function ServeRoutePlanner({
     // API. Fall back to a pure client-side nearest-neighbor estimate so
     // officers still get a usable (if less precise) route order.
     if (!mapReady || !mapRef.current) {
-      const { ordered, totalDistanceMiles, totalDurationMinutes, missedDeadlineJobIds } = nearestNeighborOrder(selected, routeOrigin);
+      const { ordered, totalDistanceMiles, totalDurationMinutes, missedDeadlineJobIds, perStopArrivalMs } = nearestNeighborOrder(selected, routeOrigin);
       // Add return leg (last stop → origin) so total mileage is circular.
       let returnMi = 0;
-      if (routeOrigin && ordered.length > 0) {
+      if (returnToStart && routeOrigin && ordered.length > 0) {
         const last = ordered[ordered.length - 1];
         returnMi = haversineMiles(
           last.job.recipient_lat!, last.job.recipient_lng!,
           routeOrigin.lat, routeOrigin.lng,
         );
       }
+      const totalDurMin = totalDurationMinutes + estimateDriveMinutes(returnMi);
       setTotalDistance(totalDistanceMiles + returnMi);
       setReturnLegMiles(returnMi);
-      setTotalDuration(totalDurationMinutes + estimateDriveMinutes(returnMi));
+      setTotalDuration(totalDurMin);
+      // F1: store per-stop arrival times
+      const arrivals = new Map<number, number>();
+      ordered.forEach((s, i) => { if (perStopArrivalMs[i] != null) arrivals.set(s.job.id, perStopArrivalMs[i]); });
+      setStopArrivalTimes(arrivals);
+      // F4: suggest split when estimated run exceeds 8 h
+      setShowSplitBanner(totalDurMin > 480);
+      // F5: store missed deadline ids for pre-confirm dialog
+      setMissedDeadlineIds(missedDeadlineJobIds);
       const unselected = stops.filter(s => !s.selected);
       setStops([
         ...ordered.map((s, i) => ({ ...s, order: i })),
@@ -803,10 +836,20 @@ export default function ServeRoutePlanner({
         runningElapsedMs = primaryFinalElapsedMs;
       }
 
+      // F1: build per-stop arrival map from NN simulation (best proxy we have
+      // after Directions gives only aggregate leg distances, not per-stop times)
+      const nnForArrivals = nearestNeighborOrder(allOrderedStops, routeOrigin);
+      const arrivals = new Map<number, number>();
+      allOrderedStops.forEach((s, i) => {
+        const t = nnForArrivals.perStopArrivalMs[i];
+        if (t != null) arrivals.set(s.job.id, t);
+      });
+      setStopArrivalTimes(arrivals);
+
       // Return leg: last stop → origin, to make mileage circular.
       let returnLegM = 0;
       let returnLegDurS = 0;
-      if (routeOrigin && allOrderedStops.length > 0) {
+      if (returnToStart && routeOrigin && allOrderedStops.length > 0) {
         const lastStop = allOrderedStops[allOrderedStops.length - 1];
         const retStart: [number, number] = [lastStop.job.recipient_lng!, lastStop.job.recipient_lat!];
         const retEnd: [number, number] = [routeOrigin.lng, routeOrigin.lat];
@@ -882,6 +925,10 @@ export default function ServeRoutePlanner({
       setReturnLegMiles(returnLegM * 0.000621371);
       setTotalDistance(distMiles);
       setTotalDuration(durMinutes);
+      // F4: suggest split when estimated run exceeds 8 h
+      setShowSplitBanner(durMinutes > 480);
+      // F5: surface missed deadline ids for pre-confirm dialog
+      setMissedDeadlineIds(allMissedDeadlineJobIds);
 
       const unselected = stops.filter(s => !s.selected);
       const newStops: StopItem[] = [
@@ -907,9 +954,143 @@ export default function ServeRoutePlanner({
     } finally {
       setOptimizing(false);
     }
-  }, [stops, mapReady, routeOrigin, clearRouteFromMap]);
+  }, [stops, mapReady, routeOrigin, returnToStart, clearRouteFromMap]);
+
+  // F3: print route sheet
+  const printRouteSheet = useCallback(() => {
+    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    const selected = stops.filter(s => s.selected);
+    const margin = 40;
+    let y = margin;
+    const pageW = doc.internal.pageSize.getWidth();
+
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ROUTE PLANNER — ROCKY MOUNTAIN PROTECTIVE GROUP', margin, y);
+    y += 18;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    const now = new Date();
+    const officerLabel = officers?.find(o => o.id === selectedOfficerId)?.name ?? 'Officer';
+    doc.text(`${officerLabel} · ${routeDate} · Printed ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`, margin, y);
+    y += 8;
+    doc.setDrawColor(180, 180, 180);
+    doc.line(margin, y, pageW - margin, y);
+    y += 14;
+
+    doc.setFontSize(9);
+    doc.setTextColor(60, 60, 60);
+    doc.setFont('helvetica', 'normal');
+    const summaryLine = [
+      `${selected.length} stops`,
+      totalDistance > 0 ? `${totalDistance.toFixed(1)} mi` : null,
+      totalDuration > 0 ? `${Math.floor(totalDuration / 60)}h ${Math.round(totalDuration % 60)}m` : null,
+      totalDistance > 0 ? `$${(totalDistance * IRS_MILEAGE_RATE).toFixed(2)} IRS reimbursement` : null,
+    ].filter(Boolean).join('  ·  ');
+    doc.text(summaryLine, margin, y);
+    y += 18;
+
+    selected.forEach((stop, idx) => {
+      if (y > doc.internal.pageSize.getHeight() - 60) {
+        doc.addPage();
+        y = margin;
+      }
+      const arrivalMs = stopArrivalTimes.get(stop.job.id);
+      const etaStr = arrivalMs
+        ? new Date(arrivalMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) // new-date-ok — epoch ms computed locally
+        : '';
+      const deadlinePart = stop.job.deadline
+        ? ` — deadline ${parseTimestamp(stop.job.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+        : '';
+      const missed = missedDeadlineIds.includes(stop.job.id);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(missed ? 180 : 30, missed ? 30 : 30, 30);
+      doc.setFontSize(10);
+      doc.text(`${idx + 1}. ${stop.job.recipient_name ?? 'Unknown'}`, margin, y);
+      if (etaStr) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(80, 80, 80);
+        doc.text(`ETA ${etaStr}`, pageW - margin, y, { align: 'right' });
+      }
+      y += 13;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(80, 80, 80);
+      const addrLine = [stop.job.recipient_address, stop.job.priority !== 'normal' ? stop.job.priority?.toUpperCase() : null, stop.job.time_window !== 'anytime' ? stop.job.time_window : null].filter(Boolean).join('  ·  ') + deadlinePart;
+      doc.text(addrLine || 'No address', margin + 10, y);
+      if (missed) {
+        doc.setTextColor(180, 30, 30);
+        doc.text('DEADLINE MISSED', pageW - margin, y, { align: 'right' });
+      }
+      y += 13;
+      doc.setDrawColor(220, 220, 220);
+      doc.line(margin + 10, y - 4, pageW - margin, y - 4);
+    });
+
+    if (returnToStart && returnLegMiles > 0) {
+      if (y > doc.internal.pageSize.getHeight() - 30) {
+        doc.addPage();
+        y = margin;
+      }
+      y += 4;
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8.5);
+      doc.setTextColor(120, 120, 120);
+      doc.text(`↩ Return to start — ${returnLegMiles.toFixed(1)} mi`, margin, y);
+    }
+
+    doc.save(`route-${routeDate}-${officerLabel.replace(/\s+/g, '-').toLowerCase()}.pdf`);
+  }, [stops, stopArrivalTimes, missedDeadlineIds, totalDistance, totalDuration, returnLegMiles, returnToStart, selectedOfficerId, officers, routeDate]);
+
+  // F4: split into two days
+  const saveSplitRoute = useCallback(async () => {
+    const selected = stops.filter(s => s.selected);
+    if (selected.length < 2) return;
+    const mid = Math.ceil(selected.length / 2);
+    const day1 = selected.slice(0, mid);
+    const day2 = selected.slice(mid);
+    const officerId = selectedOfficerId || currentUserId;
+    if (!officerId) return;
+    setSplitSaving(true);
+    try {
+      const tomorrow = new Date(); // new-date-ok — local wall-clock for "next calendar day"
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+      // Sequential saves so a day2 failure is clearly surfaced without silently
+      // leaving a partial write where day1 succeeded but day2 was lost.
+      let day1Saved = false;
+      try {
+        await apiFetch('/process-server/routes', {
+          method: 'POST',
+          body: JSON.stringify({ officer_id: officerId, route_date: routeDate, optimized_order_json: JSON.stringify(day1.map(s => s.job.id)), waypoints_json: JSON.stringify([]), total_distance_miles: totalDistance / 2, total_time_minutes: totalDuration / 2 }),
+        });
+        day1Saved = true;
+        await apiFetch('/process-server/routes', {
+          method: 'POST',
+          body: JSON.stringify({ officer_id: officerId, route_date: tomorrowStr, optimized_order_json: JSON.stringify(day2.map(s => s.job.id)), waypoints_json: JSON.stringify([]), total_distance_miles: totalDistance / 2, total_time_minutes: totalDuration / 2 }),
+        });
+        setShowSplitBanner(false);
+        setError(`Split: ${day1.length} stops saved for today, ${day2.length} for tomorrow (${tomorrowStr}).`);
+      } catch {
+        setError(day1Saved
+          ? `Today's ${day1.length} stops saved, but tomorrow's ${day2.length} stops failed to save — try again.`
+          : 'Failed to save split route.');
+      }
+    } finally {
+      setSplitSaving(false);
+    }
+  }, [stops, selectedOfficerId, currentUserId, routeDate, totalDistance, totalDuration]);
 
   const handleApplyAndClose = useCallback(async () => {
+    // F5: gate on deadline confirmation when missed deadlines exist
+    if (missedDeadlineIds.length > 0 && !showDeadlineConfirm) {
+      setShowDeadlineConfirm(true);
+      return;
+    }
+    setShowDeadlineConfirm(false);
     const selectedStops = stops.filter(s => s.selected);
     const selectedIds = selectedStops.map(s => s.job.id);
 
@@ -943,7 +1124,7 @@ export default function ServeRoutePlanner({
 
     onRouteOptimized(selectedIds, { totalDistance, totalDuration, fuelCost: totalDistance * IRS_MILEAGE_RATE });
     onClose();
-  }, [stops, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, routeOrigin, onRouteOptimized, onClose]);
+  }, [stops, missedDeadlineIds, showDeadlineConfirm, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, routeOrigin, onRouteOptimized, onClose]);
 
   if (!isOpen) return null;
 
@@ -997,11 +1178,19 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={selectAll} className="toolbar-btn text-xs px-2 py-1"><CheckSquare className="w-3 h-3" /> All</button>
             <button type="button" onClick={deselectAll} className="toolbar-btn text-xs px-2 py-1"><Square className="w-3 h-3" /> None</button>
-            {stops.some(s => s.job.status === 'served' || s.job.status === 'failed') && (
-              <button type="button" onClick={clearFinished}
-                className="toolbar-btn text-xs px-2 py-1 text-fg-muted hover:text-red-300 hover:border-red-700/50 transition-colors"
-                title="Remove served and non-service jobs from the list">
-                <Trash2 className="w-3 h-3" /> Clear Finished
+            {/* F2: circular route toggle */}
+            <button
+              type="button"
+              onClick={() => setReturnToStart(v => !v)}
+              className={`toolbar-btn text-xs px-2 py-1 flex items-center gap-1 transition-colors ${returnToStart ? 'text-brand-400 border-brand-600/60' : 'text-fg-muted'}`}
+              title={returnToStart ? 'Circular route — click to disable return leg' : 'One-way route — click to enable return to start'}
+            >
+              <RotateCcw className="w-3 h-3" /> {returnToStart ? 'Circular' : 'One-way'}
+            </button>
+            {/* F3: print route sheet (only when route has been optimized) */}
+            {totalDistance > 0 && (
+              <button type="button" onClick={printRouteSheet} className="toolbar-btn text-xs px-2 py-1 flex items-center gap-1" title="Print route sheet PDF">
+                <Printer className="w-3 h-3" /> Print
               </button>
             )}
             <X size={20} className="text-rmpg-400 hover:text-rmpg-100 cursor-pointer transition-colors" onClick={onClose} aria-label="Close route planner" />
@@ -1018,6 +1207,20 @@ export default function ServeRoutePlanner({
               </button>
             </div>
             {error && <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-300 text-[10px]">{error}</div>}
+            {/* F4: multi-day split banner */}
+            {showSplitBanner && (
+              <div className="px-3 py-1.5 bg-amber-900/25 border-b border-amber-700/40 text-amber-300 text-[10px] flex items-center gap-2">
+                <CalendarDays className="w-3 h-3 flex-shrink-0" />
+                <span className="flex-1">This run exceeds 8 hours. Consider splitting across two days.</span>
+                <button type="button" onClick={saveSplitRoute} disabled={splitSaving}
+                  className="text-[9px] font-bold px-2 py-0.5 rounded-[2px] bg-amber-700/40 hover:bg-amber-600/50 border border-amber-600/50 transition-colors disabled:opacity-50 flex-shrink-0">
+                  {splitSaving ? 'Saving…' : 'Split Now'}
+                </button>
+                <button type="button" onClick={() => setShowSplitBanner(false)} className="text-fg-muted hover:text-rmpg-100" aria-label="Dismiss split suggestion">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
 
             {/* An unanchored route is a QUIET accuracy problem: the stop order is
                 still produced, the mileage still looks plausible, and nothing on
@@ -1089,7 +1292,15 @@ export default function ServeRoutePlanner({
                   <span className="w-5 text-xs font-mono font-bold text-rmpg-300 flex-shrink-0">{idx + 1}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium text-rmpg-100 truncate">{stop.job.recipient_name}</div>
-                    <div className="text-[10px] text-fg-muted truncate">{stop.job.recipient_address || 'No address'}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-fg-muted truncate">{stop.job.recipient_address || 'No address'}</span>
+                      {/* F1: arrival time estimate */}
+                      {stopArrivalTimes.has(stop.job.id) && (
+                        <span className={`text-[9px] font-mono flex-shrink-0 ${missedDeadlineIds.includes(stop.job.id) ? 'text-red-400' : 'text-fg-secondary'}`}>
+                          ETA {new Date(stopArrivalTimes.get(stop.job.id)!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} {/* new-date-ok — epoch ms computed locally */}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {stop.job.status === 'served' && (
@@ -1140,6 +1351,25 @@ export default function ServeRoutePlanner({
               <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-rmpg-100 font-mono">${fuelCost.toFixed(2)}</span></div>
               <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><Gauge size={12} /> Efficiency:</span><span className="text-rmpg-100 font-mono">{totalDistance > 0 ? `${(selectedCount / totalDistance).toFixed(1)} stops/mi` : '\u2014'}</span></div>
 
+              {/* F5: deadline miss warning */}
+              {showDeadlineConfirm && (
+                <div className="rounded-[2px] border border-red-700/60 bg-red-900/30 p-2 text-[10px] text-red-300 space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                    {missedDeadlineIds.length} stop{missedDeadlineIds.length !== 1 ? 's' : ''} will miss their deadline at this order.
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={handleApplyAndClose}
+                      className="flex-1 text-[10px] font-bold px-2 py-1 rounded-[2px] bg-red-800/50 hover:bg-red-700/60 border border-red-600/50 transition-colors">
+                      Apply Anyway
+                    </button>
+                    <button type="button" onClick={() => setShowDeadlineConfirm(false)}
+                      className="flex-1 text-[10px] px-2 py-1 rounded-[2px] bg-surface-raised border border-border-default hover:border-rmpg-500 transition-colors">
+                      Go Back
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2 pt-1">
                 <button type="button" onClick={handleApplyAndClose} className="toolbar-btn toolbar-btn-primary text-xs px-4 py-2 flex-1 justify-center">
                   <Navigation size={14} /> Apply Route

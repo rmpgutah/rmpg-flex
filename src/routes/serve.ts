@@ -49,6 +49,8 @@ import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/p
 import { generateServeCharges } from '../utils/serveChargeStore';
 import { syncServeCompletionToCfs } from '../utils/reversePsoSync';
 import { notifyServeCompletion } from '../utils/serveCompletionNotify';
+import { broadcastAll } from './ws';
+import { toDisplayLabel } from '../utils/displayLabel';
 import { geocodeAddress } from './geocode';
 import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
 import { autoAssignAllUnassigned } from '../utils/serveAutoAssign';
@@ -1179,8 +1181,12 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   const user = c.get('user') as { id: number; role: string } | undefined;
   const db = getDb(c.env);
 
-  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; status: string; officer_id: number | null }>(
-    db, 'SELECT attempt_count, max_attempts, status, officer_id FROM serve_queue WHERE id = ?', id,
+  const queue = await queryFirst<{
+    attempt_count: number; max_attempts: number; status: string;
+    officer_id: number | null; call_id: number | null;
+    recipient_name: string | null; case_number: string | null;
+  }>(
+    db, 'SELECT attempt_count, max_attempts, status, officer_id, call_id, recipient_name, case_number FROM serve_queue WHERE id = ?', id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
 
@@ -1283,20 +1289,149 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   // break the serve write, so failures are swallowed by generateServeCharges.
   if (newStatus === 'served' || newStatus === 'failed') {
     await generateServeCharges(db, id);
-    // Fire-and-forget: sync the terminal outcome back to the originating CFS
     syncServeCompletionToCfs(db, id).catch(() => {});
-    // Fire-and-forget: notify the client the job reached a terminal outcome.
-    // serveCompletionNotify.ts was written to be called from exactly this spot
-    // but nothing ever imported/invoked it — clients had no way to learn a
-    // job was served or failed short of checking the portal themselves.
     notifyServeCompletion(db, id, newStatus).catch(() => {});
+
+    // [F2] Auto-clear the linked CFS call when the job is served. Only
+    // transitions calls that are still open — never re-opens a cleared call.
+    if (newStatus === 'served' && queue.call_id) {
+      execute(db,
+        `UPDATE calls_for_service SET status = 'cleared', cleared_at = datetime('now'), updated_at = datetime('now')
+         WHERE id = ? AND status NOT IN ('cleared','archived')`,
+        queue.call_id,
+      ).then(async (r) => {
+        if ((r as any).meta?.changes > 0) {
+          // Fetch the updated row so DispatchPage can merge it in-place.
+          const updatedCall = await db.prepare('SELECT id, status, cleared_at FROM calls_for_service WHERE id = ?')
+            .bind(queue.call_id).first<{ id: number; status: string; cleared_at: string | null }>();
+          broadcastAll('dispatch_update', {
+            action: 'call_status_changed',
+            call: updatedCall ?? { id: queue.call_id, status: 'cleared' },
+          });
+        }
+      }).catch(() => {});
+    }
+
+    // [F5] Alert dispatchers when a serve job reaches a terminal outcome.
+    broadcastAll('dispatch_update', {
+      action: newStatus === 'served' ? 'serve_completed' : 'serve_failed',
+      queue_id: id,
+      call_id: queue.call_id ?? null,
+      recipient_name: queue.recipient_name ?? null,
+      case_number: queue.case_number ?? null,
+      attempt_count: nextNum,
+    });
+
+    // [F3] Restore PSO officer unit to available on terminal status so they
+    // show as free in the dispatch units panel.
+    if (user?.id) {
+      execute(db,
+        `UPDATE units SET status = 'available', last_status_change = datetime('now'), updated_at = datetime('now')
+         WHERE officer_id = ? AND status NOT IN ('off_duty','out_of_service')`,
+        user.id,
+      ).then(() => {
+        broadcastAll('dispatch_update', { action: 'unit_status_changed', officer_id: user!.id, status: 'available' });
+      }).catch(() => {});
+    }
+  } else if (user?.id) {
+    // [F3] Non-terminal attempt: officer is on-scene at the serve address.
+    execute(db,
+      `UPDATE units SET status = 'onscene', last_status_change = datetime('now'), updated_at = datetime('now')
+       WHERE officer_id = ? AND status NOT IN ('off_duty','out_of_service','dispatched')`,
+      user.id,
+    ).then(() => {
+      broadcastAll('dispatch_update', { action: 'unit_status_changed', officer_id: user!.id, status: 'onscene' });
+    }).catch(() => {});
   }
+
+  // [12a] Live dispatch sync — broadcast over WebSocket so ServePage / DispatchPage
+  // consumers subscribed to 'process-server' receive a push without polling.
+  // useLiveSync in the client already wires up this module; until now the server
+  // never emitted it. Fire-and-forget: WS delivery is best-effort.
+  broadcastAll('data_changed', {
+    module: 'process-server',
+    entity: 'serve_queue',
+    id,
+    status: newStatus,
+    attempt: nextNum,
+  });
+
+  // [12b] CFS timeline entry — if this job is linked to a call, write a
+  // call_notes row so dispatchers see serve activity in the call's history
+  // alongside radio notes and status changes.
+  if (queue.call_id) {
+    const attemptLabel = toDisplayLabel(result);
+    const caseRef = queue.case_number ? ` (${queue.case_number})` : '';
+    const recipientRef = queue.recipient_name ? ` for ${queue.recipient_name}` : '';
+    const noteText = [
+      `[Process Server] Attempt ${nextNum}${caseRef}${recipientRef}: ${attemptLabel}`,
+      body.notes ? String(body.notes).slice(0, 200) : null,
+    ].filter(Boolean).join(' — ');
+    execute(db,
+      `INSERT INTO call_notes (call_id, user_id, note, created_at)
+       VALUES (?, ?, ?, datetime('now'))`,
+      queue.call_id, user?.id ?? null, noteText,
+    ).catch(() => {});
+  }
+
+  // [11] GPS proximity soft-warning — non-blocking. If the client sent GPS
+  // coordinates, check them against the linked CFS call's coordinates.
+  // A mismatch > 400 m is included in the response as a flag so the mobile UI
+  // can surface a confirmation banner without blocking the attempt write.
+  let proximityWarning: boolean | null = null;
+  if (body.latitude != null && body.longitude != null) {
+    const cfsCoords = await queryFirst<{ latitude: number | null; longitude: number | null }>(db,
+      `SELECT c.latitude, c.longitude
+       FROM calls_for_service c
+       JOIN serve_queue q ON q.call_id = c.id
+       WHERE q.id = ?`,
+      id,
+    ).catch(() => null);
+    if (cfsCoords?.latitude != null && cfsCoords?.longitude != null) {
+      // Haversine distance in meters (approximate flat-earth for distances < 50 km)
+      const R = 6_371_000;
+      const dLat = (body.latitude - cfsCoords.latitude) * (Math.PI / 180);
+      const dLon = (body.longitude - cfsCoords.longitude) * (Math.PI / 180);
+      const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(cfsCoords.latitude * (Math.PI / 180))
+        * Math.cos(body.latitude * (Math.PI / 180))
+        * Math.sin(dLon / 2) ** 2;
+      const distanceM = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      proximityWarning = distanceM > 400;
+    }
+  }
+
+  // [13] Consecutive non-service streak — after a non-served attempt, count
+  // how many of the most recent consecutive attempts also failed to make contact.
+  // At 5+ in a row, insert a system comment so supervisors see it in the thread.
+  if (newStatus !== 'served' && newStatus !== 'failed') {
+    const recentResults = await query<{ result: string }>(db,
+      `SELECT result FROM serve_attempts WHERE serve_queue_id = ?
+       ORDER BY attempt_number DESC LIMIT 6`,
+      id,
+    ).catch(() => [] as { result: string }[]);
+    const streak = recentResults.findIndex((r) =>
+      r.result === 'served' || r.result === 'sub_served',
+    );
+    const streakCount = streak === -1 ? recentResults.length : streak;
+    if (streakCount >= 5) {
+      execute(db,
+        `INSERT OR IGNORE INTO serve_job_comments
+           (serve_queue_id, author_name, author_role, body, is_system)
+         VALUES (?, 'System', 'system', ?, 1)`,
+        id,
+        `⚠ ${streakCount} consecutive non-service attempts. Supervisor review recommended.`,
+      ).catch(() => {});
+    }
+  }
+
   return c.json({
     success: true,
     id: ins.meta.last_row_id,
     attempt_number: nextNum,
     queue_status: newStatus,
     due_diligence_complete: nextNum >= (queue.max_attempts ?? 3),
+    proximity_warning: proximityWarning,
   });
 }
 
@@ -1691,6 +1826,336 @@ sv.get('/:id/gps-trail', async (c) => {
   return c.json({
     trail: rows,
     polyline: rows.map((r) => [r.longitude, r.latitude]),  // GeoJSON [lng,lat] order
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Feature pack: 30 Process Server enhancements (PR 4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// [1] GET /aging — jobs approaching deadline with no recent activity
+// "Aging" = deadline within N days AND either no attempts ever or last attempt
+// was over diligence_gap_days ago. Returns days_remaining so UI can color-code.
+sv.get('/aging', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT q.id, q.recipient_name, q.recipient_address, q.deadline, q.priority,
+           q.status, q.attempt_count, q.officer_id,
+           u.full_name AS officer_name,
+           MAX(a.attempt_at) AS last_attempt_at,
+           CAST(julianday(q.deadline) - julianday('now') AS INTEGER) AS days_remaining
+    FROM serve_queue q
+    LEFT JOIN users u   ON u.id = q.officer_id
+    LEFT JOIN serve_attempts a ON a.serve_queue_id = q.id
+    WHERE q.status NOT IN ('served', 'failed', 'cancelled')
+      AND q.deadline IS NOT NULL
+      AND julianday(q.deadline) - julianday('now') <= 5
+    GROUP BY q.id
+    HAVING last_attempt_at IS NULL
+        OR (julianday('now') - julianday(last_attempt_at)) >= COALESCE(
+             (SELECT diligence_gap_days FROM serve_nudge_settings WHERE id = 1 LIMIT 1), 3)
+    ORDER BY days_remaining ASC
+    LIMIT 200
+  `);
+  return c.json(rows);
+});
+
+// [2] GET /upcoming — jobs with a scheduled attempt window in the next 48 hours
+sv.get('/upcoming', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT q.id, q.recipient_name, q.recipient_address, q.deadline, q.priority,
+           q.status, q.attempt_count, q.officer_id, u.full_name AS officer_name,
+           q.next_attempt_note
+    FROM serve_queue q
+    LEFT JOIN users u ON u.id = q.officer_id
+    WHERE q.status NOT IN ('served', 'failed', 'cancelled')
+      AND q.next_attempt_note IS NOT NULL AND q.next_attempt_note != ''
+    ORDER BY q.deadline ASC NULLS LAST, q.priority DESC
+    LIMIT 200
+  `);
+  return c.json(rows);
+});
+
+// [3] PATCH /bulk-deadline — extend deadline on multiple jobs at once
+sv.patch('/bulk-deadline', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const body = await c.req.json<{ ids: number[]; deadline: string }>().catch(() => null);
+  if (!body?.ids?.length) return c.json({ error: 'ids required' }, 400);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(body.deadline ?? '')) return c.json({ error: 'Invalid deadline date (YYYY-MM-DD)' }, 400);
+  const db = getDb(c.env);
+  const updated = await executeInChunks(
+    db,
+    body.ids,
+    (phs) => `UPDATE serve_queue SET deadline = ?, updated_at = datetime('now') WHERE id IN (${phs})`,
+    [body.deadline],
+  );
+  return c.json({ success: true, updated });
+});
+
+// [4] PATCH /bulk-assign — reassign multiple jobs to one officer (or unassign with null)
+sv.patch('/bulk-assign', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+  const body = await c.req.json<{ ids: number[]; officer_id: number | null }>().catch(() => null);
+  if (!body?.ids?.length) return c.json({ error: 'ids required' }, 400);
+  const officerId = body.officer_id ?? null;
+  const db = getDb(c.env);
+  const updated = await executeInChunks(
+    db,
+    body.ids,
+    (phs) => `UPDATE serve_queue SET officer_id = ?, updated_at = datetime('now') WHERE id IN (${phs})`,
+    [officerId],
+  );
+  return c.json({ success: true, updated });
+});
+
+// [5a] GET /:id/comments — per-job comment thread
+sv.get('/:id/comments', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const rows = await query<Record<string, unknown>>(
+    getDb(c.env),
+    `SELECT id, author_name, author_role, body, created_at, edited_at, is_system, parent_id
+       FROM serve_job_comments
+      WHERE serve_queue_id = ?
+      ORDER BY created_at ASC`,
+    id,
+  );
+  return c.json(rows);
+});
+
+// [5b] POST /:id/comments — add a comment to a job's thread
+sv.post('/:id/comments', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const user = c.get('user') as { id?: number; role?: string; full_name?: string; username?: string } | undefined;
+  const body = await c.req.json<{ body: string; parent_id?: number }>().catch(() => null);
+  const text = (body?.body ?? '').trim().slice(0, 4000);
+  if (!text) return c.json({ error: 'Comment body required' }, 400);
+  const db = getDb(c.env);
+  const job = await queryFirst<{ id: number }>(db, 'SELECT id FROM serve_queue WHERE id = ?', id);
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const r = await execute(db,
+    `INSERT INTO serve_job_comments (serve_queue_id, author_id, author_name, author_role, body, parent_id)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    id,
+    user?.id ?? null,
+    user?.full_name || user?.username || 'Unknown',
+    user?.role || null,
+    text,
+    body?.parent_id ?? null,
+  );
+  return c.json({ id: r.meta.last_row_id, success: true }, 201);
+});
+
+// [6] PATCH /:id/court-filing — mark/unmark affidavit filed with court
+// Stored in parsed_data JSON to avoid adding a column to the capped serve_queue
+sv.patch('/:id/court-filing', async (c) => {
+  const denied = requireRole(c, ...WRITE);
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const body = await c.req.json<{ filed?: boolean; filed_at?: string }>().catch(() => null);
+  const filedAt = body?.filed
+    ? (body.filed_at ?? new Date().toISOString().slice(0, 10))
+    : null;
+  const db = getDb(c.env);
+  await execute(db,
+    `UPDATE serve_queue
+        SET parsed_data = json_set(COALESCE(parsed_data, '{}'), '$.court_filing_date', ?),
+            updated_at  = datetime('now')
+      WHERE id = ?`,
+    filedAt, id,
+  );
+  return c.json({ success: true, filed: !!body?.filed, filed_at: filedAt });
+});
+
+// [7] GET /stats/first-attempt-rate — % of closed jobs served on the first attempt
+sv.get('/stats/first-attempt-rate', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const row = await queryFirst<{ total: number; first_attempt_served: number }>(db, `
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN attempt_count = 1 AND status = 'served' THEN 1 ELSE 0 END) AS first_attempt_served
+    FROM serve_queue
+    WHERE status IN ('served', 'failed') AND attempt_count > 0
+  `);
+  const total = row?.total ?? 0;
+  const fas   = row?.first_attempt_served ?? 0;
+  return c.json({ total, first_attempt_served: fas, rate: total > 0 ? Math.round((fas / total) * 100) : 0 });
+});
+
+// [8] GET /stats/velocity — attempt volume this week vs last week
+sv.get('/stats/velocity', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const row = await queryFirst<{ last7: number; prev7: number }>(db, `
+    SELECT
+      SUM(CASE WHEN attempt_at >= datetime('now', '-7 days')  THEN 1 ELSE 0 END) AS last7,
+      SUM(CASE WHEN attempt_at >= datetime('now', '-14 days')
+               AND attempt_at <  datetime('now', '-7 days')   THEN 1 ELSE 0 END) AS prev7
+    FROM serve_attempts
+    WHERE attempt_at >= datetime('now', '-14 days')
+  `);
+  const last7 = row?.last7 ?? 0;
+  const prev7 = row?.prev7 ?? 0;
+  return c.json({ last_7_days: last7, prior_7_days: prev7, trend: last7 - prev7 });
+});
+
+// [9] GET /client-breakdown — job counts grouped by client/attorney
+sv.get('/client-breakdown', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT
+      COALESCE(NULLIF(client_name, ''), NULLIF(attorney_name, ''), 'Unknown Client') AS client,
+      COUNT(*)                                                                        AS total,
+      SUM(CASE WHEN status = 'served'    THEN 1 ELSE 0 END)                          AS served,
+      SUM(CASE WHEN status = 'failed'    THEN 1 ELSE 0 END)                          AS failed,
+      SUM(CASE WHEN status NOT IN ('served','failed','cancelled') THEN 1 ELSE 0 END) AS active
+    FROM serve_queue
+    GROUP BY 1
+    ORDER BY total DESC
+    LIMIT 50
+  `);
+  return c.json(rows);
+});
+
+// [10] GET /:id/address-history — previous jobs at the same service address
+sv.get('/:id/address-history', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const job = await queryFirst<{ recipient_address: string }>(db,
+    'SELECT recipient_address FROM serve_queue WHERE id = ?', id,
+  );
+  if (!job?.recipient_address) return c.json([]);
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT id, recipient_name, status, attempt_count, deadline, closed_at,
+           json_extract(parsed_data, '$.court_filing_date') AS court_filing_date
+    FROM serve_queue
+    WHERE recipient_address = ? AND id != ?
+    ORDER BY id DESC
+    LIMIT 20
+  `, job.recipient_address, id);
+  return c.json(rows);
+});
+
+// [26] GET /stats/daily-run-summary — today's attempt counts, served, and mileage
+sv.get('/stats/daily-run-summary', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const row = await queryFirst<{ attempts: number; served: number; not_home: number; refused: number }>(db, `
+    SELECT
+      COUNT(*)  AS attempts,
+      SUM(CASE WHEN result = 'served'   THEN 1 ELSE 0 END) AS served,
+      SUM(CASE WHEN result = 'not_home' THEN 1 ELSE 0 END) AS not_home,
+      SUM(CASE WHEN result = 'refused'  THEN 1 ELSE 0 END) AS refused
+    FROM serve_attempts
+    WHERE attempt_at >= date('now')
+  `);
+  const mileRow = await queryFirst<{ total_miles: number }>(db, `
+    SELECT SUM(mileage_actual) AS total_miles
+    FROM serve_queue
+    WHERE closed_at >= date('now') AND status = 'served'
+  `);
+  return c.json({
+    date: new Date().toISOString().slice(0, 10),
+    attempts:   row?.attempts  ?? 0,
+    served:     row?.served    ?? 0,
+    not_home:   row?.not_home  ?? 0,
+    refused:    row?.refused   ?? 0,
+    total_miles: mileRow?.total_miles ?? 0,
+  });
+});
+
+// [27] GET /client-report/:client — all jobs for a specific client (for status reports)
+sv.get('/client-report/:client', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const client = decodeURIComponent(c.req.param('client') ?? '').trim().slice(0, 200);
+  if (!client) return c.json({ error: 'client required' }, 400);
+  const db = getDb(c.env);
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT id, recipient_name, recipient_address, case_number, document_type,
+           status, attempt_count, deadline, closed_at, priority,
+           json_extract(parsed_data, '$.court_filing_date') AS court_filing_date
+    FROM serve_queue
+    WHERE COALESCE(NULLIF(client_name,''), NULLIF(attorney_name,'')) = ?
+    ORDER BY status ASC, deadline ASC
+    LIMIT 500
+  `, client);
+  return c.json({ client, job_count: rows.length, jobs: rows });
+});
+
+// [28] GET /export/attorney-grouped — serve history grouped by attorney for billing exports
+sv.get('/export/attorney-grouped', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT
+      COALESCE(NULLIF(attorney_name,''), NULLIF(client_name,''), 'Unknown') AS attorney,
+      COUNT(*)                                                               AS total_jobs,
+      SUM(CASE WHEN status = 'served' THEN 1 ELSE 0 END)                    AS served,
+      SUM(COALESCE(serve_fee, 0) + COALESCE(rush_fee, 0))                   AS total_fees,
+      SUM(COALESCE(mileage_actual, 0))                                       AS total_miles,
+      MIN(created_at)                                                        AS first_job_at,
+      MAX(created_at)                                                        AS last_job_at
+    FROM serve_queue
+    WHERE status IN ('served', 'failed', 'cancelled')
+    GROUP BY 1
+    ORDER BY total_fees DESC
+    LIMIT 200
+  `);
+  return c.json({ exported_at: new Date().toISOString(), attorneys: rows });
+});
+
+// [29] GET /:id/affidavit-prefill — pre-fill non-service affidavit from attempt history
+sv.get('/:id/affidavit-prefill', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const job = await queryFirst<{ recipient_name: string; recipient_address: string; case_number: string; document_type: string; attorney_name: string }>(db,
+    'SELECT recipient_name, recipient_address, case_number, document_type, attorney_name FROM serve_queue WHERE id = ?', id,
+  );
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const attempts = await query<{ attempt_at: string; result: string; notes: string; attempt_number: number }>(db,
+    `SELECT attempt_number, attempt_at, result, notes FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC`,
+    id,
+  );
+  const attemptLines = attempts.map((a) =>
+    `Attempt #${a.attempt_number} on ${a.attempt_at?.slice(0, 10) ?? '?'}: ${a.result}${a.notes ? ` — ${a.notes}` : ''}`,
+  );
+  return c.json({
+    serve_queue_id: id,
+    recipient_name:    job.recipient_name,
+    recipient_address: job.recipient_address,
+    case_number:       job.case_number,
+    document_type:     job.document_type,
+    attorney_name:     job.attorney_name,
+    attempt_count:     attempts.length,
+    attempt_summary:   attemptLines.join('\n'),
+    generated_at:      new Date().toISOString(),
   });
 });
 

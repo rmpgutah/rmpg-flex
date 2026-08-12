@@ -38,6 +38,7 @@ import { safeDateStr, safeTimeStr, parseTimestamp } from '../../utils/dateUtils'
 import { formatCodeShort } from '../../constants/processServiceCodes';
 import ServeReceiptActions from './ServeReceiptActions';
 import DiligencePanel from './DiligencePanel';
+import ServeJobComments from './ServeJobComments';
 
 interface ServeJobCardProps {
   job: ServeJob;
@@ -404,6 +405,41 @@ export default React.memo(function ServeJobCard({
               <ClipboardList className="w-2.5 h-2.5" />DILIGENCE
             </span>
           )}
+          {/* [16] Diligence countdown chip — days until deadline, colored by urgency tier */}
+          {job.deadline && !job.closed_at && (() => {
+            const daysLeft = Math.ceil(
+              (parseTimestamp(job.deadline).getTime() - Date.now()) / 86_400_000,
+            );
+            if (daysLeft > 7) return null;
+            const style = daysLeft <= 1
+              ? 'text-red-300 bg-red-900/50 border-red-600/60'
+              : daysLeft <= 3
+              ? 'text-amber-300 bg-amber-900/40 border-amber-700/50'
+              : 'text-fg-secondary bg-rmpg-800/50 border-rmpg-600/40';
+            return (
+              <span title={`Deadline: ${safeDateStr(job.deadline)}`}
+                className={`inline-flex items-center gap-0.5 text-[8px] font-bold border rounded-[2px] px-1 py-0 ${style}`}>
+                <Calendar className="w-2.5 h-2.5" />{daysLeft <= 0 ? 'OVERDUE' : `${daysLeft}d LEFT`}
+              </span>
+            );
+          })()}
+
+          {/* [17] Never attempted warning — job has been active more than 24h with zero attempts */}
+          {!job.closed_at && (job.attempt_count ?? 0) === 0 &&
+            (Date.now() - parseTimestamp(job.created_at ?? '').getTime()) > 86_400_000 && (
+            <span title="No service attempts yet" className="inline-flex items-center gap-0.5 text-[8px] font-bold text-orange-300 bg-orange-900/40 border border-orange-700/50 px-1 py-0 rounded-[2px]">
+              <AlertTriangle className="w-2.5 h-2.5" />NEVER ATTEMPTED
+            </span>
+          )}
+
+          {/* [18] Witness fee chip — shown when serve_fee or rush_fee indicates a fee is set */}
+          {((job.serve_fee ?? 0) > 0 || (job.rush_fee ?? 0) > 0) && (
+            <span title={`Serve fee: $${(job.serve_fee ?? 0).toFixed(2)}${(job.rush_fee ?? 0) > 0 ? ` + $${job.rush_fee!.toFixed(2)} rush` : ''}`}
+              className="inline-flex items-center gap-0.5 text-[8px] font-bold text-green-300 bg-green-900/30 border border-green-700/40 px-1 py-0 rounded-[2px]">
+              <DollarSign className="w-2 h-2" />FEE ${((job.serve_fee ?? 0) + (job.rush_fee ?? 0)).toFixed(2)}
+            </span>
+          )}
+
           {/* Closed chip — green-800/green-300, shown whenever closed_at is set */}
           {job.closed_at && (
             <span title={`Closed ${safeDateStr(job.closed_at)}`} className="inline-flex items-center gap-0.5 text-[8px] font-bold text-green-300 bg-green-900/50 border border-green-700/50 px-1 py-0 rounded-[2px]">
@@ -658,6 +694,9 @@ export default React.memo(function ServeJobCard({
           {job.status !== 'served' && job.attempts && job.attempts.length > 0 && (
             <DiligencePanel attempts={job.attempts} />
           )}
+
+          {/* [19] Comment thread panel — always visible in expanded view */}
+          <ServeJobComments jobId={job.id} />
 
           {/* Prior attempts timeline */}
           {job.attempts && job.attempts.length > 0 && (

@@ -36,6 +36,7 @@ import { rateLimitAllow } from '../utils/rateLimit';
 import { log } from '../utils/logger';
 import { clientIp } from '../utils/requestIp';
 import { upsertPersonFromAos, storeIdPhotos, linkReceiptToPerson } from '../utils/serveReceiptPersons';
+import { broadcastAll } from './ws';
 
 const PUBLIC_APP_URL = 'https://rmpgutah.us';
 
@@ -979,6 +980,15 @@ serveReceipt.post('/:token', async (c) => {
 
   log.info('Serve receipt signed', { receiptId, queueId: tok.serve_queue_id, variant, method });
 
+  // Broadcast to live dispatch / serve feeds so they refresh without polling.
+  broadcastAll('data_changed', {
+    module: 'process-server',
+    entity: 'serve_queue',
+    id: tok.serve_queue_id,
+    status: advances ? 'served' : 'attempted',
+    event: 'receipt_signed',
+  });
+
   return c.json({
     ok: true,
     receipt_id: receiptId,
@@ -1431,6 +1441,20 @@ serveReceiptAdmin.post(
       db, 'SELECT id, recipient_name, defendant_name FROM serve_queue WHERE id = ?', queueId);
     if (!job) return c.json({ error: 'Serve job not found' }, 404);
 
+    // [15] Receipt multiplicity guard — at most one signed receipt per job.
+    // The token-burn path stops QR-signed duplicates, but paper/refusal paths
+    // have no token and can produce extra receipts if the officer submits twice.
+    const existingSigned = await queryFirst<{ id: number }>(db,
+      `SELECT id FROM serve_receipts WHERE serve_queue_id = ? AND status = 'signed' LIMIT 1`,
+      queueId,
+    );
+    if (existingSigned) {
+      return c.json({
+        ok: false, code: 'already_signed',
+        message: 'A signed receipt already exists for this job. Void the existing receipt before adding another.',
+      }, 409);
+    }
+
     const tok = await queryFirst<{ id: number }>(
       db,
       `SELECT id FROM serve_receipt_tokens
@@ -1544,6 +1568,18 @@ serveReceiptAdmin.post(
       queueId,
     );
     if (!job) return c.json({ error: 'Serve job not found' }, 404);
+
+    // [15] Receipt multiplicity guard (paper path)
+    const existingSignedPaper = await queryFirst<{ id: number }>(db,
+      `SELECT id FROM serve_receipts WHERE serve_queue_id = ? AND status = 'signed' LIMIT 1`,
+      queueId,
+    );
+    if (existingSignedPaper) {
+      return c.json({
+        ok: false, code: 'already_signed',
+        message: 'A signed receipt already exists for this job. Void the existing receipt before adding another.',
+      }, 409);
+    }
 
     const premisesType = str(body.premises_type, 30);
     const residesAtAddress = bool(body.sub_resides_at_address);

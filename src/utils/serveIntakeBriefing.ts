@@ -832,23 +832,32 @@ export function buildOcrContext(
 
   const lines: string[] = [];
   lines.push('**OCR & EXTRACTION CONTEXT** *(auto-generated)*');
+
+  // Source provenance — one compact line per document (item 57).
+  // Engine label + confidence sit on the same line as the filename so the
+  // officer can scan source quality at a glance without reading a table.
   lines.push('**■ SOURCE DOCUMENTS**');
   for (const d of docs) {
     const engine = ENGINE_LABEL[d.ocr_engine || ''] || d.ocr_engine || 'unknown';
     const pct = `${Math.round((d.confidence || 0) * 100)}%`;
+    const pages = d.page_count ? ` · ${d.page_count}pp` : '';
     lines.push(d.success
-      ? `• ${d.file_name} — ${d.doc_type || 'unclassified'} · ${engine} · ${pct} confidence${d.page_count ? ` · ${d.page_count} pg` : ''}`
-      : `• ${d.file_name} — __extraction FAILED__ (review manually)`);
+      ? `• ${d.file_name} (${d.doc_type || 'unclassified'}, ${engine}, ${pct}${pages})`
+      : `• ${d.file_name} — __extraction FAILED — review manually__`);
   }
-  lines.push('**■ DATA QUALITY**');
-  lines.push(`• Auto-populated ${filled} field${filled === 1 ? '' : 's'} from ${docs.length} document${docs.length === 1 ? '' : 's'}`);
+
+  // Extraction summary in the operator's prose register (item 56).
+  const docWord = docs.length === 1 ? 'document' : 'documents';
+  const fieldWord = filled === 1 ? 'field' : 'fields';
+  lines.push('**■ EXTRACTION SUMMARY**');
+  lines.push(`Auto-populated ${filled} ${fieldWord} from ${docs.length} ${docWord} on ${nowIso.slice(0, 10)}.`);
   if (missingCritical.length) {
-    lines.push(`• __NOT FOUND in documents — verify before service:__ ${missingCritical.join(', ')}`);
+    lines.push(`**Verify before service** — not found in documents: ${missingCritical.join(', ')}.`);
   }
   if (allDates.length) {
-    lines.push(`• Dates seen in documents: ${[...allDates].sort().join(', ')}`);
+    lines.push(`Dates seen: ${[...allDates].sort().join(', ')}.`);
   }
-  lines.push(`*Extracted ${nowIso.slice(0, 10)} — verify against source documents before filing affidavits.*`);
+  lines.push('*Cross-check all extracted fields against source documents before filing affidavits.*');
 
   const okDocs = docs.filter((d) => d.success).length;
   const topConf = Math.max(0, ...docs.map((d) => d.confidence || 0));

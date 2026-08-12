@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
-import { BarChart3, RefreshCw } from 'lucide-react';
+import { BarChart3, RefreshCw, Target, TrendingUp, TrendingDown, Users } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { refreshAccessToken } from '../../utils/tokenRefresh';
 import { useToast } from '../../components/ToastProvider';
@@ -350,6 +350,36 @@ export default function AnalyticsTab() {
   useEffect(() => { fetchWeeklyTrend(); }, [fetchWeeklyTrend, refreshKey]);
   useEffect(() => { fetchTiming(); }, [fetchTiming, refreshKey]);
 
+  // [24] First-attempt rate stat card
+  const [firstAttemptRate, setFirstAttemptRate] = useState<{ total: number; first_attempt_served: number; rate: number } | null>(null);
+  const fetchFirstAttemptRate = useCallback(async () => {
+    try {
+      const d = await apiFetch<{ total: number; first_attempt_served: number; rate: number }>('/serve/stats/first-attempt-rate');
+      setFirstAttemptRate(d);
+    } catch {}
+  }, []);
+  useEffect(() => { fetchFirstAttemptRate(); }, [fetchFirstAttemptRate, refreshKey]);
+
+  // [25] Attempt velocity sparkline
+  const [velocity, setVelocity] = useState<{ last_7_days: number; prior_7_days: number; trend: number } | null>(null);
+  const fetchVelocity = useCallback(async () => {
+    try {
+      const d = await apiFetch<{ last_7_days: number; prior_7_days: number; trend: number }>('/serve/stats/velocity');
+      setVelocity(d);
+    } catch {}
+  }, []);
+  useEffect(() => { fetchVelocity(); }, [fetchVelocity, refreshKey]);
+
+  // [29] Client breakdown table
+  const [clientBreakdown, setClientBreakdown] = useState<Array<{ client: string; total: number; served: number; failed: number; active: number }>>([]);
+  const fetchClientBreakdown = useCallback(async () => {
+    try {
+      const d = await apiFetch<Array<{ client: string; total: number; served: number; failed: number; active: number }>>('/serve/client-breakdown');
+      setClientBreakdown(d);
+    } catch {}
+  }, []);
+  useEffect(() => { fetchClientBreakdown(); }, [fetchClientBreakdown, refreshKey]);
+
   const refreshAll = () => setRefreshKey((k) => k + 1);
 
   const [exportOpen, setExportOpen] = useState(false);
@@ -515,6 +545,90 @@ export default function AnalyticsTab() {
           </div>
         </div>
       </div>
+
+      {/* ── [24][25][29] Quick-stat row: first-attempt rate + velocity + client breakdown ── */}
+      <div className="grid grid-cols-3 gap-2">
+        {/* [24] First-attempt rate */}
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-2 flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-fg-muted">
+            <Target className="w-3 h-3" />
+            First-Attempt Rate
+          </div>
+          {firstAttemptRate ? (
+            <>
+              <span className="text-2xl font-bold tabular-nums text-rmpg-100">{firstAttemptRate.rate}%</span>
+              <span className="text-[9px] text-fg-muted">
+                {firstAttemptRate.first_attempt_served}/{firstAttemptRate.total} closed jobs
+              </span>
+            </>
+          ) : (
+            <span className="text-[10px] text-fg-muted">Loading…</span>
+          )}
+        </div>
+
+        {/* [25] Attempt velocity */}
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-2 flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-fg-muted">
+            {velocity && velocity.trend >= 0
+              ? <TrendingUp className="w-3 h-3 text-green-400" />
+              : <TrendingDown className="w-3 h-3 text-red-400" />}
+            Attempt Velocity
+          </div>
+          {velocity ? (
+            <>
+              <span className="text-2xl font-bold tabular-nums text-rmpg-100">{velocity.last_7_days}</span>
+              <span className={`text-[9px] ${velocity.trend >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {velocity.trend >= 0 ? '+' : ''}{velocity.trend} vs prior 7d
+              </span>
+            </>
+          ) : (
+            <span className="text-[10px] text-fg-muted">Loading…</span>
+          )}
+        </div>
+
+        {/* [29] Active client count */}
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-2 flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-fg-muted">
+            <Users className="w-3 h-3" />
+            Active Clients
+          </div>
+          <span className="text-2xl font-bold tabular-nums text-rmpg-100">
+            {clientBreakdown.filter((c) => c.active > 0).length}
+          </span>
+          <span className="text-[9px] text-fg-muted">{clientBreakdown.length} total</span>
+        </div>
+      </div>
+
+      {/* [29] Client breakdown table */}
+      {clientBreakdown.length > 0 && (
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3 space-y-2">
+          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
+            Client / Attorney Breakdown
+          </span>
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="text-fg-muted font-semibold text-[9px]">
+                <th className="text-left py-[3px] px-2">Client</th>
+                <th className="text-right py-[3px] px-2">Total</th>
+                <th className="text-right py-[3px] px-2">Active</th>
+                <th className="text-right py-[3px] px-2">Served</th>
+                <th className="text-right py-[3px] px-2">Failed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {clientBreakdown.slice(0, 15).map((row) => (
+                <tr key={row.client} className="border-t border-rmpg-700/30">
+                  <td className="py-[2px] px-2 text-rmpg-200 truncate max-w-[140px]">{row.client}</td>
+                  <td className="py-[2px] px-2 text-right tabular-nums text-fg-secondary">{row.total}</td>
+                  <td className="py-[2px] px-2 text-right tabular-nums text-brand-400">{row.active}</td>
+                  <td className="py-[2px] px-2 text-right tabular-nums text-green-400">{row.served}</td>
+                  <td className="py-[2px] px-2 text-right tabular-nums text-red-400">{row.failed}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* ── Daily summary ── */}
       <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3 space-y-2">
