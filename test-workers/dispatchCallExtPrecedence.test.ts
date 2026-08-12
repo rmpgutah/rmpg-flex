@@ -75,7 +75,12 @@ beforeAll(async () => {
     id INTEGER PRIMARY KEY AUTOINCREMENT, call_id INTEGER, status TEXT, case_number TEXT
   )`);
   await execute(db(), `CREATE TABLE IF NOT EXISTS call_visit_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, call_id INTEGER, visit_number INTEGER, created_at TEXT
+    id INTEGER PRIMARY KEY AUTOINCREMENT, call_id INTEGER, visit_number INTEGER,
+    responding_vehicle_id INTEGER, created_at TEXT
+  )`);
+  await execute(db(), `CREATE TABLE IF NOT EXISTS fleet_vehicles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_number TEXT, assigned_unit_id INTEGER,
+    status TEXT
   )`);
   await execute(db(), `CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT, entity_type TEXT, entity_id INTEGER,
