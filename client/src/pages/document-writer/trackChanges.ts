@@ -6,7 +6,7 @@
 //   reject → insertions are removed; deletions become normal text (mark removed).
 // Operates over ProseMirror positions so it survives any document structure.
 
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 
 interface SuggestRange { from: number; to: number; change: 'ins' | 'del' }
 

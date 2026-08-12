@@ -1,4 +1,4 @@
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { BubbleMenu } from '@tiptap/react/menus';
 import {
   Bold, Italic, Underline as UnderlineIcon, Highlighter, Link2, MessageSquarePlus,

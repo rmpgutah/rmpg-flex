@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { X, Merge, Search, RefreshCw } from 'lucide-react';
 import {
   scanPlaceholders, fetchCallForMerge, buildMergeValues, applyMerge, resolveKey,

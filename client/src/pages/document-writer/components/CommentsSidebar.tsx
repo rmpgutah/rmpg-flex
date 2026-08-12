@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
+import type { Node as ProseMirrorNode, Mark } from '@tiptap/pm/model';
 import { Check, Trash2, CornerDownRight } from 'lucide-react';
 
 export interface CommentReply { author: string; text: string; createdAt: string }
@@ -29,9 +30,9 @@ export default function CommentsSidebar({
 
   const jumpTo = (id: string) => {
     let found = -1;
-    editor.state.doc.descendants((node, pos) => {
+    editor.state.doc.descendants((node: ProseMirrorNode, pos: number) => {
       if (found >= 0) return false;
-      if (node.marks?.some((m) => m.type.name === 'comment' && m.attrs.commentId === id)) found = pos;
+      if (node.marks?.some((m: Mark) => m.type.name === 'comment' && m.attrs.commentId === id)) found = pos;
       return undefined;
     });
     if (found >= 0) {
@@ -48,8 +49,8 @@ export default function CommentsSidebar({
   const remove = (id: string) => {
     setComments((cs) => cs.filter((c) => c.id !== id));
     // Strip the mark for this id from the doc.
-    editor.state.doc.descendants((node, pos) => {
-      if (node.marks?.some((m) => m.type.name === 'comment' && m.attrs.commentId === id)) {
+    editor.state.doc.descendants((node: ProseMirrorNode, pos: number) => {
+      if (node.marks?.some((m: Mark) => m.type.name === 'comment' && m.attrs.commentId === id)) {
         editor.chain().setTextSelection({ from: pos, to: pos + node.nodeSize }).unsetComment().run();
       }
       return undefined;

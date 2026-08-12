@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { X, GitPullRequestArrow, Check, Undo2, Pencil } from 'lucide-react';
 import { countSuggestions, resolveAllSuggestions } from '../trackChanges';
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { Gauge, X } from 'lucide-react';
 
 /** A word / character limit indicator. The user sets a target word count and an

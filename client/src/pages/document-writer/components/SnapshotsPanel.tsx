@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { Camera, RotateCcw, Trash2, Plus } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 import { listSnapshots, saveSnapshot, deleteSnapshot, type Snapshot } from '../autosave';

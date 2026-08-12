@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import {
   X, Search, Clock, BookOpen, User, Phone, Sparkles, Mic, MicOff, Hash, FileSignature,
   QrCode, Type, BarChart3, Save, Eraser, ListTree, Footprints, Shield, Star,

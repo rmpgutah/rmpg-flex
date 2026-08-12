@@ -6,7 +6,7 @@
 // word goals (persisted in localStorage, keyed by heading text). Lets a writer
 // see how long each part of a report is and target a length per section.
 
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 
 export interface SectionStat {
   level: number;

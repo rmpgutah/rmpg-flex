@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { X, Sparkles, Loader2, Check, Copy, RotateCcw, ChevronRight } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 
