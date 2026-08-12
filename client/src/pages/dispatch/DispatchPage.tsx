@@ -6201,8 +6201,8 @@ export default function DispatchPage() {
                         {selectedCall.process_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Document:</span> {formatDocumentType(selectedCall.process_service_type)}</span>}
                         {selectedCall.process_served_to && <span className="text-rmpg-200"><span className="text-rmpg-400">Serve To:</span> {selectedCall.process_served_to}</span>}
                         {selectedCall.process_served_address && <span className="text-rmpg-200"><span className="text-rmpg-400">Address:</span> {selectedCall.process_served_address}</span>}
-                        {selectedCall.court_name && <span className="text-rmpg-200"><span className="text-rmpg-400">Court:</span> {selectedCall.court_name}</span>}
-                        {selectedCall.case_number && <span className="text-rmpg-200"><span className="text-rmpg-400">Case #:</span> {selectedCall.case_number}</span>}
+                        {selectedCall.court_name && <span className="text-rmpg-200"><span className="text-fg-muted">Court:</span> {selectedCall.court_name}</span>}
+                        {selectedCall.case_number && <span className="text-rmpg-200"><span className="text-fg-muted">Case #:</span> {selectedCall.case_number}</span>}
                         {selectedCall.process_served_at && <span className="text-rmpg-200"><span className="text-rmpg-400">Served At:</span> {formatTime(selectedCall.process_served_at)}</span>}
                         {!isDetailLoading && !selectedCall.process_service_type && !selectedCall.process_served_to && (
                           <span className="text-rmpg-500 italic">No process service details entered yet</span>
