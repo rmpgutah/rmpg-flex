@@ -729,9 +729,11 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
   const city = queueRow.recipient_city || '';
   const stateZip = [queueRow.recipient_state, queueRow.recipient_zip].filter(Boolean).join(' ');
   const addrLower = addr.toLowerCase();
+  // Use word-boundary regex so a 2-letter state abbreviation (e.g. "UT")
+  // doesn't falsely match mid-word street names like "South" (sou-TH → "ut").
   const cityAlreadyInAddr = !!city && addrLower.includes(city.toLowerCase());
   const stateAlreadyInAddr = !!queueRow.recipient_state &&
-    addrLower.includes(queueRow.recipient_state.toLowerCase());
+    new RegExp(`\\b${queueRow.recipient_state}\\b`, 'i').test(addr);
   const cityStateSuffix = cityAlreadyInAddr || stateAlreadyInAddr
     ? '' : [city, stateZip].filter(Boolean).join(', ');
   const fullLocation = [addr, cityStateSuffix].filter(Boolean).join(', ');
@@ -1029,6 +1031,40 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       );
       callId = call.id;
       callNumber = cn;
+
+      // ── PSO / process-service ext fields ────────────────────
+      // Write the Information Form fields into calls_for_service_ext so the
+      // dispatch detail "PSO Client Request Details" and "Process Service
+      // Details" sections are pre-populated from OCR rather than blank.
+      try {
+        const psoServiceWindows = get('service_windows') || queueRow.service_instructions || null;
+        const psoServiceType = queueRow.document_type || get('process_type') || null;
+        await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', callId);
+        await execute(
+          db,
+          `UPDATE calls_for_service_ext SET
+            pso_requestor_name    = COALESCE(NULLIF(?, ''), pso_requestor_name),
+            pso_requestor_phone   = COALESCE(NULLIF(?, ''), pso_requestor_phone),
+            pso_requestor_email   = COALESCE(NULLIF(?, ''), pso_requestor_email),
+            pso_service_type      = COALESCE(NULLIF(?, ''), pso_service_type),
+            pso_service_windows   = COALESCE(NULLIF(?, ''), pso_service_windows),
+            process_service_type  = COALESCE(NULLIF(?, ''), process_service_type),
+            process_served_to     = COALESCE(NULLIF(?, ''), process_served_to),
+            process_served_address = COALESCE(NULLIF(?, ''), process_served_address)
+           WHERE id = ?`,
+          queueRow.client_name || queueRow.attorney_name || null,
+          get('attorney_phone') || null,
+          get('attorney_email') || null,
+          psoServiceType,
+          psoServiceWindows,
+          psoServiceType,
+          queueRow.recipient_name || null,
+          fullLocation || addr || null,
+          callId,
+        );
+      } catch (err) {
+        console.warn('[commitOneIntake] PSO ext write skipped (non-fatal):', err);
+      }
     } catch (err) {
       // Best-effort — if the call insert fails (FK or column drift),
       // surface it but don't abort the whole intake. The queue row
