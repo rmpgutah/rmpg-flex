@@ -253,6 +253,7 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3', children: [
     { path: '/map', icon: Map, label: 'Live Map' },
     { path: '/navigation', icon: Route, label: 'Navigation & Route Planning' },
+    { path: '/route-builder', icon: Route, label: 'CFS Route Builder' },
     { path: '/geo-data-viewer', icon: MapPin, label: 'Geo Data Viewer' },
     { path: '/command-center', icon: Crosshair, label: 'Command Center' },
   ]},
