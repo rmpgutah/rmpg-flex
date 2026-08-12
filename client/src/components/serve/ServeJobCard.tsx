@@ -616,7 +616,7 @@ export default React.memo(function ServeJobCard({
               <div className="flex items-center gap-1">
                 <MapPin className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
                 <span className="text-rmpg-400">Mileage:</span>
-                <span className="font-mono tabular-nums">{job.mileage_actual.toFixed(1)} mi</span>
+                <span className="font-mono tabular-nums">{Number(job.mileage_actual).toFixed(1)} mi</span>
               </div>
             )}
           </div>
