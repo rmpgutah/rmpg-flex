@@ -197,6 +197,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   const [snapAssist, setSnapAssist] = useState<{ zone: SnapZone } | null>(null);
   const snapHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [systemMenu, setSystemMenu] = useState<{ x: number; y: number } | null>(null);
+  const [shakeRingActive, setShakeRingActive] = useState(false);
 
   const onMaxBtnMouseEnter = useCallback(() => {
     snapHoverTimer.current = setTimeout(() => setSnapLayoutsOpen(true), 400);
@@ -310,6 +311,8 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         if (shakeRef.current.timestamps.length >= AERO_SHAKE_REVERSAL_COUNT) {
           minimizeOthers(win.id);
           shakeRef.current.timestamps = [];
+          setShakeRingActive(true);
+          setTimeout(() => setShakeRingActive(false), 350);
         }
       }
 
@@ -502,7 +505,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
           e.preventDefault();
           setSystemMenu({ x: e.clientX, y: e.clientY });
         }}
-        className="flex items-center justify-between px-2 select-none cursor-move"
+        className={`flex items-center justify-between px-2 select-none cursor-move${shakeRingActive ? ' shake-ring-active' : ''}`}
         style={{ height: TITLE_BAR_HEIGHT, background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         <span className="text-[11px] font-medium truncate" style={{ color: 'var(--text-primary)' }}>{win.title}</span>

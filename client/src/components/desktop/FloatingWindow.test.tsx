@@ -354,3 +354,17 @@ describe('FloatingWindow — SnapLayouts trigger', () => {
     vi.useRealTimers();
   });
 });
+
+describe('FloatingWindow — Aero Shake ring', () => {
+  function renderWindow() {
+    const result = render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    return result;
+  }
+
+  it('title bar does not show shake-ring class before shake', () => {
+    const { getByTestId } = renderWindow();
+    const titleBar = getByTestId('title-bar');
+    expect(titleBar.className).not.toContain('shake-ring');
+  });
+});
