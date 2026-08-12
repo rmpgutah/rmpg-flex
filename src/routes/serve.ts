@@ -73,6 +73,19 @@ function csvEscape(v: unknown): string {
   return `"${String(v).replace(/"/g, '""')}"`;
 }
 
+// D1 can return REAL columns as strings when they were inserted via text
+// binding or the column has TEXT affinity. Coerce fee fields to number|null
+// so client code can safely call .toFixed() without a Number() guard.
+function normalizeFees<T extends Record<string, unknown>>(job: T): T {
+  const sf = job.serve_fee;
+  const rf = job.rush_fee;
+  return {
+    ...job,
+    serve_fee: sf == null ? null : Number(sf),
+    rush_fee: rf == null ? null : Number(rf),
+  };
+}
+
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
 const READ = [...WRITE, 'dispatcher'];
 
@@ -825,7 +838,7 @@ sv.get('/', async (c) => {
       for (const j of jobs) j.attempts = byQueue.get(j.id) ?? [];
     }
   }
-  return c.json(jobs);
+  return c.json(jobs.map(normalizeFees));
 });
 
 sv.post('/', async (c) => {
@@ -1001,7 +1014,7 @@ sv.get('/:id', async (c) => {
        WHERE a.serve_queue_id = ? ORDER BY a.attempt_at DESC`,
     id,
   );
-  return c.json({ ...row, attempts });
+  return c.json(normalizeFees({ ...row, attempts }));
 });
 
 // ── Serve audit trail ──────────────────────────────────────────
