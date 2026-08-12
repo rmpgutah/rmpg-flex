@@ -779,3 +779,22 @@ export function optimizeRoute(
   const seed = nearestNeighborOrder(penalized, n, startIdx);
   return twoOpt(penalized, seed);
 }
+
+export async function hashAddress(address: string): Promise<string> {
+  const normalized = address.toUpperCase().trim().replace(/\s+/g, ' ');
+  const data = new TextEncoder().encode(normalized);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export function shouldRecordDwell(seconds: number): boolean {
+  return seconds > 30 && seconds < 7200;
+}
+
+export function dwellSeconds(arrivedAt: string, loggedAt: string): number {
+  return Math.round(
+    (new Date(loggedAt).getTime() - new Date(arrivedAt).getTime()) / 1000
+  );
+}
