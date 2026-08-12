@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router';
 import { apiFetch } from '../../../hooks/useApi';
 
 interface Warrant {
@@ -36,6 +37,7 @@ function isMisdemeanor(w: Warrant): boolean {
 }
 
 export default function DesktopWarrantCountWidget() {
+  const navigate = useNavigate();
   const [counts, setCounts] = useState<WarrantCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -64,7 +66,7 @@ export default function DesktopWarrantCountWidget() {
   }, [fetchWarrants]);
 
   const handleClick = () => {
-    window.location.href = '/warrants';
+    navigate('/warrants');
   };
 
   const color = counts ? countColor(counts.total) : 'var(--text-secondary)';

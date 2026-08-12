@@ -9,7 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { Shield, Monitor, Cpu, HardDrive, Wifi, Battery } from 'lucide-react';
 
 const FLEXOS_VERSION = '1.0.0';
-const RMPG_FLEX_VERSION = '5.9.0';
+const RMPG_FLEX_VERSION = '5.8.7';
 
 interface SystemInfo {
   hostname: string;
@@ -24,6 +24,7 @@ interface SystemInfo {
 
 interface DiskInfo {
   freeBytes: number | null;
+  totalBytes?: number | null;
   warn: boolean;
 }
 

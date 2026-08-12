@@ -22,7 +22,7 @@ export default function DesktopUpdateBanner({ taskbarHeightPx, hasActiveCall }: 
         type="button"
         onClick={() => {
           try {
-            (window as unknown as { electronAPI?: { installUpdate?: () => void } }).electronAPI?.installUpdate?.();
+            (window as any).electron?.installUpdate?.();
           } catch { /* non-Electron */ }
         }}
         style={{ fontSize: 9, padding: '2px 10px', background: 'var(--brand-400)', color: '#fff', border: 'none', borderRadius: 2, cursor: 'pointer' }}

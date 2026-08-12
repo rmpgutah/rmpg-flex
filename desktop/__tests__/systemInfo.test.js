@@ -2,15 +2,20 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { getDiskFreeBytes, formatSystemInfo } = require('../systemInfo');
+const { getDiskBytes, getDiskFreeBytes, formatSystemInfo } = require('../systemInfo');
 const { appendToLogFile, tailLogFile } = require('../systemInfo');
 
 function fakeFs(statfsResult) {
   return { statfsSync: () => statfsResult };
 }
 
+test('getDiskBytes: returns freeBytes and totalBytes from statfsSync', () => {
+  const fs = fakeFs({ bavail: 1000, bsize: 4096, blocks: 2000 });
+  assert.deepEqual(getDiskBytes('/', fs), { freeBytes: 1000 * 4096, totalBytes: 2000 * 4096 });
+});
+
 test('getDiskFreeBytes: computes bytes from bavail * bsize', () => {
-  const fs = fakeFs({ bavail: 1000, bsize: 4096 });
+  const fs = fakeFs({ bavail: 1000, bsize: 4096, blocks: 2000 });
   assert.equal(getDiskFreeBytes('/', fs), 1000 * 4096);
 });
 
@@ -129,24 +134,24 @@ test('listCrashReports: lists files with date and path', () => {
 const { evaluateDiskSpace } = require('../systemInfo');
 
 test('evaluateDiskSpace: warn is false comfortably above the threshold', () => {
-  assert.deepEqual(evaluateDiskSpace(2_000_000_000), { freeBytes: 2_000_000_000, warn: false });
+  assert.deepEqual(evaluateDiskSpace(2_000_000_000, null), { freeBytes: 2_000_000_000, totalBytes: null, warn: false });
 });
 
 test('evaluateDiskSpace: warn is true below the default 500MB threshold', () => {
-  assert.deepEqual(evaluateDiskSpace(100_000_000), { freeBytes: 100_000_000, warn: true });
+  assert.deepEqual(evaluateDiskSpace(100_000_000, null), { freeBytes: 100_000_000, totalBytes: null, warn: true });
 });
 
 test('evaluateDiskSpace: accepts a custom threshold', () => {
-  assert.deepEqual(evaluateDiskSpace(1_000_000_000, 2_000_000_000), { freeBytes: 1_000_000_000, warn: true });
+  assert.deepEqual(evaluateDiskSpace(1_000_000_000, null, 2_000_000_000), { freeBytes: 1_000_000_000, totalBytes: null, warn: true });
 });
 
 test('evaluateDiskSpace: null freeBytes coerces to a false-positive warn (why callers must not pass null through)', () => {
   // JS coerces null to 0 in a numeric comparison, so evaluateDiskSpace(null) reports
   // warn: true — "disk space is low" — when the real problem is "couldn't determine
   // disk space at all". This is why the sys:disk-space handler in main.js must catch
-  // a statfsSync failure and return { freeBytes: null, warn: false } directly instead
-  // of routing the null through evaluateDiskSpace.
-  assert.deepEqual(evaluateDiskSpace(null), { freeBytes: null, warn: true });
+  // a statfsSync failure and return { freeBytes: null, totalBytes: null, warn: false }
+  // directly instead of routing the null through evaluateDiskSpace.
+  assert.deepEqual(evaluateDiskSpace(null, null), { freeBytes: null, totalBytes: null, warn: true });
 });
 
 const { formatNetworkInterfaces } = require('../systemInfo');

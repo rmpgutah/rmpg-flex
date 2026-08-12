@@ -23,7 +23,7 @@ export default function FlexOSPowerMenu({ onClose, onLock, onSignOut }: FlexOSPo
 
   const handleRestartApp = () => {
     const el = (window as any).electron;
-    if (el?.isElectron && el?.relaunch) { el.relaunch(); } else { window.location.reload(); }
+    if (el?.isElectron && el?.restartApp) { el.restartApp(); } else { window.location.reload(); }
     onClose();
   };
 

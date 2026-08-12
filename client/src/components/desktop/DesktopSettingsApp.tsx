@@ -33,6 +33,10 @@ const ALL_WIDGETS: { id: string; label: string }[] = [
   { id: 'incident-timer', label: 'Incident Timer' },
   { id: 'gps-trail', label: 'GPS Trail' },
   { id: 'shift-handoff', label: 'Shift Handoff Checklist' },
+  { id: 'panic', label: 'Panic / Duress' },
+  { id: 'warrant-count', label: 'Warrant Count' },
+  { id: 'body-cam', label: 'Body Camera' },
+  { id: 'message-count', label: 'Message Count' },
 ];
 
 const ICON_SIZES: Array<'small' | 'medium' | 'large'> = ['small', 'medium', 'large'];

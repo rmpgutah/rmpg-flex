@@ -1,17 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Wifi, WifiOff, Battery, BatteryCharging, BatteryLow, Navigation, RefreshCw } from 'lucide-react';
 
-// Types matching the Tauri command outputs
 interface BatteryStatus {
-  is_charging: boolean;
-  level: number;
-  has_battery: boolean;
+  charging: boolean;
+  percent: number;
 }
 
 interface SyncStatus {
-  ok: boolean;
-  pending: number;
-  last_sync?: string;
+  queueDepth?: number;
+  pending?: number; // legacy alias — some versions returned this name
+  isSyncing?: boolean;
+  lastPush?: string | null;
 }
 
 type ConnectivityState = 'online' | 'offline' | 'degraded';
@@ -61,19 +60,19 @@ function useTrayPolling() {
     return () => { cancelled = true; clearInterval(id); window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); };
   }, []);
 
-  // GPS lock: read from Tauri GPS state if available
+  // GPS lock: probe hardware presence every 30s
   useEffect(() => {
     const el = (window as any).electron;
-    if (!el?.isElectron || !el?.getOfflineState) return;
+    if (!el?.isElectron || !el?.checkGpsHardwarePresent) return;
     let cancelled = false;
     const poll = async () => {
       try {
-        const state = await el.getOfflineState();
-        if (!cancelled) setGpsLocked(state?.gpsLocked ?? false);
+        const present = await el.checkGpsHardwarePresent();
+        if (!cancelled) setGpsLocked(!!present);
       } catch { /* silent */ }
     };
     poll();
-    const id = setInterval(poll, 15_000);
+    const id = setInterval(poll, 30_000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
@@ -85,7 +84,7 @@ function useTrayPolling() {
     const poll = async () => {
       try {
         const s: SyncStatus = await el.getSyncStatus();
-        if (!cancelled) setSyncPending(s?.pending ?? 0);
+        if (!cancelled) setSyncPending(s?.queueDepth ?? s?.pending ?? 0);
       } catch { /* silent */ }
     };
     poll();
@@ -97,15 +96,15 @@ function useTrayPolling() {
 }
 
 function BatteryIcon({ battery }: { battery: BatteryStatus }) {
-  if (battery.is_charging) return <BatteryCharging className="w-3.5 h-3.5" style={{ color: '#4ade80' }} />;
-  if (battery.level <= 15) return <BatteryLow className="w-3.5 h-3.5" style={{ color: 'var(--sev-critical, #ef4444)' }} />;
-  return <Battery className="w-3.5 h-3.5" style={{ color: battery.level > 30 ? 'var(--text-secondary, #adbccc)' : 'var(--sev-high, #f97316)' }} />;
+  if (battery.charging) return <BatteryCharging className="w-3.5 h-3.5" style={{ color: '#4ade80' }} />;
+  if (battery.percent <= 15) return <BatteryLow className="w-3.5 h-3.5" style={{ color: 'var(--sev-critical, #ef4444)' }} />;
+  return <Battery className="w-3.5 h-3.5" style={{ color: battery.percent > 30 ? 'var(--text-secondary, #adbccc)' : 'var(--sev-high, #f97316)' }} />;
 }
 
 function BatteryLabel({ battery }: { battery: BatteryStatus }) {
   return (
-    <span style={{ fontSize: 9, color: battery.level <= 15 ? 'var(--sev-critical, #ef4444)' : 'var(--text-secondary, #adbccc)', fontVariantNumeric: 'tabular-nums' }}>
-      {Math.round(battery.level)}%
+    <span style={{ fontSize: 9, color: battery.percent <= 15 ? 'var(--sev-critical, #ef4444)' : 'var(--text-secondary, #adbccc)', fontVariantNumeric: 'tabular-nums' }}>
+      {Math.round(battery.percent)}%
     </span>
   );
 }
@@ -157,8 +156,8 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
       )}
 
       {/* Battery */}
-      {battery?.has_battery && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} title={`Battery: ${Math.round(battery.level)}%${battery.is_charging ? ' (charging)' : ''}`}>
+      {battery != null && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} title={`Battery: ${Math.round(battery.percent ?? 0)}%${battery.charging ? ' (charging)' : ''}`}>
           <BatteryIcon battery={battery} />
           <BatteryLabel battery={battery} />
         </div>
