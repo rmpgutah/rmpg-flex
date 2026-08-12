@@ -110,12 +110,18 @@ export async function buildCostMatrix(
         result[i][j] = chunkMatrix[i - start][j - start];
       }
     }
-    // Fill cross-chunk cells with haversine fallback
-    for (let i = 0; i < start; i++) {
-      for (let j = start; j < end; j++) {
-        if (result[i][j] === 0 && i !== j) {
-          result[i][j] = haversineDistance(stops[i], stops[j]);
-          result[j][i] = result[i][j];
+    // Fill cross-chunk cells with haversine fallback.
+    // Mixed data sources (Mapbox durations for intra-chunk, haversine for
+    // cross-chunk) are unavoidable in the chunked path, so mark fallback true
+    // unconditionally whenever any cross-chunk cells are filled.
+    if (start > 0) {
+      fallback = true;
+      for (let i = 0; i < start; i++) {
+        for (let j = start; j < end; j++) {
+          if (result[i][j] === 0 && i !== j) {
+            result[i][j] = haversineDistance(stops[i], stops[j]);
+            result[j][i] = result[i][j];
+          }
         }
       }
     }

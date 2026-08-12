@@ -90,6 +90,10 @@ describe('buildCostMatrix', () => {
     const result = await buildCostMatrix(bigStops, '2026-08-12T07:00:00Z', 'sk.fake');
     expect(result.matrix).toHaveLength(26);
     expect(result.matrix[0]).toHaveLength(26);
+    // Cross-chunk cells (stop 0 vs stop 25) are filled with haversine, so must be non-zero
+    expect(result.matrix[0][25]).toBeGreaterThan(0);
+    // Matrix must be marked fallback:true because cross-chunk cells use haversine
+    expect(result.fallback).toBe(true);
   });
 });
 
