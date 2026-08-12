@@ -109,5 +109,20 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   // after deploy, remove the source in the Cloudflare Dashboard (see comment
   // at the top of this file for exact locations).
   out.headers.set('Content-Security-Policy-Report-Only', FULL_CSP);
+
+  // Prevent the browser (and Cloudflare edge) from caching HTML responses.
+  // Without this, the zone-level 4h Browser Cache TTL applies to index.html
+  // — the same issue that was caching sw.js until _headers/sw.js got its
+  // explicit no-store rule. Users who load the app without an active service
+  // worker (first visit, after SW unregistration, Electron post-forceRefresh)
+  // could receive a 4-hour-old index.html that references deleted chunk hashes
+  // from a previous build, wedging the app on the INITIALIZING splash. Hashed
+  // assets (/assets/*.js, *.css) keep their immutable headers — this only
+  // applies to text/html responses (index.html served for every SPA route).
+  const ct = out.headers.get('Content-Type') ?? '';
+  if (ct.includes('text/html')) {
+    out.headers.set('Cache-Control', 'no-store, max-age=0');
+  }
+
   return out;
 };

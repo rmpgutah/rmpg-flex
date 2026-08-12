@@ -37,12 +37,22 @@ export function useServiceWorker() {
     let unmounted = false;
     let visibilityCheck: (() => void) | undefined;
 
+    // Track whether a SW was already controlling the page when this hook mounted.
+    // A controllerchange from null→SW is first-install and should NOT trigger a
+    // reload (the page already has fresh content). A change from SW→SW means a
+    // new version took over and the page needs to reload to pick up new assets.
+    let hadController = !!navigator.serviceWorker.controller;
+
     const handleControllerChange = () => {
-      // The SW controller changed — a new version activated
-      // Only reload if the page isn't already reloading
-      if (!document.hidden) {
-        // The SW_UPDATED message from sw.js will also trigger this
+      // Fallback for the case where sw.js's SW_UPDATED message didn't arrive
+      // (e.g. a race between matchAll() and clients.claim() in the activate
+      // handler). controllerchange fires reliably AFTER clients.claim(), so
+      // this path always catches a new-version takeover even when the message
+      // path misses it.
+      if (hadController && !unmounted) {
+        setUpdateAvailable(true);
       }
+      hadController = true;
     };
 
     const registerSW = async () => {

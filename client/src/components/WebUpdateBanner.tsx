@@ -106,11 +106,17 @@ export default function WebUpdateBanner() {
       if (cancelled) return;
       // Cooldown FIRST: if we already reloaded for an update in the last
       // 5 minutes, this "new" update is almost certainly SW churn, not a
-      // real deploy. Stop retrying entirely — the next genuine update (or
-      // a manual refresh) picks it up.
+      // real deploy. Skip this attempt but keep the retry interval alive so
+      // it picks up once the cooldown expires.
+      //
+      // History: the original code did clearInterval() here to "stop retrying
+      // entirely." That worked for a single tab, but the cooldown key lives in
+      // localStorage — shared across all open tabs. When Tab A reloads and
+      // stamps the key, Tab B hits the cooldown, killed its own retry loop,
+      // and stayed on stale content for the entire session. Now Tab B just
+      // waits and retries 4 s later, looping until the 5-min window clears.
       if (reloadCooldownActive()) {
-        devLog('[WEB-UPDATE] update detected but reload cooldown active — skipping');
-        if (retryRef.current) clearInterval(retryRef.current);
+        devLog('[WEB-UPDATE] update detected but reload cooldown active — will retry');
         return;
       }
       // Track when navigation blocking started so we can impose a max timeout.
