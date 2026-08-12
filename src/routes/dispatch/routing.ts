@@ -84,21 +84,15 @@ routing.post('/optimize', async (c) => {
       SELECT id, call_number, incident_type, priority, status, latitude, longitude,
              location_address, description, assigned_unit_ids
       FROM calls_for_service
-      WHERE status IN ('pending','on_hold','dispatched','enroute','onscene')
+      WHERE status IN ('pending','queued','on_hold','dispatched','enroute','onscene')
       ORDER BY created_at ASC LIMIT 500`);
-    const mine = candidates.filter((call) => {
-      try {
-        const assigned = JSON.parse(call.assigned_unit_ids || '[]') as Array<number | string>;
-        return assigned.some((a) => String(a) === String(unitId));
-      } catch { return false; }
-    });
-    const routable = mine.filter((call) => call.latitude != null && call.longitude != null);
-    const skipped = mine.length - routable.length;
+    const routable = candidates.filter((call) => call.latitude != null && call.longitude != null);
+    const skipped = candidates.length - routable.length;
 
     let warning: string | undefined;
-    if (mine.length === 0) warning = 'No active calls are assigned to this unit.';
-    else if (routable.length === 0) warning = 'Assigned calls have no GPS coordinates — nothing to route.';
-    else if (skipped > 0) warning = `${skipped} assigned call(s) skipped — no GPS coordinates.`;
+    if (candidates.length === 0) warning = 'No active calls are available to route.';
+    else if (routable.length === 0) warning = 'Active calls have no GPS coordinates — nothing to route.';
+    else if (skipped > 0) warning = `${skipped} call(s) skipped — no GPS coordinates.`;
 
     // Origin: the unit's live position, else the first routable call.
     let origin = unit.latitude != null && unit.longitude != null
