@@ -19,6 +19,12 @@ export default function MDTBridge() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const seen = useRef<Set<number>>(new Set());
+  // Stable refs prevent the effect from restarting (and firing an extra poll)
+  // every time addToast/navigate get new references from their contexts.
+  const addToastRef = useRef(addToast);
+  addToastRef.current = addToast;
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -28,9 +34,9 @@ export default function MDTBridge() {
         for (const m of res?.messages ?? []) {
           if (seen.current.has(m.id)) continue;
           seen.current.add(m.id);
-          addToast(describeSignal(m), severityForSignal(m.type), 9000);
+          addToastRef.current(describeSignal(m), severityForSignal(m.type), 9000);
           const dest = routeForSignal(m.type, m.payload);
-          if (dest) navigate(dest);
+          if (dest) navigateRef.current(dest);
         }
       } catch {
         /* WAF challenge / offline / pre-deploy — stay silent */
@@ -39,7 +45,7 @@ export default function MDTBridge() {
     poll();
     const timer = setInterval(poll, 8000);
     return () => clearInterval(timer);
-  }, [isAuthenticated, addToast, navigate]);
+  }, [isAuthenticated]);
 
   return null;
 }
