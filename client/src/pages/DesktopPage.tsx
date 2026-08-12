@@ -39,6 +39,7 @@ import FlexOSPowerMenu from '../components/desktop/FlexOSPowerMenu';
 import FlexOSSystemDashboard from '../components/desktop/FlexOSSystemDashboard';
 import FlexOSStatusBar, { STATUS_BAR_HEIGHT } from '../components/desktop/FlexOSStatusBar';
 import DesktopKeyboardShortcuts from '../components/desktop/DesktopKeyboardShortcuts';
+import DesktopShortcutReference from '../components/desktop/DesktopShortcutReference';
 import { useVirtualDesktop } from '../components/desktop/DesktopVirtualDesktops';
 
 const GRID_COLS = 6;
@@ -83,7 +84,12 @@ function CadAutoOpen() {
 
 // Bridges keyboard shortcuts into the window manager + virtual desktop contexts.
 // Must be inside both DesktopWindowManagerProvider and VirtualDesktopProvider.
-function DesktopShortcutsInner({ onLock, onSettings }: { onLock: () => void; onSettings: () => void }) {
+function DesktopShortcutsInner({ onLock, onSettings, onSnapLayouts, onShortcutReference }: {
+  onLock: () => void;
+  onSettings: () => void;
+  onSnapLayouts: () => void;
+  onShortcutReference: () => void;
+}) {
   const vd = useVirtualDesktop();
   const active = vd?.active ?? 0;
   const setActive = vd?.setActive;
@@ -93,6 +99,8 @@ function DesktopShortcutsInner({ onLock, onSettings }: { onLock: () => void; onS
       onToggleLauncher={onSettings}
       onPrevVirtualDesktop={() => setActive?.(active - 1)}
       onNextVirtualDesktop={() => setActive?.(active + 1)}
+      onSnapLayouts={onSnapLayouts}
+      onShortcutReference={onShortcutReference}
     />
   );
 }
@@ -158,6 +166,8 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [manuallyLocked, setManuallyLocked] = useState(false);
   const [powerMenuOpen, setPowerMenuOpen] = useState(false);
   const [sysDashboardOpen, setSysDashboardOpen] = useState(false);
+  const [snapLayoutsActive, setSnapLayoutsActive] = useState(false);
+  const [shortcutRefOpen, setShortcutRefOpen] = useState(false);
   const isLocked = lockActive || manuallyLocked;
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
   // the parse happens eagerly here — cheap for a small JSON blob, and this
@@ -360,7 +370,12 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
               ))}
               <DesktopWidgetPanel widgets={widgets} catalog={allFunctions} onMoveWidget={handleMoveWidget} onAdjustWidget={handleAdjustWidget} />
               <CadAutoOpen />
-              <DesktopShortcutsInner onLock={() => setManuallyLocked(true)} onSettings={() => setWidgetSettingsOpen(true)} />
+              <DesktopShortcutsInner
+                onLock={() => setManuallyLocked(true)}
+                onSettings={() => setWidgetSettingsOpen(true)}
+                onSnapLayouts={() => setSnapLayoutsActive(v => !v)}
+                onShortcutReference={() => setShortcutRefOpen(v => !v)}
+              />
               <WindowLayer />
               <DesktopWindowSwitcher />
             </DesktopWallpaper>
@@ -405,6 +420,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         />
       )}
       {sysDashboardOpen && <FlexOSSystemDashboard onClose={() => setSysDashboardOpen(false)} />}
+      {shortcutRefOpen && <DesktopShortcutReference onClose={() => setShortcutRefOpen(false)} />}
     </div>
   );
 }
