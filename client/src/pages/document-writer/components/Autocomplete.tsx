@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { SNIPPETS } from '../features/snippets';
 
 /** Inline phrase autocomplete for the Document Writer.

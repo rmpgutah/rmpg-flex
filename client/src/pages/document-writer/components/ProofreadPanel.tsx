@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { X, SpellCheck2, Wand2, Check, BookPlus, BookMarked, Trash2 } from 'lucide-react';
 import { proofread, applyProofFix, selectProofIssue, type ProofIssue, type ProofKind } from '../proofread';
 import { filterIgnoredIssues, addToDictionary, listDictionary, removeFromDictionary } from '../dictionary';

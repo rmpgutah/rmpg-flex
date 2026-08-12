@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { Target } from 'lucide-react';
 import { computeStats, getWordGoal, setWordGoal, type DocStats } from '../docActions';
 

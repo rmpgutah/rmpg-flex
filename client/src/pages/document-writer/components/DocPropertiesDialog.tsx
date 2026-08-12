@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { Info, X } from 'lucide-react';
 import type { DocProperties } from '../types';
 

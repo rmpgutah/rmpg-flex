@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { Gauge, AlertTriangle, Hash, GitCompare, FileStack } from 'lucide-react';
 import {
   computeReadability, runStyleChecks, wordFrequency, phraseFrequency,

@@ -5,7 +5,7 @@
 // Covers: auto-numbered figure/table/exhibit captions, vertical spacer blocks,
 // page-setup presets, export-of-selection-only, and clear-document.
 
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { DOMSerializer } from '@tiptap/pm/model';
 import type { DocSettings, PageSize } from './types';
 
