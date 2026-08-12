@@ -452,7 +452,7 @@ psb.post('/invoices/from-serve-charges', async (c) => {
     for (const chargeId of group.ids) {
       const lines = await query<any>(db, 'SELECT * FROM serve_charge_lines WHERE serve_charge_id = ?', chargeId);
       for (const l of lines) {
-        subtotal += Number(l.line_total) || 0;
+        subtotal += finiteNumber(l.line_total) ?? 0;
         await execute(db,
           `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied)
            VALUES (?, ?, ?, ?, ?, ?)`,
