@@ -678,11 +678,15 @@ calls.get('/:id', async (c) => {
     // dispatchMappers.ts's `visit_history: row.visit_history` mapping has
     // something to read; the client already renders this (DispatchPage.tsx
     // ~line 5961) but it was always empty since nothing populated it.
+    // History rows are stored against the PARENT call id (the completed visit).
+    // A child call (re-dispatch) shows them by looking up its own parent_call_id;
+    // a root call has no parent so the subquery returns NULL and yields 0 rows.
     const visitHistory = await query<Record<string, unknown>>(db,
       `SELECT cvh.*, fv.vehicle_number AS responding_vehicle_number
        FROM call_visit_history cvh
        LEFT JOIN fleet_vehicles fv ON fv.id = cvh.responding_vehicle_id
-       WHERE cvh.call_id = ? ORDER BY cvh.visit_number ASC, cvh.id ASC LIMIT 200`, id);
+       WHERE cvh.call_id = (SELECT parent_call_id FROM calls_for_service_ext WHERE id = ?)
+       ORDER BY cvh.visit_number ASC, cvh.id ASC LIMIT 200`, id);
 
     // Linked serve job. CallPdfData declares `serve_queue_id` and the call
     // report's QR gate reads it (recordPdfGenerator.ts) — but nothing ever
