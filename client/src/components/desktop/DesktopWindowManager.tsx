@@ -220,12 +220,10 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     }));
   }, [commit]);
 
-  const focusedId = windows.reduce<string | null>((best, w) => {
-    if (w.minimized) return best;
-    if (!best) return w.id;
-    const bestWin = windows.find(x => x.id === best);
-    return (bestWin && w.zIndex > bestWin.zIndex) ? w.id : best;
-  }, null);
+  const focusedId = windows.reduce<{ id: string | null; z: number }>(
+    (best, w) => (!w.minimized && w.zIndex > best.z) ? { id: w.id, z: w.zIndex } : best,
+    { id: null, z: -1 }
+  ).id;
 
   return (
     <DesktopWindowManagerContext.Provider
