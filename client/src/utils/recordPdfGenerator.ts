@@ -2763,6 +2763,11 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         { label: 'Floor', value: data.location_floor || '' },
         { label: 'Suite/Room', value: data.location_room || '' },
       ];
+      // Guard the entire 4-column row before drawing any column. Without this,
+      // the Property field's internal checkPageBreak can move to page N+1 while
+      // Building/Floor/Suite/Room still draw at the old y on that new page —
+      // landing near its bottom rather than beside Property (page 2 layout bug).
+      y = checkPageBreak(doc, y, 14, prio);
       let maxY = y + SPACING.FIELD_ROW_ADVANCE;
       for (let i = 0; i < 4; i++) {
         const fy = addFieldPair(doc, r3Fields[i].label, r3Fields[i].value, lx + i * quarterW, y, quarterW);
