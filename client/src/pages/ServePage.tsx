@@ -1347,7 +1347,7 @@ export default function ServePage() {
 
   // Feature 32: Serve fee total across filtered active jobs
   const filteredFeeTotal = useMemo(() =>
-    filteredJobs.reduce((sum, j) => sum + (j.serve_fee ?? 0) + (j.rush_fee ?? 0), 0),
+    filteredJobs.reduce((sum, j) => sum + Number(j.serve_fee ?? 0) + Number(j.rush_fee ?? 0), 0),
   [filteredJobs]);
 
   // Feature 34: Pending-diligence count
