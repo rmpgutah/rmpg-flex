@@ -504,8 +504,17 @@ function handleClockOut(body) {
   if (!active) return { status: 404, error: 'No active time entry found' };
 
   const clockOut = body.clock_out || now;
-  const clockInMs = new Date(active.clock_in).getTime();
-  const clockOutMs = new Date(clockOut).getTime();
+  // D1 timestamps are stored as naive UTC (e.g. "2026-08-12 14:30:00") without
+  // a 'Z' suffix. new Date() on such a string parses it as LOCAL time in Node.js,
+  // causing up to 7h error vs the ISO Z-string from Date.prototype.toISOString().
+  // Normalize by replacing the space with 'T' and appending 'Z' if absent.
+  function parseD1Ts(ts) {
+    if (!ts) return NaN;
+    const normalized = ts.includes('T') ? ts : ts.replace(' ', 'T');
+    return new Date(normalized.endsWith('Z') ? normalized : normalized + 'Z').getTime();
+  }
+  const clockInMs = parseD1Ts(active.clock_in);
+  const clockOutMs = parseD1Ts(clockOut);
   const totalHours = Math.max(0, (clockOutMs - clockInMs) / 3600000);
 
   db.prepare(`
