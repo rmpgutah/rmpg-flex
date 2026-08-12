@@ -14,6 +14,12 @@ import { sortIconPositions, snapToGrid, nextAutoArrangeSlot } from '../utils/des
 import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden, setIconsHidden } from '../utils/desktopIconPreferences';
 import DesktopWallpaper from '../components/desktop/DesktopWallpaper';
 import { DesktopWindowManagerProvider, useDesktopWindows } from '../components/desktop/DesktopWindowManager';
+import { DesktopSystemProvider } from '../context/DesktopSystemContext';
+import DesktopNightLightOverlay from '../components/desktop/DesktopNightLightOverlay';
+import DesktopP1AlertOverlay from '../components/desktop/DesktopP1AlertOverlay';
+import DesktopWelfareCountdown from '../components/desktop/DesktopWelfareCountdown';
+import DesktopActiveCallBar from '../components/desktop/DesktopActiveCallBar';
+import DesktopUpdateBanner from '../components/desktop/DesktopUpdateBanner';
 import FloatingWindow from '../components/desktop/FloatingWindow';
 import DesktopWindowSwitcher from '../components/desktop/DesktopWindowSwitcher';
 import DesktopIconGrid from '../components/desktop/DesktopIconGrid';
@@ -32,6 +38,8 @@ import FlexOSBootSplash from '../components/desktop/FlexOSBootSplash';
 import FlexOSPowerMenu from '../components/desktop/FlexOSPowerMenu';
 import FlexOSSystemDashboard from '../components/desktop/FlexOSSystemDashboard';
 import FlexOSStatusBar, { STATUS_BAR_HEIGHT } from '../components/desktop/FlexOSStatusBar';
+import DesktopKeyboardShortcuts from '../components/desktop/DesktopKeyboardShortcuts';
+import { useVirtualDesktop } from '../components/desktop/DesktopVirtualDesktops';
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -52,6 +60,41 @@ function parseDesktopNotes(raw: string | null | undefined): DesktopNote[] {
 function WindowLayer() {
   const { windows } = useDesktopWindows();
   return <>{windows.map(w => <FloatingWindow key={w.id} win={w} />)}</>;
+}
+
+const CAD_AUTO_OPEN_KEY = 'rmpg_cad_auto_opened';
+
+// Opens the Dispatch Console once per session on initial desktop load.
+// Must be inside DesktopWindowManagerProvider to access useDesktopWindows.
+function CadAutoOpen() {
+  const { openWindow } = useDesktopWindows();
+  useEffect(() => {
+    if (sessionStorage.getItem(CAD_AUTO_OPEN_KEY)) return;
+    sessionStorage.setItem(CAD_AUTO_OPEN_KEY, '1');
+    // Small delay lets the desktop finish its first render before opening
+    const t = setTimeout(() => {
+      openWindow('/dispatch', 'Dispatch Console', { width: 1200, height: 900 });
+    }, 600);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
+}
+
+// Bridges keyboard shortcuts into the window manager + virtual desktop contexts.
+// Must be inside both DesktopWindowManagerProvider and VirtualDesktopProvider.
+function DesktopShortcutsInner({ onLock, onSettings }: { onLock: () => void; onSettings: () => void }) {
+  const vd = useVirtualDesktop();
+  const active = vd?.active ?? 0;
+  const setActive = vd?.setActive;
+  return (
+    <DesktopKeyboardShortcuts
+      onLock={onLock}
+      onToggleLauncher={onSettings}
+      onPrevVirtualDesktop={() => setActive?.(active - 1)}
+      onNextVirtualDesktop={() => setActive?.(active + 1)}
+    />
+  );
 }
 
 // Does the actual desktop rendering/state work. Only mounted once the real
@@ -273,8 +316,11 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
     return { '--desktop-shell-accent': accent.accent, '--desktop-shell-accent-shadow': accent.shadow } as React.CSSProperties;
   }, [accentId]);
 
+  const taskbarH = TASKBAR_HEIGHT_PX[getTaskbarSize()];
+
   return (
     <div style={accentStyle}>
+      <DesktopSystemProvider>
       <VirtualDesktopProvider>
       <DesktopWindowManagerProvider>
         <ContextMenu
@@ -313,6 +359,8 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
                 <DesktopStickyNote key={note.id} note={note} onChange={(patch) => updateNote(note.id, patch)} onDelete={() => deleteNote(note.id)} />
               ))}
               <DesktopWidgetPanel widgets={widgets} catalog={allFunctions} onMoveWidget={handleMoveWidget} onAdjustWidget={handleAdjustWidget} />
+              <CadAutoOpen />
+              <DesktopShortcutsInner onLock={() => setManuallyLocked(true)} onSettings={() => setWidgetSettingsOpen(true)} />
               <WindowLayer />
               <DesktopWindowSwitcher />
             </DesktopWallpaper>
@@ -341,6 +389,11 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         )}
       </DesktopWindowManagerProvider>
       </VirtualDesktopProvider>
+      <DesktopNightLightOverlay />
+      <DesktopP1AlertOverlay />
+      <DesktopActiveCallBar taskbarHeightPx={taskbarH} />
+      <DesktopUpdateBanner taskbarHeightPx={taskbarH} hasActiveCall={false} />
+      </DesktopSystemProvider>
       <DesktopScreenSaver isActive={ssActive && !isLocked} onDismiss={dismissSS} />
       <DesktopLockScreen isLocked={isLocked} onUnlock={() => { dismissLock(); setManuallyLocked(false); }} />
       {notifCenterOpen && <DesktopNotificationCenter onClose={() => setNotifCenterOpen(false)} />}

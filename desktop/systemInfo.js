@@ -27,6 +27,7 @@ function formatSystemInfo(osModule, freeBytes) {
     hostname: osModule.hostname(),
     platform: osModule.platform(),
     arch: osModule.arch(),
+    os_version: osModule.release(),
     cpu_count: cpus.length,
     cpu_model: cpus.length > 0 ? cpus[0].model : 'Unknown',
     uptime_seconds: osModule.uptime(),

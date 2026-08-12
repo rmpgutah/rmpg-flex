@@ -10,6 +10,16 @@ import DesktopQuickAccessWidget from './widgets/DesktopQuickAccessWidget';
 import DesktopShiftTimerWidget from './widgets/DesktopShiftTimerWidget';
 import DesktopPinnedCallTicker from './widgets/DesktopPinnedCallTicker';
 import DesktopMiniMapWidget from './widgets/DesktopMiniMapWidget';
+import DesktopWeatherWidget from './widgets/DesktopWeatherWidget';
+import DesktopRadioChannelWidget from './widgets/DesktopRadioChannelWidget';
+import DesktopRollCallWidget from './widgets/DesktopRollCallWidget';
+import DesktopIncidentTimerWidget from './widgets/DesktopIncidentTimerWidget';
+import DesktopGpsTrailWidget from './widgets/DesktopGpsTrailWidget';
+import DesktopShiftHandoffWidget from './widgets/DesktopShiftHandoffWidget';
+import DesktopPanicWidget from './widgets/DesktopPanicWidget';
+import DesktopWarrantCountWidget from './widgets/DesktopWarrantCountWidget';
+import DesktopBodyCamWidget from './widgets/DesktopBodyCamWidget';
+import DesktopMessageCountWidget from './widgets/DesktopMessageCountWidget';
 
 export interface DesktopWidgetPanelProps {
   widgets: DesktopWidgetState[];
@@ -34,6 +44,16 @@ const WIDGET_COMPONENTS: Record<string, React.ComponentType<any>> = {
   'shift-timer': DesktopShiftTimerWidget,
   'pinned-call-ticker': DesktopPinnedCallTicker,
   'mini-map': DesktopMiniMapWidget,
+  'weather': DesktopWeatherWidget,
+  'radio-channel': DesktopRadioChannelWidget,
+  'roll-call': DesktopRollCallWidget,
+  'incident-timer': DesktopIncidentTimerWidget,
+  'gps-trail': DesktopGpsTrailWidget,
+  'shift-handoff': DesktopShiftHandoffWidget,
+  'panic': DesktopPanicWidget,
+  'warrant-count': DesktopWarrantCountWidget,
+  'body-cam': DesktopBodyCamWidget,
+  'message-count': DesktopMessageCountWidget,
 };
 
 function clampOpacity(v: number): number {

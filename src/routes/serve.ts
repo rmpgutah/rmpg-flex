@@ -844,24 +844,58 @@ sv.post('/', async (c) => {
     if (coords) { lat = coords.lat; lng = coords.lng; }
   }
 
-  const r = await execute(
-    getDb(c.env),
-    `INSERT INTO serve_queue (
-       call_id, sm_job_id, officer_id, serve_date,
-       recipient_name, recipient_person_id, recipient_address, recipient_address_2, recipient_city,
-       recipient_state, recipient_zip, recipient_lat, recipient_lng, property_id,
-       document_type, case_number, court_name, jurisdiction,
-       client_name, attorney_name, plaintiff_name, defendant_name,
-       priority, time_window, deadline,
-       max_attempts, service_instructions, notes, status, contract_id
-     ) VALUES (?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?)`,
+  // Schema-guard mig 0237 columns on CREATE too
+  const dbPost = getDb(c.env);
+  const hasRecipientTypeOnCreate = (
+    body.recipient_type != null || body.business_name != null
+  ) ? await columnExists(dbPost, 'serve_queue', 'recipient_type') : false;
+
+  const insertCols = [
+    'call_id', 'sm_job_id', 'officer_id', 'serve_date',
+    'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_address_2', 'recipient_city',
+    'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng', 'property_id',
+    'recipient_phone', 'recipient_email', 'recipient_dob',
+    'recipient_employer', 'recipient_employer_address',
+    'document_type', 'case_number', 'court_name', 'jurisdiction',
+    'client_name', 'attorney_name', 'plaintiff_name', 'defendant_name',
+    'serve_type', 'case_type', 'return_date', 'co_defendants', 'relationship',
+    'priority', 'time_window', 'deadline',
+    'max_attempts', 'service_instructions', 'notes', 'status', 'contract_id',
+    'serve_fee', 'rush_fee', 'payment_status',
+    'diligence_required', 'contact_restrictions', 'building_access_notes',
+  ];
+  const insertVals: any[] = [
     body.call_id ?? null, body.sm_job_id ?? null, body.officer_id ?? null, body.serve_date ?? null,
     body.recipient_name ?? null, body.recipient_person_id ?? null, body.recipient_address ?? null, body.recipient_address_2 ?? null, body.recipient_city ?? null,
     body.recipient_state ?? null, body.recipient_zip ?? null, lat, lng, body.property_id ?? null,
+    body.recipient_phone ?? null, body.recipient_email ?? null, body.recipient_dob ?? null,
+    body.recipient_employer ?? null, body.recipient_employer_address ?? null,
     body.document_type ?? null, body.case_number ?? null, body.court_name ?? null, body.jurisdiction ?? null,
     body.client_name ?? null, body.attorney_name ?? null, body.plaintiff_name ?? null, body.defendant_name ?? null,
+    body.serve_type ?? 'personal', body.case_type ?? null, body.return_date ?? null, body.co_defendants ?? null, body.relationship ?? null,
     priority, body.time_window ?? null, body.deadline ?? null,
     body.max_attempts ?? 3, body.service_instructions ?? null, body.notes ?? null, status, body.contract_id ?? null,
+    body.serve_fee ?? null, body.rush_fee ?? null, body.payment_status ?? 'unpaid',
+    body.diligence_required ? 1 : 0, body.contact_restrictions ?? null, body.building_access_notes ?? null,
+  ];
+  if (hasRecipientTypeOnCreate) {
+    insertCols.push(
+      'recipient_type', 'business_name', 'business_dba', 'business_ein',
+      'business_sos_filing', 'business_state_of_inc', 'registered_agent_name',
+      'registered_agent_title', 'registered_office_address',
+    );
+    insertVals.push(
+      body.recipient_type ?? null, body.business_name ?? null, body.business_dba ?? null,
+      body.business_ein ?? null, body.business_sos_filing ?? null, body.business_state_of_inc ?? null,
+      body.registered_agent_name ?? null, body.registered_agent_title ?? null,
+      body.registered_office_address ?? null,
+    );
+  }
+  const placeholders = insertVals.map(() => '?').join(',');
+  const r = await execute(
+    dbPost,
+    `INSERT INTO serve_queue (${insertCols.join(', ')}) VALUES (${placeholders})`,
+    ...insertVals,
   );
   return c.json({ success: true, id: r.meta.last_row_id }, 201);
 });
@@ -1002,24 +1036,44 @@ sv.put('/:id', async (c) => {
     'call_id', 'sm_job_id', 'officer_id', 'serve_date',
     'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_address_2', 'recipient_city',
     'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng', 'property_id',
+    'recipient_phone', 'recipient_email', 'recipient_dob',
+    'recipient_employer', 'recipient_employer_address',
     'document_type', 'case_number', 'court_name', 'jurisdiction',
     'client_name', 'attorney_name', 'plaintiff_name', 'defendant_name',
+    'serve_type', 'case_type', 'return_date', 'co_defendants', 'relationship',
     'priority', 'time_window', 'deadline',
     'max_attempts', 'service_instructions', 'notes', 'status', 'sort_order', 'contract_id',
     'next_attempt_note', 'urgency_tier',
+    'serve_fee', 'rush_fee', 'payment_status',
+    'diligence_required', 'mileage_actual', 'contact_restrictions', 'building_access_notes',
+    'recipient_type',
+    'business_name', 'business_dba', 'business_ein', 'business_sos_filing',
+    'business_state_of_inc', 'registered_agent_name', 'registered_agent_title',
+    'registered_office_address',
   ];
   const sets: string[] = [];
   const args: any[] = [];
+  const db = getDb(c.env);
   // Schema-guard newly-added columns so the route doesn't 500 when callers
   // post next_attempt_note before migration 0142 reaches live D1.
   const hasNextAttemptCol = 'next_attempt_note' in body
-    ? await columnExists(getDb(c.env), 'serve_queue', 'next_attempt_note')
+    ? await columnExists(db, 'serve_queue', 'next_attempt_note')
     : true;
+  // Schema-guard mig 0237 recipient-type columns
+  const hasRecipientTypeCol = 'recipient_type' in body || body.business_name != null
+    ? await columnExists(db, 'serve_queue', 'recipient_type')
+    : true;
+  const RECIPIENT_TYPE_COLS = new Set([
+    'recipient_type', 'business_name', 'business_dba', 'business_ein',
+    'business_sos_filing', 'business_state_of_inc', 'registered_agent_name',
+    'registered_agent_title', 'registered_office_address',
+  ]);
   for (const k of allowed) {
     if (!(k in body)) continue;
     if (k === 'status' && body[k] && !STATUSES.has(body[k])) continue;
     if (k === 'priority' && body[k] && !PRIORITIES.has(body[k])) continue; // skip invalid (CHECK enum)
     if (k === 'next_attempt_note' && !hasNextAttemptCol) continue;
+    if (RECIPIENT_TYPE_COLS.has(k) && !hasRecipientTypeCol) continue;
     sets.push(`${k} = ?`);
     args.push(body[k]);
   }
@@ -1049,6 +1103,38 @@ sv.put('/:id', async (c) => {
     syncServeCompletionToCfs(getDb(c.env), id).catch((e: unknown) => log.error('syncServeCompletionToCfs failed', { queueId: id }, e instanceof Error ? e : new Error(String(e))));
   }
   return c.json({ success: true });
+});
+
+// PATCH /:id/address-class — operator confirms the serve location's address class
+// so the auto-scheduler can apply business-hours windows for genuine corporate offices.
+// Updates parsed_data._intake.address_class in-place via json_set; leaves every
+// other key in parsed_data untouched.
+sv.patch('/:id/address-class', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const body = await c.req.json<{ klass?: string; confirmed?: boolean }>().catch(() => ({} as { klass?: string; confirmed?: boolean }));
+  const VALID_KLASS = new Set(['residential', 'business', 'unknown']);
+  const klass = typeof body.klass === 'string' && VALID_KLASS.has(body.klass) ? body.klass : null;
+  const confirmed = typeof body.confirmed === 'boolean' ? body.confirmed : null;
+  if (klass === null && confirmed === null) return c.json({ error: 'Provide klass and/or confirmed' }, 400);
+  const db = getDb(c.env);
+  // json_set creates the path when it does not exist (safe on rows that predate
+  // commitIntake, which is all rows without an OCR intake).
+  const sets: string[] = ["updated_at = datetime('now')"];
+  const args: (string | number | null)[] = [];
+  if (klass !== null) {
+    sets.push(`parsed_data = json_set(COALESCE(parsed_data, '{}'), '$._intake.address_class.klass', ?)`);
+    args.push(klass);
+  }
+  if (confirmed !== null) {
+    sets.push(`parsed_data = json_set(COALESCE(parsed_data, '{}'), '$._intake.address_class.confirmed', ?)`);
+    args.push(confirmed ? 1 : 0);
+  }
+  args.push(id);
+  await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  return c.json({ success: true, klass, confirmed });
 });
 
 // ─────────────────────────────────────────────────────────────

@@ -74,6 +74,14 @@ const AdminPage = lazyRetry(() => import('./pages/AdminPage'));
 const MyIdPage = lazyRetry(() => import('./pages/wallet/MyIdPage'));
 const VerifyIdPage = lazyRetry(() => import('./pages/wallet/VerifyIdPage'));
 const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
+const CalculatorPage = lazyRetry(() => import('./pages/CalculatorPage'));
+const UnitConverterPage = lazyRetry(() => import('./pages/UnitConverterPage'));
+const ClipboardManagerPage = lazyRetry(() => import('./pages/ClipboardManagerPage'));
+const FocusTimerPage = lazyRetry(() => import('./pages/FocusTimerPage'));
+const DeviceHealthPage = lazyRetry(() => import('./pages/DeviceHealthPage'));
+const PrintQueuePage = lazyRetry(() => import('./pages/PrintQueuePage'));
+const ScheduledUpdatesPage = lazyRetry(() => import('./pages/ScheduledUpdatesPage'));
+const RemoteLockPage = lazyRetry(() => import('./pages/RemoteLockPage'));
 const TesseractTrainingPage = lazyRetry(() => import('./pages/TesseractTrainingPage'));
 const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
 const FleetPage = lazyRetry(() => import('./pages/fleet'));
@@ -214,6 +222,15 @@ const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
 const CrashReportsPage = lazyRetry(() => import('./pages/CrashReportsPage'));
 // ImpoundPage existed on disk but had no route — sidebar /impound link 404'd.
 const ImpoundPage = lazyRetry(() => import('./pages/ImpoundPage'));
+const ShiftNotesPage = lazyRetry(() => import('./pages/ShiftNotesPage'));
+const QuickPlateCheckPage = lazyRetry(() => import('./pages/QuickPlateCheckPage'));
+const UnitStatusBoardPage = lazyRetry(() => import('./pages/UnitStatusBoardPage'));
+const OfflineQueuePage = lazyRetry(() => import('./pages/OfflineQueuePage'));
+const BroadcastMessagePage = lazyRetry(() => import('./pages/BroadcastMessagePage'));
+const ScreenCapturePage = lazyRetry(() => import('./pages/ScreenCapturePage'));
+const SystemLogsPage = lazyRetry(() => import('./pages/SystemLogsPage'));
+const LiveCallMapPage = lazyRetry(() => import('./pages/LiveCallMapPage'));
+const DigitalEvidencePage = lazyRetry(() => import('./pages/DigitalEvidencePage'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -648,6 +665,14 @@ function AppRoutes() {
             <Route path="/ncic" element={<RouteErrorBoundary><NcicPage /></RouteErrorBoundary>} />
             <Route path="/dl-search" element={<RouteErrorBoundary><DlSearchPage /></RouteErrorBoundary>} />
             <Route path="/audit" element={<AdminRoute><RouteErrorBoundary><AuditLogPage /></RouteErrorBoundary></AdminRoute>} />
+            <Route path="/calculator" element={<ProtectedRoute><RouteErrorBoundary><CalculatorPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/unit-converter" element={<ProtectedRoute><RouteErrorBoundary><UnitConverterPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/clipboard-manager" element={<ProtectedRoute><RouteErrorBoundary><ClipboardManagerPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/focus-timer" element={<ProtectedRoute><RouteErrorBoundary><FocusTimerPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/device-health" element={<ProtectedRoute><RouteErrorBoundary><DeviceHealthPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/print-queue" element={<ProtectedRoute><RouteErrorBoundary><PrintQueuePage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/scheduled-updates" element={<ProtectedRoute><RouteErrorBoundary><ScheduledUpdatesPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/remote-lock" element={<ProtectedRoute><RouteErrorBoundary><RemoteLockPage /></RouteErrorBoundary></ProtectedRoute>} />
             <Route path="/tesseract-training" element={<AdminRoute><RouteErrorBoundary><TesseractTrainingPage /></RouteErrorBoundary></AdminRoute>} />
             <Route path="/training" element={<RouteErrorBoundary><TrainingPage /></RouteErrorBoundary>} />
             <Route path="/training-docs" element={<RouteErrorBoundary><TrainingDocsPage /></RouteErrorBoundary>} />
@@ -712,6 +737,15 @@ function AppRoutes() {
             <Route path="/nav" element={<RouteErrorBoundary><NavPage /></RouteErrorBoundary>} />
             <Route path="/accreditation" element={<RouteErrorBoundary><AccreditationPage /></RouteErrorBoundary>} />
             <Route path="/recruitment" element={<RouteErrorBoundary><RecruitmentPage /></RouteErrorBoundary>} />
+            <Route path="/shift-notes" element={<RouteErrorBoundary><ShiftNotesPage /></RouteErrorBoundary>} />
+            <Route path="/quick-plate" element={<RouteErrorBoundary><QuickPlateCheckPage /></RouteErrorBoundary>} />
+            <Route path="/unit-status-board" element={<RouteErrorBoundary><UnitStatusBoardPage /></RouteErrorBoundary>} />
+            <Route path="/offline-queue" element={<RouteErrorBoundary><OfflineQueuePage /></RouteErrorBoundary>} />
+            <Route path="/broadcast" element={<RouteErrorBoundary><BroadcastMessagePage /></RouteErrorBoundary>} />
+            <Route path="/screen-capture" element={<RouteErrorBoundary><ScreenCapturePage /></RouteErrorBoundary>} />
+            <Route path="/system-logs" element={<AdminRoute><RouteErrorBoundary><SystemLogsPage /></RouteErrorBoundary></AdminRoute>} />
+            <Route path="/live-call-map" element={<RouteErrorBoundary><LiveCallMapPage /></RouteErrorBoundary>} />
+            <Route path="/digital-evidence" element={<RouteErrorBoundary><DigitalEvidencePage /></RouteErrorBoundary>} />
             {/* /navigation rendered OUTSIDE Layout above — full-screen vehicle HUD */}
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />

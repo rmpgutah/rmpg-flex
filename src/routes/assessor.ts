@@ -313,8 +313,15 @@ app.post('/apply', async (c) => {
     const cached = await getCachedValidated<Parcel>(
       c.env, cacheKeyParcel(body.parcel_number), (v) => [v?.parcel_number],
     );
-    const recordForCounty = record as { address?: string; jurisdiction_override?: string | null };
-    const county = resolveEffectiveCounty(recordForCounty.address ?? '', recordForCounty.jurisdiction_override);
+    const recordForCounty = record as { address?: string; city?: string; state?: string; zip?: string; jurisdiction_override?: string | null };
+    const fullAddress = [
+      recordForCounty.address,
+      recordForCounty.city,
+      recordForCounty.state && recordForCounty.zip
+        ? `${recordForCounty.state} ${recordForCounty.zip}`
+        : (recordForCounty.state ?? recordForCounty.zip ?? ''),
+    ].filter(Boolean).join(', ');
+    const county = resolveEffectiveCounty(fullAddress, recordForCounty.jurisdiction_override);
     parcel = cached ?? await dispatchGetParcel(c.env, body.parcel_number, county);
     if (!cached) await putCached(c.env, cacheKeyParcel(body.parcel_number), parcel);
   } catch (e) { return handleError(c, e); }

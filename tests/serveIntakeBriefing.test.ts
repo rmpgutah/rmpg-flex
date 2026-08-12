@@ -444,4 +444,16 @@ describe('R10: party matching is bidirectional', () => {
   it('genuinely unrelated names are still non-party (the fix is not over-broad)', () => {
     expect(recipientPartyStatus('DANA WHITFIELD', ['AVERY HOLT', 'WHITFIELD ENTERPRISES, LLC'])).toBe('non-party');
   });
+
+  it('R10b: both sides carrying one extra token still matches (symmetric divergence)', () => {
+    // "JOHN SMITH JR" vs "JOHN DAVID SMITH": shared core {JOHN, SMITH} >= 2,
+    // each side has exactly 1 diverging token (suffix vs middle name).
+    expect(recipientPartyStatus('JOHN SMITH JR', ['JOHN DAVID SMITH'])).toBe('party');
+    // "DANA MARIE WHITFIELD" vs "DANA WHITFIELD JR": shared {DANA, WHITFIELD}.
+    expect(recipientPartyStatus('DANA MARIE WHITFIELD', ['DANA WHITFIELD JR'])).toBe('party');
+    // Guard: two diverging tokens on one side must not match (too many unknowns).
+    expect(recipientPartyStatus('JOHN SMITH JR III', ['JOHN DAVID SMITH'])).toBe('non-party');
+    // Guard: only 1 shared token between otherwise unrelated names — no match.
+    expect(recipientPartyStatus('JOHN ADAMS JR', ['JOHN KENNEDY SR'])).toBe('non-party');
+  });
 });

@@ -127,6 +127,23 @@ export const ROUTE_MODULES: Readonly<Record<string, RouteImporter>> = {
   '/geo-data-viewer': () => import('../pages/GeoDataViewerPage'),
   '/audit': () => import('../pages/AuditLogPage'),
   '/admin': () => import('../pages/AdminPage'),
+  '/calculator': () => import('../pages/CalculatorPage'),
+  '/unit-converter': () => import('../pages/UnitConverterPage'),
+  '/clipboard-manager': () => import('../pages/ClipboardManagerPage'),
+  '/focus-timer': () => import('../pages/FocusTimerPage'),
+  '/device-health': () => import('../pages/DeviceHealthPage'),
+  '/print-queue': () => import('../pages/PrintQueuePage'),
+  '/scheduled-updates': () => import('../pages/ScheduledUpdatesPage'),
+  '/remote-lock': () => import('../pages/RemoteLockPage'),
+  '/shift-notes': () => import('../pages/ShiftNotesPage'),
+  '/quick-plate': () => import('../pages/QuickPlateCheckPage'),
+  '/unit-status-board': () => import('../pages/UnitStatusBoardPage'),
+  '/offline-queue': () => import('../pages/OfflineQueuePage'),
+  '/broadcast': () => import('../pages/BroadcastMessagePage'),
+  '/screen-capture': () => import('../pages/ScreenCapturePage'),
+  '/system-logs': () => import('../pages/SystemLogsPage'),
+  '/live-call-map': () => import('../pages/LiveCallMapPage'),
+  '/digital-evidence': () => import('../pages/DigitalEvidencePage'),
 };
 
 /**
