@@ -6,6 +6,19 @@ import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
 const properties = new Hono<Env>();
 
+// Mirrors the sentinel logic in records.ts. properties.client_id is NOT NULL,
+// so a null/0 client_id must resolve to the "Unaffiliated" sentinel rather than
+// failing with a constraint error.
+async function resolvePropertyClientId(db: D1Database, raw: unknown): Promise<number> {
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return n;
+  const found = await queryFirst<{ id: number }>(db, "SELECT id FROM clients WHERE name = 'Unaffiliated — No Client' LIMIT 1");
+  if (found) return found.id;
+  const result = await execute(db,
+    "INSERT INTO clients (name, contact_name, status, notes) VALUES ('Unaffiliated — No Client', 'system', 'active', 'Auto-created for hand-entered property records with no parent client. Do not delete — used as the default client_id for those rows.')");
+  return Number(result.meta.last_row_id);
+}
+
 // GET /records/properties
 properties.get('/', async (c) => {
   try {
@@ -33,7 +46,7 @@ properties.post('/', async (c) => {
     const result = await execute(db,
       `INSERT INTO properties (client_id, name, address, property_type, latitude, longitude, gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, city, state, zip, notes, is_active, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      body.client_id ?? 1, body.name, body.address, body.property_type || null,
+      await resolvePropertyClientId(db, body.client_id), body.name, body.address, body.property_type || null,
       body.latitude || null, body.longitude || null, body.gate_code || null,
       body.alarm_code || null, body.emergency_contact || null, body.post_orders || null,
       body.hazard_notes || null, body.city || null, body.state || null, body.zip || null,
@@ -94,7 +107,11 @@ properties.put('/:id', async (c) => {
       'last_sale_date', 'last_sale_price', 'legal_description', 'tax_district',
       'assessor_last_synced_at', 'assessor_source_url']);
     const cols: string[] = []; const params: unknown[] = [];
-    for (const [key, val] of Object.entries(body)) { if (writable.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); } }
+    for (const [key, val] of Object.entries(body)) {
+      if (!writable.has(key)) continue;
+      if (key === 'client_id') { cols.push('client_id = ?'); params.push(await resolvePropertyClientId(db, val)); }
+      else { cols.push(`${key} = ?`); params.push(val ?? null); }
+    }
     if (cols.length === 0) return c.json({ message: 'No changes' });
     cols.push("updated_at = datetime('now')");
     await execute(db, `UPDATE properties SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
