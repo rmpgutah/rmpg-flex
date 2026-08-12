@@ -36,6 +36,7 @@ import IconButton from '../components/IconButton';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { escapeHtml } from '../utils/sanitize';
 import { withAlpha } from '../utils/withAlpha';
+import { isValidLngLat } from '../utils/mapMarkers';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -363,6 +364,7 @@ export default function RouteBuilderPage() {
       markersRef.current = [];
 
       stops.forEach((stop, idx) => {
+        if (!isValidLngLat(stop.longitude, stop.latitude)) return;
         const color = stop.completed ? '#22c55e' : (PRIORITY_COLORS[stop.priority] || '#888888');
 
         // Create custom marker element

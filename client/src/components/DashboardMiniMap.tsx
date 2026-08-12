@@ -19,6 +19,7 @@ import { injectMapboxStyles } from '../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { apiFetch } from '../hooks/useApi';
 import { buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from '../pages/map/utils/mapMarkers';
+import { isValidLngLat } from '../utils/mapMarkers';
 import type { MapUnit, ActiveCall } from '../pages/map/utils/mapConstants';
 import IconButton from './IconButton';
 import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
@@ -116,7 +117,7 @@ export default function DashboardMiniMap() {
     const bounds = new mapboxgl.LngLatBounds();
     let hasPoints = false;
 
-    units.filter(u => u.latitude != null && u.longitude != null).forEach(u => {
+    units.filter(u => isValidLngLat(u.longitude, u.latitude)).forEach(u => {
       const marker = new mapboxgl.Marker({ element: buildUnitMarkerEl(u) })
         .setLngLat([u.longitude!, u.latitude!])
         .setPopup(new mapboxgl.Popup({ offset: 12, closeButton: false }).setHTML(buildUnitPopupHtml(u)))
@@ -126,7 +127,7 @@ export default function DashboardMiniMap() {
       hasPoints = true;
     });
 
-    calls.filter(c => c.latitude != null && c.longitude != null).forEach(c => {
+    calls.filter(c => isValidLngLat(c.longitude, c.latitude)).forEach(c => {
       const marker = new mapboxgl.Marker({ element: buildCallMarkerEl(c) })
         .setLngLat([c.longitude!, c.latitude!])
         .setPopup(new mapboxgl.Popup({ offset: 12, closeButton: false }).setHTML(buildCallPopupHtml(c, false, Date.now())))

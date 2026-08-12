@@ -15,6 +15,7 @@ import { useWebglMapRecovery } from '../../hooks/useWebglMapRecovery';
 import LocationNoteModal from './LocationNoteModal';
 import { escapeHtml } from '../../utils/sanitize';
 import { withAlpha } from '../../utils/withAlpha';
+import { isValidLngLat } from '../../utils/mapMarkers';
 import { clusterByGrid, type ClusterableItem, type ClusterPositionCache } from '../../utils/serveMapClustering';
 import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter, type DeadlineFilter } from '../../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../../utils/mapboxRouting';
@@ -371,7 +372,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     if (!map || !mapReady) return;
 
     const mappable = items
-      .filter((it) => it.recipient_lat != null && it.recipient_lng != null)
+      .filter((it) => isValidLngLat(it.recipient_lng, it.recipient_lat))
       .filter((it) => matchesDeadlineFilter(it.deadline, deadlineFilter, Date.now()));
     if (mappable.length > 0) {
       const bounds = new mapboxgl.LngLatBounds();
@@ -391,7 +392,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     popupRef.current?.remove();
 
     const mappable = items
-      .filter((it) => it.recipient_lat != null && it.recipient_lng != null)
+      .filter((it) => isValidLngLat(it.recipient_lng, it.recipient_lat))
       .filter((it) => matchesDeadlineFilter(it.deadline, deadlineFilter, Date.now()));
 
     const clusterInput: ClusterableItem[] = mappable.map((it) => ({
@@ -477,7 +478,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
 
     const currentIds = new Set<string>();
     for (const unit of units) {
-      if (unit.latitude == null || unit.longitude == null) continue;
+      if (!isValidLngLat(unit.longitude, unit.latitude)) continue;
       currentIds.add(unit.id);
 
       const existing = unitMarkersRef.current.get(unit.id);
@@ -485,9 +486,9 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
         const prevLngLat = existing.getLngLat();
         const el = existing.getElement();
         const innerEl = el.querySelector<HTMLElement>('[data-role="marker-inner"]') || el;
-        const animate = shouldAnimateMarkerMove(prevLngLat.lat, prevLngLat.lng, unit.latitude, unit.longitude);
+        const animate = shouldAnimateMarkerMove(prevLngLat.lat, prevLngLat.lng, unit.latitude!, unit.longitude!);
         if (!animate) innerEl.style.transitionDuration = '0ms';
-        existing.setLngLat([unit.longitude, unit.latitude]);
+        existing.setLngLat([unit.longitude!, unit.latitude!]);
         if (!animate) requestAnimationFrame(() => { innerEl.style.transitionDuration = ''; });
         applyUnitMarkerState(el, unit);
         const popup = existing.getPopup();
@@ -497,7 +498,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
         const popup = new mapboxgl.Popup({ offset: 16, closeButton: false, className: 'mapbox-popup-dark' })
           .setHTML(buildUnitPopupHtml(unit));
         const marker = new mapboxgl.Marker({ element: el })
-          .setLngLat([unit.longitude, unit.latitude])
+          .setLngLat([unit.longitude!, unit.latitude!])
           .setPopup(popup)
           .addTo(map);
         unitMarkersRef.current.set(unit.id, marker);
@@ -637,11 +638,11 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     return () => { cancelled = true; clearPreview(); };
   }, [previewOrigin, previewTarget, mapReady]);
 
-  const notMapped = items.filter((it) => it.recipient_lat == null || it.recipient_lng == null);
+  const notMapped = items.filter((it) => !isValidLngLat(it.recipient_lng, it.recipient_lat));
 
   const handleExport = () => {
     const filtered = items
-      .filter((it) => it.recipient_lat != null && it.recipient_lng != null)
+      .filter((it) => isValidLngLat(it.recipient_lng, it.recipient_lat))
       .filter((it) => matchesDeadlineFilter(it.deadline, deadlineFilter, Date.now()));
     exportServeMapSheet(filtered.map((it) => ({
       id: it.id,
