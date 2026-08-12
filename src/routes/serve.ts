@@ -844,17 +844,22 @@ sv.post('/', async (c) => {
     if (coords) { lat = coords.lat; lng = coords.lng; }
   }
 
-  const r = await execute(
-    getDb(c.env),
-    `INSERT INTO serve_queue (
-       call_id, sm_job_id, officer_id, serve_date,
-       recipient_name, recipient_person_id, recipient_address, recipient_address_2, recipient_city,
-       recipient_state, recipient_zip, recipient_lat, recipient_lng, property_id,
-       document_type, case_number, court_name, jurisdiction,
-       client_name, attorney_name, plaintiff_name, defendant_name,
-       priority, time_window, deadline,
-       max_attempts, service_instructions, notes, status, contract_id
-     ) VALUES (?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?)`,
+  // Schema-guard mig 0237 columns on CREATE too
+  const dbPost = getDb(c.env);
+  const hasRecipientTypeOnCreate = (
+    body.recipient_type != null || body.business_name != null
+  ) ? await columnExists(dbPost, 'serve_queue', 'recipient_type') : false;
+
+  const insertCols = [
+    'call_id', 'sm_job_id', 'officer_id', 'serve_date',
+    'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_address_2', 'recipient_city',
+    'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng', 'property_id',
+    'document_type', 'case_number', 'court_name', 'jurisdiction',
+    'client_name', 'attorney_name', 'plaintiff_name', 'defendant_name',
+    'priority', 'time_window', 'deadline',
+    'max_attempts', 'service_instructions', 'notes', 'status', 'contract_id',
+  ];
+  const insertVals: any[] = [
     body.call_id ?? null, body.sm_job_id ?? null, body.officer_id ?? null, body.serve_date ?? null,
     body.recipient_name ?? null, body.recipient_person_id ?? null, body.recipient_address ?? null, body.recipient_address_2 ?? null, body.recipient_city ?? null,
     body.recipient_state ?? null, body.recipient_zip ?? null, lat, lng, body.property_id ?? null,
@@ -862,6 +867,25 @@ sv.post('/', async (c) => {
     body.client_name ?? null, body.attorney_name ?? null, body.plaintiff_name ?? null, body.defendant_name ?? null,
     priority, body.time_window ?? null, body.deadline ?? null,
     body.max_attempts ?? 3, body.service_instructions ?? null, body.notes ?? null, status, body.contract_id ?? null,
+  ];
+  if (hasRecipientTypeOnCreate) {
+    insertCols.push(
+      'recipient_type', 'business_name', 'business_dba', 'business_ein',
+      'business_sos_filing', 'business_state_of_inc', 'registered_agent_name',
+      'registered_agent_title', 'registered_office_address',
+    );
+    insertVals.push(
+      body.recipient_type ?? null, body.business_name ?? null, body.business_dba ?? null,
+      body.business_ein ?? null, body.business_sos_filing ?? null, body.business_state_of_inc ?? null,
+      body.registered_agent_name ?? null, body.registered_agent_title ?? null,
+      body.registered_office_address ?? null,
+    );
+  }
+  const placeholders = insertVals.map(() => '?').join(',');
+  const r = await execute(
+    dbPost,
+    `INSERT INTO serve_queue (${insertCols.join(', ')}) VALUES (${placeholders})`,
+    ...insertVals,
   );
   return c.json({ success: true, id: r.meta.last_row_id }, 201);
 });
@@ -1007,19 +1031,34 @@ sv.put('/:id', async (c) => {
     'priority', 'time_window', 'deadline',
     'max_attempts', 'service_instructions', 'notes', 'status', 'sort_order', 'contract_id',
     'next_attempt_note', 'urgency_tier',
+    'recipient_type',
+    'business_name', 'business_dba', 'business_ein', 'business_sos_filing',
+    'business_state_of_inc', 'registered_agent_name', 'registered_agent_title',
+    'registered_office_address',
   ];
   const sets: string[] = [];
   const args: any[] = [];
+  const db = getDb(c.env);
   // Schema-guard newly-added columns so the route doesn't 500 when callers
   // post next_attempt_note before migration 0142 reaches live D1.
   const hasNextAttemptCol = 'next_attempt_note' in body
-    ? await columnExists(getDb(c.env), 'serve_queue', 'next_attempt_note')
+    ? await columnExists(db, 'serve_queue', 'next_attempt_note')
     : true;
+  // Schema-guard mig 0237 recipient-type columns
+  const hasRecipientTypeCol = 'recipient_type' in body || body.business_name != null
+    ? await columnExists(db, 'serve_queue', 'recipient_type')
+    : true;
+  const RECIPIENT_TYPE_COLS = new Set([
+    'recipient_type', 'business_name', 'business_dba', 'business_ein',
+    'business_sos_filing', 'business_state_of_inc', 'registered_agent_name',
+    'registered_agent_title', 'registered_office_address',
+  ]);
   for (const k of allowed) {
     if (!(k in body)) continue;
     if (k === 'status' && body[k] && !STATUSES.has(body[k])) continue;
     if (k === 'priority' && body[k] && !PRIORITIES.has(body[k])) continue; // skip invalid (CHECK enum)
     if (k === 'next_attempt_note' && !hasNextAttemptCol) continue;
+    if (RECIPIENT_TYPE_COLS.has(k) && !hasRecipientTypeCol) continue;
     sets.push(`${k} = ?`);
     args.push(body[k]);
   }

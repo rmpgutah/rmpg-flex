@@ -189,6 +189,16 @@ const EMPTY_FORM = {
   service_instructions: '',
   notes: '',
   next_attempt_note: '',
+  // Recipient type (mig 0237)
+  recipient_type: '' as '' | 'individual' | 'business',
+  business_name: '',
+  business_dba: '',
+  business_ein: '',
+  business_sos_filing: '',
+  business_state_of_inc: '',
+  registered_agent_name: '',
+  registered_agent_title: '',
+  registered_office_address: '',
 };
 
 // ─── Stats Summary Type ─────────────────────────────────────────────────
@@ -492,6 +502,53 @@ export default function ServePage() {
     } catch (err) {
       console.error('[serve] Job sheet generation failed:', err);
       setFetchError('Could not generate the Job Information Sheet — please try again.');
+    }
+  };
+
+  // ── Notice of Service Leave-Behind (PS-314) ──
+  // Recipient-facing document left at the point of service. Page 1 is a
+  // summary of what was served; page 2 is a dual-signature acknowledgement.
+  const handleLeaveBehind = async (jobId: number) => {
+    try {
+      const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
+      const fullAddress = [
+        job.recipient_address, (job as any).recipient_address_2,
+        job.recipient_city, job.recipient_state, job.recipient_zip,
+      ].filter(Boolean).join(', ');
+
+      const { generateServeLeaveBehin } = await importWithRetry(
+        () => import('../utils/serveLeaveBehinPdfGenerator'),
+      );
+      const pdf = await generateServeLeaveBehin({
+        jobId: job.id,
+        caseNumber: job.case_number || null,
+        documentType: job.document_type,
+        courtName: job.court_name || null,
+        jurisdiction: job.jurisdiction || null,
+        clientName: job.client_name || null,
+        attorneyName: job.attorney_name || null,
+        serviceInstructions: job.service_instructions || null,
+        serveDate: job.serve_date || null,
+        recipientType: ((job as any).recipient_type as 'individual' | 'business' | null) || null,
+        recipientName: job.recipient_name,
+        recipientAddress: fullAddress || job.recipient_address || 'N/A',
+        businessName: (job as any).business_name || null,
+        businessDba: (job as any).business_dba || null,
+        businessEin: (job as any).business_ein || null,
+        businessSosFiling: (job as any).business_sos_filing || null,
+        businessStateOfInc: (job as any).business_state_of_inc || null,
+        registeredAgentName: (job as any).registered_agent_name || null,
+        registeredAgentTitle: (job as any).registered_agent_title || null,
+        registeredOfficeAddress: (job as any).registered_office_address || null,
+        officerName: user?.full_name || user?.username || 'Process Server',
+        officerBadge: user?.badge_number || '',
+      });
+
+      const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
+      openPdfDocument(pdf, `Leave-Behind-PS314-${job.case_number || job.id}.pdf`);
+    } catch (err) {
+      console.error('[serve] PS-314 leave-behind generation failed:', err);
+      setFetchError('Could not generate the Notice of Service leave-behind — please try again.');
     }
   };
 
@@ -1036,6 +1093,15 @@ export default function ServePage() {
       service_instructions: job.service_instructions || '',
       notes: job.notes || '',
       next_attempt_note: job.next_attempt_note || '',
+      recipient_type: ((job as any).recipient_type as '' | 'individual' | 'business') || '',
+      business_name: (job as any).business_name || '',
+      business_dba: (job as any).business_dba || '',
+      business_ein: (job as any).business_ein || '',
+      business_sos_filing: (job as any).business_sos_filing || '',
+      business_state_of_inc: (job as any).business_state_of_inc || '',
+      registered_agent_name: (job as any).registered_agent_name || '',
+      registered_agent_title: (job as any).registered_agent_title || '',
+      registered_office_address: (job as any).registered_office_address || '',
     });
     setCreateJobOpen(true);
     snapshotForm();
@@ -1810,7 +1876,8 @@ export default function ServePage() {
       m.action('Open / expand', () => setExpandedJobId(prev => prev === job.id ? null : job.id), { icon: <Eye size={12} /> }),
       ...(canManage ? [m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> })] : []),
       ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
-      m.action('Print Job Sheet', () => handleJobSheet(job.id), { icon: <Printer size={12} /> }),
+      m.action('Print Job Sheet (PS-300)', () => handleJobSheet(job.id), { icon: <Printer size={12} /> }),
+      m.action('Print Leave-Behind (PS-314)', () => handleLeaveBehind(job.id), { icon: <ScrollText size={12} /> }),
       ...(job.attempt_count > 0 && job.status !== 'served' ? [
         m.action('Preview Notice of Attempt', () => setNoticePreviewJobId(job.id), { icon: <FileWarning size={12} /> }),
         m.action('Edit Notice before print', () => handleNoticeOfAttempt(job.id, true), { icon: <Pencil size={12} /> }),
@@ -2747,6 +2814,22 @@ export default function ServePage() {
               <div className="flex-1 h-px bg-border-default" />
             </div>
             <div className="space-y-2">
+              {/* Recipient type toggle */}
+              <div>
+                <label className="block text-[11px] text-fg-muted mb-1">Recipient type</label>
+                <div className="flex gap-2">
+                  {(['individual', 'business'] as const).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => handleFormChange('recipient_type', formData.recipient_type === t ? '' : t)}
+                      className={`px-3 py-1 text-[11px] font-semibold rounded-[2px] border transition-colors ${formData.recipient_type === t ? 'bg-rmpg-600 border-rmpg-400 text-rmpg-50' : 'bg-surface-deep border-rmpg-700 text-fg-muted hover:border-rmpg-500'}`}
+                    >
+                      {t === 'individual' ? 'Individual' : 'Business / Entity'}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div>
                 <label htmlFor="ff-servepage-2" className="block text-[11px] text-fg-muted mb-1">
                   Recipient Name <span className="text-red-400">*</span>
@@ -2820,6 +2903,86 @@ export default function ServePage() {
                   />
                 </div>
               </div>
+              {/* Business-specific fields — only shown when type is 'business' */}
+              {formData.recipient_type === 'business' && (
+                <div className="space-y-2 border border-rmpg-700 rounded-[2px] p-3 bg-surface-deep/50">
+                  <p className="text-[10px] font-semibold tracking-widest text-[color:var(--panel-header-color)] uppercase mb-1">Business / Entity Details</p>
+                  <div>
+                    <label htmlFor="ff-servepage-biz-name" className="block text-[11px] text-fg-muted mb-1">Business legal name</label>
+                    <input id="ff-servepage-biz-name" type="text"
+                      value={formData.business_name}
+                      onChange={e => handleFormChange('business_name', e.target.value)}
+                      placeholder="Full legal name of the entity"
+                      className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label htmlFor="ff-servepage-biz-dba" className="block text-[11px] text-fg-muted mb-1">DBA (if applicable)</label>
+                      <input id="ff-servepage-biz-dba" type="text"
+                        value={formData.business_dba}
+                        onChange={e => handleFormChange('business_dba', e.target.value)}
+                        className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="ff-servepage-biz-ein" className="block text-[11px] text-fg-muted mb-1">EIN</label>
+                      <input id="ff-servepage-biz-ein" type="text"
+                        value={formData.business_ein}
+                        onChange={e => handleFormChange('business_ein', e.target.value)}
+                        placeholder="12-3456789"
+                        className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label htmlFor="ff-servepage-biz-sos" className="block text-[11px] text-fg-muted mb-1">SOS filing number</label>
+                      <input id="ff-servepage-biz-sos" type="text"
+                        value={formData.business_sos_filing}
+                        onChange={e => handleFormChange('business_sos_filing', e.target.value)}
+                        className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="ff-servepage-biz-inc" className="block text-[11px] text-fg-muted mb-1">State of incorporation</label>
+                      <input id="ff-servepage-biz-inc" type="text"
+                        value={formData.business_state_of_inc}
+                        onChange={e => handleFormChange('business_state_of_inc', e.target.value)}
+                        placeholder="UT"
+                        maxLength={2}
+                        className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label htmlFor="ff-servepage-biz-agent" className="block text-[11px] text-fg-muted mb-1">Registered agent</label>
+                      <input id="ff-servepage-biz-agent" type="text"
+                        value={formData.registered_agent_name}
+                        onChange={e => handleFormChange('registered_agent_name', e.target.value)}
+                        className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="ff-servepage-biz-agentitle" className="block text-[11px] text-fg-muted mb-1">Agent title</label>
+                      <input id="ff-servepage-biz-agentitle" type="text"
+                        value={formData.registered_agent_title}
+                        onChange={e => handleFormChange('registered_agent_title', e.target.value)}
+                        className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="ff-servepage-biz-regoffice" className="block text-[11px] text-fg-muted mb-1">Registered / principal office address</label>
+                    <input id="ff-servepage-biz-regoffice" type="text"
+                      value={formData.registered_office_address}
+                      onChange={e => handleFormChange('registered_office_address', e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
