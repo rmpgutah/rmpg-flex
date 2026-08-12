@@ -6,7 +6,7 @@ import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindow
 import { setDefaultWindowOpacity } from '../../utils/windowOpacityPreference';
 
 function Harness() {
-  const { windows, openWindow, closeWindow, focusWindow, minimizeWindow, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, moveResize } = useDesktopWindows();
+  const { windows, openWindow, closeWindow, focusWindow, minimizeWindow, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, moveResize, setFullscreen } = useDesktopWindows();
   const capResults = useRef<boolean[]>([]);
   const lastMinimizedIds = useRef<string[]>([]);
   return (
@@ -28,6 +28,8 @@ function Harness() {
       <button onClick={() => windows[0] && setWindowOpacity(windows[0].id, 0.1 + 0.2)}>set-opacity-drift</button>
       <button onClick={() => windows[0] && moveResize(windows[0].id, { x: 999, y: 888, width: 777, height: 666 })}>moveresize-first</button>
       <button onClick={() => windows[0] && moveResize(windows[0].id, { x: 1, y: 2, width: 3, height: 4 }, { persist: false })}>moveresize-first-no-persist</button>
+      <button onClick={() => windows[0] && setFullscreen(windows[0].id, true)}>set-fullscreen</button>
+      <span data-testid="first-fullscreen">{windows[0]?.fullscreen ? 'fs' : 'normal'}</span>
       <span data-testid="cap-results">{capResults.current.join(',')}</span>
       <span data-testid="first-path">{windows[0]?.path ?? ''}</span>
       <span data-testid="first-pinned">{windows[0]?.alwaysOnTop ? 'pinned' : 'unpinned'}</span>
@@ -161,6 +163,15 @@ describe('DesktopWindowManager', () => {
     act(() => screen.getByText('moveresize-first').click());
     const raw = sessionStorage.getItem('rmpg_desktop_window_positions');
     expect(JSON.parse(raw!)['/dispatch']).toEqual({ x: 999, y: 888, width: 777, height: 666 });
+  });
+
+  it('setFullscreen toggles fullscreen on the correct window', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    act(() => screen.getByText('open-dispatch').click());
+    expect(screen.getByTestId('first-fullscreen').textContent).toBe('normal');
+    act(() => screen.getByText('set-fullscreen').click());
+    expect(screen.getByText(/^Dispatch-/)).toBeInTheDocument(); // window still open
+    expect(screen.getByTestId('first-fullscreen').textContent).toBe('fs');
   });
 
   it('moveResize with { persist: false } updates window state but leaves the remembered position untouched', () => {

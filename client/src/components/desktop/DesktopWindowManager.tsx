@@ -16,6 +16,7 @@ export interface DesktopWindowState {
   maximized: boolean;
   alwaysOnTop: boolean;
   opacity: number;
+  fullscreen: boolean;
 }
 
 interface DesktopWindowManagerContextValue {
@@ -42,6 +43,7 @@ interface DesktopWindowManagerContextValue {
   tileHorizontal: (desktopW?: number, desktopH?: number) => void;
   /** Tiles all visible windows vertically (stacked). */
   tileVertical: (desktopW?: number, desktopH?: number) => void;
+  setFullscreen: (id: string, value: boolean) => void;
   /** ID of the topmost (highest zIndex) non-minimized window, or null. */
   focusedId: string | null;
 }
@@ -115,7 +117,7 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
       x: saved?.x ?? (80 + offset), y: saved?.y ?? (60 + offset),
       width: saved?.width ?? size?.width ?? 1050, height: saved?.height ?? size?.height ?? 800,
       zIndex: nextZIndex, minimized: false, maximized: false,
-      alwaysOnTop: false, opacity: getDefaultWindowOpacity(),
+      alwaysOnTop: false, opacity: getDefaultWindowOpacity(), fullscreen: false,
     };
     commit([...prev, win]);
     playDesktopSound();
@@ -178,6 +180,10 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     commit(windowsRef.current.map(w => w.id === id ? { ...w, opacity: clamped } : w));
   }, [commit]);
 
+  const setFullscreen = useCallback((id: string, value: boolean) => {
+    commit(windowsRef.current.map(w => w.id === id ? { ...w, fullscreen: value } : w));
+  }, [commit]);
+
   const minimizeOthers = useCallback((exceptId: string) => {
     commit(windowsRef.current.map(w => w.id === exceptId ? w : { ...w, minimized: true }));
   }, [commit]);
@@ -229,7 +235,7 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
 
   return (
     <DesktopWindowManagerContext.Provider
-      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, cascade, tileHorizontal, tileVertical, focusedId }}
+      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, cascade, tileHorizontal, tileVertical, setFullscreen, focusedId }}
     >
       {children}
     </DesktopWindowManagerContext.Provider>

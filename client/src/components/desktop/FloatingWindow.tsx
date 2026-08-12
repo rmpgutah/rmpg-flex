@@ -181,7 +181,7 @@ interface FloatingWindowProps {
 }
 
 export default function FloatingWindow({ win }: FloatingWindowProps) {
-  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, windows } = useDesktopWindows();
+  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, setFullscreen, windows } = useDesktopWindows();
   const taskbarHeight = TASKBAR_HEIGHT_PX[getTaskbarSize()];
   const dragState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const resizeState = useRef<{ startX: number; startY: number; originW: number; originH: number; originX: number; originY: number; dir: ResizeDir } | null>(null);
@@ -262,6 +262,25 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     }, TITLE_SYNC_POLL_MS);
     return () => clearInterval(interval);
   }, [win.id, win.minimized, updateWindowTitle]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const nonMinimized = windows.filter(w => !w.minimized);
+      if (nonMinimized.length === 0) return;
+      const maxZ = Math.max(...nonMinimized.map(w => w.zIndex));
+      if (win.zIndex !== maxZ) return;
+      if (e.key === 'F11') {
+        e.preventDefault();
+        setFullscreen(win.id, !win.fullscreen);
+      }
+      if (e.key === 'Escape' && win.fullscreen) {
+        e.preventDefault();
+        setFullscreen(win.id, false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [win.id, win.fullscreen, win.zIndex, windows, setFullscreen]);
 
   const onTitleBarDoubleClick = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
@@ -423,7 +442,9 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   // each of the two bands (pinned vs. unpinned) while pinned always wins
   // across them.
   const effectiveZIndex = win.zIndex + (win.alwaysOnTop ? ALWAYS_ON_TOP_ZINDEX_OFFSET : 0);
-  const style: React.CSSProperties = win.maximized
+  const style: React.CSSProperties = win.fullscreen
+    ? { position: 'fixed', inset: 0, zIndex: ALWAYS_ON_TOP_ZINDEX_OFFSET + 500, opacity: 1 }
+    : win.maximized
     ? { position: 'fixed', left: 0, top: 0, right: 0, bottom: taskbarHeight, zIndex: effectiveZIndex, opacity: win.opacity ?? 1 }
     : {
         position: 'fixed', left: win.x, top: win.y,
@@ -455,6 +476,23 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         focusWindow(win.id);
       }}
     >
+      {win.fullscreen && (
+        <div
+          data-testid="fullscreen-hint"
+          style={{
+            position: 'absolute', top: 0, left: 0, right: 0, height: 24,
+            background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', fontSize: 9, color: 'var(--text-muted)',
+            opacity: 0, transition: 'opacity 300ms',
+            zIndex: 1,
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.opacity = '1'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.opacity = '0'; }}
+        >
+          Press F11 or Esc to exit full screen
+        </div>
+      )}
+      {!win.fullscreen && (
       <div
         data-testid="title-bar"
         onPointerDown={onTitleBarPointerDown}
@@ -505,6 +543,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
           </button>
         </div>
       </div>
+      )}
 
       {!win.minimized && (
         <>
@@ -513,7 +552,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
             title={win.title}
             src={win.path.includes('?') ? `${win.path}&standalone=1` : `${win.path}?standalone=1`}
             allow="microphone; camera; fullscreen"
-            style={{ width: '100%', height: `calc(100% - ${TITLE_BAR_HEIGHT}px)`, border: 'none' }}
+            style={{ width: '100%', height: win.fullscreen ? '100%' : `calc(100% - ${TITLE_BAR_HEIGHT}px)`, border: 'none' }}
           />
           {!win.maximized && (
             <>
