@@ -45,6 +45,17 @@ describe('runTone bands', () => {
     expect(runTone(39).title).toBe('Run Closed Out');
   });
 
+  it('uses amber for a partial-success run (attempts made but < 40% served)', () => {
+    // 0% stays silver — all doors closed is a diligent documented outcome
+    expect(runTone(0).accent).toBe('silver');
+    // Any partial serve triggers amber caution, not neutral silver
+    expect(runTone(1).accent).toBe('amber');
+    expect(runTone(39).accent).toBe('amber');
+    // amber band never returns the same icon as 0% or 100%
+    expect(runTone(20).icon).not.toBe(runTone(0).icon);
+    expect(runTone(20).icon).not.toBe(runTone(100).icon);
+  });
+
   it('never renders red — a slow serve day is not a safety event', () => {
     for (const r of [0, 10, 39, 40, 79, 80, 100]) {
       expect(['green', 'silver', 'amber']).toContain(runTone(r).accent);

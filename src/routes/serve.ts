@@ -854,19 +854,29 @@ sv.post('/', async (c) => {
     'call_id', 'sm_job_id', 'officer_id', 'serve_date',
     'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_address_2', 'recipient_city',
     'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng', 'property_id',
+    'recipient_phone', 'recipient_email', 'recipient_dob',
+    'recipient_employer', 'recipient_employer_address',
     'document_type', 'case_number', 'court_name', 'jurisdiction',
     'client_name', 'attorney_name', 'plaintiff_name', 'defendant_name',
+    'serve_type', 'case_type', 'return_date', 'co_defendants', 'relationship',
     'priority', 'time_window', 'deadline',
     'max_attempts', 'service_instructions', 'notes', 'status', 'contract_id',
+    'serve_fee', 'rush_fee', 'payment_status',
+    'diligence_required', 'contact_restrictions', 'building_access_notes',
   ];
   const insertVals: any[] = [
     body.call_id ?? null, body.sm_job_id ?? null, body.officer_id ?? null, body.serve_date ?? null,
     body.recipient_name ?? null, body.recipient_person_id ?? null, body.recipient_address ?? null, body.recipient_address_2 ?? null, body.recipient_city ?? null,
     body.recipient_state ?? null, body.recipient_zip ?? null, lat, lng, body.property_id ?? null,
+    body.recipient_phone ?? null, body.recipient_email ?? null, body.recipient_dob ?? null,
+    body.recipient_employer ?? null, body.recipient_employer_address ?? null,
     body.document_type ?? null, body.case_number ?? null, body.court_name ?? null, body.jurisdiction ?? null,
     body.client_name ?? null, body.attorney_name ?? null, body.plaintiff_name ?? null, body.defendant_name ?? null,
+    body.serve_type ?? 'personal', body.case_type ?? null, body.return_date ?? null, body.co_defendants ?? null, body.relationship ?? null,
     priority, body.time_window ?? null, body.deadline ?? null,
     body.max_attempts ?? 3, body.service_instructions ?? null, body.notes ?? null, status, body.contract_id ?? null,
+    body.serve_fee ?? null, body.rush_fee ?? null, body.payment_status ?? 'unpaid',
+    body.diligence_required ? 1 : 0, body.contact_restrictions ?? null, body.building_access_notes ?? null,
   ];
   if (hasRecipientTypeOnCreate) {
     insertCols.push(
@@ -1026,11 +1036,16 @@ sv.put('/:id', async (c) => {
     'call_id', 'sm_job_id', 'officer_id', 'serve_date',
     'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_address_2', 'recipient_city',
     'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng', 'property_id',
+    'recipient_phone', 'recipient_email', 'recipient_dob',
+    'recipient_employer', 'recipient_employer_address',
     'document_type', 'case_number', 'court_name', 'jurisdiction',
     'client_name', 'attorney_name', 'plaintiff_name', 'defendant_name',
+    'serve_type', 'case_type', 'return_date', 'co_defendants', 'relationship',
     'priority', 'time_window', 'deadline',
     'max_attempts', 'service_instructions', 'notes', 'status', 'sort_order', 'contract_id',
     'next_attempt_note', 'urgency_tier',
+    'serve_fee', 'rush_fee', 'payment_status',
+    'diligence_required', 'mileage_actual', 'contact_restrictions', 'building_access_notes',
     'recipient_type',
     'business_name', 'business_dba', 'business_ein', 'business_sos_filing',
     'business_state_of_inc', 'registered_agent_name', 'registered_agent_title',
@@ -1088,6 +1103,38 @@ sv.put('/:id', async (c) => {
     syncServeCompletionToCfs(getDb(c.env), id).catch((e: unknown) => log.error('syncServeCompletionToCfs failed', { queueId: id }, e instanceof Error ? e : new Error(String(e))));
   }
   return c.json({ success: true });
+});
+
+// PATCH /:id/address-class — operator confirms the serve location's address class
+// so the auto-scheduler can apply business-hours windows for genuine corporate offices.
+// Updates parsed_data._intake.address_class in-place via json_set; leaves every
+// other key in parsed_data untouched.
+sv.patch('/:id/address-class', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const body = await c.req.json<{ klass?: string; confirmed?: boolean }>().catch(() => ({} as { klass?: string; confirmed?: boolean }));
+  const VALID_KLASS = new Set(['residential', 'business', 'unknown']);
+  const klass = typeof body.klass === 'string' && VALID_KLASS.has(body.klass) ? body.klass : null;
+  const confirmed = typeof body.confirmed === 'boolean' ? body.confirmed : null;
+  if (klass === null && confirmed === null) return c.json({ error: 'Provide klass and/or confirmed' }, 400);
+  const db = getDb(c.env);
+  // json_set creates the path when it does not exist (safe on rows that predate
+  // commitIntake, which is all rows without an OCR intake).
+  const sets: string[] = ["updated_at = datetime('now')"];
+  const args: (string | number | null)[] = [];
+  if (klass !== null) {
+    sets.push(`parsed_data = json_set(COALESCE(parsed_data, '{}'), '$._intake.address_class.klass', ?)`);
+    args.push(klass);
+  }
+  if (confirmed !== null) {
+    sets.push(`parsed_data = json_set(COALESCE(parsed_data, '{}'), '$._intake.address_class.confirmed', ?)`);
+    args.push(confirmed ? 1 : 0);
+  }
+  args.push(id);
+  await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  return c.json({ success: true, klass, confirmed });
 });
 
 // ─────────────────────────────────────────────────────────────

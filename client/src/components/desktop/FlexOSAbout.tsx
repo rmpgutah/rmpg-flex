@@ -23,9 +23,8 @@ interface SystemInfo {
 }
 
 interface DiskInfo {
-  total_gb: number;
-  free_gb: number;
-  used_percent: number;
+  freeBytes: number | null;
+  warn: boolean;
 }
 
 function formatUptime(secs: number): string {
@@ -107,8 +106,8 @@ export default function FlexOSAbout() {
           <Row label="CPU Cores" value={sysInfo.cpu_count} />
           <Row label="Memory" value={`${Math.round(sysInfo.free_memory_mb / 1024)} GB free / ${Math.round(sysInfo.total_memory_mb / 1024)} GB total`} />
           <Row label="Uptime" value={formatUptime(sysInfo.uptime_seconds)} />
-          {diskInfo && (
-            <Row label="Storage" value={`${diskInfo.free_gb.toFixed(1)} GB free / ${diskInfo.total_gb.toFixed(1)} GB — ${Math.round(diskInfo.used_percent)}% used`} />
+          {diskInfo && diskInfo.freeBytes != null && (
+            <Row label="Storage" value={`${(diskInfo.freeBytes / (1024 ** 3)).toFixed(1)} GB free${diskInfo.warn ? ' ⚠ Low' : ''}`} />
           )}
         </div>
       )}

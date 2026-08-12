@@ -11,7 +11,7 @@ import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
-  FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart,
+  FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart, Copy,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -159,7 +159,12 @@ function formatDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+const SERVE_TYPES = ['personal', 'substituted', 'corporate', 'posting', 'publication'] as const;
+const CASE_TYPES = ['civil', 'criminal', 'family', 'eviction', 'small_claims', 'probate', 'traffic'] as const;
+const PAYMENT_STATUSES = ['unpaid', 'invoiced', 'paid', 'waived'] as const;
+
 const EMPTY_FORM = {
+  // ── Recipient ──────────────────────────────────────────────────────────
   recipient_name: '',
   recipient_address: '',
   recipient_address_2: '',
@@ -170,6 +175,14 @@ const EMPTY_FORM = {
   // endpoint so it skips its own Nominatim backfill and uses the precise pin.
   recipient_lat: null as number | null,
   recipient_lng: null as number | null,
+  // ── Contact (feature 1-3) ───────────────────────────────────────────────
+  recipient_phone: '',
+  recipient_email: '',
+  recipient_dob: '',
+  // ── Employment (feature 4-5) ────────────────────────────────────────────
+  recipient_employer: '',
+  recipient_employer_address: '',
+  // ── Legal case ─────────────────────────────────────────────────────────
   document_type: 'Summons',
   case_number: '',
   court_name: '',
@@ -178,6 +191,13 @@ const EMPTY_FORM = {
   defendant_name: '',
   client_name: '',
   attorney_name: '',
+  // ── Service details (feature 6-10) ─────────────────────────────────────
+  serve_type: 'personal' as ServeJob['serve_type'],
+  case_type: '' as ServeJob['case_type'] | '',
+  return_date: '',
+  co_defendants: '',
+  relationship: '',
+  // ── Assignment & scheduling ────────────────────────────────────────────
   officer_id: null as number | null,
   serve_date: '',
   status: 'pending' as ServeJob['status'],
@@ -186,6 +206,16 @@ const EMPTY_FORM = {
   deadline: '',
   max_attempts: 3,
   urgency_tier: '' as '' | 'normal' | 'high' | 'critical',
+  // ── Billing (feature 11-13) ─────────────────────────────────────────────
+  serve_fee: '' as string | number,
+  rush_fee: '' as string | number,
+  payment_status: 'unpaid' as ServeJob['payment_status'],
+  // ── Operations (feature 14-17) ──────────────────────────────────────────
+  diligence_required: false as boolean,
+  mileage_actual: '' as string | number,
+  contact_restrictions: '',
+  building_access_notes: '',
+  // ── Instructions ───────────────────────────────────────────────────────
   service_instructions: '',
   notes: '',
   next_attempt_note: '',
@@ -922,6 +952,37 @@ export default function ServePage() {
     }
   }, [jobs, routerNavigate]);
 
+  const handleAddressClassChange = useCallback(async (jobId: number, klass: string, confirmed: boolean) => {
+    try {
+      await apiFetch(`/process-server/${jobId}/address-class`, {
+        method: 'PATCH',
+        body: JSON.stringify({ klass, confirmed }),
+      });
+      // Patch local state so the UI reflects the change immediately without a full refresh.
+      setJobs(prev => prev.map(j => {
+        if (j.id !== jobId) return j;
+        let pd: Record<string, any> = {};
+        try { pd = j.parsed_data ? JSON.parse(j.parsed_data) : {}; } catch { /* ignore */ }
+        pd._intake = pd._intake ?? {};
+        pd._intake.address_class = { ...(pd._intake.address_class ?? {}), klass, confirmed };
+        return { ...j, parsed_data: JSON.stringify(pd) };
+      }));
+      if (editJob?.id === jobId) {
+        setEditJob(prev => {
+          if (!prev) return prev;
+          let pd: Record<string, any> = {};
+          try { pd = prev.parsed_data ? JSON.parse(prev.parsed_data) : {}; } catch { /* ignore */ }
+          pd._intake = pd._intake ?? {};
+          pd._intake.address_class = { ...(pd._intake.address_class ?? {}), klass, confirmed };
+          return { ...prev, parsed_data: JSON.stringify(pd) };
+        });
+      }
+      addToast(`Address class set to ${klass}${confirmed ? ' (confirmed)' : ''}`, 'success');
+    } catch {
+      addToast('Could not update address class', 'error');
+    }
+  }, [editJob, addToast]);
+
   const handleFlagAddress = useCallback(async (jobId: number) => {
     try {
       await apiFetch(`/process-server/${jobId}`, {
@@ -1093,6 +1154,25 @@ export default function ServePage() {
       service_instructions: job.service_instructions || '',
       notes: job.notes || '',
       next_attempt_note: job.next_attempt_note || '',
+      // New fields from main (expanded job data-entry)
+      recipient_phone: job.recipient_phone || '',
+      recipient_email: job.recipient_email || '',
+      recipient_dob: job.recipient_dob || '',
+      recipient_employer: job.recipient_employer || '',
+      recipient_employer_address: job.recipient_employer_address || '',
+      serve_type: job.serve_type ?? 'personal',
+      case_type: job.case_type ?? '',
+      return_date: job.return_date || '',
+      co_defendants: job.co_defendants || '',
+      relationship: job.relationship || '',
+      serve_fee: job.serve_fee ?? '',
+      rush_fee: job.rush_fee ?? '',
+      payment_status: job.payment_status ?? 'unpaid',
+      diligence_required: !!job.diligence_required,
+      mileage_actual: job.mileage_actual ?? '',
+      contact_restrictions: job.contact_restrictions || '',
+      building_access_notes: job.building_access_notes || '',
+      // Recipient type fields (mig 0237)
       recipient_type: ((job as any).recipient_type as '' | 'individual' | 'business') || '',
       business_name: (job as any).business_name || '',
       business_dba: (job as any).business_dba || '',
@@ -1134,9 +1214,62 @@ export default function ServePage() {
     }
   }, [formData, editJob, selectedDate, clearFormDraft, refreshJobs]);
 
-  const handleFormChange = useCallback((field: string, value: string | number) => {
+  const handleFormChange = useCallback((field: string, value: string | number | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   }, []);
+
+  // ── Feature 31: Clone job ────────────────────────────────────────────
+  const handleCloneJob = useCallback(async (jobId: number) => {
+    const source = jobs.find(j => j.id === jobId);
+    if (!source) return;
+    setCloningJobId(jobId);
+    try {
+      await apiFetch('/process-server', {
+        method: 'POST',
+        body: JSON.stringify({
+          recipient_name: source.recipient_name,
+          recipient_address: source.recipient_address,
+          recipient_address_2: (source as any).recipient_address_2 ?? undefined,
+          recipient_city: source.recipient_city,
+          recipient_state: source.recipient_state,
+          recipient_zip: source.recipient_zip,
+          recipient_lat: source.recipient_lat,
+          recipient_lng: source.recipient_lng,
+          recipient_phone: source.recipient_phone,
+          recipient_email: source.recipient_email,
+          document_type: source.document_type,
+          case_number: source.case_number,
+          court_name: source.court_name,
+          jurisdiction: source.jurisdiction,
+          plaintiff_name: source.plaintiff_name,
+          defendant_name: source.defendant_name,
+          client_name: source.client_name,
+          attorney_name: source.attorney_name,
+          serve_type: source.serve_type,
+          case_type: source.case_type,
+          co_defendants: source.co_defendants,
+          priority: source.priority,
+          time_window: source.time_window,
+          deadline: source.deadline,
+          max_attempts: source.max_attempts,
+          service_instructions: source.service_instructions,
+          building_access_notes: source.building_access_notes,
+          contact_restrictions: source.contact_restrictions,
+          diligence_required: source.diligence_required,
+          serve_fee: source.serve_fee,
+          rush_fee: source.rush_fee,
+          serve_date: selectedDate,
+          status: 'pending',
+        }),
+      });
+      addToast('Job cloned — new copy added to queue', 'success');
+      refreshJobs();
+    } catch {
+      addToast('Could not clone job', 'error');
+    } finally {
+      setCloningJobId(null);
+    }
+  }, [jobs, selectedDate, refreshJobs, addToast]);
 
   // ── Navigate to next unserved stop ─────────────────────────────────
 
@@ -1156,8 +1289,15 @@ export default function ServePage() {
   // Filtered Jobs
   // ══════════════════════════════════════════════════════════════════════
 
-  // ── Feature 1: Priority Queue Sort ──
+  // ── Feature 29: Multi-key sort ──
+  type SortKey = 'urgency' | 'priority' | 'date' | 'name' | 'fee';
+  const [sortKey, setSortKey] = useState<SortKey>('urgency');
+  // ── Feature 1: Priority Queue Sort (kept for backwards compat) ──
   const [sortByUrgency, setSortByUrgency] = useState(false);
+  // ── Feature 33: Serve-type filter ──
+  const [serveTypeFilter, setServeTypeFilter] = useState<string>('all');
+  // ── Feature 31: Clone state ──
+  const [cloningJobId, setCloningJobId] = useState<number | null>(null);
   // ── Queue view: folder mode vs flat list ──
   const [viewMode, setViewMode] = useState<'folders' | 'list'>(() =>
     (localStorage.getItem('rmpg_serve_view_mode') as 'folders' | 'list') || 'folders',
@@ -1221,11 +1361,22 @@ export default function ServePage() {
         j.recipient_name,
         j.case_number,
         j.client_name,
+        j.attorney_name,
+        j.plaintiff_name,
+        j.defendant_name,
+        j.co_defendants,
         j.recipient_address,
         j.recipient_city,
         j.recipient_state,
         j.recipient_zip,
         j.document_type,
+        j.serve_type,
+        j.case_type,
+        j.recipient_phone,
+        j.recipient_email,
+        j.recipient_employer,
+        j.court_name,
+        j.jurisdiction,
       ].filter(Boolean).join(' ').toLowerCase();
       result = result.filter(j => haystack(j).includes(q));
     }
@@ -1244,8 +1395,32 @@ export default function ServePage() {
       });
     }
 
+    // Feature 33: Serve-type filter
+    if (serveTypeFilter !== 'all') {
+      result = result.filter(j => (j.serve_type ?? 'personal') === serveTypeFilter);
+    }
+
     return result;
-  }, [jobs, statusFilter, sortByUrgency, searchQuery]);
+  }, [jobs, statusFilter, sortByUrgency, searchQuery, serveTypeFilter]);
+
+  // Feature 30: Overdue count (open jobs past deadline)
+  const overdueCount = useMemo(() => {
+    const now = Date.now();
+    return jobs.filter(j =>
+      (j.status === 'pending' || j.status === 'in_progress') &&
+      j.deadline && parseTimestamp(j.deadline).getTime() <= now,
+    ).length;
+  }, [jobs]);
+
+  // Feature 32: Serve fee total across filtered active jobs
+  const filteredFeeTotal = useMemo(() =>
+    filteredJobs.reduce((sum, j) => sum + Number(j.serve_fee ?? 0) + Number(j.rush_fee ?? 0), 0),
+  [filteredJobs]);
+
+  // Feature 34: Pending-diligence count
+  const diligenceCount = useMemo(() =>
+    filteredJobs.filter(j => j.diligence_required && j.status !== 'served').length,
+  [filteredJobs]);
 
   // Group jobs by folder for folder view
   const jobsByFolder = useMemo(() => {
@@ -1875,6 +2050,7 @@ export default function ServePage() {
     return [
       m.action('Open / expand', () => setExpandedJobId(prev => prev === job.id ? null : job.id), { icon: <Eye size={12} /> }),
       ...(canManage ? [m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> })] : []),
+      ...(canManage ? [m.action('Clone job', () => handleCloneJob(job.id), { icon: <Copy size={12} /> })] : []),
       ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
       m.action('Print Job Sheet (PS-300)', () => handleJobSheet(job.id), { icon: <Printer size={12} /> }),
       m.action('Print Leave-Behind (PS-314)', () => handleLeaveBehind(job.id), { icon: <ScrollText size={12} /> }),
@@ -2067,6 +2243,12 @@ export default function ServePage() {
             >
               <Icon size={14} />
               {tab}
+              {/* Feature 30: Overdue badge on Queue tab */}
+              {tab === 'Queue' && overdueCount > 0 && (
+                <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] px-0.5 text-[8px] font-bold bg-red-600 text-white rounded-full">
+                  {overdueCount}
+                </span>
+              )}
             </button>
           );
         })}
@@ -2134,6 +2316,17 @@ export default function ServePage() {
                   )}
                 </button>
               ))}
+              {/* Feature 33: Serve-type filter */}
+              <select
+                value={serveTypeFilter}
+                onChange={e => setServeTypeFilter(e.target.value)}
+                aria-label="Filter by serve type"
+                className="px-2 py-1 text-[11px] rounded-[2px] bg-surface-sunken border border-rmpg-600 text-rmpg-300 focus:outline-none focus:ring-1 focus:ring-rmpg-400/50 focus:border-rmpg-400"
+              >
+                <option value="all">All Types</option>
+                {SERVE_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+              </select>
+
               {/* Feature 1: Priority Sort Toggle */}
               <button type="button"
                 role="button"
@@ -2153,6 +2346,22 @@ export default function ServePage() {
                 </span>
               </button>
             </div>
+
+            {/* Feature 32+34: Fee total and diligence warning strip */}
+            {(filteredFeeTotal > 0 || diligenceCount > 0) && (
+              <div className="flex items-center gap-3 px-3 py-1 border-b border-rmpg-700/50 bg-surface-sunken/40 text-[10px]">
+                {filteredFeeTotal > 0 && (
+                  <span className="text-green-300 font-mono tabular-nums">
+                    Fee total: ${filteredFeeTotal.toFixed(2)}
+                  </span>
+                )}
+                {diligenceCount > 0 && (
+                  <span className="text-amber-400 font-bold">
+                    {diligenceCount} job{diligenceCount === 1 ? '' : 's'} require due diligence
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Urgency legend */}
             {sortByUrgency && filteredJobs.length > 0 && (
@@ -3089,6 +3298,136 @@ export default function ServePage() {
             </div>
           </div>
 
+          {/* ── CONTACT INFO (features 1-3) ───────────────────────── */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-semibold tracking-widest text-[color:var(--panel-header-color)] uppercase">Recipient Contact</span>
+              <div className="flex-1 h-px bg-border-default" />
+            </div>
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label htmlFor="ff-srv-phone" className="block text-[11px] text-fg-muted mb-1">Phone</label>
+                  <input id="ff-srv-phone" type="tel"
+                    value={formData.recipient_phone}
+                    onChange={e => handleFormChange('recipient_phone', e.target.value)}
+                    placeholder="(801) 555-0100"
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ff-srv-email" className="block text-[11px] text-fg-muted mb-1">Email</label>
+                  <input id="ff-srv-email" type="email"
+                    value={formData.recipient_email}
+                    onChange={e => handleFormChange('recipient_email', e.target.value)}
+                    placeholder="recipient@example.com"
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label htmlFor="ff-srv-dob" className="block text-[11px] text-fg-muted mb-1">Date of Birth <span className="text-fg-muted font-normal">(substituted service)</span></label>
+                  <input id="ff-srv-dob" type="date"
+                    value={formData.recipient_dob}
+                    onChange={e => handleFormChange('recipient_dob', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── EMPLOYMENT (features 4-5) ─────────────────────────── */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-semibold tracking-widest text-[color:var(--panel-header-color)] uppercase">Employment / Workplace</span>
+              <div className="flex-1 h-px bg-border-default" />
+            </div>
+            <div className="space-y-2">
+              <div>
+                <label htmlFor="ff-srv-employer" className="block text-[11px] text-fg-muted mb-1">Employer Name</label>
+                <input id="ff-srv-employer" type="text"
+                  value={formData.recipient_employer}
+                  onChange={e => handleFormChange('recipient_employer', e.target.value)}
+                  placeholder="Acme Corporation"
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                />
+              </div>
+              <div>
+                <label htmlFor="ff-srv-employer-addr" className="block text-[11px] text-fg-muted mb-1">Workplace Address</label>
+                <input id="ff-srv-employer-addr" type="text"
+                  value={formData.recipient_employer_address}
+                  onChange={e => handleFormChange('recipient_employer_address', e.target.value)}
+                  placeholder="123 Business Pkwy, Salt Lake City, UT 84101"
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── SERVICE CLASSIFICATION (features 6-10) ───────────── */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-semibold tracking-widest text-[color:var(--panel-header-color)] uppercase">Service Classification</span>
+              <div className="flex-1 h-px bg-border-default" />
+            </div>
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label htmlFor="ff-srv-type" className="block text-[11px] text-fg-muted mb-1">Serve Type</label>
+                  <select id="ff-srv-type"
+                    value={formData.serve_type ?? 'personal'}
+                    onChange={e => handleFormChange('serve_type', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  >
+                    {SERVE_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="ff-srv-case-type" className="block text-[11px] text-fg-muted mb-1">Case Type</label>
+                  <select id="ff-srv-case-type"
+                    value={formData.case_type ?? ''}
+                    onChange={e => handleFormChange('case_type', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  >
+                    <option value="">— Select —</option>
+                    {CASE_TYPES.map(t => <option key={t} value={t}>{t.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label htmlFor="ff-srv-return-date" className="block text-[11px] text-fg-muted mb-1">Return Date <span className="text-fg-muted font-normal">(service deadline)</span></label>
+                  <input id="ff-srv-return-date" type="date"
+                    value={formData.return_date}
+                    onChange={e => handleFormChange('return_date', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ff-srv-relationship" className="block text-[11px] text-fg-muted mb-1">Relationship to Defendant <span className="text-fg-muted font-normal">(sub. service)</span></label>
+                  <input id="ff-srv-relationship" type="text"
+                    value={formData.relationship}
+                    onChange={e => handleFormChange('relationship', e.target.value)}
+                    placeholder="Spouse, Adult Occupant, Coworker…"
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="ff-srv-co-defendants" className="block text-[11px] text-fg-muted mb-1">Co-Defendants <span className="text-fg-muted font-normal">(additional parties)</span></label>
+                <textarea id="ff-srv-co-defendants"
+                  value={formData.co_defendants}
+                  onChange={e => handleFormChange('co_defendants', e.target.value)}
+                  rows={2}
+                  placeholder="Jane Doe, XYZ LLC…"
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors resize-none"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* ── ASSIGNMENT & SCHEDULING ────────────────────────────── */}
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -3190,6 +3529,142 @@ export default function ServePage() {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+
+          {/* ── BILLING (features 11-13) ─────────────────────────── */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-semibold tracking-widest text-[color:var(--panel-header-color)] uppercase">Billing</span>
+              <div className="flex-1 h-px bg-border-default" />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label htmlFor="ff-srv-serve-fee" className="block text-[11px] text-fg-muted mb-1">Serve Fee ($)</label>
+                <input id="ff-srv-serve-fee" type="number" min={0} step={0.01}
+                  value={formData.serve_fee}
+                  onChange={e => handleFormChange('serve_fee', e.target.value)}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                />
+              </div>
+              <div>
+                <label htmlFor="ff-srv-rush-fee" className="block text-[11px] text-fg-muted mb-1">Rush Fee ($)</label>
+                <input id="ff-srv-rush-fee" type="number" min={0} step={0.01}
+                  value={formData.rush_fee}
+                  onChange={e => handleFormChange('rush_fee', e.target.value)}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                />
+              </div>
+              <div>
+                <label htmlFor="ff-srv-payment" className="block text-[11px] text-fg-muted mb-1">Payment Status</label>
+                <select id="ff-srv-payment"
+                  value={formData.payment_status ?? 'unpaid'}
+                  onChange={e => handleFormChange('payment_status', e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                >
+                  {PAYMENT_STATUSES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* ── OPERATIONAL (features 14-17) ─────────────────────── */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-semibold tracking-widest text-[color:var(--panel-header-color)] uppercase">Operational</span>
+              <div className="flex-1 h-px bg-border-default" />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <label htmlFor="ff-srv-diligence" className="flex items-center gap-2 cursor-pointer text-sm text-rmpg-100 select-none">
+                  <input id="ff-srv-diligence" type="checkbox"
+                    checked={!!formData.diligence_required}
+                    onChange={e => handleFormChange('diligence_required', e.target.checked as any)}
+                    className="w-4 h-4 rounded-[2px] border-rmpg-600 bg-surface-deep text-brand-400 focus:ring-rmpg-400/40"
+                  />
+                  <span className="text-[11px] text-fg-muted">Require documented due diligence</span>
+                </label>
+                {editJob && (
+                  <div className="flex-1">
+                    <label htmlFor="ff-srv-mileage" className="block text-[11px] text-fg-muted mb-1">Actual Mileage (mi)</label>
+                    <input id="ff-srv-mileage" type="number" min={0} step={0.1}
+                      value={formData.mileage_actual}
+                      onChange={e => handleFormChange('mileage_actual', e.target.value)}
+                      placeholder="0.0"
+                      className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                    />
+                  </div>
+                )}
+              </div>
+              <div>
+                <label htmlFor="ff-srv-contact-restrictions" className="block text-[11px] text-fg-muted mb-1">Contact Restrictions <span className="text-amber-400 font-normal">(hours, who NOT to contact)</span></label>
+                <textarea id="ff-srv-contact-restrictions"
+                  value={formData.contact_restrictions}
+                  onChange={e => handleFormChange('contact_restrictions', e.target.value)}
+                  rows={2}
+                  placeholder="Do not contact employer. No contact before 8 AM or after 9 PM…"
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-amber-900/30 rounded-[2px] text-rmpg-100 focus:border-amber-600 focus:outline-none focus:ring-1 focus:ring-amber-400/30 transition-colors resize-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="ff-srv-building" className="block text-[11px] text-fg-muted mb-1">Building / Access Notes <span className="text-fg-muted font-normal">(gate codes, parking, buzzer)</span></label>
+                <textarea id="ff-srv-building"
+                  value={formData.building_access_notes}
+                  onChange={e => handleFormChange('building_access_notes', e.target.value)}
+                  rows={2}
+                  placeholder="Gate code: #1234. Buzz unit 302. Park in visitor spot A…"
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors resize-none"
+                />
+              </div>
+              {editJob && (() => {
+                let ac: { klass?: string; confirmed?: boolean } = {};
+                try { ac = JSON.parse(editJob.parsed_data ?? '{}')._intake?.address_class ?? {}; } catch { /* ignore */ }
+                const klass = ac.klass ?? 'unknown';
+                const confirmed = !!ac.confirmed;
+                return (
+                  <div>
+                    <label className="block text-[11px] text-fg-muted mb-1">
+                      Serve Location Type <span className="text-fg-muted font-normal">(shapes attempt windows)</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {(['residential', 'unknown', 'business'] as const).map(k => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => handleAddressClassChange(editJob.id, k, k !== 'unknown')}
+                          className={`px-3 py-1 text-[11px] rounded-[2px] border transition-colors ${
+                            klass === k
+                              ? k === 'business'
+                                ? 'bg-brand-800/60 border-brand-500 text-brand-200'
+                                : k === 'residential'
+                                ? 'bg-rmpg-800/60 border-rmpg-500 text-rmpg-100'
+                                : 'bg-surface-raised border-rmpg-600 text-fg-muted'
+                              : 'bg-surface-deep border-rmpg-700 text-fg-muted hover:border-rmpg-500'
+                          }`}
+                        >
+                          {k.charAt(0).toUpperCase() + k.slice(1)}
+                        </button>
+                      ))}
+                      {klass !== 'unknown' && (
+                        <span className={`text-[10px] px-2 py-0.5 rounded-[2px] border ${
+                          confirmed
+                            ? 'text-green-300 border-green-800/50 bg-green-900/20'
+                            : 'text-amber-300 border-amber-800/50 bg-amber-900/20'
+                        }`}>
+                          {confirmed ? 'Confirmed' : 'Unconfirmed'}
+                        </span>
+                      )}
+                    </div>
+                    {klass === 'business' && !confirmed && (
+                      <p className="text-[10px] text-amber-400 mt-1">
+                        Unconfirmed — residential windows apply until confirmed. Select Business again to confirm.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

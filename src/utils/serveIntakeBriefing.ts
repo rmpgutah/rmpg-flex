@@ -406,6 +406,14 @@ export function recipientPartyStatus(recipientName: string, parties: Array<strin
     // cannot swallow an unrelated recipient.
     if (recipientTokens.every((t) => partySet.has(t))) return 'party';
     if (partyTokens.length >= 2 && partyTokens.every((t) => recipientSet.has(t))) return 'party';
+    // R10b: both containment checks fail when EACH side carries one extra token
+    // the other lacks — e.g. "JOHN SMITH JR" vs "JOHN DAVID SMITH". The shared
+    // core {JOHN, SMITH} is ≥ 2 tokens and identifies the same person; the
+    // diverging tokens (suffix vs middle name) are not grounds for asserting
+    // non-party. Match when: shared tokens ≥ 2 AND neither side contributes
+    // more than 1 token beyond the shared core (keeps the check conservative).
+    const sharedCount = recipientTokens.filter((t) => partySet.has(t)).length;
+    if (sharedCount >= 2 && recipientTokens.length - sharedCount <= 1 && partyTokens.length - sharedCount <= 1) return 'party';
   }
   return 'non-party';
 }

@@ -86,8 +86,30 @@ export default function WindowsInstallGuide({ exeName }: { exeName: string }) {
             symptom: 'Wrong version installed / want a clean reinstall',
             fix: <>Uninstall via <strong>Settings → Apps → Installed apps → RMPG Flex → Uninstall</strong>, then run the installer again.</>,
           },
+          {
+            symptom: '"npm.ps1 cannot be loaded because running scripts is disabled on this system"',
+            fix: <>This is PowerShell's execution policy blocking npm. Two options: (1) use <strong>Command Prompt (cmd.exe)</strong> instead of PowerShell — npm works fine there with no policy issues; or (2) in PowerShell run <Cmd>{'Set-ExecutionPolicy RemoteSigned -Scope CurrentUser'}</Cmd> once, then proceed normally.</>,
+          },
         ]}
       />
+
+      <GuideHeading>Building from source (FZ-55 / dev setup)</GuideHeading>
+      <p className="text-xs leading-relaxed mb-2" style={{ color: 'var(--text-secondary)' }}>
+        If a pre-built installer is not yet available, the Electron app can be run directly from source.
+        Use <strong>Command Prompt (cmd.exe)</strong> — not PowerShell — to avoid execution-policy
+        restrictions on npm.ps1:
+      </p>
+      <Cmd>{`git clone https://github.com/rmpgutah/rmpg-flex.git "C:\\RMPG Flex"
+cd "C:\\RMPG Flex\\desktop"
+npm install
+npm run rebuild
+npm start`}</Cmd>
+      <p className="text-xs leading-relaxed mt-2" style={{ color: 'var(--text-secondary)' }}>
+        <code>npm run rebuild</code> compiles the native SQLite module for the local Node/Electron ABI.
+        It requires <a href="https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022" target="_blank" rel="noreferrer" className="underline" style={{ color: 'var(--brand-gold)' }}>Visual Studio Build Tools</a>{' '}
+        with the "Desktop development with C++" workload, or the equivalent MSYS2 toolchain.
+        If build tools are not installed, <code>npm install</code> exits with a native module error — install them first, then re-run.
+      </p>
 
       <Callout label="Why the installer is a .zip">
         Windows SmartScreen aggressively flags any <code>.exe</code> downloaded directly from the web

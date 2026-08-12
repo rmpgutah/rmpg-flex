@@ -490,13 +490,12 @@ function setConfig(key, value) {
  * local_config row shouldn't throw and crash the diagnostics UI).
  */
 function getLastSyncError() {
-  const raw = getConfig('last_sync_error');
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+  // getConfig() already JSON-parses the stored value, so the result is an
+  // object (or null). Calling JSON.parse() again coerces a plain object to
+  // "[object Object]" which always throws, returning null instead of the error.
+  const value = getConfig('last_sync_error');
+  if (value == null || typeof value !== 'object') return null;
+  return value;
 }
 
 // ─── Sync Queue ──────────────────────────────────────────────

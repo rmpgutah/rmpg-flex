@@ -117,7 +117,7 @@ export default function FlexOSSystemDashboard({ onClose }: FlexOSSystemDashboard
       .then((ifaces: NetworkInterface[]) => setNetworks(Array.isArray(ifaces) ? ifaces.slice(0, 3) : []))
       .catch(() => {});
 
-    el.getBattery?.()
+    el.getBatteryStatus?.()
       .then((b: BatteryInfo | null) => setBattery(b ?? null))
       .catch(() => {});
   }, []);

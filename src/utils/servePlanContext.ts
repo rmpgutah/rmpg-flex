@@ -25,6 +25,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { queryFirst } from './db';
+import { log } from './logger';
 import type { AddressClass } from './serveAddressClass';
 import type { TimeBand } from './serveScheduleParse';
 import { parseClientBands, parseAllowedDays } from './serveScheduleParse';
@@ -102,10 +103,18 @@ export async function loadPersistedPlanContext(
   db: D1Database,
   queueId: number,
 ): Promise<PersistedPlanContext> {
-  const row = await queryFirst<PlanContextRow>(
-    db,
-    `SELECT ${PLAN_CONTEXT_COLUMNS} FROM serve_queue WHERE id = ?`,
-    queueId,
-  ).catch(() => null);
+  let row: PlanContextRow | null = null;
+  try {
+    row = await queryFirst<PlanContextRow>(
+      db,
+      `SELECT ${PLAN_CONTEXT_COLUMNS} FROM serve_queue WHERE id = ?`,
+      queueId,
+    );
+  } catch (err) {
+    // Fall through to all-defaults (residential / no client constraints) — the
+    // safe direction per D-2. Log so the failure is visible in error_log and
+    // wrangler tail rather than silently degrading every re-plan for this job.
+    log.error('loadPersistedPlanContext: D1 query failed; falling back to all-defaults', { queueId }, err instanceof Error ? err : new Error(String(err)));
+  }
   return planContextFromRow(row);
 }

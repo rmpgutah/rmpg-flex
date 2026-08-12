@@ -9,6 +9,8 @@ import {
   Construction, User, Lock, ScrollText, UserCheck, Fingerprint, Globe,
   HelpCircle, BookOpen, ClipboardPen, ListChecks, Sparkles,
   Navigation, Star, Clock, ExternalLink, RefreshCw, Grid3X3,
+  Calculator, ArrowLeftRight, Clipboard, Timer, Cpu, Printer, Download,
+  Layout, WifiOff, FileVideo,
 } from 'lucide-react';
 
 export interface NavFunction {
@@ -214,6 +216,44 @@ export const NAV_CATEGORIES: NavCategory[] = [
     functions: [
       { path: '/audit', label: 'Audit Log', icon: ScrollText, shortcut: 'F11', adminOnly: true, description: 'System audit trail with user activity, data changes, and access logs' },
       { path: '/admin', label: 'Administration', icon: Settings, shortcut: 'F12', adminOnly: true, description: 'System administration, user management, roles, and configuration' },
+    ],
+  },
+  {
+    id: 'tools',
+    label: 'Desktop Tools',
+    icon: Calculator,
+    functions: [
+      { path: '/calculator', label: 'Calculator', icon: Calculator, description: 'Standard calculator with history log' },
+      { path: '/unit-converter', label: 'Unit Converter', icon: ArrowLeftRight, description: 'Convert distance, speed, weight, and temperature' },
+      { path: '/clipboard-manager', label: 'Clipboard Manager', icon: Clipboard, description: 'View and re-use clipboard history' },
+      { path: '/focus-timer', label: 'Focus Timer', icon: Timer, description: 'Pomodoro-style focus and break timer' },
+      { path: '/device-health', label: 'Device Health', icon: Cpu, description: 'Battery, network, and API service health' },
+      { path: '/print-queue', label: 'Print Queue', icon: Printer, description: 'View and manage active print jobs' },
+      { path: '/scheduled-updates', label: 'Scheduled Updates', icon: Download, description: 'Configure automatic update install window' },
+      { path: '/remote-lock', label: 'Remote Device Lock', icon: Lock, adminOnly: true, description: 'Send a remote lock signal to a field device' },
+      { path: '/shift-notes', label: 'Shift Notes', icon: Clipboard, description: 'Quick shift notes and end-of-shift log entries' },
+      { path: '/offline-queue', label: 'Offline Queue', icon: WifiOff, description: 'View and retry actions queued while offline' },
+      { path: '/screen-capture', label: 'Screen Capture', icon: Camera, description: 'Capture and annotate screenshots for documentation' },
+    ],
+  },
+  {
+    id: 'dispatch-tools',
+    label: 'Dispatch Tools',
+    icon: Radio,
+    functions: [
+      { path: '/quick-plate', label: 'Quick Plate Check', icon: Search, description: 'Fast plate lookup without opening the full plate log' },
+      { path: '/unit-status-board', label: 'Unit Status Board', icon: Layout, description: 'Live board showing all unit statuses and assignments' },
+      { path: '/live-call-map', label: 'Live Call Map', icon: Map, description: 'Real-time map view of all active calls for service' },
+      { path: '/broadcast', label: 'Broadcast Message', icon: Megaphone, description: 'Send a broadcast message to all active units' },
+    ],
+  },
+  {
+    id: 'admin-tools',
+    label: 'Admin Tools',
+    icon: Settings,
+    functions: [
+      { path: '/system-logs', label: 'System Logs', icon: Terminal, adminOnly: true, description: 'Live system log viewer for Worker and database events' },
+      { path: '/digital-evidence', label: 'Digital Evidence', icon: FileVideo, description: 'Digital evidence management, review, and chain-of-custody' },
     ],
   },
 ];

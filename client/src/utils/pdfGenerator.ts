@@ -2225,9 +2225,14 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
       const contentX = x + indentMm + gutterMm;
       const availWidth = safeMaxWidth - indentMm - gutterMm;
 
-      // Use bold font width for wrapping if line contains bold markers — bold Courier is wider
+      // Measure in the widest font variant that appears on this line.
+      // Bold Courier is wider than normal; bolditalic is wider than bold.
+      // A line with only *italic* markers renders bolditalic but was previously
+      // measured in normal, causing right-margin overflow.
       const hasBold = /\*\*/.test(lineText);
-      doc.setFont(PDF_VALUE_FONT, hasBold ? 'bold' : 'normal');
+      const hasItalic = lineText.replace(/\*\*(.+?)\*\*/gs, '').includes('*');
+      const measureFont = hasItalic ? 'bolditalic' : hasBold ? 'bold' : 'normal';
+      doc.setFont(PDF_VALUE_FONT, measureFont);
       doc.setFontSize(fontSize);
       const stripped = stripMarkers(lineText);
       const wrappedLines: string[] = wordWrap(stripped, availWidth);

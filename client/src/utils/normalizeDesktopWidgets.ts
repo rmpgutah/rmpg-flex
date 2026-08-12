@@ -10,6 +10,8 @@ export interface DesktopWidgetState {
 export const ALL_WIDGET_IDS = [
   'clock', 'ops-summary', 'notifications', 'quick-access',
   'shift-timer', 'pinned-call-ticker', 'mini-map',
+  'weather', 'radio-channel', 'roll-call', 'incident-timer', 'gps-trail', 'shift-handoff',
+  'panic', 'warrant-count', 'body-cam', 'message-count',
 ] as const;
 
 export const V1_DEFAULT_ON_IDS: readonly string[] = ['clock', 'ops-summary', 'notifications', 'quick-access'];
