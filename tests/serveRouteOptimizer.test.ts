@@ -296,6 +296,27 @@ describe('checkTrafficDegradation', () => {
     expect(result.addedMinutes).toBeGreaterThanOrEqual(15);
   });
 
+  it('returns matrixFallback:true when originalEtas is shorter than currentOrder', async () => {
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const result = await checkTrafficDegradation(
+      STOPS_3,
+      [0, 1, 2],
+      { lat: 40.755, lng: -111.895 },
+      ['2026-08-12T08:10:00Z'], // only 1 ETA for 3 stops
+      mockDb,
+      'sk.fake'
+    );
+    expect(result.matrixFallback).toBe(true);
+    expect(result.degraded).toBe(false);
+  });
+
   it('returns matrixFallback:true and degraded:false when API fails', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response);
 

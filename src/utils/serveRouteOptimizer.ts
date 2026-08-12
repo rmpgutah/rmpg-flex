@@ -938,6 +938,29 @@ export async function checkTrafficDegradation(
     };
   }
 
+  if (originalEtas.length < currentOrder.length) {
+    return {
+      degraded: false,
+      addedMinutes: 0,
+      newOrder: currentOrder.map(i => remainingStops[i]),
+      newEtas: originalEtas,
+      degradedSegments: [],
+      matrixFallback: true,
+    };
+  }
+
+  const outOfBounds = currentOrder.some(i => i < 0 || i >= remainingStops.length);
+  if (outOfBounds) {
+    return {
+      degraded: false,
+      addedMinutes: 0,
+      newOrder: remainingStops,
+      newEtas: originalEtas,
+      degradedSegments: [],
+      matrixFallback: true,
+    };
+  }
+
   const origin: RouteStop = {
     jobId: -1,
     lat: currentPosition.lat,
