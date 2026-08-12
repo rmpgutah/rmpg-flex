@@ -302,8 +302,21 @@ describe('FloatingWindow — SnapLayouts trigger', () => {
     fireEvent.mouseEnter(maxBtn);
     act(() => { vi.advanceTimersByTime(400); });
     expect(container.querySelector('[data-testid="snap-layouts-overlay"]')).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it('does NOT dismiss snap layouts overlay on mouse-leave when overlay is already open', () => {
+    // Mouse-leave should only cancel the pending hover timer — once the overlay is
+    // visible, SnapLayouts' own outside-click listener is the correct dismiss path.
+    vi.useFakeTimers();
+    const { container } = renderWindow();
+    const maxBtn = screen.getByLabelText(/maximize/i);
+    fireEvent.mouseEnter(maxBtn);
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(container.querySelector('[data-testid="snap-layouts-overlay"]')).toBeInTheDocument();
     fireEvent.mouseLeave(maxBtn);
-    expect(container.querySelector('[data-testid="snap-layouts-overlay"]')).not.toBeInTheDocument();
+    // Overlay must still be present — mouse-leave does not dismiss it
+    expect(container.querySelector('[data-testid="snap-layouts-overlay"]')).toBeInTheDocument();
     vi.useRealTimers();
   });
 

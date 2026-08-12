@@ -120,8 +120,13 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   }, []);
 
   const onMaxBtnMouseLeave = useCallback(() => {
-    if (snapHoverTimer.current) { clearTimeout(snapHoverTimer.current); snapHoverTimer.current = null; }
-    setSnapLayoutsOpen(false);
+    if (snapHoverTimer.current) {
+      clearTimeout(snapHoverTimer.current);
+      snapHoverTimer.current = null;
+    }
+    // Do NOT close here — SnapLayouts' own outside-click listener handles dismiss
+    // once the overlay is visible. Closing unconditionally here prevents the user
+    // from moving the cursor from the maximize button into the SnapLayouts grid.
   }, []);
 
   const handleSnapZone = useCallback((zone: SnapZone) => {
@@ -257,15 +262,18 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         if (halfWidth >= MIN_SNAP_HALF_WIDTH) {
           // Corner snap: if released near the top-left or top-right, snap to quarter screen
           const snapToCorner = ev.clientY <= SNAP_EDGE_THRESHOLD * 3;
+          const snappedX = snapEdgeRef.current === 'left' ? 0 : halfWidth;
           if (snapToCorner) {
+            const snappedH = Math.floor(desktopHeight / 2);
             preSnapBounds.current = { x: liveDragPos.current.x, y: liveDragPos.current.y, width: win.width, height: win.height };
             snappedSide.current = snapEdgeRef.current;
             moveResize(win.id, {
-              x: snapEdgeRef.current === 'left' ? 0 : halfWidth,
+              x: snappedX,
               y: 0,
               width: halfWidth,
-              height: Math.floor(desktopHeight / 2),
+              height: snappedH,
             }, { persist: false });
+            setSnapAssist({ zone: { id: 'edge-snap', label: 'Edge snap', x: snappedX, y: 0, width: halfWidth, height: snappedH } });
           } else {
             preSnapBounds.current = { x: liveDragPos.current.x, y: liveDragPos.current.y, width: win.width, height: win.height };
             snappedSide.current = snapEdgeRef.current;
@@ -273,11 +281,12 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
             // the user's chosen size — don't let it overwrite the remembered position for
             // this path (see preSnapBounds, which is what un-snapping restores).
             moveResize(win.id, {
-              x: snapEdgeRef.current === 'left' ? 0 : halfWidth,
+              x: snappedX,
               y: 0,
               width: halfWidth,
               height: desktopHeight,
             }, { persist: false });
+            setSnapAssist({ zone: { id: 'edge-snap', label: 'Edge snap', x: snappedX, y: 0, width: halfWidth, height: desktopHeight } });
           }
           playDesktopSound();
         }
