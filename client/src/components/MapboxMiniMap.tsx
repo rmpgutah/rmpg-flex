@@ -21,6 +21,7 @@ import { injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { UNIT_STATUS_HEX, priorityHex, CALL_MARKER_INK } from '../utils/statusColors';
 import { withAlpha } from '../utils/withAlpha';
+import { isValidLngLat } from '../utils/mapMarkers';
 import IconButton from './IconButton';
 import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 import type { CallForService, Unit, UnitStatus } from '../types';
@@ -298,7 +299,7 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
     let hasPoints = false;
 
     // Call marker
-    if (call?.latitude && call?.longitude) {
+    if (call != null && isValidLngLat(call.longitude, call.latitude)) {
       const el = buildCallMarkerEl(
         call.call_number || call.incident_type || 'CALL',
         call.priority
@@ -311,16 +312,16 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
       // incident_type fallback). DispatchMiniMap's identical caret pin already
       // anchors 'bottom'; this brings the two surfaces into agreement.
       const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-        .setLngLat([call.longitude, call.latitude])
+        .setLngLat([call.longitude!, call.latitude!])
         .addTo(map);
       markersRef.current.push(marker);
-      bounds.extend([call.longitude, call.latitude]);
+      bounds.extend([call.longitude!, call.latitude!]);
       hasPoints = true;
     }
 
     // Unit markers
     for (const unit of assignedUnits) {
-      if (unit.latitude == null || unit.longitude == null) continue;
+      if (!isValidLngLat(unit.longitude, unit.latitude)) continue;
       const el = buildUnitMarkerEl(unit.call_sign, unit.status as UnitStatus);
       // Explicit 'bottom' to match DispatchMiniMap's unit convention (and the
       // call pin above) rather than relying on the implicit 'center' default,

@@ -362,17 +362,30 @@ calls.post('/', async (c) => {
       // without a manual refresh. Matches the legacy POST behavior.
       broadcastAll('dispatch_update', { action: 'call_created', call });
 
-      // Reverse geocode: populate address from GPS if missing
-      if ((!body.location_address || body.location_address === '') && body.latitude != null && body.longitude != null) {
-        import('../geocode').then(async (geo) => {
-          try {
-            const coords = await geo.geocodeAddress(c.env, `${body.latitude},${body.longitude}`);
-            if (coords && coords.lat != null) {
-              await execute(db, `UPDATE calls_for_service SET location_address = ?, updated_at = datetime('now') WHERE id = ?`, `${coords.lat}, ${coords.lng}`, callId);
+      // Background geocoding — best-effort, never blocks the response.
+      // Two paths: forward (address → coords) and reverse (coords → address).
+      import('../geocode').then(async (geo) => {
+        try {
+          const addr = body.location_address as string | undefined;
+          const hasAddr = addr && addr.trim().length >= 3;
+          const hasCoords = body.latitude != null && body.longitude != null &&
+            Number.isFinite(Number(body.latitude)) && Number.isFinite(Number(body.longitude));
+
+          if (hasAddr && !hasCoords) {
+            // Forward geocode: address provided but no coordinates — populate lat/lng
+            const coords = await geo.geocodeAddress(c.env, addr!.trim());
+            if (coords) {
+              await execute(db, `UPDATE calls_for_service SET latitude = ?, longitude = ?, updated_at = datetime('now') WHERE id = ?`, coords.lat, coords.lng, callId);
             }
-          } catch { /* best-effort */ }
-        }).catch(() => {});
-      }
+          } else if (!hasAddr && hasCoords) {
+            // Reverse geocode: coordinates provided but no address — populate address
+            const label = await geo.reverseGeocodeAddress(c.env, Number(body.latitude), Number(body.longitude));
+            if (label) {
+              await execute(db, `UPDATE calls_for_service SET location_address = ?, updated_at = datetime('now') WHERE id = ?`, label, callId);
+            }
+          }
+        } catch { /* best-effort */ }
+      }).catch(() => {});
 
       return c.json({ ...call, runCard: rcResult.card }, 201);
     } catch (sqlErr: any) {
@@ -813,6 +826,22 @@ calls.put('/:id', async (c) => {
       db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     const updatedExt = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+
+    // Forward geocode: if address changed and the row still has no coordinates,
+    // populate lat/lng in the background so the call appears on the map.
+    const newAddr = body.location_address as string | undefined;
+    const stillMissingCoords = updatedBase?.latitude == null && updatedBase?.longitude == null;
+    if (newAddr && newAddr.trim().length >= 3 && stillMissingCoords) {
+      import('../geocode').then(async (geo) => {
+        try {
+          const coords = await geo.geocodeAddress(c.env, newAddr.trim());
+          if (coords) {
+            await execute(db, `UPDATE calls_for_service SET latitude = ?, longitude = ?, updated_at = datetime('now') WHERE id = ?`, coords.lat, coords.lng, id);
+          }
+        } catch { /* best-effort */ }
+      }).catch(() => {});
+    }
+
     return c.json({ ...(updatedBase || {}), ...(updatedExt || {}) });
   } catch (err) {
     console.error('PUT /dispatch/calls/:id failed:', err);
