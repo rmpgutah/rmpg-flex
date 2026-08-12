@@ -282,15 +282,21 @@ self.addEventListener('activate', (event) => {
         .sort();
       const previousCache = rmpgKeys.length > 0 ? rmpgKeys[rmpgKeys.length - 1] : null;
       const toDelete = oldKeys.filter((k) => k !== previousCache);
-      return Promise.all(toDelete.map((k) => caches.delete(k))).then(() => {
-        self.clients.matchAll({ type: 'window' }).then((clients) => {
-          clients.forEach((client) => {
-            client.postMessage({ type: 'SW_UPDATED', cacheName: CACHE_NAME });
-          });
+      return Promise.all(toDelete.map((k) => caches.delete(k)));
+    })
+    .then(() => self.clients.claim())
+    .then(() => {
+      // Notify all window clients that a new version is active. Must run AFTER
+      // clients.claim() so matchAll() returns the clients now controlled by this
+      // SW — before claim(), the new SW controls zero clients and the message
+      // goes to an empty list (the bug that caused updates to be invisible until
+      // a manual reload).
+      self.clients.matchAll({ type: 'window' }).then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'SW_UPDATED', cacheName: CACHE_NAME });
         });
       });
     })
-    .then(() => self.clients.claim())
   );
 });
 
