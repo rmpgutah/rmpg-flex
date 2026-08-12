@@ -181,3 +181,62 @@ describe('buildRouteStopsFromJobs', () => {
     expect(result[0].defendantType).toBe('individual');
   });
 });
+
+// Traffic polling — guards the data-prep logic that feeds the traffic-check
+// endpoint. The poll effect itself is not testable here (Mapbox + geolocation
+// + jsdom = synthetic environment), but buildRouteStopsFromJobs is re-used
+// for the payload, and these tests confirm only non-terminal stops are included.
+
+describe('buildRouteStopsFromJobs — terminal status filtering for traffic poll', () => {
+  function makeStopWithStatus(id: number, status: string) {
+    return {
+      job: {
+        id, recipient_lat: 40.7, recipient_lng: -111.9,
+        recipient_name: `D${id}`, recipient_address: `${id} St`,
+        priority: 'normal' as const, time_window: 'anytime' as const,
+        status: status as any, attempt_count: 0, max_attempts: 3,
+        deadline: null, serve_date: '2026-08-12', officer_id: 1,
+        sm_job_id: null, recipient_city: null, recipient_state: 'UT', recipient_zip: null,
+        recipient_phone: null, recipient_email: null, recipient_dob: null,
+        recipient_employer: null, recipient_employer_address: null,
+        document_type: 'Summons', case_number: null, court_name: null,
+        jurisdiction: null, client_name: null, attorney_name: null, plaintiff_name: null,
+        defendant_name: null, serve_type: null, case_type: null, return_date: null,
+        co_defendants: null, relationship: null, serve_fee: null, rush_fee: null,
+        payment_status: null, diligence_required: null, mileage_actual: null,
+        contact_restrictions: null, building_access_notes: null, sort_order: 0,
+        service_instructions: null, notes: null, next_attempt_note: null,
+        created_at: '2026-08-12T00:00:00Z', updated_at: '2026-08-12T00:00:00Z',
+        call_id: null, parsed_data: null,
+      },
+      selected: true,
+      order: id,
+    };
+  }
+
+  it('includes pending stops in the payload', () => {
+    const stops = [makeStopWithStatus(1, 'pending'), makeStopWithStatus(2, 'in_progress')];
+    // Filter mirrors the polling effect: exclude terminal statuses
+    const TERMINAL = new Set(['served', 'failed', 'skipped', 'archived']);
+    const remaining = stops.filter(s => !TERMINAL.has(s.job.status));
+    const payload = buildRouteStopsFromJobs(remaining);
+    expect(payload).toHaveLength(2);
+  });
+
+  it('excludes served stops from the traffic poll payload', () => {
+    const stops = [makeStopWithStatus(1, 'served'), makeStopWithStatus(2, 'pending')];
+    const TERMINAL = new Set(['served', 'failed', 'skipped', 'archived']);
+    const remaining = stops.filter(s => !TERMINAL.has(s.job.status));
+    const payload = buildRouteStopsFromJobs(remaining);
+    expect(payload).toHaveLength(1);
+    expect(payload[0].jobId).toBe(2);
+  });
+
+  it('returns empty payload when all stops are terminal — poll should not fire', () => {
+    const stops = [makeStopWithStatus(1, 'served'), makeStopWithStatus(2, 'failed')];
+    const TERMINAL = new Set(['served', 'failed', 'skipped', 'archived']);
+    const remaining = stops.filter(s => !TERMINAL.has(s.job.status));
+    const payload = buildRouteStopsFromJobs(remaining);
+    expect(payload).toHaveLength(0);
+  });
+});

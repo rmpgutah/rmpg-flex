@@ -425,6 +425,13 @@ export default function ServeRoutePlanner({
   const [geocodeWarnings, setGeocodeWarnings] = useState<GeocodeWarning[]>([]);
   const [matrixFallback, setMatrixFallback] = useState(false);
   const [geocodeWarningDismissed, setGeocodeWarningDismissed] = useState(false);
+  // Traffic polling state
+  const [trafficSuggestion, setTrafficSuggestion] = useState<{
+    addedMinutes: number;
+    newOrderJobIds: number[];
+    newEtas: string[];
+  } | null>(null);
+  const [routeAccepted, setRouteAccepted] = useState(false);
 
   // Reset derived stats when planner opens
   useEffect(() => {
@@ -440,6 +447,8 @@ export default function ServeRoutePlanner({
     setGeocodeWarnings([]);
     setMatrixFallback(false);
     setGeocodeWarningDismissed(false);
+    setTrafficSuggestion(null);
+    setRouteAccepted(false);
   }, [isOpen]);
 
   // Initialize stops from jobs
@@ -1044,6 +1053,56 @@ export default function ServeRoutePlanner({
     }
   }, [stops, mapReady, routeOrigin, returnToStart, clearRouteFromMap]);
 
+  // Mid-shift traffic polling — 10-min interval while route is active
+  useEffect(() => {
+    if (!routeAccepted) return;
+    const selectedStops = stops.filter(s => s.selected);
+    if (selectedStops.length === 0) return;
+    const TERMINAL: Set<string> = new Set(['served', 'failed', 'skipped', 'archived']);
+    const allDone = selectedStops.every(s => TERMINAL.has(s.job.status));
+    if (allDone) return;
+
+    const check = async () => {
+      try {
+        const position = await new Promise<GeolocationPosition>((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 }),
+        );
+        const remainingStops = buildRouteStopsFromJobs(
+          selectedStops.filter(s => !TERMINAL.has(s.job.status)),
+        );
+        const currentOrder = remainingStops.map((_, i) => i);
+        const result = await apiFetch<{
+          degraded: boolean;
+          addedMinutes: number;
+          newOrder: { jobId: number }[];
+          newEtas: string[];
+          matrixFallback: boolean;
+        }>('/serve-queue/route/traffic-check', {
+          method: 'POST',
+          body: JSON.stringify({
+            remainingStops,
+            currentOrder,
+            currentPosition: { lat: position.coords.latitude, lng: position.coords.longitude },
+            originalEtas: serverEtas,
+            departAt: new Date().toISOString(),
+          }),
+        });
+        if (result.degraded && !result.matrixFallback) {
+          setTrafficSuggestion({
+            addedMinutes: result.addedMinutes,
+            newOrderJobIds: (result.newOrder ?? []).map((s: { jobId: number }) => s.jobId),
+            newEtas: result.newEtas ?? [],
+          });
+        }
+      } catch {
+        // geolocation denied or network error — skip silently
+      }
+    };
+
+    const id = setInterval(check, 600_000);
+    return () => clearInterval(id);
+  }, [routeAccepted, stops, serverEtas]);
+
   // F3: print route sheet
   const printRouteSheet = useCallback(() => {
     const doc = new jsPDF({ unit: 'pt', format: 'letter' });
@@ -1210,6 +1269,7 @@ export default function ServeRoutePlanner({
       }
     }
 
+    setRouteAccepted(true);
     onRouteOptimized(selectedIds, { totalDistance, totalDuration, fuelCost: totalDistance * IRS_MILEAGE_RATE });
     onClose();
   }, [stops, missedDeadlineIds, showDeadlineConfirm, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, routeOrigin, onRouteOptimized, onClose]);
@@ -1316,6 +1376,53 @@ export default function ServeRoutePlanner({
             {!routeOrigin && (
               <div className="px-3 py-1.5 bg-amber-900/25 border-b border-amber-700/40 text-amber-300 text-[10px] leading-snug">
                 {describeOriginProblem(originResolution)}
+              </div>
+            )}
+            {trafficSuggestion && (
+              <div className="px-3 py-2 bg-amber-900/30 border-b border-amber-700/40 text-amber-300 text-[10px] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">
+                    Traffic has changed — route is now +{trafficSuggestion.addedMinutes} min behind schedule.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setTrafficSuggestion(null)}
+                    className="ml-2 text-amber-400 hover:text-amber-200"
+                    aria-label="Dismiss traffic suggestion"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Reorder selected stops to match the server's suggested order
+                      if (trafficSuggestion.newOrderJobIds.length > 0) {
+                        setStops(prev => {
+                          const ordered = trafficSuggestion.newOrderJobIds
+                            .map(jid => prev.find(s => s.job.id === jid))
+                            .filter(Boolean) as StopItem[];
+                          const unmatched = prev.filter(s => !trafficSuggestion.newOrderJobIds.includes(s.job.id));
+                          return [...ordered.map((s, i) => ({ ...s, order: i })), ...unmatched.map((s, i) => ({ ...s, order: ordered.length + i }))];
+                        });
+                        setServerEtas(trafficSuggestion.newEtas);
+                        setServerEtaJobIds(trafficSuggestion.newOrderJobIds);
+                      }
+                      setTrafficSuggestion(null);
+                    }}
+                    className="rounded-[2px] bg-amber-700/50 hover:bg-amber-700/70 px-2 py-1 text-amber-100 font-semibold"
+                  >
+                    Accept Updated Route
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTrafficSuggestion(null)}
+                    className="rounded-[2px] px-2 py-1 text-amber-400 hover:text-amber-200"
+                  >
+                    Dismiss
+                  </button>
+                </div>
               </div>
             )}
             {matrixFallback && (
