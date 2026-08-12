@@ -24,6 +24,7 @@ import { screenPersonAllSources } from '../utils/screening/screenPerson';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
 import { containsClause } from '../utils/searchText';
+import { rateLimitAllow } from '../utils/rateLimit';
 import { requireRole } from '../middleware/auth';
 import { isValidStatus, isValidTransition, TERMINAL_STATUSES, WARRANT_STATUSES, type WarrantStatus, applyLazyWarrantExpiry } from '../utils/warrantStatus';
 import { denverDateExpr, denverNowDateExpr } from '../utils/denverTime';
@@ -477,6 +478,26 @@ warrants.post('/search-all', async (c) => {
       dateTo?: string;
     }>();
 
+    // Require at least one meaningful filter — a completely empty body would run
+    // SELECT * against all three tables with no WHERE clause and return up to
+    // 1,500 rows, burning DB budget and leaking the full warrant roster.
+    const hasAnyFilter = body.lastName || body.firstName || body.dob
+      || body.courtName || body.charge || body.caseNumber
+      || body.status || body.type || body.offenseLevel
+      || body.dateFrom || body.dateTo;
+    if (!hasAnyFilter) {
+      return c.json({ error: 'At least one search filter is required.' }, 400);
+    }
+
+    // Per-user rate limit on live Utah API fetches. Each search-all with a
+    // first+last name fires a real HTTP call to warrants.utah.gov. Excessive
+    // calls risk RMPG's IP being flagged by their CloudFront WAF — which would
+    // take warrant checks down completely. Cap at 20 live fetches per user per
+    // 5 minutes. Fail-open (KV outage allows the call through).
+    const UTAH_LIVE_LIMIT = 20;
+    const UTAH_LIVE_WINDOW_S = 300;
+    const userId = c.get('userId') as number | undefined;
+
     // Per-bucket ceiling — unlimited in the sense that all matching warrants are
     // returned, but bounded to protect the isolate's 128 MB memory limit. 500 per
     // source is far above any realistic result set for a name/DOB search.
@@ -552,18 +573,28 @@ warrants.post('/search-all', async (c) => {
     // per Search-All submission does not risk IP blockage. The cron's 8 s
     // inter-person sleep is for bulk roster sweeps — it does not apply here.
     if (wantUtah && body.firstName && body.lastName) {
-      try {
-        const liveWarrants = await fetchWarrantsForPerson({
-          id: 0,
-          first_name: body.firstName,
-          middle_name: null,
-          last_name: body.lastName,
-          dob: body.dob ?? null,
-        });
-        for (const w of liveWarrants) await recordWarrant(db, w, null);
-      } catch (err) {
-        log.error('warrants/search-all: live utah fetch failed', { traceId },
-          err instanceof Error ? err : new Error(String(err)));
+      // Gate the live API call behind the per-user rate limit. A KV outage
+      // fails open (rateLimitAllow returns true) so a brief KV blip never
+      // blocks a legitimate warrant check.
+      const liveFetchAllowed = userId == null || await rateLimitAllow(
+        c.env.KV, `warrant-live-fetch:${userId}`, UTAH_LIVE_LIMIT, UTAH_LIVE_WINDOW_S,
+      );
+      if (!liveFetchAllowed) {
+        log.warn('warrants/search-all: live Utah fetch rate-limited', { userId, traceId });
+      } else {
+        try {
+          const liveWarrants = await fetchWarrantsForPerson({
+            id: 0,
+            first_name: body.firstName,
+            middle_name: null,
+            last_name: body.lastName,
+            dob: body.dob ?? null,
+          });
+          for (const w of liveWarrants) await recordWarrant(db, w, null);
+        } catch (err) {
+          log.error('warrants/search-all: live utah fetch failed', { traceId },
+            err instanceof Error ? err : new Error(String(err)));
+        }
       }
     }
 
