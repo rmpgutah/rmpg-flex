@@ -1005,18 +1005,12 @@ sqe.post('/optimize-route', async (c) => {
   if (deniedOptimizeRoute) return c.json({ error: deniedOptimizeRoute }, 403);
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number | undefined;
-    const body = await c.req.json<{ attempt_ids: number[]; user_lat?: number; user_lng?: number }>();
-    if (!Array.isArray(body.attempt_ids) || !body.attempt_ids.length) {
-      return c.json({ error: 'attempt_ids array required' }, 400);
-    }
-    const { optimizeRouteForServer, optimizeRouteFromUserLocation } = await import('../utils/serveRouteOptimizer');
-    let result;
-    if (body.user_lat != null && body.user_lng != null && isFinite(body.user_lat) && isFinite(body.user_lng)) {
-      result = await optimizeRouteFromUserLocation(db, body.attempt_ids, body.user_lat, body.user_lng);
-    } else {
-      result = await optimizeRouteForServer(db, userId ?? 0, body.attempt_ids);
-    }
+    const { optimizeRouteFullPipeline } = await import('../utils/serveRouteOptimizer');
+    type RouteStop = import('../utils/serveRouteOptimizer').RouteStop;
+    const body = await c.req.json<{ stops: RouteStop[]; departAt?: string }>();
+    const departAt = body.departAt ?? new Date().toISOString();
+    const mapboxToken = c.env.MAPBOX_SECRET_TOKEN ?? '';
+    const result = await optimizeRouteFullPipeline(body.stops, departAt, db, mapboxToken);
     return c.json(result);
   } catch (err) {
     console.error('[serve-queue] optimize-route error', err);

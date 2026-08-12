@@ -780,6 +780,41 @@ export function optimizeRoute(
   return twoOpt(penalized, seed);
 }
 
+export function geocodeQualityScore(stop: RouteStop): 'high' | 'low' | 'none' {
+  if (stop.geocodeSource === 'point') return 'high';
+  if (stop.geocodeSource === 'centroid') return 'low';
+  return 'none';
+}
+
+export function collectGeocodeWarnings(stops: RouteStop[]): GeocodeWarning[] {
+  return stops
+    .map(s => ({ stop: s, quality: geocodeQualityScore(s) }))
+    .filter(({ quality }) => quality !== 'high')
+    .map(({ stop, quality }) => ({
+      jobId: stop.jobId,
+      defendant: stop.defendant,
+      address: stop.address,
+      quality: quality as 'low' | 'none',
+    }));
+}
+
+export async function optimizeRouteFullPipeline(
+  stops: RouteStop[],
+  departAt: string,
+  db: D1Database,
+  mapboxToken: string
+): Promise<OptimizeResult> {
+  const now = new Date();
+  const geocodeWarnings = collectGeocodeWarnings(stops);
+  const dwellSecs = await fetchDwellSeconds(db, stops);
+  const { matrix, fallback } = await buildCostMatrix(stops, departAt, mapboxToken);
+  const orderedIndices = optimizeRoute(stops, matrix, departAt, now, dwellSecs);
+  const orderedStops = orderedIndices.map(i => stops[i]);
+  const etaPerStop = computeEtas(orderedIndices, matrix, dwellSecs, departAt);
+
+  return { orderedStops, etaPerStop, matrixFallback: fallback, geocodeWarnings };
+}
+
 export async function hashAddress(address: string): Promise<string> {
   const normalized = address.toUpperCase().trim().replace(/\s+/g, ' ');
   const data = new TextEncoder().encode(normalized);

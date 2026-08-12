@@ -53,6 +53,9 @@ export type Bindings = {
   // the geocode route also hands it to the client. Absent → ETA falls back to
   // a straight-line estimate and the client geocoder falls back to Nominatim.
   MAPBOX_ACCESS_TOKEN?: string;
+  // Secret Mapbox token for server-side route matrix calls (Directions API).
+  // Optional — route optimization falls back to haversine when unset.
+  MAPBOX_SECRET_TOKEN?: string;
   // WelfareWatchDO namespace — DI-4 automated escalation timer
   WELFARE_WATCH: DurableObjectNamespace;
   // DeepResearchDO namespace — one instance per research job; alarm-driven

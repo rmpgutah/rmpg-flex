@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { RouteStop, OptimizeResult, TrafficCheckResult } from '../src/utils/serveRouteOptimizer';
-import { buildCostMatrix, haversineMatrix, deadlineCoefficient, applyTimeWindowPenalties, optimizeRoute } from '../src/utils/serveRouteOptimizer';
+import { buildCostMatrix, haversineMatrix, deadlineCoefficient, applyTimeWindowPenalties, optimizeRoute, geocodeQualityScore, collectGeocodeWarnings, optimizeRouteFullPipeline } from '../src/utils/serveRouteOptimizer';
 
 const STOPS_3: RouteStop[] = [
   { jobId: 1, lat: 40.760, lng: -111.890, geocodeSource: 'point', deadlineAt: null, defendantType: 'individual', addressHash: 'a', defendant: 'A', address: '1 A St', locationNote: null },
@@ -186,5 +186,38 @@ describe('haversineMatrix', () => {
     expect(matrix[0][0]).toBe(0);
     expect(matrix[0][1]).toBeGreaterThan(0);
     expect(matrix[1][0]).toBeCloseTo(matrix[0][1], 0);
+  });
+});
+
+describe('geocodeQualityScore', () => {
+  it('returns high for point geocode', () => {
+    expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: 'point' })).toBe('high');
+  });
+  it('returns low for centroid geocode', () => {
+    expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: 'centroid' })).toBe('low');
+  });
+  it('returns none when geocodeSource is null', () => {
+    expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: null })).toBe('none');
+  });
+});
+
+describe('collectGeocodeWarnings', () => {
+  it('includes low and none stops, excludes high', () => {
+    const stops: RouteStop[] = [
+      { ...STOPS_3[0], geocodeSource: 'point' },
+      { ...STOPS_3[1], geocodeSource: 'centroid' },
+      { ...STOPS_3[2], geocodeSource: null },
+    ];
+    const warnings = collectGeocodeWarnings(stops);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0].jobId).toBe(2);
+    expect(warnings[0].quality).toBe('low');
+    expect(warnings[1].jobId).toBe(3);
+    expect(warnings[1].quality).toBe('none');
+  });
+
+  it('returns empty array when all stops have high quality', () => {
+    const stops = STOPS_3.map(s => ({ ...s, geocodeSource: 'point' as const }));
+    expect(collectGeocodeWarnings(stops)).toHaveLength(0);
   });
 });
