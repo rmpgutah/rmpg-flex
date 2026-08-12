@@ -205,16 +205,6 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   // Ref copy of mergeTargetId for use inside raw DOM event closures (avoids stale closure)
   const mergeTargetIdRef = useRef<string | null>(null);
 
-  // Tab group: compute grouped windows and leader status
-  const groupedWindows = win.groupId
-    ? windows.filter(w => w.groupId === win.groupId).sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id))
-    : [];
-  const isGroupLeader = groupedWindows.length > 0 && groupedWindows[0].id === win.id;
-  const isGroupMember = win.groupId !== null && !isGroupLeader;
-
-  // Non-leader group members render nothing — the leader renders everything for the group
-  if (isGroupMember) return null;
-
   const onMaxBtnMouseEnter = useCallback(() => {
     snapHoverTimer.current = setTimeout(() => setSnapLayoutsOpen(true), 400);
   }, []);
@@ -474,6 +464,18 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
   }, [win.id, win.width, win.height, win.x, win.y, focusWindow, moveResize]);
+
+  // Tab group: compute grouped windows and leader status.
+  // These are pure derivations from props/context — no hooks, safe after all hook calls.
+  const groupedWindows = win.groupId
+    ? windows.filter(w => w.groupId === win.groupId).sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id))
+    : [];
+  const isGroupLeader = groupedWindows.length > 0 && groupedWindows[0].id === win.id;
+  const isGroupMember = win.groupId !== null && !isGroupLeader;
+
+  // Non-leader group members render nothing — the leader renders everything for the group.
+  // This early return is placed after ALL hooks so hook call order is unconditional.
+  if (isGroupMember) return null;
 
   // Pinned windows always render above unpinned ones, regardless of normal
   // focus-based zIndex — a flat offset large enough to clear any realistic

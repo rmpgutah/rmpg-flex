@@ -198,6 +198,22 @@ describe('DesktopWindowManager', () => {
     expect(screen.getByTestId('second-group').textContent).toBe('none');
   });
 
+  it('tearOffTab clears the groupId from the sole remaining member of a 2-window group', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    act(() => screen.getByText('open-dispatch').click());
+    act(() => screen.getByText('open-map').click());
+    act(() => screen.getByText('merge-tab').click());
+    // Both windows are in the same group
+    expect(screen.getByTestId('first-group').textContent).not.toBe('none');
+    expect(screen.getByTestId('second-group').textContent).not.toBe('none');
+    // Tear off the second window — only one member (first) would remain in the group
+    act(() => screen.getByText('tearoff-second').click());
+    // The torn-off window must have no groupId
+    expect(screen.getByTestId('second-group').textContent).toBe('none');
+    // The sole remaining window must also have its groupId cleared — it is no longer in a group
+    expect(screen.getByTestId('first-group').textContent).toBe('none');
+  });
+
   it('moveResize with { persist: false } updates window state but leaves the remembered position untouched', () => {
     render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
     act(() => screen.getByText('open-dispatch').click());

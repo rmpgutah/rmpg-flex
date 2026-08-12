@@ -206,7 +206,24 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
   }, [commit]);
 
   const tearOffTab = useCallback((windowId: string) => {
-    commit(windowsRef.current.map(w => w.id === windowId ? { ...w, groupId: null, activeInGroup: true } : w));
+    const prev = windowsRef.current;
+    const targetWin = prev.find(w => w.id === windowId);
+    const groupId = targetWin?.groupId ?? null;
+
+    const updated = prev.map(w => w.id === windowId ? { ...w, groupId: null, activeInGroup: true } : w);
+
+    // If only one member remains in the group after the tear-off, clear its groupId too —
+    // a solo window in a group leaves a stale groupId that causes the next mergeWindowTab
+    // call to inherit the old group instead of forming a new one.
+    if (groupId) {
+      const remaining = updated.filter(w => w.groupId === groupId);
+      if (remaining.length === 1) {
+        commit(updated.map(w => w.groupId === groupId ? { ...w, groupId: null, activeInGroup: true } : w));
+        return;
+      }
+    }
+
+    commit(updated);
   }, [commit]);
 
   const setActiveTab = useCallback((groupId: string, windowId: string) => {
