@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, Route, MapPin, ChevronUp, ChevronDown, CheckSquare, Square,
-  Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical, Trash2,
+  Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical,
   Printer, RotateCcw, CalendarDays, AlertTriangle,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
@@ -386,6 +386,7 @@ export default function ServeRoutePlanner({
     setShowSplitBanner(false);
     setMissedDeadlineIds([]);
     setShowDeadlineConfirm(false);
+    setSavedRouteLoaded(false); // Fix #3: always re-fetch saved route on re-open
   }, [isOpen]);
 
   // Initialize stops from jobs
@@ -597,16 +598,18 @@ export default function ServeRoutePlanner({
 
     const bounds = new mapboxgl.LngLatBounds();
 
-    stops.forEach((stop, idx) => {
+    let markerSeq = 0;
+    stops.forEach((stop) => {
       if (!stop.selected) return;
+      markerSeq++;
       const lngLat: [number, number] = [stop.job.recipient_lng!, stop.job.recipient_lat!];
       bounds.extend(lngLat);
 
       const color = markerColor(stop.job.status);
       const el = document.createElement('div');
       el.style.cssText = `width:28px;height:28px;border-radius:50%;background:${color};border:2px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:pointer;`;
-      el.textContent = String(idx + 1);
-      el.title = `${stop.job.recipient_name}\n${stop.job.recipient_address || ''}`;
+      el.textContent = String(markerSeq);
+      el.title = `${stop.job.recipient_name ?? 'Unknown'}\n${stop.job.recipient_address || ''}`;
 
       const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
         .setLngLat(lngLat)
@@ -635,9 +638,6 @@ export default function ServeRoutePlanner({
   }, []);
   const selectAll = useCallback(() => setStops(prev => prev.map(s => ({ ...s, selected: true }))), []);
   const deselectAll = useCallback(() => setStops(prev => prev.map(s => ({ ...s, selected: false }))), []);
-  const clearFinished = useCallback(() => {
-    setStops(prev => prev.filter(s => s.job.status !== 'served' && s.job.status !== 'failed'));
-  }, []);
   const moveStop = useCallback((idx: number, dir: -1 | 1) => {
     setStops(prev => {
       const next = [...prev];
@@ -954,7 +954,7 @@ export default function ServeRoutePlanner({
     } finally {
       setOptimizing(false);
     }
-  }, [stops, mapReady, routeOrigin, clearRouteFromMap]);
+  }, [stops, mapReady, routeOrigin, returnToStart, clearRouteFromMap]);
 
   // F3: print route sheet
   const printRouteSheet = useCallback(() => {
@@ -1031,6 +1031,10 @@ export default function ServeRoutePlanner({
     });
 
     if (returnToStart && returnLegMiles > 0) {
+      if (y > doc.internal.pageSize.getHeight() - 30) {
+        doc.addPage();
+        y = margin;
+      }
       y += 4;
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8.5);
@@ -1052,23 +1056,29 @@ export default function ServeRoutePlanner({
     if (!officerId) return;
     setSplitSaving(true);
     try {
-      const tomorrow = new Date();
+      const tomorrow = new Date(); // new-date-ok — local wall-clock for "next calendar day"
       tomorrow.setDate(tomorrow.getDate() + 1);
       const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
-      await Promise.all([
-        apiFetch('/process-server/routes', {
+      // Sequential saves so a day2 failure is clearly surfaced without silently
+      // leaving a partial write where day1 succeeded but day2 was lost.
+      let day1Saved = false;
+      try {
+        await apiFetch('/process-server/routes', {
           method: 'POST',
           body: JSON.stringify({ officer_id: officerId, route_date: routeDate, optimized_order_json: JSON.stringify(day1.map(s => s.job.id)), waypoints_json: JSON.stringify([]), total_distance_miles: totalDistance / 2, total_time_minutes: totalDuration / 2 }),
-        }),
-        apiFetch('/process-server/routes', {
+        });
+        day1Saved = true;
+        await apiFetch('/process-server/routes', {
           method: 'POST',
           body: JSON.stringify({ officer_id: officerId, route_date: tomorrowStr, optimized_order_json: JSON.stringify(day2.map(s => s.job.id)), waypoints_json: JSON.stringify([]), total_distance_miles: totalDistance / 2, total_time_minutes: totalDuration / 2 }),
-        }),
-      ]);
-      setShowSplitBanner(false);
-      setError(`Split: ${day1.length} stops saved for today, ${day2.length} for tomorrow (${tomorrowStr}).`);
-    } catch {
-      setError('Failed to save split route.');
+        });
+        setShowSplitBanner(false);
+        setError(`Split: ${day1.length} stops saved for today, ${day2.length} for tomorrow (${tomorrowStr}).`);
+      } catch {
+        setError(day1Saved
+          ? `Today's ${day1.length} stops saved, but tomorrow's ${day2.length} stops failed to save — try again.`
+          : 'Failed to save split route.');
+      }
     } finally {
       setSplitSaving(false);
     }
@@ -1114,7 +1124,7 @@ export default function ServeRoutePlanner({
 
     onRouteOptimized(selectedIds, { totalDistance, totalDuration, fuelCost: totalDistance * IRS_MILEAGE_RATE });
     onClose();
-  }, [stops, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, routeOrigin, onRouteOptimized, onClose]);
+  }, [stops, missedDeadlineIds, showDeadlineConfirm, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, routeOrigin, onRouteOptimized, onClose]);
 
   if (!isOpen) return null;
 
@@ -1181,13 +1191,6 @@ export default function ServeRoutePlanner({
             {totalDistance > 0 && (
               <button type="button" onClick={printRouteSheet} className="toolbar-btn text-xs px-2 py-1 flex items-center gap-1" title="Print route sheet PDF">
                 <Printer className="w-3 h-3" /> Print
-              </button>
-            )}
-            {stops.some(s => s.job.status === 'served' || s.job.status === 'failed') && (
-              <button type="button" onClick={clearFinished}
-                className="toolbar-btn text-xs px-2 py-1 text-fg-muted hover:text-red-300 hover:border-red-700/50 transition-colors"
-                title="Remove served and non-service jobs from the list">
-                <Trash2 className="w-3 h-3" /> Clear Finished
               </button>
             )}
             <X size={20} className="text-rmpg-400 hover:text-rmpg-100 cursor-pointer transition-colors" onClick={onClose} aria-label="Close route planner" />
