@@ -16,6 +16,7 @@ interface SystemInfo {
 
 interface DiskInfo {
   freeBytes?: number | null;
+  totalBytes?: number | null;
   warn?: boolean;
 }
 
@@ -31,7 +32,7 @@ interface BatteryInfo {
 }
 
 const FLEXOS_VERSION = '1.0.0';
-const RMPG_FLEX_VERSION = '5.9.0';
+const RMPG_FLEX_VERSION = '5.8.7';
 
 function safeFixed(v: number | null | undefined, dec = 1): string {
   if (v == null || !isFinite(v)) return '—';
@@ -132,9 +133,10 @@ export default function FlexOSSystemDashboard({ onClose }: FlexOSSystemDashboard
   const freeMb = sysInfo?.free_memory_mb ?? 0;
   const memUsedPct = totalMb > 0 ? pct(totalMb - freeMb, totalMb) : null;
   const diskFreeGb = sysInfo?.disk_free_gb ?? (disk?.freeBytes != null ? Math.round((disk.freeBytes / (1024 ** 3)) * 10) / 10 : null);
+  const diskTotalGb = disk?.totalBytes != null ? Math.round((disk.totalBytes / (1024 ** 3)) * 10) / 10 : null;
   const diskUsedPct: number | null = (() => {
-    if (diskFreeGb == null || totalMb <= 0) return null;
-    return null;
+    if (diskFreeGb == null || diskTotalGb == null || diskTotalGb <= 0) return null;
+    return pct(diskTotalGb - diskFreeGb, diskTotalGb);
   })();
 
   const hasHardware = sysInfo != null;

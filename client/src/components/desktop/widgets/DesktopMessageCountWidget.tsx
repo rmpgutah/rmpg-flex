@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router';
 import { Mail, MessageCircle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 
@@ -25,6 +26,7 @@ const COMM_INTERVAL_MS = 30_000;
 const EMAIL_INTERVAL_MS = 60_000;
 
 export default function DesktopMessageCountWidget() {
+  const navigate = useNavigate();
   const [state, setState] = useState<MessageState>({
     total: 0,
     urgent: 0,
@@ -100,10 +102,11 @@ export default function DesktopMessageCountWidget() {
         flexDirection: 'column',
         gap: '6px',
         minWidth: '180px',
-        cursor: 'default',
+        cursor: 'pointer',
         userSelect: 'none',
       }}
       title="Open Communications"
+      onClick={() => navigate('/communications')}
     >
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

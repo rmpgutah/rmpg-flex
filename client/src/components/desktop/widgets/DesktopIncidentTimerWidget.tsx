@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Timer } from 'lucide-react';
 import { useDesktopSystem } from '../../../context/DesktopSystemContext';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 export default function DesktopIncidentTimerWidget() {
   const { activeCall } = useDesktopSystem();
@@ -8,8 +9,8 @@ export default function DesktopIncidentTimerWidget() {
 
   useEffect(() => {
     if (!activeCall) { setElapsed(0); return; }
-    const start = Date.now();
-    setElapsed(0);
+    const start = activeCall.created_at ? parseTimestamp(activeCall.created_at).getTime() : Date.now();
+    setElapsed(Math.floor((Date.now() - start) / 1000));
     const iv = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
     return () => clearInterval(iv);
   }, [activeCall?.id]);

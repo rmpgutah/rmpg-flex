@@ -15,7 +15,7 @@ const { hardenGuestWebPreferences, shouldAllowGuestNavigation, isCompanyBrowserR
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
-const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
+const { getDiskBytes, getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput, parseWindowsTpmOutput, classifyKeystrokeBurst, filterPrintableKeydown } = require('./hardwareFz55');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -1579,14 +1579,14 @@ guardedHandle('sys:crash-reports', () => {
   return listCrashReports(app.getPath('crashDumps'), require('fs'));
 });
 guardedHandle('sys:disk-space', () => {
-  let freeBytes;
+  let freeBytes, totalBytes;
   try {
-    freeBytes = getDiskFreeBytes(app.getPath('userData'), require('fs'));
+    ({ freeBytes, totalBytes } = getDiskBytes(app.getPath('userData'), require('fs')));
   } catch (err) {
     console.error('[SYS:DISK-SPACE] Disk space check failed:', err.message);
-    return { freeBytes: null, warn: false };
+    return { freeBytes: null, totalBytes: null, warn: false };
   }
-  return evaluateDiskSpace(freeBytes);
+  return evaluateDiskSpace(freeBytes, totalBytes);
 });
 guardedHandle('sys:network-interfaces', () => {
   return formatNetworkInterfaces(require('os').networkInterfaces());
@@ -1613,7 +1613,11 @@ guardedHandle('sys:battery', async () => {
         ['-NoProfile', '-Command', 'Get-CimInstance -ClassName Win32_Battery | Select-Object DeviceID, EstimatedChargeRemaining, BatteryStatus | ConvertTo-Json'],
         { timeout: 3000 }
       );
-      return parseWindowsBatteryOutput(stdout);
+      const raw = parseWindowsBatteryOutput(stdout);
+      if (!raw) return null;
+      // parseWindowsBatteryOutput returns { overallPercent, charging, batteries };
+      // normalize to { percent, charging } to match the client BatteryStatus interface.
+      return { percent: raw.overallPercent, charging: raw.charging };
     } catch (err) {
       console.error('[SYS:BATTERY] Get-CimInstance Win32_Battery failed:', err.message);
       return null;
@@ -1621,6 +1625,17 @@ guardedHandle('sys:battery', async () => {
   }
 
   return null;
+});
+guardedHandle('sys:body-cam-status', () => {
+  // Return null when no body cam is physically present — widget treats non-null
+  // as "camera connected" and shows Ready/Recording state accordingly.
+  return null;
+});
+guardedHandle('sys:body-cam-start', () => {
+  return { ok: false, reason: 'not_supported' };
+});
+guardedHandle('sys:body-cam-stop', () => {
+  return { ok: false, reason: 'not_supported' };
 });
 guardedHandle('sys:tpm-status', async () => {
   if (process.platform !== 'win32') return null;

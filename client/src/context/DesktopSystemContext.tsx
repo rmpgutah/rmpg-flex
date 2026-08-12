@@ -5,6 +5,7 @@ import { useAuth } from './AuthContext';
 export interface ActiveCall {
   id: number; call_number: string; nature_of_call: string;
   priority: number; status: string; address?: string;
+  created_at?: string;
 }
 
 export interface WelfareTimer { endsAt: number; intervalMinutes: number; }
@@ -81,7 +82,7 @@ export function DesktopSystemProvider({ children }: { children: React.ReactNode 
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [clipboardHistory, setClipboardHistory] = useState<string[]>(loadClip);
   const [unitStatus, setUnitStatusState] = useState('available');
-  const [radioChannel, setRadioChannelState] = useState(() => localStorage.getItem(RADIO_KEY) ?? 'CH 1');
+  const [radioChannel, setRadioChannelState] = useState(() => localStorage.getItem(RADIO_KEY) ?? 'CH1');
   const [syncPending, setSyncPending] = useState(0);
   const dismissedVersion = useRef<string | null>(null);
 
@@ -120,10 +121,10 @@ export function DesktopSystemProvider({ children }: { children: React.ReactNode 
     let cancelled = false;
     async function poll() {
       try {
-        const api = (window as unknown as { electronAPI?: { getSyncQueueDepth?: () => Promise<number> } }).electronAPI;
-        if (api?.getSyncQueueDepth) {
-          const n = await api.getSyncQueueDepth();
-          if (!cancelled) setSyncPending(n);
+        const el = (window as any).electron;
+        if (el?.getOfflineWriteQueueSize) {
+          const n = await el.getOfflineWriteQueueSize();
+          if (!cancelled) setSyncPending(n ?? 0);
         }
       } catch { /* non-Electron */ }
     }
@@ -171,10 +172,7 @@ export function DesktopSystemProvider({ children }: { children: React.ReactNode 
     const clamped = Math.max(10, Math.min(100, value));
     setBrightnessState(clamped);
     localStorage.setItem(BRIGHTNESS_KEY, String(clamped));
-    try {
-      (window as unknown as { electronAPI?: { setBrightness?: (v: number) => void } })
-        .electronAPI?.setBrightness?.(clamped);
-    } catch { /* non-Electron */ }
+    // brightness is a local UI state only; no Electron IPC for display brightness
   }, []);
 
   const startWelfareTimer = useCallback((minutes: number) => {

@@ -97,6 +97,9 @@ contextBridge.exposeInMainWorld('electron', {
   getTpmStatus: () => ipcRenderer.invoke('sys:tpm-status'),
   getIdleTime: () => ipcRenderer.invoke('sys:idle-time'),
   restartApp: () => ipcRenderer.invoke('sys:restart'),
+  getBodyCamStatus: () => ipcRenderer.invoke('sys:body-cam-status'),
+  startBodyCamRecording: () => ipcRenderer.invoke('sys:body-cam-start'),
+  stopBodyCamRecording: () => ipcRenderer.invoke('sys:body-cam-stop'),
 
   // ─── File & Data Export/Import ───────────────────────
   saveFileDialog: (opts) => ipcRenderer.invoke('fs:save-dialog', opts),

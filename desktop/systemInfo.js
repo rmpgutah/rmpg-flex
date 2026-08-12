@@ -9,10 +9,15 @@
 
 'use strict';
 
+/** Free and total disk bytes at targetPath, via fs.statfsSync. */
+function getDiskBytes(targetPath, fsModule) {
+  const stats = fsModule.statfsSync(targetPath);
+  return { freeBytes: stats.bavail * stats.bsize, totalBytes: stats.blocks * stats.bsize };
+}
+
 /** Free disk space in bytes at targetPath, via fs.statfsSync. */
 function getDiskFreeBytes(targetPath, fsModule) {
-  const stats = fsModule.statfsSync(targetPath);
-  return stats.bavail * stats.bsize;
+  return getDiskBytes(targetPath, fsModule).freeBytes;
 }
 
 /** Assembles the sys:info shape from Node's os module plus a precomputed diskFree value. */
@@ -80,8 +85,8 @@ function listCrashReports(crashDumpsDir, fsModule) {
 const DEFAULT_DISK_WARN_THRESHOLD_BYTES = 500 * 1024 * 1024; // 500MB
 
 /** Flags low disk space before a local DB write that could fail on a full disk. */
-function evaluateDiskSpace(freeBytes, warnThresholdBytes = DEFAULT_DISK_WARN_THRESHOLD_BYTES) {
-  return { freeBytes, warn: freeBytes < warnThresholdBytes };
+function evaluateDiskSpace(freeBytes, totalBytes = null, warnThresholdBytes = DEFAULT_DISK_WARN_THRESHOLD_BYTES) {
+  return { freeBytes, totalBytes, warn: freeBytes < warnThresholdBytes };
 }
 
 /** Flattens os.networkInterfaces() into {name, address, type}[], dropping internal/loopback entries. */
@@ -106,6 +111,7 @@ function parsePmsetBatteryOutput(rawOutput) {
 }
 
 module.exports = {
+  getDiskBytes,
   getDiskFreeBytes,
   formatSystemInfo,
   appendToLogFile,

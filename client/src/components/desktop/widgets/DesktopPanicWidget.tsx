@@ -60,7 +60,7 @@ export default function DesktopPanicWidget() {
     setProgress(1);
     const ts = new Date().toISOString();
     try {
-      await apiFetch('/api/dispatch/calls', {
+      await apiFetch('/dispatch/calls', {
         method: 'POST',
         body: JSON.stringify({
           nature_of_call: 'OFFICER DOWN - EMERGENCY',

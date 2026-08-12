@@ -81,7 +81,7 @@ export default function FlexOSStatusBar() {
 
     const poll = async () => {
       try {
-        const data = await apiFetch<AmbientStats>('/dispatch/aggregates/ambient-stats');
+        const data = await apiFetch<AmbientStats>('/dispatch/ambient-stats');
         if (!cancelled && data) {
           setStats(data);
           setLastUpdated(new Date());
