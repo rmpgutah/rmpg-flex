@@ -15,7 +15,6 @@ import {
   addWrappedText,
   addPageFooter,
   checkPageBreak,
-  setGenerationTimestamp,
   fetchPdfBranding,
   setActiveBranding,
   loadPdfAssets,
@@ -117,7 +116,6 @@ export async function generateServeLeaveBehin(data: LeaveBehindData): Promise<js
 
   setActiveSectionStyle('light');
   setActiveFormKey('serve_leave_behind');
-  setGenerationTimestamp(new Date().toISOString());
   stampGenerationTime();
 
   const lx = getLeftX();
