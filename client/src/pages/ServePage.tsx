@@ -239,6 +239,9 @@ interface StatsSummary {
   served: number;
   failed: number;
   total_attempts: number;
+  overdue?: number;
+  total?: number;
+  date?: string;
   mileage?: number;
   planned_mileage?: number;
 }
@@ -2852,6 +2855,33 @@ export default function ServePage() {
                 bg="bg-amber-900/20"
                 border="border-amber-700/40"
               />
+              {(stats?.overdue ?? 0) > 0 && (
+                <StatCard
+                  label="Overdue"
+                  value={stats?.overdue ?? 0}
+                  color="text-rose-400"
+                  bg="bg-rose-900/20"
+                  border="border-rose-700/40"
+                />
+              )}
+              {filteredFeeTotal > 0 && (
+                <StatCard
+                  label="Revenue Today"
+                  value={`$${filteredFeeTotal.toFixed(2)}`}
+                  color="text-rmpg-200"
+                  bg="bg-surface-sunken/20"
+                  border="border-border-default/40"
+                />
+              )}
+              {(stats?.total_attempts ?? 0) > 0 && (stats?.served ?? 0) > 0 && (
+                <StatCard
+                  label="Avg Attempts/Serve"
+                  value={((stats?.total_attempts ?? 0) / (stats?.served ?? 1)).toFixed(1)}
+                  color="text-rmpg-300"
+                  bg="bg-surface-sunken/20"
+                  border="border-border-default/40"
+                />
+              )}
             </div>
 
             {/* Mileage / efficiency */}
@@ -2997,7 +3027,7 @@ export default function ServePage() {
                   <div><div className="text-lg font-bold tabular-nums font-mono text-green-400" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.success_rate}%</div><div className="text-[9px] text-rmpg-400">Overall</div></div>
                   <div><div className="text-lg font-bold tabular-nums font-mono text-rmpg-100" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.total}</div><div className="text-[9px] text-rmpg-400">Total Jobs</div></div>
                   <div><div className="text-lg font-bold tabular-nums font-mono text-green-400" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.served}</div><div className="text-[9px] text-rmpg-400">Served</div></div>
-                  <div><div className="text-lg font-bold tabular-nums font-mono text-rmpg-100" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.avg_attempts?.toFixed(1)}</div><div className="text-[9px] text-rmpg-400">Avg Attempts</div></div>
+                  <div><div className="text-lg font-bold tabular-nums font-mono text-rmpg-100" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.avg_attempts?.toFixed(1) ?? '--'}</div><div className="text-[9px] text-rmpg-400">Avg Attempts</div></div>
                 </div>
                 {successRates.by_officer?.length > 0 && (
                   <div>
@@ -3007,6 +3037,9 @@ export default function ServePage() {
                         <span className="text-rmpg-100 flex-1">{o.officer_name || 'Unassigned'}</span>
                         <span className="text-green-400">{o.success_rate}%</span>
                         <span className="text-rmpg-500">{o.served}/{o.total}</span>
+                        {o.avg_attempts != null && (
+                          <span className="text-rmpg-400">{Number(o.avg_attempts).toFixed(1)}x</span>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -3874,7 +3907,7 @@ function StatCard({
   border,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   color: string;
   bg: string;
   border: string;

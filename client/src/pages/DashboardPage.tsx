@@ -1685,7 +1685,7 @@ export default function DashboardPage() {
       <div id="dashboard-panel-callAnalytics" className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics">
         {/* Calls by Hour — Area Chart with Gradient */}
         <div className="lg:col-span-2 panel-beveled bg-surface-base shadow-md shadow-black/10">
-          <PanelTitleBar title="CALL VOLUME — 7-DAY TREND" icon={Activity} />
+          <PanelTitleBar title="CALL VOLUME — BY HOUR" icon={Activity} />
           <div className="p-3">
           <ResponsiveContainer width="100%" height={isMobile ? 160 : 220}>
             <AreaChart data={chartData}>

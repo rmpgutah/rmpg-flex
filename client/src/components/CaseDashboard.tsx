@@ -51,10 +51,10 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
   const aging = s.aging || { d0_7: 0, d8_30: 0, d31_90: 0, d90p: 0 };
   const agingTotal = aging.d0_7 + aging.d8_30 + aging.d31_90 + aging.d90p;
   const agingRows: { label: string; n: number; color: string }[] = [
-    { label: '0–7 days', n: aging.d0_7, color: '#22c55e' },
-    { label: '8–30 days', n: aging.d8_30, color: '#d4a017' },
-    { label: '31–90 days', n: aging.d31_90, color: '#f59e0b' },
-    { label: '90+ days', n: aging.d90p, color: '#ef4444' },
+    { label: '0–7 days', n: aging.d0_7, color: 'var(--sev-ok)' },
+    { label: '8–30 days', n: aging.d8_30, color: 'var(--sev-warn)' },
+    { label: '31–90 days', n: aging.d31_90, color: 'var(--sev-high)' },
+    { label: '90+ days', n: aging.d90p, color: 'var(--sev-critical)' },
   ];
   const investigators = s.by_investigator || [];
 
@@ -65,11 +65,11 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
         {/* Stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           <StatCard label="Total" value={s.total ?? 0} color="var(--text-secondary)" icon={Briefcase} />
-          <StatCard label="Open" value={s.open ?? 0} color="#22c55e" icon={Clock} />
-          <StatCard label="Overdue" value={s.overdue ?? 0} color="#ef4444" icon={AlertTriangle} onClick={onShowOverdue} />
-          <StatCard label="Closed" value={s.closed ?? 0} color="#888888" icon={CheckCircle} />
-          <StatCard label="Clearance" value={s.clearance_rate ?? 0} suffix="%" color="#d4a017" icon={TrendingUp} />
-          <StatCard label="Avg Solvability" value={s.avg_solvability ?? 0} suffix="%" color="#f59e0b" icon={Gauge} />
+          <StatCard label="Open" value={s.open ?? 0} color="var(--sev-ok)" icon={Clock} />
+          <StatCard label="Overdue" value={s.overdue ?? 0} color="var(--sev-critical)" icon={AlertTriangle} onClick={onShowOverdue} />
+          <StatCard label="Closed" value={s.closed ?? 0} color="var(--text-secondary)" icon={CheckCircle} />
+          <StatCard label="Clearance" value={s.clearance_rate ?? 0} suffix="%" color="var(--text-secondary)" icon={TrendingUp} />
+          <StatCard label="Avg Solvability" value={s.avg_solvability ?? 0} suffix="%" color="var(--text-secondary)" icon={Gauge} />
         </div>
 
         {/* Aging of open cases */}
