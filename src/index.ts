@@ -541,6 +541,16 @@ export default {
           .then((r) => { if (r.meta.changes > 0) console.log(`[serve-escalation] auto-escalated ${r.meta.changes} job(s)`); })
           .catch((err) => console.error('Serve priority auto-escalation failed:', err)),
       );
+      // Geocode backfill — populate lat/lng for calls that have an address but
+      // null coordinates (created before the forward-geocode-on-create fix).
+      // Self-terminating: logs nothing and exits fast once the backlog is empty.
+      ctx.waitUntil(
+        import('./utils/geocodeBackfill').then((m) =>
+          m.backfillCallCoordinates(env.DB, env).then((r) => {
+            if (r.updated > 0) console.log(`[geocode-backfill] geocoded ${r.updated} call(s); done=${r.done}`);
+          }).catch((err) => console.error('Geocode backfill failed:', err)),
+        ).catch(() => {}),
+      );
       // Daily tasks at 04:00 America/Denver. The cron fires every minute, so
       // gate on BOTH Denver hour == 4 AND minute == 0 — an hour-only gate
       // (the original approach) still fires ~60x during that hour. Harmless
