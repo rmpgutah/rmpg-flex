@@ -651,11 +651,27 @@ export function deadlineCoefficient(stop: RouteStop, now: Date): number {
   return 0.1;
 }
 
+function getDenverOffsetMs(date: Date): number {
+  // Returns Denver's UTC offset in milliseconds (e.g. -21600000 for UTC-6)
+  const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
+  const denverStr = date.toLocaleString('en-US', { timeZone: 'America/Denver' });
+  return new Date(utcStr).getTime() - new Date(denverStr).getTime();
+}
+
 function parseTimeOfDay(timeStr: string, referenceDate: string): number {
   const [h, m] = timeStr.split(':').map(Number);
-  const d = new Date(referenceDate);
-  d.setHours(h, m, 0, 0);
-  return d.getTime();
+  // Get the Denver date parts for the reference date
+  const ref = new Date(referenceDate);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(ref);
+  const year = Number(parts.find(p => p.type === 'year')!.value);
+  const month = Number(parts.find(p => p.type === 'month')!.value) - 1;
+  const day = Number(parts.find(p => p.type === 'day')!.value);
+  // Build the target time in Denver by creating a UTC date that corresponds to h:m Denver wall clock
+  const denverOffset = getDenverOffsetMs(ref);
+  return Date.UTC(year, month, day, h, m, 0, 0) - denverOffset;
 }
 
 export function applyTimeWindowPenalties(
@@ -664,6 +680,7 @@ export function applyTimeWindowPenalties(
   departAt: string,
   dwellSeconds: number[]
 ): number[][] {
+  // dwellSeconds not accumulated per-stop in arrival estimate (Phase 1 simplification)
   const n = stops.length;
   const flat = matrix.flat();
   const maxCost = Math.max(...flat.filter(v => isFinite(v)), 1);
