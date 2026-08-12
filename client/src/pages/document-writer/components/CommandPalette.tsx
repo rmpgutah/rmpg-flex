@@ -3,7 +3,7 @@
 // the query filters within the active tab. Arrow keys navigate, Enter runs.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { ACTION_REGISTRY, ACTION_GROUPS, type DocAction } from '../docActions2';
 
 interface Props {

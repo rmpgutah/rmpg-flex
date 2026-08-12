@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { X, ChevronUp, ChevronDown, ArrowDownAZ } from 'lucide-react';
 import { findReplaceKey, type SearchOptions } from '../extensions/findReplace';
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { X, ListChecks, Target } from 'lucide-react';
 import { computeSectionStats, setSectionGoal, type SectionStat } from '../sectionStats';
 

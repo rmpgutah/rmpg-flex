@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { X, GripVertical, ChevronUp, ChevronDown, ListTree } from 'lucide-react';
 import { collectSections, moveSection } from '../docFeatures';
 

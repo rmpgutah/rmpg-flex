@@ -3,7 +3,7 @@
 // Each takes a TipTap editor and uses insertContent/HTML so the result lives in
 // the saved document. Kept out of the toolbar component so they're unit-testable.
 
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

@@ -5,7 +5,8 @@
 // simple word-level document diff. Kept out of the React components so they're
 // independently unit-testable.
 
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -306,7 +307,7 @@ export function estimatePages(editor: Editor): PrintEstimate {
   const text = editor.state.doc.textContent;
   const words = (text.trim().match(/\S+/g) || []).length;
   let blockUnits = 0;
-  editor.state.doc.descendants((node) => {
+  editor.state.doc.descendants((node: ProseMirrorNode) => {
     if (node.type.name === 'table') blockUnits += 6;       // a table ≈ a third of a page
     if (node.type.name === 'image') blockUnits += 8;
     if (node.type.name === 'heading') blockUnits += 1;

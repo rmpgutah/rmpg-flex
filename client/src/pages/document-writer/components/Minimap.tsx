@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { Map as MapIcon, X } from 'lucide-react';
 
 /** Document minimap — a scaled-down live thumbnail of the editor page with a

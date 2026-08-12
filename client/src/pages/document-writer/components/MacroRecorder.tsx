@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { X, Circle, Square, Play, Trash2, Plus } from 'lucide-react';
 import {
   MACRO_STEP_LABELS, runMacro, runMacroStep, saveMacro, loadMacro, clearSavedMacro,

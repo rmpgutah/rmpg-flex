@@ -8,6 +8,7 @@
 
 import React, { useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 
@@ -54,7 +55,7 @@ export function RichTextEditor({
     content,
     editable,
     autofocus: autoFocus,
-    onUpdate: ({ editor: e }) => {
+    onUpdate: ({ editor: e }: { editor: Editor }) => {
       onChange?.(e.getHTML());
     },
     editorProps: {

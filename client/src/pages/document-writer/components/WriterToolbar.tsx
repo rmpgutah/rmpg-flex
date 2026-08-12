@@ -1,4 +1,4 @@
-import { Editor } from '@tiptap/react';
+import { Editor } from '@tiptap/core';
 import {
   Bold, Italic, Underline as UnderlineIcon, AlignLeft, AlignCenter,
   AlignRight, AlignJustify, List, ListOrdered, Table as TableIcon, Image as ImageIcon,

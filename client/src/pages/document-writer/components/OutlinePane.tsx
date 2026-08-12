@@ -1,4 +1,4 @@
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { collectHeadings } from '../docActions';
 
 /** Document outline / navigation pane (features 184/194). Lists headings and

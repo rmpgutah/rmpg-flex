@@ -1,6 +1,6 @@
 // Real, wired Document Writer features. Each function takes the TipTap editor
 // and performs a concrete insertion / mutation. No stubs.
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import QRCode from 'qrcode';
 import { apiFetch } from '../../../hooks/useApi';
 

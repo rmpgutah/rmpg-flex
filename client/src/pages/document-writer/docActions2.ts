@@ -9,7 +9,7 @@
 // All functions are individually exported so they can be wired into the
 // toolbar piecemeal or invoked from a command palette / slash menu.
 
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 // Wave-5 actions live in their own module; appended to ACTION_REGISTRY below.
 // (docActions3 imports DocAction from here as a TYPE only — erased at runtime,
 // so there is no import cycle.)

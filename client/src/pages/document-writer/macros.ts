@@ -5,7 +5,7 @@
 // chains — no eval, no new deps. The last recorded macro is persisted to
 // localStorage so it survives a reload.
 
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 
 export type MacroStep =
   | 'bold' | 'italic' | 'underline' | 'strike'

@@ -7,7 +7,7 @@
 //
 // Pure functions over the editor's plain text — no extra npm packages.
 
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 
 export type ProofKind =
   | 'repeated-word'
