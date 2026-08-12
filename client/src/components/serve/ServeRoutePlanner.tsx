@@ -13,7 +13,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useGpsTracking } from '../../hooks/useGpsTracking';
 import type { ServeJob } from '../../types';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
-import { parseTimestamp } from '../../utils/dateUtils';
+import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import {
   resolveRouteOrigin, describeOrigin, describeOriginProblem,
@@ -995,10 +995,10 @@ export default function ServeRoutePlanner({
       }
       const arrivalMs = stopArrivalTimes.get(stop.job.id);
       const etaStr = arrivalMs
-        ? new Date(arrivalMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        ? new Date(arrivalMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) // new-date-ok — epoch ms computed locally
         : '';
       const deadlinePart = stop.job.deadline
-        ? ` — deadline ${new Date(stop.job.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+        ? ` — deadline ${parseTimestamp(stop.job.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
         : '';
       const missed = missedDeadlineIds.includes(stop.job.id);
 
@@ -1291,7 +1291,7 @@ export default function ServeRoutePlanner({
                       {/* F1: arrival time estimate */}
                       {stopArrivalTimes.has(stop.job.id) && (
                         <span className={`text-[9px] font-mono flex-shrink-0 ${missedDeadlineIds.includes(stop.job.id) ? 'text-red-400' : 'text-fg-secondary'}`}>
-                          ETA {new Date(stopArrivalTimes.get(stop.job.id)!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                          ETA {new Date(stopArrivalTimes.get(stop.job.id)!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} {/* new-date-ok — epoch ms computed locally */}
                         </span>
                       )}
                     </div>
