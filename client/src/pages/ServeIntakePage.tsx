@@ -887,9 +887,14 @@ export default function ServeIntakePage() {
         // small JSON body), so jump straight to the analyzing phase.
         setUploadPhase('analyzing');
         const documents = files.map(f => ({ type: f.type, text: f.text }));
+        const legacyBody: Record<string, unknown> = { documents };
+        if (selectedClientId) legacyBody.client_id = selectedClientId;
+        if (selectedDefendants.length > 0) legacyBody.defendants_selected = selectedDefendants;
+        const legacyOverrides = Object.fromEntries(Object.entries(editOverrides).filter(([, v]) => v.trim()));
+        if (Object.keys(legacyOverrides).length > 0) legacyBody.field_overrides = legacyOverrides;
         const resp = await apiFetch<IntakeResult>('/serve-intake/intake', {
           method: 'POST',
-          body: JSON.stringify({ documents }),
+          body: JSON.stringify(legacyBody),
         });
         if (resp && resp.success) {
           setResult(resp);
@@ -906,7 +911,7 @@ export default function ServeIntakePage() {
     setProcessing(false);
     setUploadPhase('idle');
     setUploadStat(null);
-  }, [files, editOverrides, detectedDefendants, selectedDefendants]);
+  }, [files, editOverrides, detectedDefendants, selectedDefendants, selectedClientId]);
 
   // Abort an in-flight upload. Only offered during the byte-transfer phase —
   // once the server is analyzing it may already be committing records, so
@@ -1129,8 +1134,8 @@ export default function ServeIntakePage() {
                 ))}
               </select>
               {f.ocrResult && (
-                <span className={`text-[9px] font-bold ${confidenceColor(f.ocrResult.confidence)}`}>
-                  {(f.ocrResult.confidence * 100).toFixed(0)}%
+                <span className={`text-[9px] font-bold ${confidenceColor(Number(f.ocrResult.confidence ?? 0))}`}>
+                  {(Number(f.ocrResult.confidence ?? 0) * 100).toFixed(0)}%
                 </span>
               )}
               {f.ocrScanFailed ? (
@@ -1339,8 +1344,8 @@ export default function ServeIntakePage() {
               <div className="flex items-center gap-2">
                 <Camera className="w-4 h-4 text-brand-400" />
                 <span className="text-xs font-bold text-rmpg-100 uppercase">OCR Extraction Review</span>
-                <span className={`text-[10px] font-bold ${confidenceColor(ocrPreview.confidence)}`}>
-                  Confidence: {(ocrPreview.confidence * 100).toFixed(0)}%
+                <span className={`text-[10px] font-bold ${confidenceColor(Number(ocrPreview.confidence ?? 0))}`}>
+                  Confidence: {(Number(ocrPreview.confidence ?? 0) * 100).toFixed(0)}%
                 </span>
               </div>
               <IconButton onClick={() => setShowOcrPreview(false)} aria-label="Close OCR preview">
@@ -1353,8 +1358,8 @@ export default function ServeIntakePage() {
                 {' | '} Extracted Fields: <span className="text-rmpg-100 font-bold">{previewFields.length}</span>
               </div>
               <div className="w-full h-1.5 bg-surface-raised rounded-sm overflow-hidden">
-                <div className={`h-full rounded-sm transition-all ${confidenceBar(ocrPreview.confidence)}`}
-                  style={{ width: `${Math.min(100, ocrPreview.confidence * 100)}%` }} />
+                <div className={`h-full rounded-sm transition-all ${confidenceBar(Number(ocrPreview.confidence ?? 0))}`}
+                  style={{ width: `${Math.min(100, Number(ocrPreview.confidence ?? 0) * 100)}%` }} />
               </div>
               <div className="grid grid-cols-2 gap-2 mt-3">
                 {previewFields.slice(0, 30).map(([key, field]) => (
@@ -1362,8 +1367,8 @@ export default function ServeIntakePage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1">
                         <span className="text-[9px] text-rmpg-500 uppercase font-mono">{toDisplayLabel(key)}</span>
-                        <span className={`text-[8px] font-bold ${confidenceColor(field.confidence)}`}>
-                          {(field.confidence * 100).toFixed(0)}%
+                        <span className={`text-[8px] font-bold ${confidenceColor(Number(field.confidence ?? 0))}`}>
+                          {(Number(field.confidence ?? 0) * 100).toFixed(0)}%
                         </span>
                       </div>
                       {editingFields[key] ? (

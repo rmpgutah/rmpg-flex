@@ -1350,7 +1350,7 @@ export default function ServePage() {
           skip_trace_fee: skip?.line_total ?? 0,
           mileage: mileage?.quantity ?? 0,
           mileage_fee: mileage?.line_total ?? 0,
-          total: data.subtotal,
+          total: data.subtotal ?? 0,
         },
       });
     } catch { setCostEstimate(null); }

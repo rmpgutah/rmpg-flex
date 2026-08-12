@@ -480,7 +480,7 @@ export async function detectCourtDateConflicts(
   for (const row of officerConflicts) {
     if (!row.officer_id || !row.court_date) continue;
     if (normalizeDateOnly(row.court_date) !== normalizedDate) continue;
-    if (defendantId && row.id in conflicts.map((c) => c.queueId)) continue;
+    if (defendantId && conflicts.some((c) => c.queueId === row.id)) continue;
 
     const existing = officerDateMap.get(row.officer_id) || [];
     existing.push(row);
