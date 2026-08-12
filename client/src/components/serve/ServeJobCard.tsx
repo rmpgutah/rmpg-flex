@@ -602,8 +602,8 @@ export default React.memo(function ServeJobCard({
                 <DollarSign className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
                 <span className="text-rmpg-400">Fee:</span>
                 <span className="font-mono tabular-nums text-green-300">
-                  ${((job.serve_fee ?? 0) + (job.rush_fee ?? 0)).toFixed(2)}
-                  {job.rush_fee ? ` (incl. $${job.rush_fee.toFixed(2)} rush)` : ''}
+                  ${(Number(job.serve_fee ?? 0) + Number(job.rush_fee ?? 0)).toFixed(2)}
+                  {job.rush_fee ? ` (incl. $${Number(job.rush_fee).toFixed(2)} rush)` : ''}
                 </span>
                 {job.payment_status && (
                   <span className={`ml-1 text-[8px] font-bold border px-1 py-0 rounded-[2px] ${PAYMENT_STATUS_STYLES[job.payment_status] ?? PAYMENT_STATUS_STYLES.unpaid}`}>
