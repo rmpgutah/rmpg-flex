@@ -39,6 +39,7 @@ import { useFleetVehicles } from './hooks/useFleetVehicles';
 import { useVehicleDetail } from './hooks/useVehicleDetail';
 import { useFleetCosts } from './hooks/useFleetCosts';
 import { useFleetForms, type ModalMode } from './hooks/useFleetForms';
+import { useFleetThresholds } from '../../hooks/useSystemSettings';
 import type {
   FleetVehicle, FleetMaintenance, FleetVehicleStatus, FleetFuelLog,
   FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
@@ -64,11 +65,6 @@ const FLEET_VIEWS: { id: FleetViewMode; label: string; icon?: typeof FileText }[
   { id: 'driver_performance', label: 'Driver Performance', icon: Gauge },
 ];
 
-// Rough patrol-fleet service-life heuristic (no per-vehicle target exists in
-// the schema) used only to color-code the utilization bar below — not a
-// retirement policy.
-const UTILIZATION_LIFETIME_MILES = 150000;
-
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e', maintenance: '#f59e0b',
   out_of_service: '#ef4444', retired: '#6b7280',
@@ -86,14 +82,14 @@ const VEHICLE_STATUSES: { value: FleetVehicleStatus; label: string }[] = [
   { value: 'retired', label: 'Retired' },
 ];
 
-function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
+function getExpiryStatus(dateStr: string | undefined, warnDays: number): 'ok' | 'expiring' | 'expired' | 'none' {
   if (!dateStr) return 'none';
   const exp = parseTimestamp(dateStr);
   const now = new Date();
   if (exp < now) return 'expired';
-  const thirtyDays = new Date();
-  thirtyDays.setDate(thirtyDays.getDate() + 30);
-  if (exp <= thirtyDays) return 'expiring';
+  const warnDate = new Date();
+  warnDate.setDate(warnDate.getDate() + warnDays);
+  if (exp <= warnDate) return 'expiring';
   return 'ok';
 }
 
@@ -144,6 +140,7 @@ export default function FleetPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { user } = useAuth();
+  const thresholds = useFleetThresholds();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // Right-click context menu
@@ -419,17 +416,17 @@ export default function FleetPage() {
   const registrationExpiring = vehicles.filter(v => {
     if (!v.registration_expiry) return false;
     const exp = parseTimestamp(v.registration_expiry);
-    const thirtyDays = new Date();
-    thirtyDays.setDate(thirtyDays.getDate() + 30);
-    return exp <= thirtyDays;
+    const warnDate = new Date();
+    warnDate.setDate(warnDate.getDate() + thresholds.expiryWarnDays);
+    return exp <= warnDate;
   }).length;
 
   const insuranceExpiring = vehicles.filter(v => {
     if (!v.insurance_expiry) return false;
     const exp = parseTimestamp(v.insurance_expiry);
-    const thirtyDays = new Date();
-    thirtyDays.setDate(thirtyDays.getDate() + 30);
-    return exp <= thirtyDays;
+    const warnDate = new Date();
+    warnDate.setDate(warnDate.getDate() + thresholds.expiryWarnDays);
+    return exp <= warnDate;
   }).length;
 
   const assignedVehicles = vehicles.filter(v => v.assigned_unit_call_sign).length;
@@ -980,9 +977,9 @@ export default function FleetPage() {
             {filtered.map((v, idx) => {
               const isSelected = selectedId != null && String(v.id) === String(selectedId);
               const statusColor = STATUS_COLOR[v.status];
-              const regStatus = getExpiryStatus(v.registration_expiry);
-              const insStatus = getExpiryStatus(v.insurance_expiry);
-              const svcStatus = getExpiryStatus(v.next_service_due);
+              const regStatus = getExpiryStatus(v.registration_expiry, thresholds.expiryWarnDays);
+              const insStatus = getExpiryStatus(v.insurance_expiry, thresholds.expiryWarnDays);
+              const svcStatus = getExpiryStatus(v.next_service_due, thresholds.expiryWarnDays);
               const hasAlert = regStatus === 'expired' || insStatus === 'expired' || svcStatus === 'expired';
               const hasWarning = regStatus === 'expiring' || insStatus === 'expiring' || svcStatus === 'expiring';
 
@@ -1068,7 +1065,7 @@ export default function FleetPage() {
                       {v.next_service_due && (() => {
                         const daysUntil = Math.ceil((parseTimestamp(v.next_service_due).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                         if (daysUntil < 0) return <span className="text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold">OVERDUE {Math.abs(daysUntil)}d</span>;
-                        if (daysUntil <= 14) return <span className="text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded-sm font-bold">SERVICE {daysUntil}d</span>;
+                        if (daysUntil <= thresholds.serviceWarnDays) return <span className="text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded-sm font-bold">SERVICE {daysUntil}d</span>;
                         return null;
                       })()}
                     </div>
@@ -1078,13 +1075,13 @@ export default function FleetPage() {
                     <div className="mt-1.5 w-full">
                       <div className="flex justify-between text-[7px] text-rmpg-600 mb-0.5">
                         <span>UTILIZATION</span>
-                        <span className="font-mono">{Math.min(100, Math.round((v.current_mileage / UTILIZATION_LIFETIME_MILES) * 100))}%</span>
+                        <span className="font-mono">{Math.min(100, Math.round((v.current_mileage / thresholds.utilizationMaxMiles) * 100))}%</span>
                       </div>
-                      <div className="w-full h-1 bg-rmpg-700 overflow-hidden" role="progressbar" aria-valuenow={Math.min(100, Math.round((v.current_mileage / UTILIZATION_LIFETIME_MILES) * 100))} aria-valuemin={0} aria-valuemax={100} aria-label={`Vehicle utilization: ${Math.min(100, Math.round((v.current_mileage / UTILIZATION_LIFETIME_MILES) * 100))}%`}>
+                      <div className="w-full h-1 bg-rmpg-700 overflow-hidden" role="progressbar" aria-valuenow={Math.min(100, Math.round((v.current_mileage / thresholds.utilizationMaxMiles) * 100))} aria-valuemin={0} aria-valuemax={100} aria-label={`Vehicle utilization: ${Math.min(100, Math.round((v.current_mileage / thresholds.utilizationMaxMiles) * 100))}%`}>
                         <div
                           className="h-full transition-all duration-500"
                           style={{
-                            width: `${Math.min(100, (v.current_mileage / UTILIZATION_LIFETIME_MILES) * 100)}%`,
+                            width: `${Math.min(100, (v.current_mileage / thresholds.utilizationMaxMiles) * 100)}%`,
                             background: v.current_mileage < 75000 ? '#22c55e'
                               : v.current_mileage < 120000 ? '#f59e0b' : '#ef4444',
                           }}
