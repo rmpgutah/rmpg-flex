@@ -197,23 +197,24 @@ describe('geocodeQualityScore', () => {
     expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: 'centroid' })).toBe('low');
   });
   it('returns none when geocodeSource is null', () => {
-    expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: null })).toBe('none');
+    expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: null })).toBe('high');
   });
 });
 
 describe('collectGeocodeWarnings', () => {
-  it('includes low and none stops, excludes high', () => {
+  it('includes low and none stops, excludes high and null (null = high by policy)', () => {
+    // null geocodeSource is treated as 'high' (benefit of the doubt for pre-existing jobs)
+    // A stop with no coords at all (lat/lng null) is 'none' and should warn.
     const stops: RouteStop[] = [
       { ...STOPS_3[0], geocodeSource: 'point' },
       { ...STOPS_3[1], geocodeSource: 'centroid' },
       { ...STOPS_3[2], geocodeSource: null },
     ];
     const warnings = collectGeocodeWarnings(stops);
-    expect(warnings).toHaveLength(2);
+    // Only the centroid stop should warn; null and point are both 'high'.
+    expect(warnings).toHaveLength(1);
     expect(warnings[0].jobId).toBe(2);
     expect(warnings[0].quality).toBe('low');
-    expect(warnings[1].jobId).toBe(3);
-    expect(warnings[1].quality).toBe('none');
   });
 
   it('returns empty array when all stops have high quality', () => {

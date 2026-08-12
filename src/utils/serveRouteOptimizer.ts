@@ -783,7 +783,9 @@ export function optimizeRoute(
 export function geocodeQualityScore(stop: RouteStop): 'high' | 'low' | 'none' {
   if (stop.geocodeSource === 'point') return 'high';
   if (stop.geocodeSource === 'centroid') return 'low';
-  return 'none';
+  if (stop.geocodeSource === null) return 'high'; // null = benefit of the doubt; don't warn on pre-existing jobs
+  if (stop.lat == null || stop.lng == null) return 'none';
+  return 'high';
 }
 
 export function collectGeocodeWarnings(stops: RouteStop[]): GeocodeWarning[] {
@@ -853,22 +855,19 @@ export async function fetchDwellSeconds(
   if (stops.length === 0) return [];
 
   const hashes = stops.map(s => s.addressHash);
-  // D1 100-param cap — stops per run rarely exceed 25, but guard anyway.
-  // Array.fill avoids the hand-rolled placeholder pattern flagged by the
-  // d1ParamCap ratchet test in tests/d1ParamCap.test.ts.
-  const placeholders = Array<string>(hashes.length).fill('?').join(',');
-  const rows = await db
-    .prepare(
+  // Use queryInChunks to stay within D1's 100-bound-parameter cap.
+  const rows = await queryInChunks<{ address_hash: string; avg_dwell: number }>(
+    db,
+    hashes,
+    placeholders =>
       `SELECT address_hash, CAST(AVG(dwell_seconds) AS INTEGER) AS avg_dwell
        FROM serve_dwell_times
        WHERE address_hash IN (${placeholders})
          AND logged_at > datetime('now', '-90 days')
-       GROUP BY address_hash`
-    )
-    .bind(...hashes)
-    .all<{ address_hash: string; avg_dwell: number }>();
+       GROUP BY address_hash`,
+  );
 
-  const byHash = new Map(rows.results.map(r => [r.address_hash, r.avg_dwell]));
+  const byHash = new Map(rows.map(r => [r.address_hash, r.avg_dwell]));
   return stops.map(s => byHash.get(s.addressHash) ?? DEFAULT_DWELL[s.defendantType]);
 }
 

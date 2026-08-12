@@ -1271,8 +1271,8 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   if (arrivedAt) {
     const loggedAt = new Date().toISOString();
     const dwell = dwellSeconds(arrivedAt, loggedAt);
-    if (shouldRecordDwell(dwell)) {
-      const addrHash = await hashAddress(queue.recipient_address ?? '');
+    if (shouldRecordDwell(dwell) && queue.recipient_address && queue.recipient_address.trim() !== '') {
+      const addrHash = await hashAddress(queue.recipient_address);
       c.executionCtx.waitUntil(
         c.env.DB.prepare(
           'INSERT INTO serve_dwell_times (address_hash, defendant_type, dwell_seconds) VALUES (?, ?, ?)'

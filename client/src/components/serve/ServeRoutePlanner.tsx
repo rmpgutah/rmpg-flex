@@ -1055,7 +1055,7 @@ export default function ServeRoutePlanner({
 
   // Mid-shift traffic polling — 10-min interval while route is active
   useEffect(() => {
-    if (!routeAccepted) return;
+    if (!routeAccepted || !isOpen) return;
     const selectedStops = stops.filter(s => s.selected);
     if (selectedStops.length === 0) return;
     const TERMINAL: Set<string> = new Set(['served', 'failed', 'skipped', 'archived']);
@@ -1101,7 +1101,7 @@ export default function ServeRoutePlanner({
 
     const id = setInterval(check, 600_000);
     return () => clearInterval(id);
-  }, [routeAccepted, stops, serverEtas]);
+  }, [routeAccepted, isOpen, stops, serverEtas]);
 
   // F3: print route sheet
   const printRouteSheet = useCallback(() => {
