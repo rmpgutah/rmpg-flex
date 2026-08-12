@@ -2859,16 +2859,16 @@ export default function ServePage() {
                 <StatCard
                   label="Overdue"
                   value={stats?.overdue ?? 0}
-                  color="text-rose-400"
-                  bg="bg-rose-900/20"
-                  border="border-rose-700/40"
+                  color="text-red-400"
+                  bg="bg-red-900/20"
+                  border="border-red-700/40"
                 />
               )}
               {filteredFeeTotal > 0 && (
                 <StatCard
                   label="Revenue Today"
                   value={`$${filteredFeeTotal.toFixed(2)}`}
-                  color="text-rmpg-200"
+                  color="text-rmpg-100"
                   bg="bg-surface-sunken/20"
                   border="border-border-default/40"
                 />
@@ -2877,7 +2877,7 @@ export default function ServePage() {
                 <StatCard
                   label="Avg Attempts/Serve"
                   value={((stats?.total_attempts ?? 0) / (stats?.served ?? 1)).toFixed(1)}
-                  color="text-rmpg-300"
+                  color="text-rmpg-100"
                   bg="bg-surface-sunken/20"
                   border="border-border-default/40"
                 />
@@ -3038,7 +3038,7 @@ export default function ServePage() {
                         <span className="text-green-400">{o.success_rate}%</span>
                         <span className="text-rmpg-500">{o.served}/{o.total}</span>
                         {o.avg_attempts != null && (
-                          <span className="text-rmpg-400">{Number(o.avg_attempts).toFixed(1)}x</span>
+                          <span className="text-fg-muted">{Number(o.avg_attempts).toFixed(1)}x</span>
                         )}
                       </div>
                     ))}
