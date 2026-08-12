@@ -57,6 +57,7 @@ import { autoAssignAllUnassigned } from '../utils/serveAutoAssign';
 import { routeJsonColumn } from '../utils/serveRoutePayload';
 import { parseD1TimestampMs } from '../utils/fleetio/sync';
 import { computeOfficerMileageForDay, computeOfficerMileageSegments } from '../utils/serveMileage';
+import { hashAddress, shouldRecordDwell, dwellSeconds } from '../utils/serveRouteOptimizer';
 
 const sv = new Hono<Env>();
 
@@ -1200,8 +1201,9 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     attempt_count: number; max_attempts: number; status: string;
     officer_id: number | null; call_id: number | null;
     recipient_name: string | null; case_number: string | null;
+    recipient_address: string | null; recipient_type: string | null;
   }>(
-    db, 'SELECT attempt_count, max_attempts, status, officer_id, call_id, recipient_name, case_number FROM serve_queue WHERE id = ?', id,
+    db, 'SELECT attempt_count, max_attempts, status, officer_id, call_id, recipient_name, case_number, recipient_address, recipient_type FROM serve_queue WHERE id = ?', id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
 
@@ -1263,6 +1265,23 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
         JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
         stampedAt,
       );
+
+  // Dwell-time learning — write path
+  const arrivedAt = body.arrivedAt as string | undefined;
+  if (arrivedAt) {
+    const loggedAt = new Date().toISOString();
+    const dwell = dwellSeconds(arrivedAt, loggedAt);
+    if (shouldRecordDwell(dwell) && queue.recipient_address && queue.recipient_address.trim() !== '') {
+      const addrHash = await hashAddress(queue.recipient_address);
+      c.executionCtx.waitUntil(
+        c.env.DB.prepare(
+          'INSERT INTO serve_dwell_times (address_hash, defendant_type, dwell_seconds) VALUES (?, ?, ?)'
+        )
+          .bind(addrHash, queue.recipient_type ?? 'individual', dwell)
+          .run()
+      );
+    }
+  }
 
   // Queue status: structured code wins (codeToQueueStatus knows whether a
   // posting counts as completion, whether a sub-service flips the queue,

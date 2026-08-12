@@ -12,9 +12,152 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, queryInChunks } from './db';
 
-// ── Types ──────────────────────────────────────────────────
+// ── Phase-1 route-planner types (added 2026-08-12) ─────────
 
 export interface RouteStop {
+  jobId: number;
+  lat: number;
+  lng: number;
+  geocodeSource: 'point' | 'centroid' | null;
+  deadlineAt: string | null;
+  defendantType: 'individual' | 'business';
+  addressHash: string;
+  defendant: string;
+  address: string;
+  locationNote: { serveStart: string | null; serveEnd: string | null } | null;
+}
+
+export interface GeocodeWarning {
+  jobId: number;
+  defendant: string;
+  address: string;
+  quality: 'low' | 'none';
+}
+
+export interface OptimizeResult {
+  orderedStops: RouteStop[];
+  etaPerStop: string[];
+  matrixFallback: boolean;
+  geocodeWarnings: GeocodeWarning[];
+}
+
+export interface TrafficCheckResult {
+  degraded: boolean;
+  addedMinutes: number;
+  newOrder: RouteStop[];
+  newEtas: string[];
+  degradedSegments: Array<{ fromJobId: number; toJobId: number; addedSeconds: number }>;
+  matrixFallback: boolean;
+}
+
+/**
+ * Haversine distance between two {lat, lng} points. Returns metres.
+ * Used as the fallback matrix calculation when live traffic data is unavailable.
+ */
+export function haversineDistance(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6_371_000;
+  const φ1 = (a.lat * Math.PI) / 180;
+  const φ2 = (b.lat * Math.PI) / 180;
+  const Δφ = ((b.lat - a.lat) * Math.PI) / 180;
+  const Δλ = ((b.lng - a.lng) * Math.PI) / 180;
+  const x =
+    Math.sin(Δφ / 2) ** 2 +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+/**
+ * Build an n×n distance matrix (metres) for a list of stops.
+ * Diagonal entries are 0. Used as fallback when Mapbox Matrix API is unavailable.
+ */
+export function haversineMatrix(stops: Array<{ lat: number; lng: number }>): number[][] {
+  return stops.map(a => stops.map(b => haversineDistance(a, b)));
+}
+
+// ── Mapbox Matrix API ──────────────────────────────────────
+
+const MATRIX_CHUNK_SIZE = 25;
+
+export async function buildCostMatrix(
+  stops: RouteStop[],
+  departAt: string,
+  mapboxToken: string
+): Promise<{ matrix: number[][]; fallback: boolean }> {
+  if (!mapboxToken) {
+    return { matrix: haversineMatrix(stops), fallback: true };
+  }
+
+  if (stops.length <= MATRIX_CHUNK_SIZE) {
+    return fetchMatrixChunk(stops, departAt, mapboxToken);
+  }
+
+  // Chunk into overlapping 25-stop windows and merge
+  const n = stops.length;
+  const result: number[][] = Array.from({ length: n }, () => Array(n).fill(0));
+  let fallback = false;
+
+  for (let start = 0; start < n; start += MATRIX_CHUNK_SIZE) {
+    const end = Math.min(start + MATRIX_CHUNK_SIZE, n);
+    const chunk = stops.slice(start, end);
+    const { matrix: chunkMatrix, fallback: chunkFallback } = await fetchMatrixChunk(
+      chunk,
+      departAt,
+      mapboxToken
+    );
+    if (chunkFallback) fallback = true;
+    for (let i = start; i < end; i++) {
+      for (let j = start; j < end; j++) {
+        result[i][j] = chunkMatrix[i - start][j - start];
+      }
+    }
+    // Fill cross-chunk cells with haversine fallback.
+    // Mixed data sources (Mapbox durations for intra-chunk, haversine for
+    // cross-chunk) are unavoidable in the chunked path, so mark fallback true
+    // unconditionally whenever any cross-chunk cells are filled.
+    if (start > 0) {
+      fallback = true;
+      for (let i = 0; i < start; i++) {
+        for (let j = start; j < end; j++) {
+          if (result[i][j] === 0 && i !== j) {
+            result[i][j] = haversineDistance(stops[i], stops[j]);
+            result[j][i] = result[i][j];
+          }
+        }
+      }
+    }
+  }
+  return { matrix: result, fallback };
+}
+
+async function fetchMatrixChunk(
+  stops: RouteStop[],
+  departAt: string,
+  mapboxToken: string
+): Promise<{ matrix: number[][]; fallback: boolean }> {
+  const coords = stops.map(s => `${s.lng},${s.lat}`).join(';');
+  const url = new URL(
+    `https://api.mapbox.com/directions-matrix/v1/mapbox/driving-traffic/${coords}`
+  );
+  url.searchParams.set('sources', 'all');
+  url.searchParams.set('destinations', 'all');
+  url.searchParams.set('depart_at', departAt);
+  url.searchParams.set('access_token', mapboxToken);
+
+  try {
+    const res = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) throw new Error(`Mapbox Matrix HTTP ${res.status}`);
+    const data = await (res.json() as Promise<{ durations: number[][] }>);
+    return { matrix: data.durations, fallback: false };
+  } catch {
+    return { matrix: haversineMatrix(stops), fallback: true };
+  }
+}
+
+// ── Legacy attempt-based types (nearest-neighbor optimizer) ─
+
+export interface AttemptRouteStop {
   attemptId: number;
   queueId: number;
   lat: number;
@@ -30,7 +173,7 @@ export interface OptimizationResult {
   orderedAttemptIds: number[];
   totalDistanceMiles: number;
   estimatedDriveTimeMinutes: number;
-  stops: RouteStop[];
+  stops: AttemptRouteStop[];
 }
 
 export interface BoundingBox {
@@ -68,7 +211,7 @@ const ROAD_WINDING_FACTOR = 1.3;
 
 const toRad = (deg: number) => (deg * Math.PI) / 180;
 
-// ── Core geometry ──────────────────────────────────────────
+// ── Core geometry (legacy attempt optimizer) ───────────────
 
 /**
  * Calculate the great-circle distance between two coordinates using the
@@ -80,7 +223,7 @@ const toRad = (deg: number) => (deg * Math.PI) / 180;
  * @param lng2 - Longitude of second point (decimal degrees)
  * @returns Distance in miles (always ≥ 0)
  */
-export function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+export function haversineDistanceMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const dLat = toRad(lat2 - lat1);
   const dLng = toRad(lng2 - lng1);
   const a =
@@ -151,7 +294,7 @@ export async function getServerWorkArea(
 
   const centerLat = (minLat + maxLat) / 2;
   const centerLng = (minLng + maxLng) / 2;
-  const spanMiles = haversineDistance(minLat, minLng, maxLat, maxLng);
+  const spanMiles = haversineDistanceMiles(minLat, minLng, maxLat, maxLng);
 
   return { minLat, maxLat, minLng, maxLng, centerLat, centerLng, spanMiles };
 }
@@ -167,14 +310,14 @@ export async function getServerWorkArea(
 async function fetchStops(
   db: D1Database,
   attemptIds: number[],
-): Promise<{ withCoords: RouteStop[]; withoutCoords: RouteStop[] }> {
+): Promise<{ withCoords: AttemptRouteStop[]; withoutCoords: AttemptRouteStop[] }> {
   if (attemptIds.length === 0) return { withCoords: [], withoutCoords: [] };
 
   // Caller-supplied id list: a full day's route plan can exceed D1's
   // 100-bound-parameter cap, which throws at BIND time -- before the query
   // runs -- so the whole route would fail to build on exactly the busy days
   // it matters most.
-  const rows = await queryInChunks<RouteStop>(
+  const rows = await queryInChunks<AttemptRouteStop>(
     db, attemptIds,
     // Five of this query's column references did not exist on live D1, so the
     // route optimizer's stop fetch threw "no such column" on EVERY call and
@@ -200,8 +343,8 @@ async function fetchStops(
       WHERE a.id IN (${placeholders})`,
   );
 
-  const withCoords: RouteStop[] = [];
-  const withoutCoords: RouteStop[] = [];
+  const withCoords: AttemptRouteStop[] = [];
+  const withoutCoords: AttemptRouteStop[] = [];
 
   for (const row of rows) {
     if (Number.isFinite(row.lat) && Number.isFinite(row.lng)) {
@@ -222,15 +365,15 @@ async function fetchStops(
  * Returns the stops in optimized order plus the total distance.
  */
 function nearestNeighborSort(
-  stops: RouteStop[],
+  stops: AttemptRouteStop[],
   startLat: number | null,
   startLng: number | null,
-): { ordered: RouteStop[]; totalMiles: number } {
+): { ordered: AttemptRouteStop[]; totalMiles: number } {
   if (stops.length === 0) return { ordered: [], totalMiles: 0 };
   if (stops.length === 1) return { ordered: stops, totalMiles: 0 };
 
   const remaining = [...stops];
-  const ordered: RouteStop[] = [];
+  const ordered: AttemptRouteStop[] = [];
   let totalMiles = 0;
 
   // Start from the server's current position if provided; otherwise start
@@ -246,7 +389,7 @@ function nearestNeighborSort(
     let bestIdx = 0;
     let bestDist = Infinity;
     for (let i = 0; i < remaining.length; i++) {
-      const d = haversineDistance(centroidLat, centroidLng, remaining[i].lat, remaining[i].lng);
+      const d = haversineDistanceMiles(centroidLat, centroidLng, remaining[i].lat, remaining[i].lng);
       if (d < bestDist) { bestDist = d; bestIdx = i; }
     }
     // Move the chosen start to front.
@@ -260,7 +403,7 @@ function nearestNeighborSort(
     let bestIdx = 0;
     let bestDist = Infinity;
     for (let i = 0; i < remaining.length; i++) {
-      const d = haversineDistance(curLat, curLng, remaining[i].lat, remaining[i].lng);
+      const d = haversineDistanceMiles(curLat, curLng, remaining[i].lat, remaining[i].lng);
       if (d < bestDist) { bestDist = d; bestIdx = i; }
     }
     const [next] = remaining.splice(bestIdx, 1);
@@ -284,7 +427,7 @@ function nearestNeighborSort(
  * @param attemptIds - Array of serve_attempts.id values to optimize
  * @returns Ordered attempt IDs, estimated total distance, and drive time
  */
-export async function optimizeRoute(
+export async function optimizeRouteForServer(
   db: D1Database,
   serverId: number,
   attemptIds: number[],
@@ -407,7 +550,7 @@ export async function batchOptimizeAllServers(
 
     if (attempts.length === 0) continue;
 
-    const optimization = await optimizeRoute(
+    const optimization = await optimizeRouteForServer(
       db,
       server.id,
       attempts.map((a) => a.id),
@@ -478,7 +621,7 @@ export async function getNearestUnassignedAttempt(
 
   for (const c of candidates) {
     if (!Number.isFinite(c.lat) || !Number.isFinite(c.lng)) continue;
-    const dist = haversineDistance(serverLat, serverLng, c.lat, c.lng);
+    const dist = haversineDistanceMiles(serverLat, serverLng, c.lat, c.lng);
     if (dist <= maxRadiusMiles && dist < bestDist) {
       bestDist = dist;
       best = {
@@ -494,4 +637,406 @@ export async function getNearestUnassignedAttempt(
   }
 
   return best;
+}
+
+// ── Phase-1 solver: deadline coefficients + time-window penalties + 2-opt ──
+
+export function deadlineCoefficient(stop: RouteStop, now: Date): number {
+  if (!stop.deadlineAt) return 1.0;
+  const hoursRemaining =
+    (new Date(stop.deadlineAt).getTime() - now.getTime()) / 3_600_000;
+  if (hoursRemaining > 72) return 1.0;
+  if (hoursRemaining > 24) return 0.7;
+  if (hoursRemaining > 0) return 0.4;
+  return 0.1;
+}
+
+function getDenverOffsetMs(date: Date): number {
+  // Returns Denver's UTC offset in milliseconds (e.g. -21600000 for UTC-6)
+  const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
+  const denverStr = date.toLocaleString('en-US', { timeZone: 'America/Denver' });
+  return new Date(utcStr).getTime() - new Date(denverStr).getTime();
+}
+
+function parseTimeOfDay(timeStr: string, referenceDate: string): number {
+  const [h, m] = timeStr.split(':').map(Number);
+  // Get the Denver date parts for the reference date
+  const ref = new Date(referenceDate);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(ref);
+  const year = Number(parts.find(p => p.type === 'year')!.value);
+  const month = Number(parts.find(p => p.type === 'month')!.value) - 1;
+  const day = Number(parts.find(p => p.type === 'day')!.value);
+  // Build the target time in Denver by creating a UTC date that corresponds to h:m Denver wall clock
+  const denverOffset = getDenverOffsetMs(ref);
+  return Date.UTC(year, month, day, h, m, 0, 0) - denverOffset;
+}
+
+export function applyTimeWindowPenalties(
+  matrix: number[][],
+  stops: RouteStop[],
+  departAt: string,
+  dwellSeconds: number[]
+): number[][] {
+  // dwellSeconds not accumulated per-stop in arrival estimate (Phase 1 simplification)
+  const n = stops.length;
+  const flat = matrix.flat();
+  const maxCost = Math.max(...flat.filter(v => isFinite(v)), 1);
+  const PENALTY = 10 * maxCost;
+  const result = matrix.map(row => [...row]);
+  const departMs = new Date(departAt).getTime();
+
+  for (let j = 0; j < n; j++) {
+    const note = stops[j].locationNote;
+    if (!note?.serveStart || !note?.serveEnd) continue;
+    const windowStart = parseTimeOfDay(note.serveStart, departAt);
+    const windowEnd = parseTimeOfDay(note.serveEnd, departAt);
+
+    for (let i = 0; i < n; i++) {
+      if (i === j) continue;
+      const arrivalMs = departMs + matrix[i][j] * 1000;
+      if (arrivalMs < windowStart || arrivalMs > windowEnd) {
+        result[i][j] += PENALTY;
+      }
+    }
+  }
+  return result;
+}
+
+function nearestNeighborOrder(matrix: number[][], n: number, startIdx: number = 0): number[] {
+  const visited = new Set<number>([startIdx]);
+  const order: number[] = [startIdx];
+  while (order.length < n) {
+    const last = order[order.length - 1];
+    let best = -1;
+    let bestCost = Infinity;
+    for (let j = 0; j < n; j++) {
+      if (!visited.has(j) && matrix[last][j] < bestCost) {
+        bestCost = matrix[last][j];
+        best = j;
+      }
+    }
+    order.push(best);
+    visited.add(best);
+  }
+  return order;
+}
+
+function twoOpt(matrix: number[][], order: number[]): number[] {
+  const n = order.length;
+  let best = [...order];
+  let improved = true;
+  while (improved) {
+    improved = false;
+    for (let i = 1; i < n - 1; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const nextJ = j + 1 < n ? j + 1 : 0;
+        const before = matrix[best[i - 1]][best[i]] + (matrix[best[j]][best[nextJ]] ?? 0);
+        const after = matrix[best[i - 1]][best[j]] + (matrix[best[i]][best[nextJ]] ?? 0);
+        if (after < before - 0.001) {
+          best = [
+            ...best.slice(0, i),
+            ...best.slice(i, j + 1).reverse(),
+            ...best.slice(j + 1),
+          ];
+          improved = true;
+        }
+      }
+    }
+  }
+  return best;
+}
+
+export function optimizeRoute(
+  stops: RouteStop[],
+  matrix: number[][],
+  departAt: string,
+  now: Date,
+  dwellSeconds: number[]
+): number[] {
+  const n = stops.length;
+  if (n === 0) return [];
+  if (n === 1) return [0];
+
+  // Apply deadline coefficients to matrix
+  const weighted = matrix.map((row, _i) =>
+    row.map((cost, j) => cost * deadlineCoefficient(stops[j], now))
+  );
+
+  // Apply time-window penalties on top of weighted costs
+  const penalized = applyTimeWindowPenalties(weighted, stops, departAt, dwellSeconds);
+
+  // Start from the most urgent stop (lowest deadline coefficient = highest priority)
+  let startIdx = 0;
+  let lowestCoeff = deadlineCoefficient(stops[0], now);
+  for (let i = 1; i < n; i++) {
+    const c = deadlineCoefficient(stops[i], now);
+    if (c < lowestCoeff) { lowestCoeff = c; startIdx = i; }
+  }
+
+  const seed = nearestNeighborOrder(penalized, n, startIdx);
+  return twoOpt(penalized, seed);
+}
+
+export function geocodeQualityScore(stop: RouteStop): 'high' | 'low' | 'none' {
+  if (stop.geocodeSource === 'point') return 'high';
+  if (stop.geocodeSource === 'centroid') return 'low';
+  if (stop.geocodeSource === null) return 'high'; // null = benefit of the doubt; don't warn on pre-existing jobs
+  if (stop.lat == null || stop.lng == null) return 'none';
+  return 'high';
+}
+
+export function collectGeocodeWarnings(stops: RouteStop[]): GeocodeWarning[] {
+  return stops
+    .map(s => ({ stop: s, quality: geocodeQualityScore(s) }))
+    .filter(({ quality }) => quality !== 'high')
+    .map(({ stop, quality }) => ({
+      jobId: stop.jobId,
+      defendant: stop.defendant,
+      address: stop.address,
+      quality: quality as 'low' | 'none',
+    }));
+}
+
+export async function optimizeRouteFullPipeline(
+  stops: RouteStop[],
+  departAt: string,
+  db: D1Database,
+  mapboxToken: string
+): Promise<OptimizeResult> {
+  const now = new Date();
+  const geocodeWarnings = collectGeocodeWarnings(stops);
+  const dwellSecs = await fetchDwellSeconds(db, stops);
+  const { matrix, fallback } = await buildCostMatrix(stops, departAt, mapboxToken);
+  const orderedIndices = optimizeRoute(stops, matrix, departAt, now, dwellSecs);
+  const orderedStops = orderedIndices.map(i => stops[i]);
+  const etaPerStop = computeEtas(orderedIndices, matrix, dwellSecs, departAt);
+
+  return { orderedStops, etaPerStop, matrixFallback: fallback, geocodeWarnings };
+}
+
+export async function hashAddress(address: string): Promise<string> {
+  const normalized = address.toUpperCase().trim().replace(/\s+/g, ' ');
+  const data = new TextEncoder().encode(normalized);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export function shouldRecordDwell(seconds: number): boolean {
+  return seconds > 30 && seconds < 7200;
+}
+
+export function dwellSeconds(arrivedAt: string, loggedAt: string): number {
+  return Math.round(
+    (new Date(loggedAt).getTime() - new Date(arrivedAt).getTime()) / 1000
+  );
+}
+
+// ── Dwell-time read path + ETA computation ─────────────────
+
+const DEFAULT_DWELL: Record<RouteStop['defendantType'], number> = {
+  individual: 300,
+  business: 600,
+};
+
+/**
+ * Fetch per-stop average dwell times (seconds) from the serve_dwell_times table.
+ * Falls back to DEFAULT_DWELL constants when no 90-day history exists for a stop.
+ * Result array is parallel-indexed to `stops`.
+ */
+export async function fetchDwellSeconds(
+  db: D1Database,
+  stops: RouteStop[]
+): Promise<number[]> {
+  if (stops.length === 0) return [];
+
+  const hashes = stops.map(s => s.addressHash);
+  // Use queryInChunks to stay within D1's 100-bound-parameter cap.
+  const rows = await queryInChunks<{ address_hash: string; avg_dwell: number }>(
+    db,
+    hashes,
+    placeholders =>
+      `SELECT address_hash, CAST(AVG(dwell_seconds) AS INTEGER) AS avg_dwell
+       FROM serve_dwell_times
+       WHERE address_hash IN (${placeholders})
+         AND logged_at > datetime('now', '-90 days')
+       GROUP BY address_hash`,
+  );
+
+  const byHash = new Map(rows.map(r => [r.address_hash, r.avg_dwell]));
+  return stops.map(s => byHash.get(s.addressHash) ?? DEFAULT_DWELL[s.defendantType]);
+}
+
+/**
+ * Compute ETAs for each stop in the optimized order.
+ * Each ETA is the ISO timestamp at which the server is expected to DEPART
+ * the stop (arrival + dwell). Travel time between stops comes from `matrix`.
+ *
+ * @param orderedIndices - Stop indices in visit order (from optimizeRoute)
+ * @param matrix - n×n travel-time matrix in seconds
+ * @param dwellSeconds - Per-stop dwell time in seconds, parallel-indexed to the original stops array
+ * @param departAt - ISO timestamp of route start
+ * @returns ISO timestamp strings, one per stop in orderedIndices order
+ */
+export function computeEtas(
+  orderedIndices: number[],
+  matrix: number[][],
+  dwellSeconds: number[],
+  departAt: string
+): string[] {
+  const etas: string[] = [];
+  let currentMs = new Date(departAt).getTime();
+  for (let step = 0; step < orderedIndices.length; step++) {
+    const idx = orderedIndices[step];
+    const prevIdx = step === 0 ? -1 : orderedIndices[step - 1];
+    const travelSeconds = step === 0 ? 0 : (matrix[prevIdx][idx] ?? 0);
+    currentMs += (travelSeconds + (dwellSeconds[idx] ?? 0)) * 1000;
+    etas.push(new Date(currentMs).toISOString());
+  }
+  return etas;
+}
+
+// ---------------------------------------------------------------------------
+// Mid-shift traffic degradation detection
+// ---------------------------------------------------------------------------
+
+const TRAFFIC_DEGRADE_THRESHOLD_S = 900;  // 15 min total added
+const TRAFFIC_SEGMENT_THRESHOLD_S = 600;  // 10 min per segment
+
+/**
+ * Compare current live traffic costs against original ETAs.
+ * Returns a TrafficCheckResult indicating whether re-routing is warranted.
+ *
+ * @param remainingStops - Stops not yet served, in their current visit order
+ * @param currentOrder   - Indices into remainingStops representing the planned sequence
+ * @param currentPosition - Officer's current GPS position
+ * @param originalEtas   - ISO timestamps from the last route optimization (one per stop in currentOrder)
+ * @param db             - D1 database binding (for dwell-time lookup)
+ * @param mapboxToken    - Mapbox secret token for the Matrix API
+ */
+export async function checkTrafficDegradation(
+  remainingStops: RouteStop[],
+  currentOrder: number[],
+  currentPosition: { lat: number; lng: number },
+  originalEtas: string[],
+  db: D1Database,
+  mapboxToken: string,
+): Promise<TrafficCheckResult> {
+  if (remainingStops.length === 0) {
+    return {
+      degraded: false,
+      addedMinutes: 0,
+      newOrder: [],
+      newEtas: [],
+      degradedSegments: [],
+      matrixFallback: false,
+    };
+  }
+
+  if (originalEtas.length < currentOrder.length) {
+    return {
+      degraded: false,
+      addedMinutes: 0,
+      newOrder: currentOrder.map(i => remainingStops[i]),
+      newEtas: originalEtas,
+      degradedSegments: [],
+      matrixFallback: true,
+    };
+  }
+
+  const outOfBounds = currentOrder.some(i => i < 0 || i >= remainingStops.length);
+  if (outOfBounds) {
+    return {
+      degraded: false,
+      addedMinutes: 0,
+      newOrder: remainingStops,
+      newEtas: originalEtas,
+      degradedSegments: [],
+      matrixFallback: true,
+    };
+  }
+
+  const origin: RouteStop = {
+    jobId: -1,
+    lat: currentPosition.lat,
+    lng: currentPosition.lng,
+    geocodeSource: 'point',
+    deadlineAt: null,
+    defendantType: 'individual',
+    addressHash: '',
+    defendant: '__origin__',
+    address: '',
+    locationNote: null,
+  };
+
+  const allStops = [origin, ...remainingStops];
+  const nowIso = new Date().toISOString();
+  const { matrix, fallback } = await buildCostMatrix(allStops, nowIso, mapboxToken);
+
+  if (fallback) {
+    return {
+      degraded: false,
+      addedMinutes: 0,
+      newOrder: currentOrder.map(i => remainingStops[i]),
+      newEtas: originalEtas,
+      degradedSegments: [],
+      matrixFallback: true,
+    };
+  }
+
+  // Reconstruct original per-segment durations from ETA timestamps
+  const departMs = Date.now();
+  const originalSegmentSeconds: number[] = currentOrder.map((_, step) => {
+    if (step === 0) return (new Date(originalEtas[0]).getTime() - departMs) / 1000;
+    return (new Date(originalEtas[step]).getTime() - new Date(originalEtas[step - 1]).getTime()) / 1000;
+  });
+
+  // Compare new live traffic costs against original plan
+  const degradedSegments: TrafficCheckResult['degradedSegments'] = [];
+  let totalAddedSeconds = 0;
+
+  for (let step = 0; step < currentOrder.length; step++) {
+    const stopIdx = currentOrder[step];
+    const matrixStopIdx = stopIdx + 1; // +1: origin is [0] in allStops
+    const prevMatrixIdx = step === 0 ? 0 : currentOrder[step - 1] + 1;
+    const newCost = matrix[prevMatrixIdx][matrixStopIdx];
+    // Clamp to 0 in case ETAs are already past (officer is late — don't inflate "added")
+    const originalCost = Math.max(0, originalSegmentSeconds[step]);
+    const added = newCost - originalCost;
+
+    if (added > TRAFFIC_SEGMENT_THRESHOLD_S) {
+      degradedSegments.push({
+        fromJobId: step === 0 ? -1 : remainingStops[currentOrder[step - 1]].jobId,
+        toJobId: remainingStops[stopIdx].jobId,
+        addedSeconds: Math.round(added),
+      });
+    }
+    totalAddedSeconds += Math.max(0, added);
+  }
+
+  const degraded = totalAddedSeconds > TRAFFIC_DEGRADE_THRESHOLD_S;
+
+  // Re-optimize with live matrix when degraded
+  const now = new Date();
+  const dwellSecs = await fetchDwellSeconds(db, remainingStops);
+  const remainingMatrix = matrix.slice(1).map(row => row.slice(1)); // strip origin row/col
+  const newOrderIndices = degraded
+    ? optimizeRoute(remainingStops, remainingMatrix, nowIso, now, dwellSecs)
+    : currentOrder;
+
+  const newOrder = newOrderIndices.map(i => remainingStops[i]);
+  const newEtas = computeEtas(newOrderIndices, remainingMatrix, dwellSecs, nowIso);
+
+  return {
+    degraded,
+    addedMinutes: Math.round(totalAddedSeconds / 60),
+    newOrder,
+    newEtas,
+    degradedSegments,
+    matrixFallback: false,
+  };
 }

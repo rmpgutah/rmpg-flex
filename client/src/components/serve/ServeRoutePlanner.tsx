@@ -22,6 +22,26 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
+interface RouteStopPayload {
+  jobId: number;
+  lat: number;
+  lng: number;
+  geocodeSource: 'point' | 'centroid' | null;
+  deadlineAt: string | null;
+  defendantType: 'individual' | 'business';
+  addressHash: string;
+  defendant: string;
+  address: string;
+  locationNote: { serveStart: string | null; serveEnd: string | null } | null;
+}
+
+interface GeocodeWarning {
+  jobId: number;
+  defendant: string;
+  address: string;
+  quality: 'low' | 'none';
+}
+
 interface OfficerOption {
   id: number;
   name: string;
@@ -46,6 +66,7 @@ interface ServeRoutePlannerProps {
    * which is what the toolbar's "Plan Route" button still wants.
    */
   preselectedJobIds?: Set<number>;
+  onVerifyAddress?: (jobId: number) => void;
 }
 
 interface StopItem {
@@ -332,10 +353,31 @@ function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
   return <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono uppercase ${colors[p] || colors.normal}`}>{p}</span>;
 }
 
+// ─── Server-Route Helpers ────────────────────────────────────────────────
+
+/** Convert client StopItems to the shape the server optimizer expects. */
+export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
+  return stops
+    .filter(s => s.selected && s.job.recipient_lat != null && s.job.recipient_lng != null)
+    .map(s => ({
+      jobId: s.job.id,
+      lat: s.job.recipient_lat!,
+      lng: s.job.recipient_lng!,
+      geocodeSource: null,
+      deadlineAt: s.job.deadline ?? null,
+      // ServeJob has no defendant_type column yet; individual is the safer default
+      defendantType: 'individual' as const,
+      addressHash: '',
+      defendant: s.job.recipient_name ?? '',
+      address: s.job.recipient_address ?? '',
+      locationNote: null,
+    }));
+}
+
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ServeRoutePlanner({
-  isOpen, onClose, jobs, officers, currentUserId, onRouteOptimized, preselectedJobIds,
+  isOpen, onClose, jobs, officers, currentUserId, onRouteOptimized, preselectedJobIds, onVerifyAddress,
 }: ServeRoutePlannerProps) {
   const TERMINAL_STATUSES = new Set<ServeJob['status']>(['served', 'failed', 'skipped', 'archived']);
   const geocodedJobs = jobs.filter(j =>
@@ -377,6 +419,19 @@ export default function ServeRoutePlanner({
   // F5: missed-deadline confirm before applying
   const [missedDeadlineIds, setMissedDeadlineIds] = useState<number[]>([]);
   const [showDeadlineConfirm, setShowDeadlineConfirm] = useState(false);
+  // Server-optimizer results: ETAs and geocode warnings
+  const [serverEtas, setServerEtas] = useState<string[]>([]);
+  const [serverEtaJobIds, setServerEtaJobIds] = useState<number[]>([]);
+  const [geocodeWarnings, setGeocodeWarnings] = useState<GeocodeWarning[]>([]);
+  const [matrixFallback, setMatrixFallback] = useState(false);
+  const [geocodeWarningDismissed, setGeocodeWarningDismissed] = useState(false);
+  // Traffic polling state
+  const [trafficSuggestion, setTrafficSuggestion] = useState<{
+    addedMinutes: number;
+    newOrderJobIds: number[];
+    newEtas: string[];
+  } | null>(null);
+  const [routeAccepted, setRouteAccepted] = useState(false);
 
   // Reset derived stats when planner opens
   useEffect(() => {
@@ -387,6 +442,13 @@ export default function ServeRoutePlanner({
     setMissedDeadlineIds([]);
     setShowDeadlineConfirm(false);
     setSavedRouteLoaded(false); // Fix #3: always re-fetch saved route on re-open
+    setServerEtas([]);
+    setServerEtaJobIds([]);
+    setGeocodeWarnings([]);
+    setMatrixFallback(false);
+    setGeocodeWarningDismissed(false);
+    setTrafficSuggestion(null);
+    setRouteAccepted(false);
   }, [isOpen]);
 
   // Initialize stops from jobs
@@ -682,6 +744,32 @@ export default function ServeRoutePlanner({
     setOptimizing(true);
     setError(null);
     clearRouteFromMap();
+    setServerEtas([]);
+    setServerEtaJobIds([]);
+    setGeocodeWarnings([]);
+    setMatrixFallback(false);
+    setGeocodeWarningDismissed(false);
+
+    // Fire server-side optimize in parallel — provides traffic-aware ETAs,
+    // geocode quality warnings, and a smarter (Matrix API + 2-opt) stop order.
+    // Non-fatal: if it fails we continue with the client-side Directions flow.
+    const serverOptimizePromise: Promise<{
+      orderedStops: { jobId: number }[];
+      etaPerStop: string[];
+      matrixFallback: boolean;
+      geocodeWarnings: GeocodeWarning[];
+    } | null> = apiFetch<{
+      orderedStops: { jobId: number }[];
+      etaPerStop: string[];
+      matrixFallback: boolean;
+      geocodeWarnings: GeocodeWarning[];
+    }>('/serve-queue/optimize-route', {
+      method: 'POST',
+      body: JSON.stringify({
+        stops: buildRouteStopsFromJobs(stops),
+        departAt: new Date().toISOString(),
+      }),
+    }).catch(() => null);
 
     // Mapbox unavailable (token fetch failed, network down, rate-limited)
     // used to leave the ENTIRE route planner unusable — Optimize Route was
@@ -953,8 +1041,67 @@ export default function ServeRoutePlanner({
       setError(err?.message || 'Route optimization failed');
     } finally {
       setOptimizing(false);
+      // Apply server optimizer results: ETAs, geocode warnings, matrixFallback.
+      // Runs after client-side stops are set so the ETA lookup array aligns.
+      const serverResult = await serverOptimizePromise;
+      if (serverResult) {
+        setServerEtas(serverResult.etaPerStop ?? []);
+        setServerEtaJobIds((serverResult.orderedStops ?? []).map((s: { jobId: number }) => s.jobId));
+        setGeocodeWarnings(serverResult.geocodeWarnings ?? []);
+        setMatrixFallback(serverResult.matrixFallback ?? false);
+      }
     }
   }, [stops, mapReady, routeOrigin, returnToStart, clearRouteFromMap]);
+
+  // Mid-shift traffic polling — 10-min interval while route is active
+  useEffect(() => {
+    if (!routeAccepted || !isOpen) return;
+    const selectedStops = stops.filter(s => s.selected);
+    if (selectedStops.length === 0) return;
+    const TERMINAL: Set<string> = new Set(['served', 'failed', 'skipped', 'archived']);
+    const allDone = selectedStops.every(s => TERMINAL.has(s.job.status));
+    if (allDone) return;
+
+    const check = async () => {
+      try {
+        const position = await new Promise<GeolocationPosition>((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 }),
+        );
+        const remainingStops = buildRouteStopsFromJobs(
+          selectedStops.filter(s => !TERMINAL.has(s.job.status)),
+        );
+        const currentOrder = remainingStops.map((_, i) => i);
+        const result = await apiFetch<{
+          degraded: boolean;
+          addedMinutes: number;
+          newOrder: { jobId: number }[];
+          newEtas: string[];
+          matrixFallback: boolean;
+        }>('/serve-queue/route/traffic-check', {
+          method: 'POST',
+          body: JSON.stringify({
+            remainingStops,
+            currentOrder,
+            currentPosition: { lat: position.coords.latitude, lng: position.coords.longitude },
+            originalEtas: serverEtas,
+            departAt: new Date().toISOString(),
+          }),
+        });
+        if (result.degraded && !result.matrixFallback) {
+          setTrafficSuggestion({
+            addedMinutes: result.addedMinutes,
+            newOrderJobIds: (result.newOrder ?? []).map((s: { jobId: number }) => s.jobId),
+            newEtas: result.newEtas ?? [],
+          });
+        }
+      } catch {
+        // geolocation denied or network error — skip silently
+      }
+    };
+
+    const id = setInterval(check, 600_000);
+    return () => clearInterval(id);
+  }, [routeAccepted, isOpen, stops, serverEtas]);
 
   // F3: print route sheet
   const printRouteSheet = useCallback(() => {
@@ -1122,6 +1269,7 @@ export default function ServeRoutePlanner({
       }
     }
 
+    setRouteAccepted(true);
     onRouteOptimized(selectedIds, { totalDistance, totalDuration, fuelCost: totalDistance * IRS_MILEAGE_RATE });
     onClose();
   }, [stops, missedDeadlineIds, showDeadlineConfirm, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, routeOrigin, onRouteOptimized, onClose]);
@@ -1230,6 +1378,89 @@ export default function ServeRoutePlanner({
                 {describeOriginProblem(originResolution)}
               </div>
             )}
+            {trafficSuggestion && (
+              <div className="px-3 py-2 bg-amber-900/30 border-b border-amber-700/40 text-amber-300 text-[10px] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">
+                    Traffic has changed — route is now +{trafficSuggestion.addedMinutes} min behind schedule.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setTrafficSuggestion(null)}
+                    className="ml-2 text-amber-400 hover:text-amber-200"
+                    aria-label="Dismiss traffic suggestion"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Reorder selected stops to match the server's suggested order
+                      if (trafficSuggestion.newOrderJobIds.length > 0) {
+                        setStops(prev => {
+                          const ordered = trafficSuggestion.newOrderJobIds
+                            .map(jid => prev.find(s => s.job.id === jid))
+                            .filter(Boolean) as StopItem[];
+                          const unmatched = prev.filter(s => !trafficSuggestion.newOrderJobIds.includes(s.job.id));
+                          return [...ordered.map((s, i) => ({ ...s, order: i })), ...unmatched.map((s, i) => ({ ...s, order: ordered.length + i }))];
+                        });
+                        setServerEtas(trafficSuggestion.newEtas);
+                        setServerEtaJobIds(trafficSuggestion.newOrderJobIds);
+                      }
+                      setTrafficSuggestion(null);
+                    }}
+                    className="rounded-[2px] bg-amber-700/50 hover:bg-amber-700/70 px-2 py-1 text-amber-100 font-semibold"
+                  >
+                    Accept Updated Route
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTrafficSuggestion(null)}
+                    className="rounded-[2px] px-2 py-1 text-amber-400 hover:text-amber-200"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+            {matrixFallback && (
+              <div className="px-3 py-1.5 bg-amber-900/20 border-b border-amber-700/30 text-amber-400 text-[10px] leading-snug">
+                Route ETAs use estimated distances — live traffic data was unavailable.
+              </div>
+            )}
+            {!geocodeWarningDismissed && geocodeWarnings.length > 0 && (
+              <div className="px-3 py-2 bg-amber-900/25 border-b border-amber-700/40 text-amber-300 text-[10px] space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">
+                    {geocodeWarnings.length} stop{geocodeWarnings.length > 1 ? 's' : ''} with unverified address{geocodeWarnings.length > 1 ? 'es' : ''} — route generated but pins may be inaccurate.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setGeocodeWarningDismissed(true)}
+                    className="ml-2 text-amber-400 hover:text-amber-200 leading-none"
+                    aria-label="Dismiss geocode warning"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+                {geocodeWarnings.map(w => (
+                  <div key={w.jobId} className="flex items-center justify-between gap-2">
+                    <span className="truncate">{w.defendant} — {w.address}</span>
+                    {onVerifyAddress && (
+                      <button
+                        type="button"
+                        onClick={() => onVerifyAddress(w.jobId)}
+                        className="text-[color:var(--field-label-color)] hover:underline flex-shrink-0"
+                      >
+                        Verify →
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
               {/* Stop 0 — the origin the optimizer measured from. Rendered as a
@@ -1294,12 +1525,26 @@ export default function ServeRoutePlanner({
                     <div className="text-xs font-medium text-rmpg-100 truncate">{stop.job.recipient_name}</div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-fg-muted truncate">{stop.job.recipient_address || 'No address'}</span>
-                      {/* F1: arrival time estimate */}
-                      {stopArrivalTimes.has(stop.job.id) && (
-                        <span className={`text-[9px] font-mono flex-shrink-0 ${missedDeadlineIds.includes(stop.job.id) ? 'text-red-400' : 'text-fg-secondary'}`}>
-                          ETA {new Date(stopArrivalTimes.get(stop.job.id)!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} {/* new-date-ok — epoch ms computed locally */}
-                        </span>
-                      )}
+                      {/* Server ETA (traffic-aware) takes priority; fall back to NN estimate */}
+                      {(() => {
+                        const serverIdx = serverEtaJobIds.indexOf(stop.job.id);
+                        const serverEta = serverIdx >= 0 ? serverEtas[serverIdx] : null;
+                        if (serverEta) {
+                          return (
+                            <span className={`text-[9px] font-mono flex-shrink-0 ${missedDeadlineIds.includes(stop.job.id) ? 'text-red-400' : 'text-fg-secondary'}`}>
+                              ETA {new Date(serverEta).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' })} {/* new-date-ok — ISO from server */}
+                            </span>
+                          );
+                        }
+                        if (stopArrivalTimes.has(stop.job.id)) {
+                          return (
+                            <span className={`text-[9px] font-mono flex-shrink-0 ${missedDeadlineIds.includes(stop.job.id) ? 'text-red-400' : 'text-fg-secondary'}`}>
+                              ETA {new Date(stopArrivalTimes.get(stop.job.id)!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} {/* new-date-ok — epoch ms computed locally */}
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">

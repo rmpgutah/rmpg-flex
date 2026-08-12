@@ -20,8 +20,8 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { toDenverWallClock } from '../utils/denverTime';
 import {
-  optimizeRoute,
-  haversineDistance,
+  optimizeRouteForServer as optimizeRoute,
+  haversineDistanceMiles as haversineDistance,
   estimateDriveTime,
 } from '../utils/serveRouteOptimizer';
 import { containsAnyClause } from '../utils/searchText';
@@ -1005,18 +1005,12 @@ sqe.post('/optimize-route', async (c) => {
   if (deniedOptimizeRoute) return c.json({ error: deniedOptimizeRoute }, 403);
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number | undefined;
-    const body = await c.req.json<{ attempt_ids: number[]; user_lat?: number; user_lng?: number }>();
-    if (!Array.isArray(body.attempt_ids) || !body.attempt_ids.length) {
-      return c.json({ error: 'attempt_ids array required' }, 400);
-    }
-    const { optimizeRoute, optimizeRouteFromUserLocation } = await import('../utils/serveRouteOptimizer');
-    let result;
-    if (body.user_lat != null && body.user_lng != null && isFinite(body.user_lat) && isFinite(body.user_lng)) {
-      result = await optimizeRouteFromUserLocation(db, body.attempt_ids, body.user_lat, body.user_lng);
-    } else {
-      result = await optimizeRoute(db, userId ?? 0, body.attempt_ids);
-    }
+    const { optimizeRouteFullPipeline } = await import('../utils/serveRouteOptimizer');
+    type RouteStop = import('../utils/serveRouteOptimizer').RouteStop;
+    const body = await c.req.json<{ stops: RouteStop[]; departAt?: string }>();
+    const departAt = body.departAt ?? new Date().toISOString();
+    const mapboxToken = c.env.MAPBOX_SECRET_TOKEN ?? '';
+    const result = await optimizeRouteFullPipeline(body.stops, departAt, db, mapboxToken);
     return c.json(result);
   } catch (err) {
     console.error('[serve-queue] optimize-route error', err);
@@ -1076,6 +1070,45 @@ sqe.get('/nearest-unassigned', async (c) => {
     return c.json(result);
   } catch (err) {
     logger.error('GET /nearest-unassigned failed', { src: 'src/routes/serveQueueEnhanced.ts' }, err); return c.json({ error: 'Lookup failed' }, 500); }
+});
+
+// ── POST /route/traffic-check — mid-shift traffic degradation check ──
+sqe.post('/route/traffic-check', async (c) => {
+  try {
+    const body = await c.req.json<{
+      remainingStops: import('../utils/serveRouteOptimizer').RouteStop[];
+      currentOrder: number[];
+      currentPosition: { lat: number; lng: number };
+      originalEtas: string[];
+    }>();
+    const { remainingStops, currentOrder, currentPosition, originalEtas } = body;
+
+    if (!remainingStops?.length) {
+      return c.json<import('../utils/serveRouteOptimizer').TrafficCheckResult>({
+        degraded: false,
+        addedMinutes: 0,
+        newOrder: [],
+        newEtas: [],
+        degradedSegments: [],
+        matrixFallback: false,
+      });
+    }
+
+    const { checkTrafficDegradation } = await import('../utils/serveRouteOptimizer');
+    const db = getDb(c.env);
+    const result = await checkTrafficDegradation(
+      remainingStops,
+      currentOrder,
+      currentPosition,
+      originalEtas,
+      db,
+      c.env.MAPBOX_SECRET_TOKEN ?? '',
+    );
+    return c.json(result);
+  } catch (err) {
+    logger.error('POST /route/traffic-check failed', { src: 'src/routes/serveQueueEnhanced.ts' }, err);
+    return c.json({ error: 'Traffic check failed' }, 500);
+  }
 });
 
 export default sqe;
