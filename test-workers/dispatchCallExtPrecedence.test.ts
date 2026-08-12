@@ -47,7 +47,7 @@ beforeAll(async () => {
     process_service_result TEXT, pso_requestor_name TEXT
   )`);
   await execute(db(), `CREATE TABLE IF NOT EXISTS calls_for_service_ext (
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY, parent_call_id INTEGER,
     process_served_to TEXT, process_served_address TEXT, process_attempts INTEGER,
     process_service_result TEXT, pso_requestor_name TEXT
   )`);
