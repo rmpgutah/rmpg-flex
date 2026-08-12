@@ -54,6 +54,12 @@ interface DesktopWindowManagerContextValue {
   setActiveTab: (groupId: string, windowId: string) => void;
   /** ID of the topmost (highest zIndex) non-minimized window, or null. */
   focusedId: string | null;
+  /** Registers a callback that will be invoked when Win+Z snap-layouts is requested for this window. */
+  registerSnapLayoutsHandler: (id: string, handler: () => void) => void;
+  /** Unregisters the snap-layouts callback for this window (call on unmount). */
+  unregisterSnapLayoutsHandler: (id: string) => void;
+  /** Triggers the snap-layouts overlay on the given window (e.g. from Win+Z). */
+  requestSnapLayouts: (id: string) => void;
 }
 
 const SESSION_KEY = 'rmpg_desktop_windows';
@@ -133,8 +139,38 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     return true;
   }, [commit]);
 
+  const snapLayoutsHandlersRef = useRef<Map<string, () => void>>(new Map());
+
+  const registerSnapLayoutsHandler = useCallback((id: string, handler: () => void) => {
+    snapLayoutsHandlersRef.current.set(id, handler);
+  }, []);
+
+  const unregisterSnapLayoutsHandler = useCallback((id: string) => {
+    snapLayoutsHandlersRef.current.delete(id);
+  }, []);
+
+  const requestSnapLayouts = useCallback((id: string) => {
+    snapLayoutsHandlersRef.current.get(id)?.();
+  }, []);
+
   const closeWindow = useCallback((id: string) => {
-    commit(windowsRef.current.filter(w => w.id !== id));
+    const prev = windowsRef.current;
+    const closing = prev.find(w => w.id === id);
+    const groupId = closing?.groupId ?? null;
+    const filtered = prev.filter(w => w.id !== id);
+
+    // If closing a grouped window leaves only one member in the group,
+    // clear the stale groupId from that survivor so it behaves as a standalone window.
+    if (groupId) {
+      const remaining = filtered.filter(w => w.groupId === groupId);
+      if (remaining.length === 1) {
+        commit(filtered.map(w => w.groupId === groupId ? { ...w, groupId: null, activeInGroup: true } : w));
+        playDesktopSound();
+        return;
+      }
+    }
+
+    commit(filtered);
     playDesktopSound();
   }, [commit]);
 
@@ -284,7 +320,7 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
 
   return (
     <DesktopWindowManagerContext.Provider
-      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, cascade, tileHorizontal, tileVertical, setFullscreen, mergeWindowTab, tearOffTab, setActiveTab, focusedId }}
+      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, cascade, tileHorizontal, tileVertical, setFullscreen, mergeWindowTab, tearOffTab, setActiveTab, focusedId, registerSnapLayoutsHandler, unregisterSnapLayoutsHandler, requestSnapLayouts }}
     >
       {children}
     </DesktopWindowManagerContext.Provider>

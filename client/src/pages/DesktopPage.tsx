@@ -84,22 +84,22 @@ function CadAutoOpen() {
 
 // Bridges keyboard shortcuts into the window manager + virtual desktop contexts.
 // Must be inside both DesktopWindowManagerProvider and VirtualDesktopProvider.
-function DesktopShortcutsInner({ onLock, onSettings, onSnapLayouts, onShortcutReference }: {
+function DesktopShortcutsInner({ onLock, onSettings, onShortcutReference }: {
   onLock: () => void;
   onSettings: () => void;
-  onSnapLayouts: () => void;
   onShortcutReference: () => void;
 }) {
   const vd = useVirtualDesktop();
   const active = vd?.active ?? 0;
   const setActive = vd?.setActive;
+  const { focusedId, requestSnapLayouts } = useDesktopWindows();
   return (
     <DesktopKeyboardShortcuts
       onLock={onLock}
       onToggleLauncher={onSettings}
       onPrevVirtualDesktop={() => setActive?.(active - 1)}
       onNextVirtualDesktop={() => setActive?.(active + 1)}
-      onSnapLayouts={onSnapLayouts}
+      onSnapLayouts={() => { if (focusedId) requestSnapLayouts(focusedId); }}
       onShortcutReference={onShortcutReference}
     />
   );
@@ -166,7 +166,6 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [manuallyLocked, setManuallyLocked] = useState(false);
   const [powerMenuOpen, setPowerMenuOpen] = useState(false);
   const [sysDashboardOpen, setSysDashboardOpen] = useState(false);
-  const [snapLayoutsActive, setSnapLayoutsActive] = useState(false);
   const [shortcutRefOpen, setShortcutRefOpen] = useState(false);
   const isLocked = lockActive || manuallyLocked;
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
@@ -373,7 +372,6 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
               <DesktopShortcutsInner
                 onLock={() => setManuallyLocked(true)}
                 onSettings={() => setWidgetSettingsOpen(true)}
-                onSnapLayouts={() => setSnapLayoutsActive(v => !v)}
                 onShortcutReference={() => setShortcutRefOpen(v => !v)}
               />
               <WindowLayer />

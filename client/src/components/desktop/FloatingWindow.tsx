@@ -182,7 +182,7 @@ interface FloatingWindowProps {
 }
 
 export default function FloatingWindow({ win }: FloatingWindowProps) {
-  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, setFullscreen, mergeWindowTab, tearOffTab, setActiveTab, windows } = useDesktopWindows();
+  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, setFullscreen, mergeWindowTab, tearOffTab, setActiveTab, windows, registerSnapLayoutsHandler, unregisterSnapLayoutsHandler } = useDesktopWindows();
   const taskbarHeight = TASKBAR_HEIGHT_PX[getTaskbarSize()];
   const windowsRef = useRef(windows);
   useEffect(() => { windowsRef.current = windows; }, [windows]);
@@ -269,6 +269,13 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     }, TITLE_SYNC_POLL_MS);
     return () => clearInterval(interval);
   }, [win.id, win.minimized, updateWindowTitle]);
+
+  // Register this window as the handler for Win+Z snap-layouts requests.
+  // Unregistered on unmount so a closed window can't receive the signal.
+  useEffect(() => {
+    registerSnapLayoutsHandler(win.id, () => setSnapLayoutsOpen(true));
+    return () => unregisterSnapLayoutsHandler(win.id);
+  }, [win.id, registerSnapLayoutsHandler, unregisterSnapLayoutsHandler]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -643,7 +650,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
               border: 'none',
             }}
           />
-          {!win.maximized && (
+          {!win.maximized && !win.fullscreen && (
             <>
               {/* N edge */}
               <div onPointerDown={e => onResizeHandlePointerDown(e, 'n')} style={{ position: 'absolute', top: 0, left: 14, right: 14, height: 8, cursor: 'n-resize', zIndex: 1 }} />
