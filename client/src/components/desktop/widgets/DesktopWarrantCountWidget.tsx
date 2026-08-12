@@ -44,8 +44,9 @@ export default function DesktopWarrantCountWidget() {
 
   const fetchWarrants = useCallback(async () => {
     try {
-      const data = await apiFetch<Warrant[]>('/warrants');
-      const active = Array.isArray(data) ? data.filter(isActive) : [];
+      const resp = await apiFetch<{ data: Warrant[] } | Warrant[]>('/warrants');
+      const rows: Warrant[] = Array.isArray(resp) ? resp : (resp as { data: Warrant[] }).data ?? [];
+      const active = rows.filter(isActive);
       setCounts({
         total: active.length,
         felony: active.filter(isFelony).length,

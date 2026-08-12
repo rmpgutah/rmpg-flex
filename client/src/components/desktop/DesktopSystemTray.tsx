@@ -67,8 +67,10 @@ function useTrayPolling() {
     let cancelled = false;
     const poll = async () => {
       try {
-        const present = await el.checkGpsHardwarePresent();
-        if (!cancelled) setGpsLocked(!!present);
+        const result = await el.checkGpsHardwarePresent();
+        // classifyGpsPresence returns { present, portBusy } — read the field
+        const locked = typeof result === 'boolean' ? result : !!result?.present;
+        if (!cancelled) setGpsLocked(locked);
       } catch { /* silent */ }
     };
     poll();
