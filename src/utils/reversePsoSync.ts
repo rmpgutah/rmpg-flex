@@ -80,7 +80,15 @@ export async function syncServeCompletionToCfs(
   // ── Step 5: update calls_for_service_ext (overflow table) ─
   // Safe from the 100-column cap on the base table.
   const resultLabel = queue.status === 'served' ? 'Served' : 'Failed';
-  const now = new Date().toISOString();
+  // Use the queue's own closed_at (stamped write-once at completion) rather
+  // than wall-clock now — a fire-and-forget sync can run well after the event.
+  const servedAt: string = queue.closed_at || queue.updated_at || new Date().toISOString();
+
+  // Ext rows are created lazily — older calls may have no row yet.
+  // Ensure one exists before the UPDATE so the write never silently no-ops.
+  await db.prepare('INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)')
+    .bind(queue.call_id)
+    .run();
 
   await db.prepare(
     `UPDATE calls_for_service_ext SET
@@ -92,7 +100,7 @@ export async function syncServeCompletionToCfs(
      WHERE id = ?`,
   ).bind(
     resultLabel,
-    now,
+    servedAt,
     queue.attempt_count ?? 0,
     queue.recipient_name ?? null,
     queue.recipient_address ?? null,
