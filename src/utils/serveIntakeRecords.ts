@@ -1039,6 +1039,8 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       try {
         const psoServiceWindows = get('service_windows') || queueRow.service_instructions || null;
         const psoServiceType = queueRow.document_type || get('process_type') || null;
+        const recipientFullName = queueRow.recipient_name ||
+          [recipientFirst, recipientLast].filter(Boolean).join(' ').trim() || null;
         await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', callId);
         await execute(
           db,
@@ -1050,7 +1052,9 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
             pso_service_windows   = COALESCE(NULLIF(?, ''), pso_service_windows),
             process_service_type  = COALESCE(NULLIF(?, ''), process_service_type),
             process_served_to     = COALESCE(NULLIF(?, ''), process_served_to),
-            process_served_address = COALESCE(NULLIF(?, ''), process_served_address)
+            process_served_address = COALESCE(NULLIF(?, ''), process_served_address),
+            case_number           = COALESCE(NULLIF(?, ''), case_number),
+            court_name            = COALESCE(NULLIF(?, ''), court_name)
            WHERE id = ?`,
           queueRow.client_name || queueRow.attorney_name || null,
           get('attorney_phone') || null,
@@ -1058,8 +1062,10 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
           psoServiceType,
           psoServiceWindows,
           psoServiceType,
-          queueRow.recipient_name || null,
+          recipientFullName,
           fullLocation || addr || null,
+          queueRow.case_number || null,
+          queueRow.court_name || null,
           callId,
         );
       } catch (err) {
