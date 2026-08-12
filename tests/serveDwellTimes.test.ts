@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hashAddress, shouldRecordDwell, dwellSeconds } from '../src/utils/serveRouteOptimizer';
+import { hashAddress, shouldRecordDwell, dwellSeconds, computeEtas } from '../src/utils/serveRouteOptimizer';
 
 describe('hashAddress', () => {
   it('normalizes and hashes an address to a 64-char hex string', async () => {
@@ -41,5 +41,29 @@ describe('dwellSeconds', () => {
   it('returns 0 for identical timestamps', () => {
     const t = '2026-08-12T09:00:00Z';
     expect(dwellSeconds(t, t)).toBe(0);
+  });
+});
+
+describe('computeEtas', () => {
+  it('returns ISO timestamps advancing by travel + dwell time', () => {
+    // orderedIndices [0, 1, 2], matrix with 5-min legs, dwell 5 min each
+    const matrix = [[0, 300, 600], [300, 0, 300], [600, 300, 0]];
+    const dwell = [300, 300, 300];
+    const departAt = '2026-08-12T08:00:00.000Z';
+
+    const etas = computeEtas([0, 1, 2], matrix, dwell, departAt);
+
+    // stop 0: 0 travel + 300 dwell = 8:05
+    expect(etas[0]).toBe('2026-08-12T08:05:00.000Z');
+    // stop 1: 300 travel + 300 dwell = +10 min from stop 0 ETA = 8:15
+    expect(etas[1]).toBe('2026-08-12T08:15:00.000Z');
+    // stop 2: 300 travel + 300 dwell = +10 min = 8:25
+    expect(etas[2]).toBe('2026-08-12T08:25:00.000Z');
+  });
+
+  it('handles single stop with no travel', () => {
+    const matrix = [[0]];
+    const etas = computeEtas([0], matrix, [600], '2026-08-12T08:00:00.000Z');
+    expect(etas[0]).toBe('2026-08-12T08:10:00.000Z');
   });
 });

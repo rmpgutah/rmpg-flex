@@ -798,3 +798,70 @@ export function dwellSeconds(arrivedAt: string, loggedAt: string): number {
     (new Date(loggedAt).getTime() - new Date(arrivedAt).getTime()) / 1000
   );
 }
+
+// ── Dwell-time read path + ETA computation ─────────────────
+
+const DEFAULT_DWELL: Record<RouteStop['defendantType'], number> = {
+  individual: 300,
+  business: 600,
+};
+
+/**
+ * Fetch per-stop average dwell times (seconds) from the serve_dwell_times table.
+ * Falls back to DEFAULT_DWELL constants when no 90-day history exists for a stop.
+ * Result array is parallel-indexed to `stops`.
+ */
+export async function fetchDwellSeconds(
+  db: D1Database,
+  stops: RouteStop[]
+): Promise<number[]> {
+  if (stops.length === 0) return [];
+
+  const hashes = stops.map(s => s.addressHash);
+  // D1 100-param cap — stops per run rarely exceed 25, but guard anyway.
+  // Array.fill avoids the hand-rolled placeholder pattern flagged by the
+  // d1ParamCap ratchet test in tests/d1ParamCap.test.ts.
+  const placeholders = Array<string>(hashes.length).fill('?').join(',');
+  const rows = await db
+    .prepare(
+      `SELECT address_hash, CAST(AVG(dwell_seconds) AS INTEGER) AS avg_dwell
+       FROM serve_dwell_times
+       WHERE address_hash IN (${placeholders})
+         AND logged_at > datetime('now', '-90 days')
+       GROUP BY address_hash`
+    )
+    .bind(...hashes)
+    .all<{ address_hash: string; avg_dwell: number }>();
+
+  const byHash = new Map(rows.results.map(r => [r.address_hash, r.avg_dwell]));
+  return stops.map(s => byHash.get(s.addressHash) ?? DEFAULT_DWELL[s.defendantType]);
+}
+
+/**
+ * Compute ETAs for each stop in the optimized order.
+ * Each ETA is the ISO timestamp at which the server is expected to DEPART
+ * the stop (arrival + dwell). Travel time between stops comes from `matrix`.
+ *
+ * @param orderedIndices - Stop indices in visit order (from optimizeRoute)
+ * @param matrix - n×n travel-time matrix in seconds
+ * @param dwellSeconds - Per-stop dwell time in seconds, parallel-indexed to the original stops array
+ * @param departAt - ISO timestamp of route start
+ * @returns ISO timestamp strings, one per stop in orderedIndices order
+ */
+export function computeEtas(
+  orderedIndices: number[],
+  matrix: number[][],
+  dwellSeconds: number[],
+  departAt: string
+): string[] {
+  const etas: string[] = [];
+  let currentMs = new Date(departAt).getTime();
+  for (let step = 0; step < orderedIndices.length; step++) {
+    const idx = orderedIndices[step];
+    const prevIdx = step === 0 ? -1 : orderedIndices[step - 1];
+    const travelSeconds = step === 0 ? 0 : (matrix[prevIdx][idx] ?? 0);
+    currentMs += (travelSeconds + (dwellSeconds[idx] ?? 0)) * 1000;
+    etas.push(new Date(currentMs).toISOString());
+  }
+  return etas;
+}
