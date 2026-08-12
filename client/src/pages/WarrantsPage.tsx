@@ -1406,7 +1406,7 @@ export default function WarrantsPage() {
             {/* Main content: Feed (left) + Priority (right) */}
             <div className={`${isMobile ? 'space-y-4' : 'flex gap-4'}`}>
               {/* Alert Feed — left 65% */}
-              <div className={`${isMobile ? '' : 'w-[65%]'} flex flex-col`}>
+              <div className={`${isMobile ? '' : 'w-[65%]'} flex flex-col min-h-0`}>
                 <div className="flex items-center gap-2 mb-2">
                   <h2 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2">
                     <Zap className="w-3.5 h-3.5 text-brand-400" />
@@ -1438,7 +1438,7 @@ export default function WarrantsPage() {
                   </div>
                 </div>
 
-                <div className="panel-inset bg-surface-sunken rounded-sm flex-1 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
+                <div className="panel-inset bg-surface-sunken rounded-sm flex-1 min-h-0 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
                   {feedLoading ? (
                     <div className="flex items-center justify-center h-32 text-rmpg-400">
                       <Loader2 className="w-4 h-4 animate-spin mr-2" role="status" aria-label="Loading" /> Loading feed...
@@ -1480,13 +1480,13 @@ export default function WarrantsPage() {
               </div>
 
               {/* Priority Warrants — right 35% */}
-              <div className={`${isMobile ? '' : 'w-[35%]'} flex flex-col`}>
+              <div className={`${isMobile ? '' : 'w-[35%]'} flex flex-col min-h-0`}>
                 <h2 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-2">
                   <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
                   Priority Warrants
                 </h2>
 
-                <div className="space-y-2 max-h-[400px] overflow-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
+                <div className="space-y-2 flex-1 min-h-0 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
                   {priorityLoading ? (
                     <div className="panel-inset bg-surface-sunken rounded-sm flex items-center justify-center h-32 text-rmpg-400">
                       <Loader2 className="w-4 h-4 animate-spin mr-2" role="status" aria-label="Loading" /> Loading...
@@ -1576,7 +1576,7 @@ export default function WarrantsPage() {
           TAB: SEARCH ALL (Unified Cross-Source)
          ================================================================ */}
       {activeTab === 'search-all' && (
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
           <div className="p-4 space-y-4">
             {/* Search Form */}
             <div className="panel-raised p-4">
@@ -1961,7 +1961,7 @@ export default function WarrantsPage() {
           TAB: WATCH LIST (Auto-Poll)
          ================================================================ */}
       {activeTab === 'watch' && (
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
           <div className="p-4 space-y-4">
             {autoPollLoading && !autoPollStatus ? (
               <div className="flex items-center justify-center py-12">
@@ -2709,7 +2709,7 @@ export default function WarrantsPage() {
           TAB: SCREENING — INTERPOL / OFAC / Utah SOR external screening
          ================================================================ */}
       {activeTab === 'screening' && (
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
           <div className="p-4">
             <ScreeningWorkspace />
           </div>
@@ -2720,7 +2720,9 @@ export default function WarrantsPage() {
           TAB 4: SCRAPERS — admin/manager only, phase 5 dashboard
          ================================================================ */}
       {activeTab === 'scrapers' && (isGodMode || isAdminOrManager) && (
-        <ScrapersTab />
+        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
+          <ScrapersTab />
+        </div>
       )}
 
       {/* ================================================================
@@ -2885,7 +2887,7 @@ export default function WarrantsPage() {
       {/* FORM MODAL */}
       {formOpen && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby={warrantFormTitleId}>
-          <div className={`panel-beveled ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'} overflow-auto bg-surface-base`}>
+          <div className={`panel-beveled bg-surface-base flex flex-col ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'}`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <div className="flex items-center gap-2">
                 <h2 id={warrantFormTitleId} className="text-sm font-bold text-rmpg-100">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
@@ -2895,7 +2897,7 @@ export default function WarrantsPage() {
               </div>
               <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close form"><X className="w-4 h-4" /></IconButton>
             </div>
-            <form onSubmit={handleSubmit} className="p-4 space-y-4">
+            <form onSubmit={handleSubmit} className="p-4 space-y-4 flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
               {formWasRestored && (
                 <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.08)' }}>
                   <div className="flex items-center gap-2">

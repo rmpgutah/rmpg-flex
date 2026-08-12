@@ -23,6 +23,8 @@ import { runUtahWarrantScan, runUtahWarrantCheckForPerson, fetchWarrantsForPerso
 import { screenPersonAllSources } from '../utils/screening/screenPerson';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
+import { containsClause } from '../utils/searchText';
+import { rateLimitAllow } from '../utils/rateLimit';
 import { requireRole } from '../middleware/auth';
 import { isValidStatus, isValidTransition, TERMINAL_STATUSES, WARRANT_STATUSES, type WarrantStatus, applyLazyWarrantExpiry } from '../utils/warrantStatus';
 import { denverDateExpr, denverNowDateExpr } from '../utils/denverTime';
@@ -476,7 +478,30 @@ warrants.post('/search-all', async (c) => {
       dateTo?: string;
     }>();
 
-    const limit = 50;
+    // Require at least one meaningful filter — a completely empty body would run
+    // SELECT * against all three tables with no WHERE clause and return up to
+    // 1,500 rows, burning DB budget and leaking the full warrant roster.
+    const hasAnyFilter = body.lastName || body.firstName || body.dob
+      || body.courtName || body.charge || body.caseNumber
+      || body.status || body.type || body.offenseLevel
+      || body.dateFrom || body.dateTo;
+    if (!hasAnyFilter) {
+      return c.json({ error: 'At least one search filter is required.' }, 400);
+    }
+
+    // Per-user rate limit on live Utah API fetches. Each search-all with a
+    // first+last name fires a real HTTP call to warrants.utah.gov. Excessive
+    // calls risk RMPG's IP being flagged by their CloudFront WAF — which would
+    // take warrant checks down completely. Cap at 20 live fetches per user per
+    // 5 minutes. Fail-open (KV outage allows the call through).
+    const UTAH_LIVE_LIMIT = 20;
+    const UTAH_LIVE_WINDOW_S = 300;
+    const userId = c.get('userId') as number | undefined;
+
+    // Per-bucket ceiling — unlimited in the sense that all matching warrants are
+    // returned, but bounded to protect the isolate's 128 MB memory limit. 500 per
+    // source is far above any realistic result set for a name/DOB search.
+    const SEARCH_LIMIT = 500;
 
     // Each source table has its own column names — there's no shared schema
     // to build one WHERE clause from. `warrants` only has a combined
@@ -485,13 +510,18 @@ warrants.post('/search-all', async (c) => {
     // (status there is the separate is_active flag, not comparable to the
     // local/scraped status vocabulary) — only date-range applies to it;
     // `scraped_warrants` supports every filter (using date_of_birth, not dob).
+    //
+    // All text-contains clauses use containsClause() (instr-based) instead of
+    // raw LIKE patterns. D1 caps LIKE pattern length at 50 chars — a charge
+    // description or long name would produce "LIKE or GLOB pattern too complex"
+    // at runtime. instr() has no such limit and is safe at any input length.
     const localConditions: string[] = [];
     const localParams: unknown[] = [];
-    if (body.lastName) { localConditions.push('subject_name LIKE ?'); localParams.push(`%${body.lastName}%`); }
-    if (body.firstName) { localConditions.push('subject_name LIKE ?'); localParams.push(`%${body.firstName}%`); }
+    if (body.lastName) { const c = containsClause('subject_name'); localConditions.push(c.sql); localParams.push(c.bind(body.lastName)); }
+    if (body.firstName) { const c = containsClause('subject_name'); localConditions.push(c.sql); localParams.push(c.bind(body.firstName)); }
     if (body.dob) { localConditions.push('subject_dob = ?'); localParams.push(body.dob); }
-    if (body.courtName) { localConditions.push('issuing_court LIKE ?'); localParams.push(`%${body.courtName}%`); }
-    if (body.charge) { localConditions.push('charge_description LIKE ?'); localParams.push(`%${body.charge}%`); }
+    if (body.courtName) { const c = containsClause('issuing_court'); localConditions.push(c.sql); localParams.push(c.bind(body.courtName)); }
+    if (body.charge) { const c = containsClause('charge_description'); localConditions.push(c.sql); localParams.push(c.bind(body.charge)); }
     if (body.status) { localConditions.push('status = ?'); localParams.push(body.status); }
     if (body.type) { localConditions.push('type = ?'); localParams.push(body.type); }
     if (body.offenseLevel) { localConditions.push('offense_level = ?'); localParams.push(body.offenseLevel); }
@@ -501,21 +531,21 @@ warrants.post('/search-all', async (c) => {
 
     const utahConditions: string[] = [];
     const utahParams: unknown[] = [];
-    if (body.lastName) { utahConditions.push('last_name LIKE ?'); utahParams.push(`%${body.lastName}%`); }
-    if (body.firstName) { utahConditions.push('first_name LIKE ?'); utahParams.push(`%${body.firstName}%`); }
-    if (body.courtName) { utahConditions.push('court_name LIKE ?'); utahParams.push(`%${body.courtName}%`); }
+    if (body.lastName) { const c = containsClause('last_name'); utahConditions.push(c.sql); utahParams.push(c.bind(body.lastName)); }
+    if (body.firstName) { const c = containsClause('first_name'); utahConditions.push(c.sql); utahParams.push(c.bind(body.firstName)); }
+    if (body.courtName) { const c = containsClause('court_name'); utahConditions.push(c.sql); utahParams.push(c.bind(body.courtName)); }
     if (body.dateFrom) { utahConditions.push('issue_date >= ?'); utahParams.push(body.dateFrom); }
     if (body.dateTo) { utahConditions.push('issue_date <= ?'); utahParams.push(body.dateTo); }
     const utahWhere = utahConditions.length ? `WHERE ${utahConditions.join(' AND ')}` : '';
 
     const scrapedConditions: string[] = [];
     const scrapedParams: unknown[] = [];
-    if (body.lastName) { scrapedConditions.push('last_name LIKE ?'); scrapedParams.push(`%${body.lastName}%`); }
-    if (body.firstName) { scrapedConditions.push('first_name LIKE ?'); scrapedParams.push(`%${body.firstName}%`); }
+    if (body.lastName) { const c = containsClause('last_name'); scrapedConditions.push(c.sql); scrapedParams.push(c.bind(body.lastName)); }
+    if (body.firstName) { const c = containsClause('first_name'); scrapedConditions.push(c.sql); scrapedParams.push(c.bind(body.firstName)); }
     if (body.dob) { scrapedConditions.push('date_of_birth = ?'); scrapedParams.push(body.dob); }
-    if (body.courtName) { scrapedConditions.push('court_name LIKE ?'); scrapedParams.push(`%${body.courtName}%`); }
-    if (body.charge) { scrapedConditions.push('charge_description LIKE ?'); scrapedParams.push(`%${body.charge}%`); }
-    if (body.caseNumber) { scrapedConditions.push('case_number LIKE ?'); scrapedParams.push(`%${body.caseNumber}%`); }
+    if (body.courtName) { const c = containsClause('court_name'); scrapedConditions.push(c.sql); scrapedParams.push(c.bind(body.courtName)); }
+    if (body.charge) { const c = containsClause('charge_description'); scrapedConditions.push(c.sql); scrapedParams.push(c.bind(body.charge)); }
+    if (body.caseNumber) { const c = containsClause('case_number'); scrapedConditions.push(c.sql); scrapedParams.push(c.bind(body.caseNumber)); }
     if (body.status) { scrapedConditions.push('status = ?'); scrapedParams.push(body.status); }
     if (body.type) { scrapedConditions.push('warrant_type = ?'); scrapedParams.push(body.type); }
     if (body.offenseLevel) { scrapedConditions.push('offense_level = ?'); scrapedParams.push(body.offenseLevel); }
@@ -529,49 +559,76 @@ warrants.post('/search-all', async (c) => {
     const wantUtah = !body.source || body.source === 'utah';
     const wantScraped = !body.source || body.source === 'scraped';
 
-    // The `utah_warrants` table is only a CACHE, populated by the background
-    // cron poller for the ~50 persons/run it happens to check — it does NOT
-    // reflect a live call to warrants.utah.gov. A name typed into Search All
-    // that isn't already a local D1 person the cron polled would silently
-    // return zero Utah hits even when the live API has real data for that
-    // name. When both first and last name are given, run a live on-demand
-    // check first (same fetchWarrantsForPerson/recordWarrant path already
-    // used by POST /warrants/check/:personId) so freshly-found warrants are
+    // The `utah_warrants` table is only a CACHE populated by the background
+    // cron poller. A name typed into Search All that isn't already a local D1
+    // person the cron polled would silently return zero Utah hits even when the
+    // live API has real data for that name. When both first and last name are
+    // given, run a live on-demand check first so freshly-found warrants are
     // persisted into utah_warrants BEFORE the cache SELECT below runs —
     // the subsequent query then naturally includes them via the upsert.
+    //
+    // Rate-safeguard: the live fetch hits warrants.utah.gov with the same
+    // 15 s timeout + Chrome UA already used by the cron poller. This is a
+    // single targeted name lookup (not a broad roster scan), so one live call
+    // per Search-All submission does not risk IP blockage. The cron's 8 s
+    // inter-person sleep is for bulk roster sweeps — it does not apply here.
     if (wantUtah && body.firstName && body.lastName) {
-      try {
-        const liveWarrants = await fetchWarrantsForPerson({
-          id: 0,
-          first_name: body.firstName,
-          middle_name: null,
-          last_name: body.lastName,
-          dob: body.dob ?? null,
-        });
-        for (const w of liveWarrants) await recordWarrant(db, w, null);
-      } catch (err) {
-        log.error('warrants/search-all: live utah fetch failed', { traceId },
-          err instanceof Error ? err : new Error(String(err)));
+      // Gate the live API call behind the per-user rate limit. A KV outage
+      // fails open (rateLimitAllow returns true) so a brief KV blip never
+      // blocks a legitimate warrant check.
+      const liveFetchAllowed = userId == null || await rateLimitAllow(
+        c.env.KV, `warrant-live-fetch:${userId}`, UTAH_LIVE_LIMIT, UTAH_LIVE_WINDOW_S,
+      );
+      if (!liveFetchAllowed) {
+        log.warn('warrants/search-all: live Utah fetch rate-limited', { userId, traceId });
+      } else {
+        try {
+          const liveWarrants = await fetchWarrantsForPerson({
+            id: 0,
+            first_name: body.firstName,
+            middle_name: null,
+            last_name: body.lastName,
+            dob: body.dob ?? null,
+          });
+          for (const w of liveWarrants) await recordWarrant(db, w, null);
+        } catch (err) {
+          log.error('warrants/search-all: live utah fetch failed', { traceId },
+            err instanceof Error ? err : new Error(String(err)));
+        }
       }
     }
 
-    const [local, utah] = await Promise.all([
+    const [local, utahRaw] = await Promise.all([
       wantLocal
-        ? query<Record<string, unknown>>(db, `SELECT * FROM warrants ${localWhere} LIMIT ?`, ...localParams, limit)
+        ? query<Record<string, unknown>>(db, `SELECT * FROM warrants ${localWhere} LIMIT ?`, ...localParams, SEARCH_LIMIT)
             .catch((err) => { log.error('warrants/search-all: local query failed', { traceId }, err); return []; })
         : Promise.resolve([]),
       wantUtah
-        ? query<Record<string, unknown>>(db, `SELECT * FROM utah_warrants ${utahWhere} LIMIT ?`, ...utahParams, limit)
+        ? query<Record<string, unknown>>(db, `SELECT * FROM utah_warrants ${utahWhere} LIMIT ?`, ...utahParams, SEARCH_LIMIT)
             .catch((err) => { log.error('warrants/search-all: utah query failed', { traceId }, err); return []; })
         : Promise.resolve([]),
     ]);
+
+    // DOB/age post-filter on the Utah cache — the utah_warrants table stores
+    // `age` (a number) but has no `dob` column, so a DOB in the search body
+    // cannot be applied as a SQL predicate. Apply matchesDobOrAge() in memory
+    // so a DOB-only or name+DOB search correctly rejects age-mismatched
+    // namesakes from the cache rather than returning every John Smith on file.
+    const utah = body.dob
+      ? utahRaw.filter((row) =>
+          matchesDobOrAge(body.dob!, {
+            dob: null,
+            age: typeof row.age === 'number' ? row.age : null,
+          })
+        )
+      : utahRaw;
 
     // Only query scraped_warrants when there's a meaningful filter (not dob-only)
     const hasScrapedFilter = body.lastName || body.firstName || body.courtName || body.charge || body.caseNumber
       || body.status || body.type || body.offenseLevel || body.dateFrom || body.dateTo;
     let scraped: Record<string, unknown>[] = [];
     if (wantScraped && hasScrapedFilter) {
-      scraped = await query<Record<string, unknown>>(db, `SELECT * FROM scraped_warrants ${scrapedWhere} LIMIT ?`, ...scrapedParams, limit)
+      scraped = await query<Record<string, unknown>>(db, `SELECT * FROM scraped_warrants ${scrapedWhere} LIMIT ?`, ...scrapedParams, SEARCH_LIMIT)
         .catch((err) => { log.error('warrants/search-all: scraped query failed', { traceId }, err); return []; });
     }
 
@@ -705,12 +762,12 @@ warrants.post('/national-search', async (c) => {
 
   const scrapedWhere: string[] = [];
   const scrapedParams: unknown[] = [];
-  if (body.first_name) { scrapedWhere.push('first_name LIKE ?'); scrapedParams.push(`%${body.first_name}%`); }
-  if (body.last_name) { scrapedWhere.push('last_name LIKE ?'); scrapedParams.push(`%${body.last_name}%`); }
+  if (body.first_name) { const cl = containsClause('first_name'); scrapedWhere.push(cl.sql); scrapedParams.push(cl.bind(body.first_name)); }
+  if (body.last_name) { const cl = containsClause('last_name'); scrapedWhere.push(cl.sql); scrapedParams.push(cl.bind(body.last_name)); }
   if (body.state) { scrapedWhere.push('UPPER(state) = ?'); scrapedParams.push(body.state.toUpperCase()); }
   if (body.offense_level) { scrapedWhere.push('UPPER(offense_level) = ?'); scrapedParams.push(body.offense_level.toUpperCase()); }
   if (body.warrant_type) { scrapedWhere.push('UPPER(warrant_type) = ?'); scrapedParams.push(body.warrant_type.toUpperCase()); }
-  if (body.charge_keyword) { scrapedWhere.push('charge_description LIKE ?'); scrapedParams.push(`%${body.charge_keyword}%`); }
+  if (body.charge_keyword) { const cl = containsClause('charge_description'); scrapedWhere.push(cl.sql); scrapedParams.push(cl.bind(body.charge_keyword)); }
 
   const scrapedSql = `SELECT * FROM scraped_warrants${scrapedWhere.length ? ' WHERE ' + scrapedWhere.join(' AND ') : ''}`;
   const scrapedRows = await query<Record<string, unknown>>(db, scrapedSql, ...scrapedParams);
@@ -726,11 +783,11 @@ warrants.post('/national-search', async (c) => {
 
   const localWhere: string[] = [];
   const localParams: unknown[] = [];
-  if (body.first_name) { localWhere.push('subject_first_name LIKE ?'); localParams.push(`%${body.first_name}%`); }
-  if (body.last_name) { localWhere.push('subject_last_name LIKE ?'); localParams.push(`%${body.last_name}%`); }
+  if (body.first_name) { const cl = containsClause('subject_first_name'); localWhere.push(cl.sql); localParams.push(cl.bind(body.first_name)); }
+  if (body.last_name) { const cl = containsClause('subject_last_name'); localWhere.push(cl.sql); localParams.push(cl.bind(body.last_name)); }
   if (body.offense_level) { localWhere.push('UPPER(offense_level) = ?'); localParams.push(body.offense_level.toUpperCase()); }
   if (body.warrant_type) { localWhere.push('UPPER(type) = ?'); localParams.push(body.warrant_type.toUpperCase()); }
-  if (body.charge_keyword) { localWhere.push('charge_description LIKE ?'); localParams.push(`%${body.charge_keyword}%`); }
+  if (body.charge_keyword) { const cl = containsClause('charge_description'); localWhere.push(cl.sql); localParams.push(cl.bind(body.charge_keyword)); }
 
   // Local `warrants` has no state/jurisdiction column to filter on. A
   // state-only search (the coverage-map "click a state" flow — the 400
