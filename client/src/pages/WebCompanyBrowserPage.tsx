@@ -25,6 +25,16 @@ function resolveWsBaseUrl(): string {
     : 'wss://api.rmpgutah.us';
 }
 
+// Resolve user input to a navigable URL: plain words → Google search,
+// bare hostname → https://, full URL → unchanged.
+function normalize(raw: string): string {
+  const t = raw.trim();
+  if (!t) return 'about:blank';
+  if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return t;
+  if (/\s/.test(t) || !t.includes('.')) return `https://www.google.com/search?q=${encodeURIComponent(t)}`;
+  return `https://${t}`;
+}
+
 export default function WebCompanyBrowserPage() {
   const [addressInput, setAddressInput] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +103,8 @@ export default function WebCompanyBrowserPage() {
   const handleAddressSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    send({ type: 'navigate', url: addressInput });
+    const url = normalize(addressInput);
+    send({ type: 'navigate', url });
   }, [addressInput, send]);
 
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -145,10 +156,17 @@ export default function WebCompanyBrowserPage() {
           aria-label="Address"
           value={addressInput}
           onChange={(e) => setAddressInput(e.target.value)}
-          placeholder="Enter a URL"
+          placeholder="Enter URL or search…"
           className="flex-1 px-2 py-1 text-[11px]"
           style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
         />
+        <button
+          type="submit"
+          aria-label="Navigate or search"
+          style={{ padding: '2px 8px', fontSize: 10, background: 'rgba(195,204,214,0.08)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)', cursor: 'pointer', flexShrink: 0 }}
+        >
+          Go
+        </button>
       </form>
       <div className="flex-1 relative">
         <canvas
