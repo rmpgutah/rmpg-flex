@@ -239,19 +239,33 @@ test('main.js: kiosk:attempt-escape uses the local-file guard, not the host guar
   );
 });
 
-test('main.js: every runElevatedRegistryWrite result is inspected', () => {
-  // A discarded result means a dismissed UAC prompt reads as success, and
-  // the app then clears kiosk state while the registry still points at it.
-  const calls = MAIN_JS.match(/^.*runElevatedRegistryWrite\(.*$/gm) || [];
-  const invocations = calls.filter((line) => !line.includes('function runElevatedRegistryWrite'));
-  assert.ok(invocations.length >= 3, `expected at least 3 call sites, found ${invocations.length}`);
-  for (const line of invocations) {
+test('main.js: every runRegistryWrite / deleteHkcuShell result is inspected', () => {
+  // A discarded result means a registry failure silently reads as success,
+  // clearing kiosk state while the Shell key still points at this app.
+  // Accept either `const x = await fn(` or `x = await fn(` (the latter is
+  // used where the same variable is assigned in a conditional branch).
+  const ASSIGNED = /^(?:const \w+ = |result = )await (runRegistryWrite|deleteHkcuShell)\(/;
+  const writeLines = (MAIN_JS.match(/^.*runRegistryWrite\(.*$/gm) || [])
+    .filter((l) => !l.includes('function runRegistryWrite'));
+  const deleteLines = (MAIN_JS.match(/^.*deleteHkcuShell\(.*$/gm) || [])
+    .filter((l) => !l.includes('function deleteHkcuShell'));
+  const allInvocations = [...writeLines, ...deleteLines];
+  assert.ok(allInvocations.length >= 3, `expected at least 3 call sites, found ${allInvocations.length}`);
+  for (const line of allInvocations) {
     assert.match(
       line.trim(),
-      /^const \w+ = await runElevatedRegistryWrite\(/,
+      ASSIGNED,
       `result discarded — assign and check .ok: ${line.trim()}`
     );
   }
+});
+
+test('main.js: no remnant call to runElevatedRegistryWrite (HKLM UAC path fully replaced)', () => {
+  assert.doesNotMatch(
+    MAIN_JS,
+    /runElevatedRegistryWrite\s*\(/,
+    'runElevatedRegistryWrite must not appear in main.js — use runRegistryWrite or deleteHkcuShell'
+  );
 });
 
 test('main.js: the escape shortcut is registered through selectEscapeAccelerator', () => {

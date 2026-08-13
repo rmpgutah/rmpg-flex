@@ -198,8 +198,8 @@ email.get('/connect/authorize', async (c) => {
   await setCfg(c.env.DB, `email_connect_state_${state}`, String(userId));
 
   // Always use the canonical API domain for the redirect URI. Using
-  // c.req.url.host here returns 'rmpgutah.us' when the request is proxied
-  // through the SPA origin, which causes AADSTS50011 (redirect URI mismatch).
+  // c.req.url.host returns 'rmpgutah.us' when the request is proxied
+  // through the SPA origin, causing AADSTS50011 (redirect URI mismatch).
   const redirectUri = 'https://api.rmpgutah.us/api/email/connect/callback';
   const params = new URLSearchParams({
     client_id: clientId,

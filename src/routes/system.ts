@@ -47,13 +47,13 @@ app.get('/my-call', async (c) => {
   const user = c.var.user;
   if (!user) return c.json({ call: null });
   const call = await c.env.DB.prepare(`
-    SELECT cfs.id, cfs.call_number, cfs.nature_of_call, cfs.priority, cfs.status, cfs.address, cfs.created_at
+    SELECT cfs.id, cfs.call_number, cfs.incident_type, cfs.priority, cfs.status, cfs.location_address, cfs.created_at
     FROM calls_for_service cfs
     JOIN units du ON du.current_call_id = cfs.id
     WHERE du.officer_id = ? LIMIT 1
   `).bind(user.id).first<{
-    id: number; call_number: string; nature_of_call: string;
-    priority: number; status: string; address?: string; created_at?: string;
+    id: number; call_number: string; incident_type: string;
+    priority: number; status: string; location_address?: string; created_at?: string;
   }>();
   return c.json({ call: call ?? null });
 });

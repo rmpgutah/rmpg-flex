@@ -711,11 +711,14 @@ function startSplashTimeout(maxMs = 15000) {
  * Verify that the remote RMPG Flex server is reachable.
  * Retries a few times with short delays before giving up.
  */
-function checkServerConnectivity() {
+function checkServerConnectivity(opts) {
   return new Promise((resolve) => {
     let attempts = 0;
-    const maxAttempts = 3; // 3 × 2s = 6s max; reduced from 5 (10s) to prevent long startup delays
-    const delayMs = 2000;
+    // In kiosk shell mode, Windows starts this app before the network stack
+    // is fully up. Give it more time: 8 × 3s = 24s max. In normal mode,
+    // 3 × 2s = 6s is plenty (and a hung connectivity check stalls the splash).
+    const maxAttempts = (opts && opts.kioskShell) ? 8 : 3;
+    const delayMs = (opts && opts.kioskShell) ? 3000 : 2000;
     let resolved = false;
 
     function tryConnect() {
@@ -1029,7 +1032,7 @@ async function createMainWindow() {
     setConfig('kiosk_boot_attempts', kioskBootState);
     if (shouldSelfRevert(kioskBootState)) {
       console.error(`[KIOSK] ${MAX_BOOT_FAILURES} consecutive failed boots — self-reverting shell to explorer.exe`);
-      const revert = await runElevatedRegistryWrite('"explorer.exe"');
+      const revert = await deleteHkcuShell();
       kioskRevertSucceeded = revert.ok;
       if (revert.ok) {
         setConfig('kiosk_shell_enabled', false);
@@ -1039,20 +1042,19 @@ async function createMainWindow() {
           `Kiosk Mode failed to start ${MAX_BOOT_FAILURES} times in a row and has been automatically disabled. Windows will use its normal desktop from now on.`
         );
       } else {
-        // The elevated write did NOT land — most commonly because the
-        // operator dismissed the UAC prompt. The Winlogon shell key still
-        // points at this app, so kiosk_shell_enabled and the boot counter
-        // are deliberately left ALONE: clearing them here would tell the
-        // next boot "kiosk is off" while Windows still starts us as the
-        // shell, which drops the escape hotkey and turns the next window
-        // close into a black screen. Leaving the counter above the limit
-        // means the next boot retries this revert.
+        // The HKCU Shell delete failed unexpectedly (permissions issue or
+        // locked registry hive). The Winlogon shell key still points at this
+        // app, so kiosk_shell_enabled and the boot counter are deliberately
+        // left ALONE: clearing them here would tell the next boot "kiosk is
+        // off" while Windows still starts us as the shell, which drops the
+        // escape hotkey and turns the next window close into a black screen.
+        // Leaving the counter above the limit means the next boot retries.
         console.error('[KIOSK] self-revert failed, shell key unchanged:', revert.error);
         dialog.showErrorBox(
           'RMPG Flex Kiosk Mode Could Not Be Disabled',
           `Kiosk Mode failed to start ${MAX_BOOT_FAILURES} times in a row, but the Windows shell setting could not be restored (${revert.error}).\n\n`
-            + 'This computer is still set to start RMPG Flex instead of the normal desktop. Approve the Windows permission prompt on the next attempt, '
-            + `or press ${KIOSK_ESCAPE_ACCELERATORS[0]} to exit Kiosk Mode now.`
+            + `This computer is still set to start RMPG Flex instead of the normal desktop. Press ${KIOSK_ESCAPE_ACCELERATORS[0]} to exit Kiosk Mode, `
+            + 'or contact IT support for a manual registry revert.'
         );
       }
       // Fall through to a window either way — do not exit, so the operator
@@ -1895,45 +1897,76 @@ guardedHandle('device:set-auto-launch', (event, enabled) => {
  * [WINDOWS-UNVERIFIED] — the reg.exe/Start-Process invocation below has not
  * been run on real Windows; verify manually before shipping.
  */
-function runElevatedRegistryWrite(shellValue) {
+// ─── HKCU Winlogon Shell registry helpers ─────────────────────
+// The Shell value is written to HKCU (per-user) rather than HKLM
+// (machine-wide). Per-user has two advantages over the old HKLM approach:
+//   1. No UAC — HKCU is always writable by the owning user without elevation.
+//   2. Per-user state matches the per-user userData config that tracks
+//      kiosk_shell_enabled/kiosk_boot_attempts. An IT recovery account that
+//      logs in while the kiosk user's HKCU Shell points at this app gets its
+//      OWN HKCU (no Shell override), so it boots to explorer.exe normally.
+// HKCU Shell overrides HKLM Shell — Windows checks HKCU first. Deleting the
+// HKCU value on revert (rather than writing "explorer.exe") restores the
+// system default cleanly even if HKLM was ever customized by an admin.
+const HKCU_WINLOGON_KEY = 'HKCU\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';
+
+/**
+ * Writes the kiosk Shell value to HKCU Winlogon. No UAC required.
+ * shellValue must already be the quoted registry string produced by
+ * buildShellRegistryValue (e.g. `"C:\path\to\RMPG Flex.exe"`).
+ * Returns { ok: true } or { ok: false, error: string }.
+ */
+function runRegistryWrite(shellValue) {
   return new Promise((resolve) => {
     const { spawn } = require('child_process');
-    const regKeyPath = 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';
-    // SECURITY: shellValue is derived from process.execPath (the install path
-    // of this app) and is attacker-influenced if the app is ever installed to
-    // a path containing shell metacharacters (e.g. an install dir literally
-    // named C:\Users\O'Brien\...). It used to be interpolated into a single
-    // *string* -ArgumentList wrapped in PowerShell single-quotes, escaping
-    // only embedded double quotes — a literal `'` in shellValue would close
-    // that quoted string early and let the remainder be re-parsed as
-    // additional PowerShell tokens inside a UAC-elevated process (command
-    // injection). Fixed by building -ArgumentList as a PowerShell *array*
-    // literal (`@(...)`) with each reg.exe argument as its own PS
-    // single-quoted string literal. Start-Process passes each array element
-    // through as one literal process argument (no further shell re-parsing),
-    // so no argument — including the reg key path or shellValue — needs
-    // internal double-quote wrapping to survive embedded spaces. The only
-    // escaping required is for the PS single-quoted literal itself: a
-    // literal `'` inside a PS single-quoted string is escaped by doubling it
-    // (`'` -> `''`), per PowerShell's quoting rules. That is applied here to
-    // every value embedded in the command (the key path and shellValue),
-    // which neutralizes single quotes, double quotes, backticks, `$`,
-    // semicolons, pipes, etc. — none of those are special inside a PS
-    // single-quoted literal. [WINDOWS-UNVERIFIED]: this exact escaping has
-    // not been exercised against a live UAC prompt; verify manually on
-    // Windows (including an install path containing a literal `'`) before
-    // shipping.
-    const psSingleQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
-    const regArgs = ['add', regKeyPath, '/v', 'Shell', '/t', 'REG_SZ', '/d', shellValue, '/f'];
-    const argumentListLiteral = `@(${regArgs.map(psSingleQuote).join(',')})`;
-    const psCommand = `$proc = Start-Process reg.exe -ArgumentList ${argumentListLiteral} -Verb RunAs -Wait -PassThru; exit $proc.ExitCode`;
-    const child = spawn('powershell.exe', ['-NoProfile', '-Command', psCommand], { windowsHide: false });
+    const child = spawn('reg.exe', [
+      'add', HKCU_WINLOGON_KEY,
+      '/v', 'Shell',
+      '/t', 'REG_SZ',
+      '/d', shellValue,
+      '/f',
+    ], { windowsHide: true });
     let stderr = '';
     child.stderr?.on('data', (d) => { stderr += d.toString(); });
     child.on('error', (err) => resolve({ ok: false, error: err.message }));
     child.on('close', (code) => {
       if (code === 0) resolve({ ok: true });
       else resolve({ ok: false, error: stderr || `reg.exe exited with code ${code}` });
+    });
+  });
+}
+
+/**
+ * Deletes the Shell value from HKCU Winlogon, restoring the system default
+ * (HKLM explorer.exe fallback). "Value not found" is treated as success —
+ * if the value was already gone the registry is already in the desired state.
+ * Returns { ok: true } or { ok: false, error: string }.
+ */
+function deleteHkcuShell() {
+  return new Promise((resolve) => {
+    const { spawn } = require('child_process');
+    const child = spawn('reg.exe', [
+      'delete', HKCU_WINLOGON_KEY,
+      '/v', 'Shell',
+      '/f',
+    ], { windowsHide: true });
+    let stderr = '';
+    child.stderr?.on('data', (d) => { stderr += d.toString(); });
+    child.on('error', (err) => resolve({ ok: false, error: err.message }));
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ ok: true });
+      } else if (
+        // reg.exe exits 1 with "unable to find" or "The system was unable to
+        // find the specified registry key or value" when the value didn't exist.
+        // Either way the end state is what we want: no HKCU Shell override.
+        stderr.toLowerCase().includes('unable to find') ||
+        stderr.toLowerCase().includes('not found')
+      ) {
+        resolve({ ok: true });
+      } else {
+        resolve({ ok: false, error: stderr || `reg.exe exited with code ${code}` });
+      }
     });
   });
 }
@@ -1957,18 +1990,19 @@ guardedHandle('device:set-kiosk-shell', async (event, enabled) => {
     return { ok: false, error: 'This action requires an admin or manager session' };
   }
   try {
-    const shellValue = enabled
-      ? buildShellRegistryValue(process.execPath)
-      : '"explorer.exe"';
     // Deliberate revert-and-restart: mark this BEFORE the registry write so
     // window-all-closed (should the settings window close during this) never
     // mistakes it for an unexpected exit and relaunches back into kiosk mode.
     if (!enabled) kioskDeliberatelyReverting = true;
-    // The main process does not run elevated; the actual registry write
-    // happens in a UAC-elevated helper (runElevatedRegistryWrite above),
-    // which spawns `reg.exe` via PowerShell's Start-Process -Verb RunAs so
-    // Windows shows the native UAC consent prompt.
-    const result = await runElevatedRegistryWrite(shellValue);
+    // Enable: write HKCU Shell to point at this app (no UAC needed).
+    // Disable: delete the HKCU Shell value so Windows falls back to the
+    // HKLM default (explorer.exe), restoring the system default cleanly.
+    let result;
+    if (enabled) {
+      result = await runRegistryWrite(buildShellRegistryValue(process.execPath));
+    } else {
+      result = await deleteHkcuShell();
+    }
     if (!result.ok) {
       // Un-latch the deliberate-revert flag set above: the registry write
       // failed, so the shell key still points at this app and a subsequent
@@ -2096,16 +2130,16 @@ guardedLocalFileHandle('kiosk:attempt-escape', async (event, username, password)
     // definition near the top of this file. Set before the registry write
     // so window-all-closed never mistakes this for an unexpected exit.
     kioskDeliberatelyReverting = true;
-    const revert = await runElevatedRegistryWrite('"explorer.exe"');
+    // Delete the HKCU Shell value — restores the HKLM explorer.exe default
+    // without requiring UAC. No UAC prompt = no accidental dismissal path.
+    const revert = await deleteHkcuShell();
     if (!revert.ok) {
-      // The elevated write did not land (usually a dismissed UAC prompt), so
-      // the Winlogon shell key still points at this app. Un-latch the
-      // deliberate-revert flag: leaving it set would make the next
-      // window-all-closed exit for real and strand the machine with no
-      // shell. Report the failure instead of the success this used to claim.
+      // The HKCU delete failed unexpectedly. Un-latch the deliberate-revert
+      // flag: leaving it set would make the next window-all-closed exit for
+      // real and strand the machine with no shell.
       kioskDeliberatelyReverting = false;
       logSecurityAuditEvent('kiosk:attempt-escape', 'error', { reason: 'registry_revert_failed', error: revert.error });
-      return { ok: false, error: `Could not restore the Windows desktop shell: ${revert.error}. Approve the Windows permission prompt and try again.` };
+      return { ok: false, error: `Could not restore the Windows desktop shell: ${revert.error}. Contact IT support for a manual registry revert.` };
     }
     setConfig('kiosk_shell_enabled', false);
     setConfig('kiosk_boot_attempts', resetBootAttemptState());
@@ -4433,7 +4467,11 @@ app.whenReady().then(async () => {
     // leaving macOS users staring at the splash for up to 10s before
     // the window even began loading. Now the window starts immediately
     // and the connectivity result is used only to seed the monitor.
-    const connectivityPromise = checkServerConnectivity();
+    // In kiosk shell mode, Windows starts this process before the network
+    // stack is fully up — use more retries so the initial check doesn't
+    // seed the monitor as "offline" just because the NIC wasn't ready yet.
+    const isKioskContext = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
+    const connectivityPromise = checkServerConnectivity({ kioskShell: isKioskContext });
 
     // Lifted out of the `if (DEV_MODE)` block below (rather than left as a
     // block-scoped const inside it) so the Task 10 self-test further down
